@@ -2,7 +2,8 @@
 
 > **Normative spec:** the state model is folded into [`0.0.1.md`](0.0.1.md) §6.1 (frontmatter),
 > §9 (state tiers / import / definite-assignment / write policy), §11.2 (match coverage), and
-> [`../../scenario-dsl-spec.md`](../../scenario-dsl-spec.md) §4–§6 + Roadmap #6. This doc is the
+> [`../../architecture.md`](../../architecture.md) (system layers + Roadmap #6 persistence backends).
+> This doc is the
 > **rationale + audit trail** behind that model — *why* it is shaped this way, not the normative
 > text. Because `0.0.1` is pre-implementation and unpublished, this is a correction *within* 0.0.1,
 > **not** a breaking version bump (no migration: nothing shipped with the old shape).
@@ -68,14 +69,11 @@ end, so the carrying tier is `run.*`). Two episode documents in one run:
 # state.schema.lute — SoT; every episode validates against it
 ---
 state:
-  run:
-    choseHelp: { type: bool, default: false }            # carries across episodes in this run
-  user:
-    level: { type: number, default: 1 }
-    sawTrueEnding: { type: bool, default: false }
-  app:
-    rating: { type: enum, values: [teen, adult], default: teen }   # content-read-only
-    lang:   { type: enum, values: [ko, en] }
+  run.choseHelp:      { type: bool, default: false }            # carries across episodes in this run
+  user.level:         { type: number, default: 1 }
+  user.sawTrueEnding: { type: bool, default: false }
+  app.rating:         { type: enum, values: [teen, adult], default: teen }   # content-read-only
+  app.lang:           { type: enum, values: [ko, en] }
 defs:
   warm:  { type: bool, cel: "run.level >= 2" }
   chose: { type: bool, params: { q: choiceRef, opt: choiceId }, cel: "scene.choices[q] == opt" }

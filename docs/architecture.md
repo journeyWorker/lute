@@ -1,4 +1,4 @@
-# Lute Scenario DSL — spec draft (authoring format + AST + LSP)
+# Lute — Architecture (compiler · AST · validation · LSP)
 
 **Status:** draft / forward-looking. Not yet implemented. Captures a design session that
 converged the *next* shape of the inline scenario authoring format, the AST it should parse
@@ -6,10 +6,12 @@ to, and the LSP that AST enables. The current parser lives at
 `packages/lute-core/src/modules/scenario/inline/parser.ts`; the runtime target is the existing
 flat command-record format (`idola_script_commands`).
 
-> This document covers **both** the language and its implementation architecture. The **language
-> alone** is specified formally and versioned as a proposal:
-> [`proposals/scenario-dsl/0.0.1.md`](proposals/scenario-dsl/0.0.1.md) (grammar + normative
-> semantics, no implementation). Use that as the language SoT; use this for AST/compiler/LSP/manifest.
+> This document is the **implementation architecture**. The **language** is specified formally and
+> versioned as a proposal: [`proposals/scenario-dsl/0.0.1.md`](proposals/scenario-dsl/0.0.1.md)
+> (grammar + normative semantics). The **plugin / extensibility system** is specified normatively in
+> [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) (human overview:
+> [`plugin-system.md`](plugin-system.md)). Use the two proposals as the SoT and this doc for the
+> AST/compiler/LSP architecture.
 
 ## Why
 
@@ -177,7 +179,7 @@ whole block blocks following content until it completes.
 ```
 <timeline duration="2.4">
   <track subject="camera">
-    ::camera{pan="door" duration="1.2"}        /* at 0.0 */
+    ::camera{focus="door" duration="1.2"}      /* at 0.0 */
     ::camera{zoom="1.3" duration="0.4"}        /* omitted at → after prev clip → 1.2 */
   </track>
   <track subject="sofia">
@@ -185,7 +187,7 @@ whole block blocks following content until it completes.
     ::auto{character="sofia" action="pose-turn" at="1.6"}
   </track>
   <track channel="music"> ::music{action="change" mood="tense" at="0.8"} </track>
-  <track channel="vfx">   ::vfx{type="flash" at="1.6"} </track>
+  <track channel="vfx">   ::vfx{type="whiteOut" transition="flash" at="1.6"} </track>
 </timeline>
 ```
 
@@ -210,11 +212,11 @@ Locked rules:
   *resolved timeline table* as the debugging view:
 
   ```
-  0.0  camera  pan door     dur 1.2
+  0.0  camera  focus door   dur 1.2
   0.4  sofia   walk-in
   0.8  music   change tense
   1.2  camera  zoom 1.3      dur 0.4
-  1.6  sofia   pose-turn  ·  vfx flash
+  1.6  sofia   pose-turn  ·  vfx whiteOut
   2.4  barrier
   ```
 
@@ -456,353 +458,14 @@ a rewrite, is the first move. Reach for a shared Rust core (`cel-rust`) only whe
 justify it (agents spawning a checker per chunk needing sub-50ms cold-start, or visible CI
 throughput limits) — see **System layers → Implementation language**.
 
-## Extensibility — one capability manifest, four consumers
+## Extensibility — see the plugin system spec
 
-Today the vocabulary is hardcoded across four places (`parser.ts` enums + inline attr checks,
-`generator.ts` lowering, the future LSP, the future tree-sitter grammar) — drift-prone (this
-session repeatedly hit that class: invented `::scene`, an unused `track` attr, a redundant
-`<parallel>`). The fix is a **single declarative capability manifest** that all four consumers
-derive from. Add a capability once → parser, compiler, LSP, and grammar all update.
-
-```ts
-capabilitySnapshot = {
-  version,                 // capabilityVersion — parser/checker/LSP/compiler target the same hash
-  plugins,                 // resolved plugin ids + versions + typed options
-  profiles,                // root-level profile graph; "global" is reserved and inherited by all
-  enums,                   // emotion / mood / volume / anchor / vfxType / musicAction / …
-  namespaces,              // id shapes + ownership: character.id, bg.id, music.id, action.id
-  providers,               // OPEN registries resolved from catalogs (see snapshot interface)
-  stateShapes,             // reusable typed result/state shapes (e.g. minigameResult)
-  stateTemplates,          // structured path templates; docs shorthand may use run.affinity.$characterId
-  assetKinds,              // per-kind schema: allowed attrs, persistence, preview metadata
-  directives,              // per-tag: attrs[], timing{waitDefault}, effects, semantics, lower
-  bridgeCapabilities,      // typed runtime bridge commands; never arbitrary tool calls
-  blockKinds,              // branch/choice/match/when/otherwise/timeline/track (structural)
-  layers,                  // visual/audio lanes: exclusivity, z-order, persistence
-  transitions,             // reusable easing/fade/timing schemas
-  actionSemantics,         // isExit / isStateful / mutatesScene / requiresAnchor / cancelsPrevious
-  diagnostics,             // per-attr messages, deprecations, aliases, fixits
-}
-```
-
-**Semantic tags in the manifest, algorithms in code.** A `provider` returning ids is too weak:
-the compiler also needs to know what a kind *means* (`bg` scene-persistent, `sfx` fire-and-forget,
-`music` channel/action, `character` binds pose/anchor/layer, `cut` pairs show/hide). Encode those
-as reusable **semantic flags** (`directives.auto.semantics: ["writes.characterState",
-"mayExitCharacter", "usesAnchor"]`) so parser/compiler/LSP agree on meaning — but keep the bespoke
-algorithm in code.
-
-### The data-vs-code boundary (the load-bearing line)
-
-A capability is **registrable data** iff *all* hold: (1) fixed syntax; (2) validation local to its
-attrs + catalog lookup; (3) lowering is a finite attrs→records mapping; (4) no new control flow;
-(5) no cross-sibling/global reasoning beyond declared resource conflicts; (6) no AST-shape change;
-(7) no ordering-sensitive interpretation beyond existing timeline/`wait`. Any false → **code**.
-
-- *Data:* a new `::shake`, `emotion="smug"`, `::vfx type="rain"`, `musicAction="duck"`, a new
-  `::bg transition="wipe"` attr.
-- *Code:* a new branching construct, a new timeline-resolver behavior, a new exhaustiveness rule,
-  "run until interrupted", "bind this action to future dialogue state", "auto-place characters".
-
-**The trap to name:** authors/LLMs most want things that *feel* like vocabulary but are compiler
-behavior — "have her leave naturally", "keep the same pose unless mood changes", "hit this SFX
-exactly as the line appears", "hide whoever is no longer speaking". Treating these as registrable
-data is precisely where you'd accidentally need a scripting language. They are code.
-
-### Provider interface — snapshot-first
-
-Compiler correctness must never depend on a live/remote catalog (`lute catalog build-bg` /
-`lab_assets`). The shared truth is a pinned **snapshot artifact**
-(`{manifestVersion, providerVersion, generatedAt, sourceRefs, entries: {characters, assets{bg,
-music,sfx}, actions}}`).
-
-```ts
-interface Provider<T> {
-  snapshot(): ProviderSnapshot<T>;          // sync, deterministic — what everyone validates against
-  refresh?(): Promise<ProviderSnapshot<T>>; // async, editor/build-prep only
-}
-```
-
-- **Compiler** consumes a pinned snapshot, fails if required data is missing, never blocks on the
-  network; an explicit `catalog refresh` precedes build.
-- **LSP** loads the same snapshot immediately, refreshes async in the background, surfaces snapshot
-  age, and when offline keeps the stale snapshot + emits a *"catalog stale"* diagnostic — **not**
-  false "unknown asset" errors.
-- **The parser never calls providers** — it builds the generic ParseAst only; the checker/validator
-  is the layer that consults snapshots.
-
-### Profiles, plugin packs, and scene activation
-
-`profile` is a root-level scene capability selector, not a field under `plugins`. A profile may
-configure plugins today and additional surfaces later (lint policy, bridge permissions, provider
-sets, release gates, localization mode, debug flags). The reserved profile name `global` is
-implicitly inherited by every other profile.
-
-```yaml
-profiles:
-  global:
-    plugins:
-      bard.core: true
-    lint:
-      unknownDirective: error
-  story:
-    plugins:
-      idola.vn: true
-
-  date:
-    extends: story
-    plugins:
-      idola.date:
-        phoneSurface: enabled
-
-  date-minigame:
-    extends: date
-    plugins:
-      idola.minigame:
-        resultScope: scene
-        allowedKinds: [rhythm, timing]
-
-defaultProfile: story
-```
-
-Scene frontmatter selects the profile at root:
-
-```yaml
-profile: date-minigame
-```
-
-Scene-local plugin config is additive and uses the same map form:
-
-```yaml
-profile: date
-plugins:
-  idola.minigame:
-    resultScope: scene
-    allowedKinds: [rhythm]
-```
-
-There is no `plugins.use` list. Presence of `plugins.<pluginId>` activates that plugin; the value
-is its typed option object. `true` means active with defaults. v0.0.1 activation is additive — no
-scene-local plugin disabling. If a profile must not include a plugin, it should not inherit a
-profile that activates it.
-
-Resolution order is deterministic:
-
-1. language-required core plugin(s);
-2. `profiles.global`;
-3. selected profile's `extends` chain, parent first;
-4. selected profile;
-5. scene-local `plugins`;
-6. dependency closure.
-
-The result is a single capability snapshot consumed by the checker, LSP, and compiler. Unknown
-directives from installed-but-inactive plugins are diagnostics with fix-its ("change profile" or
-"activate plugin"), not silently accepted syntax.
-
-Plugin consumers import plugin ids only. Plugin internals are hidden behind the plugin entry:
-
-```text
-plugins/idola.minigame/
-  plugin.yaml
-  state/
-    shapes.yaml
-    templates.yaml
-  directives/
-    minigame.yaml
-  providers/
-    minigame-id.yaml
-  bridge/
-    minigame.yaml
-  defs/
-    minigame.yaml
-  docs/
-    minigame.md
-```
-
-The entry exports internal directories; the loader reads only exported directories, sorts files by
-path, rejects duplicate ids, and treats merge order dependence as a schema smell.
-
-```yaml
-id: idola.minigame
-version: 0.1.0
-kind: capability
-depends:
-  - id: bard.core
-    range: "^0.0.1"
-exports:
-  state: state/
-  directives: directives/
-  providers: providers/
-  bridge: bridge/
-  defs: defs/
-  docs: docs/
-options:
-  - name: resultScope
-    type:
-      enum: [scene, run]
-    default: scene
-  - name: allowedKinds
-    type:
-      list:
-        enum: [rhythm, puzzle, timing]
-    default: [rhythm, puzzle, timing]
-```
-
-Options are typed and become part of the capability snapshot hash. Scalar options override through
-profile inheritance; maps deep-merge; lists replace by default unless the option schema declares a
-different merge strategy.
-
-### Structured state slots and bridge results
-
-Docs may use `$name` shorthand for path templates (`run.affinity.$characterId`,
-`scene.minigame.$resultKey.rank`), but machine-readable manifests MUST use structured path segments,
-not string interpolation. This avoids YAML/JSON `{...}` ambiguity and lets the LSP attach ranges to
-slots.
-
-```yaml
-stateShapes:
-  - name: minigameResult
-    fields:
-      - name: score
-        type: number
-        default: 0
-      - name: rank
-        type:
-          enum: [fail, bronze, silver, gold]
-        default: fail
-      - name: cleared
-        type: bool
-        default: false
-      - name: attempts
-        type: number
-        default: 0
-```
-
-`service01`-style result ids are typed slots, not incidental path text:
-
-```bard
-::minigame{kind="rhythm" id="bianca_service_01" resultKey="service01" wait="true"}
-
-<match on="scene.minigame.service01.rank">
-  <when test="$ == 'gold'"> ... </when>
-  <otherwise> ... </otherwise>
-</match>
-```
-
-The directive declares and writes the slotted state:
-
-```yaml
-directives:
-  - name: minigame
-    layer: bridge
-    attrs:
-      - name: kind
-        required: true
-        type:
-          enumFromOption: allowedKinds
-      - name: id
-        required: true
-        type:
-          providerRef: minigameId
-      - name: resultKey
-        required: true
-        type:
-          slotId:
-            namespace: scene.minigame
-      - name: wait
-        type: bool
-        default: true
-    state:
-      declares:
-        - scope: scene
-          path:
-            - minigame
-            - fromAttr:
-                name: resultKey
-                slotType: localId
-          shape: minigameResult
-    effects:
-      writes:
-        - scope: scene
-          path:
-            - minigame
-            - fromAttr:
-                name: resultKey
-            - score
-          value:
-            fromBridgeResult: score
-        - scope: scene
-          path:
-            - minigame
-            - fromAttr:
-                name: resultKey
-            - rank
-          value:
-            fromBridgeResult: rank
-        - scope: scene
-          path:
-            - minigame
-            - fromAttr:
-                name: resultKey
-            - cleared
-          value:
-            fromBridgeResult: cleared
-        - scope: scene
-          path:
-            - minigame
-            - fromAttr:
-                name: resultKey
-            - attempts
-          value:
-            op: increment
-            by: 1
-    bridge:
-      service: minigame
-      operation: play
-      replay: recorded
-```
-
-Runtime bridge calls are therefore typed directives that write declared state, not arbitrary tool
-calls. The authored DSL emits data; the engine owns bridge execution; story control-flow observes
-only the declared state effects. A non-blocking bridge write (`wait="false"`) does not dominate an
-immediate read, so the checker can report `E-MAYBE-UNSET` for a following `<match>` on that result.
-
-### Declarative lowering + narrow named hooks
-
-Trivial one-record directives lower as data (`lower: { record: "camera.set", fields: {...} }`).
-Lowering that reads prior commands, pairs show/hide, allocates timeline tracks, expands to a
-variable number of commands, does anchor/lifecycle bookkeeping, or inspects siblings needs an
-**imperative hook** — but a *narrow, named* one from a closed registry
-(`lower: { kind: "builtin", name: "autoCharacterAction" }`). Rules: no inline JS in the manifest;
-each hook declares input/output record schemas + unit tests; the directive still declares
-attrs/validation/writes/semantics in data; **adding a hook is a code change, not content
-registration.** (`::auto` and `::cut` need hooks.) This is what stops the manifest from becoming a
-hidden programming language.
-
-### MVP order (don't build a framework first)
-
-1. enums → manifest. 2. directive attr schemas → manifest. 3. generate parser/checker validation
-tables. 4. generate LSP completion/diagnostics. 5. keep compiler lowering handwritten at first.
-6. declarative lowering for trivial one-record directives only. 7. manifest version/hash checks on
-every generated artifact. **Start with the easiest consumers (validation + completion); generate
-tree-sitter grammar last.**
-
-### Highest risk — semantic drift disguised as extensibility
-
-The manifest says a directive is valid, the LSP completes it, the parser accepts it, but compiler
-behavior still depends on hidden `generator.ts` rules the manifest didn't model → *statically valid
-scripts that lower incorrectly.* Mitigation: every directive declares
-`attrs / reads / writes / semantics / loweringKind / recordSchema / examples`, plus a **golden test
-per directive** (DSL input → CheckedIr → command records → diagnostics). **If a directive can't get
-a clean golden test, it isn't just data — it's code.**
-
-Stated the other way (the single biggest whole-design risk): **the manifest becoming a "semantic
-god object."** Vocabulary, namespaces, directive names, asset kinds, and completion data belong in
-it; the moment real *behavior* leaks in, you get a brittle generated system where parser, compiler,
-LSP, and tree-sitter all *appear* unified but nobody knows where behavior actually lives. **Keep the
-manifest declarative and boring — it describes vocabulary and capability surfaces; the core owns
-meaning** (named, tested checker/lowering/injection rules with provenance). This is the same
-data-vs-code line, guarded from the manifest's side.
+How capability is *extended* — the capability manifest, the data↔code boundary, plugin packaging,
+profile-based activation, providers, typed directives/state/bridge, and lowering hooks — is
+specified normatively in [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md),
+with the human-facing overview in [`plugin-system.md`](plugin-system.md). The compiler/AST/validation/LSP machinery
+in this document consumes the resolved **capability snapshot** that spec produces; the named
+lowering hooks a plugin may target live in *Compiler — stateful resolution* above.
 
 ## Roadmap / open items
 

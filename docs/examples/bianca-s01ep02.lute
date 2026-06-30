@@ -16,7 +16,7 @@ defs:
 ---
 
 /*
-  Worked example of the Lute Scenario DSL (see ../scenario-dsl-spec.md).
+  Worked example of the Lute Scenario DSL (see ../proposals/scenario-dsl/0.0.1.md and ../architecture.md).
   The spine, prose, dialogue, and assetIds are faithful to the real
   content-catalog S01EP02 (linear). Three things are woven in to demonstrate
   the new surface, each marked NEW / demo:
@@ -30,7 +30,7 @@ defs:
 ## Shot 1.
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
-::music{action="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="low"}
+::music{action="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="down"}
 ::sfx{sound="drink_bar_hum" assetId="PLACEHOLDER_drink_bar_hum"}
 
 Venny's. The chain restaurant that has never offended anyone, no matter how hard it tries. Soft overhead lighting, a faint jazz cover loop from somewhere over the ceiling tiles, the gentle white-noise of a drink-bar fountain.

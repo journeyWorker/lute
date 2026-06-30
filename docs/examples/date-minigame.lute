@@ -1,0 +1,77 @@
+---
+mode: inline
+character: bianca
+season: 1
+episode: 5
+title: The Service Rhythm
+pov: fixer
+lang: "0.0.1"
+# Illustrative plugin-system demo (see ../proposals/plugin-system/0.0.1.md) — NOT catalog content.
+# It selects a capability `profile`, layers scene-local plugin options, runs a bridge
+# `::minigame` directive that writes a declared state slot, and branches on the result.
+profile: date-minigame
+plugins:
+  idola.minigame:
+    resultScope: scene
+    allowedKinds: [rhythm]
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+---
+
+/*
+  Companion to the plugin system spec (../proposals/plugin-system/0.0.1.md) and the language spec
+  (../proposals/scenario-dsl/0.0.1.md). Everything here still reduces to flat command
+  records + CEL strings; the `::minigame` bridge call is data, not an arbitrary tool call.
+*/
+
+# S01EP05 — The Service Rhythm
+
+## Shot 1.
+
+::bg{location="family_restaurant" time="evening" assetId="BG.space.family_restaurant.interior.evening"}
+::music{action="start" mood="bright" assetId="sound-bgm-common-vn-mood-bright-0.mp3" volume="normal"}
+::auto{character="bianca" anchor="center" action="fade-in-up"}
+
+:line[bianca]{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
+:line[bianca]{code="0020" emotion="content" variant="0"}: Let me show you how I take an order. Watch the rhythm.
+
+/*
+  The `::minigame` directive is provided by the idola.minigame plugin, activated by the
+  date-minigame profile. `kind` is gated by the profile's allowedKinds; `resultKey` opens a
+  typed slot scene.minigame.service01.* (shape minigameResult). wait="true" holds the script
+  until the game finishes, so the write dominates the read below.
+*/
+::minigame{kind="rhythm" id="bianca_service_01" resultKey="service01" wait="true"}
+
+## Shot 2.
+
+/*
+  Story logic observes only the declared state the bridge wrote — never raw tool output.
+  rank is a finite enum [fail, bronze, silver, gold]: first-match-wins, <otherwise> covers fail.
+*/
+<match on="scene.minigame.service01.rank">
+  <when test="$ == 'gold'">
+    :line[bianca]{code="0030" emotion="delighted" variant="1"}: Wonderful! A perfect service!
+    ::set{scene.affect.bianca += 2}
+  </when>
+  <when test="$ in ['silver', 'bronze']">
+    :line[bianca]{code="0040" emotion="content" variant="0"}: Not bad at all, Mr. Fixer.
+    ::set{scene.affect.bianca += 1}
+  </when>
+  <otherwise>
+    :line[bianca]{code="0050" emotion="shy" variant="0"}: Shall we try once more? The rhythm takes practice.
+  </otherwise>
+</match>
+
+## Shot 3.
+
+<match on="scene.affect.bianca">
+  <when test="$ >= 2">
+    :mono: She is glowing. I have, apparently, passed some test I did not know I was taking.
+  </when>
+  <otherwise>
+    :mono: She files the result away with the patience of someone who has all evening.
+  </otherwise>
+</match>
+
+::music{action="stop"}
