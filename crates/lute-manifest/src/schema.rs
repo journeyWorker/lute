@@ -165,4 +165,42 @@ stateShapes:
         let f: ShapesFile = serde_yaml::from_str(y).unwrap();
         assert_eq!(f.state_shapes[0].fields[0].name, "rank");
     }
+    #[test]
+    fn write_value_untagged_variants_bind() {
+        let y = r#"
+writes:
+  - { scope: scene, path: [minigame, rank], value: { fromBridgeResult: rank } }
+  - { scope: scene, path: [minigame, attempts], value: { op: increment, by: 1 } }
+  - { scope: scene, path: [flags, done], value: true }
+"#;
+        let e: DirectiveEffects = serde_yaml::from_str(y).unwrap();
+        assert!(matches!(e.writes[0].value, WriteValue::FromBridgeResult { .. }));
+        assert!(matches!(e.writes[1].value, WriteValue::Op { .. }));
+        assert!(matches!(e.writes[2].value, WriteValue::Literal(_)));
+    }
+
+    #[test]
+    fn lowering_record_form_binds() {
+        let y = "record: setBackground\nfields: {}";
+        let l: Lowering = serde_yaml::from_str(y).unwrap();
+        assert!(matches!(l, Lowering::Record { .. }));
+    }
+
+    #[test]
+    fn plugin_manifest_parses_spec_entry() {
+        let y = r#"
+id: idola.minigame
+version: 0.1.0
+kind: capability
+depends: [ { id: lute.core, range: "^0.0.1" } ]
+exports: { directives: directives/, state: state/ }
+options:
+  - { name: resultScope, type: { enum: [scene, run] }, default: scene }
+"#;
+        let m: PluginManifest = serde_yaml::from_str(y).unwrap();
+        assert_eq!(m.id, "idola.minigame");
+        assert_eq!(m.kind, "capability");
+        assert_eq!(m.depends.len(), 1);
+        assert_eq!(m.options[0].name, "resultScope");
+    }
 }
