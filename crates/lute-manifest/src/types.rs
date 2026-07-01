@@ -53,6 +53,7 @@ pub enum PathSegment {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FromAttr {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -206,5 +207,41 @@ mod tests {
         let y = "providerRef: character";
         let t: Type = serde_yaml::from_str(y).unwrap();
         assert!(matches!(&t, Type::ProviderRef(n) if n == "character"));
+    }
+
+    #[test]
+    fn from_attr_binds_camelcase_slottype() {
+        let y = "fromAttr:\n  name: resultKey\n  slotType: localId";
+        let seg: PathSegment = serde_yaml::from_str(y).unwrap();
+        match seg {
+            PathSegment::FromAttr { from_attr } => {
+                assert_eq!(from_attr.name, "resultKey");
+                assert_eq!(from_attr.slot_type.as_deref(), Some("localId"));
+            }
+            _ => panic!("expected FromAttr segment"),
+        }
+    }
+
+    #[test]
+    fn type_wire_forms_roundtrip() {
+        let cases = [
+            "bool",
+            "number",
+            "string",
+            "enum:\n  - gold\n  - silver",
+            "list: number",
+            "map:\n  key: string\n  value: number",
+            "enumFromOption: allowedKinds",
+            "providerRef: character",
+            "slotId:\n  namespace: scene.minigame",
+            "record:\n  - name: hp\n    type: number",
+        ];
+        for src in cases {
+            let t: Type = serde_yaml::from_str(src).unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
+            let out = serde_yaml::to_string(&t).unwrap();
+            let t2: Type =
+                serde_yaml::from_str(&out).unwrap_or_else(|e| panic!("reparse {src:?} -> {out:?}: {e}"));
+            assert_eq!(t, t2, "roundtrip mismatch for {src:?}");
+        }
     }
 }
