@@ -207,7 +207,7 @@ fn map_prefix(path: &str) -> &str {
     path.split_once('.').map_or(path, |(head, _)| head)
 }
 
-fn namespace_of(path: &str) -> Option<Namespace> {
+pub(crate) fn namespace_of(path: &str) -> Option<Namespace> {
     match map_prefix(path) {
         "scene" => Some(Namespace::Scene),
         "run" => Some(Namespace::Run),
