@@ -1,5 +1,6 @@
 pub mod cel_paths;
 pub mod cel_resolve;
+pub mod check;
 pub mod ctx;
 pub mod defassign;
 pub mod directives;
@@ -10,6 +11,7 @@ pub mod set_op;
 pub mod timeline;
 
 pub use cel_resolve::check_cel_slot;
+pub use check::{check, CheckInput, CheckResult, Resolved};
 pub use ctx::{Ctx, Mode};
 pub use inject::{
     lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,
