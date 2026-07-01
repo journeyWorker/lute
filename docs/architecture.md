@@ -342,9 +342,8 @@ Document
 ├─ Meta            { state: StateDecl[], defs: Def[] }
 └─ Shot[]          { heading, span, body: Node[] }
    Node =
-   │  Narration    { text, span }
-   │  Line         { speaker, attrs{code,emotion,variant,action,…}, text, span }
-   │  Mono         { text, span }
+   │  Line         { speaker, attrs{code,emotion,variant,action,delivery,as,…}, text, span }
+   │                # speaker distinguishes dialogue / narration (narrator) / monologue (player + delivery=thought)
    │  Directive    { tag, attrs: Attr[], span }          # leaf: bg/music/sfx/auto/vfx/cut/video/camera
    │  Set          { path, op, expr: CelSlot, span }     # distinct node — state mutation
    │  Branch       { id, choices: Choice[], span }

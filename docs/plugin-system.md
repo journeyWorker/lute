@@ -78,10 +78,12 @@ plugins/<id>/
   bridge/*.yaml         # typed runtime bridge capabilities        → proposal §6.5
   defs/*.yaml           # shared typed-CEL @refs                   → proposal §6.6
   docs/*.md             # hover docs (non-normative)
+  frontmatter/*.yaml    # plugin-owned meta keys (e.g. cast:)       → proposal §6.8
+  assetkinds/*.yaml     # asset id templates (compose / query)      → proposal §6.9
 ```
 
 Everything a plugin declares is **typed** by one small manifest type system (`enum`, `list`,
-`bool`/`number`/`string`, `enumFromOption`, `providerRef`, `slotId`, shape refs — proposal §7), and
+`record`, `map`, `bool`/`number`/`string`, `enumFromOption`, `providerRef`, `slotId`, shape refs — proposal §7), and
 all variable state paths use **structured segments**, never `$name` string interpolation (proposal
 §6.3, §7.4). A directive declares its `attrs`, optional `semantics` flags, the state slots it
 `declares`, the state it `writes`, an optional `bridge` binding, and how it lowers (`record` for a

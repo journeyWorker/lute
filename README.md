@@ -17,7 +17,7 @@ Each document owns one role; read the one that matches what you are doing.
 | **writing `.lute` scenarios** | [`proposals/scenario-dsl/0.0.1.md`](docs/proposals/scenario-dsl/0.0.1.md) — language grammar + semantics | the examples below; [`architecture.md`](docs/architecture.md) *New additions* |
 | **writing a plugin** (directives, state, providers, bridge) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution | [`plugin-system.md`](docs/plugin-system.md) |
 | **building the compiler / checker / LSP** | both proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
-| **reasoning about run/save state** | [`proposals/scenario-dsl/0.0.1.md`](docs/proposals/scenario-dsl/0.0.1.md) §9 | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
+| **reasoning about run / user / app state** | [`proposals/scenario-dsl/0.0.1.md`](docs/proposals/scenario-dsl/0.0.1.md) §9 | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
 
 Worked examples:
