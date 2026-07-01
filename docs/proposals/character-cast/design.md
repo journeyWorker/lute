@@ -107,7 +107,7 @@ cast:
 
 This requires two small spec additions (the user approved language changes):
 - **Language `0.0.1` §6.1 amendment:** the fixed core meta keys remain
-  (`character/season/episode/mode/pov/title/lang/profile/plugins/uses/state/defs`); additionally,
+  (`character/season/episode/mode/pov/title/luteVersion/contentLang/profile/plugins/uses/state/defs`); additionally,
   **an active plugin MAY contribute meta keys**, validated against that plugin's declared schema. A
   meta key owned by no active plugin is a static error.
 - **Plugin-system `0.0.1` addition:** a plugin export **`frontmatter`** — declares meta key names +
