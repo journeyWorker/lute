@@ -80,7 +80,7 @@ Three authoring layers, distinguished by syntax so a reader can tell them apart 
 
 | Layer | Syntax | Examples |
 |---|---|---|
-| **Content** | `:line[name]{attrs}: text` — speaker selects dialogue / narration (`narrator`) / monologue | dialogue, narration |
+| **Content** | `:line[name]{attrs}: text` — speaker selects dialogue / narration (`narrator`) / player (monologue = player `delivery="thought"`) | dialogue, narration |
 | **Staging (leaf)** | `::name{attrs}` | `::bg`, `::music`, `::sfx`, `::auto`, `::camera`, `::set` |
 | **Logic / timeline (nesting)** | `<tag>…</tag>` | `<branch>`, `<choice>`, `<match>`, `<when>`, `<otherwise>`, `<timeline>`, `<track>` |
 
