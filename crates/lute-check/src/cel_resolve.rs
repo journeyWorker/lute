@@ -18,15 +18,12 @@
 //! 3), the AST pass is SKIPPED so no cascade/duplicate errors fire; the
 //! `scan_refs` pass still runs on the raw.
 
-use cel_parser::ast::{EntryExpr, Expr};
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{CelKind, CelSlot};
 
+use crate::cel_paths::collect_path_uses;
 use crate::Ctx;
-
-/// State-tier roots that introduce a declared state-path read (dsl §9.1).
-const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app"];
 
 /// Validate a single CEL slot's `@ref`, `$`, and state-path reads (dsl §8, §9.4,
 /// §9.6). All diagnostics are [`Layer::Cel`].
@@ -61,10 +58,8 @@ pub fn check_cel_slot(slot: &CelSlot, arena: &CelArena, ctx: &Ctx) -> Vec<Diagno
     // (already reported in Phase 3) so no cascade/duplicate errors fire.
     if let Some(handle) = slot.ast.clone() {
         if let Some(root) = arena.get(handle) {
-            let mut paths = Vec::new();
-            collect_state_paths(&root.expr, &mut paths);
-            for path in paths {
-                check_state_path(&path, slot, ctx, &mut diags);
+            for use_ in collect_path_uses(&root.expr) {
+                check_state_path(&use_.path, slot, ctx, &mut diags);
             }
         }
     }
@@ -102,88 +97,6 @@ fn is_declared(path: &str, ctx: &Ctx) -> bool {
 /// Guard/condition slots (dsl §9.6): a `<match>` subject or any boolean guard.
 fn is_guard(kind: CelKind) -> bool {
     matches!(kind, CelKind::Condition | CelKind::MatchSubject)
-}
-
-/// Walk the CEL AST collecting every dotted `Select`/`Ident` chain whose root is
-/// a state tier (`scene`/`run`/`user`/`app`). Recurses into every sub-expression
-/// so nested reads (call args, list/map elements, comprehensions) are covered.
-fn collect_state_paths(expr: &Expr, out: &mut Vec<String>) {
-    match expr {
-        Expr::Ident(name) => {
-            if STATE_ROOTS.contains(&name.as_str()) {
-                out.push(name.clone());
-            }
-        }
-        Expr::Select(sel) => {
-            // Reconstruct the fully-dotted chain from the innermost operand out.
-            if let Some(path) = select_path(expr) {
-                if let Some(root) = path.split('.').next() {
-                    if STATE_ROOTS.contains(&root) {
-                        out.push(path);
-                    }
-                }
-            }
-            // The operand may itself contain unrelated sub-expressions
-            // (e.g. `f(x).field`); keep walking it so nothing is missed.
-            collect_state_paths(&sel.operand.expr, out);
-        }
-        Expr::Call(call) => {
-            if let Some(target) = &call.target {
-                collect_state_paths(&target.expr, out);
-            }
-            for arg in &call.args {
-                collect_state_paths(&arg.expr, out);
-            }
-        }
-        Expr::List(list) => {
-            for el in &list.elements {
-                collect_state_paths(&el.expr, out);
-            }
-        }
-        Expr::Map(map) => {
-            for entry in &map.entries {
-                collect_entry_paths(&entry.expr, out);
-            }
-        }
-        Expr::Struct(st) => {
-            for entry in &st.entries {
-                collect_entry_paths(&entry.expr, out);
-            }
-        }
-        Expr::Comprehension(c) => {
-            collect_state_paths(&c.iter_range.expr, out);
-            collect_state_paths(&c.accu_init.expr, out);
-            collect_state_paths(&c.loop_cond.expr, out);
-            collect_state_paths(&c.loop_step.expr, out);
-            collect_state_paths(&c.result.expr, out);
-        }
-        Expr::Literal(_) | Expr::Unspecified => {}
-    }
-}
-
-/// Recurse into a map/struct entry's key and value sub-expressions.
-fn collect_entry_paths(entry: &EntryExpr, out: &mut Vec<String>) {
-    match entry {
-        EntryExpr::MapEntry(m) => {
-            collect_state_paths(&m.key.expr, out);
-            collect_state_paths(&m.value.expr, out);
-        }
-        EntryExpr::StructField(f) => collect_state_paths(&f.value.expr, out),
-    }
-}
-
-/// Reconstruct the dotted path of a pure `Ident`/`Select` chain (`a.b.c`).
-/// Returns `None` if the chain bottoms out in anything but a bare `Ident`
-/// (e.g. `f().field` or `xs[0].field`), which is not a static state path.
-fn select_path(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Ident(name) => Some(name.clone()),
-        Expr::Select(sel) => {
-            let base = select_path(&sel.operand.expr)?;
-            Some(format!("{base}.{}", sel.field))
-        }
-        _ => None,
-    }
 }
 
 /// Map a `scan_refs` byte span (relative to `slot.raw`) into the document by
