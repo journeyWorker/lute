@@ -108,6 +108,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lute-syntax"
+version = "0.0.0"
+dependencies = [
+ "lute-core-span",
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
