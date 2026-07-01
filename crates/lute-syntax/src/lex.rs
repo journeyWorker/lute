@@ -4,11 +4,13 @@
 //! 1. [`peel_frontmatter`] — split a leading YAML `---` … `---` block off the
 //!    document body. Frontmatter uses YAML's own comment rules, so it is peeled
 //!    (not comment-stripped) here and handed to the checker verbatim.
-//! 2. [`strip_comments`] / [`strip_comments_checked`] — remove `/* … */` block
-//!    comments from the post-frontmatter body. Per §4.2 comments do not nest and
+//! 2. [`strip_comments`] / [`strip_comments_checked`] — blank `/* … */` block
+//!    comments in the post-frontmatter body. Per §4.2 comments do not nest and
 //!    there are no `//` line comments; per §4.4 a `/*` inside a quoted string is
-//!    *not* a comment. The scan is a single pass over the whole body, so a block
-//!    comment that spans newlines is dropped correctly (see [`strip_comments_checked`]).
+//!    *not* a comment. The scan is a single whole-body pass; each comment is
+//!    replaced byte-for-byte with spaces (newlines kept) so a multi-line block
+//!    comment is removed without shifting any following span (see
+//!    [`strip_comments_checked`]).
 
 use lute_core_span::Span;
 
@@ -67,9 +69,10 @@ pub fn strip_comments(text: &str) -> String {
 ///
 /// Scanning rules (dsl §4.2, §4.4):
 /// - A comment runs from `/*` to the next `*/`; comments do not nest.
-/// - Comments are dropped verbatim, including any newlines they span, so a
-///   multi-line block comment is removed correctly when the whole body is
-///   scanned at once.
+/// - A comment (its `/*`, body, and `*/`) is blanked in place: every byte is
+///   replaced by a space except `\n`, which is kept at its original offset. This
+///   preserves byte length and every following span, so a multi-line block
+///   comment is removed without shifting later positions.
 /// - There are no `//` line comments.
 /// - `in_string` (toggled by an unescaped `"`) suppresses comment recognition,
 ///   so `/*`/`*/` inside a quoted `String`/`CelString` value are preserved.
@@ -79,7 +82,7 @@ pub fn strip_comments_checked(text: &str) -> Result<String, CommentError> {
     let mut chars = text.char_indices().peekable();
     let mut in_string = false;
     let mut escaped = false;
-    while let Some((_, c)) = chars.next() {
+    while let Some((a, c)) = chars.next() {
         if in_string {
             out.push(c);
             if escaped {
@@ -98,18 +101,24 @@ pub fn strip_comments_checked(text: &str) -> Result<String, CommentError> {
         }
         if c == '/' && matches!(chars.peek(), Some((_, '*'))) {
             chars.next(); // consume '*'
-            let mut closed = false;
+            let mut end = None;
             while let Some((_, d)) = chars.next() {
                 if d == '*' && matches!(chars.peek(), Some((_, '/'))) {
-                    chars.next();
-                    closed = true;
+                    let (slash, _) = chars.next().expect("peeked '/'");
+                    end = Some(slash + 1); // '/' is one byte
                     break;
                 }
             }
-            if !closed {
+            let Some(b) = end else {
                 return Err(CommentError::Unterminated);
+            };
+            // Blank the whole comment byte-range (`/*` … `*/`) in place: a space
+            // for every byte except `\n`, which is kept at its original offset.
+            // Preserves `out.len() == text.len()` and every newline position.
+            for &byte in &text.as_bytes()[a..b] {
+                out.push(if byte == b'\n' { '\n' } else { ' ' });
             }
-            continue; // comment dropped
+            continue;
         }
         out.push(c);
     }
@@ -145,10 +154,46 @@ mod tests {
     }
 
     #[test]
-    fn strips_multiline_block_comment() {
-        // A `/* … */` block spanning several newlines (as in the reference
-        // example's header block) is removed in a single whole-body pass.
-        assert_eq!(strip_comments("a /* x\ny\nz */ b"), "a  b");
+    fn blanks_multiline_block_comment_preserving_layout() {
+        // A `/* … */` block spanning several newlines is *blanked*, not deleted:
+        // every comment byte becomes a space except `\n`, which is kept at its
+        // original offset. Byte length and newline positions are preserved so no
+        // following span shifts.
+        let input = "a /* x\ny\nz */ b";
+        let out = strip_comments_checked(input).unwrap();
+        // a + 5 spaces, \n, 1 space, \n, 5 spaces + b (verified by construction).
+        assert_eq!(out, "a     \n \n     b");
+        assert_eq!(out.len(), input.len());
+    }
+
+    #[test]
+    fn len_preserved_with_multibyte_comment() {
+        // A multi-line-agnostic comment containing multi-byte UTF-8 (`é` = 2
+        // bytes) still blanks byte-for-byte: `out.len() == input.len()`.
+        let input = "a /* ééé */ b";
+        let out = strip_comments_checked(input).unwrap();
+        assert_eq!(out.len(), input.len());
+    }
+
+    #[test]
+    fn newlines_preserved() {
+        // Every `\n` stays at its exact original byte offset, including newlines
+        // that fall inside a blanked comment.
+        let input = "line1 /* c1\nc2 */\nline2\n";
+        let out = strip_comments_checked(input).unwrap();
+        let in_nl: Vec<usize> = input.match_indices('\n').map(|(i, _)| i).collect();
+        let out_nl: Vec<usize> = out.match_indices('\n').map(|(i, _)| i).collect();
+        assert_eq!(in_nl, out_nl);
+    }
+
+    #[test]
+    fn offset_preserved() {
+        // Blanking keeps every non-comment byte at its original offset, so a
+        // token after a comment is found at the same byte index it had in input.
+        let input = "pre /* c */post";
+        let out = strip_comments_checked(input).unwrap();
+        assert_eq!(out.find("pre"), Some(0));
+        assert_eq!(out.find("post"), input.find("post"));
     }
 
     #[test]
@@ -156,6 +201,9 @@ mod tests {
         // `/*` inside a quoted string is not a comment, even when a *real*
         // comment appears later in the same whole-body scan.
         let input = "::x{s=\"/* not a comment */\"}\n/* real */";
-        assert_eq!(strip_comments(input), "::x{s=\"/* not a comment */\"}\n");
+        assert_eq!(
+            strip_comments(input).trim_end(),
+            "::x{s=\"/* not a comment */\"}"
+        );
     }
 }
