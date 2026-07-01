@@ -21,6 +21,9 @@
 use lute_core_span::Span;
 use lute_syntax::cel_ast::CelAstHandle;
 
+pub mod fill;
+pub use fill::fill_document;
+
 /// Owns every parsed CEL AST and hands out opaque [`CelAstHandle`]s indexing into it.
 #[derive(Default)]
 pub struct CelArena {
