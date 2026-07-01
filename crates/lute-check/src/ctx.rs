@@ -7,6 +7,10 @@
 //! read-only §9.5), T4.6, and T4.7 add their own fields here. Keep it small and
 //! `Default`-able so those tasks can grow it without touching call sites.
 
+use std::collections::BTreeSet;
+
+use crate::meta::StateSchema;
+
 /// Analysis mode. `Author` is the interactive LSP default (lenient about
 /// catalog staleness); `Ci` is the batch/build mode that later tasks may treat
 /// more strictly. T4.2 does not branch on it, but downstream tasks will.
@@ -19,8 +23,9 @@ pub enum Mode {
 
 /// Checker context threaded through the directive/CEL/state validators.
 ///
-/// Fields are the minimal set T4.2 needs plus the `match`-scope hooks T4.3 will
-/// consume. Later tasks append fields; do not remove any without updating them.
+/// Fields are the minimal set T4.2 needs plus the `match`-scope hooks and the
+/// state/def tables T4.3 consumes. Later tasks append fields; do not remove any
+/// without updating them.
 #[derive(Clone, Debug, Default)]
 pub struct Ctx {
     /// True while validating nodes nested inside a `match` block.
@@ -30,4 +35,10 @@ pub struct Ctx {
     pub match_subject: Option<String>,
     /// Author (interactive LSP) vs. Ci (batch) analysis mode.
     pub mode: Mode,
+    /// Inline `state:` schema (dsl §9.3): the declared state paths T4.3 resolves
+    /// state-path reads against (`E-UNDECLARED`). T4.4–T4.7 read this too.
+    pub state: StateSchema,
+    /// Names declared under frontmatter `defs:` (dsl §8.1): the `@ref` targets
+    /// T4.3 resolves `@name` uses against (`E-UNDECLARED-REF`).
+    pub defs: BTreeSet<String>,
 }
