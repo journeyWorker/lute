@@ -48,7 +48,7 @@ impl ProfileGraph {
     }
 }
 
-/// plugin §11.1 resolution order + §11.2 merge (scalar override, map deep-merge, list replace).
+/// plugin §11.1 resolution order + §11.2 merge: last-layer-wins scalar/value override (Literal has no map variant → no deep-merge).
 pub fn resolve_activation(
     graph: &ProfileGraph,
     selected: &str,
@@ -133,5 +133,18 @@ mod tests {
         let mut g = graph();
         g.profiles.get_mut("story").unwrap().extends = Some("date".into()); // story<-date<-story
         assert!(matches!(resolve_activation(&g, "date", &std::collections::BTreeMap::new()), Err(ResolveError::ExtendsCycle(_))));
+    }
+
+    #[test]
+    fn unknown_selected_profile_is_error() {
+        let g = graph();
+        assert!(matches!(resolve_activation(&g, "nope", &std::collections::BTreeMap::new()), Err(ResolveError::UnknownProfile(_))));
+    }
+
+    #[test]
+    fn unknown_parent_profile_is_error() {
+        let mut g = graph();
+        g.profiles.get_mut("date").unwrap().extends = Some("missing".into());
+        assert!(matches!(resolve_activation(&g, "date", &std::collections::BTreeMap::new()), Err(ResolveError::UnknownProfile(_))));
     }
 }
