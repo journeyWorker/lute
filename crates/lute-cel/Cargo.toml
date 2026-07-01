@@ -1,0 +1,10 @@
+[package]
+name = "lute-cel"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lute-core-span = { path = "../lute-core-span" }
+lute-syntax = { path = "../lute-syntax" }
+cel-parser = "0.10.1"
