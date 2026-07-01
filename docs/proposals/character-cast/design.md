@@ -133,8 +133,8 @@ A `:line[<id>]{code, emotion, variant, as?}` (and `::auto`) resolves three outpu
 
 1. **Sprite:** `CH.{id}.{scene.cast.<id>.costume}.{emotion}.{variant}` (costume from StageState, §3.7).
 2. **Display name:** `line.as` (one-off attr override) ▸ `sealed` ? `maskAs` (default `"???"`) :
-   `registry.name[lang]`.
-   (Per-line override wins; then reveal state; then registry — as reviewed.)
+   `registry.name[lang]`. (Normative model — `0.0.1.md` §7.2 — resolves `kind: narrator` and
+   `kind: player` labels *before* `as`; `as` is highest only for `character` speakers.)
 3. **voiceKey:** see §3.6.
 
 `as` is a new **optional core `:line` attribute** (speaker-label override); the cast plugin supplies
