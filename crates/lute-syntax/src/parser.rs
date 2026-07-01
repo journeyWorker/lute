@@ -270,7 +270,7 @@ impl Parser<'_> {
         }
         let tag = self.body[id_start..j].to_string();
         let (attrs, end) = if j < e && b[j] == b'{' {
-            let (attrs, _vspans, after) = self.scan_attrs(j + 1, b'}');
+            let (attrs, after) = self.scan_attrs(j + 1, b'}');
             (attrs, after)
         } else {
             (Vec::new(), j)
@@ -355,7 +355,7 @@ impl Parser<'_> {
         }
         let mut attrs = Vec::new();
         if j < e && b[j] == b'{' {
-            let (a, _v, after) = self.scan_attrs(j + 1, b'}');
+            let (a, after) = self.scan_attrs(j + 1, b'}');
             attrs = a;
             j = after;
         }
@@ -559,5 +559,31 @@ mod tests {
     fn unterminated_comment_is_diagnosed() {
         let (_doc, diags) = parse("---\ncharacter: x\n---\n## Shot 1.\n/* never ends\n");
         assert!(diags.iter().any(|d| d.code == "E-COMMENT-UNTERMINATED"));
+    }
+
+    #[test]
+    fn attr_derived_celslot_span_bounds_raw() {
+        // Regression (T2.3 review Critical): attr-derived CEL slots must have
+        // span == the inner value bytes, so src[slot.span] == slot.raw (matching
+        // Set slots). Otherwise Phase-3 CEL sub-diagnostics drift by key.len()+2.
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n<when test=\"$ == 'gold'\">\n:line[narrator]: hi\n</when>\n<otherwise>\n:line[narrator]: bye\n</otherwise>\n</match>\n";
+        let (doc, diags) = parse(src);
+        assert!(diags.is_empty(), "{diags:?}");
+        let slot_ok = |s: &CelSlot| {
+            let got = &src[s.span.byte_start..s.span.byte_end];
+            assert_eq!(got, s.raw, "src[span] must equal raw for kind {:?}", s.kind);
+        };
+        if let Node::Match(m) = &doc.shots[0].body[0] {
+            assert_eq!(m.subject.raw, "scene.choices.number");
+            slot_ok(&m.subject);
+            if let Arm::When { test, .. } = &m.arms[0] {
+                assert_eq!(test.raw, "$ == 'gold'");
+                slot_ok(test);
+            } else {
+                panic!("expected When arm");
+            }
+        } else {
+            panic!("expected Match");
+        }
     }
 }

@@ -8,21 +8,19 @@
 
 use super::{is_ident_byte, Parser};
 use crate::ast::{Attr, AttrValue, CelKind, CelSlot};
-use lute_core_span::Span;
 
 impl Parser<'_> {
     /// Scan an attribute list from body offset `start` up to the unquoted
     /// terminator byte `term` (`}` for directives, `>` for tags).
     ///
-    /// Returns `(attrs, value_spans, after)` where `value_spans[i]` is the span
-    /// of `attrs[i]`'s *value* (inner string for `Str`, the `@ref` for `Ref`, the
-    /// key for `BoolTrue`) — block parsers reuse it to build typed `CelSlot`s.
-    /// `after` is the body offset just past the terminator (or line end).
-    pub(super) fn scan_attrs(&self, start: usize, term: u8) -> (Vec<Attr>, Vec<Span>, usize) {
+    /// Each [`Attr`] carries `value_span` — the span of its *value* (inner string
+    /// for `Str`, the `@ref` for `Ref`, the key for `BoolTrue`) — so `take_cel`
+    /// builds `CelSlot`s whose span bounds exactly `raw`. `after` is the body
+    /// offset just past the terminator (or line end).
+    pub(super) fn scan_attrs(&self, start: usize, term: u8) -> (Vec<Attr>, usize) {
         let b = self.body.as_bytes();
         let n = b.len();
         let mut attrs = Vec::new();
-        let mut vspans = Vec::new();
         let mut j = start;
         loop {
             while j < n && (b[j] == b' ' || b[j] == b'\t') {
@@ -64,8 +62,7 @@ impl Parser<'_> {
                     }
                     let value = self.body[inner_start..inner_end].to_string();
                     let vspan = self.span(inner_start, inner_end);
-                    attrs.push(Attr { key, value: AttrValue::Str(value), span: self.span(key_start, j) });
-                    vspans.push(vspan);
+                    attrs.push(Attr { key, value: AttrValue::Str(value), value_span: vspan, span: self.span(key_start, j) });
                 } else if j < n && b[j] == b'@' {
                     let ref_start = j;
                     j += 1;
@@ -103,8 +100,7 @@ impl Parser<'_> {
                     let raw = self.body[ref_start..j].to_string();
                     let vspan = self.span(ref_start, j);
                     let slot = CelSlot::raw(CelKind::AttrValue, raw, vspan);
-                    attrs.push(Attr { key, value: AttrValue::Ref(slot), span: self.span(key_start, j) });
-                    vspans.push(vspan);
+                    attrs.push(Attr { key, value: AttrValue::Ref(slot), value_span: vspan, span: self.span(key_start, j) });
                 } else {
                     // `key=` with a bare/unquoted token: read to whitespace/term.
                     let vstart = j;
@@ -113,18 +109,17 @@ impl Parser<'_> {
                     }
                     let value = self.body[vstart..j].to_string();
                     let vspan = self.span(vstart, j);
-                    attrs.push(Attr { key, value: AttrValue::Str(value), span: self.span(key_start, j) });
-                    vspans.push(vspan);
+                    attrs.push(Attr { key, value: AttrValue::Str(value), value_span: vspan, span: self.span(key_start, j) });
                 }
             } else {
                 // Bare ident ⇒ boolean true (§4.5).
                 let key_end = key_start + key.len();
-                attrs.push(Attr { key, value: AttrValue::BoolTrue, span: self.span(key_start, key_end) });
-                vspans.push(self.span(key_start, key_end));
+                let kspan = self.span(key_start, key_end);
+                attrs.push(Attr { key, value: AttrValue::BoolTrue, value_span: kspan, span: kspan });
             }
         }
         let after = if j < n && b[j] == term { j + 1 } else { j };
-        (attrs, vspans, after)
+        (attrs, after)
     }
 
     /// Body offset of the `}` matching the `{` at `open`, honoring `"`/`'` quotes
@@ -184,12 +179,13 @@ pub(super) fn take_str(attrs: &mut Vec<Attr>, key: &str) -> Option<String> {
 pub(super) fn take_cel(attrs: &mut Vec<Attr>, key: &str, kind: CelKind) -> Option<CelSlot> {
     let pos = attrs.iter().position(|a| a.key == key)?;
     let attr = attrs.remove(pos);
+    let vspan = attr.value_span;
     match attr.value {
-        AttrValue::Str(raw) => Some(CelSlot::raw(kind, raw, attr.span)),
+        AttrValue::Str(raw) => Some(CelSlot::raw(kind, raw, vspan)),
         AttrValue::Ref(mut slot) => {
             slot.kind = kind;
             Some(slot)
         }
-        AttrValue::BoolTrue => Some(CelSlot::raw(kind, String::new(), attr.span)),
+        AttrValue::BoolTrue => Some(CelSlot::raw(kind, String::new(), vspan)),
     }
 }

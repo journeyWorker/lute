@@ -34,7 +34,7 @@ impl Parser<'_> {
         while j < e && super::is_ident_byte(b[j]) {
             j += 1;
         }
-        let (attrs, _vspans, after) = self.scan_attrs(j, b'>');
+        let (attrs, after) = self.scan_attrs(j, b'>');
         let start_o = self.orig(cstart);
         let end_o = self.orig(after);
         self.cursor += 1;
