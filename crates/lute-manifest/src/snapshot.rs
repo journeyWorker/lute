@@ -58,9 +58,10 @@ impl SnapshotBuilder {
     }
 }
 
-/// plugin §13: deterministic hash over resolved plugin ids+versions + option
-/// objects (+ providers). BTreeMap iteration is sorted -> order-independent by
-/// construction.
+/// plugin §13: deterministic content hash. Currently covers resolved plugin ids+versions +
+/// option objects only. TODO(Task 1.6): fold in providers, directives, enums, state shapes,
+/// bridge capabilities, defs, frontmatter, and active profile per §13 once populated.
+/// BTreeMap iteration is sorted -> order-independent by construction.
 pub fn capability_version(snap: &CapabilitySnapshot) -> String {
     let mut h = Sha256::new();
     for (id, p) in &snap.plugins {
@@ -99,6 +100,17 @@ mod tests {
     fn version_changes_when_plugin_version_changes() {
         let a = CapabilitySnapshot::builder().plugin("lute.core", "0.0.1", &[]).build();
         let b = CapabilitySnapshot::builder().plugin("lute.core", "0.0.2", &[]).build();
+        assert_ne!(a.version, b.version);
+    }
+
+    #[test]
+    fn version_changes_when_option_value_changes() {
+        let a = CapabilitySnapshot::builder()
+            .plugin("p", "1", &[("k", Literal::Str("a".into()))])
+            .build();
+        let b = CapabilitySnapshot::builder()
+            .plugin("p", "1", &[("k", Literal::Str("b".into()))])
+            .build();
         assert_ne!(a.version, b.version);
     }
 
