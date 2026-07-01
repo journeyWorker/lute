@@ -59,7 +59,7 @@ An excerpt of [`docs/examples/date-minigame.lute`](docs/examples/date-minigame.l
 character: bianca
 season: 1
 episode: 5
-lang: "0.0.1"
+luteVersion: "0.0.1"
 profile: date-minigame
 ---
 
