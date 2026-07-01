@@ -8,9 +8,9 @@
 //!   sub-path is absent from the inline `state:` schema (dsl §9.3/§9.4). Read
 //!   sites inside CEL are NOT re-reported here: T4.3 ([`crate::cel_resolve`])
 //!   already owns `E-UNDECLARED` / `E-CHOICELOG-READ` for reads.
-//! - **`E-MAYBE-UNSET`** — a *non-scene* (`run.`/`user.`/`app.`) read of a
-//!   declared path that has no schema `default`, no dominating `::set{p = …}`
-//!   write, and no enclosing `has(p)`/`isSet(p)` guard on the current path.
+//! - **`E-MAYBE-UNSET`** — a `scene.`/`run.`/`user.`/`app.` read of a declared
+//!   path that has no schema `default`, no dominating `::set{p = …}` write, and
+//!   no enclosing `has(p)`/`isSet(p)` guard on the current path.
 //!
 //! ## Flow model
 //! The lattice element is an "assigned set" of dotted paths (each a *maximal*
@@ -22,8 +22,12 @@
 //! - `=` is a pure write → assigns the target (a valid first assignment).
 //! - `+=`/`-=`/`*=` **read the old value first** → the target is itself checked
 //!   as a read before being assigned.
-//! - A guard `has(p)`/`isSet(p)` in a `<when test>` / `<choice when>` / `<match
-//!   on>` condition adds `p` to the assigned set **within that arm only**.
+//! - An *arm-level* guard `has(p)`/`isSet(p)` in a `<when test>` / `<choice when>`
+//!   condition adds `p` to the assigned set **within that arm only**. A `<match
+//!   on>` SUBJECT guard is NOT a proof: the subject is checked purely as value
+//!   reads, so a subject `has(p)`/`isSet(p)` never adds `p` to any arm base or
+//!   the block-surviving set (a subject match may fall through, and proving `p`
+//!   there leaks past a non-exhaustive match / survives `intersect_all`).
 //! - `<branch>` `<choice>` arms and `<match>` `<when>`/`<otherwise>` arms **fork**
 //!   the incoming set; the join after the block is the **intersection** of the
 //!   arms' assigned-after sets — a path is assigned-after only if assigned on
@@ -32,12 +36,19 @@
 //!   fall-through, so the join is just the pre-block set.
 //!
 //! ## Tiers (dsl §9.1)
-//! `scene.*` uses ordinary flow but is *not* flagged `E-MAYBE-UNSET` (it neither
-//! persists nor defaults across a scene, and this pass sees one shot at a time;
-//! its unset-read discipline is out of scope for the §9.4 diagnostic contract,
-//! which names `E-MAYBE-UNSET` a non-scene error). `run.*`/`user.*`/`app.*` are
-//! maybe-unset at scene entry unless schema-defaulted. `app.*` is engine-owned
-//! and read-only (§9.5, T4.5) but reads still follow the same proof rules.
+//! `scene.*`, `run.*`, `user.*`, and `app.*` all follow the SAME path-sensitive
+//! proof rules: a read not provably assigned on the current path is
+//! `E-MAYBE-UNSET` unless the decl is schema-defaulted or guarded (§9.4). A
+//! `scene.*` read-before-write within the analyzed node stream therefore flags;
+//! a defaulted scene decl is seeded at scene entry and stays safe.
+//!
+//! ## Cross-shot scope (dsl §9.1)
+//! `scene.*` persists across shots within an episode and `run.*` persists across
+//! the whole run, so a sound cross-shot analysis MUST drive this pass over the
+//! WHOLE-DOCUMENT ordered node stream (all shots concatenated). This module
+//! analyzes exactly the `&[Node]` slice it is given and does NOT reach across
+//! shots itself; the document-level wiring is T4.9's responsibility. `app.*` is
+//! engine-owned and read-only (§9.5, T4.5) but reads still follow the proof rules.
 //!
 //! ## Spans (cel-parser 0.10.1 carry-forward, T3.1/T4.3)
 //! Per-node CEL byte offsets are unavailable, so a read diagnostic falls back to
@@ -138,12 +149,16 @@ fn walk_branch(
     // else: a guarded-only branch may fall through — keep the pre-block set.
 }
 
-/// A `<match>`: the `on=` subject is read once (dominating all arms); each
-/// `<when>`/`<otherwise>` forks; join = intersection only when an `<otherwise>`
-/// makes the match exhaustive.
+/// A `<match>`: the `on=` subject is checked for value-reads (it dominates every
+/// arm) but its position is NOT treated as a proving guard — a subject
+/// `has(p)`/`isSet(p)` must never add `p` to the block-surviving set or the arm
+/// bases (that would leak an unproven path past a non-exhaustive fall-through and
+/// survive `intersect_all` on exhaustive matches). Each `<when>`/`<otherwise>`
+/// still forks; join = intersection only when an `<otherwise>` makes the match
+/// exhaustive. Arm-level `<when test>` guards keep proving (see `apply_condition`).
 fn walk_match(m: &Match, schema: &StateSchema, assigned: &mut Assigned, diags: &mut Vec<Diagnostic>) {
-    // Subject evaluation dominates every arm. Its guards prove into all arms.
-    apply_condition(&m.subject, schema, assigned, diags);
+    // Subject is a value-read check only; subject-position guards do NOT prove.
+    check_reads(&m.subject, schema, assigned, diags);
 
     let mut arm_finals: Vec<Assigned> = Vec::new();
     let mut exhaustive = false;
@@ -225,7 +240,7 @@ fn check_reads(
     }
 }
 
-/// Classify one value read; emit `E-MAYBE-UNSET` for an unproven non-scene read.
+/// Classify one value read; emit `E-MAYBE-UNSET` for an unproven read.
 fn check_read(
     path: &str,
     schema: &StateSchema,
@@ -235,10 +250,6 @@ fn check_read(
 ) {
     // `run.choiceLog.*` reads and undeclared paths are T4.3's territory.
     if is_choicelog(path) || !is_declared(path, schema) {
-        return;
-    }
-    // Only non-scene tiers are maybe-unset at scene entry (dsl §9.1/§9.4).
-    if is_scene(path) {
         return;
     }
     if has_default(path, schema) || proven(path, assigned) {
@@ -292,10 +303,6 @@ fn has_default(path: &str, schema: &StateSchema) -> bool {
         .iter()
         .filter(|(k, _)| path == k.as_str() || path.starts_with(&format!("{k}.")))
         .any(|(_, decl)| decl.default.is_some())
-}
-
-fn is_scene(path: &str) -> bool {
-    path == "scene" || path.starts_with("scene.")
 }
 
 fn is_choicelog(path: &str) -> bool {
@@ -382,6 +389,75 @@ mod tests {
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "compound += reads old value, expected E-MAYBE-UNSET, got {errs:?}"
+        );
+    }
+
+    // ---- Finding 1: subject-guard leak (dsl §9.4) ---------------------------
+
+    #[test]
+    fn g1_subject_isset_guard_nonexhaustive_leaks() {
+        // `<match on="isSet(run.x)">` is a SUBJECT guard; a non-exhaustive match
+        // may fall through, so the subject guard must NOT prove `run.x` past the
+        // block. A later read of `run.x` is therefore maybe-unset.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n:line[narrator]: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
+        let (nodes, schema) = fixture(src);
+        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
+            "subject isSet-guard must not prove run.x past a non-exhaustive match, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn g2_subject_has_guard_exhaustive_leaks() {
+        // `<match on="has(run.x)">` with an `<otherwise>` is exhaustive, but no
+        // arm writes `run.x`; the subject guard must NOT survive `intersect_all`.
+        // A later read of `run.x` is maybe-unset.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n:line[narrator]: a\n</when>\n<otherwise>\n:line[narrator]: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
+        let (nodes, schema) = fixture(src);
+        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
+            "subject has-guard must not survive intersect_all, got {errs:?}"
+        );
+    }
+
+    // ---- Finding 2: scene.* read-before-write (dsl §9.4) --------------------
+
+    #[test]
+    fn j2_scene_read_before_write_is_maybe_unset() {
+        // A non-defaulted `scene.s` read before any write follows ordinary
+        // path-sensitive analysis (§9.4) -> maybe-unset.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.s}\n";
+        let (nodes, schema) = fixture(src);
+        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
+            "non-defaulted scene.s read before write should flag, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn j1_defaulted_scene_read_is_ok() {
+        // A schema-defaulted `scene.d` read is seeded at scene entry -> no error.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.d: { type: number, default: 0 }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.d}\n";
+        let (nodes, schema) = fixture(src);
+        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        assert!(
+            !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
+            "defaulted scene.d read should be safe, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn scene_write_then_read_is_ok() {
+        // A dominating `::set{scene.s = 1}` proves the later read -> no error.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.s = 1}\n::set{scene.out = scene.s}\n";
+        let (nodes, schema) = fixture(src);
+        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        assert!(
+            !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
+            "dominating scene write should prove the path, got {errs:?}"
         );
     }
 }
