@@ -65,7 +65,10 @@ impl SnapshotBuilder {
 /// any drift in a populated field yields a different version. `snap.version`
 /// itself is excluded (it is the output). Each field is written under a distinct
 /// section marker so a value in one field can never alias a value in another, and
-/// BTreeMap iteration is sorted -> order-independent by construction.
+/// BTreeMap iteration is sorted -> order-independent by construction. NOTE: schema
+/// values are folded via their `Debug` representation, which is stable *within* a
+/// build but not guaranteed byte-identical across compiler versions; treat the
+/// version as a per-build content stamp, not a cross-toolchain-portable identifier.
 pub fn capability_version(snap: &CapabilitySnapshot) -> String {
     let mut h = Sha256::new();
     h.update(b"plugins\n");
