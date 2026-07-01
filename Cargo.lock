@@ -219,6 +219,8 @@ dependencies = [
 name = "lute-check"
 version = "0.0.0"
 dependencies = [
+ "cel-parser",
+ "lute-cel",
  "lute-core-span",
  "lute-manifest",
  "lute-syntax",
