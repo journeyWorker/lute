@@ -46,7 +46,7 @@ across attempts):
    than retaining an open fence. Frontmatter is the container, not a typing escape hatch: the
    schema inside is still checker-validated.
 
-   *Note:* `meta.lang` (frontmatter) is the **DSL language-version** pin (§2) — it is **not** the
+   *Note:* `meta.luteVersion` (frontmatter) is the **DSL language-version** pin (§2) — it is **not** the
    `app.lang` UI-language *state*. The two coexist; this was conflated in an early audit pass and
    is corrected here.
 
