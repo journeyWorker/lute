@@ -216,6 +216,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lute-check"
+version = "0.0.0"
+dependencies = [
+ "lute-core-span",
+ "lute-manifest",
+ "lute-syntax",
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
 name = "lute-core-span"
 version = "0.0.0"
 dependencies = [
