@@ -17,9 +17,10 @@ defs:
 
 /*
   Worked example of the Lute Scenario DSL (see ../proposals/scenario-dsl/0.0.1.md and ../architecture.md).
-  The spine, prose, dialogue, and assetIds are faithful to the real
-  content-catalog S01EP02 (linear). Three things are woven in to demonstrate
-  the new surface, each marked NEW / demo:
+  The spine, narration, dialogue, and assetIds are faithful to the real
+  content-catalog S01EP02 (linear). Note the unified content node (§7.1): every content
+  line is a :line — narration is :line[narrator], monologue is :line[fixer]{delivery="thought"}.
+  Three things are woven in to demonstrate the new surface, each marked NEW / demo:
     - ::camera               (no camera in the legacy format)
     - <timeline> + <track>   (the finger-beam "performance" as one multi-track beat)
     - <branch>/<match>/state (canon EP02 has no player choice — shown illustratively)
@@ -33,9 +34,9 @@ defs:
 ::music{action="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="down"}
 ::sfx{sound="drink_bar_hum" assetId="PLACEHOLDER_drink_bar_hum"}
 
-Venny's. The chain restaurant that has never offended anyone, no matter how hard it tries. Soft overhead lighting, a faint jazz cover loop from somewhere over the ceiling tiles, the gentle white-noise of a drink-bar fountain.
+:line[narrator]: Venny's. The chain restaurant that has never offended anyone, no matter how hard it tries. Soft overhead lighting, a faint jazz cover loop from somewhere over the ceiling tiles, the gentle white-noise of a drink-bar fountain.
 
-I stepped up to the welcome stand.
+:line[narrator]: I stepped up to the welcome stand.
 
 :line[fixer]{code="0010"}: ...
 
@@ -44,31 +45,31 @@ I stepped up to the welcome stand.
 ::auto{character="bianca" anchor="center" action="fade-in-up"}
 ::camera{focus="bianca" zoom="1.1" duration="0.5"} /* NEW: settle on her as she turns. */
 
-A hostess walked over with a menu pressed to her chest. Her face caught.
+:line[narrator]: A hostess walked over with a menu pressed to her chest. Her face caught.
 
 :line[bianca]{code="0010" emotion="surprised" variant="0"}: Oh!
 :line[bianca]{code="0020" emotion="delighted" variant="1"}: Mr. Fixer!
 :line[bianca]{code="0030" emotion="delighted" variant="1"}: From the ramen counter! You eat at Mechageki too, isn't it wonderful?
 
-That was the face. It had a name now, and the name worked here.
+:line[narrator]: That was the face. It had a name now, and the name worked here.
 
 :line[bianca]{code="0040" emotion="shy" variant="0"}: I'm Bianca.
 :line[bianca]{code="0050" emotion="shy" variant="0"}: Pleased to meet you, properly this time. Please follow me, won't you?
 
-She brightened by an absurd amount.
+:line[narrator]: She brightened by an absurd amount.
 
 :line[fixer]{code="0020"}: Bianca.
 
-So the woman from the ramen counter had a name and a job, and the job came with a menu pressed to her chest. I followed.
+:line[narrator]: So the woman from the ramen counter had a name and a job, and the job came with a menu pressed to her chest. I followed.
 
 ## Shot 3.
 
-Halfway down the aisle, between two empty booths, her steps stopped. Her gaze dropped to the corner of the skirting board. A small grey shadow was paused there.
+:line[narrator]: Halfway down the aisle, between two empty booths, her steps stopped. Her gaze dropped to the corner of the skirting board. A small grey shadow was paused there.
 
 :line[bianca]{code="0060" emotion="content" variant="0"}: Oh, a mouse.
 :line[bianca]{code="0070" emotion="content" variant="0"}: They do carry the bubonic plague, you know.
 
-The line was delivered in her ordinary register, soft and precise, almost informational. I had not finished hearing it before her index finger came up.
+:line[narrator]: The line was delivered in her ordinary register, soft and precise, almost informational. I had not finished hearing it before her index finger came up.
 
 /*
   NEW: the "performance" — one choreographed beat on a 1.4s local clock, four tracks.
@@ -92,25 +93,25 @@ The line was delivered in her ordinary register, soft and precise, almost inform
 </timeline>
 ::set{scene.flags.saw_beam = true}
 
-I flinched. I blinked. When I opened my eyes, where the mouse had been there was only a small black smudge.
+:line[narrator]: I flinched. I blinked. When I opened my eyes, where the mouse had been there was only a small black smudge.
 
 :line[fixer]{code="0030"}: The mouse.
 :line[fixer]{code="0040"}: The mouse just disappeared!
 
-Bianca brought her fingertip to her lips and blew a small puff of air across the tip with the satisfaction of a chef sending off a perfect plate.
+:line[narrator]: Bianca brought her fingertip to her lips and blew a small puff of air across the tip with the satisfaction of a chef sending off a perfect plate.
 
 :line[bianca]{code="0080" emotion="delighted" variant="1"}: Ta-da!
 :line[bianca]{code="0090" emotion="delighted" variant="1"}: Behold the performance of all-purpose Bianca, isn't it wonderful?
 
-I took one step back. My central nervous system briefly logged out and logged back in.
+:line[narrator]: I took one step back. My central nervous system briefly logged out and logged back in.
 
-:mono: An android, then. Which would, on reflection, explain the ramen.
+:line[fixer]{delivery="thought"}: An android, then. Which would, on reflection, explain the ramen.
 
 ## Shot 4.
 
-:mono: If I do not handle this android properly, something is going to go very badly wrong.
+:line[fixer]{delivery="thought"}: If I do not handle this android properly, something is going to go very badly wrong.
 
-The thought arrived fully formed. It did not ask permission. I reached for my phone.
+:line[narrator]: The thought arrived fully formed. It did not ask permission. I reached for my phone.
 
 /* demo: a choice of TONE (canon always gets the number — both paths do; the gentle ask warms her). */
 <branch id="number">
@@ -126,7 +127,7 @@ The thought arrived fully formed. It did not ask permission. I reached for my ph
 :line[bianca]{code="0100" emotion="surprised" variant="0"}: Oh!
 :line[bianca]{code="0110" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.
 
-She produced her own phone at a velocity that suggested she had been hoping someone would ask. She held it up to mine.
+:line[narrator]: She produced her own phone at a velocity that suggested she had been hoping someone would ask. She held it up to mine.
 
 ::sfx{sound="phone_chime" assetId="sound-sfx-common-phone-0.mp3"}
 
@@ -143,7 +144,7 @@ She produced her own phone at a velocity that suggested she had been hoping some
 
 ::music{action="fade-out"}
 
-She led me to the booth. I sat. She handed me a menu and skipped, very lightly, back toward the kitchen. The mouse-shaped smudge was still on the carpet three booths away, plainly visible to anyone walking past.
+:line[narrator]: She led me to the booth. I sat. She handed me a menu and skipped, very lightly, back toward the kitchen. The mouse-shaped smudge was still on the carpet three booths away, plainly visible to anyone walking past.
 
 ::auto{character="takeru" anchor="left" action="fade-in-slow"}
 
@@ -151,7 +152,7 @@ She led me to the booth. I sat. She handed me a menu and skipped, very lightly, 
 :line[takeru]{code="0020" emotion="content" variant="0"}: ...A stain has appeared, three booths down. Bianca-san. See to it before the dinner rush, please.
 :line[bianca]{code="0180" emotion="surprised" variant="0"}: At once, manager!
 
-She skipped back across the floor with a cloth in hand. I watched the manager file the smudge as some customer-side mishap and continue his perimeter walk.
+:line[narrator]: She skipped back across the floor with a cloth in hand. I watched the manager file the smudge as some customer-side mishap and continue his perimeter walk.
 
 :line[fixer]{code="0070"}: ...
 
@@ -161,16 +162,16 @@ She skipped back across the floor with a cloth in hand. I watched the manager fi
 */
 <match on="scene.choices.number">
   <when test="@fond">
-    :mono: I am taking that woman on a walking tour of the neighbourhood this evening. I asked nicely, which I am electing not to examine.
+    :line[fixer]{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening. I asked nicely, which I am electing not to examine.
   </when>
   <when test="$ == 'blunt'">
-    :mono: I am taking that woman on a walking tour of the neighbourhood this evening.
+    :line[fixer]{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening.
   </when>
   <otherwise>
-    :mono: I am, apparently, taking that woman somewhere this evening.
+    :line[fixer]{delivery="thought"}: I am, apparently, taking that woman somewhere this evening.
   </otherwise>
 </match>
 
-The part of me that catalogues life events was already cataloguing.
+:line[narrator]: The part of me that catalogues life events was already cataloguing.
 
 ::music{action="stop"}

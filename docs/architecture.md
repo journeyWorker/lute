@@ -80,7 +80,7 @@ Three authoring layers, distinguished by syntax so a reader can tell them apart 
 
 | Layer | Syntax | Examples |
 |---|---|---|
-| **Content** | `:line[name]{attrs}: text` · `:mono:` · bare prose | dialogue, narration |
+| **Content** | `:line[name]{attrs}: text` — speaker selects dialogue / narration (`narrator`) / monologue | dialogue, narration |
 | **Staging (leaf)** | `::name{attrs}` | `::bg`, `::music`, `::sfx`, `::auto`, `::camera`, `::set` |
 | **Logic / timeline (nesting)** | `<tag>…</tag>` | `<branch>`, `<choice>`, `<match>`, `<when>`, `<otherwise>`, `<timeline>`, `<track>` |
 
@@ -90,8 +90,8 @@ Three authoring layers, distinguished by syntax so a reader can tell them apart 
   does this close?" pain only ever lived in nested constructs).
 - Single-line leaf → directive `::name{attrs}` (JSX buys nothing for a childless node; `::`
   stays consistent with the existing `::bg`/`:line` family).
-- Dialogue text after `: ` is **opaque to end-of-line** — parens, `(?)`, `<`, anything is
-  literal, never parsed. With no bare code-like lines, prose/code disambiguation is trivial.
+- Content text after `: ` is **opaque to end-of-line** — parens, `(?)`, `<`, anything is literal,
+  never parsed. Every content line is a prefixed `:line[…]:` (no bare prose), so classification is trivial.
 
 > **Worked example:** [`examples/bianca-s01ep02.lute`](examples/bianca-s01ep02.lute) — the real
 > content-catalog S01EP02 in this format, with `::camera`, the finger-beam `<timeline>` (four
