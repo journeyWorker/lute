@@ -56,7 +56,7 @@ pub struct Clip { pub node: ClipNode, pub at: Option<f64>, pub span: Span }
 pub enum ClipNode { Directive(Directive), Set(Set) }
 
 #[derive(Clone, Debug)]
-pub struct Attr { pub key: String, pub value: AttrValue, pub span: Span }
+pub struct Attr { pub key: String, pub value: AttrValue, pub value_span: Span, pub span: Span }
 
 #[derive(Clone, Debug)]
 pub enum AttrValue { Str(String), Ref(CelSlot), BoolTrue } // bare ident => true; @ref becomes a CelSlot
