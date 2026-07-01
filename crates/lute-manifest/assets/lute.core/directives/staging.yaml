@@ -1,0 +1,61 @@
+directives:
+  - name: bg
+    attrs:
+      - { name: location, type: string }
+      - { name: time, type: string }
+      - { name: assetId, type: string }
+    semantics: [ "mutatesScene" ]
+    lower: { record: setBackground, fields: {} }
+  - name: music
+    attrs:
+      - { name: action, type: { enum: [start, change, stop, resume, fade-out] } }
+      - { name: mood, type: string }
+      - { name: volume, type: { enum: [silent, down, normal, up, full] } }
+      - { name: assetId, type: string }
+      - { name: track, type: string }
+    semantics: [ "mutatesScene" ]
+    lower: { record: setMusic, fields: {} }
+  - name: sfx
+    attrs:
+      - { name: sound, type: string }
+      - { name: assetId, type: string }
+      - { name: name, type: string }
+    lower: { record: playSfx, fields: {} }
+  - name: auto
+    attrs:
+      - { name: character, type: string }
+      - { name: anchor, type: { enum: [left, center, right] } }
+      - { name: action, type: string }
+    semantics: [ "reads.onStage", "usesAnchor", "mayExitCharacter", "writes.characterState" ]
+    lower: { kind: builtin, name: autoStage }
+  - name: vfx
+    attrs:
+      - { name: type, type: { enum: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop] } }
+      - { name: label, type: string }
+      - { name: transition, type: string }
+    lower: { record: playVfx, fields: {} }
+  - name: cut
+    attrs:
+      - { name: assetId, type: string }
+      - { name: action, type: { enum: [show, hide] } }
+      - { name: full, type: bool }
+    lower: { record: cutIn, fields: {} }
+  - name: video
+    attrs:
+      - { name: assetId, type: string }
+      - { name: action, type: { enum: [show, hide] } }
+      - { name: wait, type: bool, default: true }
+    lower: { record: playVideo, fields: {} }
+  - name: camera
+    attrs:
+      - { name: focus, type: string }
+      - { name: zoom, type: string }
+      - { name: move-x, type: string }
+      - { name: move-y, type: string }
+      - { name: shake, type: string }
+      - { name: reset, type: bool }
+      - { name: duration, type: number }
+      - { name: easing, type: string }
+      - { name: delay, type: number }
+      - { name: wait, type: bool, default: false }
+    lower: { kind: builtin, name: cameraTransform }
