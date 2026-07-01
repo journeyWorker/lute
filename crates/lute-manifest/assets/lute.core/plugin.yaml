@@ -1,0 +1,6 @@
+id: lute.core
+version: 0.0.1
+kind: capability
+exports:
+  directives: directives/
+  enums: enums.yaml
