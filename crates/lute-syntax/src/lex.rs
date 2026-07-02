@@ -150,7 +150,12 @@ pub(crate) fn text_start_for_line(text: &str, line_start: usize) -> usize {
 /// on the blanked view fixes the boundary so the body's literal `"` is not
 /// mistaken for a String delimiter. Returns [`usize::MAX`] when the line has no
 /// `:line` text region. Requires `line_start <= scanned == out.len()`.
-fn line_text_start_blanked(out: &str, text: &str, line_start: usize, scanned: usize) -> usize {
+pub(crate) fn line_text_start_blanked(
+    out: &str,
+    text: &str,
+    line_start: usize,
+    scanned: usize,
+) -> usize {
     let line_end = text[scanned..]
         .find('\n')
         .map_or(text.len(), |n| scanned + n);
