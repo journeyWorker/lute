@@ -80,3 +80,22 @@ fn unreadable_declaration_file_is_error() {
     );
     fs::remove_dir_all(&tmp).ok();
 }
+
+#[test]
+fn scans_a_plugins_directory() {
+    let root = std::env::temp_dir().join(format!("lute_plugins_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    write_pkg(&root.join("t.plug"), false); // reuse the helper; nested dir = plugin id
+    let (reg, errs) = lute_manifest::loader::load_plugins_dir(&root);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(reg.get("t.plug").is_some());
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn missing_plugins_dir_is_empty() {
+    let (reg, errs) =
+        lute_manifest::loader::load_plugins_dir(std::path::Path::new("/no/such/dir/xyz"));
+    assert!(reg.by_id.is_empty());
+    assert!(errs.is_empty());
+}

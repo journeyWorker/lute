@@ -129,6 +129,44 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
     }
 }
 
+/// Scan `dir` for plugin packages (each immediate subdirectory containing a
+/// `plugin.yaml`), in sorted order, and index by manifest id. A duplicate id
+/// across packages is a `LoadError::DuplicateId { kind: "plugin", .. }` (the
+/// later package is dropped). A missing `dir` yields an empty registry.
+pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<LoadError>) {
+    use crate::resolve::{InstalledPlugin, InstalledPlugins};
+    let mut reg = InstalledPlugins::default();
+    let mut errs = Vec::new();
+    let mut subs: Vec<_> = match std::fs::read_dir(dir) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.is_dir())
+            .collect(),
+        Err(_) => return (reg, errs),
+    };
+    subs.sort();
+    for sub in subs {
+        if !sub.join("plugin.yaml").is_file() {
+            continue;
+        }
+        match load_plugin_dir(&sub) {
+            Ok(loaded) => {
+                let id = loaded.manifest.id.clone();
+                if reg.by_id.contains_key(&id) {
+                    errs.push(LoadError::DuplicateId {
+                        kind: "plugin".into(),
+                        id,
+                    });
+                } else {
+                    reg.by_id.insert(id, InstalledPlugin { loaded });
+                }
+            }
+            Err(mut e) => errs.append(&mut e),
+        }
+    }
+    (reg, errs)
+}
+
 /// Read a single YAML file OR every `*.yaml`/`*.yml` in a dir (sorted byte-wise),
 /// deserialize each to `F`, and hand it to `merge`.
 fn read_kind<F, M>(path: &Path, errs: &mut Vec<LoadError>, mut merge: M)
