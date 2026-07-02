@@ -467,7 +467,16 @@ fn dedup_undeclared(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
     });
     let mut kept: Vec<Diagnostic> = Vec::new();
     for d in undeclared {
-        if !kept.iter().any(|k| spans_overlap(k.span, d.span)) {
+        let dp = undeclared_path(&d.message);
+        // Collapse only when an already-kept entry names the SAME state path AND
+        // overlaps in span. Two distinct undeclared paths that share one CEL
+        // slot's whole-slot fallback span (cel-parser 0.10.1 has no per-node
+        // offsets) therefore BOTH survive; the sanctioned T4.4(Logic)+T4.5(Staging)
+        // pair for one `::set` target (identical path + span) still merges to one.
+        if !kept
+            .iter()
+            .any(|k| undeclared_path(&k.message) == dp && spans_overlap(k.span, d.span))
+        {
             kept.push(d);
         }
     }
@@ -480,6 +489,22 @@ fn spans_overlap(a: Span, b: Span) -> bool {
     a.byte_start < b.byte_end && b.byte_start < a.byte_end
 }
 
+/// Extract the state path an `E-UNDECLARED` message names, for path-aware dedup.
+/// All three producers embed the path as the first backtick-quoted token that
+/// starts with a state tier (`scene.`/`run.`/`user.`/`app.`) — `set_op` also
+/// quotes `::set` first, so we scan for the tier-prefixed token, not just the
+/// first quote. `None` (no tier token) falls back to span-only collapse.
+fn undeclared_path(message: &str) -> Option<&str> {
+    message
+        .split('`')
+        .find(|tok| {
+            tok.starts_with("scene.")
+                || tok.starts_with("run.")
+                || tok.starts_with("user.")
+                || tok.starts_with("app.")
+        })
+}
+
 /// Re-derive every diagnostic's `line`/`column`/`utf16_range` from its byte
 /// offsets through one shared [`TextIndex`], so both the CLI and the LSP report
 /// identical positions (the divergence golden). Offsets are clamped to the text
@@ -487,8 +512,17 @@ fn spans_overlap(a: Span, b: Span) -> bool {
 fn normalize_spans(idx: &TextIndex, text: &str, diags: &mut [Diagnostic]) {
     let len = text.len();
     for d in diags {
-        let start = d.span.byte_start.min(len);
-        let end = d.span.byte_end.min(len).max(start);
+        let mut start = d.span.byte_start.min(len);
+        let mut end = d.span.byte_end.min(len).max(start);
+        // Snap to char boundaries so from_bytes never slices mid-code-point
+        // (honors the "never panics" contract even if a producer ever emits an
+        // interior offset; unreachable today, all producers emit boundary offsets).
+        while start > 0 && !text.is_char_boundary(start) {
+            start -= 1;
+        }
+        while end < len && !text.is_char_boundary(end) {
+            end += 1;
+        }
         d.span = Span::from_bytes(idx, start, end);
     }
 }
