@@ -18,6 +18,8 @@
 //! publishes match the headless CLI byte-for-byte — the property Task 6.2's
 //! golden asserts.
 
+use std::path::{Path, PathBuf};
+
 use dashmap::DashMap;
 use lute_check::{check, CheckInput, Mode};
 use lute_core_span::{Span, TextIndex};
@@ -70,10 +72,11 @@ impl Backend {
     /// for `uri`, stamped with the snapshot version. Positions are derived exactly
     /// as the headless path derives them (see the divergence invariant above).
     async fn analyze(&self, uri: Uri, snapshot: &DocumentSnapshot) {
+        let cap = self.snapshot_for(&uri, &snapshot.text);
         let input = CheckInput {
             text: snapshot.text.clone(),
             uri: uri.as_str().to_string(),
-            snapshot: lute_manifest::core::load_core_snapshot(),
+            snapshot: cap,
             providers: lute_manifest::provider::ProviderSet::default(),
             mode: Mode::Author,
         };
@@ -93,6 +96,40 @@ impl Backend {
     /// open. Cloned so the feature call runs without holding the `DashMap` guard.
     fn document_text(&self, uri: &Uri) -> Option<String> {
         self.docs.get(uri).map(|d| d.text.clone())
+    }
+
+    /// Build the capability snapshot for `uri`'s document by discovering a
+    /// `lute.project.yaml` above the file and resolving through the SHARED
+    /// [`resolve_document_snapshot`](lute_manifest::project::resolve_document_snapshot)
+    /// — the *identical* resolution the CLI runs (plugin §11), so the two
+    /// surfaces build byte-identical snapshots and cannot diverge.
+    ///
+    /// The scene's frontmatter `profile`/`plugins` are lifted with a default
+    /// snapshot (both are built-in, not capability-gated). When no project is
+    /// found above the document, `resolve_document_snapshot(None, ..)` yields the
+    /// core-only baseline — today's behavior. A malformed project is logged and
+    /// falls back to core-only rather than silently mis-validating (never panics).
+    fn snapshot_for(&self, uri: &Uri, text: &str) -> lute_manifest::snapshot::CapabilitySnapshot {
+        let (doc, _) = lute_syntax::parse(text);
+        let (meta0, _) = lute_check::parse_meta(
+            &doc.meta,
+            &lute_manifest::snapshot::CapabilitySnapshot::default(),
+        );
+        let project = uri_to_path(uri)
+            .and_then(|p| find_project_root(&p))
+            .and_then(|root| match lute_manifest::project::load_project(&root) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("lute-lsp: {e}");
+                    None
+                }
+            });
+        let (snap, _diags) = lute_manifest::project::resolve_document_snapshot(
+            project.as_ref(),
+            meta0.profile.as_deref(),
+            &meta0.plugins,
+        );
+        snap
     }
 }
 
@@ -147,7 +184,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = lute_manifest::core::load_core_snapshot();
+        let snapshot = self.snapshot_for(&pos.text_document.uri, &text);
         let off = position_to_byte(&text, pos.position);
         Ok(hover::hover_at(&doc, &snapshot, off))
     }
@@ -158,7 +195,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = lute_manifest::core::load_core_snapshot();
+        let snapshot = self.snapshot_for(&pos.text_document.uri, &text);
         let off = position_to_byte(&text, pos.position);
         let items = completion::complete_at(&doc, &snapshot, off);
         if items.is_empty() {
@@ -177,7 +214,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = lute_manifest::core::load_core_snapshot();
+        let snapshot = self.snapshot_for(&uri, &text);
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
         Ok(nav::definition_at(&doc, &snapshot, off).map(|span| {
@@ -195,7 +232,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = lute_manifest::core::load_core_snapshot();
+        let snapshot = self.snapshot_for(&uri, &text);
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
         let locs: Vec<Location> = nav::references_at(&doc, &snapshot, off)
@@ -355,6 +392,31 @@ pub(crate) fn byte_to_position(byte: usize, idx: &TextIndex) -> Position {
         line: p.line - 1,
         character: p.utf16_col,
     }
+}
+
+/// Resolve a document [`Uri`] to a filesystem [`PathBuf`]. `Uri` wraps a
+/// `fluent_uri::Uri`; [`Uri::to_file_path`] percent-decodes the path component
+/// and returns `None` for non-`file` (e.g. `untitled:`) schemes or empty paths —
+/// in which case the snapshot resolution falls back to core-only. Ownership is
+/// taken (`Cow` → `PathBuf`) so the path outlives the borrow of `uri`.
+fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
+    uri.to_file_path().map(|p| p.into_owned())
+}
+
+/// Walk up from the document at `file_path`, returning the first ancestor
+/// directory that contains a `lute.project.yaml` (plugin §11 project discovery).
+/// Starts at the file's parent directory and climbs to the filesystem root;
+/// `None` when no project is found (a loose scene → core-only). Purely lexical
+/// on the path components, so it works for buffers not yet written to disk.
+fn find_project_root(file_path: &Path) -> Option<PathBuf> {
+    let mut dir = file_path.parent();
+    while let Some(d) = dir {
+        if d.join("lute.project.yaml").is_file() {
+            return Some(d.to_path_buf());
+        }
+        dir = d.parent();
+    }
+    None
 }
 
 #[cfg(test)]
