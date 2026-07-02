@@ -16,6 +16,9 @@ path = "src/main.rs"
 lute-core-span = { path = "../lute-core-span" }
 lute-check = { path = "../lute-check" }
 lute-manifest = { path = "../lute-manifest" }
+lute-syntax = { path = "../lute-syntax" }
+lute-cel = { path = "../lute-cel" }
 tower-lsp-server = "0.23.0"
 tokio = { version = "1.52.3", features = ["full"] }
 dashmap = "6.2.1"
+serde_yaml = { workspace = true }

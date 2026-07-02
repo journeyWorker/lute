@@ -20,15 +20,20 @@
 
 use dashmap::DashMap;
 use lute_check::{check, CheckInput, Mode};
+use lute_core_span::{Span, TextIndex};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
-    Diagnostic as LspDiagnostic, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, InitializeParams, InitializeResult, MessageType, ServerCapabilities,
-    ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
+    CompletionOptions, CompletionParams, CompletionResponse, Diagnostic as LspDiagnostic,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, Location, MessageType, OneOf, Position, Range,
+    ReferenceParams, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
+    TextDocumentSyncKind, Uri,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
 use crate::convert::to_lsp_diagnostic;
+use crate::features::{completion, hover, nav};
 
 /// The last-known text of an open document plus the LSP version that produced it.
 /// Republished diagnostics are stamped with `version` so the client can discard
@@ -72,14 +77,32 @@ impl Backend {
             result.diagnostics.iter().map(|d| to_lsp_diagnostic(d, &idx)).collect();
         self.client.publish_diagnostics(uri, diags, Some(snapshot.version)).await;
     }
+
+    /// The current full text of the open document `uri`, or `None` if it is not
+    /// open. Cloned so the feature call runs without holding the `DashMap` guard.
+    fn document_text(&self, uri: &Uri) -> Option<String> {
+        self.docs.get(uri).map(|d| d.text.clone())
+    }
 }
 
 impl LanguageServer for Backend {
     async fn initialize(&self, _params: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
-                // 6.1 supports FULL document sync + publishDiagnostics only.
+                // FULL document sync + publishDiagnostics (6.1) retained.
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+                // 6.3 editor features. Trigger chars fire completion where the
+                // resolver keys off punctuation: `::` (directive head), `@` (a
+                // CEL `@ref`), `{` (a directive attr area), `.` (a state path).
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(
+                        [":", "@", "{", "."].iter().map(|s| s.to_string()).collect(),
+                    ),
+                    ..Default::default()
+                }),
+                definition_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -88,6 +111,62 @@ impl LanguageServer for Backend {
             }),
             ..Default::default()
         })
+    }
+
+    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        let pos = params.text_document_position_params;
+        let Some(text) = self.document_text(&pos.text_document.uri) else { return Ok(None) };
+        let (doc, _) = lute_syntax::parse(&text);
+        let snapshot = lute_manifest::core::load_core_snapshot();
+        let off = position_to_byte(&text, pos.position);
+        Ok(hover::hover_at(&doc, &snapshot, off))
+    }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let pos = params.text_document_position;
+        let Some(text) = self.document_text(&pos.text_document.uri) else { return Ok(None) };
+        let (doc, _) = lute_syntax::parse(&text);
+        let snapshot = lute_manifest::core::load_core_snapshot();
+        let off = position_to_byte(&text, pos.position);
+        let items = completion::complete_at(&doc, &snapshot, off);
+        if items.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let pos = params.text_document_position_params;
+        let uri = pos.text_document.uri;
+        let Some(text) = self.document_text(&uri) else { return Ok(None) };
+        let (doc, _) = lute_syntax::parse(&text);
+        let snapshot = lute_manifest::core::load_core_snapshot();
+        let idx = TextIndex::new(&text);
+        let off = position_to_byte(&text, pos.position);
+        Ok(nav::definition_at(&doc, &snapshot, off).map(|span| {
+            GotoDefinitionResponse::Scalar(Location { uri, range: span_to_range(&span, &idx) })
+        }))
+    }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let pos = params.text_document_position;
+        let uri = pos.text_document.uri;
+        let Some(text) = self.document_text(&uri) else { return Ok(None) };
+        let (doc, _) = lute_syntax::parse(&text);
+        let snapshot = lute_manifest::core::load_core_snapshot();
+        let idx = TextIndex::new(&text);
+        let off = position_to_byte(&text, pos.position);
+        let locs: Vec<Location> = nav::references_at(&doc, &snapshot, off)
+            .into_iter()
+            .map(|span| Location { uri: uri.clone(), range: span_to_range(&span, &idx) })
+            .collect();
+        if locs.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(locs))
     }
 
     async fn initialized(&self, _params: tower_lsp_server::ls_types::InitializedParams) {
@@ -116,5 +195,101 @@ impl LanguageServer for Backend {
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         self.docs.remove(&params.text_document.uri);
+    }
+}
+
+/// Convert an LSP [`Position`] (0-based line, 0-based UTF-16 character) to a byte
+/// offset into `text`. The inverse of [`TextIndex::position`]: locate the line by
+/// counting `\n`s, then walk that line's chars summing `len_utf16` until the
+/// UTF-16 column is reached — the exact per-line UTF-16 accounting `TextIndex`
+/// does forward, so the LSP and headless surfaces never drift a code unit.
+/// A `character` past the line end clamps to the line end (defensive; LSP clients
+/// occasionally over-report a column at EOL).
+fn position_to_byte(text: &str, pos: Position) -> usize {
+    let bytes = text.as_bytes();
+    // Byte offset of the start of line `pos.line` (0-based).
+    let mut line = 0u32;
+    let mut line_start = 0usize;
+    if pos.line > 0 {
+        for (i, b) in bytes.iter().enumerate() {
+            if *b == b'\n' {
+                line += 1;
+                if line == pos.line {
+                    line_start = i + 1;
+                    break;
+                }
+            }
+        }
+        if line < pos.line {
+            // Line beyond EOF: clamp to end of text.
+            return text.len();
+        }
+    }
+    // Walk the target line, summing UTF-16 units until `pos.character`.
+    let line_end = text[line_start..].find('\n').map_or(text.len(), |n| line_start + n);
+    let mut utf16 = 0u32;
+    for (off, ch) in text[line_start..line_end].char_indices() {
+        if utf16 >= pos.character {
+            return line_start + off;
+        }
+        utf16 += ch.len_utf16() as u32;
+    }
+    line_end
+}
+
+/// Map a byte [`Span`] to an LSP [`Range`] through `idx`. Mirrors
+/// [`crate::convert`]'s private byte-span mapping (`TextIndex::position`,
+/// de-1-indexing the line, 0-based UTF-16 column) so navigation results carry the
+/// same UTF-16-correct positions as diagnostics. Byte-only spans synthesized by
+/// the feature layer (zeroed line/col) resolve correctly here because the mapping
+/// only reads `byte_start`/`byte_end`.
+fn span_to_range(span: &Span, idx: &TextIndex) -> Range {
+    Range { start: byte_to_position(span.byte_start, idx), end: byte_to_position(span.byte_end, idx) }
+}
+
+fn byte_to_position(byte: usize, idx: &TextIndex) -> Position {
+    let p = idx.position(byte);
+    Position { line: p.line - 1, character: p.utf16_col }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `position_to_byte` is the exact inverse of `TextIndex::position` on a
+    /// multibyte document: every byte offset round-trips through its own Position.
+    #[test]
+    fn position_to_byte_round_trips_through_text_index() {
+        let text = "## Shot 1.\n::café{x=\"π\"}\n:line[Ω]: 世界\n";
+        let idx = TextIndex::new(text);
+        for byte in 0..=text.len() {
+            // Only test char boundaries; a byte mid-char has no LSP position.
+            if !text.is_char_boundary(byte) {
+                continue;
+            }
+            let p = idx.position(byte);
+            let pos = Position { line: p.line - 1, character: p.utf16_col };
+            assert_eq!(position_to_byte(text, pos), byte, "byte {byte} did not round-trip");
+        }
+    }
+
+    #[test]
+    fn position_to_byte_clamps_out_of_range() {
+        let text = "ab\ncd\n";
+        // Character past line end clamps to the line end (before the `\n`).
+        assert_eq!(position_to_byte(text, Position { line: 0, character: 99 }), 2);
+        // Line past EOF clamps to text end.
+        assert_eq!(position_to_byte(text, Position { line: 50, character: 0 }), text.len());
+    }
+
+    #[test]
+    fn span_to_range_maps_utf16_columns() {
+        let text = "π::x\n"; // `π` is 2 bytes, 1 UTF-16 unit.
+        let idx = TextIndex::new(text);
+        // Span over `::x` starts at byte 2 (after the 2-byte π) => UTF-16 col 1.
+        let span = Span { byte_start: 2, byte_end: 5, line: 0, column: 0, utf16_range: (0, 0) };
+        let range = span_to_range(&span, &idx);
+        assert_eq!(range.start, Position { line: 0, character: 1 });
+        assert_eq!(range.end, Position { line: 0, character: 4 });
     }
 }
