@@ -20,10 +20,12 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use lute_check::{check, CheckInput, Mode};
+use lute_check::{check, parse_meta, CheckInput, Mode};
 use lute_core_span::Severity;
 use lute_manifest::core::load_core_snapshot;
+use lute_manifest::project::{load_project, resolve_document_snapshot};
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
+use lute_manifest::snapshot::CapabilitySnapshot;
 
 #[derive(Parser)]
 #[command(
@@ -47,6 +49,11 @@ enum Command {
         /// Directory of pinned provider snapshots to resolve ids against.
         #[arg(long, value_name = "DIR")]
         providers: Option<PathBuf>,
+        /// Project directory (`lute.project.yaml` + `plugins/`) whose installed
+        /// plugins resolve the document's activated capability snapshot (plugin
+        /// §4/§11). Omit for a core-only (`lute.core`) check.
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
     },
     /// Provider-catalog maintenance.
     #[command(subcommand)]
@@ -68,14 +75,20 @@ fn main() -> ExitCode {
             file,
             json,
             providers,
-        } => run_check(&file, json, providers.as_deref()),
+            project,
+        } => run_check(&file, json, providers.as_deref(), project.as_deref()),
         Command::Catalog(CatalogCommand::Refresh { dir }) => run_refresh(&dir),
     }
 }
 
 /// Run `check` over one file and print its result. Exit `0` clean / `1` on an
 /// error diagnostic / `2` on an I/O failure.
-fn run_check(file: &Path, json: bool, providers: Option<&Path>) -> ExitCode {
+fn run_check(
+    file: &Path,
+    json: bool,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+) -> ExitCode {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
         Err(e) => {
@@ -89,10 +102,38 @@ fn run_check(file: &Path, json: bool, providers: Option<&Path>) -> ExitCode {
         None => ProviderSet::default(),
     };
 
+    // Resolve the capability snapshot the document is validated against. With
+    // `--project`, load the project and assemble the scene's activated snapshot
+    // (plugin §4/§11); without it, `resolve_document_snapshot(None, ..)` returns
+    // the core-only `lute.core` baseline — behavior identical to before.
+    let project = match project {
+        Some(dir) => match load_project(dir) {
+            Ok(p) => p,
+            Err(e) => {
+                // A malformed project must not silently mis-validate: surface it
+                // and fall back to core-only rather than pretending it loaded.
+                eprintln!("lute: {e}");
+                None
+            }
+        },
+        None => None,
+    };
+
+    // Lift the scene's frontmatter `profile`/`plugins` — both built-in keys, so a
+    // default snapshot suffices to type them (they are not capability-gated).
+    let (doc, _) = lute_syntax::parse(&text);
+    let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
+
+    let (snapshot, rdiags) =
+        resolve_document_snapshot(project.as_ref(), meta0.profile.as_deref(), &meta0.plugins);
+    for d in &rdiags {
+        eprintln!("lute: resolve: {}", d.message);
+    }
+
     let input = CheckInput {
         text,
         uri: file.display().to_string(),
-        snapshot: load_core_snapshot(),
+        snapshot,
         providers,
         // Batch/build analysis, not the interactive LSP default (both behave
         // identically today; the checker does not branch on mode yet).

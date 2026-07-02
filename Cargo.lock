@@ -540,6 +540,7 @@ dependencies = [
  "lute-check",
  "lute-core-span",
  "lute-manifest",
+ "lute-syntax",
  "serde_json",
  "serde_yaml",
 ]
