@@ -95,7 +95,7 @@ pub struct StageState {
 /// inserted it and *why*. Surfaced in the resolved/injection view so injection
 /// is visible, not silent magic. `injected == false` marks a command the author
 /// wrote that a rule *would* have injected (a conflict).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Provenance {
     /// `true` when the compiler inserted this command.
     pub injected: bool,
@@ -106,7 +106,7 @@ pub struct Provenance {
 }
 
 /// The concrete implicit command a rule injects.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum InjectKind {
     /// Position a freshly shown character at `anchor`.
     Anchor { character: String, anchor: String },
@@ -119,7 +119,7 @@ pub enum InjectKind {
 }
 
 /// One implicit command the resolver inserted, with its provenance.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct InjectedCommand {
     pub kind: InjectKind,
     pub provenance: Provenance,

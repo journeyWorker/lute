@@ -96,7 +96,7 @@ pub struct CheckInput {
 
 /// The result of one `check()`: every diagnostic (deduped, byte-sorted) plus the
 /// best-effort resolved view when the document is structurally intact.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct CheckResult {
     /// `true` when no `Error`-severity diagnostic is present (drives the CLI exit
     /// code and the LSP "problems" gutter).
@@ -110,7 +110,7 @@ pub struct CheckResult {
 /// The LSP-facing resolved view (arch "resolved view"): the compiler's
 /// best-effort read of what the document lowers to, WITHOUT final flat-record
 /// codegen (scoped out of this plan).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Resolved {
     /// A shallow, depth-1 textual preview of the authored top-level command
     /// stream in document order — one entry per top-level node (nested arm /
