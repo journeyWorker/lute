@@ -192,3 +192,74 @@ fn headless_and_lsp_diagnostics_match_warning_bearing() {
         "headless and LSP diagnostic surfaces diverged"
     );
 }
+
+/// Plugin-loaded golden (Task 7.4): the divergence invariant must hold under a
+/// project that activates a plugin. The document `date-minigame.lute` is *dirty*
+/// core-only (its `::minigame` directive and provider id are unknown) but *clean*
+/// once the `idola.minigame` plugin is resolved through the shared project
+/// resolver — the SAME `resolve_document_snapshot` the CLI (Task 7.3) and the LSP
+/// backend (`snapshot_for`) call. This guards no-divergence end to end: one
+/// snapshot, one position path, on both surfaces.
+#[test]
+fn divergence_holds_under_plugin_project() {
+    use lute_manifest::project::{load_project, resolve_document_snapshot};
+
+    let text = std::fs::read_to_string("../../docs/examples/date-minigame.lute").unwrap();
+    let proj = load_project(std::path::Path::new("../../docs/examples/idola-project"))
+        .expect("idola-project loads")
+        .expect("idola-project has a lute.project.yaml");
+
+    // Lift the scene's frontmatter `profile`/`plugins` exactly as the surfaces do:
+    // a default snapshot types those built-in keys (they are not capability-gated).
+    let (doc, _) = lute_syntax::parse(&text);
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+
+    // The ONE resolver both CLI and LSP call — assemble the activated snapshot.
+    let (snapshot, _rd) =
+        resolve_document_snapshot(Some(&proj), meta0.profile.as_deref(), &meta0.plugins);
+    // The plugin's provider catalog (same set both surfaces would use), so the
+    // `providerRef` id `bianca_service_01` resolves and positions match.
+    let providers = ProviderSet::load("../../docs/examples/idola-project/catalog");
+
+    let input = CheckInput {
+        text: text.clone(),
+        uri: "date-minigame".into(),
+        snapshot,
+        providers,
+        mode: Mode::Author,
+    };
+    let res = check(&input);
+
+    // With the plugin loaded, the scene is error-clean (the point of the fixture).
+    let errs: Vec<_> = res
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
+    assert!(
+        errs.is_empty(),
+        "plugin-loaded date-minigame must be error-clean; got {errs:#?}"
+    );
+
+    // No-divergence: whatever diagnostics remain (warnings/hints), the headless
+    // projection and the LSP-converted projection agree byte-for-byte — the same
+    // equality the core goldens assert, now under an activated plugin snapshot.
+    let index = idx(&text);
+    let headless: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &index))
+        .collect();
+    let via_lsp: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .collect();
+    assert_eq!(
+        headless, via_lsp,
+        "headless and LSP diagnostic surfaces diverged under the plugin project"
+    );
+}
