@@ -1,0 +1,20 @@
+directives:
+  - name: minigame
+    layer: bridge
+    attrs:
+      - { name: kind,      required: true, type: { enumFromOption: allowedKinds } }
+      - { name: id,        required: true, type: { providerRef: minigameId } }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.minigame } } }
+      - { name: wait,      type: bool, default: true }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [minigame, { fromAttr: { name: resultKey, slotType: localId } }], shape: minigameResult }
+    effects:
+      writes:
+        - { scope: scene, path: [minigame, { fromAttr: { name: resultKey } }, score],    value: { fromBridgeResult: score } }
+        - { scope: scene, path: [minigame, { fromAttr: { name: resultKey } }, rank],     value: { fromBridgeResult: rank } }
+        - { scope: scene, path: [minigame, { fromAttr: { name: resultKey } }, cleared],  value: { fromBridgeResult: cleared } }
+        - { scope: scene, path: [minigame, { fromAttr: { name: resultKey } }, attempts], value: { op: increment, by: 1 } }
+    bridge: { service: minigame, operation: play }
+    lower: { kind: builtin, name: bridgeMinigame }
