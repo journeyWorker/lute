@@ -42,6 +42,8 @@ pub enum Literal {
     Num(f64),
     Str(String),
     List(Vec<Literal>),
+    /// A record/map literal (plugin §7): a YAML mapping. Deterministic order.
+    Map(std::collections::BTreeMap<String, Literal>),
 }
 
 /// plugin §7.4 structured path segment.
@@ -70,6 +72,38 @@ pub fn type_accepts(ty: &Type, lit: &Literal) -> bool {
         (Type::Str, Literal::Str(_)) => true,
         (Type::Enum(members), Literal::Str(s)) => members.iter().any(|m| m == s),
         (Type::List(inner), Literal::List(items)) => items.iter().all(|i| type_accepts(inner, i)),
+        (Type::Record(fields), Literal::Map(m)) => {
+            // every required field present + typed; no unknown keys.
+            fields.iter().all(|f| match m.get(&f.name) {
+                Some(v) => field_type_accepts(f, v),
+                None => !f.required,
+            }) && m.keys().all(|k| fields.iter().any(|f| &f.name == k))
+        }
+        (Type::Map { key, value }, Literal::Map(m)) => {
+            // keys are strings in YAML; enum-typed keys checked against members.
+            matches!(**key, Type::Str | Type::Enum(_))
+                && m.iter()
+                    .all(|(k, v)| key_accepts(key, k) && type_accepts(value, v))
+        }
+        _ => false,
+    }
+}
+
+/// A record field MAY use `shape: <name>` instead of an inline type; a shape
+/// reference is validated at snapshot-assembly time (the shape registry is not
+/// available here), so a `Map` literal against a shape field is accepted here.
+fn field_type_accepts(f: &Field, v: &Literal) -> bool {
+    if f.shape.is_some() {
+        matches!(v, Literal::Map(_))
+    } else {
+        type_accepts(&f.ty, v)
+    }
+}
+
+fn key_accepts(key: &Type, k: &str) -> bool {
+    match key {
+        Type::Str => true,
+        Type::Enum(members) => members.iter().any(|m| m == k),
         _ => false,
     }
 }
@@ -260,5 +294,52 @@ mod tests {
                 .unwrap_or_else(|e| panic!("reparse {src:?} -> {out:?}: {e}"));
             assert_eq!(t, t2, "roundtrip mismatch for {src:?}");
         }
+    }
+
+    #[test]
+    fn type_accepts_record_literal() {
+        use std::collections::BTreeMap;
+        let ty = Type::Record(vec![
+            Field {
+                name: "costume".into(),
+                ty: Type::Str,
+                default: None,
+                required: true,
+                shape: None,
+            },
+            Field {
+                name: "sealed".into(),
+                ty: Type::Bool,
+                default: Some(Literal::Bool(false)),
+                required: false,
+                shape: None,
+            },
+        ]);
+        let mut m = BTreeMap::new();
+        m.insert("costume".to_string(), Literal::Str("waitress".into()));
+        m.insert("sealed".to_string(), Literal::Bool(true));
+        assert!(type_accepts(&ty, &Literal::Map(m)));
+
+        // missing required field -> reject
+        let mut bad = BTreeMap::new();
+        bad.insert("sealed".to_string(), Literal::Bool(true));
+        assert!(!type_accepts(&ty, &Literal::Map(bad)));
+    }
+
+    #[test]
+    fn type_accepts_map_literal() {
+        use std::collections::BTreeMap;
+        let ty = Type::Map {
+            key: Box::new(Type::Str),
+            value: Box::new(Type::Number),
+        };
+        let mut m = BTreeMap::new();
+        m.insert("a".to_string(), Literal::Num(1.0));
+        m.insert("b".to_string(), Literal::Num(2.0));
+        assert!(type_accepts(&ty, &Literal::Map(m)));
+
+        let mut bad = BTreeMap::new();
+        bad.insert("a".to_string(), Literal::Str("x".into())); // value type mismatch
+        assert!(!type_accepts(&ty, &Literal::Map(bad)));
     }
 }
