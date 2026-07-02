@@ -544,9 +544,12 @@ name = "lute-lsp"
 version = "0.0.0"
 dependencies = [
  "dashmap",
+ "lute-cel",
  "lute-check",
  "lute-core-span",
  "lute-manifest",
+ "lute-syntax",
+ "serde_yaml",
  "tokio",
  "tower-lsp-server",
 ]
