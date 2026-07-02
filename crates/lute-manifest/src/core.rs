@@ -7,15 +7,8 @@
 
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
-
-use crate::schema::{DirectivesFile, PluginManifest};
+use crate::schema::{DirectivesFile, EnumsFile, PluginManifest};
 use crate::snapshot::{capability_version, CapabilitySnapshot, ResolvedPlugin};
-
-#[derive(Deserialize)]
-struct EnumsFile {
-    enums: BTreeMap<String, Vec<String>>,
-}
 
 const MANIFEST: &str = include_str!("../assets/lute.core/plugin.yaml");
 const STAGING: &str = include_str!("../assets/lute.core/directives/staging.yaml");

@@ -25,6 +25,27 @@ pub struct BridgeFile {
     pub bridge: Vec<BridgeCapability>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DefsFile {
+    pub defs: Vec<DefDecl>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FrontmatterFile {
+    pub frontmatter: Vec<FrontmatterDecl>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FrontmatterDecl {
+    pub key: String,
+    pub schema: Type,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EnumsFile {
+    pub enums: std::collections::BTreeMap<String, Vec<String>>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DirectiveDecl {
     pub name: String,

@@ -1,4 +1,5 @@
 pub mod core;
+pub mod loader;
 pub mod provider;
 pub mod resolve;
 pub mod schema;
