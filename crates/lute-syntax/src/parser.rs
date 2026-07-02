@@ -14,7 +14,7 @@
 //!    via a per-block loop that matches the JSX self-naming close by tag name.
 
 use crate::ast::*;
-use crate::lex::{peel_frontmatter, strip_comments_checked, CommentError};
+use crate::lex::{peel_frontmatter, strip_comments_checked, text_start_for_line, CommentError};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 
 mod attrs;
@@ -506,13 +506,17 @@ fn node_end(n: &Node) -> usize {
 }
 
 /// Body-relative offset of the `/*` that started the unterminated comment.
-/// Mirrors [`strip_comments_checked`]'s scan (skips strings + terminated comments).
+/// Mirrors [`strip_comments_checked`]'s scan (skips strings + terminated
+/// comments), including its line-aware `:line` opaque-`Text` rule: a `"` inside
+/// a `:line` body is a literal character, not a String delimiter, so it does not
+/// suppress the comment scan (see [`text_start_for_line`]).
 fn find_unterminated_comment(body: &str) -> usize {
     let b = body.as_bytes();
     let n = b.len();
     let mut i = 0;
     let mut in_str = false;
     let mut esc = false;
+    let mut text_start = text_start_for_line(body, 0);
     while i < n {
         let c = b[i];
         if in_str {
@@ -522,11 +526,19 @@ fn find_unterminated_comment(body: &str) -> usize {
                 esc = true;
             } else if c == b'"' {
                 in_str = false;
+            } else if c == b'\n' {
+                in_str = false;
+                text_start = text_start_for_line(body, i + 1);
             }
             i += 1;
             continue;
         }
-        if c == b'"' {
+        if c == b'\n' {
+            text_start = text_start_for_line(body, i + 1);
+            i += 1;
+            continue;
+        }
+        if c == b'"' && i < text_start {
             in_str = true;
             i += 1;
             continue;
