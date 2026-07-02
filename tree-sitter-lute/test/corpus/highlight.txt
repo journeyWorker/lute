@@ -1,0 +1,57 @@
+==================
+three layers in one shot (content + staging + logic)
+==================
+## Shot 1.
+::camera{focus="bianca" zoom="1.1"}
+:line[narrator]: A hostess walked over.
+::set{scene.affect.bianca += 1}
+---
+(source_file
+  (shot
+    (text)
+    (directive (ident) (attrs (attr (key) (string)) (attr (key) (string))))
+    (line (speaker) (text))
+    (set (path) (assign_op) (cel_expr))))
+
+==================
+bare @ref attribute values (reference tag targets)
+==================
+::gate{guard=@fond when=@unlocked(scene.x)}
+---
+(source_file
+  (directive (ident) (attrs (attr (key) (ref)) (attr (key) (ref)))))
+
+==================
+logic branch/choice with nested content + set
+==================
+<branch id="number">
+  <choice id="soft" label="Ask gently">
+    :line[fixer]: Your number?
+    ::set{scene.affect.bianca += 1}
+  </choice>
+</branch>
+---
+(source_file
+  (branch
+    (attr (key) (string))
+    (choice
+      (attr (key) (string))
+      (attr (key) (string))
+      (line (speaker) (text))
+      (set (path) (assign_op) (cel_expr)))))
+
+==================
+timeline/track staging block
+==================
+<timeline duration="1.4">
+  <track subject="camera">
+    ::camera{zoom="1.35"}
+  </track>
+</timeline>
+---
+(source_file
+  (timeline
+    (attr (key) (string))
+    (track
+      (attr (key) (string))
+      (directive (ident) (attrs (attr (key) (string)))))))
