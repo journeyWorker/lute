@@ -1,0 +1,14 @@
+pluginsDir: plugins/
+defaultProfile: date-minigame
+profiles:
+  global:
+    plugins: { lute.core: true }
+  story:
+    plugins: { idola.minigame: true }
+  date:
+    extends: story
+    plugins: { idola.minigame: true }
+  date-minigame:
+    extends: date
+    plugins:
+      idola.minigame: { resultScope: scene, allowedKinds: [rhythm, timing] }

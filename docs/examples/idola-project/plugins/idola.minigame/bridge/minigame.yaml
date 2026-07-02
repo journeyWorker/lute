@@ -1,0 +1,8 @@
+bridgeCapabilities:
+  - service: minigame
+    operation: play
+    replay: recorded
+    result:
+      - { name: score,   type: number }
+      - { name: rank,    type: { enum: [fail, bronze, silver, gold] } }
+      - { name: cleared, type: bool }

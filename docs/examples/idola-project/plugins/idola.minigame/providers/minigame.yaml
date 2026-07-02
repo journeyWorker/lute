@@ -1,0 +1,4 @@
+providers:
+  - name: minigameId
+    idShape: "Ident"
+    snapshot: minigame-id

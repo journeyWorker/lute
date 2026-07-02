@@ -1,0 +1,12 @@
+id: idola.minigame
+version: 0.1.0
+kind: capability
+depends: [ { id: lute.core, range: "^0.0.1" } ]
+exports:
+  directives: directives/
+  state: state/
+  providers: providers/
+  bridge: bridge/
+options:
+  - { name: resultScope, type: { enum: [scene, run] }, default: scene }
+  - { name: allowedKinds, type: { list: { enum: [rhythm, puzzle, timing] } }, default: [rhythm, puzzle, timing] }

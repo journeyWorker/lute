@@ -1,0 +1,7 @@
+stateShapes:
+  - name: minigameResult
+    fields:
+      - { name: score,    type: number, default: 0 }
+      - { name: rank,     type: { enum: [fail, bronze, silver, gold] }, default: fail }
+      - { name: cleared,  type: bool,   default: false }
+      - { name: attempts, type: number, default: 0 }
