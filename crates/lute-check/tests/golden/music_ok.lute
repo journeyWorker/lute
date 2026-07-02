@@ -1,0 +1,16 @@
+---
+character: bianca
+season: 1
+episode: 1
+title: Music cue
+---
+
+# Golden — music
+
+## Shot 1.
+
+::music{action="start" mood="peaceful" volume="down" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3"}
+
+:line[narrator]: The loop settles into something almost pleasant.
+
+::music{action="fade-out"}

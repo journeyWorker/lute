@@ -1,0 +1,14 @@
+---
+character: bianca
+season: 1
+episode: 1
+title: Camera transform
+---
+
+# Golden — camera
+
+## Shot 1.
+
+::camera{focus="bianca" zoom="1.1" duration="0.5" easing="ease-out" wait="false"}
+
+:line[narrator]: The frame drifts in and settles on her as she turns.

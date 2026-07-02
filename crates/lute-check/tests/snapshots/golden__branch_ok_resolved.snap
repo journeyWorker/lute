@@ -1,0 +1,19 @@
+---
+source: crates/lute-check/tests/golden.rs
+expression: res.resolved
+---
+commands_preview:
+  - "::auto"
+  - ":line[narrator]"
+  - "<branch id=\"number\"> (2 choices)"
+  - ":line[bianca]"
+timeline_tables: []
+injections:
+  - kind:
+      SpriteLoad:
+        character: bianca
+        emotion: delighted
+    provenance:
+      injected: true
+      by: entry-emotion-lookahead
+      reason: "pre-loading `bianca`'s first emotion `delighted` seen ahead of the entrance"

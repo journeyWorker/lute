@@ -1,0 +1,37 @@
+---
+source: crates/lute-check/tests/golden.rs
+expression: res.resolved
+---
+commands_preview:
+  - ":line[narrator]"
+  - "<timeline> (4 tracks)"
+  - "::set{scene.flags.saw_beam = …}"
+  - ":line[narrator]"
+timeline_tables:
+  - rows:
+      - at: 0
+        subject: camera
+        summary: "<camera>"
+        duration: 0.4
+      - at: 0.5
+        subject: camera
+        summary: "<camera>"
+        duration: 0.3
+      - at: 0.5
+        subject: "#fg"
+        summary: "<cut>"
+        duration: 0
+      - at: 1.1
+        subject: "#fg"
+        summary: "<cut>"
+        duration: 0
+      - at: 0.5
+        subject: "#vfx"
+        summary: "<vfx>"
+        duration: 0
+      - at: 0.5
+        subject: "#sfx"
+        summary: "<sfx>"
+        duration: 0
+    barrier_at: 1.4
+injections: []

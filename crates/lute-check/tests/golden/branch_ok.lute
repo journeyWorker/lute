@@ -1,0 +1,28 @@
+---
+character: bianca
+season: 1
+episode: 1
+title: Player choice
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+---
+
+# Golden — branch
+
+## Shot 1.
+
+::auto{character="bianca" anchor="left" action="fade-in-up"}
+
+:line[narrator]: I reached for my phone.
+
+<branch id="number">
+  <choice id="blunt" label="Just ask, flatly">
+    :line[fixer]{code="0050"}: Bianca. Your number.
+  </choice>
+  <choice id="soft" label="Ask gently">
+    :line[fixer]{code="0052"}: Bianca — would you mind terribly if I had your number?
+    ::set{scene.affect.bianca += 1}
+  </choice>
+</branch>
+
+:line[bianca]{code="0110" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.

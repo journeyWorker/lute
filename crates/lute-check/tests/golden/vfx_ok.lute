@@ -1,0 +1,14 @@
+---
+character: bianca
+season: 1
+episode: 1
+title: Visual effect
+---
+
+# Golden — vfx
+
+## Shot 1.
+
+::vfx{type="whiteOut" label="finger_beam" transition="flash"}
+
+:line[narrator]: A flash, and where the mouse had been there was only a small black smudge.

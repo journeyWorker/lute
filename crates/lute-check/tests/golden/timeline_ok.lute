@@ -1,0 +1,34 @@
+---
+character: bianca
+season: 1
+episode: 1
+title: Performance beat
+state:
+  scene.flags.saw_beam: { type: bool, default: false }
+---
+
+# Golden — timeline
+
+## Shot 1.
+
+:line[narrator]: Her index finger came up.
+
+<timeline duration="1.4">
+  <track subject="camera">
+    ::camera{focus="bianca" zoom="1.35" duration="0.4"}
+    ::camera{shake="0.6" duration="0.3" at="0.5"}
+  </track>
+  <track channel="fg">
+    ::cut{assetId="CUT.scenarios.bianca.s01ep02.01" at="0.5"}
+    ::cut{assetId="CUT.scenarios.bianca.s01ep02.01" action="hide" at="1.1"}
+  </track>
+  <track channel="vfx">
+    ::vfx{type="whiteOut" transition="flash" at="0.5"}
+  </track>
+  <track channel="sfx">
+    ::sfx{sound="finger_beam_flash" assetId="PLACEHOLDER_finger_beam_flash" at="0.5"}
+  </track>
+</timeline>
+::set{scene.flags.saw_beam = true}
+
+:line[narrator]: When I opened my eyes, there was only a small black smudge.

@@ -1,0 +1,14 @@
+---
+character: bianca
+season: 1
+episode: 1
+title: Background staging
+---
+
+# Golden — bg
+
+## Shot 1.
+
+::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
+
+:line[narrator]: Venny's. Soft overhead light, a faint jazz loop, the white-noise of a drink-bar fountain.

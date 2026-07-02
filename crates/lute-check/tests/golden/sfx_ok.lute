@@ -1,0 +1,14 @@
+---
+character: bianca
+season: 1
+episode: 1
+title: Sound effect
+---
+
+# Golden — sfx
+
+## Shot 1.
+
+::sfx{sound="drink_bar_hum" name="ambient_hum" assetId="PLACEHOLDER_drink_bar_hum"}
+
+:line[narrator]: Somewhere a fountain keeps its small, patient promise.

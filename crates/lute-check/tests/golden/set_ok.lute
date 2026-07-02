@@ -1,0 +1,19 @@
+---
+character: bianca
+season: 1
+episode: 1
+title: State write
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+  scene.flags.saw_beam: { type: bool, default: false }
+---
+
+# Golden — set
+
+## Shot 1.
+
+:line[fixer]{code="0052"}: Bianca — would you mind terribly if I had your number?
+::set{scene.affect.bianca += 1}
+
+:line[narrator]: I flinched as the beam landed.
+::set{scene.flags.saw_beam = true}

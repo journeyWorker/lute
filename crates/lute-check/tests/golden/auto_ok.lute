@@ -1,0 +1,14 @@
+---
+character: bianca
+season: 1
+episode: 1
+title: Auto stage
+---
+
+# Golden — auto
+
+## Shot 1.
+
+::auto{character="bianca" anchor="left" action="fade-in-up"}
+
+:line[bianca]{code="0010" emotion="surprised" variant="0"}: Oh! Mr. Fixer!
