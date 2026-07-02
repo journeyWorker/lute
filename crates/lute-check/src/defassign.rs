@@ -166,7 +166,6 @@ fn walk_match(
     check_reads(&m.subject, schema, assigned, diags);
 
     let mut arm_finals: Vec<Assigned> = Vec::new();
-    let mut exhaustive = false;
     for arm in &m.arms {
         let mut branch = assigned.clone();
         match arm {
@@ -175,16 +174,19 @@ fn walk_match(
                 walk_nodes(body, schema, &mut branch, diags);
             }
             Arm::Otherwise { body, .. } => {
-                exhaustive = true;
                 walk_nodes(body, schema, &mut branch, diags);
             }
         }
         arm_finals.push(branch);
     }
-    if exhaustive && !arm_finals.is_empty() {
+    // Fold the arms' assignments into the surviving set iff the match is
+    // exhaustive (a covered finite/nullable domain, or an `<otherwise>`): every
+    // path then flows through exactly one arm, so the intersection of arm-final
+    // sets is provably assigned afterward. A non-exhaustive match may match
+    // nothing, so its pre-block set survives unchanged (dsl §9.4/§11.2).
+    if !arm_finals.is_empty() && crate::match_check::is_exhaustive(m, schema) {
         *assigned = intersect_all(arm_finals);
     }
-    // else: no `<otherwise>` — the match may match nothing; keep pre-block set.
 }
 
 /// A `<timeline>`: tracks nominally run in parallel; treat clip `::set`s as
