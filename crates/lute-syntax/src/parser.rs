@@ -14,7 +14,10 @@
 //!    via a per-block loop that matches the JSX self-naming close by tag name.
 
 use crate::ast::*;
-use crate::lex::{peel_frontmatter, strip_comments_checked, text_start_for_line, CommentError};
+use crate::lex::{
+    line_text_start_blanked, peel_frontmatter, strip_comments_checked, text_start_for_line,
+    CommentError,
+};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 
 mod attrs;
@@ -509,61 +512,76 @@ fn node_end(n: &Node) -> usize {
 }
 
 /// Body-relative offset of the `/*` that started the unterminated comment.
-/// Mirrors [`strip_comments_checked`]'s scan (skips strings + terminated
-/// comments), including its line-aware `:line` opaque-`Text` rule: a `"` inside
-/// a `:line` body is a literal character, not a String delimiter, so it does not
-/// suppress the comment scan (see [`text_start_for_line`]).
+/// Mirrors [`strip_comments_checked`]'s scan step for step (skips strings +
+/// terminated comments) so the reported position is the exact `/*` that ran to
+/// EOF. Like that scan it honours the line-aware `:line` opaque-`Text` rule
+/// (§4.2, §4.4): a `"` inside a `:line` body is a literal character, not a
+/// String delimiter, so it does not suppress the comment scan. The opaque
+/// boundary is recomputed from the *blanked* view after every terminated
+/// comment — not only at newlines — so leading same-line trivia before `:line[`
+/// (which the raw line hides) cannot leave it stale (see
+/// [`line_text_start_blanked`], [`text_start_for_line`]).
 fn find_unterminated_comment(body: &str) -> usize {
-    let b = body.as_bytes();
-    let n = b.len();
-    let mut i = 0;
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.char_indices().peekable();
     let mut in_str = false;
     let mut esc = false;
     let mut text_start = text_start_for_line(body, 0);
-    while i < n {
-        let c = b[i];
+    let mut line_start = 0usize;
+    while let Some((a, c)) = chars.next() {
         if in_str {
+            out.push(c);
             if esc {
                 esc = false;
-            } else if c == b'\\' {
+            } else if c == '\\' {
                 esc = true;
-            } else if c == b'"' {
+            } else if c == '"' {
                 in_str = false;
-            } else if c == b'\n' {
+            } else if c == '\n' {
                 in_str = false;
-                text_start = text_start_for_line(body, i + 1);
+                line_start = a + 1;
+                text_start = text_start_for_line(body, line_start);
             }
-            i += 1;
             continue;
         }
-        if c == b'\n' {
-            text_start = text_start_for_line(body, i + 1);
-            i += 1;
+        if c == '\n' {
+            out.push(c);
+            line_start = a + 1;
+            text_start = text_start_for_line(body, line_start);
             continue;
         }
-        if c == b'"' && i < text_start {
+        if c == '"' && a < text_start {
             in_str = true;
-            i += 1;
+            out.push(c);
             continue;
         }
-        if c == b'/' && i + 1 < n && b[i + 1] == b'*' {
-            let start = i;
-            i += 2;
-            let mut closed = false;
-            while i + 1 < n {
-                if b[i] == b'*' && b[i + 1] == b'/' {
-                    i += 2;
-                    closed = true;
+        if c == '/' && matches!(chars.peek(), Some((_, '*'))) {
+            chars.next(); // consume '*'
+            let mut end = None;
+            while let Some((_, d)) = chars.next() {
+                if d == '*' && matches!(chars.peek(), Some((_, '/'))) {
+                    let (slash, _) = chars.next().expect("peeked '/'");
+                    end = Some(slash + 1); // '/' is one byte
                     break;
                 }
-                i += 1;
             }
-            if !closed {
-                return start;
+            let Some(b) = end else {
+                return a; // the `/*` at `a` ran to EOF
+            };
+            // Blank the whole comment range in place (space per byte, `\n` kept)
+            // so the blanked view keeps `out.len() == b` and can re-derive the
+            // `:line` boundary revealed once leading trivia is removed.
+            let comment = &body.as_bytes()[a..b];
+            for &byte in comment {
+                out.push(if byte == b'\n' { '\n' } else { ' ' });
             }
+            if let Some(nl) = comment.iter().rposition(|&x| x == b'\n') {
+                line_start = a + nl + 1;
+            }
+            text_start = line_text_start_blanked(&out, body, line_start, b);
             continue;
         }
-        i += 1;
+        out.push(c);
     }
     0
 }
@@ -634,6 +652,35 @@ mod tests {
     fn unterminated_comment_is_diagnosed() {
         let (_doc, diags) = parse("---\ncharacter: x\n---\n## Shot 1.\n/* never ends\n");
         assert!(diags.iter().any(|d| d.code == "E-COMMENT-UNTERMINATED"));
+    }
+
+    #[test]
+    fn unterminated_comment_pos_after_leading_same_line_comment() {
+        // FE1 twin (§4.2): a comment may precede `:line[` on the same line. That
+        // leading trivia must not leave the opaque-`Text` boundary stale — else the
+        // `:line` body's literal `"` wrongly opens a String that swallows a later
+        // unterminated `/*`, mislocating the E-COMMENT-UNTERMINATED position.
+        // `/* p */` closes at 6; `:line[x]:` opaque text starts at 17; the `"` at
+        // 18 is literal; the unterminated comment begins at the body `/*` (21).
+        let body = "/* p */ :line[x]: \"a /* boom";
+        assert_eq!(find_unterminated_comment(body), 21);
+    }
+
+    #[test]
+    fn unterminated_comment_span_after_leading_same_line_comment() {
+        // End-to-end: the diagnostic span must land on the actual unterminated
+        // `/*` inside the `:line` body, not collapse to body offset 0.
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n/* p */ :line[x]: \"a /* boom\n";
+        let (_doc, diags) = parse(src);
+        let d = diags
+            .iter()
+            .find(|d| d.code == E_COMMENT_UNTERMINATED)
+            .expect("expected E-COMMENT-UNTERMINATED");
+        assert!(
+            src[d.span.byte_start..].starts_with("/* boom"),
+            "span should point at the unterminated body `/*`, got {:?}",
+            &src[d.span.byte_start..]
+        );
     }
 
     #[test]
