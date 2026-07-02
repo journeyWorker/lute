@@ -394,12 +394,16 @@ pub(crate) fn byte_to_position(byte: usize, idx: &TextIndex) -> Position {
     }
 }
 
-/// Resolve a document [`Uri`] to a filesystem [`PathBuf`]. `Uri` wraps a
-/// `fluent_uri::Uri`; [`Uri::to_file_path`] percent-decodes the path component
-/// and returns `None` for non-`file` (e.g. `untitled:`) schemes or empty paths —
-/// in which case the snapshot resolution falls back to core-only. Ownership is
-/// taken (`Cow` → `PathBuf`) so the path outlives the borrow of `uri`.
+/// Resolve a document [`Uri`] to a filesystem [`PathBuf`]. Only a `file` URI maps
+/// to a real path: [`Uri::to_file_path`] does NOT check the scheme (verified — it
+/// returns `Some` for `untitled:`/`vscode-vfs:` too), so guard it explicitly. A
+/// non-file (virtual/unsaved) document returns `None`, and snapshot resolution
+/// falls back to core-only. Schemes are case-insensitive (RFC 3986 §3.1). Ownership
+/// is taken (`Cow` → `PathBuf`) so the path outlives the borrow of `uri`.
 fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
+    if !uri.scheme().as_str().eq_ignore_ascii_case("file") {
+        return None;
+    }
     uri.to_file_path().map(|p| p.into_owned())
 }
 
@@ -569,5 +573,28 @@ mod tests {
             cdiags.is_empty(),
             "closing must clear diagnostics, got {cdiags:?}"
         );
+    }
+
+    #[test]
+    fn uri_to_path_rejects_non_file_schemes() {
+        use std::str::FromStr;
+        // file: URI -> Some path
+        let f = Uri::from_str("file:///tmp/x/doc.lute").unwrap();
+        assert!(
+            uri_to_path(&f).is_some(),
+            "file: URI must resolve to a path"
+        );
+        // non-file (virtual/unsaved) schemes -> None (core-only fallback)
+        for s in [
+            "untitled:/repo/sub/doc.lute",
+            "vscode-vfs://host/repo/doc.lute",
+            "untitled:Untitled-1",
+        ] {
+            let u = Uri::from_str(s).unwrap();
+            assert!(
+                uri_to_path(&u).is_none(),
+                "non-file URI {s:?} must NOT resolve to a filesystem path"
+            );
+        }
     }
 }
