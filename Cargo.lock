@@ -569,8 +569,6 @@ name = "lute-syntax"
 version = "0.0.0"
 dependencies = [
  "lute-core-span",
- "serde",
- "serde_yaml",
 ]
 
 [[package]]
