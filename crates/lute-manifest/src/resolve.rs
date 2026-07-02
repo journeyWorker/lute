@@ -48,7 +48,7 @@ impl ProfileGraph {
     }
 }
 
-/// plugin §11.1 resolution order + §11.2 merge: last-layer-wins scalar/value override (Literal has no map variant → no deep-merge).
+/// plugin §11.1 resolution order + §11.2 merge: last-layer-wins for scalars/lists; map option values deep-merge across layers.
 pub fn resolve_activation(
     graph: &ProfileGraph,
     selected: &str,
@@ -67,8 +67,15 @@ pub fn resolve_activation(
             }
             let entry = merged.entry(id.clone()).or_default();
             for (k, v) in opts {
-                entry.insert(k.clone(), v.clone());
-            } // scalar override
+                match (entry.get_mut(k), v) {
+                    // map deep-merge (plugin §11.2)
+                    (Some(Literal::Map(dst)), Literal::Map(src)) => merge_map(dst, src),
+                    // scalar/list replace, or type change
+                    _ => {
+                        entry.insert(k.clone(), v.clone());
+                    }
+                }
+            }
         }
     };
 
@@ -98,6 +105,19 @@ pub fn resolve_activation(
             id,
         })
         .collect())
+}
+
+/// Recursive map deep-merge (plugin §11.2): src entries override dst; nested maps
+/// recurse; scalars/lists replace.
+fn merge_map(dst: &mut BTreeMap<String, Literal>, src: &BTreeMap<String, Literal>) {
+    for (k, v) in src {
+        match (dst.get_mut(k), v) {
+            (Some(Literal::Map(d)), Literal::Map(s)) => merge_map(d, s),
+            _ => {
+                dst.insert(k.clone(), v.clone());
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -207,5 +227,54 @@ mod tests {
             resolve_activation(&g, "date", &std::collections::BTreeMap::new()),
             Err(ResolveError::UnknownProfile(_))
         ));
+    }
+
+    #[test]
+    fn map_option_values_deep_merge_across_layers() {
+        use crate::types::Literal;
+        use std::collections::BTreeMap;
+        // parent sets cast.bianca={costume:a}; child adds cast.ren={costume:b}.
+        let mut parent_opt = BTreeMap::new();
+        let mut cast_p = BTreeMap::new();
+        cast_p.insert("bianca".to_string(), Literal::Str("a".into()));
+        parent_opt.insert("cast".to_string(), Literal::Map(cast_p));
+        let mut child_opt = BTreeMap::new();
+        let mut cast_c = BTreeMap::new();
+        cast_c.insert("ren".to_string(), Literal::Str("b".into()));
+        child_opt.insert("cast".to_string(), Literal::Map(cast_c));
+
+        let mut parent = BTreeMap::new();
+        parent.insert("p.plug".to_string(), parent_opt);
+        let mut child = BTreeMap::new();
+        child.insert("p.plug".to_string(), child_opt);
+
+        let graph = ProfileGraph {
+            profiles: BTreeMap::from([
+                (
+                    "parent".to_string(),
+                    Profile {
+                        extends: None,
+                        plugins: parent,
+                    },
+                ),
+                (
+                    "child".to_string(),
+                    Profile {
+                        extends: Some("parent".into()),
+                        plugins: child,
+                    },
+                ),
+            ]),
+            default_profile: "child".to_string(),
+        };
+        let active = resolve_activation(&graph, "child", &BTreeMap::new()).unwrap();
+        let plug = active.iter().find(|a| a.id == "p.plug").unwrap();
+        match plug.options.get("cast").unwrap() {
+            Literal::Map(m) => {
+                assert!(m.contains_key("bianca"), "parent entry retained");
+                assert!(m.contains_key("ren"), "child entry merged in");
+            }
+            other => panic!("expected merged Map, got {other:?}"),
+        }
     }
 }
