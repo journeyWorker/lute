@@ -285,7 +285,13 @@ impl LanguageServer for Backend {
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.docs.remove(&params.text_document.uri);
+        let uri = params.text_document.uri;
+        self.docs.remove(&uri);
+        // LSP diagnostics are server-owned and persist in the client until the
+        // server replaces them. The buffer is gone, so publish an empty set to
+        // clear any squiggles the last analyze() left behind (no version stamp:
+        // the document has no live version once closed).
+        self.client.publish_diagnostics(uri, Vec::new(), None).await;
     }
 }
 
@@ -432,6 +438,74 @@ mod tests {
                 line: 0,
                 character: 4
             }
+        );
+    }
+
+    /// S1: closing a document MUST publish an EMPTY diagnostics set for its URI.
+    /// LSP diagnostics are server-owned and persist in the client until replaced,
+    /// so without this the last analyze()'s squiggles linger after the buffer is
+    /// gone. Drives a real `LspService<Backend>`: initialize -> didOpen (expect a
+    /// non-empty publish) -> didClose (expect an empty publish for the same URI).
+    #[tokio::test(flavor = "current_thread")]
+    async fn did_close_publishes_empty_diagnostics() {
+        use futures::StreamExt;
+        use tower::{Service, ServiceExt};
+        use tower_lsp_server::jsonrpc::Request as RpcRequest;
+        use tower_lsp_server::LspService;
+
+        let (mut service, mut socket) = LspService::new(Backend::new);
+        let uri_str = "file:///t.lute";
+        // A body line that matches no §4.3 rule → a guaranteed parse diagnostic.
+        let text = "## Shot 1.\ngarbage prose line\n";
+
+        let init = RpcRequest::build("initialize")
+            .params(serde_json::json!({ "capabilities": {} }))
+            .id(1)
+            .finish();
+        service.ready().await.unwrap().call(init).await.unwrap();
+
+        let open = RpcRequest::build("textDocument/didOpen")
+            .params(serde_json::json!({
+                "textDocument": {
+                    "uri": uri_str, "languageId": "lute", "version": 1, "text": text
+                }
+            }))
+            .finish();
+        service.ready().await.unwrap().call(open).await.unwrap();
+        let opened = socket.next().await.expect("didOpen should publish");
+        assert_eq!(opened.method(), "textDocument/publishDiagnostics");
+        let odiags = opened
+            .params()
+            .and_then(|p| p.get("diagnostics"))
+            .and_then(|d| d.as_array())
+            .expect("publish carries a diagnostics array");
+        assert!(
+            !odiags.is_empty(),
+            "an errored open doc should publish squiggles"
+        );
+
+        let close = RpcRequest::build("textDocument/didClose")
+            .params(serde_json::json!({ "textDocument": { "uri": uri_str } }))
+            .finish();
+        service.ready().await.unwrap().call(close).await.unwrap();
+        let closed = tokio::time::timeout(std::time::Duration::from_secs(2), socket.next())
+            .await
+            .expect("did_close must publish (empty) diagnostics; none arrived")
+            .expect("socket closed without a close-publish");
+        assert_eq!(closed.method(), "textDocument/publishDiagnostics");
+        let cparams = closed.params().expect("close publish carries params");
+        assert_eq!(
+            cparams.get("uri").and_then(|u| u.as_str()),
+            Some(uri_str),
+            "close publish targets the closed URI"
+        );
+        let cdiags = cparams
+            .get("diagnostics")
+            .and_then(|d| d.as_array())
+            .expect("close publish carries a diagnostics array");
+        assert!(
+            cdiags.is_empty(),
+            "closing must clear diagnostics, got {cdiags:?}"
         );
     }
 }

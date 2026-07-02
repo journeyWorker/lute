@@ -285,6 +285,11 @@ fn ref_at(slot: &CelSlot, off: usize) -> Option<lute_cel::RefUse> {
 /// The maximal dotted path token (`[A-Za-z0-9_.-]+`) surrounding `off` within
 /// `slot`, plus its document-relative span. Used for state-path / choice-path
 /// resolution when the cursor is not on an `@ref`.
+///
+/// A cursor inside a CEL string literal (§4.4) resolves to no path — the dotted
+/// text there is literal content, not a state path. This reuses the shared
+/// [`lute_cel::cel_string_mask`] (the same quote-tracking `scan_refs` uses for
+/// @ref/$), so DSL-token and state-path scanning agree on string boundaries.
 fn path_at(slot: &CelSlot, off: usize) -> Option<(String, Span)> {
     let base = slot.span.byte_start;
     if off < base {
@@ -295,12 +300,18 @@ fn path_at(slot: &CelSlot, off: usize) -> Option<(String, Span)> {
     if local > b.len() {
         return None;
     }
+    let mask = lute_cel::cel_string_mask(&slot.raw);
+    // A path token contains no quotes, so it never straddles a string boundary:
+    // if the cursor byte is string content, there is no path here.
+    if local < b.len() && mask[local] {
+        return None;
+    }
     let mut start = local;
-    while start > 0 && is_path_byte(b[start - 1]) {
+    while start > 0 && is_path_byte(b[start - 1]) && !mask[start - 1] {
         start -= 1;
     }
     let mut end = local;
-    while end < b.len() && is_path_byte(b[end]) {
+    while end < b.len() && is_path_byte(b[end]) && !mask[end] {
         end += 1;
     }
     if start == end {
@@ -586,14 +597,19 @@ fn collect_set_paths(nodes: &[Node], path: &str, out: &mut Vec<Span>) {
 }
 
 /// Maximal dotted path tokens (start-relative byte spans) in a raw CEL fragment.
+///
+/// A dotted token inside a CEL string literal (§4.4) is literal content, not a
+/// state path, so it is skipped via the shared [`lute_cel::cel_string_mask`] (the
+/// same quote-tracking `scan_refs`/`slot_tokens` use for @ref/$).
 pub(crate) fn path_tokens(raw: &str) -> Vec<(String, (usize, usize))> {
     let b = raw.as_bytes();
+    let mask = lute_cel::cel_string_mask(raw);
     let mut out = Vec::new();
     let mut i = 0;
     while i < b.len() {
-        if b[i].is_ascii_alphabetic() || b[i] == b'_' {
+        if (b[i].is_ascii_alphabetic() || b[i] == b'_') && !mask[i] {
             let start = i;
-            while i < b.len() && is_path_byte(b[i]) {
+            while i < b.len() && is_path_byte(b[i]) && !mask[i] {
                 i += 1;
             }
             out.push((raw[start..i].to_string(), (start, i)));
@@ -676,5 +692,47 @@ pub(crate) fn byte_span(start: usize, end: usize) -> Span {
         line: 0,
         column: 0,
         utf16_range: (0, 0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lute_syntax::parse;
+
+    /// S3 (dsl §4.4): a dotted path INSIDE a CEL string literal is literal text,
+    /// not a state-path use. `path_tokens` must skip it (reusing the same
+    /// quote-tracking `lute_cel::cel_string_mask` FE3 uses for @ref/$ scanning).
+    #[test]
+    fn path_tokens_skips_dotted_text_inside_cel_string() {
+        // A real state path outside the string + a look-alike inside a literal.
+        let toks = path_tokens("scene.affect.bianca == 'scene.affect.bianca'");
+        let count = toks
+            .iter()
+            .filter(|(t, _)| t == "scene.affect.bianca")
+            .count();
+        assert_eq!(
+            count, 1,
+            "only the path outside the CEL string is a token, got {toks:?}"
+        );
+    }
+
+    /// End-to-end: `references_at` on a match subject path must NOT count a
+    /// same-spelled dotted string literal in a sibling arm test as a use.
+    #[test]
+    fn references_ignore_path_inside_cel_string_literal() {
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca = 1}\n<match on=\"scene.affect.bianca\">\n<when test=\"'scene.affect.bianca' == 'x'\">\n:line[f]: a.\n</when>\n<otherwise>\n:line[f]: b.\n</otherwise>\n</match>\n";
+        let (doc, _) = parse(text);
+        // Cursor on the `::set` target path.
+        let off = text.find("scene.affect.bianca = 1").unwrap();
+        let uses = nav::references_at(&doc, &lute_manifest::core::load_core_snapshot(), off);
+        // Expected real uses: the ::set target + the `<match on=...>` subject. The
+        // dotted text inside the `<when test="'scene.affect.bianca' == 'x'">`
+        // string literal must NOT be counted.
+        assert_eq!(
+            uses.len(),
+            2,
+            "only the ::set target + match subject are uses (string literal excluded), got {uses:?}"
+        );
     }
 }

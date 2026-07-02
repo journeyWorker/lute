@@ -163,6 +163,13 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
                     TokType::Logic,
                 );
                 for c in &b.choices {
+                    // `<choice` open keyword (the arm opener; §7.3 logic layer).
+                    push(
+                        out,
+                        c.span.byte_start,
+                        c.span.byte_start + "<choice".len(),
+                        TokType::Logic,
+                    );
                     walk_nodes(&c.body, out);
                 }
             }
@@ -175,7 +182,24 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
                 );
                 for arm in &m.arms {
                     match arm {
-                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                        Arm::When { body, span, .. } => {
+                            // `<when` open keyword.
+                            push(
+                                out,
+                                span.byte_start,
+                                span.byte_start + "<when".len(),
+                                TokType::Logic,
+                            );
+                            walk_nodes(body, out);
+                        }
+                        Arm::Otherwise { body, span } => {
+                            // `<otherwise` open keyword.
+                            push(
+                                out,
+                                span.byte_start,
+                                span.byte_start + "<otherwise".len(),
+                                TokType::Logic,
+                            );
                             walk_nodes(body, out);
                         }
                     }
@@ -408,6 +432,25 @@ mod tests {
             "scene.choices.number is a state path"
         );
         assert_eq!(path_tok.2, "scene.choices.number".len() as u32);
+    }
+
+    /// S2: the logic layer must tokenize the `<choice>`/`<when>`/`<otherwise>`
+    /// opening keywords, not only the enclosing `<branch>`/`<match>`. Otherwise
+    /// the arm openers go untokenized and the logic layer is under-highlighted.
+    #[test]
+    fn choice_and_arm_openers_are_logic_tokens() {
+        let text = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\">\n:line[f]: a.\n</choice>\n</branch>\n<match on=\"scene.x\">\n<when test=\"$ == 1\">\n:line[f]: b.\n</when>\n<otherwise>\n:line[f]: c.\n</otherwise>\n</match>\n";
+        let idx = TextIndex::new(text);
+        let decoded = decode(&tokens(text));
+        for (kw, len) in [("<choice", 7u32), ("<when", 5), ("<otherwise", 10)] {
+            let p = idx.position(text.find(kw).unwrap());
+            let tok = decoded
+                .iter()
+                .find(|&&(l, c, _, _)| l == p.line - 1 && c == p.utf16_col)
+                .unwrap_or_else(|| panic!("no token on `{kw}` opener"));
+            assert_eq!(tok.3, ty("logic"), "`{kw}` opener must be a logic token");
+            assert_eq!(tok.2, len, "`{kw}` token covers the keyword");
+        }
     }
 
     /// The legend is the closed six-type set, indices matching [`TokType::index`].
