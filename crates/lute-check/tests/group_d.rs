@@ -114,3 +114,40 @@ fn c1b_scene_bool_written_subject_is_clean() {
         "written scene subject must not need an unset arm; got {c:?}"
     );
 }
+
+#[test]
+fn c2_exhaustive_match_without_otherwise_folds_assignment() {
+    // Domain-exhaustive bool match (default false so not maybe-unset), both arms
+    // assign scene.x; the read AFTER the match must be proven (no E-MAYBE-UNSET).
+    let t = format!(
+        "{HDR}state:\n  scene.g: {{ type: bool, default: false }}\n  scene.x: {{ type: number }}\n---\n## Shot 1.\n\
+         <match on=\"scene.g\">\n\
+         <when test=\"$ == true\">\n::set{{scene.x = 1}}\n</when>\n\
+         <when test=\"$ == false\">\n::set{{scene.x = 2}}\n</when>\n\
+         </match>\n\
+         ::set{{scene.x += 5}}\n"
+    );
+    assert!(
+        !codes(&t).contains(&"E-MAYBE-UNSET".to_string()),
+        "exhaustive-without-otherwise both-arms-assign must fold (C2); got {:?}",
+        codes(&t)
+    );
+}
+
+#[test]
+fn c2b_nonexhaustive_match_does_not_fold_assignment() {
+    // REGRESSION GUARD: a NON-exhaustive match (one arm only, no otherwise) must
+    // NOT fold — the read after is genuinely maybe-unset.
+    let t = format!(
+        "{HDR}state:\n  scene.g: {{ type: bool, default: false }}\n  scene.x: {{ type: number }}\n---\n## Shot 1.\n\
+         <match on=\"scene.g\">\n\
+         <when test=\"$ == true\">\n::set{{scene.x = 1}}\n</when>\n\
+         </match>\n\
+         ::set{{scene.x += 5}}\n"
+    );
+    assert!(
+        codes(&t).contains(&"E-MAYBE-UNSET".to_string()),
+        "non-exhaustive match must NOT fold the assignment; got {:?}",
+        codes(&t)
+    );
+}
