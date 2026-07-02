@@ -50,7 +50,7 @@ use crate::ctx::Ctx;
 
 /// One resolved clip: its absolute start, the subject it drives, a short
 /// human-readable summary, and its duration (seconds, best-effort).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct ResolvedRow {
     pub at: f64,
     pub subject: String,
@@ -60,7 +60,7 @@ pub struct ResolvedRow {
 
 /// The flattened timeline: one [`ResolvedRow`] per clip in document order plus
 /// the final barrier time.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct ResolvedTimeline {
     pub rows: Vec<ResolvedRow>,
     pub barrier_at: f64,
