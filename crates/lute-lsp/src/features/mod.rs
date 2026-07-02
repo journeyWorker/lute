@@ -356,8 +356,8 @@ pub(crate) fn literal_label(lit: &Literal) -> String {
 
 /// The enum domain of a directive attribute, following an inline `enum` type or an
 /// `enumFromOption` indirection through `snapshot.enums`. `None` for non-enum attrs.
-pub(crate) fn attr_enum_values<'a>(
-    snapshot: &'a CapabilitySnapshot,
+pub(crate) fn attr_enum_values(
+    snapshot: &CapabilitySnapshot,
     directive: &str,
     key: &str,
 ) -> Option<Vec<String>> {
