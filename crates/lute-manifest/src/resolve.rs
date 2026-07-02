@@ -1,12 +1,19 @@
 use crate::types::Literal;
 use std::collections::BTreeMap;
 
-/// One installed plugin's parsed manifest entry (plugin §5). The full loaded
-/// package (directives/shapes/providers/…) is carried by `loader::LoadedPlugin`
-/// (Phase 4); resolution needs only the manifest's id/version/depends here.
+/// One installed plugin's fully loaded package (plugin §4). Carries the parsed
+/// `LoadedPlugin` (manifest + directives/shapes/providers/…) so the assembler
+/// (Phase 5) can read the whole package; resolution reads the manifest's
+/// id/version/depends through `manifest()`.
 #[derive(Clone, Debug)]
 pub struct InstalledPlugin {
-    pub manifest: crate::schema::PluginManifest,
+    pub loaded: crate::loader::LoadedPlugin,
+}
+
+impl InstalledPlugin {
+    pub fn manifest(&self) -> &crate::schema::PluginManifest {
+        &self.loaded.manifest
+    }
 }
 
 /// Every plugin discovered on disk, indexed by id (plugin §4). The resolver
@@ -146,7 +153,7 @@ pub fn resolve_activation(
             // a profile, not a depends) — skip closure for it.
             continue;
         };
-        let mut deps = inst.manifest.depends.clone();
+        let mut deps = inst.manifest().depends.clone();
         deps.sort_by(|a, b| a.id.cmp(&b.id));
         for dep in deps {
             match installed.get(&dep.id) {
@@ -158,12 +165,12 @@ pub fn resolve_activation(
                     })
                 }
                 Some(dep_inst) => {
-                    if !range_satisfies(&dep.range, &dep_inst.manifest.version) {
+                    if !range_satisfies(&dep.range, &dep_inst.manifest().version) {
                         return Err(ResolveError::DependsVersionMismatch {
                             plugin: id.clone(),
                             dep: dep.id.clone(),
                             need: dep.range.clone(),
-                            found: dep_inst.manifest.version.clone(),
+                            found: dep_inst.manifest().version.clone(),
                         });
                     }
                 }
@@ -214,8 +221,12 @@ fn detect_depends_cycle(
     let deps_of = |id: &str| -> Vec<String> {
         match installed.get(id) {
             Some(inst) => {
-                let mut d: Vec<String> =
-                    inst.manifest.depends.iter().map(|x| x.id.clone()).collect();
+                let mut d: Vec<String> = inst
+                    .manifest()
+                    .depends
+                    .iter()
+                    .map(|x| x.id.clone())
+                    .collect();
                 d.sort();
                 d
             }
@@ -312,10 +323,13 @@ mod tests {
         let reg = InstalledPlugins {
             by_id: BTreeMap::from([(
                 "idola.minigame".to_string(),
-                InstalledPlugin { manifest: m },
+                InstalledPlugin { loaded: loaded(m) },
             )]),
         };
-        assert_eq!(reg.get("idola.minigame").unwrap().manifest.version, "0.1.0");
+        assert_eq!(
+            reg.get("idola.minigame").unwrap().manifest().version,
+            "0.1.0"
+        );
         assert!(reg.get("nope").is_none());
     }
 
@@ -522,11 +536,25 @@ mod tests {
         }
     }
 
+    fn loaded(m: crate::schema::PluginManifest) -> crate::loader::LoadedPlugin {
+        crate::loader::LoadedPlugin {
+            manifest: m,
+            directives: vec![],
+            enums: Default::default(),
+            state_shapes: vec![],
+            state_templates: vec![],
+            providers: vec![],
+            bridge: vec![],
+            defs: vec![],
+            frontmatter: Default::default(),
+        }
+    }
+
     fn installed(ms: Vec<crate::schema::PluginManifest>) -> InstalledPlugins {
         InstalledPlugins {
             by_id: ms
                 .into_iter()
-                .map(|m| (m.id.clone(), InstalledPlugin { manifest: m }))
+                .map(|m| (m.id.clone(), InstalledPlugin { loaded: loaded(m) }))
                 .collect(),
         }
     }
