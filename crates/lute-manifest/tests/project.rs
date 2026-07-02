@@ -29,7 +29,9 @@ fn resolves_project_snapshot_with_active_plugin() {
     let root = std::env::temp_dir().join(format!("lute_proj_{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     write_project(&root);
-    let proj = load_project(&root).expect("project loads");
+    let proj = load_project(&root)
+        .expect("valid project loads")
+        .expect("present");
     let (snap, diags) = resolve_document_snapshot(Some(&proj), None, &BTreeMap::new());
     assert!(
         diags.is_empty(),
@@ -49,4 +51,33 @@ fn no_project_is_core_only() {
     assert!(diags.is_empty());
     assert!(snap.directive("bg").is_some());
     assert!(snap.directive("minigame").is_none());
+}
+
+#[test]
+fn missing_project_is_ok_none() {
+    let dir = std::env::temp_dir().join(format!("lute_noproj_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    assert!(
+        matches!(load_project(&dir), Ok(None)),
+        "absent lute.project.yaml -> Ok(None)"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn malformed_project_is_err() {
+    let dir = std::env::temp_dir().join(format!("lute_badproj_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "profiles: [this is not a map\n  : : :",
+    )
+    .unwrap();
+    assert!(
+        load_project(&dir).is_err(),
+        "malformed lute.project.yaml -> Err"
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }
