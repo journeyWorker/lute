@@ -45,8 +45,28 @@ fn date_minigame_core_only_still_errors() {
 
 #[test]
 fn refresh_stamps_resolved_version_under_project() {
-    // Copy the fixture catalog to a temp dir, refresh with --project, assert the
-    // manifestVersion changed away from "pending" and matches the resolved snap.
+    // Copy the fixture catalog to a temp dir, refresh with --project, and assert
+    // the stamped manifestVersion equals the RESOLVED multi-plugin
+    // capabilityVersion (and thus differs from core-only) — proving the
+    // --project path actually resolves the plugin, not just replaces "pending".
+    let proj = lute_manifest::project::load_project(std::path::Path::new(
+        "../../docs/examples/idola-project",
+    ))
+    .unwrap()
+    .unwrap();
+    let resolved_version = lute_manifest::project::resolve_document_snapshot(
+        Some(&proj),
+        None,
+        &std::collections::BTreeMap::new(),
+    )
+    .0
+    .version;
+    let core_version = lute_manifest::core::load_core_snapshot().version;
+    assert_ne!(
+        resolved_version, core_version,
+        "fixture must make the resolved version differ from core-only, else the test can't distinguish"
+    );
+
     let tmp = std::env::temp_dir().join(format!("lute_cat_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
@@ -67,9 +87,14 @@ fn refresh_stamps_resolved_version_under_project() {
         .expect("refresh");
     assert_eq!(out.status.code(), Some(0));
     let after = std::fs::read_to_string(tmp.join("minigame.yaml")).unwrap();
-    assert!(
-        !after.contains("pending"),
-        "manifestVersion must be re-stamped: {after}"
+    let snap: serde_yaml::Value = serde_yaml::from_str(&after).unwrap();
+    let stamped = snap
+        .get("manifestVersion")
+        .and_then(|v| v.as_str())
+        .expect("manifestVersion present");
+    assert_eq!(
+        stamped, resolved_version,
+        "refresh --project must stamp the RESOLVED capabilityVersion, not core-only"
     );
     std::fs::remove_dir_all(&tmp).ok();
 }
