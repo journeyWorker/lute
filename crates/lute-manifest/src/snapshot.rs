@@ -13,9 +13,13 @@ pub struct CapabilitySnapshot {
     pub directives: BTreeMap<String, DirectiveDecl>, // by ::name
     pub providers: BTreeMap<String, ProviderDecl>,
     pub state_shapes: BTreeMap<String, StateShape>,
+    pub state_templates: BTreeMap<String, StateTemplate>,
     pub bridge_capabilities: BTreeMap<(String, String), BridgeCapability>,
     pub defs: BTreeMap<String, DefDecl>,
     pub frontmatter: BTreeMap<String, crate::types::Type>,
+    /// Installed-but-inactive tag → owning plugin id (plugin §11.2 fix-it). Not
+    /// part of the resolved capability surface, so NOT folded into the version.
+    pub inactive: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug)]
@@ -116,6 +120,13 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
         h.update(name.as_bytes());
         h.update(b"=");
         h.update(format!("{s:?}").as_bytes());
+        h.update(b";");
+    }
+    h.update(b"\nstateTemplates\n");
+    for (name, t) in &snap.state_templates {
+        h.update(name.as_bytes());
+        h.update(b"=");
+        h.update(format!("{t:?}").as_bytes());
         h.update(b";");
     }
     h.update(b"\nbridgeCapabilities\n");
@@ -241,5 +252,39 @@ mod tests {
             .build();
         // (directives are wired via load in Task 1.6; here just assert empty lookup is None)
         assert!(snap.directive("nope").is_none());
+    }
+
+    #[test]
+    fn state_templates_change_the_version() {
+        let mut a = CapabilitySnapshot::default();
+        a.version = capability_version(&a);
+        let mut b = CapabilitySnapshot::default();
+        b.state_templates.insert(
+            "slot".into(),
+            crate::schema::StateTemplate {
+                name: "slot".into(),
+                scope: "scene".into(),
+                path: vec![],
+                shape: "s".into(),
+            },
+        );
+        b.version = capability_version(&b);
+        assert_ne!(
+            a.version, b.version,
+            "state_templates must affect capabilityVersion"
+        );
+    }
+
+    #[test]
+    fn inactive_does_not_change_the_version() {
+        let mut a = CapabilitySnapshot::default();
+        let va = capability_version(&a);
+        a.inactive
+            .insert("minigame".into(), "idola.minigame".into());
+        assert_eq!(
+            va,
+            capability_version(&a),
+            "inactive index is metadata, not hashed"
+        );
     }
 }
