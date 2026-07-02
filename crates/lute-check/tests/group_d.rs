@@ -73,3 +73,44 @@ fn c4_conjunctive_guard_still_proves_read() {
         codes(&t)
     );
 }
+
+#[test]
+fn c1_scene_bool_unwritten_subject_is_maybe_unset() {
+    // Non-default scene.bool, never written, match covers {true,false}, NO otherwise.
+    // The unset subject read must NOT be suppressed (dsl §9.4).
+    let t = format!(
+        "{HDR}state:\n  scene.flag: {{ type: bool }}\n---\n## Shot 1.\n\
+         <match on=\"scene.flag\">\n\
+         <when test=\"$ == true\">:line[narrator]: a\n</when>\n\
+         <when test=\"$ == false\">:line[narrator]: b\n</when>\n\
+         </match>\n"
+    );
+    assert!(
+        codes(&t).contains(&"E-MAYBE-UNSET".to_string()),
+        "unwritten non-default scene subject must be E-MAYBE-UNSET (C1); got {:?}",
+        codes(&t)
+    );
+}
+
+#[test]
+fn c1b_scene_bool_written_subject_is_clean() {
+    // REGRESSION GUARD: the same subject, WRITTEN before the match, is clean —
+    // no E-MAYBE-UNSET (proven) and no false-positive E-UNSET-UNCOVERED.
+    let t = format!(
+        "{HDR}state:\n  scene.flag: {{ type: bool }}\n---\n## Shot 1.\n\
+         ::set{{scene.flag = true}}\n\
+         <match on=\"scene.flag\">\n\
+         <when test=\"$ == true\">:line[narrator]: a\n</when>\n\
+         <when test=\"$ == false\">:line[narrator]: b\n</when>\n\
+         </match>\n"
+    );
+    let c = codes(&t);
+    assert!(
+        !c.contains(&"E-MAYBE-UNSET".to_string()),
+        "written subject must be proven; got {c:?}"
+    );
+    assert!(
+        !c.contains(&"E-UNSET-UNCOVERED".to_string()),
+        "written scene subject must not need an unset arm; got {c:?}"
+    );
+}
