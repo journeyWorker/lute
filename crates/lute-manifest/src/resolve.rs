@@ -1,6 +1,28 @@
 use crate::types::Literal;
 use std::collections::BTreeMap;
 
+/// One installed plugin's parsed manifest entry (plugin §5). The full loaded
+/// package (directives/shapes/providers/…) is carried by `loader::LoadedPlugin`
+/// (Phase 4); resolution needs only the manifest's id/version/depends here.
+#[derive(Clone, Debug)]
+pub struct InstalledPlugin {
+    pub manifest: crate::schema::PluginManifest,
+}
+
+/// Every plugin discovered on disk, indexed by id (plugin §4). The resolver
+/// walks this for the dependency closure (§11.1 step 6) and the inactive-plugin
+/// fix-it (§11.2); the assembler merges the *active* subset into the snapshot.
+#[derive(Clone, Debug, Default)]
+pub struct InstalledPlugins {
+    pub by_id: std::collections::BTreeMap<String, InstalledPlugin>,
+}
+
+impl InstalledPlugins {
+    pub fn get(&self, id: &str) -> Option<&InstalledPlugin> {
+        self.by_id.get(id)
+    }
+}
+
 pub type ActivationMap = BTreeMap<String, BTreeMap<String, Literal>>;
 
 #[derive(Clone, Debug)]
@@ -124,6 +146,31 @@ fn merge_map(dst: &mut BTreeMap<String, Literal>, src: &BTreeMap<String, Literal
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn installed_plugins_lookup() {
+        use crate::schema::{Depends, PluginManifest};
+        use std::collections::BTreeMap;
+        let m = PluginManifest {
+            id: "idola.minigame".into(),
+            version: "0.1.0".into(),
+            kind: "capability".into(),
+            depends: vec![Depends {
+                id: "lute.core".into(),
+                range: "^0.0.1".into(),
+            }],
+            exports: BTreeMap::new(),
+            options: vec![],
+        };
+        let reg = InstalledPlugins {
+            by_id: BTreeMap::from([(
+                "idola.minigame".to_string(),
+                InstalledPlugin { manifest: m },
+            )]),
+        };
+        assert_eq!(reg.get("idola.minigame").unwrap().manifest.version, "0.1.0");
+        assert!(reg.get("nope").is_none());
+    }
 
     fn graph() -> ProfileGraph {
         // global -> story -> date -> date-minigame, per plugin §11 example
