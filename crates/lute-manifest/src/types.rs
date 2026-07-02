@@ -46,6 +46,35 @@ pub enum Literal {
     Map(std::collections::BTreeMap<String, Literal>),
 }
 
+impl Literal {
+    /// Convert a YAML value (e.g. a scene `plugins:` option) into a `Literal`.
+    /// Returns `None` for values with no literal representation (null, tagged,
+    /// non-string map keys). Numbers become `Num` (f64); sequences `List`;
+    /// mappings `Map` (string keys only).
+    pub fn from_yaml(v: &serde_yaml::Value) -> Option<Literal> {
+        use serde_yaml::Value;
+        match v {
+            Value::Bool(b) => Some(Literal::Bool(*b)),
+            Value::Number(n) => n.as_f64().map(Literal::Num),
+            Value::String(s) => Some(Literal::Str(s.clone())),
+            Value::Sequence(items) => items
+                .iter()
+                .map(Literal::from_yaml)
+                .collect::<Option<Vec<_>>>()
+                .map(Literal::List),
+            Value::Mapping(m) => {
+                let mut out = std::collections::BTreeMap::new();
+                for (k, val) in m {
+                    let key = k.as_str()?.to_string();
+                    out.insert(key, Literal::from_yaml(val)?);
+                }
+                Some(Literal::Map(out))
+            }
+            Value::Null | Value::Tagged(_) => None,
+        }
+    }
+}
+
 /// plugin §7.4 structured path segment.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -341,5 +370,27 @@ mod tests {
         let mut bad = BTreeMap::new();
         bad.insert("a".to_string(), Literal::Str("x".into())); // value type mismatch
         assert!(!type_accepts(&ty, &Literal::Map(bad)));
+    }
+
+    #[test]
+    fn literal_from_yaml_scalars_list_map() {
+        let y: serde_yaml::Value = serde_yaml::from_str("[rhythm, timing]").unwrap();
+        assert_eq!(
+            Literal::from_yaml(&y),
+            Some(Literal::List(vec![
+                Literal::Str("rhythm".into()),
+                Literal::Str("timing".into())
+            ]))
+        );
+        let y2: serde_yaml::Value = serde_yaml::from_str("scene").unwrap();
+        assert_eq!(Literal::from_yaml(&y2), Some(Literal::Str("scene".into())));
+        let y3: serde_yaml::Value = serde_yaml::from_str("{ a: 1, b: two }").unwrap();
+        match Literal::from_yaml(&y3).unwrap() {
+            Literal::Map(m) => {
+                assert_eq!(m.get("a"), Some(&Literal::Num(1.0)));
+                assert_eq!(m.get("b"), Some(&Literal::Str("two".into())));
+            }
+            other => panic!("expected Map, got {other:?}"),
+        }
     }
 }
