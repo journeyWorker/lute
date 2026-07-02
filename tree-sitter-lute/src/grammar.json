@@ -227,7 +227,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "attr"
+            "name": "_tag_attr"
           }
         },
         {
@@ -258,7 +258,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "attr"
+            "name": "_tag_attr"
           }
         },
         {
@@ -289,7 +289,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "attr"
+            "name": "_tag_attr"
           }
         },
         {
@@ -332,7 +332,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "attr"
+            "name": "_tag_attr"
           }
         },
         {
@@ -363,7 +363,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "attr"
+            "name": "_tag_attr"
           }
         },
         {
@@ -394,7 +394,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "attr"
+            "name": "_tag_attr"
           }
         },
         {
@@ -425,7 +425,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "attr"
+            "name": "_tag_attr"
           }
         },
         {
@@ -465,12 +465,25 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "attr"
+            "name": "_tag_attr"
           }
         },
         {
           "type": "STRING",
           "value": "}"
+        }
+      ]
+    },
+    "_tag_attr": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "attr"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "cel_attr"
         }
       ]
     },
@@ -512,6 +525,130 @@
           ]
         }
       ]
+    },
+    "cel_attr": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "cel_key"
+        },
+        {
+          "type": "STRING",
+          "value": "="
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "cel_string"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "ref"
+            }
+          ]
+        }
+      ]
+    },
+    "cel_key": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "on"
+        },
+        {
+          "type": "STRING",
+          "value": "test"
+        },
+        {
+          "type": "STRING",
+          "value": "when"
+        }
+      ]
+    },
+    "cel_string": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "\""
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "IMMEDIATE_TOKEN",
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "@[A-Za-z][A-Za-z0-9_-]*(\\([^)\\n]*\\))?"
+                  }
+                },
+                "named": true,
+                "value": "ref"
+              },
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "IMMEDIATE_TOKEN",
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+"
+                  }
+                },
+                "named": true,
+                "value": "path"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_cel_squote"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_cel_word"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_cel_sym"
+              }
+            ]
+          }
+        },
+        {
+          "type": "IMMEDIATE_TOKEN",
+          "content": {
+            "type": "STRING",
+            "value": "\""
+          }
+        }
+      ]
+    },
+    "_cel_squote": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": "'([^'\\\\\\n]|\\\\[^\\n])*'"
+      }
+    },
+    "_cel_word": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": "[A-Za-z_][A-Za-z0-9_]*"
+      }
+    },
+    "_cel_sym": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "PATTERN",
+        "value": "([^\"'@A-Za-z\\r\\n\\\\]|\\\\[^\\n])+"
+      }
     },
     "ident": {
       "type": "PATTERN",
@@ -571,7 +708,7 @@
       "type": "TOKEN",
       "content": {
         "type": "PATTERN",
-        "value": "([^\"}\\n]|\"([^\"\\\\\\n]|\\\\[^\\n])*\")+"
+        "value": "([^\"'}\\n]|\"([^\"\\\\\\n]|\\\\[^\\n])*\"|'([^'\\\\\\n]|\\\\[^\\n])*')+"
       }
     },
     "text": {

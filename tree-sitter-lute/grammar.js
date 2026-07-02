@@ -93,7 +93,7 @@ module.exports = grammar({
     branch: ($) =>
       seq(
         "<branch",
-        repeat($.attr),
+        repeat($._tag_attr),
         ">",
         repeat($.choice),
         "</branch>",
@@ -103,7 +103,7 @@ module.exports = grammar({
     choice: ($) =>
       seq(
         "<choice",
-        repeat($.attr),
+        repeat($._tag_attr),
         ">",
         repeat($._node),
         "</choice>",
@@ -113,7 +113,7 @@ module.exports = grammar({
     match: ($) =>
       seq(
         "<match",
-        repeat($.attr),
+        repeat($._tag_attr),
         ">",
         repeat($.when),
         optional($.otherwise),
@@ -122,18 +122,18 @@ module.exports = grammar({
 
     // When ::= "<when" Attrs ">" Node* "</when>" (§7.3).
     when: ($) =>
-      seq("<when", repeat($.attr), ">", repeat($._node), "</when>"),
+      seq("<when", repeat($._tag_attr), ">", repeat($._node), "</when>"),
 
     // Otherwise ::= "<otherwise>" Node* "</otherwise>" (§7.3).
     otherwise: ($) =>
-      seq("<otherwise", repeat($.attr), ">", repeat($._node), "</otherwise>"),
+      seq("<otherwise", repeat($._tag_attr), ">", repeat($._node), "</otherwise>"),
 
     // ---- timeline (nest, restricted body) ---------------------------------
     // Timeline ::= "<timeline" Attrs? ">" Track+ "</timeline>" (§7.4).
     timeline: ($) =>
       seq(
         "<timeline",
-        repeat($.attr),
+        repeat($._tag_attr),
         ">",
         repeat($.track),
         "</timeline>",
@@ -143,7 +143,7 @@ module.exports = grammar({
     track: ($) =>
       seq(
         "<track",
-        repeat($.attr),
+        repeat($._tag_attr),
         ">",
         repeat(choice($.directive, $.set)),
         "</track>",
@@ -151,8 +151,14 @@ module.exports = grammar({
 
     // ---- attributes (§4.5) -------------------------------------------------
     // Attrs ::= "{" ( Attr ( WS Attr )* )? "}"  — the brace-delimited form used
-    // by `:line` and `::` directives. Tag attributes reuse `attr` directly.
-    attrs: ($) => seq("{", repeat($.attr), "}"),
+    // by `:line` and `::` directives. Tag attributes reuse `_tag_attr` directly.
+    attrs: ($) => seq("{", repeat($._tag_attr), "}"),
+
+    // An attribute in any position (brace-form or bare tag attribute). Splitting
+    // the CEL-valued keys (`on`/`test`/`when`, §7.3/§8) into their own node lets
+    // editor queries reach the CEL sub-tokens (@ref, state-path) inside their
+    // value; every other key is a plain String/Ref attribute (§4.5).
+    _tag_attr: ($) => choice($.attr, $.cel_attr),
 
     // Attr ::= Ident "=" String | Ident "=" Ref | Ident  (bare ⇒ true).
     attr: ($) =>
@@ -160,6 +166,63 @@ module.exports = grammar({
         $.key,
         optional(seq("=", choice($.string, $.ref))),
       ),
+
+    // CelAttr ::= CelKey "=" ( CelString | Ref )  — the CEL-valued attributes
+    // `<match on>`, `<when test>`, `<choice when>` (§7.3, §11.1–11.2). The value
+    // is a CEL expression (§8): a double-quoted `CelString` (§4.4) or a bare
+    // `@ref` macro (§8.1). Distinct from `attr` so highlight/tag queries can
+    // capture the CEL innards (@ref, state-path) rather than an opaque string.
+    cel_attr: ($) => seq($.cel_key, "=", choice($.cel_string, $.ref)),
+
+    // CelKey — the reserved attribute keys whose value is CEL (§7.3): `on` is a
+    // `<match>` subject, `test` a `<when>` guard, `when` a `<choice>` guard. A
+    // named node (lexes ahead of the generic `key` on a tie) so editors treat
+    // these keys distinctly and know their value is embedded CEL.
+    cel_key: ($) => choice("on", "test", "when"),
+
+    // CelString (§4.4) — a double-quoted CEL expression used as an attribute
+    // value. Unlike the opaque `string` token, its interior is *structured* so
+    // editor queries can capture the embedded CEL sub-tokens: `@ref` macros
+    // (§8.1) and dotted state-`path`s (§9). CEL's own single-quoted string
+    // literals (`'blunt'`) are opaque runs (§4.4 quote boundaries respected), so
+    // a `@`, letter, or `}` inside `'…'` is content, not a ref/path/terminator.
+    // Every interior piece is `token.immediate`, so the value can neither skip
+    // whitespace/comments (an `extra`) nor span a newline: a missing closing `"`
+    // fails locally instead of swallowing following lines.
+    cel_string: ($) =>
+      seq(
+        '"',
+        repeat(
+          choice(
+            // `@name` / `@name(args)` ref macro (§8.1) — outside CEL strings.
+            alias(token.immediate(/@[A-Za-z][A-Za-z0-9_-]*(\([^)\n]*\))?/), $.ref),
+            // Dotted state path (§9), e.g. `scene.choices.number`.
+            alias(
+              token.immediate(/[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+/),
+              $.path,
+            ),
+            // CEL single-quoted string literal — opaque (with `\` escapes).
+            $._cel_squote,
+            // Bare CEL identifier / keyword (no dot ⇒ not a path), e.g. `in`.
+            $._cel_word,
+            // Everything else: operators, spaces, digits, brackets, escapes.
+            $._cel_sym,
+          ),
+        ),
+        token.immediate('"'),
+      ),
+
+    // A CEL single-quoted string literal, consumed whole so its interior is
+    // content (§4.4). Backslash escapes; no raw newline.
+    _cel_squote: ($) => token.immediate(/'([^'\\\n]|\\[^\n])*'/),
+
+    // A bare CEL identifier/keyword inside a `cel_string` (no `.` ⇒ not a path).
+    _cel_word: ($) => token.immediate(/[A-Za-z_][A-Za-z0-9_]*/),
+
+    // Filler inside a `cel_string`: any run that is not the start of a ref,
+    // path, word, single-quote literal, or the closing `"` — and never a raw
+    // newline (so the value stays single-line). Backslash escapes stay attached.
+    _cel_sym: ($) => token.immediate(/([^"'@A-Za-z\r\n\\]|\\[^\n])+/),
 
     // ---- terminals (§4.4) --------------------------------------------------
     // Ident ::= [A-Za-z][A-Za-z0-9_-]*  (directive/tag name).
@@ -188,8 +251,14 @@ module.exports = grammar({
     assign_op: ($) => choice("=", "+=", "-=", "*="),
 
     // CelExpr — the `::set` right-hand side, opaque to the closing `}` of the
-    // set (honoring nested quotes so a `}` inside a String is content).
-    cel_expr: ($) => token(/([^"}\n]|"([^"\\\n]|\\[^\n])*")+/),
+    // set. Quoted-string boundaries are respected before structural scanning
+    // (§4.4): a `}` inside a double-quoted `CelString` OR inside a CEL
+    // single-quoted literal (`'a}b'`) is content, not the terminator. Both quote
+    // forms carry backslash escapes and MUST NOT span a raw newline.
+    cel_expr: ($) =>
+      token(
+        /([^"'}\n]|"([^"\\\n]|\\[^\n])*"|'([^'\\\n]|\\[^\n])*')+/,
+      ),
 
     // Text ::= rest of line, verbatim, to EOL (§4.4). OPAQUE: `(`,`?`,`<`,`:`,
     // quotes are not special. `token.immediate` keeps `extras` (the newline)

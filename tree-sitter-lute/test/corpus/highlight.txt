@@ -19,7 +19,7 @@ bare @ref attribute values (reference tag targets)
 ::gate{guard=@fond when=@unlocked(scene.x)}
 ---
 (source_file
-  (directive (ident) (attrs (attr (key) (ref)) (attr (key) (ref)))))
+  (directive (ident) (attrs (attr (key) (ref)) (cel_attr (cel_key) (ref)))))
 
 ==================
 logic branch/choice with nested content + set

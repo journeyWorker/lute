@@ -38,6 +38,10 @@
         {
           "type": "attr",
           "named": true
+        },
+        {
+          "type": "cel_attr",
+          "named": true
         }
       ]
     }
@@ -55,7 +59,58 @@
           "named": true
         },
         {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
           "type": "choice",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "cel_attr",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "cel_key",
+          "named": true
+        },
+        {
+          "type": "cel_string",
+          "named": true
+        },
+        {
+          "type": "ref",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "cel_key",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "cel_string",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "path",
+          "named": true
+        },
+        {
+          "type": "ref",
           "named": true
         }
       ]
@@ -75,6 +130,10 @@
         },
         {
           "type": "branch",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
           "named": true
         },
         {
@@ -165,6 +224,10 @@
           "named": true
         },
         {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
           "type": "otherwise",
           "named": true
         },
@@ -189,6 +252,10 @@
         },
         {
           "type": "branch",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
           "named": true
         },
         {
@@ -342,6 +409,10 @@
           "named": true
         },
         {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
           "type": "track",
           "named": true
         }
@@ -376,6 +447,10 @@
           "named": true
         },
         {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
           "type": "directive",
           "named": true
         },
@@ -403,6 +478,10 @@
           "named": true
         },
         {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
           "type": "directive",
           "named": true
         },
@@ -424,6 +503,10 @@
         }
       ]
     }
+  },
+  {
+    "type": "\"",
+    "named": false
   },
   {
     "type": "#",
@@ -543,6 +626,10 @@
     "named": true
   },
   {
+    "type": "on",
+    "named": false
+  },
+  {
     "type": "path",
     "named": true
   },
@@ -555,8 +642,16 @@
     "named": true
   },
   {
+    "type": "test",
+    "named": false
+  },
+  {
     "type": "text",
     "named": true
+  },
+  {
+    "type": "when",
+    "named": false
   },
   {
     "type": "{",
