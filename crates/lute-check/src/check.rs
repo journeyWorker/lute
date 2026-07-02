@@ -510,7 +510,14 @@ fn expand_directive_slots(
         let Some(ns) = crate::meta::namespace_of(&base) else {
             continue;
         };
-        insert_shape_fields(schema, &base, ns, shape, snapshot);
+        insert_shape_fields(
+            schema,
+            &base,
+            ns,
+            shape,
+            snapshot,
+            &mut std::collections::BTreeSet::new(),
+        );
     }
 }
 
@@ -544,19 +551,28 @@ fn attr_str(dir: &Directive, key: &str) -> Option<String> {
 }
 
 /// Insert one `StateDecl` per shape field at `<base>.<field>`; a field that
-/// itself references a nested shape recurses into that shape.
+/// itself references a nested shape recurses into that shape. `visiting` tracks
+/// the shapes on the current expansion path (by name) with stack semantics: a
+/// shape already on the path is a cycle and is skipped, guaranteeing
+/// termination on self- or mutually-referential shapes. Removing the name after
+/// the field loop keeps legitimate diamonds (a shape reached via two disjoint
+/// paths) from being flagged as false cycles.
 fn insert_shape_fields(
     schema: &mut crate::meta::StateSchema,
     base: &str,
     ns: crate::meta::Namespace,
     shape: &StateShape,
     snapshot: &CapabilitySnapshot,
+    visiting: &mut std::collections::BTreeSet<String>,
 ) {
+    if !visiting.insert(shape.name.clone()) {
+        return;
+    }
     for f in &shape.fields {
         let path = format!("{base}.{}", f.name);
         if let Some(nested_name) = &f.shape {
             if let Some(nested) = snapshot.state_shapes.get(nested_name) {
-                insert_shape_fields(schema, &path, ns, nested, snapshot);
+                insert_shape_fields(schema, &path, ns, nested, snapshot, visiting);
                 continue;
             }
         }
@@ -569,6 +585,7 @@ fn insert_shape_fields(
             },
         );
     }
+    visiting.remove(&shape.name);
 }
 
 /// Fold the injection reducer over a node slice, threading `StageState` and

@@ -151,3 +151,80 @@ fn without_directive_the_path_is_undeclared() {
         "core-only must flag undeclared path; got {codes:?}"
     );
 }
+
+#[test]
+fn cyclic_state_shapes_do_not_overflow() {
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    // shape A { child: shape B }, shape B { parent: shape A } -> cycle
+    snap.state_shapes.insert(
+        "A".into(),
+        StateShape {
+            name: "A".into(),
+            fields: vec![Field {
+                name: "child".into(),
+                ty: Type::Bool,
+                default: None,
+                required: false,
+                shape: Some("B".into()),
+            }],
+        },
+    );
+    snap.state_shapes.insert(
+        "B".into(),
+        StateShape {
+            name: "B".into(),
+            fields: vec![Field {
+                name: "parent".into(),
+                ty: Type::Bool,
+                default: None,
+                required: false,
+                shape: Some("A".into()),
+            }],
+        },
+    );
+    snap.directives.insert(
+        "cyc".into(),
+        DirectiveDecl {
+            name: "cyc".into(),
+            layer: None,
+            attrs: vec![AttrDecl {
+                name: "k".into(),
+                required: true,
+                ty: Type::Str,
+                default: None,
+            }],
+            semantics: vec![],
+            state: Some(DirectiveState {
+                declares: vec![SlotDecl {
+                    scope: "scene".into(),
+                    path: vec![
+                        PathSegment::Literal("cyc".into()),
+                        PathSegment::FromAttr {
+                            from_attr: FromAttr {
+                                name: "k".into(),
+                                slot_type: None,
+                            },
+                        },
+                    ],
+                    shape: "A".into(),
+                }],
+            }),
+            effects: None,
+            bridge: None,
+            lower: Lowering::Builtin {
+                kind: "builtin".into(),
+                name: "n".into(),
+            },
+        },
+    );
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::cyc{k=\"slot\"}\n";
+    let input = CheckInput {
+        text: text.into(),
+        uri: "cyc".into(),
+        snapshot: snap,
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+    };
+    // Must return without stack-overflow (no-panic contract).
+    let _ = check(&input);
+}
