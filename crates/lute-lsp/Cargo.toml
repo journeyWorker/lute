@@ -1,0 +1,21 @@
+[package]
+name = "lute-lsp"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "lute_lsp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lute-lsp"
+path = "src/main.rs"
+
+[dependencies]
+lute-core-span = { path = "../lute-core-span" }
+lute-check = { path = "../lute-check" }
+lute-manifest = { path = "../lute-manifest" }
+tower-lsp-server = "0.23.0"
+tokio = { version = "1.52.3", features = ["full"] }
+dashmap = "6.2.1"
