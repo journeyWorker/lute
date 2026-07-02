@@ -45,6 +45,10 @@ pub enum LoadError {
         path: String,
         msg: String,
     },
+    /// An export key outside the closed set (plugin §4).
+    UnknownExport {
+        export: String,
+    },
 }
 
 /// Read one plugin package. `dir` MUST contain `plugin.yaml`.
@@ -118,7 +122,9 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
             }),
             "docs" => { /* non-normative (plugin §6.7); skip */ }
             "assetkinds" => { /* plugin §6.9 deferred to a later plan; ignore for now */ }
-            _ => { /* unknown export key: ignore (closed set enforced by validate) */ }
+            other => errs.push(LoadError::UnknownExport {
+                export: other.to_string(),
+            }),
         }
     }
 

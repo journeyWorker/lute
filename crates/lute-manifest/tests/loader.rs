@@ -99,3 +99,23 @@ fn missing_plugins_dir_is_empty() {
     assert!(reg.by_id.is_empty());
     assert!(errs.is_empty());
 }
+
+#[test]
+fn rejects_unknown_export_key() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_badexport_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(tmp.join("directivez")).unwrap();
+    fs::write(
+        tmp.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  directivez: directivez/\n",
+    )
+    .unwrap();
+    fs::write(tmp.join("directivez/a.yaml"), "directives: []\n").unwrap();
+    let errs = load_plugin_dir(&tmp).unwrap_err();
+    assert!(
+        errs.iter()
+            .any(|e| matches!(e, LoadError::UnknownExport { .. })),
+        "unknown export key must be a LoadError, got {errs:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
