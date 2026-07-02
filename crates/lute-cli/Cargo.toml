@@ -12,6 +12,7 @@ path = "src/main.rs"
 lute-core-span = { path = "../lute-core-span" }
 lute-manifest = { path = "../lute-manifest" }
 lute-check = { path = "../lute-check" }
+lute-syntax = { path = "../lute-syntax" }
 clap = { version = "4", features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
