@@ -72,11 +72,22 @@ fn plugin_options(value: &serde_yaml::Value) -> BTreeMap<String, Literal> {
     }
 }
 
-/// Read `<project_dir>/lute.project.yaml` into a [`ProjectConfig`], or `None`
-/// when the file is absent or unparseable (the document then resolves core-only).
-pub fn load_project(project_dir: &Path) -> Option<ProjectConfig> {
-    let text = std::fs::read_to_string(project_dir.join("lute.project.yaml")).ok()?;
-    let raw: RawProject = serde_yaml::from_str(&text).ok()?;
+/// Read `<project_dir>/lute.project.yaml` into a [`ProjectConfig`].
+///
+/// Distinguishes an absent config from a broken one (plugin §11): a missing
+/// file → `Ok(None)` (the document legitimately resolves core-only); a read
+/// error other than not-found or a YAML parse/deserialize error → `Err(msg)`
+/// so the caller can surface it instead of silently mis-validating; a valid
+/// file → `Ok(Some(cfg))`.
+pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String> {
+    let path = project_dir.join("lute.project.yaml");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("cannot read {}: {e}", path.display())),
+    };
+    let raw: RawProject =
+        serde_yaml::from_str(&text).map_err(|e| format!("invalid {}: {e}", path.display()))?;
 
     let mut profiles = BTreeMap::new();
     for (name, rp) in raw.profiles {
@@ -100,7 +111,7 @@ pub fn load_project(project_dir: &Path) -> Option<ProjectConfig> {
     };
     let plugins_dir = project_dir.join(raw.plugins_dir.as_deref().unwrap_or("plugins/"));
 
-    Some(ProjectConfig { graph, plugins_dir })
+    Ok(Some(ProjectConfig { graph, plugins_dir }))
 }
 
 /// The ONE resolution both CLI and LSP call (plugin §11). Given a project (or
