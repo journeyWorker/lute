@@ -16,8 +16,8 @@ pub enum Type {
     List(Box<Type>),
     Record(Vec<Field>),
     Map { key: Box<Type>, value: Box<Type> },
-    EnumFromOption(String),   // attribute types only
-    ProviderRef(String),      // any typed position
+    EnumFromOption(String),       // attribute types only
+    ProviderRef(String),          // any typed position
     SlotId { namespace: String }, // attribute types only
 }
 
@@ -49,7 +49,10 @@ pub enum Literal {
 #[serde(untagged)]
 pub enum PathSegment {
     Literal(String),
-    FromAttr { #[serde(rename = "fromAttr")] from_attr: FromAttr },
+    FromAttr {
+        #[serde(rename = "fromAttr")]
+        from_attr: FromAttr,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -88,10 +91,15 @@ enum TypeDef {
     Enum(Vec<String>),
     List(Box<TypeDef>),
     Record(Vec<FieldDef>),
-    Map { key: Box<TypeDef>, value: Box<TypeDef> },
+    Map {
+        key: Box<TypeDef>,
+        value: Box<TypeDef>,
+    },
     EnumFromOption(String),
     ProviderRef(String),
-    SlotId { namespace: String },
+    SlotId {
+        namespace: String,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -142,7 +150,9 @@ impl From<&Type> for TypeDef {
             },
             Type::EnumFromOption(s) => TypeDef::EnumFromOption(s.clone()),
             Type::ProviderRef(s) => TypeDef::ProviderRef(s.clone()),
-            Type::SlotId { namespace } => TypeDef::SlotId { namespace: namespace.clone() },
+            Type::SlotId { namespace } => TypeDef::SlotId {
+                namespace: namespace.clone(),
+            },
         }
     }
 }
@@ -198,8 +208,14 @@ mod tests {
     #[test]
     fn list_type_accepts_homogeneous_only() {
         let t = Type::List(Box::new(Type::Number));
-        assert!(type_accepts(&t, &Literal::List(vec![Literal::Num(1.0), Literal::Num(2.0)])));
-        assert!(!type_accepts(&t, &Literal::List(vec![Literal::Num(1.0), Literal::Bool(true)])));
+        assert!(type_accepts(
+            &t,
+            &Literal::List(vec![Literal::Num(1.0), Literal::Num(2.0)])
+        ));
+        assert!(!type_accepts(
+            &t,
+            &Literal::List(vec![Literal::Num(1.0), Literal::Bool(true)])
+        ));
     }
 
     #[test]
@@ -237,10 +253,11 @@ mod tests {
             "record:\n  - name: hp\n    type: number",
         ];
         for src in cases {
-            let t: Type = serde_yaml::from_str(src).unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
+            let t: Type =
+                serde_yaml::from_str(src).unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
             let out = serde_yaml::to_string(&t).unwrap();
-            let t2: Type =
-                serde_yaml::from_str(&out).unwrap_or_else(|e| panic!("reparse {src:?} -> {out:?}: {e}"));
+            let t2: Type = serde_yaml::from_str(&out)
+                .unwrap_or_else(|e| panic!("reparse {src:?} -> {out:?}: {e}"));
             assert_eq!(t, t2, "roundtrip mismatch for {src:?}");
         }
     }

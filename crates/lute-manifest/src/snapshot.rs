@@ -7,7 +7,7 @@ use crate::types::Literal;
 
 #[derive(Clone, Debug, Default)]
 pub struct CapabilitySnapshot {
-    pub version: String, // capabilityVersion
+    pub version: String,                           // capabilityVersion
     pub plugins: BTreeMap<String, ResolvedPlugin>, // id -> {version, options}
     pub enums: BTreeMap<String, Vec<String>>,
     pub directives: BTreeMap<String, DirectiveDecl>, // by ::name
@@ -45,14 +45,20 @@ impl SnapshotBuilder {
             id.into(),
             ResolvedPlugin {
                 version: version.into(),
-                options: opts.iter().map(|(k, v)| (k.to_string(), v.clone())).collect(),
+                options: opts
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.clone()))
+                    .collect(),
             },
         );
         self
     }
 
     pub fn build(self) -> CapabilitySnapshot {
-        let mut snap = CapabilitySnapshot { plugins: self.plugins, ..Default::default() };
+        let mut snap = CapabilitySnapshot {
+            plugins: self.plugins,
+            ..Default::default()
+        };
         snap.version = capability_version(&snap);
         snap
     }
@@ -157,8 +163,12 @@ mod tests {
 
     #[test]
     fn version_changes_when_plugin_version_changes() {
-        let a = CapabilitySnapshot::builder().plugin("lute.core", "0.0.1", &[]).build();
-        let b = CapabilitySnapshot::builder().plugin("lute.core", "0.0.2", &[]).build();
+        let a = CapabilitySnapshot::builder()
+            .plugin("lute.core", "0.0.1", &[])
+            .build();
+        let b = CapabilitySnapshot::builder()
+            .plugin("lute.core", "0.0.2", &[])
+            .build();
         assert_ne!(a.version, b.version);
     }
 
@@ -178,12 +188,16 @@ mod tests {
         // Identical plugins; differ in exactly one enum entry. Under the old
         // plugins-only hash both would collide (a §13 drift bug); the extended
         // digest must distinguish them.
-        let base = CapabilitySnapshot::builder().plugin("lute.core", "0.0.1", &[]).build();
+        let base = CapabilitySnapshot::builder()
+            .plugin("lute.core", "0.0.1", &[])
+            .build();
         let mut a = base.clone();
-        a.enums.insert("mood".into(), vec!["peaceful".into(), "tense".into()]);
+        a.enums
+            .insert("mood".into(), vec!["peaceful".into(), "tense".into()]);
         a.version = capability_version(&a);
         let mut b = base.clone();
-        b.enums.insert("mood".into(), vec!["peaceful".into(), "upbeat".into()]);
+        b.enums
+            .insert("mood".into(), vec!["peaceful".into(), "upbeat".into()]);
         b.version = capability_version(&b);
         assert_eq!(a.plugins.len(), b.plugins.len());
         assert_ne!(a.version, b.version);
@@ -193,7 +207,9 @@ mod tests {
     fn version_changes_when_a_directive_changes() {
         // A single differing directive must change the version (§13 drift).
         let mk = |dir_name: &str| {
-            let mut snap = CapabilitySnapshot::builder().plugin("lute.core", "0.0.1", &[]).build();
+            let mut snap = CapabilitySnapshot::builder()
+                .plugin("lute.core", "0.0.1", &[])
+                .build();
             snap.directives.insert(
                 dir_name.into(),
                 DirectiveDecl {
@@ -204,7 +220,10 @@ mod tests {
                     state: None,
                     effects: None,
                     bridge: None,
-                    lower: Lowering::Builtin { kind: "builtin".into(), name: "noop".into() },
+                    lower: Lowering::Builtin {
+                        kind: "builtin".into(),
+                        name: "noop".into(),
+                    },
                 },
             );
             snap.version = capability_version(&snap);
@@ -217,7 +236,9 @@ mod tests {
 
     #[test]
     fn directive_lookup_finds_registered() {
-        let snap = CapabilitySnapshot::builder().plugin("lute.core", "0.0.1", &[]).build();
+        let snap = CapabilitySnapshot::builder()
+            .plugin("lute.core", "0.0.1", &[])
+            .build();
         // (directives are wired via load in Task 1.6; here just assert empty lookup is None)
         assert!(snap.directive("nope").is_none());
     }

@@ -144,20 +144,35 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
                 let sp_start = l.span.byte_start + ":line[".len();
                 push(out, sp_start, sp_start + l.speaker.len(), TokType::Content);
                 if !l.text.is_empty() {
-                    push(out, l.text_span.byte_start, l.text_span.byte_end, TokType::Content);
+                    push(
+                        out,
+                        l.text_span.byte_start,
+                        l.text_span.byte_end,
+                        TokType::Content,
+                    );
                 }
             }
             Node::Directive(d) => directive_tag(d, out),
             Node::Set(s) => set_tokens(s, out),
             Node::Branch(b) => {
                 // `<branch` open keyword.
-                push(out, b.span.byte_start, b.span.byte_start + "<branch".len(), TokType::Logic);
+                push(
+                    out,
+                    b.span.byte_start,
+                    b.span.byte_start + "<branch".len(),
+                    TokType::Logic,
+                );
                 for c in &b.choices {
                     walk_nodes(&c.body, out);
                 }
             }
             Node::Match(m) => {
-                push(out, m.span.byte_start, m.span.byte_start + "<match".len(), TokType::Logic);
+                push(
+                    out,
+                    m.span.byte_start,
+                    m.span.byte_start + "<match".len(),
+                    TokType::Logic,
+                );
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
@@ -195,7 +210,12 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
 /// The `::name` head of a directive → one Staging token (`::` + tag).
 fn directive_tag(d: &Directive, out: &mut Vec<RawTok>) {
     let start = d.span.byte_start;
-    push(out, start, start + "::".len() + d.tag.len(), TokType::Staging);
+    push(
+        out,
+        start,
+        start + "::".len() + d.tag.len(),
+        TokType::Staging,
+    );
 }
 
 /// A `::set` → the `::set` keyword (Logic) + its target path (StatePath). The
@@ -203,7 +223,12 @@ fn directive_tag(d: &Directive, out: &mut Vec<RawTok>) {
 fn set_tokens(s: &Set, out: &mut Vec<RawTok>) {
     let start = s.span.byte_start;
     push(out, start, start + "::set".len(), TokType::Logic);
-    push(out, s.path_span.byte_start, s.path_span.byte_end, TokType::StatePath);
+    push(
+        out,
+        s.path_span.byte_start,
+        s.path_span.byte_end,
+        TokType::StatePath,
+    );
 }
 
 /// Sub-classify one CEL slot: `@ref`s (Ref), state/choice paths (StatePath), and
@@ -216,7 +241,11 @@ fn slot_tokens(base: usize, raw: &str, out: &mut Vec<RawTok>) {
         let e = base + r.span.byte_end;
         ref_ranges.push((s, e));
         // The `$` subject is a plain CEL token; a named `@ref` is a ref.
-        let ty = if r.is_dollar { TokType::Cel } else { TokType::Ref };
+        let ty = if r.is_dollar {
+            TokType::Cel
+        } else {
+            TokType::Ref
+        };
         push(out, s, e, ty);
     }
     for (name, (ps, pe)) in path_tokens(raw) {
@@ -227,7 +256,11 @@ fn slot_tokens(base: usize, raw: &str, out: &mut Vec<RawTok>) {
         if ref_ranges.iter().any(|&(rs, re)| s < re && rs < e) {
             continue;
         }
-        let ty = if is_state_path(&name) { TokType::StatePath } else { TokType::Cel };
+        let ty = if is_state_path(&name) {
+            TokType::StatePath
+        } else {
+            TokType::Cel
+        };
         push(out, s, e, ty);
     }
 }
@@ -268,7 +301,11 @@ fn delta_encode(mut toks: Vec<AbsTok>) -> Vec<SemanticToken> {
     let (mut prev_line, mut prev_char) = (0u32, 0u32);
     for t in toks {
         let delta_line = t.line - prev_line;
-        let delta_start = if delta_line == 0 { t.ch - prev_char } else { t.ch };
+        let delta_start = if delta_line == 0 {
+            t.ch - prev_char
+        } else {
+            t.ch
+        };
         out.push(SemanticToken {
             delta_line,
             delta_start,
@@ -313,7 +350,11 @@ mod tests {
 
     /// The legend index of a named token type, for readable assertions.
     fn ty(name: &str) -> u32 {
-        legend().token_types.iter().position(|t| t.as_str() == name).unwrap() as u32
+        legend()
+            .token_types
+            .iter()
+            .position(|t| t.as_str() == name)
+            .unwrap() as u32
     }
 
     /// ACCEPTANCE: a `::camera` directive tag carries the STAGING layer.
@@ -330,7 +371,11 @@ mod tests {
             .iter()
             .find(|&&(l, c, _, _)| l == want_line && c == want_ch)
             .expect("a token anchored on the ::camera tag");
-        assert_eq!(tok.3, ty("staging"), "::camera tag must be the staging layer");
+        assert_eq!(
+            tok.3,
+            ty("staging"),
+            "::camera tag must be the staging layer"
+        );
         assert_eq!(tok.2, "::camera".len() as u32, "token covers `::camera`");
     }
 
@@ -357,7 +402,11 @@ mod tests {
             .iter()
             .find(|&&(l, c, _, _)| l == sp.line - 1 && c == sp.utf16_col)
             .expect("token on the match subject path");
-        assert_eq!(path_tok.3, ty("statePath"), "scene.choices.number is a state path");
+        assert_eq!(
+            path_tok.3,
+            ty("statePath"),
+            "scene.choices.number is a state path"
+        );
         assert_eq!(path_tok.2, "scene.choices.number".len() as u32);
     }
 
@@ -366,7 +415,10 @@ mod tests {
     fn legend_is_the_six_layer_set() {
         let l = legend();
         assert_eq!(
-            l.token_types.iter().map(SemanticTokenType::as_str).collect::<Vec<_>>(),
+            l.token_types
+                .iter()
+                .map(SemanticTokenType::as_str)
+                .collect::<Vec<_>>(),
             ["content", "staging", "logic", "cel", "ref", "statePath"],
         );
         assert!(l.token_modifiers.is_empty());
@@ -378,22 +430,74 @@ mod tests {
     #[test]
     fn delta_encoding_math() {
         let toks = vec![
-            AbsTok { line: 0, ch: 5, len: 3, ty: 1 },
-            AbsTok { line: 0, ch: 12, len: 2, ty: 4 }, // same line: ds = 12 - 5
-            AbsTok { line: 3, ch: 4, len: 6, ty: 2 },  // new line: dl = 3, ds = 4
+            AbsTok {
+                line: 0,
+                ch: 5,
+                len: 3,
+                ty: 1,
+            },
+            AbsTok {
+                line: 0,
+                ch: 12,
+                len: 2,
+                ty: 4,
+            }, // same line: ds = 12 - 5
+            AbsTok {
+                line: 3,
+                ch: 4,
+                len: 6,
+                ty: 2,
+            }, // new line: dl = 3, ds = 4
         ];
         let out = delta_encode(toks);
-        assert_eq!(out[0], SemanticToken { delta_line: 0, delta_start: 5, length: 3, token_type: 1, token_modifiers_bitset: 0 });
-        assert_eq!(out[1], SemanticToken { delta_line: 0, delta_start: 7, length: 2, token_type: 4, token_modifiers_bitset: 0 });
-        assert_eq!(out[2], SemanticToken { delta_line: 3, delta_start: 4, length: 6, token_type: 2, token_modifiers_bitset: 0 });
+        assert_eq!(
+            out[0],
+            SemanticToken {
+                delta_line: 0,
+                delta_start: 5,
+                length: 3,
+                token_type: 1,
+                token_modifiers_bitset: 0
+            }
+        );
+        assert_eq!(
+            out[1],
+            SemanticToken {
+                delta_line: 0,
+                delta_start: 7,
+                length: 2,
+                token_type: 4,
+                token_modifiers_bitset: 0
+            }
+        );
+        assert_eq!(
+            out[2],
+            SemanticToken {
+                delta_line: 3,
+                delta_start: 4,
+                length: 6,
+                token_type: 2,
+                token_modifiers_bitset: 0
+            }
+        );
     }
 
     /// Delta encoding sorts by position first, so out-of-order input is fine.
     #[test]
     fn delta_encoding_sorts_unordered_input() {
         let toks = vec![
-            AbsTok { line: 2, ch: 0, len: 1, ty: 0 },
-            AbsTok { line: 0, ch: 0, len: 1, ty: 0 },
+            AbsTok {
+                line: 2,
+                ch: 0,
+                len: 1,
+                ty: 0,
+            },
+            AbsTok {
+                line: 0,
+                ch: 0,
+                len: 1,
+                ty: 0,
+            },
         ];
         let out = delta_encode(toks);
         assert_eq!(out[0].delta_line, 0, "line 0 token comes first");

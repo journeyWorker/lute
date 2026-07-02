@@ -89,7 +89,10 @@ pub fn parse_meta(meta: &Meta, snapshot: &CapabilitySnapshot) -> (TypedMeta, Vec
     let value: serde_yaml::Value = match serde_yaml::from_str(&meta.raw_yaml) {
         Ok(v) => v,
         Err(e) => {
-            diags.push(err("E-META-PARSE", format!("invalid meta frontmatter YAML: {e}")));
+            diags.push(err(
+                "E-META-PARSE",
+                format!("invalid meta frontmatter YAML: {e}"),
+            ));
             return (TypedMeta::default(), diags);
         }
     };
@@ -112,7 +115,10 @@ pub fn parse_meta(meta: &Meta, snapshot: &CapabilitySnapshot) -> (TypedMeta, Vec
     let mut typed = TypedMeta::default();
 
     // Required + unknown-key checks over the top-level keys (dsl §6.1).
-    for missing in REQUIRED_KEYS.iter().filter(|k| !map.contains_key(yaml_key(k))) {
+    for missing in REQUIRED_KEYS
+        .iter()
+        .filter(|k| !map.contains_key(yaml_key(k)))
+    {
         diags.push(err(
             "E-META-MISSING",
             format!("required meta key `{missing}` is missing"),
@@ -169,7 +175,11 @@ pub fn parse_meta(meta: &Meta, snapshot: &CapabilitySnapshot) -> (TypedMeta, Vec
                         Ok(raw) => {
                             typed.state.decls.insert(
                                 path.to_string(),
-                                StateDecl { ty: raw.ty, default: raw.default, namespace },
+                                StateDecl {
+                                    ty: raw.ty,
+                                    default: raw.default,
+                                    namespace,
+                                },
                             );
                         }
                         Err(e) => diags.push(err(
@@ -218,7 +228,9 @@ pub(crate) fn namespace_of(path: &str) -> Option<Namespace> {
 }
 
 fn get_str(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
-    map.get(yaml_key(key)).and_then(|v| v.as_str()).map(str::to_string)
+    map.get(yaml_key(key))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
 }
 
 fn get_i64(map: &serde_yaml::Mapping, key: &str) -> Option<i64> {

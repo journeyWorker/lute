@@ -8,8 +8,8 @@ pub struct TextIndex<'a> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Position {
-    pub line: u32,     // 1-based
-    pub column: u32,   // 1-based byte column within line
+    pub line: u32,      // 1-based
+    pub column: u32,    // 1-based byte column within line
     pub utf16_col: u32, // 0-based UTF-16 column within line
 }
 
@@ -33,13 +33,20 @@ impl<'a> TextIndex<'a> {
         let slice = &self.text[line_start..byte];
         let byte_col = (byte - line_start) as u32;
         let utf16_col = slice.chars().map(|c| c.len_utf16() as u32).sum();
-        Position { line: line_ix as u32 + 1, column: byte_col + 1, utf16_col }
+        Position {
+            line: line_ix as u32 + 1,
+            column: byte_col + 1,
+            utf16_col,
+        }
     }
 
     fn utf16_offset(&self, byte: usize) -> u32 {
         // total UTF-16 units from start of file to byte (for LSP ranges we use per-line cols,
         // but Span keeps a file-relative utf16_range for the divergence golden)
-        self.text[..byte].chars().map(|c| c.len_utf16() as u32).sum()
+        self.text[..byte]
+            .chars()
+            .map(|c| c.len_utf16() as u32)
+            .sum()
     }
 }
 
@@ -47,8 +54,8 @@ impl<'a> TextIndex<'a> {
 pub struct Span {
     pub byte_start: usize,
     pub byte_end: usize,
-    pub line: u32,       // 1-based, of byte_start
-    pub column: u32,     // 1-based byte column of byte_start
+    pub line: u32,               // 1-based, of byte_start
+    pub column: u32,             // 1-based byte column of byte_start
     pub utf16_range: (u32, u32), // file-relative UTF-16 offsets
 }
 
@@ -67,18 +74,28 @@ impl Span {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Severity { Error, Warning, Info, Hint }
+pub enum Severity {
+    Error,
+    Warning,
+    Info,
+    Hint,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Layer { Content, Staging, Logic, Cel }
+pub enum Layer {
+    Content,
+    Staging,
+    Logic,
+    Cel,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Fixit {
     pub title: String,
-    pub kind: String,             // e.g. "quickfix"
+    pub kind: String, // e.g. "quickfix"
     pub edit: Vec<TextEdit>,
-    pub confidence: u8,           // 0..=100
+    pub confidence: u8, // 0..=100
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,7 +106,7 @@ pub struct TextEdit {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Diagnostic {
-    pub code: String,             // stable, e.g. "E-UNDECLARED"
+    pub code: String, // stable, e.g. "E-UNDECLARED"
     pub severity: Severity,
     pub message: String,
     pub span: Span,

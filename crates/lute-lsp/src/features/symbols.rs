@@ -40,7 +40,13 @@ fn shot_symbol(shot: &Shot, idx: &TextIndex) -> DocumentSymbol {
     let selection_range = span_to_range(&byte_span(head_start, head_end), idx);
     let mut children = Vec::new();
     collect_children(&shot.body, idx, &mut children);
-    symbol(shot.heading.clone(), SymbolKind::MODULE, range, selection_range, children)
+    symbol(
+        shot.heading.clone(),
+        SymbolKind::MODULE,
+        range,
+        selection_range,
+        children,
+    )
 }
 
 /// Collect the `<branch>`/`<match>` blocks in `nodes` as child symbols,
@@ -53,9 +59,19 @@ fn collect_children(nodes: &[Node], idx: &TextIndex, out: &mut Vec<DocumentSymbo
                 for c in &b.choices {
                     collect_children(&c.body, idx, &mut kids);
                 }
-                let name = if b.id.is_empty() { "branch".to_string() } else { b.id.clone() };
+                let name = if b.id.is_empty() {
+                    "branch".to_string()
+                } else {
+                    b.id.clone()
+                };
                 let sel = keyword_range(b.span.byte_start, "<branch", idx);
-                out.push(symbol(name, SymbolKind::ENUM, span_to_range(&b.span, idx), sel, kids));
+                out.push(symbol(
+                    name,
+                    SymbolKind::ENUM,
+                    span_to_range(&b.span, idx),
+                    sel,
+                    kids,
+                ));
             }
             Node::Match(m) => {
                 let mut kids = Vec::new();
@@ -67,7 +83,13 @@ fn collect_children(nodes: &[Node], idx: &TextIndex, out: &mut Vec<DocumentSymbo
                     }
                 }
                 let sel = keyword_range(m.span.byte_start, "<match", idx);
-                out.push(symbol(match_name(m), SymbolKind::OBJECT, span_to_range(&m.span, idx), sel, kids));
+                out.push(symbol(
+                    match_name(m),
+                    SymbolKind::OBJECT,
+                    span_to_range(&m.span, idx),
+                    sel,
+                    kids,
+                ));
             }
             // Leaves and staging blocks are not outline symbols.
             Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
@@ -110,7 +132,11 @@ fn symbol(
         deprecated: None,
         range,
         selection_range,
-        children: if children.is_empty() { None } else { Some(children) },
+        children: if children.is_empty() {
+            None
+        } else {
+            Some(children)
+        },
     }
 }
 
@@ -134,7 +160,10 @@ mod tests {
         assert_eq!(syms.len(), 5, "5 shots → 5 top-level symbols");
         assert!(syms.iter().all(|s| s.kind == SymbolKind::MODULE));
         let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, ["Shot 1.", "Shot 2.", "Shot 3.", "Shot 4.", "Shot 5."]);
+        assert_eq!(
+            names,
+            ["Shot 1.", "Shot 2.", "Shot 3.", "Shot 4.", "Shot 5."]
+        );
     }
 
     /// ACCEPTANCE (added): the `<branch id="number">` in shot 4 is a nested child
@@ -190,6 +219,9 @@ mod tests {
         assert_eq!(s.selection_range.start.character, 0);
         // `## Shot 1.` is 10 UTF-16 units.
         assert_eq!(s.selection_range.end.character, "## Shot 1.".len() as u32);
-        assert!(s.range.end.line >= s.selection_range.end.line, "range encloses selection");
+        assert!(
+            s.range.end.line >= s.selection_range.end.line,
+            "range encloses selection"
+        );
     }
 }
