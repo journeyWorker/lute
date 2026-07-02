@@ -26,14 +26,14 @@ use lute_core_span::{Span, TextIndex};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     CompletionOptions, CompletionParams, CompletionResponse, Diagnostic as LspDiagnostic,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
-    FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, Location,
-    MessageType, OneOf, Position, Range, ReferenceParams, SemanticTokens,
-    SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Uri, WorkDoneProgressOptions,
+    DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentSymbolParams, DocumentSymbolResponse, FoldingRange,
+    FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionParams,
+    GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
+    InitializeResult, Location, MessageType, OneOf, Position, Range, ReferenceParams,
+    SemanticTokens, SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams,
+    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Uri, WorkDoneProgressOptions,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
@@ -71,8 +71,13 @@ impl Backend {
     /// Run `check()` over `snapshot`'s text and publish the converted diagnostics
     /// for `uri`, stamped with the snapshot version. Positions are derived exactly
     /// as the headless path derives them (see the divergence invariant above).
+    ///
+    /// Project-resolution diagnostics (a broken plugin graph above the document:
+    /// load/cycle/unresolved-depends/assembly errors) are surfaced too, each as an
+    /// Error at the document start — otherwise a scene that is itself clean would
+    /// silently validate against a broken project (plugin §11).
     async fn analyze(&self, uri: Uri, snapshot: &DocumentSnapshot) {
-        let cap = self.snapshot_for(&uri, &snapshot.text);
+        let (cap, rdiags) = self.snapshot_for(&uri, &snapshot.text);
         let input = CheckInput {
             text: snapshot.text.clone(),
             uri: uri.as_str().to_string(),
@@ -82,11 +87,12 @@ impl Backend {
         };
         let result = check(&input);
         let idx = lute_core_span::TextIndex::new(&snapshot.text);
-        let diags: Vec<LspDiagnostic> = result
+        let mut diags: Vec<LspDiagnostic> = result
             .diagnostics
             .iter()
             .map(|d| to_lsp_diagnostic(d, &idx))
             .collect();
+        diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
         self.client
             .publish_diagnostics(uri, diags, Some(snapshot.version))
             .await;
@@ -109,7 +115,14 @@ impl Backend {
     /// found above the document, `resolve_document_snapshot(None, ..)` yields the
     /// core-only baseline — today's behavior. A malformed project is logged and
     /// falls back to core-only rather than silently mis-validating (never panics).
-    fn snapshot_for(&self, uri: &Uri, text: &str) -> lute_manifest::snapshot::CapabilitySnapshot {
+    fn snapshot_for(
+        &self,
+        uri: &Uri,
+        text: &str,
+    ) -> (
+        lute_manifest::snapshot::CapabilitySnapshot,
+        Vec<lute_manifest::project::ResolveDiag>,
+    ) {
         let (doc, _) = lute_syntax::parse(text);
         let (meta0, _) = lute_check::parse_meta(
             &doc.meta,
@@ -124,12 +137,11 @@ impl Backend {
                     None
                 }
             });
-        let (snap, _diags) = lute_manifest::project::resolve_document_snapshot(
+        lute_manifest::project::resolve_document_snapshot(
             project.as_ref(),
             meta0.profile.as_deref(),
             &meta0.plugins,
-        );
-        snap
+        )
     }
 }
 
@@ -184,7 +196,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = self.snapshot_for(&pos.text_document.uri, &text);
+        let snapshot = self.snapshot_for(&pos.text_document.uri, &text).0;
         let off = position_to_byte(&text, pos.position);
         Ok(hover::hover_at(&doc, &snapshot, off))
     }
@@ -195,7 +207,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = self.snapshot_for(&pos.text_document.uri, &text);
+        let snapshot = self.snapshot_for(&pos.text_document.uri, &text).0;
         let off = position_to_byte(&text, pos.position);
         let items = completion::complete_at(&doc, &snapshot, off);
         if items.is_empty() {
@@ -214,7 +226,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = self.snapshot_for(&uri, &text);
+        let snapshot = self.snapshot_for(&uri, &text).0;
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
         Ok(nav::definition_at(&doc, &snapshot, off).map(|span| {
@@ -232,7 +244,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = self.snapshot_for(&uri, &text);
+        let snapshot = self.snapshot_for(&uri, &text).0;
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
         let locs: Vec<Location> = nav::references_at(&doc, &snapshot, off)
@@ -391,6 +403,25 @@ pub(crate) fn byte_to_position(byte: usize, idx: &TextIndex) -> Position {
     Position {
         line: p.line - 1,
         character: p.utf16_col,
+    }
+}
+
+/// Convert a project-resolution diagnostic (a broken plugin graph above the
+/// document) into an LSP diagnostic. Resolver diagnostics have no source span, so
+/// they anchor at the document start (line 0, char 0) as an Error sourced "lute"
+/// — matching the CLI, which already surfaces the same `ResolveDiag` messages to
+/// stderr. This is the seam that keeps the LSP from silently dropping them.
+fn resolve_diag_to_lsp(d: &lute_manifest::project::ResolveDiag) -> LspDiagnostic {
+    let start = Position {
+        line: 0,
+        character: 0,
+    };
+    LspDiagnostic {
+        range: Range { start, end: start },
+        severity: Some(DiagnosticSeverity::ERROR),
+        source: Some("lute".into()),
+        message: d.message.clone(),
+        ..Default::default()
     }
 }
 
@@ -596,5 +627,93 @@ mod tests {
                 "non-file URI {s:?} must NOT resolve to a filesystem path"
             );
         }
+    }
+
+    /// FINDING 1 guard: a document under a project whose plugin graph has a
+    /// `DependsCycle` MUST publish that resolver diagnostic as an LSP diagnostic,
+    /// even when the document itself is core-clean. Before the fix, `snapshot_for`
+    /// discarded the resolver `Vec<ResolveDiag>`, so `analyze` never published it
+    /// and the editor silently mis-validated against a broken project. Drives a
+    /// real `LspService<Backend>` end to end: initialize -> didOpen a `file://`
+    /// scene under a temp project with two mutually-depending plugins, then assert
+    /// the published set carries a `DependsCycle` diagnostic sourced "lute" at the
+    /// document start.
+    #[tokio::test(flavor = "current_thread")]
+    async fn analyze_publishes_project_resolver_diagnostics() {
+        use futures::StreamExt;
+        use std::fs;
+        use tower::{Service, ServiceExt};
+        use tower_lsp_server::jsonrpc::Request as RpcRequest;
+        use tower_lsp_server::LspService;
+
+        // Temp project with a plugin dependency cycle: a.x -> a.dep -> a.x.
+        let root = std::env::temp_dir().join(format!("lute_lsp_cycle_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for (id, dep) in [("a.x", "a.dep"), ("a.dep", "a.x")] {
+            let pdir = root.join("plugins").join(id);
+            fs::create_dir_all(&pdir).unwrap();
+            fs::write(
+                pdir.join("plugin.yaml"),
+                format!(
+                    "id: {id}\nversion: 0.1.0\nkind: capability\ndepends: [ {{ id: {dep}, range: \"^0.1.0\" }} ]\nexports: {{}}\n"
+                ),
+            )
+            .unwrap();
+        }
+        fs::write(
+            root.join("lute.project.yaml"),
+            "pluginsDir: plugins/\ndefaultProfile: s\nprofiles:\n  s:\n    plugins: { a.x: true, a.dep: true }\n",
+        )
+        .unwrap();
+        let scene_path = root.join("scene.lute");
+        let uri_str = format!("file://{}", scene_path.display());
+
+        let (mut service, mut socket) = LspService::new(Backend::new);
+        let init = RpcRequest::build("initialize")
+            .params(serde_json::json!({ "capabilities": {} }))
+            .id(1)
+            .finish();
+        service.ready().await.unwrap().call(init).await.unwrap();
+
+        let open = RpcRequest::build("textDocument/didOpen")
+            .params(serde_json::json!({
+                "textDocument": {
+                    "uri": uri_str, "languageId": "lute", "version": 1, "text": "## Shot 1.\n"
+                }
+            }))
+            .finish();
+        service.ready().await.unwrap().call(open).await.unwrap();
+        let opened = socket.next().await.expect("didOpen should publish");
+        assert_eq!(opened.method(), "textDocument/publishDiagnostics");
+        let diags = opened
+            .params()
+            .and_then(|p| p.get("diagnostics").cloned())
+            .and_then(|d| d.as_array().cloned())
+            .expect("publish carries a diagnostics array");
+        let resolver = diags.iter().find(|d| {
+            d.get("message")
+                .and_then(|m| m.as_str())
+                .is_some_and(|m| m.contains("DependsCycle"))
+        });
+        let resolver = resolver.unwrap_or_else(|| {
+            panic!("resolver DependsCycle diagnostic must be published, got {diags:?}")
+        });
+        assert_eq!(
+            resolver.get("source").and_then(|s| s.as_str()),
+            Some("lute"),
+            "resolver diagnostic must be sourced \"lute\""
+        );
+        assert_eq!(
+            resolver.get("severity").and_then(|s| s.as_u64()),
+            Some(1),
+            "resolver diagnostic must be Error severity"
+        );
+        let start = resolver
+            .get("range")
+            .and_then(|r| r.get("start"))
+            .expect("range.start present");
+        assert_eq!(start.get("line").and_then(|l| l.as_u64()), Some(0));
+        assert_eq!(start.get("character").and_then(|c| c.as_u64()), Some(0));
+        fs::remove_dir_all(&root).ok();
     }
 }
