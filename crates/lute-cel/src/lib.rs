@@ -55,16 +55,66 @@ pub struct RefUse {
     pub span: Span,
 }
 
+/// For each byte of `raw`, whether that byte lies inside a CEL **string literal**
+/// (§4.4). The opening and closing quote bytes are themselves marked `true`, so a
+/// scanner can treat any position with `mask[i] == true` as string content to be
+/// skipped.
+///
+/// CEL string literals are single- (`'…'`) or double-quoted (`"…"`) with `\`
+/// escaping; an escaped quote (`\'`) does not close the literal. Every byte of a
+/// multibyte character inside a string is marked, so indexing the returned `Vec`
+/// by any byte offset into `raw` is always valid. An unterminated literal marks
+/// through end-of-input (a malformed fragment degrades safely: its bytes are
+/// treated as string content rather than mis-tokenized as DSL `@`/`$`).
+///
+/// Shared with the LSP feature layer (`lute_lsp::features::path_tokens`/`path_at`,
+/// S3) so DSL-token and state-path scanning agree on string boundaries.
+pub fn cel_string_mask(raw: &str) -> Vec<bool> {
+    let b = raw.as_bytes();
+    let mut mask = vec![false; b.len()];
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c == b'\'' || c == b'"' {
+            let quote = c;
+            mask[i] = true; // opening quote
+            i += 1;
+            while i < b.len() {
+                mask[i] = true;
+                if b[i] == b'\\' {
+                    // Escape: the next byte is literal string content, not a close.
+                    i += 1;
+                    if i < b.len() {
+                        mask[i] = true;
+                        i += 1;
+                    }
+                    continue;
+                }
+                if b[i] == quote {
+                    i += 1; // closing quote (already marked)
+                    break;
+                }
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    mask
+}
+
 /// Scan raw CEL source for DSL-level `@ref` / `$` tokens.
 ///
 /// Runs on the ORIGINAL `raw` (never the substituted string) so names and spans
-/// reflect the real source text.
+/// reflect the real source text. A `@`/`$` inside a CEL string literal (§4.4) is
+/// a literal character, not a DSL token, so it is skipped ([`cel_string_mask`]).
 pub fn scan_refs(raw: &str) -> Vec<RefUse> {
     let mut out = Vec::new();
     let b = raw.as_bytes();
+    let mask = cel_string_mask(raw);
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'@' {
+        if b[i] == b'@' && !mask[i] {
             let start = i;
             i += 1;
             let s = i;
@@ -76,7 +126,7 @@ pub fn scan_refs(raw: &str) -> Vec<RefUse> {
                 is_dollar: false,
                 span: byte_span(start, i),
             });
-        } else if b[i] == b'$' {
+        } else if b[i] == b'$' && !mask[i] {
             out.push(RefUse {
                 name: "$".into(),
                 is_dollar: true,
@@ -221,12 +271,18 @@ fn linecol_to_byte(raw: &str, line: isize, col: isize) -> usize {
 /// accepts the fragment and byte offsets stay aligned with `raw`:
 /// `@` -> `' '` (the following name survives as a bare identifier), `$` -> `'_'`.
 /// Iterates over chars so multibyte source stays byte-length-preserving.
+///
+/// A `@`/`$` INSIDE a CEL string literal (§4.4) is literal content — an enum-arm
+/// value like `'@gold'` or `'$5'` — and is left untouched, so the parsed
+/// `Val::String` keeps its real bytes and `match_check` compares them correctly
+/// ([`cel_string_mask`]).
 fn substitute_dsl_tokens(raw: &str) -> String {
+    let mask = cel_string_mask(raw);
     let mut s = String::with_capacity(raw.len());
-    for c in raw.chars() {
+    for (i, c) in raw.char_indices() {
         match c {
-            '@' => s.push(' '),
-            '$' => s.push('_'),
+            '@' if !mask[i] => s.push(' '),
+            '$' if !mask[i] => s.push('_'),
             other => s.push(other),
         }
     }
@@ -259,6 +315,56 @@ mod tests {
         let refs = scan_refs("@fond && $ == 'gold'");
         assert!(refs.iter().any(|r| r.name == "fond"));
         assert!(refs.iter().any(|r| r.is_dollar));
+    }
+
+    #[test]
+    fn ref_inside_single_quoted_cel_string_is_not_a_ref() {
+        // §4.4/§8: a `@` inside a CEL string literal is a literal character, not a
+        // DSL @ref. Only the real `@ref` OUTSIDE the string is a RefUse.
+        let refs = scan_refs("@real == 'literal @x here'");
+        assert!(refs.iter().any(|r| r.name == "real"), "real @ref lost");
+        assert!(
+            !refs.iter().any(|r| r.name == "x"),
+            "@x inside a CEL string must NOT be a RefUse: {refs:?}"
+        );
+    }
+
+    #[test]
+    fn dollar_inside_double_quoted_cel_string_is_not_a_dollar() {
+        // A `$` inside a `"..."` CEL string literal is literal, not the subject
+        // token; a real `$` outside a string still is.
+        let refs = scan_refs("$ == \"a $ b\"");
+        assert_eq!(
+            refs.iter().filter(|r| r.is_dollar).count(),
+            1,
+            "only the subject `$` outside the string is a dollar token: {refs:?}"
+        );
+    }
+
+    #[test]
+    fn escaped_quote_inside_string_does_not_end_it() {
+        // A `\'` escape keeps the string open, so a following `@x` is still inside
+        // the literal and not a ref.
+        let refs = scan_refs(r"'it\'s @x' == foo");
+        assert!(
+            !refs.iter().any(|r| r.name == "x"),
+            "@x after an escaped quote is still inside the string: {refs:?}"
+        );
+    }
+
+    #[test]
+    fn substitute_leaves_dsl_tokens_inside_strings_intact() {
+        // substitute_dsl_tokens must NOT rewrite `@`/`$` inside a CEL string
+        // literal (they are literal content, e.g. an enum-arm value like '@gold').
+        // Outside a string, `@` -> ' ' and `$` -> '_' (length-preserving).
+        let out = substitute_dsl_tokens("@r && '@lit $lit' == $");
+        assert!(
+            out.contains("'@lit $lit'"),
+            "string content mutated: {out:?}"
+        );
+        assert_eq!(out.len(), "@r && '@lit $lit' == $".len());
+        assert!(!out.starts_with('@'), "outer @r not substituted: {out:?}");
+        assert!(out.ends_with('_'), "outer $ not substituted: {out:?}");
     }
 
     #[test]
