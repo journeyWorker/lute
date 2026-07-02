@@ -1,0 +1,56 @@
+==================
+match/when CEL-valued attrs are a distinct CEL node (state path + @ref)
+==================
+<match on="scene.choices.number">
+  <when test="@fond">
+    :line[narrator]: hi
+  </when>
+</match>
+---
+(source_file
+  (match
+    (cel_attr (cel_key) (cel_string (path)))
+    (when
+      (cel_attr (cel_key) (cel_string (ref)))
+      (line (speaker) (text)))))
+
+==================
+when test with $ subject and single-quoted CEL literal ('blunt')
+==================
+<match on="scene.x">
+  <when test="$ == 'blunt'">
+    :line[narrator]: hi
+  </when>
+</match>
+---
+(source_file
+  (match
+    (cel_attr (cel_key) (cel_string (path)))
+    (when
+      (cel_attr (cel_key) (cel_string))
+      (line (speaker) (text)))))
+
+==================
+choice `when` guard is a CEL node beside plain id/label attrs
+==================
+<branch id="x">
+  <choice id="a" label="A" when="@fond">
+    :line[narrator]: hi
+  </choice>
+</branch>
+---
+(source_file
+  (branch
+    (attr (key) (string))
+    (choice
+      (attr (key) (string))
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (ref)))
+      (line (speaker) (text)))))
+
+==================
+::set RHS single-quoted CEL string with a `}` inside does not split
+==================
+::set{scene.result = 'a}b'}
+---
+(source_file (set (path) (assign_op) (cel_expr)))

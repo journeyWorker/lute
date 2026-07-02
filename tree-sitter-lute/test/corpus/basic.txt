@@ -52,7 +52,7 @@ directive with ref-valued attr
 ==================
 ::gate{guard=@fond when=@unlocked(scene.x)}
 ---
-(source_file (directive (ident) (attrs (attr (key) (ref)) (attr (key) (ref)))))
+(source_file (directive (ident) (attrs (attr (key) (ref)) (cel_attr (cel_key) (ref)))))
 
 ==================
 set assignment
@@ -104,9 +104,9 @@ match / when / otherwise (nesting)
 ---
 (source_file
   (match
-    (attr (key) (string))
-    (when (attr (key) (string)) (line (speaker) (attrs (attr (key) (string))) (text)))
-    (when (attr (key) (string)) (line (speaker) (attrs (attr (key) (string))) (text)))
+    (cel_attr (cel_key) (cel_string (path)))
+    (when (cel_attr (cel_key) (cel_string (ref))) (line (speaker) (attrs (attr (key) (string))) (text)))
+    (when (cel_attr (cel_key) (cel_string)) (line (speaker) (attrs (attr (key) (string))) (text)))
     (otherwise (line (speaker) (attrs (attr (key) (string))) (text)))))
 
 ==================

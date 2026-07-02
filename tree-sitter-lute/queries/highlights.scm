@@ -46,13 +46,22 @@
 ; ---- distinct arch captures -----------------------------------------------
 ; CEL expression (the `::set` right-hand side) — an embedded expression lang.
 (cel_expr) @embedded
-; State path (`scene.affect.bianca`) — dotted member access.
+; CEL-valued attribute value (`<match on>`, `<when test>`, `<choice when>`,
+; §7.3/§8) — also embedded CEL, so it colors like `::set` RHS, not a string.
+(cel_string) @embedded
+; State path (`scene.affect.bianca`) — dotted member access. Captured both as a
+; `::set` target and wherever it appears inside a CEL value (`<match on="…">`).
 (set (path) @property)
-; Bare `@ref` (defs-backed guard / value reference).
+(cel_string (path) @property)
+; Bare `@ref` (defs-backed guard / value reference). The bare pattern also
+; reaches `@ref`s nested inside a `cel_attr` value / `cel_string` (§8.1).
 (ref) @variable.parameter
 
 ; ---- attributes (§4.5) ----------------------------------------------------
 (attr (key) @attribute)
+; CEL-valued attribute key (`on`/`test`/`when`) — an attribute key like any
+; other, but its value is embedded CEL (captured above), not an opaque string.
+(cel_attr (cel_key) @attribute)
 (string) @string
 
 ; ---- headings (§6.2, §6.3) ------------------------------------------------
