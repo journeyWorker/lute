@@ -24,10 +24,27 @@ pub struct LoadedPlugin {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LoadError {
-    Manifest { dir: String, msg: String },
-    Parse { file: String, msg: String },
-    DuplicateId { kind: String, id: String },
-    MissingExportDir { export: String, path: String },
+    Manifest {
+        dir: String,
+        msg: String,
+    },
+    Parse {
+        file: String,
+        msg: String,
+    },
+    DuplicateId {
+        kind: String,
+        id: String,
+    },
+    MissingExportDir {
+        export: String,
+        path: String,
+    },
+    /// An I/O or encoding failure reading a listed file/dir.
+    Io {
+        path: String,
+        msg: String,
+    },
 }
 
 /// Read one plugin package. `dir` MUST contain `plugin.yaml`.
@@ -119,28 +136,39 @@ where
     F: serde::de::DeserializeOwned,
     M: FnMut(F, &mut Vec<LoadError>),
 {
-    for file in yaml_files(path) {
-        let parsed = std::fs::read_to_string(&file).ok().and_then(|s| {
-            serde_yaml::from_str::<F>(&s)
-                .map_err(|e| {
-                    errs.push(LoadError::Parse {
-                        file: file.display().to_string(),
-                        msg: e.to_string(),
-                    })
-                })
-                .ok()
-        });
-        if let Some(f) = parsed {
-            merge(f, errs);
+    for file in yaml_files(path, errs) {
+        let s = match std::fs::read_to_string(&file) {
+            Ok(s) => s,
+            Err(e) => {
+                errs.push(LoadError::Io {
+                    path: file.display().to_string(),
+                    msg: e.to_string(),
+                });
+                continue;
+            }
+        };
+        match serde_yaml::from_str::<F>(&s) {
+            Ok(f) => merge(f, errs),
+            Err(e) => errs.push(LoadError::Parse {
+                file: file.display().to_string(),
+                msg: e.to_string(),
+            }),
         }
     }
 }
 
 /// `state/` holds `shapes.yaml` (stateShapes) and/or `templates.yaml` (stateTemplates).
 fn read_state(path: &Path, out: &mut LoadedPlugin, errs: &mut Vec<LoadError>) {
-    for file in yaml_files(path) {
-        let Ok(s) = std::fs::read_to_string(&file) else {
-            continue;
+    for file in yaml_files(path, errs) {
+        let s = match std::fs::read_to_string(&file) {
+            Ok(s) => s,
+            Err(e) => {
+                errs.push(LoadError::Io {
+                    path: file.display().to_string(),
+                    msg: e.to_string(),
+                });
+                continue;
+            }
         };
         if let Ok(f) = serde_yaml::from_str::<ShapesFile>(&s) {
             merge_named(
@@ -168,9 +196,16 @@ fn read_state(path: &Path, out: &mut LoadedPlugin, errs: &mut Vec<LoadError>) {
 }
 
 fn read_enums(path: &Path, dst: &mut BTreeMap<String, Vec<String>>, errs: &mut Vec<LoadError>) {
-    for file in yaml_files(path) {
-        let Ok(s) = std::fs::read_to_string(&file) else {
-            continue;
+    for file in yaml_files(path, errs) {
+        let s = match std::fs::read_to_string(&file) {
+            Ok(s) => s,
+            Err(e) => {
+                errs.push(LoadError::Io {
+                    path: file.display().to_string(),
+                    msg: e.to_string(),
+                });
+                continue;
+            }
         };
         match serde_yaml::from_str::<EnumsFile>(&s) {
             Ok(f) => {
@@ -192,23 +227,48 @@ fn read_enums(path: &Path, dst: &mut BTreeMap<String, Vec<String>>, errs: &mut V
 }
 
 /// Every `*.yaml`/`*.yml` under `path` (a dir), sorted byte-wise; or `[path]`
-/// itself if `path` is a file (plugin §4 sort determinism).
-fn yaml_files(path: &Path) -> Vec<std::path::PathBuf> {
+/// itself if `path` is a file (plugin §4 sort determinism). A `read_dir` failure
+/// or any per-entry error is surfaced as `LoadError::Io` rather than silently
+/// dropped, so a listed-but-unreadable export dir never loads as empty.
+///
+/// NOTE: the dir-enumeration failure paths (`read_dir` Err, per-entry Err) are
+/// not portably testable — they require an inaccessible/racing directory — so
+/// they are hardened by construction with no dedicated test.
+fn yaml_files(path: &Path, errs: &mut Vec<LoadError>) -> Vec<std::path::PathBuf> {
     if path.is_file() {
         return vec![path.to_path_buf()];
     }
-    let mut v: Vec<_> = std::fs::read_dir(path)
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| {
-            p.is_file()
-                && matches!(
-                    p.extension().and_then(|x| x.to_str()),
-                    Some("yaml") | Some("yml")
-                )
-        })
-        .collect();
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(e) => {
+            errs.push(LoadError::Io {
+                path: path.display().to_string(),
+                msg: e.to_string(),
+            });
+            return Vec::new();
+        }
+    };
+    let mut v = Vec::new();
+    for entry in entries {
+        let p = match entry {
+            Ok(entry) => entry.path(),
+            Err(e) => {
+                errs.push(LoadError::Io {
+                    path: path.display().to_string(),
+                    msg: e.to_string(),
+                });
+                continue;
+            }
+        };
+        if p.is_file()
+            && matches!(
+                p.extension().and_then(|x| x.to_str()),
+                Some("yaml") | Some("yml")
+            )
+        {
+            v.push(p);
+        }
+    }
     v.sort();
     v
 }
