@@ -57,3 +57,26 @@ fn rejects_missing_export_dir() {
         .any(|e| matches!(e, LoadError::MissingExportDir { .. })));
     fs::remove_dir_all(&tmp).ok();
 }
+
+#[test]
+fn unreadable_declaration_file_is_error() {
+    use std::io::Write;
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_badenc_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(tmp.join("directives")).unwrap();
+    fs::write(
+        tmp.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  directives: directives/\n",
+    )
+    .unwrap();
+    // invalid UTF-8 -> read_to_string fails
+    let mut f = fs::File::create(tmp.join("directives/a.yaml")).unwrap();
+    f.write_all(&[0xff, 0xfe, 0x00, 0x9f]).unwrap();
+    drop(f);
+    let errs = load_plugin_dir(&tmp).unwrap_err();
+    assert!(
+        errs.iter().any(|e| matches!(e, LoadError::Io { .. })),
+        "unreadable file must surface LoadError::Io, got {errs:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
