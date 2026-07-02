@@ -38,3 +38,38 @@ fn c5_nested_match_on_dollar_is_error() {
         codes(&t)
     );
 }
+
+#[test]
+fn c4_disjunctive_guard_does_not_prove_read() {
+    // isSet(run.x) is under `||`, so it does NOT prove `run.x`; the `run.x > 0`
+    // read of a non-defaulted run tier is E-MAYBE-UNSET (dsl §9.4).
+    let t = format!(
+        "{HDR}state:\n  run.x: {{ type: number }}\n  scene.y: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
+         <match on=\"scene.y\">\n\
+         <when test=\"isSet(run.x) || run.x > 0\">:line[narrator]: a\n</when>\n\
+         <otherwise>:line[narrator]: b\n</otherwise>\n\
+         </match>\n"
+    );
+    assert!(
+        codes(&t).contains(&"E-MAYBE-UNSET".to_string()),
+        "disjunctive guard must NOT prove the read (C4); got {:?}",
+        codes(&t)
+    );
+}
+
+#[test]
+fn c4_conjunctive_guard_still_proves_read() {
+    // Regression guard: a top-level / conjunctive `isSet` MUST still prove.
+    let t = format!(
+        "{HDR}state:\n  run.x: {{ type: number }}\n  scene.y: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
+         <match on=\"scene.y\">\n\
+         <when test=\"isSet(run.x) && run.x > 0\">:line[narrator]: a\n</when>\n\
+         <otherwise>:line[narrator]: b\n</otherwise>\n\
+         </match>\n"
+    );
+    assert!(
+        !codes(&t).contains(&"E-MAYBE-UNSET".to_string()),
+        "conjunctive isSet must still prove the read; got {:?}",
+        codes(&t)
+    );
+}

@@ -25,11 +25,15 @@ pub(crate) const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app"];
 /// How a state path appears in an expression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PathRole {
-    /// An ordinary value read: subject to `E-MAYBE-UNSET` when unproven.
+    /// An ordinary value read (subject to definite-assignment, dsl §9.4).
     Read,
-    /// A presence guard (`has(p)`/`isSet(p)`): tolerates unset, and *proves* `p`
-    /// within the scope it guards.
+    /// A presence test (`has(p)`/`isSet(p)`) in a **dominating** position (top
+    /// level or a conjunct of `&&`): it proves the path for the guarded body.
     Guard,
+    /// A presence test in a **non-dominating** position (under `||`/`!`): it
+    /// proves nothing (dsl §9.4). The path is still surfaced so read-site
+    /// declaration checks are unaffected, but definite-assignment ignores it.
+    WeakGuard,
 }
 
 /// One reconstructed state path plus how it was used.
@@ -50,7 +54,7 @@ pub(crate) fn is_state_path(path: &str) -> bool {
 /// sub-expressions: call args, list/map/struct elements, comprehensions).
 pub(crate) fn collect_path_uses(expr: &Expr) -> Vec<PathUse> {
     let mut out = Vec::new();
-    walk(expr, &mut out);
+    walk(expr, true, &mut out);
     out
 }
 
@@ -60,13 +64,17 @@ fn push_path(out: &mut Vec<PathUse>, path: String, role: PathRole) {
     }
 }
 
-fn walk(expr: &Expr, out: &mut Vec<PathUse>) {
+fn walk(expr: &Expr, dominating: bool, out: &mut Vec<PathUse>) {
     match expr {
         Expr::Ident(name) => push_path(out, name.clone(), PathRole::Read),
         Expr::Select(sel) => {
-            // A test-only Select is the `has(p)` macro expansion (dsl §9.4 guard).
+            // A test-only Select is the `has(p)` macro (dsl §9.4 guard).
             let role = if sel.test {
-                PathRole::Guard
+                if dominating {
+                    PathRole::Guard
+                } else {
+                    PathRole::WeakGuard
+                }
             } else {
                 PathRole::Read
             };
@@ -76,7 +84,7 @@ fn walk(expr: &Expr, out: &mut Vec<PathUse>) {
                 // Chain bottoms out in a non-ident (e.g. `f(x).field`,
                 // `xs[0].field`): not a static state path, but its operand may
                 // still contain reads.
-                walk(&sel.operand.expr, out);
+                walk(&sel.operand.expr, false, out);
             }
         }
         Expr::Call(call) => {
@@ -87,21 +95,29 @@ fn walk(expr: &Expr, out: &mut Vec<PathUse>) {
             {
                 if let Some(path) = select_path(&call.args[0].expr) {
                     if is_state_path(&path) {
-                        push_path(out, path, PathRole::Guard);
+                        let role = if dominating {
+                            PathRole::Guard
+                        } else {
+                            PathRole::WeakGuard
+                        };
+                        push_path(out, path, role);
                         return;
                     }
                 }
             }
+            // Boolean structure controls dominance: `&&` preserves it for both
+            // args; `||` and `!` (and any other call/operand) drop it.
+            let child_dom = dominating && call.target.is_none() && call.func_name == "_&&_";
             if let Some(target) = &call.target {
-                walk(&target.expr, out);
+                walk(&target.expr, false, out);
             }
             for arg in &call.args {
-                walk(&arg.expr, out);
+                walk(&arg.expr, child_dom, out);
             }
         }
         Expr::List(list) => {
             for el in &list.elements {
-                walk(&el.expr, out);
+                walk(&el.expr, false, out);
             }
         }
         Expr::Map(map) => {
@@ -115,11 +131,11 @@ fn walk(expr: &Expr, out: &mut Vec<PathUse>) {
             }
         }
         Expr::Comprehension(c) => {
-            walk(&c.iter_range.expr, out);
-            walk(&c.accu_init.expr, out);
-            walk(&c.loop_cond.expr, out);
-            walk(&c.loop_step.expr, out);
-            walk(&c.result.expr, out);
+            walk(&c.iter_range.expr, false, out);
+            walk(&c.accu_init.expr, false, out);
+            walk(&c.loop_cond.expr, false, out);
+            walk(&c.loop_step.expr, false, out);
+            walk(&c.result.expr, false, out);
         }
         Expr::Literal(_) | Expr::Unspecified => {}
     }
@@ -128,10 +144,10 @@ fn walk(expr: &Expr, out: &mut Vec<PathUse>) {
 fn walk_entry(entry: &EntryExpr, out: &mut Vec<PathUse>) {
     match entry {
         EntryExpr::MapEntry(m) => {
-            walk(&m.key.expr, out);
-            walk(&m.value.expr, out);
+            walk(&m.key.expr, false, out);
+            walk(&m.value.expr, false, out);
         }
-        EntryExpr::StructField(f) => walk(&f.value.expr, out),
+        EntryExpr::StructField(f) => walk(&f.value.expr, false, out),
     }
 }
 
