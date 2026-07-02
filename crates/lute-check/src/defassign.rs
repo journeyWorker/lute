@@ -227,6 +227,8 @@ fn apply_condition(
                     assigned.insert(use_.path);
                 }
             }
+            // A non-dominating presence test (under `||`/`!`) proves nothing.
+            PathRole::WeakGuard => {}
         }
     }
 }
