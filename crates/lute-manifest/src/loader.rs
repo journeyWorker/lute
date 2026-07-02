@@ -152,13 +152,16 @@ pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<Lo
         match load_plugin_dir(&sub) {
             Ok(loaded) => {
                 let id = loaded.manifest.id.clone();
-                if reg.by_id.contains_key(&id) {
-                    errs.push(LoadError::DuplicateId {
-                        kind: "plugin".into(),
-                        id,
-                    });
-                } else {
-                    reg.by_id.insert(id, InstalledPlugin { loaded });
+                match reg.by_id.entry(id) {
+                    std::collections::btree_map::Entry::Occupied(e) => {
+                        errs.push(LoadError::DuplicateId {
+                            kind: "plugin".into(),
+                            id: e.key().clone(),
+                        });
+                    }
+                    std::collections::btree_map::Entry::Vacant(e) => {
+                        e.insert(InstalledPlugin { loaded });
+                    }
                 }
             }
             Err(mut e) => errs.append(&mut e),

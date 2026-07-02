@@ -150,15 +150,18 @@ pub fn assemble_snapshot(
         );
         for b in &pkg.bridge {
             let k = (b.service.clone(), b.operation.clone());
-            if snap.bridge_capabilities.contains_key(&k) {
-                errs.push(AssembleError::DuplicateAcrossPlugins {
-                    kind: "bridge".into(),
-                    id: format!("{}.{}", b.service, b.operation),
-                    first: "?".into(),
-                    second: ap.id.clone(),
-                });
-            } else {
-                snap.bridge_capabilities.insert(k, b.clone());
+            match snap.bridge_capabilities.entry(k) {
+                std::collections::btree_map::Entry::Occupied(_) => {
+                    errs.push(AssembleError::DuplicateAcrossPlugins {
+                        kind: "bridge".into(),
+                        id: format!("{}.{}", b.service, b.operation),
+                        first: "?".into(),
+                        second: ap.id.clone(),
+                    });
+                }
+                std::collections::btree_map::Entry::Vacant(e) => {
+                    e.insert(b.clone());
+                }
             }
         }
         snap.plugins.insert(
@@ -196,15 +199,18 @@ fn merge_map<V: Clone>(
     errs: &mut Vec<AssembleError>,
 ) {
     for (k, v) in items {
-        if dst.contains_key(&k) {
-            errs.push(AssembleError::DuplicateAcrossPlugins {
-                kind: kind.into(),
-                id: k,
-                first: "?".into(),
-                second: plugin.into(),
-            });
-        } else {
-            dst.insert(k, v);
+        match dst.entry(k) {
+            std::collections::btree_map::Entry::Occupied(e) => {
+                errs.push(AssembleError::DuplicateAcrossPlugins {
+                    kind: kind.into(),
+                    id: e.key().clone(),
+                    first: "?".into(),
+                    second: plugin.into(),
+                });
+            }
+            std::collections::btree_map::Entry::Vacant(e) => {
+                e.insert(v);
+            }
         }
     }
 }
