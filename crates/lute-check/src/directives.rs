@@ -8,11 +8,12 @@
 //! for the value) and sit at `Layer::Staging`.
 //!
 //! ## Snapshot-API degradation
-//! - **Inactive-plugin fix-it (plugin §11.2):** the resolved [`CapabilitySnapshot`]
-//!   only carries *active* plugins and their directives — there is no
-//!   installed-but-inactive registry to consult. So an unknown tag yields the
-//!   plain `E-UNKNOWN-DIRECTIVE` with no "activate plugin" fix-it. When the
-//!   snapshot later exposes an inactive-plugin index, attach the fix-it here.
+//! - **Inactive-plugin fix-it (plugin §11.2):** when the resolved
+//!   [`CapabilitySnapshot`] exposes an installed-but-inactive tag index
+//!   (`snapshot.inactive`, tag → owning plugin id), an unknown tag present
+//!   there yields `E-UNKNOWN-DIRECTIVE` carrying an "activate plugin" fix-it
+//!   naming the plugin. A truly-unknown tag still emits the plain error with
+//!   no fix-it.
 //! - **`EnumFromOption` owner (plugin §7):** a [`DirectiveDecl`] does not record
 //!   which plugin declared it, so we cannot scope the option lookup to the
 //!   owning plugin. We best-effort resolve the option across all resolved
@@ -43,15 +44,31 @@ pub fn check_directive(
     let mut diags = Vec::new();
 
     let Some(decl) = snapshot.directive(&dir.tag) else {
-        // plugin §8: unknown tag. The resolved snapshot has no inactive-plugin
-        // registry, so we cannot offer an "activate plugin" fix-it (see module
-        // docs); emit the plain staging-layer error.
-        diags.push(diag(
-            "E-UNKNOWN-DIRECTIVE",
-            Severity::Error,
-            format!("unknown directive `::{}`", dir.tag),
-            dir.span,
-        ));
+        // plugin §11.2: an installed-but-inactive tag is a diagnostic WITH a
+        // fix-it (naming the plugin to activate), never silently accepted; a
+        // truly-unknown tag still yields the plain staging-layer error.
+        let mut fixits = Vec::new();
+        if let Some(plugin) = snapshot.inactive.get(&dir.tag) {
+            fixits.push(lute_core_span::Fixit {
+                title: format!(
+                    "activate plugin `{plugin}` (add it to your profile or the scene `plugins:` block)"
+                ),
+                kind: "quickfix".to_string(),
+                // Advisory: no auto-applicable text edit (activation is a manual
+                // profile/scene change), so a mid confidence.
+                edit: Vec::new(),
+                confidence: 50,
+            });
+        }
+        diags.push(Diagnostic {
+            code: "E-UNKNOWN-DIRECTIVE".to_string(),
+            severity: Severity::Error,
+            message: format!("unknown directive `::{}`", dir.tag),
+            span: dir.span,
+            layer: Layer::Staging,
+            fixits,
+            provenance: None,
+        });
         return diags;
     };
 
