@@ -26,6 +26,9 @@ pub const E_UNCLASSIFIED: &str = "E-UNCLASSIFIED";
 pub const E_UNCLOSED_TAG: &str = "E-UNCLOSED-TAG";
 /// Diagnostic code: non-staging content inside a `<timeline>`/`<track>` (§7.4).
 pub const E_TIMELINE_CONTENT: &str = "E-TIMELINE-CONTENT";
+/// Diagnostic code: a `<branch>` body held a non-`<choice>` child, or a
+/// `<match>` body a non-`<when>`/`<otherwise>` child (§7.3).
+pub const E_LOGIC_CONTENT: &str = "E-LOGIC-CONTENT";
 /// Diagnostic code: a `/* … */` block comment ran to EOF (§4.2).
 pub const E_COMMENT_UNTERMINATED: &str = "E-COMMENT-UNTERMINATED";
 
@@ -657,5 +660,30 @@ mod tests {
         } else {
             panic!("expected Match");
         }
+    }
+
+    #[test]
+    fn stray_line_under_branch_is_diagnosed() {
+        // §7.3: a <branch> body admits only <choice> children. A direct :line is
+        // invalid structure and MUST be reported (not silently dropped), mirroring
+        // the <track>/E-TIMELINE-CONTENT rule.
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<branch id=\"b\">\n:line[narrator]: stray\n<choice id=\"c\" label=\"L\">\n:line[narrator]: ok\n</choice>\n</branch>\n";
+        let (_doc, diags) = parse(src);
+        assert!(
+            diags.iter().any(|d| d.code == E_LOGIC_CONTENT),
+            "stray :line under <branch> must be diagnosed, got {diags:?}"
+        );
+    }
+
+    #[test]
+    fn stray_directive_under_match_is_diagnosed() {
+        // §7.3: a <match> body admits only <when>/<otherwise>. A direct ::set is
+        // invalid structure and MUST be reported, not silently skipped.
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.x\">\n::set{scene.x = 1}\n<otherwise>\n:line[narrator]: ok\n</otherwise>\n</match>\n";
+        let (_doc, diags) = parse(src);
+        assert!(
+            diags.iter().any(|d| d.code == E_LOGIC_CONTENT),
+            "stray ::set under <match> must be diagnosed, got {diags:?}"
+        );
     }
 }
