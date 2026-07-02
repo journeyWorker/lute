@@ -8,7 +8,9 @@
 //! check, deferred to the checker).
 
 use super::attrs::{take_cel, take_str};
-use super::{close_tag_name, open_tag_name, Parser, E_TIMELINE_CONTENT, E_UNCLOSED_TAG};
+use super::{
+    close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
+};
 use crate::ast::*;
 use lute_core_span::Layer;
 
@@ -87,7 +89,15 @@ impl Parser<'_> {
                 last_end = c.span.byte_end;
                 choices.push(c);
             } else {
-                // Stray content inside <branch>: skip (checker validates structure).
+                // §7.3: a <branch> body admits only <choice> children. Report the
+                // stray line (mirroring <track>/E-TIMELINE-CONTENT) before skipping
+                // it, so the checker/editor sees it rather than a silent drop.
+                self.emit_line(
+                    E_LOGIC_CONTENT,
+                    "a <branch> body may contain only <choice> children (dsl §7.3)",
+                    self.cursor,
+                    Layer::Logic,
+                );
                 self.skip_stray();
             }
         }
@@ -148,7 +158,18 @@ impl Parser<'_> {
                     last_end = arm_end(&a);
                     arms.push(a);
                 }
-                _ => self.skip_stray(),
+                _ => {
+                    // §7.3: a <match> body admits only <when>/<otherwise> arms.
+                    // Report the stray line before skipping it (mirroring
+                    // <track>/E-TIMELINE-CONTENT), not a silent drop.
+                    self.emit_line(
+                        E_LOGIC_CONTENT,
+                        "a <match> body may contain only <when> and <otherwise> children (dsl §7.3)",
+                        self.cursor,
+                        Layer::Logic,
+                    );
+                    self.skip_stray();
+                }
             }
         }
         let end_o = self.consume_close("match", &open, last_end);
