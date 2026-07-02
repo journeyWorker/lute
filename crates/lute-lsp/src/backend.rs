@@ -25,15 +25,18 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     CompletionOptions, CompletionParams, CompletionResponse, Diagnostic as LspDiagnostic,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, Location, MessageType, OneOf, Position, Range,
-    ReferenceParams, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Uri,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
+    FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, Location,
+    MessageType, OneOf, Position, Range, ReferenceParams, SemanticTokens, SemanticTokensFullOptions,
+    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
+    TextDocumentSyncKind, Uri, WorkDoneProgressOptions,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
 use crate::convert::to_lsp_diagnostic;
-use crate::features::{completion, hover, nav};
+use crate::features::{completion, folding, hover, nav, semtok, symbols};
 
 /// The last-known text of an open document plus the LSP version that produced it.
 /// Republished diagnostics are stamped with `version` so the client can discard
@@ -103,6 +106,19 @@ impl LanguageServer for Backend {
                 }),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
+                // 6.4 structure features. Folding + document symbols are simple
+                // providers; semantic tokens advertise the full-document legend
+                // (the closed layer set) that the delta stream is decoded against.
+                folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+                document_symbol_provider: Some(OneOf::Left(true)),
+                semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
+                    SemanticTokensOptions {
+                        work_done_progress_options: WorkDoneProgressOptions::default(),
+                        legend: semtok::legend(),
+                        range: Some(false),
+                        full: Some(SemanticTokensFullOptions::Bool(true)),
+                    },
+                )),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -167,6 +183,37 @@ impl LanguageServer for Backend {
             return Ok(None);
         }
         Ok(Some(locs))
+    }
+
+    async fn folding_range(
+        &self,
+        params: FoldingRangeParams,
+    ) -> Result<Option<Vec<FoldingRange>>> {
+        let Some(text) = self.document_text(&params.text_document.uri) else { return Ok(None) };
+        let (doc, _) = lute_syntax::parse(&text);
+        let idx = TextIndex::new(&text);
+        Ok(Some(folding::folding_ranges(&doc, &idx)))
+    }
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let Some(text) = self.document_text(&params.text_document.uri) else { return Ok(None) };
+        let (doc, _) = lute_syntax::parse(&text);
+        let idx = TextIndex::new(&text);
+        let data = semtok::semantic_tokens(&doc, &idx);
+        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens { result_id: None, data })))
+    }
+
+    async fn document_symbol(
+        &self,
+        params: DocumentSymbolParams,
+    ) -> Result<Option<DocumentSymbolResponse>> {
+        let Some(text) = self.document_text(&params.text_document.uri) else { return Ok(None) };
+        let (doc, _) = lute_syntax::parse(&text);
+        let idx = TextIndex::new(&text);
+        Ok(Some(DocumentSymbolResponse::Nested(symbols::document_symbols(&doc, &idx))))
     }
 
     async fn initialized(&self, _params: tower_lsp_server::ls_types::InitializedParams) {
@@ -243,11 +290,11 @@ fn position_to_byte(text: &str, pos: Position) -> usize {
 /// same UTF-16-correct positions as diagnostics. Byte-only spans synthesized by
 /// the feature layer (zeroed line/col) resolve correctly here because the mapping
 /// only reads `byte_start`/`byte_end`.
-fn span_to_range(span: &Span, idx: &TextIndex) -> Range {
+pub(crate) fn span_to_range(span: &Span, idx: &TextIndex) -> Range {
     Range { start: byte_to_position(span.byte_start, idx), end: byte_to_position(span.byte_end, idx) }
 }
 
-fn byte_to_position(byte: usize, idx: &TextIndex) -> Position {
+pub(crate) fn byte_to_position(byte: usize, idx: &TextIndex) -> Position {
     let p = idx.position(byte);
     Position { line: p.line - 1, character: p.utf16_col }
 }
