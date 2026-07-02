@@ -54,14 +54,20 @@ pub fn to_lsp_diagnostic(d: &Diagnostic, idx: &TextIndex) -> lsp_types::Diagnost
 /// offset goes through [`TextIndex::position`] and is de-1-indexed for the line and
 /// used as-is for the (already 0-based UTF-16) character.
 fn to_lsp_range(span: &Span, idx: &TextIndex) -> lsp_types::Range {
-    lsp_types::Range { start: to_lsp_position(span.byte_start, idx), end: to_lsp_position(span.byte_end, idx) }
+    lsp_types::Range {
+        start: to_lsp_position(span.byte_start, idx),
+        end: to_lsp_position(span.byte_end, idx),
+    }
 }
 
 /// Map one byte offset to an LSP [`Position`](lsp_types::Position). `TextIndex`
 /// reports a 1-based `line` and a 0-based `utf16_col`; LSP wants 0-based on both.
 fn to_lsp_position(byte: usize, idx: &TextIndex) -> lsp_types::Position {
     let p = idx.position(byte);
-    lsp_types::Position { line: p.line - 1, character: p.utf16_col }
+    lsp_types::Position {
+        line: p.line - 1,
+        character: p.utf16_col,
+    }
 }
 
 /// Core [`Severity`] -> LSP `DiagnosticSeverity` (total; the four map 1:1).
@@ -87,7 +93,15 @@ mod tests {
     }
 
     fn diag(code: &str, sev: Severity, span: Span) -> Diagnostic {
-        Diagnostic { code: code.into(), severity: sev, message: "x".into(), span, layer: Layer::Cel, fixits: vec![], provenance: None }
+        Diagnostic {
+            code: code.into(),
+            severity: sev,
+            message: "x".into(),
+            span,
+            layer: Layer::Cel,
+            fixits: vec![],
+            provenance: None,
+        }
     }
 
     /// The brief's failing test: a byte span becomes a UTF-16 range and the string
@@ -98,7 +112,13 @@ mod tests {
             code: "E-UNDECLARED".into(),
             severity: Severity::Error,
             message: "x".into(),
-            span: Span { byte_start: 5, byte_end: 8, line: 3, column: 2, utf16_range: (5, 8) },
+            span: Span {
+                byte_start: 5,
+                byte_end: 8,
+                line: 3,
+                column: 2,
+                utf16_range: (5, 8),
+            },
             layer: Layer::Cel,
             fixits: vec![],
             provenance: None,
@@ -106,8 +126,14 @@ mod tests {
         let l = to_lsp_diagnostic(&d, &line_index());
         assert_eq!(l.range.start.line, 2, "line 3 -> 0-based 2");
         assert_eq!(l.range.start.character, 1, "utf16 col within line 3");
-        assert_eq!(l.range.end.character, 4, "byte 8 -> slice \"hell\" -> 4 utf16 units");
-        assert_eq!(l.code.unwrap(), lsp_types::NumberOrString::String("E-UNDECLARED".into()));
+        assert_eq!(
+            l.range.end.character, 4,
+            "byte 8 -> slice \"hell\" -> 4 utf16 units"
+        );
+        assert_eq!(
+            l.code.unwrap(),
+            lsp_types::NumberOrString::String("E-UNDECLARED".into())
+        );
         assert_eq!(l.source.as_deref(), Some("lute"));
         assert_eq!(l.message, "x");
     }
@@ -117,7 +143,17 @@ mod tests {
     #[test]
     fn ascii_multiline_span_spans_two_lines() {
         let idx = TextIndex::new("abc\ndef\nghi");
-        let d = diag("E-X", Severity::Error, Span { byte_start: 1, byte_end: 5, line: 1, column: 2, utf16_range: (1, 5) });
+        let d = diag(
+            "E-X",
+            Severity::Error,
+            Span {
+                byte_start: 1,
+                byte_end: 5,
+                line: 1,
+                column: 2,
+                utf16_range: (1, 5),
+            },
+        );
         let l = to_lsp_diagnostic(&d, &idx);
         assert_eq!((l.range.start.line, l.range.start.character), (0, 1));
         assert_eq!((l.range.end.line, l.range.end.character), (1, 1));
@@ -131,10 +167,23 @@ mod tests {
         let text = "\u{1F600}x"; // "😀x"
         let idx = TextIndex::new(text);
         assert_eq!(text.find('x'), Some(4), "byte column of x is 4");
-        let d = diag("E-X", Severity::Warning, Span { byte_start: 4, byte_end: 5, line: 1, column: 5, utf16_range: (2, 3) });
+        let d = diag(
+            "E-X",
+            Severity::Warning,
+            Span {
+                byte_start: 4,
+                byte_end: 5,
+                line: 1,
+                column: 5,
+                utf16_range: (2, 3),
+            },
+        );
         let l = to_lsp_diagnostic(&d, &idx);
         assert_eq!(l.range.start.line, 0);
-        assert_eq!(l.range.start.character, 2, "utf16 col is 2, NOT the byte column 4");
+        assert_eq!(
+            l.range.start.character, 2,
+            "utf16 col is 2, NOT the byte column 4"
+        );
         assert_ne!(l.range.start.character, 4, "proves UTF-16 col != byte col");
         assert_eq!(l.range.end.character, 3);
     }
@@ -143,7 +192,13 @@ mod tests {
     #[test]
     fn severity_maps_all_four() {
         let idx = line_index();
-        let span = Span { byte_start: 0, byte_end: 1, line: 1, column: 1, utf16_range: (0, 1) };
+        let span = Span {
+            byte_start: 0,
+            byte_end: 1,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 1),
+        };
         let cases = [
             (Severity::Error, lsp_types::DiagnosticSeverity::ERROR),
             (Severity::Warning, lsp_types::DiagnosticSeverity::WARNING),

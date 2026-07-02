@@ -39,10 +39,16 @@ fn bianca_example_checks_clean() {
         mode: Mode::Author,
     };
     let res = check(&input);
-    let errors: Vec<_> =
-        res.diagnostics.iter().filter(|d| d.severity == Severity::Error).collect();
+    let errors: Vec<_> = res
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .collect();
     assert!(errors.is_empty(), "unexpected errors: {errors:#?}");
-    assert!(res.resolved.is_some(), "clean document must produce a resolved view");
+    assert!(
+        res.resolved.is_some(),
+        "clean document must produce a resolved view"
+    );
 }
 
 #[test]
@@ -63,8 +69,11 @@ fn undeclared_set_target_reports_exactly_one_undeclared() {
     // dedup carry-forward must collapse them to a single `E-UNDECLARED`.
     let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::set{scene.nope = 1}\n";
     let res = check(&input_for(text));
-    let undeclared: Vec<_> =
-        res.diagnostics.iter().filter(|d| d.code == "E-UNDECLARED").collect();
+    let undeclared: Vec<_> = res
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E-UNDECLARED")
+        .collect();
     assert_eq!(
         undeclared.len(),
         1,
@@ -89,8 +98,7 @@ fn two_distinct_undeclared_paths_in_one_slot_both_survive() {
         .map(|d| d.message.as_str())
         .collect();
     assert!(
-        paths.iter().any(|m| m.contains("scene.a"))
-            && paths.iter().any(|m| m.contains("scene.b")),
+        paths.iter().any(|m| m.contains("scene.a")) && paths.iter().any(|m| m.contains("scene.b")),
         "both undeclared paths must survive dedup, got: {paths:#?}"
     );
 }
@@ -101,7 +109,11 @@ fn diagnostics_are_sorted_by_byte_start() {
     // unknown directive in shot 2) must come back ordered by `span.byte_start`.
     let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::set{scene.nope = 1}\n## Shot 2.\n::bogusdirective{}\n";
     let res = check(&input_for(text));
-    assert!(res.diagnostics.len() >= 2, "expected at least two diagnostics: {:#?}", res.diagnostics);
+    assert!(
+        res.diagnostics.len() >= 2,
+        "expected at least two diagnostics: {:#?}",
+        res.diagnostics
+    );
     for pair in res.diagnostics.windows(2) {
         let (a, b) = (&pair[0], &pair[1]);
         assert!(

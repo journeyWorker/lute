@@ -61,11 +61,21 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
     };
 
     let lines = split_lines(&body);
-    let mut p = Parser { idx, body, body_start, lines, cursor: 0, diags };
+    let mut p = Parser {
+        idx,
+        body,
+        body_start,
+        lines,
+        cursor: 0,
+        diags,
+    };
     let (title, shots) = p.parse_document_inner();
 
     let doc = Document {
-        meta: Meta { raw_yaml, span: meta_span },
+        meta: Meta {
+            raw_yaml,
+            span: meta_span,
+        },
         title,
         shots,
         span: Span::from_bytes(&p.idx, 0, text.len()),
@@ -166,7 +176,12 @@ impl Parser<'_> {
             } else if trimmed.starts_with("# ") && shots.is_empty() && title.is_none() {
                 title = Some(self.parse_title());
             } else {
-                self.emit_line(E_UNCLASSIFIED, "unrecognized line", self.cursor, Layer::Content);
+                self.emit_line(
+                    E_UNCLASSIFIED,
+                    "unrecognized line",
+                    self.cursor,
+                    Layer::Content,
+                );
                 self.cursor += 1;
             }
         }
@@ -198,7 +213,12 @@ impl Parser<'_> {
         self.cursor += 1;
         let body = self.parse_shot_body();
         let end_o = body.last().map(node_end).unwrap_or(head_end_o);
-        Shot { heading, number, body, span: self.span_o(start_o, end_o) }
+        Shot {
+            heading,
+            number,
+            body,
+            span: self.span_o(start_o, end_o),
+        }
     }
 
     fn parse_shot_body(&mut self) -> Vec<Node> {
@@ -213,7 +233,12 @@ impl Parser<'_> {
                 break; // next shot: leave for the document loop.
             }
             if trimmed.starts_with("</") {
-                self.emit_line(E_UNCLOSED_TAG, "closing tag without a matching open", self.cursor, Layer::Logic);
+                self.emit_line(
+                    E_UNCLOSED_TAG,
+                    "closing tag without a matching open",
+                    self.cursor,
+                    Layer::Logic,
+                );
                 self.cursor += 1;
                 continue;
             }
@@ -244,13 +269,23 @@ impl Parser<'_> {
                 Some("match") => return Some(Node::Match(self.parse_match())),
                 Some("timeline") => return Some(Node::Timeline(self.parse_timeline())),
                 _ => {
-                    self.emit_line(E_UNCLASSIFIED, "unexpected block here", self.cursor, Layer::Logic);
+                    self.emit_line(
+                        E_UNCLASSIFIED,
+                        "unexpected block here",
+                        self.cursor,
+                        Layer::Logic,
+                    );
                     self.cursor += 1;
                     return None;
                 }
             }
         }
-        self.emit_line(E_UNCLASSIFIED, "unrecognized line", self.cursor, Layer::Content);
+        self.emit_line(
+            E_UNCLASSIFIED,
+            "unrecognized line",
+            self.cursor,
+            Layer::Content,
+        );
         self.cursor += 1;
         None
     }
@@ -332,7 +367,13 @@ impl Parser<'_> {
         );
         let span = self.span(cstart, node_end);
         self.cursor += 1;
-        Node::Set(Set { path, path_span, op: op.to_string(), expr, span })
+        Node::Set(Set {
+            path,
+            path_span,
+            op: op.to_string(),
+            expr,
+            span,
+        })
     }
 
     /// `Line ::= ":line[" Speaker "]" Attrs? ":" WS Text` (§7.1). Text is opaque
@@ -374,14 +415,26 @@ impl Parser<'_> {
         let text_span = self.span(text_start, text_end);
         let span = self.span(cstart, line_end);
         self.cursor += 1;
-        Node::Line(Line { speaker, attrs, text: text_raw.to_string(), text_span, span })
+        Node::Line(Line {
+            speaker,
+            attrs,
+            text: text_raw.to_string(),
+            text_span,
+            span,
+        })
     }
 }
 
 // -- free helpers -------------------------------------------------------------
 
 fn zero_span() -> Span {
-    Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+    Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 1,
+        column: 1,
+        utf16_range: (0, 0),
+    }
 }
 
 /// A byte permitted inside an `Ident` / attr key (`[A-Za-z0-9_-]`); the leading
@@ -510,7 +563,10 @@ mod tests {
         let (doc, diags) = parse("---\ncharacter: x\n---\n## Shot 1.\n::set{scene.a = 1}\n");
         assert!(diags.is_empty(), "{diags:?}");
         let body = &doc.shots[0].body;
-        assert!(matches!(body[0], Node::Set(_)), "::set must classify as Set, not Directive");
+        assert!(
+            matches!(body[0], Node::Set(_)),
+            "::set must classify as Set, not Directive"
+        );
     }
 
     #[test]
@@ -532,7 +588,8 @@ mod tests {
 
     #[test]
     fn attr_quote_protects_structural_chars() {
-        let (doc, _) = parse("---\ncharacter: x\n---\n## Shot 1.\n::sfx{sound=\"a } b\" name=\"n\"}\n");
+        let (doc, _) =
+            parse("---\ncharacter: x\n---\n## Shot 1.\n::sfx{sound=\"a } b\" name=\"n\"}\n");
         if let Node::Directive(d) = &doc.shots[0].body[0] {
             assert_eq!(d.attrs.len(), 2);
             assert_eq!(d.attrs[0].key, "sound");
@@ -549,7 +606,10 @@ mod tests {
         // ORIGINAL line, not a comment-shifted one.
         let src = "---\ncharacter: x\n---\n/*\n c\n*/\n## Shot 1.\ngarbage\n";
         let (_doc, diags) = parse(src);
-        let d = diags.iter().find(|d| d.code == "E-UNCLASSIFIED").expect("unclassified diag");
+        let d = diags
+            .iter()
+            .find(|d| d.code == "E-UNCLASSIFIED")
+            .expect("unclassified diag");
         // `garbage` is line 8 of the original file (1-based).
         assert_eq!(d.span.line, 8, "diag should point at the original line 8");
         assert_eq!(&src[d.span.byte_start..d.span.byte_end], "garbage");

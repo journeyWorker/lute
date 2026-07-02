@@ -69,7 +69,9 @@ fn path_definition(doc: &Document, path: &str) -> Option<Span> {
 /// Every use site of the symbol at byte offset `off`. Empty when the cursor is not
 /// on a referable symbol.
 pub fn references_at(doc: &Document, snapshot: &CapabilitySnapshot, off: usize) -> Vec<Span> {
-    let Some(cursor) = super::resolve(doc, off) else { return Vec::new() };
+    let Some(cursor) = super::resolve(doc, off) else {
+        return Vec::new();
+    };
     let _ = snapshot;
     match cursor {
         Cursor::SetPath { path, .. } => path_uses(doc, path),

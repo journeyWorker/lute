@@ -39,7 +39,10 @@ pub fn load_core_snapshot() -> CapabilitySnapshot {
     let mut plugins = BTreeMap::new();
     plugins.insert(
         manifest.id.clone(),
-        ResolvedPlugin { version: manifest.version.clone(), options: BTreeMap::new() },
+        ResolvedPlugin {
+            version: manifest.version.clone(),
+            options: BTreeMap::new(),
+        },
     );
 
     let mut snap = CapabilitySnapshot {
@@ -59,7 +62,9 @@ mod tests {
     #[test]
     fn core_snapshot_has_baseline_directives() {
         let snap = load_core_snapshot();
-        for name in ["bg", "music", "sfx", "auto", "vfx", "cut", "video", "camera"] {
+        for name in [
+            "bg", "music", "sfx", "auto", "vfx", "cut", "video", "camera",
+        ] {
             assert!(snap.directive(name).is_some(), "missing ::{name}");
         }
     }

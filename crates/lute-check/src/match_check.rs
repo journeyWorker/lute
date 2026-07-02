@@ -192,7 +192,11 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
     // Implicit decl: enum of the branch's choice ids, scene-scoped, no default
     // (so it is maybe-unset — the domain is choice ids ∪ `unset`, §11.1).
     let members = branch.choices.iter().map(|c| c.id.clone()).collect();
-    let decl = StateDecl { ty: Type::Enum(members), default: None, namespace: Namespace::Scene };
+    let decl = StateDecl {
+        ty: Type::Enum(members),
+        default: None,
+        namespace: Namespace::Scene,
+    };
     BranchRecord { path, decl, diags }
 }
 
@@ -238,7 +242,10 @@ struct DomainInfo {
 /// not have been reached), or a `run.*`/`user.*`/`app.*` decl with no `default`.
 fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> DomainInfo {
     let Some(path) = subject else {
-        return DomainInfo { domain: Domain::Infinite, maybe_unset: false };
+        return DomainInfo {
+            domain: Domain::Infinite,
+            maybe_unset: false,
+        };
     };
     // `scene.choices.<branchId>`: domain = branch choice ids ∪ `unset` (§11.1).
     if path.strip_prefix("scene.choices.").is_some() {
@@ -248,7 +255,10 @@ fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> DomainInfo {
             // coverage; treat as infinite so `<otherwise>` is required.
             None => Domain::Infinite,
         };
-        return DomainInfo { domain, maybe_unset: true };
+        return DomainInfo {
+            domain,
+            maybe_unset: true,
+        };
     }
     match schema.decls.get(path) {
         Some(decl) => {
@@ -256,23 +266,40 @@ fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> DomainInfo {
                 Type::Bool => {
                     Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)])
                 }
-                Type::Enum(members) => {
-                    Domain::Finite(members.iter().map(|m| DomainValue::Str(m.clone())).collect())
-                }
+                Type::Enum(members) => Domain::Finite(
+                    members
+                        .iter()
+                        .map(|m| DomainValue::Str(m.clone()))
+                        .collect(),
+                ),
                 _ => Domain::Infinite,
             };
             let maybe_unset = decl.default.is_none()
-                && matches!(decl.namespace, Namespace::Run | Namespace::User | Namespace::App);
-            DomainInfo { domain, maybe_unset }
+                && matches!(
+                    decl.namespace,
+                    Namespace::Run | Namespace::User | Namespace::App
+                );
+            DomainInfo {
+                domain,
+                maybe_unset,
+            }
         }
-        None => DomainInfo { domain: Domain::Infinite, maybe_unset: false },
+        None => DomainInfo {
+            domain: Domain::Infinite,
+            maybe_unset: false,
+        },
     }
 }
 
 /// The enum members declared at `path`, if the decl is a `Type::Enum`.
 fn enum_members(path: &str, schema: &StateSchema) -> Option<Vec<DomainValue>> {
     match &schema.decls.get(path)?.ty {
-        Type::Enum(members) => Some(members.iter().map(|m| DomainValue::Str(m.clone())).collect()),
+        Type::Enum(members) => Some(
+            members
+                .iter()
+                .map(|m| DomainValue::Str(m.clone()))
+                .collect(),
+        ),
         _ => None,
     }
 }
@@ -371,9 +398,7 @@ fn is_subject(expr: &Expr, subject: Option<&str>) -> bool {
 fn is_unset_test(expr: &Expr, subject: Option<&str>) -> bool {
     match expr {
         // `has(p)` expands to a test-only Select of the subject path.
-        Expr::Select(sel) if sel.test => {
-            crate::cel_paths::select_path(expr).as_deref() == subject
-        }
+        Expr::Select(sel) if sel.test => crate::cel_paths::select_path(expr).as_deref() == subject,
         // `isSet($)` — a DSL global with the subject as its sole argument.
         Expr::Call(c)
             if c.target.is_none()
@@ -425,21 +450,39 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
     use lute_core_span::StableId;
     use lute_syntax::ast::{CelKind, CelSlot};
+    use std::collections::BTreeMap;
 
     fn span() -> Span {
-        Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+        Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        }
     }
 
     fn subject_slot(raw: &str) -> CelSlot {
-        CelSlot { kind: CelKind::MatchSubject, raw: raw.into(), ast: None, span: span(), id: StableId(0) }
+        CelSlot {
+            kind: CelKind::MatchSubject,
+            raw: raw.into(),
+            ast: None,
+            span: span(),
+            id: StableId(0),
+        }
     }
 
     fn when_arm(test: &str) -> Arm {
         Arm::When {
-            test: CelSlot { kind: CelKind::Condition, raw: test.into(), ast: None, span: span(), id: StableId(0) },
+            test: CelSlot {
+                kind: CelKind::Condition,
+                raw: test.into(),
+                ast: None,
+                span: span(),
+                id: StableId(0),
+            },
             body: Vec::new(),
             span: span(),
         }
@@ -448,11 +491,21 @@ mod tests {
     /// A `<match on="run.rank">` over an enum subject: one `<when test="$ ==
     /// '<v>'">` per covered value, plus an optional `<otherwise>`.
     fn match_on_enum(_domain: &[&str], covered_arms: &[&str], has_otherwise: bool) -> Match {
-        let mut arms: Vec<Arm> = covered_arms.iter().map(|v| when_arm(&format!("$ == '{v}'"))).collect();
+        let mut arms: Vec<Arm> = covered_arms
+            .iter()
+            .map(|v| when_arm(&format!("$ == '{v}'")))
+            .collect();
         if has_otherwise {
-            arms.push(Arm::Otherwise { body: Vec::new(), span: span() });
+            arms.push(Arm::Otherwise {
+                body: Vec::new(),
+                span: span(),
+            });
         }
-        Match { subject: subject_slot("run.rank"), arms, span: span() }
+        Match {
+            subject: subject_slot("run.rank"),
+            arms,
+            span: span(),
+        }
     }
 
     /// `run.rank` declared as an enum WITH a default => finite, never unset.
@@ -512,7 +565,11 @@ mod tests {
     // ---- helpers for the remaining behaviors --------------------------------
 
     fn match_with(subject: &str, arms: Vec<Arm>) -> Match {
-        Match { subject: subject_slot(subject), arms, span: span() }
+        Match {
+            subject: subject_slot(subject),
+            arms,
+            span: span(),
+        }
     }
 
     fn schema_bool(path: &str, default: Option<bool>) -> StateSchema {
@@ -541,7 +598,12 @@ mod tests {
                 span: span(),
             })
             .collect();
-        Branch { id: id.to_string(), attrs: Vec::new(), choices, span: span() }
+        Branch {
+            id: id.to_string(),
+            attrs: Vec::new(),
+            choices,
+            span: span(),
+        }
     }
 
     // ---- E-NONEXHAUSTIVE / otherwise ----------------------------------------
@@ -552,12 +614,22 @@ mod tests {
         let mut decls = BTreeMap::new();
         decls.insert(
             "run.n".to_string(),
-            StateDecl { ty: Type::Number, default: None, namespace: Namespace::Run },
+            StateDecl {
+                ty: Type::Number,
+                default: None,
+                namespace: Namespace::Run,
+            },
         );
         let schema = StateSchema { decls };
         let m = match_with(
             "run.n",
-            vec![when_arm("$ == 1"), Arm::Otherwise { body: Vec::new(), span: span() }],
+            vec![
+                when_arm("$ == 1"),
+                Arm::Otherwise {
+                    body: Vec::new(),
+                    span: span(),
+                },
+            ],
         );
         assert!(check_match(&m, &schema, &ctx()).is_empty());
     }
@@ -567,7 +639,11 @@ mod tests {
         let mut decls = BTreeMap::new();
         decls.insert(
             "run.n".to_string(),
-            StateDecl { ty: Type::Number, default: Some(lute_manifest::types::Literal::Num(0.0)), namespace: Namespace::Run },
+            StateDecl {
+                ty: Type::Number,
+                default: Some(lute_manifest::types::Literal::Num(0.0)),
+                namespace: Namespace::Run,
+            },
         );
         let schema = StateSchema { decls };
         let m = match_with("run.n", vec![when_arm("$ == 1"), when_arm("$ == 2")]);
@@ -599,20 +675,34 @@ mod tests {
         // full enum coverage + `$ == null` arm covers the maybe-unset case.
         let m = match_with(
             "run.rank",
-            vec![when_arm("$ == 'fail'"), when_arm("$ == 'gold'"), when_arm("$ == null")],
+            vec![
+                when_arm("$ == 'fail'"),
+                when_arm("$ == 'gold'"),
+                when_arm("$ == null"),
+            ],
         );
         let errs = check_match(&m, &schema_maybe_unset_subject(), &ctx());
-        assert!(!errs.iter().any(|e| e.code == "E-UNSET-UNCOVERED"), "got {errs:?}");
+        assert!(
+            !errs.iter().any(|e| e.code == "E-UNSET-UNCOVERED"),
+            "got {errs:?}"
+        );
     }
 
     #[test]
     fn unset_covered_by_isset_negation_no_error() {
         let m = match_with(
             "run.rank",
-            vec![when_arm("$ == 'fail'"), when_arm("$ == 'gold'"), when_arm("!isSet($)")],
+            vec![
+                when_arm("$ == 'fail'"),
+                when_arm("$ == 'gold'"),
+                when_arm("!isSet($)"),
+            ],
         );
         let errs = check_match(&m, &schema_maybe_unset_subject(), &ctx());
-        assert!(!errs.iter().any(|e| e.code == "E-UNSET-UNCOVERED"), "got {errs:?}");
+        assert!(
+            !errs.iter().any(|e| e.code == "E-UNSET-UNCOVERED"),
+            "got {errs:?}"
+        );
     }
 
     #[test]
@@ -622,7 +712,10 @@ mod tests {
         // domain-exhaustive; T4.4 consumes `is_exhaustive` to drop its false +).
         let m = match_on_enum(&["fail", "gold"], &["fail", "gold"], false);
         let errs = check_match(&m, &schema_enum_subject(), &ctx());
-        assert!(errs.is_empty(), "defaulted full-coverage enum should be clean, got {errs:?}");
+        assert!(
+            errs.is_empty(),
+            "defaulted full-coverage enum should be clean, got {errs:?}"
+        );
     }
 
     // ---- age-gate (§11.2) ---------------------------------------------------
@@ -639,7 +732,10 @@ mod tests {
             },
         );
         let schema = StateSchema { decls };
-        let m = match_with("app.rating", vec![when_arm("$ == 'everyone'"), when_arm("$ == 'mature'")]);
+        let m = match_with(
+            "app.rating",
+            vec![when_arm("$ == 'everyone'"), when_arm("$ == 'mature'")],
+        );
         let errs = check_match(&m, &schema, &ctx());
         assert!(errs.iter().any(|e| e.code == "E-AGE-GATE"), "got {errs:?}");
     }
@@ -658,7 +754,11 @@ mod tests {
         let schema = StateSchema { decls };
         let m = match_with(
             "app.rating",
-            vec![when_arm("$ == 'everyone'"), when_arm("$ == 'teen'"), when_arm("$ == 'mature'")],
+            vec![
+                when_arm("$ == 'everyone'"),
+                when_arm("$ == 'teen'"),
+                when_arm("$ == 'mature'"),
+            ],
         );
         let errs = check_match(&m, &schema, &ctx());
         assert!(!errs.iter().any(|e| e.code == "E-AGE-GATE"), "got {errs:?}");
@@ -670,8 +770,15 @@ mod tests {
     fn duplicate_literal_arms_warn_overlap() {
         let m = match_on_enum(&["fail", "gold"], &["gold", "gold", "fail"], false);
         let warns = check_match(&m, &schema_enum_subject(), &ctx());
-        let overlaps: Vec<_> = warns.iter().filter(|e| e.code == "W-OVERLAP-ARMS").collect();
-        assert_eq!(overlaps.len(), 1, "exactly the duplicate `gold` arm warns, got {warns:?}");
+        let overlaps: Vec<_> = warns
+            .iter()
+            .filter(|e| e.code == "W-OVERLAP-ARMS")
+            .collect();
+        assert_eq!(
+            overlaps.len(),
+            1,
+            "exactly the duplicate `gold` arm warns, got {warns:?}"
+        );
         assert_eq!(overlaps[0].severity, Severity::Warning);
     }
 
@@ -679,7 +786,10 @@ mod tests {
     fn distinct_literal_arms_do_not_warn() {
         let m = match_on_enum(&["fail", "gold"], &["fail", "gold"], false);
         let warns = check_match(&m, &schema_enum_subject(), &ctx());
-        assert!(!warns.iter().any(|e| e.code == "W-OVERLAP-ARMS"), "got {warns:?}");
+        assert!(
+            !warns.iter().any(|e| e.code == "W-OVERLAP-ARMS"),
+            "got {warns:?}"
+        );
     }
 
     // ---- scene.choices.<id> domain ------------------------------------------
@@ -702,8 +812,14 @@ mod tests {
             vec![when_arm("$ == 'help'"), when_arm("$ == 'ignore'")],
         );
         let errs = check_match(&m, &schema, &ctx());
-        assert!(errs.iter().any(|e| e.code == "E-UNSET-UNCOVERED"), "got {errs:?}");
-        assert!(!errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"), "choice ids fully covered: {errs:?}");
+        assert!(
+            errs.iter().any(|e| e.code == "E-UNSET-UNCOVERED"),
+            "got {errs:?}"
+        );
+        assert!(
+            !errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
+            "choice ids fully covered: {errs:?}"
+        );
     }
 
     // ---- E-DUP-BRANCH + recording (§11.1) -----------------------------------
@@ -714,7 +830,10 @@ mod tests {
         let rec = check_branch(&branch("couch", &["help", "ignore"]), &mut seen);
         assert_eq!(rec.path, "scene.choices.couch");
         assert_eq!(rec.decl.namespace, Namespace::Scene);
-        assert_eq!(rec.decl.ty, Type::Enum(vec!["help".into(), "ignore".into()]));
+        assert_eq!(
+            rec.decl.ty,
+            Type::Enum(vec!["help".into(), "ignore".into()])
+        );
         assert!(rec.decl.default.is_none());
         assert!(rec.diags.is_empty());
     }
@@ -725,7 +844,11 @@ mod tests {
         let first = check_branch(&branch("couch", &["help"]), &mut seen);
         assert!(first.diags.is_empty(), "first occurrence is clean");
         let second = check_branch(&branch("couch", &["help"]), &mut seen);
-        assert!(second.diags.iter().any(|e| e.code == "E-DUP-BRANCH"), "got {:?}", second.diags);
+        assert!(
+            second.diags.iter().any(|e| e.code == "E-DUP-BRANCH"),
+            "got {:?}",
+            second.diags
+        );
     }
 
     // ---- is_exhaustive (T4.4 consumer) --------------------------------------

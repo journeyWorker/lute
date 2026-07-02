@@ -112,7 +112,10 @@ fn normalize_lsp(d: &ls_types::Diagnostic) -> Norm {
         Some(ls_types::NumberOrString::String(s)) => s.clone(),
         other => panic!("expected a string diagnostic code, got {other:?}"),
     };
-    let severity = lsp_severity(d.severity.expect("converted diagnostic always carries a severity"));
+    let severity = lsp_severity(
+        d.severity
+            .expect("converted diagnostic always carries a severity"),
+    );
     (
         code,
         severity,
@@ -137,12 +140,22 @@ fn headless_and_lsp_diagnostics_match() {
     );
 
     let index = idx(&text);
-    let headless: Vec<Norm> = res.diagnostics.iter().map(|d| normalize_headless(d, &index)).collect();
-    let via_lsp: Vec<Norm> =
-        res.diagnostics.iter().map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index))).collect();
+    let headless: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &index))
+        .collect();
+    let via_lsp: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .collect();
 
     // Same length, same order (check() already sorts), same content.
-    assert_eq!(headless, via_lsp, "headless and LSP diagnostic surfaces diverged");
+    assert_eq!(
+        headless, via_lsp,
+        "headless and LSP diagnostic surfaces diverged"
+    );
 }
 
 /// Warning-bearing golden: `bianca-s01ep02.lute` is error-clean but carries a
@@ -163,9 +176,19 @@ fn headless_and_lsp_diagnostics_match_warning_bearing() {
     );
 
     let index = idx(&text);
-    let headless: Vec<Norm> = res.diagnostics.iter().map(|d| normalize_headless(d, &index)).collect();
-    let via_lsp: Vec<Norm> =
-        res.diagnostics.iter().map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index))).collect();
+    let headless: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &index))
+        .collect();
+    let via_lsp: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .collect();
 
-    assert_eq!(headless, via_lsp, "headless and LSP diagnostic surfaces diverged");
+    assert_eq!(
+        headless, via_lsp,
+        "headless and LSP diagnostic surfaces diverged"
+    );
 }

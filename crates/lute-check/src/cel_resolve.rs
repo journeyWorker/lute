@@ -91,7 +91,10 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx, diags: &mut Vec<Diagn
 /// A path is declared when it exactly matches a `state:` key or is a descendant
 /// field of one (`scene.player` declared => `scene.player.hp` reads are ok).
 fn is_declared(path: &str, ctx: &Ctx) -> bool {
-    ctx.state.decls.keys().any(|k| path == k || path.starts_with(&format!("{k}.")))
+    ctx.state
+        .decls
+        .keys()
+        .any(|k| path == k || path.starts_with(&format!("{k}.")))
 }
 
 /// Guard/condition slots (dsl §9.6): a `<match>` subject or any boolean guard.
@@ -133,7 +136,13 @@ mod tests {
     use std::collections::BTreeSet;
 
     fn test_span() -> Span {
-        Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+        Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        }
     }
 
     fn ctx_no_match() -> Ctx {
@@ -148,7 +157,10 @@ mod tests {
     }
 
     fn ctx_in_match() -> Ctx {
-        Ctx { in_match: true, ..Ctx::default() }
+        Ctx {
+            in_match: true,
+            ..Ctx::default()
+        }
     }
 
     /// Build a `Condition` slot and parse it into a fresh arena so `ast` is `Some`.

@@ -31,16 +31,18 @@
 
 use crate::{parse_slot, CelArena, CelParseError};
 use lute_core_span::StableId;
-use lute_syntax::ast::{
-    Arm, AttrValue, Branch, ClipNode, Document, Match, Node, Timeline,
-};
+use lute_syntax::ast::{Arm, AttrValue, Branch, ClipNode, Document, Match, Node, Timeline};
 
 /// Parse every [`CelSlot`] in `doc`, filling `slot.ast`/`slot.id`.
 ///
 /// Returns one [`CelParseError`] per slot that failed to parse. Never aborts on a
 /// parse failure and never panics.
 pub fn fill_document(arena: &mut CelArena, doc: &mut Document) -> Vec<CelParseError> {
-    let mut w = Walk { arena, next_id: 1, errors: Vec::new() };
+    let mut w = Walk {
+        arena,
+        next_id: 1,
+        errors: Vec::new(),
+    };
     for shot in &mut doc.shots {
         w.body(&mut shot.body);
     }
@@ -146,7 +148,10 @@ mod tests {
     /// written separately from the `fill_document` walk so a shared blind spot in
     /// one is caught by the other's hand-counted expectation.
     fn collect_slots(doc: &lute_syntax::ast::Document) -> Vec<&lute_syntax::ast::CelSlot> {
-        fn attrs<'a>(out: &mut Vec<&'a lute_syntax::ast::CelSlot>, attrs: &'a [lute_syntax::ast::Attr]) {
+        fn attrs<'a>(
+            out: &mut Vec<&'a lute_syntax::ast::CelSlot>,
+            attrs: &'a [lute_syntax::ast::Attr],
+        ) {
             for a in attrs {
                 if let AttrValue::Ref(s) = &a.value {
                     out.push(s);
@@ -220,26 +225,26 @@ mod tests {
         let text = concat!(
             "---\ncharacter: x\n---\n",
             "## Shot 1.\n",
-            ":line[narrator]{mood=@joy}: hi\n",          // Line.attrs Ref
-            "::camera{focus=@fond}\n",                    // Directive.attrs Ref
-            "::set{scene.a = 1}\n",                       // top-level Set.expr
-            "<branch id=\"b\" flag=@joy>\n",              // Branch.attrs Ref
+            ":line[narrator]{mood=@joy}: hi\n", // Line.attrs Ref
+            "::camera{focus=@fond}\n",          // Directive.attrs Ref
+            "::set{scene.a = 1}\n",             // top-level Set.expr
+            "<branch id=\"b\" flag=@joy>\n",    // Branch.attrs Ref
             "<choice id=\"c\" label=\"l\" when=\"scene.a > 0\" pick=@joy>\n", // Choice.when + Choice.attrs Ref
-            "::set{scene.b = 2}\n",                       // Set inside choice body
+            "::set{scene.b = 2}\n", // Set inside choice body
             "</choice>\n",
             "</branch>\n",
-            "<match on=\"scene.a\">\n",                   // Match.subject
-            "<when test=\"scene.a == 1\">\n",             // Arm::When test
-            "::set{scene.c = 3}\n",                       // Set inside when body
+            "<match on=\"scene.a\">\n",       // Match.subject
+            "<when test=\"scene.a == 1\">\n", // Arm::When test
+            "::set{scene.c = 3}\n",           // Set inside when body
             "</when>\n",
             "<otherwise>\n",
-            "::set{scene.d = 4}\n",                       // Set inside otherwise body
+            "::set{scene.d = 4}\n", // Set inside otherwise body
             "</otherwise>\n",
             "</match>\n",
-            "<timeline duration=\"1.4\">\n",              // Timeline.duration
+            "<timeline duration=\"1.4\">\n", // Timeline.duration
             "<track channel=\"fg\">\n",
-            "::cut{assetId=\"x\" cue=@joy}\n",            // clip Directive.attrs Ref
-            "::set{scene.e = 5}\n",                       // clip Set.expr (ClipNode::Set)
+            "::cut{assetId=\"x\" cue=@joy}\n", // clip Directive.attrs Ref
+            "::set{scene.e = 5}\n",            // clip Set.expr (ClipNode::Set)
             "</track>\n",
             "</timeline>\n",
         );
@@ -250,14 +255,24 @@ mod tests {
 
         const EXPECTED: usize = 14;
         let slots = collect_slots(&doc);
-        assert_eq!(slots.len(), EXPECTED, "hand-counted slot locations must all be present");
+        assert_eq!(
+            slots.len(),
+            EXPECTED,
+            "hand-counted slot locations must all be present"
+        );
 
         // (a) every slot got a non-default, unique StableId (proves fill visited it).
         let ids: HashSet<u64> = slots.iter().map(|s| s.id.0).collect();
-        assert!(slots.iter().all(|s| s.id.0 != 0), "every slot must be assigned a StableId");
+        assert!(
+            slots.iter().all(|s| s.id.0 != 0),
+            "every slot must be assigned a StableId"
+        );
         assert_eq!(ids.len(), EXPECTED, "StableIds must be unique");
         // (b) every valid slot has its AST filled.
-        assert!(slots.iter().all(|s| s.ast.is_some()), "valid slots must be filled");
+        assert!(
+            slots.iter().all(|s| s.ast.is_some()),
+            "valid slots must be filled"
+        );
     }
 
     #[test]
@@ -271,6 +286,9 @@ mod tests {
         let slots = collect_slots(&doc);
         let filled = slots.iter().filter(|s| s.ast.is_some()).count();
         assert!(filled >= 3, "expected >= 3 filled slots, got {filled}");
-        assert!(slots.iter().all(|s| s.id.0 != 0), "every slot must be assigned a StableId");
+        assert!(
+            slots.iter().all(|s| s.id.0 != 0),
+            "every slot must be assigned a StableId"
+        );
     }
 }

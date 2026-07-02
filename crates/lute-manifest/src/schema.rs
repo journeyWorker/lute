@@ -1,11 +1,29 @@
+use crate::types::{Field, Literal, PathSegment, Type};
 use serde::{Deserialize, Serialize};
-use crate::types::{Field, PathSegment, Type, Literal};
 
-#[derive(Debug, Deserialize)] pub struct DirectivesFile { pub directives: Vec<DirectiveDecl> }
-#[derive(Debug, Deserialize)] pub struct ShapesFile { #[serde(rename = "stateShapes")] pub state_shapes: Vec<StateShape> }
-#[derive(Debug, Deserialize)] pub struct TemplatesFile { #[serde(rename = "stateTemplates")] pub state_templates: Vec<StateTemplate> }
-#[derive(Debug, Deserialize)] pub struct ProvidersFile { pub providers: Vec<ProviderDecl> }
-#[derive(Debug, Deserialize)] pub struct BridgeFile { #[serde(rename = "bridgeCapabilities")] pub bridge: Vec<BridgeCapability> }
+#[derive(Debug, Deserialize)]
+pub struct DirectivesFile {
+    pub directives: Vec<DirectiveDecl>,
+}
+#[derive(Debug, Deserialize)]
+pub struct ShapesFile {
+    #[serde(rename = "stateShapes")]
+    pub state_shapes: Vec<StateShape>,
+}
+#[derive(Debug, Deserialize)]
+pub struct TemplatesFile {
+    #[serde(rename = "stateTemplates")]
+    pub state_templates: Vec<StateTemplate>,
+}
+#[derive(Debug, Deserialize)]
+pub struct ProvidersFile {
+    pub providers: Vec<ProviderDecl>,
+}
+#[derive(Debug, Deserialize)]
+pub struct BridgeFile {
+    #[serde(rename = "bridgeCapabilities")]
+    pub bridge: Vec<BridgeCapability>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DirectiveDecl {
@@ -14,7 +32,7 @@ pub struct DirectiveDecl {
     pub layer: Option<String>,
     pub attrs: Vec<AttrDecl>,
     #[serde(default)]
-    pub semantics: Vec<String>,      // closed vocabulary; validated in Task 1.5
+    pub semantics: Vec<String>, // closed vocabulary; validated in Task 1.5
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<DirectiveState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -36,40 +54,75 @@ pub struct AttrDecl {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DirectiveState { pub declares: Vec<SlotDecl> }
+pub struct DirectiveState {
+    pub declares: Vec<SlotDecl>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SlotDecl { pub scope: String, pub path: Vec<PathSegment>, pub shape: String }
+pub struct SlotDecl {
+    pub scope: String,
+    pub path: Vec<PathSegment>,
+    pub shape: String,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct DirectiveEffects { pub writes: Vec<WriteDecl> }
+pub struct DirectiveEffects {
+    pub writes: Vec<WriteDecl>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct WriteDecl { pub scope: String, pub path: Vec<PathSegment>, pub value: WriteValue }
+pub struct WriteDecl {
+    pub scope: String,
+    pub path: Vec<PathSegment>,
+    pub value: WriteValue,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum WriteValue {
-    FromBridgeResult { #[serde(rename = "fromBridgeResult")] from_bridge_result: String },
-    Op { op: String, by: f64 },
+    FromBridgeResult {
+        #[serde(rename = "fromBridgeResult")]
+        from_bridge_result: String,
+    },
+    Op {
+        op: String,
+        by: f64,
+    },
     Literal(Literal),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BridgeRef { pub service: String, pub operation: String }
+pub struct BridgeRef {
+    pub service: String,
+    pub operation: String,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Lowering {
-    Record { record: String, fields: serde_yaml::Value },
-    Builtin { kind: String, name: String },
+    Record {
+        record: String,
+        fields: serde_yaml::Value,
+    },
+    Builtin {
+        kind: String,
+        name: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StateShape { pub name: String, pub fields: Vec<Field> }
+pub struct StateShape {
+    pub name: String,
+    pub fields: Vec<Field>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StateTemplate { pub name: String, pub scope: String, pub path: Vec<PathSegment>, pub shape: String }
+pub struct StateTemplate {
+    pub name: String,
+    pub scope: String,
+    pub path: Vec<PathSegment>,
+    pub shape: String,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderDecl {
@@ -97,9 +150,12 @@ pub struct DefDecl {
     #[serde(default)]
     pub params: std::collections::BTreeMap<String, Type>,
     pub cel: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")] pub min: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")] pub max: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")] pub values: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub values: Option<Vec<String>>,
 }
 
 /// plugin §5 manifest entry.
@@ -116,7 +172,10 @@ pub struct PluginManifest {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Depends { pub id: String, pub range: String }
+pub struct Depends {
+    pub id: String,
+    pub range: String,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OptionDecl {
@@ -174,7 +233,10 @@ writes:
   - { scope: scene, path: [flags, done], value: true }
 "#;
         let e: DirectiveEffects = serde_yaml::from_str(y).unwrap();
-        assert!(matches!(e.writes[0].value, WriteValue::FromBridgeResult { .. }));
+        assert!(matches!(
+            e.writes[0].value,
+            WriteValue::FromBridgeResult { .. }
+        ));
         assert!(matches!(e.writes[1].value, WriteValue::Op { .. }));
         assert!(matches!(e.writes[2].value, WriteValue::Literal(_)));
     }

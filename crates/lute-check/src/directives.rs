@@ -21,9 +21,9 @@
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::provider::{IdStatus, ProviderSet};
+use lute_manifest::schema::AttrDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{type_accepts, Literal, Type};
-use lute_manifest::schema::AttrDecl;
 use lute_syntax::ast::{Attr, AttrValue, Directive};
 
 use crate::ctx::Ctx;
@@ -297,7 +297,13 @@ mod tests {
     use lute_syntax::ast::{Attr, AttrValue};
 
     fn span() -> Span {
-        Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+        Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        }
     }
 
     fn directive(tag: &str, attrs: &[(&str, &str)]) -> Directive {

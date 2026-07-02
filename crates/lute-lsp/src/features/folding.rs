@@ -112,7 +112,14 @@ mod tests {
             if ml(&shot.span) {
                 shots += 1;
             }
-            count_nodes(&shot.body, &idx, &mut timelines, &mut tracks, &mut branches, &mut matches);
+            count_nodes(
+                &shot.body,
+                &idx,
+                &mut timelines,
+                &mut tracks,
+                &mut branches,
+                &mut matches,
+            );
         }
         (shots, timelines, tracks, branches, matches)
     }
@@ -171,9 +178,15 @@ mod tests {
     #[test]
     fn bianca_fold_count_is_shots_plus_blocks() {
         let (shots, timelines, tracks, branches, matches) = expected_multiline(BIANCA);
-        assert_eq!((shots, timelines, tracks, branches, matches), (5, 1, 4, 1, 1));
+        assert_eq!(
+            (shots, timelines, tracks, branches, matches),
+            (5, 1, 4, 1, 1)
+        );
         let expected = shots + timelines + tracks + branches + matches;
-        assert_eq!(expected, 12, "5 shots + 1 timeline + 4 tracks + 1 branch + 1 match");
+        assert_eq!(
+            expected, 12,
+            "5 shots + 1 timeline + 4 tracks + 1 branch + 1 match"
+        );
         assert_eq!(folds(BIANCA).len(), expected);
     }
 
@@ -189,7 +202,10 @@ mod tests {
         let close = BIANCA.find("</timeline>").unwrap();
         let want_start = idx.position(open).line - 1;
         let want_end = idx.position(close).line - 1;
-        assert!(want_end > want_start + 1, "timeline is genuinely multi-line");
+        assert!(
+            want_end > want_start + 1,
+            "timeline is genuinely multi-line"
+        );
         let tl = folds(BIANCA)
             .into_iter()
             .find(|f| f.start_line == want_start)
@@ -204,10 +220,17 @@ mod tests {
     fn every_shot_folds_from_its_heading() {
         let idx = TextIndex::new(BIANCA);
         let all = folds(BIANCA);
-        for marker in ["## Shot 1.", "## Shot 2.", "## Shot 3.", "## Shot 4.", "## Shot 5."] {
+        for marker in [
+            "## Shot 1.",
+            "## Shot 2.",
+            "## Shot 3.",
+            "## Shot 4.",
+            "## Shot 5.",
+        ] {
             let head = idx.position(BIANCA.find(marker).unwrap()).line - 1;
             assert!(
-                all.iter().any(|f| f.start_line == head && f.end_line > head),
+                all.iter()
+                    .any(|f| f.start_line == head && f.end_line > head),
                 "no fold anchored on {marker}"
             );
         }

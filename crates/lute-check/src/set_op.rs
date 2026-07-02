@@ -157,13 +157,19 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::meta::StateDecl;
     use lute_core_span::Span;
     use lute_manifest::types::Type;
     use lute_syntax::ast::{CelKind, CelSlot, Set};
-    use crate::meta::StateDecl;
 
     fn test_span() -> Span {
-        Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+        Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        }
     }
 
     fn set(path: &str, op: &str, rhs: &str) -> Set {
@@ -177,7 +183,11 @@ mod tests {
     }
 
     fn decl(ty: Type, namespace: Namespace) -> StateDecl {
-        StateDecl { ty, default: None, namespace }
+        StateDecl {
+            ty,
+            default: None,
+            namespace,
+        }
     }
 
     fn schema_of(path: &str, ty: Type, namespace: Namespace) -> StateSchema {
@@ -210,13 +220,21 @@ mod tests {
 
     #[test]
     fn bool_compound_assign_errors() {
-        let errs = check_set(&set("scene.flags.saw", "+=", "1"), &schema_bool_flag(), &ctx());
+        let errs = check_set(
+            &set("scene.flags.saw", "+=", "1"),
+            &schema_bool_flag(),
+            &ctx(),
+        );
         assert!(errs.iter().any(|e| e.code == "E-SET-OP-TYPE"));
     }
 
     #[test]
     fn number_increment_ok() {
-        let errs = check_set(&set("scene.affect.bianca", "+=", "1"), &schema_number(), &ctx());
+        let errs = check_set(
+            &set("scene.affect.bianca", "+=", "1"),
+            &schema_number(),
+            &ctx(),
+        );
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -232,19 +250,31 @@ mod tests {
     #[test]
     fn bool_plain_assign_ok() {
         // `=` is a pure write, valid for a bool target.
-        let errs = check_set(&set("scene.flags.saw", "=", "true"), &schema_bool_flag(), &ctx());
+        let errs = check_set(
+            &set("scene.flags.saw", "=", "true"),
+            &schema_bool_flag(),
+            &ctx(),
+        );
         assert!(errs.is_empty(), "{errs:?}");
     }
 
     #[test]
     fn number_plain_assign_ok() {
-        let errs = check_set(&set("scene.affect.bianca", "=", "5"), &schema_number(), &ctx());
+        let errs = check_set(
+            &set("scene.affect.bianca", "=", "5"),
+            &schema_number(),
+            &ctx(),
+        );
         assert!(errs.is_empty(), "{errs:?}");
     }
 
     #[test]
     fn number_multiply_assign_ok() {
-        let errs = check_set(&set("scene.affect.bianca", "*=", "2"), &schema_number(), &ctx());
+        let errs = check_set(
+            &set("scene.affect.bianca", "*=", "2"),
+            &schema_number(),
+            &ctx(),
+        );
         assert!(errs.is_empty(), "{errs:?}");
     }
 

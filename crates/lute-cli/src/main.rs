@@ -26,7 +26,10 @@ use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
 
 #[derive(Parser)]
-#[command(name = "lute", about = "Static checker for .lute visual-novel scenarios")]
+#[command(
+    name = "lute",
+    about = "Static checker for .lute visual-novel scenarios"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -61,7 +64,11 @@ enum CatalogCommand {
 
 fn main() -> ExitCode {
     match Cli::parse().command {
-        Command::Check { file, json, providers } => run_check(&file, json, providers.as_deref()),
+        Command::Check {
+            file,
+            json,
+            providers,
+        } => run_check(&file, json, providers.as_deref()),
         Command::Catalog(CatalogCommand::Refresh { dir }) => run_refresh(&dir),
     }
 }
@@ -127,8 +134,16 @@ fn print_human(file: &Path, result: &lute_check::CheckResult) {
             d.message,
         );
     }
-    let errors = result.diagnostics.iter().filter(|d| d.severity == Severity::Error).count();
-    let warnings = result.diagnostics.iter().filter(|d| d.severity == Severity::Warning).count();
+    let errors = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .count();
+    let warnings = result
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warning)
+        .count();
     if result.ok {
         println!("ok: {path} ({warnings} warning(s))");
     } else {
@@ -171,7 +186,10 @@ fn run_refresh(dir: &Path) -> ExitCode {
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
             p.is_file()
-                && matches!(p.extension().and_then(|x| x.to_str()), Some("yaml") | Some("yml"))
+                && matches!(
+                    p.extension().and_then(|x| x.to_str()),
+                    Some("yaml") | Some("yml")
+                )
         })
         .collect();
     paths.sort();
@@ -188,7 +206,10 @@ fn run_refresh(dir: &Path) -> ExitCode {
         let mut snap: ProviderSnapshot = match serde_yaml::from_str(&raw) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("lute: skipping {} (not a provider snapshot): {e}", path.display());
+                eprintln!(
+                    "lute: skipping {} (not a provider snapshot): {e}",
+                    path.display()
+                );
                 continue;
             }
         };
@@ -208,6 +229,9 @@ fn run_refresh(dir: &Path) -> ExitCode {
         refreshed += 1;
     }
 
-    println!("refreshed {refreshed} snapshot(s) in {} (capabilityVersion {version})", dir.display());
+    println!(
+        "refreshed {refreshed} snapshot(s) in {} (capabilityVersion {version})",
+        dir.display()
+    );
     ExitCode::SUCCESS
 }

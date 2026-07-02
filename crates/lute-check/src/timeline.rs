@@ -75,7 +75,10 @@ pub fn resolve_timeline(tl: &Timeline, _ctx: &Ctx) -> (ResolvedTimeline, Vec<Dia
         diags.push(diag(
             "W-TIMELINE-TRACKS",
             Severity::Warning,
-            format!("timeline has {} tracks (>8); consider splitting", tl.tracks.len()),
+            format!(
+                "timeline has {} tracks (>8); consider splitting",
+                tl.tracks.len()
+            ),
             tl.span,
         ));
     }
@@ -160,7 +163,13 @@ pub fn resolve_timeline(tl: &Timeline, _ctx: &Ctx) -> (ResolvedTimeline, Vec<Dia
                 summary: summary_of(&clip.node),
                 duration,
             });
-            placed.push(Placed { at, end, subject: subject.clone(), key: canon.clone(), span: clip.span });
+            placed.push(Placed {
+                at,
+                end,
+                subject: subject.clone(),
+                key: canon.clone(),
+                span: clip.span,
+            });
             track_ivals.push((at, end));
             if end > max_end {
                 max_end = end;
@@ -183,7 +192,9 @@ pub fn resolve_timeline(tl: &Timeline, _ctx: &Ctx) -> (ResolvedTimeline, Vec<Dia
                 diags.push(diag(
                     "E-WRITE-CONFLICT",
                     Severity::Error,
-                    format!("cross-track write conflict on subject `{a_subj}` at overlapping times"),
+                    format!(
+                        "cross-track write conflict on subject `{a_subj}` at overlapping times"
+                    ),
                     b.span,
                 ));
             }
@@ -280,7 +291,13 @@ mod tests {
     use lute_syntax::ast::{Attr, Clip, Directive, Track};
 
     fn span() -> Span {
-        Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+        Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        }
     }
 
     fn ctx() -> Ctx {
@@ -301,7 +318,11 @@ mod tests {
     }
 
     fn clip(at: Option<f64>, duration: &str) -> Clip {
-        Clip { node: ClipNode::Directive(dir("camera", duration)), at, span: span() }
+        Clip {
+            node: ClipNode::Directive(dir("camera", duration)),
+            at,
+            span: span(),
+        }
     }
 
     fn timeline_camera_two_clips() -> Timeline {

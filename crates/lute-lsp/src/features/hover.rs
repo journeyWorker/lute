@@ -30,7 +30,10 @@ pub fn hover_at(doc: &Document, snapshot: &CapabilitySnapshot, off: usize) -> Op
     let cursor = super::resolve(doc, off)?;
     let md = match cursor {
         Cursor::DirectiveName(tag) => directive_hover(snapshot, tag),
-        Cursor::AttrValue { directive: Some(dir), key } => {
+        Cursor::AttrValue {
+            directive: Some(dir),
+            key,
+        } => {
             // A value on an enum attr documents the domain; else fall back to the
             // attr's own declaration (type/required/default).
             if let Some(vals) = attr_enum_values(snapshot, dir, key) {
@@ -39,7 +42,10 @@ pub fn hover_at(doc: &Document, snapshot: &CapabilitySnapshot, off: usize) -> Op
                 attr_hover(snapshot, dir, key)
             }
         }
-        Cursor::AttrKey { directive: Some(dir), key } => attr_hover(snapshot, dir, key),
+        Cursor::AttrKey {
+            directive: Some(dir),
+            key,
+        } => attr_hover(snapshot, dir, key),
         Cursor::SetPath { path, .. } => state_hover(&meta, path),
         Cursor::Cel { slot, .. } => {
             if let Some(r) = ref_at(slot, off) {
@@ -59,11 +65,18 @@ pub fn hover_at(doc: &Document, snapshot: &CapabilitySnapshot, off: usize) -> Op
             }
         }
         Cursor::DirectiveAttrArea { .. }
-        | Cursor::AttrKey { directive: None, .. }
-        | Cursor::AttrValue { directive: None, .. } => None,
+        | Cursor::AttrKey {
+            directive: None, ..
+        }
+        | Cursor::AttrValue {
+            directive: None, ..
+        } => None,
     }?;
     Some(Hover {
-        contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value: md }),
+        contents: HoverContents::Markup(MarkupContent {
+            kind: MarkupKind::Markdown,
+            value: md,
+        }),
         range: None,
     })
 }
@@ -96,7 +109,11 @@ fn directive_hover(snapshot: &CapabilitySnapshot, tag: &str) -> Option<String> {
 fn attr_hover(snapshot: &CapabilitySnapshot, directive: &str, key: &str) -> Option<String> {
     let decl = snapshot.directive(directive)?;
     let attr = decl.attrs.iter().find(|a| a.name == key)?;
-    let req = if attr.required { "required" } else { "optional" };
+    let req = if attr.required {
+        "required"
+    } else {
+        "optional"
+    };
     let mut s = format!("**`{key}`** ({req}): {}", type_label(&attr.ty));
     if let Some(def) = &attr.default {
         s.push_str(&format!("\n\ndefault: {}", literal_label(def)));
@@ -119,7 +136,9 @@ fn state_hover(meta: &lute_check::TypedMeta, path: &str) -> Option<String> {
 /// branch-folded path): name the branch it resolves to.
 fn choice_hover(path: &str) -> Option<String> {
     let id = choice_id(path)?;
-    Some(format!("**choice path** `{path}` — the chosen id of `<branch id=\"{id}\">`"))
+    Some(format!(
+        "**choice path** `{path}` — the chosen id of `<branch id=\"{id}\">`"
+    ))
 }
 
 /// Render an `@ref` def: its CEL text, type, and any parameters.
@@ -134,7 +153,11 @@ fn ref_hover(
         s.push_str(&format!(": {ty}"));
     }
     if !info.params.is_empty() {
-        let ps = info.params.iter().map(|(k, t)| format!("{k}: {t}")).collect::<Vec<_>>();
+        let ps = info
+            .params
+            .iter()
+            .map(|(k, t)| format!("{k}: {t}"))
+            .collect::<Vec<_>>();
         s.push_str(&format!("\n\nparams: {}", ps.join(", ")));
     }
     if !info.cel.is_empty() {
@@ -215,7 +238,10 @@ mod tests {
         let off = pos_on(text, "center");
         let h = hover_at(&doc, &load_core_snapshot(), off).unwrap();
         let s = contents_text(&h);
-        assert!(s.contains("left") && s.contains("right"), "shows enum domain: {s}");
+        assert!(
+            s.contains("left") && s.contains("right"),
+            "shows enum domain: {s}"
+        );
     }
 
     #[test]

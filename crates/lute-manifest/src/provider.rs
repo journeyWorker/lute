@@ -113,7 +113,11 @@ impl ProviderSet {
                 if ids.iter().any(|x| x == id) {
                     return IdStatus::Fresh;
                 }
-                return if s.stale { IdStatus::Stale } else { IdStatus::Absent };
+                return if s.stale {
+                    IdStatus::Stale
+                } else {
+                    IdStatus::Absent
+                };
             }
         }
         IdStatus::Absent
@@ -183,13 +187,19 @@ mod tests {
         let snap = ProviderSnapshot {
             manifest_version: "cap-v1".into(),
             provider_version: "7".into(),
-            entries: [("character".to_string(), vec!["bianca".to_string(), "ren".to_string()])]
-                .into(),
+            entries: [(
+                "character".to_string(),
+                vec!["bianca".to_string(), "ren".to_string()],
+            )]
+            .into(),
             stale: false,
         };
         let yaml = serde_yaml::to_string(&snap).unwrap();
         // camelCase wire form per spec §10.
-        assert!(yaml.contains("manifestVersion:"), "wire form is camelCase: {yaml}");
+        assert!(
+            yaml.contains("manifestVersion:"),
+            "wire form is camelCase: {yaml}"
+        );
         std::fs::write(dir.join("core.yaml"), yaml).unwrap();
 
         let set = ProviderSet::load(&dir);
@@ -222,7 +232,10 @@ mod tests {
         std::fs::write(dir.join("junk.yaml"), "this: [is: not: valid").unwrap();
         std::fs::write(dir.join("note.txt"), "ignored non-yaml").unwrap();
         let set = ProviderSet::load(&dir);
-        assert!(set.snapshots().is_empty(), "corrupt yaml skipped, txt ignored");
+        assert!(
+            set.snapshots().is_empty(),
+            "corrupt yaml skipped, txt ignored"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -31,7 +31,7 @@ pub fn peel_frontmatter(text: &str) -> Result<(Option<(String, Span)>, usize), C
         return Ok((None, 0));
     }
     let after_open = 4; // "---\n"
-    // find a line that is exactly "---"
+                        // find a line that is exactly "---"
     let bytes = text.as_bytes();
     let mut i = after_open;
     let mut line_start = after_open;

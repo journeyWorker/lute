@@ -76,8 +76,12 @@ const E_CEL_PARSE: &str = "E-CEL-PARSE";
 
 /// Parse errors that corrupt the node stream, making the `Resolved` view
 /// misleading (see the Some-vs-None policy in the module docs).
-const STRUCTURAL_CODES: &[&str] =
-    &["E-UNCLASSIFIED", "E-UNCLOSED-TAG", "E-COMMENT-UNTERMINATED", "E-META-PARSE"];
+const STRUCTURAL_CODES: &[&str] = &[
+    "E-UNCLASSIFIED",
+    "E-UNCLOSED-TAG",
+    "E-COMMENT-UNTERMINATED",
+    "E-META-PARSE",
+];
 
 /// The input to one `check()` invocation — the document text plus the resolved
 /// capability surface it is validated against.
@@ -189,8 +193,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
 
     // 6. Document-level definite-assignment over the concatenated node stream
     //    (carry-forward #1): `scene.*`/`run.*` persist across shots.
-    let all_nodes: Vec<Node> =
-        doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
+    let all_nodes: Vec<Node> = doc
+        .shots
+        .iter()
+        .flat_map(|s| s.body.iter().cloned())
+        .collect();
     let defassign_diags = check_definite_assignment(&all_nodes, &schema, &base_ctx);
 
     // 7. Resolved view: injection fold + the timeline tables gathered in the walk.
@@ -200,8 +207,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
         fold_injections(&shot.body, &mut inject_state, &mut injections);
     }
     let inject_diags = std::mem::take(&mut inject_state.diags);
-    let commands_preview: Vec<String> =
-        doc.shots.iter().flat_map(|s| s.body.iter().map(node_summary)).collect();
+    let commands_preview: Vec<String> = doc
+        .shots
+        .iter()
+        .flat_map(|s| s.body.iter().map(node_summary))
+        .collect();
 
     // 8. Collect every diagnostic, then apply the ordering contract.
     let mut diags = Vec::new();
@@ -224,11 +234,16 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // leave them zeroed), then sort deterministically (carry-forward #3).
     normalize_spans(&idx, &input.text, &mut diags);
     diags.sort_by(|a, b| {
-        a.span.byte_start.cmp(&b.span.byte_start).then_with(|| a.code.cmp(&b.code))
+        a.span
+            .byte_start
+            .cmp(&b.span.byte_start)
+            .then_with(|| a.code.cmp(&b.code))
     });
 
     // Some-vs-None policy for the resolved view.
-    let structural_break = diags.iter().any(|d| STRUCTURAL_CODES.contains(&d.code.as_str()));
+    let structural_break = diags
+        .iter()
+        .any(|d| STRUCTURAL_CODES.contains(&d.code.as_str()));
     let resolved = if structural_break {
         None
     } else {
@@ -241,7 +256,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
 
     let ok = !diags.iter().any(|d| d.severity == Severity::Error);
     let _ = &input.uri; // carried for the surfaces; check() itself is uri-agnostic.
-    CheckResult { ok, diagnostics: diags, resolved }
+    CheckResult {
+        ok,
+        diagnostics: diags,
+        resolved,
+    }
 }
 
 /// The per-node validator walk. Holds the read-only capability surface and the
@@ -264,7 +283,8 @@ impl Walker<'_> {
             match node {
                 Node::Line(l) => self.check_attr_refs(&l.attrs, ctx),
                 Node::Directive(d) => {
-                    self.diags.extend(check_directive(d, self.snapshot, self.providers, ctx));
+                    self.diags
+                        .extend(check_directive(d, self.snapshot, self.providers, ctx));
                     self.check_attr_refs(&d.attrs, ctx);
                 }
                 Node::Set(s) => {
@@ -287,7 +307,8 @@ impl Walker<'_> {
                     self.diags.extend(check_match(m, &ctx.state, ctx));
                     // Subject is evaluated OUTSIDE match scope (`$` is not itself
                     // a valid subject token), so check it with the base ctx.
-                    self.diags.extend(check_cel_slot(&m.subject, self.arena, ctx));
+                    self.diags
+                        .extend(check_cel_slot(&m.subject, self.arena, ctx));
                     if is_exhaustive(m, &ctx.state) {
                         self.exhaustive_subject_spans.push(m.subject.span);
                     }
@@ -301,7 +322,8 @@ impl Walker<'_> {
                     for arm in &m.arms {
                         match arm {
                             Arm::When { test, body, .. } => {
-                                self.diags.extend(check_cel_slot(test, self.arena, &arm_ctx));
+                                self.diags
+                                    .extend(check_cel_slot(test, self.arena, &arm_ctx));
                                 self.walk(body, &arm_ctx);
                             }
                             Arm::Otherwise { body, .. } => self.walk(body, &arm_ctx),
@@ -437,9 +459,9 @@ fn suppress_exhaustive_subject_reads(diags: &mut Vec<Diagnostic>, subject_spans:
     }
     diags.retain(|d| {
         !(d.code == "E-MAYBE-UNSET"
-            && subject_spans.iter().any(|s| {
-                s.byte_start == d.span.byte_start && s.byte_end == d.span.byte_end
-            }))
+            && subject_spans
+                .iter()
+                .any(|s| s.byte_start == d.span.byte_start && s.byte_end == d.span.byte_end))
     });
 }
 
@@ -495,14 +517,12 @@ fn spans_overlap(a: Span, b: Span) -> bool {
 /// quotes `::set` first, so we scan for the tier-prefixed token, not just the
 /// first quote. `None` (no tier token) falls back to span-only collapse.
 fn undeclared_path(message: &str) -> Option<&str> {
-    message
-        .split('`')
-        .find(|tok| {
-            tok.starts_with("scene.")
-                || tok.starts_with("run.")
-                || tok.starts_with("user.")
-                || tok.starts_with("app.")
-        })
+    message.split('`').find(|tok| {
+        tok.starts_with("scene.")
+            || tok.starts_with("run.")
+            || tok.starts_with("user.")
+            || tok.starts_with("app.")
+    })
 }
 
 /// Re-derive every diagnostic's `line`/`column`/`utf16_range` from its byte

@@ -64,13 +64,22 @@ pub(crate) enum Cursor<'a> {
     DirectiveAttrArea { directive: &'a str },
     /// On an attribute KEY. `directive` is the owning directive tag (`None` for a
     /// `:line[...]` attribute, which has no capability schema).
-    AttrKey { directive: Option<&'a str>, key: &'a str },
+    AttrKey {
+        directive: Option<&'a str>,
+        key: &'a str,
+    },
     /// On an attribute VALUE (a plain string, not an `@ref`). Drives enum-value
     /// completion/hover when the owning directive's attr is enum-typed.
-    AttrValue { directive: Option<&'a str>, key: &'a str },
+    AttrValue {
+        directive: Option<&'a str>,
+        key: &'a str,
+    },
     /// Inside a CEL slot. `in_match_subject` is set for a `<match on=…>` subject
     /// (so completion offers `scene.choices.<id>` ids).
-    Cel { slot: &'a CelSlot, in_match_subject: bool },
+    Cel {
+        slot: &'a CelSlot,
+        in_match_subject: bool,
+    },
     /// On a `::set` target path (a state-path position).
     SetPath { path: &'a str },
 }
@@ -110,7 +119,10 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
                 if span_contains(choice.span, off) {
                     if let Some(when) = &choice.when {
                         if span_contains(when.span, off) {
-                            return Some(Cursor::Cel { slot: when, in_match_subject: false });
+                            return Some(Cursor::Cel {
+                                slot: when,
+                                in_match_subject: false,
+                            });
                         }
                     }
                     if let Some(c) = resolve_attrs(&choice.attrs, None, off) {
@@ -123,13 +135,19 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
         }
         Node::Match(m) => {
             if span_contains(m.subject.span, off) {
-                return Some(Cursor::Cel { slot: &m.subject, in_match_subject: true });
+                return Some(Cursor::Cel {
+                    slot: &m.subject,
+                    in_match_subject: true,
+                });
             }
             for arm in &m.arms {
                 match arm {
                     Arm::When { test, body, span } if span_contains(*span, off) => {
                         if span_contains(test.span, off) {
-                            return Some(Cursor::Cel { slot: test, in_match_subject: false });
+                            return Some(Cursor::Cel {
+                                slot: test,
+                                in_match_subject: false,
+                            });
                         }
                         return resolve_nodes(body, off);
                     }
@@ -144,7 +162,10 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
         Node::Timeline(t) => {
             if let Some(dur) = &t.duration {
                 if span_contains(dur.span, off) {
-                    return Some(Cursor::Cel { slot: dur, in_match_subject: false });
+                    return Some(Cursor::Cel {
+                        slot: dur,
+                        in_match_subject: false,
+                    });
                 }
             }
             for track in &t.tracks {
@@ -188,7 +209,10 @@ fn resolve_set(s: &Set, off: usize) -> Option<Cursor<'_>> {
         return Some(Cursor::SetPath { path: &s.path });
     }
     if span_contains(s.expr.span, off) {
-        return Some(Cursor::Cel { slot: &s.expr, in_match_subject: false });
+        return Some(Cursor::Cel {
+            slot: &s.expr,
+            in_match_subject: false,
+        });
     }
     None
 }
@@ -206,13 +230,22 @@ fn resolve_attrs<'a>(
         }
         if let AttrValue::Ref(slot) = &attr.value {
             if span_contains(slot.span, off) {
-                return Some(Cursor::Cel { slot, in_match_subject: false });
+                return Some(Cursor::Cel {
+                    slot,
+                    in_match_subject: false,
+                });
             }
         }
         if span_contains(attr.value_span, off) {
-            return Some(Cursor::AttrValue { directive, key: &attr.key });
+            return Some(Cursor::AttrValue {
+                directive,
+                key: &attr.key,
+            });
         }
-        return Some(Cursor::AttrKey { directive, key: &attr.key });
+        return Some(Cursor::AttrKey {
+            directive,
+            key: &attr.key,
+        });
     }
     None
 }
@@ -273,7 +306,10 @@ fn path_at(slot: &CelSlot, off: usize) -> Option<(String, Span)> {
     if start == end {
         return None;
     }
-    Some((slot.raw[start..end].to_string(), byte_span(base + start, base + end)))
+    Some((
+        slot.raw[start..end].to_string(),
+        byte_span(base + start, base + end),
+    ))
 }
 
 /// A byte permitted in a CEL path token: an ident byte or `.`.
@@ -300,9 +336,17 @@ pub(crate) fn def_info(
     snapshot: &CapabilitySnapshot,
 ) -> Option<DefInfo> {
     if let Some(v) = defs.get(name) {
-        let cel = v.get("cel").and_then(|c| c.as_str()).unwrap_or_default().to_string();
+        let cel = v
+            .get("cel")
+            .and_then(|c| c.as_str())
+            .unwrap_or_default()
+            .to_string();
         let ty = v.get("type").and_then(yaml_type_label);
-        return Some(DefInfo { cel, ty, params: Vec::new() });
+        return Some(DefInfo {
+            cel,
+            ty,
+            params: Vec::new(),
+        });
     }
     snapshot.defs.get(name).map(def_decl_info)
 }
@@ -311,7 +355,11 @@ fn def_decl_info(d: &DefDecl) -> DefInfo {
     DefInfo {
         cel: d.cel.clone(),
         ty: Some(type_label(&d.ty)),
-        params: d.params.iter().map(|(k, t)| (k.clone(), type_label(t))).collect(),
+        params: d
+            .params
+            .iter()
+            .map(|(k, t)| (k.clone(), type_label(t)))
+            .collect(),
     }
 }
 
@@ -319,9 +367,9 @@ fn def_decl_info(d: &DefDecl) -> DefInfo {
 fn yaml_type_label(v: &serde_yaml::Value) -> Option<String> {
     match v {
         serde_yaml::Value::String(s) => Some(s.clone()),
-        serde_yaml::Value::Mapping(_) => {
-            serde_yaml::from_value::<Type>(v.clone()).ok().map(|t| type_label(&t))
-        }
+        serde_yaml::Value::Mapping(_) => serde_yaml::from_value::<Type>(v.clone())
+            .ok()
+            .map(|t| type_label(&t)),
         _ => None,
     }
 }
@@ -349,7 +397,14 @@ pub(crate) fn literal_label(lit: &Literal) -> String {
         Literal::Num(n) => n.to_string(),
         Literal::Str(s) => format!("\"{s}\""),
         Literal::List(items) => {
-            format!("[{}]", items.iter().map(literal_label).collect::<Vec<_>>().join(", "))
+            format!(
+                "[{}]",
+                items
+                    .iter()
+                    .map(literal_label)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
         }
     }
 }
@@ -380,13 +435,17 @@ pub(crate) fn choice_id(path: &str) -> Option<&str> {
 
 /// True for a state-tier path (dsl §9.1 namespaces).
 pub(crate) fn is_state_path(path: &str) -> bool {
-    ["scene.", "run.", "user.", "app."].iter().any(|t| path.starts_with(t))
+    ["scene.", "run.", "user.", "app."]
+        .iter()
+        .any(|t| path.starts_with(t))
 }
 
 /// Document span of the `<branch id=…>` declaring `id`, searched depth-first
 /// through nested bodies (a branch may live in a match arm / another choice).
 pub(crate) fn branch_span(doc: &Document, id: &str) -> Option<Span> {
-    doc.shots.iter().find_map(|s| branch_span_nodes(&s.body, id))
+    doc.shots
+        .iter()
+        .find_map(|s| branch_span_nodes(&s.body, id))
 }
 
 fn branch_span_nodes(nodes: &[Node], id: &str) -> Option<Span> {
@@ -611,5 +670,11 @@ fn attr_slots<'a>(attrs: &'a [Attr], out: &mut Vec<&'a CelSlot>) {
 /// Build a byte-only [`Span`]; `line`/`column`/`utf16_range` are recomputed by the
 /// backend's `TextIndex` at report time (mirrors `lute_cel`/`cel_resolve`).
 pub(crate) fn byte_span(start: usize, end: usize) -> Span {
-    Span { byte_start: start, byte_end: end, line: 0, column: 0, utf16_range: (0, 0) }
+    Span {
+        byte_start: start,
+        byte_end: end,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    }
 }

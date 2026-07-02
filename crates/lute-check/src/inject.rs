@@ -309,9 +309,7 @@ fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<In
             provenance: Provenance {
                 injected: true,
                 by: "stage-bookkeeping".to_string(),
-                reason: format!(
-                    "auto-hiding `{character}` left on stage across a scene change"
-                ),
+                reason: format!("auto-hiding `{character}` left on stage across a scene change"),
             },
         });
     }
@@ -418,7 +416,13 @@ mod tests {
     use lute_syntax::ast::{Attr, AttrValue, Directive, Line, Node};
 
     fn span() -> Span {
-        Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+        Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        }
     }
 
     fn attr(key: &str, val: &str) -> Attr {
@@ -431,7 +435,11 @@ mod tests {
     }
 
     fn auto(attrs: Vec<Attr>) -> Node {
-        Node::Directive(Directive { tag: "auto".to_string(), attrs, span: span() })
+        Node::Directive(Directive {
+            tag: "auto".to_string(),
+            attrs,
+            span: span(),
+        })
     }
 
     fn line(speaker: &str, attrs: Vec<Attr>) -> Node {
@@ -457,11 +465,11 @@ mod tests {
     fn show_without_anchor_injects_anchor_with_provenance() {
         let st = StageState::default();
         let (st2, injected) = lower_node(st, &show_bianca_no_anchor(), &[]);
-        assert!(injected.iter().any(|c| c.provenance.by == "auto-anchor-on-show"));
         assert!(injected
             .iter()
-            .any(|c| c.provenance.injected
-                && matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == DEFAULT_ANCHOR)));
+            .any(|c| c.provenance.by == "auto-anchor-on-show"));
+        assert!(injected.iter().any(|c| c.provenance.injected
+            && matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == DEFAULT_ANCHOR)));
         assert!(st2.on_stage.contains_key("bianca"));
     }
 
@@ -472,7 +480,9 @@ mod tests {
         st.dirty.insert("bianca".into());
         st.on_stage.insert("bianca".into(), SpriteState::default());
         let (st2, injected) = lower_node(st, &line_bianca(), &[]);
-        assert!(injected.iter().any(|c| c.provenance.by == "auto-pose-reset"));
+        assert!(injected
+            .iter()
+            .any(|c| c.provenance.by == "auto-pose-reset"));
         assert!(!st2.dirty.contains("bianca"), "dirty flag should clear");
     }
 
@@ -482,7 +492,9 @@ mod tests {
         st.on_stage.insert("bianca".into(), SpriteState::default());
         let (st2, injected) =
             lower_node(st, &line("bianca", vec![attr("emotion", "delighted")]), &[]);
-        assert!(!injected.iter().any(|c| c.provenance.by == "auto-pose-reset"));
+        assert!(!injected
+            .iter()
+            .any(|c| c.provenance.by == "auto-pose-reset"));
         assert!(st2.dirty.contains("bianca"), "a stateful line marks dirty");
         assert_eq!(st2.on_stage["bianca"].emotion.as_deref(), Some("delighted"));
     }
@@ -497,7 +509,9 @@ mod tests {
             .iter()
             .find(|c| c.provenance.by == "entry-emotion-lookahead")
             .expect("expected an emotion pre-load");
-        assert!(matches!(&load.kind, InjectKind::SpriteLoad { emotion, .. } if emotion == "delighted"));
+        assert!(
+            matches!(&load.kind, InjectKind::SpriteLoad { emotion, .. } if emotion == "delighted")
+        );
         assert!(load.provenance.injected);
         assert_eq!(st2.on_stage["bianca"].emotion.as_deref(), Some("delighted"));
     }
@@ -514,9 +528,10 @@ mod tests {
             span: span(),
         });
         let (st2, injected) = lower_node(st, &bg, &[]);
-        assert!(injected.iter().any(
-            |c| c.provenance.by == "stage-bookkeeping" && matches!(c.kind, InjectKind::Hide { .. })
-        ));
+        assert!(injected
+            .iter()
+            .any(|c| c.provenance.by == "stage-bookkeeping"
+                && matches!(c.kind, InjectKind::Hide { .. })));
         assert!(st2.on_stage.is_empty(), "scene change clears the stage");
         assert!(st2.dirty.is_empty());
         assert_eq!(st2.bg.as_deref(), Some("cafe"));
@@ -526,15 +541,23 @@ mod tests {
     #[test]
     fn explicit_default_anchor_warns_inject_conflict() {
         let st = StageState::default();
-        let show = auto(vec![attr("character", "bianca"), attr("anchor", DEFAULT_ANCHOR)]);
+        let show = auto(vec![
+            attr("character", "bianca"),
+            attr("anchor", DEFAULT_ANCHOR),
+        ]);
         let (st2, injected) = lower_node(st, &show, &[]);
         // Author wrote what the rule would inject → warn, don't double-inject.
-        assert!(!injected.iter().any(|c| c.provenance.by == "auto-anchor-on-show"));
+        assert!(!injected
+            .iter()
+            .any(|c| c.provenance.by == "auto-anchor-on-show"));
         assert!(st2.diags.iter().any(|d| d.code == "W-INJECT-CONFLICT"
             && d.severity == Severity::Warning
             && d.layer == Layer::Staging));
         // The character is still staged, at the author's anchor.
-        assert_eq!(st2.on_stage["bianca"].anchor.as_deref(), Some(DEFAULT_ANCHOR));
+        assert_eq!(
+            st2.on_stage["bianca"].anchor.as_deref(),
+            Some(DEFAULT_ANCHOR)
+        );
     }
 
     #[test]
@@ -544,7 +567,9 @@ mod tests {
         let st = StageState::default();
         let show = auto(vec![attr("character", "bianca"), attr("anchor", "left")]);
         let (st2, injected) = lower_node(st, &show, &[]);
-        assert!(!injected.iter().any(|c| c.provenance.by == "auto-anchor-on-show"));
+        assert!(!injected
+            .iter()
+            .any(|c| c.provenance.by == "auto-anchor-on-show"));
         assert!(st2.diags.is_empty());
         assert_eq!(st2.on_stage["bianca"].anchor.as_deref(), Some("left"));
     }
@@ -554,7 +579,10 @@ mod tests {
         let mut st = StageState::default();
         st.on_stage.insert("bianca".into(), SpriteState::default());
         st.dirty.insert("bianca".into());
-        let exit = auto(vec![attr("character", "bianca"), attr("action", "fade-out-down")]);
+        let exit = auto(vec![
+            attr("character", "bianca"),
+            attr("action", "fade-out-down"),
+        ]);
         let (st2, injected) = lower_node(st, &exit, &[]);
         assert!(injected.is_empty(), "the ::auto is itself the hide");
         assert!(!st2.on_stage.contains_key("bianca"));

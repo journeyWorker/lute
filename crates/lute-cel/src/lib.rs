@@ -269,7 +269,11 @@ mod tests {
         let base = 100usize;
         let raw = "1 2"; // adjacent literals => parse error mid-fragment
         let err = parse_slot(&mut arena, raw, base).unwrap_err();
-        assert!(err.span.byte_start >= base, "offset {} < base {base}", err.span.byte_start);
+        assert!(
+            err.span.byte_start >= base,
+            "offset {} < base {base}",
+            err.span.byte_start
+        );
         assert!(
             err.span.byte_start < base + raw.len(),
             "offset {} >= slot end {}",

@@ -41,7 +41,9 @@ pub(crate) struct PathUse {
 
 /// `true` when `path`'s leading segment is a state tier (`scene`/`run`/…).
 pub(crate) fn is_state_path(path: &str) -> bool {
-    path.split('.').next().is_some_and(|root| STATE_ROOTS.contains(&root))
+    path.split('.')
+        .next()
+        .is_some_and(|root| STATE_ROOTS.contains(&root))
 }
 
 /// Collect every maximal state-path use in `expr` (recursing into all
@@ -63,7 +65,11 @@ fn walk(expr: &Expr, out: &mut Vec<PathUse>) {
         Expr::Ident(name) => push_path(out, name.clone(), PathRole::Read),
         Expr::Select(sel) => {
             // A test-only Select is the `has(p)` macro expansion (dsl §9.4 guard).
-            let role = if sel.test { PathRole::Guard } else { PathRole::Read };
+            let role = if sel.test {
+                PathRole::Guard
+            } else {
+                PathRole::Read
+            };
             if let Some(path) = select_path(expr) {
                 push_path(out, path, role);
             } else {

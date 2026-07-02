@@ -8,9 +8,7 @@
 //! check, deferred to the checker).
 
 use super::attrs::{take_cel, take_str};
-use super::{
-    close_tag_name, open_tag_name, Parser, E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
-};
+use super::{close_tag_name, open_tag_name, Parser, E_TIMELINE_CONTENT, E_UNCLOSED_TAG};
 use crate::ast::*;
 use lute_core_span::Layer;
 
@@ -38,7 +36,11 @@ impl Parser<'_> {
         let start_o = self.orig(cstart);
         let end_o = self.orig(after);
         self.cursor += 1;
-        OpenTag { attrs, start_o, end_o }
+        OpenTag {
+            attrs,
+            start_o,
+            end_o,
+        }
     }
 
     /// True if `cursor` is a `</name>` close line for `name`.
@@ -75,7 +77,8 @@ impl Parser<'_> {
         let mut last_end = open.end_o;
         loop {
             self.skip_blanks();
-            if self.cursor >= self.lines.len() || self.stop_at_heading() || self.at_close("branch") {
+            if self.cursor >= self.lines.len() || self.stop_at_heading() || self.at_close("branch")
+            {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
@@ -89,7 +92,12 @@ impl Parser<'_> {
             }
         }
         let end_o = self.consume_close("branch", &open, last_end);
-        Branch { id, attrs, choices, span: self.span_o(open.start_o, end_o) }
+        Branch {
+            id,
+            attrs,
+            choices,
+            span: self.span_o(open.start_o, end_o),
+        }
     }
 
     /// `Choice ::= "<choice" Attrs ">" Node* "</choice>"` (§7.3, §11.1).
@@ -100,15 +108,27 @@ impl Parser<'_> {
         let label = take_str(&mut attrs, "label").unwrap_or_default();
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let (body, end_o) = self.parse_block_body("choice", &open);
-        Choice { id, label, when, attrs, body, span: self.span_o(open.start_o, end_o) }
+        Choice {
+            id,
+            label,
+            when,
+            attrs,
+            body,
+            span: self.span_o(open.start_o, end_o),
+        }
     }
 
     /// `Match ::= "<match" Attrs ">" When+ Otherwise? "</match>"` (§7.3, §11.2).
     pub(super) fn parse_match(&mut self) -> Match {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
-        let subject = take_cel(&mut attrs, "on", CelKind::MatchSubject)
-            .unwrap_or_else(|| CelSlot::raw(CelKind::MatchSubject, String::new(), self.span_o(open.start_o, open.end_o)));
+        let subject = take_cel(&mut attrs, "on", CelKind::MatchSubject).unwrap_or_else(|| {
+            CelSlot::raw(
+                CelKind::MatchSubject,
+                String::new(),
+                self.span_o(open.start_o, open.end_o),
+            )
+        });
         let mut arms = Vec::new();
         let mut last_end = open.end_o;
         loop {
@@ -132,24 +152,40 @@ impl Parser<'_> {
             }
         }
         let end_o = self.consume_close("match", &open, last_end);
-        Match { subject, arms, span: self.span_o(open.start_o, end_o) }
+        Match {
+            subject,
+            arms,
+            span: self.span_o(open.start_o, end_o),
+        }
     }
 
     /// `When ::= "<when" Attrs ">" Node* "</when>"` (§7.3, §11.2).
     fn parse_when(&mut self) -> Arm {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
-        let test = take_cel(&mut attrs, "test", CelKind::Condition)
-            .unwrap_or_else(|| CelSlot::raw(CelKind::Condition, String::new(), self.span_o(open.start_o, open.end_o)));
+        let test = take_cel(&mut attrs, "test", CelKind::Condition).unwrap_or_else(|| {
+            CelSlot::raw(
+                CelKind::Condition,
+                String::new(),
+                self.span_o(open.start_o, open.end_o),
+            )
+        });
         let (body, end_o) = self.parse_block_body("when", &open);
-        Arm::When { test, body, span: self.span_o(open.start_o, end_o) }
+        Arm::When {
+            test,
+            body,
+            span: self.span_o(open.start_o, end_o),
+        }
     }
 
     /// `Otherwise ::= "<otherwise>" Node* "</otherwise>"` (§7.3, §11.2).
     fn parse_otherwise(&mut self) -> Arm {
         let open = self.parse_open_tag();
         let (body, end_o) = self.parse_block_body("otherwise", &open);
-        Arm::Otherwise { body, span: self.span_o(open.start_o, end_o) }
+        Arm::Otherwise {
+            body,
+            span: self.span_o(open.start_o, end_o),
+        }
     }
 
     /// `Timeline ::= "<timeline" Attrs? ">" Track+ "</timeline>"` (§7.4).
@@ -161,7 +197,10 @@ impl Parser<'_> {
         let mut last_end = open.end_o;
         loop {
             self.skip_blanks();
-            if self.cursor >= self.lines.len() || self.stop_at_heading() || self.at_close("timeline") {
+            if self.cursor >= self.lines.len()
+                || self.stop_at_heading()
+                || self.at_close("timeline")
+            {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
@@ -181,7 +220,11 @@ impl Parser<'_> {
             }
         }
         let end_o = self.consume_close("timeline", &open, last_end);
-        Timeline { duration, tracks, span: self.span_o(open.start_o, end_o) }
+        Timeline {
+            duration,
+            tracks,
+            span: self.span_o(open.start_o, end_o),
+        }
     }
 
     /// `Track ::= "<track" Attrs ">" Clip+ "</track>"` (§7.4). Body restricted to
@@ -212,13 +255,21 @@ impl Parser<'_> {
             if trimmed.starts_with("::set{") {
                 if let Node::Set(set) = self.parse_set() {
                     last_end = set.span.byte_end;
-                    clips.push(Clip { at: None, span: set.span, node: ClipNode::Set(set) });
+                    clips.push(Clip {
+                        at: None,
+                        span: set.span,
+                        node: ClipNode::Set(set),
+                    });
                 }
             } else if trimmed.starts_with("::") {
                 if let Node::Directive(mut d) = self.parse_directive() {
                     let at = take_at(&mut d.attrs);
                     last_end = d.span.byte_end;
-                    clips.push(Clip { at, span: d.span, node: ClipNode::Directive(d) });
+                    clips.push(Clip {
+                        at,
+                        span: d.span,
+                        node: ClipNode::Directive(d),
+                    });
                 }
             } else {
                 // §7.4: no :line / logic block inside a <track>.
@@ -232,7 +283,11 @@ impl Parser<'_> {
             }
         }
         let end_o = self.consume_close("track", &open, last_end);
-        Track { key, clips, span: self.span_o(open.start_o, end_o) }
+        Track {
+            key,
+            clips,
+            span: self.span_o(open.start_o, end_o),
+        }
     }
 
     /// Parse the generic body of a `<tag>…</tag>` (choice/when/otherwise): full

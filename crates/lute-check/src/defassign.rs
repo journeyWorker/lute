@@ -156,7 +156,12 @@ fn walk_branch(
 /// survive `intersect_all` on exhaustive matches). Each `<when>`/`<otherwise>`
 /// still forks; join = intersection only when an `<otherwise>` makes the match
 /// exhaustive. Arm-level `<when test>` guards keep proving (see `apply_condition`).
-fn walk_match(m: &Match, schema: &StateSchema, assigned: &mut Assigned, diags: &mut Vec<Diagnostic>) {
+fn walk_match(
+    m: &Match,
+    schema: &StateSchema,
+    assigned: &mut Assigned,
+    diags: &mut Vec<Diagnostic>,
+) {
     // Subject is a value-read check only; subject-position guards do NOT prove.
     check_reads(&m.subject, schema, assigned, diags);
 
@@ -286,13 +291,18 @@ fn slot_uses(slot: &CelSlot) -> Vec<crate::cel_paths::PathUse> {
 /// (`run.x` proves `run.x` and `run.x.hp`; a write to `run.x.a` does NOT prove
 /// the parent `run.x`).
 fn proven(path: &str, assigned: &Assigned) -> bool {
-    assigned.iter().any(|a| path == a || path.starts_with(&format!("{a}.")))
+    assigned
+        .iter()
+        .any(|a| path == a || path.starts_with(&format!("{a}.")))
 }
 
 /// A path is declared when it exactly matches a `state:` key or is a descendant
 /// field of one (`run.player` declared => `run.player.hp` reads are ok).
 fn is_declared(path: &str, schema: &StateSchema) -> bool {
-    schema.decls.keys().any(|k| path == k || path.starts_with(&format!("{k}.")))
+    schema
+        .decls
+        .keys()
+        .any(|k| path == k || path.starts_with(&format!("{k}.")))
 }
 
 /// True when the schema decl that `path` resolves to (exact or nearest ancestor)
@@ -344,9 +354,16 @@ mod tests {
         let (mut doc, _pd) = parse(src);
         let mut arena = CelArena::default();
         let _ = fill_document(&mut arena, &mut doc);
-        let (meta, _md) =
-            crate::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
-        let nodes = doc.shots.into_iter().next().map(|s| s.body).unwrap_or_default();
+        let (meta, _md) = crate::parse_meta(
+            &doc.meta,
+            &lute_manifest::snapshot::CapabilitySnapshot::default(),
+        );
+        let nodes = doc
+            .shots
+            .into_iter()
+            .next()
+            .map(|s| s.body)
+            .unwrap_or_default();
         (nodes, meta.state)
     }
 

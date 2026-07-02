@@ -25,7 +25,11 @@ fn check_clean_file_exits_zero_json() {
         .args(["check", "../../docs/examples/bianca-s01ep02.lute", "--json"])
         .output()
         .unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true);
 }
@@ -37,9 +41,15 @@ fn check_json_has_resolved_view_and_diagnostics_array() {
         .output()
         .unwrap();
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert!(v["diagnostics"].is_array(), "diagnostics must serialize as an array");
+    assert!(
+        v["diagnostics"].is_array(),
+        "diagnostics must serialize as an array"
+    );
     // A clean document carries a resolved view (Some-vs-None policy).
-    assert!(v["resolved"].is_object(), "clean doc → resolved is Some: {v}");
+    assert!(
+        v["resolved"].is_object(),
+        "clean doc → resolved is Some: {v}"
+    );
     assert!(v["resolved"]["commands_preview"].is_array());
     assert!(v["resolved"]["timeline_tables"].is_array());
     assert!(v["resolved"]["injections"].is_array());
@@ -51,7 +61,10 @@ fn check_file_with_errors_exits_one() {
         .args(["check", "../../docs/examples/date-minigame.lute", "--json"])
         .output()
         .unwrap();
-    assert!(!out.status.success(), "a file with error diagnostics must exit non-zero");
+    assert!(
+        !out.status.success(),
+        "a file with error diagnostics must exit non-zero"
+    );
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
@@ -65,14 +78,27 @@ fn check_human_output_lists_diagnostics() {
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("E-UNKNOWN-DIRECTIVE"), "human output names codes: {stdout}");
-    assert!(stdout.contains("failed:"), "human summary reports failure: {stdout}");
+    assert!(
+        stdout.contains("E-UNKNOWN-DIRECTIVE"),
+        "human output names codes: {stdout}"
+    );
+    assert!(
+        stdout.contains("failed:"),
+        "human summary reports failure: {stdout}"
+    );
 }
 
 #[test]
 fn check_missing_file_exits_two() {
-    let out = Command::new(BIN).args(["check", "/no/such/file.lute"]).output().unwrap();
-    assert_eq!(out.status.code(), Some(2), "an I/O failure exits 2, distinct from a check failure");
+    let out = Command::new(BIN)
+        .args(["check", "/no/such/file.lute"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "an I/O failure exits 2, distinct from a check failure"
+    );
 }
 
 #[test]
@@ -81,12 +107,20 @@ fn check_with_empty_providers_dir_is_permissive() {
     // the example uses no `providerRef` attrs, so it stays clean either way.
     let dir = temp_dir("empty-providers");
     let out = Command::new(BIN)
-        .args(["check", "../../docs/examples/bianca-s01ep02.lute", "--providers"])
+        .args([
+            "check",
+            "../../docs/examples/bianca-s01ep02.lute",
+            "--providers",
+        ])
         .arg(&dir)
         .arg("--json")
         .output()
         .unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true);
     std::fs::remove_dir_all(&dir).unwrap();
@@ -102,15 +136,27 @@ fn catalog_refresh_then_load_round_trips() {
     )
     .unwrap();
 
-    let out = Command::new(BIN).arg("catalog").arg("refresh").arg(&dir).output().unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let out = Command::new(BIN)
+        .arg("catalog")
+        .arg("refresh")
+        .arg(&dir)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     // The rewritten file must still parse as a snapshot, with stale cleared and
     // the manifest re-stamped to the current capabilityVersion.
     let refreshed = std::fs::read_to_string(dir.join("core.yaml")).unwrap();
     let snap: serde_yaml::Value = serde_yaml::from_str(&refreshed).unwrap();
     assert_eq!(snap["stale"], serde_yaml::Value::Bool(false));
-    assert_ne!(snap["manifestVersion"], serde_yaml::Value::String("old-stamp".into()));
+    assert_ne!(
+        snap["manifestVersion"],
+        serde_yaml::Value::String("old-stamp".into())
+    );
 
     // And `ProviderSet::load` reads the refreshed dir back (the load consumer).
     let set = lute_manifest::provider::ProviderSet::load(&dir);
@@ -125,7 +171,12 @@ fn catalog_refresh_then_load_round_trips() {
 fn catalog_refresh_missing_dir_is_created() {
     let base = temp_dir("refresh-missing");
     let target = base.join("brand/new");
-    let out = Command::new(BIN).arg("catalog").arg("refresh").arg(&target).output().unwrap();
+    let out = Command::new(BIN)
+        .arg("catalog")
+        .arg("refresh")
+        .arg(&target)
+        .output()
+        .unwrap();
     assert!(out.status.success(), "refresh creates a missing dir");
     assert!(target.is_dir(), "the target dir now exists");
     std::fs::remove_dir_all(&base).unwrap();

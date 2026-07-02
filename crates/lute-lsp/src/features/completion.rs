@@ -27,13 +27,24 @@ pub fn complete_at(
     off: usize,
 ) -> Vec<CompletionItem> {
     let (meta, _) = parse_meta(&doc.meta, snapshot);
-    let Some(cursor) = super::resolve(doc, off) else { return Vec::new() };
+    let Some(cursor) = super::resolve(doc, off) else {
+        return Vec::new();
+    };
     match cursor {
         Cursor::DirectiveName(_) => directive_items(snapshot),
         Cursor::DirectiveAttrArea { directive } => attr_key_items(snapshot, directive, doc, off),
-        Cursor::AttrKey { directive: Some(dir), .. } => attr_key_items(snapshot, dir, doc, off),
-        Cursor::AttrValue { directive: Some(dir), key } => enum_value_items(snapshot, dir, key),
-        Cursor::Cel { slot, in_match_subject } => {
+        Cursor::AttrKey {
+            directive: Some(dir),
+            ..
+        } => attr_key_items(snapshot, dir, doc, off),
+        Cursor::AttrValue {
+            directive: Some(dir),
+            key,
+        } => enum_value_items(snapshot, dir, key),
+        Cursor::Cel {
+            slot,
+            in_match_subject,
+        } => {
             let base = slot.span.byte_start;
             let local = off.saturating_sub(base);
             if at_ref(&slot.raw, local) {
@@ -44,9 +55,12 @@ pub fn complete_at(
                 state_path_items(&meta)
             }
         }
-        Cursor::AttrKey { directive: None, .. } | Cursor::AttrValue { directive: None, .. } => {
-            Vec::new()
+        Cursor::AttrKey {
+            directive: None, ..
         }
+        | Cursor::AttrValue {
+            directive: None, ..
+        } => Vec::new(),
         Cursor::SetPath { .. } => state_path_items(&meta),
     }
 }
@@ -73,7 +87,9 @@ fn attr_key_items(
     doc: &Document,
     off: usize,
 ) -> Vec<CompletionItem> {
-    let Some(decl) = snapshot.directive(directive) else { return Vec::new() };
+    let Some(decl) = snapshot.directive(directive) else {
+        return Vec::new();
+    };
     let present = present_attr_keys(doc, off);
     decl.attrs
         .iter()
@@ -106,10 +122,7 @@ fn enum_value_items(
 }
 
 /// Author `defs:` + snapshot def names for an `@ref` position, kind `VARIABLE`.
-fn def_items(
-    meta: &lute_check::TypedMeta,
-    snapshot: &CapabilitySnapshot,
-) -> Vec<CompletionItem> {
+fn def_items(meta: &lute_check::TypedMeta, snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
     let mut names: std::collections::BTreeSet<String> = meta.defs.keys().cloned().collect();
     names.extend(snapshot.defs.keys().cloned());
     names
@@ -285,7 +298,10 @@ mod tests {
         let off = text.find("\" }").unwrap() + 2;
         let items = complete_at(&doc, &load_core_snapshot(), off);
         let ls = labels(&items);
-        assert!(!ls.contains(&"focus"), "focus already present, should be gone: {ls:?}");
+        assert!(
+            !ls.contains(&"focus"),
+            "focus already present, should be gone: {ls:?}"
+        );
         assert!(ls.contains(&"zoom"), "zoom still offered: {ls:?}");
     }
 
@@ -297,8 +313,10 @@ mod tests {
         let off = text.find("anchor=\"").unwrap() + "anchor=\"".len();
         let items = complete_at(&doc, &load_core_snapshot(), off);
         let ls = labels(&items);
-        assert!(ls.contains(&"left") && ls.contains(&"center") && ls.contains(&"right"),
-            "anchor enum members: {ls:?}");
+        assert!(
+            ls.contains(&"left") && ls.contains(&"center") && ls.contains(&"right"),
+            "anchor enum members: {ls:?}"
+        );
     }
 
     #[test]
@@ -307,7 +325,11 @@ mod tests {
         let doc = parsed(text);
         let off = text.find("= @").unwrap() + 3; // just past `@`
         let items = complete_at(&doc, &load_core_snapshot(), off);
-        assert!(items.iter().any(|i| i.label == "fond"), "offers def name: {:?}", labels(&items));
+        assert!(
+            items.iter().any(|i| i.label == "fond"),
+            "offers def name: {:?}",
+            labels(&items)
+        );
     }
 
     #[test]
@@ -316,8 +338,11 @@ mod tests {
         let doc = parsed(text);
         let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
         let items = complete_at(&doc, &load_core_snapshot(), off);
-        assert!(items.iter().any(|i| i.label == "scene.choices.number"),
-            "offers the choice path: {:?}", labels(&items));
+        assert!(
+            items.iter().any(|i| i.label == "scene.choices.number"),
+            "offers the choice path: {:?}",
+            labels(&items)
+        );
     }
 
     #[test]
@@ -327,7 +352,10 @@ mod tests {
         // Cursor after the `=` (expr slot) — state paths are offered.
         let off = text.rfind("= }").unwrap() + 2;
         let items = complete_at(&doc, &load_core_snapshot(), off);
-        assert!(items.iter().any(|i| i.label == "scene.affect.bianca"),
-            "offers declared state path: {:?}", labels(&items));
+        assert!(
+            items.iter().any(|i| i.label == "scene.affect.bianca"),
+            "offers declared state path: {:?}",
+            labels(&items)
+        );
     }
 }

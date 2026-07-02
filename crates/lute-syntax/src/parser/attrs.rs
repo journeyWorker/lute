@@ -62,7 +62,12 @@ impl Parser<'_> {
                     }
                     let value = self.body[inner_start..inner_end].to_string();
                     let vspan = self.span(inner_start, inner_end);
-                    attrs.push(Attr { key, value: AttrValue::Str(value), value_span: vspan, span: self.span(key_start, j) });
+                    attrs.push(Attr {
+                        key,
+                        value: AttrValue::Str(value),
+                        value_span: vspan,
+                        span: self.span(key_start, j),
+                    });
                 } else if j < n && b[j] == b'@' {
                     let ref_start = j;
                     j += 1;
@@ -100,7 +105,12 @@ impl Parser<'_> {
                     let raw = self.body[ref_start..j].to_string();
                     let vspan = self.span(ref_start, j);
                     let slot = CelSlot::raw(CelKind::AttrValue, raw, vspan);
-                    attrs.push(Attr { key, value: AttrValue::Ref(slot), value_span: vspan, span: self.span(key_start, j) });
+                    attrs.push(Attr {
+                        key,
+                        value: AttrValue::Ref(slot),
+                        value_span: vspan,
+                        span: self.span(key_start, j),
+                    });
                 } else {
                     // `key=` with a bare/unquoted token: read to whitespace/term.
                     let vstart = j;
@@ -109,13 +119,23 @@ impl Parser<'_> {
                     }
                     let value = self.body[vstart..j].to_string();
                     let vspan = self.span(vstart, j);
-                    attrs.push(Attr { key, value: AttrValue::Str(value), value_span: vspan, span: self.span(key_start, j) });
+                    attrs.push(Attr {
+                        key,
+                        value: AttrValue::Str(value),
+                        value_span: vspan,
+                        span: self.span(key_start, j),
+                    });
                 }
             } else {
                 // Bare ident ⇒ boolean true (§4.5).
                 let key_end = key_start + key.len();
                 let kspan = self.span(key_start, key_end);
-                attrs.push(Attr { key, value: AttrValue::BoolTrue, value_span: kspan, span: kspan });
+                attrs.push(Attr {
+                    key,
+                    value: AttrValue::BoolTrue,
+                    value_span: kspan,
+                    span: kspan,
+                });
             }
         }
         let after = if j < n && b[j] == term { j + 1 } else { j };
