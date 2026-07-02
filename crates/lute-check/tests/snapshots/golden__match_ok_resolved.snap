@@ -1,0 +1,9 @@
+---
+source: crates/lute-check/tests/golden.rs
+expression: res.resolved
+---
+commands_preview:
+  - "<branch id=\"number\"> (2 choices)"
+  - "<match on=\"scene.choices.number\"> (3 arms)"
+timeline_tables: []
+injections: []

@@ -1,0 +1,5 @@
+---
+source: crates/lute-check/tests/golden.rs
+expression: res.diagnostics
+---
+[]
