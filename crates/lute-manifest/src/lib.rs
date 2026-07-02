@@ -1,3 +1,4 @@
+pub mod assemble;
 pub mod core;
 pub mod loader;
 pub mod provider;
