@@ -417,6 +417,15 @@ pub(crate) fn literal_label(lit: &Literal) -> String {
                     .join(", ")
             )
         }
+        Literal::Map(m) => {
+            format!(
+                "{{{}}}",
+                m.iter()
+                    .map(|(k, v)| format!("{k}: {}", literal_label(v)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
     }
 }
 
