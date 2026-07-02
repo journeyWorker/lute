@@ -1,0 +1,52 @@
+use lute_manifest::project::{load_project, resolve_document_snapshot};
+use std::collections::BTreeMap;
+use std::fs;
+
+fn write_project(root: &std::path::Path) {
+    // plugin package
+    let pdir = root.join("plugins/idola.minigame/directives");
+    fs::create_dir_all(&pdir).unwrap();
+    fs::write(
+        root.join("plugins/idola.minigame/plugin.yaml"),
+        "id: idola.minigame\nversion: 0.1.0\nkind: capability\nexports:\n  directives: directives/\n",
+    )
+    .unwrap();
+    fs::write(
+        pdir.join("d.yaml"),
+        "directives:\n  - { name: minigame, attrs: [ { name: kind, type: string } ], lower: { kind: builtin, name: n } }\n",
+    )
+    .unwrap();
+    // project config
+    fs::write(
+        root.join("lute.project.yaml"),
+        "pluginsDir: plugins/\ndefaultProfile: date\nprofiles:\n  global:\n    plugins: { lute.core: true }\n  date:\n    plugins: { idola.minigame: true }\n",
+    )
+    .unwrap();
+}
+
+#[test]
+fn resolves_project_snapshot_with_active_plugin() {
+    let root = std::env::temp_dir().join(format!("lute_proj_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    write_project(&root);
+    let proj = load_project(&root).expect("project loads");
+    let (snap, diags) = resolve_document_snapshot(Some(&proj), None, &BTreeMap::new());
+    assert!(
+        diags.is_empty(),
+        "{:?}",
+        diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+    );
+    assert!(
+        snap.directive("minigame").is_some(),
+        "active plugin directive present"
+    );
+    fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn no_project_is_core_only() {
+    let (snap, diags) = resolve_document_snapshot(None, None, &BTreeMap::new());
+    assert!(diags.is_empty());
+    assert!(snap.directive("bg").is_some());
+    assert!(snap.directive("minigame").is_none());
+}

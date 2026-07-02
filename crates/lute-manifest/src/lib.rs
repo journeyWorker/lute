@@ -1,6 +1,7 @@
 pub mod assemble;
 pub mod core;
 pub mod loader;
+pub mod project;
 pub mod provider;
 pub mod resolve;
 pub mod schema;
