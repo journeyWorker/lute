@@ -74,6 +74,28 @@ fn undeclared_set_target_reports_exactly_one_undeclared() {
 }
 
 #[test]
+fn two_distinct_undeclared_paths_in_one_slot_both_survive() {
+    // Regression (T4.9 review Important #1): a single CEL slot reading TWO
+    // undeclared paths (`scene.a` and `scene.b`) gets one whole-slot fallback
+    // span for both (cel-parser 0.10.1 has no per-node offsets). Path-aware
+    // dedup must keep BOTH — collapsing only same-path+overlapping-span pairs —
+    // so the author sees every undeclared path at once, not one at a time.
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<match on=\"scene.a == scene.b\">\n<otherwise>\n:line[narrator]: hi\n</otherwise>\n</match>\n";
+    let res = check(&input_for(text));
+    let paths: Vec<&str> = res
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E-UNDECLARED")
+        .map(|d| d.message.as_str())
+        .collect();
+    assert!(
+        paths.iter().any(|m| m.contains("scene.a"))
+            && paths.iter().any(|m| m.contains("scene.b")),
+        "both undeclared paths must survive dedup, got: {paths:#?}"
+    );
+}
+
+#[test]
 fn diagnostics_are_sorted_by_byte_start() {
     // Two errors at different byte offsets (an undeclared `::set` in shot 1, an
     // unknown directive in shot 2) must come back ordered by `span.byte_start`.
