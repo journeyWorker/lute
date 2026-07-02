@@ -36,8 +36,11 @@
 //! back `@ref` hover/definition.
 
 pub mod completion;
+pub mod folding;
 pub mod hover;
 pub mod nav;
+pub mod semtok;
+pub mod symbols;
 
 use lute_cel::scan_refs;
 use lute_core_span::Span;
@@ -524,7 +527,7 @@ fn collect_set_paths(nodes: &[Node], path: &str, out: &mut Vec<Span>) {
 }
 
 /// Maximal dotted path tokens (start-relative byte spans) in a raw CEL fragment.
-fn path_tokens(raw: &str) -> Vec<(String, (usize, usize))> {
+pub(crate) fn path_tokens(raw: &str) -> Vec<(String, (usize, usize))> {
     let b = raw.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
@@ -544,7 +547,7 @@ fn path_tokens(raw: &str) -> Vec<(String, (usize, usize))> {
 
 /// Collect every CEL slot in the document (set exprs, `@ref`/CEL attr values,
 /// choice `when`, match subject + arm tests, timeline durations, clip nodes).
-fn all_slots(doc: &Document) -> Vec<&CelSlot> {
+pub(crate) fn all_slots(doc: &Document) -> Vec<&CelSlot> {
     let mut out = Vec::new();
     for shot in &doc.shots {
         collect_slots(&shot.body, &mut out);
