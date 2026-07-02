@@ -50,19 +50,24 @@ pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx) -> Vec<Diagnostic>
         return diags;
     }
 
-    // The target must resolve to a declared state path (§7.3.4/§9.4). Non-state
-    // targets (no known tier) are out of this module's remit and left alone.
+    // The target must resolve to a declared state path (§7.3.4/§9.4). §9.1 admits
+    // no bare, un-namespaced state names, so BOTH a declared-tier path absent from
+    // the schema AND a non-tier target (`namespace_of == None`, e.g. `foo.bar`)
+    // are undeclared and reported — the latter used to be silently accepted (C3).
     let Some(ty) = resolve_type(&set.path, schema) else {
-        if namespace_of(&set.path).is_some() {
-            diags.push(diag(
-                "E-UNDECLARED",
-                format!(
-                    "`::set` target `{}` is not declared in the `state:` schema (dsl §7.3.4)",
-                    set.path
-                ),
-                set.path_span,
-            ));
-        }
+        let msg = if namespace_of(&set.path).is_some() {
+            format!(
+                "`::set` target `{}` is not declared in the `state:` schema (dsl §7.3.4)",
+                set.path
+            )
+        } else {
+            format!(
+                "`::set` target `{}` is not a state path: it must begin with a \
+                 `scene.`/`run.`/`user.`/`app.` namespace (dsl §7.3.4/§9.1)",
+                set.path
+            )
+        };
+        diags.push(diag("E-UNDECLARED", msg, set.path_span));
         return diags;
     };
 
@@ -310,9 +315,14 @@ mod tests {
     }
 
     #[test]
-    fn non_state_target_is_ignored() {
-        // A target with no known tier is out of this module's remit.
+    fn non_state_target_errors() {
+        // C3 (dsl §7.3.4/§9.1): a `::set` target with no known tier (`foo.bar`) is
+        // not a declared state path — §9.1 admits no bare, un-namespaced names — so
+        // it MUST be reported, not silently accepted.
         let errs = check_set(&set("foo.bar", "+=", "1"), &StateSchema::default(), &ctx());
-        assert!(errs.is_empty(), "{errs:?}");
+        assert!(
+            errs.iter().any(|e| e.code == "E-UNDECLARED"),
+            "non-tier ::set target must be diagnosed, got {errs:?}"
+        );
     }
 }
