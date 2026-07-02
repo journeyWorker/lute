@@ -1,0 +1,196 @@
+==================
+directive with attrs
+==================
+::camera{focus="x" wait="true"}
+---
+(source_file (directive (ident) (attrs (attr (key) (string)) (attr (key) (string)))))
+
+==================
+document title
+==================
+# S01EP02 — Behold the Performance
+---
+(source_file (title (text)))
+
+==================
+shot heading
+==================
+## Shot 1.
+---
+(source_file (shot (text)))
+
+==================
+line with attrs
+==================
+:line[bianca]{code="0010" emotion="surprised" variant="0"}: Oh!
+---
+(source_file (line (speaker) (attrs (attr (key) (string)) (attr (key) (string)) (attr (key) (string))) (text)))
+
+==================
+line without attrs (opaque text)
+==================
+:line[narrator]: Venny's. (`<`, `?`, `:` here are content, not structure.)
+---
+(source_file (line (speaker) (text)))
+
+==================
+staging directive leaf (no attrs)
+==================
+::pause
+---
+(source_file (directive (ident)))
+
+==================
+directive with bare-bool attr
+==================
+::camera{shake wait="true"}
+---
+(source_file (directive (ident) (attrs (attr (key)) (attr (key) (string)))))
+
+==================
+directive with ref-valued attr
+==================
+::gate{guard=@fond when=@unlocked(scene.x)}
+---
+(source_file (directive (ident) (attrs (attr (key) (ref)) (attr (key) (ref)))))
+
+==================
+set assignment
+==================
+::set{scene.flags.saw_beam = true}
+---
+(source_file (set (path) (assign_op) (cel_expr)))
+
+==================
+set compound assignment
+==================
+::set{scene.affect.bianca += 1}
+---
+(source_file (set (path) (assign_op) (cel_expr)))
+
+==================
+branch and choice (nesting)
+==================
+<branch id="number">
+  <choice id="blunt" label="Just ask, flatly">
+    :line[fixer]{code="0050"}: Bianca. Your number.
+    ::set{scene.affect.bianca += 1}
+  </choice>
+</branch>
+---
+(source_file
+  (branch
+    (attr (key) (string))
+    (choice
+      (attr (key) (string))
+      (attr (key) (string))
+      (line (speaker) (attrs (attr (key) (string))) (text))
+      (set (path) (assign_op) (cel_expr)))))
+
+==================
+match / when / otherwise (nesting)
+==================
+<match on="scene.choices.number">
+  <when test="@fond">
+    :line[fixer]{delivery="thought"}: Asked nicely.
+  </when>
+  <when test="$ == 'blunt'">
+    :line[fixer]{delivery="thought"}: Asked flatly.
+  </when>
+  <otherwise>
+    :line[fixer]{delivery="thought"}: Somewhere this evening.
+  </otherwise>
+</match>
+---
+(source_file
+  (match
+    (attr (key) (string))
+    (when (attr (key) (string)) (line (speaker) (attrs (attr (key) (string))) (text)))
+    (when (attr (key) (string)) (line (speaker) (attrs (attr (key) (string))) (text)))
+    (otherwise (line (speaker) (attrs (attr (key) (string))) (text)))))
+
+==================
+timeline / track (nesting, directive + set clips)
+==================
+<timeline duration="1.4">
+  <track subject="camera">
+    ::camera{focus="bianca" zoom="1.35" duration="0.4"}
+    ::camera{shake="0.6" at="0.5"}
+  </track>
+  <track channel="sfx">
+    ::sfx{sound="flash" at="0.5"}
+    ::set{scene.flags.saw_beam = true}
+  </track>
+</timeline>
+---
+(source_file
+  (timeline
+    (attr (key) (string))
+    (track
+      (attr (key) (string))
+      (directive (ident) (attrs (attr (key) (string)) (attr (key) (string)) (attr (key) (string))))
+      (directive (ident) (attrs (attr (key) (string)) (attr (key) (string)))))
+    (track
+      (attr (key) (string))
+      (directive (ident) (attrs (attr (key) (string)) (attr (key) (string))))
+      (set (path) (assign_op) (cel_expr)))))
+
+==================
+comment is trivia (standalone + trailing)
+==================
+/* a standalone comment */
+::camera{focus="x"} /* trailing comment */
+---
+(source_file
+  (comment)
+  (directive (ident) (attrs (attr (key) (string))))
+  (comment))
+
+==================
+multi-line comment is trivia
+==================
+/*
+  spanning
+  several lines
+*/
+::music{action="stop"}
+---
+(source_file
+  (comment)
+  (directive (ident) (attrs (attr (key) (string)))))
+
+==================
+frontmatter (opaque YAML body) then title
+==================
+---
+mode: inline
+character: bianca
+season: 1
+episode: 2
+---
+
+# S01EP02 — Behold the Performance
+----------------------------------------
+(source_file (frontmatter) (title (text)))
+
+==================
+frontmatter with nested YAML then shot
+==================
+---
+profile: date-minigame
+plugins:
+  idola.minigame:
+    resultScope: scene
+    allowedKinds: [rhythm]
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+---
+
+## Shot 1.
+::minigame{kind="rhythm" wait="true"}
+----------------------------------------
+(source_file
+  (frontmatter)
+  (shot
+    (text)
+    (directive (ident) (attrs (attr (key) (string)) (attr (key) (string))))))
