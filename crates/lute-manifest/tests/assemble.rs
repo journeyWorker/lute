@@ -99,3 +99,30 @@ fn inactive_plugin_is_indexed_not_merged() {
         Some(&"idola.minigame".to_string())
     );
 }
+
+#[test]
+fn plugin_directive_with_bad_semantics_flag_is_rejected() {
+    let mut pkg = plugin_with_directive("a.bad", "boom");
+    pkg.directives[0].semantics = vec!["totallyMadeUp".into()];
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([("a.bad".to_string(), InstalledPlugin { loaded: pkg })]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "a.bad".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (_snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::assemble::AssembleError::InvalidDirective { .. }
+        )),
+        "{errs:?}"
+    );
+}

@@ -24,6 +24,11 @@ pub enum AssembleError {
     MissingActivePlugin {
         id: String,
     },
+    InvalidDirective {
+        plugin: String,
+        directive: String,
+        msg: String,
+    },
 }
 
 /// dsl §10 reserved terms a non-core plugin MUST NOT (re)define as a directive.
@@ -88,6 +93,13 @@ pub fn assemble_snapshot(
                     second: ap.id.clone(),
                 });
                 continue;
+            }
+            for me in crate::validate::validate_directive(d) {
+                errs.push(AssembleError::InvalidDirective {
+                    plugin: ap.id.clone(),
+                    directive: d.name.clone(),
+                    msg: format!("{me:?}"),
+                });
             }
             dir_owner.insert(d.name.clone(), ap.id.clone());
             snap.directives.insert(d.name.clone(), d.clone());
