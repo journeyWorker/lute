@@ -1,0 +1,14 @@
+# Node deps (installed locally for the tree-sitter CLI; not committed)
+node_modules/
+package-lock.json
+
+# Native build artifacts from `tree-sitter generate` / test
+build/
+*.o
+*.so
+*.dylib
+*.wasm
+
+# Tree-sitter CLI scratch
+.tree-sitter/
+log.html

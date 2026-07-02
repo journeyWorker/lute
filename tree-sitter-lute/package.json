@@ -1,0 +1,30 @@
+{
+  "name": "tree-sitter-lute",
+  "version": "0.0.1",
+  "description": "Tree-sitter grammar for the Lute Scenario DSL (editor-side: highlighting/folding host, not the authoritative AST)",
+  "license": "MIT",
+  "keywords": [
+    "tree-sitter",
+    "parser",
+    "lute",
+    "scenario-dsl"
+  ],
+  "main": "bindings/node",
+  "tree-sitter": [
+    {
+      "scope": "source.lute",
+      "file-types": [
+        "lute"
+      ],
+      "injection-regex": "^lute$"
+    }
+  ],
+  "scripts": {
+    "generate": "tree-sitter-cli generate",
+    "test": "tree-sitter-cli test",
+    "parse": "tree-sitter-cli parse"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.26.0"
+  }
+}
