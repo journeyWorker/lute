@@ -139,7 +139,6 @@ pub fn resolve_activation(
     //    `depends` of an active plugin, in deterministic (sorted-id) order.
     //    depends-added plugins take default (empty) options.
     let mut queue: Vec<String> = order.clone();
-    let mut in_progress: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     while let Some(id) = queue.pop() {
         let Some(inst) = installed.get(&id) else {
             // lute.core is always synthetic-present even if not installed on disk;
@@ -147,9 +146,6 @@ pub fn resolve_activation(
             // a profile, not a depends) — skip closure for it.
             continue;
         };
-        if !in_progress.insert(id.clone()) {
-            return Err(ResolveError::DependsCycle(id));
-        }
         let mut deps = inst.manifest.depends.clone();
         deps.sort_by(|a, b| a.id.cmp(&b.id));
         for dep in deps {
@@ -179,6 +175,7 @@ pub fn resolve_activation(
             }
         }
     }
+    detect_depends_cycle(&order, installed)?;
 
     Ok(order
         .into_iter()
@@ -202,19 +199,77 @@ fn merge_map(dst: &mut BTreeMap<String, Literal>, src: &BTreeMap<String, Literal
     }
 }
 
+/// Detect a cycle in the `depends` graph restricted to activated plugins
+/// (plugin §15: a conforming resolution has no depends cycles). Iterative DFS
+/// with visiting/done marks; deterministic (roots in `order`, deps sorted).
+fn detect_depends_cycle(
+    order: &[String],
+    installed: &InstalledPlugins,
+) -> Result<(), ResolveError> {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mark {
+        Visiting,
+        Done,
+    }
+    let deps_of = |id: &str| -> Vec<String> {
+        match installed.get(id) {
+            Some(inst) => {
+                let mut d: Vec<String> =
+                    inst.manifest.depends.iter().map(|x| x.id.clone()).collect();
+                d.sort();
+                d
+            }
+            None => Vec::new(),
+        }
+    };
+    let mut state: BTreeMap<String, Mark> = BTreeMap::new();
+    for root in order {
+        if state.contains_key(root) {
+            continue;
+        }
+        let mut stack: Vec<(String, Vec<String>, usize)> = vec![(root.clone(), deps_of(root), 0)];
+        state.insert(root.clone(), Mark::Visiting);
+        while let Some((id, deps, cursor)) = stack.last_mut() {
+            if *cursor < deps.len() {
+                let dep = deps[*cursor].clone();
+                *cursor += 1;
+                match state.get(&dep) {
+                    Some(Mark::Visiting) => return Err(ResolveError::DependsCycle(dep)),
+                    Some(Mark::Done) => {}
+                    None => {
+                        state.insert(dep.clone(), Mark::Visiting);
+                        let d = deps_of(&dep);
+                        stack.push((dep, d, 0));
+                    }
+                }
+            } else {
+                let done = id.clone();
+                stack.pop();
+                state.insert(done, Mark::Done);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Minimal semver-range check for plugin `depends` (plugin §5). Supports the
 /// caret form used in 0.0.1 (`^MAJOR.MINOR.PATCH`) and a bare exact version.
 /// Caret semantics: pre-1.0 the caret pins to the leftmost non-zero component —
 /// `^0.0.z` requires exactly `0.0.z`; `^0.y.z` requires `0.y.*` with patch ≥ z;
 /// `^x.y.z` (x≥1) requires `x.*` with (minor,patch) ≥ (y,z). An unparseable
-/// range or version is treated as NOT satisfied (conservative).
+/// range or version is treated as NOT satisfied (conservative) (a version/range
+/// MUST have exactly three numeric components).
 fn range_satisfies(range: &str, version: &str) -> bool {
     fn parse(v: &str) -> Option<(u64, u64, u64)> {
-        let mut it = v.trim().split('.');
-        let a = it.next()?.parse().ok()?;
-        let b = it.next()?.parse().ok()?;
-        let c = it.next().unwrap_or("0").parse().ok()?;
-        Some((a, b, c))
+        let parts: Vec<&str> = v.trim().split('.').collect();
+        if parts.len() != 3 {
+            return None;
+        }
+        Some((
+            parts[0].parse().ok()?,
+            parts[1].parse().ok()?,
+            parts[2].parse().ok()?,
+        ))
     }
     let Some((vmaj, vmin, vpat)) = parse(version) else {
         return false;
@@ -541,6 +596,54 @@ mod tests {
         let inst = installed(vec![
             manifest("a.x", "0.1.0", &[("a.dep", "^0.2.0")]),
             manifest("a.dep", "0.1.0", &[]),
+        ]);
+        assert!(matches!(
+            resolve_activation(&graph, "s", &BTreeMap::new(), &inst),
+            Err(ResolveError::DependsVersionMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn depends_cycle_is_error() {
+        use std::collections::BTreeMap;
+        let graph = ProfileGraph {
+            profiles: BTreeMap::from([(
+                "s".to_string(),
+                Profile {
+                    extends: None,
+                    plugins: BTreeMap::from([("a.x".to_string(), BTreeMap::new())]),
+                },
+            )]),
+            default_profile: "s".to_string(),
+        };
+        // a.x -> a.dep -> a.x (cycle)
+        let inst = installed(vec![
+            manifest("a.x", "0.1.0", &[("a.dep", "^0.1.0")]),
+            manifest("a.dep", "0.1.0", &[("a.x", "^0.1.0")]),
+        ]);
+        assert!(matches!(
+            resolve_activation(&graph, "s", &BTreeMap::new(), &inst),
+            Err(ResolveError::DependsCycle(_))
+        ));
+    }
+
+    #[test]
+    fn malformed_range_or_version_is_not_satisfied() {
+        use std::collections::BTreeMap;
+        let graph = ProfileGraph {
+            profiles: BTreeMap::from([(
+                "s".to_string(),
+                Profile {
+                    extends: None,
+                    plugins: BTreeMap::from([("a.x".to_string(), BTreeMap::new())]),
+                },
+            )]),
+            default_profile: "s".to_string(),
+        };
+        // a.dep installed at 1.2.3; a.x depends with a malformed 4-component range.
+        let inst = installed(vec![
+            manifest("a.x", "0.1.0", &[("a.dep", "1.2.3.4")]),
+            manifest("a.dep", "1.2.3", &[]),
         ]);
         assert!(matches!(
             resolve_activation(&graph, "s", &BTreeMap::new(), &inst),
