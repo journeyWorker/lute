@@ -57,8 +57,10 @@
 use lute_cel::{fill_document, CelArena};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_manifest::provider::ProviderSet;
+use lute_manifest::schema::{SlotDecl, StateShape};
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::{Arm, Attr, AttrValue, ClipNode, Document, Node};
+use lute_manifest::types::PathSegment;
+use lute_syntax::ast::{Arm, Attr, AttrValue, ClipNode, Directive, Document, Node};
 use lute_syntax::parse;
 
 use crate::ctx::{Ctx, Mode};
@@ -166,6 +168,12 @@ pub fn check(input: &CheckInput) -> CheckResult {
     let mut seen_branches = std::collections::BTreeSet::new();
     let mut branch_diags = Vec::new();
     fold_branches(&doc, &mut schema, &mut seen_branches, &mut branch_diags);
+
+    // 4b. Expand every active directive's `state.declares[]` into concrete state
+    //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
+    //     opens `scene.minigame.k.<field>` for each field of its shape. This runs
+    //     before the walk + defassign so plugin-declared state resolves.
+    fold_directive_slots(&doc, &input.snapshot, &mut schema);
 
     // The def names the `@ref` resolver validates against (dsl §8.1).
     let defs: std::collections::BTreeSet<String> = typed.defs.keys().cloned().collect();
@@ -421,6 +429,145 @@ fn fold_branches_nodes(
             }
             _ => {}
         }
+    }
+}
+
+/// Pre-pass: expand every active directive's `state.declares[]` into concrete
+/// state slots at each use site (plugin §8/§9). A `::minigame{resultKey="k"}`
+/// whose declaration declares `scene.minigame.<resultKey>` with shape
+/// `minigameResult` opens `scene.minigame.k.<field>` for each field of that
+/// shape, feeding the SAME `schema` the walk + defassign consume. Walks every
+/// directive location (top-level, branch choices, match arms, timeline clips),
+/// mirroring the CEL/inject walkers' recursion.
+fn fold_directive_slots(
+    doc: &Document,
+    snapshot: &CapabilitySnapshot,
+    schema: &mut crate::meta::StateSchema,
+) {
+    for shot in &doc.shots {
+        fold_slots_nodes(&shot.body, snapshot, schema);
+    }
+}
+
+fn fold_slots_nodes(
+    nodes: &[Node],
+    snapshot: &CapabilitySnapshot,
+    schema: &mut crate::meta::StateSchema,
+) {
+    for node in nodes {
+        match node {
+            Node::Directive(d) => expand_directive_slots(d, snapshot, schema),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    fold_slots_nodes(&c.body, snapshot, schema);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            fold_slots_nodes(body, snapshot, schema)
+                        }
+                    }
+                }
+            }
+            Node::Timeline(tl) => {
+                for track in &tl.tracks {
+                    for clip in &track.clips {
+                        if let ClipNode::Directive(d) = &clip.node {
+                            expand_directive_slots(d, snapshot, schema);
+                        }
+                    }
+                }
+            }
+            Node::Line(_) | Node::Set(_) => {}
+        }
+    }
+}
+
+/// Expand one directive USE: look up its declaration, and for each declared slot
+/// resolve the concrete path and insert one `StateDecl` per field of the
+/// referenced shape. A directive with no declaration / no `state` / an
+/// unresolvable path / a missing shape / an untierable base is skipped.
+fn expand_directive_slots(
+    dir: &Directive,
+    snapshot: &CapabilitySnapshot,
+    schema: &mut crate::meta::StateSchema,
+) {
+    let Some(decl) = snapshot.directive(&dir.tag) else {
+        return;
+    };
+    let Some(state) = &decl.state else {
+        return;
+    };
+    for slot in &state.declares {
+        let Some(base) = resolve_slot_path(slot, dir) else {
+            continue;
+        };
+        let Some(shape) = snapshot.state_shapes.get(&slot.shape) else {
+            continue;
+        };
+        let Some(ns) = crate::meta::namespace_of(&base) else {
+            continue;
+        };
+        insert_shape_fields(schema, &base, ns, shape, snapshot);
+    }
+}
+
+/// Resolve a `SlotDecl`'s path (scope + segments) into a concrete dotted path at
+/// a use site: literal segments verbatim; `fromAttr` segments -> that attr's
+/// value. Returns `None` if any `fromAttr` attr is absent or not a plain string.
+fn resolve_slot_path(slot: &SlotDecl, dir: &Directive) -> Option<String> {
+    let mut parts = vec![slot.scope.clone()];
+    for seg in &slot.path {
+        match seg {
+            PathSegment::Literal(s) => parts.push(s.clone()),
+            PathSegment::FromAttr { from_attr } => {
+                let val = attr_str(dir, &from_attr.name)?;
+                parts.push(val);
+            }
+        }
+    }
+    Some(parts.join("."))
+}
+
+/// The string value of a directive attribute — a plain string literal only; a
+/// Ref/CEL-valued key cannot seed a static path, so it yields `None`.
+fn attr_str(dir: &Directive, key: &str) -> Option<String> {
+    dir.attrs
+        .iter()
+        .find(|a| a.key == key)
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some(s.clone()),
+            _ => None,
+        })
+}
+
+/// Insert one `StateDecl` per shape field at `<base>.<field>`; a field that
+/// itself references a nested shape recurses into that shape.
+fn insert_shape_fields(
+    schema: &mut crate::meta::StateSchema,
+    base: &str,
+    ns: crate::meta::Namespace,
+    shape: &StateShape,
+    snapshot: &CapabilitySnapshot,
+) {
+    for f in &shape.fields {
+        let path = format!("{base}.{}", f.name);
+        if let Some(nested_name) = &f.shape {
+            if let Some(nested) = snapshot.state_shapes.get(nested_name) {
+                insert_shape_fields(schema, &path, ns, nested, snapshot);
+                continue;
+            }
+        }
+        schema.decls.insert(
+            path,
+            crate::meta::StateDecl {
+                ty: f.ty.clone(),
+                default: f.default.clone(),
+                namespace: ns,
+            },
+        );
     }
 }
 
