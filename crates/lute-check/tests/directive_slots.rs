@@ -228,3 +228,34 @@ fn cyclic_state_shapes_do_not_overflow() {
     // Must return without stack-overflow (no-panic contract).
     let _ = check(&input);
 }
+
+#[test]
+fn unknown_tag_from_inactive_plugin_gets_fixit() {
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.inactive
+        .insert("minigame".into(), "idola.minigame".into());
+    let text =
+        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::minigame{kind=\"rhythm\"}\n";
+    let input = CheckInput {
+        text: text.into(),
+        uri: "t".into(),
+        snapshot: snap,
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+    };
+    let res = check(&input);
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-UNKNOWN-DIRECTIVE")
+        .expect("unknown directive");
+    assert!(
+        !d.fixits.is_empty(),
+        "inactive-plugin unknown tag must carry a fix-it"
+    );
+    assert!(
+        d.fixits.iter().any(|f| f.title.contains("idola.minigame")),
+        "fix-it names the plugin: {:?}",
+        d.fixits
+    );
+}
