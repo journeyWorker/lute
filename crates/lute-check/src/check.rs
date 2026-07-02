@@ -305,10 +305,18 @@ impl Walker<'_> {
                 }
                 Node::Match(m) => {
                     self.diags.extend(check_match(m, &ctx.state, ctx));
-                    // Subject is evaluated OUTSIDE match scope (`$` is not itself
-                    // a valid subject token), so check it with the base ctx.
+                    // The subject expression is evaluated OUTSIDE match scope: `$`
+                    // is only valid in a `<when test>` (dsl §8.2), never in `on=`.
+                    // Force `in_match=false` so a nested `<match on="$">` (whose
+                    // incoming ctx has in_match=true from the enclosing arm) is
+                    // correctly flagged E-DOLLAR-OUTSIDE-MATCH.
+                    let subject_ctx = Ctx {
+                        in_match: false,
+                        match_subject: None,
+                        ..ctx.clone()
+                    };
                     self.diags
-                        .extend(check_cel_slot(&m.subject, self.arena, ctx));
+                        .extend(check_cel_slot(&m.subject, self.arena, &subject_ctx));
                     if is_exhaustive(m, &ctx.state) {
                         self.exhaustive_subject_spans.push(m.subject.span);
                     }
