@@ -114,6 +114,11 @@ pub fn type_accepts(ty: &Type, lit: &Literal) -> bool {
                 && m.iter()
                     .all(|(k, v)| key_accepts(key, k) && type_accepts(value, v))
         }
+        // A `slotId`-typed attribute value is a bare local identifier string
+        // (e.g. `resultKey="service01"`), which opens a typed state slot in the
+        // declared namespace (plugin §8). Structurally it is a string; the slot
+        // path expansion (Task 6.1) consumes the identifier downstream.
+        (Type::SlotId { .. }, Literal::Str(_)) => true,
         _ => false,
     }
 }
@@ -370,6 +375,18 @@ mod tests {
         let mut bad = BTreeMap::new();
         bad.insert("a".to_string(), Literal::Str("x".into())); // value type mismatch
         assert!(!type_accepts(&ty, &Literal::Map(bad)));
+    }
+
+    #[test]
+    fn type_accepts_slotid() {
+        // A slotId attribute value is a bare local-identifier string
+        // (`resultKey="service01"`); a non-string literal is rejected.
+        let ty = Type::SlotId {
+            namespace: "scene.minigame".into(),
+        };
+        assert!(type_accepts(&ty, &Literal::Str("service01".into())));
+        assert!(!type_accepts(&ty, &Literal::Num(1.0)));
+        assert!(!type_accepts(&ty, &Literal::Bool(true)));
     }
 
     #[test]
