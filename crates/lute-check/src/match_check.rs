@@ -154,8 +154,17 @@ pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx) -> Vec<Diagnostic
         ));
     }
 
-    // A maybe-unset subject's `unset` case must be covered (§11.2/§9.4).
-    if info.maybe_unset && !covers_unset {
+    // A maybe-unset subject's `unset` case must be covered (§11.2/§9.4). This is
+    // scoped to subjects whose nullability is derivable from the schema alone —
+    // `run`/`user`/`app` (maybe-unset at scene entry) and `scene.choices.*` (a
+    // branch may not have run). A plain `scene.*` subject's maybe-unset status is
+    // path-sensitive; it is owned by `check_definite_assignment` (E-MAYBE-UNSET),
+    // so emitting E-UNSET-UNCOVERED here would false-positive the written case.
+    let unset_owned_here = subject
+        .as_deref()
+        .map(|p| p.starts_with("scene.choices.") || !p.starts_with("scene."))
+        .unwrap_or(false);
+    if info.maybe_unset && unset_owned_here && !covers_unset {
         diags.push(diag(
             "E-UNSET-UNCOVERED",
             Severity::Error,
@@ -277,7 +286,7 @@ fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> DomainInfo {
             let maybe_unset = decl.default.is_none()
                 && matches!(
                     decl.namespace,
-                    Namespace::Run | Namespace::User | Namespace::App
+                    Namespace::Scene | Namespace::Run | Namespace::User | Namespace::App
                 );
             DomainInfo {
                 domain,
