@@ -65,6 +65,79 @@ pub fn strip_comments(text: &str) -> String {
     strip_comments_checked(text).unwrap_or_else(|_| text.to_string())
 }
 
+/// Byte offset within `line` at which a `:line[…]:` opaque `Text` region begins
+/// (just past the classifying `:`), or `None` when `line` is not a content line
+/// or is a malformed `:line` with no separating `:`.
+///
+/// Comment stripping runs on the raw body *before* line classification, yet a
+/// `:line` body is opaque `Text` (§4.4): its `"` are literal characters, not a
+/// quoted `String`/`CelString`, so they MUST NOT toggle the string state that
+/// suppresses comments. This mirrors the parser's `parse_line` boundary scan:
+/// past `:line[` *speaker* `]`, an optional `{…}` attr block (whose own quoted
+/// values are respected), whitespace, then the `:` — everything after which is
+/// opaque and quote-insensitive for comment purposes.
+pub(crate) fn line_opaque_text_start(line: &str) -> Option<usize> {
+    let lead = line.len() - line.trim_start().len();
+    if !line[lead..].starts_with(":line[") {
+        return None;
+    }
+    let b = line.as_bytes();
+    let n = b.len();
+    let mut j = lead + ":line[".len();
+    // Speaker id up to its closing `]`.
+    while j < n && b[j] != b']' {
+        j += 1;
+    }
+    if j >= n {
+        return None; // no `]`: malformed, no opaque text region.
+    }
+    j += 1; // past `]`
+            // Optional `{…}` attr block. Respect quoted `String` values so a `}` inside
+            // one is not mistaken for the block close.
+    if j < n && b[j] == b'{' {
+        j += 1;
+        let mut in_str = false;
+        let mut esc = false;
+        while j < n {
+            let c = b[j];
+            if in_str {
+                if esc {
+                    esc = false;
+                } else if c == b'\\' {
+                    esc = true;
+                } else if c == b'"' {
+                    in_str = false;
+                }
+            } else if c == b'"' {
+                in_str = true;
+            } else if c == b'}' {
+                j += 1;
+                break;
+            }
+            j += 1;
+        }
+    }
+    // Whitespace, then the classifying `:` — opaque text begins just past it.
+    while j < n && (b[j] == b' ' || b[j] == b'\t') {
+        j += 1;
+    }
+    if j < n && b[j] == b':' {
+        Some(j + 1)
+    } else {
+        None
+    }
+}
+
+/// Absolute opaque-`Text` boundary of the line beginning at byte `line_start`
+/// in `text`, or [`usize::MAX`] when the line has no `:line` text region (so
+/// `"` on that line always toggles the String state).
+pub(crate) fn text_start_for_line(text: &str, line_start: usize) -> usize {
+    let line_end = text[line_start..]
+        .find('\n')
+        .map_or(text.len(), |n| line_start + n);
+    line_opaque_text_start(&text[line_start..line_end]).map_or(usize::MAX, |rel| line_start + rel)
+}
+
 /// Strip `/* … */` block comments from `text` in a single whole-body pass.
 ///
 /// Scanning rules (dsl §4.2, §4.4):
@@ -76,12 +149,22 @@ pub fn strip_comments(text: &str) -> String {
 /// - There are no `//` line comments.
 /// - `in_string` (toggled by an unescaped `"`) suppresses comment recognition,
 ///   so `/*`/`*/` inside a quoted `String`/`CelString` value are preserved.
+///   A `"` is a String delimiter ONLY outside a `:line` opaque `Text` region
+///   ([`line_opaque_text_start`]); inside `:line` text a `"` is a literal
+///   character and does NOT suppress comments (§4.2). A String never spans a raw
+///   newline (§4.4), so the string state resets at each line start.
 /// - EOF reached inside a comment yields [`CommentError::Unterminated`].
 pub fn strip_comments_checked(text: &str) -> Result<String, CommentError> {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.char_indices().peekable();
     let mut in_string = false;
     let mut escaped = false;
+    // Opaque-text boundary of the CURRENT line (absolute byte offset); `MAX` when
+    // the line has no `:line` opaque `Text`. A `"` at/after this offset is literal
+    // text, not a String delimiter, so it neither opens a string nor suppresses a
+    // comment. Recomputed at every line start (including after a blanked comment
+    // that spanned newlines).
+    let mut text_start = text_start_for_line(text, 0);
     while let Some((a, c)) = chars.next() {
         if in_string {
             out.push(c);
@@ -91,10 +174,20 @@ pub fn strip_comments_checked(text: &str) -> Result<String, CommentError> {
                 escaped = true;
             } else if c == '"' {
                 in_string = false;
+            } else if c == '\n' {
+                // A String must not contain a raw newline (§4.4): recover the scan
+                // rather than let a stray `"` swallow the rest of the document.
+                in_string = false;
+                text_start = text_start_for_line(text, a + 1);
             }
             continue;
         }
-        if c == '"' {
+        if c == '\n' {
+            out.push(c);
+            text_start = text_start_for_line(text, a + 1);
+            continue;
+        }
+        if c == '"' && a < text_start {
             in_string = true;
             out.push(c);
             continue;
@@ -115,8 +208,14 @@ pub fn strip_comments_checked(text: &str) -> Result<String, CommentError> {
             // Blank the whole comment byte-range (`/*` … `*/`) in place: a space
             // for every byte except `\n`, which is kept at its original offset.
             // Preserves `out.len() == text.len()` and every newline position.
-            for &byte in &text.as_bytes()[a..b] {
+            let comment = &text.as_bytes()[a..b];
+            for &byte in comment {
                 out.push(if byte == b'\n' { '\n' } else { ' ' });
+            }
+            // A blanked multi-line comment advanced the scan onto a later line, so
+            // the opaque-text boundary now belongs to that line.
+            if let Some(nl) = comment.iter().rposition(|&x| x == b'\n') {
+                text_start = text_start_for_line(text, a + nl + 1);
             }
             continue;
         }
@@ -205,5 +304,35 @@ mod tests {
             strip_comments(input).trim_end(),
             "::x{s=\"/* not a comment */\"}"
         );
+    }
+
+    #[test]
+    fn strips_comment_inside_line_opaque_text() {
+        // §4.2: comments apply inside content text *before* `Text` is formed. A
+        // `:line` body is opaque, but its `"` are literal characters — NOT a
+        // quoted `String`/`CelString` value — so they MUST NOT suppress a comment
+        // that appears in the text. The comment is blanked as trivia in place.
+        let input = r#":line[x]: "a /* c */ b""#;
+        let out = strip_comments_checked(input).unwrap();
+        // The comment bytes are gone (blanked), but the literal quotes survive.
+        assert!(!out.contains("/*"), "comment `/*` survived: {out:?}");
+        assert!(!out.contains("*/"), "comment `*/` survived: {out:?}");
+        assert!(!out.contains('c'), "comment body survived: {out:?}");
+        assert!(
+            out.contains(r#""a "#),
+            "leading literal quote lost: {out:?}"
+        );
+        // Length + newline-preserving invariant still holds (spans never shift).
+        assert_eq!(out.len(), input.len());
+    }
+
+    #[test]
+    fn line_text_quote_does_not_suppress_a_later_comment() {
+        // A stray `"` inside `:line` opaque text used to flip the global
+        // `in_string` flag, wrongly suppressing every later comment on the line.
+        let input = r#":line[x]: he said "hi /* strip me */"#;
+        let out = strip_comments_checked(input).unwrap();
+        assert!(!out.contains("strip me"), "later comment survived: {out:?}");
+        assert_eq!(out.len(), input.len());
     }
 }
