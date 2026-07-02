@@ -42,3 +42,34 @@ fn date_minigame_core_only_still_errors() {
         .expect("run lute");
     assert_eq!(out.status.code(), Some(1), "core-only still exits 1");
 }
+
+#[test]
+fn refresh_stamps_resolved_version_under_project() {
+    // Copy the fixture catalog to a temp dir, refresh with --project, assert the
+    // manifestVersion changed away from "pending" and matches the resolved snap.
+    let tmp = std::env::temp_dir().join(format!("lute_cat_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::copy(
+        "../../docs/examples/idola-project/catalog/minigame.yaml",
+        tmp.join("minigame.yaml"),
+    )
+    .unwrap();
+    let out = std::process::Command::new(lute_bin())
+        .args([
+            "catalog",
+            "refresh",
+            tmp.to_str().unwrap(),
+            "--project",
+            "../../docs/examples/idola-project",
+        ])
+        .output()
+        .expect("refresh");
+    assert_eq!(out.status.code(), Some(0));
+    let after = std::fs::read_to_string(tmp.join("minigame.yaml")).unwrap();
+    assert!(
+        !after.contains("pending"),
+        "manifestVersion must be re-stamped: {after}"
+    );
+    std::fs::remove_dir_all(&tmp).ok();
+}

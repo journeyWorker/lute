@@ -16,6 +16,7 @@
 //!   never depends on a live/remote catalog — refresh only canonicalizes and
 //!   re-stamps the already-pinned artifacts, so `refresh` then `load` round-trips.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -66,6 +67,11 @@ enum CatalogCommand {
     Refresh {
         /// Directory holding the flat per-snapshot YAML files.
         dir: PathBuf,
+        /// Project directory (`lute.project.yaml` + `plugins/`) whose resolved
+        /// multi-plugin `capabilityVersion` stamps each snapshot instead of the
+        /// core-only version (plugin §10/§13). Omit for the core baseline.
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
     },
 }
 
@@ -77,7 +83,9 @@ fn main() -> ExitCode {
             providers,
             project,
         } => run_check(&file, json, providers.as_deref(), project.as_deref()),
-        Command::Catalog(CatalogCommand::Refresh { dir }) => run_refresh(&dir),
+        Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
+            run_refresh(&dir, project.as_deref())
+        }
     }
 }
 
@@ -205,15 +213,36 @@ fn severity_str(s: Severity) -> &'static str {
 /// and clear `stale`, rewriting each file in place (plugin §10). A missing dir is
 /// created empty. Exit `0` on success, `2` on an I/O failure.
 ///
+/// With `--project`, the stamp is the RESOLVED multi-plugin `capabilityVersion`
+/// (no scene ⇒ default profile, via `resolve_document_snapshot`), matching what a
+/// project build validates against (plugin §13). Without it, the core-only
+/// (`lute.core`) version is used — behavior identical to before.
+///
 /// Refresh iterates the directory itself (rather than `ProviderSet::load`, which
 /// discards filenames) so each snapshot rewrites to the file it came from.
-fn run_refresh(dir: &Path) -> ExitCode {
+fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
     if let Err(e) = std::fs::create_dir_all(dir) {
         eprintln!("lute: cannot create {}: {e}", dir.display());
         return ExitCode::from(2);
     }
 
-    let version = load_core_snapshot().version;
+    // Under a project, stamp the resolved snapshot's version (plugin §13). A
+    // malformed project must not silently mis-stamp: surface it and fall back to
+    // the core-only version rather than pretending it loaded.
+    let version = match project {
+        Some(p) => match load_project(p) {
+            Ok(cfg) => {
+                resolve_document_snapshot(cfg.as_ref(), None, &BTreeMap::new())
+                    .0
+                    .version
+            }
+            Err(e) => {
+                eprintln!("lute: {e}");
+                load_core_snapshot().version
+            }
+        },
+        None => load_core_snapshot().version,
+    };
 
     let entries = match std::fs::read_dir(dir) {
         Ok(rd) => rd,
