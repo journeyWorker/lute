@@ -47,6 +47,20 @@ pub struct ActivePlugin {
 pub enum ResolveError {
     UnknownProfile(String),
     ExtendsCycle(String),
+    /// A `depends` id (plugin §5) is not installed (plugin §11.1 step 6).
+    UnresolvedDepends {
+        plugin: String,
+        dep: String,
+    },
+    /// A `depends` is installed but its version fails the declared range.
+    DependsVersionMismatch {
+        plugin: String,
+        dep: String,
+        need: String,
+        found: String,
+    },
+    /// The `depends` graph has a cycle.
+    DependsCycle(String),
 }
 
 impl ProfileGraph {
@@ -75,6 +89,7 @@ pub fn resolve_activation(
     graph: &ProfileGraph,
     selected: &str,
     scene_local: &ActivationMap,
+    installed: &InstalledPlugins,
 ) -> Result<Vec<ActivePlugin>, ResolveError> {
     // ordered id list + merged options
     let mut order: Vec<String> = Vec::new();
@@ -120,6 +135,51 @@ pub fn resolve_activation(
     // 5. scene-local
     apply(scene_local, &mut order, &mut merged);
 
+    // 6. Dependency closure (plugin §11.1 step 6): transitively activate every
+    //    `depends` of an active plugin, in deterministic (sorted-id) order.
+    //    depends-added plugins take default (empty) options.
+    let mut queue: Vec<String> = order.clone();
+    let mut in_progress: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    while let Some(id) = queue.pop() {
+        let Some(inst) = installed.get(&id) else {
+            // lute.core is always synthetic-present even if not installed on disk;
+            // any other missing active id is the caller's concern (it was named by
+            // a profile, not a depends) — skip closure for it.
+            continue;
+        };
+        if !in_progress.insert(id.clone()) {
+            return Err(ResolveError::DependsCycle(id));
+        }
+        let mut deps = inst.manifest.depends.clone();
+        deps.sort_by(|a, b| a.id.cmp(&b.id));
+        for dep in deps {
+            match installed.get(&dep.id) {
+                None if dep.id == "lute.core" => { /* synthetic core, always ok */ }
+                None => {
+                    return Err(ResolveError::UnresolvedDepends {
+                        plugin: id.clone(),
+                        dep: dep.id.clone(),
+                    })
+                }
+                Some(dep_inst) => {
+                    if !range_satisfies(&dep.range, &dep_inst.manifest.version) {
+                        return Err(ResolveError::DependsVersionMismatch {
+                            plugin: id.clone(),
+                            dep: dep.id.clone(),
+                            need: dep.range.clone(),
+                            found: dep_inst.manifest.version.clone(),
+                        });
+                    }
+                }
+            }
+            if !merged.contains_key(&dep.id) {
+                order.push(dep.id.clone());
+                merged.insert(dep.id.clone(), BTreeMap::new());
+                queue.push(dep.id.clone());
+            }
+        }
+    }
+
     Ok(order
         .into_iter()
         .map(|id| ActivePlugin {
@@ -140,6 +200,38 @@ fn merge_map(dst: &mut BTreeMap<String, Literal>, src: &BTreeMap<String, Literal
             }
         }
     }
+}
+
+/// Minimal semver-range check for plugin `depends` (plugin §5). Supports the
+/// caret form used in 0.0.1 (`^MAJOR.MINOR.PATCH`) and a bare exact version.
+/// Caret semantics: pre-1.0 the caret pins to the leftmost non-zero component —
+/// `^0.0.z` requires exactly `0.0.z`; `^0.y.z` requires `0.y.*` with patch ≥ z;
+/// `^x.y.z` (x≥1) requires `x.*` with (minor,patch) ≥ (y,z). An unparseable
+/// range or version is treated as NOT satisfied (conservative).
+fn range_satisfies(range: &str, version: &str) -> bool {
+    fn parse(v: &str) -> Option<(u64, u64, u64)> {
+        let mut it = v.trim().split('.');
+        let a = it.next()?.parse().ok()?;
+        let b = it.next()?.parse().ok()?;
+        let c = it.next().unwrap_or("0").parse().ok()?;
+        Some((a, b, c))
+    }
+    let Some((vmaj, vmin, vpat)) = parse(version) else {
+        return false;
+    };
+    if let Some(caret) = range.strip_prefix('^') {
+        let Some((rmaj, rmin, rpat)) = parse(caret) else {
+            return false;
+        };
+        if rmaj == 0 && rmin == 0 {
+            return (vmaj, vmin, vpat) == (rmaj, rmin, rpat);
+        }
+        if rmaj == 0 {
+            return vmaj == 0 && vmin == rmin && vpat >= rpat;
+        }
+        return vmaj == rmaj && (vmin, vpat) >= (rmin, rpat);
+    }
+    parse(range) == Some((vmaj, vmin, vpat))
 }
 
 #[cfg(test)]
@@ -223,7 +315,13 @@ mod tests {
     #[test]
     fn resolves_extends_chain_parent_first_with_core_and_global() {
         let g = graph();
-        let active = resolve_activation(&g, "date-minigame", &BTreeMap::new()).unwrap();
+        let active = resolve_activation(
+            &g,
+            "date-minigame",
+            &BTreeMap::new(),
+            &InstalledPlugins::default(),
+        )
+        .unwrap();
         let ids: Vec<_> = active.iter().map(|a| a.id.as_str()).collect();
         // §11.1 order: lute.core, global's plugins, extends chain parent-first, selected, scene-local
         assert_eq!(
@@ -239,7 +337,13 @@ mod tests {
             "idola.minigame",
             opts(&[("resultScope", Literal::Str("run".into()))]),
         )]);
-        let active = resolve_activation(&g, "date-minigame", &scene_local).unwrap();
+        let active = resolve_activation(
+            &g,
+            "date-minigame",
+            &scene_local,
+            &InstalledPlugins::default(),
+        )
+        .unwrap();
         let mg = active.iter().find(|a| a.id == "idola.minigame").unwrap();
         assert_eq!(
             mg.options.get("resultScope"),
@@ -252,7 +356,12 @@ mod tests {
         let mut g = graph();
         g.profiles.get_mut("story").unwrap().extends = Some("date".into()); // story<-date<-story
         assert!(matches!(
-            resolve_activation(&g, "date", &std::collections::BTreeMap::new()),
+            resolve_activation(
+                &g,
+                "date",
+                &std::collections::BTreeMap::new(),
+                &InstalledPlugins::default()
+            ),
             Err(ResolveError::ExtendsCycle(_))
         ));
     }
@@ -261,7 +370,12 @@ mod tests {
     fn unknown_selected_profile_is_error() {
         let g = graph();
         assert!(matches!(
-            resolve_activation(&g, "nope", &std::collections::BTreeMap::new()),
+            resolve_activation(
+                &g,
+                "nope",
+                &std::collections::BTreeMap::new(),
+                &InstalledPlugins::default()
+            ),
             Err(ResolveError::UnknownProfile(_))
         ));
     }
@@ -271,7 +385,12 @@ mod tests {
         let mut g = graph();
         g.profiles.get_mut("date").unwrap().extends = Some("missing".into());
         assert!(matches!(
-            resolve_activation(&g, "date", &std::collections::BTreeMap::new()),
+            resolve_activation(
+                &g,
+                "date",
+                &std::collections::BTreeMap::new(),
+                &InstalledPlugins::default()
+            ),
             Err(ResolveError::UnknownProfile(_))
         ));
     }
@@ -314,7 +433,13 @@ mod tests {
             ]),
             default_profile: "child".to_string(),
         };
-        let active = resolve_activation(&graph, "child", &BTreeMap::new()).unwrap();
+        let active = resolve_activation(
+            &graph,
+            "child",
+            &BTreeMap::new(),
+            &InstalledPlugins::default(),
+        )
+        .unwrap();
         let plug = active.iter().find(|a| a.id == "p.plug").unwrap();
         match plug.options.get("cast").unwrap() {
             Literal::Map(m) => {
@@ -323,5 +448,103 @@ mod tests {
             }
             other => panic!("expected merged Map, got {other:?}"),
         }
+    }
+
+    fn manifest(id: &str, version: &str, deps: &[(&str, &str)]) -> crate::schema::PluginManifest {
+        crate::schema::PluginManifest {
+            id: id.into(),
+            version: version.into(),
+            kind: "capability".into(),
+            depends: deps
+                .iter()
+                .map(|(i, r)| crate::schema::Depends {
+                    id: i.to_string(),
+                    range: r.to_string(),
+                })
+                .collect(),
+            exports: std::collections::BTreeMap::new(),
+            options: vec![],
+        }
+    }
+
+    fn installed(ms: Vec<crate::schema::PluginManifest>) -> InstalledPlugins {
+        InstalledPlugins {
+            by_id: ms
+                .into_iter()
+                .map(|m| (m.id.clone(), InstalledPlugin { manifest: m }))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn dependency_closure_pulls_transitive_deps() {
+        use std::collections::BTreeMap;
+        // story activates idola.vn; idola.vn depends idola.base; base depends lute.core.
+        let graph = ProfileGraph {
+            profiles: BTreeMap::from([(
+                "story".to_string(),
+                Profile {
+                    extends: None,
+                    plugins: BTreeMap::from([("idola.vn".to_string(), BTreeMap::new())]),
+                },
+            )]),
+            default_profile: "story".to_string(),
+        };
+        let inst = installed(vec![
+            manifest("lute.core", "0.0.1", &[]),
+            manifest("idola.base", "0.1.0", &[("lute.core", "^0.0.1")]),
+            manifest("idola.vn", "0.1.0", &[("idola.base", "^0.1.0")]),
+        ]);
+        let active = resolve_activation(&graph, "story", &BTreeMap::new(), &inst).unwrap();
+        let ids: Vec<_> = active.iter().map(|a| a.id.as_str()).collect();
+        assert!(
+            ids.contains(&"idola.base"),
+            "transitive dep must be activated: {ids:?}"
+        );
+        assert!(ids.contains(&"idola.vn"));
+        assert!(ids.contains(&"lute.core"));
+    }
+
+    #[test]
+    fn unresolved_depends_is_error() {
+        use std::collections::BTreeMap;
+        let graph = ProfileGraph {
+            profiles: BTreeMap::from([(
+                "s".to_string(),
+                Profile {
+                    extends: None,
+                    plugins: BTreeMap::from([("a.x".to_string(), BTreeMap::new())]),
+                },
+            )]),
+            default_profile: "s".to_string(),
+        };
+        let inst = installed(vec![manifest("a.x", "0.1.0", &[("a.missing", "^0.1.0")])]);
+        assert!(matches!(
+            resolve_activation(&graph, "s", &BTreeMap::new(), &inst),
+            Err(ResolveError::UnresolvedDepends { .. })
+        ));
+    }
+
+    #[test]
+    fn depends_version_mismatch_is_error() {
+        use std::collections::BTreeMap;
+        let graph = ProfileGraph {
+            profiles: BTreeMap::from([(
+                "s".to_string(),
+                Profile {
+                    extends: None,
+                    plugins: BTreeMap::from([("a.x".to_string(), BTreeMap::new())]),
+                },
+            )]),
+            default_profile: "s".to_string(),
+        };
+        let inst = installed(vec![
+            manifest("a.x", "0.1.0", &[("a.dep", "^0.2.0")]),
+            manifest("a.dep", "0.1.0", &[]),
+        ]);
+        assert!(matches!(
+            resolve_activation(&graph, "s", &BTreeMap::new(), &inst),
+            Err(ResolveError::DependsVersionMismatch { .. })
+        ));
     }
 }
