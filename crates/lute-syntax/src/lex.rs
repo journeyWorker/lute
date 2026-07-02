@@ -138,6 +138,28 @@ pub(crate) fn text_start_for_line(text: &str, line_start: usize) -> usize {
     line_opaque_text_start(&text[line_start..line_end]).map_or(usize::MAX, |rel| line_start + rel)
 }
 
+/// Opaque-`Text` boundary of the line at `line_start`, computed from the
+/// *blanked* scan view rather than raw `text`: the prefix already emitted to
+/// `out` (every comment so far replaced by spaces) up to the scan position
+/// `scanned`, joined with the not-yet-scanned raw tail of that line.
+///
+/// Blanking a `/* … */` that precedes the `:line[` construct on the same line
+/// (dsl §4.2 permits inline trivia anywhere before line classification) reveals
+/// a `:line` text region the *raw* line hid — its un-blanked comment bytes would
+/// defeat the `:line[` prefix match in [`line_opaque_text_start`]. Recomputing
+/// on the blanked view fixes the boundary so the body's literal `"` is not
+/// mistaken for a String delimiter. Returns [`usize::MAX`] when the line has no
+/// `:line` text region. Requires `line_start <= scanned == out.len()`.
+fn line_text_start_blanked(out: &str, text: &str, line_start: usize, scanned: usize) -> usize {
+    let line_end = text[scanned..]
+        .find('\n')
+        .map_or(text.len(), |n| scanned + n);
+    let mut line = String::with_capacity(line_end - line_start);
+    line.push_str(&out[line_start..scanned]); // blanked prefix on this line
+    line.push_str(&text[scanned..line_end]); // raw tail on this line
+    line_opaque_text_start(&line).map_or(usize::MAX, |rel| line_start + rel)
+}
+
 /// Strip `/* … */` block comments from `text` in a single whole-body pass.
 ///
 /// Scanning rules (dsl §4.2, §4.4):
@@ -165,6 +187,10 @@ pub fn strip_comments_checked(text: &str) -> Result<String, CommentError> {
     // comment. Recomputed at every line start (including after a blanked comment
     // that spanned newlines).
     let mut text_start = text_start_for_line(text, 0);
+    // Byte offset where the current line begins; kept in step with `text_start`
+    // so a comment blanked mid-line can recompute the boundary from the blanked
+    // view of *this* line (see `line_text_start_blanked`).
+    let mut line_start = 0usize;
     while let Some((a, c)) = chars.next() {
         if in_string {
             out.push(c);
@@ -178,13 +204,15 @@ pub fn strip_comments_checked(text: &str) -> Result<String, CommentError> {
                 // A String must not contain a raw newline (§4.4): recover the scan
                 // rather than let a stray `"` swallow the rest of the document.
                 in_string = false;
-                text_start = text_start_for_line(text, a + 1);
+                line_start = a + 1;
+                text_start = text_start_for_line(text, line_start);
             }
             continue;
         }
         if c == '\n' {
             out.push(c);
-            text_start = text_start_for_line(text, a + 1);
+            line_start = a + 1;
+            text_start = text_start_for_line(text, line_start);
             continue;
         }
         if c == '"' && a < text_start {
@@ -212,11 +240,17 @@ pub fn strip_comments_checked(text: &str) -> Result<String, CommentError> {
             for &byte in comment {
                 out.push(if byte == b'\n' { '\n' } else { ' ' });
             }
-            // A blanked multi-line comment advanced the scan onto a later line, so
-            // the opaque-text boundary now belongs to that line.
+            // Blanking a comment can *reveal* a `:line` text region on this line:
+            // leading same-line trivia before `:line[` (dsl §4.2), or a comment
+            // between `]`/attr block and the classifying `:`. A multi-line comment
+            // also advances the scan onto a later line. Either way the boundary is
+            // recomputed from the *blanked* view (`out`, all comments so far →
+            // spaces) so the raw comment bytes no longer defeat the `:line[` match
+            // and the body's literal `"` isn't taken for a String delimiter.
             if let Some(nl) = comment.iter().rposition(|&x| x == b'\n') {
-                text_start = text_start_for_line(text, a + nl + 1);
+                line_start = a + nl + 1;
             }
+            text_start = line_text_start_blanked(&out, text, line_start, b);
             continue;
         }
         out.push(c);
@@ -334,5 +368,38 @@ mod tests {
         let out = strip_comments_checked(input).unwrap();
         assert!(!out.contains("strip me"), "later comment survived: {out:?}");
         assert_eq!(out.len(), input.len());
+    }
+
+    #[test]
+    fn leading_same_line_comment_before_line_still_strips_inner_comment() {
+        // FE1 (§4.2): a comment may appear inline *anywhere before* line
+        // classification, including immediately before the `:line` construct on
+        // the same line. The `:line` text is opaque only *after* comment
+        // stripping, so a `/* … */` inside the body is still trivia and must be
+        // blanked. The leading comment must not leave the opaque-text boundary
+        // unset (`usize::MAX`), or the body's `"` would wrongly open a String and
+        // preserve the inner comment.
+        let input = r#"/* pre */ :line[x]: "a /* c */ b""#;
+        let out = strip_comments_checked(input).unwrap();
+        // Both the leading trivia AND the inner comment are blanked.
+        assert!(!out.contains("/*"), "comment `/*` survived: {out:?}");
+        assert!(!out.contains("*/"), "comment `*/` survived: {out:?}");
+        assert!(!out.contains('c'), "inner comment body survived: {out:?}");
+        assert!(
+            !out.contains("pre"),
+            "leading comment body survived: {out:?}"
+        );
+        // The `:line[x]:` construct and its literal quotes survive intact.
+        assert!(out.contains(":line[x]:"), "construct lost: {out:?}");
+        assert!(
+            out.contains(r#""a "#),
+            "leading literal quote lost: {out:?}"
+        );
+        // Length + newline-preserving invariant holds (spans map 1:1 to source).
+        assert_eq!(out.len(), input.len());
+        assert_eq!(
+            out.match_indices('\n').count(),
+            input.match_indices('\n').count()
+        );
     }
 }
