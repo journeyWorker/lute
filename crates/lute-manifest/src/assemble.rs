@@ -9,6 +9,7 @@ use crate::core::load_core_snapshot;
 use crate::resolve::{ActivePlugin, InstalledPlugins};
 use crate::schema::StateShape;
 use crate::snapshot::{capability_version, CapabilitySnapshot, ResolvedPlugin};
+use crate::types::Type;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AssembleError {
@@ -33,6 +34,11 @@ pub enum AssembleError {
     CyclicStateShape {
         shape: String,
     },
+    UnknownAssetKind {
+        directive: String,
+        attr: String,
+        kind: String,
+    },
 }
 
 impl AssembleError {
@@ -45,6 +51,7 @@ impl AssembleError {
             AssembleError::MissingActivePlugin { .. } => "E-PLUGIN-MISSING-ACTIVE",
             AssembleError::InvalidDirective { .. } => "E-PLUGIN-INVALID-DIRECTIVE",
             AssembleError::CyclicStateShape { .. } => "E-STATE-SHAPE-CYCLE",
+            AssembleError::UnknownAssetKind { .. } => "E-PLUGIN-UNKNOWN-ASSETKIND",
         }
     }
 }
@@ -217,8 +224,37 @@ pub fn assemble_snapshot(
     // front, like a depends-cycle). Runs over the fully merged shapes.
     detect_state_shape_cycles(&snap.state_shapes, &mut errs);
 
+    // Enforce that every directive attr typed `assetKind(name)` names a kind
+    // present in the assembled snapshot (plugin §6.9). The checker's per-segment
+    // validation defensively skips an unknown kind ("assembly should have
+    // provided it"); this is the owner that guarantees the assumption, so a
+    // dangling ref is a hard assembly error rather than silently disabled
+    // validation. Deterministic: BTreeMap iteration over directives + attrs.
+    validate_asset_kind_refs(&snap, &mut errs);
+
     snap.version = capability_version(&snap);
     (snap, errs)
+}
+
+/// Report every directive attr typed `assetKind(name)` whose kind is not present
+/// in the assembled snapshot (plugin §6.9). A dangling ref would otherwise
+/// silently disable per-segment id validation for that attr (the checker skips
+/// an unknown kind by design), so assembly — the ref's owner — rejects it here.
+/// The directive is NOT dropped; only reported. Deterministic (BTreeMap order).
+fn validate_asset_kind_refs(snap: &CapabilitySnapshot, errs: &mut Vec<AssembleError>) {
+    for decl in snap.directives.values() {
+        for attr in &decl.attrs {
+            if let Type::AssetKind(name) = &attr.ty {
+                if !snap.asset_kinds.contains_key(name) {
+                    errs.push(AssembleError::UnknownAssetKind {
+                        directive: decl.name.clone(),
+                        attr: attr.name.clone(),
+                        kind: name.clone(),
+                    });
+                }
+            }
+        }
+    }
 }
 
 fn merge_map<V: Clone>(

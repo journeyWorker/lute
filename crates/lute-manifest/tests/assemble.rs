@@ -360,3 +360,79 @@ fn assemble_rejects_cross_plugin_asset_kind_dup() {
         "cross-plugin dup asset kind must be DuplicateAcrossPlugins{{kind:\"assetKind\"}}, got {errs:?}"
     );
 }
+
+/// A directive whose attr is typed `assetKind(kind)`, with `assetId` name.
+fn directive_with_asset_ref(dname: &str, kind: &str) -> DirectiveDecl {
+    DirectiveDecl {
+        name: dname.into(),
+        layer: None,
+        attrs: vec![AttrDecl {
+            name: "assetId".into(),
+            required: true,
+            ty: Type::AssetKind(kind.into()),
+            default: None,
+        }],
+        semantics: vec![],
+        state: None,
+        effects: None,
+        bridge: None,
+        lower: Lowering::Builtin {
+            kind: "builtin".into(),
+            name: "n".into(),
+        },
+    }
+}
+
+#[test]
+fn assemble_rejects_unknown_asset_kind() {
+    use lute_manifest::assemble::AssembleError;
+    let mut pkg = plugin_with_directive("idola.minigame", "minigame");
+    // `CH` is declared, so a directive referencing it must NOT error.
+    pkg.asset_kinds.push(asset_kind("CH"));
+    pkg.directives
+        .push(directive_with_asset_ref("present", "CH"));
+    // `NOPE` is never declared/assembled: a dangling assetKind ref.
+    pkg.directives
+        .push(directive_with_asset_ref("dangling", "NOPE"));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([(
+            "idola.minigame".to_string(),
+            InstalledPlugin { loaded: pkg },
+        )]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.minigame".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (_snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            AssembleError::UnknownAssetKind { directive, attr, kind }
+                if directive == "dangling" && attr == "assetId" && kind == "NOPE"
+        )),
+        "dangling assetKind ref must be UnknownAssetKind{{kind:\"NOPE\"}}, got {errs:?}"
+    );
+    assert!(
+        !errs.iter().any(|e| matches!(
+            e,
+            AssembleError::UnknownAssetKind { kind, .. } if kind == "CH"
+        )),
+        "a present assetKind ref must not error, got {errs:?}"
+    );
+    assert_eq!(
+        AssembleError::UnknownAssetKind {
+            directive: "d".into(),
+            attr: "a".into(),
+            kind: "k".into(),
+        }
+        .code(),
+        "E-PLUGIN-UNKNOWN-ASSETKIND"
+    );
+}

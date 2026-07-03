@@ -8,9 +8,11 @@
 //! - an `@ref` -> the def's CEL text + type (author `defs:` first, then snapshot);
 //! - a state path -> its `state:` decl type + default;
 //! - an enum-typed attr value -> the enum domain.
+//! - an `assetKind`-typed `assetId` value -> the segment under the cursor (its
+//!   name, declared type, and authored value).
 //!
-//! Anything without a capability match (e.g. an `assetId` — providers are empty in
-//! the baseline) yields `None`. `Hover.range` is `None`: highlighting the hovered
+//! A plain-string `assetId` (an attr NOT typed `assetKind`) or any other value
+//! with no capability match yields `None`. `Hover.range` is `None`: highlighting the hovered
 //! span is optional and would require the document text this pure fn does not hold.
 
 use lute_check::parse_meta;

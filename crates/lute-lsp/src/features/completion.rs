@@ -12,7 +12,10 @@
 //!
 //! Empty result (`vec![]`) when nothing is offerable — never a placeholder item.
 
+use std::collections::BTreeSet;
+
 use lute_check::parse_meta;
+use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
@@ -26,6 +29,7 @@ use super::{attr_enum_values, type_label, Cursor};
 pub fn complete_at(
     doc: &Document,
     snapshot: &CapabilitySnapshot,
+    providers: &ProviderSet,
     off: usize,
 ) -> Vec<CompletionItem> {
     let (meta, _) = parse_meta(&doc.meta, snapshot);
@@ -44,7 +48,7 @@ pub fn complete_at(
             key,
         } => {
             if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
-                asset_segment_items(kind, doc, off)
+                asset_segment_items(kind, doc, providers, off)
             } else {
                 enum_value_items(snapshot, dir, key)
             }
@@ -131,8 +135,15 @@ fn enum_value_items(
 
 /// Per-segment completion for an `assetId` value typed `assetKind(kind)`: the
 /// members of the segment under the cursor. A const segment offers its literal;
-/// an enum segment its members; providerRef/number/string offer nothing.
-fn asset_segment_items(kind: &AssetKindDecl, doc: &Document, off: usize) -> Vec<CompletionItem> {
+/// an enum segment its members; a providerRef segment the pinned snapshot's ids
+/// for that provider (empty when no snapshot declares it); number/string offer
+/// nothing.
+fn asset_segment_items(
+    kind: &AssetKindDecl,
+    doc: &Document,
+    providers: &ProviderSet,
+    off: usize,
+) -> Vec<CompletionItem> {
     let Some(attr) = super::attr_at(doc, off) else {
         return Vec::new();
     };
@@ -159,9 +170,24 @@ fn asset_segment_items(kind: &AssetKindDecl, doc: &Document, off: usize) -> Vec<
                 ..Default::default()
             })
             .collect(),
-        // providerRef: no ProviderSet is threaded into `complete_at`, so offering
-        // nothing is honest (§6.9) — we never fabricate provider ids. number /
-        // string / untyped segments have no enumerable domain either.
+        // providerRef: offer the ids the pinned snapshot resolves for this
+        // provider (§6.9), deduped and sorted across every snapshot in the set.
+        // Empty when no snapshot declares the provider — honest, never fabricated.
+        Some(Type::ProviderRef(provider)) => providers
+            .snapshots()
+            .iter()
+            .filter_map(|s| s.entries.get(provider))
+            .flatten()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(|id| CompletionItem {
+                label: id.to_string(),
+                kind: Some(CompletionItemKind::VALUE),
+                ..Default::default()
+            })
+            .collect(),
+        // number / string / untyped segments have no enumerable domain.
         _ => Vec::new(),
     }
 }
@@ -319,7 +345,7 @@ mod tests {
         let text = "## Shot 1.\n::";
         let doc = parsed(text);
         let off = text.find("::").unwrap() + 2; // just past `::`
-        let items = complete_at(&doc, &load_core_snapshot(), off);
+        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
         assert!(items.iter().any(|i| i.label == "camera"));
         assert!(items.iter().any(|i| i.label == "bg"));
     }
@@ -329,7 +355,7 @@ mod tests {
         let text = "## Shot 1.\n::camera{}\n";
         let doc = parsed(text);
         let off = text.find("{}").unwrap() + 1; // between the braces
-        let items = complete_at(&doc, &load_core_snapshot(), off);
+        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
         let ls = labels(&items);
         assert!(ls.contains(&"focus"), "has focus: {ls:?}");
         assert!(ls.contains(&"zoom"), "has zoom: {ls:?}");
@@ -341,7 +367,7 @@ mod tests {
         let doc = parsed(text);
         // Cursor in the whitespace after the first attr (still the attr area).
         let off = text.find("\" }").unwrap() + 2;
-        let items = complete_at(&doc, &load_core_snapshot(), off);
+        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
         let ls = labels(&items);
         assert!(
             !ls.contains(&"focus"),
@@ -356,7 +382,7 @@ mod tests {
         let doc = parsed(text);
         // Cursor inside the empty `anchor=""` value.
         let off = text.find("anchor=\"").unwrap() + "anchor=\"".len();
-        let items = complete_at(&doc, &load_core_snapshot(), off);
+        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"left") && ls.contains(&"center") && ls.contains(&"right"),
@@ -369,7 +395,7 @@ mod tests {
         let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n::set{scene.y = @}\n";
         let doc = parsed(text);
         let off = text.find("= @").unwrap() + 3; // just past `@`
-        let items = complete_at(&doc, &load_core_snapshot(), off);
+        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
         assert!(
             items.iter().any(|i| i.label == "fond"),
             "offers def name: {:?}",
@@ -382,7 +408,7 @@ mod tests {
         let text = "## Shot 1.\n<branch id=\"number\">\n  <choice id=\"a\" label=\"A\">\n    :line[f]: a.\n  </choice>\n</branch>\n<match on=\"\">\n  <otherwise>\n    :line[f]: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
-        let items = complete_at(&doc, &load_core_snapshot(), off);
+        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
         assert!(
             items.iter().any(|i| i.label == "scene.choices.number"),
             "offers the choice path: {:?}",
@@ -396,7 +422,7 @@ mod tests {
         let doc = parsed(text);
         // Cursor after the `=` (expr slot) — state paths are offered.
         let off = text.rfind("= }").unwrap() + 2;
-        let items = complete_at(&doc, &load_core_snapshot(), off);
+        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
         assert!(
             items.iter().any(|i| i.label == "scene.affect.bianca"),
             "offers declared state path: {:?}",
@@ -482,7 +508,7 @@ mod tests {
         let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.\"}\n";
         let doc = parsed(text);
         let off = text.find("waitress.").unwrap() + "waitress.".len();
-        let items = complete_at(&doc, &asset_snapshot(), off);
+        let items = complete_at(&doc, &asset_snapshot(), &ProviderSet::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"delighted") && ls.contains(&"content") && ls.contains(&"neutral"),
@@ -496,8 +522,41 @@ mod tests {
         let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.delighted.3\"}\n";
         let doc = parsed(text);
         let off = text.find("CH.bianca").unwrap() + 1; // on the `H` of `CH`
-        let items = complete_at(&doc, &asset_snapshot(), off);
+        let items = complete_at(&doc, &asset_snapshot(), &ProviderSet::default(), off);
         let ls = labels(&items);
         assert!(ls.contains(&"CH"), "const prefix offered: {ls:?}");
+    }
+
+    #[test]
+    fn completion_offers_provider_ids() {
+        use lute_manifest::provider::ProviderSnapshot;
+        use std::collections::BTreeMap;
+        // Cursor within the `characterId` segment (idx 1), typed
+        // `providerRef("character")`. The pinned snapshot lists two ids.
+        let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.delighted.3\"}\n";
+        let doc = parsed(text);
+        let off = text.find("bianca").unwrap() + 2; // inside `bianca`, segment idx 1
+        let providers = ProviderSet::from_one(ProviderSnapshot {
+            manifest_version: "1".to_string(),
+            provider_version: "1".to_string(),
+            entries: BTreeMap::from([(
+                "character".to_string(),
+                vec!["bianca".to_string(), "ren".to_string()],
+            )]),
+            stale: false,
+        });
+        let items = complete_at(&doc, &asset_snapshot(), &providers, off);
+        let ls = labels(&items);
+        assert!(
+            ls.contains(&"bianca") && ls.contains(&"ren"),
+            "providerRef segment offers pinned ids: {ls:?}"
+        );
+        // An empty ProviderSet offers nothing for that segment (honest §6.9).
+        let empty = complete_at(&doc, &asset_snapshot(), &ProviderSet::default(), off);
+        assert!(
+            empty.is_empty(),
+            "empty ProviderSet -> no provider ids: {:?}",
+            labels(&empty)
+        );
     }
 }
