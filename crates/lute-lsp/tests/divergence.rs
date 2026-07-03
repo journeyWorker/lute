@@ -266,6 +266,153 @@ fn divergence_holds_under_plugin_project() {
     );
 }
 
+/// Plugin-def golden (dsl §8, Task P1.2): the divergence invariant must hold when
+/// a scene uses a PLUGIN-EXPORTED def. A temp project's one plugin `demo.defs`
+/// exports a bool def `warm` and a number def `tally` (`defs/defs.yaml`), modeled
+/// on the committed `docs/examples/plugindef-project` fixture. Each def flows
+/// load_project -> resolve_document_snapshot -> snapshot.defs -> check() through
+/// the SAME resolver the CLI (Task 7.3) and the LSP backend (`snapshot_for`) call,
+/// so a plugin-exported `@ref` is a declared def on BOTH surfaces. Two cases,
+/// mirroring `divergence_holds_under_uses_import`: (a) `@warm` whole-slot in a
+/// `<when test>` bool guard is declared + bool-compatible -> error-clean; (b)
+/// NON-VACUOUS: `@tally` (number) in the same bool guard flags `E-REF-TYPE`, whose
+/// headless projection and LSP-converted projection must agree byte-for-byte — the
+/// real proof that a plugin-def-derived diagnostic reprojects identically.
+#[test]
+fn divergence_holds_under_plugin_defs() {
+    use lute_manifest::project::{load_project, project_providers, resolve_document_snapshot};
+
+    // A temp project modeled on docs/examples/plugindef-project (committed P1.1):
+    // one plugin `demo.defs` exporting a bool def `warm` and a number def `tally`,
+    // activated by the default profile — the same on-disk layout + defs the
+    // disk-path integration test (`lute-check/tests/plugin_defs_disk.rs`) builds.
+    let root = std::env::temp_dir().join(format!(
+        "lute-divergence-plugindefs-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let plugin = root.join("plugins/demo.defs");
+    std::fs::create_dir_all(plugin.join("defs")).unwrap();
+    std::fs::write(
+        root.join("lute.project.yaml"),
+        "pluginsDir: plugins/\ndefaultProfile: demo\nprofiles:\n  demo:\n    plugins: { demo.defs: true }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        plugin.join("plugin.yaml"),
+        "id: demo.defs\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\nexports:\n  defs: defs/\n",
+    )
+    .unwrap();
+    std::fs::write(
+        plugin.join("defs/defs.yaml"),
+        "defs:\n  - { name: warm, type: bool, cel: \"true\" }\n  - { name: tally, type: number, cel: \"1\" }\n",
+    )
+    .unwrap();
+
+    let proj = load_project(&root)
+        .expect("temp plugindef project loads")
+        .expect("temp plugindef project has a lute.project.yaml");
+
+    // A scene whose whole `<when test>` bool guard is a bare plugin-def `@ref`;
+    // only the ref differs between the two cases.
+    let scene = |guard: &str| {
+        format!(
+            "---\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n"
+        )
+    };
+
+    // Resolve+check a scene exactly as both surfaces do: parse frontmatter with a
+    // default snapshot, assemble the activated snapshot via the shared resolver
+    // (profile None -> project defaultProfile `demo` -> `demo.defs` plugin active),
+    // then run the ONE headless `check`.
+    let run = |text: &str| {
+        let (doc, _) = lute_syntax::parse(text);
+        let (meta0, _) = lute_check::parse_meta(
+            &doc.meta,
+            &lute_manifest::snapshot::CapabilitySnapshot::default(),
+        );
+        let (snapshot, _rd) =
+            resolve_document_snapshot(Some(&proj), meta0.profile.as_deref(), &meta0.plugins);
+        let providers = project_providers(Some(&proj));
+        check(&CheckInput {
+            text: text.to_string(),
+            uri: "plugindef-scene".into(),
+            snapshot,
+            providers,
+            mode: Mode::Author,
+            imports: SchemaImports::default(),
+        })
+    };
+
+    // (a) `@warm` (bool def) whole-slot in a bool guard: declared + type-compatible
+    // via `snapshot.defs`, so the scene is error-clean. Its (possibly empty)
+    // projection still agrees across surfaces.
+    let text_a = scene("@warm");
+    let res_a = run(&text_a);
+    assert!(
+        res_a
+            .diagnostics
+            .iter()
+            .all(|d| d.severity != Severity::Error),
+        "`@warm` (bool def) in a bool guard must be error-clean; got {:?}",
+        res_a
+            .diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
+    );
+    let ia = idx(&text_a);
+    let ha: Vec<Norm> = res_a
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &ia))
+        .collect();
+    let la: Vec<Norm> = res_a
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &ia)))
+        .collect();
+    assert_eq!(
+        ha, la,
+        "headless and LSP surfaces diverged for the clean plugin-def scene"
+    );
+
+    // (b) non-vacuous: `@tally` (number def) in the SAME bool guard flags
+    // `E-REF-TYPE`; its headless and LSP projections must agree byte-for-byte —
+    // the plugin-def-derived diagnostic reprojects identically on both surfaces.
+    let text_b = scene("@tally");
+    let res_b = run(&text_b);
+    assert!(
+        res_b.diagnostics.iter().any(|d| d.code == "E-REF-TYPE"),
+        "`@tally` (number def) in a bool guard must flag E-REF-TYPE; got {:?}",
+        res_b
+            .diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
+    );
+    let ib = idx(&text_b);
+    let hb: Vec<Norm> = res_b
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &ib))
+        .collect();
+    let lb: Vec<Norm> = res_b
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &ib)))
+        .collect();
+    assert_eq!(
+        hb, lb,
+        "E-REF-TYPE projection diverged between surfaces under a plugin-exported def"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// No-divergence under a `uses:` schema import (dsl §9.2). Two cases: (a) the
 /// error-clean `carry-ep.lute` (imported `run.choseHelp` resolves via the SAME
 /// `resolve_imports` both surfaces call) and (b) a scene whose import is missing,
