@@ -18,8 +18,8 @@
 //! - **`E-DUP-TRACK`** — two `<track>`s share the same [`TrackKey`].
 //! - **`E-CLIP-OVERLAP`** — two clips in the SAME track whose
 //!   `[at, at+duration)` half-open intervals overlap.
-//! - **`E-WRITE-CONFLICT`** — two clips in DIFFERENT tracks that write the same
-//!   subject at overlapping times (see scope note below).
+//! - **`E-WRITE-CONFLICT`** — two clips on DIFFERENT tracks whose resolved
+//!   state-write targets overlap at overlapping times (see model below).
 //! - **`W-TIMELINE-TRACKS`** — more than 8 tracks.
 //! - **`W-TIMELINE-CLIPS`** — more than 12 clips in a single track.
 //! - **`W-TIMELINE-TOTAL`** — more than 40 clips across all tracks.
@@ -30,16 +30,14 @@
 //! otherwise the maximum clip end across all tracks (`0.0` for an empty
 //! timeline).
 //!
-//! ## `E-WRITE-CONFLICT` scope / limitation
-//! Precise write-target resolution needs each directive's declared `writes[]`
-//! from the resolved [`CapabilitySnapshot`], which is NOT threaded into
-//! `resolve_timeline` (only [`Ctx`] is). So the check is scoped to the subject
-//! derivable from the [`TrackKey`] itself: two clips conflict when their tracks
-//! resolve to the SAME subject (`Subject(s)` or `Property { subject, .. }`;
-//! `Channel` tracks have no subject and never conflict) via DIFFERENT keys and
-//! their intervals overlap. Exact-duplicate keys are left to `E-DUP-TRACK` to
-//! avoid piling two errors on one cause. Property-level and directive-level
-//! (`writes[]`) precision is deferred until the snapshot is available here.
+//! ## `E-WRITE-CONFLICT` model
+//! Compares each clip's resolved directive `effects.writes[]` state-write
+//! targets: a `<set>` writes its path verbatim; a known effectless directive
+//! writes nothing; an unknown directive or an unresolvable `fromAttr` falls
+//! back to the coarse track subject as a single conservative target. Clips on
+//! DIFFERENT tracks whose targets overlap (equal or dotted-boundary prefix) at
+//! overlapping times are flagged. Exact-duplicate keys are left to
+//! `E-DUP-TRACK`; clips that provably write nothing never conflict.
 
 use std::collections::BTreeSet;
 
@@ -69,7 +67,11 @@ pub struct ResolvedTimeline {
 }
 
 /// Resolve a `<timeline>` into its table view + staging diagnostics (dsl §11.4).
-pub fn resolve_timeline(tl: &Timeline, _ctx: &Ctx) -> (ResolvedTimeline, Vec<Diagnostic>) {
+pub fn resolve_timeline(
+    tl: &Timeline,
+    _ctx: &Ctx,
+    snapshot: &CapabilitySnapshot,
+) -> (ResolvedTimeline, Vec<Diagnostic>) {
     let mut diags = Vec::new();
 
     // Size warnings (arch LSP feature map).
@@ -110,12 +112,12 @@ pub fn resolve_timeline(tl: &Timeline, _ctx: &Ctx) -> (ResolvedTimeline, Vec<Dia
     }
 
     // Per-track resolution: sequential-omission cursor + track-local overlap.
-    // `placed` records each clip's absolute interval + subject for the
-    // cross-track write-conflict pass.
+    // `placed` records each clip's absolute interval + resolved write targets
+    // for the cross-track write-conflict pass.
     struct Placed {
         at: f64,
         end: f64,
-        subject: Option<String>,
+        targets: WriteTargets,
         key: String,
         span: Span,
     }
@@ -168,7 +170,7 @@ pub fn resolve_timeline(tl: &Timeline, _ctx: &Ctx) -> (ResolvedTimeline, Vec<Dia
             placed.push(Placed {
                 at,
                 end,
-                subject: subject.clone(),
+                targets: clip_write_targets(&clip.node, snapshot, subject.as_deref()),
                 key: canon.clone(),
                 span: clip.span,
             });
@@ -180,25 +182,25 @@ pub fn resolve_timeline(tl: &Timeline, _ctx: &Ctx) -> (ResolvedTimeline, Vec<Dia
         }
     }
 
-    // Cross-track write conflict (E-WRITE-CONFLICT): clips in DIFFERENT tracks
-    // resolving to the SAME subject with overlapping intervals. Exact-duplicate
-    // keys are excluded (already flagged E-DUP-TRACK).
+    // Cross-track write conflict (E-WRITE-CONFLICT): clips on DIFFERENT tracks whose
+    // resolved state-write targets overlap at overlapping times. Exact-duplicate
+    // keys are excluded (already flagged E-DUP-TRACK). Clips that provably write
+    // nothing (WriteTargets::None) never conflict.
     for (i, a) in placed.iter().enumerate() {
-        let Some(a_subj) = &a.subject else { continue };
         for b in placed.iter().skip(i + 1) {
-            let Some(b_subj) = &b.subject else { continue };
-            if a.key == b.key || a_subj != b_subj {
+            if a.key == b.key {
                 continue;
             }
+            // Half-open interval overlap.
             if a.at < b.end && b.at < a.end {
-                diags.push(diag(
-                    "E-WRITE-CONFLICT",
-                    Severity::Error,
-                    format!(
-                        "cross-track write conflict on subject `{a_subj}` at overlapping times"
-                    ),
-                    b.span,
-                ));
+                if let Some(target) = targets_overlap(&a.targets, &b.targets) {
+                    diags.push(diag(
+                        "E-WRITE-CONFLICT",
+                        Severity::Error,
+                        format!("cross-track write conflict on `{target}` at overlapping times"),
+                        b.span,
+                    ));
+                }
             }
         }
     }
@@ -234,8 +236,6 @@ fn subject_of(key: &TrackKey) -> Option<String> {
 
 /// What a clip writes, for cross-track conflict detection.
 #[derive(Clone, Debug, PartialEq)]
-// Consumed by the B1.2 write-conflict pass in this module; unused until then.
-#[allow(dead_code)]
 enum WriteTargets {
     /// Fully-resolved concrete state-write paths (e.g. "scene.minigame.service01.score").
     Paths(BTreeSet<String>),
@@ -254,7 +254,6 @@ enum WriteTargets {
 ///
 /// Pure and total: no panic path. Unresolvable `fromAttr` segments never emit
 /// partial paths — the whole clip falls back to `Coarse`/`None`.
-#[allow(dead_code)]
 fn clip_write_targets(
     node: &ClipNode,
     snapshot: &CapabilitySnapshot,
@@ -309,6 +308,37 @@ fn clip_write_targets(
             WriteTargets::Paths(paths)
         }
     }
+}
+
+/// Materialize a `WriteTargets` into a comparable set, or `None` when the clip
+/// writes nothing (a `None` clip never conflicts).
+fn targets_as_set(t: &WriteTargets) -> Option<BTreeSet<String>> {
+    match t {
+        WriteTargets::Paths(p) => Some(p.clone()),
+        WriteTargets::Coarse(s) => Some(std::iter::once(s.clone()).collect()),
+        WriteTargets::None => None,
+    }
+}
+
+/// The overlapping state target between two clips, if any. Two paths overlap
+/// when equal, or one is a dotted-boundary prefix of the other
+/// (`scene.box.k` prefixes `scene.box.k.a` but NOT `scene.box.kk`).
+fn targets_overlap(a: &WriteTargets, b: &WriteTargets) -> Option<String> {
+    let a_set = targets_as_set(a)?;
+    let b_set = targets_as_set(b)?;
+    for x in &a_set {
+        for y in &b_set {
+            if x == y
+                || y.strip_prefix(x.as_str())
+                    .is_some_and(|r| r.starts_with('.'))
+                || x.strip_prefix(y.as_str())
+                    .is_some_and(|r| r.starts_with('.'))
+            {
+                return Some(x.clone().min(y.clone())); // deterministic: report the lower
+            }
+        }
+    }
+    None
 }
 
 /// Best-effort clip duration from a directive's `duration` timing attr (§7.5).
@@ -446,7 +476,8 @@ mod tests {
     fn omitted_at_follows_previous_clip_end() {
         // track camera: clip A dur 0.4 (at omitted=>0.0), clip B dur 0.4 (at omitted=>0.4)
         let tl = timeline_camera_two_clips();
-        let (res, diags) = resolve_timeline(&tl, &ctx());
+        let (res, diags) =
+            resolve_timeline(&tl, &ctx(), &lute_manifest::core::load_core_snapshot());
         assert!(diags.is_empty());
         assert_eq!(res.rows[1].at, 0.4);
     }
@@ -454,14 +485,15 @@ mod tests {
     #[test]
     fn duplicate_track_key_errors() {
         let tl = timeline_two_camera_tracks();
-        let (_res, diags) = resolve_timeline(&tl, &ctx());
+        let (_res, diags) =
+            resolve_timeline(&tl, &ctx(), &lute_manifest::core::load_core_snapshot());
         assert!(diags.iter().any(|d| d.code == "E-DUP-TRACK"));
     }
 
     #[test]
     fn barrier_is_max_end_when_no_duration() {
         let tl = timeline_camera_two_clips(); // ends at 0.8, no explicit duration
-        let (res, _d) = resolve_timeline(&tl, &ctx());
+        let (res, _d) = resolve_timeline(&tl, &ctx(), &lute_manifest::core::load_core_snapshot());
         assert_eq!(res.barrier_at, 0.8);
     }
 
@@ -585,5 +617,149 @@ mod tests {
             clip_write_targets(&node, &snap, Some("x")),
             WriteTargets::None
         );
+    }
+
+    fn writer_clip_dur(key: &str, dur: &str) -> Clip {
+        Clip {
+            node: ClipNode::Directive(Directive {
+                tag: "writer".into(),
+                attrs: vec![
+                    Attr {
+                        key: "key".into(),
+                        value: AttrValue::Str(key.into()),
+                        value_span: span(),
+                        span: span(),
+                    },
+                    Attr {
+                        key: "duration".into(),
+                        value: AttrValue::Str(dur.into()),
+                        value_span: span(),
+                        span: span(),
+                    },
+                ],
+                span: span(),
+            }),
+            at: None,
+            span: span(),
+        }
+    }
+
+    fn dir_clip_dur(tag: &str, dur: &str) -> Clip {
+        Clip {
+            node: ClipNode::Directive(Directive {
+                tag: tag.into(),
+                attrs: vec![Attr {
+                    key: "duration".into(),
+                    value: AttrValue::Str(dur.into()),
+                    value_span: span(),
+                    span: span(),
+                }],
+                span: span(),
+            }),
+            at: None,
+            span: span(),
+        }
+    }
+
+    // Same subject "box", different property keys -> canon keys "box.pa"/"box.pb" differ.
+    fn two_writer_tracks(key_a: &str, key_b: &str) -> Timeline {
+        Timeline {
+            duration: None,
+            span: span(),
+            tracks: vec![
+                Track {
+                    key: TrackKey::Property {
+                        subject: "box".into(),
+                        property: "pa".into(),
+                    },
+                    clips: vec![writer_clip_dur(key_a, "1.0")],
+                    span: span(),
+                },
+                Track {
+                    key: TrackKey::Property {
+                        subject: "box".into(),
+                        property: "pb".into(),
+                    },
+                    clips: vec![writer_clip_dur(key_b, "1.0")],
+                    span: span(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn no_conflict_when_different_properties() {
+        // track A ::writer key=k1 -> scene.box.k1.{a,b}; track B ::writer key=k2 -> scene.box.k2.{a,b}
+        // same subject "box", DIFFERENT resolved paths, overlapping times -> NO conflict
+        // (this is the false-positive the old subject-based rule raised for property tracks)
+        let snap = snapshot_with_writer();
+        let tl = two_writer_tracks("k1", "k2");
+        let (_t, diags) = resolve_timeline(&tl, &ctx(), &snap);
+        assert!(
+            !diags.iter().any(|d| d.code == "E-WRITE-CONFLICT"),
+            "different resolved write paths must not conflict; got {:?}",
+            diags.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn conflict_when_same_target() {
+        // both tracks write scene.box.k.{a,b} at overlapping times, different tracks -> conflict
+        let snap = snapshot_with_writer();
+        let tl = two_writer_tracks("k", "k");
+        let (_t, diags) = resolve_timeline(&tl, &ctx(), &snap);
+        assert!(diags.iter().any(|d| d.code == "E-WRITE-CONFLICT"));
+    }
+
+    #[test]
+    fn conflict_when_subject_prefixes_property() {
+        // track A unknown directive on subject "scene.box.k" -> Coarse("scene.box.k")
+        // track B ::writer key=k -> scene.box.k.{a,b}; Coarse prefixes B -> conflict
+        let snap = snapshot_with_writer();
+        let tl = Timeline {
+            duration: None,
+            span: span(),
+            tracks: vec![
+                Track {
+                    key: TrackKey::Subject("scene.box.k".into()),
+                    clips: vec![dir_clip_dur("nosuchdir", "1.0")],
+                    span: span(),
+                },
+                Track {
+                    key: TrackKey::Property {
+                        subject: "box".into(),
+                        property: "pb".into(),
+                    },
+                    clips: vec![writer_clip_dur("k", "1.0")],
+                    span: span(),
+                },
+            ],
+        };
+        let (_t, diags) = resolve_timeline(&tl, &ctx(), &snap);
+        assert!(diags.iter().any(|d| d.code == "E-WRITE-CONFLICT"));
+    }
+
+    #[test]
+    fn effectless_directives_never_conflict() {
+        // two ::vfx clips (core, no writes -> None) on different tracks, overlapping -> NO conflict
+        let snap = lute_manifest::core::load_core_snapshot();
+        let tl = Timeline {
+            duration: None,
+            span: span(),
+            tracks: vec![
+                Track {
+                    key: TrackKey::Subject("t1".into()),
+                    clips: vec![dir_clip_dur("vfx", "1.0")],
+                    span: span(),
+                },
+                Track {
+                    key: TrackKey::Subject("t2".into()),
+                    clips: vec![dir_clip_dur("vfx", "1.0")],
+                    span: span(),
+                },
+            ],
+        };
+        let (_t, diags) = resolve_timeline(&tl, &ctx(), &snap);
+        assert!(!diags.iter().any(|d| d.code == "E-WRITE-CONFLICT"));
     }
 }
