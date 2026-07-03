@@ -65,6 +65,15 @@ const BUILTIN_KEYS: &[&str] = &[
 
 const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 
+/// Which document kind's frontmatter is being parsed. A `Schema` doc (imported
+/// via `uses:`, dsl §9.2) is NOT a scene — it has no required character/season/
+/// episode keys.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetaKind {
+    Scene,
+    Schema,
+}
+
 /// Parse the peeled YAML frontmatter (dsl §6.1) into typed form plus the inline
 /// `state:` schema (dsl §9.3). Never panics on malformed YAML: a parse failure
 /// surfaces `E-META-PARSE` and yields a best-effort (empty) `TypedMeta`.
@@ -74,6 +83,17 @@ const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 /// enforcement (§9.5, Task 4.5) and def-assignment (§8.1, Task 4.4) are NOT done
 /// here.
 pub fn parse_meta(meta: &Meta, snapshot: &CapabilitySnapshot) -> (TypedMeta, Vec<Diagnostic>) {
+    parse_meta_kind(meta, snapshot, MetaKind::Scene)
+}
+
+/// Kind-aware variant of [`parse_meta`]. Schema docs (`MetaKind::Schema`) skip
+/// the §6.1 required-key check (they carry no character/season/episode); every
+/// other check (unknown-key, `state:`, `defs:`, `uses:` lift) is identical.
+pub fn parse_meta_kind(
+    meta: &Meta,
+    snapshot: &CapabilitySnapshot,
+    kind: MetaKind,
+) -> (TypedMeta, Vec<Diagnostic>) {
     let span = meta.span;
     let mut diags = Vec::new();
     let err = |code: &str, message: String| Diagnostic {
@@ -114,16 +134,20 @@ pub fn parse_meta(meta: &Meta, snapshot: &CapabilitySnapshot) -> (TypedMeta, Vec
 
     let mut typed = TypedMeta::default();
 
-    // Required + unknown-key checks over the top-level keys (dsl §6.1).
-    for missing in REQUIRED_KEYS
-        .iter()
-        .filter(|k| !map.contains_key(yaml_key(k)))
-    {
-        diags.push(err(
-            "E-META-MISSING",
-            format!("required meta key `{missing}` is missing"),
-        ));
+    // Required-key check (dsl §6.1); only scenes carry required core keys.
+    // Schema docs imported via `uses:` (§9.2) are not scenes.
+    if kind == MetaKind::Scene {
+        for missing in REQUIRED_KEYS
+            .iter()
+            .filter(|k| !map.contains_key(yaml_key(k)))
+        {
+            diags.push(err(
+                "E-META-MISSING",
+                format!("required meta key `{missing}` is missing"),
+            ));
+        }
     }
+    // Unknown-key check over the top-level keys (dsl §6.1); applies to both kinds.
     for (k, _) in map.iter() {
         let Some(key) = k.as_str() else {
             diags.push(err(
