@@ -204,10 +204,13 @@ where
     #[serde(untagged)]
     enum Raw {
         Map(serde_yaml::Mapping),
-        Seq(Vec<DefParam>),
+        Seq(Vec<serde_yaml::Value>),
     }
     Ok(match Raw::deserialize(d)? {
-        Raw::Seq(v) => v,
+        Raw::Seq(v) => v
+            .into_iter()
+            .filter_map(|v| serde_yaml::from_value::<DefParam>(v).ok())
+            .collect(),
         Raw::Map(m) => m
             .into_iter()
             .filter_map(|(k, v)| {
@@ -504,6 +507,22 @@ assetKinds:
                     ty: Type::Bool
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn def_params_sequence_skips_malformed_entry() {
+        // §8.1 SEQUENCE spelling MUST be fail-soft: one malformed entry (here
+        // missing `type`) is skipped, not fatal — the file still keeps its good
+        // params rather than being rejected wholesale (mirrors the MAPPING path).
+        let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params:\n      - { name: a, type: number }\n      - { name: b }\n";
+        let file: DefsFile = serde_yaml::from_str(src).unwrap();
+        assert_eq!(
+            file.defs[0].params,
+            vec![DefParam {
+                name: "a".into(),
+                ty: Type::Number
+            }]
         );
     }
 
