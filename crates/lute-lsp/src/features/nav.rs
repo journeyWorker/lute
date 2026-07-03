@@ -68,12 +68,21 @@ fn path_definition(doc: &Document, path: &str) -> Option<Span> {
 
 /// Every use site of the symbol at byte offset `off`. Empty when the cursor is not
 /// on a referable symbol.
-pub fn references_at(doc: &Document, snapshot: &CapabilitySnapshot, off: usize) -> Vec<Span> {
+///
+/// When `include_declaration` is true, the symbol's declaration site — the same
+/// [`Span`] [`definition_at`] returns — is unioned into the result, deduped by
+/// [`Span`] equality. When false, only the use-set is returned (byte-identical to
+/// the historical behavior).
+pub fn references_at(
+    doc: &Document,
+    snapshot: &CapabilitySnapshot,
+    off: usize,
+    include_declaration: bool,
+) -> Vec<Span> {
     let Some(cursor) = super::resolve(doc, off) else {
         return Vec::new();
     };
-    let _ = snapshot;
-    match cursor {
+    let mut uses = match cursor {
         Cursor::SetPath { path, .. } => path_uses(doc, path),
         Cursor::Cel { slot, .. } => {
             if let Some(r) = ref_at(slot, off) {
@@ -89,7 +98,15 @@ pub fn references_at(doc: &Document, snapshot: &CapabilitySnapshot, off: usize) 
             }
         }
         _ => Vec::new(),
+    };
+    if include_declaration {
+        if let Some(decl) = definition_at(doc, snapshot, off) {
+            if !uses.contains(&decl) {
+                uses.push(decl);
+            }
+        }
     }
+    uses
 }
 
 #[cfg(test)]
@@ -147,7 +164,7 @@ mod tests {
         let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :line[f]: a.\n  </when>\n  <when test=\"@fond && true\">\n    :line[f]: b.\n  </when>\n  <otherwise>\n    :line[f]: c.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@fond").unwrap() + 1; // on the first use
-        let refs = references_at(&doc, &load_core_snapshot(), off);
+        let refs = references_at(&doc, &load_core_snapshot(), off, false);
         assert_eq!(refs.len(), 2, "two @fond uses: {refs:?}");
         // Both spans land on `@fond` occurrences.
         for r in &refs {
@@ -161,9 +178,33 @@ mod tests {
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("scene.affect.bianca").unwrap() + set_at + 2;
-        let refs = references_at(&doc, &load_core_snapshot(), off);
+        let refs = references_at(&doc, &load_core_snapshot(), off, false);
         // One `::set` target path + one `<match on=…>` CEL occurrence.
         assert_eq!(refs.len(), 2, "set + read: {refs:?}");
+    }
+
+    #[test]
+    fn references_include_declaration_unions_decl_span() {
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca += 1}\n<match on=\"scene.affect.bianca\">\n  <otherwise>\n    :line[f]: x.\n  </otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let set_at = text.find("::set{").unwrap();
+        let off = text[set_at..].find("scene.affect.bianca").unwrap() + set_at + 2;
+        let snap = load_core_snapshot();
+        // Baseline (=false): use-set only, declaration excluded — byte-identical to today.
+        let uses = references_at(&doc, &snap, off, false);
+        assert_eq!(uses.len(), 2, "set + read only: {uses:?}");
+        let decl = definition_at(&doc, &snap, off).expect("state path has a decl site");
+        assert!(
+            !uses.contains(&decl),
+            "decl must be excluded when include_declaration=false: {uses:?}"
+        );
+        // =true: the decl span is unioned in (deduped) alongside the use-set.
+        let with_decl = references_at(&doc, &snap, off, true);
+        assert_eq!(with_decl.len(), 3, "set + read + decl: {with_decl:?}");
+        assert!(
+            with_decl.contains(&decl),
+            "decl span must be present when include_declaration=true: {with_decl:?}"
+        );
     }
 
     #[test]

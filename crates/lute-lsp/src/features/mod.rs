@@ -734,7 +734,7 @@ mod tests {
         let (doc, _) = parse(text);
         // Cursor on the `::set` target path.
         let off = text.find("scene.affect.bianca = 1").unwrap();
-        let uses = nav::references_at(&doc, &lute_manifest::core::load_core_snapshot(), off);
+        let uses = nav::references_at(&doc, &lute_manifest::core::load_core_snapshot(), off, false);
         // Expected real uses: the ::set target + the `<match on=...>` subject. The
         // dotted text inside the `<when test="'scene.affect.bianca' == 'x'">`
         // string literal must NOT be counted.
