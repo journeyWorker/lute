@@ -171,11 +171,110 @@ fn cyclic_state_shapes_are_rejected() {
         snap.state_shapes.contains_key("A") && snap.state_shapes.contains_key("B"),
         "shapes must be merged into the snapshot"
     );
+    let cyc: std::collections::BTreeSet<String> = errs
+        .iter()
+        .filter_map(|e| match e {
+            lute_manifest::assemble::AssembleError::CyclicStateShape { shape } => {
+                Some(shape.clone())
+            }
+            _ => None,
+        })
+        .collect();
     assert!(
-        errs.iter().any(|e| matches!(
+        cyc.contains("A") && cyc.contains("B"),
+        "both cycle members reported, got {cyc:?}"
+    );
+}
+
+/// A shape whose field references itself (S -> S) is a self-cycle: it must be
+/// reported exactly once, as just "S".
+#[test]
+fn self_cycle_state_shape_reports_single_member() {
+    use lute_manifest::schema::StateShape;
+    use lute_manifest::types::Field;
+    let mut pkg = plugin_with_directive("a.self", "sel");
+    pkg.state_shapes.push(StateShape {
+        name: "S".into(),
+        fields: vec![Field {
+            name: "me".into(),
+            ty: Type::Bool,
+            default: None,
+            required: false,
+            shape: Some("S".into()),
+        }],
+    });
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([("a.self".to_string(), InstalledPlugin { loaded: pkg })]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "a.self".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (_snap, errs) = assemble_snapshot(&active, &reg);
+    let cyc: Vec<String> = errs
+        .iter()
+        .filter_map(|e| match e {
+            lute_manifest::assemble::AssembleError::CyclicStateShape { shape } => {
+                Some(shape.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(cyc, vec!["S".to_string()], "self-cycle reports exactly [S]");
+}
+
+/// A diamond (A -> B, A -> C, B -> D, C -> D) is acyclic: it must report ZERO
+/// cyclic state shapes despite the shared descendant D.
+#[test]
+fn acyclic_diamond_state_shapes_report_no_cycle() {
+    use lute_manifest::schema::StateShape;
+    use lute_manifest::types::Field;
+    fn shape(name: &str, refs: &[&str]) -> StateShape {
+        StateShape {
+            name: name.into(),
+            fields: refs
+                .iter()
+                .enumerate()
+                .map(|(i, r)| Field {
+                    name: format!("f{i}"),
+                    ty: Type::Bool,
+                    default: None,
+                    required: false,
+                    shape: Some((*r).into()),
+                })
+                .collect(),
+        }
+    }
+    let mut pkg = plugin_with_directive("a.dia", "dia");
+    pkg.state_shapes.push(shape("A", &["B", "C"]));
+    pkg.state_shapes.push(shape("B", &["D"]));
+    pkg.state_shapes.push(shape("C", &["D"]));
+    pkg.state_shapes.push(shape("D", &[]));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([("a.dia".to_string(), InstalledPlugin { loaded: pkg })]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "a.dia".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (_snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        !errs.iter().any(|e| matches!(
             e,
             lute_manifest::assemble::AssembleError::CyclicStateShape { .. }
         )),
-        "cyclic shapes must be rejected, got {errs:?}"
+        "acyclic diamond must report no cycle, got {errs:?}"
     );
 }

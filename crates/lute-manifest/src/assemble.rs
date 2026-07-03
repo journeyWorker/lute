@@ -231,7 +231,8 @@ fn merge_map<V: Clone>(
 /// visiting/done marks — catches self-cycles (A -> A) and mutual cycles
 /// (A -> B -> A) without false-positiving diamonds (A -> B, A -> C, B -> D,
 /// C -> D). Deterministic: roots iterate in BTreeMap order, deps sorted+deduped.
-/// Each shape on a back-edge is reported once.
+/// On a back-edge, every shape on the current DFS stack from the target through
+/// the top — the true cycle members — is reported, each named at most once.
 fn detect_state_shape_cycles(shapes: &BTreeMap<String, StateShape>, errs: &mut Vec<AssembleError>) {
     #[derive(Clone, Copy, PartialEq)]
     enum Mark {
@@ -268,7 +269,16 @@ fn detect_state_shape_cycles(shapes: &BTreeMap<String, StateShape>, errs: &mut V
                 *cursor += 1;
                 match state.get(&dep) {
                     Some(Mark::Visiting) => {
-                        if reported.insert(dep.clone()) {
+                        // Report the full cycle: every shape on the stack from `dep`
+                        // (the back-edge target) through the current top. Guard each
+                        // with `reported` so a shape shared by two cycles is named once.
+                        if let Some(start) = stack.iter().position(|(n, _, _)| n == &dep) {
+                            for (n, _, _) in &stack[start..] {
+                                if reported.insert(n.clone()) {
+                                    errs.push(AssembleError::CyclicStateShape { shape: n.clone() });
+                                }
+                            }
+                        } else if reported.insert(dep.clone()) {
                             errs.push(AssembleError::CyclicStateShape { shape: dep });
                         }
                     }
