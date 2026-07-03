@@ -21,6 +21,7 @@
 //!   membership check rather than emit a false `E-BAD-ENUM`.
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::asset::{self, AssetIssue, DecomposeError};
 use lute_manifest::provider::{IdStatus, ProviderSet};
 use lute_manifest::schema::AttrDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -132,6 +133,7 @@ fn check_attr_value(
         Type::ProviderRef(provider) => {
             check_provider_ref(provider, attr, providers, diags);
         }
+        Type::AssetKind(kind) => check_asset_id(kind, attr, snapshot, providers, diags),
         ty => {
             if let Some(lit) = literal_of(ty, &attr.value) {
                 if !type_accepts(ty, &lit) {
@@ -230,6 +232,148 @@ fn check_provider_ref(
             format!("`{id}` is not a known `{provider}` id"),
             attr.value_span,
         )),
+    }
+}
+
+/// Validate an authored `assetId` against its declared `assetKind` (plugin §6.9,
+/// precedence step-1 checker half): a `PLACEHOLDER_*` sentinel warns; a segment-
+/// less query kind checks provider-existence only; a segment-bearing kind
+/// decomposes + validates each segment. The engine (compose/query-from-attrs,
+/// fallback resolution) is out of scope — this only validates an AUTHORED id.
+fn check_asset_id(
+    kind_name: &str,
+    attr: &Attr,
+    snapshot: &CapabilitySnapshot,
+    providers: &ProviderSet,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let id = match &attr.value {
+        AttrValue::Str(s) => s.as_str(),
+        AttrValue::BoolTrue => {
+            diags.push(diag(
+                "E-ATTR-TYPE",
+                Severity::Error,
+                format!("attribute `{}` expects an asset id string", attr.key),
+                attr.value_span,
+            ));
+            return;
+        }
+        AttrValue::Ref(_) => return,
+    };
+    // §6.9: a PLACEHOLDER_* sentinel resolves to itself; surfaced as a warning.
+    if asset::is_placeholder(id) {
+        diags.push(diag(
+            "W-ASSET-PLACEHOLDER",
+            Severity::Warning,
+            format!("`{id}` is a placeholder asset id (resolve before release)"),
+            attr.value_span,
+        ));
+        return;
+    }
+    // Defensive: assembly should have provided the kind; if not, skip silently.
+    let Some(kind) = snapshot.asset_kinds.get(kind_name) else {
+        return;
+    };
+
+    if kind.segments.is_empty() {
+        // pure-query kind: provider-existence only (decompose would give one
+        // opaque value).
+        if let Some(provider) = &kind.provider {
+            match providers.contains(provider, id) {
+                IdStatus::Fresh => {}
+                IdStatus::Stale => diags.push(diag(
+                    "W-CATALOG-STALE",
+                    Severity::Warning,
+                    format!("`{id}` not found in `{provider}` catalog (snapshot stale/offline)"),
+                    attr.value_span,
+                )),
+                IdStatus::Absent => diags.push(diag(
+                    "E-ASSET-UNKNOWN-ID",
+                    Severity::Error,
+                    format!("`{id}` is not a known `{provider}` asset"),
+                    attr.value_span,
+                )),
+            }
+        }
+        return;
+    }
+    // segment-bearing kind: decompose then per-segment validate.
+    match asset::decompose(kind, id) {
+        Err(DecomposeError::Arity { expected, found }) => diags.push(diag(
+            "E-ASSET-DECOMPOSE",
+            Severity::Error,
+            format!(
+                "asset id `{id}` has {found} segment(s), expected {expected} for kind `{kind_name}`"
+            ),
+            attr.value_span,
+        )),
+        Err(DecomposeError::ConstMismatch {
+            name,
+            expected,
+            found,
+        }) => diags.push(diag(
+            "E-ASSET-DECOMPOSE",
+            Severity::Error,
+            format!("asset id `{id}` segment `{name}` must be `{expected}`, found `{found}`"),
+            attr.value_span,
+        )),
+        Ok(segs) => {
+            for issue in asset::validate_segments(kind, &segs, providers) {
+                match issue {
+                    AssetIssue::StaleProviderId {
+                        segment,
+                        provider,
+                        value,
+                    } => diags.push(diag(
+                        "W-CATALOG-STALE",
+                        Severity::Warning,
+                        format!(
+                            "`{value}` not found in `{provider}` catalog (snapshot stale/offline; segment `{segment}`)"
+                        ),
+                        attr.value_span,
+                    )),
+                    AssetIssue::BadConst {
+                        segment,
+                        expected,
+                        found,
+                    } => diags.push(diag(
+                        "E-ASSET-SEGMENT",
+                        Severity::Error,
+                        format!("segment `{segment}` must be `{expected}`, found `{found}`"),
+                        attr.value_span,
+                    )),
+                    AssetIssue::NotEnumMember {
+                        segment,
+                        value,
+                        members,
+                    } => diags.push(diag(
+                        "E-ASSET-SEGMENT",
+                        Severity::Error,
+                        format!(
+                            "`{value}` is not a valid `{segment}` (expected one of: {})",
+                            members.join(", ")
+                        ),
+                        attr.value_span,
+                    )),
+                    AssetIssue::NotNumber { segment, value } => diags.push(diag(
+                        "E-ASSET-SEGMENT",
+                        Severity::Error,
+                        format!("segment `{segment}` expects a number, found `{value}`"),
+                        attr.value_span,
+                    )),
+                    AssetIssue::UnknownProviderId {
+                        segment,
+                        provider,
+                        value,
+                    } => diags.push(diag(
+                        "E-ASSET-SEGMENT",
+                        Severity::Error,
+                        format!("`{value}` is not a known `{provider}` id (segment `{segment}`)"),
+                        attr.value_span,
+                    )),
+                }
+            }
+        }
     }
 }
 
