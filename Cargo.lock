@@ -576,6 +576,7 @@ version = "0.0.0"
 dependencies = [
  "lute-core-span",
  "serde",
+ "serde_json",
  "serde_yaml",
  "sha2",
 ]
