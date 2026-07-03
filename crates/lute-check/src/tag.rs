@@ -68,7 +68,12 @@ pub fn tag_document(text: &str) -> TagOutcome {
     let mut next_code: u64 = max_code;
     let mut inserts: Vec<(usize, String)> = Vec::with_capacity(untagged.len());
     for line in &untagged {
-        next_code = next_code.saturating_add(10);
+        // Fail closed at the top of the numeric range rather than emit a
+        // duplicate (colliding) code.
+        let Some(nc) = next_code.checked_add(10) else {
+            break;
+        };
+        next_code = nc;
         let code = format!("{next_code:04}");
         let hdr_start = line.span.byte_start;
         let header = &text[hdr_start..line.text_span.byte_start];
@@ -76,7 +81,7 @@ pub fn tag_document(text: &str) -> TagOutcome {
         // (grammar `:line[speaker]{attrs}?`, parser.rs:400-408). A `{` anywhere
         // else in the header (e.g. inside a blanked block comment) is NOT an attr
         // block, so we key off the `]` and only accept a `{` immediately after it.
-        if let Some(rel_br) = header.bytes().position(|b| b == b']') {
+        if let Some(rel_br) = speaker_close(header.as_bytes()) {
             let bracket_end = hdr_start + rel_br + 1; // byte index just past `]`
             if bytes.get(bracket_end) == Some(&b'{') {
                 // Existing attr block: insert after the `{`, trailing space only
@@ -106,6 +111,28 @@ pub fn tag_document(text: &str) -> TagOutcome {
         text: out,
         added: inserts.len(),
     }
+}
+
+/// Byte index of the speaker-closing `]` in a `:line` header, skipping
+/// `/* … */` block comments (the lexer blanks them before parsing, so a `]`
+/// inside a comment is NOT the speaker close). `None` if none outside a comment.
+fn speaker_close(header: &[u8]) -> Option<usize> {
+    let mut i = 0;
+    while i < header.len() {
+        if header[i] == b'/' && header.get(i + 1) == Some(&b'*') {
+            i += 2;
+            while i < header.len() && !(header[i] == b'*' && header.get(i + 1) == Some(&b'/')) {
+                i += 1;
+            }
+            i = (i + 2).min(header.len()); // past the closing */ (clamped)
+            continue;
+        }
+        if header[i] == b']' {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Collect every `Node::Line` in document order, descending into branch choices'
@@ -245,6 +272,38 @@ mod tests {
             out.text.matches("4294967295").count() == 1,
             "existing max untouched + not duplicated:\n{}",
             out.text
+        );
+    }
+
+    #[test]
+    fn comment_bracket_in_speaker_is_not_the_close() {
+        // A `]` inside a block comment within the speaker bracket must NOT be taken
+        // as the speaker close; re-tagging MUST be idempotent (the bug makes the
+        // code land in the comment, get stripped on re-parse, and re-tag forever).
+        let src =
+            "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[hero/* ] */]: hi\n";
+        let out = tag_document(src);
+        assert_eq!(out.added, 1);
+        let twice = tag_document(&out.text);
+        assert_eq!(
+            twice.added, 0,
+            "second tag run must be a no-op (idempotent)"
+        );
+        assert_eq!(twice.text, out.text, "idempotent: byte-identical on re-run");
+    }
+
+    #[test]
+    fn code_at_u64_max_fails_closed_no_collision() {
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"18446744073709551615\"}: one\n:line[b]: two\n";
+        let out = tag_document(src);
+        assert_eq!(
+            out.added, 0,
+            "counter overflow must fail closed, not emit a colliding code"
+        );
+        assert_eq!(
+            out.text.matches("18446744073709551615").count(),
+            1,
+            "no duplicate of the max code"
         );
     }
 }
