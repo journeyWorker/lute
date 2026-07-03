@@ -221,3 +221,23 @@ fn diamond_is_one_identity_no_dup() {
         res.defs
     );
 }
+
+#[test]
+fn malformed_schema_is_e_uses_parse() {
+    let dir = unique_dir();
+    // Valid frontmatter, but the BODY has an unterminated `/* … */` block
+    // comment -> `lute_syntax::parse` emits E-COMMENT-UNTERMINATED in its parse
+    // diagnostics (pdiags). Before the fix those were dropped, so the malformed
+    // import was silently treated as empty (no E-USES-PARSE).
+    write_lute(
+        &dir,
+        "bad.lute",
+        "---\nstate:\n  run.x: { type: bool, default: false }\n---\n/* unterminated",
+    );
+    let out = resolve_imports(&dir, &["bad.lute".to_string()], zero_span());
+    let codes = resolve_codes(&out);
+    assert!(
+        codes.contains(&"E-USES-PARSE"),
+        "malformed schema must flag E-USES-PARSE; got {codes:?}"
+    );
+}
