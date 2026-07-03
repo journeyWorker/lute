@@ -148,14 +148,16 @@ pub struct Ctx {
 ///   `serde_yaml::from_value::<Type>(v.get("type")?.clone()).ok()`. A
 ///   malformed/absent `type:` yields NO entry — never a panic.
 ///
-/// # `ctx.defs` vs `def_types` boundary (pre-existing gap — call out)
+/// # `ctx.defs` vs `def_types` (two tables, one union source)
 ///
-/// [`Ctx::defs`] (the `E-UNDECLARED-REF` set) is built ONLY from inline names
-/// (`check.rs:179`, `typed.defs.keys()`), NOT from `snapshot.defs`. So
-/// `def_types` may know a type for a name `ctx.defs` does not carry (a plugin
-/// def) and vice-versa. B2.2 keeps these independent: `E-REF-TYPE` fires ONLY
-/// when a name is present in `def_types` AND an expected type is known; it does
-/// NOT change `E-UNDECLARED-REF` behavior and does NOT unify the two tables.
+/// [`Ctx::defs`] (the `E-UNDECLARED-REF` set) is the UNION of inline frontmatter
+/// def names (`typed.defs.keys()`), plugin-exported def names
+/// (`snapshot.defs.keys()`), and imported-schema def names
+/// (`imports.defs.keys()`) — see `check.rs:207-209`. `def_types` is a parallel
+/// table mapping the subset of those names with a known produced [`Type`]. A
+/// name may be in `defs` without a `def_types` entry (untyped/malformed
+/// `type:`), so the two are consulted independently: `E-REF-TYPE` fires ONLY
+/// when a name is present in `def_types` AND an expected type is known.
 ///
 /// # Compatibility relation — `compatible(produced: &Type, expected: &ExpectedType) -> bool` (B2.2)
 ///
