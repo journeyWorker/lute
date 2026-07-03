@@ -35,13 +35,14 @@ pub fn tag_document(text: &str) -> TagOutcome {
         collect_lines(&shot.body, &mut lines);
     }
 
-    // Highest existing numeric `code` (parseable as `u32`); default 0.
-    let mut max_code: u32 = 0;
+    // Highest existing numeric `code` (parseable as `u64`); default 0. `u64`
+    // (not `u32`) so a code at `u32::MAX` can't saturate and collide.
+    let mut max_code: u64 = 0;
     for line in &lines {
         for attr in &line.attrs {
             if attr.key == "code" {
                 if let AttrValue::Str(s) = &attr.value {
-                    if let Ok(n) = s.trim().parse::<u32>() {
+                    if let Ok(n) = s.trim().parse::<u64>() {
                         max_code = max_code.max(n);
                     }
                 }
@@ -64,28 +65,33 @@ pub fn tag_document(text: &str) -> TagOutcome {
     // Build the insertions (byte offset + inserted string) in document order,
     // stepping the code above `max_code` by 10 for each untagged line.
     let bytes = text.as_bytes();
-    let mut next_code = max_code;
+    let mut next_code: u64 = max_code;
     let mut inserts: Vec<(usize, String)> = Vec::with_capacity(untagged.len());
     for line in &untagged {
         next_code = next_code.saturating_add(10);
         let code = format!("{next_code:04}");
         let hdr_start = line.span.byte_start;
-        // Header = `:line[speaker]{attrs}?: WS`, before the opaque text.
         let header = &text[hdr_start..line.text_span.byte_start];
-        if let Some(rel) = header.bytes().position(|b| b == b'{') {
-            // Existing attr block: insert after the `{`, with a trailing space
-            // only when the block is non-empty (next byte isn't `}`).
-            let at = hdr_start + rel + 1;
-            let inserted = if bytes.get(at) == Some(&b'}') {
-                format!("code=\"{code}\"")
+        // The attr block (if any) is a `{` FLUSH against the speaker-closing `]`
+        // (grammar `:line[speaker]{attrs}?`, parser.rs:400-408). A `{` anywhere
+        // else in the header (e.g. inside a blanked block comment) is NOT an attr
+        // block, so we key off the `]` and only accept a `{` immediately after it.
+        if let Some(rel_br) = header.bytes().position(|b| b == b']') {
+            let bracket_end = hdr_start + rel_br + 1; // byte index just past `]`
+            if bytes.get(bracket_end) == Some(&b'{') {
+                // Existing attr block: insert after the `{`, trailing space only
+                // when the block is non-empty (next byte isn't `}`).
+                let at = bracket_end + 1;
+                let inserted = if bytes.get(at) == Some(&b'}') {
+                    format!("code=\"{code}\"")
+                } else {
+                    format!("code=\"{code}\" ")
+                };
+                inserts.push((at, inserted));
             } else {
-                format!("code=\"{code}\" ")
-            };
-            inserts.push((at, inserted));
-        } else if let Some(rel) = header.bytes().position(|b| b == b']') {
-            // No attr block: insert a fresh `{code="ID"}` after the speaker `]`.
-            let at = hdr_start + rel + 1;
-            inserts.push((at, format!("{{code=\"{code}\"}}")));
+                // No attr block: fresh `{code="ID"}` right after the speaker `]`.
+                inserts.push((bracket_end, format!("{{code=\"{code}\"}}")));
+            }
         }
     }
 
@@ -98,7 +104,7 @@ pub fn tag_document(text: &str) -> TagOutcome {
 
     TagOutcome {
         text: out,
-        added: untagged.len(),
+        added: inserts.len(),
     }
 }
 
@@ -195,6 +201,50 @@ mod tests {
                 .iter()
                 .any(|d| d.severity == lute_core_span::Severity::Error),
             "{diags:?}"
+        );
+    }
+
+    #[test]
+    fn comment_brace_in_header_is_not_an_attr_block() {
+        // A blanked block comment containing `{` before the `:` must NOT be treated
+        // as an attr block; the code goes in a real `{code=...}` after `]`, and a
+        // second run is a no-op.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[narrator] /* { */ : hi\n";
+        let out = tag_document(src);
+        assert_eq!(out.added, 1);
+        assert!(
+            out.text.contains(":line[narrator]{code=\"0010\"}"),
+            "got:\n{}",
+            out.text
+        );
+        // parses clean AND is now idempotent
+        let (_d, diags) = lute_syntax::parse(&out.text);
+        assert!(
+            !diags
+                .iter()
+                .any(|d| d.severity == lute_core_span::Severity::Error),
+            "{diags:?}"
+        );
+        let twice = tag_document(&out.text);
+        assert_eq!(twice.added, 0, "must be idempotent after the comment case");
+        assert_eq!(twice.text, out.text);
+    }
+
+    #[test]
+    fn code_above_u32_max_does_not_collide() {
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"4294967295\"}: one\n:line[b]: two\n";
+        let out = tag_document(src);
+        assert_eq!(out.added, 1);
+        // new code is strictly above the existing max (no duplicate 4294967295)
+        assert!(
+            out.text.contains("code=\"4294967305\""),
+            "got:\n{}",
+            out.text
+        );
+        assert!(
+            out.text.matches("4294967295").count() == 1,
+            "existing max untouched + not duplicated:\n{}",
+            out.text
         );
     }
 }
