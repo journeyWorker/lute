@@ -21,7 +21,7 @@
 use std::path::{Path, PathBuf};
 
 use dashmap::DashMap;
-use lute_check::{check, CheckInput, Mode, SchemaImports};
+use lute_check::{check, CheckInput, Mode};
 use lute_core_span::{Span, TextIndex};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
@@ -78,13 +78,27 @@ impl Backend {
     /// silently validate against a broken project (plugin §11).
     async fn analyze(&self, uri: Uri, snapshot: &DocumentSnapshot) {
         let (cap, providers, rdiags) = self.snapshot_for(&uri, &snapshot.text);
+        // Resolve `uses:` schema imports relative to the document's directory,
+        // the SAME resolver the CLI runs (dsl §9.2). An untitled/non-file uri
+        // resolves to no imports.
+        let (doc, _) = lute_syntax::parse(&snapshot.text);
+        let (meta0, _) = lute_check::parse_meta(
+            &doc.meta,
+            &lute_manifest::snapshot::CapabilitySnapshot::default(),
+        );
+        let imports = uri_to_path(&uri)
+            .and_then(|p| {
+                p.parent()
+                    .map(|d| lute_check::resolve_imports(d, &meta0.uses, doc.meta.span))
+            })
+            .unwrap_or_default();
         let input = CheckInput {
             text: snapshot.text.clone(),
             uri: uri.as_str().to_string(),
             snapshot: cap,
             providers,
             mode: Mode::Author,
-            imports: SchemaImports::default(),
+            imports,
         };
         let result = check(&input);
         let idx = lute_core_span::TextIndex::new(&snapshot.text);
