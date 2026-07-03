@@ -126,3 +126,56 @@ fn plugin_directive_with_bad_semantics_flag_is_rejected() {
         "{errs:?}"
     );
 }
+
+#[test]
+fn cyclic_state_shapes_are_rejected() {
+    use lute_manifest::schema::StateShape;
+    use lute_manifest::types::Field;
+    // A.child -> shape B, B.parent -> shape A: a mutual cycle.
+    let mut pkg = plugin_with_directive("a.cyc", "cyc");
+    pkg.state_shapes.push(StateShape {
+        name: "A".into(),
+        fields: vec![Field {
+            name: "child".into(),
+            ty: Type::Bool,
+            default: None,
+            required: false,
+            shape: Some("B".into()),
+        }],
+    });
+    pkg.state_shapes.push(StateShape {
+        name: "B".into(),
+        fields: vec![Field {
+            name: "parent".into(),
+            ty: Type::Bool,
+            default: None,
+            required: false,
+            shape: Some("A".into()),
+        }],
+    });
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([("a.cyc".to_string(), InstalledPlugin { loaded: pkg })]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "a.cyc".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        snap.state_shapes.contains_key("A") && snap.state_shapes.contains_key("B"),
+        "shapes must be merged into the snapshot"
+    );
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::assemble::AssembleError::CyclicStateShape { .. }
+        )),
+        "cyclic shapes must be rejected, got {errs:?}"
+    );
+}
