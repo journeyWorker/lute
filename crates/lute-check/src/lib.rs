@@ -9,6 +9,7 @@ pub mod match_check;
 pub mod meta;
 pub mod schema_import;
 pub mod set_op;
+pub mod tag;
 pub mod timeline;
 
 pub use cel_resolve::check_cel_slot;
@@ -24,4 +25,5 @@ pub use meta::{
 };
 pub use schema_import::{resolve_imports, SchemaImports};
 pub use set_op::check_set;
+pub use tag::{tag_document, TagOutcome};
 pub use timeline::{resolve_timeline, ResolvedRow, ResolvedTimeline};
