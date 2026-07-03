@@ -227,3 +227,32 @@ fn call_form_whole_slot_number_def_in_bool_guard_flags_ref_type() {
         "number-producing @call in a bool guard must flag; got {codes:?}"
     );
 }
+
+#[test]
+fn compound_call_comparison_is_not_whole_slot() {
+    // A compound comparison of two NUMBER-producing calls (`@toNum(x) == @toNum(y)`)
+    // is a valid BOOL guard: the whole-slot value type is bool, and each `@call`
+    // types only a subexpression. The def's produced NUMBER must NOT be compared
+    // to the slot's expected bool — this must NOT flag E-REF-TYPE. Guards against
+    // the string-prefix/suffix `is_whole_slot` false-positive (the first call's
+    // `(` and the last call's `)` making the slot look like one `@name(...)`).
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.defs.insert(
+        "toNum".into(),
+        DefDecl {
+            name: "toNum".into(),
+            ty: Type::Number,
+            params: Default::default(),
+            cel: "1".into(),
+            min: None,
+            max: None,
+            values: None,
+        },
+    );
+    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@toNum(scene.n) == @toNum(2)\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n";
+    let codes = check_codes(scene, snap);
+    assert!(
+        !codes.contains(&"E-REF-TYPE".to_string()),
+        "a number == number comparison is a valid bool guard; got {codes:?}"
+    );
+}
