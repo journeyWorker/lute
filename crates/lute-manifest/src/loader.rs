@@ -20,6 +20,7 @@ pub struct LoadedPlugin {
     pub bridge: Vec<BridgeCapability>,
     pub defs: Vec<DefDecl>,
     pub frontmatter: BTreeMap<String, Type>,
+    pub asset_kinds: Vec<AssetKindDecl>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -100,6 +101,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
         bridge: Vec::new(),
         defs: Vec::new(),
         frontmatter: BTreeMap::new(),
+        asset_kinds: Vec::new(),
     };
 
     // Read each declared export. A relative export path resolves under `dir`.
@@ -137,7 +139,15 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                 merge_frontmatter(&mut out.frontmatter, f.frontmatter, e)
             }),
             "docs" => { /* non-normative (plugin §6.7); skip */ }
-            "assetkinds" => { /* plugin §6.9 deferred to a later plan; ignore for now */ }
+            "assetkinds" => read_kind::<AssetKindsFile, _>(&path, &mut errs, |f, e| {
+                merge_named(
+                    &mut out.asset_kinds,
+                    f.asset_kinds,
+                    "assetKind",
+                    |k| k.kind.clone(),
+                    e,
+                )
+            }),
             other => errs.push(LoadError::UnknownExport {
                 export: other.to_string(),
             }),

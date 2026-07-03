@@ -166,6 +166,13 @@ pub fn assemble_snapshot(
             &ap.id,
             &mut errs,
         );
+        merge_map(
+            &mut snap.asset_kinds,
+            pkg.asset_kinds.iter().map(|k| (k.kind.clone(), k.clone())),
+            "assetKind",
+            &ap.id,
+            &mut errs,
+        );
         for b in &pkg.bridge {
             let k = (b.service.clone(), b.operation.clone());
             match snap.bridge_capabilities.entry(k) {

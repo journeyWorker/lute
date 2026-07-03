@@ -1,7 +1,9 @@
 use lute_manifest::assemble::assemble_snapshot;
 use lute_manifest::loader::LoadedPlugin;
 use lute_manifest::resolve::{ActivePlugin, InstalledPlugin, InstalledPlugins};
-use lute_manifest::schema::{AttrDecl, DirectiveDecl, Lowering, PluginManifest};
+use lute_manifest::schema::{
+    AssetKindDecl, AssetResolve, AttrDecl, DirectiveDecl, Lowering, PluginManifest,
+};
 use lute_manifest::types::Type;
 use std::collections::BTreeMap;
 
@@ -40,6 +42,7 @@ fn plugin_with_directive(id: &str, dname: &str) -> LoadedPlugin {
         bridge: vec![],
         defs: vec![],
         frontmatter: BTreeMap::new(),
+        asset_kinds: vec![],
     }
 }
 
@@ -276,5 +279,84 @@ fn acyclic_diamond_state_shapes_report_no_cycle() {
             lute_manifest::assemble::AssembleError::CyclicStateShape { .. }
         )),
         "acyclic diamond must report no cycle, got {errs:?}"
+    );
+}
+
+fn asset_kind(kind: &str) -> AssetKindDecl {
+    AssetKindDecl {
+        kind: kind.into(),
+        sep: ".".into(),
+        resolve: AssetResolve::Compose,
+        segments: vec![],
+        provider: None,
+        match_: vec![],
+        aliases: BTreeMap::new(),
+        fallback: vec![],
+        persistence: None,
+    }
+}
+
+#[test]
+fn assemble_merges_asset_kinds() {
+    let mut pkg = plugin_with_directive("idola.minigame", "minigame");
+    pkg.asset_kinds.push(asset_kind("CH"));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([(
+            "idola.minigame".to_string(),
+            InstalledPlugin { loaded: pkg },
+        )]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.minigame".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(
+        snap.asset_kinds.contains_key("CH"),
+        "plugin asset kind merged into snapshot"
+    );
+}
+
+#[test]
+fn assemble_rejects_cross_plugin_asset_kind_dup() {
+    let mut a = plugin_with_directive("plug.a", "da");
+    a.asset_kinds.push(asset_kind("CH"));
+    let mut b = plugin_with_directive("plug.b", "db");
+    b.asset_kinds.push(asset_kind("CH"));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([
+            ("plug.a".to_string(), InstalledPlugin { loaded: a }),
+            ("plug.b".to_string(), InstalledPlugin { loaded: b }),
+        ]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "plug.a".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "plug.b".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (_snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::assemble::AssembleError::DuplicateAcrossPlugins { kind, id, .. }
+                if kind == "assetKind" && id == "CH"
+        )),
+        "cross-plugin dup asset kind must be DuplicateAcrossPlugins{{kind:\"assetKind\"}}, got {errs:?}"
     );
 }
