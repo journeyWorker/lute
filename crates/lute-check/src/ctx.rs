@@ -96,8 +96,12 @@ pub struct Ctx {
 ///   unknown (statically known iff the target path is in the schema).**
 ///   The `::set` node is `Set { path: String, expr: CelSlot, .. }`
 ///   (ast.rs:51-58; checked at `check.rs:300` / `check.rs:370`). B2.2 looks the
-///   RHS's expected type up as `ctx.state.decls.get(&set.path).map(|d| &d.ty)`
-///   (`StateSchema`/`StateDecl.ty`, `crate::meta`, meta.rs:19-30). A compound or
+///   RHS's expected type up via `set_op::resolve_type(&set.path, &ctx.state)`
+///   (`set_op.rs:102`) — the target path's declared [`Type`], resolved by exact
+///   `state:` key OR by descending `Record` fields / `Map` values from the
+///   nearest declared ancestor (so a nested target like `scene.player.hp` under
+///   a declared `scene.player` record resolves), NOT a flat `ctx.state.decls.get`
+///   exact-key lookup. A compound or
 ///   derived RHS (`a + b`, a ternary, …) still expects the SINGLE declared type
 ///   of the target path — the whole expression must evaluate to that type. If
 ///   `set.path` is absent from the schema, the expected type is unknown (no flag;
@@ -120,7 +124,8 @@ pub struct Ctx {
 /// * **`MatchSubject` ⇒ `ExpectedType::Ty(subject_path_type)` when the subject is
 ///   a single state path with a known type, else unknown.** The subject is
 ///   `Match.subject: CelSlot` (ast.rs:78-83; checked at `check.rs:327`). B2.2
-///   resolves `subject.raw` against the state schema exactly as `SetExpr` does; a
+///   resolves `subject.raw` via `set_op::resolve_type` exactly as `SetExpr` does
+///   (exact key OR descend `Record`/`Map` from the nearest declared ancestor); a
 ///   compound subject expression (not a single resolvable path) has no single
 ///   expected type ⇒ unknown.
 ///

@@ -99,7 +99,7 @@ fn is_compound_op(op: &str) -> bool {
 /// `state:` key, or a descendant field reached by walking `Record`/`Map` types
 /// from the nearest declared ancestor. Returns `None` when no declared ancestor
 /// covers the path (→ `E-UNDECLARED`).
-fn resolve_type<'s>(path: &str, schema: &'s StateSchema) -> Option<&'s Type> {
+pub(crate) fn resolve_type<'s>(path: &str, schema: &'s StateSchema) -> Option<&'s Type> {
     if let Some(decl) = schema.decls.get(path) {
         return Some(&decl.ty);
     }

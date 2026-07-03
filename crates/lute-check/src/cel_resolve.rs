@@ -23,11 +23,18 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{CelKind, CelSlot};
 
 use crate::cel_paths::collect_path_uses;
+use crate::ctx::ExpectedType;
 use crate::Ctx;
+use lute_manifest::types::Type;
 
 /// Validate a single CEL slot's `@ref`, `$`, and state-path reads (dsl §8, §9.4,
 /// §9.6). All diagnostics are [`Layer::Cel`].
-pub fn check_cel_slot(slot: &CelSlot, arena: &CelArena, ctx: &Ctx) -> Vec<Diagnostic> {
+pub fn check_cel_slot(
+    slot: &CelSlot,
+    arena: &CelArena,
+    ctx: &Ctx,
+    expected: Option<&ExpectedType>,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 
     // Pass 1: `@ref` / `$` from the raw source (spans are precise).
@@ -44,13 +51,26 @@ pub fn check_cel_slot(slot: &CelSlot, arena: &CelArena, ctx: &Ctx) -> Vec<Diagno
             }
         } else if !ctx.defs.contains(&r.name) {
             // `@name` must resolve to a declared `defs:` entry (dsl §8.1).
-            // NOTE: `E-REF-TYPE` (type-context mismatch, dsl §8) is deferred: it
-            // needs per-def type info that is not yet threaded into `Ctx`.
             diags.push(diag(
                 "E-UNDECLARED-REF",
                 format!("`@{}` is not a declared def (dsl §8.1)", r.name),
                 span,
             ));
+        } else if let (Some(expected), Some(produced)) = (expected, ctx.def_types.get(&r.name)) {
+            // Declared def with a known produced type, in a slot with a known
+            // expected type: flag a clear incompatibility (dsl §8).
+            if !compatible(produced, expected) {
+                diags.push(diag(
+                    "E-REF-TYPE",
+                    format!(
+                        "`@{}` produces {} but this position expects {} (dsl §8)",
+                        r.name,
+                        ty_desc(produced),
+                        expected_desc(expected)
+                    ),
+                    span,
+                ));
+            }
         }
     }
 
@@ -65,6 +85,62 @@ pub fn check_cel_slot(slot: &CelSlot, arena: &CelArena, ctx: &Ctx) -> Vec<Diagno
     }
 
     diags
+}
+
+/// Conservative type-compatibility for `E-REF-TYPE` (dsl §8): return `true` (no
+/// flag) for everything not PROVABLY incompatible.
+fn compatible(produced: &Type, expected: &ExpectedType) -> bool {
+    match expected {
+        ExpectedType::Bool => matches!(produced, Type::Bool),
+        ExpectedType::Ty(t) => {
+            if is_id_type(produced) || is_id_type(t) {
+                return true; // id types: always compatible (never flag)
+            }
+            if is_string_family(produced) && is_string_family(t) {
+                return true; // {Str, Enum, EnumFromOption} mutually compatible
+            }
+            produced == t // structural equality (Type: PartialEq)
+        }
+    }
+}
+
+/// Namespaced/provider id types — value-level strings whose membership validity
+/// is a separate concern; always treated as compatible.
+fn is_id_type(t: &Type) -> bool {
+    matches!(
+        t,
+        Type::ProviderRef(_) | Type::SlotId { .. } | Type::AssetKind(_)
+    )
+}
+
+/// The mutually-compatible string family: an enum value is a string at the
+/// value level, and def CEL produces string-ish values.
+fn is_string_family(t: &Type) -> bool {
+    matches!(t, Type::Str | Type::Enum(_) | Type::EnumFromOption(_))
+}
+
+/// Short human label for a produced [`Type`] in an `E-REF-TYPE` message.
+fn ty_desc(t: &Type) -> String {
+    match t {
+        Type::Bool => "a bool".to_string(),
+        Type::Number => "a number".to_string(),
+        Type::Str => "a string".to_string(),
+        Type::Enum(_) | Type::EnumFromOption(_) => "an enum".to_string(),
+        Type::List(_) => "a list".to_string(),
+        Type::Record(_) => "a record".to_string(),
+        Type::Map { .. } => "a map".to_string(),
+        Type::ProviderRef(_) => "a provider ref".to_string(),
+        Type::SlotId { .. } => "a slot id".to_string(),
+        Type::AssetKind(_) => "an asset kind".to_string(),
+    }
+}
+
+/// Short human label for an [`ExpectedType`] in an `E-REF-TYPE` message.
+fn expected_desc(e: &ExpectedType) -> String {
+    match e {
+        ExpectedType::Bool => "a bool".to_string(),
+        ExpectedType::Ty(t) => ty_desc(t),
+    }
 }
 
 /// Classify one reconstructed state path and emit its diagnostic, if any.
@@ -163,6 +239,14 @@ mod tests {
         }
     }
 
+    fn ctx_with_def(name: &str, ty: Type) -> Ctx {
+        Ctx {
+            defs: std::iter::once(name.to_string()).collect(),
+            def_types: std::iter::once((name.to_string(), ty)).collect(),
+            ..Ctx::default()
+        }
+    }
+
     /// Build a `Condition` slot and parse it into a fresh arena so `ast` is `Some`.
     fn cel_slot_condition(raw: &str) -> CelSlot {
         let mut slot = CelSlot::raw(CelKind::Condition, raw.to_string(), test_span());
@@ -185,7 +269,7 @@ mod tests {
     fn dollar_outside_match_errors() {
         let ctx = ctx_no_match();
         let slot = cel_slot_condition("$ == 'x'");
-        let errs = check_cel_slot(&slot, &arena_for(&slot), &ctx);
+        let errs = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
         assert!(errs.iter().any(|e| e.code == "E-DOLLAR-OUTSIDE-MATCH"));
     }
 
@@ -193,7 +277,7 @@ mod tests {
     fn undeclared_ref_errors() {
         let ctx = ctx_with_defs(&["fond"]);
         let slot = cel_slot_condition("@warm");
-        let errs = check_cel_slot(&slot, &arena_for(&slot), &ctx);
+        let errs = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
         assert!(errs.iter().any(|e| e.code == "E-UNDECLARED-REF"));
     }
 
@@ -201,7 +285,69 @@ mod tests {
     fn choicelog_read_in_guard_errors() {
         let ctx = ctx_in_match();
         let slot = cel_slot_condition("run.choiceLog.ep02.couch == 'help'");
-        let errs = check_cel_slot(&slot, &arena_for(&slot), &ctx);
+        let errs = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
         assert!(errs.iter().any(|e| e.code == "E-CHOICELOG-READ"));
+    }
+
+    #[test]
+    fn ref_type_mismatch_flags() {
+        let ctx = ctx_with_def("num", Type::Number);
+        let slot = cel_slot_condition("@num"); // referenced in a bool position
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
+        assert!(d.iter().any(|x| x.code == "E-REF-TYPE"));
+    }
+
+    #[test]
+    fn ref_type_compatible_is_clean() {
+        let ctx = ctx_with_def("flag", Type::Bool);
+        let slot = cel_slot_condition("@flag");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
+        assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"));
+    }
+
+    #[test]
+    fn ref_type_unknown_expected_no_false_positive() {
+        let ctx = ctx_with_def("num", Type::Number);
+        let slot = cel_slot_condition("@num");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None); // expected unknown
+        assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"));
+    }
+
+    #[test]
+    fn ref_type_string_family_clean() {
+        // def produces Str used where an Enum is expected -> string family -> no flag
+        let ctx = ctx_with_def("s", Type::Str);
+        let slot = cel_slot_condition("@s");
+        let d = check_cel_slot(
+            &slot,
+            &arena_for(&slot),
+            &ctx,
+            Some(&ExpectedType::Ty(Type::Enum(vec!["a".into(), "b".into()]))),
+        );
+        assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"));
+    }
+
+    #[test]
+    fn ref_type_id_type_clean() {
+        // expected an id type -> always compatible
+        let ctx = ctx_with_def("n", Type::Number);
+        let slot = cel_slot_condition("@n");
+        let d = check_cel_slot(
+            &slot,
+            &arena_for(&slot),
+            &ctx,
+            Some(&ExpectedType::Ty(Type::ProviderRef("prov".into()))),
+        );
+        assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"));
+    }
+
+    #[test]
+    fn ref_type_undeclared_ref_no_reftype() {
+        // name not in ctx.defs -> E-UNDECLARED-REF, NOT E-REF-TYPE (no double report)
+        let ctx = Ctx::default(); // empty defs/def_types
+        let slot = cel_slot_condition("@ghost");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
+        assert!(d.iter().any(|x| x.code == "E-UNDECLARED-REF"));
+        assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"));
     }
 }

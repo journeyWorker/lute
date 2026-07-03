@@ -63,10 +63,11 @@ use lute_manifest::types::PathSegment;
 use lute_syntax::ast::{Arm, Attr, AttrValue, ClipNode, Directive, Document, Node};
 use lute_syntax::parse;
 
-use crate::ctx::{Ctx, Mode};
+use crate::ctx::{Ctx, ExpectedType, Mode};
 use crate::directives::check_directive;
 use crate::inject::{lower_node, InjectedCommand, StageState};
 use crate::meta::parse_meta;
+use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
     check_branch, check_cel_slot, check_definite_assignment, check_match, check_set, is_exhaustive,
@@ -178,13 +179,34 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // The def names the `@ref` resolver validates against (dsl §8.1).
     let defs: std::collections::BTreeSet<String> = typed.defs.keys().cloned().collect();
 
+    // The def name -> produced `Type` table the `@ref` type-context check
+    // (`E-REF-TYPE`, dsl §8) resolves against, merged from two sources.
+    let mut def_types: std::collections::BTreeMap<String, lute_manifest::types::Type> =
+        std::collections::BTreeMap::new();
+    // Plugin defs are already typed.
+    for (name, d) in &input.snapshot.defs {
+        def_types.insert(name.clone(), d.ty.clone());
+    }
+    // Inline frontmatter defs are stored untyped; extract the `type:` sub-value
+    // and deserialize it via the same serde path `Type` uses. Malformed/absent
+    // -> skip (never a panic). Inline overrides plugin (scene-local).
+    for (name, v) in &typed.defs {
+        if let Some(t) = v
+            .get("type")
+            .cloned()
+            .and_then(|tv| serde_yaml::from_value::<lute_manifest::types::Type>(tv).ok())
+        {
+            def_types.insert(name.clone(), t);
+        }
+    }
+
     let base_ctx = Ctx {
         in_match: false,
         match_subject: None,
         mode: input.mode,
         state: schema.clone(),
         defs,
-        def_types: std::collections::BTreeMap::new(),
+        def_types,
     };
 
     // 5. Per-node validator walk (directives / cel-slots / set / match / timeline).
@@ -290,24 +312,33 @@ impl Walker<'_> {
     fn walk(&mut self, nodes: &[Node], ctx: &Ctx) {
         for node in nodes {
             match node {
-                Node::Line(l) => self.check_attr_refs(&l.attrs, ctx),
+                Node::Line(l) => self.check_attr_refs(&l.attrs, ctx, None),
                 Node::Directive(d) => {
                     self.diags
                         .extend(check_directive(d, self.snapshot, self.providers, ctx));
-                    self.check_attr_refs(&d.attrs, ctx);
+                    self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
                 }
                 Node::Set(s) => {
                     self.diags.extend(check_set(s, &ctx.state, ctx));
-                    self.diags.extend(check_cel_slot(&s.expr, self.arena, ctx));
+                    let expected = resolve_type(&s.path, &ctx.state)
+                        .cloned()
+                        .map(ExpectedType::Ty);
+                    self.diags
+                        .extend(check_cel_slot(&s.expr, self.arena, ctx, expected.as_ref()));
                 }
                 Node::Branch(b) => {
                     // `E-DUP-BRANCH` + decl folding happened in the pre-pass; here
                     // we only validate the branch's own attrs and recurse.
-                    self.check_attr_refs(&b.attrs, ctx);
+                    self.check_attr_refs(&b.attrs, ctx, None);
                     for choice in &b.choices {
-                        self.check_attr_refs(&choice.attrs, ctx);
+                        self.check_attr_refs(&choice.attrs, ctx, None);
                         if let Some(when) = &choice.when {
-                            self.diags.extend(check_cel_slot(when, self.arena, ctx));
+                            self.diags.extend(check_cel_slot(
+                                when,
+                                self.arena,
+                                ctx,
+                                Some(&ExpectedType::Bool),
+                            ));
                         }
                         self.walk(&choice.body, ctx);
                     }
@@ -324,8 +355,15 @@ impl Walker<'_> {
                         match_subject: None,
                         ..ctx.clone()
                     };
-                    self.diags
-                        .extend(check_cel_slot(&m.subject, self.arena, &subject_ctx));
+                    let subject_expected = resolve_type(&m.subject.raw, &subject_ctx.state)
+                        .cloned()
+                        .map(ExpectedType::Ty);
+                    self.diags.extend(check_cel_slot(
+                        &m.subject,
+                        self.arena,
+                        &subject_ctx,
+                        subject_expected.as_ref(),
+                    ));
                     if is_exhaustive(m, &ctx.state) {
                         self.exhaustive_subject_spans.push(m.subject.span);
                     }
@@ -339,8 +377,12 @@ impl Walker<'_> {
                     for arm in &m.arms {
                         match arm {
                             Arm::When { test, body, .. } => {
-                                self.diags
-                                    .extend(check_cel_slot(test, self.arena, &arm_ctx));
+                                self.diags.extend(check_cel_slot(
+                                    test,
+                                    self.arena,
+                                    &arm_ctx,
+                                    Some(&ExpectedType::Bool),
+                                ));
                                 self.walk(body, &arm_ctx);
                             }
                             Arm::Otherwise { body, .. } => self.walk(body, &arm_ctx),
@@ -352,7 +394,8 @@ impl Walker<'_> {
                     self.timeline_tables.push(table);
                     self.diags.extend(tdiags);
                     if let Some(dur) = &tl.duration {
-                        self.diags.extend(check_cel_slot(dur, self.arena, ctx));
+                        self.diags
+                            .extend(check_cel_slot(dur, self.arena, ctx, None));
                     }
                     for track in &tl.tracks {
                         for clip in &track.clips {
@@ -364,11 +407,19 @@ impl Walker<'_> {
                                         self.providers,
                                         ctx,
                                     ));
-                                    self.check_attr_refs(&d.attrs, ctx);
+                                    self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
                                 }
                                 ClipNode::Set(s) => {
                                     self.diags.extend(check_set(s, &ctx.state, ctx));
-                                    self.diags.extend(check_cel_slot(&s.expr, self.arena, ctx));
+                                    let expected = resolve_type(&s.path, &ctx.state)
+                                        .cloned()
+                                        .map(ExpectedType::Ty);
+                                    self.diags.extend(check_cel_slot(
+                                        &s.expr,
+                                        self.arena,
+                                        ctx,
+                                        expected.as_ref(),
+                                    ));
                                 }
                             }
                         }
@@ -379,10 +430,17 @@ impl Walker<'_> {
     }
 
     /// Validate every `@ref`-valued attribute's CEL slot in the current scope.
-    fn check_attr_refs(&mut self, attrs: &[Attr], ctx: &Ctx) {
+    /// `directive_tag` is `Some` only for directive attrs, letting a `@ref` attr
+    /// value be typed against the attr's declared type (`E-REF-TYPE`, dsl §8).
+    fn check_attr_refs(&mut self, attrs: &[Attr], ctx: &Ctx, directive_tag: Option<&str>) {
         for attr in attrs {
             if let AttrValue::Ref(slot) = &attr.value {
-                self.diags.extend(check_cel_slot(slot, self.arena, ctx));
+                let expected = directive_tag
+                    .and_then(|tag| self.snapshot.directive(tag))
+                    .and_then(|decl| decl.attrs.iter().find(|a| a.name == attr.key))
+                    .map(|a| ExpectedType::Ty(a.ty.clone()));
+                self.diags
+                    .extend(check_cel_slot(slot, self.arena, ctx, expected.as_ref()));
             }
         }
     }
