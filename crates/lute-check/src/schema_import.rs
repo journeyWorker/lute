@@ -115,16 +115,16 @@ fn resolve_into(
                 continue;
             }
         };
-        let (doc, _pdiags) = lute_syntax::parse(&text);
+        let (doc, pdiags) = lute_syntax::parse(&text);
         let (tm, mdiags) =
             parse_meta_kind(&doc.meta, &CapabilitySnapshot::default(), MetaKind::Schema);
-        if !mdiags.is_empty() {
+        let issues = pdiags.len() + mdiags.len();
+        if issues > 0 {
             acc.diags.push(uses_diag(
                 "E-USES-PARSE",
                 format!(
-                    "schema import `{}` has frontmatter errors ({} issue(s))",
-                    canon.display(),
-                    mdiags.len()
+                    "schema import `{}` has parse/frontmatter errors ({issues} issue(s))",
+                    canon.display()
                 ),
                 at,
             ));
