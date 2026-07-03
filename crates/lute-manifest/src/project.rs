@@ -29,6 +29,12 @@ pub struct ProjectConfig {
     /// Resolved plugins dir (`project_dir.join(pluginsDir)`; defaults to
     /// `project_dir/plugins/`).
     pub plugins_dir: PathBuf,
+    /// Resolved pinned provider catalog dir (`project_dir.join(catalogDir)`;
+    /// defaults to `project_dir/catalog/`). Both the CLI (when `--providers`
+    /// is absent) and the LSP resolve provider ids against this via
+    /// [`project_providers`], so the two surfaces resolve the same ids for the
+    /// same project (plugin §10).
+    pub catalog_dir: PathBuf,
 }
 
 /// A resolution diagnostic surfaced to the caller (folded into the check
@@ -47,6 +53,8 @@ pub struct ResolveDiag {
 struct RawProject {
     #[serde(rename = "pluginsDir")]
     plugins_dir: Option<String>,
+    #[serde(rename = "catalogDir", default)]
+    catalog_dir: Option<String>,
     #[serde(rename = "defaultProfile")]
     default_profile: String,
     #[serde(default)]
@@ -111,8 +119,28 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
         default_profile: raw.default_profile,
     };
     let plugins_dir = project_dir.join(raw.plugins_dir.as_deref().unwrap_or("plugins/"));
+    let catalog_dir = project_dir.join(raw.catalog_dir.as_deref().unwrap_or("catalog/"));
 
-    Ok(Some(ProjectConfig { graph, plugins_dir }))
+    Ok(Some(ProjectConfig {
+        graph,
+        plugins_dir,
+        catalog_dir,
+    }))
+}
+
+/// The ONE catalog-loading path both surfaces use (plugin §10). Given a resolved
+/// project, load its pinned provider catalog from `project.catalog_dir`; given
+/// `None` (a loose scene, or no project discovered), an empty [`ProviderSet`].
+///
+/// The CLI calls this when `--providers` is absent and the LSP calls it in every
+/// analyze pass, so the two resolve the same provider ids for the same project
+/// — the no-divergence invariant extended to catalog resolution. Never panics:
+/// [`ProviderSet::load`] already tolerates a missing/corrupt catalog dir.
+pub fn project_providers(project: Option<&ProjectConfig>) -> crate::provider::ProviderSet {
+    match project {
+        Some(p) => crate::provider::ProviderSet::load(&p.catalog_dir),
+        None => crate::provider::ProviderSet::default(),
+    }
 }
 
 /// The ONE resolution both CLI and LSP call (plugin §11). Given a project (or
