@@ -207,6 +207,66 @@ pub struct OptionDecl {
     pub default: Option<Literal>,
 }
 
+/// plugin §6.9 asset-kind declaration (export file `assetkinds/*.yaml`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetKindDecl {
+    pub kind: String,
+    #[serde(default = "default_sep")]
+    pub sep: String,
+    #[serde(default)]
+    pub resolve: AssetResolve,
+    #[serde(default)]
+    pub segments: Vec<AssetSegment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, rename = "match")]
+    pub match_: Vec<AssetMatch>,
+    #[serde(default)]
+    pub aliases: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub fallback: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persistence: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum AssetResolve {
+    #[default]
+    Compose,
+    Query,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetSegment {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r#const: Option<String>,
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    pub ty: Option<Type>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetMatch {
+    pub attr: String,
+    pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AssetKindsFile {
+    #[serde(rename = "assetKinds")]
+    pub asset_kinds: Vec<AssetKindDecl>,
+}
+
+fn default_sep() -> String {
+    ".".to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,5 +345,83 @@ options:
         assert_eq!(m.kind, "capability");
         assert_eq!(m.depends.len(), 1);
         assert_eq!(m.options[0].name, "resultScope");
+    }
+
+    #[test]
+    fn asset_kind_decl_parses_ch() {
+        let y = r#"
+assetKinds:
+  - kind: CH
+    sep: "."
+    segments:
+      - { name: prefix,      const: CH }
+      - { name: characterId, type: { providerRef: character } }
+      - { name: costume,     type: string }
+      - { name: emotion,     type: { enum: [delighted, content, neutral] } }
+      - { name: variant,     type: number }
+    fallback: [emotionGroup, neutral, variant0]
+    persistence: scene
+"#;
+        let file: AssetKindsFile = serde_yaml::from_str(y).unwrap();
+        let d = &file.asset_kinds[0];
+        assert_eq!(d.kind, "CH");
+        assert_eq!(d.sep, ".");
+        assert_eq!(d.resolve, AssetResolve::Compose);
+        assert_eq!(d.segments.len(), 5);
+        assert_eq!(
+            d.segments
+                .iter()
+                .map(|s| s.name.as_str())
+                .collect::<Vec<_>>(),
+            ["prefix", "characterId", "costume", "emotion", "variant"]
+        );
+        assert_eq!(d.segments[0].r#const.as_deref(), Some("CH"));
+        assert_eq!(d.segments[0].ty, None);
+        assert_eq!(
+            d.segments[1].ty,
+            Some(Type::ProviderRef("character".into()))
+        );
+        assert_eq!(d.segments[2].ty, Some(Type::Str));
+        assert_eq!(
+            d.segments[3].ty,
+            Some(Type::Enum(vec![
+                "delighted".into(),
+                "content".into(),
+                "neutral".into(),
+            ]))
+        );
+        assert_eq!(d.segments[4].ty, Some(Type::Number));
+        assert_eq!(d.fallback, ["emotionGroup", "neutral", "variant0"]);
+        assert_eq!(d.persistence.as_deref(), Some("scene"));
+    }
+
+    #[test]
+    fn asset_kind_decl_parses_bg_query() {
+        let y = r#"
+assetKinds:
+  - kind: BG
+    resolve: query
+    provider: backgrounds
+    aliases: { location: locationAlias }
+    match: [ { attr: location, field: spaceId, via: locationAlias },
+             { attr: time, field: timeOfDay }, { attr: view, field: view },
+             { attr: variation, field: variation } ]
+    fallback: [ dropVariation, areaKind, preferAfternoon, anyView ]
+"#;
+        let file: AssetKindsFile = serde_yaml::from_str(y).unwrap();
+        let d = &file.asset_kinds[0];
+        assert_eq!(d.kind, "BG");
+        assert_eq!(d.resolve, AssetResolve::Query);
+        assert_eq!(d.provider.as_deref(), Some("backgrounds"));
+        assert_eq!(d.match_.len(), 4);
+        assert_eq!(d.match_[0].attr, "location");
+        assert_eq!(d.match_[0].field, "spaceId");
+        assert_eq!(d.match_[0].via.as_deref(), Some("locationAlias"));
+        assert_eq!(d.match_[1].via, None);
+        assert_eq!(d.aliases["location"], "locationAlias");
+        assert_eq!(
+            d.fallback,
+            ["dropVariation", "areaKind", "preferAfternoon", "anyView"]
+        );
     }
 }
