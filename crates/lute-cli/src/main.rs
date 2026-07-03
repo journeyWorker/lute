@@ -56,6 +56,12 @@ enum Command {
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
     },
+    /// Back-fill a stable `code` into every untagged `:line` (dsl §12),
+    /// rewriting the file in place.
+    Tag {
+        /// Path to the `.lute` file to tag.
+        file: PathBuf,
+    },
     /// Provider-catalog maintenance.
     #[command(subcommand)]
     Catalog(CatalogCommand),
@@ -83,6 +89,7 @@ fn main() -> ExitCode {
             providers,
             project,
         } => run_check(&file, json, providers.as_deref(), project.as_deref()),
+        Command::Tag { file } => run_tag(&file),
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
             run_refresh(&dir, project.as_deref())
         }
@@ -177,6 +184,37 @@ fn run_check(
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// Back-fill a stable `code` into every untagged `:line` (dsl §12), rewriting
+/// the file in place. A thin shell over [`lute_check::tag_document`] (the pure
+/// core that owns the tagging logic): read the file, tag, and — only when at
+/// least one line was tagged — write the result back. Exit `0` on success
+/// (whether or not anything changed), `2` on an I/O failure (like `run_check`).
+fn run_tag(file: &Path) -> ExitCode {
+    let text = match std::fs::read_to_string(file) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("lute: cannot read {}: {e}", file.display());
+            return ExitCode::from(2);
+        }
+    };
+
+    let out = lute_check::tag_document(&text);
+
+    // Never partial-writes: only touch the file when a `code` was actually
+    // added, so an already-tagged document is left byte-identical (idempotent).
+    if out.added > 0 {
+        if let Err(e) = std::fs::write(file, &out.text) {
+            eprintln!("lute: cannot write {}: {e}", file.display());
+            return ExitCode::from(2);
+        }
+        println!("lute: tagged {} line(s)", out.added);
+    } else {
+        println!("lute: already tagged");
+    }
+
+    ExitCode::SUCCESS
 }
 
 /// One `file:line:col: severity [CODE] message` line per diagnostic, then a
