@@ -347,7 +347,7 @@ impl Walker<'_> {
                     }
                 }
                 Node::Timeline(tl) => {
-                    let (table, tdiags) = resolve_timeline(tl, ctx);
+                    let (table, tdiags) = resolve_timeline(tl, ctx, self.snapshot);
                     self.timeline_tables.push(table);
                     self.diags.extend(tdiags);
                     if let Some(dur) = &tl.duration {
