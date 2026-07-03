@@ -1,0 +1,7 @@
+---
+state:
+  run.choseHelp: { type: bool, default: false }
+  user.level: { type: number, default: 1 }
+defs:
+  helped: { type: bool, cel: "run.choseHelp" }
+---
