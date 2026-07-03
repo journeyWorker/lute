@@ -107,8 +107,10 @@ fn bianca_style_fond_bool_def_is_clean() {
 // --- B whole-branch fix: plugin-exported defs (`snapshot.defs`) are declared
 // `@refs` (dsl §8.1). `ctx.defs` must union inline frontmatter defs with plugin
 // def names; otherwise a whole-slot `@pluginDef` is falsely `E-UNDECLARED-REF`
-// and can never reach the `E-REF-TYPE` branch. Exercised via a SYNTHETIC
-// snapshot (the disk loader does not populate `snapshot.defs` today).
+// and can never reach the `E-REF-TYPE` branch. These cases drive a SYNTHETIC
+// in-memory `snapshot.defs` for isolation/convenience (no fixture I/O); the
+// on-disk loader path (load_plugins_dir -> assemble_snapshot -> snapshot.defs)
+// is covered end-to-end by `crates/lute-check/tests/plugin_defs_disk.rs`.
 
 /// Like `codes`, but drives `check()` over a caller-supplied snapshot so a
 /// plugin-exported def can be injected into `snap.defs`.
