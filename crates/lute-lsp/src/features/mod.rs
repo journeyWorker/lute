@@ -44,7 +44,7 @@ pub mod symbols;
 
 use lute_cel::scan_refs;
 use lute_core_span::Span;
-use lute_manifest::schema::DefDecl;
+use lute_manifest::schema::{AssetKindDecl, DefDecl};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{
@@ -444,6 +444,108 @@ pub(crate) fn attr_enum_values(
         Type::EnumFromOption(name) => snapshot.enums.get(name).cloned(),
         _ => None,
     }
+}
+
+// -- asset-id segment lookups (plugin §6.9) -----------------------------------
+
+/// The `&Attr` whose *value span* contains `off`, walking the same node tree
+/// [`resolve`] uses (shots -> bodies -> nested `<branch>`/`<match>`/`<timeline>`).
+/// `None` when `off` is not inside any attribute value. Lets the asset-segment
+/// features recover the raw id text without changing the shared [`Cursor`].
+pub(crate) fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
+    fn in_attrs(attrs: &[Attr], off: usize) -> Option<&Attr> {
+        attrs.iter().find(|a| span_contains(a.value_span, off))
+    }
+    fn scan(nodes: &[Node], off: usize) -> Option<&Attr> {
+        for node in nodes {
+            if !span_contains(node_span(node), off) {
+                continue;
+            }
+            match node {
+                Node::Directive(d) => return in_attrs(&d.attrs, off),
+                Node::Line(l) => return in_attrs(&l.attrs, off),
+                Node::Set(_) => return None,
+                Node::Branch(b) => {
+                    for c in &b.choices {
+                        if span_contains(c.span, off) {
+                            return in_attrs(&c.attrs, off).or_else(|| scan(&c.body, off));
+                        }
+                    }
+                    return in_attrs(&b.attrs, off);
+                }
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        let (body, span) = match arm {
+                            Arm::When { body, span, .. } | Arm::Otherwise { body, span } => {
+                                (body, *span)
+                            }
+                        };
+                        if span_contains(span, off) {
+                            return scan(body, off);
+                        }
+                    }
+                    return None;
+                }
+                Node::Timeline(t) => {
+                    for track in &t.tracks {
+                        if span_contains(track.span, off) {
+                            for clip in &track.clips {
+                                if span_contains(clip.span, off) {
+                                    if let ClipNode::Directive(d) = &clip.node {
+                                        return in_attrs(&d.attrs, off);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return None;
+                }
+            }
+        }
+        None
+    }
+    for shot in &doc.shots {
+        if span_contains(shot.span, off) {
+            if let Some(a) = scan(&shot.body, off) {
+                return Some(a);
+            }
+        }
+    }
+    None
+}
+
+/// If the attr `key` on directive `directive` is declared `Type::AssetKind(name)`,
+/// return the resolved kind decl from the snapshot. `None` for any other type or
+/// an unknown directive/attr. The kind model (sep + segments) comes ENTIRELY from
+/// this decl — the same datum the checker and `asset::decompose` use.
+pub(crate) fn asset_kind_for<'a>(
+    snapshot: &'a CapabilitySnapshot,
+    directive: &str,
+    key: &str,
+) -> Option<&'a AssetKindDecl> {
+    let decl = snapshot.directive(directive)?;
+    let adecl = decl.attrs.iter().find(|a| a.name == key)?;
+    if let Type::AssetKind(name) = &adecl.ty {
+        snapshot.asset_kinds.get(name)
+    } else {
+        None
+    }
+}
+
+/// 0-based segment index of byte offset `off` within an authored id whose value
+/// starts at document byte `value_start`: the count of `sep` occurrences before
+/// the cursor. Total (never panics); sep-boundary safe via `match_indices`.
+pub(crate) fn asset_segment_index(
+    kind: &AssetKindDecl,
+    value: &str,
+    value_start: usize,
+    off: usize,
+) -> usize {
+    let rel = off.saturating_sub(value_start);
+    value
+        .match_indices(kind.sep.as_str())
+        .filter(|(i, _)| *i < rel)
+        .count()
 }
 
 // -- state / def / branch decl sites ------------------------------------------

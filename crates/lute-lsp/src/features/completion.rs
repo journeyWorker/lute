@@ -13,8 +13,10 @@
 //! Empty result (`vec![]`) when nothing is offerable — never a placeholder item.
 
 use lute_check::parse_meta;
+use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::{Arm, Document, Node};
+use lute_manifest::types::Type;
+use lute_syntax::ast::{Arm, AttrValue, Document, Node};
 use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind};
 
 use super::{attr_enum_values, type_label, Cursor};
@@ -40,7 +42,13 @@ pub fn complete_at(
         Cursor::AttrValue {
             directive: Some(dir),
             key,
-        } => enum_value_items(snapshot, dir, key),
+        } => {
+            if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
+                asset_segment_items(kind, doc, off)
+            } else {
+                enum_value_items(snapshot, dir, key)
+            }
+        }
         Cursor::Cel {
             slot,
             in_match_subject,
@@ -119,6 +127,43 @@ fn enum_value_items(
             ..Default::default()
         })
         .collect()
+}
+
+/// Per-segment completion for an `assetId` value typed `assetKind(kind)`: the
+/// members of the segment under the cursor. A const segment offers its literal;
+/// an enum segment its members; providerRef/number/string offer nothing.
+fn asset_segment_items(kind: &AssetKindDecl, doc: &Document, off: usize) -> Vec<CompletionItem> {
+    let Some(attr) = super::attr_at(doc, off) else {
+        return Vec::new();
+    };
+    let AttrValue::Str(value) = &attr.value else {
+        return Vec::new();
+    };
+    let idx = super::asset_segment_index(kind, value, attr.value_span.byte_start, off);
+    let Some(seg) = kind.segments.get(idx) else {
+        return Vec::new();
+    };
+    if let Some(c) = &seg.r#const {
+        return vec![CompletionItem {
+            label: c.clone(),
+            kind: Some(CompletionItemKind::CONSTANT),
+            ..Default::default()
+        }];
+    }
+    match &seg.ty {
+        Some(Type::Enum(members)) => members
+            .iter()
+            .map(|m| CompletionItem {
+                label: m.clone(),
+                kind: Some(CompletionItemKind::ENUM_MEMBER),
+                ..Default::default()
+            })
+            .collect(),
+        // providerRef: no ProviderSet is threaded into `complete_at`, so offering
+        // nothing is honest (§6.9) — we never fabricate provider ids. number /
+        // string / untyped segments have no enumerable domain either.
+        _ => Vec::new(),
+    }
 }
 
 /// Author `defs:` + snapshot def names for an `@ref` position, kind `VARIABLE`.
@@ -357,5 +402,102 @@ mod tests {
             "offers declared state path: {:?}",
             labels(&items)
         );
+    }
+
+    /// A snapshot with a `CH` assetKind (plugin §6.9 shape) and a `::portrait`
+    /// directive whose `assetId` attr is typed `assetKind("CH")`.
+    fn asset_snapshot() -> CapabilitySnapshot {
+        use lute_manifest::schema::{
+            AssetKindDecl, AssetResolve, AssetSegment, AttrDecl, DirectiveDecl, Lowering,
+        };
+        use lute_manifest::types::Type;
+        let ch = AssetKindDecl {
+            kind: "CH".to_string(),
+            sep: ".".to_string(),
+            resolve: AssetResolve::Compose,
+            segments: vec![
+                AssetSegment {
+                    name: "prefix".to_string(),
+                    r#const: Some("CH".to_string()),
+                    ty: None,
+                },
+                AssetSegment {
+                    name: "characterId".to_string(),
+                    r#const: None,
+                    ty: Some(Type::ProviderRef("character".to_string())),
+                },
+                AssetSegment {
+                    name: "costume".to_string(),
+                    r#const: None,
+                    ty: Some(Type::Str),
+                },
+                AssetSegment {
+                    name: "emotion".to_string(),
+                    r#const: None,
+                    ty: Some(Type::Enum(vec![
+                        "delighted".to_string(),
+                        "content".to_string(),
+                        "neutral".to_string(),
+                    ])),
+                },
+                AssetSegment {
+                    name: "variant".to_string(),
+                    r#const: None,
+                    ty: Some(Type::Number),
+                },
+            ],
+            provider: None,
+            match_: Vec::new(),
+            aliases: std::collections::BTreeMap::new(),
+            fallback: Vec::new(),
+            persistence: None,
+        };
+        let portrait = DirectiveDecl {
+            name: "portrait".to_string(),
+            layer: None,
+            attrs: vec![AttrDecl {
+                name: "assetId".to_string(),
+                required: true,
+                ty: Type::AssetKind("CH".to_string()),
+                default: None,
+            }],
+            semantics: Vec::new(),
+            state: None,
+            effects: None,
+            bridge: None,
+            lower: Lowering::Builtin {
+                kind: "builtin".to_string(),
+                name: "portrait".to_string(),
+            },
+        };
+        let mut snap = CapabilitySnapshot::default();
+        snap.asset_kinds.insert("CH".to_string(), ch);
+        snap.directives.insert("portrait".to_string(), portrait);
+        snap
+    }
+
+    #[test]
+    fn completion_offers_emotion_enum() {
+        // Cursor after the 3rd `.` → segment idx 3 (emotion enum).
+        let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.\"}\n";
+        let doc = parsed(text);
+        let off = text.find("waitress.").unwrap() + "waitress.".len();
+        let items = complete_at(&doc, &asset_snapshot(), off);
+        let ls = labels(&items);
+        assert!(
+            ls.contains(&"delighted") && ls.contains(&"content") && ls.contains(&"neutral"),
+            "emotion enum members: {ls:?}"
+        );
+    }
+
+    #[test]
+    fn completion_offers_const_prefix() {
+        // Cursor within the prefix segment (idx 0) → the const `CH`.
+        let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.delighted.3\"}\n";
+        let doc = parsed(text);
+        let off = text.find("CH.bianca").unwrap() + 1; // on the `H` of `CH`
+        let items = complete_at(&doc, &asset_snapshot(), off);
+        let ls = labels(&items);
+        assert!(ls.contains(&"CH"), "const prefix offered: {ls:?}");
     }
 }

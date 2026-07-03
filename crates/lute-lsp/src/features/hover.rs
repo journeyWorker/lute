@@ -14,8 +14,10 @@
 //! span is optional and would require the document text this pure fn does not hold.
 
 use lute_check::parse_meta;
+use lute_manifest::asset;
+use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::Document;
+use lute_syntax::ast::{AttrValue, Document};
 use tower_lsp_server::ls_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
 use super::{
@@ -34,9 +36,11 @@ pub fn hover_at(doc: &Document, snapshot: &CapabilitySnapshot, off: usize) -> Op
             directive: Some(dir),
             key,
         } => {
-            // A value on an enum attr documents the domain; else fall back to the
-            // attr's own declaration (type/required/default).
-            if let Some(vals) = attr_enum_values(snapshot, dir, key) {
+            // An `assetId` value documents the segment under the cursor; else an
+            // enum attr documents its domain; else the attr's own declaration.
+            if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
+                asset_segment_hover(kind, doc, off)
+            } else if let Some(vals) = attr_enum_values(snapshot, dir, key) {
                 Some(format!("**enum** `{key}`\n\ndomain: {}", vals.join(", ")))
             } else {
                 attr_hover(snapshot, dir, key)
@@ -119,6 +123,32 @@ fn attr_hover(snapshot: &CapabilitySnapshot, directive: &str, key: &str) -> Opti
         s.push_str(&format!("\n\ndefault: {}", literal_label(def)));
     }
     s.push_str(&format!("\n\non `::{directive}`"));
+    Some(s)
+}
+
+/// Render the `assetId` segment under the cursor: its declared name plus type (a
+/// const segment names its literal; a providerRef names its provider via
+/// [`type_label`]). When the whole id decomposes against the kind, the segment's
+/// current authored value is appended — the breakdown derived from the same
+/// [`AssetKindDecl`] the checker uses, never a re-hardcoded vocabulary.
+fn asset_segment_hover(kind: &AssetKindDecl, doc: &Document, off: usize) -> Option<String> {
+    let attr = super::attr_at(doc, off)?;
+    let AttrValue::Str(value) = &attr.value else {
+        return None;
+    };
+    let idx = super::asset_segment_index(kind, value, attr.value_span.byte_start, off);
+    let seg = kind.segments.get(idx)?;
+    let mut s = format!("**{}**", seg.name);
+    if let Some(c) = &seg.r#const {
+        s.push_str(&format!(" — const `{c}`"));
+    } else if let Some(ty) = &seg.ty {
+        s.push_str(&format!(" — {}", type_label(ty)));
+    }
+    if let Ok(segs) = asset::decompose(kind, value) {
+        if let Some(cur) = segs.get(idx) {
+            s.push_str(&format!("\n\nvalue: `{}`", cur.value));
+        }
+    }
     Some(s)
 }
 
@@ -250,5 +280,93 @@ mod tests {
         let doc = parsed(text);
         let off = pos_on(text, "@nope");
         assert!(hover_at(&doc, &load_core_snapshot(), off).is_none());
+    }
+
+    /// A snapshot with a `CH` assetKind (plugin §6.9 shape) and a `::portrait`
+    /// directive whose `assetId` attr is typed `assetKind("CH")`.
+    fn asset_snapshot() -> CapabilitySnapshot {
+        use lute_manifest::schema::{
+            AssetKindDecl, AssetResolve, AssetSegment, AttrDecl, DirectiveDecl, Lowering,
+        };
+        use lute_manifest::types::Type;
+        let ch = AssetKindDecl {
+            kind: "CH".to_string(),
+            sep: ".".to_string(),
+            resolve: AssetResolve::Compose,
+            segments: vec![
+                AssetSegment {
+                    name: "prefix".to_string(),
+                    r#const: Some("CH".to_string()),
+                    ty: None,
+                },
+                AssetSegment {
+                    name: "characterId".to_string(),
+                    r#const: None,
+                    ty: Some(Type::ProviderRef("character".to_string())),
+                },
+                AssetSegment {
+                    name: "costume".to_string(),
+                    r#const: None,
+                    ty: Some(Type::Str),
+                },
+                AssetSegment {
+                    name: "emotion".to_string(),
+                    r#const: None,
+                    ty: Some(Type::Enum(vec![
+                        "delighted".to_string(),
+                        "content".to_string(),
+                        "neutral".to_string(),
+                    ])),
+                },
+                AssetSegment {
+                    name: "variant".to_string(),
+                    r#const: None,
+                    ty: Some(Type::Number),
+                },
+            ],
+            provider: None,
+            match_: Vec::new(),
+            aliases: std::collections::BTreeMap::new(),
+            fallback: Vec::new(),
+            persistence: None,
+        };
+        let portrait = DirectiveDecl {
+            name: "portrait".to_string(),
+            layer: None,
+            attrs: vec![AttrDecl {
+                name: "assetId".to_string(),
+                required: true,
+                ty: Type::AssetKind("CH".to_string()),
+                default: None,
+            }],
+            semantics: Vec::new(),
+            state: None,
+            effects: None,
+            bridge: None,
+            lower: Lowering::Builtin {
+                kind: "builtin".to_string(),
+                name: "portrait".to_string(),
+            },
+        };
+        let mut snap = CapabilitySnapshot::default();
+        snap.asset_kinds.insert("CH".to_string(), ch);
+        snap.directives.insert("portrait".to_string(), portrait);
+        snap
+    }
+
+    #[test]
+    #[allow(non_snake_case)] // brief-specified name mirrors the `characterId` segment
+    fn hover_characterId_segment() {
+        // Cursor on `bianca` → segment idx 1 (characterId, providerRef character).
+        let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.delighted.3\"}\n";
+        let doc = parsed(text);
+        let off = pos_on(text, "bianca");
+        let h = hover_at(&doc, &asset_snapshot(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(s.contains("characterId"), "names the segment: {s}");
+        assert!(
+            s.contains("providerRef(character)"),
+            "names the provider type: {s}"
+        );
     }
 }

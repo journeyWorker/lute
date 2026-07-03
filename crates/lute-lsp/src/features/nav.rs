@@ -213,4 +213,86 @@ mod tests {
         let off = 20; // in the prose
         assert!(definition_at(&doc, &load_core_snapshot(), off).is_none());
     }
+
+    /// A snapshot with a `CH` assetKind (plugin §6.9 shape) and a `::portrait`
+    /// directive whose `assetId` attr is typed `assetKind("CH")`.
+    fn asset_snapshot() -> CapabilitySnapshot {
+        use lute_manifest::schema::{
+            AssetKindDecl, AssetResolve, AssetSegment, AttrDecl, DirectiveDecl, Lowering,
+        };
+        use lute_manifest::types::Type;
+        let ch = AssetKindDecl {
+            kind: "CH".to_string(),
+            sep: ".".to_string(),
+            resolve: AssetResolve::Compose,
+            segments: vec![
+                AssetSegment {
+                    name: "prefix".to_string(),
+                    r#const: Some("CH".to_string()),
+                    ty: None,
+                },
+                AssetSegment {
+                    name: "characterId".to_string(),
+                    r#const: None,
+                    ty: Some(Type::ProviderRef("character".to_string())),
+                },
+                AssetSegment {
+                    name: "costume".to_string(),
+                    r#const: None,
+                    ty: Some(Type::Str),
+                },
+                AssetSegment {
+                    name: "emotion".to_string(),
+                    r#const: None,
+                    ty: Some(Type::Enum(vec![
+                        "delighted".to_string(),
+                        "content".to_string(),
+                        "neutral".to_string(),
+                    ])),
+                },
+                AssetSegment {
+                    name: "variant".to_string(),
+                    r#const: None,
+                    ty: Some(Type::Number),
+                },
+            ],
+            provider: None,
+            match_: Vec::new(),
+            aliases: std::collections::BTreeMap::new(),
+            fallback: Vec::new(),
+            persistence: None,
+        };
+        let portrait = DirectiveDecl {
+            name: "portrait".to_string(),
+            layer: None,
+            attrs: vec![AttrDecl {
+                name: "assetId".to_string(),
+                required: true,
+                ty: Type::AssetKind("CH".to_string()),
+                default: None,
+            }],
+            semantics: Vec::new(),
+            state: None,
+            effects: None,
+            bridge: None,
+            lower: Lowering::Builtin {
+                kind: "builtin".to_string(),
+                name: "portrait".to_string(),
+            },
+        };
+        let mut snap = CapabilitySnapshot::default();
+        snap.asset_kinds.insert("CH".to_string(), ch);
+        snap.directives.insert("portrait".to_string(), portrait);
+        snap
+    }
+
+    #[test]
+    fn nav_asset_segment_none() {
+        // Go-to-def on a providerRef asset segment resolves to no scene text —
+        // provider decls are snapshot data, not document nodes — so it is `None`.
+        let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.delighted.3\"}\n";
+        let doc = parsed(text);
+        let off = text.find("bianca").unwrap() + 1;
+        assert!(definition_at(&doc, &asset_snapshot(), off).is_none());
+    }
 }
