@@ -14,6 +14,7 @@ pub struct CapabilitySnapshot {
     pub providers: BTreeMap<String, ProviderDecl>,
     pub state_shapes: BTreeMap<String, StateShape>,
     pub state_templates: BTreeMap<String, StateTemplate>,
+    pub asset_kinds: BTreeMap<String, AssetKindDecl>,
     pub bridge_capabilities: BTreeMap<(String, String), BridgeCapability>,
     pub defs: BTreeMap<String, DefDecl>,
     pub frontmatter: BTreeMap<String, crate::types::Type>,
@@ -127,6 +128,13 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
         h.update(name.as_bytes());
         h.update(b"=");
         h.update(format!("{t:?}").as_bytes());
+        h.update(b";");
+    }
+    h.update(b"\nassetKinds\n");
+    for (name, k) in &snap.asset_kinds {
+        h.update(name.as_bytes());
+        h.update(b"=");
+        h.update(format!("{k:?}").as_bytes());
         h.update(b";");
     }
     h.update(b"\nbridgeCapabilities\n");
@@ -272,6 +280,32 @@ mod tests {
         assert_ne!(
             a.version, b.version,
             "state_templates must affect capabilityVersion"
+        );
+    }
+
+    #[test]
+    fn asset_kinds_change_the_version() {
+        let mut a = CapabilitySnapshot::default();
+        a.version = capability_version(&a);
+        let mut b = CapabilitySnapshot::default();
+        b.asset_kinds.insert(
+            "CH".into(),
+            crate::schema::AssetKindDecl {
+                kind: "CH".into(),
+                sep: ".".into(),
+                resolve: crate::schema::AssetResolve::Compose,
+                segments: vec![],
+                provider: None,
+                match_: vec![],
+                aliases: std::collections::BTreeMap::new(),
+                fallback: vec![],
+                persistence: None,
+            },
+        );
+        b.version = capability_version(&b);
+        assert_ne!(
+            a.version, b.version,
+            "asset_kinds must affect capabilityVersion"
         );
     }
 
