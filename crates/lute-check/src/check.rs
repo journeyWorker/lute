@@ -136,6 +136,24 @@ pub struct Resolved {
     pub injections: Vec<InjectedCommand>,
 }
 
+/// Extract ordered `(param name, Type)` pairs from an inline/imported def's raw
+/// YAML value (dsl §8.1). Reads the def's `params:` sub-MAPPING in SOURCE order
+/// (`serde_yaml::Mapping` is insertion-ordered), deserializing each value to a
+/// `Type` via the same serde path `Type` uses. An absent/non-mapping `params:`
+/// or a malformed entry yields no pair — never a panic.
+fn params_from_yaml(v: &serde_yaml::Value) -> Vec<(String, lute_manifest::types::Type)> {
+    let Some(map) = v.get("params").and_then(|p| p.as_mapping()) else {
+        return Vec::new();
+    };
+    map.iter()
+        .filter_map(|(k, tv)| {
+            let name = k.as_str()?.to_string();
+            let ty = serde_yaml::from_value::<lute_manifest::types::Type>(tv.clone()).ok()?;
+            Some((name, ty))
+        })
+        .collect()
+}
+
 /// Statically validate a `.lute` document and return its structured result.
 ///
 /// Never panics: every stage degrades to diagnostics + a best-effort view.
@@ -240,6 +258,33 @@ pub fn check(input: &CheckInput) -> CheckResult {
         }
     }
 
+    // Parallel table of ORDERED params per def (dsl §8.1), for `@name(args)`
+    // arity/arg-type checks. Same three sources & precedence as `def_types`
+    // (plugin < imported < inline).
+    let mut def_params: std::collections::BTreeMap<
+        String,
+        Vec<(String, lute_manifest::types::Type)>,
+    > = std::collections::BTreeMap::new();
+    // Plugin defs carry ordered `Vec<DefParam>` directly.
+    for (name, d) in &input.snapshot.defs {
+        def_params.insert(
+            name.clone(),
+            d.params
+                .iter()
+                .map(|p| (p.name.clone(), p.ty.clone()))
+                .collect(),
+        );
+    }
+    // Imported schema defs (untyped YAML): extract `params:` in order. Imported
+    // overrides plugin; inline (below) overrides imported.
+    for (name, v) in &input.imports.defs {
+        def_params.insert(name.clone(), params_from_yaml(v));
+    }
+    // Inline frontmatter defs (untyped YAML): same extraction; scene-local override.
+    for (name, v) in &typed.defs {
+        def_params.insert(name.clone(), params_from_yaml(v));
+    }
+
     let base_ctx = Ctx {
         in_match: false,
         match_subject: None,
@@ -247,6 +292,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
         state: schema.clone(),
         defs,
         def_types,
+        def_params,
     };
 
     // 5. Per-node validator walk (directives / cel-slots / set / match / timeline).

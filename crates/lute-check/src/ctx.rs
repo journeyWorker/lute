@@ -60,6 +60,9 @@ pub struct Ctx {
     /// Empty here (design task): this field is declared but never read at B2.1.
     /// `#[derive(Default)]` stays correct because `BTreeMap::default()` is empty.
     pub def_types: BTreeMap<String, Type>,
+    /// def name -> ordered (param name, type), for `@name(args)` arity/arg-type
+    /// checks (dsl §8.1). Same sources & precedence as `def_types`.
+    pub def_params: BTreeMap<String, Vec<(String, Type)>>,
 }
 
 /// The statically-known expected type of a CEL slot's value, when derivable.

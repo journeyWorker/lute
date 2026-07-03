@@ -369,7 +369,7 @@ fn def_decl_info(d: &DefDecl) -> DefInfo {
         params: d
             .params
             .iter()
-            .map(|(k, t)| (k.clone(), type_label(t)))
+            .map(|p| (p.name.clone(), type_label(&p.ty)))
             .collect(),
     }
 }

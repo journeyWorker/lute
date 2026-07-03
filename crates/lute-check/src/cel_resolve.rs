@@ -56,36 +56,59 @@ pub fn check_cel_slot(
                 format!("`@{}` is not a declared def (dsl §8.1)", r.name),
                 span,
             ));
-        } else if let (Some(expected), Some(produced)) = (expected, ctx.def_types.get(&r.name)) {
-            // Only when the `@ref` IS the whole CEL value does the def's produced
-            // type equal the slot's value type. Two whole-slot forms (dsl §8.1): a
-            // bare `@name`, or the parameterized call `@name(args)` whose group
-            // consumes the remainder. In a compound expression (`@num > 0`, or
-            // `@toNum(x) == @toNum(y)`) the def types only a subexpression, so
-            // comparing to the slot's expected type would false-positive — treat it
-            // as non-whole and skip conservatively. `scan_refs` runs on `slot.raw`,
-            // so `r.span`/`r.call.span` byte offsets are relative to `slot.raw`;
-            // require the ref (and its call group, if any) to span the trimmed
-            // content exactly — nothing before or after it.
-            let raw = &slot.raw;
-            let content_start = raw.len() - raw.trim_start().len();
-            let content_end = raw.trim_end().len();
-            let is_whole_slot = r.span.byte_start == content_start
-                && match r.call.as_ref() {
-                    None => r.span.byte_end == content_end, // bare `@name` reaches the end
-                    Some(c) => c.span.byte_end == content_end, // `@name(...)` group reaches the end
-                };
-            if is_whole_slot && !compatible(produced, expected) {
-                diags.push(diag(
-                    "E-REF-TYPE",
-                    format!(
-                        "`@{}` produces {} but this position expects {} (dsl §8)",
-                        r.name,
-                        ty_desc(produced),
-                        expected_desc(expected)
-                    ),
-                    span,
-                ));
+        } else {
+            // The name IS a declared def (dsl §8.1). Two independent checks run
+            // here and may BOTH fire — neither suppresses the other:
+            //   * arity (E-REF-ARITY): the `@name(args)` call MUST supply exactly
+            //     as many arguments as the def declares params (a bare `@name` is
+            //     0 args). Determinism is handled by the caller's final sort.
+            if let Some(params) = ctx.def_params.get(&r.name) {
+                let got = r.call.as_ref().map_or(0, |c| c.args.len());
+                if got != params.len() {
+                    diags.push(diag(
+                        "E-REF-ARITY",
+                        format!(
+                            "`@{}` expects {} argument(s) but got {} (dsl §8.1)",
+                            r.name,
+                            params.len(),
+                            got
+                        ),
+                        span,
+                    ));
+                }
+            }
+            //   * produced-type (E-REF-TYPE): only when the `@ref` IS the whole CEL
+            //     value does the def's produced type equal the slot's value type.
+            //     Two whole-slot forms (dsl §8.1): a bare `@name`, or the
+            //     parameterized call `@name(args)` whose group consumes the
+            //     remainder. In a compound expression (`@num > 0`, or
+            //     `@toNum(x) == @toNum(y)`) the def types only a subexpression, so
+            //     comparing to the slot's expected type would false-positive —
+            //     treat it as non-whole and skip conservatively. `scan_refs` runs
+            //     on `slot.raw`, so `r.span`/`r.call.span` byte offsets are relative
+            //     to `slot.raw`; require the ref (and its call group, if any) to
+            //     span the trimmed content exactly — nothing before or after it.
+            if let (Some(expected), Some(produced)) = (expected, ctx.def_types.get(&r.name)) {
+                let raw = &slot.raw;
+                let content_start = raw.len() - raw.trim_start().len();
+                let content_end = raw.trim_end().len();
+                let is_whole_slot = r.span.byte_start == content_start
+                    && match r.call.as_ref() {
+                        None => r.span.byte_end == content_end, // bare `@name` reaches the end
+                        Some(c) => c.span.byte_end == content_end, // `@name(...)` group reaches the end
+                    };
+                if is_whole_slot && !compatible(produced, expected) {
+                    diags.push(diag(
+                        "E-REF-TYPE",
+                        format!(
+                            "`@{}` produces {} but this position expects {} (dsl §8)",
+                            r.name,
+                            ty_desc(produced),
+                            expected_desc(expected)
+                        ),
+                        span,
+                    ));
+                }
             }
         }
     }
