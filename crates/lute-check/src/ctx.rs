@@ -54,6 +54,7 @@ pub struct Ctx {
     ///     stored UNTYPED as `serde_yaml::Value`; the `type:` sub-value is
     ///     pulled out and deserialized into `Type` (malformed/absent `type:`
     ///     yields NO entry — never a panic).
+    ///
     /// `#[derive(Default)]` stays correct — `BTreeMap::default()` is empty.
     pub def_types: BTreeMap<String, Type>,
     /// def name -> ordered (param name, type), for `@name(args)` arity/arg-type
