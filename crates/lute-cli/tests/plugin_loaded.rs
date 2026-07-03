@@ -98,3 +98,24 @@ fn refresh_stamps_resolved_version_under_project() {
     );
     std::fs::remove_dir_all(&tmp).ok();
 }
+
+#[test]
+fn date_minigame_clean_with_project_catalog_autodiscovered() {
+    let out = std::process::Command::new(lute_bin())
+        .args([
+            "check",
+            "../../docs/examples/date-minigame.lute",
+            "--project",
+            "../../docs/examples/idola-project",
+            "--json",
+        ])
+        .output()
+        .expect("run lute");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("\"ok\": true"),
+        "catalog auto-discovered from project -> ok:true; got {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0));
+}

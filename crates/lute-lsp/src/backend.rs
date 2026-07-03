@@ -77,12 +77,12 @@ impl Backend {
     /// Error at the document start — otherwise a scene that is itself clean would
     /// silently validate against a broken project (plugin §11).
     async fn analyze(&self, uri: Uri, snapshot: &DocumentSnapshot) {
-        let (cap, rdiags) = self.snapshot_for(&uri, &snapshot.text);
+        let (cap, providers, rdiags) = self.snapshot_for(&uri, &snapshot.text);
         let input = CheckInput {
             text: snapshot.text.clone(),
             uri: uri.as_str().to_string(),
             snapshot: cap,
-            providers: lute_manifest::provider::ProviderSet::default(),
+            providers,
             mode: Mode::Author,
         };
         let result = check(&input);
@@ -121,6 +121,7 @@ impl Backend {
         text: &str,
     ) -> (
         lute_manifest::snapshot::CapabilitySnapshot,
+        lute_manifest::provider::ProviderSet,
         Vec<lute_manifest::project::ResolveDiag>,
     ) {
         let (doc, _) = lute_syntax::parse(text);
@@ -137,11 +138,16 @@ impl Backend {
                     None
                 }
             });
-        lute_manifest::project::resolve_document_snapshot(
+        // Load the project's pinned provider catalog through the SAME shared
+        // helper the CLI uses when `--providers` is absent, so the editor
+        // resolves provider ids identically to the headless build (plugin §10).
+        let providers = lute_manifest::project::project_providers(project.as_ref());
+        let (snapshot, rdiags) = lute_manifest::project::resolve_document_snapshot(
             project.as_ref(),
             meta0.profile.as_deref(),
             &meta0.plugins,
-        )
+        );
+        (snapshot, providers, rdiags)
     }
 }
 

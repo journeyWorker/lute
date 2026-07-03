@@ -105,11 +105,6 @@ fn run_check(
         }
     };
 
-    let providers = match providers {
-        Some(dir) => ProviderSet::load(dir),
-        None => ProviderSet::default(),
-    };
-
     // Resolve the capability snapshot the document is validated against. With
     // `--project`, load the project and assemble the scene's activated snapshot
     // (plugin §4/§11); without it, `resolve_document_snapshot(None, ..)` returns
@@ -125,6 +120,15 @@ fn run_check(
             }
         },
         None => None,
+    };
+
+    // Provider catalog precedence (plugin §10): an explicit `--providers <dir>`
+    // wins; otherwise auto-discover the project's pinned catalog through the
+    // SAME shared helper the LSP uses, so the two surfaces resolve the same ids
+    // for the same project; with neither, an empty set.
+    let providers = match providers {
+        Some(dir) => ProviderSet::load(dir),
+        None => lute_manifest::project::project_providers(project.as_ref()),
     };
 
     // Lift the scene's frontmatter `profile`/`plugins` — both built-in keys, so a

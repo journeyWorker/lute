@@ -1,4 +1,4 @@
-use lute_manifest::project::{load_project, resolve_document_snapshot};
+use lute_manifest::project::{load_project, project_providers, resolve_document_snapshot};
 use std::collections::BTreeMap;
 use std::fs;
 
@@ -113,4 +113,22 @@ fn resolve_diag_carries_stable_code() {
         diags.iter().map(|d| &d.code).collect::<Vec<_>>()
     );
     std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn project_providers_loads_catalog() {
+    let proj = load_project(std::path::Path::new("../../docs/examples/idola-project"))
+        .unwrap()
+        .unwrap();
+    let ps = project_providers(Some(&proj));
+    assert_eq!(
+        ps.contains("minigameId", "bianca_service_01"),
+        lute_manifest::provider::IdStatus::Fresh,
+        "project catalog resolves the minigame id"
+    );
+    assert_eq!(
+        project_providers(None).contains("minigameId", "bianca_service_01"),
+        lute_manifest::provider::IdStatus::Absent,
+        "no project -> empty providers"
+    );
 }
