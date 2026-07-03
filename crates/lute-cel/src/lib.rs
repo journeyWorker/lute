@@ -137,21 +137,34 @@ pub fn scan_refs(raw: &str) -> Vec<RefUse> {
             let name = raw[s..i].to_string();
             let span = byte_span(start, i);
             // dsl §8.1: an `@name` IMMEDIATELY followed by `(` (no whitespace) is a
-            // parameterized call. Scan a balanced group honoring string literals.
+            // parameterized call. Scan the group with STRICT bracket matching,
+            // honoring string literals.
             let mut call = None;
             if i < b.len() && b[i] == b'(' && !mask[i] {
                 let open = i;
-                let mut depth = 1i32;
+                // Stack of expected closers. Seeded with the outer `)` matching the
+                // initial `(`; every nested opener pushes its own matching closer. A
+                // closer must match the stack top (else the input is malformed); the
+                // group closes exactly when the stack empties. Brackets inside CEL
+                // string literals are ignored (`mask`).
+                let mut stack: Vec<u8> = vec![b')'];
                 let mut j = open + 1;
                 let mut close = None;
                 while j < b.len() {
                     if !mask[j] {
                         match b[j] {
-                            b'(' | b'[' | b'{' => depth += 1,
+                            b'(' => stack.push(b')'),
+                            b'[' => stack.push(b']'),
+                            b'{' => stack.push(b'}'),
                             b')' | b']' | b'}' => {
-                                depth -= 1;
-                                if depth == 0 {
-                                    close = Some(j);
+                                if stack.last() == Some(&b[j]) {
+                                    stack.pop();
+                                    if stack.is_empty() {
+                                        close = Some(j);
+                                        break;
+                                    }
+                                } else {
+                                    // Mismatched closer: malformed group -> degrade.
                                     break;
                                 }
                             }
@@ -166,10 +179,14 @@ pub fn scan_refs(raw: &str) -> Vec<RefUse> {
                         span: byte_span(open, close + 1),
                         args,
                     });
-                    i = close + 1;
                 }
-                // Unterminated group (EOF before depth 0): leave `call` None and `i`
-                // at the `(` so it is re-scanned as ordinary text next iteration.
+                // Whether the group matched or degraded (mismatched closer / EOF
+                // before the stack empties), `i` is left at the `(`: on a match we
+                // record the call but do NOT advance past the group, so subsequent
+                // iterations scan the interior and emit RefUse entries for any nested
+                // `@ref`/`$`; on a degrade `call` stays None. Either way the `(` (and
+                // any `,`/`)` bytes) fall through the else branch as ordinary text,
+                // so the cursor always advances (no infinite loop).
             }
             out.push(RefUse {
                 name,
@@ -560,6 +577,54 @@ mod tests {
     fn scan_refs_unterminated_paren_degrades_to_no_call() {
         // never panic; an unterminated `(` yields no call (bare ref).
         let refs = scan_refs("@x(a, b");
+        assert!(refs.iter().find(|r| r.name == "x").unwrap().call.is_none());
+    }
+
+    #[test]
+    fn scan_refs_nested_ref_inside_call_is_still_scanned() {
+        // Bug 1: a nested `@ref` inside call args must ALSO get its own RefUse,
+        // while the outer `@name(...)` still records its call group.
+        let refs = scan_refs("@outer(@missing)");
+        let outer = refs.iter().find(|r| r.name == "outer").expect("outer");
+        let call = outer.call.as_ref().expect("outer call captured");
+        assert_eq!(call.args.len(), 1);
+        let missing = refs
+            .iter()
+            .find(|r| r.name == "missing")
+            .expect("nested @missing scanned");
+        assert!(missing.call.is_none(), "nested @missing has no call");
+    }
+
+    #[test]
+    fn scan_refs_dollar_inside_call_is_still_scanned() {
+        // Bug 1: a `$` inside call args must ALSO get its own RefUse.
+        let refs = scan_refs("@outer($)");
+        assert!(refs.iter().any(|r| r.is_dollar), "nested $ not scanned");
+        let outer = refs.iter().find(|r| r.name == "outer").expect("outer");
+        assert!(outer.call.is_some(), "outer call captured");
+    }
+
+    #[test]
+    fn scan_refs_nested_call_inside_call() {
+        // Bug 1: nested calls are all captured.
+        let refs = scan_refs("@outer(@inner(x))");
+        let outer = refs.iter().find(|r| r.name == "outer").expect("outer");
+        assert!(outer.call.is_some(), "outer call captured");
+        let inner = refs.iter().find(|r| r.name == "inner").expect("inner");
+        assert!(inner.call.is_some(), "inner call captured");
+    }
+
+    #[test]
+    fn scan_refs_mismatched_closer_degrades_to_no_call() {
+        // Bug 2: `]` cannot close a `(` group -> malformed -> no call.
+        let refs = scan_refs("@x(]");
+        assert!(refs.iter().find(|r| r.name == "x").unwrap().call.is_none());
+    }
+
+    #[test]
+    fn scan_refs_mismatched_closer_inside_degrades() {
+        // Bug 2: a `]` with no matching `[` inside the group is malformed.
+        let refs = scan_refs("@x(a]b)");
         assert!(refs.iter().find(|r| r.name == "x").unwrap().call.is_none());
     }
 }
