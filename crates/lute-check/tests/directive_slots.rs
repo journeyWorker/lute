@@ -1,6 +1,6 @@
 //! Directive-slot expansion: an active directive's state.declares[] opens
 //! concrete StateSchema slots at each use site (plugin §8/§9).
-use lute_check::{check, CheckInput, Mode};
+use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::*;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -118,6 +118,7 @@ fn check_codes(text: &str, snap: CapabilitySnapshot) -> Vec<String> {
         snapshot: snap,
         providers: ProviderSet::default(),
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     };
     check(&input)
         .diagnostics
@@ -224,6 +225,7 @@ fn cyclic_state_shapes_do_not_overflow() {
         snapshot: snap,
         providers: ProviderSet::default(),
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     };
     // Must return without stack-overflow (no-panic contract).
     let _ = check(&input);
@@ -242,6 +244,7 @@ fn unknown_tag_from_inactive_plugin_gets_fixit() {
         snapshot: snap,
         providers: ProviderSet::default(),
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     };
     let res = check(&input);
     let d = res

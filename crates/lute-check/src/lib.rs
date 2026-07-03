@@ -7,6 +7,7 @@ pub mod directives;
 pub mod inject;
 pub mod match_check;
 pub mod meta;
+pub mod schema_import;
 pub mod set_op;
 pub mod timeline;
 
@@ -19,5 +20,6 @@ pub use inject::{
 };
 pub use match_check::{check_branch, check_match, is_exhaustive, BranchRecord};
 pub use meta::{parse_meta, Namespace, StateDecl, StateSchema, TypedMeta};
+pub use schema_import::SchemaImports;
 pub use set_op::check_set;
 pub use timeline::{resolve_timeline, ResolvedRow, ResolvedTimeline};

@@ -2,7 +2,7 @@
 //! (plugin §6.9, checker half of precedence step-1). A segment-bearing `CH`
 //! compose kind decomposes + per-segment validates; a segment-less `BG` query
 //! kind checks provider-existence only; a `PLACEHOLDER_*` id warns.
-use lute_check::{check, CheckInput, Mode};
+use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
 use lute_manifest::schema::{
     AssetKindDecl, AssetResolve, AssetSegment, AttrDecl, DirectiveDecl, Lowering,
@@ -116,6 +116,7 @@ fn check_codes(text: &str, snap: CapabilitySnapshot, providers: ProviderSet) -> 
         snapshot: snap,
         providers,
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     };
     check(&input)
         .diagnostics
