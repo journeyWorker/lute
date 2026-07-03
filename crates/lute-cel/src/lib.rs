@@ -53,6 +53,19 @@ pub struct RefUse {
     pub is_dollar: bool,
     /// Byte span of the whole token within the raw source (`@name` including the `@`).
     pub span: Span,
+    /// `Some` when the `@name` is IMMEDIATELY followed by a `(...)` call group
+    /// (dsl §8.1 `@name(args)`); `None` for a bare `@ref` or the `$` subject.
+    pub call: Option<Call>,
+}
+
+/// A parenthesized call group following an `@name` (dsl §8.1 `@name(args)`).
+#[derive(Clone, Debug)]
+pub struct Call {
+    /// Byte span of the whole `(...)` group (parens inclusive), within the raw source.
+    pub span: Span,
+    /// One byte span per top-level, comma-separated argument (whitespace-trimmed).
+    /// Empty for `@name()`.
+    pub args: Vec<Span>,
 }
 
 /// For each byte of `raw`, whether that byte lies inside a CEL **string literal**
@@ -121,16 +134,55 @@ pub fn scan_refs(raw: &str) -> Vec<RefUse> {
             while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_' || b[i] == b'-') {
                 i += 1;
             }
+            let name = raw[s..i].to_string();
+            let span = byte_span(start, i);
+            // dsl §8.1: an `@name` IMMEDIATELY followed by `(` (no whitespace) is a
+            // parameterized call. Scan a balanced group honoring string literals.
+            let mut call = None;
+            if i < b.len() && b[i] == b'(' && !mask[i] {
+                let open = i;
+                let mut depth = 1i32;
+                let mut j = open + 1;
+                let mut close = None;
+                while j < b.len() {
+                    if !mask[j] {
+                        match b[j] {
+                            b'(' | b'[' | b'{' => depth += 1,
+                            b')' | b']' | b'}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    close = Some(j);
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    j += 1;
+                }
+                if let Some(close) = close {
+                    let args = split_args(raw, &mask, open + 1, close);
+                    call = Some(Call {
+                        span: byte_span(open, close + 1),
+                        args,
+                    });
+                    i = close + 1;
+                }
+                // Unterminated group (EOF before depth 0): leave `call` None and `i`
+                // at the `(` so it is re-scanned as ordinary text next iteration.
+            }
             out.push(RefUse {
-                name: raw[s..i].to_string(),
+                name,
                 is_dollar: false,
-                span: byte_span(start, i),
+                span,
+                call,
             });
         } else if b[i] == b'$' && !mask[i] {
             out.push(RefUse {
                 name: "$".into(),
                 is_dollar: true,
                 span: byte_span(i, i + 1),
+                call: None,
             });
             i += 1;
         } else {
@@ -150,6 +202,48 @@ fn byte_span(s: usize, e: usize) -> Span {
         column: 0,
         utf16_range: (0, 0),
     }
+}
+
+/// Split the interior of a call group (`start..end` byte range of `raw`, exclusive
+/// of the parens) into per-argument trimmed spans, honoring string literals and
+/// nested parens. An all-whitespace interior yields no args.
+fn split_args(raw: &str, mask: &[bool], start: usize, end: usize) -> Vec<Span> {
+    let b = raw.as_bytes();
+    let mut args = Vec::new();
+    let mut depth = 0i32;
+    let mut seg_start = start;
+    let mut i = start;
+    let push_seg = |args: &mut Vec<Span>, s: usize, e: usize| {
+        // trim ASCII whitespace at both ends; skip an empty segment
+        let mut a = s;
+        let mut z = e;
+        while a < z && raw.as_bytes()[a].is_ascii_whitespace() {
+            a += 1;
+        }
+        while z > a && raw.as_bytes()[z - 1].is_ascii_whitespace() {
+            z -= 1;
+        }
+        if a < z {
+            args.push(byte_span(a, z));
+        }
+    };
+    while i < end {
+        let c = b[i];
+        if !mask[i] {
+            match c {
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => depth -= 1,
+                b',' if depth == 0 => {
+                    push_seg(&mut args, seg_start, i);
+                    seg_start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    push_seg(&mut args, seg_start, end);
+    args
 }
 
 /// Parse the CEL fragment `raw` (found at `base_byte` within the document) and
@@ -400,5 +494,72 @@ mod tests {
             assert_eq!(err.span.byte_start, base, "raw={raw:?}");
             assert_eq!(err.span.byte_end, base + raw.len(), "raw={raw:?}");
         }
+    }
+
+    #[test]
+    fn scan_refs_captures_call_form() {
+        let refs = scan_refs("@atLeast(2)");
+        let r = refs.iter().find(|r| r.name == "atLeast").expect("ref");
+        let call = r.call.as_ref().expect("call captured");
+        assert_eq!(call.args.len(), 1);
+    }
+
+    #[test]
+    fn scan_refs_bare_ref_has_no_call() {
+        let refs = scan_refs("@fond");
+        assert!(refs
+            .iter()
+            .find(|r| r.name == "fond")
+            .unwrap()
+            .call
+            .is_none());
+    }
+
+    #[test]
+    fn scan_refs_empty_args() {
+        let refs = scan_refs("@now()");
+        assert_eq!(
+            refs.iter()
+                .find(|r| r.name == "now")
+                .unwrap()
+                .call
+                .as_ref()
+                .unwrap()
+                .args
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn scan_refs_commas_in_nested_paren_and_string_not_split() {
+        // top-level args: `max(a, b)` and `'x,y'` -> exactly 2 args
+        let refs = scan_refs("@pick(max(a, b), 'x,y')");
+        let call = refs
+            .iter()
+            .find(|r| r.name == "pick")
+            .unwrap()
+            .call
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            call.args.len(),
+            2,
+            "commas inside nested parens/strings must not split"
+        );
+    }
+
+    #[test]
+    fn scan_refs_space_before_paren_is_not_a_call() {
+        // `@x (y)` is a bare ref `@x` then a separate parenthesized group.
+        let refs = scan_refs("@x (y)");
+        assert!(refs.iter().find(|r| r.name == "x").unwrap().call.is_none());
+    }
+
+    #[test]
+    fn scan_refs_unterminated_paren_degrades_to_no_call() {
+        // never panic; an unterminated `(` yields no call (bare ref).
+        let refs = scan_refs("@x(a, b");
+        assert!(refs.iter().find(|r| r.name == "x").unwrap().call.is_none());
     }
 }
