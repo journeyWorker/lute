@@ -44,6 +44,8 @@
 use std::collections::BTreeSet;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::types::PathSegment;
 use lute_syntax::ast::{AttrValue, ClipNode, Timeline, TrackKey};
 
 use crate::ctx::Ctx;
@@ -230,6 +232,85 @@ fn subject_of(key: &TrackKey) -> Option<String> {
     }
 }
 
+/// What a clip writes, for cross-track conflict detection.
+#[derive(Clone, Debug, PartialEq)]
+// Consumed by the B1.2 write-conflict pass in this module; unused until then.
+#[allow(dead_code)]
+enum WriteTargets {
+    /// Fully-resolved concrete state-write paths (e.g. "scene.minigame.service01.score").
+    Paths(BTreeSet<String>),
+    /// Writes are unresolvable to concrete paths (unknown directive, or a
+    /// `fromAttr` path segment with no matching clip attr) — fall back to the
+    /// coarse track subject as a single conservative target.
+    Coarse(String),
+    /// The clip provably writes no state (known directive, empty `effects.writes[]`).
+    None,
+}
+
+/// Resolve what `node` writes. `track_subject` is the clip's track subject
+/// (`subject_of(&track.key)`), used only for the `Coarse` fallback; a `None`
+/// track subject with unresolvable writes ⇒ [`WriteTargets::None`] (a Channel
+/// track with an unknown directive cannot be scoped, so it never conflicts).
+///
+/// Pure and total: no panic path. Unresolvable `fromAttr` segments never emit
+/// partial paths — the whole clip falls back to `Coarse`/`None`.
+#[allow(dead_code)]
+fn clip_write_targets(
+    node: &ClipNode,
+    snapshot: &CapabilitySnapshot,
+    track_subject: Option<&str>,
+) -> WriteTargets {
+    let coarse = || match track_subject {
+        Some(s) => WriteTargets::Coarse(s.to_string()),
+        None => WriteTargets::None,
+    };
+    match node {
+        // A `<set>` writes its target path verbatim.
+        ClipNode::Set(s) => {
+            let mut paths = BTreeSet::new();
+            paths.insert(s.path.clone());
+            WriteTargets::Paths(paths)
+        }
+        ClipNode::Directive(d) => {
+            let Some(decl) = snapshot.directive(&d.tag) else {
+                // Unknown directive: cannot resolve writes.
+                return coarse();
+            };
+            let Some(eff) = &decl.effects else {
+                // Known directive that declares no effects: provably writes nothing.
+                return WriteTargets::None;
+            };
+            if eff.writes.is_empty() {
+                return WriteTargets::None;
+            }
+            let mut paths = BTreeSet::new();
+            for w in &eff.writes {
+                let mut path = w.scope.clone();
+                for seg in &w.path {
+                    let part = match seg {
+                        PathSegment::Literal(seg) => seg,
+                        PathSegment::FromAttr { from_attr } => {
+                            match d.attrs.iter().find(|a| a.key == from_attr.name) {
+                                Some(attr) => match &attr.value {
+                                    AttrValue::Str(v) => v,
+                                    // Non-string attr value can't scope the path.
+                                    _ => return coarse(),
+                                },
+                                // No matching clip attr: segment is unresolvable.
+                                None => return coarse(),
+                            }
+                        }
+                    };
+                    path.push('.');
+                    path.push_str(part);
+                }
+                paths.insert(path);
+            }
+            WriteTargets::Paths(paths)
+        }
+    }
+}
+
 /// Best-effort clip duration from a directive's `duration` timing attr (§7.5).
 /// `<set>` clips and directives without a numeric `duration` ⇒ `0.0`.
 fn clip_duration(node: &ClipNode) -> f64 {
@@ -288,6 +369,11 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lute_manifest::schema::{
+        AttrDecl, DirectiveDecl, DirectiveEffects, Lowering, WriteDecl, WriteValue,
+    };
+    use lute_manifest::types::{FromAttr, Literal, PathSegment, Type};
+    use lute_syntax::ast::Set;
     use lute_syntax::ast::{Attr, Clip, Directive, Track};
 
     fn span() -> Span {
@@ -377,5 +463,127 @@ mod tests {
         let tl = timeline_camera_two_clips(); // ends at 0.8, no explicit duration
         let (res, _d) = resolve_timeline(&tl, &ctx());
         assert_eq!(res.barrier_at, 0.8);
+    }
+
+    fn snapshot_with_writer() -> CapabilitySnapshot {
+        let mut snap = lute_manifest::core::load_core_snapshot();
+        let write = |last: &str| WriteDecl {
+            scope: "scene".into(),
+            path: vec![
+                PathSegment::Literal("box".into()),
+                PathSegment::FromAttr {
+                    from_attr: FromAttr {
+                        name: "key".into(),
+                        slot_type: None,
+                    },
+                },
+                PathSegment::Literal(last.into()),
+            ],
+            value: WriteValue::Literal(Literal::Num(0.0)),
+        };
+        snap.directives.insert(
+            "writer".into(),
+            DirectiveDecl {
+                name: "writer".into(),
+                layer: None,
+                attrs: vec![AttrDecl {
+                    name: "key".into(),
+                    required: true,
+                    ty: Type::Str,
+                    default: None,
+                }],
+                semantics: vec![],
+                state: None,
+                effects: Some(DirectiveEffects {
+                    writes: vec![write("a"), write("b")],
+                }),
+                bridge: None,
+                lower: Lowering::Builtin {
+                    kind: "builtin".into(),
+                    name: "writer".into(),
+                },
+            },
+        );
+        snap
+    }
+
+    fn writer_clip(key: &str) -> ClipNode {
+        ClipNode::Directive(Directive {
+            tag: "writer".into(),
+            attrs: vec![Attr {
+                key: "key".into(),
+                value: AttrValue::Str(key.into()),
+                value_span: span(),
+                span: span(),
+            }],
+            span: span(),
+        })
+    }
+
+    fn set_clip(path: &str) -> ClipNode {
+        ClipNode::Set(Set {
+            path: path.into(),
+            path_span: span(),
+            op: "=".into(),
+            expr: lute_syntax::ast::CelSlot::raw(
+                lute_syntax::ast::CelKind::SetExpr,
+                "0".into(),
+                span(),
+            ),
+            span: span(),
+        })
+    }
+
+    fn directive_clip(tag: &str) -> ClipNode {
+        ClipNode::Directive(Directive {
+            tag: tag.into(),
+            attrs: vec![],
+            span: span(),
+        })
+    }
+
+    #[test]
+    fn write_targets_resolve_fromattr() {
+        let snap = snapshot_with_writer();
+        let node = writer_clip("k1");
+        assert_eq!(
+            clip_write_targets(&node, &snap, Some("box")),
+            WriteTargets::Paths(
+                ["scene.box.k1.a".to_string(), "scene.box.k1.b".to_string()]
+                    .into_iter()
+                    .collect()
+            )
+        );
+    }
+
+    #[test]
+    fn write_targets_set_clip_is_its_path() {
+        let snap = lute_manifest::core::load_core_snapshot();
+        let node = set_clip("scene.affect.bianca");
+        assert_eq!(
+            clip_write_targets(&node, &snap, Some("bianca")),
+            WriteTargets::Paths(["scene.affect.bianca".to_string()].into_iter().collect())
+        );
+    }
+
+    #[test]
+    fn write_targets_unknown_directive_is_coarse() {
+        let snap = lute_manifest::core::load_core_snapshot();
+        let node = directive_clip("nosuchdir");
+        assert_eq!(
+            clip_write_targets(&node, &snap, Some("cam")),
+            WriteTargets::Coarse("cam".into())
+        );
+    }
+
+    #[test]
+    fn write_targets_effectless_directive_is_none() {
+        // core ::vfx has no effects.writes -> None (provably writes nothing)
+        let snap = lute_manifest::core::load_core_snapshot();
+        let node = directive_clip("vfx");
+        assert_eq!(
+            clip_write_targets(&node, &snap, Some("x")),
+            WriteTargets::None
+        );
     }
 }
