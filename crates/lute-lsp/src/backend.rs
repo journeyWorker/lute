@@ -78,20 +78,10 @@ impl Backend {
     /// silently validate against a broken project (plugin §11).
     async fn analyze(&self, uri: Uri, snapshot: &DocumentSnapshot) {
         let (cap, providers, rdiags) = self.snapshot_for(&uri, &snapshot.text);
-        // Resolve `uses:` schema imports relative to the document's directory,
-        // the SAME resolver the CLI runs (dsl §9.2). An untitled/non-file uri
-        // resolves to no imports.
-        let (doc, _) = lute_syntax::parse(&snapshot.text);
-        let (meta0, _) = lute_check::parse_meta(
-            &doc.meta,
-            &lute_manifest::snapshot::CapabilitySnapshot::default(),
-        );
-        let imports = uri_to_path(&uri)
-            .and_then(|p| {
-                p.parent()
-                    .map(|d| lute_check::resolve_imports(d, &meta0.uses, doc.meta.span))
-            })
-            .unwrap_or_default();
+        // Resolve `uses:` schema imports (dsl §9.2) with the SAME resolver the
+        // editor features use (`imports_for`), so diagnostics and features never
+        // disagree on the imported schema. A non-file uri resolves to no imports.
+        let imports = self.imports_for(&uri, &snapshot.text);
         let input = CheckInput {
             text: snapshot.text.clone(),
             uri: uri.as_str().to_string(),
@@ -111,6 +101,26 @@ impl Backend {
         self.client
             .publish_diagnostics(uri, diags, Some(snapshot.version))
             .await;
+    }
+
+    /// Resolve a document's `uses:` schema imports (dsl §9.2) relative to its
+    /// directory — the SINGLE resolver shared by [`analyze`](Self::analyze) and
+    /// the four editor-feature handlers, so the diagnostics surface and the
+    /// editor features never disagree on the imported state/defs. A non-file uri
+    /// (no filesystem parent) resolves to no imports (`SchemaImports::default`);
+    /// any I/O/parse/cycle failure degrades to a best-effort result, never panics.
+    fn imports_for(&self, uri: &Uri, text: &str) -> lute_check::SchemaImports {
+        let (doc, _) = lute_syntax::parse(text);
+        let (meta0, _) = lute_check::parse_meta(
+            &doc.meta,
+            &lute_manifest::snapshot::CapabilitySnapshot::default(),
+        );
+        uri_to_path(uri)
+            .and_then(|p| {
+                p.parent()
+                    .map(|d| lute_check::resolve_imports(d, &meta0.uses, doc.meta.span))
+            })
+            .unwrap_or_default()
     }
 
     /// The current full text of the open document `uri`, or `None` if it is not
@@ -218,8 +228,9 @@ impl LanguageServer for Backend {
         };
         let (doc, _) = lute_syntax::parse(&text);
         let snapshot = self.snapshot_for(&pos.text_document.uri, &text).0;
+        let imports = self.imports_for(&pos.text_document.uri, &text);
         let off = position_to_byte(&text, pos.position);
-        Ok(hover::hover_at(&doc, &snapshot, off))
+        Ok(hover::hover_at(&doc, &snapshot, &imports, off))
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
@@ -229,8 +240,9 @@ impl LanguageServer for Backend {
         };
         let (doc, _) = lute_syntax::parse(&text);
         let (snapshot, providers, _) = self.snapshot_for(&pos.text_document.uri, &text);
+        let imports = self.imports_for(&pos.text_document.uri, &text);
         let off = position_to_byte(&text, pos.position);
-        let items = completion::complete_at(&doc, &snapshot, &providers, off);
+        let items = completion::complete_at(&doc, &snapshot, &providers, &imports, off);
         if items.is_empty() {
             return Ok(None);
         }
@@ -248,14 +260,17 @@ impl LanguageServer for Backend {
         };
         let (doc, _) = lute_syntax::parse(&text);
         let snapshot = self.snapshot_for(&uri, &text).0;
+        let imports = self.imports_for(&uri, &text);
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
-        Ok(nav::definition_at(&doc, &snapshot, off).map(|span| {
-            GotoDefinitionResponse::Scalar(Location {
-                uri,
-                range: span_to_range(&span, &idx),
-            })
-        }))
+        Ok(
+            nav::definition_at(&doc, &snapshot, &imports, off).map(|span| {
+                GotoDefinitionResponse::Scalar(Location {
+                    uri,
+                    range: span_to_range(&span, &idx),
+                })
+            }),
+        )
     }
 
     async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
@@ -266,16 +281,22 @@ impl LanguageServer for Backend {
         };
         let (doc, _) = lute_syntax::parse(&text);
         let snapshot = self.snapshot_for(&uri, &text).0;
+        let imports = self.imports_for(&uri, &text);
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
-        let locs: Vec<Location> =
-            nav::references_at(&doc, &snapshot, off, params.context.include_declaration)
-                .into_iter()
-                .map(|span| Location {
-                    uri: uri.clone(),
-                    range: span_to_range(&span, &idx),
-                })
-                .collect();
+        let locs: Vec<Location> = nav::references_at(
+            &doc,
+            &snapshot,
+            &imports,
+            off,
+            params.context.include_declaration,
+        )
+        .into_iter()
+        .map(|span| Location {
+            uri: uri.clone(),
+            range: span_to_range(&span, &idx),
+        })
+        .collect();
         if locs.is_empty() {
             return Ok(None);
         }
