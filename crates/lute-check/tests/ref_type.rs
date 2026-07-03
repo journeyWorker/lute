@@ -320,3 +320,71 @@ fn paramless_def_called_with_args_flags_arity() {
     let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@warm(1)\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n";
     assert!(check_codes(scene, snap).contains(&"E-REF-ARITY".to_string()));
 }
+
+#[test]
+fn arg_type_mismatch_flags() {
+    // def `atLeast(n: number)` called with a string literal -> E-REF-ARG-TYPE.
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.defs.insert(
+        "atLeast".into(),
+        DefDecl {
+            name: "atLeast".into(),
+            ty: Type::Bool,
+            params: vec![lute_manifest::schema::DefParam {
+                name: "n".into(),
+                ty: Type::Number,
+            }],
+            cel: "true".into(),
+            min: None,
+            max: None,
+            values: None,
+        },
+    );
+    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast('hi')\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n";
+    assert!(check_codes(scene, snap).contains(&"E-REF-ARG-TYPE".to_string()));
+}
+
+#[test]
+fn arg_type_match_is_clean() {
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.defs.insert(
+        "atLeast".into(),
+        DefDecl {
+            name: "atLeast".into(),
+            ty: Type::Bool,
+            params: vec![lute_manifest::schema::DefParam {
+                name: "n".into(),
+                ty: Type::Number,
+            }],
+            cel: "true".into(),
+            min: None,
+            max: None,
+            values: None,
+        },
+    );
+    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(2)\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n";
+    assert!(!check_codes(scene, snap).contains(&"E-REF-ARG-TYPE".to_string()));
+}
+
+#[test]
+fn unresolvable_arg_is_not_flagged() {
+    // a compound arg expression has no single statically-known type -> skip (no false positive).
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.defs.insert(
+        "atLeast".into(),
+        DefDecl {
+            name: "atLeast".into(),
+            ty: Type::Bool,
+            params: vec![lute_manifest::schema::DefParam {
+                name: "n".into(),
+                ty: Type::Number,
+            }],
+            cel: "true".into(),
+            min: None,
+            max: None,
+            values: None,
+        },
+    );
+    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(scene.n + 1)\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n";
+    assert!(!check_codes(scene, snap).contains(&"E-REF-ARG-TYPE".to_string()));
+}
