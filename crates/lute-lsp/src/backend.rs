@@ -21,7 +21,7 @@
 use std::path::{Path, PathBuf};
 
 use dashmap::DashMap;
-use lute_check::{check, CheckInput, Mode};
+use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_core_span::{Span, TextIndex};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
@@ -84,6 +84,7 @@ impl Backend {
             snapshot: cap,
             providers,
             mode: Mode::Author,
+            imports: SchemaImports::default(),
         };
         let result = check(&input);
         let idx = lute_core_span::TextIndex::new(&snapshot.text);

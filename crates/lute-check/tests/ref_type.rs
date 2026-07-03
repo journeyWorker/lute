@@ -2,7 +2,7 @@
 //! statically-known expected type is incompatible with the def's produced type
 //! (dsl §8). Fed through the assembled `check()` over inline `state:`/`defs:`
 //! frontmatter (mirrors `group_d.rs`'s harness).
-use lute_check::{check, CheckInput, Mode};
+use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::DefDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -17,6 +17,7 @@ fn codes(text: &str) -> Vec<String> {
         snapshot: lute_manifest::core::load_core_snapshot(),
         providers: ProviderSet::default(),
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     };
     check(&input)
         .diagnostics
@@ -118,6 +119,7 @@ fn check_codes(text: &str, snap: CapabilitySnapshot) -> Vec<String> {
         snapshot: snap,
         providers: ProviderSet::default(),
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     };
     check(&input)
         .diagnostics

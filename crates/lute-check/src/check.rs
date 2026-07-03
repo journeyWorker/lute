@@ -67,6 +67,7 @@ use crate::ctx::{Ctx, ExpectedType, Mode};
 use crate::directives::check_directive;
 use crate::inject::{lower_node, InjectedCommand, StageState};
 use crate::meta::parse_meta;
+use crate::schema_import::SchemaImports;
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
@@ -99,6 +100,10 @@ pub struct CheckInput {
     pub providers: ProviderSet,
     /// Author (interactive LSP) vs. Ci (batch) analysis mode.
     pub mode: Mode,
+    /// Resolved `uses:` schema imports (dsl §9.2): imported state/defs merged
+    /// into this document's schema, plus resolution diagnostics. Empty when the
+    /// scene has no `uses:` (or on a surface that cannot resolve files).
+    pub imports: SchemaImports,
 }
 
 /// The result of one `check()`: every diagnostic (deduped, byte-sorted) plus the
@@ -165,7 +170,28 @@ pub fn check(input: &CheckInput) -> CheckResult {
     //    schema BEFORE the checks that resolve against it (match subjects, CEL
     //    state paths). This pre-pass owns the episode-wide `E-DUP-BRANCH`
     //    detection so the main walk never double-counts branch ids.
-    let mut schema = typed.state.clone();
+    // Merge imported schema (dsl §9.2) first, then the scene's inline `state:`.
+    // A scene MUST NOT override an imported tier: on a collision keep the imported
+    // decl and flag E-STATE-REDECLARE.
+    let mut schema = input.imports.state.clone();
+    let mut redeclare_diags: Vec<Diagnostic> = Vec::new();
+    for (path, decl) in &typed.state.decls {
+        if input.imports.state.decls.contains_key(path) {
+            redeclare_diags.push(Diagnostic {
+                code: "E-STATE-REDECLARE".to_string(),
+                severity: Severity::Error,
+                message: format!(
+                    "state path `{path}` is declared by an imported schema (§9.2); a scene must not redeclare or override it"
+                ),
+                span: doc.meta.span,
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+            });
+        } else {
+            schema.decls.insert(path.clone(), decl.clone());
+        }
+    }
     let mut seen_branches = std::collections::BTreeSet::new();
     let mut branch_diags = Vec::new();
     fold_branches(&doc, &mut schema, &mut seen_branches, &mut branch_diags);
@@ -180,6 +206,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // frontmatter defs plus plugin-exported defs (both are declared refs).
     let mut defs: std::collections::BTreeSet<String> = typed.defs.keys().cloned().collect();
     defs.extend(input.snapshot.defs.keys().cloned());
+    defs.extend(input.imports.defs.keys().cloned());
 
     // The def name -> produced `Type` table the `@ref` type-context check
     // (`E-REF-TYPE`, dsl §8) resolves against, merged from two sources.
@@ -188,6 +215,17 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // Plugin defs are already typed.
     for (name, d) in &input.snapshot.defs {
         def_types.insert(name.clone(), d.ty.clone());
+    }
+    // Imported schema defs (untyped like inline; extract `type:`). Imported
+    // overrides plugin; inline (below) overrides imported.
+    for (name, v) in &input.imports.defs {
+        if let Some(t) = v
+            .get("type")
+            .cloned()
+            .and_then(|tv| serde_yaml::from_value::<lute_manifest::types::Type>(tv).ok())
+        {
+            def_types.insert(name.clone(), t);
+        }
     }
     // Inline frontmatter defs are stored untyped; extract the `type:` sub-value
     // and deserialize it via the same serde path `Type` uses. Malformed/absent
@@ -252,6 +290,8 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(cel_diags);
     diags.extend(meta_diags);
     diags.extend(branch_diags);
+    diags.extend(input.imports.diags.clone());
+    diags.extend(redeclare_diags);
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(inject_diags);

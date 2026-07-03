@@ -9,7 +9,7 @@
 //! `lute.core` document that checks clean — the snapshot is the executable
 //! record of "what `check()` emits for a correct document of this shape".
 
-use lute_check::{check, CheckInput, Mode};
+use lute_check::{check, CheckInput, Mode, SchemaImports};
 
 /// Canonical `CheckInput` for a fixture: the core snapshot, an empty (fully
 /// permissive) provider set, and interactive `Author` mode — the same shape the
@@ -21,6 +21,7 @@ fn input_for(text: &str) -> CheckInput {
         snapshot: lute_manifest::core::load_core_snapshot(),
         providers: lute_manifest::provider::ProviderSet::default(),
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     }
 }
 

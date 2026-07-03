@@ -1,5 +1,5 @@
 //! Group D — defassign×exhaustiveness regression tests (plan 2026-07-02, Phase 1).
-use lute_check::{check, CheckInput, Mode};
+use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
 const HDR: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n";
@@ -11,6 +11,7 @@ fn codes(text: &str) -> Vec<String> {
         snapshot: lute_manifest::core::load_core_snapshot(),
         providers: ProviderSet::default(),
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     };
     check(&input)
         .diagnostics

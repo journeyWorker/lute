@@ -7,7 +7,7 @@
 //! dedup, and the byte-offset determinism ordering the Phase-6 divergence golden
 //! compares.
 
-use lute_check::{check, CheckInput, Mode};
+use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_core_span::Severity;
 use lute_manifest::provider::ProviderSet;
 
@@ -25,6 +25,7 @@ fn input_for(text: &str) -> CheckInput {
         snapshot: lute_manifest::core::load_core_snapshot(),
         providers: permissive_providers(),
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     }
 }
 
@@ -37,6 +38,7 @@ fn bianca_example_checks_clean() {
         snapshot: lute_manifest::core::load_core_snapshot(),
         providers: permissive_providers(),
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     };
     let res = check(&input);
     let errors: Vec<_> = res

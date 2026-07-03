@@ -25,7 +25,7 @@
 //! is NON-EMPTY, so a future refactor that makes `check()` silently emit nothing
 //! can't turn the equality into a vacuous pass.
 
-use lute_check::{check, CheckInput, Mode};
+use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_core_span::{Diagnostic, Severity, TextIndex};
 use lute_manifest::provider::ProviderSet;
 // v0.23 of `tower-lsp-server` re-exports the LSP type crate as `ls_types` (backed
@@ -49,6 +49,7 @@ fn input_for(text: &str) -> CheckInput {
         snapshot: lute_manifest::core::load_core_snapshot(),
         providers: ProviderSet::default(),
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     }
 }
 
@@ -230,6 +231,7 @@ fn divergence_holds_under_plugin_project() {
         snapshot,
         providers,
         mode: Mode::Author,
+        imports: SchemaImports::default(),
     };
     let res = check(&input);
 
