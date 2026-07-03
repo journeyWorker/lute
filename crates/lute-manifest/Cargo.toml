@@ -9,3 +9,6 @@ lute-core-span = { path = "../lute-core-span" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = "0.10"
+
+[dev-dependencies]
+serde_json = { workspace = true }
