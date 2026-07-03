@@ -142,6 +142,7 @@ fn type_name(ty: &Type) -> &'static str {
         Type::EnumFromOption(_) => "enumFromOption",
         Type::ProviderRef(_) => "providerRef",
         Type::SlotId { .. } => "slotId",
+        Type::AssetKind(_) => "assetKind",
     }
 }
 

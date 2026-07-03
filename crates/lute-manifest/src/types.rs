@@ -19,6 +19,7 @@ pub enum Type {
     EnumFromOption(String),       // attribute types only
     ProviderRef(String),          // any typed position
     SlotId { namespace: String }, // attribute types only
+    AssetKind(String),            // attribute types only
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -119,6 +120,9 @@ pub fn type_accepts(ty: &Type, lit: &Literal) -> bool {
         // declared namespace (plugin §8). Structurally it is a string; the slot
         // path expansion (Task 6.1) consumes the identifier downstream.
         (Type::SlotId { .. }, Literal::Str(_)) => true,
+        // An `assetKind`-typed attribute value is an authored asset-id string
+        // (e.g. a `CH` id); structural decompose/validate is the checker's job.
+        (Type::AssetKind(_), Literal::Str(_)) => true,
         _ => false,
     }
 }
@@ -168,6 +172,7 @@ enum TypeDef {
     SlotId {
         namespace: String,
     },
+    AssetKind(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -199,6 +204,7 @@ impl From<TypeDef> for Type {
             TypeDef::EnumFromOption(s) => Type::EnumFromOption(s),
             TypeDef::ProviderRef(s) => Type::ProviderRef(s),
             TypeDef::SlotId { namespace } => Type::SlotId { namespace },
+            TypeDef::AssetKind(s) => Type::AssetKind(s),
         }
     }
 }
@@ -221,6 +227,7 @@ impl From<&Type> for TypeDef {
             Type::SlotId { namespace } => TypeDef::SlotId {
                 namespace: namespace.clone(),
             },
+            Type::AssetKind(s) => TypeDef::AssetKind(s.clone()),
         }
     }
 }
@@ -387,6 +394,28 @@ mod tests {
         assert!(type_accepts(&ty, &Literal::Str("service01".into())));
         assert!(!type_accepts(&ty, &Literal::Num(1.0)));
         assert!(!type_accepts(&ty, &Literal::Bool(true)));
+    }
+
+    #[test]
+    fn type_accepts_assetkind() {
+        // An assetKind attribute value is an authored asset-id string; a
+        // non-string literal is rejected (structural validation is the checker's job).
+        let ty = Type::AssetKind("CH".into());
+        assert!(type_accepts(&ty, &Literal::Str("waitress".into())));
+        assert!(!type_accepts(&ty, &Literal::Num(1.0)));
+        assert!(!type_accepts(&ty, &Literal::Bool(true)));
+    }
+
+    #[test]
+    fn assetkind_wire_roundtrip() {
+        // Wire form is `{ assetKind: <name> }` (camelCase), like providerRef/slotId.
+        let y = "assetKind: CH";
+        let t: Type = serde_yaml::from_str(y).unwrap();
+        assert!(matches!(&t, Type::AssetKind(n) if n == "CH"));
+        let out = serde_yaml::to_string(&t).unwrap();
+        let t2: Type = serde_yaml::from_str(&out).unwrap();
+        assert_eq!(t, t2, "roundtrip mismatch for {y:?}");
+        assert_eq!(out.trim_end(), "assetKind: CH");
     }
 
     #[test]
