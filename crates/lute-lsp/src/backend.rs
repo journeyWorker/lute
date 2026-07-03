@@ -247,13 +247,14 @@ impl LanguageServer for Backend {
         let snapshot = self.snapshot_for(&uri, &text).0;
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
-        let locs: Vec<Location> = nav::references_at(&doc, &snapshot, off)
-            .into_iter()
-            .map(|span| Location {
-                uri: uri.clone(),
-                range: span_to_range(&span, &idx),
-            })
-            .collect();
+        let locs: Vec<Location> =
+            nav::references_at(&doc, &snapshot, off, params.context.include_declaration)
+                .into_iter()
+                .map(|span| Location {
+                    uri: uri.clone(),
+                    range: span_to_range(&span, &idx),
+                })
+                .collect();
         if locs.is_empty() {
             return Ok(None);
         }
