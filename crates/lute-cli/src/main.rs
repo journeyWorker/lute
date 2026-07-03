@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use lute_check::{check, parse_meta, CheckInput, Mode, SchemaImports};
+use lute_check::{check, parse_meta, CheckInput, Mode};
 use lute_core_span::Severity;
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::project::{load_project, resolve_document_snapshot};
@@ -142,6 +142,11 @@ fn run_check(
         eprintln!("lute: {}: {}", d.code, d.message);
     }
 
+    // Resolve the scene's `uses:` schema imports (dsl §9.2) relative to the
+    // scene's own directory; the LSP resolves identically -> no divergence.
+    let base = file.parent().unwrap_or_else(|| Path::new("."));
+    let imports = lute_check::resolve_imports(base, &meta0.uses, doc.meta.span);
+
     let input = CheckInput {
         text,
         uri: file.display().to_string(),
@@ -150,7 +155,7 @@ fn run_check(
         // Batch/build analysis, not the interactive LSP default (both behave
         // identically today; the checker does not branch on mode yet).
         mode: Mode::Ci,
-        imports: SchemaImports::default(),
+        imports,
     };
     let result = check(&input);
 
