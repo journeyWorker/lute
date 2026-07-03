@@ -1,4 +1,5 @@
 pub mod assemble;
+pub mod asset;
 pub mod core;
 pub mod loader;
 pub mod project;
