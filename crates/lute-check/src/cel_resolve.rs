@@ -57,9 +57,16 @@ pub fn check_cel_slot(
                 span,
             ));
         } else if let (Some(expected), Some(produced)) = (expected, ctx.def_types.get(&r.name)) {
-            // Declared def with a known produced type, in a slot with a known
-            // expected type: flag a clear incompatibility (dsl §8).
-            if !compatible(produced, expected) {
+            // Only when the `@ref` IS the whole CEL value does the def's produced type
+            // equal the slot's value type. In a compound expression (`@num > 0`) the def
+            // types only a subexpression, so comparing to the slot's expected type would
+            // false-positive — skip conservatively.
+            let is_whole_slot = slot
+                .raw
+                .trim()
+                .strip_prefix('@')
+                .is_some_and(|rest| rest == r.name);
+            if is_whole_slot && !compatible(produced, expected) {
                 diags.push(diag(
                     "E-REF-TYPE",
                     format!(
@@ -349,5 +356,19 @@ mod tests {
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
         assert!(d.iter().any(|x| x.code == "E-UNDECLARED-REF"));
         assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"));
+    }
+
+    #[test]
+    fn ref_type_compound_expr_no_false_positive() {
+        // `@num > 0` in a bool slot: @num (Number) types a numeric subexpression;
+        // the whole expression is boolean -> must NOT flag E-REF-TYPE.
+        let ctx = ctx_with_def("num", Type::Number);
+        let slot = cel_slot_condition("@num > 0");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
+        assert!(
+            !d.iter().any(|x| x.code == "E-REF-TYPE"),
+            "compound expression must not flag E-REF-TYPE; got {:?}",
+            d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+        );
     }
 }
