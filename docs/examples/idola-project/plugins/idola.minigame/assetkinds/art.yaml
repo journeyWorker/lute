@@ -1,0 +1,6 @@
+assetKinds:
+  - kind: MG
+    segments:
+      - { name: prefix, const: MG }
+      - { name: gameId, type: { providerRef: minigameId } }
+      - { name: variant, type: number }

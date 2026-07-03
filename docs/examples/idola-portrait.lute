@@ -1,0 +1,17 @@
+---
+character: bianca
+season: 1
+episode: 5
+luteVersion: "0.0.1"
+profile: date-minigame
+plugins:
+  idola.minigame:
+    resultScope: scene
+    allowedKinds: [rhythm]
+---
+
+# Portrait asset demo
+
+## Shot 1.
+
+::mgart{art="MG.bianca_service_01.0"}

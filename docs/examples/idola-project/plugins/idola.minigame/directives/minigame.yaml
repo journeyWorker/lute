@@ -18,3 +18,7 @@ directives:
         - { scope: scene, path: [minigame, { fromAttr: { name: resultKey } }, attempts], value: { op: increment, by: 1 } }
     bridge: { service: minigame, operation: play }
     lower: { kind: builtin, name: bridgeMinigame }
+  - name: mgart
+    attrs:
+      - { name: art, required: true, type: { assetKind: MG } }
+    lower: { kind: builtin, name: mgart }
