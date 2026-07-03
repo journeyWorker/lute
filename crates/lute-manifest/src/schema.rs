@@ -163,13 +163,23 @@ pub struct BridgeCapability {
     pub result: Vec<Field>,
 }
 
+/// A single declared def parameter (dsl §8.1). Order-preserving: the position of
+/// a `DefParam` in [`DefDecl::params`] is the positional-binding order for
+/// `@name(args)` calls.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct DefParam {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub ty: Type,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DefDecl {
     pub name: String,
     #[serde(rename = "type")]
     pub ty: Type,
-    #[serde(default)]
-    pub params: std::collections::BTreeMap<String, Type>,
+    #[serde(default, deserialize_with = "de_params")]
+    pub params: Vec<DefParam>,
     pub cel: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min: Option<f64>,
@@ -177,6 +187,36 @@ pub struct DefDecl {
     pub max: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub values: Option<Vec<String>>,
+}
+
+/// Deserialize `DefDecl.params` in SOURCE order (dsl §8.1). Accepts either the
+/// §8.1 `params:` YAML MAPPING (`{ p: number }`) — read via `serde_yaml::Mapping`,
+/// which is insertion-ordered in serde_yaml 0.9.34, so declaration order is
+/// preserved for positional arg binding — OR a SEQUENCE of `{ name, type }`
+/// entries (the plugin `defs.yaml` list spelling). A malformed mapping entry is
+/// skipped, never a panic.
+fn de_params<'de, D>(d: D) -> Result<Vec<DefParam>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Map(serde_yaml::Mapping),
+        Seq(Vec<DefParam>),
+    }
+    Ok(match Raw::deserialize(d)? {
+        Raw::Seq(v) => v,
+        Raw::Map(m) => m
+            .into_iter()
+            .filter_map(|(k, v)| {
+                let name = k.as_str()?.to_string();
+                let ty: Type = serde_yaml::from_value(v).ok()?;
+                Some(DefParam { name, ty })
+            })
+            .collect(),
+    })
 }
 
 /// plugin §5 manifest entry.
@@ -423,5 +463,54 @@ assetKinds:
             d.fallback,
             ["dropVariation", "areaKind", "preferAfternoon", "anyView"]
         );
+    }
+
+    #[test]
+    fn def_params_mapping_deserializes_in_source_order() {
+        // §8.1 `params:` MAPPING spelling — order MUST be preserved for positional
+        // arg binding (serde_yaml::Mapping is insertion-ordered).
+        let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params: { a: number, b: bool }\n";
+        let file: DefsFile = serde_yaml::from_str(src).unwrap();
+        let d = &file.defs[0];
+        assert_eq!(
+            d.params,
+            vec![
+                DefParam {
+                    name: "a".into(),
+                    ty: Type::Number
+                },
+                DefParam {
+                    name: "b".into(),
+                    ty: Type::Bool
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn def_params_sequence_spelling_deserializes() {
+        // The plugin `defs.yaml` list spelling `[{ name, type }]` also works.
+        let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params:\n      - { name: a, type: number }\n      - { name: b, type: bool }\n";
+        let file: DefsFile = serde_yaml::from_str(src).unwrap();
+        assert_eq!(
+            file.defs[0].params,
+            vec![
+                DefParam {
+                    name: "a".into(),
+                    ty: Type::Number
+                },
+                DefParam {
+                    name: "b".into(),
+                    ty: Type::Bool
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn def_params_absent_yields_empty() {
+        let src = "defs:\n  - name: bare\n    type: bool\n    cel: \"true\"\n";
+        let file: DefsFile = serde_yaml::from_str(src).unwrap();
+        assert!(file.defs[0].params.is_empty());
     }
 }

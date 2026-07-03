@@ -256,3 +256,67 @@ fn compound_call_comparison_is_not_whole_slot() {
         "a number == number comparison is a valid bool guard; got {codes:?}"
     );
 }
+
+#[test]
+fn arity_mismatch_flags() {
+    // def `atLeast(n)` (1 param) called with 0 args (bare) -> E-REF-ARITY.
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.defs.insert(
+        "atLeast".into(),
+        DefDecl {
+            name: "atLeast".into(),
+            ty: Type::Bool,
+            params: vec![lute_manifest::schema::DefParam {
+                name: "n".into(),
+                ty: Type::Number,
+            }],
+            cel: "true".into(),
+            min: None,
+            max: None,
+            values: None,
+        },
+    );
+    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n";
+    assert!(check_codes(scene, snap).contains(&"E-REF-ARITY".to_string()));
+}
+
+#[test]
+fn arity_match_is_clean() {
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.defs.insert(
+        "atLeast".into(),
+        DefDecl {
+            name: "atLeast".into(),
+            ty: Type::Bool,
+            params: vec![lute_manifest::schema::DefParam {
+                name: "n".into(),
+                ty: Type::Number,
+            }],
+            cel: "true".into(),
+            min: None,
+            max: None,
+            values: None,
+        },
+    );
+    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(2)\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n";
+    assert!(!check_codes(scene, snap).contains(&"E-REF-ARITY".to_string()));
+}
+
+#[test]
+fn paramless_def_called_with_args_flags_arity() {
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.defs.insert(
+        "warm".into(),
+        DefDecl {
+            name: "warm".into(),
+            ty: Type::Bool,
+            params: Default::default(),
+            cel: "true".into(),
+            min: None,
+            max: None,
+            values: None,
+        },
+    );
+    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@warm(1)\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n";
+    assert!(check_codes(scene, snap).contains(&"E-REF-ARITY".to_string()));
+}
