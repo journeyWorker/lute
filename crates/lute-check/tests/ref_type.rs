@@ -4,6 +4,9 @@
 //! frontmatter (mirrors `group_d.rs`'s harness).
 use lute_check::{check, CheckInput, Mode};
 use lute_manifest::provider::ProviderSet;
+use lute_manifest::schema::DefDecl;
+use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::types::Type;
 
 const HDR: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n";
 
@@ -97,5 +100,99 @@ fn bianca_style_fond_bool_def_is_clean() {
         !codes(&t).contains(&"E-REF-TYPE".to_string()),
         "bianca's `fond: bool` in a bool guard must NOT flag E-REF-TYPE; got {:?}",
         codes(&t)
+    );
+}
+
+// --- B whole-branch fix: plugin-exported defs (`snapshot.defs`) are declared
+// `@refs` (dsl §8.1). `ctx.defs` must union inline frontmatter defs with plugin
+// def names; otherwise a whole-slot `@pluginDef` is falsely `E-UNDECLARED-REF`
+// and can never reach the `E-REF-TYPE` branch. Exercised via a SYNTHETIC
+// snapshot (the disk loader does not populate `snapshot.defs` today).
+
+/// Like `codes`, but drives `check()` over a caller-supplied snapshot so a
+/// plugin-exported def can be injected into `snap.defs`.
+fn check_codes(text: &str, snap: CapabilitySnapshot) -> Vec<String> {
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "ref_type".into(),
+        snapshot: snap,
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+    };
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
+}
+
+// Minimal valid scenes whose whole `<when test>` value is a bare plugin-def ref
+// (a Condition slot ⇒ expected Bool). Only the `test=` ref differs.
+const SCENE_WARMTH: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n\
+    state:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n\
+    <match on=\"scene.flag\">\n\
+    <when test=\"@warmth\">:line[narrator]: a\n</when>\n\
+    <otherwise>:line[narrator]: b\n</otherwise>\n\
+    </match>\n";
+const SCENE_COUNT: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n\
+    state:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n\
+    <match on=\"scene.flag\">\n\
+    <when test=\"@count\">:line[narrator]: a\n</when>\n\
+    <otherwise>:line[narrator]: b\n</otherwise>\n\
+    </match>\n";
+
+#[test]
+fn plugin_def_ref_is_declared_and_type_checked() {
+    // A plugin-exported BOOL def used whole-slot in a bool guard: NOT undeclared
+    // (it is a declared def via `snapshot.defs`), NOT E-REF-TYPE (bool ~ bool).
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.defs.insert(
+        "warmth".into(),
+        DefDecl {
+            name: "warmth".into(),
+            ty: Type::Bool,
+            params: Default::default(),
+            cel: "true".into(),
+            min: None,
+            max: None,
+            values: None,
+        },
+    );
+    let codes = check_codes(SCENE_WARMTH, snap);
+    assert!(
+        !codes.contains(&"E-UNDECLARED-REF".to_string()),
+        "plugin def must be declared; got {codes:?}"
+    );
+    assert!(
+        !codes.contains(&"E-REF-TYPE".to_string()),
+        "bool def in bool guard is compatible; got {codes:?}"
+    );
+}
+
+#[test]
+fn plugin_def_ref_type_mismatch_flags() {
+    // A plugin-exported NUMBER def used whole-slot in a bool guard: NOT
+    // undeclared, but reaches E-REF-TYPE (number is not bool).
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.defs.insert(
+        "count".into(),
+        DefDecl {
+            name: "count".into(),
+            ty: Type::Number,
+            params: Default::default(),
+            cel: "1".into(),
+            min: None,
+            max: None,
+            values: None,
+        },
+    );
+    let codes = check_codes(SCENE_COUNT, snap);
+    assert!(
+        !codes.contains(&"E-UNDECLARED-REF".to_string()),
+        "got {codes:?}"
+    );
+    assert!(
+        codes.contains(&"E-REF-TYPE".to_string()),
+        "number def in bool guard must flag; got {codes:?}"
     );
 }

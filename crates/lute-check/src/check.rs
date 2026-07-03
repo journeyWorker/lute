@@ -176,8 +176,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
     //     before the walk + defassign so plugin-declared state resolves.
     fold_directive_slots(&doc, &input.snapshot, &mut schema);
 
-    // The def names the `@ref` resolver validates against (dsl §8.1).
-    let defs: std::collections::BTreeSet<String> = typed.defs.keys().cloned().collect();
+    // The def names the `@ref` resolver validates against (dsl §8.1): inline
+    // frontmatter defs plus plugin-exported defs (both are declared refs).
+    let mut defs: std::collections::BTreeSet<String> = typed.defs.keys().cloned().collect();
+    defs.extend(input.snapshot.defs.keys().cloned());
 
     // The def name -> produced `Type` table the `@ref` type-context check
     // (`E-REF-TYPE`, dsl §8) resolves against, merged from two sources.
