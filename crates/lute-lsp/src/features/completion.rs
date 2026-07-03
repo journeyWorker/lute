@@ -14,7 +14,7 @@
 
 use std::collections::BTreeSet;
 
-use lute_check::parse_meta;
+use lute_check::{parse_meta, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -30,9 +30,11 @@ pub fn complete_at(
     doc: &Document,
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
+    imports: &SchemaImports,
     off: usize,
 ) -> Vec<CompletionItem> {
-    let (meta, _) = parse_meta(&doc.meta, snapshot);
+    let (mut meta, _) = parse_meta(&doc.meta, snapshot);
+    super::merge_imports(&mut meta, imports);
     let Some(cursor) = super::resolve(doc, off) else {
         return Vec::new();
     };
@@ -345,7 +347,13 @@ mod tests {
         let text = "## Shot 1.\n::";
         let doc = parsed(text);
         let off = text.find("::").unwrap() + 2; // just past `::`
-        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(items.iter().any(|i| i.label == "camera"));
         assert!(items.iter().any(|i| i.label == "bg"));
     }
@@ -355,7 +363,13 @@ mod tests {
         let text = "## Shot 1.\n::camera{}\n";
         let doc = parsed(text);
         let off = text.find("{}").unwrap() + 1; // between the braces
-        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(ls.contains(&"focus"), "has focus: {ls:?}");
         assert!(ls.contains(&"zoom"), "has zoom: {ls:?}");
@@ -367,7 +381,13 @@ mod tests {
         let doc = parsed(text);
         // Cursor in the whitespace after the first attr (still the attr area).
         let off = text.find("\" }").unwrap() + 2;
-        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             !ls.contains(&"focus"),
@@ -382,7 +402,13 @@ mod tests {
         let doc = parsed(text);
         // Cursor inside the empty `anchor=""` value.
         let off = text.find("anchor=\"").unwrap() + "anchor=\"".len();
-        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"left") && ls.contains(&"center") && ls.contains(&"right"),
@@ -395,7 +421,13 @@ mod tests {
         let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n::set{scene.y = @}\n";
         let doc = parsed(text);
         let off = text.find("= @").unwrap() + 3; // just past `@`
-        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             items.iter().any(|i| i.label == "fond"),
             "offers def name: {:?}",
@@ -408,7 +440,13 @@ mod tests {
         let text = "## Shot 1.\n<branch id=\"number\">\n  <choice id=\"a\" label=\"A\">\n    :line[f]: a.\n  </choice>\n</branch>\n<match on=\"\">\n  <otherwise>\n    :line[f]: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
-        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             items.iter().any(|i| i.label == "scene.choices.number"),
             "offers the choice path: {:?}",
@@ -422,7 +460,13 @@ mod tests {
         let doc = parsed(text);
         // Cursor after the `=` (expr slot) — state paths are offered.
         let off = text.rfind("= }").unwrap() + 2;
-        let items = complete_at(&doc, &load_core_snapshot(), &ProviderSet::default(), off);
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             items.iter().any(|i| i.label == "scene.affect.bianca"),
             "offers declared state path: {:?}",
@@ -508,7 +552,13 @@ mod tests {
         let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.\"}\n";
         let doc = parsed(text);
         let off = text.find("waitress.").unwrap() + "waitress.".len();
-        let items = complete_at(&doc, &asset_snapshot(), &ProviderSet::default(), off);
+        let items = complete_at(
+            &doc,
+            &asset_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"delighted") && ls.contains(&"content") && ls.contains(&"neutral"),
@@ -522,7 +572,13 @@ mod tests {
         let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.delighted.3\"}\n";
         let doc = parsed(text);
         let off = text.find("CH.bianca").unwrap() + 1; // on the `H` of `CH`
-        let items = complete_at(&doc, &asset_snapshot(), &ProviderSet::default(), off);
+        let items = complete_at(
+            &doc,
+            &asset_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(ls.contains(&"CH"), "const prefix offered: {ls:?}");
     }
@@ -545,18 +601,94 @@ mod tests {
             )]),
             stale: false,
         });
-        let items = complete_at(&doc, &asset_snapshot(), &providers, off);
+        let items = complete_at(
+            &doc,
+            &asset_snapshot(),
+            &providers,
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"bianca") && ls.contains(&"ren"),
             "providerRef segment offers pinned ids: {ls:?}"
         );
         // An empty ProviderSet offers nothing for that segment (honest §6.9).
-        let empty = complete_at(&doc, &asset_snapshot(), &ProviderSet::default(), off);
+        let empty = complete_at(
+            &doc,
+            &asset_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             empty.is_empty(),
             "empty ProviderSet -> no provider ids: {:?}",
             labels(&empty)
+        );
+    }
+
+    /// A directly-constructed `SchemaImports` (no disk): an imported `run.gold`
+    /// state path and an imported `helped` def — exactly the shape `check()` sees
+    /// after resolving a scene's `uses:` schema (dsl §9.2).
+    fn schema_imports() -> lute_check::SchemaImports {
+        use lute_check::{Namespace, SchemaImports, StateDecl};
+        use lute_manifest::types::Type;
+        let mut imports = SchemaImports::default();
+        imports.state.decls.insert(
+            "run.gold".to_string(),
+            StateDecl {
+                ty: Type::Number,
+                default: None,
+                namespace: Namespace::Run,
+            },
+        );
+        imports.defs.insert(
+            "helped".to_string(),
+            serde_yaml::from_str("{ type: bool, cel: \"true\" }").unwrap(),
+        );
+        imports
+    }
+
+    #[test]
+    fn completion_offers_imported_state_path() {
+        // `run.gold` is only imported via `uses:`, not declared inline.
+        let text =
+            "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold = }\n";
+        let doc = parsed(text);
+        let off = text.rfind("= }").unwrap() + 2;
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &schema_imports(),
+            off,
+        );
+        assert!(
+            items.iter().any(|i| i.label == "run.gold"),
+            "offers imported state path: {:?}",
+            labels(&items)
+        );
+    }
+
+    #[test]
+    fn completion_offers_imported_def_name() {
+        // `@helped` is only imported via `uses:`, not declared inline.
+        let text =
+            "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{scene.y = @}\n";
+        let doc = parsed(text);
+        let off = text.find("= @").unwrap() + 3;
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &schema_imports(),
+            off,
+        );
+        assert!(
+            items.iter().any(|i| i.label == "helped"),
+            "offers imported def name: {:?}",
+            labels(&items)
         );
     }
 }

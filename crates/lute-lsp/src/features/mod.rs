@@ -27,13 +27,20 @@
 //! [`completion`] carry no positions at all (hover's `range` is `None`; a
 //! `CompletionItem` is label/kind/detail only), so they are pure LSP values.
 //!
-//! ## State/defs threading
-//! State-path and `@ref` lookups need the typed frontmatter, so each feature fn
-//! calls [`lute_check::parse_meta`] on `doc.meta` internally (meta diagnostics are
+//! ## State/defs threading (incl. `uses:` imports, dsl §9.2)
+//! State-path and `@ref` lookups need the typed frontmatter, so the meta-driven
+//! feature fns ([`hover::hover_at`], [`completion::complete_at`]) call
+//! [`lute_check::parse_meta`] on `doc.meta` internally (meta diagnostics are
 //! dropped — the feature is best-effort and the diagnostic surface is `check()`'s
-//! job). `TypedMeta.state.decls` backs state hover/definition; `TypedMeta.defs`
-//! (author-declared inline defs) plus `snapshot.defs` (plugin-exported [`DefDecl`])
-//! back `@ref` hover/definition.
+//! job), then merge the caller-resolved [`lute_check::SchemaImports`] via
+//! [`merge_imports`] so the SAME imported state/defs `check()` validates are
+//! visible to hover/completion (inline entries win on collision). `TypedMeta.state.decls`
+//! backs state hover/completion; `TypedMeta.defs` (author-declared inline defs,
+//! now unioned with imported defs) plus `snapshot.defs` (plugin-exported
+//! [`DefDecl`]) back `@ref` hover/completion. [`nav`] resolves declaration SITES
+//! from the document text, so an imported symbol (declared in another file, with
+//! no in-document site) surfaces through its in-document *uses* (references),
+//! while go-to-definition degrades gracefully to `None`.
 
 pub mod completion;
 pub mod folding;
@@ -50,6 +57,25 @@ use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{
     Arm, Attr, AttrValue, CelSlot, ClipNode, Directive, Document, Line, Node, Set,
 };
+
+/// Merge imported schema (dsl §9.2) into a document's typed frontmatter so the
+/// editor features see the same state/defs as [`lute_check::check`]. Inline
+/// entries win on key collision (scene-local precedence — matching `check()`; a
+/// genuine conflict is a diagnostic, not the feature layer's concern). Called by
+/// each meta-driven feature fn immediately after `parse_meta`, so every existing
+/// sub-helper (`state_hover`, `state_path_items`, `def_info`, `def_items`)
+/// transparently resolves imported symbols with no further change.
+pub(crate) fn merge_imports(meta: &mut lute_check::TypedMeta, imports: &lute_check::SchemaImports) {
+    for (k, v) in &imports.state.decls {
+        meta.state
+            .decls
+            .entry(k.clone())
+            .or_insert_with(|| v.clone());
+    }
+    for (k, v) in &imports.defs {
+        meta.defs.entry(k.clone()).or_insert_with(|| v.clone());
+    }
+}
 
 /// What the cursor is resting on, once the innermost containing construct is
 /// resolved. Every feature dispatches on this; the lifetime borrows the parsed
@@ -783,7 +809,13 @@ mod tests {
         let (doc, _) = parse(text);
         // Cursor on the `::set` target path.
         let off = text.find("scene.affect.bianca = 1").unwrap();
-        let uses = nav::references_at(&doc, &lute_manifest::core::load_core_snapshot(), off, false);
+        let uses = nav::references_at(
+            &doc,
+            &lute_manifest::core::load_core_snapshot(),
+            &lute_check::SchemaImports::default(),
+            off,
+            false,
+        );
         // Expected real uses: the ::set target + the `<match on=...>` subject. The
         // dotted text inside the `<when test="'scene.affect.bianca' == 'x'">`
         // string literal must NOT be counted.

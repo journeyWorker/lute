@@ -17,6 +17,7 @@
 //! backend re-derives the `Range` from the bytes through its `TextIndex`, so the
 //! reported positions match the headless surface to the code unit.
 
+use lute_check::SchemaImports;
 use lute_core_span::Span;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::Document;
@@ -27,8 +28,21 @@ use super::{
 };
 
 /// The declaration site of the symbol at byte offset `off`, or `None` when the
-/// cursor is not on a navigable symbol (or the symbol has no in-document site).
-pub fn definition_at(doc: &Document, snapshot: &CapabilitySnapshot, off: usize) -> Option<Span> {
+/// cursor is not on a navigable symbol (or the symbol has no in-document site — a
+/// snapshot-only def, or a `uses:`-imported symbol declared in another file).
+///
+/// `imports` is threaded for API uniformity with the meta-driven features (the
+/// backend feeds all four handlers from one `imports_for` resolver), but nav
+/// resolves declaration sites from the document text alone: an imported symbol
+/// (dsl §9.2) has no in-document site and no recorded span, so it degrades
+/// gracefully to `None` — never a panic or a phantom span (best-effort,
+/// local-only). Its in-document *uses* still surface through [`references_at`].
+pub fn definition_at(
+    doc: &Document,
+    snapshot: &CapabilitySnapshot,
+    _imports: &SchemaImports,
+    off: usize,
+) -> Option<Span> {
     let cursor = super::resolve(doc, off)?;
     match cursor {
         Cursor::SetPath { path, .. } => path_definition(doc, path),
@@ -73,9 +87,14 @@ fn path_definition(doc: &Document, path: &str) -> Option<Span> {
 /// [`Span`] [`definition_at`] returns — is unioned into the result, deduped by
 /// [`Span`] equality. When false, only the use-set is returned (byte-identical to
 /// the historical behavior).
+///
+/// `imports` is forwarded to [`definition_at`] for the `include_declaration`
+/// union; the in-document use-set itself is collected by scanning the body, so an
+/// imported symbol's uses (dsl §9.2) surface without any schema lookup.
 pub fn references_at(
     doc: &Document,
     snapshot: &CapabilitySnapshot,
+    imports: &SchemaImports,
     off: usize,
     include_declaration: bool,
 ) -> Vec<Span> {
@@ -100,7 +119,7 @@ pub fn references_at(
         _ => Vec::new(),
     };
     if include_declaration {
-        if let Some(decl) = definition_at(doc, snapshot, off) {
+        if let Some(decl) = definition_at(doc, snapshot, imports, off) {
             if !uses.contains(&decl) {
                 uses.push(decl);
             }
@@ -134,7 +153,8 @@ mod tests {
         let doc = parsed(BIANCA);
         // Cursor inside the `on="scene.choices.number"` subject path.
         let off = BIANCA.find("scene.choices.number").unwrap() + 5;
-        let loc = definition_at(&doc, &load_core_snapshot(), off).unwrap();
+        let loc =
+            definition_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let branch_line = line_of(BIANCA, BIANCA.find("<branch id=").unwrap());
         assert_eq!(line_of(BIANCA, loc.byte_start), branch_line);
     }
@@ -143,7 +163,8 @@ mod tests {
     fn definition_on_ref_jumps_to_def_decl() {
         let doc = parsed(BIANCA);
         let off = BIANCA.find("@fond").unwrap() + 1;
-        let loc = definition_at(&doc, &load_core_snapshot(), off).unwrap();
+        let loc =
+            definition_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let def_line = line_of(BIANCA, BIANCA.find("  fond:").unwrap() + 2);
         assert_eq!(line_of(BIANCA, loc.byte_start), def_line);
     }
@@ -154,7 +175,8 @@ mod tests {
         // The `::set{scene.affect.bianca += 1}` target path.
         let set_at = BIANCA.find("::set{").unwrap();
         let off = BIANCA[set_at..].find("scene.affect.bianca").unwrap() + set_at + 2;
-        let loc = definition_at(&doc, &load_core_snapshot(), off).unwrap();
+        let loc =
+            definition_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let decl_line = line_of(BIANCA, BIANCA.find("  scene.affect.bianca:").unwrap() + 2);
         assert_eq!(line_of(BIANCA, loc.byte_start), decl_line);
     }
@@ -164,7 +186,13 @@ mod tests {
         let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :line[f]: a.\n  </when>\n  <when test=\"@fond && true\">\n    :line[f]: b.\n  </when>\n  <otherwise>\n    :line[f]: c.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@fond").unwrap() + 1; // on the first use
-        let refs = references_at(&doc, &load_core_snapshot(), off, false);
+        let refs = references_at(
+            &doc,
+            &load_core_snapshot(),
+            &SchemaImports::default(),
+            off,
+            false,
+        );
         assert_eq!(refs.len(), 2, "two @fond uses: {refs:?}");
         // Both spans land on `@fond` occurrences.
         for r in &refs {
@@ -178,7 +206,13 @@ mod tests {
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("scene.affect.bianca").unwrap() + set_at + 2;
-        let refs = references_at(&doc, &load_core_snapshot(), off, false);
+        let refs = references_at(
+            &doc,
+            &load_core_snapshot(),
+            &SchemaImports::default(),
+            off,
+            false,
+        );
         // One `::set` target path + one `<match on=…>` CEL occurrence.
         assert_eq!(refs.len(), 2, "set + read: {refs:?}");
     }
@@ -191,15 +225,16 @@ mod tests {
         let off = text[set_at..].find("scene.affect.bianca").unwrap() + set_at + 2;
         let snap = load_core_snapshot();
         // Baseline (=false): use-set only, declaration excluded — byte-identical to today.
-        let uses = references_at(&doc, &snap, off, false);
+        let uses = references_at(&doc, &snap, &SchemaImports::default(), off, false);
         assert_eq!(uses.len(), 2, "set + read only: {uses:?}");
-        let decl = definition_at(&doc, &snap, off).expect("state path has a decl site");
+        let decl = definition_at(&doc, &snap, &SchemaImports::default(), off)
+            .expect("state path has a decl site");
         assert!(
             !uses.contains(&decl),
             "decl must be excluded when include_declaration=false: {uses:?}"
         );
         // =true: the decl span is unioned in (deduped) alongside the use-set.
-        let with_decl = references_at(&doc, &snap, off, true);
+        let with_decl = references_at(&doc, &snap, &SchemaImports::default(), off, true);
         assert_eq!(with_decl.len(), 3, "set + read + decl: {with_decl:?}");
         assert!(
             with_decl.contains(&decl),
@@ -211,7 +246,9 @@ mod tests {
     fn definition_off_symbol_is_none() {
         let doc = parsed("## Shot 1.\n:line[narrator]: just prose.\n");
         let off = 20; // in the prose
-        assert!(definition_at(&doc, &load_core_snapshot(), off).is_none());
+        assert!(
+            definition_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).is_none()
+        );
     }
 
     /// A snapshot with a `CH` assetKind (plugin §6.9 shape) and a `::portrait`
@@ -293,6 +330,66 @@ mod tests {
         let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.delighted.3\"}\n";
         let doc = parsed(text);
         let off = text.find("bianca").unwrap() + 1;
-        assert!(definition_at(&doc, &asset_snapshot(), off).is_none());
+        assert!(definition_at(&doc, &asset_snapshot(), &SchemaImports::default(), off).is_none());
+    }
+
+    /// A directly-constructed `SchemaImports` (no disk): an imported `run.gold`
+    /// state path and an imported `helped` def — exactly the shape `check()` sees
+    /// after resolving a scene's `uses:` schema (dsl §9.2).
+    fn schema_imports() -> lute_check::SchemaImports {
+        use lute_check::{Namespace, SchemaImports, StateDecl};
+        use lute_manifest::types::Type;
+        let mut imports = SchemaImports::default();
+        imports.state.decls.insert(
+            "run.gold".to_string(),
+            StateDecl {
+                ty: Type::Number,
+                default: None,
+                namespace: Namespace::Run,
+            },
+        );
+        imports.defs.insert(
+            "helped".to_string(),
+            serde_yaml::from_str("{ type: bool, cel: \"true\" }").unwrap(),
+        );
+        imports
+    }
+
+    #[test]
+    fn references_on_imported_ref_returns_uses() {
+        // `@helped` is only imported via `uses:` — its in-document uses are still
+        // collected (nav scans the body; the declaration lives in another file).
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@helped\">\n    :line[f]: a.\n  </when>\n  <when test=\"@helped && true\">\n    :line[f]: b.\n  </when>\n  <otherwise>\n    :line[f]: c.\n  </otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("@helped").unwrap() + 1;
+        let refs = references_at(&doc, &load_core_snapshot(), &schema_imports(), off, false);
+        assert_eq!(refs.len(), 2, "two @helped uses surfaced: {refs:?}");
+        for r in &refs {
+            assert_eq!(&text[r.byte_start..r.byte_end], "@helped");
+        }
+    }
+
+    #[test]
+    fn references_on_imported_state_path_returns_uses() {
+        // `run.gold` is only imported via `uses:` — its `::set` target + CEL read
+        // are still collected.
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold += 1}\n<match on=\"run.gold\">\n  <otherwise>\n    :line[f]: x.\n  </otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let set_at = text.find("::set{").unwrap();
+        let off = text[set_at..].find("run.gold").unwrap() + set_at + 2;
+        let refs = references_at(&doc, &load_core_snapshot(), &schema_imports(), off, false);
+        assert_eq!(refs.len(), 2, "set + read surfaced: {refs:?}");
+    }
+
+    #[test]
+    fn definition_on_imported_symbol_is_none() {
+        // An imported symbol has NO in-document declaration site (it lives in the
+        // imported schema file, for which `SchemaImports` records no span), so
+        // go-to-definition degrades gracefully to `None` — never a panic or a
+        // phantom span (best-effort, local-only; dsl §9.2).
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@helped\">\n    :line[f]: a.\n  </when>\n  <otherwise>\n    :line[f]: b.\n  </otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("@helped").unwrap() + 1;
+        assert!(definition_at(&doc, &load_core_snapshot(), &schema_imports(), off).is_none());
     }
 }

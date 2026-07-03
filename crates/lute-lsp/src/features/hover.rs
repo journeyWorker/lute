@@ -15,7 +15,7 @@
 //! with no capability match yields `None`. `Hover.range` is `None`: highlighting the hovered
 //! span is optional and would require the document text this pure fn does not hold.
 
-use lute_check::parse_meta;
+use lute_check::{parse_meta, SchemaImports};
 use lute_manifest::asset;
 use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -29,8 +29,14 @@ use super::{
 
 /// Hover documentation for the construct at byte offset `off`, or `None` when the
 /// cursor rests on something with no capability-backed explanation.
-pub fn hover_at(doc: &Document, snapshot: &CapabilitySnapshot, off: usize) -> Option<Hover> {
-    let (meta, _) = parse_meta(&doc.meta, snapshot);
+pub fn hover_at(
+    doc: &Document,
+    snapshot: &CapabilitySnapshot,
+    imports: &SchemaImports,
+    off: usize,
+) -> Option<Hover> {
+    let (mut meta, _) = parse_meta(&doc.meta, snapshot);
+    super::merge_imports(&mut meta, imports);
     let cursor = super::resolve(doc, off)?;
     let md = match cursor {
         Cursor::DirectiveName(tag) => directive_hover(snapshot, tag),
@@ -227,7 +233,7 @@ mod tests {
     fn hover_on_ref_shows_def_cel() {
         let doc = parsed(WITH_DEF_FOND);
         let off = pos_on(WITH_DEF_FOND, "@fond");
-        let h = hover_at(&doc, &load_core_snapshot(), off).unwrap();
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         assert!(contents_text(&h).contains("scene.affect.bianca >= 1"));
     }
 
@@ -235,7 +241,7 @@ mod tests {
     fn hover_on_ref_shows_def_type() {
         let doc = parsed(WITH_DEF_FOND);
         let off = pos_on(WITH_DEF_FOND, "@fond");
-        let h = hover_at(&doc, &load_core_snapshot(), off).unwrap();
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         assert!(contents_text(&h).contains("bool"));
     }
 
@@ -244,7 +250,7 @@ mod tests {
         let text = "## Shot 1.\n::camera{focus=\"bianca\"}\n";
         let doc = parsed(text);
         let off = pos_on(text, "camera");
-        let h = hover_at(&doc, &load_core_snapshot(), off).unwrap();
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
         assert!(s.contains("::camera"), "names the directive: {s}");
         assert!(s.contains("focus"), "lists an attribute: {s}");
@@ -257,7 +263,7 @@ mod tests {
         // Cursor on the `::set` target path (first occurrence in the body).
         let body_start = text.find("::set{").unwrap();
         let off = text[body_start..].find("scene.affect.bianca").unwrap() + body_start + 2;
-        let h = hover_at(&doc, &load_core_snapshot(), off).unwrap();
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
         assert!(s.contains("number"), "shows the type: {s}");
         assert!(s.contains("3"), "shows the default: {s}");
@@ -268,7 +274,7 @@ mod tests {
         let text = "## Shot 1.\n::auto{character=\"b\" anchor=\"center\"}\n";
         let doc = parsed(text);
         let off = pos_on(text, "center");
-        let h = hover_at(&doc, &load_core_snapshot(), off).unwrap();
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
         assert!(
             s.contains("left") && s.contains("right"),
@@ -281,7 +287,7 @@ mod tests {
         let text = "## Shot 1.\n::set{scene.x = @nope}\n";
         let doc = parsed(text);
         let off = pos_on(text, "@nope");
-        assert!(hover_at(&doc, &load_core_snapshot(), off).is_none());
+        assert!(hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).is_none());
     }
 
     /// A snapshot with a `CH` assetKind (plugin §6.9 shape) and a `::portrait`
@@ -363,12 +369,59 @@ mod tests {
         let text = "## Shot 1.\n::portrait{assetId=\"CH.bianca.waitress.delighted.3\"}\n";
         let doc = parsed(text);
         let off = pos_on(text, "bianca");
-        let h = hover_at(&doc, &asset_snapshot(), off).unwrap();
+        let h = hover_at(&doc, &asset_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
         assert!(s.contains("characterId"), "names the segment: {s}");
         assert!(
             s.contains("providerRef(character)"),
             "names the provider type: {s}"
         );
+    }
+
+    /// A directly-constructed `SchemaImports` (no disk): an imported `run.gold`
+    /// state path and an imported `helped` def — exactly the shape `check()` sees
+    /// after resolving a scene's `uses:` schema (dsl §9.2).
+    fn schema_imports() -> lute_check::SchemaImports {
+        use lute_check::{Namespace, SchemaImports, StateDecl};
+        use lute_manifest::types::Type;
+        let mut imports = SchemaImports::default();
+        imports.state.decls.insert(
+            "run.gold".to_string(),
+            StateDecl {
+                ty: Type::Number,
+                default: None,
+                namespace: Namespace::Run,
+            },
+        );
+        imports.defs.insert(
+            "helped".to_string(),
+            serde_yaml::from_str("{ type: bool, cel: \"true\" }").unwrap(),
+        );
+        imports
+    }
+
+    #[test]
+    fn hover_on_imported_state_path_shows_type() {
+        // `run.gold` is NOT declared inline — it is only imported via `uses:`.
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold += 1}\n";
+        let doc = parsed(text);
+        let set_at = text.find("::set{").unwrap();
+        let off = text[set_at..].find("run.gold").unwrap() + set_at + 2;
+        let h = hover_at(&doc, &load_core_snapshot(), &schema_imports(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(s.contains("run.gold"), "names the imported path: {s}");
+        assert!(s.contains("number"), "shows the imported type: {s}");
+    }
+
+    #[test]
+    fn hover_on_imported_ref_shows_def() {
+        // `@helped` is NOT declared inline — it is only imported via `uses:`.
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@helped\">\n    :line[fixer]: yes.\n  </when>\n  <otherwise>\n    :line[fixer]: no.\n  </otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = pos_on(text, "@helped");
+        let h = hover_at(&doc, &load_core_snapshot(), &schema_imports(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(s.contains("@helped"), "names the imported def: {s}");
+        assert!(s.contains("bool"), "shows the imported def type: {s}");
     }
 }
