@@ -2,10 +2,14 @@
 //! Imported state resolves like inline decls; a scene redeclaring an imported
 //! tier flags `E-STATE-REDECLARE` (imported wins); import diags are surfaced.
 use lute_check::meta::{Namespace, StateDecl, StateSchema};
+use lute_check::resolve_imports;
 use lute_check::schema_import::SchemaImports;
 use lute_check::{check, CheckInput, Mode};
+use lute_core_span::Span;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::types::{Literal, Type};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 fn check_codes(text: &str, imports: SchemaImports) -> Vec<String> {
     let input = CheckInput {
@@ -100,4 +104,120 @@ fn import_diags_are_surfaced() {
     };
     let codes = check_codes(MINIMAL_SCENE, imports);
     assert!(codes.contains(&"E-USES-CYCLE".to_string()));
+}
+
+// --- Task U2 — `resolve_imports` DAG resolver (dsl §9.2) ---
+
+fn zero_span() -> Span {
+    Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 1,
+        column: 1,
+        utf16_range: (0, 0),
+    }
+}
+
+static UNIQ: AtomicU64 = AtomicU64::new(0);
+
+/// A fresh temp dir per call; schema `.lute` files are written into it.
+fn unique_dir() -> PathBuf {
+    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dir =
+        std::env::temp_dir().join(format!("lute_uses_{}_{}_{}", std::process::id(), n, nanos));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn write_lute(dir: &Path, name: &str, body: &str) {
+    std::fs::write(dir.join(name), body).unwrap();
+}
+
+fn resolve_codes(res: &SchemaImports) -> Vec<&str> {
+    res.diags.iter().map(|d| d.code.as_str()).collect()
+}
+
+#[test]
+fn resolves_single_import() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "schema.lute",
+        "---\nstate:\n  run.x: { type: bool, default: false }\n---\n",
+    );
+    let res = resolve_imports(&dir, &["schema.lute".to_string()], zero_span());
+    assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
+    assert!(
+        res.state.decls.contains_key("run.x"),
+        "run.x missing: {:?}",
+        res.state.decls.keys().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn cycle_is_e_uses_cycle() {
+    let dir = unique_dir();
+    write_lute(&dir, "a.lute", "---\nuses: b.lute\n---\n");
+    write_lute(&dir, "b.lute", "---\nuses: a.lute\n---\n");
+    let res = resolve_imports(&dir, &["a.lute".to_string()], zero_span());
+    let codes = resolve_codes(&res);
+    assert!(
+        codes.contains(&"E-USES-CYCLE"),
+        "expected E-USES-CYCLE, got {codes:?}"
+    );
+}
+
+#[test]
+fn dup_def_across_imports_errors() {
+    let dir = unique_dir();
+    write_lute(&dir, "x.lute", "---\ndefs:\n  foo: 1\n---\n");
+    write_lute(&dir, "y.lute", "---\ndefs:\n  foo: 2\n---\n");
+    write_lute(&dir, "a.lute", "---\nuses: [x.lute, y.lute]\n---\n");
+    let res = resolve_imports(&dir, &["a.lute".to_string()], zero_span());
+    let codes = resolve_codes(&res);
+    assert!(
+        codes.contains(&"E-USES-DUP-DEF"),
+        "expected E-USES-DUP-DEF, got {codes:?}"
+    );
+}
+
+#[test]
+fn missing_file_is_not_found() {
+    let dir = unique_dir();
+    let res = resolve_imports(&dir, &["nope.lute".to_string()], zero_span());
+    let codes = resolve_codes(&res);
+    assert!(
+        codes.contains(&"E-USES-NOT-FOUND"),
+        "expected E-USES-NOT-FOUND, got {codes:?}"
+    );
+}
+
+#[test]
+fn diamond_is_one_identity_no_dup() {
+    let dir = unique_dir();
+    write_lute(&dir, "d.lute", "---\ndefs:\n  x: 1\n---\n");
+    write_lute(&dir, "b.lute", "---\nuses: d.lute\n---\n");
+    write_lute(&dir, "c.lute", "---\nuses: d.lute\n---\n");
+    write_lute(&dir, "a.lute", "---\nuses: [b.lute, c.lute]\n---\n");
+    let res = resolve_imports(&dir, &["a.lute".to_string()], zero_span());
+    let codes = resolve_codes(&res);
+    assert!(
+        !codes.contains(&"E-USES-DUP-DEF"),
+        "unexpected E-USES-DUP-DEF for diamond: {codes:?}"
+    );
+    assert!(
+        res.defs.contains_key("x"),
+        "def x missing: {:?}",
+        res.defs.keys().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        res.defs.len(),
+        1,
+        "expected exactly one def: {:?}",
+        res.defs
+    );
 }

@@ -19,7 +19,9 @@ pub use inject::{
     lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,
 };
 pub use match_check::{check_branch, check_match, is_exhaustive, BranchRecord};
-pub use meta::{parse_meta, Namespace, StateDecl, StateSchema, TypedMeta};
-pub use schema_import::SchemaImports;
+pub use meta::{
+    parse_meta, parse_meta_kind, MetaKind, Namespace, StateDecl, StateSchema, TypedMeta,
+};
+pub use schema_import::{resolve_imports, SchemaImports};
 pub use set_op::check_set;
 pub use timeline::{resolve_timeline, ResolvedRow, ResolvedTimeline};
