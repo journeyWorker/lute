@@ -57,25 +57,24 @@ pub fn check_cel_slot(
                 span,
             ));
         } else if let (Some(expected), Some(produced)) = (expected, ctx.def_types.get(&r.name)) {
-            // Only when the `@ref` IS the whole CEL value does the def's produced type
-            // equal the slot's value type. Two whole-slot forms (dsl §8.1): a bare
-            // `@name`, or the parameterized call `@name(args)` whose parenthesized
-            // group consumes the remainder. In a compound expression (`@num > 0`) the
-            // def types only a subexpression, so comparing to the slot's expected type
-            // would false-positive — treat it as non-whole and skip conservatively.
-            let trimmed = slot.raw.trim();
-            let is_whole_slot = match trimmed.strip_prefix('@') {
-                Some(rest) if rest == r.name => true, // bare `@name`
-                Some(rest) => {
-                    // `@name(...)`: a parsed call group consumes the remainder.
-                    r.call.is_some()
-                        && rest
-                            .strip_prefix(r.name.as_str())
-                            .map(str::trim)
-                            .is_some_and(|after| after.starts_with('(') && after.ends_with(')'))
-                }
-                None => false,
-            };
+            // Only when the `@ref` IS the whole CEL value does the def's produced
+            // type equal the slot's value type. Two whole-slot forms (dsl §8.1): a
+            // bare `@name`, or the parameterized call `@name(args)` whose group
+            // consumes the remainder. In a compound expression (`@num > 0`, or
+            // `@toNum(x) == @toNum(y)`) the def types only a subexpression, so
+            // comparing to the slot's expected type would false-positive — treat it
+            // as non-whole and skip conservatively. `scan_refs` runs on `slot.raw`,
+            // so `r.span`/`r.call.span` byte offsets are relative to `slot.raw`;
+            // require the ref (and its call group, if any) to span the trimmed
+            // content exactly — nothing before or after it.
+            let raw = &slot.raw;
+            let content_start = raw.len() - raw.trim_start().len();
+            let content_end = raw.trim_end().len();
+            let is_whole_slot = r.span.byte_start == content_start
+                && match r.call.as_ref() {
+                    None => r.span.byte_end == content_end, // bare `@name` reaches the end
+                    Some(c) => c.span.byte_end == content_end, // `@name(...)` group reaches the end
+                };
             if is_whole_slot && !compatible(produced, expected) {
                 diags.push(diag(
                     "E-REF-TYPE",
