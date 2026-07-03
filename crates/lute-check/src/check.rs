@@ -184,6 +184,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
         mode: input.mode,
         state: schema.clone(),
         defs,
+        def_types: std::collections::BTreeMap::new(),
     };
 
     // 5. Per-node validator walk (directives / cel-slots / set / match / timeline).
