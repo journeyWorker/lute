@@ -266,12 +266,16 @@ fn divergence_holds_under_plugin_project() {
     );
 }
 
-/// No-divergence under a `uses:` schema import (dsl §9.2): `carry-ep.lute` is
-/// error-clean only because its imported `run.choseHelp` resolves through the
-/// SAME `resolve_imports` both surfaces call.
+/// No-divergence under a `uses:` schema import (dsl §9.2). Two cases: (a) the
+/// error-clean `carry-ep.lute` (imported `run.choseHelp` resolves via the SAME
+/// `resolve_imports` both surfaces call) and (b) a scene whose import is missing,
+/// which yields an `E-USES-NOT-FOUND` whose headless and LSP projections must
+/// agree byte-for-byte — guarding the new §9.2 diagnostic codes' projection.
 #[test]
 fn divergence_holds_under_uses_import() {
     let dir = std::path::Path::new("../../docs/examples");
+
+    // (a) happy path: carry-ep is error-clean via its import; projections agree.
     let text = std::fs::read_to_string(dir.join("carry-ep.lute")).unwrap();
     let (doc, _) = lute_syntax::parse(&text);
     let (meta0, _) = lute_check::parse_meta(
@@ -288,14 +292,73 @@ fn divergence_holds_under_uses_import() {
         imports,
     };
     let res = check(&input);
-    let errs: Vec<_> = res
+    assert!(
+        res.diagnostics
+            .iter()
+            .all(|d| d.severity != Severity::Error),
+        "carry-ep.lute must be error-clean under its import; got {:?}",
+        res.diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
+    );
+    let index = idx(&text);
+    let headless: Vec<Norm> = res
         .diagnostics
         .iter()
-        .filter(|d| d.severity == lute_core_span::Severity::Error)
-        .map(|d| d.code.clone())
+        .map(|d| normalize_headless(d, &index))
         .collect();
+    let via_lsp: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .collect();
+    assert_eq!(
+        headless, via_lsp,
+        "headless and LSP surfaces diverged under a uses: import"
+    );
+
+    // (b) non-vacuous: a missing import produces E-USES-NOT-FOUND; its headless
+    // and LSP projections must agree too (the new §9.2 codes' projection).
+    let bad = "---\ncharacter: x\nseason: 1\nepisode: 1\nuses: __no_such_schema__.lute\n---\n## Shot 1.\n:line[x]: hi\n";
+    let (bdoc, _) = lute_syntax::parse(bad);
+    let (bmeta, _) = lute_check::parse_meta(
+        &bdoc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let bimports = lute_check::resolve_imports(dir, &bmeta.uses, bdoc.meta.span);
+    let binput = CheckInput {
+        text: bad.to_string(),
+        uri: "bad-import".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: bimports,
+    };
+    let bres = check(&binput);
     assert!(
-        errs.is_empty(),
-        "carry-ep.lute must be error-clean under its import; got {errs:?}"
+        bres.diagnostics
+            .iter()
+            .any(|d| d.code == "E-USES-NOT-FOUND"),
+        "a missing uses: import must yield E-USES-NOT-FOUND; got {:?}",
+        bres.diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
+    );
+    let bindex = idx(bad);
+    let bheadless: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &bindex))
+        .collect();
+    let bvia_lsp: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex)))
+        .collect();
+    assert_eq!(
+        bheadless, bvia_lsp,
+        "E-USES-NOT-FOUND projection diverged between surfaces"
     );
 }
