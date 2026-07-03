@@ -200,3 +200,30 @@ fn plugin_def_ref_type_mismatch_flags() {
         "number def in bool guard must flag; got {codes:?}"
     );
 }
+
+#[test]
+fn call_form_whole_slot_number_def_in_bool_guard_flags_ref_type() {
+    // A parameterized-call def (`@name(args)`, dsl §8.1) whose produced type is
+    // NUMBER, used whole-slot in a bool guard, must reach E-REF-TYPE exactly like
+    // the bare `@name` form. `params` is empty here (DefParam lands in P2.3); the
+    // whole-slot type check depends only on `ty` and the call being whole-slot.
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.defs.insert(
+        "countAtLeast".into(),
+        DefDecl {
+            name: "countAtLeast".into(),
+            ty: Type::Number,
+            params: Default::default(),
+            cel: "1".into(),
+            min: None,
+            max: None,
+            values: None,
+        },
+    );
+    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@countAtLeast(2)\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n";
+    let codes = check_codes(scene, snap);
+    assert!(
+        codes.contains(&"E-REF-TYPE".to_string()),
+        "number-producing @call in a bool guard must flag; got {codes:?}"
+    );
+}
