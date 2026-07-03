@@ -58,14 +58,24 @@ pub fn check_cel_slot(
             ));
         } else if let (Some(expected), Some(produced)) = (expected, ctx.def_types.get(&r.name)) {
             // Only when the `@ref` IS the whole CEL value does the def's produced type
-            // equal the slot's value type. In a compound expression (`@num > 0`) the def
-            // types only a subexpression, so comparing to the slot's expected type would
-            // false-positive — skip conservatively.
-            let is_whole_slot = slot
-                .raw
-                .trim()
-                .strip_prefix('@')
-                .is_some_and(|rest| rest == r.name);
+            // equal the slot's value type. Two whole-slot forms (dsl §8.1): a bare
+            // `@name`, or the parameterized call `@name(args)` whose parenthesized
+            // group consumes the remainder. In a compound expression (`@num > 0`) the
+            // def types only a subexpression, so comparing to the slot's expected type
+            // would false-positive — treat it as non-whole and skip conservatively.
+            let trimmed = slot.raw.trim();
+            let is_whole_slot = match trimmed.strip_prefix('@') {
+                Some(rest) if rest == r.name => true, // bare `@name`
+                Some(rest) => {
+                    // `@name(...)`: a parsed call group consumes the remainder.
+                    r.call.is_some()
+                        && rest
+                            .strip_prefix(r.name.as_str())
+                            .map(str::trim)
+                            .is_some_and(|after| after.starts_with('(') && after.ends_with(')'))
+                }
+                None => false,
+            };
             if is_whole_slot && !compatible(produced, expected) {
                 diags.push(diag(
                     "E-REF-TYPE",
