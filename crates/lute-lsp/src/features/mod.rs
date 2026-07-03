@@ -732,67 +732,13 @@ pub(crate) fn path_tokens(raw: &str) -> Vec<(String, (usize, usize))> {
     out
 }
 
-/// Collect every CEL slot in the document (set exprs, `@ref`/CEL attr values,
-/// choice `when`, match subject + arm tests, timeline durations, clip nodes).
+/// Every CEL slot in the document, in `lute_syntax::walk`'s canonical pre-order
+/// (set exprs, `@ref`/CEL attr values, choice `when`, match subject + arm tests,
+/// timeline durations, clip nodes).
 pub(crate) fn all_slots(doc: &Document) -> Vec<&CelSlot> {
     let mut out = Vec::new();
-    for shot in &doc.shots {
-        collect_slots(&shot.body, &mut out);
-    }
+    lute_syntax::walk::for_each_cel_slot(doc, &mut |s| out.push(s));
     out
-}
-
-fn collect_slots<'a>(nodes: &'a [Node], out: &mut Vec<&'a CelSlot>) {
-    for node in nodes {
-        match node {
-            Node::Line(l) => attr_slots(&l.attrs, out),
-            Node::Directive(d) => attr_slots(&d.attrs, out),
-            Node::Set(s) => out.push(&s.expr),
-            Node::Branch(b) => {
-                attr_slots(&b.attrs, out);
-                for c in &b.choices {
-                    attr_slots(&c.attrs, out);
-                    if let Some(w) = &c.when {
-                        out.push(w);
-                    }
-                    collect_slots(&c.body, out);
-                }
-            }
-            Node::Match(m) => {
-                out.push(&m.subject);
-                for arm in &m.arms {
-                    match arm {
-                        Arm::When { test, body, .. } => {
-                            out.push(test);
-                            collect_slots(body, out);
-                        }
-                        Arm::Otherwise { body, .. } => collect_slots(body, out),
-                    }
-                }
-            }
-            Node::Timeline(t) => {
-                if let Some(d) = &t.duration {
-                    out.push(d);
-                }
-                for track in &t.tracks {
-                    for clip in &track.clips {
-                        match &clip.node {
-                            ClipNode::Directive(d) => attr_slots(&d.attrs, out),
-                            ClipNode::Set(s) => out.push(&s.expr),
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn attr_slots<'a>(attrs: &'a [Attr], out: &mut Vec<&'a CelSlot>) {
-    for attr in attrs {
-        if let AttrValue::Ref(slot) = &attr.value {
-            out.push(slot);
-        }
-    }
 }
 
 /// Build a byte-only [`Span`]; `line`/`column`/`utf16_range` are recomputed by the

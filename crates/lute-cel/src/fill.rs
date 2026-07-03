@@ -14,6 +14,10 @@
 //! slot was visited by `fill_document`".
 //!
 //! ## Slot enumeration (exhaustive — a missed location is silently unchecked CEL)
+//!
+//! The canonical pre-order now lives in `lute_syntax::walk`
+//! (`for_each_cel_slot` / `for_each_cel_slot_mut`); `fill_document` is just a thin
+//! closure over that shared walk. For reference, the slot-bearing locations are:
 //! - [`Set::expr`] — both a top-level [`Node::Set`] and a [`ClipNode::Set`] inside
 //!   a timeline track clip.
 //! - [`Match::subject`] and each [`Arm::When`]'s `test`.
@@ -31,181 +35,41 @@
 
 use crate::{parse_slot, CelArena, CelParseError};
 use lute_core_span::StableId;
-use lute_syntax::ast::{Arm, AttrValue, Branch, ClipNode, Document, Match, Node, Timeline};
+use lute_syntax::ast::Document;
 
 /// Parse every [`CelSlot`] in `doc`, filling `slot.ast`/`slot.id`.
 ///
 /// Returns one [`CelParseError`] per slot that failed to parse. Never aborts on a
 /// parse failure and never panics.
 pub fn fill_document(arena: &mut CelArena, doc: &mut Document) -> Vec<CelParseError> {
-    let mut w = Walk {
-        arena,
-        next_id: 1,
-        errors: Vec::new(),
-    };
-    for shot in &mut doc.shots {
-        w.body(&mut shot.body);
-    }
-    w.errors
-}
-
-/// Pre-order slot visitor carrying the arena, the id counter, and collected errors.
-struct Walk<'a> {
-    arena: &'a mut CelArena,
-    next_id: u64,
-    errors: Vec<CelParseError>,
-}
-
-impl Walk<'_> {
-    /// Fill one slot: assign its `StableId`, then (for a non-empty fragment) parse.
-    fn slot(&mut self, slot: &mut lute_syntax::ast::CelSlot) {
-        slot.id = StableId(self.next_id);
-        self.next_id += 1;
+    let mut next_id: u64 = 1;
+    let mut errors = Vec::new();
+    lute_syntax::walk::for_each_cel_slot_mut(doc, &mut |slot| {
+        slot.id = StableId(next_id);
+        next_id += 1;
         if slot.raw.trim().is_empty() {
             return; // structural gap, not a CEL fragment — leave ast = None.
         }
-        match parse_slot(self.arena, &slot.raw, slot.span.byte_start) {
+        match parse_slot(arena, &slot.raw, slot.span.byte_start) {
             Ok(handle) => slot.ast = Some(handle),
-            Err(e) => self.errors.push(e),
+            Err(e) => errors.push(e),
         }
-    }
-
-    /// Fill every `AttrValue::Ref` slot in an attribute list, in order.
-    fn attrs(&mut self, attrs: &mut [lute_syntax::ast::Attr]) {
-        for attr in attrs {
-            if let AttrValue::Ref(slot) = &mut attr.value {
-                self.slot(slot);
-            }
-        }
-    }
-
-    /// Walk a sequence of body nodes in source order.
-    fn body(&mut self, nodes: &mut [Node]) {
-        for node in nodes {
-            self.node(node);
-        }
-    }
-
-    /// Dispatch one node to its slot-bearing children.
-    fn node(&mut self, node: &mut Node) {
-        match node {
-            Node::Line(l) => self.attrs(&mut l.attrs),
-            Node::Directive(d) => self.attrs(&mut d.attrs),
-            Node::Set(s) => self.slot(&mut s.expr),
-            Node::Branch(b) => self.branch(b),
-            Node::Match(m) => self.match_node(m),
-            Node::Timeline(t) => self.timeline(t),
-        }
-    }
-
-    fn branch(&mut self, b: &mut Branch) {
-        self.attrs(&mut b.attrs);
-        for choice in &mut b.choices {
-            if let Some(when) = &mut choice.when {
-                self.slot(when);
-            }
-            self.attrs(&mut choice.attrs);
-            self.body(&mut choice.body);
-        }
-    }
-
-    fn match_node(&mut self, m: &mut Match) {
-        self.slot(&mut m.subject);
-        for arm in &mut m.arms {
-            match arm {
-                Arm::When { test, body, .. } => {
-                    self.slot(test);
-                    self.body(body);
-                }
-                Arm::Otherwise { body, .. } => self.body(body),
-            }
-        }
-    }
-
-    fn timeline(&mut self, t: &mut Timeline) {
-        if let Some(dur) = &mut t.duration {
-            self.slot(dur);
-        }
-        for track in &mut t.tracks {
-            for clip in &mut track.clips {
-                match &mut clip.node {
-                    ClipNode::Directive(d) => self.attrs(&mut d.attrs),
-                    ClipNode::Set(s) => self.slot(&mut s.expr),
-                }
-            }
-        }
-    }
+    });
+    errors
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lute_syntax::ast::{Arm, ClipNode, Node};
     use lute_syntax::parse;
     use std::collections::HashSet;
 
-    /// Independent, exhaustive collector of every `&CelSlot` in a document,
-    /// written separately from the `fill_document` walk so a shared blind spot in
-    /// one is caught by the other's hand-counted expectation.
+    /// Independent cross-check that "slots present" matches "slots filled". Now
+    /// shares the `lute_syntax::walk` enumeration, so the hand-counted expectation
+    /// below (not a parallel hand-copy of the walk) is what guards the pre-order.
     fn collect_slots(doc: &lute_syntax::ast::Document) -> Vec<&lute_syntax::ast::CelSlot> {
-        fn attrs<'a>(
-            out: &mut Vec<&'a lute_syntax::ast::CelSlot>,
-            attrs: &'a [lute_syntax::ast::Attr],
-        ) {
-            for a in attrs {
-                if let AttrValue::Ref(s) = &a.value {
-                    out.push(s);
-                }
-            }
-        }
-        fn body<'a>(out: &mut Vec<&'a lute_syntax::ast::CelSlot>, nodes: &'a [Node]) {
-            for n in nodes {
-                match n {
-                    Node::Line(l) => attrs(out, &l.attrs),
-                    Node::Directive(d) => attrs(out, &d.attrs),
-                    Node::Set(s) => out.push(&s.expr),
-                    Node::Branch(b) => {
-                        attrs(out, &b.attrs);
-                        for c in &b.choices {
-                            if let Some(w) = &c.when {
-                                out.push(w);
-                            }
-                            attrs(out, &c.attrs);
-                            body(out, &c.body);
-                        }
-                    }
-                    Node::Match(m) => {
-                        out.push(&m.subject);
-                        for arm in &m.arms {
-                            match arm {
-                                Arm::When { test, body: b, .. } => {
-                                    out.push(test);
-                                    body(out, b);
-                                }
-                                Arm::Otherwise { body: b, .. } => body(out, b),
-                            }
-                        }
-                    }
-                    Node::Timeline(t) => {
-                        if let Some(d) = &t.duration {
-                            out.push(d);
-                        }
-                        for track in &t.tracks {
-                            for clip in &track.clips {
-                                match &clip.node {
-                                    ClipNode::Directive(d) => attrs(out, &d.attrs),
-                                    ClipNode::Set(s) => out.push(&s.expr),
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
         let mut out = Vec::new();
-        for shot in &doc.shots {
-            body(&mut out, &shot.body);
-        }
+        lute_syntax::walk::for_each_cel_slot(doc, &mut |s| out.push(s));
         out
     }
 
