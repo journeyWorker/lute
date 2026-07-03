@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::core::load_core_snapshot;
 use crate::resolve::{ActivePlugin, InstalledPlugins};
+use crate::schema::StateShape;
 use crate::snapshot::{capability_version, CapabilitySnapshot, ResolvedPlugin};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -28,6 +29,9 @@ pub enum AssembleError {
         plugin: String,
         directive: String,
         msg: String,
+    },
+    CyclicStateShape {
+        shape: String,
     },
 }
 
@@ -187,6 +191,11 @@ pub fn assemble_snapshot(
         }
     }
 
+    // Reject cyclic state-shape references (a non-conforming package; the checker
+    // also guards at expansion time for no-panic, but assembly diagnoses it up
+    // front, like a depends-cycle). Runs over the fully merged shapes.
+    detect_state_shape_cycles(&snap.state_shapes, &mut errs);
+
     snap.version = capability_version(&snap);
     (snap, errs)
 }
@@ -210,6 +219,70 @@ fn merge_map<V: Clone>(
             }
             std::collections::btree_map::Entry::Vacant(e) => {
                 e.insert(v);
+            }
+        }
+    }
+}
+
+/// Detect a cycle in the merged state-shape graph (plugin §6.2: a conforming
+/// package's shapes form a DAG). An edge is a field's `shape:` reference to
+/// another shape that also exists in the snapshot; a field naming a MISSING
+/// shape is a separate concern and is ignored here. Iterative DFS with
+/// visiting/done marks — catches self-cycles (A -> A) and mutual cycles
+/// (A -> B -> A) without false-positiving diamonds (A -> B, A -> C, B -> D,
+/// C -> D). Deterministic: roots iterate in BTreeMap order, deps sorted+deduped.
+/// Each shape on a back-edge is reported once.
+fn detect_state_shape_cycles(shapes: &BTreeMap<String, StateShape>, errs: &mut Vec<AssembleError>) {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mark {
+        Visiting,
+        Done,
+    }
+    fn deps(shapes: &BTreeMap<String, StateShape>, name: &str) -> Vec<String> {
+        let mut d: Vec<String> = shapes
+            .get(name)
+            .map(|s| {
+                s.fields
+                    .iter()
+                    .filter_map(|f| f.shape.clone())
+                    .filter(|n| shapes.contains_key(n))
+                    .collect()
+            })
+            .unwrap_or_default();
+        d.sort();
+        d.dedup();
+        d
+    }
+    let mut state: BTreeMap<String, Mark> = BTreeMap::new();
+    let mut reported: BTreeSet<String> = BTreeSet::new();
+    for root in shapes.keys() {
+        if state.contains_key(root) {
+            continue;
+        }
+        let mut stack: Vec<(String, Vec<String>, usize)> =
+            vec![(root.clone(), deps(shapes, root), 0)];
+        state.insert(root.clone(), Mark::Visiting);
+        while let Some((name, ds, cursor)) = stack.last_mut() {
+            if *cursor < ds.len() {
+                let dep = ds[*cursor].clone();
+                *cursor += 1;
+                match state.get(&dep) {
+                    Some(Mark::Visiting) => {
+                        if reported.insert(dep.clone()) {
+                            errs.push(AssembleError::CyclicStateShape { shape: dep });
+                        }
+                    }
+                    Some(Mark::Done) => {}
+                    None => {
+                        state.insert(dep.clone(), Mark::Visiting);
+                        let dd = deps(shapes, &dep);
+                        stack.push((dep, dd, 0));
+                    }
+                }
+            } else {
+                let done = name.clone();
+                stack.pop();
+                state.insert(done, Mark::Done);
             }
         }
     }
