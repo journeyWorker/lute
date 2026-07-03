@@ -1,0 +1,16 @@
+---
+character: demo
+season: 1
+episode: 1
+state:
+  scene.flag: { type: bool, default: false }
+---
+
+## Shot 1.
+
+<match on="scene.flag">
+  <when test="@warm">:line[narrator]: warm path
+</when>
+  <otherwise>:line[narrator]: cold path
+</otherwise>
+</match>
