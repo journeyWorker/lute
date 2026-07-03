@@ -213,9 +213,9 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let (doc, _) = lute_syntax::parse(&text);
-        let snapshot = self.snapshot_for(&pos.text_document.uri, &text).0;
+        let (snapshot, providers, _) = self.snapshot_for(&pos.text_document.uri, &text);
         let off = position_to_byte(&text, pos.position);
-        let items = completion::complete_at(&doc, &snapshot, off);
+        let items = completion::complete_at(&doc, &snapshot, &providers, off);
         if items.is_empty() {
             return Ok(None);
         }
