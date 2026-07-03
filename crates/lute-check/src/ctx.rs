@@ -44,21 +44,17 @@ pub struct Ctx {
     /// T4.3 resolves `@name` uses against (`E-UNDECLARED-REF`).
     pub defs: BTreeSet<String>,
     /// def name -> the manifest [`Type`] the def PRODUCES (its declared result
-    /// type), used by B2.2 to flag `E-REF-TYPE` when a `@name` def is used in a
-    /// slot whose expected type is incompatible (see [`ExpectedType`]). Populated
-    /// in B2.2 from two sources, merged into one table:
-    ///   * plugin defs — `snapshot.defs: BTreeMap<String, DefDecl>`
-    ///     (`lute-manifest/src/snapshot.rs:19`); `DefDecl.ty: Type`
-    ///     (`lute-manifest/src/schema.rs:167-170`) is already a typed `Type`.
-    ///   * inline frontmatter `defs:` — stored UNTYPED as
-    ///     `TypedMeta.defs: BTreeMap<String, serde_yaml::Value>`
-    ///     (`crate::meta`, `meta.rs:44`, populated `meta.rs:152`); B2.2 pulls the
-    ///     `type:` sub-value out of each mapping and deserializes it into `Type`
-    ///     via the same serde path `Type` uses (a malformed/absent `type:` yields
-    ///     NO entry — never a panic).
-    ///
-    /// Empty here (design task): this field is declared but never read at B2.1.
-    /// `#[derive(Default)]` stays correct because `BTreeMap::default()` is empty.
+    /// type). Used to flag `E-REF-TYPE` when a whole-slot `@name`/`@name(args)`
+    /// def is used in a position whose expected type is incompatible (see
+    /// [`ExpectedType`]), and to type nested bare `@ref` arguments of a call.
+    /// Populated in `check.rs` from three sources, precedence plugin < imported
+    /// < inline:
+    ///   * plugin defs — `snapshot.defs` `DefDecl.ty` is already a typed `Type`.
+    ///   * imported-schema `defs:` (dsl §9.2) and inline frontmatter `defs:` —
+    ///     stored UNTYPED as `serde_yaml::Value`; the `type:` sub-value is
+    ///     pulled out and deserialized into `Type` (malformed/absent `type:`
+    ///     yields NO entry — never a panic).
+    /// `#[derive(Default)]` stays correct — `BTreeMap::default()` is empty.
     pub def_types: BTreeMap<String, Type>,
     /// def name -> ordered (param name, type), for `@name(args)` arity/arg-type
     /// checks (dsl §8.1). Same sources & precedence as `def_types`.
