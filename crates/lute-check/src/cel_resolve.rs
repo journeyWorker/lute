@@ -110,6 +110,38 @@ pub fn check_cel_slot(
                     ));
                 }
             }
+            //   * per-argument type (E-REF-ARG-TYPE): when the `@name(args)`
+            //     call is present AND its arity already matches the def's param
+            //     count (a wrong arity is reported above — don't double-report
+            //     on a mismatch), each positional arg whose static type IS
+            //     resolvable must be compatible with the corresponding param's
+            //     declared type. Conservative: unresolvable args (compound
+            //     expressions, unknown paths) are silently skipped — only a
+            //     PROVABLY-wrong arg flags, never a false positive.
+            if let (Some(call), Some(params)) = (r.call.as_ref(), ctx.def_params.get(&r.name)) {
+                if call.args.len() == params.len() {
+                    for (arg_span, (_pname, pty)) in call.args.iter().zip(params.iter()) {
+                        // `arg_span` byte offsets are relative to `slot.raw` (what
+                        // `scan_refs` runs on) — index it directly; `map_span`
+                        // offsets into the document like the `@ref` span.
+                        let raw = &slot.raw[arg_span.byte_start..arg_span.byte_end];
+                        if let Some(at) = resolve_arg_type(raw, ctx) {
+                            if !compatible(&at, &ExpectedType::Ty(pty.clone())) {
+                                diags.push(diag(
+                                    "E-REF-ARG-TYPE",
+                                    format!(
+                                        "argument to `@{}` produces {} but the parameter expects {} (dsl §8.1)",
+                                        r.name,
+                                        ty_desc(&at),
+                                        ty_desc(pty)
+                                    ),
+                                    map_span(slot, *arg_span),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -180,6 +212,35 @@ fn expected_desc(e: &ExpectedType) -> String {
         ExpectedType::Bool => "a bool".to_string(),
         ExpectedType::Ty(t) => ty_desc(t),
     }
+}
+
+/// Best-effort static type of a single call argument's raw source (dsl §8.1
+/// `@name(args)`). Returns `None` (skip — never flag) for anything not trivially
+/// typeable, keeping `E-REF-ARG-TYPE` conservative (no false positives).
+fn resolve_arg_type(arg_raw: &str, ctx: &Ctx) -> Option<Type> {
+    let a = arg_raw.trim();
+    if a == "true" || a == "false" {
+        return Some(Type::Bool);
+    }
+    if a.parse::<f64>().is_ok() {
+        return Some(Type::Number);
+    }
+    if (a.starts_with('\'') && a.ends_with('\'') && a.len() >= 2)
+        || (a.starts_with('"') && a.ends_with('"') && a.len() >= 2)
+    {
+        return Some(Type::Str);
+    }
+    if let Some(name) = a.strip_prefix('@') {
+        // a nested bare `@ref` (no call) -> its produced type
+        if name
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        {
+            return ctx.def_types.get(name).cloned();
+        }
+    }
+    // a bare, resolvable state path
+    crate::set_op::resolve_type(a, &ctx.state).cloned()
 }
 
 /// Classify one reconstructed state path and emit its diagnostic, if any.
