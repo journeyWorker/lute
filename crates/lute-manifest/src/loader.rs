@@ -51,6 +51,22 @@ pub enum LoadError {
     },
 }
 
+impl LoadError {
+    /// Stable, machine-readable code per variant (plugin §11); the `E-*` family
+    /// mirrors the checker's diagnostic codes so a consumer (CLI/LSP) can key on
+    /// it instead of the `Debug` message.
+    pub fn code(&self) -> &'static str {
+        match self {
+            LoadError::Manifest { .. } => "E-PLUGIN-MANIFEST",
+            LoadError::Parse { .. } => "E-PLUGIN-PARSE",
+            LoadError::DuplicateId { .. } => "E-PLUGIN-DUP-ID",
+            LoadError::MissingExportDir { .. } => "E-PLUGIN-MISSING-EXPORT",
+            LoadError::Io { .. } => "E-PLUGIN-IO",
+            LoadError::UnknownExport { .. } => "E-PLUGIN-UNKNOWN-EXPORT",
+        }
+    }
+}
+
 /// Read one plugin package. `dir` MUST contain `plugin.yaml`.
 pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
     let mut errs = Vec::new();

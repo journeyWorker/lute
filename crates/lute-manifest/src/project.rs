@@ -32,11 +32,12 @@ pub struct ProjectConfig {
 }
 
 /// A resolution diagnostic surfaced to the caller (folded into the check
-/// result). For now the message is the `Debug` form of the underlying
-/// `LoadError`/`ResolveError`/`AssembleError`; a structured diagnostic mapping is
-/// a later refinement.
+/// result). `code` is the stable, machine-readable `E-*` code of the underlying
+/// `LoadError`/`ResolveError`/`AssembleError` (so a consumer can key on it); the
+/// message is the `Debug` form for human display.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolveDiag {
+    pub code: String,
     pub message: String,
 }
 
@@ -133,6 +134,7 @@ pub fn resolve_document_snapshot(
     // 1. Load every installed plugin package; surface load errors.
     let (registry, load_errs) = load_plugins_dir(&project.plugins_dir);
     diags.extend(load_errs.into_iter().map(|e| ResolveDiag {
+        code: e.code().into(),
         message: format!("{e:?}"),
     }));
 
@@ -150,6 +152,7 @@ pub fn resolve_document_snapshot(
         Ok(active) => active,
         Err(e) => {
             diags.push(ResolveDiag {
+                code: e.code().into(),
                 message: format!("{e:?}"),
             });
             // No conforming activation → fall back to the core-only baseline so
@@ -161,6 +164,7 @@ pub fn resolve_document_snapshot(
     // 5. Assemble the merged snapshot; surface assembly errors.
     let (snapshot, assemble_errs) = crate::assemble::assemble_snapshot(&active, &registry);
     diags.extend(assemble_errs.into_iter().map(|e| ResolveDiag {
+        code: e.code().into(),
         message: format!("{e:?}"),
     }));
 

@@ -135,7 +135,7 @@ fn run_check(
     let (snapshot, rdiags) =
         resolve_document_snapshot(project.as_ref(), meta0.profile.as_deref(), &meta0.plugins);
     for d in &rdiags {
-        eprintln!("lute: resolve: {}", d.message);
+        eprintln!("lute: {}: {}", d.code, d.message);
     }
 
     let input = CheckInput {

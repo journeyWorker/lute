@@ -421,6 +421,9 @@ fn resolve_diag_to_lsp(d: &lute_manifest::project::ResolveDiag) -> LspDiagnostic
         range: Range { start, end: start },
         severity: Some(DiagnosticSeverity::ERROR),
         source: Some("lute".into()),
+        code: Some(tower_lsp_server::ls_types::NumberOrString::String(
+            d.code.clone(),
+        )),
         message: d.message.clone(),
         ..Default::default()
     }
@@ -708,6 +711,11 @@ mod tests {
             resolver.get("severity").and_then(|s| s.as_u64()),
             Some(1),
             "resolver diagnostic must be Error severity"
+        );
+        assert_eq!(
+            resolver.get("code").and_then(|c| c.as_str()),
+            Some("E-DEPENDS-CYCLE"),
+            "resolver diagnostic must carry the stable E-DEPENDS-CYCLE code"
         );
         let start = resolver
             .get("range")
