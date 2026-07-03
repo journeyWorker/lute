@@ -35,6 +35,20 @@ pub enum AssembleError {
     },
 }
 
+impl AssembleError {
+    /// Stable, machine-readable code per variant (plugin §11); mirrors the
+    /// checker's `E-*` diagnostic-code family so consumers can key on it.
+    pub fn code(&self) -> &'static str {
+        match self {
+            AssembleError::DuplicateAcrossPlugins { .. } => "E-PLUGIN-DUP-ACROSS",
+            AssembleError::ReservedName { .. } => "E-PLUGIN-RESERVED-NAME",
+            AssembleError::MissingActivePlugin { .. } => "E-PLUGIN-MISSING-ACTIVE",
+            AssembleError::InvalidDirective { .. } => "E-PLUGIN-INVALID-DIRECTIVE",
+            AssembleError::CyclicStateShape { .. } => "E-STATE-SHAPE-CYCLE",
+        }
+    }
+}
+
 /// dsl §10 reserved terms a non-core plugin MUST NOT (re)define as a directive.
 /// `cut` is core-owned, so it is only reserved against NON-core plugins.
 const RESERVED_DIRECTIVE_NAMES: &[&str] = &["scene", "cut"];

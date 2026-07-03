@@ -70,6 +70,20 @@ pub enum ResolveError {
     DependsCycle(String),
 }
 
+impl ResolveError {
+    /// Stable, machine-readable code per variant (plugin §11); mirrors the
+    /// checker's `E-*` diagnostic-code family so consumers can key on it.
+    pub fn code(&self) -> &'static str {
+        match self {
+            ResolveError::UnknownProfile(_) => "E-PROFILE-UNKNOWN",
+            ResolveError::ExtendsCycle(_) => "E-PROFILE-EXTENDS-CYCLE",
+            ResolveError::UnresolvedDepends { .. } => "E-DEPENDS-UNRESOLVED",
+            ResolveError::DependsVersionMismatch { .. } => "E-DEPENDS-VERSION",
+            ResolveError::DependsCycle(_) => "E-DEPENDS-CYCLE",
+        }
+    }
+}
+
 impl ProfileGraph {
     fn extends_chain(&self, selected: &str) -> Result<Vec<String>, ResolveError> {
         // returns parent-first chain EXCLUDING global, INCLUDING selected last

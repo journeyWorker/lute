@@ -81,3 +81,36 @@ fn malformed_project_is_err() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn resolve_diag_carries_stable_code() {
+    // temp project with two mutually-depending plugins (a.x->a.dep->a.x DependsCycle)
+    let root = std::env::temp_dir().join(format!("lute_rdcode_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    for (id, dep) in [("a.x", "a.dep"), ("a.dep", "a.x")] {
+        let d = root.join(format!("plugins/{id}/directives"));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(root.join(format!("plugins/{id}/plugin.yaml")),
+            format!("id: {id}\nversion: 0.1.0\nkind: capability\ndepends: [ {{ id: {dep}, range: \"^0.1.0\" }} ]\nexports:\n  directives: directives/\n")).unwrap();
+        std::fs::write(d.join("x.yaml"), "directives: []\n").unwrap();
+    }
+    std::fs::write(
+        root.join("lute.project.yaml"),
+        "defaultProfile: p\nprofiles:\n  p:\n    plugins: { a.x: true }\n",
+    )
+    .unwrap();
+    let proj = lute_manifest::project::load_project(&root)
+        .unwrap()
+        .unwrap();
+    let (_snap, diags) = lute_manifest::project::resolve_document_snapshot(
+        Some(&proj),
+        None,
+        &std::collections::BTreeMap::new(),
+    );
+    assert!(
+        diags.iter().any(|d| d.code == "E-DEPENDS-CYCLE"),
+        "expected E-DEPENDS-CYCLE code, got {:?}",
+        diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
