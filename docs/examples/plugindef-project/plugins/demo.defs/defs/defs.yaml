@@ -1,0 +1,4 @@
+defs:
+  - name: warm
+    type: bool
+    cel: "true"

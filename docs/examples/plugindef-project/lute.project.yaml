@@ -1,0 +1,5 @@
+pluginsDir: plugins/
+defaultProfile: demo
+profiles:
+  demo:
+    plugins: { demo.defs: true }
