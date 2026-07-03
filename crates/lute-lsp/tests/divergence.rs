@@ -265,3 +265,37 @@ fn divergence_holds_under_plugin_project() {
         "headless and LSP diagnostic surfaces diverged under the plugin project"
     );
 }
+
+/// No-divergence under a `uses:` schema import (dsl §9.2): `carry-ep.lute` is
+/// error-clean only because its imported `run.choseHelp` resolves through the
+/// SAME `resolve_imports` both surfaces call.
+#[test]
+fn divergence_holds_under_uses_import() {
+    let dir = std::path::Path::new("../../docs/examples");
+    let text = std::fs::read_to_string(dir.join("carry-ep.lute")).unwrap();
+    let (doc, _) = lute_syntax::parse(&text);
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let imports = lute_check::resolve_imports(dir, &meta0.uses, doc.meta.span);
+    let input = CheckInput {
+        text: text.clone(),
+        uri: "carry-ep".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports,
+    };
+    let res = check(&input);
+    let errs: Vec<_> = res
+        .diagnostics
+        .iter()
+        .filter(|d| d.severity == lute_core_span::Severity::Error)
+        .map(|d| d.code.clone())
+        .collect();
+    assert!(
+        errs.is_empty(),
+        "carry-ep.lute must be error-clean under its import; got {errs:?}"
+    );
+}

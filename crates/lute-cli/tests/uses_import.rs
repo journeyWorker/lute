@@ -63,3 +63,17 @@ fn cli_missing_import_flags_not_found() {
     );
     assert!(combined.contains("E-USES-NOT-FOUND"), "got: {combined}");
 }
+
+#[test]
+fn carry_ep_fixture_resolves_via_uses_import() {
+    let out = Command::new(BIN)
+        .args(["check", "../../docs/examples/carry-ep.lute"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "carry-ep.lute must be clean via its uses: import; stderr: {}\nstdout: {}",
+        String::from_utf8_lossy(&out.stderr),
+        String::from_utf8_lossy(&out.stdout)
+    );
+}

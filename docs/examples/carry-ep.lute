@@ -1,0 +1,17 @@
+---
+character: sofia
+season: 1
+episode: 3
+uses: state.schema.lute
+---
+
+## Shot 1.
+
+:line[narrator]: Previously, a choice was made.
+
+<match on="run.choseHelp">
+<when test="$ == true">:line[sofia]: Thanks for helping me back then.
+</when>
+<otherwise>:line[sofia]: ...
+</otherwise>
+</match>
