@@ -14,9 +14,12 @@ pub struct TagOutcome {
 }
 
 /// Back-fill a `code` attribute into every `:line` that lacks one (dsl §12).
-/// Existing codes are never touched; new codes step above the document's highest
-/// existing numeric code. Idempotent, deterministic, total (a structurally
-/// broken doc is returned unchanged with `added: 0`).
+/// Existing codes are never touched; new codes step above THAT SPEAKER's highest
+/// existing numeric `code` (a per-speaker counter, dsl §12); different speakers
+/// have independent sequences (`fixer` 0010…, `bianca` 0010…), so their codes
+/// coexist and the textUnitId keys on speaker + code.
+/// Idempotent, deterministic, total (a structurally broken doc is returned
+/// unchanged with `added: 0`).
 pub fn tag_document(text: &str) -> TagOutcome {
     let (doc, diags) = parse(text);
 
@@ -35,15 +38,17 @@ pub fn tag_document(text: &str) -> TagOutcome {
         collect_lines(&shot.body, &mut lines);
     }
 
-    // Highest existing numeric `code` (parseable as `u64`); default 0. `u64`
-    // (not `u32`) so a code at `u32::MAX` can't saturate and collide.
-    let mut max_code: u64 = 0;
+    // Per-speaker highest existing numeric `code` (dsl §12: `code` is a
+    // PER-SPEAKER counter — `fixer` 0010/0020…, `bianca` 0010/0020…, `takeru`
+    // 0010… all coexist; the textUnitId keys on speaker + code). Default 0.
+    let mut max_code: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     for line in &lines {
+        let cur = max_code.entry(line.speaker.clone()).or_insert(0);
         for attr in &line.attrs {
             if attr.key == "code" {
                 if let AttrValue::Str(s) = &attr.value {
                     if let Ok(n) = s.trim().parse::<u64>() {
-                        max_code = max_code.max(n);
+                        *cur = (*cur).max(n);
                     }
                 }
             }
@@ -63,18 +68,19 @@ pub fn tag_document(text: &str) -> TagOutcome {
     }
 
     // Build the insertions (byte offset + inserted string) in document order,
-    // stepping the code above `max_code` by 10 for each untagged line.
+    // stepping each speaker's own counter above its existing max by 10.
     let bytes = text.as_bytes();
-    let mut next_code: u64 = max_code;
     let mut inserts: Vec<(usize, String)> = Vec::with_capacity(untagged.len());
     for line in &untagged {
-        // Fail closed at the top of the numeric range rather than emit a
-        // duplicate (colliding) code.
-        let Some(nc) = next_code.checked_add(10) else {
-            break;
+        // Next code in THIS speaker's sequence (above its existing max). A
+        // speaker whose counter overflows fails closed for THIS line only
+        // (`continue`, not `break`), so other speakers' lines still tag.
+        let counter = max_code.entry(line.speaker.clone()).or_insert(0);
+        let Some(nc) = counter.checked_add(10) else {
+            continue;
         };
-        next_code = nc;
-        let code = format!("{next_code:04}");
+        *counter = nc;
+        let code = format!("{nc:04}");
         let hdr_start = line.span.byte_start;
         let header = &text[hdr_start..line.text_span.byte_start];
         // The attr block (if any) is a `{` FLUSH against the speaker-closing `]`
@@ -201,13 +207,37 @@ mod tests {
     }
 
     #[test]
-    fn new_codes_step_above_max_existing() {
-        // one tagged 0050 + one untagged -> untagged gets 0060 (above max), tagged kept
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"0050\"}: one\n:line[b]: two\n";
+    fn new_codes_step_above_same_speaker_max() {
+        // same speaker `a`: one tagged 0050 + one untagged -> untagged gets 0060
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"0050\"}: one\n:line[a]: two\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(out.text.contains(":line[a]{code=\"0050\"}: one"));
         assert!(out.text.contains("code=\"0060\""), "got:\n{}", out.text);
+    }
+
+    #[test]
+    fn per_speaker_counters_are_independent() {
+        // interleaved speakers: each starts its OWN sequence at 0010.
+        // a: "one"(untagged), "three"(untagged) -> 0010, 0020 ; b: "two"(untagged) -> 0010
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]: one\n:line[b]: two\n:line[a]: three\n";
+        let out = tag_document(src);
+        assert_eq!(out.added, 3);
+        assert!(
+            out.text.contains(":line[a]{code=\"0010\"}: one"),
+            "got:\n{}",
+            out.text
+        );
+        assert!(
+            out.text.contains(":line[b]{code=\"0010\"}: two"),
+            "b starts its own sequence:\n{}",
+            out.text
+        );
+        assert!(
+            out.text.contains(":line[a]{code=\"0020\"}: three"),
+            "a's second line:\n{}",
+            out.text
+        );
     }
 
     #[test]
@@ -259,7 +289,9 @@ mod tests {
 
     #[test]
     fn code_above_u32_max_does_not_collide() {
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"4294967295\"}: one\n:line[b]: two\n";
+        // same speaker `a` at u32::MAX + an untagged `a` line -> a's counter steps
+        // to 4294967305 (u64 counter, so no saturation/collision at u32::MAX).
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"4294967295\"}: one\n:line[a]: two\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         // new code is strictly above the existing max (no duplicate 4294967295)
@@ -294,16 +326,14 @@ mod tests {
 
     #[test]
     fn code_at_u64_max_fails_closed_no_collision() {
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"18446744073709551615\"}: one\n:line[b]: two\n";
+        // same speaker `a` at u64::MAX + an untagged `a` line -> a's counter
+        // overflows -> fail closed for that line (per speaker).
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"18446744073709551615\"}: one\n:line[a]: two\n";
         let out = tag_document(src);
         assert_eq!(
             out.added, 0,
             "counter overflow must fail closed, not emit a colliding code"
         );
-        assert_eq!(
-            out.text.matches("18446744073709551615").count(),
-            1,
-            "no duplicate of the max code"
-        );
+        assert_eq!(out.text.matches("18446744073709551615").count(), 1);
     }
 }
