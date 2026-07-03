@@ -561,6 +561,7 @@ mod tests {
             bridge: vec![],
             defs: vec![],
             frontmatter: Default::default(),
+            asset_kinds: vec![],
         }
     }
 

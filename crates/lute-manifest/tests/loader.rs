@@ -119,3 +119,47 @@ fn rejects_unknown_export_key() {
     );
     fs::remove_dir_all(&tmp).ok();
 }
+
+/// Build a plugin package that exports `assetkinds/`; when `dup`, the file
+/// declares two `kind: CH` entries (a per-package duplicate).
+fn write_asset_pkg(root: &std::path::Path, dup: bool) {
+    fs::create_dir_all(root.join("assetkinds")).unwrap();
+    fs::write(
+        root.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetkinds: assetkinds/\n",
+    )
+    .unwrap();
+    let content = if dup {
+        "assetKinds:\n  - kind: CH\n  - kind: CH\n"
+    } else {
+        "assetKinds:\n  - kind: CH\n    segments:\n      - { name: prefix, const: CH }\n      - { name: characterId, type: { providerRef: character } }\n"
+    };
+    fs::write(root.join("assetkinds/ch.yaml"), content).unwrap();
+}
+
+#[test]
+fn loads_asset_kinds() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_ak_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_asset_pkg(&tmp, false);
+    let p = load_plugin_dir(&tmp).expect("asset-kind package loads");
+    assert_eq!(p.asset_kinds.len(), 1);
+    assert_eq!(p.asset_kinds[0].kind, "CH");
+    fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn loads_asset_kinds_rejects_dup() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_akdup_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_asset_pkg(&tmp, true);
+    let errs = load_plugin_dir(&tmp).unwrap_err();
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            LoadError::DuplicateId { kind, id } if kind == "assetKind" && id == "CH"
+        )),
+        "dup asset kind must be DuplicateId{{kind:\"assetKind\"}}, got {errs:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
