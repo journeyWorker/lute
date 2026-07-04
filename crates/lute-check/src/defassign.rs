@@ -71,7 +71,7 @@ type Assigned = BTreeSet<String>;
 pub fn check_definite_assignment(
     nodes: &[Node],
     schema: &StateSchema,
-    _ctx: &Ctx,
+    _ctx: &Ctx<'_>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let mut assigned = Assigned::new();
@@ -349,8 +349,10 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ctx::Env;
     use lute_cel::fill_document;
     use lute_syntax::parse;
+    use std::sync::LazyLock;
 
     /// Build `(nodes, schema)` from a `.lute` snippet: parse the DSL, fill every
     /// CEL slot's AST, and lift the inline `state:` schema from frontmatter.
@@ -371,8 +373,13 @@ mod tests {
         (nodes, meta.state)
     }
 
-    fn ctx() -> Ctx {
-        Ctx::default()
+    fn ctx() -> Ctx<'static> {
+        static ENV: LazyLock<Env> = LazyLock::new(Env::default);
+        Ctx {
+            env: &ENV,
+            in_match: false,
+            match_subject: None,
+        }
     }
 
     #[test]

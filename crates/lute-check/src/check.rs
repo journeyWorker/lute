@@ -63,7 +63,7 @@ use lute_manifest::types::{type_accepts, Literal, PathSegment, Type};
 use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, ClipNode, Directive, Document, Node};
 use lute_syntax::parse;
 
-use crate::ctx::{Ctx, ExpectedType, Mode};
+use crate::ctx::{Ctx, Env, ExpectedType, Mode};
 use crate::directives::check_directive;
 use crate::inject::{lower_node, InjectedCommand, StageState};
 use crate::meta::parse_meta;
@@ -310,14 +310,17 @@ pub fn check(input: &CheckInput) -> CheckResult {
         def_params.insert(name.clone(), params_from_yaml(v));
     }
 
-    let base_ctx = Ctx {
-        in_match: false,
-        match_subject: None,
+    let env = Env {
         mode: input.mode,
-        state: schema.clone(),
+        state: schema,
         defs,
         def_types,
         def_params,
+    };
+    let base_ctx = Ctx {
+        env: &env,
+        in_match: false,
+        match_subject: None,
     };
 
     // 5. Per-node validator walk (directives / cel-slots / set / match / timeline).
@@ -340,7 +343,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
         .iter()
         .flat_map(|s| s.body.iter().cloned())
         .collect();
-    let defassign_diags = check_definite_assignment(&all_nodes, &schema, &base_ctx);
+    let defassign_diags = check_definite_assignment(&all_nodes, &env.state, &base_ctx);
 
     // 7. Resolved view: injection fold + the timeline tables gathered in the walk.
     let mut inject_state = StageState::default();
@@ -422,7 +425,7 @@ struct Walker<'a> {
 }
 
 impl Walker<'_> {
-    fn walk(&mut self, nodes: &[Node], ctx: &Ctx) {
+    fn walk(&mut self, nodes: &[Node], ctx: &Ctx<'_>) {
         for node in nodes {
             match node {
                 Node::Line(l) => self.check_attr_refs(&l.attrs, ctx, None),
@@ -432,8 +435,8 @@ impl Walker<'_> {
                     self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
                 }
                 Node::Set(s) => {
-                    self.diags.extend(check_set(s, &ctx.state, ctx));
-                    let expected = resolve_type(&s.path, &ctx.state)
+                    self.diags.extend(check_set(s, &ctx.env.state, ctx));
+                    let expected = resolve_type(&s.path, &ctx.env.state)
                         .cloned()
                         .map(ExpectedType::Ty);
                     self.diags
@@ -458,18 +461,18 @@ impl Walker<'_> {
                     }
                 }
                 Node::Match(m) => {
-                    self.diags.extend(check_match(m, &ctx.state, ctx));
+                    self.diags.extend(check_match(m, &ctx.env.state, ctx));
                     // The subject expression is evaluated OUTSIDE match scope: `$`
                     // is only valid in a `<when test>` (dsl §8.2), never in `on=`.
                     // Force `in_match=false` so a nested `<match on="$">` (whose
                     // incoming ctx has in_match=true from the enclosing arm) is
                     // correctly flagged E-DOLLAR-OUTSIDE-MATCH.
                     let subject_ctx = Ctx {
+                        env: ctx.env,
                         in_match: false,
                         match_subject: None,
-                        ..ctx.clone()
                     };
-                    let subject_expected = resolve_type(&m.subject.raw, &subject_ctx.state)
+                    let subject_expected = resolve_type(&m.subject.raw, &subject_ctx.env.state)
                         .cloned()
                         .map(ExpectedType::Ty);
                     self.diags.extend(check_cel_slot(
@@ -478,15 +481,15 @@ impl Walker<'_> {
                         &subject_ctx,
                         subject_expected.as_ref(),
                     ));
-                    if is_exhaustive(m, &ctx.state) {
+                    if is_exhaustive(m, &ctx.env.state) {
                         self.exhaustive_subject_spans.push(m.subject.span);
                     }
                     // Arms (tests + bodies) evaluate WITHIN match scope: `$` binds
                     // to the subject (carry-forward #2).
                     let arm_ctx = Ctx {
+                        env: ctx.env,
                         in_match: true,
                         match_subject: Some(m.subject.raw.clone()),
-                        ..ctx.clone()
                     };
                     for arm in &m.arms {
                         match arm {
@@ -524,8 +527,8 @@ impl Walker<'_> {
                                     self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
                                 }
                                 ClipNode::Set(s) => {
-                                    self.diags.extend(check_set(s, &ctx.state, ctx));
-                                    let expected = resolve_type(&s.path, &ctx.state)
+                                    self.diags.extend(check_set(s, &ctx.env.state, ctx));
+                                    let expected = resolve_type(&s.path, &ctx.env.state)
                                         .cloned()
                                         .map(ExpectedType::Ty);
                                     self.diags.extend(check_cel_slot(
@@ -546,7 +549,7 @@ impl Walker<'_> {
     /// Validate every `@ref`-valued attribute's CEL slot in the current scope.
     /// `directive_tag` is `Some` only for directive attrs, letting a `@ref` attr
     /// value be typed against the attr's declared type (`E-REF-TYPE`, dsl §8).
-    fn check_attr_refs(&mut self, attrs: &[Attr], ctx: &Ctx, directive_tag: Option<&str>) {
+    fn check_attr_refs(&mut self, attrs: &[Attr], ctx: &Ctx<'_>, directive_tag: Option<&str>) {
         for attr in attrs {
             if let AttrValue::Ref(slot) = &attr.value {
                 let expected = directive_tag
@@ -573,7 +576,7 @@ const E_PERSIST_CONFLICT: &str = "E-PERSIST-CONFLICT";
 /// the write, so the checker only validates well-formedness. A `<choice>` with
 /// no `persist` attr is untouched. The `persist`/`as`/`value` attrs are
 /// recognized here, so they are never reported as unknown/extra.
-fn check_choice_persist(choice: &Choice, ctx: &Ctx, diags: &mut Vec<Diagnostic>) {
+fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
     // Only choices carrying a `persist` attr participate.
     let Some(persist) = choice.attrs.iter().find(|a| a.key == "persist") else {
         return;
@@ -626,7 +629,7 @@ fn check_choice_persist(choice: &Choice, ctx: &Ctx, diags: &mut Vec<Diagnostic>)
     }
     // Rule 3 (§9.2/§11.1.1): the `as` path MUST already be declared in the
     // merged schema — a typo'd/undeclared `as` cannot silently create a field.
-    let Some(ty) = resolve_type(as_path, &ctx.state) else {
+    let Some(ty) = resolve_type(as_path, &ctx.env.state) else {
         diags.push(persist_diag(
             "E-UNDECLARED",
             format!(

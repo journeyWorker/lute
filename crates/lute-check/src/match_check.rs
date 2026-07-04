@@ -86,7 +86,7 @@ pub struct BranchRecord {
 
 /// Validate a `<match>` for exhaustiveness, unset coverage, the age-gate, and
 /// provably-overlapping arms (dsl §11.2). All diagnostics are [`Layer::Logic`].
-pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx) -> Vec<Diagnostic> {
+pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
     let _ = ctx; // reserved: subject typing is owned by T4.3; unused here.
     let mut diags = Vec::new();
     let subject = subject_path(m);
@@ -459,9 +459,11 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ctx::Env;
     use lute_core_span::StableId;
     use lute_syntax::ast::{CelKind, CelSlot};
     use std::collections::BTreeMap;
+    use std::sync::LazyLock;
 
     fn span() -> Span {
         Span {
@@ -545,8 +547,13 @@ mod tests {
         StateSchema { decls }
     }
 
-    fn ctx() -> Ctx {
-        Ctx::default()
+    fn ctx() -> Ctx<'static> {
+        static ENV: LazyLock<Env> = LazyLock::new(Env::default);
+        Ctx {
+            env: &ENV,
+            in_match: false,
+            match_subject: None,
+        }
     }
 
     #[test]
