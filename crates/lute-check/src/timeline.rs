@@ -96,11 +96,24 @@ pub fn resolve_timeline(
         ));
     }
 
-    // Duplicate track key (E-DUP-TRACK). Keys are normalized to a canonical
-    // string since `TrackKey` does not derive `Eq`.
+    // Track-key validation (E-TRACK-KEY) + duplicate track key (E-DUP-TRACK).
+    // Keys are normalized to a canonical string since `TrackKey` does not
+    // derive `Eq`. A keyless track (or `property=` without `subject=`) collapses
+    // to an empty canonical key and is reported once as E-TRACK-KEY; it is not
+    // also flagged as a duplicate.
     let mut seen_keys: BTreeSet<String> = BTreeSet::new();
     for track in &tl.tracks {
         let canon = canon_key(&track.key);
+        if canon.is_empty() {
+            diags.push(diag(
+                "E-TRACK-KEY",
+                Severity::Error,
+                "a <track> requires `subject`, `channel`, or `subject`+`property` (dsl §7.4)"
+                    .to_string(),
+                track.span,
+            ));
+            continue; // don't also flag empty keys as duplicates
+        }
         if !seen_keys.insert(canon.clone()) {
             diags.push(diag(
                 "E-DUP-TRACK",
@@ -761,5 +774,60 @@ mod tests {
         };
         let (_t, diags) = resolve_timeline(&tl, &ctx(), &snap);
         assert!(!diags.iter().any(|d| d.code == "E-WRITE-CONFLICT"));
+    }
+
+    #[test]
+    fn keyless_track_errors() {
+        // A <track> with no subject/channel/property collapses to Subject("") -> E-TRACK-KEY.
+        let tl = Timeline {
+            duration: None,
+            span: span(),
+            tracks: vec![Track {
+                key: TrackKey::Subject(String::new()),
+                clips: vec![],
+                span: span(),
+            }],
+        };
+        let (_r, diags) = resolve_timeline(&tl, &ctx(), &lute_manifest::core::load_core_snapshot());
+        assert!(
+            diags.iter().any(|d| d.code == "E-TRACK-KEY"),
+            "got {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn property_track_pair_is_clean() {
+        // Two property tracks on the SAME subject, DISTINCT properties -> no E-TRACK-KEY, no E-DUP-TRACK.
+        let tl = Timeline {
+            duration: None,
+            span: span(),
+            tracks: vec![
+                Track {
+                    key: TrackKey::Property {
+                        subject: "bianca".into(),
+                        property: "pos".into(),
+                    },
+                    clips: vec![],
+                    span: span(),
+                },
+                Track {
+                    key: TrackKey::Property {
+                        subject: "bianca".into(),
+                        property: "opacity".into(),
+                    },
+                    clips: vec![],
+                    span: span(),
+                },
+            ],
+        };
+        let (_r, diags) = resolve_timeline(&tl, &ctx(), &lute_manifest::core::load_core_snapshot());
+        assert!(
+            !diags
+                .iter()
+                .any(|d| d.code == "E-TRACK-KEY" || d.code == "E-DUP-TRACK"),
+            "got {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
     }
 }

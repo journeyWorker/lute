@@ -1,0 +1,36 @@
+---
+character: bianca
+season: 1
+episode: 1
+---
+
+/*
+  Property tracks (dsl §11.4): split ONE subject across property-scoped
+  concurrent tracks. Here `bianca` is animated on two tracks at once — her
+  position (`pos`) and her opacity (`opacity`) — plus an independent camera
+  subject track. Each track key is distinct (`bianca.pos`, `bianca.opacity`,
+  `camera`), so the checker accepts them; a track with no usable key would be
+  flagged E-TRACK-KEY.
+*/
+
+## Shot 1.
+
+::bg{location="rooftop" time="evening" assetId="BG.space.rooftop.exterior.evening"}
+::auto{character="bianca" action="idle"}
+
+:line[narrator]: She stepped into frame as the camera swung to meet her.
+
+<timeline duration="1.2">
+  <track subject="bianca" property="pos">
+    ::auto{character="bianca" anchor="left" action="slide-in-left"}
+  </track>
+  <track subject="bianca" property="opacity">
+    ::auto{character="bianca" action="fade-in-up"}
+  </track>
+  <track subject="camera">
+    ::camera{focus="bianca" zoom="1.2" duration="0.6"}
+    ::camera{shake="0.4" duration="0.3" at="0.7"}
+  </track>
+</timeline>
+
+:line[bianca]: Both at once — that is the whole point of a split performance.
