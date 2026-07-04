@@ -50,6 +50,7 @@ fn input_for(text: &str) -> CheckInput {
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     }
 }
 
@@ -232,6 +233,7 @@ fn divergence_holds_under_plugin_project() {
         providers,
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     };
     let res = check(&input);
 
@@ -344,6 +346,7 @@ fn divergence_holds_under_plugin_defs() {
             providers,
             mode: Mode::Author,
             imports: SchemaImports::default(),
+            components: Default::default(),
         })
     };
 
@@ -437,6 +440,7 @@ fn divergence_holds_under_uses_import() {
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports,
+        components: Default::default(),
     };
     let res = check(&input);
     assert!(
@@ -481,6 +485,7 @@ fn divergence_holds_under_uses_import() {
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: bimports,
+        components: Default::default(),
     };
     let bres = check(&binput);
     assert!(

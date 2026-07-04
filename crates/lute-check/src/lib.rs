@@ -1,6 +1,7 @@
 pub mod cel_paths;
 pub mod cel_resolve;
 pub mod check;
+pub mod component_import;
 pub mod ctx;
 pub mod defassign;
 pub mod directives;
@@ -14,6 +15,7 @@ pub mod timeline;
 
 pub use cel_resolve::check_cel_slot;
 pub use check::{check, CheckInput, CheckResult, Resolved};
+pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use defassign::check_definite_assignment;
 pub use inject::{

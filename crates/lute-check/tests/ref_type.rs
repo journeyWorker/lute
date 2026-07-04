@@ -18,6 +18,7 @@ fn codes(text: &str) -> Vec<String> {
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     };
     check(&input)
         .diagnostics
@@ -122,6 +123,7 @@ fn check_codes(text: &str, snap: CapabilitySnapshot) -> Vec<String> {
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     };
     check(&input)
         .diagnostics

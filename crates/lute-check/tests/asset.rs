@@ -117,6 +117,7 @@ fn check_codes(text: &str, snap: CapabilitySnapshot, providers: ProviderSet) -> 
         providers,
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     };
     check(&input)
         .diagnostics
