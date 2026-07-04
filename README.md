@@ -75,6 +75,20 @@ profile: date-minigame
 </match>
 ```
 
+## Editor support
+
+Language support for `.lute` files — diagnostics, hover, completion, go-to-definition,
+references, folding, symbols, and highlighting — is provided by the `lute-lsp` stdio
+language server plus a thin client per editor. Clients for **VS Code**, **Neovim**, and
+the **Oh My Pi** harness live under [`editors/`](editors); see
+[`editors/README.md`](editors/README.md) for setup.
+
+Install the server once (`cargo install --path crates/lute-lsp`), then:
+
+- **VS Code** — [`editors/vscode/`](editors/vscode) (extension + TextMate grammar).
+- **Neovim** — [`editors/nvim/`](editors/nvim) (filetype + LSP autostart + tree-sitter).
+- **Oh My Pi** — [`.omp/lsp.json`](.omp/lsp.json) auto-detects `lute-lsp` for `.lute`.
+
 ## Status
 
 Draft / pre-implementation. The documents define the target language and architecture; compiler/LSP
