@@ -1,0 +1,10 @@
+# Asset kind (plugin §8, assetkinds export): a dotted id decomposed into typed
+# segments. `PT.<actor>.<variant>` — the `actor` segment is itself a
+# `providerRef: castId`, so an asset id is only valid if its actor is a known
+# catalog id. Used by the `serve` directive's `poster` attr.
+assetKinds:
+  - kind: PT
+    segments:
+      - { name: prefix,  const: PT }
+      - { name: actor,   type: { providerRef: castId } }
+      - { name: variant, type: number }

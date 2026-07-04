@@ -1,0 +1,7 @@
+# Provider registry (plugin §10): the id namespace that `providerRef: castId`
+# attrs and the `PT` asset-kind `actor` segment resolve against. Ids live in the
+# pinned catalog (catalog/cast.yaml).
+providers:
+  - name: castId
+    idShape: "Ident"
+    snapshot: cast-id

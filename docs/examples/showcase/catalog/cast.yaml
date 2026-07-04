@@ -1,0 +1,9 @@
+# Pinned provider snapshot (plugin §10): resolves the `castId` provider ids used
+# by `providerRef` attrs and `PT` asset ids. `manifestVersion: pending` mirrors
+# the other example catalogs; `lute catalog refresh` re-stamps it against the
+# live capabilityVersion.
+manifestVersion: "pending"
+providerVersion: "1"
+stale: false
+entries:
+  castId: [bianca_star, takeru_host]

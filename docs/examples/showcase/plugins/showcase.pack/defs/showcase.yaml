@@ -1,0 +1,5 @@
+# Plugin-exported defs (plugin defs export; dsl §8.1). A def is a pure CEL macro
+# merged into the project's def namespace, referenced from a scene as
+# `@showcaseReady`. List form: `- { name, type, cel }`.
+defs:
+  - { name: showcaseReady, type: bool, cel: "true" }

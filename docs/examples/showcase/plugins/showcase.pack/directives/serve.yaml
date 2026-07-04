@@ -1,0 +1,26 @@
+# A bridge/staging directive contributed by the plugin (plugin §8). It combines,
+# on ONE directive, a `providerRef`-typed attr (`performer`, resolved against the
+# `castId` catalog) and an `assetKind`-typed attr (`poster`, decomposed into the
+# `PT` segments). `resultKey` opens a typed `scene.serve.<key>.*` slot (shape
+# `serveResult`); the bridge write dominates the later read when `wait="true"`.
+directives:
+  - name: serve
+    layer: bridge
+    attrs:
+      - { name: kind,      required: true, type: { enumFromOption: allowedKinds } }
+      - { name: performer, required: true, type: { providerRef: castId } }
+      - { name: poster,    required: true, type: { assetKind: PT } }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.serve } } }
+      - { name: wait,      type: bool, default: true }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [serve, { fromAttr: { name: resultKey, slotType: localId } }], shape: serveResult }
+    effects:
+      writes:
+        - { scope: scene, path: [serve, { fromAttr: { name: resultKey } }, score],    value: { fromBridgeResult: score } }
+        - { scope: scene, path: [serve, { fromAttr: { name: resultKey } }, rank],     value: { fromBridgeResult: rank } }
+        - { scope: scene, path: [serve, { fromAttr: { name: resultKey } }, cleared],  value: { fromBridgeResult: cleared } }
+        - { scope: scene, path: [serve, { fromAttr: { name: resultKey } }, attempts], value: { op: increment, by: 1 } }
+    bridge: { service: serve, operation: play }
+    lower: { kind: builtin, name: bridgeServe }

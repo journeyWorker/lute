@@ -1,0 +1,212 @@
+---
+mode: inline
+character: bianca
+season: 1
+episode: 1
+title: The Full Showcase
+pov: fixer
+luteVersion: "0.0.1"
+# Root capability profile (project lute.project.yaml) — activates showcase.pack.
+profile: showcase
+# Scene-local plugin activation/options layered on top of the profile (§6.1.1):
+# narrows allowedKinds so `kind="rhythm"` is the only legal minigame kind here.
+plugins:
+  showcase.pack:
+    resultScope: scene
+    allowedKinds: [rhythm]
+# Shared run/user/app schema + defs arrive via the imported child schema, which
+# `extends:` a base (schema/game.schema.lute -> schema/base.schema.lute).
+uses: schema/game.schema.lute
+# Genuinely scene-local (episode-scoped) declarations only (§9.2).
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+  scene.saw_demo:      { type: bool,   default: false }
+# Inline scene def (§8.1) — a pure CEL macro referenced as `@fond`.
+defs:
+  fond: { type: bool, cel: "scene.affect.bianca >= 1" }
+---
+
+/*
+  Full-spec showcase episode. Every implemented Lute feature is exercised here
+  and checks exit 0 against `--project docs/examples/showcase`. See README.md for
+  the feature -> line map.
+*/
+
+# S01EP01 — The Full Showcase
+
+## Shot 1.
+
+/* Core staging directives with attrs (Appendix A vocabulary). */
+::bg{location="family_restaurant" time="evening" assetId="BG.space.family_restaurant.interior.evening"}
+::music{action="start" mood="bright" assetId="sound-bgm-common-vn-mood-bright-0.mp3" volume="normal"}
+::sfx{sound="drink_bar_hum" assetId="PLACEHOLDER_drink_bar_hum"}
+::auto{character="bianca" action="fade-in-up"}
+
+:line[narrator]: Venny's again. The chain restaurant that has never offended anyone.
+:line[bianca]{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
+:line[fixer]{code="0010"}: I did.
+
+## Shot 2.
+
+/*
+  Timeline (§11.4): one choreographed beat on a 1.4s local clock across four
+  tracks with distinct keys — a pure `subject` track (camera), a `channel` track
+  (fg), and TWO `property` tracks driving ONE subject concurrently
+  (bianca.pos + bianca.opacity). Clips carry absolute `at` offsets.
+*/
+<timeline duration="1.4">
+  <track subject="bianca" property="pos">
+    ::auto{character="bianca" anchor="left" action="slide-in-left"}
+  </track>
+  <track subject="bianca" property="opacity">
+    ::auto{character="bianca" action="fade-in-up"}
+  </track>
+  <track subject="camera">
+    ::camera{focus="bianca" zoom="1.2" duration="0.6"}
+    ::camera{shake="0.4" duration="0.3" at="0.7"}
+  </track>
+  <track channel="fg">
+    ::cut{assetId="CUT.showcase.debut.01" at="0.5"}
+    ::cut{assetId="CUT.showcase.debut.01" action="hide" at="1.1"}
+  </track>
+</timeline>
+/* State writes: a pure `=` write (scene tier) ... */
+::set{scene.saw_demo = true}
+
+:line[fixer]{delivery="thought"}: A rehearsed entrance. She has been practising.
+
+## Shot 3.
+
+/*
+  Plugin bridge directive (::serve). ONE directive whose attrs use BOTH a
+  `providerRef` id (`performer` -> castId catalog) AND an `assetKind` id
+  (`poster` -> decomposed PT.<actor>.<variant>). `resultKey` opens a typed
+  scene.serve.debut.* slot; wait="true" makes the bridge write dominate the read.
+*/
+::serve{kind="rhythm" performer="bianca_star" poster="PT.bianca_star.0" resultKey="debut" wait="true"}
+
+/*
+  Story logic reads only the declared slot state the bridge wrote (§11.2). rank
+  is a finite enum [fail, bronze, silver, gold]: first-match-wins; `$` is the
+  match subject; `<otherwise>` covers fail. A `+=` compound write reads-then-
+  writes (only legal because the path is definitely assigned).
+*/
+<match on="scene.serve.debut.rank">
+  <when test="$ == 'gold'">
+    :line[bianca]{code="0020" emotion="delighted" variant="1"}: A perfect service!
+    ::set{scene.affect.bianca += 1}
+  </when>
+  <when test="$ in ['silver', 'bronze']">
+    :line[bianca]{code="0030" emotion="content" variant="0"}: Not bad at all, Mr. Fixer.
+    ::set{run.affection += 1}
+  </when>
+  <otherwise>
+    :line[bianca]{code="0040" emotion="shy" variant="0"}: Shall we try once more?
+  </otherwise>
+</match>
+
+## Shot 4.
+
+:line[fixer]{delivery="thought"}: I should ask for her number before the shift swallows her.
+
+/*
+  <branch> + <choice> with `when` guards AND the persist="run" sugar (§11.1.1):
+  - `soft` records a bool run fact (value defaults to true);
+  - `linger` records an enum run fact (value required);
+  guards use an inline @ref, a plugin-exported @ref, and a parameterized def call.
+*/
+<branch id="approach">
+  <choice id="blunt" label="Just ask, flatly">
+    :line[fixer]{code="0050"}: Bianca. Your number.
+  </choice>
+  <choice id="soft" label="Ask gently" when="@showcaseReady" persist="run" as="run.metHelpfully">
+    :line[fixer]{code="0052"}: Bianca — would you mind terribly if I had your number?
+    ::set{scene.affect.bianca += 1}
+  </choice>
+  <choice id="linger" label="Ask, and linger a while" when="@atLeast(1)" persist="run" as="run.sofaOutcome" value="warm">
+    :line[fixer]{code="0054"}: And perhaps I'll stay through your break.
+    ::set{run.affection += 1}
+  </choice>
+</branch>
+
+:line[bianca]{code="0060" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.
+::sfx{sound="phone_chime" assetId="sound-sfx-common-phone-0.mp3"}
+
+## Shot 5.
+
+/*
+  Intra-episode reaction reads the recorded choice key (scene.choices.approach,
+  domain = the branch's choice ids + unset). `@fond` is the inline def; `$` is
+  the subject; `<otherwise>` is mandatory (a @ref guard proves no coverage).
+*/
+<match on="scene.choices.approach">
+  <when test="@fond">
+    :line[fixer]{delivery="thought"}: I asked nicely, which I am electing not to examine.
+  </when>
+  <when test="$ == 'blunt'">
+    :line[fixer]{delivery="thought"}: Straight to the point. It worked.
+  </when>
+  <otherwise>
+    :line[fixer]{delivery="thought"}: Whatever it was, it is done.
+  </otherwise>
+</match>
+
+/*
+  Named run facts (§11.1.1) — the cross-episode-durable outcomes the sugar wrote.
+  run.metHelpfully has a default (bool, finite -> no <otherwise> needed here since
+  both members are covered); run.sofaOutcome has NO default, so it is maybe-unset
+  and its `unset` case MUST be covered by <otherwise>.
+*/
+<match on="run.metHelpfully">
+  <when test="$ == true">
+    :line[bianca]{code="0070" emotion="content" variant="0"}: You were kind about it. I noticed.
+  </when>
+  <when test="$ == false">
+    :line[bianca]{code="0080" emotion="neutral" variant="0"}: There you are.
+  </when>
+</match>
+
+<match on="run.sofaOutcome">
+  <when test="$ == 'warm'">
+    :line[bianca]{code="0090" emotion="delighted" variant="1"}: Staying? That would be lovely.
+  </when>
+  <otherwise>
+    :line[bianca]{code="0100" emotion="shy" variant="0"}: Some other evening, then.
+  </otherwise>
+</match>
+
+## Shot 6.
+
+/*
+  app.* is read-only content gating (§9.5). An age-gated <match on="app.rating">
+  MUST cover `teen` or carry <otherwise> (release-build hard gate, §11.2). No
+  ::set targets app.* anywhere — the write policy is respected.
+*/
+<match on="app.rating">
+  <when test="$ == 'teen'">
+    :line[narrator]: A gentle evening, suitable for all.
+  </when>
+  <otherwise>
+    :line[narrator]: The night deepens.
+  </otherwise>
+</match>
+
+/*
+  Parameterized def call `@atLeast(3)` (base schema def, cel `user.level >= n`,
+  reads the user tier) and `@veteran` (child schema def added by the `extends`
+  refinement). Subject scene.affect.bianca; <otherwise> mandatory.
+*/
+<match on="scene.affect.bianca">
+  <when test="@atLeast(3)">
+    :line[fixer]{delivery="thought"}: She has earned a veteran's welcome.
+  </when>
+  <when test="@veteran">
+    :line[fixer]{delivery="thought"}: Seasoned enough for what comes next.
+  </when>
+  <otherwise>
+    :line[fixer]{delivery="thought"}: Early days yet.
+  </otherwise>
+</match>
+
+::vfx{type="petals" transition="fade"}
+::music{action="stop"}

@@ -1,0 +1,15 @@
+---
+# Base state schema (dsl §9.2). The game/season-global run/user/app tiers plus
+# shared defs live here — a single source of truth, composed into game.schema.lute
+# via `extends:` (base is the LOWER-precedence layer).
+state:
+  run.affection:    { type: number, default: 0 }
+  run.metHelpfully: { type: bool,   default: false }
+  run.sofaOutcome:  { type: { enum: [warm, cold] } }
+  user.level:       { type: number, default: 1 }
+  app.rating:       { type: { enum: [teen, adult] }, default: teen }
+  app.lang:         { type: { enum: [ko, en] } }
+defs:
+  helped:  { type: bool, cel: "run.metHelpfully" }
+  atLeast: { type: bool, params: { n: number }, cel: "user.level >= n" }
+---
