@@ -166,3 +166,45 @@ fn persist_wrong_value_type_errors() {
         codes(&t)
     );
 }
+
+#[test]
+fn persist_enum_member_spelled_like_bool_or_number_ok() {
+    // `run.tier: enum["true", "3", "gold"]` — members happen to be spelled like
+    // a bool / a number. The `value` must be judged against the RESOLVED enum
+    // type (verbatim string membership), not eagerly coerced to Bool/Num, so
+    // `value="3"` and `value="true"` are both valid members → clean.
+    let t = format!(
+        "{HDR}state:\n  run.tier: {{ type: {{ enum: [\"true\", \"3\", \"gold\"] }} }}\n---\n\
+         ## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c1\" label=\"Three\" persist=\"run\" as=\"run.tier\" value=\"3\">\n\
+         </choice>\n\
+         <choice id=\"c2\" label=\"True\" persist=\"run\" as=\"run.tier\" value=\"true\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    assert_clean(&codes(&t));
+}
+
+#[test]
+fn persist_bare_run_target_errors() {
+    // `as="run"` (the bare namespace, no `.path`) names no run fact. It must be
+    // rejected as an ill-formed target (`E-PERSIST-TARGET`) BEFORE the schema
+    // lookup — never falling through to `E-UNDECLARED`.
+    let t = format!(
+        "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"Bare\" persist=\"run\" as=\"run\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    let cs = codes(&t);
+    assert!(
+        cs.contains(&"E-PERSIST-TARGET".to_string()),
+        "a bare `as=\"run\"` target must flag E-PERSIST-TARGET; got {cs:?}"
+    );
+    assert!(
+        !cs.contains(&"E-UNDECLARED".to_string()),
+        "a bare `as=\"run\"` must not fall through to E-UNDECLARED; got {cs:?}"
+    );
+}
