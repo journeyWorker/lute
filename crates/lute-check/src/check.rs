@@ -337,6 +337,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
         diags: Vec::new(),
         timeline_tables: Vec::new(),
         exhaustive_subject_spans: Vec::new(),
+        components: &input.components,
     };
     for shot in &doc.shots {
         walker.walk(&shot.body, &base_ctx);
@@ -371,6 +372,17 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(meta_diags);
     diags.extend(branch_diags);
     diags.extend(input.imports.diags.clone());
+    // Component-import resolution diagnostics (dsl §13) + the per-component body
+    // validation and `::use` expansion-cycle diagnostics, both reported at the
+    // scene frontmatter span (a component file's own spans cannot be represented
+    // in this document's diagnostic surface).
+    diags.extend(input.components.diags.clone());
+    diags.extend(validate_components(
+        &input.components,
+        &input.snapshot,
+        &input.providers,
+        doc.meta.span,
+    ));
     diags.extend(state_merge_diags);
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
@@ -428,6 +440,8 @@ struct Walker<'a> {
     timeline_tables: Vec<ResolvedTimeline>,
     /// Subject spans of domain-exhaustive `<match>`es, for the T4.4 suppression.
     exhaustive_subject_spans: Vec<Span>,
+    /// Resolved `components:` table (dsl §13): the target of `::use` invocations.
+    components: &'a ComponentSet,
 }
 
 impl Walker<'_> {
@@ -435,6 +449,16 @@ impl Walker<'_> {
         for node in nodes {
             match node {
                 Node::Line(l) => self.check_attr_refs(&l.attrs, ctx, None),
+                Node::Directive(d) if d.tag == "use" => {
+                    // `use` is a reserved directive (dsl §13): recognized BEFORE
+                    // the unknown-directive check, so it is never
+                    // `E-UNKNOWN-DIRECTIVE`. It is a component invocation, not a
+                    // snapshot directive.
+                    check_use(d, self.components, &mut self.diags);
+                    // `@ref`-valued args still resolve in the current scope; there
+                    // is no directive decl to type them against.
+                    self.check_attr_refs(&d.attrs, ctx, None);
+                }
                 Node::Directive(d) => {
                     self.diags
                         .extend(check_directive(d, self.snapshot, self.providers, ctx));
@@ -523,6 +547,10 @@ impl Walker<'_> {
                     for track in &tl.tracks {
                         for clip in &track.clips {
                             match &clip.node {
+                                ClipNode::Directive(d) if d.tag == "use" => {
+                                    check_use(d, self.components, &mut self.diags);
+                                    self.check_attr_refs(&d.attrs, ctx, None);
+                                }
                                 ClipNode::Directive(d) => {
                                     self.diags.extend(check_directive(
                                         d,
@@ -567,6 +595,386 @@ impl Walker<'_> {
             }
         }
     }
+}
+
+// --- Reusable content components (`::use`, dsl §13) ---
+
+/// Component-invocation / body diagnostic codes (dsl §13).
+const E_COMPONENT_UNDECLARED: &str = "E-COMPONENT-UNDECLARED";
+const E_COMPONENT_ARG: &str = "E-COMPONENT-ARG";
+const E_COMPONENT_CYCLE: &str = "E-COMPONENT-CYCLE";
+const E_COMPONENT_BODY: &str = "E-COMPONENT-BODY";
+
+/// Build a `Layer::Staging` diagnostic for a `::use` invocation / component body
+/// (dsl §13).
+fn use_diag(code: &str, message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Staging,
+        fixits: Vec::new(),
+        provenance: None,
+    }
+}
+
+/// Validate a `::use{ component="name" <arg>=<value> … }` invocation (dsl §13)
+/// against the resolved component table. `use` is reserved (recognized before the
+/// unknown-directive check), so it is never `E-UNKNOWN-DIRECTIVE`.
+///
+/// * the `component=` attr must be a plain string naming a declared component
+///   (`E-COMPONENT-UNDECLARED` when the name is absent from the table);
+/// * every remaining attr is a NAMED arg bound to a param by name — an unknown
+///   arg, a missing required param, or a value incompatible with its param's
+///   declared type is `E-COMPONENT-ARG`.
+fn check_use(dir: &Directive, components: &ComponentSet, diags: &mut Vec<Diagnostic>) {
+    let Some(name_attr) = dir.attrs.iter().find(|a| a.key == "component") else {
+        diags.push(use_diag(
+            E_COMPONENT_ARG,
+            "`::use` requires a `component` attribute naming the component (dsl §13)".to_string(),
+            dir.span,
+        ));
+        return;
+    };
+    let AttrValue::Str(name) = &name_attr.value else {
+        diags.push(use_diag(
+            E_COMPONENT_ARG,
+            "`::use` `component` must be a plain string naming the component (dsl §13)".to_string(),
+            name_attr.value_span,
+        ));
+        return;
+    };
+    let Some(def) = components.table.get(name) else {
+        diags.push(use_diag(
+            E_COMPONENT_UNDECLARED,
+            format!("unknown component `{name}`: not declared in `components:` (dsl §13)"),
+            name_attr.value_span,
+        ));
+        return;
+    };
+    // Named-arg validation: each supplied arg binds to a param by name.
+    for attr in dir.attrs.iter().filter(|a| a.key != "component") {
+        match def.params.iter().find(|(p, _)| p == &attr.key) {
+            None => diags.push(use_diag(
+                E_COMPONENT_ARG,
+                format!(
+                    "component `{name}` has no parameter `{}` (dsl §13)",
+                    attr.key
+                ),
+                attr.span,
+            )),
+            Some((_, pty)) => {
+                if !use_arg_ok(pty, &attr.value) {
+                    diags.push(use_diag(
+                        E_COMPONENT_ARG,
+                        format!(
+                            "argument `{}` to component `{name}` is not compatible with its declared type (dsl §13)",
+                            attr.key
+                        ),
+                        attr.value_span,
+                    ));
+                }
+            }
+        }
+    }
+    // Every param must be supplied (v1 has no param defaults).
+    for (p, _) in &def.params {
+        if !dir.attrs.iter().any(|a| &a.key == p) {
+            diags.push(use_diag(
+                E_COMPONENT_ARG,
+                format!("component `{name}` requires argument `{p}` (dsl §13)"),
+                dir.span,
+            ));
+        }
+    }
+}
+
+/// A `::use` arg value is compatible with its param type when it is a `@ref`
+/// (CEL — bound at expansion and typed in the enclosing scope, conservative /
+/// not flagged here); a value-level string for a `providerRef` param (id
+/// existence is out of the v1 presentational scope); or a literal that coerces
+/// into the param type's domain and `type_accepts` it (reusing the persist
+/// value-coercion helper).
+fn use_arg_ok(ty: &Type, value: &AttrValue) -> bool {
+    match value {
+        AttrValue::Ref(_) => true,
+        _ if matches!(ty, Type::ProviderRef(_)) => matches!(value, AttrValue::Str(_)),
+        _ => persist_literal(ty, value).is_some_and(|lit| type_accepts(ty, &lit)),
+    }
+}
+
+/// Validate every imported component (dsl §13): its presentational body plus the
+/// `::use` expansion graph across components. Body diagnostics are re-anchored to
+/// `at` (the scene frontmatter span) and prefixed with the component name/source
+/// — a component file's own byte spans cannot be represented in this document's
+/// diagnostic surface (mirroring how import diagnostics report at the scene
+/// frontmatter). Deterministic: components iterate in name order.
+fn validate_components(
+    components: &ComponentSet,
+    snapshot: &CapabilitySnapshot,
+    providers: &ProviderSet,
+    at: Span,
+) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for (name, def) in &components.table {
+        let env = component_env(&def.params);
+        let ctx = Ctx {
+            env: &env,
+            in_match: false,
+            match_subject: None,
+        };
+        // Fill the component body's OWN CEL slots into a fresh arena (independent
+        // of the scene's).
+        let mut body = def.body.clone();
+        let mut arena = CelArena::default();
+        let cel_errors = fill_document(&mut arena, &mut body);
+        let mut body_diags: Vec<Diagnostic> = cel_errors
+            .into_iter()
+            .map(|e| Diagnostic {
+                code: E_CEL_PARSE.to_string(),
+                severity: Severity::Error,
+                message: e.message,
+                span: e.span,
+                layer: Layer::Cel,
+                fixits: Vec::new(),
+                provenance: None,
+            })
+            .collect();
+        for shot in &body.shots {
+            walk_component_body(
+                &shot.body,
+                snapshot,
+                providers,
+                &arena,
+                &ctx,
+                components,
+                &mut body_diags,
+            );
+        }
+        for mut d in body_diags {
+            d.message = format!("component `{name}` ({}): {}", def.src.display(), d.message);
+            d.span = at;
+            out.push(d);
+        }
+    }
+    detect_use_cycles(components, at, &mut out);
+    out
+}
+
+/// The component-mode analysis environment (dsl §13): the params are the ONLY ref
+/// namespace (each a 0-arity `@param`), and the state schema is EMPTY so any
+/// scene/run/user/app read in a body is undeclared.
+fn component_env(params: &[(String, Type)]) -> Env {
+    let mut defs = std::collections::BTreeSet::new();
+    let mut def_types = std::collections::BTreeMap::new();
+    let mut def_params = std::collections::BTreeMap::new();
+    for (name, ty) in params {
+        defs.insert(name.clone());
+        def_types.insert(name.clone(), ty.clone());
+        // 0 params: a bare `@p` is well-formed; `@p(x)` is `E-REF-ARITY`.
+        def_params.insert(name.clone(), Vec::new());
+    }
+    Env {
+        mode: Mode::Author,
+        state: crate::meta::StateSchema::default(),
+        defs,
+        def_types,
+        def_params,
+    }
+}
+
+/// Walk a component body in component mode (dsl §13). Lines + staging directives
+/// (incl. nested `::use`) are presentational and validated; a `::set` (state
+/// write), `<branch>`/`<match>` (logic block), or `<timeline>` is the v1
+/// presentational-scope error `E-COMPONENT-BODY`.
+fn walk_component_body(
+    nodes: &[Node],
+    snapshot: &CapabilitySnapshot,
+    providers: &ProviderSet,
+    arena: &CelArena,
+    ctx: &Ctx<'_>,
+    components: &ComponentSet,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for node in nodes {
+        match node {
+            Node::Line(l) => body_attr_refs(&l.attrs, snapshot, arena, ctx, None, diags),
+            Node::Directive(d) if d.tag == "use" => {
+                check_use(d, components, diags);
+                body_attr_refs(&d.attrs, snapshot, arena, ctx, None, diags);
+            }
+            Node::Directive(d) => {
+                diags.extend(check_directive(d, snapshot, providers, ctx));
+                body_attr_refs(&d.attrs, snapshot, arena, ctx, Some(&d.tag), diags);
+            }
+            Node::Set(s) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                format!(
+                    "a component body must be presentational (dsl §13): `::set` of `{}` writes state, not allowed in v1",
+                    s.path
+                ),
+                s.span,
+            )),
+            Node::Branch(b) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                format!(
+                    "a component body must be presentational (dsl §13): the `<branch {}>` logic block is not allowed in v1",
+                    b.id
+                ),
+                b.span,
+            )),
+            Node::Match(m) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                "a component body must be presentational (dsl §13): a `<match>` logic block is not allowed in v1".to_string(),
+                m.span,
+            )),
+            Node::Timeline(tl) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                "a component body must be presentational (dsl §13): a `<timeline>` is not allowed in v1".to_string(),
+                tl.span,
+            )),
+        }
+    }
+}
+
+/// Validate the `@ref`-valued attrs of a component-body node against the param
+/// ref namespace (the free-function analog of [`Walker::check_attr_refs`]).
+fn body_attr_refs(
+    attrs: &[Attr],
+    snapshot: &CapabilitySnapshot,
+    arena: &CelArena,
+    ctx: &Ctx<'_>,
+    directive_tag: Option<&str>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for attr in attrs {
+        if let AttrValue::Ref(slot) = &attr.value {
+            let expected = directive_tag
+                .and_then(|tag| snapshot.directive(tag))
+                .and_then(|decl| decl.attrs.iter().find(|a| a.name == attr.key))
+                .map(|a| ExpectedType::Ty(a.ty.clone()));
+            diags.extend(check_cel_slot(slot, arena, ctx, expected.as_ref()));
+        }
+    }
+}
+
+/// The component NAME a `::use` directive targets (a plain-string `component=`
+/// attr), or `None` for any other directive / a non-string component attr.
+fn use_target(dir: &Directive) -> Option<&str> {
+    if dir.tag != "use" {
+        return None;
+    }
+    dir.attrs
+        .iter()
+        .find(|a| a.key == "component")
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some(s.as_str()),
+            _ => None,
+        })
+}
+
+/// Collect the component NAMES a body `::use`s, recursing into nested bodies for
+/// robustness (a presentational body flags nested logic separately, but a `::use`
+/// there still forms an expansion edge for cycle detection).
+fn collect_use_targets(nodes: &[Node], out: &mut Vec<String>) {
+    for node in nodes {
+        match node {
+            Node::Directive(d) => {
+                if let Some(t) = use_target(d) {
+                    out.push(t.to_string());
+                }
+            }
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    collect_use_targets(&c.body, out);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            collect_use_targets(body, out)
+                        }
+                    }
+                }
+            }
+            Node::Timeline(tl) => {
+                for tr in &tl.tracks {
+                    for clip in &tr.clips {
+                        if let ClipNode::Directive(d) = &clip.node {
+                            if let Some(t) = use_target(d) {
+                                out.push(t.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            Node::Line(_) | Node::Set(_) => {}
+        }
+    }
+}
+
+/// Detect `::use` expansion cycles across component bodies (dsl §13): component A
+/// whose body `::use`s B whose body … `::use`s A. Reported once per back edge as
+/// `E-COMPONENT-CYCLE` at `at`. Deterministic: adjacency + neighbors are sorted.
+fn detect_use_cycles(components: &ComponentSet, at: Span, diags: &mut Vec<Diagnostic>) {
+    let mut adj: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for (name, def) in &components.table {
+        let mut targets = Vec::new();
+        for shot in &def.body.shots {
+            collect_use_targets(&shot.body, &mut targets);
+        }
+        targets.sort();
+        targets.dedup();
+        adj.insert(name.clone(), targets);
+    }
+    let mut on_stack = std::collections::BTreeSet::new();
+    let mut done = std::collections::BTreeSet::new();
+    let mut stack: Vec<String> = Vec::new();
+    for start in adj.keys() {
+        if !done.contains(start) && !on_stack.contains(start) {
+            dfs_use_cycle(start, &adj, &mut on_stack, &mut done, &mut stack, at, diags);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn dfs_use_cycle(
+    node: &str,
+    adj: &std::collections::BTreeMap<String, Vec<String>>,
+    on_stack: &mut std::collections::BTreeSet<String>,
+    done: &mut std::collections::BTreeSet<String>,
+    stack: &mut Vec<String>,
+    at: Span,
+    diags: &mut Vec<Diagnostic>,
+) {
+    on_stack.insert(node.to_string());
+    stack.push(node.to_string());
+    if let Some(targets) = adj.get(node) {
+        for nbr in targets {
+            if on_stack.contains(nbr) {
+                let start_idx = stack.iter().position(|p| p == nbr).unwrap_or(0);
+                let chain = stack[start_idx..]
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(nbr.clone()))
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
+                diags.push(use_diag(
+                    E_COMPONENT_CYCLE,
+                    format!("`::use` expansion cycle across components: {chain} (dsl §13)"),
+                    at,
+                ));
+            } else if !done.contains(nbr) {
+                dfs_use_cycle(nbr, adj, on_stack, done, stack, at, diags);
+            }
+        }
+    }
+    stack.pop();
+    on_stack.remove(node);
+    done.insert(node.to_string());
 }
 
 /// Diagnostic codes for the `<choice … persist="run">` run-fact sugar (dsl §11.1.1).

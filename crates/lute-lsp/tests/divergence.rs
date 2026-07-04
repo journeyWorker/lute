@@ -514,3 +514,109 @@ fn divergence_holds_under_uses_import() {
         "E-USES-NOT-FOUND projection diverged between surfaces"
     );
 }
+
+/// No-divergence under `components:` component imports (dsl §13). Two cases: (a)
+/// an error-clean scene that imports + `::use`s a valid presentational component
+/// (resolved via the SAME `resolve_components` both surfaces call) and (b) a scene
+/// whose `::use` names an undeclared component, yielding an `E-COMPONENT-UNDECLARED`
+/// whose headless and LSP projections must agree byte-for-byte — guarding the new
+/// §13 diagnostic codes' projection.
+#[test]
+fn divergence_holds_under_components() {
+    let dir = std::env::temp_dir().join(format!("lute_div_components_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("greet.lute"),
+        "---\ncomponent: greet\nparams:\n  who: string\n---\n## G.\n::auto{character=@who}\n:line[narrator]: hi\n",
+    )
+    .unwrap();
+
+    // (a) happy path: import + ::use a valid component cleanly; projections agree.
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [greet.lute]\n---\n## Shot 1.\n::use{component=\"greet\" who=\"bianca\"}\n";
+    let (doc, _) = lute_syntax::parse(text);
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let components = lute_check::resolve_components(&dir, &meta0.components, doc.meta.span);
+    let input = CheckInput {
+        text: text.into(),
+        uri: "comp-scene".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components,
+    };
+    let res = check(&input);
+    assert!(
+        res.diagnostics
+            .iter()
+            .all(|d| d.severity != Severity::Error),
+        "a clean ::use of a valid component must be error-free; got {:?}",
+        res.diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
+    );
+    let index = idx(text);
+    let headless: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &index))
+        .collect();
+    let via_lsp: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .collect();
+    assert_eq!(
+        headless, via_lsp,
+        "headless and LSP surfaces diverged under a components: import"
+    );
+
+    // (b) non-vacuous: an unknown ::use produces E-COMPONENT-UNDECLARED; its
+    // headless and LSP projections must agree too (the new §13 codes' projection).
+    let bad = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::use{component=\"ghost\" who=\"x\"}\n";
+    let (bdoc, _) = lute_syntax::parse(bad);
+    let (bmeta, _) = lute_check::parse_meta(
+        &bdoc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let bcomponents = lute_check::resolve_components(&dir, &bmeta.components, bdoc.meta.span);
+    let binput = CheckInput {
+        text: bad.to_string(),
+        uri: "ghost-scene".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: bcomponents,
+    };
+    let bres = check(&binput);
+    assert!(
+        bres.diagnostics
+            .iter()
+            .any(|d| d.code == "E-COMPONENT-UNDECLARED"),
+        "an unknown ::use must yield E-COMPONENT-UNDECLARED; got {:?}",
+        bres.diagnostics
+            .iter()
+            .map(|d| d.code.clone())
+            .collect::<Vec<_>>()
+    );
+    let bindex = idx(bad);
+    let bheadless: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &bindex))
+        .collect();
+    let bvia_lsp: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex)))
+        .collect();
+    assert_eq!(
+        bheadless, bvia_lsp,
+        "E-COMPONENT-UNDECLARED projection diverged between surfaces"
+    );
+}
