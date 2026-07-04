@@ -1,0 +1,31 @@
+; tree-sitter-lute — code-nav tags for the Lute Scenario DSL.
+;
+; Follows the tree-sitter tags convention: each definition/reference carries a
+; `@name` capture (the navigable identifier) plus a `@definition.*` / a
+; `@reference.*` capture on the enclosing node.
+
+; ---- definitions ----------------------------------------------------------
+; Shot heading (§6.3) — a top-level navigable beat; its text is the name.
+(shot (text) @name) @definition.module
+
+; `<branch id="…">` (§7.3) — the branch id is a jump target.
+(branch
+  (attr (key) @_key (string) @name)
+  (#eq? @_key "id")) @definition.class
+
+; `<choice id="…">` (§7.3) — each choice id inside a branch is a jump target.
+(choice
+  (attr (key) @_key (string) @name)
+  (#eq? @_key "id")) @definition.function
+
+; ---- references -----------------------------------------------------------
+; Bare `@ref` (§4.5) — a defs-backed guard / value reference; the ref token
+; (leading `@` included) is both the reference site and its name. The bare
+; pattern also matches `@ref`s nested inside a CEL attribute value (§8.1),
+; e.g. `<when test="@fond">`.
+(ref) @name @reference.call
+
+; State path inside a CEL-valued attribute (`<match on="scene.choices.x">`,
+; §7.3/§9) — a navigable reference to declared state, mirroring the `@embedded`
+; CEL treatment of the `::set` right-hand side.
+(cel_string (path) @name) @reference.call
