@@ -62,9 +62,12 @@ pub struct TypedMeta {
     pub params_malformed: bool,
 }
 
-/// Core built-in top-level meta keys (dsl §6.1). Keys here are never "unknown";
-/// keys outside this set and not owned by an active plugin's `frontmatter`
-/// export are a static error (dsl §6.1).
+/// Core built-in top-level meta keys valid in EVERY document kind (dsl §6.1).
+/// Keys here are never "unknown"; a top-level key outside this set, not in the
+/// kind-specific allowance below, and not owned by an active plugin's
+/// `frontmatter` export is a static error (dsl §6.1). `components:` (the import
+/// list, dsl §13) is valid everywhere; `component:`/`params:` are NOT — see
+/// [`COMPONENT_ONLY_KEYS`].
 const BUILTIN_KEYS: &[&str] = &[
     "character",
     "season",
@@ -81,9 +84,12 @@ const BUILTIN_KEYS: &[&str] = &[
     "state",
     "defs",
     "components",
-    "component",
-    "params",
 ];
+
+/// Frontmatter keys that are valid ONLY in a component file (dsl §13): the
+/// component's own name (`component:`) and its parameter signature (`params:`).
+/// In a scene or schema doc these are unknown top-level keys.
+const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params"];
 
 const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 
@@ -173,7 +179,10 @@ pub fn parse_meta_kind(
             ));
         }
     }
-    // Unknown-key check over the top-level keys (dsl §6.1); applies to both kinds.
+    // Unknown-key check over the top-level keys (dsl §6.1); applies to every kind.
+    // `component:`/`params:` (dsl §13) are allowed ONLY in a component file, so a
+    // scene or schema doc that declares them hits the unknown-key diagnostic.
+    let component_key_allowed = kind == MetaKind::Component;
     for (k, _) in map.iter() {
         let Some(key) = k.as_str() else {
             diags.push(err(
@@ -182,7 +191,9 @@ pub fn parse_meta_kind(
             ));
             continue;
         };
-        let known = BUILTIN_KEYS.contains(&key) || snapshot.frontmatter.contains_key(key);
+        let known = BUILTIN_KEYS.contains(&key)
+            || (component_key_allowed && COMPONENT_ONLY_KEYS.contains(&key))
+            || snapshot.frontmatter.contains_key(key);
         if !known {
             diags.push(err(
                 "E-META-UNKNOWN-KEY",
@@ -482,5 +493,48 @@ mod tests {
         );
         let names: Vec<&str> = meta.params.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(names, vec!["first", "second", "third"]);
+    }
+
+    #[test]
+    fn scene_component_and_params_keys_are_unknown() {
+        // dsl §13: `component:`/`params:` are COMPONENT-FILE-ONLY frontmatter keys.
+        // A SCENE (MetaKind::Scene) declaring them must hit the unknown-key
+        // diagnostic, not be silently accepted.
+        let (_m, diags) = parse_meta_str(
+            "character: x\nseason: 1\nepisode: 1\ncomponent: greet\nparams:\n  who: string\n",
+        );
+        let unknown: Vec<&str> = diags
+            .iter()
+            .filter(|d| d.code == "E-META-UNKNOWN-KEY")
+            .map(|d| d.message.as_str())
+            .collect();
+        assert!(
+            unknown.iter().any(|m| m.contains("`component`")),
+            "scene `component:` must be an unknown top-level key; got {diags:?}"
+        );
+        assert!(
+            unknown.iter().any(|m| m.contains("`params`")),
+            "scene `params:` must be an unknown top-level key; got {diags:?}"
+        );
+
+        // No regression: Component mode still accepts both cleanly.
+        let (cm, cdiags) = parse_kind_str(
+            "component: greet\nparams:\n  who: string\n",
+            MetaKind::Component,
+        );
+        assert!(
+            !cdiags.iter().any(|d| d.code == "E-META-UNKNOWN-KEY"),
+            "Component mode must accept component/params; got {cdiags:?}"
+        );
+        assert_eq!(cm.component.as_deref(), Some("greet"));
+
+        // Schema mode (imported via `uses:`) likewise rejects them.
+        let (_sm, sdiags) = parse_kind_str("component: greet\n", MetaKind::Schema);
+        assert!(
+            sdiags
+                .iter()
+                .any(|d| d.code == "E-META-UNKNOWN-KEY" && d.message.contains("`component`")),
+            "Schema mode must reject `component:`; got {sdiags:?}"
+        );
     }
 }
