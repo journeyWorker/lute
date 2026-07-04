@@ -31,7 +31,7 @@ use crate::Ctx;
 /// Check a `::set` directive's target write-policy and op/type compatibility
 /// (dsl §7.3.4, §9.5). Reads nothing from `Ctx` today; it is threaded for
 /// parity with the other `check_*` entrypoints and for future modes.
-pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx) -> Vec<Diagnostic> {
+pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 
     // §9.5 write policy: `app.*` is read-only to content. Short-circuit — the
@@ -163,10 +163,12 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ctx::Env;
     use crate::meta::StateDecl;
     use lute_core_span::Span;
     use lute_manifest::types::Type;
     use lute_syntax::ast::{CelKind, CelSlot, Set};
+    use std::sync::LazyLock;
 
     fn test_span() -> Span {
         Span {
@@ -214,8 +216,13 @@ mod tests {
         schema_of("scene.affect.bianca", Type::Number, Namespace::Scene)
     }
 
-    fn ctx() -> Ctx {
-        Ctx::default()
+    fn ctx() -> Ctx<'static> {
+        static ENV: LazyLock<Env> = LazyLock::new(Env::default);
+        Ctx {
+            env: &ENV,
+            in_match: false,
+            match_subject: None,
+        }
     }
 
     #[test]

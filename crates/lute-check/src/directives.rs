@@ -40,7 +40,7 @@ pub fn check_directive(
     dir: &Directive,
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
-    _ctx: &Ctx,
+    _ctx: &Ctx<'_>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 
@@ -453,10 +453,12 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
 mod tests {
     use super::*;
     use crate::ctx::Ctx;
+    use crate::ctx::Env;
     use lute_core_span::Span;
     use lute_manifest::core::load_core_snapshot;
     use lute_manifest::provider::ProviderSet;
     use lute_syntax::ast::{Attr, AttrValue};
+    use std::sync::LazyLock;
 
     fn span() -> Span {
         Span {
@@ -488,8 +490,13 @@ mod tests {
         ProviderSet::default()
     }
 
-    fn ctx() -> Ctx {
-        Ctx::default()
+    fn ctx() -> Ctx<'static> {
+        static ENV: LazyLock<Env> = LazyLock::new(Env::default);
+        Ctx {
+            env: &ENV,
+            in_match: false,
+            match_subject: None,
+        }
     }
 
     #[test]

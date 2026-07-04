@@ -32,7 +32,7 @@ use lute_manifest::types::Type;
 pub fn check_cel_slot(
     slot: &CelSlot,
     arena: &CelArena,
-    ctx: &Ctx,
+    ctx: &Ctx<'_>,
     expected: Option<&ExpectedType>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -49,7 +49,7 @@ pub fn check_cel_slot(
                     span,
                 ));
             }
-        } else if !ctx.defs.contains(&r.name) {
+        } else if !ctx.env.defs.contains(&r.name) {
             // `@name` must resolve to a declared `defs:` entry (dsl §8.1).
             diags.push(diag(
                 "E-UNDECLARED-REF",
@@ -62,7 +62,7 @@ pub fn check_cel_slot(
             //   * arity (E-REF-ARITY): the `@name(args)` call MUST supply exactly
             //     as many arguments as the def declares params (a bare `@name` is
             //     0 args). Determinism is handled by the caller's final sort.
-            if let Some(params) = ctx.def_params.get(&r.name) {
+            if let Some(params) = ctx.env.def_params.get(&r.name) {
                 let got = r.call.as_ref().map_or(0, |c| c.args.len());
                 if got != params.len() {
                     diags.push(diag(
@@ -88,7 +88,7 @@ pub fn check_cel_slot(
             //     on `slot.raw`, so `r.span`/`r.call.span` byte offsets are relative
             //     to `slot.raw`; require the ref (and its call group, if any) to
             //     span the trimmed content exactly — nothing before or after it.
-            if let (Some(expected), Some(produced)) = (expected, ctx.def_types.get(&r.name)) {
+            if let (Some(expected), Some(produced)) = (expected, ctx.env.def_types.get(&r.name)) {
                 let raw = &slot.raw;
                 let content_start = raw.len() - raw.trim_start().len();
                 let content_end = raw.trim_end().len();
@@ -118,7 +118,7 @@ pub fn check_cel_slot(
             //     declared type. Conservative: unresolvable args (compound
             //     expressions, unknown paths) are silently skipped — only a
             //     PROVABLY-wrong arg flags, never a false positive.
-            if let (Some(call), Some(params)) = (r.call.as_ref(), ctx.def_params.get(&r.name)) {
+            if let (Some(call), Some(params)) = (r.call.as_ref(), ctx.env.def_params.get(&r.name)) {
                 if call.args.len() == params.len() {
                     for (arg_span, (_pname, pty)) in call.args.iter().zip(params.iter()) {
                         // `arg_span` byte offsets are relative to `slot.raw` (what
@@ -217,7 +217,7 @@ fn expected_desc(e: &ExpectedType) -> String {
 /// Best-effort static type of a single call argument's raw source (dsl §8.1
 /// `@name(args)`). Returns `None` (skip — never flag) for anything not trivially
 /// typeable, keeping `E-REF-ARG-TYPE` conservative (no false positives).
-fn resolve_arg_type(arg_raw: &str, ctx: &Ctx) -> Option<Type> {
+fn resolve_arg_type(arg_raw: &str, ctx: &Ctx<'_>) -> Option<Type> {
     let a = arg_raw.trim();
     if a == "true" || a == "false" {
         return Some(Type::Bool);
@@ -236,15 +236,15 @@ fn resolve_arg_type(arg_raw: &str, ctx: &Ctx) -> Option<Type> {
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
         {
-            return ctx.def_types.get(name).cloned();
+            return ctx.env.def_types.get(name).cloned();
         }
     }
     // a bare, resolvable state path
-    crate::set_op::resolve_type(a, &ctx.state).cloned()
+    crate::set_op::resolve_type(a, &ctx.env.state).cloned()
 }
 
 /// Classify one reconstructed state path and emit its diagnostic, if any.
-fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx, diags: &mut Vec<Diagnostic>) {
+fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
     // Reserved `run.choiceLog.*` read inside a guard/condition (dsl §9.6).
     if is_guard(slot.kind) && (path == "run.choiceLog" || path.starts_with("run.choiceLog.")) {
         diags.push(diag(
@@ -266,8 +266,9 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx, diags: &mut Vec<Diagn
 
 /// A path is declared when it exactly matches a `state:` key or is a descendant
 /// field of one (`scene.player` declared => `scene.player.hp` reads are ok).
-fn is_declared(path: &str, ctx: &Ctx) -> bool {
-    ctx.state
+fn is_declared(path: &str, ctx: &Ctx<'_>) -> bool {
+    ctx.env
+        .state
         .decls
         .keys()
         .any(|k| path == k || path.starts_with(&format!("{k}.")))
@@ -308,6 +309,7 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ctx::Env;
     use lute_syntax::ast::CelKind;
     use std::collections::BTreeSet;
 
@@ -321,29 +323,34 @@ mod tests {
         }
     }
 
-    fn ctx_no_match() -> Ctx {
-        Ctx::default()
-    }
-
-    fn ctx_with_defs(names: &[&str]) -> Ctx {
-        Ctx {
+    fn env_with_defs(names: &[&str]) -> Env {
+        Env {
             defs: names.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>(),
-            ..Ctx::default()
+            ..Env::default()
         }
     }
 
-    fn ctx_in_match() -> Ctx {
-        Ctx {
-            in_match: true,
-            ..Ctx::default()
-        }
-    }
-
-    fn ctx_with_def(name: &str, ty: Type) -> Ctx {
-        Ctx {
+    fn env_with_def(name: &str, ty: Type) -> Env {
+        Env {
             defs: std::iter::once(name.to_string()).collect(),
             def_types: std::iter::once((name.to_string(), ty)).collect(),
-            ..Ctx::default()
+            ..Env::default()
+        }
+    }
+
+    fn mk_ctx(env: &Env) -> Ctx<'_> {
+        Ctx {
+            env,
+            in_match: false,
+            match_subject: None,
+        }
+    }
+
+    fn mk_ctx_in_match(env: &Env) -> Ctx<'_> {
+        Ctx {
+            env,
+            in_match: true,
+            match_subject: None,
         }
     }
 
@@ -367,7 +374,8 @@ mod tests {
 
     #[test]
     fn dollar_outside_match_errors() {
-        let ctx = ctx_no_match();
+        let env = Env::default();
+        let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("$ == 'x'");
         let errs = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
         assert!(errs.iter().any(|e| e.code == "E-DOLLAR-OUTSIDE-MATCH"));
@@ -375,7 +383,8 @@ mod tests {
 
     #[test]
     fn undeclared_ref_errors() {
-        let ctx = ctx_with_defs(&["fond"]);
+        let env = env_with_defs(&["fond"]);
+        let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@warm");
         let errs = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
         assert!(errs.iter().any(|e| e.code == "E-UNDECLARED-REF"));
@@ -383,7 +392,8 @@ mod tests {
 
     #[test]
     fn choicelog_read_in_guard_errors() {
-        let ctx = ctx_in_match();
+        let env = Env::default();
+        let ctx = mk_ctx_in_match(&env);
         let slot = cel_slot_condition("run.choiceLog.ep02.couch == 'help'");
         let errs = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
         assert!(errs.iter().any(|e| e.code == "E-CHOICELOG-READ"));
@@ -391,7 +401,8 @@ mod tests {
 
     #[test]
     fn ref_type_mismatch_flags() {
-        let ctx = ctx_with_def("num", Type::Number);
+        let env = env_with_def("num", Type::Number);
+        let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@num"); // referenced in a bool position
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
         assert!(d.iter().any(|x| x.code == "E-REF-TYPE"));
@@ -399,7 +410,8 @@ mod tests {
 
     #[test]
     fn ref_type_compatible_is_clean() {
-        let ctx = ctx_with_def("flag", Type::Bool);
+        let env = env_with_def("flag", Type::Bool);
+        let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@flag");
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
         assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"));
@@ -407,7 +419,8 @@ mod tests {
 
     #[test]
     fn ref_type_unknown_expected_no_false_positive() {
-        let ctx = ctx_with_def("num", Type::Number);
+        let env = env_with_def("num", Type::Number);
+        let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@num");
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None); // expected unknown
         assert!(!d.iter().any(|x| x.code == "E-REF-TYPE"));
@@ -416,7 +429,8 @@ mod tests {
     #[test]
     fn ref_type_string_family_clean() {
         // def produces Str used where an Enum is expected -> string family -> no flag
-        let ctx = ctx_with_def("s", Type::Str);
+        let env = env_with_def("s", Type::Str);
+        let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@s");
         let d = check_cel_slot(
             &slot,
@@ -430,7 +444,8 @@ mod tests {
     #[test]
     fn ref_type_id_type_clean() {
         // expected an id type -> always compatible
-        let ctx = ctx_with_def("n", Type::Number);
+        let env = env_with_def("n", Type::Number);
+        let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@n");
         let d = check_cel_slot(
             &slot,
@@ -444,7 +459,8 @@ mod tests {
     #[test]
     fn ref_type_undeclared_ref_no_reftype() {
         // name not in ctx.defs -> E-UNDECLARED-REF, NOT E-REF-TYPE (no double report)
-        let ctx = Ctx::default(); // empty defs/def_types
+        let env = Env::default();
+        let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@ghost");
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
         assert!(d.iter().any(|x| x.code == "E-UNDECLARED-REF"));
@@ -455,7 +471,8 @@ mod tests {
     fn ref_type_compound_expr_no_false_positive() {
         // `@num > 0` in a bool slot: @num (Number) types a numeric subexpression;
         // the whole expression is boolean -> must NOT flag E-REF-TYPE.
-        let ctx = ctx_with_def("num", Type::Number);
+        let env = env_with_def("num", Type::Number);
+        let ctx = mk_ctx(&env);
         let slot = cel_slot_condition("@num > 0");
         let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, Some(&ExpectedType::Bool));
         assert!(

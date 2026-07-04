@@ -69,7 +69,7 @@ pub struct ResolvedTimeline {
 /// Resolve a `<timeline>` into its table view + staging diagnostics (dsl §11.4).
 pub fn resolve_timeline(
     tl: &Timeline,
-    _ctx: &Ctx,
+    _ctx: &Ctx<'_>,
     snapshot: &CapabilitySnapshot,
 ) -> (ResolvedTimeline, Vec<Diagnostic>) {
     let mut diags = Vec::new();
@@ -412,12 +412,14 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ctx::Env;
     use lute_manifest::schema::{
         AttrDecl, DirectiveDecl, DirectiveEffects, Lowering, WriteDecl, WriteValue,
     };
     use lute_manifest::types::{FromAttr, Literal, PathSegment, Type};
     use lute_syntax::ast::Set;
     use lute_syntax::ast::{Attr, Clip, Directive, Track};
+    use std::sync::LazyLock;
 
     fn span() -> Span {
         Span {
@@ -429,8 +431,13 @@ mod tests {
         }
     }
 
-    fn ctx() -> Ctx {
-        Ctx::default()
+    fn ctx() -> Ctx<'static> {
+        static ENV: LazyLock<Env> = LazyLock::new(Env::default);
+        Ctx {
+            env: &ENV,
+            in_match: false,
+            match_subject: None,
+        }
     }
 
     fn dir(tag: &str, duration: &str) -> Directive {

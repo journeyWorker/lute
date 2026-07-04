@@ -23,18 +23,15 @@ pub enum Mode {
     Ci,
 }
 
-/// Checker context threaded through the directive/CEL/state validators.
+/// Immutable analysis environment computed once per document: the state schema,
+/// def tables, and analysis mode. Borrowed (by reference) through every
+/// `check_*` entrypoint so the per-`<match>` lexical scope in [`Ctx`] is cheap
+/// to derive instead of deep-cloning these tables on each arm.
 ///
-/// Fields are the minimal set T4.2 needs plus the `match`-scope hooks and the
-/// state/def tables T4.3 consumes. Later tasks append fields; do not remove any
-/// without updating them.
+/// Fields are the state/def tables T4.3 consumes plus the analysis `mode`. Later
+/// tasks append fields here; do not remove any without updating their consumers.
 #[derive(Clone, Debug, Default)]
-pub struct Ctx {
-    /// True while validating nodes nested inside a `match` block.
-    pub in_match: bool,
-    /// The raw CEL subject expression of the enclosing `match`, if any (the `$`
-    /// binding T4.3 resolves).
-    pub match_subject: Option<String>,
+pub struct Env {
     /// Author (interactive LSP) vs. Ci (batch) analysis mode.
     pub mode: Mode,
     /// Inline `state:` schema (dsl §9.3): the declared state paths T4.3 resolves
@@ -62,13 +59,30 @@ pub struct Ctx {
     pub def_params: BTreeMap<String, Vec<(String, Type)>>,
 }
 
+/// Checker context threaded through the directive/CEL/state validators.
+///
+/// Borrows the immutable [`Env`] and carries only the lexical `match` scope, so
+/// entering a `<match>` arm is a cheap re-borrow (copying a reference plus two
+/// small fields) rather than a deep clone of the schema/def tables. Read env
+/// fields via `ctx.env.<field>`; `in_match`/`match_subject` are the scope.
+#[derive(Clone)]
+pub struct Ctx<'a> {
+    /// The immutable analysis environment (schema, def tables, mode).
+    pub env: &'a Env,
+    /// True while validating nodes nested inside a `match` block.
+    pub in_match: bool,
+    /// The raw CEL subject expression of the enclosing `match`, if any (the `$`
+    /// binding T4.3 resolves).
+    pub match_subject: Option<String>,
+}
+
 /// The statically-known expected type of a CEL slot's value, when derivable.
 ///
 /// Contexts where no expected type can be derived are represented by simply not
 /// setting it: B2.2 passes `Option<&ExpectedType>` to `check_cel_slot`, and
 /// `None` means "no constraint, never flag". `E-REF-TYPE` is only ever emitted
 /// when BOTH an expected type is known AND the slot's `@name` resolves to a
-/// known def type in [`Ctx::def_types`].
+/// known def type in [`Env::def_types`].
 ///
 /// # Purpose — B2.2 `E-REF-TYPE` (dsl §8)
 ///
@@ -133,7 +147,7 @@ pub struct Ctx {
 /// and `MatchSubject` are statically known only when their respective lookup
 /// (state schema / directive-attr decl) resolves, and unknown otherwise.
 ///
-/// # Def-type sources (populating [`Ctx::def_types`] in B2.2)
+/// # Def-type sources (populating [`Env::def_types`] in B2.2)
 ///
 /// * **Plugin defs — already typed, direct.** `snapshot.defs: BTreeMap<String,
 ///   DefDecl>` (snapshot.rs:19); `DefDecl.ty: Type` (schema.rs:167-170) is a
@@ -150,7 +164,7 @@ pub struct Ctx {
 ///
 /// # `ctx.defs` vs `def_types` (two tables, one union source)
 ///
-/// [`Ctx::defs`] (the `E-UNDECLARED-REF` set) is the UNION of inline frontmatter
+/// [`Env::defs`] (the `E-UNDECLARED-REF` set) is the UNION of inline frontmatter
 /// def names (`typed.defs.keys()`), plugin-exported def names
 /// (`snapshot.defs.keys()`), and imported-schema def names
 /// (`imports.defs.keys()`) — see `check.rs:207-209`. `def_types` is a parallel
