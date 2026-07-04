@@ -1,0 +1,19 @@
+---
+# Reusable content component (dsl §13): a named, parameterized block of lines +
+# staging expanded inline by `::use`. Presentational only — `@cue` is the sole
+# ref namespace (a param), bound to the invocation arg at expansion time. Like a
+# schema doc, a component file declares no scene keys, so a STANDALONE
+# `lute check` reports `E-META-MISSING`; the episode validates it transitively.
+component: stinger
+params:
+  cue: string
+---
+
+## Stinger.
+
+/* `@cue` is legal in these attr positions because `mood`/`label` are
+   `string`-typed core attrs (dsl Appendix A); a component body carries no state
+   read/write and no logic block (§13.4). */
+::music{action="change" mood=@cue}
+::vfx{type="whiteOut" label=@cue transition="fade"}
+:line[narrator]: A beat of silence, then the moment lands.
