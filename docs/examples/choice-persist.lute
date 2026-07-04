@@ -1,0 +1,51 @@
+---
+character: sofia
+season: 1
+episode: 1
+title: A choice worth remembering
+state:
+  run.metHelpfully:    { type: bool, default: false }
+  run.sofaHelpOutcome: { type: { enum: [warm, cold] } }
+  run.tip:             { type: number }
+---
+
+/*
+  Worked example of the `<choice … persist="run">` run-fact sugar (dsl §11.1.1).
+  A choice records a NAMED, declared `run.*` fact when selected — the sugar is
+  exactly `::set{run.<path> = <value>}` appended to that arm. `value` defaults to
+  `true` for a `bool` path; an `enum`/`number` path requires it. A later episode
+  (or shot) reacts by reading the named fact, never the raw choice key.
+*/
+
+# Choice persist — cross-episode carry
+
+## Shot 1.
+
+:line[narrator]: Sofia had slipped on the wet step. You could help — or walk on.
+
+<branch id="sofaHelp">
+  <choice id="help" label="Help her up" persist="run" as="run.metHelpfully">
+    :line[sofia]: Thank you. I won't forget this.
+  </choice>
+  <choice id="warmly" label="Help, and stay a while" persist="run" as="run.sofaHelpOutcome" value="warm">
+    :line[sofia]: You're very kind — really.
+  </choice>
+  <choice id="tip" label="Leave a little something" persist="run" as="run.tip" value="5">
+    :line[sofia]: Oh — you didn't have to.
+  </choice>
+</branch>
+
+## Shot 2.
+
+/*
+  A later reaction reads the NAMED run fact (§11.1.1), not `scene.choices.*`
+  (which clears at episode end). First-match-wins; `<otherwise>` is mandatory.
+*/
+<match on="run.metHelpfully">
+  <when test="$ == true">
+    :line[sofia]: You helped me back then. I've been meaning to thank you again.
+  </when>
+  <otherwise>
+    :line[sofia]: ...Have we met before?
+  </otherwise>
+</match>
