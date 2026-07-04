@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use lute_core_span::{Diagnostic, Layer, Severity};
+use lute_manifest::schema::DefParam;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::Meta;
@@ -43,6 +44,16 @@ pub struct TypedMeta {
     pub extends: Vec<String>,
     pub state: StateSchema,
     pub defs: BTreeMap<String, serde_yaml::Value>,
+    /// Scene-level reusable-content component imports (dsl §13): each entry is a
+    /// relative path to a component file resolved via `resolve_components`.
+    pub components: Vec<String>,
+    /// A component file's own declared name (dsl §13): `Some` only when this
+    /// document was parsed as a `MetaKind::Component` file that declared
+    /// `component:`. A scene leaves this `None`.
+    pub component: Option<String>,
+    /// A component file's declared params (dsl §13), in source order (the
+    /// named-arg binding namespace for `::use`). Empty for a scene.
+    pub params: Vec<DefParam>,
 }
 
 /// Core built-in top-level meta keys (dsl §6.1). Keys here are never "unknown";
@@ -63,17 +74,24 @@ const BUILTIN_KEYS: &[&str] = &[
     "extends",
     "state",
     "defs",
+    "components",
+    "component",
+    "params",
 ];
 
 const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 
 /// Which document kind's frontmatter is being parsed. A `Schema` doc (imported
-/// via `uses:`, dsl §9.2) is NOT a scene — it has no required character/season/
+/// via `uses:`, dsl §9.2) and a `Component` doc (imported via `components:`,
+/// dsl §13) are NOT scenes — neither carries the required character/season/
 /// episode keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MetaKind {
     Scene,
     Schema,
+    /// A reusable-content component file (dsl §13): lifts `component:`+`params:`,
+    /// skips the scene-required keys exactly like `Schema`.
+    Component,
 }
 
 /// Parse the peeled YAML frontmatter (dsl §6.1) into typed form plus the inline
@@ -177,6 +195,9 @@ pub fn parse_meta_kind(
     typed.extends = get_ref_list(map, "extends");
     typed.plugins = get_sub_map(map, "plugins");
     typed.defs = get_sub_map(map, "defs");
+    typed.components = get_ref_list(map, "components");
+    typed.component = get_str(map, "component");
+    typed.params = get_params(map, "params");
 
     // Parse the inline `state:` schema (dsl §9.3).
     if let Some(state_val) = map.get(yaml_key("state")) {
@@ -287,6 +308,24 @@ fn get_sub_map(map: &serde_yaml::Mapping, key: &str) -> BTreeMap<String, serde_y
     }
 }
 
+/// A component file's `params:` (dsl §13) is a YAML MAPPING (`{ who: <type> }`)
+/// read in SOURCE order (`serde_yaml::Mapping` is insertion-ordered), the same
+/// spelling as a def's `params:` (dsl §8.1). Each value deserializes to a
+/// manifest [`Type`] via the same serde path `Type` uses. An absent/non-mapping
+/// `params:` or a malformed entry yields no pair — never a panic.
+fn get_params(map: &serde_yaml::Mapping, key: &str) -> Vec<DefParam> {
+    let Some(pm) = map.get(yaml_key(key)).and_then(|v| v.as_mapping()) else {
+        return Vec::new();
+    };
+    pm.iter()
+        .filter_map(|(k, tv)| {
+            let name = k.as_str()?.to_string();
+            let ty = serde_yaml::from_value::<Type>(tv.clone()).ok()?;
+            Some(DefParam { name, ty })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,5 +394,67 @@ mod tests {
             meta.extends,
             vec!["a.lute".to_string(), "b.lute".to_string()]
         );
+    }
+
+    fn parse_kind_str(yaml: &str, kind: MetaKind) -> (TypedMeta, Vec<Diagnostic>) {
+        let meta = Meta {
+            raw_yaml: yaml.to_string(),
+            span: lute_core_span::Span {
+                byte_start: 0,
+                byte_end: yaml.len(),
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            },
+        };
+        parse_meta_kind(&meta, &CapabilitySnapshot::default(), kind)
+    }
+
+    #[test]
+    fn scene_components_list_parses_as_known_key() {
+        let (meta, diags) =
+            parse_meta_str("character: x\nseason: 1\nepisode: 1\ncomponents: [greet.lute]\n");
+        assert!(
+            !diags.iter().any(|d| d.code == "E-META-UNKNOWN-KEY"),
+            "`components` must be a known core key; got {diags:?}"
+        );
+        assert_eq!(meta.components, vec!["greet.lute".to_string()]);
+    }
+
+    #[test]
+    fn component_mode_lifts_component_and_params() {
+        let (meta, diags) = parse_kind_str(
+            "component: greet\nparams:\n  who: { providerRef: cast }\n",
+            MetaKind::Component,
+        );
+        assert!(
+            diags.is_empty(),
+            "component frontmatter must be clean; got {diags:?}"
+        );
+        assert_eq!(meta.component.as_deref(), Some("greet"));
+        assert_eq!(meta.params.len(), 1);
+        assert_eq!(meta.params[0].name, "who");
+        assert_eq!(meta.params[0].ty, Type::ProviderRef("cast".to_string()));
+    }
+
+    #[test]
+    fn component_mode_skips_scene_required_keys() {
+        // A component file carries no character/season/episode; Component mode
+        // must not flag E-META-MISSING (like Schema).
+        let (_m, diags) = parse_kind_str("component: greet\n", MetaKind::Component);
+        assert!(
+            !diags.iter().any(|d| d.code == "E-META-MISSING"),
+            "Component mode must skip scene-required keys; got {diags:?}"
+        );
+    }
+
+    #[test]
+    fn component_params_preserve_source_order() {
+        let (meta, _d) = parse_kind_str(
+            "component: c\nparams:\n  first: string\n  second: number\n  third: bool\n",
+            MetaKind::Component,
+        );
+        let names: Vec<&str> = meta.params.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["first", "second", "third"]);
     }
 }
