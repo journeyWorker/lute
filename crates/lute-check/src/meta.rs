@@ -54,6 +54,12 @@ pub struct TypedMeta {
     /// A component file's declared params (dsl §13), in source order (the
     /// named-arg binding namespace for `::use`). Empty for a scene.
     pub params: Vec<DefParam>,
+    /// True when a `params:` key is PRESENT but malformed (not a mapping, a
+    /// non-string key, or a value that is not a valid [`Type`]) — the resolver
+    /// surfaces this as `E-COMPONENT-PARSE` rather than silently entering a
+    /// shrunken signature (dsl §13). `false` when `params:` is absent or wholly
+    /// valid.
+    pub params_malformed: bool,
 }
 
 /// Core built-in top-level meta keys (dsl §6.1). Keys here are never "unknown";
@@ -197,7 +203,9 @@ pub fn parse_meta_kind(
     typed.defs = get_sub_map(map, "defs");
     typed.components = get_ref_list(map, "components");
     typed.component = get_str(map, "component");
-    typed.params = get_params(map, "params");
+    let (params, params_malformed) = get_params(map, "params");
+    typed.params = params;
+    typed.params_malformed = params_malformed;
 
     // Parse the inline `state:` schema (dsl §9.3).
     if let Some(state_val) = map.get(yaml_key("state")) {
@@ -311,19 +319,37 @@ fn get_sub_map(map: &serde_yaml::Mapping, key: &str) -> BTreeMap<String, serde_y
 /// A component file's `params:` (dsl §13) is a YAML MAPPING (`{ who: <type> }`)
 /// read in SOURCE order (`serde_yaml::Mapping` is insertion-ordered), the same
 /// spelling as a def's `params:` (dsl §8.1). Each value deserializes to a
-/// manifest [`Type`] via the same serde path `Type` uses. An absent/non-mapping
-/// `params:` or a malformed entry yields no pair — never a panic.
-fn get_params(map: &serde_yaml::Mapping, key: &str) -> Vec<DefParam> {
-    let Some(pm) = map.get(yaml_key(key)).and_then(|v| v.as_mapping()) else {
-        return Vec::new();
+/// manifest [`Type`] via the same serde path `Type` uses.
+///
+/// Returns the valid `(name, type)` pairs plus a `malformed` flag that is `true`
+/// when `params:` is PRESENT but any part of it is invalid — not a mapping, a
+/// non-string key, or a value that fails `Type` deserialization. The caller
+/// (component resolver) turns a set flag into `E-COMPONENT-PARSE` so a malformed
+/// signature is never silently shrunk. Absent `params:` ⇒ `(empty, false)`.
+/// Never panics.
+fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, bool) {
+    let Some(raw) = map.get(yaml_key(key)) else {
+        return (Vec::new(), false); // absent — fine (no params)
     };
-    pm.iter()
-        .filter_map(|(k, tv)| {
-            let name = k.as_str()?.to_string();
-            let ty = serde_yaml::from_value::<Type>(tv.clone()).ok()?;
-            Some(DefParam { name, ty })
-        })
-        .collect()
+    let Some(pm) = raw.as_mapping() else {
+        return (Vec::new(), true); // present but not a mapping — malformed
+    };
+    let mut params = Vec::new();
+    let mut malformed = false;
+    for (k, tv) in pm.iter() {
+        let Some(name) = k.as_str() else {
+            malformed = true; // non-string key
+            continue;
+        };
+        match serde_yaml::from_value::<Type>(tv.clone()) {
+            Ok(ty) => params.push(DefParam {
+                name: name.to_string(),
+                ty,
+            }),
+            Err(_) => malformed = true, // value is not a valid Type
+        }
+    }
+    (params, malformed)
 }
 
 #[cfg(test)]

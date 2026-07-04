@@ -123,6 +123,39 @@ fn malformed_component_is_parse_error() {
 }
 
 #[test]
+fn component_malformed_params_is_parse() {
+    // A `params:` entry whose value is not a valid `Type` must NOT be silently
+    // dropped (which would let the component be invoked without the param); it
+    // must surface as E-COMPONENT-PARSE for that file (dsl §13).
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "bad.lute",
+        "---\ncomponent: bad\nparams:\n  who: notAType\n---\n## C.\n:line[x]: hi\n",
+    );
+    let res = resolve_components(&dir, &["bad.lute".to_string()], zero_span());
+    assert!(
+        codes(&res).contains(&"E-COMPONENT-PARSE"),
+        "a `params:` value that is not a valid Type must flag E-COMPONENT-PARSE, not silently drop the param; got {:?}",
+        codes(&res)
+    );
+
+    // A non-mapping `params:` is likewise malformed.
+    let dir2 = unique_dir();
+    write_lute(
+        &dir2,
+        "bad2.lute",
+        "---\ncomponent: bad2\nparams: 5\n---\n## C.\n:line[x]: hi\n",
+    );
+    let res2 = resolve_components(&dir2, &["bad2.lute".to_string()], zero_span());
+    assert!(
+        codes(&res2).contains(&"E-COMPONENT-PARSE"),
+        "a non-mapping `params:` must flag E-COMPONENT-PARSE; got {:?}",
+        codes(&res2)
+    );
+}
+
+#[test]
 fn component_missing_name_is_parse_error() {
     let dir = unique_dir();
     // No `component:` declaration — cannot enter the name table.
