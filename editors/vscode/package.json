@@ -1,0 +1,53 @@
+{
+  "name": "lute",
+  "displayName": "Lute",
+  "description": "Language support for the Lute scenario-authoring DSL (.lute): diagnostics, hover, completion, go-to-definition, references, folding, symbols, and highlighting via the lute-lsp language server.",
+  "version": "0.0.1",
+  "publisher": "lute",
+  "license": "SEE LICENSE IN ../../README.md",
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "lute",
+    "scenario",
+    "visual-novel",
+    "dsl"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:lute"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "lute",
+        "aliases": [
+          "Lute",
+          "lute"
+        ],
+        "extensions": [
+          ".lute"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "lute",
+        "scopeName": "source.lute",
+        "path": "./syntaxes/lute.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "echo \"lute: no build step (plain JS)\"",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}
