@@ -424,4 +424,28 @@ mod tests {
         assert!(s.contains("@helped"), "names the imported def: {s}");
         assert!(s.contains("bool"), "shows the imported def type: {s}");
     }
+
+    #[test]
+    fn imported_state_wins_over_inline_on_collision() {
+        // Inline `state:` declares `run.gold` as string; the imported schema
+        // (via `uses:`) declares the SAME path as number. `check()` makes
+        // imported state authoritative on collision (E-STATE-REDECLARE), so the
+        // feature merge must mirror that: hover reflects the IMPORTED type
+        // (number), not the inline string.
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.gold: { type: string }\n---\n## Shot 1.\n::set{run.gold += 1}\n";
+        let doc = parsed(text);
+        let set_at = text.find("::set{").unwrap();
+        let off = text[set_at..].find("run.gold").unwrap() + set_at + 2;
+        let h = hover_at(&doc, &load_core_snapshot(), &schema_imports(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(s.contains("run.gold"), "names the path: {s}");
+        assert!(
+            s.contains("number"),
+            "imported type (number) wins over inline (string): {s}"
+        );
+        assert!(
+            !s.contains("string"),
+            "inline type must not survive collision: {s}"
+        );
+    }
 }
