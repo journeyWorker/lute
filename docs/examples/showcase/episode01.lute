@@ -210,3 +210,17 @@ defs:
 
 ::vfx{type="petals" transition="fade"}
 ::music{action="stop"}
+
+/*
+  app.lang is a maybe-unset enum ([ko, en], no default), so this read-only app.*
+  gate MUST carry <otherwise> (§11.2). app.* is never ::set — read-only content
+  gating, same policy as the app.rating gate above.
+*/
+<match on="app.lang">
+  <when test="$ == 'ko'">
+    :line[narrator]: Subtitles render in Korean.
+  </when>
+  <otherwise>
+    :line[narrator]: Subtitles render in English.
+  </otherwise>
+</match>
