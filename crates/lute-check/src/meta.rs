@@ -40,6 +40,7 @@ pub struct TypedMeta {
     pub profile: Option<String>,
     pub plugins: BTreeMap<String, serde_yaml::Value>,
     pub uses: Vec<String>,
+    pub extends: Vec<String>,
     pub state: StateSchema,
     pub defs: BTreeMap<String, serde_yaml::Value>,
 }
@@ -59,6 +60,7 @@ const BUILTIN_KEYS: &[&str] = &[
     "profile",
     "plugins",
     "uses",
+    "extends",
     "state",
     "defs",
 ];
@@ -171,7 +173,8 @@ pub fn parse_meta_kind(
     typed.episode = get_i64(map, "episode");
     typed.pov = get_str(map, "pov");
     typed.profile = get_str(map, "profile");
-    typed.uses = get_uses(map);
+    typed.uses = get_ref_list(map, "uses");
+    typed.extends = get_ref_list(map, "extends");
     typed.plugins = get_sub_map(map, "plugins");
     typed.defs = get_sub_map(map, "defs");
 
@@ -261,9 +264,10 @@ fn get_i64(map: &serde_yaml::Mapping, key: &str) -> Option<i64> {
     map.get(yaml_key(key)).and_then(|v| v.as_i64())
 }
 
-/// `uses` (dsl §9.2) may be a single ref or a list of refs; normalize to a Vec.
-fn get_uses(map: &serde_yaml::Mapping) -> Vec<String> {
-    match map.get(yaml_key("uses")) {
+/// `uses`/`extends` (dsl §9.2) may each be a single ref or a list of refs;
+/// normalize to a Vec.
+fn get_ref_list(map: &serde_yaml::Mapping, key: &str) -> Vec<String> {
+    match map.get(yaml_key(key)) {
         Some(serde_yaml::Value::String(s)) => vec![s.clone()],
         Some(serde_yaml::Value::Sequence(items)) => items
             .iter()
@@ -325,6 +329,31 @@ mod tests {
         assert_eq!(
             meta.state.decls.get("app.lang").unwrap().namespace,
             Namespace::App
+        );
+    }
+
+    #[test]
+    fn parses_extends_scalar() {
+        let (meta, diags) =
+            parse_meta_str("character: x\nseason: 1\nepisode: 1\nextends: base.lute\n");
+        assert!(
+            !diags.iter().any(|d| d.code == "E-META-UNKNOWN-KEY"),
+            "`extends` must be a known core key; got {diags:?}"
+        );
+        assert_eq!(meta.extends, vec!["base.lute".to_string()]);
+    }
+
+    #[test]
+    fn parses_extends_list() {
+        let (meta, diags) =
+            parse_meta_str("character: x\nseason: 1\nepisode: 1\nextends: [a.lute, b.lute]\n");
+        assert!(
+            !diags.iter().any(|d| d.code == "E-META-UNKNOWN-KEY"),
+            "`extends` list must parse; got {diags:?}"
+        );
+        assert_eq!(
+            meta.extends,
+            vec!["a.lute".to_string(), "b.lute".to_string()]
         );
     }
 }
