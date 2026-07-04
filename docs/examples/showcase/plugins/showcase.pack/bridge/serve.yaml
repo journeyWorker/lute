@@ -1,0 +1,11 @@
+# Bridge capability (plugin §9): the recorded/replayable service the `serve`
+# directive calls. Its result fields are the ONLY values the directive may write
+# back into scene state.
+bridgeCapabilities:
+  - service: serve
+    operation: play
+    replay: recorded
+    result:
+      - { name: score,   type: number }
+      - { name: rank,    type: { enum: [fail, bronze, silver, gold] } }
+      - { name: cleared, type: bool }

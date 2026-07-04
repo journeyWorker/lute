@@ -1,0 +1,10 @@
+# The state shape the `serve` directive declares for each `scene.serve.<key>`
+# slot (plugin §8, state export). Story logic reads only these declared fields,
+# never raw bridge output.
+stateShapes:
+  - name: serveResult
+    fields:
+      - { name: score,    type: number, default: 0 }
+      - { name: rank,     type: { enum: [fail, bronze, silver, gold] }, default: fail }
+      - { name: cleared,  type: bool,   default: false }
+      - { name: attempts, type: number, default: 0 }

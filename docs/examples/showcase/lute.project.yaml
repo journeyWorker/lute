@@ -1,0 +1,10 @@
+pluginsDir: plugins/
+catalogDir: catalog/
+defaultProfile: showcase
+profiles:
+  global:
+    plugins: { lute.core: true }
+  showcase:
+    extends: global
+    plugins:
+      showcase.pack: { resultScope: scene, allowedKinds: [rhythm, timing] }
