@@ -609,12 +609,16 @@ fn check_choice_persist(choice: &Choice, ctx: &Ctx, diags: &mut Vec<Diagnostic>)
         ));
         return;
     };
-    if as_path != "run" && !as_path.starts_with("run.") {
+    if as_path
+        .strip_prefix("run.")
+        .filter(|rest| !rest.is_empty())
+        .is_none()
+    {
         diags.push(persist_diag(
             E_PERSIST_TARGET,
             format!(
-                "`as=\"{as_path}\"` must name a `run.*` path (matching `persist=\"run\"`) \
-                 (dsl §11.1.1)"
+                "`as=\"{as_path}\"` must name a `run.<path>` fact (a bare `run` or a \
+                 non-`run.*` path is not a valid run target) (dsl §11.1.1)"
             ),
             choice.span,
         ));
@@ -669,7 +673,8 @@ fn check_persist_value(
     span: Span,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let accepted = |v: &Attr| persist_literal(&v.value).is_some_and(|lit| type_accepts(ty, &lit));
+    let accepted =
+        |v: &Attr| persist_literal(ty, &v.value).is_some_and(|lit| type_accepts(ty, &lit));
     match ty {
         Type::Bool => {
             if let Some(v) = value {
@@ -716,23 +721,28 @@ fn str_attr(attr: &Attr) -> Option<&str> {
     }
 }
 
-/// Interpret a persist `value` attr as a manifest [`Literal`] for the
-/// type-compatibility check: a bare attr (`value`) and `"true"`/`"false"` are
-/// bool literals; an otherwise-numeric string is a number; anything else a
-/// string (so `enum` membership resolves via [`type_accepts`]). A `@ref`-valued
-/// attr is not a static literal (`None`).
-fn persist_literal(v: &AttrValue) -> Option<Literal> {
-    match v {
-        AttrValue::BoolTrue => Some(Literal::Bool(true)),
-        AttrValue::Str(s) => Some(match s.as_str() {
-            "true" => Literal::Bool(true),
-            "false" => Literal::Bool(false),
-            _ => match s.parse::<f64>() {
-                Ok(n) => Literal::Num(n),
-                Err(_) => Literal::Str(s.clone()),
-            },
-        }),
-        AttrValue::Ref(_) => None,
+/// Coerce a persist `value` attr into a manifest [`Literal`] *in the resolved
+/// target type's domain* so [`type_accepts`] can judge it — mirroring the
+/// directive attr coercion (`directives::literal_of`). A `number` target parses
+/// the string as `f64`; a `bool` target accepts the bare `value` ident or the
+/// strings `"true"`/`"false"`; every other target (`enum`/`str`/…) keeps the
+/// value VERBATIM as [`Literal::Str`], so an enum member spelled like a bool or
+/// number (`"true"`, `"3"`) still resolves by string membership. Returns `None`
+/// when the value cannot inhabit the target's shape (a hard type error) or is a
+/// `@ref`.
+fn persist_literal(ty: &Type, v: &AttrValue) -> Option<Literal> {
+    match (ty, v) {
+        (Type::Number, AttrValue::Str(s)) => s.parse::<f64>().ok().map(Literal::Num),
+        (Type::Bool, AttrValue::BoolTrue) => Some(Literal::Bool(true)),
+        (Type::Bool, AttrValue::Str(s)) => match s.as_str() {
+            "true" => Some(Literal::Bool(true)),
+            "false" => Some(Literal::Bool(false)),
+            _ => None,
+        },
+        (_, AttrValue::Str(s)) => Some(Literal::Str(s.clone())),
+        // A bare-ident `value` against a non-bool target is a type error.
+        (_, AttrValue::BoolTrue) => None,
+        (_, AttrValue::Ref(_)) => None,
     }
 }
 
