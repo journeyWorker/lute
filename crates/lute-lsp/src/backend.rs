@@ -82,6 +82,10 @@ impl Backend {
         // editor features use (`imports_for`), so diagnostics and features never
         // disagree on the imported schema. A non-file uri resolves to no imports.
         let imports = self.imports_for(&uri, &snapshot.text);
+        // Resolve `components:` component imports (dsl §13) from the same scene
+        // directory, mirroring `imports_for`, so `::use` validates identically on
+        // both surfaces.
+        let components = self.components_for(&uri, &snapshot.text);
         let input = CheckInput {
             text: snapshot.text.clone(),
             uri: uri.as_str().to_string(),
@@ -89,7 +93,7 @@ impl Backend {
             providers,
             mode: Mode::Author,
             imports,
-            components: Default::default(),
+            components,
         };
         let result = check(&input);
         let idx = lute_core_span::TextIndex::new(&snapshot.text);
@@ -121,6 +125,26 @@ impl Backend {
                 p.parent().map(|d| {
                     lute_check::resolve_imports(d, &meta0.uses, &meta0.extends, doc.meta.span)
                 })
+            })
+            .unwrap_or_default()
+    }
+
+    /// Resolve a document's `components:` component imports (dsl §13) relative to
+    /// its directory — the analyze-side analog of [`imports_for`](Self::imports_for),
+    /// so `::use` invocations validate against the SAME component table the CLI
+    /// (`main.rs`) resolves. A non-file uri (no filesystem parent) resolves to no
+    /// components (`ComponentSet::default`); any I/O/parse/cycle failure degrades
+    /// to a best-effort result, never panics.
+    fn components_for(&self, uri: &Uri, text: &str) -> lute_check::ComponentSet {
+        let (doc, _) = lute_syntax::parse(text);
+        let (meta0, _) = lute_check::parse_meta(
+            &doc.meta,
+            &lute_manifest::snapshot::CapabilitySnapshot::default(),
+        );
+        uri_to_path(uri)
+            .and_then(|p| {
+                p.parent()
+                    .map(|d| lute_check::resolve_components(d, &meta0.components, doc.meta.span))
             })
             .unwrap_or_default()
     }

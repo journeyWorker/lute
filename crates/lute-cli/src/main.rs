@@ -149,10 +149,12 @@ fn run_check(
         eprintln!("lute: {}: {}", d.code, d.message);
     }
 
-    // Resolve the scene's `uses:` schema imports (dsl §9.2) relative to the
-    // scene's own directory; the LSP resolves identically -> no divergence.
+    // Resolve the scene's `uses:` schema imports (dsl §9.2) and `components:`
+    // component imports (dsl §13) relative to the scene's own directory; the LSP
+    // resolves identically -> no divergence.
     let base = file.parent().unwrap_or_else(|| Path::new("."));
     let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
+    let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
 
     let input = CheckInput {
         text,
@@ -163,7 +165,7 @@ fn run_check(
         // identically today; the checker does not branch on mode yet).
         mode: Mode::Ci,
         imports,
-        components: Default::default(),
+        components,
     };
     let result = check(&input);
 
