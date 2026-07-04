@@ -429,7 +429,7 @@ fn divergence_holds_under_uses_import() {
         &doc.meta,
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
-    let imports = lute_check::resolve_imports(dir, &meta0.uses, doc.meta.span);
+    let imports = lute_check::resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span);
     let input = CheckInput {
         text: text.clone(),
         uri: "carry-ep".into(),
@@ -473,7 +473,7 @@ fn divergence_holds_under_uses_import() {
         &bdoc.meta,
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
-    let bimports = lute_check::resolve_imports(dir, &bmeta.uses, bdoc.meta.span);
+    let bimports = lute_check::resolve_imports(dir, &bmeta.uses, &bmeta.extends, bdoc.meta.span);
     let binput = CheckInput {
         text: bad.to_string(),
         uri: "bad-import".into(),

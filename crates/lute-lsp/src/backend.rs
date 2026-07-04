@@ -117,8 +117,9 @@ impl Backend {
         );
         uri_to_path(uri)
             .and_then(|p| {
-                p.parent()
-                    .map(|d| lute_check::resolve_imports(d, &meta0.uses, doc.meta.span))
+                p.parent().map(|d| {
+                    lute_check::resolve_imports(d, &meta0.uses, &meta0.extends, doc.meta.span)
+                })
             })
             .unwrap_or_default()
     }

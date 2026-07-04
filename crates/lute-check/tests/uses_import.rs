@@ -149,7 +149,7 @@ fn resolves_single_import() {
         "schema.lute",
         "---\nstate:\n  run.x: { type: bool, default: false }\n---\n",
     );
-    let res = resolve_imports(&dir, &["schema.lute".to_string()], zero_span());
+    let res = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
     assert!(
         res.state.decls.contains_key("run.x"),
@@ -163,7 +163,7 @@ fn cycle_is_e_uses_cycle() {
     let dir = unique_dir();
     write_lute(&dir, "a.lute", "---\nuses: b.lute\n---\n");
     write_lute(&dir, "b.lute", "---\nuses: a.lute\n---\n");
-    let res = resolve_imports(&dir, &["a.lute".to_string()], zero_span());
+    let res = resolve_imports(&dir, &["a.lute".to_string()], &[], zero_span());
     let codes = resolve_codes(&res);
     assert!(
         codes.contains(&"E-USES-CYCLE"),
@@ -177,7 +177,7 @@ fn dup_def_across_imports_errors() {
     write_lute(&dir, "x.lute", "---\ndefs:\n  foo: 1\n---\n");
     write_lute(&dir, "y.lute", "---\ndefs:\n  foo: 2\n---\n");
     write_lute(&dir, "a.lute", "---\nuses: [x.lute, y.lute]\n---\n");
-    let res = resolve_imports(&dir, &["a.lute".to_string()], zero_span());
+    let res = resolve_imports(&dir, &["a.lute".to_string()], &[], zero_span());
     let codes = resolve_codes(&res);
     assert!(
         codes.contains(&"E-USES-DUP-DEF"),
@@ -188,7 +188,7 @@ fn dup_def_across_imports_errors() {
 #[test]
 fn missing_file_is_not_found() {
     let dir = unique_dir();
-    let res = resolve_imports(&dir, &["nope.lute".to_string()], zero_span());
+    let res = resolve_imports(&dir, &["nope.lute".to_string()], &[], zero_span());
     let codes = resolve_codes(&res);
     assert!(
         codes.contains(&"E-USES-NOT-FOUND"),
@@ -203,7 +203,7 @@ fn diamond_is_one_identity_no_dup() {
     write_lute(&dir, "b.lute", "---\nuses: d.lute\n---\n");
     write_lute(&dir, "c.lute", "---\nuses: d.lute\n---\n");
     write_lute(&dir, "a.lute", "---\nuses: [b.lute, c.lute]\n---\n");
-    let res = resolve_imports(&dir, &["a.lute".to_string()], zero_span());
+    let res = resolve_imports(&dir, &["a.lute".to_string()], &[], zero_span());
     let codes = resolve_codes(&res);
     assert!(
         !codes.contains(&"E-USES-DUP-DEF"),
@@ -234,10 +234,128 @@ fn malformed_schema_is_e_uses_parse() {
         "bad.lute",
         "---\nstate:\n  run.x: { type: bool, default: false }\n---\n/* unterminated",
     );
-    let out = resolve_imports(&dir, &["bad.lute".to_string()], zero_span());
+    let out = resolve_imports(&dir, &["bad.lute".to_string()], &[], zero_span());
     let codes = resolve_codes(&out);
     assert!(
         codes.contains(&"E-USES-PARSE"),
         "malformed schema must flag E-USES-PARSE; got {codes:?}"
+    );
+}
+
+// --- FEAT-2 — `extends:` base composition with override (dsl §9.2) ---
+
+#[test]
+fn extends_overrides_base_def() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "base.lute",
+        "---\ndefs:\n  helped: { type: bool, cel: \"false\" }\n---\n",
+    );
+    write_lute(
+        &dir,
+        "child.lute",
+        "---\nextends: base.lute\ndefs:\n  helped: { type: bool, cel: \"true\" }\n---\n",
+    );
+    // Bring the child in as a peer; its `extends: base` lays the base BELOW it,
+    // so the child's `helped` overrides the base's without a dup error.
+    let res = resolve_imports(&dir, &["child.lute".to_string()], &[], zero_span());
+    let codes = resolve_codes(&res);
+    assert!(
+        !codes.contains(&"E-USES-DUP-DEF"),
+        "extends override must not dup-flag; got {codes:?}"
+    );
+    let helped = res.defs.get("helped").expect("helped def missing");
+    let cel = helped
+        .get("cel")
+        .and_then(|v| v.as_str())
+        .expect("cel missing");
+    assert_eq!(cel, "true", "child def must override base def");
+}
+
+#[test]
+fn extends_state_default_override_ok() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "base.lute",
+        "---\nstate:\n  run.gold: { type: number, default: 0 }\n---\n",
+    );
+    write_lute(
+        &dir,
+        "child.lute",
+        "---\nextends: base.lute\nstate:\n  run.gold: { type: number, default: 5 }\n---\n",
+    );
+    let res = resolve_imports(&dir, &["child.lute".to_string()], &[], zero_span());
+    let codes = resolve_codes(&res);
+    assert!(
+        codes.is_empty(),
+        "a same-type default refinement must be silent; got {codes:?}"
+    );
+    let decl = res.state.decls.get("run.gold").expect("run.gold missing");
+    assert_eq!(
+        decl.default,
+        Some(Literal::Num(5.0)),
+        "child default must override base default"
+    );
+}
+
+#[test]
+fn extends_state_type_change_errors() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "base.lute",
+        "---\nstate:\n  run.gold: { type: number }\n---\n",
+    );
+    write_lute(
+        &dir,
+        "child.lute",
+        "---\nextends: base.lute\nstate:\n  run.gold: { type: string }\n---\n",
+    );
+    let res = resolve_imports(&dir, &["child.lute".to_string()], &[], zero_span());
+    let codes = resolve_codes(&res);
+    assert!(
+        codes.contains(&"E-EXTENDS-STATE-TYPE"),
+        "a state override changing type must flag E-EXTENDS-STATE-TYPE; got {codes:?}"
+    );
+    // The override still wins: the merged decl carries the child's type.
+    let decl = res.state.decls.get("run.gold").expect("run.gold missing");
+    assert_eq!(
+        decl.ty,
+        Type::Str,
+        "override decl must win despite type change"
+    );
+}
+
+#[test]
+fn uses_peer_dup_still_errors() {
+    let dir = unique_dir();
+    write_lute(&dir, "x.lute", "---\ndefs:\n  foo: 1\n---\n");
+    write_lute(&dir, "y.lute", "---\ndefs:\n  foo: 2\n---\n");
+    // Both peers via `uses:` at the same level -> peer dup, unchanged.
+    let res = resolve_imports(
+        &dir,
+        &["x.lute".to_string(), "y.lute".to_string()],
+        &[],
+        zero_span(),
+    );
+    let codes = resolve_codes(&res);
+    assert!(
+        codes.contains(&"E-USES-DUP-DEF"),
+        "two uses peers declaring the same def must dup; got {codes:?}"
+    );
+}
+
+#[test]
+fn extends_cycle_errors() {
+    let dir = unique_dir();
+    write_lute(&dir, "a.lute", "---\nextends: b.lute\n---\n");
+    write_lute(&dir, "b.lute", "---\nextends: a.lute\n---\n");
+    let res = resolve_imports(&dir, &[], &["a.lute".to_string()], zero_span());
+    let codes = resolve_codes(&res);
+    assert!(
+        codes.contains(&"E-USES-CYCLE"),
+        "an extends cycle must flag E-USES-CYCLE; got {codes:?}"
     );
 }

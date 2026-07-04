@@ -152,7 +152,7 @@ fn run_check(
     // Resolve the scene's `uses:` schema imports (dsl §9.2) relative to the
     // scene's own directory; the LSP resolves identically -> no divergence.
     let base = file.parent().unwrap_or_else(|| Path::new("."));
-    let imports = lute_check::resolve_imports(base, &meta0.uses, doc.meta.span);
+    let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
 
     let input = CheckInput {
         text,

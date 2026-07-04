@@ -1,12 +1,16 @@
-//! Scene `uses:` schema imports (dsl §9.2): the resolved import result plus the
-//! TOTAL, never-panicking DAG file resolver (`resolve_imports`).
+//! Scene/schema composition imports (dsl §9.2): the resolved import result plus
+//! the TOTAL, never-panicking DAG file resolver (`resolve_imports`). Two edge
+//! kinds: `uses:` (PEER union, dup = error) and `extends:` (BASE layer,
+//! override-allowed). Precedence low -> high: `extends` bases (recursively) <
+//! `uses` peers; a closer layer OVERRIDES a base's same-named decl (no dup),
+//! while a same-layer collision stays `E-USES-DUP-*`.
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
-use crate::meta::{parse_meta_kind, MetaKind, StateSchema};
+use crate::meta::{parse_meta_kind, MetaKind, StateDecl, StateSchema};
 
 /// The resolved result of a scene's `uses:` imports: the merged imported state
 /// schema, the merged imported `defs` (untyped YAML values, like inline defs),
@@ -18,16 +22,44 @@ pub struct SchemaImports {
     pub diags: Vec<Diagnostic>,
 }
 
-/// Resolve a document's `uses:` imports (dsl §9.2) into a merged schema.
-/// `base_dir` is the importing document's directory; each `uses` entry is a
-/// relative path. `at` is the importing document's frontmatter span, used for
-/// every diagnostic. TOTAL: any I/O/parse/cycle/dup failure yields a diagnostic,
-/// never a panic.
-pub fn resolve_imports(base_dir: &Path, uses: &[String], at: Span) -> SchemaImports {
+/// Resolve a document's composition imports (dsl §9.2) into a merged schema.
+/// `base_dir` is the importing document's directory; each `uses`/`extends` entry
+/// is a relative path. `uses` peers form one same-precedence layer (a name
+/// declared by two peers is `E-USES-DUP-*`); each `extends` base is a LOWER,
+/// overridable layer. `at` is the importing document's frontmatter span, used
+/// for every diagnostic. TOTAL: any I/O/parse/cycle/dup failure yields a
+/// diagnostic, never a panic.
+pub fn resolve_imports(
+    base_dir: &Path,
+    uses: &[String],
+    extends: &[String],
+    at: Span,
+) -> SchemaImports {
     let mut acc = Acc::default();
     let mut visited: BTreeSet<PathBuf> = BTreeSet::new();
     let mut stack: Vec<PathBuf> = Vec::new();
-    resolve_into(base_dir, uses, at, &mut acc, &mut visited, &mut stack);
+    // Peer imports sit at depth 0 (dup-guarded among peers); each `extends` base
+    // is one layer BELOW (depth 1), overridable by the peer/closer layer.
+    resolve_into(
+        base_dir,
+        uses,
+        Edge::Uses,
+        0,
+        at,
+        &mut acc,
+        &mut visited,
+        &mut stack,
+    );
+    resolve_into(
+        base_dir,
+        extends,
+        Edge::Extends,
+        1,
+        at,
+        &mut acc,
+        &mut visited,
+        &mut stack,
+    );
     SchemaImports {
         state: acc.state,
         defs: acc.defs,
@@ -45,6 +77,29 @@ struct Acc {
     /// before it can dup).
     state_src: BTreeMap<String, PathBuf>,
     defs_src: BTreeMap<String, PathBuf>,
+    /// composition depth of each name's current winner: 0 = the peer layer
+    /// (`uses`, dup-guarded), >= 1 = an `extends` base layer. A same-depth
+    /// collision is a dup; a cross-depth collision is an `extends` override
+    /// (the closer/lower-depth decl wins, no dup).
+    state_depth: BTreeMap<String, usize>,
+    defs_depth: BTreeMap<String, usize>,
+}
+
+/// Which frontmatter edge reached an imported document — used only to word the
+/// `E-USES-{NOT-FOUND,CYCLE}` messages accurately (`uses:` vs `extends:`).
+#[derive(Clone, Copy)]
+enum Edge {
+    Uses,
+    Extends,
+}
+
+impl Edge {
+    fn label(self) -> &'static str {
+        match self {
+            Edge::Uses => "uses",
+            Edge::Extends => "extends",
+        }
+    }
 }
 
 fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
@@ -59,15 +114,18 @@ fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_into(
     base_dir: &Path,
-    uses: &[String],
+    refs: &[String],
+    edge: Edge,
+    depth: usize,
     at: Span,
     acc: &mut Acc,
     visited: &mut BTreeSet<PathBuf>,
     stack: &mut Vec<PathBuf>,
 ) {
-    for r in uses {
+    for r in refs {
         let joined = base_dir.join(r);
         // canonicalize does I/O; a missing file lands here (not a panic).
         let canon = match std::fs::canonicalize(&joined) {
@@ -76,7 +134,8 @@ fn resolve_into(
                 acc.diags.push(uses_diag(
                     "E-USES-NOT-FOUND",
                     format!(
-                        "cannot resolve `uses:` import `{r}` (from {})",
+                        "cannot resolve `{}:` import `{r}` (from {})",
+                        edge.label(),
                         base_dir.display()
                     ),
                     at,
@@ -94,7 +153,7 @@ fn resolve_into(
                 .join(" -> ");
             acc.diags.push(uses_diag(
                 "E-USES-CYCLE",
-                format!("`uses:` import cycle: {chain}"),
+                format!("`{}:` import cycle: {chain}", edge.label()),
                 at,
             ));
             continue;
@@ -130,8 +189,49 @@ fn resolve_into(
             ));
         }
         for (path, decl) in &tm.state.decls {
-            match acc.state_src.get(path) {
-                Some(prev) if prev != &canon => acc.diags.push(uses_diag(
+            merge_state(acc, path, decl, &canon, depth, at);
+        }
+        for (name, v) in &tm.defs {
+            merge_def(acc, name, v, &canon, depth, at);
+        }
+        // Recurse into this doc's OWN composition edges, relative to ITS
+        // directory: `uses:` peers stay at the same layer; `extends:` bases sit
+        // one layer deeper (lower precedence).
+        stack.push(canon.clone());
+        let parent = canon.parent().unwrap_or_else(|| Path::new("."));
+        resolve_into(parent, &tm.uses, Edge::Uses, depth, at, acc, visited, stack);
+        resolve_into(
+            parent,
+            &tm.extends,
+            Edge::Extends,
+            depth + 1,
+            at,
+            acc,
+            visited,
+            stack,
+        );
+        stack.pop();
+    }
+}
+
+/// Merge one imported state decl at composition `depth`. A never-before-seen
+/// path is recorded; a same-depth re-declaration by a DIFFERENT file is a peer
+/// dup (`E-USES-DUP-STATE`); a cross-depth collision is an `extends` override —
+/// the closer (lower-depth) decl wins with no dup, but a change to the declared
+/// TYPE flags `E-EXTENDS-STATE-TYPE` (persisted state must keep a stable type).
+fn merge_state(acc: &mut Acc, path: &str, decl: &StateDecl, canon: &Path, depth: usize, at: Span) {
+    let prev = acc.state_src.get(path).cloned();
+    match prev {
+        None => {
+            acc.state.decls.insert(path.to_string(), decl.clone());
+            acc.state_src.insert(path.to_string(), canon.to_path_buf());
+            acc.state_depth.insert(path.to_string(), depth);
+        }
+        Some(prev) if prev == canon => {} // same file (diamond): already recorded
+        Some(prev) => {
+            let prev_depth = acc.state_depth[path];
+            if depth == prev_depth {
+                acc.diags.push(uses_diag(
                     "E-USES-DUP-STATE",
                     format!(
                         "state path `{path}` is declared by two imports (`{}` and `{}`)",
@@ -139,17 +239,59 @@ fn resolve_into(
                         canon.display()
                     ),
                     at,
-                )),
-                Some(_) => {}
-                None => {
-                    acc.state.decls.insert(path.clone(), decl.clone());
-                    acc.state_src.insert(path.clone(), canon.clone());
+                ));
+            } else {
+                // Cross-layer override: identify base (deeper) vs override (closer)
+                // for the type-stability check, then let the closer decl win.
+                let existing_ty = acc.state.decls[path].ty.clone();
+                let (base_ty, over_ty) = if depth < prev_depth {
+                    (&existing_ty, &decl.ty) // existing is the deeper base
+                } else {
+                    (&decl.ty, &existing_ty) // incoming is the deeper base
+                };
+                if base_ty != over_ty {
+                    acc.diags.push(uses_diag(
+                        "E-EXTENDS-STATE-TYPE",
+                        format!(
+                            "state path `{path}` overrides base declared type {base_ty:?} with {over_ty:?}; persisted state must keep a stable type"
+                        ),
+                        at,
+                    ));
+                }
+                if depth < prev_depth {
+                    acc.state.decls.insert(path.to_string(), decl.clone());
+                    acc.state_src.insert(path.to_string(), canon.to_path_buf());
+                    acc.state_depth.insert(path.to_string(), depth);
                 }
             }
         }
-        for (name, v) in &tm.defs {
-            match acc.defs_src.get(name) {
-                Some(prev) if prev != &canon => acc.diags.push(uses_diag(
+    }
+}
+
+/// Merge one imported def at composition `depth`. Same-depth cross-file
+/// re-declaration is a peer dup (`E-USES-DUP-DEF`); a cross-depth collision is
+/// an `extends` override (the closer decl replaces the base, no dup — defs are
+/// pure CEL macros, so no type-stability concern).
+fn merge_def(
+    acc: &mut Acc,
+    name: &str,
+    v: &serde_yaml::Value,
+    canon: &Path,
+    depth: usize,
+    at: Span,
+) {
+    let prev = acc.defs_src.get(name).cloned();
+    match prev {
+        None => {
+            acc.defs.insert(name.to_string(), v.clone());
+            acc.defs_src.insert(name.to_string(), canon.to_path_buf());
+            acc.defs_depth.insert(name.to_string(), depth);
+        }
+        Some(prev) if prev == canon => {} // same file (diamond): already recorded
+        Some(prev) => {
+            let prev_depth = acc.defs_depth[name];
+            if depth == prev_depth {
+                acc.diags.push(uses_diag(
                     "E-USES-DUP-DEF",
                     format!(
                         "def `{name}` is declared by two imports (`{}` and `{}`)",
@@ -157,18 +299,12 @@ fn resolve_into(
                         canon.display()
                     ),
                     at,
-                )),
-                Some(_) => {}
-                None => {
-                    acc.defs.insert(name.clone(), v.clone());
-                    acc.defs_src.insert(name.clone(), canon.clone());
-                }
+                ));
+            } else if depth < prev_depth {
+                acc.defs.insert(name.to_string(), v.clone());
+                acc.defs_src.insert(name.to_string(), canon.to_path_buf());
+                acc.defs_depth.insert(name.to_string(), depth);
             }
         }
-        // Recurse into the schema doc's own `uses:`, relative to ITS directory.
-        stack.push(canon.clone());
-        let parent = canon.parent().unwrap_or_else(|| Path::new("."));
-        resolve_into(parent, &tm.uses, at, acc, visited, stack);
-        stack.pop();
     }
 }
