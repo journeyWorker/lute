@@ -359,3 +359,153 @@ fn extends_cycle_errors() {
         "an extends cycle must flag E-USES-CYCLE; got {codes:?}"
     );
 }
+
+// --- FEAT-2 fix wave — order-independence, base-base dup, scene-inline refine ---
+
+#[test]
+fn extends_dup_detection_is_order_independent() {
+    // root uses [a, b, c]: `a extends x` reaches x at depth 1, `b uses x`
+    // reaches x at depth 0 (its SHALLOWEST), and `c` is a depth-0 peer declaring
+    // the same def/state as x. So `c` (depth 0) vs `x` (depth 0) is a same-depth
+    // peer dup that MUST be reported identically for [a,b,c] and [c,b,a].
+    let run = |order: &[&str]| -> Vec<String> {
+        let dir = unique_dir();
+        write_lute(
+            &dir,
+            "x.lute",
+            "---\ndefs:\n  foo: 1\nstate:\n  run.gold: { type: number }\n---\n",
+        );
+        write_lute(
+            &dir,
+            "c.lute",
+            "---\ndefs:\n  foo: 2\nstate:\n  run.gold: { type: number }\n---\n",
+        );
+        write_lute(&dir, "a.lute", "---\nextends: x.lute\n---\n");
+        write_lute(&dir, "b.lute", "---\nuses: x.lute\n---\n");
+        let uses: Vec<String> = order.iter().map(|s| format!("{s}.lute")).collect();
+        let res = resolve_imports(&dir, &uses, &[], zero_span());
+        let mut codes: Vec<String> = res.diags.iter().map(|d| d.code.clone()).collect();
+        codes.sort();
+        codes
+    };
+    let forward = run(&["a", "b", "c"]);
+    let reverse = run(&["c", "b", "a"]);
+    assert_eq!(
+        forward, reverse,
+        "extends dup detection must be order-independent: {forward:?} vs {reverse:?}"
+    );
+    assert!(
+        forward.contains(&"E-USES-DUP-DEF".to_string())
+            && forward.contains(&"E-USES-DUP-STATE".to_string()),
+        "c (depth 0) vs x (depth 0) must be a same-depth peer dup; got {forward:?}"
+    );
+}
+
+#[test]
+fn base_base_dup_not_hidden_by_override() {
+    // `child` (depth 0) overrides run.gold / bar AND extends TWO unrelated bases
+    // A and B, both declaring run.gold / bar at depth 1. The A-vs-B same-depth
+    // collision MUST still error even though the child's override wins.
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "A.lute",
+        "---\nstate:\n  run.gold: { type: number }\ndefs:\n  bar: 1\n---\n",
+    );
+    write_lute(
+        &dir,
+        "B.lute",
+        "---\nstate:\n  run.gold: { type: number }\ndefs:\n  bar: 2\n---\n",
+    );
+    write_lute(
+        &dir,
+        "child.lute",
+        "---\nextends: [A.lute, B.lute]\nstate:\n  run.gold: { type: number }\ndefs:\n  bar: 0\n---\n",
+    );
+    let res = resolve_imports(&dir, &["child.lute".to_string()], &[], zero_span());
+    let codes = resolve_codes(&res);
+    assert!(
+        codes.contains(&"E-USES-DUP-STATE"),
+        "base-base state collision must not be hidden by a child override; got {codes:?}"
+    );
+    assert!(
+        codes.contains(&"E-USES-DUP-DEF"),
+        "base-base def collision must not be hidden by a child override; got {codes:?}"
+    );
+    // The child override still wins the resolved value (min-depth winner).
+    let decl = res.state.decls.get("run.gold").expect("run.gold missing");
+    assert_eq!(decl.ty, Type::Number, "child override must win");
+}
+
+#[test]
+fn scene_inline_refines_extends_base_default() {
+    // A SCENE that `extends: base` and inline-refines an extends-imported state
+    // path: the inline decl OVERRIDES the base (dsl §9.2) — NOT E-STATE-REDECLARE.
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "base.lute",
+        "---\nstate:\n  run.gold: { type: number, default: 0 }\n---\n",
+    );
+    let imports = resolve_imports(&dir, &[], &["base.lute".to_string()], zero_span());
+    assert!(
+        imports.state_overridable.contains("run.gold"),
+        "an extends-base state path must be marked overridable; got {:?}",
+        imports.state_overridable
+    );
+
+    // Same-type refine (default 0 -> 5): accepted, no redeclare, no type error.
+    let refine = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.gold: { type: number, default: 5 }\n---\n## Shot 1.\n:line[x]: hi\n";
+    let codes = check_codes(refine, imports.clone());
+    assert!(
+        !codes.contains(&"E-STATE-REDECLARE".to_string()),
+        "scene inline must refine an extends-base path, not redeclare; got {codes:?}"
+    );
+    assert!(
+        !codes.contains(&"E-EXTENDS-STATE-TYPE".to_string()),
+        "a same-type refinement must be silent; got {codes:?}"
+    );
+
+    // Type-change refine (number -> string): flagged E-EXTENDS-STATE-TYPE, still
+    // not E-STATE-REDECLARE (a scene may override, just never change the type).
+    let retype = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.gold: { type: string }\n---\n## Shot 1.\n:line[x]: hi\n";
+    let codes = check_codes(retype, imports.clone());
+    assert!(
+        codes.contains(&"E-EXTENDS-STATE-TYPE".to_string()),
+        "a type-changing refinement must flag E-EXTENDS-STATE-TYPE; got {codes:?}"
+    );
+    assert!(
+        !codes.contains(&"E-STATE-REDECLARE".to_string()),
+        "a type-change must not also be E-STATE-REDECLARE; got {codes:?}"
+    );
+
+    // "Inline wins / merged default" is observable: with a NO-DEFAULT extends
+    // base, an inline decl carrying a default REPLACES it, so a later read is no
+    // longer maybe-unset (it would be if the imported no-default decl had won).
+    let dir2 = unique_dir();
+    write_lute(
+        &dir2,
+        "base.lute",
+        "---\nstate:\n  run.gold: { type: number }\n---\n",
+    );
+    let imports2 = resolve_imports(&dir2, &[], &["base.lute".to_string()], zero_span());
+    let reads = |state: &str| -> Vec<String> {
+        let text = format!(
+            "---\ncharacter: x\nseason: 1\nepisode: 1\n{state}---\n## Shot 1.\n<match on=\"run.gold\">\n<when test=\"$ == 5\">:line[x]: a\n</when>\n</match>\n"
+        );
+        check_codes(&text, imports2.clone())
+    };
+    assert!(
+        reads("").contains(&"E-MAYBE-UNSET".to_string()),
+        "sanity: reading a no-default imported path must be maybe-unset"
+    );
+    let refined = reads("state:\n  run.gold: { type: number, default: 5 }\n");
+    assert!(
+        !refined.contains(&"E-MAYBE-UNSET".to_string()),
+        "the inline default must win over the extends base; got {refined:?}"
+    );
+    assert!(
+        !refined.contains(&"E-STATE-REDECLARE".to_string()),
+        "refining an extends base must not redeclare; got {refined:?}"
+    );
+}

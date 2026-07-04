@@ -189,25 +189,50 @@ pub fn check(input: &CheckInput) -> CheckResult {
     //    state paths). This pre-pass owns the episode-wide `E-DUP-BRANCH`
     //    detection so the main walk never double-counts branch ids.
     // Merge imported schema (dsl §9.2) first, then the scene's inline `state:`.
-    // A scene MUST NOT override an imported tier: on a collision keep the imported
-    // decl and flag E-STATE-REDECLARE.
+    // Precedence depends on WHERE the imported decl came from (see
+    // `SchemaImports::state_overridable`): a `uses`-peer path may NOT be
+    // redeclared (`E-STATE-REDECLARE`, imported wins), but an `extends`-base path
+    // MAY be refined by the scene's inline decl (the inline wins; a TYPE change is
+    // `E-EXTENDS-STATE-TYPE`, the persisted type must stay stable).
     let mut schema = input.imports.state.clone();
-    let mut redeclare_diags: Vec<Diagnostic> = Vec::new();
+    let mut state_merge_diags: Vec<Diagnostic> = Vec::new();
     for (path, decl) in &typed.state.decls {
-        if input.imports.state.decls.contains_key(path) {
-            redeclare_diags.push(Diagnostic {
-                code: "E-STATE-REDECLARE".to_string(),
-                severity: Severity::Error,
-                message: format!(
-                    "state path `{path}` is declared by an imported schema (§9.2); a scene must not redeclare or override it"
-                ),
-                span: doc.meta.span,
-                layer: Layer::Content,
-                fixits: Vec::new(),
-                provenance: None,
-            });
-        } else {
-            schema.decls.insert(path.clone(), decl.clone());
+        match input.imports.state.decls.get(path) {
+            Some(imported) if input.imports.state_overridable.contains(path) => {
+                // Extends-base override: the inline decl wins; guard the type.
+                if decl.ty != imported.ty {
+                    state_merge_diags.push(Diagnostic {
+                        code: "E-EXTENDS-STATE-TYPE".to_string(),
+                        severity: Severity::Error,
+                        message: format!(
+                            "state path `{path}` overrides base declared type {:?} with {:?}; persisted state must keep a stable type",
+                            imported.ty, decl.ty
+                        ),
+                        span: doc.meta.span,
+                        layer: Layer::Content,
+                        fixits: Vec::new(),
+                        provenance: None,
+                    });
+                }
+                schema.decls.insert(path.clone(), decl.clone());
+            }
+            Some(_) => {
+                // Uses-peer path: a scene must not redeclare it (imported wins).
+                state_merge_diags.push(Diagnostic {
+                    code: "E-STATE-REDECLARE".to_string(),
+                    severity: Severity::Error,
+                    message: format!(
+                        "state path `{path}` is declared by an imported schema (§9.2); a scene must not redeclare or override it"
+                    ),
+                    span: doc.meta.span,
+                    layer: Layer::Content,
+                    fixits: Vec::new(),
+                    provenance: None,
+                });
+            }
+            None => {
+                schema.decls.insert(path.clone(), decl.clone());
+            }
         }
     }
     let mut seen_branches = std::collections::BTreeSet::new();
@@ -337,7 +362,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(meta_diags);
     diags.extend(branch_diags);
     diags.extend(input.imports.diags.clone());
-    diags.extend(redeclare_diags);
+    diags.extend(state_merge_diags);
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(inject_diags);
