@@ -34,8 +34,10 @@
 //! dropped — the feature is best-effort and the diagnostic surface is `check()`'s
 //! job), then merge the caller-resolved [`lute_check::SchemaImports`] via
 //! [`merge_imports`] so the SAME imported state/defs `check()` validates are
-//! visible to hover/completion (inline entries win on collision). `TypedMeta.state.decls`
-//! backs state hover/completion; `TypedMeta.defs` (author-declared inline defs,
+//! visible to hover/completion (imported state wins on collision — mirroring
+//! `check()`'s `E-STATE-REDECLARE` authority — while defs stay inline-wins).
+//! `TypedMeta.state.decls` backs state hover/completion; `TypedMeta.defs`
+//! (author-declared inline defs,
 //! now unioned with imported defs) plus `snapshot.defs` (plugin-exported
 //! [`DefDecl`]) back `@ref` hover/completion. [`nav`] resolves declaration SITES
 //! from the document text, so an imported symbol (declared in another file, with
@@ -59,18 +61,23 @@ use lute_syntax::ast::{
 };
 
 /// Merge imported schema (dsl §9.2) into a document's typed frontmatter so the
-/// editor features see the same state/defs as [`lute_check::check`]. Inline
-/// entries win on key collision (scene-local precedence — matching `check()`; a
-/// genuine conflict is a diagnostic, not the feature layer's concern). Called by
-/// each meta-driven feature fn immediately after `parse_meta`, so every existing
-/// sub-helper (`state_hover`, `state_path_items`, `def_info`, `def_items`)
-/// transparently resolves imported symbols with no further change.
+/// editor features see the same state/defs as [`lute_check::check`]. Precedence
+/// mirrors `check()`:
+/// - **state** — the IMPORTED decl wins on key collision (an inline path with the
+///   same key is overwritten). `check()` treats imported state as authoritative
+///   and flags an inline redeclaration as `E-STATE-REDECLARE`, so the imported
+///   type/default is what validates; the feature layer must surface that same
+///   type. Inline-only paths (no imported collision) are untouched.
+/// - **defs** — the INLINE decl wins on key collision (`or_insert_with` only adds
+///   imported names not already declared inline). This is the def precedence
+///   `check()` uses: plugin < imported < inline.
+///
+/// Called by each meta-driven feature fn immediately after `parse_meta`, so every
+/// existing sub-helper (`state_hover`, `state_path_items`, `def_info`,
+/// `def_items`) transparently resolves imported symbols with no further change.
 pub(crate) fn merge_imports(meta: &mut lute_check::TypedMeta, imports: &lute_check::SchemaImports) {
     for (k, v) in &imports.state.decls {
-        meta.state
-            .decls
-            .entry(k.clone())
-            .or_insert_with(|| v.clone());
+        meta.state.decls.insert(k.clone(), v.clone());
     }
     for (k, v) in &imports.defs {
         meta.defs.entry(k.clone()).or_insert_with(|| v.clone());
