@@ -59,8 +59,8 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::{SlotDecl, StateShape};
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_manifest::types::PathSegment;
-use lute_syntax::ast::{Arm, Attr, AttrValue, ClipNode, Directive, Document, Node};
+use lute_manifest::types::{type_accepts, Literal, PathSegment, Type};
+use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, ClipNode, Directive, Document, Node};
 use lute_syntax::parse;
 
 use crate::ctx::{Ctx, ExpectedType, Mode};
@@ -445,6 +445,7 @@ impl Walker<'_> {
                     self.check_attr_refs(&b.attrs, ctx, None);
                     for choice in &b.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
+                        check_choice_persist(choice, ctx, &mut self.diags);
                         if let Some(when) = &choice.when {
                             self.diags.extend(check_cel_slot(
                                 when,
@@ -556,6 +557,195 @@ impl Walker<'_> {
                     .extend(check_cel_slot(slot, self.arena, ctx, expected.as_ref()));
             }
         }
+    }
+}
+
+/// Diagnostic codes for the `<choice … persist="run">` run-fact sugar (dsl §11.1.1).
+const E_PERSIST_TARGET: &str = "E-PERSIST-TARGET";
+const E_PERSIST_MISSING_AS: &str = "E-PERSIST-MISSING-AS";
+const E_PERSIST_VALUE: &str = "E-PERSIST-VALUE";
+const E_PERSIST_CONFLICT: &str = "E-PERSIST-CONFLICT";
+
+/// Validate a `<choice>`'s run-fact promotion sugar (dsl §11.1.1):
+/// `persist="run" as="run.<path>" [value="<lit>"]` records a NAMED, declared
+/// `run.*` fact when the choice is selected. The sugar is EXACTLY a
+/// `::set{run.<path> = <value>}` appended to the arm — the engine materializes
+/// the write, so the checker only validates well-formedness. A `<choice>` with
+/// no `persist` attr is untouched. The `persist`/`as`/`value` attrs are
+/// recognized here, so they are never reported as unknown/extra.
+fn check_choice_persist(choice: &Choice, ctx: &Ctx, diags: &mut Vec<Diagnostic>) {
+    // Only choices carrying a `persist` attr participate.
+    let Some(persist) = choice.attrs.iter().find(|a| a.key == "persist") else {
+        return;
+    };
+    // Rule 1 (§11.1.1): cross-episode facts live in `run.*`, so `persist` MUST
+    // be `"run"`.
+    if str_attr(persist) != Some("run") {
+        diags.push(persist_diag(
+            E_PERSIST_TARGET,
+            "`persist` must be `\"run\"`: cross-episode facts live in the `run.*` \
+             namespace (dsl §11.1.1)"
+                .to_string(),
+            choice.span,
+        ));
+        return;
+    }
+    // Rule 2: `as` is REQUIRED and MUST name a `run.*` path.
+    let Some(as_attr) = choice.attrs.iter().find(|a| a.key == "as") else {
+        diags.push(persist_diag(
+            E_PERSIST_MISSING_AS,
+            "`persist=\"run\"` requires `as=\"run.<path>\"` naming the run fact to record \
+             (dsl §11.1.1)"
+                .to_string(),
+            choice.span,
+        ));
+        return;
+    };
+    let Some(as_path) = str_attr(as_attr) else {
+        diags.push(persist_diag(
+            E_PERSIST_TARGET,
+            "`as` must be a `run.<path>` string literal (dsl §11.1.1)".to_string(),
+            choice.span,
+        ));
+        return;
+    };
+    if as_path != "run" && !as_path.starts_with("run.") {
+        diags.push(persist_diag(
+            E_PERSIST_TARGET,
+            format!(
+                "`as=\"{as_path}\"` must name a `run.*` path (matching `persist=\"run\"`) \
+                 (dsl §11.1.1)"
+            ),
+            choice.span,
+        ));
+        return;
+    }
+    // Rule 3 (§9.2/§11.1.1): the `as` path MUST already be declared in the
+    // merged schema — a typo'd/undeclared `as` cannot silently create a field.
+    let Some(ty) = resolve_type(as_path, &ctx.state) else {
+        diags.push(persist_diag(
+            "E-UNDECLARED",
+            format!(
+                "persist target `{as_path}` is not declared in the run schema (dsl §11.1.1); \
+                 an undeclared/typo'd `as` cannot create a field"
+            ),
+            choice.span,
+        ));
+        return;
+    };
+    // Rule 4 (§11.1.1): the `value` policy depends on the declared type.
+    check_persist_value(
+        ty,
+        choice.attrs.iter().find(|a| a.key == "value"),
+        as_path,
+        choice.span,
+        diags,
+    );
+    // Rule 5: the arm must not already `::set` the same path — the persist write
+    // would duplicate it.
+    if choice
+        .body
+        .iter()
+        .any(|n| matches!(n, Node::Set(s) if s.path == as_path))
+    {
+        diags.push(persist_diag(
+            E_PERSIST_CONFLICT,
+            format!(
+                "the choice arm already `::set`s `{as_path}`, which `persist=\"run\" \
+                 as=\"{as_path}\"` also writes (dsl §11.1.1)"
+            ),
+            choice.span,
+        ));
+    }
+}
+
+/// Rule 4 of the persist sugar (§11.1.1): a `bool` path's `value` is OPTIONAL
+/// (defaults to `true`) and, when present, MUST be a bool literal; every other
+/// path (`number`/`enum`/…) REQUIRES a type-compatible literal.
+fn check_persist_value(
+    ty: &Type,
+    value: Option<&Attr>,
+    as_path: &str,
+    span: Span,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let accepted = |v: &Attr| persist_literal(&v.value).is_some_and(|lit| type_accepts(ty, &lit));
+    match ty {
+        Type::Bool => {
+            if let Some(v) = value {
+                if !accepted(v) {
+                    diags.push(persist_diag(
+                        E_PERSIST_VALUE,
+                        format!(
+                            "`value` for the bool path `{as_path}` must be a bool literal \
+                             (`true`/`false`) (dsl §11.1.1)"
+                        ),
+                        span,
+                    ));
+                }
+            }
+        }
+        _ => match value {
+            None => diags.push(persist_diag(
+                E_PERSIST_VALUE,
+                format!(
+                    "`value` is required for `{as_path}` (only a `bool` path defaults to \
+                     `true`) (dsl §11.1.1)"
+                ),
+                span,
+            )),
+            Some(v) if !accepted(v) => diags.push(persist_diag(
+                E_PERSIST_VALUE,
+                format!(
+                    "`value` is not compatible with the declared type of `{as_path}` \
+                     (dsl §11.1.1)"
+                ),
+                span,
+            )),
+            Some(_) => {}
+        },
+    }
+}
+
+/// The string value of an attr, when it is a plain string literal (`key="s"`).
+/// A bare (`BoolTrue`) or `@ref`-valued attr yields `None`.
+fn str_attr(attr: &Attr) -> Option<&str> {
+    match &attr.value {
+        AttrValue::Str(s) => Some(s),
+        _ => None,
+    }
+}
+
+/// Interpret a persist `value` attr as a manifest [`Literal`] for the
+/// type-compatibility check: a bare attr (`value`) and `"true"`/`"false"` are
+/// bool literals; an otherwise-numeric string is a number; anything else a
+/// string (so `enum` membership resolves via [`type_accepts`]). A `@ref`-valued
+/// attr is not a static literal (`None`).
+fn persist_literal(v: &AttrValue) -> Option<Literal> {
+    match v {
+        AttrValue::BoolTrue => Some(Literal::Bool(true)),
+        AttrValue::Str(s) => Some(match s.as_str() {
+            "true" => Literal::Bool(true),
+            "false" => Literal::Bool(false),
+            _ => match s.parse::<f64>() {
+                Ok(n) => Literal::Num(n),
+                Err(_) => Literal::Str(s.clone()),
+            },
+        }),
+        AttrValue::Ref(_) => None,
+    }
+}
+
+/// Build a `Layer::Logic` diagnostic for the persist sugar (a §11 branch check).
+fn persist_diag(code: &str, message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
     }
 }
 
