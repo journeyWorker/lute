@@ -1,0 +1,5 @@
+---
+extends: extends-base.lute
+state:
+  run.blessed: { type: bool, default: true }
+---
