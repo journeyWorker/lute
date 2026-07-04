@@ -1,0 +1,10 @@
+# The `stateTemplates` export kind (plugin §6.3): a named, plugin-declared state
+# slot mapping a structured `scope`/`path` to a `stateShape`. Loaded alongside
+# `shapes.yaml` under the same `state/` export dir. This standalone template maps
+# the default `scene.serve.default.*` slot to the `serveResult` shape, so the pack
+# ships the templates surface without requiring a referencing directive.
+stateTemplates:
+  - name: serveDefault
+    scope: scene
+    path: [serve, default]
+    shape: serveResult

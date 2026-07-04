@@ -37,6 +37,7 @@ rm docs/examples/showcase/_t.lute
 | `plugins/showcase.pack/plugin.yaml` | plugin manifest — exports **all six** kinds + `options` |
 | `plugins/showcase.pack/directives/serve.yaml` | bridge directive `::serve` (providerRef + assetKind + slotId + bridge + state) |
 | `plugins/showcase.pack/state/shapes.yaml` | `serveResult` state shape |
+| `plugins/showcase.pack/state/templates.yaml` | `serveDefault` state template (`stateTemplates` export) |
 | `plugins/showcase.pack/providers/cast.yaml` | `castId` provider registry |
 | `plugins/showcase.pack/bridge/serve.yaml` | `serve/play` bridge capability |
 | `plugins/showcase.pack/assetkinds/poster.yaml` | `PT.<actor>.<variant>` asset kind (segments) |
@@ -48,7 +49,7 @@ rm docs/examples/showcase/_t.lute
 
 ## Plugin export kinds shipped (all six)
 
-`directives/` · `state/` (shapes) · `providers/` · `bridge/` · `assetkinds/` · `defs/`
+`directives/` · `state/` (shapes + templates) · `providers/` · `bridge/` · `assetkinds/` · `defs/`
 
 ## Feature → location map
 
@@ -73,7 +74,7 @@ rm docs/examples/showcase/_t.lute
 | `app.*` decl + default | `schema/base.schema.lute:10–11` |
 | `::set` pure `=` write | `episode01.lute:74` |
 | `::set` compound op (`+=`) | `episode01.lute:97, 101, 128` |
-| write policy respected (no `app.*` write) | `app.rating`/`app.lang` only read (line 185) |
+| write policy respected (no `app.*` write) | `app.rating` (185) + `app.lang` (219) only read — no `::set` targets `app.*` |
 | definite assignment (defaulted / bridge-dominated / guarded reads) | throughout; bridge write @86 dominates read @94 |
 
 ### Expressions
@@ -82,7 +83,7 @@ rm docs/examples/showcase/_t.lute
 | inline `@ref` | `@fond` — `episode01.lute:143` |
 | plugin-exported `@ref` | `@showcaseReady` — `episode01.lute:122` |
 | parameterized `@name(args)` | `@atLeast(3)` — `episode01.lute:200`; `@atLeast(1)` — `126` |
-| `$` match subject | `episode01.lute:95, 99, 146, 161, 164, 170, 186` |
+| `$` match subject | `episode01.lute:95, 99, 146, 161, 164, 170, 186, 220` |
 | child-schema def via extends | `@veteran` — `episode01.lute:203` |
 
 ### Logic
@@ -92,10 +93,11 @@ rm docs/examples/showcase/_t.lute
 | `<choice when=…>` guards | lines 122, 126 |
 | `persist="run"` sugar — bool (default value) | line 122 (`as="run.metHelpfully"`) |
 | `persist="run"` sugar — enum (explicit `value`) | line 126 (`as="run.sofaOutcome" value="warm"`) |
-| `<match>` / `<when>` / `<otherwise>` | 94–106, 142–152, 169–176, 185–192, 199–209 |
+| `<match>` / `<when>` / `<otherwise>` | 94–106, 142–152, 169–176, 185–192, 199–209, 219–226 |
 | exhaustive match, no `<otherwise>` (bool domain) | 160–167 |
 | maybe-unset subject covered by `<otherwise>` | 169–176 (`run.sofaOutcome`) |
 | age-gated `app.rating` match | 185–192 |
+| maybe-unset `app.lang` match (enum, `<otherwise>`) | 219–226 |
 | choice-key read (`scene.choices.approach`) | 142 |
 
 ### Content & directives
