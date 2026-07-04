@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "lute-lsp": {
+      "command": "lute-lsp",
+      "fileTypes": [".lute"],
+      "rootMarkers": ["lute.project.yaml", ".git"]
+    }
+  }
+}
