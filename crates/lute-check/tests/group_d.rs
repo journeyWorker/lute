@@ -12,6 +12,7 @@ fn codes(text: &str) -> Vec<String> {
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     };
     check(&input)
         .diagnostics

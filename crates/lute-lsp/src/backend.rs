@@ -89,6 +89,7 @@ impl Backend {
             providers,
             mode: Mode::Author,
             imports,
+            components: Default::default(),
         };
         let result = check(&input);
         let idx = lute_core_span::TextIndex::new(&snapshot.text);

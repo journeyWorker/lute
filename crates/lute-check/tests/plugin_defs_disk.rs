@@ -61,6 +61,7 @@ fn codes_for_scene(scene: &str) -> Vec<String> {
         providers,
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     };
     check(&input)
         .diagnostics

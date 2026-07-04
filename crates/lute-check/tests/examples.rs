@@ -26,6 +26,7 @@ fn input_for(text: &str) -> CheckInput {
         providers: permissive_providers(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     }
 }
 
@@ -39,6 +40,7 @@ fn bianca_example_checks_clean() {
         providers: permissive_providers(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     };
     let res = check(&input);
     let errors: Vec<_> = res

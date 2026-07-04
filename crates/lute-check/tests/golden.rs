@@ -22,6 +22,7 @@ fn input_for(text: &str) -> CheckInput {
         providers: lute_manifest::provider::ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     }
 }
 

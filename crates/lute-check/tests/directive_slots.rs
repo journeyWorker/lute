@@ -119,6 +119,7 @@ fn check_codes(text: &str, snap: CapabilitySnapshot) -> Vec<String> {
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     };
     check(&input)
         .diagnostics
@@ -226,6 +227,7 @@ fn cyclic_state_shapes_do_not_overflow() {
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     };
     // Must return without stack-overflow (no-panic contract).
     let _ = check(&input);
@@ -245,6 +247,7 @@ fn unknown_tag_from_inactive_plugin_gets_fixit() {
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
+        components: Default::default(),
     };
     let res = check(&input);
     let d = res

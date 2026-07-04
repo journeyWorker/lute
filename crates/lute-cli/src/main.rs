@@ -163,6 +163,7 @@ fn run_check(
         // identically today; the checker does not branch on mode yet).
         mode: Mode::Ci,
         imports,
+        components: Default::default(),
     };
     let result = check(&input);
 

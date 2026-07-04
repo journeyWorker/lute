@@ -63,6 +63,7 @@ use lute_manifest::types::{type_accepts, Literal, PathSegment, Type};
 use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, ClipNode, Directive, Document, Node};
 use lute_syntax::parse;
 
+use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
 use crate::directives::check_directive;
 use crate::inject::{lower_node, InjectedCommand, StageState};
@@ -104,6 +105,11 @@ pub struct CheckInput {
     /// into this document's schema, plus resolution diagnostics. Empty when the
     /// scene has no `uses:` (or on a surface that cannot resolve files).
     pub imports: SchemaImports,
+    /// Resolved `components:` imports (dsl §13): the component name -> definition
+    /// table (params + presentational body) plus resolution diagnostics. Empty
+    /// when the scene has no `components:` (or on a surface that cannot resolve
+    /// files); validated against `::use` invocations in [`check`].
+    pub components: ComponentSet,
 }
 
 /// The result of one `check()`: every diagnostic (deduped, byte-sorted) plus the
