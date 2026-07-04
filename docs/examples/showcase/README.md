@@ -17,17 +17,18 @@ copy would report `E-USES-NOT-FOUND`):
 
 ```sh
 cp docs/examples/showcase/episode01.lute docs/examples/showcase/_t.lute
-./target/debug/lute tag docs/examples/showcase/_t.lute            # tags 11 lines
+./target/debug/lute tag docs/examples/showcase/_t.lute            # tags 13 lines
 ./target/debug/lute check docs/examples/showcase/_t.lute --project docs/examples/showcase   # exit 0
 ./target/debug/lute tag docs/examples/showcase/_t.lute            # "already tagged"
 rm docs/examples/showcase/_t.lute
 ```
 
-> Schema docs (`schema/*.schema.lute`) intentionally fail a *standalone* `lute check`
-> with `E-META-MISSING` — they carry no `character`/`season`/`episode` because they
-> are **imported** (validated in import mode) by the episode, not run as scenes. This
-> matches `docs/examples/state.schema.lute` and `extends-base.lute`. The episode check
-> validates them transitively.
+> Schema docs (`schema/*.schema.lute`) and component files (`components/*.component.lute`)
+> intentionally fail a *standalone* `lute check` with `E-META-MISSING` — they carry no
+> `character`/`season`/`episode` because they are **imported** (validated in import /
+> component mode) by the episode, not run as scenes. This matches
+> `docs/examples/state.schema.lute` and `extends-base.lute`. The episode check validates
+> them transitively.
 
 ## Layout
 
@@ -45,6 +46,7 @@ rm docs/examples/showcase/_t.lute
 | `catalog/cast.yaml` | pinned `castId` ids (`bianca_star`, `takeru_host`) |
 | `schema/base.schema.lute` | base `run`/`user`/`app` state + defs (`helped`, `atLeast(n)`) |
 | `schema/game.schema.lute` | `extends: base` — refines `user.level` default, adds `run.chapter` + `veteran` def |
+| `components/stinger.component.lute` | reusable content component (dsl §13) — `component:` + `params:` + presentational body, expanded by `::use` |
 | `episode01.lute` | the scene wiring it all together |
 
 ## Plugin export kinds shipped (all six)
@@ -61,64 +63,73 @@ rm docs/examples/showcase/_t.lute
 | `profile` (root capability selector) | 10 |
 | `plugins` (scene-local activation + options) | 13–16 |
 | `uses:` (import child schema) | 19 |
-| inline `state:` (scene tier) | 21–23 |
-| inline `defs:` (`@fond`) | 25–26 |
+| `components:` (import content components, dsl §13) | 22 |
+| inline `state:` (scene tier) | 24–26 |
+| inline `defs:` (`@fond`) | 28–29 |
 | `extends:` (composition) | `schema/game.schema.lute:6` |
 
 ### State tiers (all four) + writes + policy
 | Feature | Location |
 |---|---|
-| `scene.*` decl + default | `episode01.lute:22–23` |
+| `scene.*` decl + default | `episode01.lute:25–26` |
 | `run.*` decl + default | `schema/base.schema.lute:6–8`, `schema/game.schema.lute:9` |
 | `user.*` decl + default (base→child override) | `schema/base.schema.lute:9` → `schema/game.schema.lute:8` |
 | `app.*` decl + default | `schema/base.schema.lute:10–11` |
-| `::set` pure `=` write | `episode01.lute:74` |
-| `::set` compound op (`+=`) | `episode01.lute:97, 101, 128` |
-| write policy respected (no `app.*` write) | `app.rating` (185) + `app.lang` (219) only read — no `::set` targets `app.*` |
-| definite assignment (defaulted / bridge-dominated / guarded reads) | throughout; bridge write @86 dominates read @94 |
+| `::set` pure `=` write | `episode01.lute:77` |
+| `::set` compound op (`+=`) | `episode01.lute:100, 104, 131` |
+| write policy respected (no `app.*` write) | `app.rating` (188) + `app.lang` (230) only read — no `::set` targets `app.*` |
+| definite assignment (defaulted / bridge-dominated / guarded reads) | throughout; bridge write @89 dominates read @97 |
 
 ### Expressions
 | Feature | Location |
 |---|---|
-| inline `@ref` | `@fond` — `episode01.lute:143` |
-| plugin-exported `@ref` | `@showcaseReady` — `episode01.lute:122` |
-| parameterized `@name(args)` | `@atLeast(3)` — `episode01.lute:200`; `@atLeast(1)` — `126` |
-| `$` match subject | `episode01.lute:95, 99, 146, 161, 164, 170, 186, 220` |
-| child-schema def via extends | `@veteran` — `episode01.lute:203` |
+| inline `@ref` | `@fond` — `episode01.lute:146` |
+| plugin-exported `@ref` | `@showcaseReady` — `episode01.lute:125` |
+| parameterized `@name(args)` | `@atLeast(3)` — `episode01.lute:203`; `@atLeast(1)` — `129` |
+| `$` match subject | `episode01.lute:98, 102, 149, 164, 167, 173, 189, 231` |
+| child-schema def via extends | `@veteran` — `episode01.lute:206` |
 
 ### Logic
 | Feature | Location |
 |---|---|
-| `<branch>` + `<choice>` | `episode01.lute:118–130` |
-| `<choice when=…>` guards | lines 122, 126 |
-| `persist="run"` sugar — bool (default value) | line 122 (`as="run.metHelpfully"`) |
-| `persist="run"` sugar — enum (explicit `value`) | line 126 (`as="run.sofaOutcome" value="warm"`) |
-| `<match>` / `<when>` / `<otherwise>` | 94–106, 142–152, 169–176, 185–192, 199–209, 219–226 |
-| exhaustive match, no `<otherwise>` (bool domain) | 160–167 |
-| maybe-unset subject covered by `<otherwise>` | 169–176 (`run.sofaOutcome`) |
-| age-gated `app.rating` match | 185–192 |
-| maybe-unset `app.lang` match (enum, `<otherwise>`) | 219–226 |
-| choice-key read (`scene.choices.approach`) | 142 |
+| `<branch>` + `<choice>` | `episode01.lute:121–133` |
+| `<choice when=…>` guards | lines 125, 129 |
+| `persist="run"` sugar — bool (default value) | line 125 (`as="run.metHelpfully"`) |
+| `persist="run"` sugar — enum (explicit `value`) | line 129 (`as="run.sofaOutcome" value="warm"`) |
+| `<match>` / `<when>` / `<otherwise>` | 97–109, 145–155, 172–179, 188–195, 202–212, 230–237 |
+| exhaustive match, no `<otherwise>` (bool domain) | 163–170 |
+| maybe-unset subject covered by `<otherwise>` | 172–179 (`run.sofaOutcome`) |
+| age-gated `app.rating` match | 188–195 |
+| maybe-unset `app.lang` match (enum, `<otherwise>`) | 230–237 |
+| choice-key read (`scene.choices.approach`) | 145 |
 
 ### Content & directives
 | Feature | Location |
 |---|---|
-| `:line[narrator]` | `episode01.lute:45, 187, 190` |
-| `:line[speaker]` w/ attrs (`code`/`emotion`/`variant`) | 46, 96, 100, … |
-| `:line` monologue (`delivery="thought"`) | 76, 110, 144, … |
-| core staging directives (`::bg` `::music` `::sfx` `::auto` `::camera` `::cut` `::vfx`) | 40–43, 65–70, 133, 211–212 |
-| plugin directive `::serve` | 86 |
-| plugin attr `providerRef` id (`performer`) | 86 → `catalog/cast.yaml` |
-| plugin attr `assetKind` id (decomposed `PT.bianca_star.0`) | 86 → `assetkinds/poster.yaml` |
+| `:line[narrator]` | `episode01.lute:48, 190, 193` |
+| `:line[speaker]` w/ attrs (`code`/`emotion`/`variant`) | 49, 99, 103, … |
+| `:line` monologue (`delivery="thought"`) | 79, 113, 147, … |
+| core staging directives (`::bg` `::music` `::sfx` `::auto` `::camera` `::cut` `::vfx`) | 43–46, 68–73, 136, 222–223 |
+| plugin directive `::serve` | 89 |
+| plugin attr `providerRef` id (`performer`) | 89 → `catalog/cast.yaml` |
+| plugin attr `assetKind` id (decomposed `PT.bianca_star.0`) | 89 → `assetkinds/poster.yaml` |
 
-### Timeline (`episode01.lute:57–72`)
+### Reusable content components (dsl §13)
+| Feature | Location |
+|---|---|
+| `components:` import (DAG, canonicalized/deduped like `uses:`) | `episode01.lute:22` |
+| component file (`component:` + `params:` + presentational body) | `components/stinger.component.lute:7–9` |
+| `::use{ component=… <arg>=… }` invocation | `episode01.lute:220` |
+| `@param` ref (`@cue`) in body attr positions | `components/stinger.component.lute:17, 18` |
+
+### Timeline (`episode01.lute:60–75`)
 | Feature | Line |
 |---|---|
-| `<timeline duration=…>` | 57 |
-| `subject` track (camera) | 64 |
-| `channel` track (fg) | 68 |
-| TWO `property` tracks on one subject (`bianca.pos`, `bianca.opacity`) | 58, 61 |
-| clips with absolute `at` | 66, 69, 70 |
+| `<timeline duration=…>` | 60 |
+| `subject` track (camera) | 67 |
+| `channel` track (fg) | 71 |
+| TWO `property` tracks on one subject (`bianca.pos`, `bianca.opacity`) | 61, 64 |
+| clips with absolute `at` | 69, 72, 73 |
 
 ### Composition
 | Feature | Location |

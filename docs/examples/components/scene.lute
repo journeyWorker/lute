@@ -1,0 +1,16 @@
+---
+# A scene imports reusable content components (dsl §13) via `components:`
+# (canonicalized + cycle-checked + diamond-deduped like `uses:`, §9.2) and
+# invokes one with the reserved built-in directive `::use`.
+character: demo
+season: 1
+episode: 1
+components: [greet.component.lute]
+---
+
+## Shot 1.
+
+/* `::use` expands the named component's body inline, binding each `@param` to
+   the matching named arg (count + type checked, §13.3). */
+::use{component="greet" who="bianca"}
+:line[narrator]: And the scene carries on.

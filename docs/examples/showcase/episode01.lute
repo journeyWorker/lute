@@ -17,6 +17,9 @@ plugins:
 # Shared run/user/app schema + defs arrive via the imported child schema, which
 # `extends:` a base (schema/game.schema.lute -> schema/base.schema.lute).
 uses: schema/game.schema.lute
+# Reusable content components (dsl §13): imported like `uses:` (canonicalized,
+# cycle-checked, diamond-deduped) and expanded inline by `::use`.
+components: [components/stinger.component.lute]
 # Genuinely scene-local (episode-scoped) declarations only (§9.2).
 state:
   scene.affect.bianca: { type: number, default: 0 }
@@ -207,6 +210,14 @@ defs:
     :line[fixer]{delivery="thought"}: Early days yet.
   </otherwise>
 </match>
+
+/*
+  Reusable content component (dsl §13): `::use` expands the imported `stinger`
+  component's presentational body inline, binding its `@cue` param to the named
+  arg `cue="tense"` (count + type checked, §13.3). `use` is a reserved built-in
+  directive (§10) — never `E-UNKNOWN-DIRECTIVE`.
+*/
+::use{component="stinger" cue="tense"}
 
 ::vfx{type="petals" transition="fade"}
 ::music{action="stop"}
