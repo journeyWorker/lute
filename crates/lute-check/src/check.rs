@@ -54,7 +54,7 @@
 //! errors (unknown directive, undeclared state, non-exhaustive match, …) still
 //! yield a resolved view. A clean document is always `Some`.
 
-use lute_cel::{fill_document, CelArena};
+use lute_cel::{fill_document, scan_refs, CelArena};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::{SlotDecl, StateShape};
@@ -63,6 +63,7 @@ use lute_manifest::types::{type_accepts, Literal, PathSegment, Type};
 use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, ClipNode, Directive, Document, Node};
 use lute_syntax::parse;
 
+use crate::cel_resolve::compatible;
 use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
 use crate::directives::check_directive;
@@ -454,7 +455,7 @@ impl Walker<'_> {
                     // the unknown-directive check, so it is never
                     // `E-UNKNOWN-DIRECTIVE`. It is a component invocation, not a
                     // snapshot directive.
-                    check_use(d, self.components, &mut self.diags);
+                    check_use(d, self.components, ctx, &mut self.diags);
                     // `@ref`-valued args still resolve in the current scope; there
                     // is no directive decl to type them against.
                     self.check_attr_refs(&d.attrs, ctx, None);
@@ -548,7 +549,7 @@ impl Walker<'_> {
                         for clip in &track.clips {
                             match &clip.node {
                                 ClipNode::Directive(d) if d.tag == "use" => {
-                                    check_use(d, self.components, &mut self.diags);
+                                    check_use(d, self.components, ctx, &mut self.diags);
                                     self.check_attr_refs(&d.attrs, ctx, None);
                                 }
                                 ClipNode::Directive(d) => {
@@ -628,7 +629,12 @@ fn use_diag(code: &str, message: String, span: Span) -> Diagnostic {
 /// * every remaining attr is a NAMED arg bound to a param by name — an unknown
 ///   arg, a missing required param, or a value incompatible with its param's
 ///   declared type is `E-COMPONENT-ARG`.
-fn check_use(dir: &Directive, components: &ComponentSet, diags: &mut Vec<Diagnostic>) {
+fn check_use(
+    dir: &Directive,
+    components: &ComponentSet,
+    ctx: &Ctx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
     let Some(name_attr) = dir.attrs.iter().find(|a| a.key == "component") else {
         diags.push(use_diag(
             E_COMPONENT_ARG,
@@ -665,7 +671,7 @@ fn check_use(dir: &Directive, components: &ComponentSet, diags: &mut Vec<Diagnos
                 attr.span,
             )),
             Some((_, pty)) => {
-                if !use_arg_ok(pty, &attr.value) {
+                if !use_arg_ok(pty, &attr.value, ctx) {
                     diags.push(use_diag(
                         E_COMPONENT_ARG,
                         format!(
@@ -690,18 +696,36 @@ fn check_use(dir: &Directive, components: &ComponentSet, diags: &mut Vec<Diagnos
     }
 }
 
-/// A `::use` arg value is compatible with its param type when it is a `@ref`
-/// (CEL — bound at expansion and typed in the enclosing scope, conservative /
-/// not flagged here); a value-level string for a `providerRef` param (id
-/// existence is out of the v1 presentational scope); or a literal that coerces
-/// into the param type's domain and `type_accepts` it (reusing the persist
-/// value-coercion helper).
-fn use_arg_ok(ty: &Type, value: &AttrValue) -> bool {
+/// A `::use` arg value is compatible with its param type (dsl §13) when:
+///
+/// * it is a `@ref` (CEL, bound at expansion and typed in the ENCLOSING scene
+///   scope) whose produced type — resolved via [`Env::def_types`] — is either
+///   UNRESOLVABLE (not a known def: skipped, no false positive) or COMPATIBLE
+///   with the param type (reusing the `E-REF-TYPE` [`compatible`] relation). A
+///   ref whose def type is DEFINITELY incompatible flags `E-COMPONENT-ARG`;
+/// * a value-level string for a `providerRef` param (id existence is out of the
+///   v1 presentational scope); or
+/// * a literal that coerces into the param type's domain and `type_accepts` it
+///   (reusing the persist value-coercion helper).
+fn use_arg_ok(ty: &Type, value: &AttrValue, ctx: &Ctx<'_>) -> bool {
     match value {
-        AttrValue::Ref(_) => true,
+        AttrValue::Ref(slot) => match ref_produced_type(&slot.raw, ctx) {
+            Some(produced) => compatible(produced, &ExpectedType::Ty(ty.clone())),
+            None => true, // unresolvable ref — conservative, never flag
+        },
         _ if matches!(ty, Type::ProviderRef(_)) => matches!(value, AttrValue::Str(_)),
         _ => persist_literal(ty, value).is_some_and(|lit| type_accepts(ty, &lit)),
     }
+}
+
+/// The produced [`Type`] of a whole-slot `@ref` arg (a `::use` value is only ever
+/// a single `@name` or `@name(args)` — the attr parser captures nothing else),
+/// resolved against the enclosing scope's [`Env::def_types`]. `None` when the
+/// slot is not a resolvable def ref (e.g. the `$` subject, or a name with no
+/// known produced type): conservatively skipped so no false positive fires.
+fn ref_produced_type<'a>(raw: &str, ctx: &'a Ctx<'_>) -> Option<&'a Type> {
+    let r = scan_refs(raw).into_iter().find(|r| !r.is_dollar)?;
+    ctx.env.def_types.get(&r.name)
 }
 
 /// Validate every imported component (dsl §13): its presentational body plus the
@@ -801,7 +825,7 @@ fn walk_component_body(
         match node {
             Node::Line(l) => body_attr_refs(&l.attrs, snapshot, arena, ctx, None, diags),
             Node::Directive(d) if d.tag == "use" => {
-                check_use(d, components, diags);
+                check_use(d, components, ctx, diags);
                 body_attr_refs(&d.attrs, snapshot, arena, ctx, None, diags);
             }
             Node::Directive(d) => {

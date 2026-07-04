@@ -160,7 +160,7 @@ pub fn check_cel_slot(
 
 /// Conservative type-compatibility for `E-REF-TYPE` (dsl §8): return `true` (no
 /// flag) for everything not PROVABLY incompatible.
-fn compatible(produced: &Type, expected: &ExpectedType) -> bool {
+pub(crate) fn compatible(produced: &Type, expected: &ExpectedType) -> bool {
     match expected {
         ExpectedType::Bool => matches!(produced, Type::Bool),
         ExpectedType::Ty(t) => {

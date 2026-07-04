@@ -147,6 +147,41 @@ fn numeric_arg_of_number_param_is_clean() {
 }
 
 #[test]
+fn use_ref_arg_type_mismatch_flags() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "c.lute",
+        "---\ncomponent: c\nparams:\n  count: number\n---\n## C.\n:line[narrator]: badge.\n",
+    );
+    // The scene declares a string-typed def `label`; passing it to a `number`
+    // param is a DEFINITE type mismatch (str != number) resolvable in scene scope.
+    let s = "---\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\ndefs:\n  label: { type: string, cel: \"'x'\" }\n---\n## Shot 1.\n::use{component=\"c\" count=@label}\n";
+    let cs = codes(&dir, s);
+    assert!(
+        cs.contains(&"E-COMPONENT-ARG".to_string()),
+        "a @ref arg whose def type is definitely incompatible with the param type must flag E-COMPONENT-ARG; got {cs:?}"
+    );
+}
+
+#[test]
+fn use_ref_arg_compatible_ok() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "c.lute",
+        "---\ncomponent: c\nparams:\n  count: number\n---\n## C.\n:line[narrator]: badge.\n",
+    );
+    // A number-typed def for a number param is compatible — no E-COMPONENT-ARG.
+    let s = "---\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\ndefs:\n  num: { type: number, cel: \"3\" }\n---\n## Shot 1.\n::use{component=\"c\" count=@num}\n";
+    let cs = codes(&dir, s);
+    assert!(
+        !cs.contains(&"E-COMPONENT-ARG".to_string()),
+        "a compatible @ref arg (number def for a number param) must NOT flag E-COMPONENT-ARG; got {cs:?}"
+    );
+}
+
+#[test]
 fn recursive_components_is_cycle() {
     let dir = unique_dir();
     // No `components:` import cycle: the SCENE imports both a and b directly, but

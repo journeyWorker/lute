@@ -174,9 +174,11 @@ fn resolve_edges(
 
 /// Read + parse one canonical component file. An I/O failure or any parse/
 /// frontmatter error is `E-COMPONENT-PARSE`; a file that declares no `component:`
-/// name is also `E-COMPONENT-PARSE` (and never enters the table). Returns the
-/// file's declared name/params/body plus its own `components:` refs (for further
-/// traversal).
+/// name is also `E-COMPONENT-PARSE` (and never enters the table); a PRESENT but
+/// malformed `params:` (not a mapping, non-string key, or a value that is not a
+/// valid `Type`) is likewise `E-COMPONENT-PARSE` — the signature is never
+/// silently shrunk. Returns the file's declared name/params/body plus its own
+/// `components:` refs (for further traversal).
 fn read_and_parse(
     canon: &Path,
     diags: &mut Vec<Diagnostic>,
@@ -224,6 +226,16 @@ fn read_and_parse(
             "E-COMPONENT-PARSE",
             format!(
                 "component file `{}` must declare a `component:` name (dsl §13)",
+                canon.display()
+            ),
+            at,
+        ));
+    }
+    if tm.params_malformed {
+        diags.push(comp_diag(
+            "E-COMPONENT-PARSE",
+            format!(
+                "component file `{}` has a malformed `params:` — each entry must be `name: <type>` (dsl §13)",
                 canon.display()
             ),
             at,
