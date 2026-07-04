@@ -1,0 +1,216 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Lute",
+  "scopeName": "source.lute",
+  "fileTypes": ["lute"],
+  "patterns": [
+    { "include": "#frontmatter" },
+    { "include": "#comment" },
+    { "include": "#heading" },
+    { "include": "#line" },
+    { "include": "#directive" },
+    { "include": "#tag" },
+    { "include": "#ref" }
+  ],
+  "repository": {
+    "frontmatter": {
+      "begin": "\\A(-{3})[ \\t]*$",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.frontmatter.begin.lute" }
+      },
+      "end": "^(-{3})[ \\t]*$",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.frontmatter.end.lute" }
+      },
+      "name": "meta.frontmatter.lute",
+      "contentName": "meta.embedded.block.yaml",
+      "patterns": [{ "include": "source.yaml" }]
+    },
+    "comment": {
+      "name": "comment.block.lute",
+      "begin": "/\\*",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.comment.begin.lute" }
+      },
+      "end": "\\*/",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.comment.end.lute" }
+      }
+    },
+    "heading": {
+      "patterns": [
+        {
+          "name": "markup.heading.2.shot.lute",
+          "match": "^(##)[ \\t]+(.*)$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.lute" },
+            "2": { "name": "entity.name.section.shot.lute" }
+          }
+        },
+        {
+          "name": "markup.heading.1.title.lute",
+          "match": "^(#)[ \\t]+(.*)$",
+          "captures": {
+            "1": { "name": "punctuation.definition.heading.lute" },
+            "2": { "name": "entity.name.section.title.lute" }
+          }
+        }
+      ]
+    },
+    "line": {
+      "name": "meta.line.lute",
+      "begin": "^[ \\t]*(:line)(\\[)([^\\]]+)(\\])",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.line.lute" },
+        "2": { "name": "punctuation.definition.speaker.begin.lute" },
+        "3": { "name": "entity.name.type.speaker.lute" },
+        "4": { "name": "punctuation.definition.speaker.end.lute" }
+      },
+      "end": "$",
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#attributes" },
+        {
+          "name": "string.unquoted.dialogue.lute",
+          "begin": ":",
+          "beginCaptures": {
+            "0": { "name": "punctuation.separator.line.lute" }
+          },
+          "end": "$",
+          "patterns": [{ "include": "#comment" }]
+        }
+      ]
+    },
+    "directive": {
+      "patterns": [
+        {
+          "name": "meta.directive.set.lute",
+          "begin": "(::)(set)\\b",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.directive.lute" },
+            "2": { "name": "keyword.control.set.lute" }
+          },
+          "end": "(?<=\\})|$",
+          "patterns": [{ "include": "#expr" }]
+        },
+        {
+          "name": "meta.directive.lute",
+          "begin": "(::)([A-Za-z_][\\w-]*)",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.directive.lute" },
+            "2": { "name": "entity.name.function.directive.lute" }
+          },
+          "end": "(?<=\\})|$",
+          "patterns": [{ "include": "#expr" }]
+        }
+      ]
+    },
+    "tag": {
+      "name": "meta.tag.lute",
+      "begin": "(</?)(timeline|track|branch|choice|match|when|otherwise)\\b",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tag.begin.lute" },
+        "2": { "name": "entity.name.tag.lute" }
+      },
+      "end": "(/?>)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.tag.end.lute" }
+      },
+      "patterns": [{ "include": "#expr" }]
+    },
+    "attributes": {
+      "name": "meta.attributes.lute",
+      "begin": "\\{",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.attributes.begin.lute" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.attributes.end.lute" }
+      },
+      "patterns": [{ "include": "#expr" }]
+    },
+    "expr": {
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#string" },
+        { "include": "#ref" },
+        { "include": "#path" },
+        { "include": "#attribute-name" },
+        { "include": "#constant" },
+        { "include": "#operator" },
+        { "match": "[{}]", "name": "punctuation.section.attributes.lute" }
+      ]
+    },
+    "attribute-name": {
+      "match": "\\b([A-Za-z_][\\w-]*)(?=[ \\t]*=)",
+      "name": "entity.other.attribute-name.lute"
+    },
+    "path": {
+      "match": "\\b([a-z][\\w]*)((?:\\.[A-Za-z_][\\w]*)+)\\b",
+      "name": "variable.other.property.lute"
+    },
+    "constant": {
+      "patterns": [
+        { "match": "\\b(true|false|null)\\b", "name": "constant.language.lute" },
+        { "match": "\\b\\d+(\\.\\d+)?\\b", "name": "constant.numeric.lute" }
+      ]
+    },
+    "operator": {
+      "match": "\\+=|-=|\\*=|/=|==|!=|>=|<=|&&|\\|\\||\\bin\\b|[=<>+*/-]",
+      "name": "keyword.operator.lute"
+    },
+    "ref": {
+      "patterns": [
+        {
+          "match": "(@)([A-Za-z_][\\w]*)(?=\\()",
+          "captures": {
+            "1": { "name": "punctuation.definition.ref.lute" },
+            "2": { "name": "entity.name.function.ref.lute" }
+          }
+        },
+        {
+          "match": "(@)([A-Za-z_][\\w]*)",
+          "captures": {
+            "1": { "name": "punctuation.definition.ref.lute" },
+            "2": { "name": "variable.parameter.ref.lute" }
+          }
+        }
+      ]
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.lute",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.lute" }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.lute" }
+          },
+          "patterns": [{ "include": "#cel-inline" }]
+        },
+        {
+          "name": "string.quoted.single.lute",
+          "begin": "'",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.lute" }
+          },
+          "end": "'",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.lute" }
+          }
+        }
+      ]
+    },
+    "cel-inline": {
+      "patterns": [
+        { "include": "#ref" },
+        { "match": "\\$", "name": "variable.language.cel-subject.lute" },
+        { "match": "\\b(in|true|false|null)\\b", "name": "keyword.operator.cel.lute" }
+      ]
+    }
+  }
+}
