@@ -2,6 +2,10 @@
 //! command-record artifact (design spec
 //! `docs/superpowers/specs/2026-07-04-lute-compile-json-ir-design.md`).
 
+pub mod ir;
+
+pub use ir::*;
+
 /// IR version stamped into every artifact envelope (`"lute": …`, spec §4.1).
 pub const LUTE_IR_VERSION: &str = "0.0.1";
 
