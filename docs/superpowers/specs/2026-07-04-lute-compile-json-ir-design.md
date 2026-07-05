@@ -149,6 +149,7 @@ records; `source` `{ component }` on component-expanded records.
 | `camera` | `::camera` | `focus?`, `zoom?`, `moveX?`, `moveY?`, `shake?`, `reset?`, `easing?` (+ `duration`/`delay`/`wait`) |
 | `cut` | `::cut` | `assetId`, `action?`, `full?` (+ `wait`) |
 | `video` | `::video` | `assetId`, `action?` (`wait` default true) |
+| `plugin` | any non-core (plugin-provided) `::`directive | `tag` (directive name); `fields` (attr map, each value typed via the directive's manifest `AttrDecl`) — a passthrough the plugin runtime interprets; core codegen invents no per-plugin schema |
 | `set` | `::set` or synthesized persist | `path`, `op`=`=`\|`+=`\|`-=`\|`*=`, `value` (CEL, expanded) |
 | `choice` | `<branch>` | `branchId`, `recordKey`=`scene.choices.<branchId>`, `options`:`[{ id, label, lineId, when?:<cel>, target:<addr> }]`, `converge`:<addr> |
 | `match` | `<match>` | `subject`(cel), `arms`:`[{ test:<cel>, target:<addr> }]`, `otherwise?`:<addr> (present unless finite & fully covered, §11.2), `converge`:<addr> |
