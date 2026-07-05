@@ -1673,6 +1673,33 @@ mod tests {
     }
 
     #[test]
+    fn use_inside_a_timeline_clip_fails_loud() {
+        // A `::use` clip cannot be inline-expanded (a ClipNode is Directive|Set),
+        // so normalization emits E-COMPILE-COMPONENT rather than dropping it
+        // silently (spec-gap note 9); compile() then aborts at the §5 diag gate,
+        // so no artifact is produced. RED before the Timeline arm in normalize_nodes.
+        let src = r#"---
+character: x
+season: 1
+episode: 1
+---
+## Shot 1.
+<timeline>
+  <track channel="fg">
+    ::use{component="greet"}
+  </track>
+</timeline>
+"#;
+        let mut doc = parse_clean(src);
+        let comps = resolve_components(Path::new("."), &[], doc.meta.span);
+        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        assert!(
+            diags.iter().any(|d| d.code == "E-COMPILE-COMPONENT"),
+            "expected E-COMPILE-COMPONENT for a ::use timeline clip, got {diags:#?}"
+        );
+    }
+
+    #[test]
     fn persist_synthesizes_trailing_set_nodes() {
         let src = r#"---
 character: sofia
