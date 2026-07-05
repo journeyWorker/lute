@@ -56,7 +56,7 @@ use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
-use lute_syntax::ast::{Arm, Branch, Match};
+use lute_syntax::ast::{Arm, AttrValue, Branch, Document, Line, Match, Node};
 
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
@@ -259,6 +259,25 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
                 choice.span,
             ));
         }
+        // E-CHOICE-ID-RESERVED (dsl §11.1): `unset` is the implicit choice-slot
+        // DEFAULT SENTINEL — the `scene.choices.<id>` domain is the choice ids
+        // ∪ `unset`, and the runtime seeds the slot `default: "unset"` before
+        // any choice is taken. A `<choice id="unset">` collides with that
+        // sentinel (an ambiguous selected value + a duplicate domain member), so
+        // reject it here, at the offending choice's span.
+        if choice.id == "unset" {
+            diags.push(diag(
+                "E-CHOICE-ID-RESERVED",
+                Severity::Error,
+                format!(
+                    "`<choice id=\"unset\">` within `<branch id=\"{}\">`; `unset` is reserved as \
+                     the implicit choice-slot default sentinel and may not be a choice id \
+                     (dsl §11.1)",
+                    branch.id
+                ),
+                choice.span,
+            ));
+        }
     }
     // Implicit decl: enum of the branch's choice ids, scene-scoped, no default
     // (so it is maybe-unset — the domain is choice ids ∪ `unset`, §11.1).
@@ -269,6 +288,86 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
         namespace: Namespace::Scene,
     };
     BranchRecord { path, decl, diags }
+}
+
+/// dsl §12: every content `:line`'s `lineId` (`{prefix}.{speaker}_{code}`) and
+/// `voiceKey` (`{speaker}-{code}`) derive from its `(speaker, trimmed code)`
+/// pair (see `lute-compile`'s addressing pass). Two `:line`s for the SAME
+/// speaker carrying the SAME trimmed `code` therefore compile to IDENTICAL
+/// `lineId`/`voiceKey` values — corrupting the translation + voice-bank join
+/// keys. Flag the SECOND (and each later) occurrence of a repeated
+/// `(speaker, code)` pair with `E-DUP-LINE-CODE`, at that line's span.
+///
+/// Codes are compared as TRIMMED STRINGS — exactly the key the addressing pass
+/// uses (`code.trim()`), so ` 0050 ` and `0050` collide but `0050` and `50` do
+/// not. Only authored string codes participate; an untagged line derives its
+/// code later (uniquely per speaker) and a non-literal code (`@ref`) has no
+/// static value to compare, so neither can statically collide. Document order,
+/// deterministic (the caller's final `(byte_start, code)` sort settles ties).
+pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
+    let mut lines: Vec<&Line> = Vec::new();
+    for shot in &doc.shots {
+        collect_lines(&shot.body, &mut lines);
+    }
+    let mut seen: BTreeSet<(&str, String)> = BTreeSet::new();
+    let mut diags = Vec::new();
+    for line in lines {
+        let Some(code) = authored_code(line) else {
+            continue;
+        };
+        if !seen.insert((line.speaker.as_str(), code.clone())) {
+            diags.push(diag(
+                "E-DUP-LINE-CODE",
+                Severity::Error,
+                format!(
+                    "duplicate `:line` `code=\"{code}\"` for speaker `{}`; a (speaker, code) pair \
+                     must be unique — its `lineId`/`voiceKey` join keys derive from it (dsl §12)",
+                    line.speaker
+                ),
+                line.span,
+            ));
+        }
+    }
+    diags
+}
+
+/// The line's authored `code`, trimmed to the exact string the addressing pass
+/// keys `lineId`/`voiceKey` on. `None` when the line has no `code`, or its
+/// `code` is not a string literal (an `@ref`/bare value cannot statically
+/// collide).
+fn authored_code(line: &Line) -> Option<String> {
+    line.attrs
+        .iter()
+        .find(|a| a.key == "code")
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some(s.trim().to_string()),
+            _ => None,
+        })
+}
+
+/// Collect every `Node::Line` in document order, descending into branch choices'
+/// and match arms' bodies (mirrors `check.rs::Walker::walk` / `tag.rs`).
+fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
+    for node in nodes {
+        match node {
+            Node::Line(l) => out.push(l),
+            Node::Branch(b) => {
+                for choice in &b.choices {
+                    collect_lines(&choice.body, out);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            collect_lines(body, out)
+                        }
+                    }
+                }
+            }
+            Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+        }
+    }
 }
 
 /// Whether a `<match>` is provably exhaustive (dsl §11.2): it has an
@@ -1082,5 +1181,157 @@ mod tests {
         );
         let errs = check_match(&m, &schema_enum_subject(), &ctx());
         assert!(errs.iter().all(|d| d.code != "E-MATCH-DUP-OTHERWISE"));
+    }
+
+    // ---- E-CHOICE-ID-RESERVED (dsl §11.1, reserved `unset`) -----------------
+
+    #[test]
+    fn choice_id_unset_flags_e_choice_id_reserved() {
+        let mut seen = BTreeSet::new();
+        let rec = check_branch(&branch("number", &["help", "unset"]), &mut seen);
+        let reserved: Vec<_> = rec
+            .diags
+            .iter()
+            .filter(|d| d.code == "E-CHOICE-ID-RESERVED")
+            .collect();
+        assert_eq!(
+            reserved.len(),
+            1,
+            "one E-CHOICE-ID-RESERVED for the reserved id, got {:?}",
+            rec.diags
+        );
+        assert_eq!(reserved[0].severity, Severity::Error);
+        assert_eq!(reserved[0].layer, Layer::Logic);
+        assert!(
+            reserved[0].message.contains("unset"),
+            "{}",
+            reserved[0].message
+        );
+    }
+
+    #[test]
+    fn non_reserved_choice_ids_have_no_reserved_diag() {
+        let mut seen = BTreeSet::new();
+        let rec = check_branch(&branch("number", &["help", "ignore"]), &mut seen);
+        assert!(rec.diags.iter().all(|d| d.code != "E-CHOICE-ID-RESERVED"));
+    }
+
+    // ---- E-DUP-LINE-CODE (dsl §12, unique (speaker, code)) ------------------
+
+    fn code_line(speaker: &str, code: Option<&str>, byte: usize) -> Node {
+        use lute_syntax::ast::{Attr, Line};
+        let sp = Span {
+            byte_start: byte,
+            byte_end: byte,
+            line: 1,
+            column: 1,
+            utf16_range: (byte as u32, byte as u32),
+        };
+        let attrs = match code {
+            Some(c) => vec![Attr {
+                key: "code".into(),
+                value: AttrValue::Str(c.into()),
+                value_span: sp,
+                span: sp,
+            }],
+            None => Vec::new(),
+        };
+        Node::Line(Line {
+            speaker: speaker.into(),
+            attrs,
+            text: "…".into(),
+            text_span: sp,
+            span: sp,
+        })
+    }
+
+    fn doc_with(body: Vec<Node>) -> Document {
+        use lute_syntax::ast::{Meta, Shot};
+        Document {
+            meta: Meta {
+                raw_yaml: String::new(),
+                span: span(),
+            },
+            title: None,
+            shots: vec![Shot {
+                heading: "Shot 1".into(),
+                number: Some(1),
+                body,
+                span: span(),
+            }],
+            span: span(),
+        }
+    }
+
+    #[test]
+    fn duplicate_line_code_flags_at_second_occurrence() {
+        // (bianca, 0050) twice => one E-DUP-LINE-CODE at the SECOND occurrence.
+        // The (fixer, 0050) line is a different speaker (distinct lineId) and the
+        // (bianca, 0060) line a distinct code — both stay clean.
+        let doc = doc_with(vec![
+            code_line("bianca", Some("0050"), 10),
+            code_line("fixer", Some("0050"), 20),
+            code_line("bianca", Some("0050"), 30),
+            code_line("bianca", Some("0060"), 40),
+        ]);
+        let diags = check_line_codes(&doc);
+        assert_eq!(
+            diags.len(),
+            1,
+            "exactly one E-DUP-LINE-CODE for the one repeat pair, got {diags:?}"
+        );
+        assert_eq!(diags[0].code, "E-DUP-LINE-CODE");
+        assert_eq!(diags[0].severity, Severity::Error);
+        assert_eq!(diags[0].layer, Layer::Logic);
+        assert_eq!(
+            diags[0].span.byte_start, 30,
+            "flagged at the second (bianca, 0050)"
+        );
+        assert!(diags[0].message.contains("0050"), "{}", diags[0].message);
+        assert!(diags[0].message.contains("bianca"), "{}", diags[0].message);
+    }
+
+    #[test]
+    fn distinct_codes_and_speakers_have_no_dup_line_code() {
+        let doc = doc_with(vec![
+            code_line("bianca", Some("0050"), 10),
+            code_line("fixer", Some("0050"), 20),
+            code_line("bianca", Some("0060"), 30),
+            code_line("bianca", None, 40), // untagged: no static collision
+        ]);
+        assert!(check_line_codes(&doc).is_empty());
+    }
+
+    #[test]
+    fn line_code_collision_is_trimmed_and_descends_into_arms() {
+        use lute_syntax::ast::Choice;
+        // ` 0050 ` and `0050` trim to the same key => collide (the addressing
+        // pass keys `lineId`/`voiceKey` on the trimmed string). The colliding
+        // occurrence sits inside a `<branch>` choice body, proving the walk
+        // descends into nested bodies (mirroring tag.rs).
+        let branch = Branch {
+            id: "b".into(),
+            attrs: Vec::new(),
+            choices: vec![Choice {
+                id: "a".into(),
+                label: String::new(),
+                when: None,
+                attrs: Vec::new(),
+                body: vec![code_line("bianca", Some("0050"), 60)],
+                span: span(),
+            }],
+            span: span(),
+        };
+        let doc = doc_with(vec![
+            code_line("bianca", Some(" 0050 "), 10),
+            Node::Branch(branch),
+        ]);
+        let diags = check_line_codes(&doc);
+        assert_eq!(diags.len(), 1, "trimmed codes collide, got {diags:?}");
+        assert_eq!(diags[0].code, "E-DUP-LINE-CODE");
+        assert_eq!(
+            diags[0].span.byte_start, 60,
+            "flagged at the nested second occurrence"
+        );
     }
 }

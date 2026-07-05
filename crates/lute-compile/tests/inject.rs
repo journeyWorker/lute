@@ -242,3 +242,67 @@ fn join_states_unit_semantics() {
     let entry = StageState::default();
     assert!(join_states(&entry, Vec::new()).on_stage.is_empty());
 }
+
+#[test]
+fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
+    // Regression (dirty-join under-injection): a `variant`-only stateful line
+    // marks the speaker `dirty` WITHOUT changing `SpriteState`. When one arm
+    // dirties bianca and the other doesn't, but BOTH keep the same SpriteState,
+    // the join must carry bianca AND union her dirty flag — so the next plain
+    // line still fires `auto-pose-reset`. Under the old intersection merge the
+    // flag was dropped and the reset silently lost.
+    let body = r#"::auto{character="bianca" anchor="left" action="fade-in-up"}
+<branch id="fork">
+  <choice id="a" label="A">
+    :line[bianca]{variant="closeup"}: Hm.
+  </choice>
+  <choice id="b" label="B">
+    :line[bianca]: Yo.
+  </choice>
+</branch>
+:line[bianca]: Well."#;
+    let (recs, _) = walk(body);
+    let pos_resets: Vec<&str> = recs
+        .iter()
+        .filter_map(|r| match &r.cmd {
+            Command::Sprite(s) if s.pos_reset == Some(true) => Some(
+                s.stamp
+                    .provenance
+                    .as_ref()
+                    .map(|p| p.by.as_str())
+                    .unwrap_or(""),
+            ),
+            _ => None,
+        })
+        .collect();
+    // Exactly one posReset — the post-convergence plain line — provenance'd to
+    // the auto-pose-reset rule. (Absent entirely before the union fix.)
+    assert_eq!(pos_resets, vec!["auto-pose-reset"], "{recs:#?}");
+}
+
+#[test]
+fn join_unions_dirty_but_only_over_carried_characters() {
+    let sprite = |pose: Option<&str>| SpriteState {
+        anchor: Some("center".to_string()),
+        pose: pose.map(str::to_string),
+        emotion: Some("neutral".to_string()),
+    };
+    // Same SpriteState in every arm => carried; dirty in ANY arm => dirty.
+    let mut a = StageState::default();
+    a.on_stage.insert("bianca".into(), sprite(None));
+    a.dirty.insert("bianca".into());
+    let mut b = StageState::default();
+    b.on_stage.insert("bianca".into(), sprite(None));
+    // A char DROPPED at the join (differing SpriteState) must NOT be
+    // resurrected into `dirty`, even though an arm marked it dirty.
+    a.on_stage
+        .insert("takeru".into(), sprite(Some("pose-lean")));
+    a.dirty.insert("takeru".into());
+    b.on_stage.insert("takeru".into(), sprite(None));
+
+    let joined = join_states(&StageState::default(), vec![a, b]);
+    assert!(joined.on_stage.contains_key("bianca"));
+    assert!(joined.dirty.contains("bianca"));
+    assert!(!joined.on_stage.contains_key("takeru"));
+    assert!(!joined.dirty.contains("takeru"));
+}

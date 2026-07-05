@@ -21,7 +21,7 @@ pub use defassign::check_definite_assignment;
 pub use inject::{
     lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,
 };
-pub use match_check::{check_branch, check_match, is_exhaustive, BranchRecord};
+pub use match_check::{check_branch, check_line_codes, check_match, is_exhaustive, BranchRecord};
 pub use meta::{
     parse_meta, parse_meta_kind, MetaKind, Namespace, StateDecl, StateSchema, TypedMeta,
 };

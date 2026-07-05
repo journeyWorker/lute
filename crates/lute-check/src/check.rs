@@ -73,7 +73,8 @@ use crate::schema_import::SchemaImports;
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
-    check_branch, check_cel_slot, check_definite_assignment, check_match, check_set, is_exhaustive,
+    check_branch, check_cel_slot, check_definite_assignment, check_line_codes, check_match,
+    check_set, is_exhaustive,
 };
 
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
@@ -410,6 +411,12 @@ pub fn check(input: &CheckInput) -> CheckResult {
         .collect();
     let defassign_diags = check_definite_assignment(&all_nodes, &env.state, &base_ctx);
 
+    // 6b. Duplicate authored line codes (dsl §12): two `:line`s for the same
+    //     speaker with the same trimmed `code` derive identical `lineId`/
+    //     `voiceKey` join keys — a clean-check invariant the compile gate relies
+    //     on. Whole-document, per-speaker; owns `E-DUP-LINE-CODE`.
+    let line_code_diags = check_line_codes(&doc);
+
     // 7. Resolved view: injection fold + the timeline tables gathered in the walk.
     let mut inject_state = StageState::default();
     let mut injections = Vec::new();
@@ -443,6 +450,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(state_merge_diags);
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
+    diags.extend(line_code_diags);
     diags.extend(inject_diags);
 
     // is_exhaustive suppression (carry-forward, T4.6 x T4.4): drop a maybe-unset
