@@ -66,3 +66,19 @@ fn compile_writes_out_file() {
     assert!(s.ends_with("\n"));
     let _ = std::fs::remove_file(&tmp);
 }
+
+#[test]
+fn compile_out_to_unwritable_path_exits_two() {
+    // A `-o` target whose parent directory does not exist makes the file write
+    // fail; the CLI maps that I/O error to exit 2 (never panics) — the same
+    // contract `run_compile`'s stdout artifact write now follows on EPIPE.
+    let bad = std::env::temp_dir()
+        .join("lute-no-such-dir-xyzzy")
+        .join("out.json");
+    let out = Command::new(BIN)
+        .args(["compile", "../../docs/examples/bianca-s01ep02.lute", "-o"])
+        .arg(&bad)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+}

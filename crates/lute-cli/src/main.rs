@@ -17,6 +17,8 @@
 //!   re-stamps the already-pinned artifacts, so `refresh` then `load` round-trips.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -265,22 +267,30 @@ fn run_compile(
                         return ExitCode::from(2);
                     }
                 }
-                None => print!("{s}"),
+                None => {
+                    if write_stdout(&s).is_err() {
+                        return ExitCode::from(2);
+                    }
+                }
             }
             ExitCode::SUCCESS
         }
         Err(diags) => {
-            if json {
-                match serde_json::to_string_pretty(&diags) {
-                    Ok(s) => println!("{s}"),
+            let s = if json {
+                let mut s = match serde_json::to_string_pretty(&diags) {
+                    Ok(s) => s,
                     Err(e) => {
                         eprintln!("lute: failed to serialize diagnostics: {e}");
                         return ExitCode::from(2);
                     }
-                }
+                };
+                s.push('\n');
+                s
             } else {
+                let mut s = String::new();
                 for d in &diags {
-                    println!(
+                    let _ = writeln!(
+                        s,
                         "{}:{}:{}: {} [{}] {}",
                         file.display(),
                         d.span.line,
@@ -294,11 +304,25 @@ fn run_compile(
                     .iter()
                     .filter(|d| d.severity == Severity::Error)
                     .count();
-                println!("{errors} error(s); no artifact emitted");
+                let _ = writeln!(s, "{errors} error(s); no artifact emitted");
+                s
+            };
+            if write_stdout(&s).is_err() {
+                return ExitCode::from(2);
             }
             ExitCode::FAILURE
         }
     }
+}
+
+/// Write `s` to stdout as raw bytes, returning any I/O error instead of
+/// panicking the way `print!`/`println!` do when the pipe is closed (EPIPE,
+/// e.g. `lute compile f.lute | head`). Callers map `Err` to exit `2`, matching
+/// the `-o` file-write error path (compiler CLI spec: `2` on an I/O failure).
+fn write_stdout(s: &str) -> std::io::Result<()> {
+    let mut o = std::io::stdout().lock();
+    o.write_all(s.as_bytes())?;
+    o.flush()
 }
 
 /// Back-fill a stable `code` into every untagged `:line` (dsl §12), rewriting
