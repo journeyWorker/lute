@@ -215,6 +215,97 @@ fn timeline_stamp_and_source_flatten() {
 }
 
 #[test]
+fn background_serializes_per_spec() {
+    // location + assetId set, time omitted (None), `wait` via the flattened
+    // stamp — pins camelCase `assetId`, None-omission, and `addr`.
+    let cmd = Command::Background(BackgroundCmd {
+        addr: "006-0100".into(),
+        location: Some("cafe".into()),
+        time: None,
+        asset_id: Some("bg_cafe_evening".into()),
+        stamp: Stamp {
+            wait: Some(true),
+            ..Stamp::default()
+        },
+    });
+    assert_eq!(
+        j(&cmd),
+        r#"{"kind":"background","addr":"006-0100","location":"cafe","assetId":"bg_cafe_evening","wait":true}"#
+    );
+}
+
+#[test]
+fn music_serializes_per_spec() {
+    // required `action`; mood + assetId set, volume + track omitted (None).
+    let cmd = Command::Music(MusicCmd {
+        addr: "006-0200".into(),
+        action: "play".into(),
+        mood: Some("tense".into()),
+        volume: None,
+        asset_id: Some("mus_theme_a".into()),
+        track: None,
+        stamp: Stamp::default(),
+    });
+    assert_eq!(
+        j(&cmd),
+        r#"{"kind":"music","addr":"006-0200","action":"play","mood":"tense","assetId":"mus_theme_a"}"#
+    );
+}
+
+#[test]
+fn sfx_serializes_per_spec() {
+    // sound + name set, assetId omitted (None).
+    let cmd = Command::Sfx(SfxCmd {
+        addr: "006-0300".into(),
+        sound: Some("door_slam".into()),
+        asset_id: None,
+        name: Some("slam".into()),
+        stamp: Stamp::default(),
+    });
+    assert_eq!(
+        j(&cmd),
+        r#"{"kind":"sfx","addr":"006-0300","sound":"door_slam","name":"slam"}"#
+    );
+}
+
+#[test]
+fn cut_serializes_per_spec() {
+    // required `assetId`; action + full set, `wait` via the flattened stamp.
+    let cmd = Command::Cut(CutCmd {
+        addr: "006-0400".into(),
+        asset_id: "cut_intro".into(),
+        action: Some("show".into()),
+        full: Some(true),
+        stamp: Stamp {
+            wait: Some(false),
+            ..Stamp::default()
+        },
+    });
+    assert_eq!(
+        j(&cmd),
+        r#"{"kind":"cut","addr":"006-0400","assetId":"cut_intro","action":"show","full":true,"wait":false}"#
+    );
+}
+
+#[test]
+fn video_serializes_per_spec() {
+    // required `assetId`; action omitted (None), `wait` via the flattened stamp.
+    let cmd = Command::Video(VideoCmd {
+        addr: "006-0500".into(),
+        asset_id: "vid_ending".into(),
+        action: None,
+        stamp: Stamp {
+            wait: Some(true),
+            ..Stamp::default()
+        },
+    });
+    assert_eq!(
+        j(&cmd),
+        r#"{"kind":"video","addr":"006-0500","assetId":"vid_ending","wait":true}"#
+    );
+}
+
+#[test]
 fn retarget_and_addr_helpers_visit_every_flow_field() {
     let mut cmd = Command::Choice(ChoiceCmd {
         addr: String::new(),
