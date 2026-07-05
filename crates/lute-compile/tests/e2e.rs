@@ -1,7 +1,7 @@
 //! E2E artifact goldens (§8): real fixtures -> full-artifact snapshots +
 //! structural invariants + byte determinism.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use lute_check::{CheckInput, Mode};
@@ -39,7 +39,9 @@ fn input_for(path: &str, project_dir: Option<&str>) -> CheckInput {
 }
 
 /// Structural invariants every artifact must satisfy (§4, §7): unique ordered
-/// addrs, fully resolved targets, +100 gapping, id discipline, no DSL tokens.
+/// addrs; every control-flow target resolves to a real record OR a shot's
+/// defined one-past-end converge slot; +100 gapping; id discipline; and fully
+/// expanded, `@`/`$`-free CEL in every CEL-bearing field.
 fn assert_artifact_invariants(json: &serde_json::Value) {
     let commands = json["commands"].as_array().expect("commands array");
     let mut addrs: Vec<&str> = Vec::new();
@@ -51,39 +53,78 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
     let mut sorted = addrs.clone();
     sorted.sort();
     assert_eq!(sorted, addrs, "addrs strictly ascending");
-    let addr_set: BTreeSet<&str> = unique;
+
+    // Valid control-flow destinations = every real record addr PLUS each shot's
+    // one-past-end converge slot. Addressing (§5.6) assigns record `i` the addr
+    // `{shot:03}-{(i+1)*100:04}` and the end-of-shot converge one slot past the
+    // last record, i.e. `max idx in shot + 100`. A dangling addr resolves to
+    // neither and must fail.
+    let mut valid: BTreeSet<String> = addrs.iter().map(|a| a.to_string()).collect();
+    let mut shot_max: BTreeMap<&str, u32> = BTreeMap::new();
+    for a in &addrs {
+        let (shot, idx) = a.rsplit_once('-').expect("addr shaped `shot-idx`");
+        let idx: u32 = idx.parse().expect("addr idx is numeric");
+        let slot = shot_max.entry(shot).or_insert(0);
+        *slot = (*slot).max(idx);
+    }
+    for (shot, max) in &shot_max {
+        valid.insert(format!("{shot}-{:04}", max + 100));
+    }
+
     for c in commands {
         for key in ["target", "converge", "otherwise"] {
             if let Some(t) = c[key].as_str() {
-                assert_target(t, &addr_set);
+                assert_target(t, &valid);
             }
         }
         for arm in c["arms"].as_array().into_iter().flatten() {
-            assert_target(arm["target"].as_str().unwrap(), &addr_set);
+            assert_target(arm["target"].as_str().unwrap(), &valid);
+            assert_cel_clean("match.arm.test", arm["test"].as_str().unwrap());
         }
         for opt in c["options"].as_array().into_iter().flatten() {
-            assert_target(opt["target"].as_str().unwrap(), &addr_set);
+            assert_target(opt["target"].as_str().unwrap(), &valid);
             assert!(opt["lineId"].as_str().is_some_and(|s| !s.is_empty()));
+            if let Some(when) = opt["when"].as_str() {
+                assert_cel_clean("choice.option.when", when);
+            }
         }
-        if c["kind"] == "line" {
-            assert!(c["lineId"].as_str().is_some_and(|s| !s.is_empty()));
-            let voiced = c["role"] == "dialogue" || c["role"] == "voiceover";
-            assert_eq!(
-                c["voiceKey"].is_string(),
-                voiced,
-                "voiceKey iff voiced: {c}"
-            );
-            assert!(c.get("code").is_none(), "no standalone code field (§4.2)");
+        match c["kind"].as_str() {
+            Some("line") => {
+                assert!(c["lineId"].as_str().is_some_and(|s| !s.is_empty()));
+                let voiced = c["role"] == "dialogue" || c["role"] == "voiceover";
+                assert_eq!(
+                    c["voiceKey"].is_string(),
+                    voiced,
+                    "voiceKey iff voiced: {c}"
+                );
+                assert!(c.get("code").is_none(), "no standalone code field (§4.2)");
+            }
+            Some("match") => assert_cel_clean("match.subject", c["subject"].as_str().unwrap()),
+            Some("set") => assert_cel_clean("set.value", c["value"].as_str().unwrap()),
+            _ => {}
         }
     }
     // Retired identifier must not exist anywhere (§4.2).
     assert!(!json.to_string().contains("textUnitId"));
 }
 
-fn assert_target(t: &str, addrs: &BTreeSet<&str>) {
+/// A control-flow target must be a concrete addr that resolves to a real record
+/// or a shot's one-past-end converge — never an un-lowered symbolic label.
+fn assert_target(t: &str, valid: &BTreeSet<String>) {
     assert!(!t.starts_with('@'), "unresolved symbolic target {t}");
-    // A target is a real record OR the one-past-end converge of its shot.
-    assert!(addrs.contains(t) || t.len() == 8, "malformed target {t}");
+    assert!(
+        valid.contains(t),
+        "dangling control-flow target {t}: resolves to no record or one-past-end converge"
+    );
+}
+
+/// CEL fields must be fully expanded (D4): no `@def`/`@fn` refs and no `$`
+/// subject sigils survive into the artifact.
+fn assert_cel_clean(field: &str, cel: &str) {
+    assert!(
+        !cel.contains('@') && !cel.contains('$'),
+        "unexpanded DSL token in {field}: {cel:?}"
+    );
 }
 
 fn golden(name: &str, path: &str, project: Option<&str>) {
@@ -124,5 +165,44 @@ fn components_scene() {
         "components_scene",
         "../../docs/examples/components/scene.lute",
         None,
+    );
+}
+
+/// The strengthened resolvability check must REJECT a dangling target — proving
+/// it is a genuine graph proof, not an "any 8-char string" shape check.
+#[test]
+fn dangling_target_fails_the_checker() {
+    let artifact = serde_json::json!({
+        "commands": [
+            {
+                "kind": "line", "addr": "001-0100", "role": "dialogue",
+                "speaker": "x", "text": "hi", "lineId": "x", "voiceKey": "v"
+            },
+            { "kind": "jump", "addr": "001-0200", "target": "999-9999" }
+        ]
+    });
+    let caught = std::panic::catch_unwind(|| assert_artifact_invariants(&artifact));
+    assert!(
+        caught.is_err(),
+        "dangling control-flow target must fail the checker"
+    );
+}
+
+/// The strengthened CEL check must REJECT an unexpanded `$`/`@` DSL token in any
+/// CEL-bearing field (here `set.value`).
+#[test]
+fn unexpanded_cel_token_fails_the_checker() {
+    let artifact = serde_json::json!({
+        "commands": [
+            {
+                "kind": "set", "addr": "001-0100",
+                "path": "scene.x", "op": "=", "value": "$ + 1"
+            }
+        ]
+    });
+    let caught = std::panic::catch_unwind(|| assert_artifact_invariants(&artifact));
+    assert!(
+        caught.is_err(),
+        "unexpanded `$` in set.value must fail the checker"
     );
 }
