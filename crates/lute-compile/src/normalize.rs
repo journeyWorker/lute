@@ -1,0 +1,511 @@
+//! D8: AST normalization BEFORE lowering — (a) `::use` → the component body
+//! inlined as real `Node`s with each `@param` bound (recursive; acyclic per
+//! the checker's E-COMPONENT-CYCLE); (b) `<choice persist="run" …>` → a
+//! synthesized trailing `::set` node (dsl §11.1.1: the sugar IS exactly a
+//! `::set{run.<path> = <value>}` appended to the arm).
+//!
+//! Component-sourced regions are wrapped in `__component-begin`/`-end`
+//! sentinel directives (reserved `__` prefix — the parser can never produce
+//! them from source). The stage walker (Task 8) consumes them into
+//! `source { component }` stamps; they emit no records.
+
+use std::collections::BTreeMap;
+
+use lute_check::meta::StateSchema;
+use lute_check::ComponentSet;
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::types::Type;
+use lute_syntax::ast::{
+    Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document, Node, Set,
+};
+
+pub const COMPONENT_BEGIN: &str = "__component-begin";
+pub const COMPONENT_END: &str = "__component-end";
+
+/// Normalize the tree in place: no `::use` survives; persists are real `Set`s.
+/// Total; failures (gate-proven unreachable) degrade to `E-COMPILE-COMPONENT`.
+pub fn normalize_document(
+    doc: &mut Document,
+    components: &ComponentSet,
+    schema: &StateSchema,
+) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for shot in &mut doc.shots {
+        normalize_nodes(&mut shot.body, components, schema, &mut diags);
+    }
+    diags
+}
+
+fn normalize_nodes(
+    nodes: &mut Vec<Node>,
+    components: &ComponentSet,
+    schema: &StateSchema,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut i = 0;
+    while i < nodes.len() {
+        let is_use = matches!(&nodes[i], Node::Directive(d) if d.tag == "use");
+        if is_use {
+            let d = match nodes.remove(i) {
+                Node::Directive(d) => d,
+                other => {
+                    // Structurally impossible (guarded above); stay total.
+                    nodes.insert(i, other);
+                    i += 1;
+                    continue;
+                }
+            };
+            let spliced = expand_use(&d, components, schema, diags);
+            let n = spliced.len();
+            nodes.splice(i..i, spliced);
+            i += n; // bodies were normalized recursively — skip past them
+            continue;
+        }
+        match &mut nodes[i] {
+            Node::Branch(b) => {
+                for c in &mut b.choices {
+                    synth_persist(c, schema);
+                    normalize_nodes(&mut c.body, components, schema, diags);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &mut m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            normalize_nodes(body, components, schema, diags)
+                        }
+                    }
+                }
+            }
+            Node::Timeline(t) => {
+                // A `ClipNode` is `Directive|Set` (§13/AST), so a `::use` inside a
+                // timeline clip cannot be inline-expanded. Fail loud here (before the
+                // stage walk) rather than let it reach lowering and be dropped
+                // silently (spec-gap note 9). Requires `use lute_syntax::ast::ClipNode;`.
+                for track in &t.tracks {
+                    for clip in &track.clips {
+                        if let ClipNode::Directive(cd) = &clip.node {
+                            if cd.tag == "use" {
+                                diags.push(Diagnostic {
+                                    code: "E-COMPILE-COMPONENT".to_string(),
+                                    severity: Severity::Error,
+                                    message: "`::use` is not allowed inside a <timeline> clip"
+                                        .to_string(),
+                                    span: cd.span,
+                                    layer: Layer::Content,
+                                    fixits: Vec::new(),
+                                    provenance: None,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+}
+
+/// `::use{component="name" <arg>=…}` → `[begin, …bound body…, end]`.
+fn expand_use(
+    d: &Directive,
+    components: &ComponentSet,
+    schema: &StateSchema,
+    diags: &mut Vec<Diagnostic>,
+) -> Vec<Node> {
+    let name = d
+        .attrs
+        .iter()
+        .find(|a| a.key == "component")
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some(s.clone()),
+            _ => None,
+        });
+    let Some(def) = name.as_deref().and_then(|n| components.table.get(n)) else {
+        // Gate-proven unreachable (E-COMPONENT-UNDECLARED); degrade.
+        diags.push(Diagnostic {
+            code: "E-COMPILE-COMPONENT".to_string(),
+            severity: Severity::Error,
+            message: "`::use` names no resolvable component (gate should have caught this)"
+                .to_string(),
+            span: d.span,
+            layer: Layer::Content,
+            fixits: Vec::new(),
+            provenance: None,
+        });
+        return Vec::new();
+    };
+    let name = name.unwrap_or_default();
+    let args: BTreeMap<String, AttrValue> = d
+        .attrs
+        .iter()
+        .filter(|a| a.key != "component")
+        .map(|a| (a.key.clone(), a.value.clone()))
+        .collect();
+    let mut body: Vec<Node> = def
+        .body
+        .shots
+        .iter()
+        .flat_map(|s| s.body.iter().cloned())
+        .collect();
+    bind_params(&mut body, &args, &def.params);
+    // Nested `::use` in the body expands recursively (acyclic per checker).
+    normalize_nodes(&mut body, components, schema, diags);
+
+    let span = d.span;
+    let begin = Node::Directive(Directive {
+        tag: COMPONENT_BEGIN.to_string(),
+        attrs: vec![Attr {
+            key: "component".to_string(),
+            value: AttrValue::Str(name),
+            value_span: span,
+            span,
+        }],
+        span,
+    });
+    let end = Node::Directive(Directive {
+        tag: COMPONENT_END.to_string(),
+        attrs: Vec::new(),
+        span,
+    });
+    let mut out = Vec::with_capacity(body.len() + 2);
+    out.push(begin);
+    out.append(&mut body);
+    out.push(end);
+    out
+}
+
+/// Bind `@param` uses to `::use` args. A whole-slot `@param` attr value is
+/// replaced VALUE-LEVEL (a string arg becomes a plain `Str` attr — what a
+/// string-typed attr position needs); a `@param` inside a larger CEL is
+/// substituted textually, typed by the param's declared [`Type`].
+fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
+    for node in nodes {
+        match node {
+            Node::Line(l) => bind_attrs(&mut l.attrs, args, params),
+            Node::Directive(d) => bind_attrs(&mut d.attrs, args, params),
+            Node::Set(s) => bind_slot(&mut s.expr, args, params),
+            Node::Branch(b) => {
+                for c in &mut b.choices {
+                    if let Some(w) = &mut c.when {
+                        bind_slot(w, args, params);
+                    }
+                    bind_attrs(&mut c.attrs, args, params);
+                    bind_params(&mut c.body, args, params);
+                }
+            }
+            Node::Match(m) => {
+                bind_slot(&mut m.subject, args, params);
+                for arm in &mut m.arms {
+                    match arm {
+                        Arm::When { test, body, .. } => {
+                            bind_slot(test, args, params);
+                            bind_params(body, args, params);
+                        }
+                        Arm::Otherwise { body, .. } => bind_params(body, args, params),
+                    }
+                }
+            }
+            Node::Timeline(t) => {
+                for track in &mut t.tracks {
+                    for clip in &mut track.clips {
+                        match &mut clip.node {
+                            ClipNode::Directive(d) => bind_attrs(&mut d.attrs, args, params),
+                            ClipNode::Set(s) => bind_slot(&mut s.expr, args, params),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn bind_attrs(attrs: &mut [Attr], args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
+    for a in attrs {
+        let AttrValue::Ref(slot) = &mut a.value else {
+            continue;
+        };
+        // Whole-slot `@param` → value-level replacement.
+        if let Some(name) = slot.raw.trim().strip_prefix('@') {
+            if let Some(arg) = args.get(name) {
+                a.value = arg.clone();
+                continue;
+            }
+        }
+        bind_slot_raw(slot, args, params);
+    }
+}
+
+fn bind_slot(slot: &mut CelSlot, args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
+    bind_slot_raw(slot, args, params);
+}
+
+/// Textual `@param` → arg substitution inside a CEL fragment (right-to-left).
+fn bind_slot_raw(
+    slot: &mut CelSlot,
+    args: &BTreeMap<String, AttrValue>,
+    params: &[(String, Type)],
+) {
+    let refs = lute_cel::scan_refs(&slot.raw);
+    for r in refs.iter().rev() {
+        if r.is_dollar || r.call.is_some() {
+            continue; // params are 0-arity; calls/`$` belong to the expander
+        }
+        let Some(arg) = args.get(&r.name) else {
+            continue;
+        };
+        let ty = params.iter().find(|(n, _)| n == &r.name).map(|(_, t)| t);
+        let text = arg_cel_text(arg, ty);
+        slot.raw
+            .replace_range(r.span.byte_start..r.span.byte_end, &text);
+    }
+}
+
+fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
+    match arg {
+        AttrValue::BoolTrue => "true".to_string(),
+        AttrValue::Ref(slot) => slot.raw.clone(),
+        AttrValue::Str(s) => match ty {
+            Some(Type::Number) | Some(Type::Bool) => s.clone(),
+            _ => cel_string_literal(s),
+        },
+    }
+}
+
+/// `<choice … persist="run" as="run.<path>" [value="<lit>"]>` → append
+/// `Node::Set(run.<path> = <value>)` (dsl §11.1.1). Well-formedness is
+/// gate-proven (E-PERSIST-*); anything unresolvable here is skipped, total.
+fn synth_persist(choice: &mut Choice, schema: &StateSchema) {
+    let find = |k: &str| choice.attrs.iter().find(|a| a.key == k);
+    let persists = matches!(
+        find("persist").map(|a| &a.value),
+        Some(AttrValue::Str(s)) if s == "run"
+    );
+    if !persists {
+        return;
+    }
+    let Some(AttrValue::Str(as_path)) = find("as").map(|a| &a.value) else {
+        return; // gate: E-PERSIST-MISSING-AS
+    };
+    let as_path = as_path.clone();
+    let Some(decl) = schema.decls.get(as_path.as_str()) else {
+        return; // gate: E-PERSIST-TARGET
+    };
+    let value = find("value").and_then(|a| match &a.value {
+        AttrValue::Str(s) => Some(s.clone()),
+        AttrValue::BoolTrue => Some("true".to_string()),
+        AttrValue::Ref(_) => None, // gate: E-PERSIST-VALUE
+    });
+    let cel = persist_value_cel(&decl.ty, value.as_deref());
+    let span = find("as").map(|a| a.span).unwrap_or(choice.span);
+    push_set(choice, as_path, cel, span);
+}
+
+fn push_set(choice: &mut Choice, path: String, cel: String, span: Span) {
+    choice.body.push(Node::Set(Set {
+        path,
+        path_span: span,
+        op: "=".to_string(),
+        expr: CelSlot::raw(CelKind::SetExpr, cel, span),
+        span,
+    }));
+}
+
+/// dsl §11.1.1 rule 4: bool target's value is optional (defaults `true`);
+/// number stays bare; everything else (enum/str) is a CEL string literal.
+fn persist_value_cel(ty: &Type, value: Option<&str>) -> String {
+    match ty {
+        Type::Bool => value.unwrap_or("true").to_string(),
+        Type::Number => value.unwrap_or("0").to_string(),
+        _ => cel_string_literal(value.unwrap_or_default()),
+    }
+}
+
+/// Quote `s` as a single-quoted CEL string literal (backslash escaping, §4.4).
+pub fn cel_string_literal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for c in s.chars() {
+        if c == '\\' || c == '\'' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('\'');
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use lute_check::meta::{Namespace, StateDecl, StateSchema};
+    use lute_check::resolve_components;
+    use lute_core_span::Severity;
+    use lute_manifest::types::{Literal, Type};
+    use lute_syntax::ast::{AttrValue, Node};
+
+    use super::*;
+
+    fn parse_clean(src: &str) -> lute_syntax::ast::Document {
+        let (doc, diags) = lute_syntax::parse(src);
+        assert!(
+            diags.iter().all(|d| d.severity != Severity::Error),
+            "{diags:#?}"
+        );
+        doc
+    }
+
+    #[test]
+    fn use_expands_component_inline_with_bound_params_and_sentinels() {
+        // Real fixture: docs/examples/components/greet.component.lute declares
+        // `component: greet`, `params: { who: string }`, body =
+        // `::auto{character=@who action="fade-in-up"}` + a narrator line.
+        let base = Path::new("../../docs/examples/components");
+        let scene = std::fs::read_to_string(base.join("scene.lute")).unwrap();
+        let mut doc = parse_clean(&scene);
+        let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
+        assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
+        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        assert!(diags.is_empty(), "{diags:#?}");
+
+        let body = &doc.shots[0].body;
+        // ::use replaced by: begin sentinel, ::auto (param bound), line, end sentinel, then the scene's own line.
+        let tags: Vec<String> = body
+            .iter()
+            .map(|n| match n {
+                Node::Directive(d) => format!("::{}", d.tag),
+                Node::Line(l) => format!(":line[{}]", l.speaker),
+                _ => "other".to_string(),
+            })
+            .collect();
+        assert_eq!(
+            tags,
+            vec![
+                format!("::{COMPONENT_BEGIN}"),
+                "::auto".to_string(),
+                ":line[narrator]".to_string(),
+                format!("::{COMPONENT_END}"),
+                ":line[narrator]".to_string(),
+            ]
+        );
+        // `character=@who` became the VALUE-LEVEL string arg (whole-slot bind).
+        let Node::Directive(auto) = &body[1] else {
+            panic!("auto")
+        };
+        let ch = auto.attrs.iter().find(|a| a.key == "character").unwrap();
+        assert!(
+            matches!(&ch.value, AttrValue::Str(s) if s == "bianca"),
+            "{ch:?}"
+        );
+        // No `::use` survives normalization (D8).
+        assert!(body
+            .iter()
+            .all(|n| !matches!(n, Node::Directive(d) if d.tag == "use")));
+    }
+
+    #[test]
+    fn use_inside_a_timeline_clip_fails_loud() {
+        // A `::use` clip cannot be inline-expanded (a ClipNode is Directive|Set),
+        // so normalization emits E-COMPILE-COMPONENT rather than dropping it
+        // silently (spec-gap note 9); compile() then aborts at the §5 diag gate,
+        // so no artifact is produced. RED before the Timeline arm in normalize_nodes.
+        let src = r#"---
+character: x
+season: 1
+episode: 1
+---
+## Shot 1.
+<timeline>
+  <track channel="fg">
+    ::use{component="greet"}
+  </track>
+</timeline>
+"#;
+        let mut doc = parse_clean(src);
+        let comps = resolve_components(Path::new("."), &[], doc.meta.span);
+        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        assert!(
+            diags.iter().any(|d| d.code == "E-COMPILE-COMPONENT"),
+            "expected E-COMPILE-COMPONENT for a ::use timeline clip, got {diags:#?}"
+        );
+    }
+
+    #[test]
+    fn persist_synthesizes_trailing_set_nodes() {
+        let src = r#"---
+character: sofia
+season: 1
+episode: 1
+---
+
+## Shot 1.
+
+<branch id="sofaHelp">
+  <choice id="help" label="Help her up" persist="run" as="run.metHelpfully">
+    :line[sofia]: Thank you.
+  </choice>
+  <choice id="warmly" label="Stay a while" persist="run" as="run.outcome" value="warm">
+    :line[sofia]: Kind.
+  </choice>
+  <choice id="tip" label="Leave a tip" persist="run" as="run.tip" value="5">
+    :line[sofia]: Oh.
+  </choice>
+</branch>
+"#;
+        let mut doc = parse_clean(src);
+        let mut schema = StateSchema::default();
+        schema.decls.insert(
+            "run.metHelpfully".to_string(),
+            StateDecl {
+                ty: Type::Bool,
+                default: Some(Literal::Bool(false)),
+                namespace: Namespace::Run,
+            },
+        );
+        schema.decls.insert(
+            "run.outcome".to_string(),
+            StateDecl {
+                ty: Type::Enum(vec!["warm".into(), "cold".into()]),
+                default: None,
+                namespace: Namespace::Run,
+            },
+        );
+        schema.decls.insert(
+            "run.tip".to_string(),
+            StateDecl {
+                ty: Type::Number,
+                default: None,
+                namespace: Namespace::Run,
+            },
+        );
+        let diags = normalize_document(&mut doc, &Default::default(), &schema);
+        assert!(diags.is_empty(), "{diags:#?}");
+
+        let Node::Branch(b) = &doc.shots[0].body[0] else {
+            panic!("branch")
+        };
+        let last_set = |i: usize| -> (&str, &str, &str) {
+            let Some(Node::Set(s)) = b.choices[i].body.last() else {
+                panic!("choice {i} ends in a synthesized Set");
+            };
+            (s.path.as_str(), s.op.as_str(), s.expr.raw.as_str())
+        };
+        // bool target, no value => `= true` (dsl §11.1.1 rule 4).
+        assert_eq!(last_set(0), ("run.metHelpfully", "=", "true"));
+        // enum target => quoted CEL string literal.
+        assert_eq!(last_set(1), ("run.outcome", "=", "'warm'"));
+        // number target => bare numeric literal.
+        assert_eq!(last_set(2), ("run.tip", "=", "5"));
+        // The authored line plus exactly one synthesized Set per persisting choice.
+        assert_eq!(b.choices[0].body.len(), 2);
+    }
+
+    #[test]
+    fn cel_string_literal_escapes_quotes_and_backslashes() {
+        assert_eq!(cel_string_literal("warm"), "'warm'");
+        assert_eq!(cel_string_literal("it's"), "'it\\'s'");
+        assert_eq!(cel_string_literal("a\\b"), "'a\\\\b'");
+    }
+}
