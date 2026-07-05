@@ -4,6 +4,7 @@
 
 pub mod expand;
 pub mod ir;
+pub mod normalize;
 
 pub use ir::*;
 
