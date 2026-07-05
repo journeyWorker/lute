@@ -82,6 +82,9 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
         Some(["blunt".to_string(), "soft".to_string(), "unset".to_string()].as_slice())
     );
     assert_eq!(choice_entry.provenance.as_deref(), Some("branch:number"));
+    // §4.1: an implicit choice slot is seeded `default: "unset"` so the runtime
+    // can init the branch record key before any choice is taken.
+    assert_eq!(choice_entry.default, Some(serde_json::json!("unset")));
     let affect = &artifact.state[0];
     assert_eq!(affect.ty, "number");
     assert_eq!(affect.default, Some(serde_json::json!(0)));
@@ -142,4 +145,70 @@ fn injection_warnings_do_not_gate_and_output_is_byte_stable() {
     assert_eq!(s1, s2, "same input => byte-identical artifact");
     // And serializing the SAME artifact twice is stable too.
     assert_eq!(s1, serde_json::to_string_pretty(&a1).unwrap());
+}
+
+#[test]
+fn implicit_choice_slot_defaults_unset_without_forcing_author_entries() {
+    // Two author `state:` decls — one WITH a default, one WITHOUT — plus a
+    // `<branch>` whose implicit `scene.choices.couch` slot must be seeded
+    // `default: "unset"` (§4.1) while neither author entry is force-unset.
+    const DOC: &str = r#"---
+character: bianca
+season: 1
+episode: 3
+state:
+  run.seen: { type: bool }
+  scene.affect.bianca: { type: number, default: 0 }
+---
+
+## Shot 1.
+
+::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
+::auto{character="bianca" action="fade-in-up"}
+:line[bianca]{code="0010"}: Hi.
+
+<branch id="couch">
+  <choice id="help" label="Help">
+    :line[fixer]{code="0010"}: Sure.
+  </choice>
+  <choice id="ignore" label="Ignore">
+    :line[fixer]{code="0020"}: No.
+  </choice>
+</branch>
+"#;
+    let artifact = compile(&input(DOC)).expect("clean compile");
+    let by_path = |p: &str| {
+        artifact
+            .state
+            .iter()
+            .find(|s| s.path == p)
+            .unwrap_or_else(|| panic!("missing state entry {p}: {:?}", artifact.state))
+    };
+
+    // Implicit choice slot: enum of choice ids ∪ `unset`, seeded `default:"unset"`.
+    let couch = by_path("scene.choices.couch");
+    assert_eq!(couch.ty, "enum");
+    assert_eq!(
+        couch.domain.as_deref(),
+        Some(
+            [
+                "help".to_string(),
+                "ignore".to_string(),
+                "unset".to_string()
+            ]
+            .as_slice()
+        )
+    );
+    assert_eq!(couch.default, Some(serde_json::json!("unset")));
+    assert_eq!(couch.provenance.as_deref(), Some("branch:couch"));
+
+    // Author bool decl WITHOUT a default keeps `None` — no false unset.
+    let seen = by_path("run.seen");
+    assert_eq!(seen.ty, "bool");
+    assert_eq!(seen.default, None, "author entry must not be force-unset");
+    assert_eq!(seen.provenance, None);
+
+    // Author number decl keeps its own declared default.
+    let affect = by_path("scene.affect.bianca");
+    assert_eq!(affect.default, Some(serde_json::json!(0)));
 }
