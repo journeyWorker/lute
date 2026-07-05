@@ -2,6 +2,7 @@
 //! command-record artifact (design spec
 //! `docs/superpowers/specs/2026-07-04-lute-compile-json-ir-design.md`).
 
+pub mod address;
 pub mod cfg;
 pub mod expand;
 pub mod ir;
