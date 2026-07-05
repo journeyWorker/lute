@@ -1828,6 +1828,30 @@ fn normalize_nodes(
                     }
                 }
             }
+            Node::Timeline(t) => {
+                // A `ClipNode` is `Directive|Set` (§13/AST), so a `::use` inside a
+                // timeline clip cannot be inline-expanded. Fail loud here (before the
+                // stage walk) rather than let it reach lowering and be dropped
+                // silently (spec-gap note 9). Requires `use lute_syntax::ast::ClipNode;`.
+                for track in &t.tracks {
+                    for clip in &track.clips {
+                        if let ClipNode::Directive(cd) = &clip.node {
+                            if cd.tag == "use" {
+                                diags.push(Diagnostic {
+                                    code: "E-COMPILE-COMPONENT".to_string(),
+                                    severity: Severity::Error,
+                                    message: "`::use` is not allowed inside a <timeline> clip"
+                                        .to_string(),
+                                    span: cd.span,
+                                    layer: Layer::Content,
+                                    fixits: Vec::new(),
+                                    provenance: None,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
         i += 1;
@@ -2393,6 +2417,10 @@ pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option
             action: get("action"),
             stamp,
         }),
+        // `COMPONENT_BEGIN`/`END`: normalization sentinels → no record. `use`:
+        // DEFENSIVE/unreachable — normalize.rs fail-louds a timeline-clip `::use`
+        // (E-COMPILE-COMPONENT) so `compile()` aborts at the §5 diag gate before any
+        // artifact is kept; a Node-position `::use` is already expanded away (D8).
         "use" | COMPONENT_BEGIN | COMPONENT_END => return None,
         _ => {
             // Plugin passthrough (plan spec-gap note 1): fields typed via the
