@@ -2,14 +2,15 @@
 //! (Task 9, D9) + inline timelines (Task 10). ONE walk owns emission order.
 
 use lute_check::ctx::Env;
-use lute_check::{lower_node, InjectKind, InjectedCommand, StageState};
+use lute_check::{lower_node, Ctx, InjectKind, InjectedCommand, StageState};
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::{Arm, AttrValue, Branch, Directive, Match, Node};
+use lute_syntax::ast::{Arm, AttrValue, Branch, ClipNode, Directive, Match, Node, Timeline};
 
 use crate::cfg::{Emitter, Label};
 use crate::ir::*;
 use crate::lower::{lower_directive, lower_line, lower_set};
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
+use crate::schedule::schedule_timeline;
 
 /// Walk context: the read-only capability surface + the component-source
 /// stack (sentinel-driven) + the document-order timeline counter (Task 10).
@@ -66,12 +67,59 @@ pub fn walk_seq(
                 let cont = reachable_after(&nodes[i + 1..], tail);
                 state = walk_match(em, m, state, cx, &cont);
             }
-            Node::Timeline(_) => {
-                // Replaced in Task 10 (schedule.rs): a timeline is handled
-                // INLINE in this same walk (§5 pass 5).
+            Node::Timeline(tl) => {
+                state = walk_timeline(em, tl, state, cx);
             }
         }
     }
+    state
+}
+
+/// §5 pass 5, inline: schedule via `lute-check::timeline` math, thread every
+/// clip through the SAME reducer in `(at, track)` order, stamp
+/// `timeline`/`at`(+`duration`) on every emitted record (injected ones too),
+/// append the `barrier`, and carry the post-barrier state forward. Ordering
+/// is load-bearing: the node AFTER the timeline injects from the timeline's
+/// resulting stage, never stale pre-timeline state.
+fn walk_timeline(
+    em: &mut Emitter,
+    tl: &Timeline,
+    mut state: StageState,
+    cx: &mut WalkCx<'_>,
+) -> StageState {
+    cx.timelines += 1;
+    let ordinal = cx.timelines;
+    let (clips, barrier_at) = {
+        let ctx = Ctx {
+            env: cx.env,
+            in_match: false,
+            match_subject: None,
+        };
+        schedule_timeline(tl, &ctx, cx.snapshot)
+    };
+    for sc in &clips {
+        let node = match sc.node {
+            ClipNode::Directive(d) => Node::Directive(d.clone()),
+            ClipNode::Set(s) => Node::Set(s.clone()),
+        };
+        state = emit_primitive(
+            em,
+            &node,
+            state,
+            &[], // no linear lookahead inside a scheduled group
+            cx,
+            Some(ClipStamp {
+                timeline: ordinal,
+                at: sc.at,
+                duration: sc.duration,
+            }),
+        );
+    }
+    em.push(Command::Barrier(BarrierCmd {
+        addr: String::new(),
+        timeline: ordinal,
+        at: barrier_at,
+    }));
     state
 }
 

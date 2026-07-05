@@ -7,6 +7,7 @@ pub mod expand;
 pub mod ir;
 pub mod lower;
 pub mod normalize;
+pub mod schedule;
 pub mod stage;
 
 pub use ir::*;
