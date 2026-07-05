@@ -198,6 +198,25 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
             branch.span,
         ));
     }
+    // E-CHOICE-DUP (dsl §11.1): each `<choice id>` MUST be unique within its
+    // branch — both the recorded value's domain and the option-label lineId
+    // (`{branchId}.{choiceId}`, §12) key on it. One diagnostic per repeat, at
+    // the duplicate choice's span.
+    let mut choice_ids: BTreeSet<&str> = BTreeSet::new();
+    for choice in &branch.choices {
+        if !choice_ids.insert(choice.id.as_str()) {
+            diags.push(diag(
+                "E-CHOICE-DUP",
+                Severity::Error,
+                format!(
+                    "duplicate `<choice id=\"{}\">` within `<branch id=\"{}\">`; choice ids \
+                     must be unique within a branch (dsl §11.1)",
+                    choice.id, branch.id
+                ),
+                choice.span,
+            ));
+        }
+    }
     // Implicit decl: enum of the branch's choice ids, scene-scoped, no default
     // (so it is maybe-unset — the domain is choice ids ∪ `unset`, §11.1).
     let members = branch.choices.iter().map(|c| c.id.clone()).collect();
@@ -885,5 +904,57 @@ mod tests {
     fn is_exhaustive_true_with_otherwise() {
         let m = match_on_enum(&["fail", "gold"], &["gold"], true);
         assert!(is_exhaustive(&m, &schema_maybe_unset_subject()));
+    }
+
+    // ---- E-CHOICE-DUP (dsl §11.1) -------------------------------------------
+
+    #[test]
+    fn duplicate_choice_ids_flag_e_choice_dup() {
+        use lute_syntax::ast::Choice;
+        let sp = Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        };
+        let choice = |id: &str| Choice {
+            id: id.into(),
+            label: id.into(),
+            when: None,
+            attrs: Vec::new(),
+            body: Vec::new(),
+            span: sp,
+        };
+        let branch = Branch {
+            id: "number".into(),
+            attrs: Vec::new(),
+            choices: vec![choice("blunt"), choice("soft"), choice("blunt")],
+            span: sp,
+        };
+        let mut seen = BTreeSet::new();
+        let rec = check_branch(&branch, &mut seen);
+        let dups: Vec<_> = rec
+            .diags
+            .iter()
+            .filter(|d| d.code == "E-CHOICE-DUP")
+            .collect();
+        assert_eq!(
+            dups.len(),
+            1,
+            "exactly one E-CHOICE-DUP for the one repeat id"
+        );
+        assert_eq!(dups[0].severity, Severity::Error);
+        assert!(dups[0].message.contains("blunt"), "{}", dups[0].message);
+
+        // Unique ids stay clean.
+        let ok = Branch {
+            id: "other".into(),
+            attrs: Vec::new(),
+            choices: vec![choice("a"), choice("b")],
+            span: sp,
+        };
+        let rec = check_branch(&ok, &mut seen);
+        assert!(rec.diags.iter().all(|d| d.code != "E-CHOICE-DUP"));
     }
 }
