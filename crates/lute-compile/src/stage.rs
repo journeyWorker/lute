@@ -341,8 +341,10 @@ fn walk_match(
 /// §7.3 conservative convergence join. Per character: identical `SpriteState`
 /// in EVERY arm → carried; differing or partial → dropped (that encodes
 /// `Unknown`: a later plain line assumes no pose — no false posReset — and a
-/// later `::auto` is a fresh show → anchor + preload). `dirty` survives only
-/// where carried AND dirty in every arm; `bg`/`music` carry only when
+/// later `::auto` is a fresh show → anchor + preload). `dirty` survives for a
+/// carried character if ANY surviving arm exit marks it dirty (a redundant
+/// posReset beats a missing one — e.g. a `variant`/`dialogMotion`-only line
+/// dirties without changing `SpriteState`); `bg`/`music` carry only when
 /// identical across arms. Exits' diagnostics concatenate in arm order.
 pub fn join_states(entry: &StageState, mut exits: Vec<StageState>) -> StageState {
     let Some(first) = exits.first().cloned() else {
@@ -362,7 +364,7 @@ pub fn join_states(entry: &StageState, mut exits: Vec<StageState>) -> StageState
     }
     let kept: Vec<String> = joined.on_stage.keys().cloned().collect();
     for ch in kept {
-        if exits.iter().all(|e| e.dirty.contains(&ch)) {
+        if exits.iter().any(|e| e.dirty.contains(&ch)) {
             joined.dirty.insert(ch);
         }
     }
