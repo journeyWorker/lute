@@ -17,12 +17,14 @@ pub mod stage;
 
 pub use ir::*;
 
+use std::collections::BTreeSet;
+
 use lute_cel::CelArena;
 use lute_check::meta::StateSchema;
 use lute_check::{check, fold_env, CheckInput, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::types::{Literal, Type};
-use lute_syntax::ast::Document;
+use lute_syntax::ast::{Arm, Document, Node};
 
 /// IR version stamped into every artifact envelope (`"lute": …`, spec §4.1).
 pub const LUTE_IR_VERSION: &str = "0.0.1";
@@ -101,10 +103,11 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
     if diags.iter().any(|d| d.severity == Severity::Error) {
         return Err(diags);
     }
+    let branch_paths = collect_branch_paths(&doc);
     Ok(Artifact {
         lute: LUTE_IR_VERSION.to_string(),
         meta,
-        state: state_entries(&folded.env.state),
+        state: state_entries(&folded.env.state, &branch_paths),
         commands,
     })
 }
@@ -134,52 +137,98 @@ fn artifact_meta(doc: &Document, folded: &FoldedEnv) -> ArtifactMeta {
 /// The RESOLVED + FOLDED state table (§4.1): BTreeMap order = sorted by path
 /// (deterministic). Implicit `scene.choices.*` entries append `unset` to
 /// their domain and carry `branch:<id>` provenance (§11.1, plan note 10).
-fn state_entries(schema: &StateSchema) -> Vec<StateEntry> {
+fn state_entries(schema: &StateSchema, branch_paths: &BTreeSet<String>) -> Vec<StateEntry> {
     schema
         .decls
         .iter()
         .map(|(path, decl)| {
-            let (ty, domain) = type_label(path, &decl.ty);
-            // Implicit `scene.choices.<id>` choice slots (§11.1) carry an
-            // `enum` domain of choice ids ∪ `unset` and NO author default;
-            // §4.1 seeds them `default: "unset"` so the runtime can init the
-            // branch record key before any choice is taken. An author-declared
-            // entry (any other path, or one carrying its own default) keeps its
-            // real default — the `or_else` fires only when `default` is absent.
-            let default = decl.default.as_ref().map(literal_json).or_else(|| {
-                is_implicit_choice(path, &decl.ty)
-                    .then(|| serde_json::Value::String("unset".to_string()))
-            });
+            // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is
+            // one of the `scene.choices.<branchId>` paths folded in from an actual
+            // `<branch>` in the document — NOT a `scene.choices.` prefix + `enum`
+            // guess. An author `state:` decl at a `scene.choices.*` path with no
+            // matching `<branch>` is a plain author entry, not a choice slot.
+            let is_implicit = branch_paths.contains(path);
+            let (ty, domain) = type_label(is_implicit, &decl.ty);
+            // §4.1 seeds implicit choice slots `default: "unset"` (their domain is
+            // choice ids ∪ `unset`, no author default) so the runtime can init the
+            // branch record key before any choice is taken. Every other entry —
+            // including an author enum at `scene.choices.manual` with no branch —
+            // keeps its declared default (or `None`); the `or_else` fires only when
+            // `default` is absent AND the slot is a real branch.
+            let default =
+                decl.default.as_ref().map(literal_json).or_else(|| {
+                    is_implicit.then(|| serde_json::Value::String("unset".to_string()))
+                });
             StateEntry {
                 path: path.clone(),
                 ty,
                 domain,
                 default,
-                provenance: path
-                    .strip_prefix("scene.choices.")
-                    .map(|id| format!("branch:{id}")),
+                // `branch:<id>` provenance is exclusive to real implicit slots.
+                provenance: is_implicit
+                    .then(|| {
+                        path.strip_prefix("scene.choices.")
+                            .map(|id| format!("branch:{id}"))
+                    })
+                    .flatten(),
             }
         })
         .collect()
 }
 
-/// An IMPLICIT branch-choice state slot (§11.1): a `scene.choices.<branchId>`
-/// path folded in from a `<branch>` as an `enum` of choice ids (see
-/// `lute_check::check_branch`, which always creates it with `default: None`).
-/// Its domain is choice ids ∪ `unset`, so `unset` is a valid initializer —
-/// this is exactly the set `state_entries` seeds `default: "unset"` for.
-fn is_implicit_choice(path: &str, ty: &Type) -> bool {
-    path.starts_with("scene.choices.") && matches!(ty, Type::Enum(_))
+/// The set of ACTUAL implicit branch-choice slots (§11.1): one
+/// `scene.choices.<branchId>` path per `<branch>` in the document, recursing
+/// into choice / match-arm bodies (branches nest). This mirrors `lute_check`'s
+/// `fold_branches` pre-pass exactly — a component body can never carry a
+/// `<branch>` (`E-COMPONENT-BODY`) and normalize/expand preserve branches, so
+/// the post-expand document yields the same set the folded schema was built
+/// from. Membership here — NOT a `scene.choices.` prefix + `enum` guess — is the
+/// reliable discriminator between a real branch slot (folded with `default:
+/// None`, seeded `"unset"` in the envelope) and an author decl at a
+/// `scene.choices.*` path (which keeps its own default/None and no `unset`).
+fn collect_branch_paths(doc: &Document) -> BTreeSet<String> {
+    let mut paths = BTreeSet::new();
+    for shot in &doc.shots {
+        collect_branch_paths_nodes(&shot.body, &mut paths);
+    }
+    paths
 }
 
-fn type_label(path: &str, ty: &Type) -> (String, Option<Vec<String>>) {
+fn collect_branch_paths_nodes(nodes: &[Node], paths: &mut BTreeSet<String>) {
+    for node in nodes {
+        match node {
+            Node::Branch(b) => {
+                paths.insert(format!("scene.choices.{}", b.id));
+                for choice in &b.choices {
+                    collect_branch_paths_nodes(&choice.body, paths);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            collect_branch_paths_nodes(body, paths)
+                        }
+                    }
+                }
+            }
+            // Lines/directives/sets carry no branches; timeline clips are
+            // `Directive|Set` only (mirrors `fold_branches`, which skips them).
+            _ => {}
+        }
+    }
+}
+
+fn type_label(is_implicit: bool, ty: &Type) -> (String, Option<Vec<String>>) {
     match ty {
         Type::Bool => ("bool".to_string(), None),
         Type::Number => ("number".to_string(), None),
         Type::Str => ("string".to_string(), None),
         Type::Enum(members) => {
             let mut domain = members.clone();
-            if path.starts_with("scene.choices.") {
+            // Only a real implicit branch slot's domain is choice ids ∪ `unset`;
+            // an author enum at a `scene.choices.*` path keeps its declared members.
+            if is_implicit {
                 domain.push("unset".to_string());
             }
             ("enum".to_string(), Some(domain))
