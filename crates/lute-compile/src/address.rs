@@ -79,7 +79,7 @@ fn assign_identity(cmds: &mut [Command], cx: &IdCx<'_>) {
     let mut max_code: BTreeMap<String, u64> = BTreeMap::new();
     for cmd in cmds.iter() {
         if let Command::Line(l) = cmd {
-            if let Some(n) = l.code.as_deref().and_then(|c| c.parse::<u64>().ok()) {
+            if let Some(n) = l.code.as_deref().and_then(|c| c.trim().parse::<u64>().ok()) {
                 let e = max_code.entry(l.speaker.clone()).or_insert(0);
                 if n > *e {
                     *e = n;
@@ -93,7 +93,7 @@ fn assign_identity(cmds: &mut [Command], cx: &IdCx<'_>) {
         match cmd {
             Command::Line(l) => {
                 let code = match &l.code {
-                    Some(c) => c.clone(),
+                    Some(c) => c.trim().to_string(),
                     None => {
                         let e = max_code.entry(l.speaker.clone()).or_insert(0);
                         *e += 10;
@@ -132,5 +132,62 @@ fn internal(message: String) -> Diagnostic {
         layer: Layer::Content,
         fixits: Vec::new(),
         provenance: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::{LineCmd, Role, Stamp};
+
+    fn line(speaker: &str, code: Option<&str>) -> Command {
+        Command::Line(LineCmd {
+            addr: String::new(),
+            role: Role::Dialogue,
+            speaker: speaker.to_string(),
+            text: String::new(),
+            emotion: None,
+            variant: None,
+            action: None,
+            dialog_motion: None,
+            as_label: None,
+            line_id: String::new(),
+            voice_key: None,
+            code: code.map(str::to_string),
+            stamp: Stamp::default(),
+        })
+    }
+
+    fn as_line(cmd: &Command) -> &LineCmd {
+        match cmd {
+            Command::Line(l) => l,
+            _ => panic!("expected Command::Line"),
+        }
+    }
+
+    /// An authored `code` with surrounding whitespace (the attr parser preserves
+    /// quoted whitespace) must be trimmed for BOTH the per-speaker max and the
+    /// derived identity — mirroring `lute-check`'s `tag.rs`. So ` 0050 ` counts
+    /// as 50 (a later untagged line back-fills to 0060, not 0010) and its own
+    /// `lineId`/`voiceKey` use the trimmed `0050`.
+    #[test]
+    fn whitespaced_authored_code_is_trimmed_for_max_and_identity() {
+        let cx = IdCx {
+            character: "bardstale",
+            season: 1,
+            episode: 2,
+        };
+        let mut cmds = vec![line("fixer", Some(" 0050 ")), line("fixer", None)];
+        assign_identity(&mut cmds, &cx);
+
+        let tagged = as_line(&cmds[0]);
+        assert_eq!(tagged.code.as_deref(), Some("0050"));
+        assert_eq!(tagged.line_id, "bardstale.s01ep02.fixer_0050");
+        assert_eq!(tagged.voice_key.as_deref(), Some("fixer-0050"));
+
+        let untagged = as_line(&cmds[1]);
+        assert_eq!(untagged.code.as_deref(), Some("0060"));
+        assert_eq!(untagged.line_id, "bardstale.s01ep02.fixer_0060");
+        assert_eq!(untagged.voice_key.as_deref(), Some("fixer-0060"));
     }
 }
