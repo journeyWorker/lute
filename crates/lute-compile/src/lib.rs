@@ -140,17 +140,36 @@ fn state_entries(schema: &StateSchema) -> Vec<StateEntry> {
         .iter()
         .map(|(path, decl)| {
             let (ty, domain) = type_label(path, &decl.ty);
+            // Implicit `scene.choices.<id>` choice slots (§11.1) carry an
+            // `enum` domain of choice ids ∪ `unset` and NO author default;
+            // §4.1 seeds them `default: "unset"` so the runtime can init the
+            // branch record key before any choice is taken. An author-declared
+            // entry (any other path, or one carrying its own default) keeps its
+            // real default — the `or_else` fires only when `default` is absent.
+            let default = decl.default.as_ref().map(literal_json).or_else(|| {
+                is_implicit_choice(path, &decl.ty)
+                    .then(|| serde_json::Value::String("unset".to_string()))
+            });
             StateEntry {
                 path: path.clone(),
                 ty,
                 domain,
-                default: decl.default.as_ref().map(literal_json),
+                default,
                 provenance: path
                     .strip_prefix("scene.choices.")
                     .map(|id| format!("branch:{id}")),
             }
         })
         .collect()
+}
+
+/// An IMPLICIT branch-choice state slot (§11.1): a `scene.choices.<branchId>`
+/// path folded in from a `<branch>` as an `enum` of choice ids (see
+/// `lute_check::check_branch`, which always creates it with `default: None`).
+/// Its domain is choice ids ∪ `unset`, so `unset` is a valid initializer —
+/// this is exactly the set `state_entries` seeds `default: "unset"` for.
+fn is_implicit_choice(path: &str, ty: &Type) -> bool {
+    path.starts_with("scene.choices.") && matches!(ty, Type::Enum(_))
 }
 
 fn type_label(path: &str, ty: &Type) -> (String, Option<Vec<String>>) {
