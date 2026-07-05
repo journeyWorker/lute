@@ -68,7 +68,8 @@ pub fn walk_seq(
                 state = walk_match(em, m, state, cx, &cont);
             }
             Node::Timeline(tl) => {
-                state = walk_timeline(em, tl, state, cx);
+                let cont = reachable_after(&nodes[i + 1..], tail);
+                state = walk_timeline(em, tl, state, cx, &cont);
             }
         }
     }
@@ -86,6 +87,7 @@ fn walk_timeline(
     tl: &Timeline,
     mut state: StageState,
     cx: &mut WalkCx<'_>,
+    cont: &[Node],
 ) -> StageState {
     cx.timelines += 1;
     let ordinal = cx.timelines;
@@ -102,11 +104,20 @@ fn walk_timeline(
             ClipNode::Directive(d) => Node::Directive(d.clone()),
             ClipNode::Set(s) => Node::Set(s.clone()),
         };
+        // A scheduled `::auto` entrance consumes the CFG-reachable
+        // continuation for `entry-emotion-lookahead`, exactly like a linear
+        // `::auto` (T9): clips carry no prose `:line`s, so the post-timeline
+        // continuation is the whole lookahead. Every other clip takes none.
+        let look: &[Node] = if matches!(&node, Node::Directive(d) if d.tag == "auto") {
+            cont
+        } else {
+            &[]
+        };
         state = emit_primitive(
             em,
             &node,
             state,
-            &[], // no linear lookahead inside a scheduled group
+            look,
             cx,
             Some(ClipStamp {
                 timeline: ordinal,

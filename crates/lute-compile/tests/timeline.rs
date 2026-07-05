@@ -158,3 +158,35 @@ fn second_timeline_gets_ordinal_two_and_barrier_defaults_to_max_end() {
     // No authored duration => barrier at max clip end (0.0 and 0.7).
     assert_eq!(barriers, vec![(1, 0.0), (2, 0.7)]);
 }
+
+#[test]
+fn timeline_auto_clip_preloads_post_timeline_emotion() {
+    // T10 continuation threading: a fresh `::auto` for `bianca` scheduled
+    // INSIDE a `<timeline>`, with her first emotion line AFTER `</timeline>`
+    // — a clock-paced clip whose CFG-reachable successor is the post-timeline
+    // continuation. entry-emotion-lookahead must find `surprised` through the
+    // threaded continuation, exactly like a linear `::auto`, and the preload
+    // stays stamped as part of the timeline.
+    let body = r#"<timeline>
+  <track channel="stage">
+    ::auto{character="bianca" action="fade-in-up"}
+  </track>
+</timeline>
+:line[bianca]{emotion="surprised"}: Oh!"#;
+    let (recs, _) = walk(body);
+    let preload = recs
+        .iter()
+        .find_map(|r| match &r.cmd {
+            Command::Sprite(s) if s.preload == Some(true) => Some(s),
+            _ => None,
+        })
+        .expect("timeline ::auto must preload the post-timeline emotion");
+    assert_eq!(preload.emotion.as_deref(), Some("surprised"));
+    assert_eq!(
+        preload.stamp.provenance.as_ref().map(|p| p.by.as_str()),
+        Some("entry-emotion-lookahead"),
+        "the preload must be provenance'd to the lookahead rule reached via the threaded continuation"
+    );
+    // The preload record is still stamped as part of timeline 1 (clip stamp intact).
+    assert_eq!(preload.stamp.timeline, Some(1));
+}
