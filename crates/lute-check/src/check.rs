@@ -161,35 +161,26 @@ fn params_from_yaml(v: &serde_yaml::Value) -> Vec<(String, lute_manifest::types:
         .collect()
 }
 
-/// Statically validate a `.lute` document and return its structured result.
-///
-/// Never panics: every stage degrades to diagnostics + a best-effort view.
-pub fn check(input: &CheckInput) -> CheckResult {
-    let idx = TextIndex::new(&input.text);
+/// The folded compile inputs `check()` builds internally (compile-spec §11
+/// reuse-input exposure): the typed frontmatter, the analysis [`Env`] whose
+/// `state` is the FOLDED schema (imported ∪ inline ∪ implicit
+/// `scene.choices.*` ∪ plugin-declared slots), and the merged def CEL bodies
+/// (`plugin < imported < inline`, mirroring `def_types`). One source of
+/// truth: `check()` itself consumes this fold.
+#[derive(Clone, Debug)]
+pub struct FoldedEnv {
+    pub typed: crate::meta::TypedMeta,
+    pub env: Env,
+    /// def name -> raw CEL body, merged plugin < imported < inline (D4 input).
+    pub def_bodies: std::collections::BTreeMap<String, String>,
+}
 
-    // 1. Parse the DSL structure.
-    let (mut doc, parse_diags) = parse(&input.text);
-
-    // 2. Fill every CEL slot; a parse failure is reported ONCE here and never
-    //    aborts the walk (CelSlot isolation). check_cel_slot skips the AST pass
-    //    for a slot whose `ast` stayed `None`, so no duplicate CEL diagnostics.
-    let mut arena = CelArena::default();
-    let cel_errors = fill_document(&mut arena, &mut doc);
-    let cel_diags: Vec<Diagnostic> = cel_errors
-        .into_iter()
-        .map(|e| Diagnostic {
-            code: E_CEL_PARSE.to_string(),
-            severity: Severity::Error,
-            message: e.message,
-            span: e.span,
-            layer: Layer::Cel,
-            fixits: Vec::new(),
-            provenance: None,
-        })
-        .collect();
-
+/// Fold the analysis environment from an already-parsed document. Returns the
+/// fold's diagnostics (meta + state-merge + branch dup/choice-dup) so `check()`
+/// and external callers report identically. Pure and total; never panics.
+pub fn fold_env(doc: &Document, input: &CheckInput) -> (FoldedEnv, Vec<Diagnostic>) {
     // 3. Typed frontmatter + inline state schema.
-    let (typed, meta_diags) = parse_meta(&doc.meta, &input.snapshot);
+    let (typed, mut fold_diags) = parse_meta(&doc.meta, &input.snapshot);
 
     // 4. Fold every `<branch>`'s implicit `scene.choices.<id>` decl into the
     //    schema BEFORE the checks that resolve against it (match subjects, CEL
@@ -202,13 +193,12 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // MAY be refined by the scene's inline decl (the inline wins; a TYPE change is
     // `E-EXTENDS-STATE-TYPE`, the persisted type must stay stable).
     let mut schema = input.imports.state.clone();
-    let mut state_merge_diags: Vec<Diagnostic> = Vec::new();
     for (path, decl) in &typed.state.decls {
         match input.imports.state.decls.get(path) {
             Some(imported) if input.imports.state_overridable.contains(path) => {
                 // Extends-base override: the inline decl wins; guard the type.
                 if decl.ty != imported.ty {
-                    state_merge_diags.push(Diagnostic {
+                    fold_diags.push(Diagnostic {
                         code: "E-EXTENDS-STATE-TYPE".to_string(),
                         severity: Severity::Error,
                         message: format!(
@@ -225,7 +215,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
             }
             Some(_) => {
                 // Uses-peer path: a scene must not redeclare it (imported wins).
-                state_merge_diags.push(Diagnostic {
+                fold_diags.push(Diagnostic {
                     code: "E-STATE-REDECLARE".to_string(),
                     severity: Severity::Error,
                     message: format!(
@@ -243,14 +233,13 @@ pub fn check(input: &CheckInput) -> CheckResult {
         }
     }
     let mut seen_branches = std::collections::BTreeSet::new();
-    let mut branch_diags = Vec::new();
-    fold_branches(&doc, &mut schema, &mut seen_branches, &mut branch_diags);
+    fold_branches(doc, &mut schema, &mut seen_branches, &mut fold_diags);
 
     // 4b. Expand every active directive's `state.declares[]` into concrete state
     //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
     //     opens `scene.minigame.k.<field>` for each field of its shape. This runs
     //     before the walk + defassign so plugin-declared state resolves.
-    fold_directive_slots(&doc, &input.snapshot, &mut schema);
+    fold_directive_slots(doc, &input.snapshot, &mut schema);
 
     // The def names the `@ref` resolver validates against (dsl §8.1): inline
     // frontmatter defs plus plugin-exported defs (both are declared refs).
@@ -317,6 +306,24 @@ pub fn check(input: &CheckInput) -> CheckResult {
         def_params.insert(name.clone(), params_from_yaml(v));
     }
 
+    // def name -> raw CEL body for the D4 expander. Same three sources and the
+    // same precedence as `def_types`: plugin < imported < inline.
+    let mut def_bodies: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+    for (name, d) in &input.snapshot.defs {
+        def_bodies.insert(name.clone(), d.cel.clone());
+    }
+    for (name, v) in &input.imports.defs {
+        if let Some(c) = v.get("cel").and_then(|c| c.as_str()) {
+            def_bodies.insert(name.clone(), c.to_string());
+        }
+    }
+    for (name, v) in &typed.defs {
+        if let Some(c) = v.get("cel").and_then(|c| c.as_str()) {
+            def_bodies.insert(name.clone(), c.to_string());
+        }
+    }
+
     let env = Env {
         mode: input.mode,
         state: schema,
@@ -324,8 +331,49 @@ pub fn check(input: &CheckInput) -> CheckResult {
         def_types,
         def_params,
     };
+    (
+        FoldedEnv {
+            typed,
+            env,
+            def_bodies,
+        },
+        fold_diags,
+    )
+}
+
+/// Statically validate a `.lute` document and return its structured result.
+///
+/// Never panics: every stage degrades to diagnostics + a best-effort view.
+pub fn check(input: &CheckInput) -> CheckResult {
+    let idx = TextIndex::new(&input.text);
+
+    // 1. Parse the DSL structure.
+    let (mut doc, parse_diags) = parse(&input.text);
+
+    // 2. Fill every CEL slot; a parse failure is reported ONCE here and never
+    //    aborts the walk (CelSlot isolation). check_cel_slot skips the AST pass
+    //    for a slot whose `ast` stayed `None`, so no duplicate CEL diagnostics.
+    let mut arena = CelArena::default();
+    let cel_errors = fill_document(&mut arena, &mut doc);
+    let cel_diags: Vec<Diagnostic> = cel_errors
+        .into_iter()
+        .map(|e| Diagnostic {
+            code: E_CEL_PARSE.to_string(),
+            severity: Severity::Error,
+            message: e.message,
+            span: e.span,
+            layer: Layer::Cel,
+            fixits: Vec::new(),
+            provenance: None,
+        })
+        .collect();
+
+    // 3–4b. Typed frontmatter + folded schema + merged def tables (one SoT:
+    // the public fold_env accessor the compiler also consumes).
+    let (folded, fold_diags) = fold_env(&doc, input);
+    let env = &folded.env;
     let base_ctx = Ctx {
-        env: &env,
+        env,
         in_match: false,
         match_subject: None,
     };
@@ -370,8 +418,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
     let mut diags = Vec::new();
     diags.extend(parse_diags);
     diags.extend(cel_diags);
-    diags.extend(meta_diags);
-    diags.extend(branch_diags);
+    diags.extend(fold_diags);
     diags.extend(input.imports.diags.clone());
     // Component-import resolution diagnostics (dsl §13) + the per-component body
     // validation and `::use` expansion-cycle diagnostics, both reported at the
@@ -384,7 +431,6 @@ pub fn check(input: &CheckInput) -> CheckResult {
         &input.providers,
         doc.meta.span,
     ));
-    diags.extend(state_merge_diags);
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(inject_diags);

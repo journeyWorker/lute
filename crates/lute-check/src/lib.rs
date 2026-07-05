@@ -14,7 +14,7 @@ pub mod tag;
 pub mod timeline;
 
 pub use cel_resolve::check_cel_slot;
-pub use check::{check, CheckInput, CheckResult, Resolved};
+pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use defassign::check_definite_assignment;
