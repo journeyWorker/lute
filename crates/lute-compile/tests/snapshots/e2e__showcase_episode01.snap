@@ -1,0 +1,801 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "lute": "0.0.1",
+  "meta": {
+    "character": "bianca",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "S01EP01",
+    "title": "The Full Showcase"
+  },
+  "state": [
+    {
+      "path": "app.lang",
+      "type": "enum",
+      "domain": [
+        "ko",
+        "en"
+      ]
+    },
+    {
+      "path": "app.rating",
+      "type": "enum",
+      "domain": [
+        "teen",
+        "adult"
+      ],
+      "default": "teen"
+    },
+    {
+      "path": "run.affection",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "run.chapter",
+      "type": "number",
+      "default": 1
+    },
+    {
+      "path": "run.metHelpfully",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.sofaOutcome",
+      "type": "enum",
+      "domain": [
+        "warm",
+        "cold"
+      ]
+    },
+    {
+      "path": "scene.affect.bianca",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "scene.choices.approach",
+      "type": "enum",
+      "domain": [
+        "blunt",
+        "soft",
+        "linger",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:approach"
+    },
+    {
+      "path": "scene.saw_demo",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.serve.debut.attempts",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "scene.serve.debut.cleared",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.serve.debut.rank",
+      "type": "enum",
+      "domain": [
+        "fail",
+        "bronze",
+        "silver",
+        "gold"
+      ],
+      "default": "fail"
+    },
+    {
+      "path": "scene.serve.debut.score",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "user.level",
+      "type": "number",
+      "default": 2
+    }
+  ],
+  "commands": [
+    {
+      "kind": "background",
+      "addr": "001-0100",
+      "location": "family_restaurant",
+      "time": "evening",
+      "assetId": "BG.space.family_restaurant.interior.evening",
+      "wait": true
+    },
+    {
+      "kind": "music",
+      "addr": "001-0200",
+      "action": "start",
+      "mood": "bright",
+      "volume": "normal",
+      "assetId": "sound-bgm-common-vn-mood-bright-0.mp3"
+    },
+    {
+      "kind": "sfx",
+      "addr": "001-0300",
+      "sound": "drink_bar_hum",
+      "assetId": "PLACEHOLDER_drink_bar_hum"
+    },
+    {
+      "kind": "sprite",
+      "addr": "001-0400",
+      "character": "bianca",
+      "action": "fade-in-up"
+    },
+    {
+      "kind": "sprite",
+      "addr": "001-0500",
+      "character": "bianca",
+      "anchor": "center",
+      "provenance": {
+        "injected": true,
+        "by": "auto-anchor-on-show",
+        "reason": "`bianca` shown without an explicit anchor; defaulting to `center`"
+      }
+    },
+    {
+      "kind": "sprite",
+      "addr": "001-0600",
+      "character": "bianca",
+      "preload": true,
+      "emotion": "delighted",
+      "provenance": {
+        "injected": true,
+        "by": "entry-emotion-lookahead",
+        "reason": "pre-loading `bianca`'s first emotion `delighted` seen ahead of the entrance"
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "001-0700",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Venny's again. The chain restaurant that has never offended anyone.",
+      "lineId": "bianca.s01ep01.narrator_0010"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0800",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Mr. Fixer! You came back!",
+      "emotion": "delighted",
+      "variant": 1,
+      "lineId": "bianca.s01ep01.bianca_0010",
+      "voiceKey": "bianca-0010"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0900",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "I did.",
+      "lineId": "bianca.s01ep01.fixer_0010",
+      "voiceKey": "fixer-0010"
+    },
+    {
+      "kind": "sprite",
+      "addr": "002-0100",
+      "character": "bianca",
+      "anchor": "left",
+      "action": "slide-in-left",
+      "at": 0.0,
+      "timeline": 1
+    },
+    {
+      "kind": "sprite",
+      "addr": "002-0200",
+      "character": "bianca",
+      "action": "fade-in-up",
+      "at": 0.0,
+      "timeline": 1
+    },
+    {
+      "kind": "camera",
+      "addr": "002-0300",
+      "focus": "bianca",
+      "zoom": 1.2,
+      "wait": false,
+      "duration": 0.6,
+      "at": 0.0,
+      "timeline": 1
+    },
+    {
+      "kind": "cut",
+      "addr": "002-0400",
+      "assetId": "CUT.showcase.debut.01",
+      "at": 0.5,
+      "timeline": 1
+    },
+    {
+      "kind": "camera",
+      "addr": "002-0500",
+      "shake": "0.4",
+      "wait": false,
+      "duration": 0.3,
+      "at": 0.7,
+      "timeline": 1
+    },
+    {
+      "kind": "cut",
+      "addr": "002-0600",
+      "assetId": "CUT.showcase.debut.01",
+      "action": "hide",
+      "at": 1.1,
+      "timeline": 1
+    },
+    {
+      "kind": "barrier",
+      "addr": "002-0700",
+      "timeline": 1,
+      "at": 1.4
+    },
+    {
+      "kind": "set",
+      "addr": "002-0800",
+      "path": "scene.saw_demo",
+      "op": "=",
+      "value": "true"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0900",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "A rehearsed entrance. She has been practising.",
+      "lineId": "bianca.s01ep01.fixer_0064"
+    },
+    {
+      "kind": "plugin",
+      "addr": "003-0100",
+      "tag": "serve",
+      "fields": {
+        "kind": "rhythm",
+        "performer": "bianca_star",
+        "poster": "PT.bianca_star.0",
+        "resultKey": "debut"
+      },
+      "wait": true
+    },
+    {
+      "kind": "match",
+      "addr": "003-0200",
+      "subject": "scene.serve.debut.rank",
+      "arms": [
+        {
+          "test": "scene.serve.debut.rank == 'gold'",
+          "target": "003-0300"
+        },
+        {
+          "test": "scene.serve.debut.rank in ['silver', 'bronze']",
+          "target": "003-0600"
+        }
+      ],
+      "otherwise": "003-0900",
+      "converge": "003-1100"
+    },
+    {
+      "kind": "line",
+      "addr": "003-0300",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "A perfect service!",
+      "emotion": "delighted",
+      "variant": 1,
+      "lineId": "bianca.s01ep01.bianca_0020",
+      "voiceKey": "bianca-0020"
+    },
+    {
+      "kind": "set",
+      "addr": "003-0400",
+      "path": "scene.affect.bianca",
+      "op": "+=",
+      "value": "1"
+    },
+    {
+      "kind": "jump",
+      "addr": "003-0500",
+      "target": "003-1100"
+    },
+    {
+      "kind": "line",
+      "addr": "003-0600",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Not bad at all, Mr. Fixer.",
+      "emotion": "content",
+      "variant": 0,
+      "lineId": "bianca.s01ep01.bianca_0030",
+      "voiceKey": "bianca-0030"
+    },
+    {
+      "kind": "set",
+      "addr": "003-0700",
+      "path": "run.affection",
+      "op": "+=",
+      "value": "1"
+    },
+    {
+      "kind": "jump",
+      "addr": "003-0800",
+      "target": "003-1100"
+    },
+    {
+      "kind": "line",
+      "addr": "003-0900",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Shall we try once more?",
+      "emotion": "shy",
+      "variant": 0,
+      "lineId": "bianca.s01ep01.bianca_0040",
+      "voiceKey": "bianca-0040"
+    },
+    {
+      "kind": "jump",
+      "addr": "003-1000",
+      "target": "003-1100"
+    },
+    {
+      "kind": "line",
+      "addr": "004-0100",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "I should ask for her number before the shift swallows her.",
+      "lineId": "bianca.s01ep01.fixer_0074"
+    },
+    {
+      "kind": "choice",
+      "addr": "004-0200",
+      "branchId": "approach",
+      "recordKey": "scene.choices.approach",
+      "options": [
+        {
+          "id": "blunt",
+          "label": "Just ask, flatly",
+          "lineId": "bianca.s01ep01.approach.blunt",
+          "target": "004-0300"
+        },
+        {
+          "id": "soft",
+          "label": "Ask gently",
+          "lineId": "bianca.s01ep01.approach.soft",
+          "when": "(true)",
+          "target": "004-0500"
+        },
+        {
+          "id": "linger",
+          "label": "Ask, and linger a while",
+          "lineId": "bianca.s01ep01.approach.linger",
+          "when": "(user.level >= (1))",
+          "target": "004-0900"
+        }
+      ],
+      "converge": "004-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "004-0300",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "Bianca. Your number.",
+      "lineId": "bianca.s01ep01.fixer_0050",
+      "voiceKey": "fixer-0050"
+    },
+    {
+      "kind": "jump",
+      "addr": "004-0400",
+      "target": "004-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "004-0500",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "Bianca — would you mind terribly if I had your number?",
+      "lineId": "bianca.s01ep01.fixer_0052",
+      "voiceKey": "fixer-0052"
+    },
+    {
+      "kind": "set",
+      "addr": "004-0600",
+      "path": "scene.affect.bianca",
+      "op": "+=",
+      "value": "1"
+    },
+    {
+      "kind": "set",
+      "addr": "004-0700",
+      "path": "run.metHelpfully",
+      "op": "=",
+      "value": "true"
+    },
+    {
+      "kind": "jump",
+      "addr": "004-0800",
+      "target": "004-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "004-0900",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "And perhaps I'll stay through your break.",
+      "lineId": "bianca.s01ep01.fixer_0054",
+      "voiceKey": "fixer-0054"
+    },
+    {
+      "kind": "set",
+      "addr": "004-1000",
+      "path": "run.affection",
+      "op": "+=",
+      "value": "1"
+    },
+    {
+      "kind": "set",
+      "addr": "004-1100",
+      "path": "run.sofaOutcome",
+      "op": "=",
+      "value": "'warm'"
+    },
+    {
+      "kind": "jump",
+      "addr": "004-1200",
+      "target": "004-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "004-1300",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Of course! Right away, Mr. Fixer.",
+      "emotion": "delighted",
+      "variant": 0,
+      "lineId": "bianca.s01ep01.bianca_0060",
+      "voiceKey": "bianca-0060"
+    },
+    {
+      "kind": "sfx",
+      "addr": "004-1400",
+      "sound": "phone_chime",
+      "assetId": "sound-sfx-common-phone-0.mp3"
+    },
+    {
+      "kind": "match",
+      "addr": "005-0100",
+      "subject": "scene.choices.approach",
+      "arms": [
+        {
+          "test": "(scene.affect.bianca >= 1)",
+          "target": "005-0200"
+        },
+        {
+          "test": "scene.choices.approach == 'blunt'",
+          "target": "005-0400"
+        }
+      ],
+      "otherwise": "005-0600",
+      "converge": "005-0800"
+    },
+    {
+      "kind": "line",
+      "addr": "005-0200",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "I asked nicely, which I am electing not to examine.",
+      "lineId": "bianca.s01ep01.fixer_0084"
+    },
+    {
+      "kind": "jump",
+      "addr": "005-0300",
+      "target": "005-0800"
+    },
+    {
+      "kind": "line",
+      "addr": "005-0400",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "Straight to the point. It worked.",
+      "lineId": "bianca.s01ep01.fixer_0094"
+    },
+    {
+      "kind": "jump",
+      "addr": "005-0500",
+      "target": "005-0800"
+    },
+    {
+      "kind": "line",
+      "addr": "005-0600",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "Whatever it was, it is done.",
+      "lineId": "bianca.s01ep01.fixer_0104"
+    },
+    {
+      "kind": "jump",
+      "addr": "005-0700",
+      "target": "005-0800"
+    },
+    {
+      "kind": "match",
+      "addr": "005-0800",
+      "subject": "run.metHelpfully",
+      "arms": [
+        {
+          "test": "run.metHelpfully == true",
+          "target": "005-0900"
+        },
+        {
+          "test": "run.metHelpfully == false",
+          "target": "005-1100"
+        }
+      ],
+      "converge": "005-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "005-0900",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "You were kind about it. I noticed.",
+      "emotion": "content",
+      "variant": 0,
+      "lineId": "bianca.s01ep01.bianca_0070",
+      "voiceKey": "bianca-0070"
+    },
+    {
+      "kind": "jump",
+      "addr": "005-1000",
+      "target": "005-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "005-1100",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "There you are.",
+      "emotion": "neutral",
+      "variant": 0,
+      "lineId": "bianca.s01ep01.bianca_0080",
+      "voiceKey": "bianca-0080"
+    },
+    {
+      "kind": "jump",
+      "addr": "005-1200",
+      "target": "005-1300"
+    },
+    {
+      "kind": "match",
+      "addr": "005-1300",
+      "subject": "run.sofaOutcome",
+      "arms": [
+        {
+          "test": "run.sofaOutcome == 'warm'",
+          "target": "005-1400"
+        }
+      ],
+      "otherwise": "005-1600",
+      "converge": "005-1800"
+    },
+    {
+      "kind": "line",
+      "addr": "005-1400",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Staying? That would be lovely.",
+      "emotion": "delighted",
+      "variant": 1,
+      "lineId": "bianca.s01ep01.bianca_0090",
+      "voiceKey": "bianca-0090"
+    },
+    {
+      "kind": "jump",
+      "addr": "005-1500",
+      "target": "005-1800"
+    },
+    {
+      "kind": "line",
+      "addr": "005-1600",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Some other evening, then.",
+      "emotion": "shy",
+      "variant": 0,
+      "lineId": "bianca.s01ep01.bianca_0100",
+      "voiceKey": "bianca-0100"
+    },
+    {
+      "kind": "jump",
+      "addr": "005-1700",
+      "target": "005-1800"
+    },
+    {
+      "kind": "match",
+      "addr": "006-0100",
+      "subject": "app.rating",
+      "arms": [
+        {
+          "test": "app.rating == 'teen'",
+          "target": "006-0200"
+        }
+      ],
+      "otherwise": "006-0400",
+      "converge": "006-0600"
+    },
+    {
+      "kind": "line",
+      "addr": "006-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "A gentle evening, suitable for all.",
+      "lineId": "bianca.s01ep01.narrator_0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "006-0300",
+      "target": "006-0600"
+    },
+    {
+      "kind": "line",
+      "addr": "006-0400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The night deepens.",
+      "lineId": "bianca.s01ep01.narrator_0030"
+    },
+    {
+      "kind": "jump",
+      "addr": "006-0500",
+      "target": "006-0600"
+    },
+    {
+      "kind": "match",
+      "addr": "006-0600",
+      "subject": "scene.affect.bianca",
+      "arms": [
+        {
+          "test": "(user.level >= (3))",
+          "target": "006-0700"
+        },
+        {
+          "test": "(user.level >= 2)",
+          "target": "006-0900"
+        }
+      ],
+      "otherwise": "006-1100",
+      "converge": "006-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "006-0700",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "She has earned a veteran's welcome.",
+      "lineId": "bianca.s01ep01.fixer_0114"
+    },
+    {
+      "kind": "jump",
+      "addr": "006-0800",
+      "target": "006-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "006-0900",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "Seasoned enough for what comes next.",
+      "lineId": "bianca.s01ep01.fixer_0124"
+    },
+    {
+      "kind": "jump",
+      "addr": "006-1000",
+      "target": "006-1300"
+    },
+    {
+      "kind": "line",
+      "addr": "006-1100",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "Early days yet.",
+      "lineId": "bianca.s01ep01.fixer_0134"
+    },
+    {
+      "kind": "jump",
+      "addr": "006-1200",
+      "target": "006-1300"
+    },
+    {
+      "kind": "music",
+      "addr": "006-1300",
+      "action": "change",
+      "mood": "tense",
+      "source": {
+        "component": "stinger"
+      }
+    },
+    {
+      "kind": "vfx",
+      "addr": "006-1400",
+      "vfxType": "whiteOut",
+      "label": "tense",
+      "transition": "fade",
+      "source": {
+        "component": "stinger"
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "006-1500",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "A beat of silence, then the moment lands.",
+      "lineId": "bianca.s01ep01.narrator_0040",
+      "source": {
+        "component": "stinger"
+      }
+    },
+    {
+      "kind": "vfx",
+      "addr": "006-1600",
+      "vfxType": "petals",
+      "transition": "fade"
+    },
+    {
+      "kind": "music",
+      "addr": "006-1700",
+      "action": "stop"
+    },
+    {
+      "kind": "match",
+      "addr": "006-1800",
+      "subject": "app.lang",
+      "arms": [
+        {
+          "test": "app.lang == 'ko'",
+          "target": "006-1900"
+        }
+      ],
+      "otherwise": "006-2100",
+      "converge": "006-2300"
+    },
+    {
+      "kind": "line",
+      "addr": "006-1900",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Subtitles render in Korean.",
+      "lineId": "bianca.s01ep01.narrator_0050"
+    },
+    {
+      "kind": "jump",
+      "addr": "006-2000",
+      "target": "006-2300"
+    },
+    {
+      "kind": "line",
+      "addr": "006-2100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Subtitles render in English.",
+      "lineId": "bianca.s01ep01.narrator_0060"
+    },
+    {
+      "kind": "jump",
+      "addr": "006-2200",
+      "target": "006-2300"
+    }
+  ]
+}

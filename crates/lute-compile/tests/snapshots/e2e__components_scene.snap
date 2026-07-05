@@ -1,0 +1,58 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "lute": "0.0.1",
+  "meta": {
+    "character": "demo",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "S01EP01"
+  },
+  "state": [],
+  "commands": [
+    {
+      "kind": "sprite",
+      "addr": "001-0100",
+      "character": "bianca",
+      "action": "fade-in-up",
+      "source": {
+        "component": "greet"
+      }
+    },
+    {
+      "kind": "sprite",
+      "addr": "001-0200",
+      "character": "bianca",
+      "anchor": "center",
+      "provenance": {
+        "injected": true,
+        "by": "auto-anchor-on-show",
+        "reason": "`bianca` shown without an explicit anchor; defaulting to `center`"
+      },
+      "source": {
+        "component": "greet"
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "001-0300",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "A familiar face steps into the light.",
+      "lineId": "demo.s01ep01.narrator_0010",
+      "source": {
+        "component": "greet"
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "001-0400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "And the scene carries on.",
+      "lineId": "demo.s01ep01.narrator_0020"
+    }
+  ]
+}

@@ -1,0 +1,716 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "lute": "0.0.1",
+  "meta": {
+    "character": "bianca",
+    "season": 1,
+    "episode": 2,
+    "episodeId": "S01EP02",
+    "title": "Behold the Performance of All-Purpose Bianca"
+  },
+  "state": [
+    {
+      "path": "scene.affect.bianca",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "scene.choices.number",
+      "type": "enum",
+      "domain": [
+        "blunt",
+        "soft",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:number"
+    },
+    {
+      "path": "scene.flags.saw_beam",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "background",
+      "addr": "001-0100",
+      "location": "family_restaurant",
+      "time": "afternoon",
+      "assetId": "BG.space.family_restaurant.interior.afternoon",
+      "wait": true
+    },
+    {
+      "kind": "music",
+      "addr": "001-0200",
+      "action": "start",
+      "mood": "peaceful",
+      "volume": "down",
+      "assetId": "sound-bgm-common-vn-mood-peaceful-0.mp3"
+    },
+    {
+      "kind": "sfx",
+      "addr": "001-0300",
+      "sound": "drink_bar_hum",
+      "assetId": "PLACEHOLDER_drink_bar_hum"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Venny's. The chain restaurant that has never offended anyone, no matter how hard it tries. Soft overhead lighting, a faint jazz cover loop from somewhere over the ceiling tiles, the gentle white-noise of a drink-bar fountain.",
+      "lineId": "bianca.s01ep02.narrator_0010"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0500",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "I stepped up to the welcome stand.",
+      "lineId": "bianca.s01ep02.narrator_0020"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0600",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "...",
+      "lineId": "bianca.s01ep02.fixer_0010",
+      "voiceKey": "fixer-0010"
+    },
+    {
+      "kind": "sprite",
+      "addr": "002-0100",
+      "character": "bianca",
+      "anchor": "center",
+      "action": "fade-in-up"
+    },
+    {
+      "kind": "sprite",
+      "addr": "002-0200",
+      "character": "bianca",
+      "preload": true,
+      "emotion": "surprised",
+      "provenance": {
+        "injected": true,
+        "by": "entry-emotion-lookahead",
+        "reason": "pre-loading `bianca`'s first emotion `surprised` seen ahead of the entrance"
+      }
+    },
+    {
+      "kind": "camera",
+      "addr": "002-0300",
+      "focus": "bianca",
+      "zoom": 1.1,
+      "wait": false,
+      "duration": 0.5
+    },
+    {
+      "kind": "line",
+      "addr": "002-0400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "A hostess walked over with a menu pressed to her chest. Her face caught.",
+      "lineId": "bianca.s01ep02.narrator_0030"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0500",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Oh!",
+      "emotion": "surprised",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0010",
+      "voiceKey": "bianca-0010"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0600",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Mr. Fixer!",
+      "emotion": "delighted",
+      "variant": 1,
+      "lineId": "bianca.s01ep02.bianca_0020",
+      "voiceKey": "bianca-0020"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0700",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "From the ramen counter! You eat at Mechageki too, isn't it wonderful?",
+      "emotion": "delighted",
+      "variant": 1,
+      "lineId": "bianca.s01ep02.bianca_0030",
+      "voiceKey": "bianca-0030"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0800",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "That was the face. It had a name now, and the name worked here.",
+      "lineId": "bianca.s01ep02.narrator_0040"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0900",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "I'm Bianca.",
+      "emotion": "shy",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0040",
+      "voiceKey": "bianca-0040"
+    },
+    {
+      "kind": "line",
+      "addr": "002-1000",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Pleased to meet you, properly this time. Please follow me, won't you?",
+      "emotion": "shy",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0050",
+      "voiceKey": "bianca-0050"
+    },
+    {
+      "kind": "line",
+      "addr": "002-1100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "She brightened by an absurd amount.",
+      "lineId": "bianca.s01ep02.narrator_0050"
+    },
+    {
+      "kind": "line",
+      "addr": "002-1200",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "Bianca.",
+      "lineId": "bianca.s01ep02.fixer_0020",
+      "voiceKey": "fixer-0020"
+    },
+    {
+      "kind": "line",
+      "addr": "002-1300",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "So the woman from the ramen counter had a name and a job, and the job came with a menu pressed to her chest. I followed.",
+      "lineId": "bianca.s01ep02.narrator_0060"
+    },
+    {
+      "kind": "line",
+      "addr": "003-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Halfway down the aisle, between two empty booths, her steps stopped. Her gaze dropped to the corner of the skirting board. A small grey shadow was paused there.",
+      "lineId": "bianca.s01ep02.narrator_0070"
+    },
+    {
+      "kind": "line",
+      "addr": "003-0200",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Oh, a mouse.",
+      "emotion": "content",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0060",
+      "voiceKey": "bianca-0060"
+    },
+    {
+      "kind": "line",
+      "addr": "003-0300",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "They do carry the bubonic plague, you know.",
+      "emotion": "content",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0070",
+      "voiceKey": "bianca-0070"
+    },
+    {
+      "kind": "line",
+      "addr": "003-0400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The line was delivered in her ordinary register, soft and precise, almost informational. I had not finished hearing it before her index finger came up.",
+      "lineId": "bianca.s01ep02.narrator_0080"
+    },
+    {
+      "kind": "camera",
+      "addr": "003-0500",
+      "focus": "bianca",
+      "zoom": 1.35,
+      "wait": false,
+      "duration": 0.4,
+      "at": 0.0,
+      "timeline": 1
+    },
+    {
+      "kind": "camera",
+      "addr": "003-0600",
+      "shake": "0.6",
+      "wait": false,
+      "duration": 0.3,
+      "at": 0.5,
+      "timeline": 1
+    },
+    {
+      "kind": "cut",
+      "addr": "003-0700",
+      "assetId": "CUT.scenarios.bianca.s01ep02.01",
+      "at": 0.5,
+      "timeline": 1
+    },
+    {
+      "kind": "vfx",
+      "addr": "003-0800",
+      "vfxType": "whiteOut",
+      "transition": "flash",
+      "at": 0.5,
+      "timeline": 1
+    },
+    {
+      "kind": "sfx",
+      "addr": "003-0900",
+      "sound": "finger_beam_flash",
+      "assetId": "PLACEHOLDER_finger_beam_flash",
+      "at": 0.5,
+      "timeline": 1
+    },
+    {
+      "kind": "cut",
+      "addr": "003-1000",
+      "assetId": "CUT.scenarios.bianca.s01ep02.01",
+      "action": "hide",
+      "at": 1.1,
+      "timeline": 1
+    },
+    {
+      "kind": "barrier",
+      "addr": "003-1100",
+      "timeline": 1,
+      "at": 1.4
+    },
+    {
+      "kind": "set",
+      "addr": "003-1200",
+      "path": "scene.flags.saw_beam",
+      "op": "=",
+      "value": "true"
+    },
+    {
+      "kind": "line",
+      "addr": "003-1300",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "I flinched. I blinked. When I opened my eyes, where the mouse had been there was only a small black smudge.",
+      "lineId": "bianca.s01ep02.narrator_0090"
+    },
+    {
+      "kind": "line",
+      "addr": "003-1400",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "The mouse.",
+      "lineId": "bianca.s01ep02.fixer_0030",
+      "voiceKey": "fixer-0030"
+    },
+    {
+      "kind": "line",
+      "addr": "003-1500",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "The mouse just disappeared!",
+      "lineId": "bianca.s01ep02.fixer_0040",
+      "voiceKey": "fixer-0040"
+    },
+    {
+      "kind": "line",
+      "addr": "003-1600",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Bianca brought her fingertip to her lips and blew a small puff of air across the tip with the satisfaction of a chef sending off a perfect plate.",
+      "lineId": "bianca.s01ep02.narrator_0100"
+    },
+    {
+      "kind": "line",
+      "addr": "003-1700",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Ta-da!",
+      "emotion": "delighted",
+      "variant": 1,
+      "lineId": "bianca.s01ep02.bianca_0080",
+      "voiceKey": "bianca-0080"
+    },
+    {
+      "kind": "line",
+      "addr": "003-1800",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Behold the performance of all-purpose Bianca, isn't it wonderful?",
+      "emotion": "delighted",
+      "variant": 1,
+      "lineId": "bianca.s01ep02.bianca_0090",
+      "voiceKey": "bianca-0090"
+    },
+    {
+      "kind": "line",
+      "addr": "003-1900",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "I took one step back. My central nervous system briefly logged out and logged back in.",
+      "lineId": "bianca.s01ep02.narrator_0110"
+    },
+    {
+      "kind": "line",
+      "addr": "003-2000",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "An android, then. Which would, on reflection, explain the ramen.",
+      "lineId": "bianca.s01ep02.fixer_0080"
+    },
+    {
+      "kind": "line",
+      "addr": "004-0100",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "If I do not handle this android properly, something is going to go very badly wrong.",
+      "lineId": "bianca.s01ep02.fixer_0090"
+    },
+    {
+      "kind": "line",
+      "addr": "004-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The thought arrived fully formed. It did not ask permission. I reached for my phone.",
+      "lineId": "bianca.s01ep02.narrator_0120"
+    },
+    {
+      "kind": "choice",
+      "addr": "004-0300",
+      "branchId": "number",
+      "recordKey": "scene.choices.number",
+      "options": [
+        {
+          "id": "blunt",
+          "label": "Just ask, flatly",
+          "lineId": "bianca.s01ep02.number.blunt",
+          "target": "004-0400"
+        },
+        {
+          "id": "soft",
+          "label": "Ask gently",
+          "lineId": "bianca.s01ep02.number.soft",
+          "target": "004-0600"
+        }
+      ],
+      "converge": "004-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "004-0400",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "Bianca. Your number.",
+      "lineId": "bianca.s01ep02.fixer_0050",
+      "voiceKey": "fixer-0050"
+    },
+    {
+      "kind": "jump",
+      "addr": "004-0500",
+      "target": "004-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "004-0600",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "Bianca — would you mind terribly if I had your number?",
+      "lineId": "bianca.s01ep02.fixer_0052",
+      "voiceKey": "fixer-0052"
+    },
+    {
+      "kind": "set",
+      "addr": "004-0700",
+      "path": "scene.affect.bianca",
+      "op": "+=",
+      "value": "1"
+    },
+    {
+      "kind": "jump",
+      "addr": "004-0800",
+      "target": "004-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "004-0900",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Oh!",
+      "emotion": "surprised",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0100",
+      "voiceKey": "bianca-0100"
+    },
+    {
+      "kind": "line",
+      "addr": "004-1000",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Of course! Right away, Mr. Fixer.",
+      "emotion": "delighted",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0110",
+      "voiceKey": "bianca-0110"
+    },
+    {
+      "kind": "line",
+      "addr": "004-1100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "She produced her own phone at a velocity that suggested she had been hoping someone would ask. She held it up to mine.",
+      "lineId": "bianca.s01ep02.narrator_0130"
+    },
+    {
+      "kind": "sfx",
+      "addr": "004-1200",
+      "sound": "phone_chime",
+      "assetId": "sound-sfx-common-phone-0.mp3"
+    },
+    {
+      "kind": "line",
+      "addr": "004-1300",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "We can walk around together when my shift is done, perhaps?",
+      "emotion": "content",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0120",
+      "voiceKey": "bianca-0120"
+    },
+    {
+      "kind": "line",
+      "addr": "004-1400",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "There's so much I haven't seen yet, you see. I would like that very much.",
+      "emotion": "content",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0130",
+      "voiceKey": "bianca-0130"
+    },
+    {
+      "kind": "line",
+      "addr": "004-1500",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "I was decommissioned not long ago, you see.",
+      "emotion": "shy",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0140",
+      "voiceKey": "bianca-0140"
+    },
+    {
+      "kind": "line",
+      "addr": "004-1600",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "I am still very much in the middle of my civilian acclimation.",
+      "emotion": "shy",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0150",
+      "voiceKey": "bianca-0150"
+    },
+    {
+      "kind": "line",
+      "addr": "004-1700",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "When does your shift end.",
+      "lineId": "bianca.s01ep02.fixer_0060",
+      "voiceKey": "fixer-0060"
+    },
+    {
+      "kind": "line",
+      "addr": "004-1800",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Five-thirty, Mr. Fixer!",
+      "emotion": "delighted",
+      "variant": 1,
+      "lineId": "bianca.s01ep02.bianca_0160",
+      "voiceKey": "bianca-0160"
+    },
+    {
+      "kind": "line",
+      "addr": "004-1900",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "I'll meet you at the entrance.",
+      "emotion": "delighted",
+      "variant": 1,
+      "lineId": "bianca.s01ep02.bianca_0170",
+      "voiceKey": "bianca-0170"
+    },
+    {
+      "kind": "music",
+      "addr": "005-0100",
+      "action": "fade-out"
+    },
+    {
+      "kind": "line",
+      "addr": "005-0200",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "She led me to the booth. I sat. She handed me a menu and skipped, very lightly, back toward the kitchen. The mouse-shaped smudge was still on the carpet three booths away, plainly visible to anyone walking past.",
+      "lineId": "bianca.s01ep02.narrator_0140"
+    },
+    {
+      "kind": "sprite",
+      "addr": "005-0300",
+      "character": "takeru",
+      "anchor": "left",
+      "action": "fade-in-slow"
+    },
+    {
+      "kind": "sprite",
+      "addr": "005-0400",
+      "character": "takeru",
+      "preload": true,
+      "emotion": "neutral",
+      "provenance": {
+        "injected": true,
+        "by": "entry-emotion-lookahead",
+        "reason": "pre-loading `takeru`'s first emotion `neutral` seen ahead of the entrance"
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "005-0500",
+      "role": "dialogue",
+      "speaker": "takeru",
+      "text": "Welcome, sir.",
+      "emotion": "neutral",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.takeru_0010",
+      "voiceKey": "takeru-0010"
+    },
+    {
+      "kind": "line",
+      "addr": "005-0600",
+      "role": "dialogue",
+      "speaker": "takeru",
+      "text": "...A stain has appeared, three booths down. Bianca-san. See to it before the dinner rush, please.",
+      "emotion": "content",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.takeru_0020",
+      "voiceKey": "takeru-0020"
+    },
+    {
+      "kind": "line",
+      "addr": "005-0700",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "At once, manager!",
+      "emotion": "surprised",
+      "variant": 0,
+      "lineId": "bianca.s01ep02.bianca_0180",
+      "voiceKey": "bianca-0180"
+    },
+    {
+      "kind": "line",
+      "addr": "005-0800",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "She skipped back across the floor with a cloth in hand. I watched the manager file the smudge as some customer-side mishap and continue his perimeter walk.",
+      "lineId": "bianca.s01ep02.narrator_0150"
+    },
+    {
+      "kind": "line",
+      "addr": "005-0900",
+      "role": "dialogue",
+      "speaker": "fixer",
+      "text": "...",
+      "lineId": "bianca.s01ep02.fixer_0070",
+      "voiceKey": "fixer-0070"
+    },
+    {
+      "kind": "match",
+      "addr": "005-1000",
+      "subject": "scene.choices.number",
+      "arms": [
+        {
+          "test": "(scene.affect.bianca >= 1)",
+          "target": "005-1100"
+        },
+        {
+          "test": "scene.choices.number == 'blunt'",
+          "target": "005-1300"
+        }
+      ],
+      "otherwise": "005-1500",
+      "converge": "005-1700"
+    },
+    {
+      "kind": "line",
+      "addr": "005-1100",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "I am taking that woman on a walking tour of the neighbourhood this evening. I asked nicely, which I am electing not to examine.",
+      "lineId": "bianca.s01ep02.fixer_0100"
+    },
+    {
+      "kind": "jump",
+      "addr": "005-1200",
+      "target": "005-1700"
+    },
+    {
+      "kind": "line",
+      "addr": "005-1300",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "I am taking that woman on a walking tour of the neighbourhood this evening.",
+      "lineId": "bianca.s01ep02.fixer_0110"
+    },
+    {
+      "kind": "jump",
+      "addr": "005-1400",
+      "target": "005-1700"
+    },
+    {
+      "kind": "line",
+      "addr": "005-1500",
+      "role": "monologue",
+      "speaker": "fixer",
+      "text": "I am, apparently, taking that woman somewhere this evening.",
+      "lineId": "bianca.s01ep02.fixer_0120"
+    },
+    {
+      "kind": "jump",
+      "addr": "005-1600",
+      "target": "005-1700"
+    },
+    {
+      "kind": "line",
+      "addr": "005-1700",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The part of me that catalogues life events was already cataloguing.",
+      "lineId": "bianca.s01ep02.narrator_0160"
+    },
+    {
+      "kind": "music",
+      "addr": "005-1800",
+      "action": "stop"
+    }
+  ]
+}
