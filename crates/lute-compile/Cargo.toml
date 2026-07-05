@@ -1,0 +1,18 @@
+[package]
+name = "lute-compile"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lute-core-span = { path = "../lute-core-span" }
+lute-syntax = { path = "../lute-syntax" }
+lute-cel = { path = "../lute-cel" }
+lute-manifest = { path = "../lute-manifest" }
+lute-check = { path = "../lute-check" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
