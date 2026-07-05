@@ -17,7 +17,7 @@ pub struct TagOutcome {
 /// Existing codes are never touched; new codes step above THAT SPEAKER's highest
 /// existing numeric `code` (a per-speaker counter, dsl §12); different speakers
 /// have independent sequences (`fixer` 0010…, `bianca` 0010…), so their codes
-/// coexist and the textUnitId keys on speaker + code.
+/// coexist and the lineId (§12) keys on speaker + code.
 /// Idempotent, deterministic, total (a structurally broken doc is returned
 /// unchanged with `added: 0`).
 pub fn tag_document(text: &str) -> TagOutcome {
@@ -40,7 +40,7 @@ pub fn tag_document(text: &str) -> TagOutcome {
 
     // Per-speaker highest existing numeric `code` (dsl §12: `code` is a
     // PER-SPEAKER counter — `fixer` 0010/0020…, `bianca` 0010/0020…, `takeru`
-    // 0010… all coexist; the textUnitId keys on speaker + code). Default 0.
+    // 0010… all coexist; the lineId keys on speaker + code). Default 0.
     let mut max_code: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     for line in &lines {
         let cur = max_code.entry(line.speaker.clone()).or_insert(0);

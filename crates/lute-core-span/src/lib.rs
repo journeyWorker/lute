@@ -117,7 +117,7 @@ pub struct Diagnostic {
     pub provenance: Option<String>,
 }
 
-/// Stable node id: assigned once, survives edits (dsl §12 textUnitId principle).
+/// Stable node id: assigned once, survives edits (dsl §12 `lineId` principle).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct StableId(pub u64);
 
