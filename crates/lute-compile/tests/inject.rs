@@ -26,7 +26,13 @@ fn walk(body: &str) -> (Vec<Rec>, StageState) {
         timelines: 0,
     };
     let mut em = Emitter::default();
-    let state = walk_seq(&mut em, &doc.shots[0].body, StageState::default(), &mut cx);
+    let state = walk_seq(
+        &mut em,
+        &doc.shots[0].body,
+        StageState::default(),
+        &mut cx,
+        &[],
+    );
     let (recs, _) = em.finish();
     (recs, state)
 }
@@ -163,6 +169,47 @@ fn branch_arms_fork_from_entry_state_and_join_conservatively() {
         .collect();
     // Three anchor injections: one per arm + one after the join.
     assert_eq!(anchors.len(), 3, "{recs:#?}");
+}
+
+#[test]
+fn arm_end_entrance_preloads_post_convergence_emotion() {
+    // D9 continuation threading: each arm ENDS with a fresh `::auto` entrance
+    // for `bianca`, and her first emotion line sits AFTER `</branch>` — a
+    // post-convergence, CFG-reachable successor, not inside any arm.
+    // entry-emotion-lookahead must find `surprised` through the threaded
+    // continuation, so BOTH arm entrances preload it, while sibling arms are
+    // never consulted.
+    let body = r#"<branch id="fork">
+  <choice id="a" label="A">
+    ::auto{character="bianca" action="fade-in-up"}
+  </choice>
+  <choice id="b" label="B">
+    ::auto{character="bianca" action="fade-in-up"}
+  </choice>
+</branch>
+:line[bianca]{emotion="surprised"}: Oh!"#;
+    let (recs, _) = walk(body);
+    let preloads: Vec<String> = recs
+        .iter()
+        .filter_map(|r| match &r.cmd {
+            Command::Sprite(s) if s.preload == Some(true) => {
+                assert_eq!(
+                    s.stamp.provenance.as_ref().map(|p| p.by.as_str()),
+                    Some("entry-emotion-lookahead"),
+                    "post-convergence preload must be provenance'd to the lookahead rule"
+                );
+                Some(s.emotion.clone().unwrap_or_default())
+            }
+            _ => None,
+        })
+        .collect();
+    // One preload per arm entrance, each pre-loading the post-convergence
+    // emotion found only via the threaded continuation.
+    assert_eq!(
+        preloads,
+        vec!["surprised".to_string(), "surprised".to_string()],
+        "{recs:#?}"
+    );
 }
 
 #[test]
