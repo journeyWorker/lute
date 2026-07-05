@@ -40,10 +40,13 @@ fn fold_env_exposes_folded_schema_and_def_bodies() {
         components: Default::default(),
     };
     let (doc, _) = lute_syntax::parse(&input.text);
-    let (folded, diags) = fold_env(&doc, &input);
+    let (folded, fold_diags, state_merge_diags) = fold_env(&doc, &input);
     assert!(
-        diags.iter().all(|d| d.severity != Severity::Error),
-        "{diags:#?}"
+        fold_diags
+            .iter()
+            .chain(&state_merge_diags)
+            .all(|d| d.severity != Severity::Error),
+        "{fold_diags:#?}\n{state_merge_diags:#?}"
     );
     // Inline decl folded.
     assert!(folded.env.state.decls.contains_key("scene.affect.bianca"));
