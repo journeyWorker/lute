@@ -175,10 +175,17 @@ pub struct FoldedEnv {
     pub def_bodies: std::collections::BTreeMap<String, String>,
 }
 
-/// Fold the analysis environment from an already-parsed document. Returns the
-/// fold's diagnostics (meta + state-merge + branch dup/choice-dup) so `check()`
-/// and external callers report identically. Pure and total; never panics.
-pub fn fold_env(doc: &Document, input: &CheckInput) -> (FoldedEnv, Vec<Diagnostic>) {
+/// Fold the analysis environment from an already-parsed document. Returns two
+/// diagnostic streams kept SEPARATE so `check()` preserves its exact diagnostic
+/// byte-order contract (a stable sort on `(byte_start, code)` makes same-span
+/// ties order-sensitive): `.1` = the pre-import fold diags (meta + branch
+/// dup/choice-dup) emitted just before import diags, and `.2` = the state-merge
+/// diags (`E-EXTENDS-STATE-TYPE`/`E-STATE-REDECLARE`) emitted AFTER component
+/// validation. Pure and total; never panics.
+pub fn fold_env(
+    doc: &Document,
+    input: &CheckInput,
+) -> (FoldedEnv, Vec<Diagnostic>, Vec<Diagnostic>) {
     // 3. Typed frontmatter + inline state schema.
     let (typed, mut fold_diags) = parse_meta(&doc.meta, &input.snapshot);
 
@@ -193,12 +200,13 @@ pub fn fold_env(doc: &Document, input: &CheckInput) -> (FoldedEnv, Vec<Diagnosti
     // MAY be refined by the scene's inline decl (the inline wins; a TYPE change is
     // `E-EXTENDS-STATE-TYPE`, the persisted type must stay stable).
     let mut schema = input.imports.state.clone();
+    let mut state_merge_diags: Vec<Diagnostic> = Vec::new();
     for (path, decl) in &typed.state.decls {
         match input.imports.state.decls.get(path) {
             Some(imported) if input.imports.state_overridable.contains(path) => {
                 // Extends-base override: the inline decl wins; guard the type.
                 if decl.ty != imported.ty {
-                    fold_diags.push(Diagnostic {
+                    state_merge_diags.push(Diagnostic {
                         code: "E-EXTENDS-STATE-TYPE".to_string(),
                         severity: Severity::Error,
                         message: format!(
@@ -215,7 +223,7 @@ pub fn fold_env(doc: &Document, input: &CheckInput) -> (FoldedEnv, Vec<Diagnosti
             }
             Some(_) => {
                 // Uses-peer path: a scene must not redeclare it (imported wins).
-                fold_diags.push(Diagnostic {
+                state_merge_diags.push(Diagnostic {
                     code: "E-STATE-REDECLARE".to_string(),
                     severity: Severity::Error,
                     message: format!(
@@ -338,6 +346,7 @@ pub fn fold_env(doc: &Document, input: &CheckInput) -> (FoldedEnv, Vec<Diagnosti
             def_bodies,
         },
         fold_diags,
+        state_merge_diags,
     )
 }
 
@@ -370,7 +379,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
 
     // 3–4b. Typed frontmatter + folded schema + merged def tables (one SoT:
     // the public fold_env accessor the compiler also consumes).
-    let (folded, fold_diags) = fold_env(&doc, input);
+    let (folded, fold_diags, state_merge_diags) = fold_env(&doc, input);
     let env = &folded.env;
     let base_ctx = Ctx {
         env,
@@ -431,6 +440,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
         &input.providers,
         doc.meta.span,
     ));
+    diags.extend(state_merge_diags);
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(inject_diags);
