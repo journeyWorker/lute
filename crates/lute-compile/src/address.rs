@@ -95,9 +95,17 @@ fn assign_identity(cmds: &mut [Command], cx: &IdCx<'_>) {
                 let code = match &l.code {
                     Some(c) => c.trim().to_string(),
                     None => {
+                        // Back-fill this speaker's next code (max authored + 10).
+                        // A speaker whose counter overflows at/near u64::MAX fails
+                        // closed for THIS line only (`continue`, not `break`), so
+                        // other speakers/lines still get identities and no colliding
+                        // code is emitted — mirroring lute-check's tag.rs.
                         let e = max_code.entry(l.speaker.clone()).or_insert(0);
-                        *e += 10;
-                        format!("{:04}", *e)
+                        let Some(nc) = e.checked_add(10) else {
+                            continue;
+                        };
+                        *e = nc;
+                        format!("{:04}", nc)
                     }
                 };
                 l.line_id = format!("{prefix}.{}_{}", l.speaker, code);
@@ -189,5 +197,43 @@ mod tests {
         assert_eq!(untagged.code.as_deref(), Some("0060"));
         assert_eq!(untagged.line_id, "bardstale.s01ep02.fixer_0060");
         assert_eq!(untagged.voice_key.as_deref(), Some("fixer-0060"));
+    }
+
+    /// A speaker's authored `code` at `u64::MAX` followed by an untagged line for
+    /// the SAME speaker: the counter overflows on back-fill, so — mirroring
+    /// `lute-check`'s `tag.rs` (`code_at_u64_max_fails_closed_no_collision`) — the
+    /// untagged line fails closed (no back-filled code, hence no derived identity
+    /// and no colliding code emitted). Never panics, never wraps.
+    #[test]
+    fn code_at_u64_max_fails_closed_no_collision() {
+        let cx = IdCx {
+            character: "bardstale",
+            season: 1,
+            episode: 2,
+        };
+        let mut cmds = vec![
+            line("fixer", Some("18446744073709551615")),
+            line("fixer", None),
+        ];
+        assign_identity(&mut cmds, &cx);
+
+        // Authored u64::MAX line keeps its code and derives identity normally.
+        let tagged = as_line(&cmds[0]);
+        assert_eq!(tagged.code.as_deref(), Some("18446744073709551615"));
+        assert_eq!(
+            tagged.line_id,
+            "bardstale.s01ep02.fixer_18446744073709551615"
+        );
+        assert_eq!(
+            tagged.voice_key.as_deref(),
+            Some("fixer-18446744073709551615")
+        );
+
+        // Untagged line fails closed: no back-filled code, no identity, no
+        // colliding code emitted (tag.rs's u64::MAX semantics).
+        let untagged = as_line(&cmds[1]);
+        assert_eq!(untagged.code, None);
+        assert_eq!(untagged.line_id, "");
+        assert_eq!(untagged.voice_key, None);
     }
 }
