@@ -36,6 +36,7 @@ pub fn walk_seq(
     nodes: &[Node],
     mut state: StageState,
     cx: &mut WalkCx<'_>,
+    tail: &[Node],
 ) -> StageState {
     for (i, node) in nodes.iter().enumerate() {
         match node {
@@ -46,13 +47,24 @@ pub fn walk_seq(
                 cx.components.pop();
             }
             Node::Line(_) | Node::Directive(_) | Node::Set(_) => {
-                state = emit_primitive(em, node, state, lookahead(nodes, i), cx, None);
+                // Only an `::auto` entrance consumes the lookahead
+                // (`entry-emotion-lookahead`); build the CFG-reachable
+                // continuation just for it and pass nothing otherwise, so the
+                // common line/set path never clones the tail.
+                let look = if matches!(node, Node::Directive(d) if d.tag == "auto") {
+                    reachable_after(&nodes[i + 1..], tail)
+                } else {
+                    Vec::new()
+                };
+                state = emit_primitive(em, node, state, &look, cx, None);
             }
             Node::Branch(b) => {
-                state = walk_branch(em, b, state, cx);
+                let cont = reachable_after(&nodes[i + 1..], tail);
+                state = walk_branch(em, b, state, cx, &cont);
             }
             Node::Match(m) => {
-                state = walk_match(em, m, state, cx);
+                let cont = reachable_after(&nodes[i + 1..], tail);
+                state = walk_match(em, m, state, cx, &cont);
             }
             Node::Timeline(_) => {
                 // Replaced in Task 10 (schedule.rs): a timeline is handled
@@ -63,15 +75,17 @@ pub fn walk_seq(
     state
 }
 
-/// D9 lookahead: only CFG-reachable LINEAR successors — the rest of this
-/// sequence up to (never into) the next fork. Sibling arms are unreachable.
-fn lookahead(nodes: &[Node], i: usize) -> &[Node] {
-    let rest = &nodes[i + 1..];
-    let stop = rest
-        .iter()
-        .position(|n| matches!(n, Node::Branch(_) | Node::Match(_)))
-        .unwrap_or(rest.len());
-    &rest[..stop]
+/// D9 lookahead / continuation: the CFG-reachable LINEAR successors of a node
+/// or block — the rest of THIS sequence, then the enclosing continuation
+/// (`tail`: everything reachable AFTER this sequence converges). A `<branch>`/
+/// `<match>` node stays opaque here — sibling arms are unreachable, and the
+/// emotion scan (`first_emotion_for`) walks only top-level `Node::Line`s, so it
+/// skips fork nodes and resumes at their post-convergence successors.
+fn reachable_after(rest: &[Node], tail: &[Node]) -> Vec<Node> {
+    let mut out = Vec::with_capacity(rest.len() + tail.len());
+    out.extend_from_slice(rest);
+    out.extend_from_slice(tail);
+    out
 }
 
 /// Lower one primitive node into records, threading the injection reducer:
@@ -159,7 +173,13 @@ fn inject_cmd(ic: &InjectedCommand) -> Command {
     })
 }
 
-fn walk_branch(em: &mut Emitter, b: &Branch, state: StageState, cx: &mut WalkCx<'_>) -> StageState {
+fn walk_branch(
+    em: &mut Emitter,
+    b: &Branch,
+    state: StageState,
+    cx: &mut WalkCx<'_>,
+    tail: &[Node],
+) -> StageState {
     let conv = em.fresh();
     let arms: Vec<Label> = b.choices.iter().map(|_| em.fresh()).collect();
     let options = b
@@ -191,7 +211,7 @@ fn walk_branch(em: &mut Emitter, b: &Branch, state: StageState, cx: &mut WalkCx<
     let mut exits = Vec::with_capacity(b.choices.len());
     for (c, l) in b.choices.iter().zip(&arms) {
         em.bind(*l);
-        let exit = walk_seq(em, &c.body, state.clone(), cx);
+        let exit = walk_seq(em, &c.body, state.clone(), cx, tail);
         em.push(Command::Jump(JumpCmd {
             addr: String::new(),
             target: conv.sym(),
@@ -206,7 +226,13 @@ fn walk_branch(em: &mut Emitter, b: &Branch, state: StageState, cx: &mut WalkCx<
     joined
 }
 
-fn walk_match(em: &mut Emitter, m: &Match, state: StageState, cx: &mut WalkCx<'_>) -> StageState {
+fn walk_match(
+    em: &mut Emitter,
+    m: &Match,
+    state: StageState,
+    cx: &mut WalkCx<'_>,
+    tail: &[Node],
+) -> StageState {
     let conv = em.fresh();
     let labels: Vec<Label> = m.arms.iter().map(|_| em.fresh()).collect();
     let mut arms = Vec::new();
@@ -238,7 +264,7 @@ fn walk_match(em: &mut Emitter, m: &Match, state: StageState, cx: &mut WalkCx<'_
             Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
         };
         em.bind(*l);
-        let exit = walk_seq(em, body, state.clone(), cx);
+        let exit = walk_seq(em, body, state.clone(), cx, tail);
         em.push(Command::Jump(JumpCmd {
             addr: String::new(),
             target: conv.sym(),
