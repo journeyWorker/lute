@@ -17,6 +17,9 @@
 //!   case is not covered by an `unset`-matching arm nor an `<otherwise>`.
 //! - **`E-AGE-GATE`** — an age-gated `<match on="app.rating">` that covers neither
 //!   a `teen` arm nor an `<otherwise>` (a release-build hard gate, §11.2).
+//! - **`E-MATCH-DUP-OTHERWISE`** — more than one `<otherwise>`; §11.2 allows at
+//!   most one. Flatten routes only the last, so earlier otherwise bodies would be
+//!   unreachable. Flagged at every `<otherwise>` past the first.
 //! - **`W-OVERLAP-ARMS`** (Warning) — two `<when>` arms that *provably* match the
 //!   same value (kept conservative: identical literal equality tests only, never
 //!   general SAT). First-match-wins means the later arm is dead.
@@ -25,8 +28,11 @@
 //! `<branch id>` MUST be unique within the episode (the `.lute` document);
 //! selecting a choice records `scene.choices.<branchId> = <choiceId>`, an
 //! implicitly-declared, episode-scoped path whose domain is the branch's choice
-//! ids ∪ `unset`. [`check_branch`] emits **`E-DUP-BRANCH`** on a repeat id and
-//! returns the implicit [`StateDecl`] to fold into the schema.
+//! ids ∪ `unset`. [`check_branch`] emits **`E-DUP-BRANCH`** on a repeat id,
+//! **`E-BRANCH-EMPTY`** on a branch with no `<choice>` (§7.3 requires `Choice+`;
+//! an empty branch would flatten to an unroutable choice), **`E-CHOICE-DUP`** on
+//! a repeated choice id, and returns the implicit [`StateDecl`] to fold into the
+//! schema.
 //!
 //! ### Branch-dup threading (for T4.9 assembly)
 //! Duplicate detection is *episode-wide*, but this module checks one branch at a
@@ -92,6 +98,27 @@ pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagno
     let subject = subject_path(m);
     let info = infer_domain(subject.as_deref(), schema);
     let has_otherwise = m.arms.iter().any(|a| matches!(a, Arm::Otherwise { .. }));
+
+    // §11.2: a `<match>` admits AT MOST ONE `<otherwise>`. With more than one,
+    // flatten routes only the last, making earlier otherwise bodies unreachable
+    // — so flag every otherwise past the first at its own span (mirroring the
+    // per-repeat shape of E-CHOICE-DUP).
+    let mut seen_otherwise = false;
+    for arm in &m.arms {
+        if let Arm::Otherwise { span, .. } = arm {
+            if seen_otherwise {
+                diags.push(diag(
+                    "E-MATCH-DUP-OTHERWISE",
+                    Severity::Error,
+                    "duplicate `<otherwise>` in `<match>`; at most one `<otherwise>` is allowed \
+                     (dsl §11.2)"
+                        .to_string(),
+                    *span,
+                ));
+            }
+            seen_otherwise = true;
+        }
+    }
 
     // One ordered pass over the `<when>` arms: accumulate covered values (+ the
     // `unset` case) and flag a provably-dead overlap. First-match-wins means an
@@ -193,6 +220,22 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
             format!(
                 "duplicate `<branch id=\"{}\">`; branch ids must be unique within the episode \
                  (dsl §11.1)",
+                branch.id
+            ),
+            branch.span,
+        ));
+    }
+    // E-BRANCH-EMPTY (dsl §7.3, `Branch ::= "<branch" Attrs ">" Choice+`): a
+    // `<branch>` MUST carry at least one `<choice>`. An empty branch flattens to
+    // a `choice` record with no options — unroutable, since a choice never falls
+    // through (§7.1) — so reject it here before the compile gate.
+    if branch.choices.is_empty() {
+        diags.push(diag(
+            "E-BRANCH-EMPTY",
+            Severity::Error,
+            format!(
+                "empty `<branch id=\"{}\">`; a branch must contain at least one `<choice>` \
+                 (dsl §7.3 `Choice+`)",
                 branch.id
             ),
             branch.span,
@@ -956,5 +999,88 @@ mod tests {
         };
         let rec = check_branch(&ok, &mut seen);
         assert!(rec.diags.iter().all(|d| d.code != "E-CHOICE-DUP"));
+    }
+
+    // ---- E-BRANCH-EMPTY (dsl §7.3 `Choice+`) --------------------------------
+
+    #[test]
+    fn empty_branch_flags_e_branch_empty() {
+        let mut seen = BTreeSet::new();
+        let rec = check_branch(&branch("dead", &[]), &mut seen);
+        let empties: Vec<_> = rec
+            .diags
+            .iter()
+            .filter(|d| d.code == "E-BRANCH-EMPTY")
+            .collect();
+        assert_eq!(empties.len(), 1, "one E-BRANCH-EMPTY, got {:?}", rec.diags);
+        assert_eq!(empties[0].severity, Severity::Error);
+        assert_eq!(empties[0].layer, Layer::Logic);
+        assert!(
+            empties[0].message.contains("dead"),
+            "{}",
+            empties[0].message
+        );
+    }
+
+    #[test]
+    fn well_formed_branch_has_no_empty_diag() {
+        let mut seen = BTreeSet::new();
+        let rec = check_branch(&branch("couch", &["help", "ignore"]), &mut seen);
+        assert!(rec.diags.iter().all(|d| d.code != "E-BRANCH-EMPTY"));
+    }
+
+    // ---- E-MATCH-DUP-OTHERWISE (dsl §11.2 at-most-one) ----------------------
+
+    #[test]
+    fn two_otherwise_flag_e_match_dup_otherwise() {
+        let second_sp = Span {
+            byte_start: 42,
+            byte_end: 50,
+            line: 3,
+            column: 1,
+            utf16_range: (42, 50),
+        };
+        let m = match_with(
+            "run.rank",
+            vec![
+                Arm::Otherwise {
+                    body: Vec::new(),
+                    span: span(),
+                },
+                Arm::Otherwise {
+                    body: Vec::new(),
+                    span: second_sp,
+                },
+            ],
+        );
+        let errs = check_match(&m, &schema_enum_subject(), &ctx());
+        let dups: Vec<_> = errs
+            .iter()
+            .filter(|d| d.code == "E-MATCH-DUP-OTHERWISE")
+            .collect();
+        assert_eq!(
+            dups.len(),
+            1,
+            "one dup for the second otherwise, got {errs:?}"
+        );
+        assert_eq!(dups[0].severity, Severity::Error);
+        assert_eq!(dups[0].layer, Layer::Logic);
+        assert_eq!(dups[0].span, second_sp, "flagged at the second otherwise");
+    }
+
+    #[test]
+    fn single_otherwise_has_no_dup_diag() {
+        let m = match_with(
+            "run.rank",
+            vec![
+                when_arm("$ == 'gold'"),
+                Arm::Otherwise {
+                    body: Vec::new(),
+                    span: span(),
+                },
+            ],
+        );
+        let errs = check_match(&m, &schema_enum_subject(), &ctx());
+        assert!(errs.iter().all(|d| d.code != "E-MATCH-DUP-OTHERWISE"));
     }
 }
