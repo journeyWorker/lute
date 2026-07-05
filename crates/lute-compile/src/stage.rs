@@ -2,7 +2,7 @@
 //! (Task 9, D9) + inline timelines (Task 10). ONE walk owns emission order.
 
 use lute_check::ctx::Env;
-use lute_check::StageState;
+use lute_check::{lower_node, InjectKind, InjectedCommand, StageState};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{Arm, AttrValue, Branch, Directive, Match, Node};
 
@@ -29,7 +29,8 @@ pub struct ClipStamp {
 }
 
 /// Walk one node sequence in document order, emitting records into `em` and
-/// threading `StageState` (identity in this task; injection lands in Task 9).
+/// threading `StageState` through `lower_node` (injection) + branch/match
+/// fork/join (D9). Timeline nodes are handled inline in Task 10.
 pub fn walk_seq(
     em: &mut Emitter,
     nodes: &[Node],
@@ -73,28 +74,89 @@ fn lookahead(nodes: &[Node], i: usize) -> &[Node] {
     &rest[..stop]
 }
 
-/// Lower one primitive node into records. Task 9 adds injection here; this
-/// task emits the authored record only and passes the state through.
+/// Lower one primitive node into records, threading the injection reducer:
+/// `lower_node` computes the next stage state + this node's injected commands,
+/// each emitted as a SEPARATE `sprite` record with provenance (§7.4).
 fn emit_primitive(
     em: &mut Emitter,
     node: &Node,
     state: StageState,
-    _lookahead: &[Node],
+    lookahead: &[Node],
     cx: &mut WalkCx<'_>,
     clip: Option<ClipStamp>,
 ) -> StageState {
+    // Pure reducer step (arch #2): next stage state + this node's injections.
+    let (next, injected) = lower_node(state, node, lookahead);
     let authored = match node {
         Node::Line(l) => Some(lower_line(l)),
         Node::Directive(d) => lower_directive(d, cx.snapshot),
         Node::Set(s) => Some(lower_set(s)),
         _ => None,
     };
-    if let Some(mut cmd) = authored {
-        apply_source(&mut cmd, cx);
-        apply_clip(&mut cmd, clip);
-        em.push(cmd);
+    // Placement (plan spec-gap note 4): an `::auto`'s injections (anchor,
+    // preload) FOLLOW the authored show (§4.5); a line's posReset and a
+    // scene-change's hides PRECEDE theirs.
+    let auto_first = matches!(node, Node::Directive(d) if d.tag == "auto");
+    if auto_first {
+        if let Some(cmd) = authored {
+            emit_stamped(em, cmd, cx, clip);
+        }
+        for ic in &injected {
+            emit_stamped(em, inject_cmd(ic), cx, clip);
+        }
+    } else {
+        for ic in &injected {
+            emit_stamped(em, inject_cmd(ic), cx, clip);
+        }
+        if let Some(cmd) = authored {
+            emit_stamped(em, cmd, cx, clip);
+        }
     }
-    state
+    next
+}
+
+fn emit_stamped(em: &mut Emitter, mut cmd: Command, cx: &WalkCx<'_>, clip: Option<ClipStamp>) {
+    apply_source(&mut cmd, cx);
+    apply_clip(&mut cmd, clip);
+    em.push(cmd);
+}
+
+/// `InjectKind` → a SEPARATE `sprite` record with provenance (§7.4).
+fn inject_cmd(ic: &InjectedCommand) -> Command {
+    let stamp = Stamp {
+        provenance: Some(ic.provenance.clone()),
+        ..Stamp::default()
+    };
+    let sprite = |character: &str| SpriteCmd {
+        addr: String::new(),
+        character: character.to_string(),
+        anchor: None,
+        action: None,
+        exit: None,
+        pos_reset: None,
+        preload: None,
+        emotion: None,
+        stamp,
+    };
+    Command::Sprite(match &ic.kind {
+        InjectKind::Anchor { character, anchor } => SpriteCmd {
+            anchor: Some(anchor.clone()),
+            ..sprite(character)
+        },
+        InjectKind::PosReset { character } => SpriteCmd {
+            pos_reset: Some(true),
+            ..sprite(character)
+        },
+        InjectKind::SpriteLoad { character, emotion } => SpriteCmd {
+            preload: Some(true),
+            emotion: Some(emotion.clone()),
+            ..sprite(character)
+        },
+        InjectKind::Hide { character } => SpriteCmd {
+            exit: Some(true),
+            ..sprite(character)
+        },
+    })
 }
 
 fn walk_branch(em: &mut Emitter, b: &Branch, state: StageState, cx: &mut WalkCx<'_>) -> StageState {
@@ -122,17 +184,26 @@ fn walk_branch(em: &mut Emitter, b: &Branch, state: StageState, cx: &mut WalkCx<
     });
     apply_source(&mut cmd, cx);
     em.push(cmd);
+    // Fork (D9): every arm starts from the ENTRY state. Entry diagnostics are
+    // drained first so per-arm clones don't duplicate them.
+    let mut state = state;
+    let base_diags = std::mem::take(&mut state.diags);
+    let mut exits = Vec::with_capacity(b.choices.len());
     for (c, l) in b.choices.iter().zip(&arms) {
         em.bind(*l);
-        // Task 9 forks/joins here; flatten-only for now.
-        let _ = walk_seq(em, &c.body, state.clone(), cx);
+        let exit = walk_seq(em, &c.body, state.clone(), cx);
         em.push(Command::Jump(JumpCmd {
             addr: String::new(),
             target: conv.sym(),
         }));
+        exits.push(exit);
     }
     em.bind(conv);
-    state
+    let mut joined = join_states(&state, exits);
+    let mut diags = base_diags;
+    diags.append(&mut joined.diags);
+    joined.diags = diags;
+    joined
 }
 
 fn walk_match(em: &mut Emitter, m: &Match, state: StageState, cx: &mut WalkCx<'_>) -> StageState {
@@ -159,19 +230,68 @@ fn walk_match(em: &mut Emitter, m: &Match, state: StageState, cx: &mut WalkCx<'_
     });
     apply_source(&mut cmd, cx);
     em.push(cmd);
+    let mut state = state;
+    let base_diags = std::mem::take(&mut state.diags);
+    let mut exits = Vec::with_capacity(m.arms.len());
     for (arm, l) in m.arms.iter().zip(&labels) {
         let body = match arm {
             Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
         };
         em.bind(*l);
-        let _ = walk_seq(em, body, state.clone(), cx);
+        let exit = walk_seq(em, body, state.clone(), cx);
         em.push(Command::Jump(JumpCmd {
             addr: String::new(),
             target: conv.sym(),
         }));
+        exits.push(exit);
     }
     em.bind(conv);
-    state
+    let mut joined = join_states(&state, exits);
+    let mut diags = base_diags;
+    diags.append(&mut joined.diags);
+    joined.diags = diags;
+    joined
+}
+
+/// §7.3 conservative convergence join. Per character: identical `SpriteState`
+/// in EVERY arm → carried; differing or partial → dropped (that encodes
+/// `Unknown`: a later plain line assumes no pose — no false posReset — and a
+/// later `::auto` is a fresh show → anchor + preload). `dirty` survives only
+/// where carried AND dirty in every arm; `bg`/`music` carry only when
+/// identical across arms. Exits' diagnostics concatenate in arm order.
+pub fn join_states(entry: &StageState, mut exits: Vec<StageState>) -> StageState {
+    let Some(first) = exits.first().cloned() else {
+        return entry.clone();
+    };
+    let mut joined = StageState::default();
+    for e in &mut exits {
+        joined.diags.append(&mut e.diags);
+    }
+    'chars: for (ch, sprite) in &first.on_stage {
+        for e in &exits[1..] {
+            if e.on_stage.get(ch) != Some(sprite) {
+                continue 'chars;
+            }
+        }
+        joined.on_stage.insert(ch.clone(), sprite.clone());
+    }
+    let kept: Vec<String> = joined.on_stage.keys().cloned().collect();
+    for ch in kept {
+        if exits.iter().all(|e| e.dirty.contains(&ch)) {
+            joined.dirty.insert(ch);
+        }
+    }
+    joined.bg = if exits.iter().all(|e| e.bg == first.bg) {
+        first.bg.clone()
+    } else {
+        None
+    };
+    joined.music = if exits.iter().all(|e| e.music == first.music) {
+        first.music.clone()
+    } else {
+        None
+    };
+    joined
 }
 
 /// `source { component }` from the sentinel-driven stack (§4.3, D8).
