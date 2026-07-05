@@ -143,6 +143,44 @@ fn expand_use(
         .filter(|a| a.key != "component")
         .map(|a| (a.key.clone(), a.value.clone()))
         .collect();
+    // Defensive arg/param validation (checker gate: E-COMPONENT-ARG). The
+    // invocation's arg key set MUST match `def.params` exactly — no missing,
+    // no extra. Compile gates on a clean check, so reaching here with a
+    // mismatch is gate-proven unreachable; degrade fail-loud (like the
+    // unresolvable-component arm) rather than expand with an unbound `@param`.
+    let missing: Vec<&str> = def
+        .params
+        .iter()
+        .map(|(p, _)| p.as_str())
+        .filter(|p| !args.contains_key(*p))
+        .collect();
+    let extra: Vec<&str> = args
+        .keys()
+        .map(String::as_str)
+        .filter(|k| !def.params.iter().any(|(p, _)| p == k))
+        .collect();
+    if !missing.is_empty() || !extra.is_empty() {
+        let mut parts = Vec::new();
+        if !missing.is_empty() {
+            parts.push(format!("missing [{}]", missing.join(", ")));
+        }
+        if !extra.is_empty() {
+            parts.push(format!("unknown [{}]", extra.join(", ")));
+        }
+        diags.push(Diagnostic {
+            code: "E-COMPILE-COMPONENT".to_string(),
+            severity: Severity::Error,
+            message: format!(
+                "`::use` args for component `{name}` do not match its params: {} (gate should have caught this)",
+                parts.join("; ")
+            ),
+            span: d.span,
+            layer: Layer::Content,
+            fixits: Vec::new(),
+            provenance: None,
+        });
+        return Vec::new();
+    }
     let mut body: Vec<Node> = def
         .body
         .shots
@@ -429,6 +467,55 @@ episode: 1
         assert!(
             diags.iter().any(|d| d.code == "E-COMPILE-COMPONENT"),
             "expected E-COMPILE-COMPONENT for a ::use timeline clip, got {diags:#?}"
+        );
+    }
+
+    #[test]
+    fn use_with_mismatched_args_fails_loud_no_unbound_param_leaks() {
+        // Defensive backstop for the checker's E-COMPONENT-ARG: greet declares
+        // `params: { who: string }`, but this `::use` supplies no `who` and an
+        // unknown `extra` arg. Normalization must degrade to E-COMPILE-COMPONENT
+        // rather than expand the body with an unbound `@who` — no component
+        // sentinels, no spliced `::auto`, no residual `::use`.
+        let base = Path::new("../../docs/examples/components");
+        let src = r#"---
+character: demo
+season: 1
+episode: 1
+components: [greet.component.lute]
+---
+
+## Shot 1.
+
+::use{component="greet" extra="oops"}
+:line[narrator]: And the scene carries on.
+"#;
+        let mut doc = parse_clean(src);
+        let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
+        assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
+        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        let arg_err = diags
+            .iter()
+            .find(|d| d.code == "E-COMPILE-COMPONENT" && d.severity == Severity::Error);
+        assert!(
+            arg_err.is_some(),
+            "expected E-COMPILE-COMPONENT for mismatched ::use args, got {diags:#?}"
+        );
+        // Message names the component and both the missing and the extra arg.
+        let msg = &arg_err.unwrap().message;
+        assert!(
+            msg.contains("greet") && msg.contains("who") && msg.contains("extra"),
+            "diagnostic should name component + mismatched params: {msg:?}"
+        );
+        // No expansion leaked: no sentinels, no `::auto` body, no `::use` remnant.
+        let body = &doc.shots[0].body;
+        assert!(
+            body.iter().all(|n| !matches!(n, Node::Directive(d)
+                if d.tag == COMPONENT_BEGIN
+                    || d.tag == COMPONENT_END
+                    || d.tag == "auto"
+                    || d.tag == "use")),
+            "no component body should splice in on arg mismatch: {body:#?}"
         );
     }
 
