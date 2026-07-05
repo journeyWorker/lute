@@ -56,6 +56,25 @@ enum Command {
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
     },
+    /// Compile a checked `.lute` document to its JSON command-record artifact.
+    Compile {
+        /// Path to the `.lute` file to compile.
+        file: PathBuf,
+        /// On a failed gate, print the diagnostics as JSON instead of
+        /// human-readable lines. (The artifact itself is always JSON.)
+        #[arg(long)]
+        json: bool,
+        /// Directory of pinned provider snapshots to resolve ids against.
+        #[arg(long, value_name = "DIR")]
+        providers: Option<PathBuf>,
+        /// Project directory (`lute.project.yaml` + `plugins/`) resolving the
+        /// document's activated capability snapshot.
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
+        /// Write the artifact here instead of stdout.
+        #[arg(short = 'o', long = "out", value_name = "FILE")]
+        out: Option<PathBuf>,
+    },
     /// Back-fill a stable `code` into every untagged `:line` (dsl §12),
     /// rewriting the file in place.
     Tag {
@@ -89,6 +108,19 @@ fn main() -> ExitCode {
             providers,
             project,
         } => run_check(&file, json, providers.as_deref(), project.as_deref()),
+        Command::Compile {
+            file,
+            json,
+            providers,
+            project,
+            out,
+        } => run_compile(
+            &file,
+            json,
+            providers.as_deref(),
+            project.as_deref(),
+            out.as_deref(),
+        ),
         Command::Tag { file } => run_tag(&file),
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
             run_refresh(&dir, project.as_deref())
@@ -96,19 +128,20 @@ fn main() -> ExitCode {
     }
 }
 
-/// Run `check` over one file and print its result. Exit `0` clean / `1` on an
-/// error diagnostic / `2` on an I/O failure.
-fn run_check(
+/// Assemble the `CheckInput` for `file` exactly as `check` does: project
+/// snapshot resolution (plugin §4/§11), provider-catalog precedence (plugin
+/// §10), and `uses:`/`components:` imports resolved against the file's own
+/// directory. `None` => the file could not be read (caller exits 2).
+fn build_input(
     file: &Path,
-    json: bool,
     providers: Option<&Path>,
     project: Option<&Path>,
-) -> ExitCode {
+) -> Option<CheckInput> {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
         Err(e) => {
             eprintln!("lute: cannot read {}: {e}", file.display());
-            return ExitCode::from(2);
+            return None;
         }
     };
 
@@ -156,7 +189,7 @@ fn run_check(
     let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
     let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
 
-    let input = CheckInput {
+    Some(CheckInput {
         text,
         uri: file.display().to_string(),
         snapshot,
@@ -166,6 +199,19 @@ fn run_check(
         mode: Mode::Ci,
         imports,
         components,
+    })
+}
+
+/// Run `check` over one file and print its result. Exit `0` clean / `1` on an
+/// error diagnostic / `2` on an I/O failure.
+fn run_check(
+    file: &Path,
+    json: bool,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+) -> ExitCode {
+    let Some(input) = build_input(file, providers, project) else {
+        return ExitCode::from(2);
     };
     let result = check(&input);
 
@@ -186,6 +232,72 @@ fn run_check(
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
+    }
+}
+
+/// Run `compile` over one file. Exit `0` with the artifact on stdout (or
+/// `-o <FILE>`), `1` when the check gate fails (diagnostics to stdout,
+/// human or `--json`), `2` on I/O or serialization failure.
+fn run_compile(
+    file: &Path,
+    json: bool,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+    out: Option<&Path>,
+) -> ExitCode {
+    let Some(input) = build_input(file, providers, project) else {
+        return ExitCode::from(2);
+    };
+    match lute_compile::compile(&input) {
+        Ok(artifact) => {
+            let mut s = match serde_json::to_string_pretty(&artifact) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("lute: failed to serialize artifact: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            s.push('\n');
+            match out {
+                Some(path) => {
+                    if let Err(e) = std::fs::write(path, &s) {
+                        eprintln!("lute: cannot write {}: {e}", path.display());
+                        return ExitCode::from(2);
+                    }
+                }
+                None => print!("{s}"),
+            }
+            ExitCode::SUCCESS
+        }
+        Err(diags) => {
+            if json {
+                match serde_json::to_string_pretty(&diags) {
+                    Ok(s) => println!("{s}"),
+                    Err(e) => {
+                        eprintln!("lute: failed to serialize diagnostics: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            } else {
+                for d in &diags {
+                    println!(
+                        "{}:{}:{}: {} [{}] {}",
+                        file.display(),
+                        d.span.line,
+                        d.span.column,
+                        severity_str(d.severity),
+                        d.code,
+                        d.message
+                    );
+                }
+                let errors = diags
+                    .iter()
+                    .filter(|d| d.severity == Severity::Error)
+                    .count();
+                println!("{errors} error(s); no artifact emitted");
+            }
+            ExitCode::FAILURE
+        }
     }
 }
 
