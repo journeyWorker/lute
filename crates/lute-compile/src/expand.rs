@@ -134,9 +134,30 @@ pub fn expand_cel(
     if refs.is_empty() {
         return Ok(raw.to_string());
     }
+    // `scan_refs` returns BOTH an `@fn(..)` call AND every `@ref`/`$` nested in
+    // its arg list. Splicing a nested ref first (right-to-left) would shift the
+    // bytes under the outer call's ORIGINAL span, so re-applying that span to
+    // the mutated string panics (shorter replacement) or corrupts the tail
+    // (longer). Splice ONLY top-level refs — those whose token does not sit
+    // inside another ref's `(...)` group; `expand_ref` recursively expands each
+    // call's args (on the ORIGINAL arg text), so nested refs are handled there.
+    let call_spans: Vec<(usize, usize)> = refs
+        .iter()
+        .filter_map(|r| r.call.as_ref())
+        .map(|c| (c.span.byte_start, c.span.byte_end))
+        .collect();
+    let top: Vec<&lute_cel::RefUse> = refs
+        .iter()
+        .filter(|r| {
+            !call_spans
+                .iter()
+                .any(|&(s, e)| s <= r.span.byte_start && r.span.byte_end <= e)
+        })
+        .collect();
     let mut out = raw.to_string();
-    // Right-to-left so earlier byte offsets stay valid while splicing.
-    for r in refs.iter().rev() {
+    // Right-to-left so earlier byte offsets stay valid while splicing. Top-level
+    // refs never overlap, so each original span is still accurate here.
+    for r in top.iter().rev() {
         let end = r.call.as_ref().map_or(r.span.byte_end, |c| c.span.byte_end);
         let replacement = if r.is_dollar {
             let Some(s) = subject else {
@@ -196,43 +217,64 @@ fn expand_ref(
         ));
     }
     stack.push(name.clone());
-    // A def body is subject-independent (no `$`); nested `@refs` recurse.
-    let mut expanded = expand_cel(body, defs, None, stack)?;
-    for ((pname, _ty), arg) in params.iter().zip(&args) {
-        expanded = substitute_ident(&expanded, pname, &format!("({arg})"));
-    }
+    // Thread the caller's `subject`: a match-scoped def body may use `$`, which
+    // must resolve to the ENCLOSING match subject. `$` only errors when the
+    // ultimate context is truly outside a match (`subject == None`). Nested
+    // `@refs` recurse under the cycle guard.
+    let expanded = expand_cel(body, defs, subject, stack)?;
+    // Bind params HYGIENICALLY: substitute every occurrence simultaneously off
+    // the pre-substitution body, so one arg's text can never be re-captured by a
+    // later param's name (`outer(b)=@f(b,1)`, `f(a,b)=a+b`: b stays b, not 1).
+    let expanded = substitute_params(&expanded, &params, &args);
     stack.pop();
     Ok(format!("({expanded})"))
 }
 
-/// Replace whole-identifier occurrences of `name` outside CEL string literals.
-/// An occurrence preceded by `.`/ident-byte or followed by an ident-byte is a
-/// different identifier (`scene.n`, `none`) and is left alone.
-fn substitute_ident(body: &str, name: &str, replacement: &str) -> String {
+/// Bind every parameter of a def body SIMULTANEOUSLY: scan `body` once for
+/// whole-identifier occurrences of any param name (outside CEL string literals),
+/// then splice each occurrence's `(arg)` replacement RIGHT-TO-LEFT. Because the
+/// scan reads the ORIGINAL body and a spliced replacement is never re-scanned,
+/// an argument's text can never be captured by a later param's name (hygiene).
+///
+/// An identifier preceded by `.` (member access: `scene.n`) is a different name
+/// and is left alone; maximal-run matching means `none` never binds param `n`.
+fn substitute_params(body: &str, params: &[(String, Type)], args: &[String]) -> String {
+    if params.is_empty() {
+        return body.to_string();
+    }
+    let binding: BTreeMap<&str, &str> = params
+        .iter()
+        .zip(args)
+        .map(|((p, _ty), a)| (p.as_str(), a.as_str()))
+        .collect();
     let mask = cel_string_mask(body);
     let bytes = body.as_bytes();
-    let mut out = String::with_capacity(body.len());
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    // (start, end, replacement) per param occurrence, collected in source order.
+    let mut edits: Vec<(usize, usize, String)> = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
-        if !mask[i] && body[i..].starts_with(name) {
-            let prev_ok = i == 0 || {
-                let p = bytes[i - 1];
-                !(p.is_ascii_alphanumeric() || p == b'_' || p == b'.')
-            };
-            let end = i + name.len();
-            let next_ok = end >= bytes.len() || {
-                let n = bytes[end];
-                !(n.is_ascii_alphanumeric() || n == b'_')
-            };
-            if prev_ok && next_ok {
-                out.push_str(replacement);
-                i = end;
-                continue;
+        if is_ident(bytes[i]) {
+            let start = i;
+            i += 1;
+            while i < bytes.len() && is_ident(bytes[i]) {
+                i += 1;
             }
+            // A member-access tail (`scene.n`) or a string-literal byte is not a
+            // free parameter reference.
+            let prev_ok = start == 0 || bytes[start - 1] != b'.';
+            if prev_ok && !mask[start] {
+                if let Some(arg) = binding.get(&body[start..i]) {
+                    edits.push((start, i, format!("({arg})")));
+                }
+            }
+        } else {
+            i += 1;
         }
-        let ch_len = body[i..].chars().next().map_or(1, |c| c.len_utf8());
-        out.push_str(&body[i..i + ch_len]);
-        i += ch_len;
+    }
+    let mut out = body.to_string();
+    for (start, end, replacement) in edits.into_iter().rev() {
+        out.replace_range(start..end, &replacement);
     }
     out
 }
@@ -383,5 +425,51 @@ mod tests {
                 "scene.choices.number == 'blunt'"
             ]
         );
+    }
+
+    // Finding 1 (Critical): `scan_refs` returns the outer call AND the refs
+    // nested in its args. Only the top-level ref is spliced; nested refs are
+    // expanded recursively by `expand_ref`, so a length-changing inner
+    // replacement can no longer corrupt the outer call's byte range or panic.
+    #[test]
+    fn nested_fn_refs_expand_without_double_splice_or_panic() {
+        let t = tables(
+            &[("f", "a * 2"), ("g", "b + 1")],
+            &[("f", &["a"]), ("g", &["b"])],
+        );
+        // g(1) = (1)+1, f(that) = that*2 — fully parenthesized, correct.
+        assert_eq!(expand("@f(@g(1))", &t, None).unwrap(), "((((1) + 1)) * 2)");
+
+        // A deeper nest must not panic (exercises shorter/longer replacements).
+        let deep = tables(&[("id", "x"), ("h", "y")], &[("id", &["x"]), ("h", &["y"])]);
+        assert!(expand("@id(@id(@h(1)))", &deep, None).is_ok());
+
+        // Unbalanced nesting degrades to a diagnostic, never a panic.
+        assert!(expand("@f(@g(1)", &t, None).is_err());
+    }
+
+    // Finding 2 (Critical): a match-scoped def body may use `$`; it must resolve
+    // to the ENCLOSING match subject, not be rejected as `$`-outside-match.
+    #[test]
+    fn def_body_dollar_resolves_to_enclosing_match_subject() {
+        let t = tables(&[("is_selected", "$ == 'blunt'")], &[]);
+        assert_eq!(
+            expand("@is_selected", &t, Some("scene.choices.number")).unwrap(),
+            "(scene.choices.number == 'blunt')"
+        );
+        // The same ref outside any <match> still errors (no subject to bind).
+        assert!(expand("@is_selected", &t, None).is_err());
+    }
+
+    // Finding 3 (Important): params bind SIMULTANEOUSLY. Non-hygienic one-at-a-
+    // time binding let f's later param `b` rewrite the arg text `b` (outer's
+    // param), collapsing `@outer(2)` to `1 + 1`; it must stay `(2) + (1)`.
+    #[test]
+    fn param_binding_is_hygienic_no_arg_recapture() {
+        let t = tables(
+            &[("outer", "@f(b, 1)"), ("f", "a + b")],
+            &[("outer", &["b"]), ("f", &["a", "b"])],
+        );
+        assert_eq!(expand("@outer(2)", &t, None).unwrap(), "((((2)) + (1)))");
     }
 }
