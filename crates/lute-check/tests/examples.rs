@@ -57,7 +57,7 @@ fn bianca_example_checks_clean() {
 
 #[test]
 fn undeclared_state_read_is_reported() {
-    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<match on=\"scene.nope\">\n<otherwise>\n:line[narrator]: hi\n</otherwise>\n</match>\n";
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<match on=\"scene.nope\">\n<otherwise>\n:narrator: hi\n</otherwise>\n</match>\n";
     let res = check(&input_for(text));
     assert!(
         res.diagnostics.iter().any(|d| d.code == "E-UNDECLARED"),
@@ -93,7 +93,7 @@ fn two_distinct_undeclared_paths_in_one_slot_both_survive() {
     // span for both (cel-parser 0.10.1 has no per-node offsets). Path-aware
     // dedup must keep BOTH — collapsing only same-path+overlapping-span pairs —
     // so the author sees every undeclared path at once, not one at a time.
-    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<match on=\"scene.a == scene.b\">\n<otherwise>\n:line[narrator]: hi\n</otherwise>\n</match>\n";
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<match on=\"scene.a == scene.b\">\n<otherwise>\n:narrator: hi\n</otherwise>\n</match>\n";
     let res = check(&input_for(text));
     let paths: Vec<&str> = res
         .diagnostics

@@ -49,7 +49,7 @@ fn codes(res: &ComponentSet) -> Vec<&str> {
 }
 
 const GREET: &str =
-    "---\ncomponent: greet\nparams:\n  who: string\n---\n## Greeting.\n:line[x]: hi\n";
+    "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n:x: hi\n";
 
 #[test]
 fn resolves_single_component_with_params() {
@@ -90,7 +90,7 @@ fn duplicate_component_name_across_files_errors() {
     write_lute(
         &dir,
         "b.lute",
-        "---\ncomponent: greet\nparams:\n  who: number\n---\n## G.\n:line[x]: yo\n",
+        "---\ncomponent: greet\nparams:\n  who: number\n---\n## G.\n:x: yo\n",
     );
     let res = resolve_components(
         &dir,
@@ -131,7 +131,7 @@ fn component_malformed_params_is_parse() {
     write_lute(
         &dir,
         "bad.lute",
-        "---\ncomponent: bad\nparams:\n  who: notAType\n---\n## C.\n:line[x]: hi\n",
+        "---\ncomponent: bad\nparams:\n  who: notAType\n---\n## C.\n:x: hi\n",
     );
     let res = resolve_components(&dir, &["bad.lute".to_string()], zero_span());
     assert!(
@@ -145,7 +145,7 @@ fn component_malformed_params_is_parse() {
     write_lute(
         &dir2,
         "bad2.lute",
-        "---\ncomponent: bad2\nparams: 5\n---\n## C.\n:line[x]: hi\n",
+        "---\ncomponent: bad2\nparams: 5\n---\n## C.\n:x: hi\n",
     );
     let res2 = resolve_components(&dir2, &["bad2.lute".to_string()], zero_span());
     assert!(
@@ -162,7 +162,7 @@ fn component_missing_name_is_parse_error() {
     write_lute(
         &dir,
         "anon.lute",
-        "---\nparams:\n  who: string\n---\n## C.\n:line[x]: hi\n",
+        "---\nparams:\n  who: string\n---\n## C.\n:x: hi\n",
     );
     let res = resolve_components(&dir, &["anon.lute".to_string()], zero_span());
     assert!(
@@ -182,12 +182,12 @@ fn import_cycle_is_component_cycle() {
     write_lute(
         &dir,
         "a.lute",
-        "---\ncomponent: a\ncomponents: [b.lute]\n---\n## A.\n:line[x]: a\n",
+        "---\ncomponent: a\ncomponents: [b.lute]\n---\n## A.\n:x: a\n",
     );
     write_lute(
         &dir,
         "b.lute",
-        "---\ncomponent: b\ncomponents: [a.lute]\n---\n## B.\n:line[x]: b\n",
+        "---\ncomponent: b\ncomponents: [a.lute]\n---\n## B.\n:x: b\n",
     );
     let res = resolve_components(&dir, &["a.lute".to_string()], zero_span());
     assert!(
@@ -204,12 +204,12 @@ fn diamond_is_one_identity_no_dup() {
     write_lute(
         &dir,
         "b.lute",
-        "---\ncomponent: b\ncomponents: [shared.lute]\n---\n## B.\n:line[x]: b\n",
+        "---\ncomponent: b\ncomponents: [shared.lute]\n---\n## B.\n:x: b\n",
     );
     write_lute(
         &dir,
         "c.lute",
-        "---\ncomponent: c\ncomponents: [shared.lute]\n---\n## C.\n:line[x]: c\n",
+        "---\ncomponent: c\ncomponents: [shared.lute]\n---\n## C.\n:x: c\n",
     );
     let res = resolve_components(
         &dir,

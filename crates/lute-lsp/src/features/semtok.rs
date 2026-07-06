@@ -140,8 +140,8 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
     for node in nodes {
         match node {
             Node::Line(l) => {
-                // Speaker sits just past the fixed `:line[` prefix (6 bytes).
-                let sp_start = l.span.byte_start + ":line[".len();
+                // Speaker sits just past the leading `:` (dsl §7.1: `:speaker`).
+                let sp_start = l.span.byte_start + ":".len();
                 push(out, sp_start, sp_start + l.speaker.len(), TokType::Content);
                 if !l.text.is_empty() {
                     push(
@@ -426,7 +426,7 @@ mod tests {
     /// the distinct `statePath` type — the two CEL sub-token classes.
     #[test]
     fn ref_and_state_path_get_distinct_types() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :line[f]: a.\n  </when>\n  <otherwise>\n    :line[f]: b.\n  </otherwise>\n</match>\n";
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :f: a.\n  </when>\n  <otherwise>\n    :f: b.\n  </otherwise>\n</match>\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
 
@@ -458,7 +458,7 @@ mod tests {
     /// the arm openers go untokenized and the logic layer is under-highlighted.
     #[test]
     fn choice_and_arm_openers_are_logic_tokens() {
-        let text = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\">\n:line[f]: a.\n</choice>\n</branch>\n<match on=\"scene.x\">\n<when test=\"$ == 1\">\n:line[f]: b.\n</when>\n<otherwise>\n:line[f]: c.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\">\n:f: a.\n</choice>\n</branch>\n<match on=\"scene.x\">\n<when test=\"$ == 1\">\n:f: b.\n</when>\n<otherwise>\n:f: c.\n</otherwise>\n</match>\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
         for (kw, len) in [("<choice", 7u32), ("<when", 5), ("<otherwise", 10)] {
@@ -566,26 +566,26 @@ mod tests {
         assert_eq!(out[1].delta_line, 2);
     }
 
-    /// A UTF-16 length is emitted, not a byte length. `:line` text of `café`
-    /// is 5 bytes (`é` = 2) but 4 UTF-16 units — so the content token's `length`
-    /// must be 4, and a preceding multibyte char must shift the `startChar` in
-    /// UTF-16 units too.
+    /// A UTF-16 length is emitted, not a byte length. Line text `café` is 5 bytes
+    /// (`é` = 2) but 4 UTF-16 units — so the content token's `length` must be 4,
+    /// and a preceding multibyte char (here a `π` attr value; 0.1.0 speakers are
+    /// ASCII idents, dsl §7.1) must shift the `startChar` in UTF-16 units too.
     #[test]
     fn lengths_are_utf16_not_bytes() {
-        let text = "## Shot 1.\n:line[π]: café\n";
+        let text = "## Shot 1.\n:narrator{note=\"π\"}: café\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
 
-        // Speaker `π`: 2 bytes, 1 UTF-16 unit, at the `[`+1 column.
-        let sp = idx.position(text.find('π').unwrap());
+        // Speaker `narrator` sits just past the leading `:` (dsl §7.1) — 8 units.
+        let sp = idx.position(text.find("narrator").unwrap());
         let speaker = decoded
             .iter()
             .find(|&&(l, c, _, _)| l == sp.line - 1 && c == sp.utf16_col)
-            .expect("token on the π speaker");
-        assert_eq!(speaker.2, 1, "π is one UTF-16 unit");
+            .expect("token on the narrator speaker");
+        assert_eq!(speaker.2, 8, "narrator is eight UTF-16 units");
 
         // Text `café`: 5 bytes but 4 UTF-16 units. Its startChar is measured past
-        // the `π` speaker in UTF-16, not bytes.
+        // the multibyte `π` attr value in UTF-16, not bytes.
         let tx = idx.position(text.find("café").unwrap());
         let content = decoded
             .iter()

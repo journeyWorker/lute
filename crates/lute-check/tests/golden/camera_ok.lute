@@ -11,4 +11,4 @@ title: Camera transform
 
 ::camera{focus="bianca" zoom="1.1" duration="0.5" easing="ease-out" wait="false"}
 
-:line[narrator]: The frame drifts in and settles on her as she turns.
+:narrator: The frame drifts in and settles on her as she turns.

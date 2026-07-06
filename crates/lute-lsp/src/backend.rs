@@ -534,7 +534,7 @@ mod tests {
     /// multibyte document: every byte offset round-trips through its own Position.
     #[test]
     fn position_to_byte_round_trips_through_text_index() {
-        let text = "## Shot 1.\n::café{x=\"π\"}\n:line[Ω]: 世界\n";
+        let text = "## Shot 1.\n::café{x=\"π\"}\n:Ω: 世界\n";
         let idx = TextIndex::new(text);
         for byte in 0..=text.len() {
             // Only test char boundaries; a byte mid-char has no LSP position.

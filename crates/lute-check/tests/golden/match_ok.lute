@@ -13,10 +13,10 @@ state:
 
 <branch id="number">
   <choice id="blunt" label="Just ask, flatly">
-    :line[fixer]{code="0050"}: Bianca. Your number.
+    :fixer{code="0050"}: Bianca. Your number.
   </choice>
   <choice id="soft" label="Ask gently">
-    :line[fixer]{code="0052"}: Bianca — would you mind terribly if I had your number?
+    :fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
     ::set{scene.affect.bianca += 1}
   </choice>
 </branch>
@@ -25,12 +25,12 @@ state:
 
 <match on="scene.choices.number">
   <when test="$ == 'soft'">
-    :line[fixer]{delivery="thought"}: I asked nicely, which I am electing not to examine.
+    :fixer{delivery="thought"}: I asked nicely, which I am electing not to examine.
   </when>
   <when test="$ == 'blunt'">
-    :line[fixer]{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening.
+    :fixer{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening.
   </when>
   <otherwise>
-    :line[fixer]{delivery="thought"}: I am, apparently, taking that woman somewhere this evening.
+    :fixer{delivery="thought"}: I am, apparently, taking that woman somewhere this evening.
   </otherwise>
 </match>

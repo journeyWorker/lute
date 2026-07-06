@@ -247,7 +247,7 @@ mod tests {
     /// `:line` node inside it does not add a second fold.
     #[test]
     fn leaf_nodes_do_not_fold() {
-        let text = "## Shot 1.\n:line[narrator]: only prose.\n";
+        let text = "## Shot 1.\n:narrator: only prose.\n";
         let all = folds(text);
         assert_eq!(all.len(), 1, "only the shot folds; the lone :line does not");
     }

@@ -12,8 +12,8 @@ state:
 
 ## Shot 1.
 
-:line[fixer]{code="0052"}: Bianca — would you mind terribly if I had your number?
+:fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
 ::set{scene.affect.bianca += 1}
 
-:line[narrator]: I flinched as the beam landed.
+:narrator: I flinched as the beam landed.
 ::set{scene.flags.saw_beam = true}

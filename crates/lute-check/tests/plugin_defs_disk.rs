@@ -75,7 +75,7 @@ const HDR: &str = "---\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.
 #[test]
 fn plugin_bool_def_from_disk_is_declared_and_clean() {
     let scene = format!(
-        "{HDR}<match on=\"scene.flag\">\n<when test=\"@warm\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n"
+        "{HDR}<match on=\"scene.flag\">\n<when test=\"@warm\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n"
     );
     let codes = codes_for_scene(&scene);
     assert!(
@@ -91,7 +91,7 @@ fn plugin_bool_def_from_disk_is_declared_and_clean() {
 #[test]
 fn plugin_number_def_from_disk_flags_ref_type() {
     let scene = format!(
-        "{HDR}<match on=\"scene.flag\">\n<when test=\"@tally\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n"
+        "{HDR}<match on=\"scene.flag\">\n<when test=\"@tally\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n"
     );
     let codes = codes_for_scene(&scene);
     assert!(

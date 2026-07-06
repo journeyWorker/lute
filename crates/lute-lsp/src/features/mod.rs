@@ -96,7 +96,7 @@ pub(crate) enum Cursor<'a> {
     /// empty braces). Drives attr-key completion; no hover.
     DirectiveAttrArea { directive: &'a str },
     /// On an attribute KEY. `directive` is the owning directive tag (`None` for a
-    /// `:line[...]` attribute, which has no capability schema).
+    /// `:speaker{…}` line attribute, which has no capability schema).
     AttrKey {
         directive: Option<&'a str>,
         key: &'a str,
@@ -840,7 +840,7 @@ mod tests {
     /// same-spelled dotted string literal in a sibling arm test as a use.
     #[test]
     fn references_ignore_path_inside_cel_string_literal() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca = 1}\n<match on=\"scene.affect.bianca\">\n<when test=\"'scene.affect.bianca' == 'x'\">\n:line[f]: a.\n</when>\n<otherwise>\n:line[f]: b.\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca = 1}\n<match on=\"scene.affect.bianca\">\n<when test=\"'scene.affect.bianca' == 'x'\">\n:f: a.\n</when>\n<otherwise>\n:f: b.\n</otherwise>\n</match>\n";
         let (doc, _) = parse(text);
         // Cursor on the `::set` target path.
         let off = text.find("scene.affect.bianca = 1").unwrap();

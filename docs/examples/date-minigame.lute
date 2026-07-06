@@ -32,8 +32,8 @@ state:
 ::music{action="start" mood="bright" assetId="sound-bgm-common-vn-mood-bright-0.mp3" volume="normal"}
 ::auto{character="bianca" anchor="center" action="fade-in-up"}
 
-:line[bianca]{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
-:line[bianca]{code="0020" emotion="content" variant="0"}: Let me show you how I take an order. Watch the rhythm.
+:bianca{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
+:bianca{code="0020" emotion="content" variant="0"}: Let me show you how I take an order. Watch the rhythm.
 
 /*
   The `::minigame` directive is provided by the idola.minigame plugin, activated by the
@@ -51,15 +51,15 @@ state:
 */
 <match on="scene.minigame.service01.rank">
   <when test="$ == 'gold'">
-    :line[bianca]{code="0030" emotion="delighted" variant="1"}: Wonderful! A perfect service!
+    :bianca{code="0030" emotion="delighted" variant="1"}: Wonderful! A perfect service!
     ::set{scene.affect.bianca += 2}
   </when>
   <when test="$ in ['silver', 'bronze']">
-    :line[bianca]{code="0040" emotion="content" variant="0"}: Not bad at all, Mr. Fixer.
+    :bianca{code="0040" emotion="content" variant="0"}: Not bad at all, Mr. Fixer.
     ::set{scene.affect.bianca += 1}
   </when>
   <otherwise>
-    :line[bianca]{code="0050" emotion="shy" variant="0"}: Shall we try once more? The rhythm takes practice.
+    :bianca{code="0050" emotion="shy" variant="0"}: Shall we try once more? The rhythm takes practice.
   </otherwise>
 </match>
 
@@ -67,10 +67,10 @@ state:
 
 <match on="scene.affect.bianca">
   <when test="$ >= 2">
-    :line[fixer]{delivery="thought"}: She is glowing. I have, apparently, passed some test I did not know I was taking.
+    :fixer{delivery="thought"}: She is glowing. I have, apparently, passed some test I did not know I was taking.
   </when>
   <otherwise>
-    :line[fixer]{delivery="thought"}: She files the result away with the patience of someone who has all evening.
+    :fixer{delivery="thought"}: She files the result away with the patience of someone who has all evening.
   </otherwise>
 </match>
 

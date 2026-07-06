@@ -11,6 +11,6 @@ title: Cut-in
 
 ::cut{assetId="CUT.scenarios.bianca.s01ep02.01" action="show" full="true"}
 
-:line[narrator]: The beam lands full-frame, a single confident line of light.
+:narrator: The beam lands full-frame, a single confident line of light.
 
 ::cut{assetId="CUT.scenarios.bianca.s01ep02.01" action="hide"}

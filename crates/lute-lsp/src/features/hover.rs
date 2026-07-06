@@ -227,7 +227,7 @@ mod tests {
         text.find(needle).expect("needle present") + 1
     }
 
-    const WITH_DEF_FOND: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@fond\">\n    :line[fixer]: gently.\n  </when>\n  <otherwise>\n    :line[fixer]: bluntly.\n  </otherwise>\n</match>\n";
+    const WITH_DEF_FOND: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@fond\">\n    :fixer: gently.\n  </when>\n  <otherwise>\n    :fixer: bluntly.\n  </otherwise>\n</match>\n";
 
     #[test]
     fn hover_on_ref_shows_def_cel() {
@@ -416,7 +416,7 @@ mod tests {
     #[test]
     fn hover_on_imported_ref_shows_def() {
         // `@helped` is NOT declared inline — it is only imported via `uses:`.
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@helped\">\n    :line[fixer]: yes.\n  </when>\n  <otherwise>\n    :line[fixer]: no.\n  </otherwise>\n</match>\n";
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@helped\">\n    :fixer: yes.\n  </when>\n  <otherwise>\n    :fixer: no.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = pos_on(text, "@helped");
         let h = hover_at(&doc, &load_core_snapshot(), &schema_imports(), off).unwrap();
