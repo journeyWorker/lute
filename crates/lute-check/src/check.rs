@@ -1636,7 +1636,7 @@ fn normalize_spans(idx: &TextIndex, text: &str, diags: &mut [Diagnostic]) {
 /// A short, one-line desugared summary of a top-level node for the preview.
 fn node_summary(node: &Node) -> String {
     match node {
-        Node::Line(l) => format!(":line[{}]", l.speaker),
+        Node::Line(l) => format!(":{}", l.speaker),
         Node::Directive(d) => format!("::{}", d.tag),
         Node::Set(s) => format!("::set{{{} {} …}}", s.path, s.op),
         Node::Branch(b) => format!("<branch id=\"{}\"> ({} choices)", b.id, b.choices.len()),
