@@ -4,9 +4,9 @@ expression: res.resolved
 ---
 commands_preview:
   - "::auto"
-  - ":line[narrator]"
+  - ":narrator"
   - "<branch id=\"number\"> (2 choices)"
-  - ":line[bianca]"
+  - ":bianca"
 timeline_tables: []
 injections:
   - kind:

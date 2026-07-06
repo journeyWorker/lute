@@ -3,10 +3,10 @@ source: crates/lute-check/tests/golden.rs
 expression: res.resolved
 ---
 commands_preview:
-  - ":line[narrator]"
+  - ":narrator"
   - "<timeline> (4 tracks)"
   - "::set{scene.flags.saw_beam = …}"
-  - ":line[narrator]"
+  - ":narrator"
 timeline_tables:
   - rows:
       - at: 0
