@@ -151,12 +151,19 @@ fn walk_branch(
 }
 
 /// A `<hub>` (dsl §7.3.2): hub *checking* is gated by `E-HUB-UNSUPPORTED` (D6)
-/// until Plan B, so definite-assignment stays conservative here — each choice body
-/// is walked on its own fork for its interior reads/writes, but nothing is folded
-/// back into the surviving set (a hub never proves a path assigned past the block).
+/// until Plan B, so definite-assignment stays conservative here — each choice's
+/// `when` guard and body are walked on its own fork (mirroring `walk_branch`: the
+/// guard's value reads are still flagged), but nothing is folded back into the
+/// surviving set (a hub never proves a path assigned past the block).
 fn walk_hub(hub: &Hub, schema: &StateSchema, assigned: &mut Assigned, diags: &mut Vec<Diagnostic>) {
     for choice in &hub.choices {
         let mut arm = assigned.clone();
+        // Same guard-read check as `walk_branch` — a maybe-unset read inside a
+        // choice `when` must not escape defassign. The arm is discarded, so a
+        // guard-proven path never survives past the block (conservative).
+        if let Some(cond) = &choice.when {
+            apply_condition(cond, schema, &mut arm, diags);
+        }
         walk_nodes(&choice.body, schema, &mut arm, diags);
     }
 }
