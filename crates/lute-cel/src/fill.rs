@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn fills_valid_cel_slots_and_reports_invalid() {
-        let text = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.a\">\n<when test=\"1 +\">\n:line[narrator]: hi\n</when>\n<otherwise>\n:line[narrator]: bye\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.a\">\n<when test=\"1 +\">\n:narrator: hi\n</when>\n<otherwise>\n:narrator: bye\n</otherwise>\n</match>\n";
         let (mut doc, _) = parse(text);
         let mut arena = CelArena::default();
         let errs = fill_document(&mut arena, &mut doc);
@@ -89,7 +89,7 @@ mod tests {
         let text = concat!(
             "---\ncharacter: x\n---\n",
             "## Shot 1.\n",
-            ":line[narrator]{mood=@joy}: hi\n", // Line.attrs Ref
+            ":narrator{mood=@joy}: hi\n", // Line.attrs Ref
             "::camera{focus=@fond}\n",          // Directive.attrs Ref
             "::set{scene.a = 1}\n",             // top-level Set.expr
             "<branch id=\"b\" flag=@joy>\n",    // Branch.attrs Ref

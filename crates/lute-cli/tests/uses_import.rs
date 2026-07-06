@@ -22,8 +22,8 @@ fn temp_dir(tag: &str) -> PathBuf {
 const SCHEMA: &str = "---\nstate:\n  run.choseHelp: { type: bool, default: false }\n---\n";
 // Scene reads the imported run path; `run.choseHelp` is defaulted so it's clean.
 const SCENE: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\nuses: schema.lute\n---\n\
-## Shot 1.\n<match on=\"run.choseHelp\">\n<when test=\"$ == true\">:line[x]: a\n</when>\n\
-<otherwise>:line[x]: b\n</otherwise>\n</match>\n";
+## Shot 1.\n<match on=\"run.choseHelp\">\n<when test=\"$ == true\">:x: a\n</when>\n\
+<otherwise>:x: b\n</otherwise>\n</match>\n";
 
 #[test]
 fn cli_resolves_uses_import_exits_zero() {
@@ -48,7 +48,7 @@ fn cli_missing_import_flags_not_found() {
     let scene = dir.join("scene.lute");
     std::fs::write(
         &scene,
-        "---\ncharacter: x\nseason: 1\nepisode: 1\nuses: nope.lute\n---\n## Shot 1.\n:line[x]: hi\n",
+        "---\ncharacter: x\nseason: 1\nepisode: 1\nuses: nope.lute\n---\n## Shot 1.\n:x: hi\n",
     )
     .unwrap();
     let out = Command::new(BIN)

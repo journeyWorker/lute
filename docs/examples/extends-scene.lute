@@ -8,8 +8,8 @@ uses: extends-child.lute
 ## Shot 1.
 
 <match on="run.blessed">
-  <when test="@wealthy">:line[sofia]: Fortune smiles on me today.
+  <when test="@wealthy">:sofia: Fortune smiles on me today.
 </when>
-  <otherwise>:line[sofia]: Still waiting on my luck to turn.
+  <otherwise>:sofia: Still waiting on my luck to turn.
 </otherwise>
 </match>

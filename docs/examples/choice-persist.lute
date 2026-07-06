@@ -21,17 +21,17 @@ state:
 
 ## Shot 1.
 
-:line[narrator]: Sofia had slipped on the wet step. You could help — or walk on.
+:narrator: Sofia had slipped on the wet step. You could help — or walk on.
 
 <branch id="sofaHelp">
   <choice id="help" label="Help her up" persist="run" as="run.metHelpfully">
-    :line[sofia]: Thank you. I won't forget this.
+    :sofia: Thank you. I won't forget this.
   </choice>
   <choice id="warmly" label="Help, and stay a while" persist="run" as="run.sofaHelpOutcome" value="warm">
-    :line[sofia]: You're very kind — really.
+    :sofia: You're very kind — really.
   </choice>
   <choice id="tip" label="Leave a little something" persist="run" as="run.tip" value="5">
-    :line[sofia]: Oh — you didn't have to.
+    :sofia: Oh — you didn't have to.
   </choice>
 </branch>
 
@@ -43,9 +43,9 @@ state:
 */
 <match on="run.metHelpfully">
   <when test="$ == true">
-    :line[sofia]: You helped me back then. I've been meaning to thank you again.
+    :sofia: You helped me back then. I've been meaning to thank you again.
   </when>
   <otherwise>
-    :line[sofia]: ...Have we met before?
+    :sofia: ...Have we met before?
   </otherwise>
 </match>

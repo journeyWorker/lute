@@ -25,7 +25,7 @@ fn tag_backfills_code_and_is_idempotent() {
     let f = dir.join("scene.lute");
     std::fs::write(
         &f,
-        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[narrator]: hi\n",
+        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator: hi\n",
     )
     .unwrap();
     let out = Command::new(BIN)

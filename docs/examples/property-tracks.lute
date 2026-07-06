@@ -18,7 +18,7 @@ episode: 1
 ::bg{location="rooftop" time="evening" assetId="BG.space.rooftop.exterior.evening"}
 ::auto{character="bianca" action="idle"}
 
-:line[narrator]: She stepped into frame as the camera swung to meet her.
+:narrator: She stepped into frame as the camera swung to meet her.
 
 <timeline duration="1.2">
   <track subject="bianca" property="pos">
@@ -33,4 +33,4 @@ episode: 1
   </track>
 </timeline>
 
-:line[bianca]: Both at once — that is the whole point of a split performance.
+:bianca: Both at once — that is the whole point of a split performance.
