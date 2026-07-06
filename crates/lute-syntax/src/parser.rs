@@ -9,7 +9,7 @@
 //!    into the ORIGINAL text (no remap table). All [`Span`]s are original-source
 //!    offsets and line/column come from a [`TextIndex`] over the original text.
 //! 3. The body is split into lines and each non-blank line is classified by the
-//!    normative §4.3 precedence (`## ` → `# ` → `::set{` → `::` → `:line[` →
+//!    normative §4.3 precedence (`## ` → `# ` → `::set{` → `::` → `:`ident →
 //!    `<`tag → error). Block opens (`<branch>`/`<match>`/`<timeline>`) recurse
 //!    via a per-block loop that matches the JSX self-naming close by tag name.
 
@@ -266,8 +266,11 @@ impl Parser<'_> {
         if trimmed.starts_with("::") {
             return Some(self.parse_directive());
         }
-        if trimmed.starts_with(":line[") {
-            return Some(self.parse_line());
+        // dsl §4.3 rule 5: `:` ident — content line. (`::` rules already matched above.)
+        if trimmed.starts_with(':')
+            && trimmed.as_bytes().get(1).is_some_and(|b| b.is_ascii_alphabetic())
+        {
+            return self.parse_line();
         }
         if trimmed.starts_with('<') {
             match open_tag_name(&trimmed).as_deref() {
@@ -382,23 +385,30 @@ impl Parser<'_> {
         })
     }
 
-    /// `Line ::= ":line[" Speaker "]" Attrs? ":" WS Text` (§7.1). Text is opaque
-    /// to EOL (§4.4). Layer = Content.
-    fn parse_line(&mut self) -> Node {
+    /// `Line ::= ":" Speaker Attrs? ":" WS Text` (dsl §7.1). Text is opaque to
+    /// EOL except `{{…}}` (§4.4, §7.6). Layer = Content.
+    fn parse_line(&mut self) -> Option<Node> {
         let i = self.cursor;
         let (s, e) = self.lines[i];
         let cstart = s + leading_ws(&self.body[s..e]);
         let line_end = s + self.body[s..e].trim_end().len();
         let b = self.body.as_bytes();
-        let br_open = cstart + ":line".len(); // at '['
-        let mut j = br_open + 1;
+        let mut j = cstart + 1; // past ':'
         let sp_start = j;
-        while j < e && b[j] != b']' {
+        while j < e && is_ident_byte(b[j]) {
             j += 1;
         }
         let speaker = self.body[sp_start..j].to_string();
-        if j < e {
-            j += 1; // past ']'
+        // Migration fix-it (dsl §7.1): the removed 0.0.1 bracket form.
+        if speaker == "line" && j < e && b[j] == b'[' {
+            self.emit_line(
+                E_UNCLASSIFIED,
+                "`:line[speaker]` was removed in 0.1.0 — write `:speaker{…}: text`",
+                i,
+                Layer::Content,
+            );
+            self.cursor += 1;
+            return None;
         }
         let mut attrs = Vec::new();
         if j < e && b[j] == b'{' {
@@ -406,14 +416,19 @@ impl Parser<'_> {
             attrs = a;
             j = after;
         }
+        if !(j < e && b[j] == b':') {
+            self.emit_line(
+                E_UNCLASSIFIED,
+                "content line needs a second `:` before its text (dsl §7.1)",
+                i,
+                Layer::Content,
+            );
+            self.cursor += 1;
+            return None;
+        }
+        j += 1; // past second ':'
         while j < e && (b[j] == b' ' || b[j] == b'\t') {
             j += 1;
-        }
-        if j < e && b[j] == b':' {
-            j += 1; // past ':'
-        }
-        while j < e && (b[j] == b' ' || b[j] == b'\t') {
-            j += 1; // WS separator
         }
         let text_start = j;
         let text_raw = self.body[text_start..line_end.max(text_start)].trim_end();
@@ -421,14 +436,14 @@ impl Parser<'_> {
         let text_span = self.span(text_start, text_end);
         let span = self.span(cstart, line_end);
         self.cursor += 1;
-        Node::Line(Line {
+        Some(Node::Line(Line {
             speaker,
             attrs,
             text: text_raw.to_string(),
             text_span,
-            interps: Vec::new(),
+            interps: Vec::new(), // filled in Task 7
             span,
-        })
+        }))
     }
 }
 
@@ -606,7 +621,7 @@ mod tests {
 
     #[test]
     fn line_text_is_opaque_to_eol() {
-        let (doc, _) = parse("---\ncharacter: x\n---\n## Shot 1.\n:line[narrator]: (a) <b> : c\n");
+        let (doc, _) = parse("---\ncharacter: x\n---\n## Shot 1.\n:narrator: (a) <b> : c\n");
         if let Node::Line(l) = &doc.shots[0].body[0] {
             assert_eq!(l.text, "(a) <b> : c");
             assert_eq!(l.speaker, "narrator");
@@ -690,7 +705,7 @@ mod tests {
         // Regression (T2.3 review Critical): attr-derived CEL slots must have
         // span == the inner value bytes, so src[slot.span] == slot.raw (matching
         // Set slots). Otherwise Phase-3 CEL sub-diagnostics drift by key.len()+2.
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n<when test=\"$ == 'gold'\">\n:line[narrator]: hi\n</when>\n<otherwise>\n:line[narrator]: bye\n</otherwise>\n</match>\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n<when test=\"$ == 'gold'\">\n:narrator: hi\n</when>\n<otherwise>\n:narrator: bye\n</otherwise>\n</match>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
         let slot_ok = |s: &CelSlot| {
@@ -713,14 +728,14 @@ mod tests {
 
     #[test]
     fn stray_line_under_branch_is_diagnosed() {
-        // §7.3: a <branch> body admits only <choice> children. A direct :line is
+        // §7.3: a <branch> body admits only <choice> children. A direct content line is
         // invalid structure and MUST be reported (not silently dropped), mirroring
         // the <track>/E-TIMELINE-CONTENT rule.
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n<branch id=\"b\">\n:line[narrator]: stray\n<choice id=\"c\" label=\"L\">\n:line[narrator]: ok\n</choice>\n</branch>\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<branch id=\"b\">\n:narrator: stray\n<choice id=\"c\" label=\"L\">\n:narrator: ok\n</choice>\n</branch>\n";
         let (_doc, diags) = parse(src);
         assert!(
             diags.iter().any(|d| d.code == E_LOGIC_CONTENT),
-            "stray :line under <branch> must be diagnosed, got {diags:?}"
+            "stray content line under <branch> must be diagnosed, got {diags:?}"
         );
     }
 
@@ -728,11 +743,37 @@ mod tests {
     fn stray_directive_under_match_is_diagnosed() {
         // §7.3: a <match> body admits only <when>/<otherwise>. A direct ::set is
         // invalid structure and MUST be reported, not silently skipped.
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.x\">\n::set{scene.x = 1}\n<otherwise>\n:line[narrator]: ok\n</otherwise>\n</match>\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.x\">\n::set{scene.x = 1}\n<otherwise>\n:narrator: ok\n</otherwise>\n</match>\n";
         let (_doc, diags) = parse(src);
         assert!(
             diags.iter().any(|d| d.code == E_LOGIC_CONTENT),
             "stray ::set under <match> must be diagnosed, got {diags:?}"
         );
+    }
+
+    #[test]
+    fn content_line_short_form() {
+        let (doc, diags) = parse("## Shot 1.\n:bianca{code=\"0010\"}: Hello!\n:narrator: Quiet.\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        let body = &doc.shots[0].body;
+        let Node::Line(l) = &body[0] else { panic!() };
+        assert_eq!(l.speaker, "bianca");
+        assert_eq!(l.text, "Hello!");
+        let Node::Line(n) = &body[1] else { panic!() };
+        assert_eq!(n.speaker, "narrator");
+    }
+
+    #[test]
+    fn legacy_line_bracket_form_is_rejected_with_fixit() {
+        let (_, diags) = parse("## Shot 1.\n:line[bianca]{code=\"0010\"}: Hello!\n");
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "E-UNCLASSIFIED");
+        assert!(diags[0].message.contains("0.1.0"), "fix-it hint: {}", diags[0].message);
+    }
+
+    #[test]
+    fn content_line_missing_second_colon_is_error() {
+        let (_, diags) = parse("## Shot 1.\n:bianca no colon here\n");
+        assert_eq!(diags[0].code, "E-UNCLASSIFIED");
     }
 }

@@ -84,7 +84,7 @@ fn bianca_block_assembly_is_correct() {
     assert_eq!(branch.choices.len(), 2);
     assert_eq!(branch.choices[1].id, "soft");
     assert_eq!(branch.choices[1].label, "Ask gently");
-    assert_eq!(branch.choices[1].body.len(), 2); // :line + ::set
+    assert_eq!(branch.choices[1].body.len(), 2); // :speaker line + ::set
 
     // Shot 5: <match on="…"> with two <when>s + <otherwise>.
     let m = doc.shots[4]
