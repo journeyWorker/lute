@@ -34,6 +34,9 @@ pub const E_TIMELINE_CONTENT: &str = "E-TIMELINE-CONTENT";
 pub const E_LOGIC_CONTENT: &str = "E-LOGIC-CONTENT";
 /// Diagnostic code: a `/* … */` block comment ran to EOF (§4.2).
 pub const E_COMMENT_UNTERMINATED: &str = "E-COMMENT-UNTERMINATED";
+/// Diagnostic code: a `## ` heading was neither `Shot|Scene <int>.` nor a
+/// bookend keyword (`Prologue|Epilogue|프롤로그|에필로그`) (§6.3).
+pub const E_SHOT_HEADING: &str = "E-SHOT-HEADING";
 
 /// Parse a `.lute` document into its AST and parse diagnostics.
 ///
@@ -213,7 +216,19 @@ impl Parser<'_> {
         let head_end = self.line_content_end(i);
         let full = self.trimmed(i);
         let heading = full.strip_prefix("## ").unwrap_or(&full).to_string();
-        let number = parse_shot_number(&heading);
+        let number = match classify_heading(&heading) {
+            HeadingKind::Numbered(n) => Some(n),
+            HeadingKind::Bookend => None,
+            HeadingKind::Invalid => {
+                self.emit_line(
+                    E_SHOT_HEADING,
+                    "shot heading must be `Shot N.`/`Scene N.` or Prologue/Epilogue (dsl §6.3)",
+                    i,
+                    Layer::Content,
+                );
+                None
+            }
+        };
         let start_o = self.orig(cstart);
         let head_end_o = self.orig(head_end);
         self.cursor += 1;
@@ -482,15 +497,36 @@ fn split_lines(body: &str) -> Vec<(usize, usize)> {
     v
 }
 
-/// `## Shot 3.` / `## Scene 3.` → `Some(3)`; Korean `프롤로그`/`에필로그` → `None`.
-fn parse_shot_number(heading: &str) -> Option<i64> {
-    for kw in ["Shot ", "Scene "] {
+enum HeadingKind {
+    Numbered(i64),
+    Bookend, // Prologue / Epilogue / 프롤로그 / 에필로그
+    Invalid,
+}
+
+/// Enforce `ShotHeading` (dsl §6.3, [`E_SHOT_HEADING`]): `Shot|Scene <int>.` or
+/// a bookend keyword (`Prologue|Epilogue|프롤로그|에필로그`), each + optional
+/// trailing Text. `strip_prefix` on `&str` is byte-safe for the multi-byte
+/// Korean keywords.
+fn classify_heading(heading: &str) -> HeadingKind {
+    for kw in ["Shot", "Scene"] {
         if let Some(rest) = heading.strip_prefix(kw) {
+            let rest = rest.trim_start();
             let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-            return digits.parse().ok();
+            let after = &rest[digits.len()..];
+            if !digits.is_empty() && after.starts_with('.') {
+                return HeadingKind::Numbered(digits.parse().unwrap());
+            }
+            return HeadingKind::Invalid;
         }
     }
-    None
+    for kw in ["Prologue", "Epilogue", "프롤로그", "에필로그"] {
+        if let Some(rest) = heading.strip_prefix(kw) {
+            if rest.is_empty() || rest.starts_with(' ') {
+                return HeadingKind::Bookend;
+            }
+        }
+    }
+    HeadingKind::Invalid
 }
 
 /// Tag name of an open tag line (`<branch …>` → `Some("branch")`).
@@ -656,6 +692,38 @@ mod tests {
     fn unrecognized_line_is_error() {
         let (_doc, diags) = parse("---\ncharacter: x\n---\n## Shot 1.\ngarbage prose\n");
         assert!(diags.iter().any(|d| d.code == "E-UNCLASSIFIED"));
+    }
+
+    #[test]
+    fn bad_shot_heading_is_diagnosed() {
+        for bad in ["## Chapter 1.", "## Shot .", "## Shot 3", "## Prolog"] {
+            let (_, diags) = parse(&format!("{bad}\n:narrator: hi.\n"));
+            assert!(diags.iter().any(|d| d.code == "E-SHOT-HEADING"), "{bad}");
+        }
+    }
+
+    #[test]
+    fn all_four_heading_keywords_parse() {
+        for good in [
+            "## Shot 1.",
+            "## Scene 2. Title",
+            "## Prologue",
+            "## Epilogue tail",
+            "## 프롤로그",
+            "## 에필로그",
+        ] {
+            let (_, diags) = parse(&format!("{good}\n:narrator: hi.\n"));
+            assert!(diags.is_empty(), "{good}: {diags:?}");
+        }
+    }
+
+    #[test]
+    fn otherwise_with_attrs_is_parse_error() {
+        let src = "## Shot 1.\n<match on=\"app.rating\">\n<when test=\"$ == 'teen'\">\n:narrator: a.\n</when>\n<otherwise foo=\"bar\">\n:narrator: b.\n</otherwise>\n</match>\n";
+        let (_, diags) = parse(src);
+        assert!(diags
+            .iter()
+            .any(|d| d.code == "E-LOGIC-CONTENT" && d.message.contains("otherwise")));
     }
 
     #[test]
