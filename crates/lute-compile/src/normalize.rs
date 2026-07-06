@@ -497,7 +497,7 @@ components: [greet.component.lute]
 ## Shot 1.
 
 ::use{component="greet" extra="oops"}
-:line[narrator]: And the scene carries on.
+:narrator: And the scene carries on.
 "#;
         let mut doc = parse_clean(src);
         let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
@@ -540,13 +540,13 @@ episode: 1
 
 <branch id="sofaHelp">
   <choice id="help" label="Help her up" persist="run" as="run.metHelpfully">
-    :line[elena]: Thank you.
+    :elena: Thank you.
   </choice>
   <choice id="warmly" label="Stay a while" persist="run" as="run.outcome" value="warm">
-    :line[elena]: Kind.
+    :elena: Kind.
   </choice>
   <choice id="tip" label="Leave a tip" persist="run" as="run.tip" value="5">
-    :line[elena]: Oh.
+    :elena: Oh.
   </choice>
 </branch>
 "#;
