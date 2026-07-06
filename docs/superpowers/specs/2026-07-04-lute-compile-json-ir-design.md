@@ -540,3 +540,24 @@ per-language artifact copies. The artifact keeps `lineId` + source `text` (+ `pl
 translations ship as an **id-keyed runtime string table** (`lineId → text`) per locale, loaded by
 the engine. Build time **validates** (A6 placeholder-set equality, key coverage) rather than
 fills. DSL 0.1.0 §12's "fill the compile target's per-language text slots" is amended accordingly.
+
+### A12. `plugin` records carry their effect bindings (amends §4.4)
+
+The audited `plugin` record (`::serve`) carries only `{tag, fields, wait}` — but the manifest's
+`effects.writes` (which state slots the bridge result lands in, e.g. `scene.serve.<key>.rank ←
+fromBridgeResult:rank`) is NOT in the artifact. A runtime executing the artifact alone cannot know
+where to write the bridge result — violating the self-containedness rule above.
+
+Every `plugin` record with declared `effects` gains an **`effects`** field, resolved at compile
+time (attr templates like `fromAttr` already substituted):
+
+```jsonc
+"effects": [
+  { "path": "scene.serve.debut.rank",     "from": { "bridgeResult": "rank" } },
+  { "path": "scene.serve.debut.attempts", "from": { "op": "increment", "by": 1 } }
+]
+```
+
+The runtime's bridge dispatch becomes generic: call host with `{tag, fields}`, apply `effects`
+to the state store from the returned result. No per-plugin knowledge in any runtime; the manifest
+stays a compile-time-only input (snapshot-first, plugin-system §3.4).
