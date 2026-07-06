@@ -653,6 +653,7 @@ mod tests {
 
     fn when_arm(test: &str) -> Arm {
         Arm::When {
+            is: None,
             test: CelSlot {
                 kind: CelKind::Condition,
                 raw: test.into(),

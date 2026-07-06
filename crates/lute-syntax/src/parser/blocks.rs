@@ -7,7 +7,7 @@
 //! lifted onto [`Clip::at`] (the "`at` outside a timeline" rule is a §7.5 schema
 //! check, deferred to the checker).
 
-use super::attrs::{take_cel, take_str};
+use super::attrs::{take_cel, take_str, take_str_spanned};
 use super::{
     close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
 };
@@ -225,6 +225,12 @@ impl Parser<'_> {
     fn parse_when(&mut self) -> Arm {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
+        // `is="…"` (dsl §7.3.1) is a literal pattern, NOT a CEL expression:
+        // preserve it verbatim (trimmed) with its value span. `None` when absent.
+        let is = take_str_spanned(&mut attrs, "is").map(|(raw, span)| IsPattern {
+            raw: raw.trim().to_string(),
+            span,
+        });
         let test = take_cel(&mut attrs, "test", CelKind::Condition).unwrap_or_else(|| {
             CelSlot::raw(
                 CelKind::Condition,
@@ -234,6 +240,7 @@ impl Parser<'_> {
         });
         let (body, end_o) = self.parse_block_body("when", &open);
         Arm::When {
+            is,
             test,
             body,
             span: self.span_o(open.start_o, end_o),
