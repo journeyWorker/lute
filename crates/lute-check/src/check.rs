@@ -81,6 +81,12 @@ use crate::{
 /// from `fill_document`'s errors; the slot's `ast` stays `None`).
 const E_CEL_PARSE: &str = "E-CEL-PARSE";
 
+/// Transitional gate (D6): `<hub>` *checking* is deferred to Plan B (the 0.1.0
+/// checker cutover). Until then the main node walk emits this so a hub document
+/// can never pass clean-check — keeping the D6 clean-check gate sound (a hub doc
+/// cannot compile). Plan B replaces this constant with real hub semantics.
+pub const E_HUB_UNSUPPORTED: &str = "E-HUB-UNSUPPORTED";
+
 /// Parse errors that corrupt the node stream, making the `Resolved` view
 /// misleading (see the Some-vs-None policy in the module docs).
 const STRUCTURAL_CODES: &[&str] = &[
@@ -641,6 +647,22 @@ impl Walker<'_> {
                         }
                     }
                 }
+                Node::Hub(h) => {
+                    // Transitional D6 gate: hub *checking* is Plan B work. Emit an
+                    // error so a hub document can never pass clean-check (and thus
+                    // never compiles), keeping the D6 clean-check gate sound until
+                    // Plan B lands real hub semantics.
+                    self.diags.push(Diagnostic {
+                        code: E_HUB_UNSUPPORTED.to_string(),
+                        severity: Severity::Error,
+                        message: "<hub> checking lands in the 0.1.0 checker cutover (Plan B); document cannot pass check yet"
+                            .to_string(),
+                        span: h.span,
+                        layer: Layer::Logic,
+                        fixits: Vec::new(),
+                        provenance: None,
+                    });
+                }
             }
         }
     }
@@ -922,6 +944,11 @@ fn walk_component_body(
                 "a component body must be presentational (dsl §13): a `<timeline>` is not allowed in v1".to_string(),
                 tl.span,
             )),
+            Node::Hub(h) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                "a component body must be presentational (dsl §13): a `<hub>` logic block is not allowed in v1".to_string(),
+                h.span,
+            )),
         }
     }
 }
@@ -996,6 +1023,11 @@ fn collect_use_targets(nodes: &[Node], out: &mut Vec<String>) {
                             }
                         }
                     }
+                }
+            }
+            Node::Hub(h) => {
+                for c in &h.choices {
+                    collect_use_targets(&c.body, out);
                 }
             }
             Node::Line(_) | Node::Set(_) => {}
@@ -1357,6 +1389,11 @@ fn fold_slots_nodes(
                     }
                 }
             }
+            Node::Hub(h) => {
+                for c in &h.choices {
+                    fold_slots_nodes(&c.body, snapshot, schema);
+                }
+            }
             Node::Line(_) | Node::Set(_) => {}
         }
     }
@@ -1605,5 +1642,6 @@ fn node_summary(node: &Node) -> String {
         Node::Branch(b) => format!("<branch id=\"{}\"> ({} choices)", b.id, b.choices.len()),
         Node::Match(m) => format!("<match on=\"{}\"> ({} arms)", m.subject.raw, m.arms.len()),
         Node::Timeline(tl) => format!("<timeline> ({} tracks)", tl.tracks.len()),
+        Node::Hub(h) => format!("<hub> ({} choices)", h.choices.len()),
     }
 }

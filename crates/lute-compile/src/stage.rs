@@ -71,6 +71,12 @@ pub fn walk_seq(
                 let cont = reachable_after(&nodes[i + 1..], tail);
                 state = walk_timeline(em, tl, state, cx, &cont);
             }
+            Node::Hub(_) => {
+                // A `<hub>` document is rejected at check time by
+                // `E-HUB-UNSUPPORTED` (D6 clean-check gate), so it can never reach
+                // lowering. Plan B replaces this with real hub CFG lowering.
+                unreachable!("gated by E-HUB-UNSUPPORTED (D6)")
+            }
         }
     }
     state

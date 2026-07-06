@@ -161,6 +161,11 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
                     }
                 }
             }
+            Node::Hub(h) => {
+                for choice in &h.choices {
+                    collect_lines(&choice.body, out);
+                }
+            }
             Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
         }
     }

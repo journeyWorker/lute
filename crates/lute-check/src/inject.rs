@@ -448,6 +448,7 @@ mod tests {
             attrs,
             text: "…".to_string(),
             text_span: span(),
+            interps: Vec::new(),
             span: span(),
         })
     }
