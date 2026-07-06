@@ -38,9 +38,18 @@ fn tag_backfills_code_and_is_idempotent() {
         String::from_utf8_lossy(&out.stderr)
     );
     let after = std::fs::read_to_string(&f).unwrap();
+    // Pin the exact 0.1.0 rewrite shape (Task 9a): `code` is inserted as
+    // `{code="…"}` BETWEEN the speaker ident and the second colon — not merely
+    // present somewhere. A tagger that placed the code in the wrong slot (or
+    // reordered/dropped other attrs) would fail this, unlike a bare substring.
     assert!(
-        after.contains("code=\"0010\""),
-        "code back-filled:\n{after}"
+        after.contains(":narrator{code=\"0010\"}: hi"),
+        "expected `:narrator{{code=\"0010\"}}: hi`, got:\n{after}"
+    );
+    assert_eq!(
+        after,
+        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator{code=\"0010\"}: hi\n",
+        "full file must match the 0.1.0 :speaker{{code}} rewrite exactly"
     );
     // idempotent: second run changes nothing
     let out2 = Command::new(BIN)
