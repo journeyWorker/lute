@@ -202,6 +202,15 @@ impl Parser<'_> {
     /// `Otherwise ::= "<otherwise>" Node* "</otherwise>"` (§7.3, §11.2).
     fn parse_otherwise(&mut self) -> Arm {
         let open = self.parse_open_tag();
+        if !open.attrs.is_empty() {
+            self.emit_o(
+                E_LOGIC_CONTENT,
+                "<otherwise> takes no attributes (dsl §7.3)".to_string(),
+                open.start_o,
+                open.end_o,
+                Layer::Logic,
+            );
+        }
         let (body, end_o) = self.parse_block_body("otherwise", &open);
         Arm::Otherwise {
             body,
