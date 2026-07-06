@@ -423,7 +423,7 @@ mod tests {
             .iter()
             .map(|n| match n {
                 Node::Directive(d) => format!("::{}", d.tag),
-                Node::Line(l) => format!(":line[{}]", l.speaker),
+                Node::Line(l) => format!(":{}", l.speaker),
                 _ => "other".to_string(),
             })
             .collect();
@@ -432,9 +432,9 @@ mod tests {
             vec![
                 format!("::{COMPONENT_BEGIN}"),
                 "::auto".to_string(),
-                ":line[narrator]".to_string(),
+                ":narrator".to_string(),
                 format!("::{COMPONENT_END}"),
-                ":line[narrator]".to_string(),
+                ":narrator".to_string(),
             ]
         );
         // `character=@who` became the VALUE-LEVEL string arg (whole-slot bind).

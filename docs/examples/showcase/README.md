@@ -10,7 +10,7 @@ cargo build -p lute-cli
   --project docs/examples/showcase        # exit 0, 0 warnings
 ```
 
-`lute tag` back-fills stable `code`s into untagged `:line`s and is idempotent
+`lute tag` back-fills stable `code`s into untagged content lines and is idempotent
 (smoke-test on a throwaway copy *inside this dir* so `uses:` still resolves —
 `uses:`/`extends:` are resolved relative to the scene file, so a bare `/tmp`
 copy would report `E-USES-NOT-FOUND`):
@@ -106,9 +106,9 @@ rm docs/examples/showcase/_t.lute
 ### Content & directives
 | Feature | Location |
 |---|---|
-| `:line[narrator]` | `episode01.lute:48, 190, 193` |
-| `:line[speaker]` w/ attrs (`code`/`emotion`/`variant`) | 49, 99, 103, … |
-| `:line` monologue (`delivery="thought"`) | 79, 113, 147, … |
+| `:narrator` | `episode01.lute:48, 190, 193` |
+| `:speaker` w/ attrs (`code`/`emotion`/`variant`) | 49, 99, 103, … |
+| `:speaker{delivery="thought"}` monologue | 79, 113, 147, … |
 | core staging directives (`::bg` `::music` `::sfx` `::auto` `::camera` `::cut` `::vfx`) | 43–46, 68–73, 136, 222–223 |
 | plugin directive `::serve` | 89 |
 | plugin attr `providerRef` id (`performer`) | 89 → `catalog/cast.yaml` |
