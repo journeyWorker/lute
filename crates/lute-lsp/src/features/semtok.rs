@@ -227,6 +227,25 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
                     }
                 }
             }
+            Node::Hub(h) => {
+                // `<hub` open keyword (§7.3.2 logic layer).
+                push(
+                    out,
+                    h.span.byte_start,
+                    h.span.byte_start + "<hub".len(),
+                    TokType::Logic,
+                );
+                for c in &h.choices {
+                    // `<choice` open keyword (the arm opener; §7.3 logic layer).
+                    push(
+                        out,
+                        c.span.byte_start,
+                        c.span.byte_start + "<choice".len(),
+                        TokType::Logic,
+                    );
+                    walk_nodes(&c.body, out);
+                }
+            }
         }
     }
 }

@@ -255,6 +255,15 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                     }
                 }
             }
+            Node::Hub(h) => {
+                for c in &mut h.choices {
+                    if let Some(w) = &mut c.when {
+                        bind_slot(w, args, params);
+                    }
+                    bind_attrs(&mut c.attrs, args, params);
+                    bind_params(&mut c.body, args, params);
+                }
+            }
         }
     }
 }

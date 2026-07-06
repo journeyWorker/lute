@@ -65,6 +65,12 @@ fn fold_nodes(nodes: &[Node], idx: &TextIndex, out: &mut Vec<FoldingRange>) {
                     push_fold(out, &track.span, idx);
                 }
             }
+            Node::Hub(h) => {
+                push_fold(out, &h.span, idx);
+                for c in &h.choices {
+                    fold_nodes(&c.body, idx, out);
+                }
+            }
             // Leaf nodes (`:line`, `::directive`, `::set`) are single constructs,
             // not foldable regions.
             Node::Line(_) | Node::Directive(_) | Node::Set(_) => {}

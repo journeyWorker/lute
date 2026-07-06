@@ -215,6 +215,25 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
             }
             None
         }
+        Node::Hub(h) => {
+            for choice in &h.choices {
+                if span_contains(choice.span, off) {
+                    if let Some(when) = &choice.when {
+                        if span_contains(when.span, off) {
+                            return Some(Cursor::Cel {
+                                slot: when,
+                                in_match_subject: false,
+                            });
+                        }
+                    }
+                    if let Some(c) = resolve_attrs(&choice.attrs, None, off) {
+                        return Some(c);
+                    }
+                    return resolve_nodes(&choice.body, off);
+                }
+            }
+            resolve_attrs(&h.attrs, None, off)
+        }
     }
 }
 
@@ -292,6 +311,7 @@ fn node_span(node: &Node) -> Span {
         Node::Branch(b) => b.span,
         Node::Match(m) => m.span,
         Node::Timeline(t) => t.span,
+        Node::Hub(h) => h.span,
     }
 }
 
@@ -532,6 +552,14 @@ pub(crate) fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
                         }
                     }
                     return None;
+                }
+                Node::Hub(h) => {
+                    for c in &h.choices {
+                        if span_contains(c.span, off) {
+                            return in_attrs(&c.attrs, off).or_else(|| scan(&c.body, off));
+                        }
+                    }
+                    return in_attrs(&h.attrs, off);
                 }
             }
         }

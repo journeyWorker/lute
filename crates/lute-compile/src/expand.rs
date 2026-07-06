@@ -84,6 +84,16 @@ fn expand_nodes(
                     }
                 }
             }
+            Node::Hub(h) => {
+                expand_attrs(&mut h.attrs, defs, subject, diags);
+                for c in &mut h.choices {
+                    if let Some(w) = &mut c.when {
+                        expand_slot(w, defs, subject, diags);
+                    }
+                    expand_attrs(&mut c.attrs, defs, subject, diags);
+                    expand_nodes(&mut c.body, defs, subject, diags);
+                }
+            }
         }
     }
 }

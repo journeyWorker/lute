@@ -58,7 +58,7 @@ use std::collections::BTreeSet;
 
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, Branch, CelSlot, ClipNode, Match, Node, Set, Timeline};
+use lute_syntax::ast::{Arm, Branch, CelSlot, ClipNode, Hub, Match, Node, Set, Timeline};
 
 use crate::cel_paths::{collect_path_uses, is_state_path, PathRole};
 use crate::meta::StateSchema;
@@ -92,6 +92,7 @@ fn walk_nodes(
             Node::Branch(branch) => walk_branch(branch, schema, assigned, diags),
             Node::Match(m) => walk_match(m, schema, assigned, diags),
             Node::Timeline(tl) => walk_timeline(tl, schema, assigned, diags),
+            Node::Hub(hub) => walk_hub(hub, schema, assigned, diags),
             // Content/staging leaves carry no state reads or writes.
             Node::Line(_) | Node::Directive(_) => {}
         }
@@ -147,6 +148,17 @@ fn walk_branch(
         *assigned = intersect_all(arm_finals);
     }
     // else: a guarded-only branch may fall through — keep the pre-block set.
+}
+
+/// A `<hub>` (dsl §7.3.2): hub *checking* is gated by `E-HUB-UNSUPPORTED` (D6)
+/// until Plan B, so definite-assignment stays conservative here — each choice body
+/// is walked on its own fork for its interior reads/writes, but nothing is folded
+/// back into the surviving set (a hub never proves a path assigned past the block).
+fn walk_hub(hub: &Hub, schema: &StateSchema, assigned: &mut Assigned, diags: &mut Vec<Diagnostic>) {
+    for choice in &hub.choices {
+        let mut arm = assigned.clone();
+        walk_nodes(&choice.body, schema, &mut arm, diags);
+    }
 }
 
 /// A `<match>`: the `on=` subject is checked for value-reads (it dominates every
