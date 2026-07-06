@@ -479,3 +479,64 @@ because that string is the localization source keyed by `lineId` — and each `l
 - This does not reopen D5's deferrals (§9): asset-path resolution and translation *merge* stay
   external. Only the placeholder-set contract check is compile-owned, because it consumes the
   compiler's extracted `placeholders`.
+
+## Artifact self-containedness addendum (2026-07-06, post-audit)
+
+A compile-output audit (showcase `episode01.lute`, 81 records) confirmed the record shapes above
+and surfaced five artifact-level gaps. Rule adopted: **the engine executes the artifact alone** —
+no CEL parser, no manifest lookup, no capability guesswork at runtime.
+
+### A7. Expression AST (`expr`) — no runtime CEL parser
+
+Every CEL-carrying field (`match` arm `test`, `choice`/`hub` option `when`, `set` `value`)
+additionally carries **`expr`**: the compiled Lute-CEL expression as a JSON tree. The string form
+is retained for logs/debugging; **`expr` is authoritative for execution**.
+
+```jsonc
+// when: "(user.level >= (1))"
+"expr": { "op": ">=", "l": { "path": "user.level" }, "r": { "lit": 1.0 } }
+```
+
+- Node kinds (closed, mirrors DSL 0.1.0 §8.4): `lit` (double | bool | string), `path`,
+  unary `!` / `-`, binary `&& || == != < <= > >= + - * / in`, `cond` (ternary), `list`,
+  `isSet(path)`, `has(path)`.
+- All numeric literals serialize as doubles (Lute-CEL numeric model).
+- **Why:** stock CEL evaluators implement *standard* CEL semantics — strict int/double separation,
+  no `isSet` — which the Lute-CEL profile deliberately deviates from; reusing one (e.g. the
+  pre-1.0 Dart `cel` package) would import wrong semantics plus a supply-chain risk. A ~10-node
+  tree-walker per engine language replaces the entire parser dependency.
+- **Conformance:** `lute-compile` ships **golden eval fixtures** (`expr` + state snapshot →
+  expected value); any runtime evaluator that passes the fixture set conforms — a pure-Dart
+  tree-walker and an FFI-wrapped Rust evaluator are interchangeable behind this contract.
+
+### A8. `wait` fully materialized (amends §4.3)
+
+§4.3 already defines `wait` as *resolved* (manifest default ⊕ author override), but the audit
+found records omitting it (e.g. `music` carried no `wait` while `background`/`camera` did). Every
+record whose directive family defines `wait` MUST carry the resolved value explicitly. The
+artifact is timing-self-contained; an engine never consults manifest defaults.
+
+### A9. Envelope hardening (amends §4.1)
+
+- **`irVersion`** — the IR schema version, independent of `lute` (the language-version pin).
+  The 0.1.0 record changes (A1–A7) bump it; engines gate parsing on it.
+- **`capabilityVersion`** — the plugin-system §13 snapshot stamp. Required: without it an engine
+  cannot reject an artifact compiled against a drifted bridge/directive schema (e.g. `::serve`).
+- **`episodeId` normalization** — `meta.episodeId` MUST equal the lineId episode segment
+  byte-for-byte (default lowercase `s{season:02}ep{episode:02}`). The audited artifact emitted
+  `meta.episodeId: "S01EP01"` beside `lineId: "bianca.s01ep01.…"` — a defect to fix in the 0.1.0
+  cutover.
+
+### A10. Attr coercion in records (amends §4.4)
+
+A manifest-declared **number** attr serializes as a JSON number, **bool** as a JSON bool — per the
+DSL 0.1.0 §4.5 coercion grammar. (Audit: `camera.zoom: 1.2` vs `camera.shake: "0.4"` in one
+artifact; the string form is non-conforming.)
+
+### A11. Translation delivery = runtime string table (adjusts DSL §12 "fill")
+
+`app.lang` is runtime state (mid-game language switching), so translated text is NOT baked into
+per-language artifact copies. The artifact keeps `lineId` + source `text` (+ `placeholders`, A3);
+translations ship as an **id-keyed runtime string table** (`lineId → text`) per locale, loaded by
+the engine. Build time **validates** (A6 placeholder-set equality, key coverage) rather than
+fills. DSL 0.1.0 §12's "fill the compile target's per-language text slots" is amended accordingly.
