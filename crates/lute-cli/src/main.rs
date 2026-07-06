@@ -33,7 +33,8 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 #[derive(Parser)]
 #[command(
     name = "lute",
-    about = "Static checker for .lute visual-novel scenarios"
+    version,
+    about = "Checker and compiler for .lute visual-novel scenarios"
 )]
 struct Cli {
     #[command(subcommand)]
