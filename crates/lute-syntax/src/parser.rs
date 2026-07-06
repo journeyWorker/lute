@@ -510,11 +510,22 @@ enum HeadingKind {
 fn classify_heading(heading: &str) -> HeadingKind {
     for kw in ["Shot", "Scene"] {
         if let Some(rest) = heading.strip_prefix(kw) {
+            // §6.3 requires whitespace between the keyword and the Integer, so
+            // `Shot1.` is invalid: reject a keyword not followed by WS.
+            if !rest.starts_with(char::is_whitespace) {
+                return HeadingKind::Invalid;
+            }
             let rest = rest.trim_start();
             let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
             let after = &rest[digits.len()..];
             if !digits.is_empty() && after.starts_with('.') {
-                return HeadingKind::Numbered(digits.parse().unwrap());
+                // A shot number that overflows i64 degrades to E-SHOT-HEADING
+                // rather than panicking (parse() preserves the crate's no-panic
+                // guarantee); best-effort AST keeps `number: None`.
+                return match digits.parse::<i64>() {
+                    Ok(n) => HeadingKind::Numbered(n),
+                    Err(_) => HeadingKind::Invalid,
+                };
             }
             return HeadingKind::Invalid;
         }
@@ -696,7 +707,14 @@ mod tests {
 
     #[test]
     fn bad_shot_heading_is_diagnosed() {
-        for bad in ["## Chapter 1.", "## Shot .", "## Shot 3", "## Prolog"] {
+        for bad in [
+            "## Chapter 1.",
+            "## Shot .",
+            "## Shot 3",
+            "## Prolog",
+            "## Shot1.",
+            "## Shot 99999999999999999999.",
+        ] {
             let (_, diags) = parse(&format!("{bad}\n:narrator: hi.\n"));
             assert!(diags.iter().any(|d| d.code == "E-SHOT-HEADING"), "{bad}");
         }
