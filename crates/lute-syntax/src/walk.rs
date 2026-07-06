@@ -25,7 +25,7 @@
 //! on it.
 
 use crate::ast::{
-    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Document, Match, Node, Timeline,
+    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Document, Hub, Match, Node, Timeline,
 };
 
 /// Visit every [`CelSlot`] in `doc` in the canonical pre-order, borrowing each.
@@ -60,12 +60,24 @@ fn node<'a>(n: &'a Node, f: &mut impl FnMut(&'a CelSlot)) {
         Node::Branch(b) => branch(b, f),
         Node::Match(m) => match_node(m, f),
         Node::Timeline(t) => timeline(t, f),
+        Node::Hub(h) => hub(h, f),
     }
 }
 
 fn branch<'a>(b: &'a Branch, f: &mut impl FnMut(&'a CelSlot)) {
     attrs(&b.attrs, f);
     for choice in &b.choices {
+        if let Some(when) = &choice.when {
+            f(when);
+        }
+        attrs(&choice.attrs, f);
+        body(&choice.body, f);
+    }
+}
+
+fn hub<'a>(h: &'a Hub, f: &mut impl FnMut(&'a CelSlot)) {
+    attrs(&h.attrs, f);
+    for choice in &h.choices {
         if let Some(when) = &choice.when {
             f(when);
         }
@@ -134,12 +146,24 @@ fn node_mut(n: &mut Node, f: &mut impl FnMut(&mut CelSlot)) {
         Node::Branch(b) => branch_mut(b, f),
         Node::Match(m) => match_node_mut(m, f),
         Node::Timeline(t) => timeline_mut(t, f),
+        Node::Hub(h) => hub_mut(h, f),
     }
 }
 
 fn branch_mut(b: &mut Branch, f: &mut impl FnMut(&mut CelSlot)) {
     attrs_mut(&mut b.attrs, f);
     for choice in &mut b.choices {
+        if let Some(when) = &mut choice.when {
+            f(when);
+        }
+        attrs_mut(&mut choice.attrs, f);
+        body_mut(&mut choice.body, f);
+    }
+}
+
+fn hub_mut(h: &mut Hub, f: &mut impl FnMut(&mut CelSlot)) {
+    attrs_mut(&mut h.attrs, f);
+    for choice in &mut h.choices {
         if let Some(when) = &mut choice.when {
             f(when);
         }
@@ -243,6 +267,7 @@ mod tests {
                 ],
                 text: "hi".to_string(),
                 text_span: span(),
+                interps: Vec::new(),
                 span: span(),
             }),
             // Directive: one @ref attr -> s2, plus a non-slot attr.
@@ -277,6 +302,7 @@ mod tests {
                             attrs: vec![ref_attr("mood", "s9")],
                             text: String::new(),
                             text_span: span(),
+                            interps: Vec::new(),
                             span: span(),
                         })],
                         span: span(),

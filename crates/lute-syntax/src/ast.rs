@@ -30,6 +30,7 @@ pub enum Node {
     Branch(Branch),
     Match(Match),
     Timeline(Timeline),
+    Hub(Hub),
 }
 
 #[derive(Clone, Debug)]
@@ -38,6 +39,7 @@ pub struct Line {
     pub attrs: Vec<Attr>,
     pub text: String,
     pub text_span: Span,
+    pub interps: Vec<Interp>,
     pub span: Span,
 }
 
@@ -80,6 +82,35 @@ pub struct Match {
     pub subject: CelSlot,
     pub arms: Vec<Arm>,
     pub span: Span,
+}
+
+/// `<hub id> HubChoice+ </hub>` (dsl §7.3.2). Choices reuse [`Choice`];
+/// the `once` / `exit` flags arrive as bare attrs on each choice.
+#[derive(Clone, Debug)]
+pub struct Hub {
+    pub attrs: Vec<Attr>,
+    pub choices: Vec<Choice>,
+    pub span: Span,
+}
+
+/// One `{{…}}` interpolation inside content `Text` (dsl §7.6).
+#[derive(Clone, Debug)]
+pub struct Interp {
+    pub kind: InterpKind,
+    /// Interior text, trimmed (e.g. `run.coins`, `@fond`, `userName`).
+    pub raw: String,
+    /// Span of the whole `{{…}}` in the original source.
+    pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InterpKind {
+    /// `scene.…` / `run.…` / `user.…` / `app.…` state path.
+    Path,
+    /// `@def` / `@fn(args)`.
+    Ref,
+    /// Reserved token (`userName`).
+    Reserved,
 }
 
 #[derive(Clone, Debug)]
