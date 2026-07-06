@@ -1,19 +1,20 @@
 //! `lute tag` localization pass (dsl §12): back-fill a stable `code` into every
-//! untagged content `:line`. Pure + total; the CLI wraps this with file I/O.
+//! untagged content line (`:speaker{…}: text`, §7.1). Pure + total; the CLI
+//! wraps this with file I/O.
 
 use lute_core_span::Severity;
 use lute_syntax::ast::{Arm, AttrValue, Line, Node};
 use lute_syntax::parse;
 
 /// The result of tagging: the (possibly rewritten) document text and how many
-/// `:line`s received a new `code`.
+/// content lines received a new `code`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TagOutcome {
     pub text: String,
     pub added: usize,
 }
 
-/// Back-fill a `code` attribute into every `:line` that lacks one (dsl §12).
+/// Back-fill a `code` attribute into every content line that lacks one (§12).
 /// Existing codes are never touched; new codes step above THAT SPEAKER's highest
 /// existing numeric `code` (a per-speaker counter, dsl §12); different speakers
 /// have independent sequences (`fixer` 0010…, `bianca` 0010…), so their codes
@@ -81,28 +82,34 @@ pub fn tag_document(text: &str) -> TagOutcome {
         };
         *counter = nc;
         let code = format!("{nc:04}");
-        let hdr_start = line.span.byte_start;
-        let header = &text[hdr_start..line.text_span.byte_start];
-        // The attr block (if any) is a `{` FLUSH against the speaker-closing `]`
-        // (grammar `:line[speaker]{attrs}?`, parser.rs:400-408). A `{` anywhere
-        // else in the header (e.g. inside a blanked block comment) is NOT an attr
-        // block, so we key off the `]` and only accept a `{` immediately after it.
-        if let Some(rel_br) = speaker_close(header.as_bytes()) {
-            let bracket_end = hdr_start + rel_br + 1; // byte index just past `]`
-            if bytes.get(bracket_end) == Some(&b'{') {
-                // Existing attr block: insert after the `{`, trailing space only
-                // when the block is non-empty (next byte isn't `}`).
-                let at = bracket_end + 1;
-                let inserted = if bytes.get(at) == Some(&b'}') {
-                    format!("code=\"{code}\"")
-                } else {
-                    format!("code=\"{code}\" ")
-                };
-                inserts.push((at, inserted));
+        // 0.1.0 content line: `:speaker{attrs}?: text` (dsl §7.1). We derive the
+        // insertion point from the parsed span rather than re-scanning raw bytes:
+        // spans are ORIGINAL-source offsets and comment-blanking is
+        // length-preserving (parser SPAN-FIDELITY contract), so a `text` byte
+        // offset maps 1:1 onto what the parser saw.
+        //   - `speaker_end` is the byte just past the speaker ident. An ident
+        //     holds no comments/whitespace, so it is exactly `speaker.len()`
+        //     bytes past the leading `:` (`span.byte_start`).
+        //   - An attr block exists iff that byte is `{`: the parser only accepts
+        //     a `{` FLUSH against the ident, and `{` is never a comment byte, so
+        //     this single byte is authoritative (a `{` in a comment or in the
+        //     text can never sit here).
+        let speaker_end = line.span.byte_start + 1 + line.speaker.len();
+        if bytes.get(speaker_end) == Some(&b'{') {
+            // Existing attr block: merge `code` as the FIRST attribute, right
+            // after `{`. Trailing space only when the block is non-empty (the
+            // next byte isn't the closing `}`).
+            let at = speaker_end + 1;
+            let inserted = if bytes.get(at) == Some(&b'}') {
+                format!("code=\"{code}\"")
             } else {
-                // No attr block: fresh `{code="ID"}` right after the speaker `]`.
-                inserts.push((bracket_end, format!("{{code=\"{code}\"}}")));
-            }
+                format!("code=\"{code}\" ")
+            };
+            inserts.push((at, inserted));
+        } else {
+            // No attr block: fresh `{code="ID"}` between the speaker ident and
+            // the second `:` (`:bianca: hi` -> `:bianca{code="0010"}: hi`).
+            inserts.push((speaker_end, format!("{{code=\"{code}\"}}")));
         }
     }
 
@@ -117,28 +124,6 @@ pub fn tag_document(text: &str) -> TagOutcome {
         text: out,
         added: inserts.len(),
     }
-}
-
-/// Byte index of the speaker-closing `]` in a `:line` header, skipping
-/// `/* … */` block comments (the lexer blanks them before parsing, so a `]`
-/// inside a comment is NOT the speaker close). `None` if none outside a comment.
-fn speaker_close(header: &[u8]) -> Option<usize> {
-    let mut i = 0;
-    while i < header.len() {
-        if header[i] == b'/' && header.get(i + 1) == Some(&b'*') {
-            i += 2;
-            while i < header.len() && !(header[i] == b'*' && header.get(i + 1) == Some(&b'/')) {
-                i += 1;
-            }
-            i = (i + 2).min(header.len()); // past the closing */ (clamped)
-            continue;
-        }
-        if header[i] == b']' {
-            return Some(i);
-        }
-        i += 1;
-    }
-    None
 }
 
 /// Collect every `Node::Line` in document order, descending into branch choices'
@@ -176,17 +161,16 @@ mod tests {
     use super::*;
 
     const NO_ATTRS: &str =
-        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[narrator]: hi there\n";
-    const WITH_ATTRS: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[fixer]{delivery=\"thought\"}: hmm\n";
-    const ALREADY: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[fixer]{code=\"0010\"}: kept\n";
+        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator: hi there\n";
+    const WITH_ATTRS: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{delivery=\"thought\"}: hmm\n";
+    const ALREADY: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{code=\"0010\"}: kept\n";
 
     #[test]
     fn tags_line_without_attrs() {
         let out = tag_document(NO_ATTRS);
         assert_eq!(out.added, 1);
         assert!(
-            out.text
-                .contains(":line[narrator]{code=\"0010\"}: hi there"),
+            out.text.contains(":narrator{code=\"0010\"}: hi there"),
             "got:\n{}",
             out.text
         );
@@ -196,10 +180,39 @@ mod tests {
     fn tags_line_with_existing_attrs() {
         let out = tag_document(WITH_ATTRS);
         assert_eq!(out.added, 1);
-        assert!(out.text.contains("code=\"0010\""), "got:\n{}", out.text);
+        // `code` is merged as the FIRST attribute, existing attrs preserved.
         assert!(
-            out.text.contains("delivery=\"thought\""),
-            "existing attr preserved:\n{}",
+            out.text
+                .contains(":fixer{code=\"0010\" delivery=\"thought\"}: hmm"),
+            "got:\n{}",
+            out.text
+        );
+    }
+
+    #[test]
+    fn no_attr_block_gets_fresh_code_block() {
+        // §7.1 no-attr path: `:bianca: hi` -> `:bianca{code="0010"}: hi`.
+        let src =
+            "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi\n";
+        let out = tag_document(src);
+        assert_eq!(out.added, 1);
+        assert!(
+            out.text.contains(":bianca{code=\"0010\"}: hi"),
+            "got:\n{}",
+            out.text
+        );
+    }
+
+    #[test]
+    fn merge_into_existing_attr_block_is_first() {
+        // §7.1 merge path: `code` lands as the FIRST attr, right after `{`.
+        let src =
+            "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca{emotion=\"x\"}: hi\n";
+        let out = tag_document(src);
+        assert_eq!(out.added, 1);
+        assert!(
+            out.text.contains(":bianca{code=\"0010\" emotion=\"x\"}: hi"),
+            "got:\n{}",
             out.text
         );
     }
@@ -214,32 +227,36 @@ mod tests {
     #[test]
     fn new_codes_step_above_same_speaker_max() {
         // same speaker `a`: one tagged 0050 + one untagged -> untagged gets 0060
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"0050\"}: one\n:line[a]: two\n";
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"0050\"}: one\n:a: two\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
-        assert!(out.text.contains(":line[a]{code=\"0050\"}: one"));
-        assert!(out.text.contains("code=\"0060\""), "got:\n{}", out.text);
+        assert!(out.text.contains(":a{code=\"0050\"}: one"));
+        assert!(
+            out.text.contains(":a{code=\"0060\"}: two"),
+            "got:\n{}",
+            out.text
+        );
     }
 
     #[test]
     fn per_speaker_counters_are_independent() {
         // interleaved speakers: each starts its OWN sequence at 0010.
         // a: "one"(untagged), "three"(untagged) -> 0010, 0020 ; b: "two"(untagged) -> 0010
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]: one\n:line[b]: two\n:line[a]: three\n";
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a: one\n:b: two\n:a: three\n";
         let out = tag_document(src);
         assert_eq!(out.added, 3);
         assert!(
-            out.text.contains(":line[a]{code=\"0010\"}: one"),
+            out.text.contains(":a{code=\"0010\"}: one"),
             "got:\n{}",
             out.text
         );
         assert!(
-            out.text.contains(":line[b]{code=\"0010\"}: two"),
+            out.text.contains(":b{code=\"0010\"}: two"),
             "b starts its own sequence:\n{}",
             out.text
         );
         assert!(
-            out.text.contains(":line[a]{code=\"0020\"}: three"),
+            out.text.contains(":a{code=\"0020\"}: three"),
             "a's second line:\n{}",
             out.text
         );
@@ -267,19 +284,20 @@ mod tests {
     }
 
     #[test]
-    fn comment_brace_in_header_is_not_an_attr_block() {
-        // A blanked block comment containing `{` before the `:` must NOT be treated
-        // as an attr block; the code goes in a real `{code=...}` after `]`, and a
-        // second run is a no-op.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[narrator] /* { */ : hi\n";
+    fn comment_inside_attr_block_is_preserved() {
+        // A `/* … */` comment inside the attr block is blanked before parsing but
+        // kept in the original text; merging `code` right after `{` must preserve
+        // it, parse clean, and be idempotent on a second run.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator{ /* keep me */ emotion=\"x\"}: hi\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
+        assert!(out.text.contains("code=\"0010\""), "got:\n{}", out.text);
+        assert!(out.text.contains("emotion=\"x\""), "got:\n{}", out.text);
         assert!(
-            out.text.contains(":line[narrator]{code=\"0010\"}"),
-            "got:\n{}",
+            out.text.contains("/* keep me */"),
+            "comment preserved:\n{}",
             out.text
         );
-        // parses clean AND is now idempotent
         let (_d, diags) = lute_syntax::parse(&out.text);
         assert!(
             !diags
@@ -288,15 +306,40 @@ mod tests {
             "{diags:?}"
         );
         let twice = tag_document(&out.text);
-        assert_eq!(twice.added, 0, "must be idempotent after the comment case");
+        assert_eq!(twice.added, 0, "must be idempotent");
         assert_eq!(twice.text, out.text);
+    }
+
+    #[test]
+    fn comment_brace_in_text_is_not_an_attr_block() {
+        // A `{` inside a comment in the TEXT (after the second `:`) must NOT be
+        // mistaken for an attr block; the code goes in a fresh `{code=…}` after
+        // the speaker ident, the text is untouched, and re-tagging is a no-op.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi /* { */ there\n";
+        let out = tag_document(src);
+        assert_eq!(out.added, 1);
+        assert!(
+            out.text.contains(":bianca{code=\"0010\"}: hi /* { */ there"),
+            "got:\n{}",
+            out.text
+        );
+        let (_d, diags) = lute_syntax::parse(&out.text);
+        assert!(
+            !diags
+                .iter()
+                .any(|d| d.severity == lute_core_span::Severity::Error),
+            "{diags:?}"
+        );
+        let twice = tag_document(&out.text);
+        assert_eq!(twice.added, 0, "second tag run must be a no-op (idempotent)");
+        assert_eq!(twice.text, out.text, "idempotent: byte-identical on re-run");
     }
 
     #[test]
     fn code_above_u32_max_does_not_collide() {
         // same speaker `a` at u32::MAX + an untagged `a` line -> a's counter steps
         // to 4294967305 (u64 counter, so no saturation/collision at u32::MAX).
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"4294967295\"}: one\n:line[a]: two\n";
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"4294967295\"}: one\n:a: two\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         // new code is strictly above the existing max (no duplicate 4294967295)
@@ -313,27 +356,10 @@ mod tests {
     }
 
     #[test]
-    fn comment_bracket_in_speaker_is_not_the_close() {
-        // A `]` inside a block comment within the speaker bracket must NOT be taken
-        // as the speaker close; re-tagging MUST be idempotent (the bug makes the
-        // code land in the comment, get stripped on re-parse, and re-tag forever).
-        let src =
-            "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[hero/* ] */]: hi\n";
-        let out = tag_document(src);
-        assert_eq!(out.added, 1);
-        let twice = tag_document(&out.text);
-        assert_eq!(
-            twice.added, 0,
-            "second tag run must be a no-op (idempotent)"
-        );
-        assert_eq!(twice.text, out.text, "idempotent: byte-identical on re-run");
-    }
-
-    #[test]
     fn code_at_u64_max_fails_closed_no_collision() {
         // same speaker `a` at u64::MAX + an untagged `a` line -> a's counter
         // overflows -> fail closed for that line (per speaker).
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[a]{code=\"18446744073709551615\"}: one\n:line[a]: two\n";
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"18446744073709551615\"}: one\n:a: two\n";
         let out = tag_document(src);
         assert_eq!(
             out.added, 0,
