@@ -6,8 +6,9 @@
 //! shapes: `key="str"` → [`AttrValue::Str`]; `key=@ref` → [`AttrValue::Ref`]
 //! (a [`CelSlot`] of [`CelKind::AttrValue`]); bare `key` → [`AttrValue::BoolTrue`].
 
-use super::{is_ident_byte, Parser};
+use super::{is_ident_byte, Parser, E_STRING_ESCAPE};
 use crate::ast::{Attr, AttrValue, CelKind, CelSlot};
+use lute_core_span::Layer;
 
 impl Parser<'_> {
     /// Scan an attribute list from body offset `start` up to the unquoted
@@ -17,10 +18,17 @@ impl Parser<'_> {
     /// for `Str`, the `@ref` for `Ref`, the key for `BoolTrue`) — so `take_cel`
     /// builds `CelSlot`s whose span bounds exactly `raw`. `after` is the body
     /// offset just past the terminator (or line end).
-    pub(super) fn scan_attrs(&self, start: usize, term: u8) -> (Vec<Attr>, usize) {
+    ///
+    /// Takes `&mut self` to emit [`E_STRING_ESCAPE`] (§4.4) for undefined
+    /// backslash escapes in quoted values; scanning always continues so one bad
+    /// escape degrades safely rather than derailing the attribute list.
+    pub(super) fn scan_attrs(&mut self, start: usize, term: u8) -> (Vec<Attr>, usize) {
         let b = self.body.as_bytes();
         let n = b.len();
         let mut attrs = Vec::new();
+        // Body-offset `(start, end)` spans of undefined escapes, emitted after
+        // the `b` borrow of `self.body` ends (emit needs `&mut self`).
+        let mut escapes: Vec<(usize, usize)> = Vec::new();
         let mut j = start;
         loop {
             while j < n && (b[j] == b' ' || b[j] == b'\t') {
@@ -51,6 +59,19 @@ impl Parser<'_> {
                             esc = false;
                         } else if c == b'\\' {
                             esc = true;
+                            // §4.4: only `\" \\ \n \t` are defined String
+                            // escapes. `\'` is exempted — a CelString value
+                            // (indistinguishable here) may embed a CEL
+                            // single-quoted string using `\'`. Any other escape
+                            // is undefined; span the two bytes `\x`. A trailing
+                            // `\` with no next byte (`j + 1 == n`) is an
+                            // incomplete escape, not flagged.
+                            if j + 1 < n {
+                                let e = b[j + 1];
+                                if !matches!(e, b'"' | b'\\' | b'n' | b't' | b'\'') {
+                                    escapes.push((j, j + 2));
+                                }
+                            }
                         } else if c == b'"' {
                             break;
                         }
@@ -139,6 +160,16 @@ impl Parser<'_> {
             }
         }
         let after = if j < n && b[j] == term { j + 1 } else { j };
+        // `b`'s borrow of `self.body` has ended; safe to emit via `&mut self`.
+        for (s, e) in escapes {
+            self.emit_o(
+                E_STRING_ESCAPE,
+                "only \\\" \\\\ \\n \\t are defined escapes (dsl §4.4)".to_string(),
+                self.orig(s),
+                self.orig(e),
+                Layer::Content,
+            );
+        }
         (attrs, after)
     }
 
@@ -207,5 +238,52 @@ pub(super) fn take_cel(attrs: &mut Vec<Attr>, key: &str, kind: CelKind) -> Optio
             Some(slot)
         }
         AttrValue::BoolTrue => Some(CelSlot::raw(kind, String::new(), vspan)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::parser::parse;
+
+    #[test]
+    fn unknown_string_escape_is_diagnosed() {
+        let (_, diags) = parse("## Shot 1.\n::sfx{sound=\"a\\qb\"}\n");
+        assert!(diags.iter().any(|d| d.code == "E-STRING-ESCAPE"), "{diags:?}");
+    }
+
+    #[test]
+    fn defined_escapes_pass() {
+        let (_, diags) = parse("## Shot 1.\n::sfx{sound=\"a\\\"b\\\\c\\nd\\te\"}\n");
+        assert!(
+            diags.iter().all(|d| d.code != "E-STRING-ESCAPE"),
+            "{diags:?}"
+        );
+    }
+
+    // Boundary (dsl §4.4): `scan_attrs` cannot know whether a value is a plain
+    // `String` or a `CelString` (typing is a checker-layer decision via the
+    // manifest). A `CelString` legitimately embeds CEL single-quoted strings
+    // whose own escape `\'` (`test="$ == 'a\'b'"`) is NOT a `String` escape, so
+    // flagging it would be a false positive. The escape set is validated at the
+    // lexical layer with `\'` exempted, leaving genuinely-undefined escapes
+    // (`\q`, `\d`, …) flagged for both String and CelString values.
+    #[test]
+    fn cel_single_quote_escape_is_not_flagged() {
+        let (_, diags) = parse("## Shot 1.\n::sfx{note=\"a\\'b\"}\n");
+        assert!(
+            diags.iter().all(|d| d.code != "E-STRING-ESCAPE"),
+            "{diags:?}"
+        );
+    }
+
+    // A trailing backslash just before EOF must not panic or scan past the
+    // (missing) terminator; it is an incomplete escape, not `E-STRING-ESCAPE`.
+    #[test]
+    fn trailing_backslash_at_eof_is_safe() {
+        let (_, diags) = parse("## Shot 1.\n::sfx{sound=\"ab\\");
+        assert!(
+            diags.iter().all(|d| d.code != "E-STRING-ESCAPE"),
+            "{diags:?}"
+        );
     }
 }
