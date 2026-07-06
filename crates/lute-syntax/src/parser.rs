@@ -37,6 +37,11 @@ pub const E_COMMENT_UNTERMINATED: &str = "E-COMMENT-UNTERMINATED";
 /// Diagnostic code: a `## ` heading was neither `Shot|Scene <int>.` nor a
 /// bookend keyword (`Prologue|Epilogue|프롤로그|에필로그`) (§6.3).
 pub const E_SHOT_HEADING: &str = "E-SHOT-HEADING";
+/// Diagnostic code: a backslash escape in a quoted `String` value was not one
+/// of the four defined escapes `\"` `\\` `\n` `\t` (§4.4). `\'` is exempted
+/// because a `CelString` value (indistinguishable at the parser layer) may
+/// embed a CEL single-quoted string whose own `\'` escape is well-formed.
+pub const E_STRING_ESCAPE: &str = "E-STRING-ESCAPE";
 
 /// Parse a `.lute` document into its AST and parse diagnostics.
 ///
@@ -432,6 +437,9 @@ impl Parser<'_> {
             attrs = a;
             j = after;
         }
+        // `scan_attrs` took `&mut self` but leaves `self.body` unchanged, so the
+        // byte view is still valid — re-borrow past the mutable call.
+        let b = self.body.as_bytes();
         if !(j < e && b[j] == b':') {
             self.emit_line(
                 E_UNCLASSIFIED,
