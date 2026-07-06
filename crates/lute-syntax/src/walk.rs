@@ -315,6 +315,7 @@ mod tests {
                 subject: slot("s10"),
                 arms: vec![
                     Arm::When {
+                        is: None,
                         test: slot("s11"),
                         body: vec![set_node("scene.c", "s12")],
                         span: span(),

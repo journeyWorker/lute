@@ -175,7 +175,7 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
             }
             for arm in &m.arms {
                 match arm {
-                    Arm::When { test, body, span } if span_contains(*span, off) => {
+                    Arm::When { is: _, test, body, span } if span_contains(*span, off) => {
                         if span_contains(test.span, off) {
                             return Some(Cursor::Cel {
                                 slot: test,

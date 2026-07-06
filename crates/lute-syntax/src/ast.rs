@@ -113,9 +113,23 @@ pub enum InterpKind {
     Reserved,
 }
 
+/// The literal pattern of a `<when is="…">` arm (dsl §7.3.1). Unlike `test`,
+/// this is NOT a CEL expression: `raw` is the verbatim (trimmed) attribute
+/// value (e.g. `"soft | curt"`), preserved for match-coverage checking and
+/// lowering. Stored distinctly from [`CelSlot`] so no CEL parsing is attempted.
+#[derive(Clone, Debug)]
+pub struct IsPattern {
+    /// The `is` attribute's string value, trimmed.
+    pub raw: String,
+    /// Span of the attribute's value in the original source.
+    pub span: Span,
+}
+
 #[derive(Clone, Debug)]
 pub enum Arm {
     When {
+        /// Literal `is="…"` pattern (dsl §7.3.1), preserved verbatim; `None` when absent.
+        is: Option<IsPattern>,
         test: CelSlot,
         body: Vec<Node>,
         span: Span,

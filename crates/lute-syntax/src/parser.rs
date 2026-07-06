@@ -994,6 +994,73 @@ mod tests {
     }
 
     #[test]
+    fn when_is_pattern_preserved_without_test() {
+        // dsl §7.3.1: `<when is="…">` is the 0.1.0 headline construct. The literal
+        // pattern MUST be preserved on the arm, distinct from `test` (which stays
+        // an empty synthesized CelSlot when absent).
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"soft | curt\">\n:narrator: hi\n</when>\n</match>\n";
+        let (doc, _diags) = parse(src);
+        let Node::Match(m) = &doc.shots[0].body[0] else {
+            panic!("expected Match")
+        };
+        let Arm::When { is, test, .. } = &m.arms[0] else {
+            panic!("expected When arm")
+        };
+        let is = is.as_ref().expect("is pattern must be preserved");
+        assert_eq!(is.raw, "soft | curt");
+        assert_eq!(test.raw, "", "test stays empty when only `is` is given");
+    }
+
+    #[test]
+    fn when_is_and_test_both_preserved() {
+        // A `<when>` may carry both a literal `is` pattern and a `test` guard;
+        // neither clobbers the other.
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"gold\" test=\"$ != 'x'\">\n:narrator: hi\n</when>\n</match>\n";
+        let (doc, _diags) = parse(src);
+        let Node::Match(m) = &doc.shots[0].body[0] else {
+            panic!("expected Match")
+        };
+        let Arm::When { is, test, .. } = &m.arms[0] else {
+            panic!("expected When arm")
+        };
+        assert_eq!(is.as_ref().expect("is preserved").raw, "gold");
+        assert_eq!(test.raw, "$ != 'x'");
+    }
+
+    #[test]
+    fn when_without_is_has_none() {
+        // A test-only `<when>` carries no `is` pattern.
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when test=\"$ == 1\">\n:narrator: hi\n</when>\n</match>\n";
+        let (doc, _diags) = parse(src);
+        let Node::Match(m) = &doc.shots[0].body[0] else {
+            panic!("expected Match")
+        };
+        let Arm::When { is, test, .. } = &m.arms[0] else {
+            panic!("expected When arm")
+        };
+        assert!(is.is_none(), "no `is` attr => None");
+        assert_eq!(test.raw, "$ == 1");
+    }
+
+    #[test]
+    fn match_with_is_arm_and_otherwise_preserves_is() {
+        // Final-review fixture: a full <match> whose single guarded arm uses the
+        // literal `is` pattern (no `test`) must parse with the `is` value intact —
+        // the pattern is not dropped at the parse layer (dsl §7.3.1).
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"soft\">\n:narrator: soft\n</when>\n<otherwise>\n:narrator: else\n</otherwise>\n</match>\n";
+        let (doc, _diags) = parse(src);
+        let Node::Match(m) = &doc.shots[0].body[0] else {
+            panic!("expected Match")
+        };
+        assert_eq!(m.arms.len(), 2);
+        let Arm::When { is, .. } = &m.arms[0] else {
+            panic!("expected When arm")
+        };
+        assert_eq!(is.as_ref().expect("is preserved").raw, "soft");
+        assert!(matches!(&m.arms[1], Arm::Otherwise { .. }));
+    }
+
+    #[test]
     fn stray_line_under_branch_is_diagnosed() {
         // §7.3: a <branch> body admits only <choice> children. A direct content line is
         // invalid structure and MUST be reported (not silently dropped), mirroring

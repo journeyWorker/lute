@@ -8,7 +8,7 @@
 
 use super::{is_ident_byte, Parser, E_STRING_ESCAPE};
 use crate::ast::{Attr, AttrValue, CelKind, CelSlot};
-use lute_core_span::Layer;
+use lute_core_span::{Layer, Span};
 
 impl Parser<'_> {
     /// Scan an attribute list from body offset `start` up to the unquoted
@@ -220,6 +220,22 @@ pub(super) fn take_str(attrs: &mut Vec<Attr>, key: &str) -> Option<String> {
         let s = s.clone();
         attrs.remove(pos);
         Some(s)
+    } else {
+        None
+    }
+}
+
+/// Take (remove) the string value of attribute `key` together with its
+/// `value_span`, if present. Used for literal (non-CEL) attributes like
+/// `<when is="…">` (dsl §7.3.1) that must keep their source span without being
+/// parsed as CEL.
+pub(super) fn take_str_spanned(attrs: &mut Vec<Attr>, key: &str) -> Option<(String, Span)> {
+    let pos = attrs.iter().position(|a| a.key == key)?;
+    if let AttrValue::Str(s) = &attrs[pos].value {
+        let s = s.clone();
+        let span = attrs[pos].value_span;
+        attrs.remove(pos);
+        Some((s, span))
     } else {
         None
     }
