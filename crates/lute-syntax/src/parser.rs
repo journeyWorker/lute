@@ -292,6 +292,7 @@ impl Parser<'_> {
                 Some("branch") => return Some(Node::Branch(self.parse_branch())),
                 Some("match") => return Some(Node::Match(self.parse_match())),
                 Some("timeline") => return Some(Node::Timeline(self.parse_timeline())),
+                Some("hub") => return Some(Node::Hub(self.parse_hub())),
                 _ => {
                     self.emit_line(
                         E_UNCLASSIFIED,
