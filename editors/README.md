@@ -50,4 +50,9 @@ Highlighting is two layers that combine:
 2. **LSP semantic tokens** from `lute-lsp`, which refine the static grammar with
    project/plugin/schema knowledge the static grammar cannot see.
 
+> **Note:** refreshing the tree-sitter grammar ([`../tree-sitter-lute/`](../tree-sitter-lute)) for
+> DSL 0.1.0 is deferred to a later plan — the tree-sitter grammar update is out of scope for the
+> 0.1.0 parser cutover (Plan A). Until then, `lute-lsp` semantic tokens carry the authoritative
+> 0.1.0 highlighting.
+
 Root markers used to locate a project: `lute.project.yaml`, then `.git`.

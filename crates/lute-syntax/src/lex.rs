@@ -175,7 +175,7 @@ pub(crate) fn line_text_start_blanked(
 /// - `in_string` (toggled by an unescaped `"`) suppresses comment recognition,
 ///   so `/*`/`*/`/`//` inside a quoted `String`/`CelString` value are preserved.
 /// - Past a content line's second `:` the `Text` is truly opaque (§4.2 exclusion
-///   2, via [`content_text_start`]): no comment is recognized there and a `"` is
+///   2, via `content_text_start`): no comment is recognized there and a `"` is
 ///   a literal character, not a String delimiter. A String never spans a raw
 ///   newline (§4.4), so the string state resets at each line start.
 /// - EOF reached inside a block comment yields [`CommentError::Unterminated`].
