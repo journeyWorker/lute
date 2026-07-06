@@ -45,6 +45,10 @@ pub const E_STRING_ESCAPE: &str = "E-STRING-ESCAPE";
 /// Diagnostic code: a `{{` interpolation had no closing `}}` before end of line
 /// (§7.6).
 pub const E_INTERP_UNTERMINATED: &str = "E-INTERP-UNTERMINATED";
+/// Diagnostic code: a document `# ` title appeared after the first shot, or a
+/// second `# ` title appeared. At most one title MAY precede the first shot
+/// (§6.2 / I1).
+pub const E_TITLE_PLACEMENT: &str = "E-TITLE-PLACEMENT";
 
 /// Parse a `.lute` document into its AST and parse diagnostics.
 ///
@@ -192,6 +196,17 @@ impl Parser<'_> {
                 shots.push(self.parse_shot());
             } else if trimmed.starts_with("# ") && shots.is_empty() && title.is_none() {
                 title = Some(self.parse_title());
+            } else if trimmed.starts_with("# ") {
+                // §6.2/I1: a `# ` title is well-placed only once, before the
+                // first shot. Reaching here means the slot is taken (a second
+                // title) or a shot already opened (a late title).
+                self.emit_line(
+                    E_TITLE_PLACEMENT,
+                    "document title must appear at most once, before the first shot (dsl §6.2)",
+                    self.cursor,
+                    Layer::Content,
+                );
+                self.cursor += 1;
             } else {
                 self.emit_line(
                     E_UNCLASSIFIED,
@@ -312,6 +327,19 @@ impl Parser<'_> {
                     return None;
                 }
             }
+        }
+        if trimmed.starts_with("# ") {
+            // §6.2/I1: a `# ` H1 title inside a shot body is a misplaced title,
+            // not a generic unclassified line. (`## ` shot headings never reach
+            // here — parse_shot_body breaks on them.)
+            self.emit_line(
+                E_TITLE_PLACEMENT,
+                "document title must appear at most once, before the first shot (dsl §6.2)",
+                self.cursor,
+                Layer::Content,
+            );
+            self.cursor += 1;
+            return None;
         }
         self.emit_line(
             E_UNCLASSIFIED,
@@ -791,6 +819,49 @@ mod tests {
             let (_, diags) = parse(&format!("{bad}\n:narrator: hi.\n"));
             assert!(diags.iter().any(|d| d.code == "E-SHOT-HEADING"), "{bad}");
         }
+    }
+
+    // -- Task 9e: E-TITLE-PLACEMENT for misplaced/duplicate `# ` title (§6.2/I1) --
+
+    #[test]
+    fn title_after_first_shot_is_placement_error() {
+        // §6.2: a `# ` title after the first shot is E-TITLE-PLACEMENT, not
+        // the generic E-UNCLASSIFIED.
+        let (_doc, diags) = parse("## Shot 1.\n:narrator: hi.\n# Late Title\n");
+        assert!(
+            diags.iter().any(|d| d.code == E_TITLE_PLACEMENT),
+            "late title must be E-TITLE-PLACEMENT: {diags:?}"
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == E_UNCLASSIFIED),
+            "late title must not fall through to E-UNCLASSIFIED: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn second_title_before_shot_is_placement_error() {
+        // §6.2: at most one `# ` title; the SECOND is E-TITLE-PLACEMENT.
+        let (doc, diags) = parse("# First\n# Second\n## Shot 1.\n:narrator: hi.\n");
+        assert_eq!(
+            doc.title.as_ref().map(|(t, _)| t.as_str()),
+            Some("First"),
+            "the first title is accepted"
+        );
+        let placement: Vec<_> = diags.iter().filter(|d| d.code == E_TITLE_PLACEMENT).collect();
+        assert_eq!(placement.len(), 1, "exactly one E-TITLE-PLACEMENT: {diags:?}");
+        assert!(
+            !diags.iter().any(|d| d.code == E_UNCLASSIFIED),
+            "second title must not fall through to E-UNCLASSIFIED: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn single_title_before_shot_is_clean() {
+        // Regression guard: the normal case (one `# ` title before the first
+        // shot) produces no diagnostic.
+        let (doc, diags) = parse("# The Title\n## Shot 1.\n:narrator: hi.\n");
+        assert!(diags.is_empty(), "well-placed title must be clean: {diags:?}");
+        assert_eq!(doc.title.as_ref().map(|(t, _)| t.as_str()), Some("The Title"));
     }
 
     #[test]
