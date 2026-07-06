@@ -42,6 +42,9 @@ pub const E_SHOT_HEADING: &str = "E-SHOT-HEADING";
 /// because a `CelString` value (indistinguishable at the parser layer) may
 /// embed a CEL single-quoted string whose own `\'` escape is well-formed.
 pub const E_STRING_ESCAPE: &str = "E-STRING-ESCAPE";
+/// Diagnostic code: a `{{` interpolation had no closing `}}` before end of line
+/// (§7.6).
+pub const E_INTERP_UNTERMINATED: &str = "E-INTERP-UNTERMINATED";
 
 /// Parse a `.lute` document into its AST and parse diagnostics.
 ///
@@ -460,14 +463,68 @@ impl Parser<'_> {
         let text_span = self.span(text_start, text_end);
         let span = self.span(cstart, line_end);
         self.cursor += 1;
+        // Own the `Text` slice so the `&mut self` scan below does not conflict
+        // with the `self.body` borrow that `text_raw` held.
+        let text = text_raw.to_string();
+        let interps = self.scan_interps(&text, text_start);
         Some(Node::Line(Line {
             speaker,
             attrs,
-            text: text_raw.to_string(),
+            text,
             text_span,
-            interps: Vec::new(), // filled in Task 7
+            interps,
             span,
         }))
+    }
+
+    /// Scan `{{…}}` interpolations in a content line's `Text` (dsl §7.6).
+    /// `text_start_body` is the body-relative offset of `text`'s first byte.
+    /// `\{{` escapes a literal `{{`; an unclosed `{{` before EOL is
+    /// E-INTERP-UNTERMINATED. Classification: `@…` → Ref; `userName` → Reserved;
+    /// anything else is kept as Path (the checker rejects undeclared referents,
+    /// Plan B). Empty `{{}}` is scanned as an empty-`raw` Path — the parser stays
+    /// dumb and the checker rejects it.
+    fn scan_interps(&mut self, text: &str, text_start_body: usize) -> Vec<Interp> {
+        let b = text.as_bytes();
+        let mut out = Vec::new();
+        let mut j = 0;
+        while j + 1 < b.len() {
+            if b[j] == b'\\' && text[j + 1..].starts_with("{{") {
+                j += 3; // literal `{{`
+                continue;
+            }
+            if b[j] == b'{' && b[j + 1] == b'{' {
+                match text[j + 2..].find("}}") {
+                    None => {
+                        let (s, e) = (text_start_body + j, text_start_body + text.len());
+                        self.emit_o(
+                            E_INTERP_UNTERMINATED,
+                            "`{{` has no closing `}}` before end of line (dsl §7.6)".into(),
+                            self.orig(s),
+                            self.orig(e),
+                            Layer::Content,
+                        );
+                        break;
+                    }
+                    Some(rel) => {
+                        let inner = text[j + 2..j + 2 + rel].trim().to_string();
+                        let kind = if inner.starts_with('@') {
+                            InterpKind::Ref
+                        } else if inner == "userName" {
+                            InterpKind::Reserved
+                        } else {
+                            InterpKind::Path
+                        };
+                        let (s, e) = (text_start_body + j, text_start_body + j + 2 + rel + 2);
+                        out.push(Interp { kind, raw: inner, span: self.span(s, e) });
+                        j = j + 2 + rel + 2;
+                        continue;
+                    }
+                }
+            }
+            j += 1;
+        }
+        out
     }
 }
 
@@ -944,5 +1001,75 @@ mod tests {
     fn unterminated_block_comment_inside_text_is_fine() {
         let (_, diags) = parse("## Shot 1.\n:bianca: half /* open\n:narrator: next line intact\n");
         assert!(diags.is_empty(), "{diags:?}");
+    }
+
+    // -- Task 7: `{{…}}` interpolation scan (dsl §7.6) ----------------------
+
+    #[test]
+    fn interps_are_scanned_and_classified() {
+        let (doc, diags) = parse("## Shot 1.\n:bianca: Hi {{userName}}, you have {{run.coins}} and {{@fond}}.\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
+        let kinds: Vec<_> = l.interps.iter().map(|p| (p.kind, p.raw.as_str())).collect();
+        assert_eq!(kinds, [
+            (InterpKind::Reserved, "userName"),
+            (InterpKind::Path, "run.coins"),
+            (InterpKind::Ref, "@fond"),
+        ]);
+    }
+
+    #[test]
+    fn escaped_and_unterminated_interp() {
+        let (doc, diags) = parse("## Shot 1.\n:bianca: literal \\{{ stays.\n:fixer: broken {{run.coins\n");
+        let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
+        assert!(l.interps.is_empty());
+        assert!(diags.iter().any(|d| d.code == "E-INTERP-UNTERMINATED"));
+    }
+
+    #[test]
+    fn interp_inner_whitespace_is_trimmed() {
+        let (doc, diags) = parse("## Shot 1.\n:bianca: You have {{ run.coins }} left.\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
+        assert_eq!(l.interps.len(), 1);
+        assert_eq!(l.interps[0].kind, InterpKind::Path);
+        assert_eq!(l.interps[0].raw, "run.coins");
+    }
+
+    #[test]
+    fn empty_interp_is_scanned_as_empty_path() {
+        // Parser stays dumb: `{{}}` is a well-formed (if useless) interpolation
+        // with empty `raw`; the checker rejects the empty referent (Plan B).
+        let (doc, diags) = parse("## Shot 1.\n:bianca: nothing here {{}} really.\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
+        assert_eq!(l.interps.len(), 1);
+        assert_eq!(l.interps[0].kind, InterpKind::Path);
+        assert_eq!(l.interps[0].raw, "");
+    }
+
+    #[test]
+    fn escaped_then_real_interp_same_line() {
+        // `\{{` is a literal (no interp); a later unescaped `{{later}}` still scans.
+        let (doc, diags) = parse("## Shot 1.\n:bianca: braces \\{{ then {{later}}.\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
+        let kinds: Vec<_> = l.interps.iter().map(|p| (p.kind, p.raw.as_str())).collect();
+        assert_eq!(kinds, [(InterpKind::Path, "later")]);
+    }
+
+    #[test]
+    fn interp_span_after_multibyte_is_utf8_safe() {
+        // A multi-byte prefix must not throw off the byte offsets: slicing the
+        // ORIGINAL source by the interp span lands on char boundaries and covers
+        // exactly the `{{…}}`.
+        let src = "## Shot 1.\n:bianca: 안녕 {{userName}}!\n";
+        let (doc, diags) = parse(src);
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
+        assert_eq!(l.interps.len(), 1);
+        let sp = l.interps[0].span;
+        assert_eq!(&src[sp.byte_start..sp.byte_end], "{{userName}}");
+        assert_eq!(l.interps[0].raw, "userName");
     }
 }
