@@ -519,13 +519,19 @@ fn classify_heading(heading: &str) -> HeadingKind {
             let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
             let after = &rest[digits.len()..];
             if !digits.is_empty() && after.starts_with('.') {
-                // A shot number that overflows i64 degrades to E-SHOT-HEADING
-                // rather than panicking (parse() preserves the crate's no-panic
-                // guarantee); best-effort AST keeps `number: None`.
-                return match digits.parse::<i64>() {
-                    Ok(n) => HeadingKind::Numbered(n),
-                    Err(_) => HeadingKind::Invalid,
-                };
+                // §6.3 `Integer "." (WS Text)?`: after the period the remainder
+                // must be empty or start with whitespace, so `Shot 1.Title` is
+                // invalid.
+                let after_dot = &after[1..]; // '.' is one ASCII byte
+                if after_dot.is_empty() || after_dot.starts_with(char::is_whitespace) {
+                    // A shot number that overflows i64 degrades to E-SHOT-HEADING
+                    // rather than panicking (parse() preserves the crate's no-panic
+                    // guarantee); best-effort AST keeps `number: None`.
+                    return match digits.parse::<i64>() {
+                        Ok(n) => HeadingKind::Numbered(n),
+                        Err(_) => HeadingKind::Invalid,
+                    };
+                }
             }
             return HeadingKind::Invalid;
         }
@@ -714,6 +720,7 @@ mod tests {
             "## Prolog",
             "## Shot1.",
             "## Shot 99999999999999999999.",
+            "## Shot 1.Title",
         ] {
             let (_, diags) = parse(&format!("{bad}\n:narrator: hi.\n"));
             assert!(diags.iter().any(|d| d.code == "E-SHOT-HEADING"), "{bad}");
@@ -725,6 +732,7 @@ mod tests {
         for good in [
             "## Shot 1.",
             "## Scene 2. Title",
+            "## Shot 1. Title",
             "## Prologue",
             "## Epilogue tail",
             "## 프롤로그",
