@@ -14,10 +14,10 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | [`proposals/scenario-dsl/0.0.1.md`](docs/proposals/scenario-dsl/0.0.1.md) — language grammar + semantics | the examples below; [`architecture.md`](docs/architecture.md) *New additions* |
+| **writing `.lute` scenarios** | [`proposals/scenario-dsl/0.1.0.md`](docs/proposals/scenario-dsl/0.1.0.md) — language grammar + semantics | the examples below; [`architecture.md`](docs/architecture.md) *New additions* |
 | **writing a plugin** (directives, state, providers, bridge) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution | [`plugin-system.md`](docs/plugin-system.md) |
 | **building the compiler / checker / LSP** | both proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
-| **reasoning about run / user / app state** | [`proposals/scenario-dsl/0.0.1.md`](docs/proposals/scenario-dsl/0.0.1.md) §9 | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
+| **reasoning about run / user / app state** | [`proposals/scenario-dsl/0.1.0.md`](docs/proposals/scenario-dsl/0.1.0.md) §9 | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
 
 Worked examples:
@@ -59,7 +59,7 @@ An excerpt of [`docs/examples/date-minigame.lute`](docs/examples/date-minigame.l
 character: bianca
 season: 1
 episode: 5
-luteVersion: "0.0.1"
+luteVersion: "0.1.0"
 profile: date-minigame
 ---
 
@@ -67,10 +67,10 @@ profile: date-minigame
 
 <match on="scene.minigame.service01.rank">
   <when test="$ == 'gold'">
-    :line[bianca]{code="0030" emotion="delighted" variant="1"}: Wonderful! A perfect service!
+    :bianca{code="0030" emotion="delighted" variant="1"}: Wonderful! A perfect service!
   </when>
   <otherwise>
-    :line[bianca]{code="0050" emotion="shy" variant="0"}: Shall we try once more? The rhythm takes practice.
+    :bianca{code="0050" emotion="shy" variant="0"}: Shall we try once more? The rhythm takes practice.
   </otherwise>
 </match>
 ```

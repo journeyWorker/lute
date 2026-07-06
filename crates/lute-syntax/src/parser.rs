@@ -25,7 +25,9 @@ mod blocks;
 
 /// Diagnostic code: a body line matched no §4.3 rule (rule 7).
 pub const E_UNCLASSIFIED: &str = "E-UNCLASSIFIED";
-/// Diagnostic code: a block open (`<tag>`) had no matching `</tag>` close.
+/// Diagnostic code: a block open (`<tag>`) had no matching `</tag>` close, so
+/// the `<tag>…</tag>` bracket rule (§5) for a nesting construct (§7.3, §7.4)
+/// was left open at EOF.
 pub const E_UNCLOSED_TAG: &str = "E-UNCLOSED-TAG";
 /// Diagnostic code: non-staging content inside a `<timeline>`/`<track>` (§7.4).
 pub const E_TIMELINE_CONTENT: &str = "E-TIMELINE-CONTENT";
