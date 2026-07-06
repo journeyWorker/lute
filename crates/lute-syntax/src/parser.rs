@@ -721,6 +721,20 @@ mod tests {
     }
 
     #[test]
+    fn escaped_backslash_attr_value_text_stays_opaque() {
+        // Regression (content_text_start escape state): an attr value ending in
+        // an escaped backslash must not spill the string state past `}` `:`, or a
+        // `/*` in the opaque `Text` would be wrongly stripped / flagged
+        // (§4.2 exclusion 2). The `Text` keeps its `/* … */` verbatim.
+        let (doc, diags) = parse("## Shot 1.\n:bianca{u=\"\\\\\"}: keep /* literal */\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Line(l) = &doc.shots[0].body[0] else {
+            panic!("expected Line")
+        };
+        assert_eq!(l.text, "keep /* literal */");
+    }
+
+    #[test]
     fn attr_derived_celslot_span_bounds_raw() {
         // Regression (T2.3 review Critical): attr-derived CEL slots must have
         // span == the inner value bytes, so src[slot.span] == slot.raw (matching

@@ -93,18 +93,31 @@ pub(crate) fn content_text_start(line: &str) -> Option<usize> {
         j += 1;
     }
     if b.get(j) == Some(&b'{') {
-        let mut in_str = false;
+        // Quote-aware scan of the `{…}` attr list: a `"}"` (or a `":"`) inside a
+        // quoted value must not close the block early. Track escapes with an
+        // `esc` state machine (not a `b[j-1]` lookback, which misreads `"\\"` —
+        // an escaped backslash — as an escaped quote), mirroring `scan_attrs`.
         j += 1;
+        let mut in_str = false;
+        let mut esc = false;
         while j < b.len() {
-            match b[j] {
-                b'"' if !in_str => in_str = true,
-                b'"' if in_str && b[j - 1] != b'\\' => in_str = false,
-                b'}' if !in_str => break,
-                _ => {}
+            let c = b[j];
+            if in_str {
+                if esc {
+                    esc = false;
+                } else if c == b'\\' {
+                    esc = true;
+                } else if c == b'"' {
+                    in_str = false;
+                }
+            } else if c == b'"' {
+                in_str = true;
+            } else if c == b'}' {
+                j += 1;
+                break; // j now past '}' (or loop ends at EOL — caller degrades safely)
             }
             j += 1;
         }
-        j += 1; // past '}' (or EOL — caller degrades safely)
     }
     (b.get(j) == Some(&b':')).then_some(j + 1)
 }
@@ -423,6 +436,20 @@ mod tests {
         assert!(!out.contains("note"), "line comment survived: {out:?}");
         assert!(!out.contains("x */"), "block comment survived: {out:?}");
         assert!(out.contains("keep"), "following line lost: {out:?}");
+        assert_eq!(out.len(), input.len());
+    }
+
+    #[test]
+    fn escaped_backslash_attr_value_keeps_text_opaque() {
+        // Regression: an attr value ending in an escaped backslash (`"\\"`) must
+        // not leave `content_text_start` stuck in-string past the real `}` `:` —
+        // a naive `b[j-1] != '\\'` lookback misreads `\\` as an escaped quote,
+        // wrongly returning `None` so comments get recognized inside opaque
+        // `Text` (§4.2 exclusion 2, §4.4). The `Text` after the second `:` stays
+        // opaque, so its `/* … */` survives verbatim.
+        let input = r#":bianca{u="\\"}: keep /* literal */"#;
+        let out = strip_comments_checked(input).unwrap();
+        assert_eq!(out, input, "opaque Text altered: {out:?}");
         assert_eq!(out.len(), input.len());
     }
 }
