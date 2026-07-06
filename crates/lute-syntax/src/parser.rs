@@ -529,15 +529,15 @@ fn node_end(n: &Node) -> usize {
 }
 
 /// Body-relative offset of the `/*` that started the unterminated comment.
-/// Mirrors [`strip_comments_checked`]'s scan step for step (skips strings +
-/// terminated comments) so the reported position is the exact `/*` that ran to
-/// EOF. Like that scan it honours the line-aware `:line` opaque-`Text` rule
-/// (§4.2, §4.4): a `"` inside a `:line` body is a literal character, not a
-/// String delimiter, so it does not suppress the comment scan. The opaque
-/// boundary is recomputed from the *blanked* view after every terminated
-/// comment — not only at newlines — so leading same-line trivia before `:line[`
-/// (which the raw line hides) cannot leave it stale (see
-/// [`line_text_start_blanked`], [`text_start_for_line`]).
+/// Mirrors [`strip_comments_checked`]'s scan step for step (skips strings, `//`
+/// line comments, and terminated block comments) so the reported position is the
+/// exact `/*` that ran to EOF. Like that scan it honours §4.2 exclusion 2: past
+/// a content line's second `:` the `Text` is opaque, so a `/*` (or a `"`) there
+/// is literal and does not start a comment or a String. The opaque boundary is
+/// recomputed from the *blanked* view after every terminated comment — not only
+/// at newlines — so leading same-line trivia before the `:`ident (which the raw
+/// line hides) cannot leave it stale (see [`line_text_start_blanked`],
+/// [`text_start_for_line`]).
 fn find_unterminated_comment(body: &str) -> usize {
     let mut out = String::with_capacity(body.len());
     let mut chars = body.char_indices().peekable();
@@ -567,7 +567,29 @@ fn find_unterminated_comment(body: &str) -> usize {
             text_start = text_start_for_line(body, line_start);
             continue;
         }
-        if c == '"' && a < text_start {
+        // Opaque `Text` past a content line's second `:` (§4.2 exclusion 2): no
+        // comment/String is recognized to EOL.
+        if a >= text_start {
+            out.push(c);
+            continue;
+        }
+        // Line-leading `//` (only whitespace / blanked trivia precedes it) →
+        // trivia to EOL (§4.2); mirror the strip scan so a `/*` inside a `//`
+        // comment is not mistaken for an unterminated block comment.
+        if c == '/'
+            && matches!(chars.peek(), Some((_, '/')))
+            && out[line_start..a].bytes().all(|x| x == b' ' || x == b'\t')
+        {
+            let line_end = body[a..].find('\n').map_or(body.len(), |n| a + n);
+            for _ in a..line_end {
+                out.push(' ');
+            }
+            while matches!(chars.peek(), Some(&(pos, _)) if pos < line_end) {
+                chars.next();
+            }
+            continue;
+        }
+        if c == '"' {
             in_str = true;
             out.push(c);
             continue;
@@ -587,7 +609,7 @@ fn find_unterminated_comment(body: &str) -> usize {
             };
             // Blank the whole comment range in place (space per byte, `\n` kept)
             // so the blanked view keeps `out.len() == b` and can re-derive the
-            // `:line` boundary revealed once leading trivia is removed.
+            // content-line boundary revealed once leading trivia is removed.
             let comment = &body.as_bytes()[a..b];
             for &byte in comment {
                 out.push(if byte == b'\n' { '\n' } else { ' ' });
@@ -672,32 +694,30 @@ mod tests {
     }
 
     #[test]
-    fn unterminated_comment_pos_after_leading_same_line_comment() {
-        // FE1 twin (§4.2): a comment may precede `:line[` on the same line. That
-        // leading trivia must not leave the opaque-`Text` boundary stale — else the
-        // `:line` body's literal `"` wrongly opens a String that swallows a later
-        // unterminated `/*`, mislocating the E-COMMENT-UNTERMINATED position.
-        // `/* p */` closes at 6; `:line[x]:` opaque text starts at 17; the `"` at
-        // 18 is literal; the unterminated comment begins at the body `/*` (21).
-        let body = "/* p */ :line[x]: \"a /* boom";
-        assert_eq!(find_unterminated_comment(body), 21);
+    fn no_unterminated_from_block_comment_inside_content_text() {
+        // §4.2 exclusion 2 + blanked-view recompute: after the leading `/* p */`
+        // is blanked, the boundary is recomputed to recognize the content line,
+        // so its `Text` is opaque and the body `/* boom` is literal — NOT an
+        // unterminated block comment. `find_unterminated_comment` reports none.
+        let body = "/* p */ :bianca: a /* boom";
+        assert_eq!(find_unterminated_comment(body), 0);
     }
 
     #[test]
-    fn unterminated_comment_span_after_leading_same_line_comment() {
-        // End-to-end: the diagnostic span must land on the actual unterminated
-        // `/*` inside the `:line` body, not collapse to body offset 0.
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n/* p */ :line[x]: \"a /* boom\n";
-        let (_doc, diags) = parse(src);
-        let d = diags
-            .iter()
-            .find(|d| d.code == E_COMMENT_UNTERMINATED)
-            .expect("expected E-COMMENT-UNTERMINATED");
+    fn no_unterminated_diag_from_block_comment_inside_content_text() {
+        // End-to-end: a `/*` inside a content line's opaque `Text` is literal
+        // (§4.2 exclusion 2), so no E-COMMENT-UNTERMINATED is raised and the
+        // `Text` keeps the `/*` verbatim. The leading `/* p */` is still blanked.
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n/* p */ :bianca: a /* boom\n";
+        let (doc, diags) = parse(src);
         assert!(
-            src[d.span.byte_start..].starts_with("/* boom"),
-            "span should point at the unterminated body `/*`, got {:?}",
-            &src[d.span.byte_start..]
+            !diags.iter().any(|d| d.code == E_COMMENT_UNTERMINATED),
+            "opaque Text must not raise E-COMMENT-UNTERMINATED: {diags:?}"
         );
+        let Node::Line(l) = &doc.shots[0].body[0] else {
+            panic!("expected Line")
+        };
+        assert!(l.text.contains("a /* boom"), "Text lost the literal `/*`: {l:?}");
     }
 
     #[test]
@@ -775,5 +795,37 @@ mod tests {
     fn content_line_missing_second_colon_is_error() {
         let (_, diags) = parse("## Shot 1.\n:bianca no colon here\n");
         assert_eq!(diags[0].code, "E-UNCLASSIFIED");
+    }
+
+    // -- Task 3: `//` line comments + truly-opaque Text (dsl §4.2) -----------
+
+    #[test]
+    fn line_comment_leading_is_trivia() {
+        let (doc, diags) = parse("## Shot 1.\n// a note\n:bianca: Hi.\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        assert_eq!(doc.shots[0].body.len(), 1);
+    }
+
+    #[test]
+    fn line_comment_mid_line_is_not_a_comment() {
+        // dsl §4.2: `//` only at line start; inside Text it is literal.
+        let (doc, _) = parse("## Shot 1.\n:bianca: see https://example.com // really\n");
+        let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
+        assert!(l.text.contains("https://example.com // really"));
+    }
+
+    #[test]
+    fn block_comment_not_recognized_inside_text() {
+        // dsl §4.2 exclusion 2: Text is truly opaque after the second colon.
+        let (doc, diags) = parse("## Shot 1.\n:bianca: I love /* this */ you.\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
+        assert_eq!(l.text, "I love /* this */ you.");
+    }
+
+    #[test]
+    fn unterminated_block_comment_inside_text_is_fine() {
+        let (_, diags) = parse("## Shot 1.\n:bianca: half /* open\n:narrator: next line intact\n");
+        assert!(diags.is_empty(), "{diags:?}");
     }
 }
