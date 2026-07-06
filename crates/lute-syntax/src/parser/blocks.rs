@@ -110,6 +110,47 @@ impl Parser<'_> {
         }
     }
 
+    /// `Hub ::= "<hub" Attrs ">" Choice+ "</hub>"` (§7.3.2). Mirrors
+    /// [`Parser::parse_branch`]: a `<hub>` body admits only `<choice>` children,
+    /// strays → [`E_LOGIC_CONTENT`], same [`Parser::consume_close`]. The `once` /
+    /// `exit` flags ride along as bare attrs on each [`Choice`] (Plan B extracts).
+    /// [`Hub`] carries no `id` field, so `id=` stays in `attrs`.
+    pub(super) fn parse_hub(&mut self) -> Hub {
+        let open = self.parse_open_tag();
+        let attrs = open.attrs.clone();
+        let mut choices = Vec::new();
+        let mut last_end = open.end_o;
+        loop {
+            self.skip_blanks();
+            if self.cursor >= self.lines.len() || self.stop_at_heading() || self.at_close("hub") {
+                break;
+            }
+            let trimmed = self.trimmed(self.cursor);
+            if open_tag_name(&trimmed).as_deref() == Some("choice") {
+                let c = self.parse_choice();
+                last_end = c.span.byte_end;
+                choices.push(c);
+            } else {
+                // §7.3.2: a <hub> body admits only <choice> children. Report the
+                // stray line (mirroring <branch>/E-LOGIC-CONTENT) before skipping
+                // it, so the checker/editor sees it rather than a silent drop.
+                self.emit_line(
+                    E_LOGIC_CONTENT,
+                    "a <hub> body may contain only <choice> children (dsl §7.3.2)",
+                    self.cursor,
+                    Layer::Logic,
+                );
+                self.skip_stray();
+            }
+        }
+        let end_o = self.consume_close("hub", &open, last_end);
+        Hub {
+            attrs,
+            choices,
+            span: self.span_o(open.start_o, end_o),
+        }
+    }
+
     /// `Choice ::= "<choice" Attrs ">" Node* "</choice>"` (§7.3, §11.1).
     fn parse_choice(&mut self) -> Choice {
         let open = self.parse_open_tag();
@@ -373,4 +414,43 @@ fn take_at(attrs: &mut Vec<Attr>) -> Option<f64> {
     };
     attrs.remove(pos);
     val
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ast::Node;
+    use crate::parse;
+
+    #[test]
+    fn hub_parses_choices_with_flags() {
+        let src = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"a\" label=\"Ask\" once>\n:bianca: Sure.\n</choice>\n<choice id=\"leave\" label=\"Go\" exit>\n:fixer: Bye.\n</choice>\n</hub>\n";
+        let (doc, diags) = parse(src);
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Hub(h) = &doc.shots[0].body[0] else { panic!() };
+        assert_eq!(h.choices.len(), 2);
+        assert!(h.choices[0].attrs.iter().any(|a| a.key == "once"));
+        assert!(h.choices[1].attrs.iter().any(|a| a.key == "exit"));
+    }
+
+    #[test]
+    fn hub_rejects_non_choice_children() {
+        let src = "## Shot 1.\n<hub id=\"chat\">\n:narrator: stray\n</hub>\n";
+        let (_, diags) = parse(src);
+        assert!(diags.iter().any(|d| d.code == "E-LOGIC-CONTENT"));
+    }
+
+    #[test]
+    fn hub_nested_in_choice_bodies_parse() {
+        // Node::Hub must flow through next_node inside <choice> bodies, both in a
+        // sibling <hub> and inside a <branch>'s <choice> (dsl §7.3.2).
+        let src = "## Shot 1.\n<hub id=\"outer\">\n<choice id=\"a\" label=\"A\">\n<hub id=\"inner\">\n<choice id=\"x\" label=\"X\">\n:bianca: hi\n</choice>\n</hub>\n</choice>\n</hub>\n<branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n<hub id=\"h2\">\n<choice id=\"y\" label=\"Y\">\n:fixer: yo\n</choice>\n</hub>\n</choice>\n</branch>\n";
+        let (doc, diags) = parse(src);
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Hub(outer) = &doc.shots[0].body[0] else { panic!("expected outer Hub") };
+        let Node::Hub(inner) = &outer.choices[0].body[0] else { panic!("expected inner Hub") };
+        assert_eq!(inner.choices.len(), 1);
+        let Node::Branch(br) = &doc.shots[0].body[1] else { panic!("expected Branch") };
+        let Node::Hub(h2) = &br.choices[0].body[0] else { panic!("expected Hub in branch choice") };
+        assert_eq!(h2.choices.len(), 1);
+    }
 }
