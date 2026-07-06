@@ -29,3 +29,20 @@ fn hub_is_rejected_until_plan_b() {
         "a <hub> document must yield {E_HUB_UNSUPPORTED} (transitional D6 gate); got {out:?}",
     );
 }
+
+/// Even though hubs are gated, defassign still walks each choice's `when` guard
+/// (regression for the Task-8 review fix): a maybe-unset DECLARED read inside a
+/// hub choice guard must be flagged `E-MAYBE-UNSET`, exactly as `walk_branch`
+/// does — it must not escape definite-assignment.
+#[test]
+fn hub_choice_when_guard_is_checked_by_defassign() {
+    let out = codes(
+        "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number }\n---\n## Shot 1.\n\
+         <hub id=\"h\">\n<choice id=\"a\" label=\"A\" when=\"scene.n > 0\" exit>\n:narrator: hi.\n</choice>\n</hub>\n",
+    );
+    assert!(
+        out.contains(&"E-MAYBE-UNSET".to_string()),
+        "a hub choice `when` reading a declared no-default path must be flagged E-MAYBE-UNSET \
+         (guard must not escape defassign); got {out:?}",
+    );
+}
