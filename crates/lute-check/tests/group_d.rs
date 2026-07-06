@@ -28,10 +28,10 @@ fn c5_nested_match_on_dollar_is_error() {
          <match on=\"scene.g\">\n\
          <when test=\"$ == true\">\n\
            <match on=\"$\">\n\
-           <otherwise>:line[narrator]: a\n</otherwise>\n\
+           <otherwise>:narrator: a\n</otherwise>\n\
            </match>\n\
          </when>\n\
-         <otherwise>:line[narrator]: b\n</otherwise>\n\
+         <otherwise>:narrator: b\n</otherwise>\n\
          </match>\n"
     );
     assert!(
@@ -48,8 +48,8 @@ fn c4_disjunctive_guard_does_not_prove_read() {
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: number }}\n  scene.y: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
          <match on=\"scene.y\">\n\
-         <when test=\"isSet(run.x) || run.x > 0\">:line[narrator]: a\n</when>\n\
-         <otherwise>:line[narrator]: b\n</otherwise>\n\
+         <when test=\"isSet(run.x) || run.x > 0\">:narrator: a\n</when>\n\
+         <otherwise>:narrator: b\n</otherwise>\n\
          </match>\n"
     );
     assert!(
@@ -65,8 +65,8 @@ fn c4_conjunctive_guard_still_proves_read() {
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: number }}\n  scene.y: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
          <match on=\"scene.y\">\n\
-         <when test=\"isSet(run.x) && run.x > 0\">:line[narrator]: a\n</when>\n\
-         <otherwise>:line[narrator]: b\n</otherwise>\n\
+         <when test=\"isSet(run.x) && run.x > 0\">:narrator: a\n</when>\n\
+         <otherwise>:narrator: b\n</otherwise>\n\
          </match>\n"
     );
     assert!(
@@ -83,8 +83,8 @@ fn c1_scene_bool_unwritten_subject_is_maybe_unset() {
     let t = format!(
         "{HDR}state:\n  scene.flag: {{ type: bool }}\n---\n## Shot 1.\n\
          <match on=\"scene.flag\">\n\
-         <when test=\"$ == true\">:line[narrator]: a\n</when>\n\
-         <when test=\"$ == false\">:line[narrator]: b\n</when>\n\
+         <when test=\"$ == true\">:narrator: a\n</when>\n\
+         <when test=\"$ == false\">:narrator: b\n</when>\n\
          </match>\n"
     );
     assert!(
@@ -102,8 +102,8 @@ fn c1b_scene_bool_written_subject_is_clean() {
         "{HDR}state:\n  scene.flag: {{ type: bool }}\n---\n## Shot 1.\n\
          ::set{{scene.flag = true}}\n\
          <match on=\"scene.flag\">\n\
-         <when test=\"$ == true\">:line[narrator]: a\n</when>\n\
-         <when test=\"$ == false\">:line[narrator]: b\n</when>\n\
+         <when test=\"$ == true\">:narrator: a\n</when>\n\
+         <when test=\"$ == false\">:narrator: b\n</when>\n\
          </match>\n"
     );
     let c = codes(&t);

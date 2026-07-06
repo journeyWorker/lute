@@ -20,10 +20,10 @@ defs:
 
 <branch id="number">
   <choice id="blunt" label="Flat">
-    :line[fixer]: a
+    :fixer: a
   </choice>
   <choice id="soft" label="Gentle">
-    :line[fixer]: b
+    :fixer: b
   </choice>
 </branch>
 "#;

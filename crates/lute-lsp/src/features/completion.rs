@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn completion_of_choice_ids_in_match_subject() {
-        let text = "## Shot 1.\n<branch id=\"number\">\n  <choice id=\"a\" label=\"A\">\n    :line[f]: a.\n  </choice>\n</branch>\n<match on=\"\">\n  <otherwise>\n    :line[f]: x.\n  </otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"number\">\n  <choice id=\"a\" label=\"A\">\n    :f: a.\n  </choice>\n</branch>\n<match on=\"\">\n  <otherwise>\n    :f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
         let items = complete_at(

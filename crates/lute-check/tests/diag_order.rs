@@ -23,7 +23,7 @@ use std::collections::BTreeSet;
 // path with a DIFFERENT type -> the inline state-merge emits
 // `E-EXTENDS-STATE-TYPE` at the frontmatter span.
 const SCENE: &str =
-    "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.gold: { type: string }\n---\n## Shot 1.\n:line[x]: hi\n";
+    "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.gold: { type: string }\n---\n## Shot 1.\n:x: hi\n";
 
 #[test]
 fn import_extends_type_diag_precedes_inline_state_merge_at_same_span() {

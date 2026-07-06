@@ -322,7 +322,7 @@ fn divergence_holds_under_plugin_defs() {
     // only the ref differs between the two cases.
     let scene = |guard: &str| {
         format!(
-            "---\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">:line[narrator]: a\n</when>\n<otherwise>:line[narrator]: b\n</otherwise>\n</match>\n"
+            "---\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n"
         )
     };
 
@@ -471,7 +471,7 @@ fn divergence_holds_under_uses_import() {
 
     // (b) non-vacuous: a missing import produces E-USES-NOT-FOUND; its headless
     // and LSP projections must agree too (the new §9.2 codes' projection).
-    let bad = "---\ncharacter: x\nseason: 1\nepisode: 1\nuses: __no_such_schema__.lute\n---\n## Shot 1.\n:line[x]: hi\n";
+    let bad = "---\ncharacter: x\nseason: 1\nepisode: 1\nuses: __no_such_schema__.lute\n---\n## Shot 1.\n:x: hi\n";
     let (bdoc, _) = lute_syntax::parse(bad);
     let (bmeta, _) = lute_check::parse_meta(
         &bdoc.meta,
@@ -527,7 +527,7 @@ fn divergence_holds_under_components() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("greet.lute"),
-        "---\ncomponent: greet\nparams:\n  who: string\n---\n## G.\n::auto{character=@who}\n:line[narrator]: hi\n",
+        "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n::auto{character=@who}\n:narrator: hi\n",
     )
     .unwrap();
 

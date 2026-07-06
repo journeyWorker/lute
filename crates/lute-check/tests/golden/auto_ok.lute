@@ -11,4 +11,4 @@ title: Auto stage
 
 ::auto{character="marina" anchor="left" action="fade-in-up"}
 
-:line[marina]{code="0010" emotion="surprised" variant="0"}: Oh! Mr. Fixer!
+:marina{code="0010" emotion="surprised" variant="0"}: Oh! Mr. Fixer!

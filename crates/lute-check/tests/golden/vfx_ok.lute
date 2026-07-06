@@ -11,4 +11,4 @@ title: Visual effect
 
 ::vfx{type="whiteOut" label="finger_beam" transition="flash"}
 
-:line[narrator]: A flash, and where the mouse had been there was only a small black smudge.
+:narrator: A flash, and where the mouse had been there was only a small black smudge.
