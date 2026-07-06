@@ -13,4 +13,4 @@ components: [greet.component.lute]
 /* `::use` expands the named component's body inline, binding each `@param` to
    the matching named arg (count + type checked, §13.3). */
 ::use{component="greet" who="bianca"}
-:line[narrator]: And the scene carries on.
+:narrator: And the scene carries on.

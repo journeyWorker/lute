@@ -54,7 +54,7 @@ const BEAT: &str = r#"<timeline duration="1.4">
     ::sfx{sound="beam" assetId="P_beam" at="0.5"}
   </track>
 </timeline>
-:line[narrator]: After."#;
+:narrator: After."#;
 
 #[test]
 fn clips_emit_in_at_then_track_order_with_stamps_and_barrier() {
@@ -172,7 +172,7 @@ fn timeline_auto_clip_preloads_post_timeline_emotion() {
     ::auto{character="bianca" action="fade-in-up"}
   </track>
 </timeline>
-:line[bianca]{emotion="surprised"}: Oh!"#;
+:bianca{emotion="surprised"}: Oh!"#;
     let (recs, _) = walk(body);
     let preload = recs
         .iter()

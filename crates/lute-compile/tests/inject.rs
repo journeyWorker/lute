@@ -65,7 +65,7 @@ fn anchor_and_preload_inject_after_authored_auto() {
     // entry-emotion-lookahead, each a separate record AFTER the authored
     // sprite (§4.5 worked example).
     let (recs, _) = walk(
-        "::auto{character=\"bianca\" action=\"fade-in-up\"}\n:line[bianca]{emotion=\"surprised\"}: Oh!",
+        "::auto{character=\"bianca\" action=\"fade-in-up\"}\n:bianca{emotion=\"surprised\"}: Oh!",
     );
     let sprites: Vec<String> = recs.iter().filter_map(|r| sprite_desc(&r.cmd)).collect();
     assert_eq!(
@@ -90,8 +90,8 @@ fn anchor_and_preload_inject_after_authored_auto() {
 #[test]
 fn pos_reset_injects_before_the_plain_line() {
     let body = "::auto{character=\"bianca\" anchor=\"center\" action=\"fade-in-up\"}\n\
-:line[bianca]{emotion=\"delighted\" action=\"pose-lean\"}: A!\n\
-:line[bianca]: B.";
+:bianca{emotion=\"delighted\" action=\"pose-lean\"}: A!\n\
+:bianca: B.";
     let (recs, _) = walk(body);
     let kinds: Vec<&str> = recs
         .iter()
@@ -150,11 +150,11 @@ fn branch_arms_fork_from_entry_state_and_join_conservatively() {
     let body = r#"<branch id="fork">
   <choice id="a" label="A">
     ::auto{character="bianca" action="fade-in-up"}
-    :line[bianca]{emotion="surprised"}: Oh!
+    :bianca{emotion="surprised"}: Oh!
   </choice>
   <choice id="b" label="B">
     ::auto{character="bianca" action="fade-in-up"}
-    :line[bianca]{emotion="delighted"}: Ha!
+    :bianca{emotion="delighted"}: Ha!
   </choice>
 </branch>
 ::auto{character="bianca" action="fade-in-up"}"#;
@@ -187,7 +187,7 @@ fn arm_end_entrance_preloads_post_convergence_emotion() {
     ::auto{character="bianca" action="fade-in-up"}
   </choice>
 </branch>
-:line[bianca]{emotion="surprised"}: Oh!"#;
+:bianca{emotion="surprised"}: Oh!"#;
     let (recs, _) = walk(body);
     let preloads: Vec<String> = recs
         .iter()
@@ -254,13 +254,13 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
     let body = r#"::auto{character="bianca" anchor="left" action="fade-in-up"}
 <branch id="fork">
   <choice id="a" label="A">
-    :line[bianca]{variant="closeup"}: Hm.
+    :bianca{variant="closeup"}: Hm.
   </choice>
   <choice id="b" label="B">
-    :line[bianca]: Yo.
+    :bianca: Yo.
   </choice>
 </branch>
-:line[bianca]: Well."#;
+:bianca: Well."#;
     let (recs, _) = walk(body);
     let pos_resets: Vec<&str> = recs
         .iter()

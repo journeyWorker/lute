@@ -31,11 +31,11 @@ defs:
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
 ::auto{character="bianca" action="fade-in-up"}
-:line[bianca]{code="0010" emotion="surprised"}: Oh!
+:bianca{code="0010" emotion="surprised"}: Oh!
 
 <branch id="number">
   <choice id="blunt" label="Flat">
-    :line[fixer]{code="0010"}: Number.
+    :fixer{code="0010"}: Number.
   </choice>
   <choice id="soft" label="Gentle">
     ::set{scene.affect.bianca += 1}
@@ -44,13 +44,13 @@ defs:
 
 <match on="scene.choices.number">
   <when test="@fond">
-    :line[fixer]{delivery="thought"}: Nice.
+    :fixer{delivery="thought"}: Nice.
   </when>
   <when test="$ == 'blunt'">
-    :line[fixer]{delivery="thought"}: Flat.
+    :fixer{delivery="thought"}: Flat.
   </when>
   <otherwise>
-    :line[fixer]{delivery="thought"}: Hm.
+    :fixer{delivery="thought"}: Hm.
   </otherwise>
 </match>
 "#;
@@ -165,14 +165,14 @@ state:
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
 ::auto{character="bianca" action="fade-in-up"}
-:line[bianca]{code="0010"}: Hi.
+:bianca{code="0010"}: Hi.
 
 <branch id="couch">
   <choice id="help" label="Help">
-    :line[fixer]{code="0010"}: Sure.
+    :fixer{code="0010"}: Sure.
   </choice>
   <choice id="ignore" label="Ignore">
-    :line[fixer]{code="0020"}: No.
+    :fixer{code="0020"}: No.
   </choice>
 </branch>
 "#;
@@ -235,14 +235,14 @@ state:
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
 ::auto{character="bianca" action="fade-in-up"}
-:line[bianca]{code="0010"}: Hi.
+:bianca{code="0010"}: Hi.
 
 <branch id="couch">
   <choice id="help" label="Help">
-    :line[fixer]{code="0010"}: Sure.
+    :fixer{code="0010"}: Sure.
   </choice>
   <choice id="ignore" label="Ignore">
-    :line[fixer]{code="0020"}: No.
+    :fixer{code="0020"}: No.
   </choice>
 </branch>
 "#;

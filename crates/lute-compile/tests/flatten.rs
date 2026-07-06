@@ -58,13 +58,13 @@ fn kind(cmd: &Command) -> &'static str {
 
 const BRANCH: &str = r#"<branch id="number">
   <choice id="blunt" label="Just ask, flatly">
-    :line[fixer]{code="0050"}: Bianca. Your number.
+    :fixer{code="0050"}: Bianca. Your number.
   </choice>
   <choice id="soft" label="Ask gently">
     ::set{scene.affect.bianca += 1}
   </choice>
 </branch>
-:line[narrator]: She answers."#;
+:narrator: She answers."#;
 
 #[test]
 fn branch_flattens_to_header_arms_jumps_converge() {
@@ -96,13 +96,13 @@ fn branch_flattens_to_header_arms_jumps_converge() {
 fn match_flattens_with_otherwise_and_omits_it_when_absent() {
     let m = r#"<match on="scene.flags.saw_beam">
   <when test="$ == true">
-    :line[fixer]{delivery="thought"}: saw
+    :fixer{delivery="thought"}: saw
   </when>
   <otherwise>
-    :line[fixer]{delivery="thought"}: not
+    :fixer{delivery="thought"}: not
   </otherwise>
 </match>
-:line[narrator]: on."#;
+:narrator: on."#;
     let (recs, _) = flatten(m);
     let kinds: Vec<_> = recs.iter().map(|r| kind(&r.cmd)).collect();
     assert_eq!(kinds, vec!["match", "line", "jump", "line", "jump", "line"]);
@@ -121,13 +121,13 @@ fn match_flattens_with_otherwise_and_omits_it_when_absent() {
     // No <otherwise> arm (gate-proven covered) => field omitted (§11.2).
     let covered = r#"<match on="scene.flags.saw_beam">
   <when test="$ == true">
-    :line[fixer]{delivery="thought"}: t
+    :fixer{delivery="thought"}: t
   </when>
   <when test="$ == false">
-    :line[fixer]{delivery="thought"}: f
+    :fixer{delivery="thought"}: f
   </when>
 </match>
-:line[narrator]: on."#;
+:narrator: on."#;
     let (recs, _) = flatten(covered);
     let Command::Match(mc) = &recs[0].cmd else {
         panic!()
@@ -141,18 +141,18 @@ fn nested_block_lays_inner_convergence_before_outer_jump() {
   <choice id="a" label="A">
     <match on="scene.flags.saw_beam">
       <when test="$ == true">
-        :line[fixer]{delivery="thought"}: saw
+        :fixer{delivery="thought"}: saw
       </when>
       <otherwise>
-        :line[fixer]{delivery="thought"}: not
+        :fixer{delivery="thought"}: not
       </otherwise>
     </match>
   </choice>
   <choice id="b" label="B">
-    :line[fixer]{code="0010"}: b
+    :fixer{code="0010"}: b
   </choice>
 </branch>
-:line[narrator]: end."#;
+:narrator: end."#;
     let (recs, _) = flatten(nested);
     let kinds: Vec<_> = recs.iter().map(|r| kind(&r.cmd)).collect();
     assert_eq!(
@@ -207,7 +207,7 @@ fn component_sentinels_stamp_source_and_emit_nothing() {
     let src = r#"::__component-begin{component="greet"}
 ::auto{character="bianca" anchor="center" action="fade-in-up"}
 ::__component-end
-:line[narrator]: after."#;
+:narrator: after."#;
     let (recs, _) = flatten(src);
     let kinds: Vec<_> = recs.iter().map(|r| kind(&r.cmd)).collect();
     assert_eq!(kinds, vec!["sprite", "line"]);

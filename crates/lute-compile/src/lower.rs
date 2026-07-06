@@ -274,15 +274,15 @@ mod tests {
 
     #[test]
     fn line_roles_derive_from_speaker_and_delivery() {
-        let v = lower_first(":line[narrator]: Venny's.");
+        let v = lower_first(":narrator: Venny's.");
         assert_eq!(v["kind"], "line");
         assert_eq!(v["role"], "narration");
-        let v = lower_first(":line[fixer]{delivery=\"thought\"}: Hm.");
+        let v = lower_first(":fixer{delivery=\"thought\"}: Hm.");
         assert_eq!(v["role"], "monologue");
-        let v = lower_first(":line[fixer]{delivery=\"voiceover\"}: Later.");
+        let v = lower_first(":fixer{delivery=\"voiceover\"}: Later.");
         assert_eq!(v["role"], "voiceover");
         let v = lower_first(
-            ":line[bianca]{code=\"0010\" emotion=\"surprised\" variant=\"0\" as=\"Hostess\"}: Oh!",
+            ":bianca{code=\"0010\" emotion=\"surprised\" variant=\"0\" as=\"Hostess\"}: Oh!",
         );
         assert_eq!(v["role"], "dialogue");
         assert_eq!(v["speaker"], "bianca");
