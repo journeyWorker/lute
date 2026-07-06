@@ -111,6 +111,8 @@ voice files are found and attached by a separate build step that needs an explic
 | **`lineId`** | *which line* (identity + localization) | the stable line id: the i18n sidecar key `lineId → { lang: text }` **and** the identity a voice file is matched to — on every `line` + every `choice.options[]` label | line: `{character}.s{s}ep{e}.{speaker}_{code}`; option label: `{character}.s{s}ep{e}.{branchId}.{choiceId}`. Assigned once, **never recomputed** — `lute tag` persists the `code` into source (the Yarn `#line:` model, §12). |
 | **`voiceKey`** | *which voice file* (audio) | the voice-asset lookup/attach key — emitted on **voiced** lines (`dialogue`/`voiceover`) so a separate voice-attach build step finds and inserts the clip | aligned to `lineId`: core `{characterId}-{code}`; when the character-cast plugin lands, `{voiceBank}-{code}` with a static `costumeVoiceBank` (§7.3). **Namespace:** unique within the episode/voice package — a global consumer pairs it with `meta.episodeId`. |
 
+> **0.1.0 note (choice-label `lineId`):** the `s{s}ep{e}` middle segment is `meta.episodeId` (default `s{season:02}ep{episode:02}`), pinned in 0.1.0 as the derivation input; this episode-prefixed choice/hub-label shape is confirmed correct — see the *DSL 0.1.0 addendum (2026-07-06)* below.
+
 `addr` is regenerated each compile (a position); `lineId`/`voiceKey` are stable content joins that
 survive text edits, insertion, and reordering. `lineId` and `voiceKey` are distinct because a voice
 bank can differ from the character (cast's costume/era voice — a child/flashback bank); in the core
@@ -339,3 +341,141 @@ tests before commit; full-workspace gate at plan end. New public types live in `
   yet implemented, so `voiceKey = {characterId}-{code}`, aligned to `lineId` and unique within the
   episode/voice package. When cast lands, a voiced line whose bank ≠ character gets `{voiceBank}-{code}`
   (§7.3) — a plugin-hook change to the derivation, not the IR schema.
+
+---
+
+## DSL 0.1.0 addendum (2026-07-06)
+
+Applies the language revision in [`2026-07-06-lute-dsl-0.1.0-design.md`](./2026-07-06-lute-dsl-0.1.0-design.md)
+(driving [`scenario-dsl/0.1.0.md`](../../proposals/scenario-dsl/0.1.0.md)) to this IR. **The
+0.0.1 body and worked examples above are unchanged** — they describe the shipped compiler. This
+section is the delta a 0.1.0 compiler emits; where it conflicts with a 0.0.1 statement, this
+section wins **for 0.1.0 input**. Every derivation named here has its single source of truth in the
+DSL 0.1.0 design doc (section ids cited below); this addendum states only the IR-schema consequence.
+
+### A1. `sprite.costume` + costume-aware stage join (amends §4.4, §7.3)
+
+- Every `sprite` record — authored (`::auto`) **and** injected (§7.4) — gains an optional
+  **`costume`** field: the character-cast plugin's resolved costume id for that character at that
+  point. Absent when cast is inactive (the core case).
+- The stage fork/join slot vector (§7.3) extends from `anchor`/`pose`/`emotion` to
+  **`anchor`/`pose`/`emotion`/`costume`**. The join rule is unchanged: a slot identical across all
+  arms carries forward; a slot that differs between arms, or is present in only some, becomes
+  `Unknown` and is treated conservatively after convergence.
+- Because costume resolution reuses this same conservative CFG join, a `costume` that is path-joined
+  yet factually identical MAY still be conservatively rejected (treated `Unknown` / re-emitted) —
+  documented expected behavior (character-cast errata: voiceBank/costume determinability).
+- Rendering contract: the current `costume` applies to dialogue sprites and is **carried in the IR**
+  on the `sprite` record; the engine does not reconstruct it from `set` records (character-cast
+  errata: costume rendering contract). Its interaction with `voiceKey` is unchanged from §4.2/§11 — a
+  voiced line whose cast voiceBank differs from the character gets `voiceKey = {voiceBank}-{code}` (a
+  plugin-hook derivation change, not an IR-schema change).
+
+### A2. New `hub` record kind (amends §4.4, §4.1, §7)
+
+DSL 0.1.0 adds `<hub>` (Ink-parity revisit conversations). It lowers to one new record kind,
+structurally a `choice` plus revisit flags:
+
+```jsonc
+{ "kind":"hub", "addr":"006-0100", "id":"barConvo",
+  "recordKey":"scene.choices.barConvo",       // alias of that path, as on `choice` (§4.4) — not a new authored id
+  "options":[
+    { "id":"askName", "label":"What's your name?", "lineId":"bianca.s01ep02.barConvo.askName",
+      "once":true,  "exit":false, "when":"isSet(scene.flags.curious)", "target":"006-0200" },
+    { "id":"leave",   "label":"That's enough.",     "lineId":"bianca.s01ep02.barConvo.leave",
+      "once":false, "exit":true,                                        "target":"006-0500" } ],
+  "converge":"006-0700" }
+```
+
+- **Fields.** `id` (the hub id); `recordKey` = `scene.choices.<hubId>` (an alias of that state path,
+  exactly as on a `choice`, §4.4 — not a separate id to mint); `options[]` of `{ id, label, lineId,
+  once, exit, when?:<cel>, target:<addr> }` where `once`/`exit` are always-present bools and `when`
+  appears only when authored; `converge:<addr>`. Each option `label` carries a `lineId` exactly like a
+  `<choice>` option label (§4.2).
+- **Folded envelope state (§4.1) gains two implicit slot groups per hub:**
+  - `scene.choices.<hubId>` — `enum`, domain = the hub's choice ids ∪ `unset`, default `unset` (same
+    shape/provenance as a `<branch>`; **hub ids and branch ids share the one per-episode
+    `scene.choices.*` uniqueness domain**);
+  - `scene.visited.<hubId>.<choiceId>` — `bool`, default `false`, one per hub choice, in the NEW
+    reserved implicit namespace **`scene.visited.*`** (kept separate from `scene.choices.*` to avoid a
+    path parent/leaf collision).
+- **Flat-VM contract (§7).** On reaching the `hub` and after each **non-`exit`** arm completes, the VM
+  re-presents every *eligible* option; eligible = `when` (if any) true **∧** (if `once`)
+  `scene.visited.<hubId>.<choiceId>` == `false`. On a pick it records **both**
+  `scene.choices.<hubId>` = the option id **and** `scene.visited.<hubId>.<choiceId>` = `true`, then
+  sets PC ← option `target`. A **non-`exit`** arm's completion returns control to the hub loop head
+  (a runtime property of the `hub` kind — **no backward `jump` is emitted**); an **`exit`** arm ends
+  in a forward `jump → converge`, exactly like a `choice` arm. If no option is eligible at a
+  presentation point, the hub auto-exits to `converge`. The clean-check gate proves `E-HUB-NO-EXIT`
+  (≥1 unguarded `exit` choice, or all choices `once`), so the loop always has a terminating path.
+- **§3.2 invariant preserved (D2).** The hub lowers to *finitely many* records — one header, one arm
+  subgraph per choice, one convergence label — exactly as a `<branch>` does. The re-presentation
+  *loop* is a runtime property that consumes one player input per cycle, so it introduces no unbounded
+  compile-time computation and emits no backward jump into the record stream; the artifact stays the
+  flat, ordered, "reduces to data" sequence D2/§3.2 require. Backward diverts remain a permanent
+  non-goal.
+- **Definite assignment.** Hub arms have no dominance relation (same join rule as `<match>` arms) —
+  arm writes are may-writes at hub exit.
+
+### A3. `line.placeholders` + `{{…}}` interpolation (amends §4.4)
+
+DSL 0.1.0 adds `{{…}}` interpolation inside content-line `Text` (and inside `<choice>`/`<hub>` label
+strings). The IR keeps `text` **verbatim as authored** — the `{{…}}` markers stay in the string,
+because that string is the localization source keyed by `lineId` — and each `line` record gains:
+
+- **`placeholders: [ … ]`** — one entry per interpolation, **in left-to-right appearance order**,
+  each tagged with its `kind`: `path` (a state-path read), `ref` (a `@def` / `@fn(args)` reference),
+  or `reserved` (a reserved token; only `userName` in 0.1). Each entry also carries the referent it
+  substitutes (`path` / `ref` / `token`). Absent when the line has no interpolation.
+
+```jsonc
+{ "kind":"line", "addr":"007-0100", "role":"dialogue", "speaker":"bianca",
+  "text":"Nice to meet you, {{userName}} — affection {{scene.affect.bianca}}.",
+  "lineId":"bianca.s01ep02.bianca_0080", "voiceKey":"bianca-0080",
+  "placeholders":[ { "kind":"reserved", "token":"userName" },
+                   { "kind":"path", "path":"scene.affect.bianca" } ] }
+```
+
+- Purpose (1) **engine substitution** — the runtime renders each placeholder against live state per
+  DSL D-B (number → shortest decimal, bool → `true`/`false`, enum → member text verbatim); the
+  compiler emits only the verbatim `text` + this typed, ordered placeholder list. (2)
+  **translation-fill validation** — see A6.
+- A `<choice>`/`<hub>` option `label` that itself contains `{{…}}` carries the same `placeholders`
+  array on that option: its text is translatable and `lineId`-keyed, so the identical set-equality
+  check applies.
+
+### A4. `meta.episodeId` as the lineId derivation input (confirms §4.2)
+
+- Envelope `meta.episodeId` (already present in §4.1) becomes the **derivation input** for the
+  episode segment of every `lineId`. Default `s{season:02}ep{episode:02}` (e.g. `s01ep02`); when
+  authored/pinned, the literal `episodeId` value is used verbatim.
+- 0.1.0 lineId shapes (SoT: DSL 0.1.0 §S3):
+  - line: `{character}.{episodeId}.{speaker}_{code}`
+  - choice/hub option label: `{character}.{episodeId}.{branchOrHubId}.{choiceId}`
+- The `{episodeId}` segment is exactly the `s{s}ep{e}` middle segment already shown in §4.2 — so
+  **§4.2 was already correct**: the choice-label `lineId` is episode-prefixed. 0.1.0 resolves the old
+  0.0.1 §12 ↔ compile-IR §4.2 conflict **in this doc's favor**. Pinning `episodeId` makes
+  translation/VO keys survive episode renumbering.
+
+### A5. `line.role` derivation (SoT: DSL 0.1.0 §12 / X1)
+
+- The `role` value in a `line` record (§4.4: `dialogue`|`narration`|`monologue`|`voiceover`) is
+  derived from the content-line `delivery` attribute per the **DSL 0.1.0 §12 delivery→role table,
+  which is the single source of truth**. This doc defines no separate rule:
+  - speaker `narrator` → `narration` (a `delivery` attr on `narrator` is a static error);
+  - else `delivery="thought"` → `monologue`; `delivery="voiceover"` → `voiceover`;
+    `delivery="spoken"` or absent → `dialogue`.
+- A non-player `delivery="thought"` is **legal** (that character's inner voice) and lowers to
+  `"role":"monologue"`.
+
+### A6. `E-L10N-PLACEHOLDER` is a compile-stage diagnostic
+
+- Per DSL D-B's i18n contract, at build time the compiler MUST check **placeholder-set equality**
+  between a line's source `text` and each translation, keyed by `lineId`, using exactly the
+  `placeholders` set from A3. A mismatch (missing / extra / renamed placeholder) is
+  **`E-L10N-PLACEHOLDER`**, raised at the **compile stage** (not parse/check). It is the one new
+  0.1.0 diagnostic that belongs to `lute-compile`; the rest of the 0.1.0 registry delta is
+  parse/check/manifest-stage.
+- This does not reopen D5's deferrals (§9): asset-path resolution and translation *merge* stay
+  external. Only the placeholder-set contract check is compile-owned, because it consumes the
+  compiler's extracted `placeholders`.
