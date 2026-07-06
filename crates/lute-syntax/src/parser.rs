@@ -426,6 +426,7 @@ impl Parser<'_> {
             attrs,
             text: text_raw.to_string(),
             text_span,
+            interps: Vec::new(),
             span,
         })
     }
@@ -508,6 +509,7 @@ fn node_end(n: &Node) -> usize {
         Node::Branch(b) => b.span.byte_end,
         Node::Match(m) => m.span.byte_end,
         Node::Timeline(t) => t.span.byte_end,
+        Node::Hub(h) => h.span.byte_end,
     }
 }
 
