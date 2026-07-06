@@ -561,3 +561,33 @@ time (attr templates like `fromAttr` already substituted):
 The runtime's bridge dispatch becomes generic: call host with `{tag, fields}`, apply `effects`
 to the state store from the returned result. No per-plugin knowledge in any runtime; the manifest
 stays a compile-time-only input (snapshot-first, plugin-system §3.4).
+
+### A13. `<when is>` → arm `expr` lowering; `match.subject` is debug-only (amends §4.4, completes A7)
+
+A7 gave `expr` to arm `test`, `choice`/`hub` `when`, and `set.value` — but not to the `match`
+`subject`, and the 0.1.0 `<when is>` literal patterns (DSL §7.3.1) had no lowering rule. This
+closes both so the syntax→IR path is fully specified and no runtime CEL parser is needed (A7).
+
+**`match.subject` is debug-only.** The `match` record keeps `subject` as a non-authoritative CEL
+string (for tooling/trace). The runtime never evaluates it. Instead, the subject is **inlined into
+each arm's synthesized `expr`** (matching the §4.5 worked example), so every arm is
+self-contained.
+
+**Arm schema gains `expr`.** Each `match`/`hub`/`branch` arm derived from a `<when>` carries an
+`expr` (the A7 tree) built by lowering `is` and/or `test`:
+
+- `is="a"` → `(<subject-expr>) == 'a'` (enum/string) · `== true|false` (bool) · `== <n>` (number).
+- `is="a | b | c"` → `((S)=='a' || (S)=='b' || (S)=='c')` — a parenthesized OR chain over the
+  inlined subject `S`.
+- `is="unset"` → `!isSet(<subject-path>)` when the subject is a bare state path; for a **compound**
+  subject (not a single path, so `isSet` does not apply) the compiler MUST lower it against the
+  subject's null/unset representation (e.g. a synthesized `(S) == null`), never silently drop the
+  arm — an unset arm on a compound subject that cannot be lowered is a compile error.
+- `is` + `test` → `(<is-expr>) && (<test-expr>)` (pattern AND guard; the `$` subject in `test` is
+  substituted parenthesized per A7 / DSL §8.4).
+- `test` only → the A7 `expr` for the guard, subject substituted as today.
+
+The synthesized arm `expr` is emitted exactly like an authored `test` `expr` (same node schema,
+same hygiene). `otherwise` remains a bare fall-through target (no `expr`). Exhaustiveness itself is
+a **check-stage** obligation (DSL §11.2); by lowering time the arms are already proven to cover the
+domain, so codegen does not re-derive coverage — it only emits the arm `expr`s in source order.
