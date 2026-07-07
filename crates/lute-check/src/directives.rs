@@ -560,4 +560,39 @@ mod tests {
         let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
+
+    #[test]
+    fn camera_non_numeric_zoom_errors() {
+        // Numeric camera attrs are declared `number`; a non-numeric literal is a
+        // check-time type error (closes the coercion seam — Plan C review).
+        let d = directive("camera", &[("zoom", "hard")]);
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
+            "expected E-ATTR-TYPE for non-numeric zoom, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn camera_non_numeric_shake_errors() {
+        // `::camera{shake="hard"}` must be rejected at check, not silently dropped
+        // by the compiler's get_f64 coercion (Plan C review).
+        let d = directive("camera", &[("shake", "hard")]);
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
+            "expected E-ATTR-TYPE for non-numeric shake, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn camera_numeric_attrs_pass() {
+        // Valid numeric literals for zoom/move-x/move-y/shake still validate.
+        let d = directive(
+            "camera",
+            &[("zoom", "1.1"), ("move-x", "0.2"), ("move-y", "0.3"), ("shake", "0.4")],
+        );
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        assert!(errs.is_empty(), "{errs:?}");
+    }
 }
