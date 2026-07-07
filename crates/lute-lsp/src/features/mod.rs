@@ -659,6 +659,13 @@ fn branch_span_nodes(nodes: &[Node], id: &str) -> Option<Span> {
                     }
                 }
             }
+            Node::Hub(h) => {
+                for c in &h.choices {
+                    if let Some(sp) = branch_span_nodes(&c.body, id) {
+                        return Some(sp);
+                    }
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     let body = match arm {
@@ -792,6 +799,11 @@ fn collect_set_paths(nodes: &[Node], path: &str, out: &mut Vec<Span>) {
             Node::Set(s) if s.path == path => out.push(s.path_span),
             Node::Branch(b) => {
                 for c in &b.choices {
+                    collect_set_paths(&c.body, path, out);
+                }
+            }
+            Node::Hub(h) => {
+                for c in &h.choices {
                     collect_set_paths(&c.body, path, out);
                 }
             }
