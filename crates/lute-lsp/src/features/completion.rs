@@ -253,6 +253,11 @@ fn collect_branch_ids(nodes: &[Node], out: &mut Vec<String>) {
                     collect_branch_ids(&c.body, out);
                 }
             }
+            Node::Hub(h) => {
+                for c in &h.choices {
+                    collect_branch_ids(&c.body, out);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     let body = match arm {
@@ -280,6 +285,11 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
                 }
                 Node::Branch(b) if super::span_contains(b.span, off) => {
                     for c in &b.choices {
+                        scan(&c.body, off, out);
+                    }
+                }
+                Node::Hub(h) if super::span_contains(h.span, off) => {
+                    for c in &h.choices {
                         scan(&c.body, off, out);
                     }
                 }
@@ -456,6 +466,52 @@ mod tests {
             "offers the choice path: {:?}",
             labels(&items)
         );
+    }
+
+    /// D2: `<match on="">` subject completion must offer a `<branch id="inner">`
+    /// that is nested inside a `<hub>` choice body (`collect_branch_ids` must
+    /// descend into hub choices).
+    #[test]
+    fn completion_of_choice_ids_offers_hub_nested_branch() {
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" label=\"Ask\" once>\n<branch id=\"inner\">\n<choice id=\"a\" label=\"A\">\n:f: a.\n</choice>\n</branch>\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n:f: bye.\n</choice>\n</hub>\n<match on=\"\">\n<otherwise>\n:f: x.\n</otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        assert!(
+            items.iter().any(|i| i.label == "scene.choices.inner"),
+            "offers the hub-nested branch choice path: {:?}",
+            labels(&items)
+        );
+    }
+
+    /// D2: attr-key completion for a directive nested inside a `<hub>` choice
+    /// body must dedupe an already-written key (`present_attr_keys` must descend
+    /// into hub choices).
+    #[test]
+    fn attr_key_completion_dedupes_present_keys_in_hub_choice() {
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" label=\"Ask\" once>\n::camera{focus=\"b\" }\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n:f: bye.\n</choice>\n</hub>\n";
+        let doc = parsed(text);
+        // Cursor in the whitespace after the first attr (still the attr area).
+        let off = text.find("\" }").unwrap() + 2;
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        let ls = labels(&items);
+        assert!(
+            !ls.contains(&"focus"),
+            "focus already present in hub-nested directive, should be gone: {ls:?}"
+        );
+        assert!(ls.contains(&"zoom"), "zoom still offered: {ls:?}");
     }
 
     #[test]

@@ -266,6 +266,48 @@ mod tests {
         );
     }
 
+    /// A `<hub>` whose choice body nests a `<branch id="inner">` and a
+    /// `::set{scene.x = 1}`, plus an outer `::set` and a `<match on=…>` on the
+    /// hub-nested choice path — the D2 recursion fixture.
+    const HUB_NEST: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.x: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.x = 0}\n<hub id=\"chat\">\n<choice id=\"ask\" label=\"Ask\" once>\n<branch id=\"inner\">\n<choice id=\"a\" label=\"A\">\n::set{scene.x = 1}\n</choice>\n</branch>\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n:fixer: bye.\n</choice>\n</hub>\n<match on=\"scene.choices.inner\">\n<otherwise>\n:fixer: x.\n</otherwise>\n</match>\n";
+
+    /// D2: go-to-definition on `scene.choices.inner` must resolve to the
+    /// `<branch id="inner">` span even though the branch is nested inside a
+    /// `<hub>` choice body (`branch_span_nodes` must descend into hub choices).
+    #[test]
+    fn definition_on_hub_nested_branch_choice_jumps_to_branch() {
+        let doc = parsed(HUB_NEST);
+        // Cursor inside the `on="scene.choices.inner"` subject path.
+        let off = HUB_NEST.find("scene.choices.inner").unwrap() + 5;
+        let loc =
+            definition_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let branch_line = line_of(HUB_NEST, HUB_NEST.find("<branch id=\"inner\">").unwrap());
+        assert_eq!(line_of(HUB_NEST, loc.byte_start), branch_line);
+    }
+
+    /// D2: find-references on `scene.x` must count the `::set{scene.x = 1}`
+    /// nested inside a `<hub>` choice body (`collect_set_paths` must descend into
+    /// hub choices) alongside the outer `::set`.
+    #[test]
+    fn references_on_state_path_counts_hub_nested_set() {
+        let doc = parsed(HUB_NEST);
+        // Cursor on the OUTER `::set{scene.x = 0}` target path.
+        let off = HUB_NEST.find("scene.x = 0").unwrap();
+        let refs = references_at(
+            &doc,
+            &load_core_snapshot(),
+            &SchemaImports::default(),
+            off,
+            false,
+        );
+        assert_eq!(refs.len(), 2, "outer + hub-nested ::set: {refs:?}");
+        let nested = HUB_NEST.find("scene.x = 1").unwrap();
+        assert!(
+            refs.iter().any(|r| r.byte_start == nested),
+            "hub-nested ::set span must be present: {refs:?}"
+        );
+    }
+
     /// A snapshot with a `CH` assetKind (plugin §6.9 shape) and a `::portrait`
     /// directive whose `assetId` attr is typed `assetKind("CH")`.
     fn asset_snapshot() -> CapabilitySnapshot {
