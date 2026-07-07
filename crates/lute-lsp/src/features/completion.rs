@@ -80,6 +80,7 @@ pub fn complete_at(
         // completion — a `{{…}}` referent is authored inline, matching the prior
         // behavior (interps resolved to no cursor before D1).
         Cursor::Interp(_) => Vec::new(),
+        Cursor::IsPattern { subject_path } => is_pattern_items(doc, &meta, subject_path),
     }
 }
 
@@ -237,6 +238,31 @@ fn choice_path_items(doc: &Document) -> Vec<CompletionItem> {
             label: format!("scene.choices.{id}"),
             kind: Some(CompletionItemKind::PROPERTY),
             detail: Some(format!("choice of <branch id=\"{id}\">")),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// `<when is="…">` literal-pattern candidates for the enclosing `<match>`
+/// subject's finite domain (dsl §7.3.1): enum members / bool ∪ `unset`, or the
+/// branch/hub choice ids ∪ `unset` — sourced from the shared [`super::subject_domain`]
+/// so hover + completion never diverge. Empty when the subject has no finite
+/// domain. The whole `is=` value is ONE cursor span, so every domain member is
+/// offered regardless of the cursor's position among prior `|`-alternatives.
+fn is_pattern_items(
+    doc: &Document,
+    meta: &lute_check::TypedMeta,
+    subject_path: &str,
+) -> Vec<CompletionItem> {
+    let Some(domain) = super::subject_domain(doc, meta, subject_path) else {
+        return Vec::new();
+    };
+    domain
+        .into_iter()
+        .map(|v| CompletionItem {
+            label: v,
+            kind: Some(CompletionItemKind::ENUM_MEMBER),
+            detail: Some("<when is> pattern".to_string()),
             ..Default::default()
         })
         .collect()
@@ -780,6 +806,97 @@ mod tests {
             items.iter().any(|i| i.label == "helped"),
             "offers imported def name: {:?}",
             labels(&items)
+        );
+    }
+
+    /// D3: completion inside a `<when is="…">` value whose `<match>` subject is a
+    /// declared enum offers the enum members ∪ `unset` (dsl §7.3.1) — not CEL
+    /// state paths (the pre-D3 fall-through when `is` was discarded).
+    #[test]
+    fn completion_in_when_is_offers_enum_members() {
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n:fixer: nice.\n</when>\n<otherwise>\n:fixer: ok.\n</otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("is=\"gold\"").unwrap() + "is=\"".len() + 1; // inside "gold"
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        let ls = labels(&items);
+        assert!(
+            ls.contains(&"gold")
+                && ls.contains(&"silver")
+                && ls.contains(&"bronze")
+                && ls.contains(&"unset"),
+            "offers enum members ∪ unset: {ls:?}"
+        );
+    }
+
+    /// D3: `<match on="scene.choices.chat">` over a top-level `<hub id="chat">`
+    /// (choices askCoffee/leave) — `is=` completion offers the hub's choice ids ∪
+    /// `unset` (the implicit recording enum, dsl §11.1.3).
+    #[test]
+    fn completion_in_when_is_offers_hub_choice_ids() {
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" label=\"Coffee?\" once>\n:f: a.\n</choice>\n<choice id=\"leave\" label=\"Bye\" exit>\n:f: bye.\n</choice>\n</hub>\n<match on=\"scene.choices.chat\">\n<when is=\"askCoffee\">\n:f: x.\n</when>\n<otherwise>\n:f: y.\n</otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("is=\"askCoffee\"").unwrap() + "is=\"".len() + 1;
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        let ls = labels(&items);
+        assert!(
+            ls.contains(&"askCoffee") && ls.contains(&"leave") && ls.contains(&"unset"),
+            "offers hub choice ids ∪ unset: {ls:?}"
+        );
+    }
+
+    /// D3: `<match on="scene.visited.chat.askCoffee">` over a `<hub id="chat">`
+    /// with a `<choice id="askCoffee">` — the folded per-choice bool (dsl §9.6,
+    /// §11.1.3), so `is=` completion offers true/false/unset.
+    #[test]
+    fn completion_in_when_is_offers_visited_bool() {
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" label=\"Coffee?\" once>\n:f: a.\n</choice>\n<choice id=\"leave\" label=\"Bye\" exit>\n:f: bye.\n</choice>\n</hub>\n<match on=\"scene.visited.chat.askCoffee\">\n<when is=\"true\">\n:f: x.\n</when>\n<otherwise>\n:f: y.\n</otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("is=\"true\"").unwrap() + "is=\"".len() + 1;
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        let ls = labels(&items);
+        assert!(
+            ls.contains(&"true") && ls.contains(&"false") && ls.contains(&"unset"),
+            "offers bool ∪ unset: {ls:?}"
+        );
+    }
+
+    /// D3 regression: a cursor on a `<when test="…">` value is UNCHANGED — still a
+    /// CEL slot (offers def names), never the `is=` literal domain.
+    #[test]
+    fn completion_on_when_test_is_unchanged_cel() {
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\ndefs:\n  warm: { type: bool, cel: \"true\" }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when test=\"@warm\">\n:fixer: nice.\n</when>\n<otherwise>\n:fixer: ok.\n</otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("@warm").unwrap() + 1; // just past `@`
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        let ls = labels(&items);
+        assert!(ls.contains(&"warm"), "test= still CEL: offers def name: {ls:?}");
+        assert!(
+            !ls.contains(&"unset") && !ls.contains(&"gold"),
+            "test= must NOT offer the is= literal domain: {ls:?}"
         );
     }
 }
