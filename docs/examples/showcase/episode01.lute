@@ -122,11 +122,11 @@ defs:
   <choice id="blunt" label="Just ask, flatly">
     :fixer{code="0050"}: Bianca. Your number.
   </choice>
-  <choice id="soft" label="Ask gently" when="@showcaseReady" persist="run" as="run.metHelpfully">
+  <choice id="soft" label="Ask gently" when="@showcaseReady" persist="run" into="run.metHelpfully">
     :fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
     ::set{scene.affect.bianca += 1}
   </choice>
-  <choice id="linger" label="Ask, and linger a while" when="@atLeast(1)" persist="run" as="run.sofaOutcome" value="warm">
+  <choice id="linger" label="Ask, and linger a while" when="@atLeast(1)" persist="run" into="run.sofaOutcome" value="warm">
     :fixer{code="0054"}: And perhaps I'll stay through your break.
     ::set{run.affection += 1}
   </choice>

@@ -94,8 +94,8 @@ rm docs/examples/showcase/_t.lute
 |---|---|
 | `<branch>` + `<choice>` | `episode01.lute:121–133` |
 | `<choice when=…>` guards | lines 125, 129 |
-| `persist="run"` sugar — bool (default value) | line 125 (`as="run.metHelpfully"`) |
-| `persist="run"` sugar — enum (explicit `value`) | line 129 (`as="run.sofaOutcome" value="warm"`) |
+| `persist="run"` sugar — bool (default value) | line 125 (`into="run.metHelpfully"`) |
+| `persist="run"` sugar — enum (explicit `value`) | line 129 (`into="run.sofaOutcome" value="warm"`) |
 | `<match>` / `<when>` / `<otherwise>` | 97–109, 145–155, 172–179, 188–195, 202–212, 230–237 |
 | exhaustive match, no `<otherwise>` (bool domain) | 163–170 |
 | maybe-unset subject covered by `<otherwise>` | 172–179 (`run.sofaOutcome`) |

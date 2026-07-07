@@ -1,4 +1,4 @@
-//! FEAT-3 — `<choice … persist="run" as="run.<path>" [value="<lit>"]>` sugar
+//! FEAT-3 — `<choice … persist="run" into="run.<path>" [value="<lit>"]>` sugar
 //! validation (dsl §11.1.1). The checker validates well-formedness of the
 //! run-fact promotion (the engine materializes the `::set`). Fed through the
 //! assembled `check()` over inline `state:` frontmatter (mirrors `ref_type.rs`'s
@@ -26,7 +26,7 @@ fn codes(text: &str) -> Vec<String> {
 }
 
 /// A clean result carries no persist-family diagnostic and no `E-UNDECLARED`
-/// (the persist attrs are recognized and the `as` path resolves).
+/// (the persist attrs are recognized and the `into` path resolves).
 fn assert_clean(cs: &[String]) {
     assert!(
         !cs.iter()
@@ -41,7 +41,7 @@ fn persist_bool_default_true_ok() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Help\" persist=\"run\" as=\"run.helped\">\n\
+         <choice id=\"c\" label=\"Help\" persist=\"run\" into=\"run.helped\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -55,7 +55,7 @@ fn persist_number_requires_value() {
     let t = format!(
         "{HDR}state:\n  run.score: {{ type: number }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Score\" persist=\"run\" as=\"run.score\">\n\
+         <choice id=\"c\" label=\"Score\" persist=\"run\" into=\"run.score\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -72,7 +72,7 @@ fn persist_number_value_ok() {
     let t = format!(
         "{HDR}state:\n  run.score: {{ type: number }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Score\" persist=\"run\" as=\"run.score\" value=\"3\">\n\
+         <choice id=\"c\" label=\"Score\" persist=\"run\" into=\"run.score\" value=\"3\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -80,53 +80,53 @@ fn persist_number_value_ok() {
 }
 
 #[test]
-fn persist_undeclared_as_errors() {
-    // `as="run.ghost"` is not declared in the schema; state-by-typo must fail
+fn persist_undeclared_into_errors() {
+    // `into="run.ghost"` is not declared in the schema; state-by-typo must fail
     // with `E-UNDECLARED` (never silently create a run field).
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Ghost\" persist=\"run\" as=\"run.ghost\">\n\
+         <choice id=\"c\" label=\"Ghost\" persist=\"run\" into=\"run.ghost\">\n\
          </choice>\n\
          </branch>\n"
     );
     assert!(
         codes(&t).contains(&"E-UNDECLARED".to_string()),
-        "an undeclared `as` path must flag E-UNDECLARED; got {:?}",
+        "an undeclared `into` path must flag E-UNDECLARED; got {:?}",
         codes(&t)
     );
 }
 
 #[test]
 fn persist_non_run_target_errors() {
-    // `persist="run"` but `as="scene.x"` is not a `run.*` path → `E-PERSIST-TARGET`.
+    // `persist="run"` but `into="scene.x"` is not a `run.*` path → `E-PERSIST-TARGET`.
     let t = format!(
         "{HDR}state:\n  scene.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Scene\" persist=\"run\" as=\"scene.x\">\n\
+         <choice id=\"c\" label=\"Scene\" persist=\"run\" into=\"scene.x\">\n\
          </choice>\n\
          </branch>\n"
     );
     assert!(
         codes(&t).contains(&"E-PERSIST-TARGET".to_string()),
-        "a non-run `as` target must flag E-PERSIST-TARGET; got {:?}",
+        "a non-run `into` target must flag E-PERSIST-TARGET; got {:?}",
         codes(&t)
     );
 }
 
 #[test]
-fn persist_missing_as_errors() {
-    // `persist="run"` with no `as` → `E-PERSIST-MISSING-AS`.
+fn persist_missing_into_errors() {
+    // `persist="run"` with no `into` → `E-PERSIST-MISSING-INTO`.
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"NoAs\" persist=\"run\">\n\
+         <choice id=\"c\" label=\"NoInto\" persist=\"run\">\n\
          </choice>\n\
          </branch>\n"
     );
     assert!(
-        codes(&t).contains(&"E-PERSIST-MISSING-AS".to_string()),
-        "persist without `as` must flag E-PERSIST-MISSING-AS; got {:?}",
+        codes(&t).contains(&"E-PERSIST-MISSING-INTO".to_string()),
+        "persist without `into` must flag E-PERSIST-MISSING-INTO; got {:?}",
         codes(&t)
     );
 }
@@ -138,7 +138,7 @@ fn persist_arm_conflict_errors() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Help\" persist=\"run\" as=\"run.helped\">\n\
+         <choice id=\"c\" label=\"Help\" persist=\"run\" into=\"run.helped\">\n\
          ::set{{run.helped = false}}\n\
          </choice>\n\
          </branch>\n"
@@ -157,7 +157,7 @@ fn persist_wrong_value_type_errors() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Help\" persist=\"run\" as=\"run.helped\" value=\"7\">\n\
+         <choice id=\"c\" label=\"Help\" persist=\"run\" into=\"run.helped\" value=\"7\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -178,9 +178,9 @@ fn persist_enum_member_spelled_like_bool_or_number_ok() {
         "{HDR}state:\n  run.tier: {{ type: {{ enum: [\"true\", \"3\", \"gold\"] }} }}\n---\n\
          ## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c1\" label=\"Three\" persist=\"run\" as=\"run.tier\" value=\"3\">\n\
+         <choice id=\"c1\" label=\"Three\" persist=\"run\" into=\"run.tier\" value=\"3\">\n\
          </choice>\n\
-         <choice id=\"c2\" label=\"True\" persist=\"run\" as=\"run.tier\" value=\"true\">\n\
+         <choice id=\"c2\" label=\"True\" persist=\"run\" into=\"run.tier\" value=\"true\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -189,23 +189,36 @@ fn persist_enum_member_spelled_like_bool_or_number_ok() {
 
 #[test]
 fn persist_bare_run_target_errors() {
-    // `as="run"` (the bare namespace, no `.path`) names no run fact. It must be
+    // `into="run"` (the bare namespace, no `.path`) names no run fact. It must be
     // rejected as an ill-formed target (`E-PERSIST-TARGET`) BEFORE the schema
     // lookup — never falling through to `E-UNDECLARED`.
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Bare\" persist=\"run\" as=\"run\">\n\
+         <choice id=\"c\" label=\"Bare\" persist=\"run\" into=\"run\">\n\
          </choice>\n\
          </branch>\n"
     );
     let cs = codes(&t);
     assert!(
         cs.contains(&"E-PERSIST-TARGET".to_string()),
-        "a bare `as=\"run\"` target must flag E-PERSIST-TARGET; got {cs:?}"
+        "a bare `into=\"run\"` target must flag E-PERSIST-TARGET; got {cs:?}"
     );
     assert!(
         !cs.contains(&"E-UNDECLARED".to_string()),
-        "a bare `as=\"run\"` must not fall through to E-UNDECLARED; got {cs:?}"
+        "a bare `into=\"run\"` must not fall through to E-UNDECLARED; got {cs:?}"
     );
+}
+
+#[test]
+fn content_line_as_still_label_override() {
+    // dsl §7.1: `as=` on a CONTENT LINE is the display-label override, NOT the
+    // persist sugar. A `:speaker{as="???"}: text` line carries no `persist`, so
+    // the persist family never fires — the rename of the persist target attr
+    // (`as`→`into`, §11.1.1) leaves content-line `as` untouched.
+    let t = format!(
+        "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
+         :bianca{{as=\"Hostess\"}}: Welcome in.\n"
+    );
+    assert_clean(&codes(&t));
 }

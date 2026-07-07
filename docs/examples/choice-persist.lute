@@ -24,13 +24,13 @@ state:
 :narrator: Sofia had slipped on the wet step. You could help — or walk on.
 
 <branch id="sofaHelp">
-  <choice id="help" label="Help her up" persist="run" as="run.metHelpfully">
+  <choice id="help" label="Help her up" persist="run" into="run.metHelpfully">
     :sofia: Thank you. I won't forget this.
   </choice>
-  <choice id="warmly" label="Help, and stay a while" persist="run" as="run.sofaHelpOutcome" value="warm">
+  <choice id="warmly" label="Help, and stay a while" persist="run" into="run.sofaHelpOutcome" value="warm">
     :sofia: You're very kind — really.
   </choice>
-  <choice id="tip" label="Leave a little something" persist="run" as="run.tip" value="5">
+  <choice id="tip" label="Leave a little something" persist="run" into="run.tip" value="5">
     :sofia: Oh — you didn't have to.
   </choice>
 </branch>

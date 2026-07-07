@@ -320,7 +320,7 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
     }
 }
 
-/// `<choice … persist="run" as="run.<path>" [value="<lit>"]>` → append
+/// `<choice … persist="run" into="run.<path>" [value="<lit>"]>` → append
 /// `Node::Set(run.<path> = <value>)` (dsl §11.1.1). Well-formedness is
 /// gate-proven (E-PERSIST-*); anything unresolvable here is skipped, total.
 fn synth_persist(choice: &mut Choice, schema: &StateSchema) {
@@ -332,11 +332,11 @@ fn synth_persist(choice: &mut Choice, schema: &StateSchema) {
     if !persists {
         return;
     }
-    let Some(AttrValue::Str(as_path)) = find("as").map(|a| &a.value) else {
-        return; // gate: E-PERSIST-MISSING-AS
+    let Some(AttrValue::Str(into_path)) = find("into").map(|a| &a.value) else {
+        return; // gate: E-PERSIST-MISSING-INTO
     };
-    let as_path = as_path.clone();
-    let Some(decl) = schema.decls.get(as_path.as_str()) else {
+    let into_path = into_path.clone();
+    let Some(decl) = schema.decls.get(into_path.as_str()) else {
         return; // gate: E-PERSIST-TARGET
     };
     let value = find("value").and_then(|a| match &a.value {
@@ -345,8 +345,8 @@ fn synth_persist(choice: &mut Choice, schema: &StateSchema) {
         AttrValue::Ref(_) => None, // gate: E-PERSIST-VALUE
     });
     let cel = persist_value_cel(&decl.ty, value.as_deref());
-    let span = find("as").map(|a| a.span).unwrap_or(choice.span);
-    push_set(choice, as_path, cel, span);
+    let span = find("into").map(|a| a.span).unwrap_or(choice.span);
+    push_set(choice, into_path, cel, span);
 }
 
 fn push_set(choice: &mut Choice, path: String, cel: String, span: Span) {
@@ -539,13 +539,13 @@ episode: 1
 ## Shot 1.
 
 <branch id="sofaHelp">
-  <choice id="help" label="Help her up" persist="run" as="run.metHelpfully">
+  <choice id="help" label="Help her up" persist="run" into="run.metHelpfully">
     :sofia: Thank you.
   </choice>
-  <choice id="warmly" label="Stay a while" persist="run" as="run.outcome" value="warm">
+  <choice id="warmly" label="Stay a while" persist="run" into="run.outcome" value="warm">
     :sofia: Kind.
   </choice>
-  <choice id="tip" label="Leave a tip" persist="run" as="run.tip" value="5">
+  <choice id="tip" label="Leave a tip" persist="run" into="run.tip" value="5">
     :sofia: Oh.
   </choice>
 </branch>
