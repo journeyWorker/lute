@@ -67,7 +67,7 @@ fn error_doc_emits_no_artifact() {
 #[test]
 fn valid_hub_doc_compiles_to_hub_record() {
     // Plan C: `<hub>` now LOWERS to a `hub` record (IR A2). A check-passing hub
-    // doc COMPILES — the transitional `E-HUB-LOWERING-UNSUPPORTED` is gone.
+    // doc COMPILES — the transitional compile-time hub gate is gone.
     const HUB: &str = r#"---
 character: b
 season: 1
