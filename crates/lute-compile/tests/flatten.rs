@@ -32,6 +32,7 @@ fn flatten(body: &str) -> (Vec<Rec>, Vec<Label>) {
         StageState::default(),
         &mut cx,
         &[],
+        &mut Vec::new(),
     );
     em.finish()
 }

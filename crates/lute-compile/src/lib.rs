@@ -73,7 +73,7 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
     for (i, shot) in doc.shots.iter().enumerate() {
         let mut em = cfg::Emitter::default();
         // Top-level per-shot walk: no CFG continuation past the shot end.
-        state = stage::walk_seq(&mut em, &shot.body, state, &mut cx, &[]);
+        state = stage::walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut diags);
         // Authored shot number when present; strictly increasing guard keeps
         // addrs unique if headings repeat or regress.
         let authored = shot.number.unwrap_or(i as i64 + 1);

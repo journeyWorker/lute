@@ -3,6 +3,7 @@
 
 use lute_check::ctx::Env;
 use lute_check::{lower_node, Ctx, InjectKind, InjectedCommand, StageState};
+use lute_core_span::{Diagnostic, Layer, Severity};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{Arm, AttrValue, Branch, ClipNode, Directive, Match, Node, Timeline};
 
@@ -38,6 +39,7 @@ pub fn walk_seq(
     mut state: StageState,
     cx: &mut WalkCx<'_>,
     tail: &[Node],
+    diags: &mut Vec<Diagnostic>,
 ) -> StageState {
     for (i, node) in nodes.iter().enumerate() {
         match node {
@@ -61,21 +63,35 @@ pub fn walk_seq(
             }
             Node::Branch(b) => {
                 let cont = reachable_after(&nodes[i + 1..], tail);
-                state = walk_branch(em, b, state, cx, &cont);
+                state = walk_branch(em, b, state, cx, &cont, diags);
             }
             Node::Match(m) => {
                 let cont = reachable_after(&nodes[i + 1..], tail);
-                state = walk_match(em, m, state, cx, &cont);
+                state = walk_match(em, m, state, cx, &cont, diags);
             }
             Node::Timeline(tl) => {
                 let cont = reachable_after(&nodes[i + 1..], tail);
                 state = walk_timeline(em, tl, state, cx, &cont);
             }
-            Node::Hub(_) => {
-                // A `<hub>` document is rejected at check time by
-                // `E-HUB-UNSUPPORTED` (D6 clean-check gate), so it can never reach
-                // lowering. Plan B replaces this with real hub CFG lowering.
-                unreachable!("gated by E-HUB-UNSUPPORTED (D6)")
+            Node::Hub(h) => {
+                // `<hub>` CFG lowering is not yet implemented (Plan C). The check
+                // gate (`E-HUB-UNSUPPORTED`) that used to stop a hub document
+                // before compile is gone (Plan B, real hub *checking*), so a
+                // check-passing hub doc now reaches here — emit a clean compile
+                // error instead of panicking. `compile()` surfaces it as
+                // `Result::Err` (dsl §7.3.2, §11.1.3).
+                diags.push(Diagnostic {
+                    code: "E-HUB-LOWERING-UNSUPPORTED".to_string(),
+                    severity: Severity::Error,
+                    message: "`<hub>` compilation is not yet implemented; hub CFG lowering lands \
+                              in a later cutover (Plan C) — a hub document passes check but cannot \
+                              be compiled yet (dsl §7.3.2, §11.1.3)"
+                        .to_string(),
+                    span: h.span,
+                    layer: Layer::Logic,
+                    fixits: Vec::new(),
+                    provenance: None,
+                });
             }
         }
     }
@@ -244,6 +260,7 @@ fn walk_branch(
     state: StageState,
     cx: &mut WalkCx<'_>,
     tail: &[Node],
+    diags: &mut Vec<Diagnostic>,
 ) -> StageState {
     let conv = em.fresh();
     let arms: Vec<Label> = b.choices.iter().map(|_| em.fresh()).collect();
@@ -276,7 +293,7 @@ fn walk_branch(
     let mut exits = Vec::with_capacity(b.choices.len());
     for (c, l) in b.choices.iter().zip(&arms) {
         em.bind(*l);
-        let exit = walk_seq(em, &c.body, state.clone(), cx, tail);
+        let exit = walk_seq(em, &c.body, state.clone(), cx, tail, diags);
         em.push(Command::Jump(JumpCmd {
             addr: String::new(),
             target: conv.sym(),
@@ -297,6 +314,7 @@ fn walk_match(
     state: StageState,
     cx: &mut WalkCx<'_>,
     tail: &[Node],
+    diags: &mut Vec<Diagnostic>,
 ) -> StageState {
     let conv = em.fresh();
     let labels: Vec<Label> = m.arms.iter().map(|_| em.fresh()).collect();
@@ -329,7 +347,7 @@ fn walk_match(
             Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
         };
         em.bind(*l);
-        let exit = walk_seq(em, body, state.clone(), cx, tail);
+        let exit = walk_seq(em, body, state.clone(), cx, tail, diags);
         em.push(Command::Jump(JumpCmd {
             addr: String::new(),
             target: conv.sym(),

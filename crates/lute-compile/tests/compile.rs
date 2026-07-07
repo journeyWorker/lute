@@ -65,6 +65,25 @@ fn error_doc_emits_no_artifact() {
 }
 
 #[test]
+fn valid_hub_doc_fails_compile_cleanly_not_panic() {
+    // Plan B removed the transitional `E-HUB-UNSUPPORTED` CHECK gate, so a valid
+    // hub now PASSES check — but hub CFG lowering is Plan C. Compilation must
+    // reject it with a clean diagnostic (`Result::Err`), NEVER panic.
+    let hub = "---\ncharacter: b\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n\
+               <hub id=\"chat\">\n\
+               <choice id=\"ask\" label=\"Ask\" once>\n:narrator: Sure.\n</choice>\n\
+               <choice id=\"leave\" label=\"Leave\" exit>\n:narrator: Bye.\n</choice>\n</hub>\n";
+    // Precondition: the hub doc checks clean (the check gate is gone), so compile
+    // reaches lowering instead of bouncing off the D6 gate.
+    assert!(lute_check::check(&input(hub)).ok, "hub doc must pass check");
+    let err = compile(&input(hub)).unwrap_err();
+    assert!(
+        err.iter().any(|d| d.code == "E-HUB-LOWERING-UNSUPPORTED"),
+        "compiling a hub doc must fail with E-HUB-LOWERING-UNSUPPORTED, got {err:#?}",
+    );
+}
+
+#[test]
 fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let artifact = compile(&input(SCENE)).expect("clean compile");
     assert_eq!(artifact.lute, "0.0.1");

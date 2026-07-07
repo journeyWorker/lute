@@ -32,6 +32,7 @@ fn walk(body: &str) -> (Vec<Rec>, StageState) {
         StageState::default(),
         &mut cx,
         &[],
+        &mut Vec::new(),
     );
     let (recs, _) = em.finish();
     (recs, state)
