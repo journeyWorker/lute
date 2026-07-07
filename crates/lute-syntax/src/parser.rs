@@ -538,13 +538,7 @@ impl Parser<'_> {
                     }
                     Some(rel) => {
                         let inner = text[j + 2..j + 2 + rel].trim().to_string();
-                        let kind = if inner.starts_with('@') {
-                            InterpKind::Ref
-                        } else if inner == "userName" {
-                            InterpKind::Reserved
-                        } else {
-                            InterpKind::Path
-                        };
+                        let kind = crate::ast::classify_interp(&inner);
                         let (s, e) = (text_start_body + j, text_start_body + j + 2 + rel + 2);
                         out.push(Interp { kind, raw: inner, span: self.span(s, e) });
                         j = j + 2 + rel + 2;

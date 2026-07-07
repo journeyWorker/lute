@@ -130,3 +130,93 @@ fn interp_dollar_in_match_arm_rejected() {
         "`$` in a content interpolation is out of match scope (dsl §8.2); got {c:?}"
     );
 }
+
+// --- Fix 2: §7.6 interpolation grammar — arbitrary CEL is rejected ---
+
+// `{{run.coins + 1}}` is profile-VALID CEL but an illegal interpolation: `{{…}}`
+// admits only a bare state path, a def `@ref`/`@ref(args)`, or `userName`. The
+// grammar gate must reject the compound ⇒ E-CEL-PROFILE.
+#[test]
+fn interp_arbitrary_cel_rejected() {
+    let t = format!(
+        "{HDR}state:\n  run.coins: {{ type: number, default: 0 }}\n---\n## Shot 1.\n\
+         :bianca: you have {{{{run.coins + 1}}}} coins\n"
+    );
+    let c = codes(&t);
+    assert!(c.contains(&"E-CEL-PROFILE".to_string()), "arbitrary CEL in interp must flag E-CEL-PROFILE; got {c:?}");
+}
+
+// The three legal interp forms — bare path, bare `@ref`, `@fn(args)` ref, and
+// `userName` — never trip the grammar gate.
+#[test]
+fn interp_legal_forms_no_grammar_error() {
+    let t = format!(
+        "{HDR}state:\n  run.coins: {{ type: number, default: 0 }}\n  \
+         scene.affect.bianca: {{ type: number, default: 0 }}\n\
+         defs:\n  fond: {{ type: bool, cel: \"scene.affect.bianca >= 1\" }}\n  \
+         atLeast: {{ type: bool, params: {{ n: number }}, cel: \"run.coins >= 1\" }}\n---\n## Shot 1.\n\
+         :bianca: {{{{run.coins}}}} {{{{@fond}}}} {{{{@atLeast(1)}}}} {{{{userName}}}}\n"
+    );
+    let c = codes(&t);
+    assert!(!c.contains(&"E-CEL-PROFILE".to_string()), "legal interp forms must not flag E-CEL-PROFILE; got {c:?}");
+}
+
+// --- Fix 3: §7.6 choice-label interpolations are validated (branch AND hub) ---
+
+// A branch `<choice label="{{run.ghost}}">` — `run.ghost` is undeclared ⇒
+// E-UNDECLARED (labels bypassed this before).
+#[test]
+fn choice_label_interp_branch_undeclared_path() {
+    let t = format!(
+        "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"{{{{run.ghost}}}}\">\n:bianca: hi\n</choice>\n\
+         </branch>\n"
+    );
+    let c = codes(&t);
+    assert!(c.contains(&"E-UNDECLARED".to_string()), "branch label undeclared path must flag E-UNDECLARED; got {c:?}");
+}
+
+// A hub `<choice label="{{@nope}}">` — `@nope` is not a declared def ⇒
+// E-UNDECLARED-REF.
+#[test]
+fn choice_label_interp_hub_undeclared_ref() {
+    let t = format!(
+        "{HDR}---\n## Shot 1.\n\
+         <hub id=\"h\">\n\
+         <choice id=\"c\" label=\"{{{{@nope}}}}\" exit>\n:bianca: hi\n</choice>\n\
+         </hub>\n"
+    );
+    let c = codes(&t);
+    assert!(c.contains(&"E-UNDECLARED-REF".to_string()), "hub label undeclared ref must flag E-UNDECLARED-REF; got {c:?}");
+}
+
+// A branch label reading a declared-but-maybe-unset path (`run.x`, no default, no
+// dominating write/guard) ⇒ E-MAYBE-UNSET (definite-assignment reaches labels).
+#[test]
+fn choice_label_interp_branch_maybe_unset() {
+    let t = format!(
+        "{HDR}state:\n  run.x: {{ type: number }}\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"{{{{run.x}}}}\">\n:bianca: hi\n</choice>\n\
+         </branch>\n"
+    );
+    let c = codes(&t);
+    assert!(c.contains(&"E-MAYBE-UNSET".to_string()), "branch label maybe-unset path must flag E-MAYBE-UNSET; got {c:?}");
+}
+
+// `label="{{userName}}"` — the reserved token always renders ⇒ no interp
+// diagnostic on the label.
+#[test]
+fn choice_label_interp_username_clean() {
+    let t = format!(
+        "{HDR}---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"{{{{userName}}}}\">\n:bianca: hi\n</choice>\n\
+         </branch>\n"
+    );
+    let c = codes(&t);
+    for code in ["E-UNDECLARED", "E-UNDECLARED-REF", "E-CEL-PROFILE", "E-MAYBE-UNSET"] {
+        assert!(!c.contains(&code.to_string()), "{code} unexpected on userName label; got {c:?}");
+    }
+}

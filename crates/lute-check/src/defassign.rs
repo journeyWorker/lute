@@ -154,6 +154,10 @@ fn walk_branch(
             Some(cond) => apply_condition(cond, schema, &mut arm, diags),
             None => has_unconditional = true,
         }
+        // §7.6: a `{{path}}` in the choice LABEL is a READ at the point the choice
+        // is OFFERED — after its own `when` guard proves (a guarded choice's label
+        // shows only when the guard holds), so check against the post-guard arm.
+        check_label_reads(&choice.label, schema, &arm, choice.span, diags);
         walk_nodes(&choice.body, schema, &mut arm, diags);
         arm_finals.push(arm);
     }
@@ -179,7 +183,31 @@ fn walk_hub(hub: &Hub, schema: &StateSchema, assigned: &mut Assigned, diags: &mu
         if let Some(cond) = &choice.when {
             apply_condition(cond, schema, &mut arm, diags);
         }
+        // Label reads (§7.6): checked against the post-guard arm, then discarded
+        // with the rest of the fork.
+        check_label_reads(&choice.label, schema, &arm, choice.span, diags);
         walk_nodes(&choice.body, schema, &mut arm, diags);
+    }
+}
+
+/// Definite-assignment for a `<choice label>`'s `{{path}}` interpolations (dsl
+/// §7.6, §9.4). Choice labels are String attrs (not in the AST like content-line
+/// interps), so they are recovered via the shared [`crate::check::scan_label_interps`]
+/// scan. Only `Path` interps carry a state path; a declared-but-maybe-unset label
+/// read (no default, no dominating write, no guard) is `E-MAYBE-UNSET`. Undeclared
+/// paths and `Ref`/`Reserved` interps are the cel-layer resolver's job (mirroring
+/// content-line interps), so `check_read` no-ops on them here.
+fn check_label_reads(
+    label: &str,
+    schema: &StateSchema,
+    assigned: &Assigned,
+    span: Span,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for interp in crate::check::scan_label_interps(label, span) {
+        if interp.kind == InterpKind::Path {
+            check_read(&interp.raw, schema, assigned, interp.span, diags);
+        }
     }
 }
 

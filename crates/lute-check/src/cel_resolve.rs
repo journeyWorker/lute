@@ -278,8 +278,26 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
         }
         // A field selection: recurse into the operand (`foo().bar` hides a call).
         Expr::Select(sel) => check_cel_profile(&sel.operand.expr, slot, diags),
-        // Idents and scalar literals are in profile; `Unspecified` is inert.
-        Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => {}
+        // A bare identifier is in profile ONLY as a legal expression root
+        // ([`is_profile_ident_root`]): a state tier, the substituted `$` subject
+        // `_`, or a marker-rewritten `@ref`. Every other bare name is a free
+        // variable reference — there are no un-namespaced state names (dsl §9.1) —
+        // and is out of profile. Scalar literals are in profile; `Unspecified` is
+        // inert.
+        Expr::Ident(name) => {
+            if !is_profile_ident_root(name) {
+                diags.push(diag(
+                    E_CEL_PROFILE,
+                    format!(
+                        "`{name}` is not a state path (`scene`/`run`/`user`/`app`), the \
+                         match subject `$`, or a def `@ref` — bare identifiers are \
+                         outside the Lute-CEL profile (dsl §8.4, §9.1)"
+                    ),
+                    slot.span,
+                ));
+            }
+        }
+        Expr::Literal(_) | Expr::Unspecified => {}
     }
 }
 
@@ -329,6 +347,24 @@ fn is_profile_isset_call(c: &cel_parser::ast::CallExpr) -> bool {
         && c.target.is_none()
         && c.args.len() == 1
         && crate::cel_paths::select_path(&c.args[0].expr).is_some()
+}
+
+/// The bare identifiers the Lute-CEL profile admits as an expression root (dsl
+/// §8.4, §9.1). Everything else is a free variable reference and is out of
+/// profile — there are no bare, un-namespaced state names (§9.1):
+/// * a **state-tier** root (`scene`/`run`/`user`/`app`) — the head of a declared
+///   state path (`crate::cel_paths::STATE_ROOTS`);
+/// * the substituted `$` **match subject**, which token substitution rewrites to
+///   `Ident("_")` — its `<match>`-scope validity is a separate `scan_refs`
+///   concern (`E-DOLLAR-OUTSIDE-MATCH`), so the gate never flags it here;
+/// * a `@ref` — the marker re-parse rewrites a bare `@name` (no call) to an
+///   `Ident` whose name starts with [`lute_cel::REF_MARKER`] (a `@name(args)`
+///   becomes a `Call`, handled in the `Call` arm). Both are §8.1 compile-time
+///   macros and exempt.
+fn is_profile_ident_root(name: &str) -> bool {
+    crate::cel_paths::STATE_ROOTS.contains(&name)
+        || name == "_"
+        || name.starts_with(lute_cel::REF_MARKER)
 }
 
 /// True when the ORIGINAL slot text uses the reserved internal [`lute_cel::REF_MARKER`]
@@ -702,13 +738,59 @@ mod tests {
             "isSet(run.y)",
             "$ in ['a', 'b']",
             "scene.n + 1 > 2",
-            "a ? b : c",
+            // the ternary conditional operator itself is in profile; operands are
+            // state paths / literals (bare idents are NOT in profile — see
+            // `bare_ident_rejected`).
+            "scene.n > 0 ? run.a : run.b",
         ] {
             let slot = cel_slot_condition(ok);
             let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
             assert!(
                 d.iter().all(|e| e.code != E_CEL_PROFILE),
                 "unexpected E-CEL-PROFILE for `{ok}`, got {:?}",
+                d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn bare_ident_rejected() {
+        // dsl §8.4/§9.1: a bare identifier that is not a state-tier root, the `$`
+        // subject, or a `@ref` is a free variable reference — out of profile.
+        // `when="typo"` and a non-state-rooted `isSet(foo.bar)` both flag.
+        let env = Env::default();
+        let ctx = mk_ctx_in_match(&env);
+        for raw in ["typo", "isSet(foo.bar)", "foo.bar", "a && b"] {
+            let slot = cel_slot_condition(raw);
+            let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+            assert!(
+                d.iter().any(|e| e.code == E_CEL_PROFILE),
+                "bare identifier `{raw}` must flag E-CEL-PROFILE, got {:?}",
+                d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn legal_ident_roots_pass() {
+        // The legal roots never trip the gate: state paths (any tier), the `$`
+        // subject, a `has()` guard, and CEL keyword literals.
+        let env = Env::default();
+        let ctx = mk_ctx_in_match(&env);
+        for ok in [
+            "scene.x == 1",
+            "run.y",
+            "user.z || app.w",
+            "$ == 'gold'",
+            "has(scene.x)",
+            "true",
+            "false ? 1 : null",
+        ] {
+            let slot = cel_slot_condition(ok);
+            let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+            assert!(
+                d.iter().all(|e| e.code != E_CEL_PROFILE),
+                "legal root `{ok}` must not trip E-CEL-PROFILE, got {:?}",
                 d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
             );
         }
