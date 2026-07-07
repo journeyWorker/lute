@@ -8,10 +8,20 @@
 //! ([`StateSchema`]): a `bool` (domain `{true,false}`), an `enum` (domain = its
 //! members), or a `scene.choices.<branchId>` path (domain = the branch's choice
 //! ids ∪ `unset`) is FINITE; anything else (number/string/record/…) is INFINITE
-//! and therefore requires `<otherwise>`. Diagnostics:
+//! and therefore requires `<otherwise>`.
+//!
+//! Coverage is computed from the arms' **`is` literal patterns** (§7.3.1) — the
+//! NORMATIVE path (§11.2) — unioned with the conservative values a `test` guard
+//! provably matches (recognizing `test` coverage is downgraded to MAY). An `is`
+//! pattern (`Literal ("|" Literal)*`) contributes each literal to `covered`: an
+//! enum member / choice id → the string value, `true`/`false` → the bool value,
+//! a decimal `Number` → a numeric value, and `unset` → the unset case.
+//! Diagnostics:
 //!
 //! - **`E-NONEXHAUSTIVE`** — no `<otherwise>` and the domain is either infinite,
 //!   or finite but not every domain value is covered by a `<when>` arm.
+//! - **`E-WHEN-PATTERN`** — a `<when>` arm with neither an `is` pattern nor a
+//!   `test` guard (§7.3.1); one of the two is REQUIRED.
 //! - **`E-UNSET-UNCOVERED`** — the subject is *maybe-unset* (`scene.choices.*`, or
 //!   a `run.*`/`user.*`/`app.*` decl with no schema `default`) and the `unset`
 //!   case is not covered by an `unset`-matching arm nor an `<otherwise>`.
@@ -56,16 +66,25 @@ use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
-use lute_syntax::ast::{Arm, AttrValue, Branch, Document, Line, Match, Node};
+use lute_syntax::ast::{Arm, AttrValue, Branch, Document, IsPattern, Line, Match, Node};
 
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
+
+/// `E-WHEN-PATTERN`: a `<when>` arm carrying neither an `is` literal pattern nor
+/// a `test` guard (dsl §7.3.1, D-D). One of the two is REQUIRED — an empty
+/// `<when>` has nothing to match on.
+pub const E_WHEN_PATTERN: &str = "E-WHEN-PATTERN";
 
 /// A concrete, statically-known value an arm can match against.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum DomainValue {
     Str(String),
     Bool(bool),
+    /// A decimal `Number` literal (dsl §7.3.1), kept as its trimmed source text.
+    /// A numeric subject has an INFINITE domain, so a `Num` never completes
+    /// coverage — it is carried only for union/overlap accounting.
+    Num(String),
 }
 
 /// The inferred value domain of a `<match>` subject (dsl §11.2).
@@ -126,8 +145,18 @@ pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagno
     let mut covered: BTreeSet<DomainValue> = BTreeSet::new();
     let mut covers_unset = false;
     for arm in &m.arms {
-        if let Arm::When { test, span, .. } = arm {
-            let cov = analyze_arm(&test.raw, subject.as_deref());
+        if let Arm::When { is, test, span, .. } = arm {
+            // §7.3.1 (D-D): a `<when>` needs an `is` pattern and/or a `test` guard.
+            if is.is_none() && test.raw.trim().is_empty() {
+                diags.push(diag(
+                    E_WHEN_PATTERN,
+                    Severity::Error,
+                    "`<when>` needs an `is` literal pattern and/or a `test` guard (dsl §7.3.1)"
+                        .to_string(),
+                    *span,
+                ));
+            }
+            let cov = arm_coverage(is.as_ref(), &test.raw, subject.as_deref());
             if cov.values.iter().any(|v| covered.contains(v)) {
                 diags.push(diag(
                     "W-OVERLAP-ARMS",
@@ -390,8 +419,8 @@ pub fn is_exhaustive(m: &Match, schema: &StateSchema) -> bool {
     let mut covered: BTreeSet<DomainValue> = BTreeSet::new();
     let mut covers_unset = false;
     for arm in &m.arms {
-        if let Arm::When { test, .. } = arm {
-            let cov = analyze_arm(&test.raw, subject.as_deref());
+        if let Arm::When { is, test, .. } = arm {
+            let cov = arm_coverage(is.as_ref(), &test.raw, subject.as_deref());
             for v in cov.values {
                 covered.insert(v);
             }
@@ -500,6 +529,50 @@ fn analyze_arm(raw: &str, subject: Option<&str>) -> ArmCoverage {
         analyze_expr(&expr, subject, &mut cov);
     }
     cov
+}
+
+/// The full coverage of a `<when>` arm: the union of its `is` literal pattern
+/// (the NORMATIVE path, dsl §11.2) and any coverage [`analyze_arm`] derives from
+/// its `test` guard (the conservative MAY path). Both [`check_match`] and
+/// [`is_exhaustive`] fold coverage through here so they stay consistent.
+fn arm_coverage(is: Option<&IsPattern>, test_raw: &str, subject: Option<&str>) -> ArmCoverage {
+    let mut cov = analyze_arm(test_raw, subject);
+    if let Some(pat) = is {
+        analyze_is_pattern(&pat.raw, &mut cov);
+    }
+    cov
+}
+
+/// Parse a `<when is="…">` literal pattern (dsl §7.3.1):
+/// `WhenPattern ::= Literal ("|" Literal)*`, `Literal = EnumMember | "true" |
+/// "false" | Number | "unset"`. This is NOT CEL — split on `|`, trim each
+/// literal, and fold it into `cov`: `true`/`false` are bool domain values,
+/// `unset` covers the unset case (§9.4), a decimal `Number` is a numeric value,
+/// and any other ident is an enum member matched by string equality on the
+/// subject (§8.2). Empty alternatives (a stray `|`) are skipped.
+fn analyze_is_pattern(raw: &str, cov: &mut ArmCoverage) {
+    for lit in raw.split('|') {
+        let lit = lit.trim();
+        if lit.is_empty() {
+            continue;
+        }
+        match lit {
+            "true" => cov.values.push(DomainValue::Bool(true)),
+            "false" => cov.values.push(DomainValue::Bool(false)),
+            "unset" => cov.covers_unset = true,
+            _ if is_number_literal(lit) => cov.values.push(DomainValue::Num(lit.to_string())),
+            _ => cov.values.push(DomainValue::Str(lit.to_string())),
+        }
+    }
+}
+
+/// True when `lit` is a decimal `Number` literal (dsl §7.3.1) rather than an
+/// enum-member ident. Enum members are `Ident`s (letter/`_` lead, MAY contain
+/// `-`), so a leading digit / sign / dot plus a successful `f64` parse cleanly
+/// disambiguates a number from a member name.
+fn is_number_literal(lit: &str) -> bool {
+    let head = lit.strip_prefix(['+', '-']).unwrap_or(lit);
+    matches!(head.bytes().next(), Some(b'0'..=b'9' | b'.')) && lit.parse::<f64>().is_ok()
 }
 
 fn analyze_expr(expr: &Expr, subject: Option<&str>, cov: &mut ArmCoverage) {
@@ -1341,4 +1414,176 @@ mod tests {
             "flagged at the nested second occurrence"
         );
     }
+    // ---- B4: <when is> literal-pattern coverage + E-WHEN-PATTERN (§7.3.1) ----
+
+    /// Build a `<when>` arm from an optional `is` pattern + a `test` guard raw
+    /// (empty `test` = absent, mirroring the parser's empty-slot default).
+    fn when_is(is_raw: Option<&str>, test_raw: &str) -> Arm {
+        Arm::When {
+            is: is_raw.map(|r| IsPattern {
+                raw: r.trim().to_string(),
+                span: span(),
+            }),
+            test: CelSlot {
+                kind: CelKind::Condition,
+                raw: test_raw.into(),
+                ast: None,
+                span: span(),
+                id: StableId(0),
+            },
+            body: Vec::new(),
+            span: span(),
+        }
+    }
+
+    /// `run.rank` as the 4-member enum `fail|bronze|silver|gold`. With a default
+    /// it is finite-and-never-unset; without, finite-but-maybe-unset.
+    fn schema_rank4(with_default: bool) -> StateSchema {
+        let mut decls = BTreeMap::new();
+        decls.insert(
+            "run.rank".to_string(),
+            StateDecl {
+                ty: Type::Enum(vec![
+                    "fail".into(),
+                    "bronze".into(),
+                    "silver".into(),
+                    "gold".into(),
+                ]),
+                default: with_default.then(|| lute_manifest::types::Literal::Str("fail".into())),
+                namespace: Namespace::Run,
+            },
+        );
+        StateSchema { decls }
+    }
+
+    #[test]
+    fn is_arms_cover_enum_no_otherwise_ok() {
+        // `is="fail | bronze"`, `is="silver"`, `is="gold"` covers the enum with NO
+        // <otherwise> => exhaustive (`is` is the NORMATIVE coverage path, §11.2).
+        let m = match_with(
+            "run.rank",
+            vec![
+                when_is(Some("fail | bronze"), ""),
+                when_is(Some("silver"), ""),
+                when_is(Some("gold"), ""),
+            ],
+        );
+        let errs = check_match(&m, &schema_rank4(true), &ctx());
+        assert!(errs.is_empty(), "is arms fully cover the enum: {errs:?}");
+    }
+
+    #[test]
+    fn is_arms_missing_member_nonexhaustive() {
+        // omit `gold`, no <otherwise> => E-NONEXHAUSTIVE.
+        let m = match_with(
+            "run.rank",
+            vec![
+                when_is(Some("fail | bronze"), ""),
+                when_is(Some("silver"), ""),
+            ],
+        );
+        let errs = check_match(&m, &schema_rank4(true), &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
+            "missing `gold` arm: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn is_unset_covers_unset() {
+        // maybe-unset subject: `is="unset"` covers the unset member (§9.4/§11.2).
+        let m = match_with(
+            "run.rank",
+            vec![
+                when_is(Some("fail|bronze"), ""),
+                when_is(Some("silver|gold"), ""),
+                when_is(Some("unset"), ""),
+            ],
+        );
+        let errs = check_match(&m, &schema_rank4(false), &ctx());
+        assert!(
+            !errs.iter().any(|e| e.code == "E-UNSET-UNCOVERED"),
+            "`is=unset` covers unset: {errs:?}"
+        );
+        assert!(
+            !errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
+            "members fully covered: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn when_with_neither_is_nor_test_is_e_when_pattern() {
+        // a `<when>` with neither `is` nor `test` => E-WHEN-PATTERN (§7.3.1, D-D).
+        let m = match_with(
+            "run.rank",
+            vec![
+                when_is(None, ""),
+                Arm::Otherwise {
+                    body: Vec::new(),
+                    span: span(),
+                },
+            ],
+        );
+        let errs = check_match(&m, &schema_rank4(true), &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == E_WHEN_PATTERN),
+            "empty <when> must be E-WHEN-PATTERN: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn is_and_test_both_ok_is_drives_coverage() {
+        // `is="gold" test="$ != 'x'"` parses+checks; `is` drives coverage so the
+        // match stays exhaustive despite the extra guard.
+        let m = match_with(
+            "run.rank",
+            vec![
+                when_is(Some("fail|bronze"), ""),
+                when_is(Some("silver"), ""),
+                when_is(Some("gold"), "$ != 'x'"),
+            ],
+        );
+        let errs = check_match(&m, &schema_rank4(true), &ctx());
+        assert!(
+            !errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
+            "is drives coverage even with a guard: {errs:?}"
+        );
+        assert!(
+            !errs.iter().any(|e| e.code == E_WHEN_PATTERN),
+            "an arm carrying `is` is never E-WHEN-PATTERN: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn is_exhaustive_consults_is_coverage() {
+        // is_exhaustive (shared with defassign) MUST see `is` coverage too.
+        let full = match_with(
+            "run.rank",
+            vec![
+                when_is(Some("fail|bronze"), ""),
+                when_is(Some("silver|gold"), ""),
+            ],
+        );
+        assert!(is_exhaustive(&full, &schema_rank4(true)));
+        let partial = match_with(
+            "run.rank",
+            vec![
+                when_is(Some("fail|bronze"), ""),
+                when_is(Some("silver"), ""),
+            ],
+        );
+        assert!(!is_exhaustive(&partial, &schema_rank4(true)));
+    }
+
+    #[test]
+    fn is_true_false_covers_bool() {
+        // bool subject covered by `is="true"` + `is="false"`, no <otherwise>.
+        let m = match_with(
+            "scene.sealed",
+            vec![when_is(Some("true"), ""), when_is(Some("false"), "")],
+        );
+        let errs = check_match(&m, &schema_bool("scene.sealed", Some(false)), &ctx());
+        assert!(errs.is_empty(), "bool covered by is=true/false: {errs:?}");
+    }
+
 }
