@@ -111,6 +111,7 @@ pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option
                 pos_reset: None,
                 preload: None,
                 emotion: None,
+                costume: None,
                 stamp,
             })
         }
@@ -120,7 +121,7 @@ pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option
             zoom: get_f64("zoom"),
             move_x: get_f64("move-x"),
             move_y: get_f64("move-y"),
-            shake: get("shake"),
+            shake: get_f64("shake"),
             reset: get_bool("reset"),
             easing: get("easing"),
             stamp,
@@ -421,5 +422,36 @@ mod tests {
             span: d.span,
         };
         assert!(lower_directive(&begin, &snap()).is_none());
+    }
+
+    #[test]
+    fn camera_shake_and_zoom_serialize_as_json_numbers() {
+        // IR A10: typed numeric camera attrs are JSON numbers, not strings.
+        // `shake` must match `zoom`/`moveX`/`moveY` (the audit found it emitted
+        // as the string "0.4" beside `zoom: 1.2`).
+        let v = lower_first("::camera{shake=\"0.4\" zoom=\"1.2\"}");
+        assert_eq!(v["kind"], "camera");
+        assert!(v["shake"].is_number(), "shake must be a JSON number, got {}", v["shake"]);
+        assert_eq!(v["shake"], 0.4);
+        assert!(v["zoom"].is_number(), "zoom must be a JSON number, got {}", v["zoom"]);
+        assert_eq!(v["zoom"], 1.2);
+    }
+
+    #[test]
+    fn camera_bool_attr_serializes_as_json_bool() {
+        // IR A10: a typed bool attr is a JSON bool, not a string (confirms the
+        // existing `get_bool` coercion for core records).
+        let v = lower_first("::camera{shake=\"0.4\" reset=\"true\"}");
+        assert!(v["reset"].is_boolean(), "reset must be a JSON bool, got {}", v["reset"]);
+        assert_eq!(v["reset"], true);
+    }
+
+    #[test]
+    fn sprite_record_omits_costume_until_cast_ships() {
+        // IR A1 (schema-only): `costume` is always None until the character-cast
+        // plugin ships, so it never serializes (skip-if-none).
+        let v = lower_first("::auto{character=\"bianca\" anchor=\"center\"}");
+        assert_eq!(v["kind"], "sprite");
+        assert!(v.get("costume").is_none(), "costume must be absent, got {:?}", v.get("costume"));
     }
 }

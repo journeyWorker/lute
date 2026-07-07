@@ -215,6 +215,7 @@ fn inject_cmd(ic: &InjectedCommand) -> Command {
         pos_reset: None,
         preload: None,
         emotion: None,
+        costume: None,
         stamp,
     };
     Command::Sprite(match &ic.kind {
