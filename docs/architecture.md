@@ -80,7 +80,7 @@ Three authoring layers, distinguished by syntax so a reader can tell them apart 
 
 | Layer | Syntax | Examples |
 |---|---|---|
-| **Content** | `:line[name]{attrs}: text` — speaker selects dialogue / narration (`narrator`) / player (monologue = player `delivery="thought"`) | dialogue, narration |
+| **Content** | `:name{attrs}: text` — speaker selects dialogue / narration (`narrator`) / player (monologue = player `delivery="thought"`) | dialogue, narration |
 | **Staging (leaf)** | `::name{attrs}` | `::bg`, `::music`, `::sfx`, `::auto`, `::camera`, `::set` |
 | **Logic / timeline (nesting)** | `<tag>…</tag>` | `<branch>`, `<choice>`, `<match>`, `<when>`, `<otherwise>`, `<timeline>`, `<track>` |
 
@@ -91,7 +91,7 @@ Three authoring layers, distinguished by syntax so a reader can tell them apart 
 - Single-line leaf → directive `::name{attrs}` (JSX buys nothing for a childless node; `::`
   stays consistent with the existing `::bg`/`:line` family).
 - Content text after `: ` is **opaque to end-of-line** — parens, `(?)`, `<`, anything is literal,
-  never parsed. Every content line is a prefixed `:line[…]:` (no bare prose), so classification is trivial.
+never parsed. Every content line is prefixed `:speaker{attrs}:` (no bare prose), so classification is trivial.
 
 > **Worked example:** [`examples/bianca-s01ep02.lute`](examples/bianca-s01ep02.lute) — the real
 > content-catalog S01EP02 in this format, with `::camera`, the finger-beam `<timeline>` (four
@@ -111,7 +111,7 @@ names stay.
 | `::vfx` | `type` (e.g. `blackOut`), `label`, `transition` |
 | `::cut` | `assetId` (`CUT.*`), `action` = `show\|hide`, `full?` |
 | `::video` | `assetId` (`VID.*`), `action` = `show\|hide`, `wait?` |
-| `:line[name]` | `code`, `emotion`, `variant`, `action`, `dialogMotion` |
+| `:name` | `code`, `emotion`, `variant`, `action`, `dialogMotion` |
 
 > Mistakes this table corrects (recorded so they aren't repeated): there is no `::scene`
 > (it's `::bg`); music is not `play`/`to` (it's `action`/`mood`/`volume`-enum); sfx carries
@@ -154,10 +154,10 @@ non-blocking so dialogue rides over it; a focus-then-speak beat sets `wait="true
 ::sfx{sound="문이 노크 없이 벌컥" assetId="PLACEHOLDER_door_slam"}
 ::camera{shake="0.3" duration="0.2"}                          /* no wait → next runs concurrently */
 ::auto{character="sofia" anchor="center" action="fade-in-up"}
-:line[sofia]{code="0010" emotion="delighted" variant="1" action="sway"}: 매니저. 안녕…
+:sofia{code="0010" emotion="delighted" variant="1" action="sway"}: 매니저. 안녕…
 
 ::camera{focus="sofia" zoom="@closeUp" duration="0.5" wait="true"}  /* holds → the line waits for the pan */
-:line[sofia]{code="0020" emotion="neutral" action="lean"}: 그러니까, 매니저. 딱 한 뼘. 두 뼘.
+:sofia{code="0020" emotion="neutral" action="lean"}: 그러니까, 매니저. 딱 한 뼘. 두 뼘.
 ```
 
 ### 3. `<timeline>` — multi-track choreography block (After-Effects model)
@@ -228,11 +228,11 @@ Locked rules:
 ```
 <branch id="couch">                          # unique-in-episode; auto-records to scene.choices.couch
   <choice id="help" label="같이 옮긴다">       # id = recorded key; label = shown text
-    :line[fixer]{code="0020"}: ...알겠습니다.
+    :fixer{code="0020"}: ...알겠습니다.
     ::set{scene.affect.sofia += 2}           # scene.* spans shots within THIS episode
   </choice>
   <choice id="ignore" label="모른 척한다" when="@warm">   # when = availability gate (CEL)
-    :line[fixer]{code="0030"}: 제 업무 범위를 다시 확인하고 오겠습니다.
+    :fixer{code="0030"}: 제 업무 범위를 다시 확인하고 오겠습니다.
     ::set{scene.affect.sofia -= 1}
   </choice>
 </branch>

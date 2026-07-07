@@ -50,9 +50,11 @@ Highlighting is two layers that combine:
 2. **LSP semantic tokens** from `lute-lsp`, which refine the static grammar with
    project/plugin/schema knowledge the static grammar cannot see.
 
-> **Note:** refreshing the tree-sitter grammar ([`../tree-sitter-lute/`](../tree-sitter-lute)) for
-> DSL 0.1.0 is deferred to a later plan — the tree-sitter grammar update is out of scope for the
-> 0.1.0 parser cutover (Plan A). Until then, `lute-lsp` semantic tokens carry the authoritative
-> 0.1.0 highlighting.
+> **Note:** the tree-sitter grammar ([`../tree-sitter-lute/`](../tree-sitter-lute)) is
+> **0.1.0-current** — it parses `:speaker{attrs}: text` content lines, `//` line comments,
+> `{{…}}` interpolation, `<hub>` revisit blocks, `<when is>` literal patterns, and the
+> attrs-free `<otherwise>`. It is the Neovim baseline highlighting/folding host; `lute-lsp`
+> semantic tokens stay authoritative for the project/plugin/schema-aware refinement the
+> static grammar cannot see.
 
 Root markers used to locate a project: `lute.project.yaml`, then `.git`.
