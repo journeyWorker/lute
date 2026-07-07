@@ -72,6 +72,7 @@ fn injected_sprite_carries_provenance() {
         pos_reset: None,
         preload: Some(true),
         emotion: Some("surprised".into()),
+        costume: None,
         stamp: Stamp {
             provenance: Some(lute_check::Provenance {
                 injected: true,

@@ -258,7 +258,7 @@ expression: json
     {
       "kind": "camera",
       "addr": "003-0600",
-      "shake": "0.6",
+      "shake": 0.6,
       "wait": false,
       "duration": 0.3,
       "at": 0.5,

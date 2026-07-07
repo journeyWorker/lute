@@ -261,6 +261,10 @@ pub struct SpriteCmd {
     pub preload: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emotion: Option<String>,
+    /// A1 (schema-only): resolved costume id from the character-cast plugin;
+    /// always `None` until cast ships, so it never serializes (skip-if-none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub costume: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -278,7 +282,7 @@ pub struct CameraCmd {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub move_y: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub shake: Option<String>,
+    pub shake: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reset: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
