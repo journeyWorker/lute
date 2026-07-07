@@ -573,6 +573,7 @@ dependencies = [
 name = "lute-lsp"
 version = "0.0.1"
 dependencies = [
+ "cel-parser",
  "dashmap",
  "futures",
  "lute-cel",

@@ -18,6 +18,7 @@ lute-check = { path = "../lute-check" }
 lute-manifest = { path = "../lute-manifest" }
 lute-syntax = { path = "../lute-syntax" }
 lute-cel = { path = "../lute-cel" }
+cel-parser = "0.10.1"
 tower-lsp-server = "0.23.0"
 tokio = { version = "1.52.3", features = ["full"] }
 dashmap = "6.2.1"
