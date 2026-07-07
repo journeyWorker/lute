@@ -1,0 +1,8 @@
+{
+  "name": "cmp_lt",
+  "desc": "< numeric comparison; state level 1 satisfies < 3.",
+  "cel": "user.level < 3",
+  "expr": { "op": "<", "l": { "path": "user.level" }, "r": { "lit": 3.0 } },
+  "state": { "user.level": 1 },
+  "expected": true
+}

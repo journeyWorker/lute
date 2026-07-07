@@ -1,0 +1,12 @@
+{
+  "name": "arith_sub",
+  "desc": "Binary subtraction: coins 5 - 2 = 3.",
+  "cel": "run.coins - 2",
+  "expr": {
+    "op": "-",
+    "l": { "path": "run.coins" },
+    "r": { "lit": 2.0 }
+  },
+  "state": { "run.coins": 5 },
+  "expected": 3.0
+}

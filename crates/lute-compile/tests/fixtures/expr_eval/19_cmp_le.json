@@ -1,0 +1,8 @@
+{
+  "name": "cmp_le",
+  "desc": "<= numeric comparison at the boundary; state level 3 satisfies <= 3.",
+  "cel": "user.level <= 3",
+  "expr": { "op": "<=", "l": { "path": "user.level" }, "r": { "lit": 3.0 } },
+  "state": { "user.level": 3 },
+  "expected": true
+}

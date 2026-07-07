@@ -1,0 +1,12 @@
+{
+  "name": "arith_div",
+  "desc": "Binary division: coins 10 / 2 = 5.",
+  "cel": "run.coins / 2",
+  "expr": {
+    "op": "/",
+    "l": { "path": "run.coins" },
+    "r": { "lit": 2.0 }
+  },
+  "state": { "run.coins": 10 },
+  "expected": 5.0
+}
