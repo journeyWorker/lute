@@ -1,0 +1,7 @@
+{
+  "name": "when_is_unset",
+  "desc": "<when is=\"unset\"> synthesized by C2 synth_arm_expr (no cel source): a bare-path subject becomes !isSet(path). The slot scene.choices.chat is absent, so isSet is false and the arm matches.",
+  "expr": { "op": "!", "l": { "isSet": "scene.choices.chat" } },
+  "state": {},
+  "expected": true
+}

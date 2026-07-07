@@ -1,0 +1,8 @@
+{
+  "name": "cmp_ge",
+  "desc": ">= numeric comparison; state level 5 satisfies >= 1.",
+  "cel": "user.level >= (1)",
+  "expr": { "op": ">=", "l": { "path": "user.level" }, "r": { "lit": 1.0 } },
+  "state": { "user.level": 5 },
+  "expected": true
+}

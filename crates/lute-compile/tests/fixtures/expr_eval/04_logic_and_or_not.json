@@ -1,0 +1,16 @@
+{
+  "name": "logic_and_or_not",
+  "desc": "&&, || and ! together: !false && (1>2 || 0==0) => true && (false || true) => true.",
+  "cel": "!scene.blocked && (user.level > 2 || run.coins == 0)",
+  "expr": {
+    "op": "&&",
+    "l": { "op": "!", "l": { "path": "scene.blocked" } },
+    "r": {
+      "op": "||",
+      "l": { "op": ">", "l": { "path": "user.level" }, "r": { "lit": 2.0 } },
+      "r": { "op": "==", "l": { "path": "run.coins" }, "r": { "lit": 0.0 } }
+    }
+  },
+  "state": { "scene.blocked": false, "user.level": 1, "run.coins": 0 },
+  "expected": true
+}

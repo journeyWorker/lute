@@ -1,0 +1,8 @@
+{
+  "name": "has_absent",
+  "desc": "has(path) false when the state key is absent (same tree as has_present).",
+  "cel": "has(scene.flags.saw)",
+  "expr": { "has": "scene.flags.saw" },
+  "state": {},
+  "expected": false
+}

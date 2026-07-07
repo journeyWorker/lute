@@ -1,0 +1,8 @@
+{
+  "name": "isset_absent",
+  "desc": "isSet(path) false when the state slot is absent (same tree as isset_present).",
+  "cel": "isSet(scene.affect.bianca)",
+  "expr": { "isSet": "scene.affect.bianca" },
+  "state": {},
+  "expected": false
+}

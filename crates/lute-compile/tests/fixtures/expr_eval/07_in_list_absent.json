@@ -1,0 +1,12 @@
+{
+  "name": "in_list_absent",
+  "desc": "`in` membership false: 'bronze' is not in ['gold','silver'].",
+  "cel": "run.rank in ['gold','silver']",
+  "expr": {
+    "op": "in",
+    "l": { "path": "run.rank" },
+    "r": { "list": [{ "lit": "gold" }, { "lit": "silver" }] }
+  },
+  "state": { "run.rank": "bronze" },
+  "expected": false
+}

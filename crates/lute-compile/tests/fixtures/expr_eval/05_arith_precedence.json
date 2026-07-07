@@ -1,0 +1,12 @@
+{
+  "name": "arith_precedence",
+  "desc": "Arithmetic with precedence encoded in the tree: coins + (1 * 2) = 3 + 2 = 5.",
+  "cel": "run.coins + 1 * 2",
+  "expr": {
+    "op": "+",
+    "l": { "path": "run.coins" },
+    "r": { "op": "*", "l": { "lit": 1.0 }, "r": { "lit": 2.0 } }
+  },
+  "state": { "run.coins": 3 },
+  "expected": 5.0
+}
