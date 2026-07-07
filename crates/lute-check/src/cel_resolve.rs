@@ -316,13 +316,19 @@ fn is_profile_operator(func_name: &str) -> bool {
     ALLOWED.contains(&func_name)
 }
 
-/// True when this `Call` is the in-profile `isSet(<path>)` extension: named
-/// `isSet` (case-insensitively, as elsewhere), with NO receiver and EXACTLY one
-/// argument (the single state path). `scene.x.isSet()` (a receiver) and
-/// `isSet(a, b)` (wrong arity) are NOT the extension and are out of profile.
-/// `has()` is never here — its valid form is an `Expr::Select`, not a `Call`.
+/// True when this `Call` is the in-profile `isSet(<path>)` extension (dsl §8.4):
+/// named `isSet` (case-insensitively, as elsewhere), with NO receiver, EXACTLY
+/// one argument, and that argument is a **static state path** — a pure
+/// `Ident`/`Select` chain (`crate::cel_paths::select_path` returns `Some`, which
+/// also admits the substituted `$` subject `Ident("_")`). `scene.x.isSet()`
+/// (receiver), `isSet(a, b)` (arity), and `isSet(1 + 2)` / `isSet(scene.x + 1)`
+/// (non-path argument) are all out of profile. `has()` is never here — its valid
+/// form is an `Expr::Select`, not a `Call`.
 fn is_profile_isset_call(c: &cel_parser::ast::CallExpr) -> bool {
-    c.func_name.eq_ignore_ascii_case("isSet") && c.target.is_none() && c.args.len() == 1
+    c.func_name.eq_ignore_ascii_case("isSet")
+        && c.target.is_none()
+        && c.args.len() == 1
+        && crate::cel_paths::select_path(&c.args[0].expr).is_some()
 }
 
 /// True when the ORIGINAL slot text uses the reserved internal [`lute_cel::REF_MARKER`]
@@ -815,11 +821,17 @@ mod tests {
 
     #[test]
     fn isset_arity_and_receiver_enforced() {
-        // The `isSet(<path>)` extension takes exactly one arg and no receiver.
-        // A receiver form or wrong arity is NOT the extension -> E-CEL-PROFILE.
+        // The `isSet(<path>)` extension takes exactly one arg, no receiver, and
+        // that arg MUST be a static state path — a receiver, wrong arity, or a
+        // non-path argument is NOT the extension -> E-CEL-PROFILE.
         let env = Env::default();
         let ctx = mk_ctx(&env);
-        for bad in ["scene.x.isSet()", "isSet(a, b)"] {
+        for bad in [
+            "scene.x.isSet()",
+            "isSet(a, b)",
+            "isSet(1 + 2)",
+            "isSet(scene.x + 1)",
+        ] {
             let slot = cel_slot_condition(bad);
             let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
             assert!(
