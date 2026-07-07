@@ -39,7 +39,7 @@ conflate them — most design mistakes come from reasoning about one in the term
 
 | Layer | Who acts | Job | When | SoT / tooling |
 |---|---|---|---|---|
-| **DSL** (authoring surface) | human / AI *writes* | `:line`/`::auto`/`<branch>`/`<timeline>`/CEL — expressiveness, readability, static validatability | author time | `.lute` text · parser → AST · LSP · tree-sitter |
+| **DSL** (authoring surface) | human / AI *writes* | `:speaker`/`::auto`/`<branch>`/`<timeline>`/CEL — expressiveness, readability, static validatability | author time | `.lute` text · parser → AST · LSP · tree-sitter |
 | **compiler** (`lute`) | the build *transforms* | AST → engine format: lowering, **auto-injection** (stage resolution), `@ref` expansion, asset binding, validation | **build time, once** | AST → `idola_script_commands` · `generator` · `harp` |
 | **engine** (Flutter runtime) | the player *runs* | walk flat records, render, timing (`wait`/`delay`), evaluate CEL against runtime state (player choices) | **play time** | `idola_script_commands` + save-state |
 
@@ -89,7 +89,7 @@ Three authoring layers, distinguished by syntax so a reader can tell them apart 
 - Has children → JSX-style `<tag>…</tag>` (self-naming close, folding, nesting — the "what
   does this close?" pain only ever lived in nested constructs).
 - Single-line leaf → directive `::name{attrs}` (JSX buys nothing for a childless node; `::`
-  stays consistent with the existing `::bg`/`:line` family).
+  stays consistent with the existing `::bg`/`:speaker` family).
 - Content text after `: ` is **opaque to end-of-line** — parens, `(?)`, `<`, anything is literal,
 never parsed. Every content line is prefixed `:speaker{attrs}:` (no bare prose), so classification is trivial.
 
@@ -202,7 +202,7 @@ Locked rules:
   invalid. No two `subject="camera"` tracks (they'd silently fight) — explicit `property=` tracks
   (`subject="camera" property="zoom"`) are a later addition, gated on a write-set checker.
 - **Staging-only, non-interactive.** Tracks hold `::` staging leaves (+ `::set` for state marks);
-  **no `:line`/prose/`<choice>`/`<branch>`/`<match>` inside** — those would make it reader-paced,
+  **no `:speaker`/prose/`<choice>`/`<branch>`/`<match>` inside** — those would make it reader-paced,
   not clock-paced. No nested timelines initially.
 - **Lowering** (no new runtime concept): resolve omitted `at` per track cursor → validate
   track-local overlap → validate cross-track write conflicts → emit the **same flat command
@@ -321,7 +321,7 @@ sprite load). The clean structure:
    (author-written vs would-be-injected) become warnings.
 6. **Manifest-driven, code-executed** — which directives touch stage state is declared by the
    per-directive `reads`/`writes`/`semantics` flags (`::auto` → `writes.stagePose`,
-   `mayExitCharacter`, `usesAnchor`; `:line` → `reads.onStage`). The resolver is *driven by* those
+   `mayExitCharacter`, `usesAnchor`; `:speaker` → `reads.onStage`). The resolver is *driven by* those
    flags but its algorithm stays code (a closed-registry named hook). This is the data-vs-code
    boundary made concrete: manifest says *which* participates, code says *how* it injects.
 
