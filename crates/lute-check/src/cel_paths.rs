@@ -50,6 +50,19 @@ pub(crate) fn is_state_path(path: &str) -> bool {
         .is_some_and(|root| STATE_ROOTS.contains(&root))
 }
 
+/// `E-PATH-IDENT`: a `-` in a CEL-facing name — a state-path segment, a `defs`
+/// name, or a def parameter name (dsl §8.4, §4.4 `CelIdent`). CEL parses `-` as
+/// subtraction, so these positions forbid it; `Ident` positions (directive/attr/
+/// speaker/choice/branch/hub/asset ids) keep permitting it.
+pub const E_PATH_IDENT: &str = "E-PATH-IDENT";
+
+/// `true` when any segment of a dotted state path AFTER the leading tier contains
+/// `-` (dsl §8.4). The tier keyword (`scene`/`run`/`user`/`app`) is fixed and
+/// never carries `-`, so only the `CelIdent` segments matter.
+pub(crate) fn state_path_has_hyphen(path: &str) -> bool {
+    path.split('.').skip(1).any(|seg| seg.contains('-'))
+}
+
 /// Collect every maximal state-path use in `expr` (recursing into all
 /// sub-expressions: call args, list/map/struct elements, comprehensions).
 pub(crate) fn collect_path_uses(expr: &Expr) -> Vec<PathUse> {

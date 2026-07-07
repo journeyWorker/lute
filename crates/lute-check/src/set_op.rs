@@ -25,6 +25,7 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::Set;
 
+use crate::cel_paths::{state_path_has_hyphen, E_PATH_IDENT};
 use crate::meta::{namespace_of, Namespace, StateSchema};
 use crate::Ctx;
 
@@ -33,6 +34,22 @@ use crate::Ctx;
 /// parity with the other `check_*` entrypoints and for future modes.
 pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
+
+    // §8.4 identifier alignment: the `::set` LHS is a CEL-facing state path, so
+    // every segment after the tier must be a `CelIdent` (no `-`). Emitted
+    // independently of the write-policy / declaredness checks below (a `-` name
+    // is illegal regardless), so it survives the `app`/undeclared short-circuits.
+    if state_path_has_hyphen(&set.path) {
+        diags.push(diag(
+            E_PATH_IDENT,
+            format!(
+                "`::set` target `{}` has a `-` in a state-path segment; CEL-facing names \
+                 forbid `-` (dsl §8.4)",
+                set.path
+            ),
+            set.path_span,
+        ));
+    }
 
     // §9.5 write policy: `app.*` is read-only to content. Short-circuit — the
     // engine owns app declarations and their value shapes, so we neither report
