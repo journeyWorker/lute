@@ -37,6 +37,26 @@ use crate::ctx::Ctx;
 /// diagnostic, never an `E-UNKNOWN-ATTR` fallthrough.
 pub const E_AT_CONTEXT: &str = "E-AT-CONTEXT";
 
+/// `Some(E-AT-CONTEXT)` when `dir` carries the reserved timeline-position key
+/// `at` (dsl §7.5). `at` is valid only on a staging directive INSIDE a `<track>`;
+/// the parser strips it from track clips, so any `at` still present on a
+/// directive-form node — a plain `::directive` OR a reserved `::use` — is a
+/// non-track use. Callers ([`check_directive`] and `check_use`) push this so
+/// `at` never falls through to `E-UNKNOWN-ATTR` / `E-COMPONENT-ARG`.
+pub fn at_context(dir: &Directive) -> Option<Diagnostic> {
+    dir.attrs.iter().any(|a| a.key == "at").then(|| {
+        diag(
+            E_AT_CONTEXT,
+            Severity::Error,
+            format!(
+                "`at` is valid only on a <track> clip; `::{}` here is not a timeline clip (dsl §7.5)",
+                dir.tag
+            ),
+            dir.span,
+        )
+    })
+}
+
 /// Validate a single directive against the resolved capability snapshot
 /// (dsl §7.2, plugin §8). Returns every diagnostic the directive produces; an
 /// empty vec means the directive and all its attributes are well-formed.
@@ -80,21 +100,18 @@ pub fn check_directive(
         return diags;
     };
 
+    // E-AT-CONTEXT (dsl §7.5): reserved `at` outside a <track> clip. Shared with
+    // `check_use` so it fires for EVERY directive-form node (::directive AND
+    // ::use); track clips have `at` stripped by the parser, so they never trip
+    // it. Emitted here so it never falls through to E-UNKNOWN-ATTR below.
+    if let Some(d) = at_context(dir) {
+        diags.push(d);
+    }
+
     // Per-attribute validation.
     for attr in &dir.attrs {
-        // `at` is reserved to <track> clips (dsl §7.5). The parser strips `at`
-        // from track clips, so its presence here means a non-track directive —
-        // the dedicated E-AT-CONTEXT, never the E-UNKNOWN-ATTR fallthrough.
+        // `at` is handled above (E-AT-CONTEXT); never E-UNKNOWN-ATTR here.
         if attr.key == "at" {
-            diags.push(diag(
-                E_AT_CONTEXT,
-                Severity::Error,
-                format!(
-                    "`at` is valid only on a <track> clip; `::{}` here is not a timeline clip (dsl §7.5)",
-                    dir.tag
-                ),
-                dir.span,
-            ));
             continue;
         }
         let Some(adecl) = decl.attrs.iter().find(|a| a.name == attr.key) else {
