@@ -320,29 +320,45 @@ pub fn parse_meta_kind(
     (typed, diags)
 }
 
-/// Best-effort narrow document span for a meta-side diagnostic: the first byte
-/// range of `needle` within the frontmatter, mapped to document offsets. serde
-/// gives no per-key spans, so the offending identifier (a hyphenated `defs`
-/// name / def param / state path) is located textually in `raw_yaml`. Falls back
-/// to the whole-frontmatter span when `needle` is absent. `line`/`column`/`utf16`
-/// are left zeroed — [`crate::check`]'s `normalize_spans` recomputes them from the
-/// byte offsets at report time (same convention as the CEL-slot resolver).
+/// Best-effort narrow document span for a meta-side diagnostic pointing at the
+/// offending identifier (a hyphenated `defs` name / def param / state path).
+/// serde gives no per-key spans, so the key is located textually in `raw_yaml`.
+///
+/// **Key-aware:** the needle is matched only where it is a YAML *mapping key* —
+/// at a line start (after optional indent), followed by optional whitespace then
+/// `:` — so an identifier that also appears in a comment or scalar value does not
+/// steal the span. Mirrors `lute_lsp`'s `find_yaml_key_span` (kept in sync; the
+/// LSP copy is private and lute-lsp depends on this crate, not the reverse).
+/// Falls back to a naive first occurrence, then the whole-frontmatter span, only
+/// when no key line matches. `line`/`column`/`utf16` are left zeroed —
+/// [`crate::check`]'s `normalize_spans` recomputes them from the byte offsets.
 fn meta_key_span(meta: &Meta, needle: &str) -> Span {
     // `raw_yaml` is the frontmatter interior sliced verbatim after the 4-byte
-    // `"---\n"` opener, which is itself included in `meta.span`; a `raw_yaml`
-    // index therefore maps to the document by adding `meta.span.byte_start + 4`.
+    // `"---\n"` opener (itself included in `meta.span`); a `raw_yaml` offset maps
+    // to the document by adding `meta.span.byte_start + 4`.
     const OPENER_LEN: usize = 4; // "---\n"
-    match meta.raw_yaml.find(needle) {
-        Some(idx) => {
-            let start = meta.span.byte_start + OPENER_LEN + idx;
-            Span {
-                byte_start: start,
-                byte_end: start + needle.len(),
-                line: 0,
-                column: 0,
-                utf16_range: (0, 0),
+    let base = meta.span.byte_start + OPENER_LEN;
+    let at = |start: usize| Span {
+        byte_start: start,
+        byte_end: start + needle.len(),
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    };
+    // Key-aware scan: the needle at a line start (after indent), then `:`.
+    let mut line_start = 0usize;
+    for line in meta.raw_yaml.split_inclusive('\n') {
+        let indent = line.len() - line.trim_start().len();
+        if let Some(rest) = line.trim_start().strip_prefix(needle) {
+            if rest.trim_start().starts_with(':') {
+                return at(base + line_start + indent);
             }
         }
+        line_start += line.len();
+    }
+    // Fallbacks: naive first occurrence, then the whole frontmatter block.
+    match meta.raw_yaml.find(needle) {
+        Some(idx) => at(base + idx),
         None => meta.span,
     }
 }
