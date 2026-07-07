@@ -1215,17 +1215,19 @@ fn dfs_use_cycle(
 
 /// Diagnostic codes for the `<choice … persist="run">` run-fact sugar (dsl §11.1.1).
 const E_PERSIST_TARGET: &str = "E-PERSIST-TARGET";
-const E_PERSIST_MISSING_AS: &str = "E-PERSIST-MISSING-AS";
+const E_PERSIST_MISSING_INTO: &str = "E-PERSIST-MISSING-INTO";
 const E_PERSIST_VALUE: &str = "E-PERSIST-VALUE";
 const E_PERSIST_CONFLICT: &str = "E-PERSIST-CONFLICT";
 
 /// Validate a `<choice>`'s run-fact promotion sugar (dsl §11.1.1):
-/// `persist="run" as="run.<path>" [value="<lit>"]` records a NAMED, declared
+/// `persist="run" into="run.<path>" [value="<lit>"]` records a NAMED, declared
 /// `run.*` fact when the choice is selected. The sugar is EXACTLY a
 /// `::set{run.<path> = <value>}` appended to the arm — the engine materializes
 /// the write, so the checker only validates well-formedness. A `<choice>` with
-/// no `persist` attr is untouched. The `persist`/`as`/`value` attrs are
-/// recognized here, so they are never reported as unknown/extra.
+/// no `persist` attr is untouched. The `persist`/`into`/`value` attrs are
+/// recognized here, so they are never reported as unknown/extra. (The persist
+/// target attribute is `into`, renamed from 0.0.1 `as`; `as` survives only on
+/// content lines as the display-label override, §7.1 — untouched here.)
 fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
     // Only choices carrying a `persist` attr participate.
     let Some(persist) = choice.attrs.iter().find(|a| a.key == "persist") else {
@@ -1243,26 +1245,26 @@ fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, diags: &mut Vec<Diagnost
         ));
         return;
     }
-    // Rule 2: `as` is REQUIRED and MUST name a `run.*` path.
-    let Some(as_attr) = choice.attrs.iter().find(|a| a.key == "as") else {
+    // Rule 2: `into` is REQUIRED and MUST name a `run.*` path.
+    let Some(into_attr) = choice.attrs.iter().find(|a| a.key == "into") else {
         diags.push(persist_diag(
-            E_PERSIST_MISSING_AS,
-            "`persist=\"run\"` requires `as=\"run.<path>\"` naming the run fact to record \
+            E_PERSIST_MISSING_INTO,
+            "`persist=\"run\"` requires `into=\"run.<path>\"` naming the run fact to record \
              (dsl §11.1.1)"
                 .to_string(),
             choice.span,
         ));
         return;
     };
-    let Some(as_path) = str_attr(as_attr) else {
+    let Some(into_path) = str_attr(into_attr) else {
         diags.push(persist_diag(
             E_PERSIST_TARGET,
-            "`as` must be a `run.<path>` string literal (dsl §11.1.1)".to_string(),
+            "`into` must be a `run.<path>` string literal (dsl §11.1.1)".to_string(),
             choice.span,
         ));
         return;
     };
-    if as_path
+    if into_path
         .strip_prefix("run.")
         .filter(|rest| !rest.is_empty())
         .is_none()
@@ -1270,21 +1272,21 @@ fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, diags: &mut Vec<Diagnost
         diags.push(persist_diag(
             E_PERSIST_TARGET,
             format!(
-                "`as=\"{as_path}\"` must name a `run.<path>` fact (a bare `run` or a \
+                "`into=\"{into_path}\"` must name a `run.<path>` fact (a bare `run` or a \
                  non-`run.*` path is not a valid run target) (dsl §11.1.1)"
             ),
             choice.span,
         ));
         return;
     }
-    // Rule 3 (§9.2/§11.1.1): the `as` path MUST already be declared in the
-    // merged schema — a typo'd/undeclared `as` cannot silently create a field.
-    let Some(ty) = resolve_type(as_path, &ctx.env.state) else {
+    // Rule 3 (§9.2/§11.1.1): the `into` path MUST already be declared in the
+    // merged schema — a typo'd/undeclared `into` cannot silently create a field.
+    let Some(ty) = resolve_type(into_path, &ctx.env.state) else {
         diags.push(persist_diag(
             "E-UNDECLARED",
             format!(
-                "persist target `{as_path}` is not declared in the run schema (dsl §11.1.1); \
-                 an undeclared/typo'd `as` cannot create a field"
+                "persist target `{into_path}` is not declared in the run schema (dsl §11.1.1); \
+                 an undeclared/typo'd `into` cannot create a field"
             ),
             choice.span,
         ));
@@ -1294,7 +1296,7 @@ fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, diags: &mut Vec<Diagnost
     check_persist_value(
         ty,
         choice.attrs.iter().find(|a| a.key == "value"),
-        as_path,
+        into_path,
         choice.span,
         diags,
     );
@@ -1303,13 +1305,13 @@ fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, diags: &mut Vec<Diagnost
     if choice
         .body
         .iter()
-        .any(|n| matches!(n, Node::Set(s) if s.path == as_path))
+        .any(|n| matches!(n, Node::Set(s) if s.path == into_path))
     {
         diags.push(persist_diag(
             E_PERSIST_CONFLICT,
             format!(
-                "the choice arm already `::set`s `{as_path}`, which `persist=\"run\" \
-                 as=\"{as_path}\"` also writes (dsl §11.1.1)"
+                "the choice arm already `::set`s `{into_path}`, which `persist=\"run\" \
+                 into=\"{into_path}\"` also writes (dsl §11.1.1)"
             ),
             choice.span,
         ));
@@ -1322,7 +1324,7 @@ fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, diags: &mut Vec<Diagnost
 fn check_persist_value(
     ty: &Type,
     value: Option<&Attr>,
-    as_path: &str,
+    into_path: &str,
     span: Span,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -1335,7 +1337,7 @@ fn check_persist_value(
                     diags.push(persist_diag(
                         E_PERSIST_VALUE,
                         format!(
-                            "`value` for the bool path `{as_path}` must be a bool literal \
+                            "`value` for the bool path `{into_path}` must be a bool literal \
                              (`true`/`false`) (dsl §11.1.1)"
                         ),
                         span,
@@ -1347,7 +1349,7 @@ fn check_persist_value(
             None => diags.push(persist_diag(
                 E_PERSIST_VALUE,
                 format!(
-                    "`value` is required for `{as_path}` (only a `bool` path defaults to \
+                    "`value` is required for `{into_path}` (only a `bool` path defaults to \
                      `true`) (dsl §11.1.1)"
                 ),
                 span,
@@ -1355,7 +1357,7 @@ fn check_persist_value(
             Some(v) if !accepted(v) => diags.push(persist_diag(
                 E_PERSIST_VALUE,
                 format!(
-                    "`value` is not compatible with the declared type of `{as_path}` \
+                    "`value` is not compatible with the declared type of `{into_path}` \
                      (dsl §11.1.1)"
                 ),
                 span,
