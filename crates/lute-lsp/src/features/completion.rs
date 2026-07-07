@@ -254,6 +254,15 @@ fn collect_branch_ids(nodes: &[Node], out: &mut Vec<String>) {
                 }
             }
             Node::Hub(h) => {
+                let id = h.attrs.iter().find(|a| a.key == "id").and_then(|a| match &a.value {
+                    AttrValue::Str(s) => Some(s.as_str()),
+                    _ => None,
+                });
+                if let Some(id) = id {
+                    if !id.is_empty() {
+                        out.push(id.to_string());
+                    }
+                }
                 for c in &h.choices {
                     collect_branch_ids(&c.body, out);
                 }
@@ -486,6 +495,28 @@ mod tests {
         assert!(
             items.iter().any(|i| i.label == "scene.choices.inner"),
             "offers the hub-nested branch choice path: {:?}",
+            labels(&items)
+        );
+    }
+
+    /// D2: a `<hub>` folds an implicit `scene.choices.<hubId>` enum (same shape
+    /// as a `<branch>`), so `<match on="">` subject completion must offer the
+    /// hub's own id, not just ids nested inside its choice bodies.
+    #[test]
+    fn completion_of_choice_ids_offers_hub_own_id() {
+        let text = "## Shot 1.\n<hub id=\"chatWithBianca\">\n<choice id=\"ask\" label=\"Ask\" once>\n:f: a.\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n:f: bye.\n</choice>\n</hub>\n<match on=\"\">\n<otherwise>\n:f: x.\n</otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        assert!(
+            items.iter().any(|i| i.label == "scene.choices.chatWithBianca"),
+            "offers the hub's own choice path: {:?}",
             labels(&items)
         );
     }
