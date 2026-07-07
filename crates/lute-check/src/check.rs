@@ -62,8 +62,8 @@ use lute_manifest::schema::{SlotDecl, StateShape};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{type_accepts, Literal, PathSegment, Type};
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document, Interp,
-    InterpKind, Node,
+    classify_interp, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document,
+    Interp, InterpKind, Node,
 };
 use lute_syntax::parse;
 
@@ -553,6 +553,16 @@ impl Walker<'_> {
                     for choice in &b.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
                         check_choice_persist(choice, ctx, &mut self.diags);
+                        // §7.6: a `<choice label>` string MAY embed `{{…}}`
+                        // interpolations. Labels are String attrs, so their interps
+                        // are not in the AST — scan and validate them via the same
+                        // referent path as content lines (E-UNDECLARED /
+                        // E-UNDECLARED-REF / E-REF-TYPE / §7.6 grammar).
+                        check_interps(
+                            &scan_label_interps(&choice.label, choice.span),
+                            ctx,
+                            &mut self.diags,
+                        );
                         if let Some(when) = &choice.when {
                             self.diags.extend(check_cel_slot(
                                 when,
@@ -661,6 +671,13 @@ impl Walker<'_> {
                     for choice in &h.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
                         check_choice_persist(choice, ctx, &mut self.diags);
+                        // §7.6: hub choice labels carry `{{…}}` interpolations too
+                        // (same as branch choices) — validate their referents.
+                        check_interps(
+                            &scan_label_interps(&choice.label, choice.span),
+                            ctx,
+                            &mut self.diags,
+                        );
                         if let Some(when) = &choice.when {
                             self.diags.extend(check_cel_slot(
                                 when,
@@ -720,10 +737,32 @@ fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>)
         match_subject: None,
     };
     for interp in interps {
+        // §7.6 grammar: an interp is EXACTLY a bare state `Path`, a def `Ref`
+        // (`@name` / `@name(args)`), or the reserved `userName` — NOT an arbitrary
+        // CEL expression (the ONLY CEL admitted inside `{{…}}` is a `@fn(args)`
+        // argument). Enforce the grammar BEFORE CEL-validating, so a profile-valid
+        // but interp-illegal body like `{{run.coins + 1}}` is rejected rather than
+        // silently accepted as a generic slot. The `$` subject (parser-classified
+        // as a `Path` raw `"$"`) is exempt here — the resolver owns its scope
+        // diagnostic (`E-DOLLAR-OUTSIDE-MATCH`, §8.2), so let it flow through.
         let referent = match interp.kind {
             // The reserved player-name token always renders (dsl §7.6).
             InterpKind::Reserved => continue,
-            InterpKind::Path | InterpKind::Ref => &interp.raw,
+            InterpKind::Path => {
+                let has_dollar = scan_refs(&interp.raw).iter().any(|r| r.is_dollar);
+                if !has_dollar && !is_bare_state_path(&interp.raw) {
+                    diags.push(interp_grammar_diag(&interp.raw, interp.span));
+                    continue;
+                }
+                &interp.raw
+            }
+            InterpKind::Ref => {
+                if !is_bare_ref(&interp.raw) {
+                    diags.push(interp_grammar_diag(&interp.raw, interp.span));
+                    continue;
+                }
+                &interp.raw
+            }
         };
         // Reuse the guard/`::set` read-check verbatim: parse the referent as a
         // value-read CEL slot over the interpolation's span, then run the shared
@@ -779,6 +818,95 @@ fn is_renderable(ty: &Type) -> bool {
         ty,
         Type::Number | Type::Bool | Type::Enum(_) | Type::EnumFromOption(_)
     )
+}
+
+/// §7.6 interpolation-grammar violation: a `{{…}}` interior that is neither a
+/// bare state path, a well-formed `@ref`/`@ref(args)`, nor `userName`. Reuses
+/// [`E_CEL_PROFILE`] (the closed-CEL-surface code) — a bare CEL expression here
+/// is CEL used where the profile does not admit it (§7.6: the only CEL inside
+/// `{{…}}` is a `@fn(args)` argument).
+fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: crate::cel_resolve::E_CEL_PROFILE.to_string(),
+        severity: Severity::Error,
+        message: format!(
+            "interpolation `{raw}` is not a valid `{{{{…}}}}` form — only a state path, a \
+             def `@ref` / `@ref(args)`, or `userName` are permitted; a bare CEL expression \
+             is not (name a computed value with a `@def`, dsl §7.6)"
+        ),
+        span,
+        layer: Layer::Cel,
+        fixits: Vec::new(),
+        provenance: None,
+    }
+}
+
+/// `true` when `s` is a `CelIdent` (dsl §4.4): a leading `_`/ASCII-letter then
+/// `_`/ASCII-alphanumerics. No `-` (CEL parses it as subtraction, §8.4). Empty
+/// is not an ident.
+fn is_cel_ident(s: &str) -> bool {
+    let mut it = s.bytes();
+    matches!(it.next(), Some(c) if c == b'_' || c.is_ascii_alphabetic())
+        && it.all(|c| c == b'_' || c.is_ascii_alphanumeric())
+}
+
+/// `true` when `raw` (trimmed) is EXACTLY a bare dotted state path (dsl §7.6/§9.1):
+/// a state-tier root (`scene`/`run`/`user`/`app`) followed by `.`-separated
+/// `CelIdent` segments — no operators, whitespace, calls, or literals. `run.coins`
+/// passes; `run.coins + 1`, `size(x)`, `foo.bar` (non-tier root) do not.
+fn is_bare_state_path(raw: &str) -> bool {
+    crate::cel_paths::is_state_path(raw) && raw.split('.').all(is_cel_ident)
+}
+
+/// `true` when `raw` (trimmed) is EXACTLY a `@name` or `@name(args)` reference
+/// (dsl §7.6/§8.1): the OUTERMOST `@ref` starts at byte 0 and its bare/call group
+/// reaches the end — nothing before or trailing. Nested `@ref`s inside a
+/// `@fn(args)` argument are legitimate CEL (§8.1) and do not disqualify.
+fn is_bare_ref(raw: &str) -> bool {
+    scan_refs(raw).iter().any(|r| {
+        !r.is_dollar
+            && r.span.byte_start == 0
+            && match r.call.as_ref() {
+                None => r.span.byte_end == raw.len(),
+                Some(c) => c.span.byte_end == raw.len(),
+            }
+    })
+}
+
+/// Scan a `<choice label>` string for `{{…}}` interpolations (dsl §7.6). Choice
+/// labels are String attrs, so — unlike content-line interps — their `{{…}}` are
+/// NOT captured into the AST; this recovers them for the SAME [`check_interps`]
+/// validation (E-UNDECLARED / E-UNDECLARED-REF / E-REF-TYPE / grammar) as content
+/// interps. Classification reuses [`classify_interp`] (single source of truth with
+/// the parser). Every recovered interp is spanned at the whole `<choice>` (`span`)
+/// — the label's own byte offset is not retained on the AST — matching the
+/// resolver's whole-slot span fallback. An unterminated `{{` is left to the
+/// content-line parser's `E-INTERP-UNTERMINATED`; a label never round-trips there,
+/// so a stray `{{` in a label is simply not scanned (conservative, never panics).
+pub(crate) fn scan_label_interps(label: &str, span: Span) -> Vec<Interp> {
+    let b = label.as_bytes();
+    let mut out = Vec::new();
+    let mut j = 0;
+    while j + 1 < b.len() {
+        if b[j] == b'\\' && label[j + 1..].starts_with("{{") {
+            j += 3; // literal `\{{`
+            continue;
+        }
+        if b[j] == b'{' && b[j + 1] == b'{' {
+            match label[j + 2..].find("}}") {
+                Some(rel) => {
+                    let inner = label[j + 2..j + 2 + rel].trim().to_string();
+                    let kind = classify_interp(&inner);
+                    out.push(Interp { kind, raw: inner, span });
+                    j = j + 2 + rel + 2;
+                    continue;
+                }
+                None => break, // unterminated — nothing more to scan
+            }
+        }
+        j += 1;
+    }
+    out
 }
 
 // --- Reusable content components (`::use`, dsl §13) ---

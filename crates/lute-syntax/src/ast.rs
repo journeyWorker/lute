@@ -113,6 +113,22 @@ pub enum InterpKind {
     Reserved,
 }
 
+/// Classify a `{{…}}` interpolation's interior text (already trimmed) into its
+/// [`InterpKind`] (dsl §7.6): a `@…` is a `Ref`, the bare `userName` token is
+/// `Reserved`, anything else is a `Path`. The checker owns rejecting a referent
+/// that is not actually a bare state path / well-formed `@ref` (§7.6 grammar);
+/// this only picks the syntactic bucket. Single source of truth shared by the
+/// content-line scan (parser) and the `<choice label>` scan (checker).
+pub fn classify_interp(inner: &str) -> InterpKind {
+    if inner.starts_with('@') {
+        InterpKind::Ref
+    } else if inner == "userName" {
+        InterpKind::Reserved
+    } else {
+        InterpKind::Path
+    }
+}
+
 /// The literal pattern of a `<when is="…">` arm (dsl §7.3.1). Unlike `test`,
 /// this is NOT a CEL expression: `raw` is the verbatim (trimmed) attribute
 /// value (e.g. `"soft | curt"`), preserved for match-coverage checking and
