@@ -85,6 +85,15 @@ enum Command {
         /// Path to the `.lute` file to tag.
         file: PathBuf,
     },
+    /// Migrate a 0.0.1-shaped document to 0.1.0 in place — `:line[speaker]{…}:
+    /// text` → `:speaker{…}: text` and `<choice>`/`<hub>` choice `as="…"` →
+    /// `into="…"` (dsl §7.1, §7.3). Byte-exact and comment-preserving; writes
+    /// back only when something changed. Exit `0` on success, `2` on an I/O
+    /// failure.
+    Fix {
+        /// Path to the `.lute` file to migrate.
+        file: PathBuf,
+    },
     /// Emit the project-resolved AUTHORING SURFACE for a `.lute` file — the
     /// directives/attrs/enums/asset-kinds/providers/state-schema/components +
     /// capabilityVersion an AI needs to WRITE valid Lute against THIS file's
@@ -153,6 +162,7 @@ fn main() -> ExitCode {
             project,
         } => run_context(&file, json, providers.as_deref(), project.as_deref()),
         Command::Tag { file } => run_tag(&file),
+        Command::Fix { file } => run_fix(&file),
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
             run_refresh(&dir, project.as_deref())
         }
@@ -694,6 +704,38 @@ fn run_tag(file: &Path) -> ExitCode {
         println!("lute: tagged {} line(s)", out.added);
     } else {
         println!("lute: already tagged");
+    }
+
+    ExitCode::SUCCESS
+}
+
+/// Migrate a 0.0.1-shaped document to 0.1.0 in place (dsl §7.1, §7.3), rewriting
+/// the file only when a span was actually changed. A thin shell over
+/// [`lute_check::fix_document`] (the pure core that owns the two-phase migration:
+/// `:line[speaker]` → `:speaker`, then `<choice>`/`<hub>` choice `as` → `into`):
+/// read the file, migrate, and — only when at least one edit applied — write the
+/// result back, so an already-0.1.0 document is left byte-identical (idempotent).
+/// Exit `0` on success (whether or not anything changed), `2` on an I/O failure
+/// (like `run_tag`).
+fn run_fix(file: &Path) -> ExitCode {
+    let text = match std::fs::read_to_string(file) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("lute: cannot read {}: {e}", file.display());
+            return ExitCode::from(2);
+        }
+    };
+
+    let out = lute_check::fix_document(&text);
+
+    if out.changed > 0 {
+        if let Err(e) = std::fs::write(file, &out.text) {
+            eprintln!("lute: cannot write {}: {e}", file.display());
+            return ExitCode::from(2);
+        }
+        println!("lute: migrated {} edit(s) to 0.1.0", out.changed);
+    } else {
+        println!("lute: already 0.1.0");
     }
 
     ExitCode::SUCCESS

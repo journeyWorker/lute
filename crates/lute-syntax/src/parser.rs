@@ -18,7 +18,7 @@ use crate::lex::{
     line_text_start_blanked, peel_frontmatter, strip_comments_checked, text_start_for_line,
     CommentError,
 };
-use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
+use lute_core_span::{Diagnostic, Fixit, Layer, Severity, Span, TextEdit, TextIndex};
 
 mod attrs;
 mod blocks;
@@ -453,14 +453,42 @@ impl Parser<'_> {
             j += 1;
         }
         let speaker = self.body[sp_start..j].to_string();
-        // Migration fix-it (dsl §7.1): the removed 0.0.1 bracket form.
+        // Migration fix-it (dsl §7.1): the removed 0.0.1 bracket form
+        // `:line[speaker]{…}: text`. Reject it as before, but carry a `migrate`
+        // fix-it whose single TextEdit rewrites the `:line[speaker]` span (the
+        // content-line `:` through the closing `]`) to `:speaker`, so `lute fix`
+        // (Task D5) can apply it — the dropped line node leaves no AST to drive
+        // the rewrite from, so the fix-it is the only migration handle.
         if speaker == "line" && j < e && b[j] == b'[' {
+            let inner_start = j + 1;
+            let mut k = inner_start;
+            while k < e && is_ident_byte(b[k]) {
+                k += 1;
+            }
+            let inner = self.body[inner_start..k].to_string();
+            let has_close = k < e && b[k] == b']';
+            let edit_span = self.span(cstart, if has_close { k + 1 } else { k });
             self.emit_line(
                 E_UNCLASSIFIED,
                 "`:line[speaker]` was removed in 0.1.0 — write `:speaker{…}: text`",
                 i,
                 Layer::Content,
             );
+            // Offer the migration only when the bracket is well-formed (an ident
+            // speaker closed by `]`); a malformed `:line[` still errors plainly.
+            if has_close {
+                if let Some(d) = self.diags.last_mut() {
+                    d.fixits.push(Fixit {
+                        title: "Migrate `:line[speaker]` to `:speaker`".to_string(),
+                        kind: "migrate".to_string(),
+                        edit: vec![TextEdit {
+                            span: edit_span,
+                            new_text: format!(":{inner}"),
+                        }],
+                        confidence: 100,
+                    });
+                }
+            }
             self.cursor += 1;
             return None;
         }
@@ -1093,10 +1121,22 @@ mod tests {
 
     #[test]
     fn legacy_line_bracket_form_is_rejected_with_fixit() {
-        let (_, diags) = parse("## Shot 1.\n:line[bianca]{code=\"0010\"}: Hello!\n");
+        let src = "## Shot 1.\n:line[bianca]{code=\"0010\"}: Hello!\n";
+        let (_, diags) = parse(src);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "E-UNCLASSIFIED");
         assert!(diags[0].message.contains("0.1.0"), "fix-it hint: {}", diags[0].message);
+        // 0.1.0 migration (dsl §7.1): the diagnostic carries a `migrate` fix-it
+        // whose single TextEdit rewrites the removed `:line[speaker]` bracket form
+        // to `:speaker`. `lute fix` (Task D5) applies it (phase 1).
+        assert_eq!(diags[0].fixits.len(), 1, "expected one migrate fix-it");
+        let fx = &diags[0].fixits[0];
+        assert_eq!(fx.kind, "migrate", "fix-it kind: {}", fx.kind);
+        assert_eq!(fx.edit.len(), 1);
+        assert_eq!(fx.edit[0].new_text, ":bianca");
+        // The edit span covers exactly `:line[bianca]` (`:` through the `]`).
+        let sp = fx.edit[0].span;
+        assert_eq!(&src[sp.byte_start..sp.byte_end], ":line[bianca]");
     }
 
     #[test]

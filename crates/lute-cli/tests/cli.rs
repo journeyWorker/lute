@@ -454,3 +454,41 @@ fn context_choice_slot_domain_includes_unset() {
         "author enums must never gain an implicit-slot unset: {v}"
     );
 }
+
+// --- `lute fix`: the 0.0.1 → 0.1.0 migration codemod (Task D5). Rewrites the
+// file in place — `:line[speaker]{…}: text` → `:speaker{…}: text` (phase 1,
+// parser migrate fix-it) AND `<choice>`/`<hub>` choice `as="…"` → `into="…"`
+// (phase 2, AST walk). Exit 0; re-running is an idempotent no-op.
+
+#[test]
+fn fix_migrates_line_and_choice_as_in_place_idempotent() {
+    let dir = temp_dir("fix");
+    let f = dir.join("scene.lute");
+    let before = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[bianca]{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n";
+    std::fs::write(&f, before).unwrap();
+
+    let out = Command::new(BIN)
+        .args(["fix", f.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let after = std::fs::read_to_string(&f).unwrap();
+    let expected = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" into=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n";
+    assert_eq!(after, expected, "both phases must migrate in place");
+
+    // Idempotent: a second run rewrites nothing (file byte-identical).
+    let out2 = Command::new(BIN)
+        .args(["fix", f.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out2.status.success());
+    assert_eq!(
+        std::fs::read_to_string(&f).unwrap(),
+        expected,
+        "second fix run must be a no-op"
+    );
+}
