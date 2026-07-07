@@ -253,6 +253,51 @@ fn hub_demo_example_compiles() {
     assert_eq!(hub["recordKey"], "scene.choices.chatWithBianca");
 }
 
+// --- 0.1.0 golden coverage: the NON-HUB companion `when-is-demo.lute` exercises
+// `<when is="…">` literal-pattern arms (dsl §7.3.1) — including an `is="a|b"`
+// alternation — over a PLAIN scene-local finite enum (`scene.mood`), not a hub's
+// implicit recording enums. A default-valued enum is definitely assigned, so full
+// `is` coverage is exhaustive with NO `<otherwise>` (§11.2). This pins a clean,
+// feature-bearing check for that path.
+
+#[test]
+fn when_is_demo_example_checks_clean() {
+    let out = Command::new(BIN)
+        .args([
+            "check",
+            "../../docs/examples/showcase/when-is-demo.lute",
+            "--project",
+            "../../docs/examples/showcase",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "when-is-demo must check clean; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true, "when-is-demo → ok:true; got {v}");
+    assert_eq!(
+        v["diagnostics"].as_array().map(Vec::len),
+        Some(0),
+        "when-is-demo must be diagnostic-free (0 errors, 0 warnings); got {v}"
+    );
+    // Prove the `<when is>` feature is actually present in the resolved view — the
+    // `<match>` over the plain scene enum — not a trivially clean doc.
+    let preview = v["resolved"]["commands_preview"].to_string();
+    assert!(
+        preview.contains("<match"),
+        "resolved view must contain the match; got {preview}"
+    );
+    assert!(
+        preview.contains("scene.mood"),
+        "resolved view must contain the `<when is>` match over the plain scene enum; got {preview}"
+    );
+}
+
 // --- `lute context`: the project-resolved AUTHORING SURFACE an AI needs to
 // write valid Lute against THIS file's project (Task D4). Reuses the SAME
 // build_input/fold_env resolution check/compile use (no divergence); it is a

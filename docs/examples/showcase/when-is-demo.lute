@@ -1,0 +1,57 @@
+---
+mode: inline
+character: bianca
+season: 1
+episode: 3
+title: The Mood Reading
+pov: fixer
+luteVersion: "0.1.0"
+# Root capability profile (project lute.project.yaml). No plugin directives are
+# used here, so no scene-local `plugins:` narrowing is needed.
+profile: showcase
+# Shared run/user/app schema + defs arrive via the imported child schema, which
+# `extends:` a base (schema/game.schema.lute -> schema/base.schema.lute).
+uses: schema/game.schema.lute
+# One genuinely scene-local declaration (§9.2): a default-valued ENUM. A default
+# makes it definitely assigned, so FULL `is` coverage below is exhaustive with NO
+# <otherwise> (§11.2, the normative path) — no `unset` case to cover.
+state:
+  scene.mood: { type: { enum: [calm, tense, joyful, playful] }, default: calm }
+---
+
+/*
+  0.1.0 coverage — the NON-HUB companion to hub-demo.lute. Where hub-demo drives
+  `<when is="…">` over a <hub>'s implicit recording enums (scene.choices.* U
+  `unset`, scene.visited.*.* bool), this file exercises the SAME `<when is="…">`
+  literal-pattern arms (§7.3.1) over a PLAIN scene-local finite enum
+  (`scene.mood`), INCLUDING an `is="a|b"` ALTERNATION arm (§7.3.1:
+  `WhenPattern ::= Literal ("|" Literal)*`). A default-valued enum is definitely
+  assigned, so full `is` coverage is exhaustive WITHOUT an <otherwise> (§11.2).
+  Checks clean against `--project docs/examples/showcase`.
+*/
+
+# S01EP03 — The Mood Reading
+
+## Shot 1.
+
+:narrator: Bianca watches you from across the counter, reading the room.
+
+## Shot 2.
+
+/*
+  `<when is="…">` literal-pattern arms (§7.3.1) over the plain scene enum
+  `scene.mood` ([calm, tense, joyful, playful]). Three arms — two singleton
+  literals (`is="calm"`, `is="tense"`) and one `is="joyful|playful"` ALTERNATION —
+  cover all four members, so the match is exhaustive with NO <otherwise>.
+*/
+<match on="scene.mood">
+  <when is="calm">
+    :fixer{delivery="thought"}: Steady breathing. Nothing to prove tonight.
+  </when>
+  <when is="tense">
+    :fixer{delivery="thought"}: Shoulders drawn tight — I should tread carefully.
+  </when>
+  <when is="joyful|playful">
+    :fixer{delivery="thought"}: Light in the eyes, whichever way it tilts.
+  </when>
+</match>
