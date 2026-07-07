@@ -327,6 +327,55 @@ pub fn parse_slot(
     }
 }
 
+/// Identifier prefix that [`parse_slot_marked_refs`] substitutes for a DSL `@`
+/// sigil, so a `@name(...)` reference parses to a `Call`/`Ident` whose name is
+/// `{REF_MARKER}name` — structurally distinct from a same-named runtime CEL
+/// call. Chosen to be a valid CEL identifier start that no author would write.
+pub const REF_MARKER: &str = "__lute_at_ref__";
+
+/// Parse a slot like [`parse_slot`], but rewrite each DSL `@ref` sigil to the
+/// [`REF_MARKER`] identifier prefix instead of a space. A compile-time
+/// `@name(args)` reference (dsl §8.1) then parses to a `Call` named
+/// `{REF_MARKER}name`, letting a caller tell it apart from a **same-named runtime
+/// CEL call** — which the standard `@`->' ' substitution ([`parse_slot`]) makes
+/// indistinguishable in the structure-only AST. `$` is still substituted to `_`.
+///
+/// The substitution is NOT length-preserving, so byte offsets are meaningless
+/// here; this is intended for AST-**shape** analysis only (the Lute-CEL profile
+/// gate, dsl §8.4). Returns `None` on a parse error/backend panic (the caller has
+/// already reported malformed CEL via [`parse_slot`]).
+pub fn parse_slot_marked_refs(arena: &mut CelArena, raw: &str) -> Option<CelAstHandle> {
+    let prepared = substitute_marking_refs(raw);
+    silence_antlr_panic();
+    let parsed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        cel_parser::Parser::new().parse(&prepared)
+    }));
+    match parsed {
+        Ok(Ok(expr)) => {
+            let h = CelAstHandle(arena.asts.len() as u32);
+            arena.asts.push(expr);
+            Some(h)
+        }
+        _ => None,
+    }
+}
+
+/// Like [`substitute_dsl_tokens`] but replaces a DSL `@` with the [`REF_MARKER`]
+/// prefix (merging into the following ref name) rather than a space; `$` -> `_`.
+/// String-literal content is left untouched ([`cel_string_mask`]).
+fn substitute_marking_refs(raw: &str) -> String {
+    let mask = cel_string_mask(raw);
+    let mut s = String::with_capacity(raw.len() + REF_MARKER.len());
+    for (i, c) in raw.char_indices() {
+        match c {
+            '@' if !mask[i] => s.push_str(REF_MARKER),
+            '$' if !mask[i] => s.push('_'),
+            other => s.push(other),
+        }
+    }
+    s
+}
+
 /// Install (once) a panic hook that swallows cel-parser's known-benign
 /// antlr4rust `unreachable!()` panic on malformed CEL, while forwarding every
 /// other panic to the previous hook. Without this, `catch_unwind` still recovers

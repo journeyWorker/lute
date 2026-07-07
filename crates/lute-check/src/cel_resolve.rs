@@ -18,8 +18,6 @@
 //! 3), the AST pass is SKIPPED so no cascade/duplicate errors fire; the
 //! `scan_refs` pass still runs on the raw.
 
-use std::collections::BTreeSet;
-
 use cel_parser::ast::Expr;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
@@ -31,8 +29,9 @@ use crate::Ctx;
 use lute_manifest::types::Type;
 
 /// A CEL construct outside the closed Lute-CEL profile (dsl §8.4): any function
-/// call or comprehension macro other than `has()` / `isSet()`. Emitted at the
-/// slot span. New in 0.1.0.
+/// or macro call other than the `isSet()` extension (the valid `has()` macro
+/// parses as an `Expr::Select`, not a call), plus comprehension macros and
+/// map/struct literals. Emitted at the slot span. New in 0.1.0.
 pub const E_CEL_PROFILE: &str = "E-CEL-PROFILE";
 
 /// Validate a single CEL slot's `@ref`, `$`, and state-path reads (dsl §8, §9.4,
@@ -45,10 +44,8 @@ pub fn check_cel_slot(
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 
-    // Pass 1: `@ref` / `$` from the raw source (spans are precise). Bound once so
-    // Pass 3 can reuse the author's `@ref` names below.
-    let refs = lute_cel::scan_refs(&slot.raw);
-    for r in &refs {
+    // Pass 1: `@ref` / `$` from the raw source (spans are precise).
+    for r in lute_cel::scan_refs(&slot.raw) {
         let span = map_span(slot, r.span);
         if r.is_dollar {
             // `$` (the match subject) is legal only inside a `<match>` (dsl §8.2).
@@ -155,24 +152,26 @@ pub fn check_cel_slot(
         }
     }
 
-    // Pass 2: state-path reads + the Lute-CEL profile gate, both from the AST.
-    // Skip when the slot did not parse (already reported in Phase 3) so no
-    // cascade/duplicate errors fire.
+    // Pass 2: state-path reads from the shared AST. Skip when the slot did not
+    // parse (already reported in Phase 3) so no cascade/duplicate errors fire.
     if let Some(handle) = slot.ast.clone() {
         if let Some(root) = arena.get(handle) {
             for use_ in collect_path_uses(&root.expr) {
                 check_state_path(&use_.path, slot, ctx, &mut diags);
             }
-            // Pass 3: reject any construct outside the closed Lute-CEL profile
-            // (dsl §8.4). A parameterized `@ref(args)` becomes a `Call` in the AST
-            // (the `@`->' ' substitution), so exclude the author's `@ref` names —
-            // those are compile-time macro invocations, not runtime CEL calls.
-            let ref_names: BTreeSet<&str> = refs
-                .iter()
-                .filter(|r| !r.is_dollar)
-                .map(|r| r.name.as_str())
-                .collect();
-            check_cel_profile(&root.expr, slot, &ref_names, &mut diags);
+            // Pass 3: the Lute-CEL profile gate (dsl §8.4). A parameterized
+            // `@ref(args)` and a same-named runtime call both collapse to an
+            // identical `Call` under the shared AST's `@`->' ' substitution, so we
+            // re-parse with `@` rewritten to `REF_MARKER`: a ref then carries a
+            // marker-prefixed name and is distinguishable per site (structure-only
+            // re-parse — all diagnostics use the slot span). Gated on `slot.ast`
+            // so malformed CEL is not double-reported.
+            let mut marked = CelArena::default();
+            if let Some(mh) = lute_cel::parse_slot_marked_refs(&mut marked, &slot.raw) {
+                if let Some(mroot) = marked.get(mh) {
+                    check_cel_profile(&mroot.expr, slot, &mut diags);
+                }
+            }
         }
     }
 
@@ -180,48 +179,46 @@ pub fn check_cel_slot(
 }
 
 /// The Lute-CEL profile gate (dsl §8.4). The environment is **closed**: the only
-/// callable functions are the `has()` macro and the `isSet()` Lute extension.
-/// Everything else the profile permits — CEL operators, literals, list literals,
-/// the `in` membership operator, and the ternary conditional — is *not* a
-/// user-callable function. Any other function/method call (`size`, `matches`,
-/// `startsWith`, …) or comprehension macro (`map`, `filter`, `exists`, `all`,
-/// `existsOne`) is a static error ([`E_CEL_PROFILE`]) at the slot span.
+/// callable function is the `isSet()` Lute extension. Everything else the profile
+/// permits — a fixed set of CEL operators, literals, list literals, the `in`
+/// membership operator, and the ternary conditional — is *not* a user-callable
+/// function. Any other function/method call (`size`, `matches`, `startsWith`, …)
+/// or comprehension macro (`map`, `filter`, `exists`, `all`, `existsOne`) is a
+/// static error ([`E_CEL_PROFILE`]) at the slot span.
 ///
-/// How the parser shapes the constructs we discriminate:
-/// * CEL lowers its built-in operators to synthetic calls whose `func_name`
-///   carries a non-identifier char (`_==_`, `@in`, `!_`, `_?_:_`, `_[_]`, `-_`,
-///   …). A real function/macro name is a bare CEL identifier, so
-///   [`is_operator_call`] separates the two — an operator call is structural and
-///   we simply recurse into it.
-/// * `has(p)` never reaches here as a call — the parser rewrites it into a
-///   test-only `Select` — but `has` is kept in the allow-list defensively.
-/// * comprehension macros lower to [`Expr::Comprehension`], always out of profile.
-/// * map/struct literals ([`Expr::Map`]/[`Expr::Struct`]) are not in the closed
-///   set (only *list* literals are) and are likewise rejected.
-/// * a parameterized def reference `@name(args)` becomes a `Call` in the AST
-///   (the `@`->' ' substitution collapses the sigil), so the author's `@ref`
-///   names — collected by `scan_refs` — are excluded here: they are compile-time
-///   macro invocations (dsl §8.1), validated by Pass 1, not runtime CEL calls.
-fn check_cel_profile(
-    expr: &Expr,
-    slot: &CelSlot,
-    ref_names: &BTreeSet<&str>,
-    diags: &mut Vec<Diagnostic>,
-) {
+/// Runs over the **marker re-parse** (`parse_slot_marked_refs`), where each DSL
+/// `@ref` sigil was rewritten to [`lute_cel::REF_MARKER`]. That distinction is
+/// load-bearing:
+/// * a compile-time `@name(args)` reference (dsl §8.1) parses to a `Call` whose
+///   `func_name` starts with `REF_MARKER` — exempt, but we still recurse into its
+///   args so a nested out-of-profile call is caught (`@pick(size(x))` flags
+///   `size`). A same-named *runtime* call keeps its bare name and is NOT exempt,
+///   closing the `@gate && gate(x)` bypass.
+/// * CEL lowers operators to synthetic `Call` names ([`is_profile_operator`]),
+///   matched against an EXPLICIT allow-list — `%` (`_%_`, not in §8.4) and
+///   leading-dot global calls are therefore rejected, not blanket-accepted.
+/// * the valid `has(path)` macro parses as a test-only [`Expr::Select`], never a
+///   `Call` — so a residual `Call` named `has` (`has(x,y)`, `x.has()`) is NOT the
+///   macro and IS rejected. Only `isSet` is an allowed `Call`.
+/// * comprehension macros lower to [`Expr::Comprehension`]; map/struct literals
+///   to [`Expr::Map`]/[`Expr::Struct`] (only *list* literals are in profile) —
+///   all rejected.
+fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
     match expr {
         Expr::Call(c) => {
-            if is_operator_call(&c.func_name)
-                || is_profile_fn(&c.func_name)
-                || ref_names.contains(c.func_name.as_str())
+            let name = c.func_name.as_str();
+            if name.starts_with(lute_cel::REF_MARKER)
+                || is_profile_operator(name)
+                || is_profile_fn(name)
             {
-                // A CEL operator, an in-profile function, or a compile-time
-                // `@ref(args)` macro call: structural — recurse into its target +
-                // args to catch any nested out-of-profile call.
+                // A compile-time `@ref(args)` macro, a profile operator, or the
+                // `isSet()` extension: structural — recurse into target + args to
+                // catch any nested out-of-profile call.
                 if let Some(t) = &c.target {
-                    check_cel_profile(&t.expr, slot, ref_names, diags);
+                    check_cel_profile(&t.expr, slot, diags);
                 }
                 for a in &c.args {
-                    check_cel_profile(&a.expr, slot, ref_names, diags);
+                    check_cel_profile(&a.expr, slot, diags);
                 }
             } else {
                 // An out-of-profile function/method call. Report and stop
@@ -229,10 +226,9 @@ fn check_cel_profile(
                 diags.push(diag(
                     E_CEL_PROFILE,
                     format!(
-                        "`{}(…)` is outside the Lute-CEL profile — only operators, \
+                        "`{name}(…)` is outside the Lute-CEL profile — only operators, \
                          literals, lists, `?:`, `in`, `has()`, and `isSet()` are \
-                         permitted (dsl §8.4)",
-                        c.func_name
+                         permitted (dsl §8.4)"
                     ),
                     slot.span,
                 ));
@@ -257,31 +253,55 @@ fn check_cel_profile(
         // exprs; recurse so a call nested inside a list is still caught.
         Expr::List(list) => {
             for el in &list.elements {
-                check_cel_profile(&el.expr, slot, ref_names, diags);
+                check_cel_profile(&el.expr, slot, diags);
             }
         }
         // A field selection: recurse into the operand (`foo().bar` hides a call).
-        Expr::Select(sel) => check_cel_profile(&sel.operand.expr, slot, ref_names, diags),
+        Expr::Select(sel) => check_cel_profile(&sel.operand.expr, slot, diags),
         // Idents and scalar literals are in profile; `Unspecified` is inert.
         Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => {}
     }
 }
 
-/// True when a call's `func_name` is a CEL built-in **operator** rather than a
-/// user-callable function. CEL lowers operators to synthetic names carrying a
-/// non-identifier character (`_==_`, `@in`, `!_`, `_?_:_`, `-_`, `_[_]`, …),
-/// whereas a real function/macro name is a plain CEL identifier
-/// (`[A-Za-z_][A-Za-z0-9_]*`).
-fn is_operator_call(func_name: &str) -> bool {
-    func_name
-        .bytes()
-        .any(|b| !b.is_ascii_alphanumeric() && b != b'_')
+/// True when `func_name` is one of the CEL built-in **operators** the Lute-CEL
+/// profile permits (dsl §8.4). cel-parser 0.10.1 lowers each operator to a fixed
+/// synthetic name; we match that EXACT allow-list (via `cel_parser::ast::operators`
+/// constants) so out-of-profile operators are NOT accepted just for being
+/// punctuated. Deliberately EXCLUDED: modulo `_%_` (no integer domain, §8.4),
+/// the optional operators `_[?_]`/`_?._`, and the internal `@not_strictly_false`.
+fn is_profile_operator(func_name: &str) -> bool {
+    use cel_parser::ast::operators as op;
+    // The profile's operators: `? :`, `&& || !`, `+ - * /`, `== != >= <= > <`,
+    // unary `-`, index `[]`, and `in`. EXCLUDES `_%_` (modulo), the optional
+    // operators, and the internal `@not_strictly_false`.
+    const ALLOWED: &[&str] = &[
+        op::CONDITIONAL,
+        op::LOGICAL_AND,
+        op::LOGICAL_OR,
+        op::LOGICAL_NOT,
+        op::ADD,
+        op::SUBSTRACT,
+        op::MULTIPLY,
+        op::DIVIDE,
+        op::EQUALS,
+        op::NOT_EQUALS,
+        op::GREATER_EQUALS,
+        op::LESS_EQUALS,
+        op::GREATER,
+        op::LESS,
+        op::NEGATE,
+        op::INDEX,
+        op::IN,
+    ];
+    ALLOWED.contains(&func_name)
 }
 
-/// True for the two functions inside the closed profile: the `has()` macro and
-/// the `isSet()` Lute extension (matched case-insensitively, as elsewhere).
+/// True for the single callable function inside the closed profile: the
+/// `isSet()` Lute extension (matched case-insensitively, as elsewhere). `has()`
+/// is NOT here — its valid macro form is an `Expr::Select`, so any `Call` named
+/// `has` is out of profile.
 fn is_profile_fn(func_name: &str) -> bool {
-    func_name == "has" || func_name.eq_ignore_ascii_case("isSet")
+    func_name.eq_ignore_ascii_case("isSet")
 }
 
 /// Conservative type-compatibility for `E-REF-TYPE` (dsl §8): return `true` (no
@@ -652,9 +672,9 @@ mod tests {
     #[test]
     fn def_ref_call_form_not_flagged() {
         // A parameterized def reference `@name(args)` is a COMPILE-TIME macro
-        // invocation (dsl §8.1), not a runtime CEL function call. The `@`->' '
-        // substitution makes it parse as a `Call` in the AST, but it must NOT
-        // trip the profile gate — declared or not (Pass 1 owns E-UNDECLARED-REF).
+        // invocation (dsl §8.1), not a runtime CEL function call. The marker
+        // re-parse gives it a `REF_MARKER`-prefixed name so it is exempt — while a
+        // same-named runtime call is not (see `ref_call_not_shadowed_by_at_ref`).
         for (env, raw) in [
             (env_with_defs(&["atLeast"]), "@atLeast(2)"),
             (Env::default(), "@ghost(1)"), // undeclared ref -> E-UNDECLARED-REF only
@@ -666,6 +686,73 @@ mod tests {
             assert!(
                 d.iter().all(|e| e.code != E_CEL_PROFILE),
                 "def-ref call `{raw}` must not trip E-CEL-PROFILE, got {:?}",
+                d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn ref_call_not_shadowed_by_at_ref() {
+        // Bypass (1): a real runtime call must NOT be exempted just because a
+        // same-named `@ref` appears in the slot. `@gate` is a bare ref (Ident);
+        // `gate(scene.x)` is a genuine out-of-profile call -> E-CEL-PROFILE.
+        let env = env_with_defs(&["gate"]);
+        let ctx = mk_ctx(&env);
+        for raw in ["@gate && gate(scene.x)", "@gate(1) && gate(2)"] {
+            let slot = cel_slot_condition(raw);
+            let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+            assert!(
+                d.iter().any(|e| e.code == E_CEL_PROFILE),
+                "runtime `gate(...)` must flag E-CEL-PROFILE despite `@gate` in `{raw}`, got {:?}",
+                d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn has_call_form_rejected_but_macro_ok() {
+        // Bypass (2): the valid `has(path)` macro parses as an `Expr::Select`, so
+        // any residual `Call` named `has` (wrong arity / receiver form) is NOT the
+        // macro and must flag; the real macro must stay clean.
+        let env = Env::default();
+        let ctx = mk_ctx(&env);
+        for bad in ["has(a, b)", "scene.x.has()"] {
+            let slot = cel_slot_condition(bad);
+            let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+            assert!(
+                d.iter().any(|e| e.code == E_CEL_PROFILE),
+                "non-macro `has` call `{bad}` must flag E-CEL-PROFILE, got {:?}",
+                d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+            );
+        }
+        let slot = cel_slot_condition("has(scene.x)");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+        assert!(
+            d.iter().all(|e| e.code != E_CEL_PROFILE),
+            "valid has() macro must stay clean, got {:?}",
+            d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn modulo_operator_rejected_arithmetic_ok() {
+        // Bypass (3): `%` lowers to `_%_`, which is NOT in the §8.4 operator set
+        // (no integer domain) -> E-CEL-PROFILE; `+ - * /` stay in profile.
+        let env = Env::default();
+        let ctx = mk_ctx(&env);
+        let slot = cel_slot_condition("scene.a % 2");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+        assert!(
+            d.iter().any(|e| e.code == E_CEL_PROFILE),
+            "modulo `%` must flag E-CEL-PROFILE, got {:?}",
+            d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+        );
+        for ok in ["scene.a + 1", "scene.a - 1 * 2 / 3"] {
+            let slot = cel_slot_condition(ok);
+            let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+            assert!(
+                d.iter().all(|e| e.code != E_CEL_PROFILE),
+                "arithmetic `{ok}` must stay in profile, got {:?}",
                 d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
             );
         }
