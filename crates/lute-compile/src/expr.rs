@@ -102,6 +102,143 @@ pub fn lower_expr(raw: &str) -> Option<ExprNode> {
     lower(&root.expr)
 }
 
+/// Outcome of synthesizing a `<match>` arm's executable expr (IR A13).
+#[derive(Debug)]
+pub(crate) enum ArmExpr {
+    /// The synthesized arm expr, or `None` when nothing lowers (a `test`-only
+    /// guard outside the CEL profile, or a malformed/empty pattern). The arm
+    /// carries no `expr` in that case — identical to the C1 behavior.
+    Lowered(Option<ExprNode>),
+    /// A `<when is="unset">` alternative whose `<match>` subject is NOT a bare
+    /// path (a compound expr): the arm cannot be lowered to an executable expr
+    /// (A13 rule 5). The caller MUST emit a compile diagnostic and leave the
+    /// arm's `expr` as `None` — never silently drop the arm.
+    UnsetOnCompoundSubject,
+}
+
+/// Synthesize a `<match>` arm's executable `expr` (IR A13) by inlining the
+/// match `subject` into the arm's `is` literal-pattern and/or `test` guard, so
+/// the runtime never parses/evaluates `subject` (it stays a debug-only string).
+///
+/// - `is` is the `<when is="…">` value (trimmed), or `None` when absent.
+/// - `test_raw` is the `test` guard CEL — empty when there is no `test` attr.
+/// - `subject_raw` is the `<match on="…">` subject CEL (a state path).
+///
+/// Mirrors `lute_check::match_check::analyze_is_pattern`: the `is` value is
+/// split on `'|'`, each alternative trimmed (empties dropped), classified as
+/// `true`/`false` (bool), a number literal (f64), `unset`, or an enum/string
+/// member, lowered to a comparison against the inlined subject, then the
+/// alternatives are left-folded with `||`. With a `test` guard the `is` expr is
+/// `&&`-joined to `lower_expr(test_raw)`. Reuses [`lower_expr`] for the subject
+/// and the guard — no hand-rolled CEL parsing.
+pub(crate) fn synth_arm_expr(is: Option<&str>, test_raw: &str, subject_raw: &str) -> ArmExpr {
+    // Rule 2: no `is` → the arm expr is exactly the lowered `test` guard; the
+    // subject is NOT inlined for a pure `test` guard (empty guard → `None`).
+    let Some(is_raw) = is else {
+        return ArmExpr::Lowered(lower_expr(test_raw));
+    };
+    // The subject inlined into every `is` comparison (A13). `None` when the
+    // subject itself is outside the CEL profile — then no comparison lowers.
+    let subject = lower_expr(subject_raw);
+    let is_expr = match synth_is_expr(is_raw, subject.as_ref()) {
+        IsSynth::Unlowerable => return ArmExpr::UnsetOnCompoundSubject,
+        IsSynth::Expr(node) => node,
+    };
+    if test_raw.trim().is_empty() {
+        // Rule 4: `is` only.
+        return ArmExpr::Lowered(is_expr);
+    }
+    // Rule 3: `is` + `test` → `<is-expr> && <test-expr>`. Either side failing to
+    // lower poisons the arm expr (a well-formed arm never hits this).
+    let joined = match (is_expr, lower_expr(test_raw)) {
+        (Some(l), Some(r)) => Some(ExprNode::Binary {
+            op: "&&",
+            l: Box::new(l),
+            r: Box::new(r),
+        }),
+        _ => None,
+    };
+    ArmExpr::Lowered(joined)
+}
+
+/// Result of lowering the `is` literal-pattern alone (before any `test` join).
+enum IsSynth {
+    /// The folded `is` expr, or `None` when the subject is out of profile so no
+    /// comparison could be built.
+    Expr(Option<ExprNode>),
+    /// An `unset` alternative whose subject is not a bare path (A13 rule 5).
+    Unlowerable,
+}
+
+/// Lower a `<when is="…">` literal pattern (dsl §7.3.1) against the inlined
+/// `subject`: split on `'|'`, classify each trimmed alternative
+/// (`true`/`false` → bool, number → f64, `unset` → `!isSet(path)`, else →
+/// string), build a comparison per alternative, then left-fold with `||`.
+/// Mirrors `lute_check::match_check::analyze_is_pattern`.
+fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>) -> IsSynth {
+    let mut nodes: Vec<ExprNode> = Vec::new();
+    for lit in is_raw.split('|') {
+        let lit = lit.trim();
+        if lit.is_empty() {
+            continue;
+        }
+        let node = match lit {
+            "true" => subject_eq(subject, LitVal::Bool(true)),
+            "false" => subject_eq(subject, LitVal::Bool(false)),
+            "unset" => match subject {
+                // `unset` → `!isSet(<subject-path>)`; requires a bare path.
+                Some(ExprNode::Path { path }) => Some(ExprNode::Unary {
+                    op: "!",
+                    l: Box::new(ExprNode::IsSet {
+                        is_set: path.clone(),
+                    }),
+                }),
+                _ => return IsSynth::Unlowerable,
+            },
+            // `is_number_literal` already proved the `f64` parse succeeds.
+            _ if is_number_literal(lit) => {
+                subject_eq(subject, LitVal::Num(lit.parse().expect("number literal")))
+            }
+            _ => subject_eq(subject, LitVal::Str(lit.to_string())),
+        };
+        match node {
+            Some(n) => nodes.push(n),
+            // Subject out of profile → no comparison lowers, so neither does the
+            // whole `is` pattern.
+            None => return IsSynth::Expr(None),
+        }
+    }
+    let mut it = nodes.into_iter();
+    let Some(first) = it.next() else {
+        // Every alternative was empty (a stray `|` or blank `is`).
+        return IsSynth::Expr(None);
+    };
+    let folded = it.fold(first, |acc, n| ExprNode::Binary {
+        op: "||",
+        l: Box::new(acc),
+        r: Box::new(n),
+    });
+    IsSynth::Expr(Some(folded))
+}
+
+/// `<subject> == <lit>` with the subject node inlined; `None` when the subject
+/// is out of the CEL profile (it never lowered to an [`ExprNode`]).
+fn subject_eq(subject: Option<&ExprNode>, lit: LitVal) -> Option<ExprNode> {
+    Some(ExprNode::Binary {
+        op: "==",
+        l: Box::new(subject?.clone()),
+        r: Box::new(ExprNode::Lit { lit }),
+    })
+}
+
+/// True when `lit` is a decimal `Number` literal (dsl §7.3.1) rather than an
+/// enum-member ident — mirrors `lute_check::match_check::is_number_literal`:
+/// a leading digit/sign/dot plus a successful `f64` parse.
+fn is_number_literal(lit: &str) -> bool {
+    let head = lit.strip_prefix(['+', '-']).unwrap_or(lit);
+    matches!(head.bytes().next(), Some(b'0'..=b'9' | b'.')) && lit.parse::<f64>().is_ok()
+}
+
 /// Walk one `cel_parser::ast::Expr` into an [`ExprNode`]; `None` on any
 /// out-of-profile node (or any child that fails to lower).
 fn lower(expr: &Expr) -> Option<ExprNode> {
@@ -342,5 +479,89 @@ mod tests {
     fn out_of_profile_call_is_none() {
         // `size(x)` is not in the closed profile.
         assert!(lower_expr("size(run.items)").is_none());
+    }
+
+    /// Serialize the lowered arm expr; panics on any non-`Lowered(Some(_))`
+    /// outcome so a missing/`None`/error case surfaces as a clear failure.
+    fn arm_json(is: Option<&str>, test_raw: &str, subject_raw: &str) -> serde_json::Value {
+        match synth_arm_expr(is, test_raw, subject_raw) {
+            ArmExpr::Lowered(Some(node)) => serde_json::to_value(node).unwrap(),
+            other => panic!("expected a lowered arm expr, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn is_string_member_inlines_subject_equality() {
+        assert_eq!(
+            arm_json(Some("gold"), "", "scene.serve.debut.rank"),
+            json!({"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"lit": "gold"}})
+        );
+    }
+
+    #[test]
+    fn is_alternation_folds_with_or() {
+        assert_eq!(
+            arm_json(Some("silver|bronze"), "", "scene.serve.debut.rank"),
+            json!({
+                "op": "||",
+                "l": {"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"lit": "silver"}},
+                "r": {"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"lit": "bronze"}}
+            })
+        );
+    }
+
+    #[test]
+    fn is_true_lowers_to_bool_equality() {
+        assert_eq!(
+            arm_json(Some("true"), "", "scene.flags.curious"),
+            json!({"op": "==", "l": {"path": "scene.flags.curious"}, "r": {"lit": true}})
+        );
+    }
+
+    #[test]
+    fn is_number_lowers_to_f64_equality() {
+        assert_eq!(
+            arm_json(Some("3"), "", "run.rank"),
+            json!({"op": "==", "l": {"path": "run.rank"}, "r": {"lit": 3.0}})
+        );
+    }
+
+    #[test]
+    fn is_unset_on_path_lowers_to_not_isset() {
+        assert_eq!(
+            arm_json(Some("unset"), "", "scene.choices.barConvo"),
+            json!({"op": "!", "l": {"isSet": "scene.choices.barConvo"}})
+        );
+    }
+
+    #[test]
+    fn is_and_test_join_with_and() {
+        assert_eq!(
+            arm_json(Some("gold"), "run.coins > 0", "scene.serve.debut.rank"),
+            json!({
+                "op": "&&",
+                "l": {"op": "==", "l": {"path": "scene.serve.debut.rank"}, "r": {"lit": "gold"}},
+                "r": {"op": ">", "l": {"path": "run.coins"}, "r": {"lit": 0.0}}
+            })
+        );
+    }
+
+    #[test]
+    fn test_only_arm_does_not_inline_subject() {
+        // No `is`: the arm expr is exactly the lowered guard (subject not inlined).
+        assert_eq!(
+            arm_json(None, "run.coins > 0", "scene.serve.debut.rank"),
+            json!({"op": ">", "l": {"path": "run.coins"}, "r": {"lit": 0.0}})
+        );
+    }
+
+    #[test]
+    fn is_unset_on_compound_subject_is_unlowerable() {
+        // A non-path subject cannot back an `unset` isSet(path) — signal the
+        // caller to emit a compile diagnostic; the arm's expr stays `None`.
+        assert!(matches!(
+            synth_arm_expr(Some("unset"), "", "scene.a == scene.b"),
+            ArmExpr::UnsetOnCompoundSubject
+        ));
     }
 }
