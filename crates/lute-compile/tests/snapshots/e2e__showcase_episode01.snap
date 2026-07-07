@@ -217,6 +217,7 @@ expression: json
       "kind": "cut",
       "addr": "002-0400",
       "assetId": "CUT.showcase.debut.01",
+      "wait": false,
       "at": 0.5,
       "timeline": 1
     },
@@ -234,6 +235,7 @@ expression: json
       "addr": "002-0600",
       "assetId": "CUT.showcase.debut.01",
       "action": "hide",
+      "wait": false,
       "at": 1.1,
       "timeline": 1
     },

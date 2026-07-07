@@ -266,6 +266,7 @@ expression: json
       "kind": "cut",
       "addr": "003-0700",
       "assetId": "CUT.scenarios.bianca.s01ep02.01",
+      "wait": false,
       "at": 0.5,
       "timeline": 1
     },
@@ -290,6 +291,7 @@ expression: json
       "addr": "003-1000",
       "assetId": "CUT.scenarios.bianca.s01ep02.01",
       "action": "hide",
+      "wait": false,
       "at": 1.1,
       "timeline": 1
     },

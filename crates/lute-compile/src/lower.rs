@@ -164,9 +164,13 @@ pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option
     })
 }
 
-/// Resolved effective blocking (§4.3): author `wait` attr → manifest
-/// `AttrDecl.default` → builtin fallback (`bg`/`video` block by default,
-/// §4.4; everything else emits no `wait`).
+/// Resolved effective blocking (§4.3 / IR A8): author `wait` attr → manifest
+/// `AttrDecl.default` → builtin fallback. The wait-family (compile-IR §4.4) is
+/// `bg`/`video` (default `true`) and `cut`/`camera` (default `false`, v1
+/// non-blocking); `camera` is normally resolved by its manifest decl above and
+/// is listed here for completeness. `plugin` directives flow through steps 1–2
+/// (author → manifest, else none). `music`/`sfx`/`vfx`/`sprite` define no
+/// `wait` (§4.4) → `None` → the field is omitted, keeping them byte-stable.
 pub fn effective_wait(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option<bool> {
     if let Some(b) = attr_bool(&dir.attrs, "wait") {
         return Some(b);
@@ -180,6 +184,7 @@ pub fn effective_wait(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option<
     }
     match dir.tag.as_str() {
         "bg" | "video" => Some(true),
+        "cut" | "camera" => Some(false),
         _ => None,
     }
 }
@@ -318,6 +323,35 @@ mod tests {
         assert_eq!(v["wait"], false); // manifest default (arch §1 open question)
         let v = lower_first("::camera{shake=\"0.6\" wait=\"true\"}");
         assert_eq!(v["wait"], true); // author override beats the default
+    }
+
+    #[test]
+    fn wait_family_materialized_cut_gains_false_others_carry_none() {
+        // IR A8 / compile-IR §4.4: the wait-family (bg/video/camera/cut/plugin)
+        // MUST carry a resolved `wait`; music/sfx/vfx/sprite carry NO `wait`.
+        // THE FIX: `::cut` resolves to a concrete `false` (v1 non-blocking).
+        let v = lower_first("::cut{assetId=\"CUT.x\"}");
+        assert_eq!(v["kind"], "cut");
+        assert_eq!(v["wait"], false);
+        // Author `wait` overrides the family default.
+        let v = lower_first("::cut{assetId=\"CUT.x\" wait=\"true\"}");
+        assert_eq!(v["wait"], true);
+        // bg/video default true; camera default false (manifest) — unchanged.
+        assert_eq!(lower_first("::bg{location=\"r\"}")["wait"], true);
+        assert_eq!(
+            lower_first("::video{assetId=\"MOVIE.x\" action=\"show\"}")["wait"],
+            true
+        );
+        assert_eq!(lower_first("::camera{shake=\"0.6\"}")["wait"], false);
+        // Non-wait families (§4.4) carry NO `wait` key.
+        assert!(lower_first("::music{action=\"start\"}").get("wait").is_none());
+        assert!(lower_first("::sfx{sound=\"ding\"}").get("wait").is_none());
+        assert!(lower_first("::vfx{type=\"whiteOut\"}").get("wait").is_none());
+        assert!(
+            lower_first("::auto{character=\"bianca\" anchor=\"center\"}")
+                .get("wait")
+                .is_none()
+        );
     }
 
     #[test]
