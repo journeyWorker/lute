@@ -899,4 +899,59 @@ mod tests {
             "test= must NOT offer the is= literal domain: {ls:?}"
         );
     }
+
+    /// D3 fix (non-CEL subject): a hyphenated `<match on="scene.choices.pick-one">`
+    /// subject is NOT a pure CEL path — cel-parser reads `pick-one` as subtraction,
+    /// so the checker's `subject_path` reconstruction (parse + `select_path`)
+    /// yields `None` (an INFINITE subject, no `is=` menu). Even with a `<branch
+    /// id="pick-one">` literally present, `is=` completion must offer NOTHING,
+    /// matching the checker (the pre-fix `is_path_byte` scan wrongly offered its
+    /// choices because `-` is a path byte).
+    #[test]
+    fn completion_in_when_is_rejects_non_cel_subject() {
+        let text = "## Shot 1.\n<branch id=\"pick-one\">\n<choice id=\"a\" label=\"A\">\n:f: a.\n</choice>\n<choice id=\"b\" label=\"B\">\n:f: b.\n</choice>\n</branch>\n<match on=\"scene.choices.pick-one\">\n<when is=\"a\">\n:f: x.\n</when>\n<otherwise>\n:f: y.\n</otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("is=\"a\"").unwrap() + "is=\"".len() + 1;
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        assert!(
+            items.is_empty(),
+            "a non-path (hyphenated) subject has no finite domain, so `is=` offers nothing: {:?}",
+            labels(&items)
+        );
+    }
+
+    /// D3 fix (last-wins dup): a DUPLICATE `<branch id>` folds last-wins in the
+    /// checker (`fold_branches` -> `schema.decls.insert` overwrites), even as it
+    /// emits `E-DUP-BRANCH`. So `is=` completion over `scene.choices.dup` must
+    /// offer the LAST `<branch id="dup">`'s choice ids (∪ unset), never the
+    /// first's — the pre-fix walk early-returned on the FIRST match.
+    #[test]
+    fn completion_in_when_is_uses_last_duplicate_branch() {
+        let text = "## Shot 1.\n<branch id=\"dup\">\n<choice id=\"first1\" label=\"F1\">\n:f: a.\n</choice>\n<choice id=\"first2\" label=\"F2\">\n:f: b.\n</choice>\n</branch>\n<branch id=\"dup\">\n<choice id=\"last1\" label=\"L1\">\n:f: c.\n</choice>\n<choice id=\"last2\" label=\"L2\">\n:f: d.\n</choice>\n</branch>\n<match on=\"scene.choices.dup\">\n<when is=\"last1\">\n:f: x.\n</when>\n<otherwise>\n:f: y.\n</otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("is=\"last1\"").unwrap() + "is=\"".len() + 1;
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        let ls = labels(&items);
+        assert!(
+            ls.contains(&"last1") && ls.contains(&"last2") && ls.contains(&"unset"),
+            "offers the LAST duplicate branch's choice ids u unset: {ls:?}"
+        );
+        assert!(
+            !ls.contains(&"first1") && !ls.contains(&"first2"),
+            "must NOT offer the FIRST (overwritten) branch's choice ids: {ls:?}"
+        );
+    }
+
 }

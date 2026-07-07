@@ -719,13 +719,16 @@ pub(crate) fn subject_domain(
     meta: &lute_check::TypedMeta,
     subject_path: &str,
 ) -> Option<Vec<String>> {
-    let path = subject_path.trim();
-    // Only a bare dotted path is a subject with a derivable domain; a compound
-    // expression (`isSet(run.x)`, `a == b`) is INFINITE — matching the checker's
-    // `subject_path` -> `select_path`, which yields None for a non-path subject.
-    if path.is_empty() || !path.bytes().all(is_path_byte) {
-        return None;
-    }
+    // Reconstruct the subject's dotted path EXACTLY as the checker does
+    // (`lute_check::match_check::subject_path` = `lute_cel::parse_slot` +
+    // `cel_paths::select_path`): only a pure `Ident`/`Select` chain is a
+    // finite-domain subject. A compound expression (`isSet(run.x)`, `a == b`) or
+    // a hyphenated `on=` (`scene.choices.pick-one`, which cel-parser reads as
+    // subtraction) reconstructs to `None` — the checker's INFINITE treatment — so
+    // the LSP never offers a domain `check()` does not fold. The raw byte-scan
+    // wrongly accepted `-` (a `is_path_byte`) here, diverging from the checker.
+    let path = subject_reconstructed_path(subject_path)?;
+    let path = path.as_str();
     // Case 1: `scene.choices.<id>` -> the branch/hub's choice ids ∪ `unset`.
     if let Some(id) = path.strip_prefix("scene.choices.") {
         let mut members = branch_choice_ids(doc, id)?;
@@ -748,6 +751,39 @@ pub(crate) fn subject_domain(
     }
 }
 
+/// Reconstruct the `<match on=…>` subject's dotted path the SAME way the checker
+/// does (`lute_check::match_check::subject_path` = `lute_cel::parse_slot` +
+/// `cel_paths::select_path`): a pure `Ident`/`Select` chain becomes `a.b.c`,
+/// anything else (a compound expression, or a hyphenated `pick-one` that
+/// cel-parser reads as subtraction) yields `None`. The LSP handlers carry no
+/// `CheckInput`, so this re-parses `raw` into a throwaway [`lute_cel::CelArena`]
+/// exactly as the checker's `parse_expr` does; an empty/malformed subject -> `None`.
+fn subject_reconstructed_path(raw: &str) -> Option<String> {
+    if raw.trim().is_empty() {
+        return None;
+    }
+    let mut arena = lute_cel::CelArena::default();
+    let handle = lute_cel::parse_slot(&mut arena, raw, 0).ok()?;
+    let root = arena.get(handle)?;
+    select_path(&root.expr)
+}
+
+/// Verbatim mirror of `lute_check::cel_paths::select_path`: the dotted path of a
+/// pure `Ident`/`Select` chain, or `None` if the chain bottoms out in anything
+/// but a bare `Ident`. Kept byte-identical to the checker so the offered
+/// `<when is>` domain never diverges from the checker's subject reconstruction.
+fn select_path(expr: &cel_parser::ast::Expr) -> Option<String> {
+    use cel_parser::ast::Expr;
+    match expr {
+        Expr::Ident(name) => Some(name.clone()),
+        Expr::Select(sel) => {
+            let base = select_path(&sel.operand.expr)?;
+            Some(format!("{base}.{}", sel.field))
+        }
+        _ => None,
+    }
+}
+
 /// `true`/`false`/`unset` — the finite domain of a `bool` (or `scene.visited.*`)
 /// `<when is>` subject; `unset` is a valid `is=` literal (§7.3.1).
 fn bool_domain() -> Vec<String> {
@@ -766,38 +802,42 @@ fn hub_decl_id(h: &Hub) -> Option<&str> {
 /// depth-first through nested bodies (a branch/hub may live in a match arm or
 /// another choice body — the D2 recursion). Mirrors the checker's implicit
 /// `scene.choices.<id>` enum (`check_branch`/`check_hub`: members = the choice
-/// ids in document order). `None` when no branch/hub declares `id` (the checker's
-/// unfolded -> INFINITE -> no-domain case).
+/// ids in document order). On a DUPLICATE id the checker's fold
+/// (`fold_branches_nodes` -> `schema.decls.insert`) keeps the LAST declaration
+/// (even while it emits `E-DUP-BRANCH`), so this returns the LAST matching
+/// branch/hub's choice ids, not the first. `None` when no branch/hub declares
+/// `id` (the checker's unfolded -> INFINITE -> no-domain case).
 fn branch_choice_ids(doc: &Document, id: &str) -> Option<Vec<String>> {
+    let mut latest = None;
     for shot in &doc.shots {
-        if let Some(ids) = branch_choice_ids_nodes(&shot.body, id) {
-            return Some(ids);
-        }
+        branch_choice_ids_nodes(&shot.body, id, &mut latest);
     }
-    None
+    latest
 }
 
-fn branch_choice_ids_nodes(nodes: &[Node], id: &str) -> Option<Vec<String>> {
+/// Overwrite `latest` with each matching `<branch id>`/`<hub id>`'s choice ids in
+/// the checker's pre-order fold order (visit the node, THEN recurse its choice /
+/// match-arm bodies), so `latest` ends as the LAST matching decl. Mirrors
+/// `fold_branches_nodes`' `schema.decls.insert`: a duplicate id folds last-wins
+/// into `scene.choices.<id>`, so the offered domain matches the folded schema
+/// rather than the first declaration.
+fn branch_choice_ids_nodes(nodes: &[Node], id: &str, latest: &mut Option<Vec<String>>) {
     for node in nodes {
         match node {
             Node::Branch(b) => {
                 if b.id == id {
-                    return Some(b.choices.iter().map(|c| c.id.clone()).collect());
+                    *latest = Some(b.choices.iter().map(|c| c.id.clone()).collect());
                 }
                 for c in &b.choices {
-                    if let Some(ids) = branch_choice_ids_nodes(&c.body, id) {
-                        return Some(ids);
-                    }
+                    branch_choice_ids_nodes(&c.body, id, latest);
                 }
             }
             Node::Hub(h) => {
                 if hub_decl_id(h) == Some(id) {
-                    return Some(h.choices.iter().map(|c| c.id.clone()).collect());
+                    *latest = Some(h.choices.iter().map(|c| c.id.clone()).collect());
                 }
                 for c in &h.choices {
-                    if let Some(ids) = branch_choice_ids_nodes(&c.body, id) {
-                        return Some(ids);
-                    }
+                    branch_choice_ids_nodes(&c.body, id, latest);
                 }
             }
             Node::Match(m) => {
@@ -805,15 +845,12 @@ fn branch_choice_ids_nodes(nodes: &[Node], id: &str) -> Option<Vec<String>> {
                     let body = match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
                     };
-                    if let Some(ids) = branch_choice_ids_nodes(body, id) {
-                        return Some(ids);
-                    }
+                    branch_choice_ids_nodes(body, id, latest);
                 }
             }
             _ => {}
         }
     }
-    None
 }
 
 /// True when `path` is a folded `scene.visited.<hubId>.<choiceId>` — some
