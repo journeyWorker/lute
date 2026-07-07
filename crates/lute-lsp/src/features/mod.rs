@@ -57,7 +57,8 @@ use lute_manifest::schema::{AssetKindDecl, DefDecl};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, CelSlot, ClipNode, Directive, Document, Line, Node, Set,
+    Arm, Attr, AttrValue, CelSlot, ClipNode, Directive, Document, Interp, InterpKind, Line, Node,
+    Set,
 };
 
 /// Merge imported schema (dsl §9.2) into a document's typed frontmatter so the
@@ -115,6 +116,11 @@ pub(crate) enum Cursor<'a> {
     },
     /// On a `::set` target path (a state-path position).
     SetPath { path: &'a str },
+    /// Inside a `{{…}}` content-line interpolation (dsl §7.6). Not a [`CelSlot`],
+    /// so it carries the [`Interp`] itself; hover/nav resolve `interp.raw` as the
+    /// equivalent state-path (`Path`) / `@ref` (`Ref`) referent, or note the
+    /// reserved token (`Reserved`).
+    Interp(&'a Interp),
 }
 
 /// Resolve the innermost construct containing `off` (a byte offset into the
@@ -253,7 +259,15 @@ fn resolve_directive(d: &Directive, off: usize) -> Cursor<'_> {
 }
 
 fn resolve_line(l: &Line, off: usize) -> Option<Cursor<'_>> {
-    resolve_attrs(&l.attrs, None, off)
+    // The `:speaker{attrs}` head resolves first (attrs never overlap the text).
+    if let Some(c) = resolve_attrs(&l.attrs, None, off) {
+        return Some(c);
+    }
+    // A `{{…}}` interpolation inside the content text (dsl §7.6).
+    l.interps
+        .iter()
+        .find(|i| span_contains(i.span, off))
+        .map(Cursor::Interp)
 }
 
 fn resolve_set(s: &Set, off: usize) -> Option<Cursor<'_>> {
@@ -701,9 +715,32 @@ fn find_yaml_key_span(raw_yaml: &str, key: &str) -> Option<Span> {
 
 // -- reference collection -----------------------------------------------------
 
+/// The def name an `InterpKind::Ref` interior refers to (`@fond` → `fond`,
+/// `@fn(a)` → `fn`), via the same [`lute_cel::scan_refs`] tokenizer the CEL-slot
+/// ref cursor ([`ref_at`]) uses. `None` when the interior holds no well-formed
+/// `@ref` (the checker flags that; the feature degrades to no resolution).
+pub(crate) fn interp_ref_name(raw: &str) -> Option<String> {
+    scan_refs(raw).into_iter().find(|r| !r.is_dollar).map(|r| r.name)
+}
+
+/// The byte span of an interp's referent (`i.raw`) within its `{{…}}`, located in
+/// `src`. `{{ run.coins }}` → the span of `run.coins` (interior whitespace and the
+/// `{{`/`}}` brackets excluded). Falls back to the whole interp span when the raw
+/// is empty or not found (a malformed interp — the checker flags it).
+pub(crate) fn interp_referent_span(src: &str, i: &Interp) -> Span {
+    let outer = &src[i.span.byte_start..i.span.byte_end];
+    match outer.find(&i.raw) {
+        Some(rel) if !i.raw.is_empty() => {
+            byte_span(i.span.byte_start + rel, i.span.byte_start + rel + i.raw.len())
+        }
+        _ => i.span,
+    }
+}
+
 /// Every document span at which `@name` is used (any `@ref` token whose name
-/// matches), across all CEL slots. The declaration site is NOT included — this is
-/// the use-set (`textDocument/references` with `includeDeclaration = false`).
+/// matches), across all CEL slots plus content-line `{{@ref}}` interps. The
+/// declaration site is NOT included — this is the use-set
+/// (`textDocument/references` with `includeDeclaration = false`).
 pub(crate) fn ref_uses(doc: &Document, name: &str) -> Vec<Span> {
     let mut out = Vec::new();
     for slot in all_slots(doc) {
@@ -714,15 +751,28 @@ pub(crate) fn ref_uses(doc: &Document, name: &str) -> Vec<Span> {
             }
         }
     }
+    for shot in &doc.shots {
+        collect_line_interps(
+            &shot.body,
+            &|i| i.kind == InterpKind::Ref && interp_ref_name(&i.raw).as_deref() == Some(name),
+            &mut out,
+        );
+    }
     out
 }
 
 /// Every document span at which the state/choice path `path` is used: `::set`
-/// target paths plus every matching dotted token inside a CEL slot.
+/// target paths, matching dotted tokens inside a CEL slot, plus content-line
+/// `{{path}}` interps.
 pub(crate) fn path_uses(doc: &Document, path: &str) -> Vec<Span> {
     let mut out = Vec::new();
     for shot in &doc.shots {
         collect_set_paths(&shot.body, path, &mut out);
+        collect_line_interps(
+            &shot.body,
+            &|i| i.kind == InterpKind::Path && i.raw == path,
+            &mut out,
+        );
     }
     for slot in all_slots(doc) {
         let base = slot.span.byte_start;
@@ -762,6 +812,45 @@ fn collect_set_paths(nodes: &[Node], path: &str, out: &mut Vec<Span>) {
                             }
                         }
                     }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Push the whole-`{{…}}` span of every content-line interp for which `matches`
+/// holds, descending into every body that can hold a content [`Line`]
+/// (`<branch>`/`<hub>`/`<match>` choice + arm bodies). The interp AST records no
+/// interior offset, so the whole interpolation span is the use-site. Timeline
+/// tracks hold clips (directives/`::set`), never content lines, so they carry no
+/// interps and are skipped.
+fn collect_line_interps(nodes: &[Node], matches: &impl Fn(&Interp) -> bool, out: &mut Vec<Span>) {
+    for node in nodes {
+        match node {
+            Node::Line(l) => {
+                for i in &l.interps {
+                    if matches(i) {
+                        out.push(i.span);
+                    }
+                }
+            }
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    collect_line_interps(&c.body, matches, out);
+                }
+            }
+            Node::Hub(h) => {
+                for c in &h.choices {
+                    collect_line_interps(&c.body, matches, out);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let body = match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
+                    };
+                    collect_line_interps(body, matches, out);
                 }
             }
             _ => {}

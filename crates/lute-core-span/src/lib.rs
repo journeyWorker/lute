@@ -24,6 +24,12 @@ impl<'a> TextIndex<'a> {
         Self { text, line_starts }
     }
 
+    /// The source text this index was built over. The byte offsets every `Span`
+    /// carries index into exactly this string.
+    pub fn text(&self) -> &'a str {
+        self.text
+    }
+
     pub fn position(&self, byte: usize) -> Position {
         let line_ix = match self.line_starts.binary_search(&byte) {
             Ok(i) => i,

@@ -76,6 +76,10 @@ pub fn complete_at(
             directive: None, ..
         } => Vec::new(),
         Cursor::SetPath { .. } => state_path_items(&meta),
+        // Interp interiors (dsl §7.6) get hover/def/references (Task D1) but no
+        // completion — a `{{…}}` referent is authored inline, matching the prior
+        // behavior (interps resolved to no cursor before D1).
+        Cursor::Interp(_) => Vec::new(),
     }
 }
 

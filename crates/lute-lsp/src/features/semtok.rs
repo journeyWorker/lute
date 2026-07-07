@@ -37,10 +37,10 @@
 
 use lute_cel::scan_refs;
 use lute_core_span::TextIndex;
-use lute_syntax::ast::{Arm, ClipNode, Directive, Document, Node, Set};
+use lute_syntax::ast::{Arm, ClipNode, Directive, Document, InterpKind, Line, Node, Set};
 use tower_lsp_server::ls_types::{SemanticToken, SemanticTokenType, SemanticTokensLegend};
 
-use super::{all_slots, is_state_path, path_tokens};
+use super::{all_slots, interp_referent_span, is_state_path, path_tokens};
 
 /// The token types this server emits, in legend order. The index of a variant in
 /// this list is its wire `tokenType`.
@@ -126,7 +126,7 @@ struct AbsTok {
 pub fn semantic_tokens(doc: &Document, idx: &TextIndex) -> Vec<SemanticToken> {
     let mut raw = Vec::new();
     for shot in &doc.shots {
-        walk_nodes(&shot.body, &mut raw);
+        walk_nodes(&shot.body, idx.text(), &mut raw);
     }
     // CEL sub-tokens: every slot's `@ref`s, state paths, and plain tokens.
     for slot in all_slots(doc) {
@@ -136,7 +136,8 @@ pub fn semantic_tokens(doc: &Document, idx: &TextIndex) -> Vec<SemanticToken> {
 }
 
 /// Emit structural tokens for a body's nodes (recursing into nested blocks).
-fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
+/// `src` is the document text, needed to locate `{{…}}` interp interiors.
+fn walk_nodes(nodes: &[Node], src: &str, out: &mut Vec<RawTok>) {
     for node in nodes {
         match node {
             Node::Line(l) => {
@@ -144,12 +145,7 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
                 let sp_start = l.span.byte_start + ":".len();
                 push(out, sp_start, sp_start + l.speaker.len(), TokType::Content);
                 if !l.text.is_empty() {
-                    push(
-                        out,
-                        l.text_span.byte_start,
-                        l.text_span.byte_end,
-                        TokType::Content,
-                    );
+                    line_text_tokens(l, src, out);
                 }
             }
             Node::Directive(d) => directive_tag(d, out),
@@ -170,7 +166,7 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
                         c.span.byte_start + "<choice".len(),
                         TokType::Logic,
                     );
-                    walk_nodes(&c.body, out);
+                    walk_nodes(&c.body, src, out);
                 }
             }
             Node::Match(m) => {
@@ -190,7 +186,7 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
                                 span.byte_start + "<when".len(),
                                 TokType::Logic,
                             );
-                            walk_nodes(body, out);
+                            walk_nodes(body, src, out);
                         }
                         Arm::Otherwise { body, span } => {
                             // `<otherwise` open keyword.
@@ -200,7 +196,7 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
                                 span.byte_start + "<otherwise".len(),
                                 TokType::Logic,
                             );
-                            walk_nodes(body, out);
+                            walk_nodes(body, src, out);
                         }
                     }
                 }
@@ -243,11 +239,41 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
                         c.span.byte_start + "<choice".len(),
                         TokType::Logic,
                     );
-                    walk_nodes(&c.body, out);
+                    walk_nodes(&c.body, src, out);
                 }
             }
         }
     }
+}
+
+/// Sub-tokenize a content line's text (dsl §7.6): `content` for the runs OUTSIDE
+/// `{{…}}` interpolations, and a referent sub-token for each interp interior —
+/// `Path` → StatePath, `Ref` → Ref, `Reserved` → Content — mirroring how
+/// [`slot_tokens`] sub-classifies a CEL slot. Everything from `text_span.start`
+/// to `text_span.end` is covered (the `{{`/`}}` brackets fold into the adjacent
+/// content run), so the line is never left as one opaque Content token. `src` is
+/// the document text, used to locate each referent within its `{{…}}`.
+fn line_text_tokens(l: &Line, src: &str, out: &mut Vec<RawTok>) {
+    let end = l.text_span.byte_end;
+    if l.interps.is_empty() {
+        push(out, l.text_span.byte_start, end, TokType::Content);
+        return;
+    }
+    let mut cursor = l.text_span.byte_start;
+    for i in &l.interps {
+        let inner = interp_referent_span(src, i);
+        // Content up to the referent (preceding dialogue + `{{` + any leading ws).
+        push(out, cursor, inner.byte_start, TokType::Content);
+        let ty = match i.kind {
+            InterpKind::Path => TokType::StatePath,
+            InterpKind::Ref => TokType::Ref,
+            InterpKind::Reserved => TokType::Content,
+        };
+        push(out, inner.byte_start, inner.byte_end, ty);
+        // Trailing ws + `}}` fold into the next content run (or the tail below).
+        cursor = inner.byte_end;
+    }
+    push(out, cursor, end, TokType::Content);
 }
 
 /// The `::name` head of a directive → one Staging token (`::` + tag).
@@ -592,5 +618,37 @@ mod tests {
             .find(|&&(l, c, _, _)| l == tx.line - 1 && c == tx.utf16_col)
             .expect("token on the café text");
         assert_eq!(content.2, 4, "café is four UTF-16 units");
+    }
+
+    /// D1: a content line's `{{…}}` interps are SUB-tokenized — a `Path` interior
+    /// gets `statePath`, a `Ref` interior gets `ref` — not one opaque `content`
+    /// token over the whole line text.
+    #[test]
+    fn interp_path_and_ref_get_sub_tokens() {
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.coins: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"run.coins >= 1\" }\n---\n## Shot 1.\n:bianca: Hi {{userName}}, {{run.coins}} — {{@fond}}.\n";
+        let idx = TextIndex::new(text);
+        let decoded = decode(&tokens(text));
+
+        // `run.coins` inside `{{run.coins}}` → statePath.
+        let p = idx.position(text.find("{{run.coins}}").unwrap() + 2);
+        let path_tok = decoded
+            .iter()
+            .find(|&&(l, c, _, _)| l == p.line - 1 && c == p.utf16_col)
+            .expect("statePath sub-token on the {{run.coins}} interior");
+        assert_eq!(
+            path_tok.3,
+            ty("statePath"),
+            "interp path interior is statePath"
+        );
+        assert_eq!(path_tok.2, "run.coins".len() as u32);
+
+        // `@fond` inside `{{@fond}}` → ref.
+        let r = idx.position(text.find("{{@fond}}").unwrap() + 2);
+        let ref_tok = decoded
+            .iter()
+            .find(|&&(l, c, _, _)| l == r.line - 1 && c == r.utf16_col)
+            .expect("ref sub-token on the {{@fond}} interior");
+        assert_eq!(ref_tok.3, ty("ref"), "interp ref interior is ref");
+        assert_eq!(ref_tok.2, "@fond".len() as u32);
     }
 }

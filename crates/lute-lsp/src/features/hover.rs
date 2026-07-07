@@ -19,12 +19,12 @@ use lute_check::{parse_meta, SchemaImports};
 use lute_manifest::asset;
 use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::{AttrValue, Document};
+use lute_syntax::ast::{AttrValue, Document, InterpKind};
 use tower_lsp_server::ls_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
 use super::{
-    attr_enum_values, choice_id, def_info, is_state_path, literal_label, path_at, ref_at,
-    type_label, Cursor,
+    attr_enum_values, choice_id, def_info, interp_ref_name, is_state_path, literal_label, path_at,
+    ref_at, type_label, Cursor,
 };
 
 /// Hover documentation for the construct at byte offset `off`, or `None` when the
@@ -76,6 +76,26 @@ pub fn hover_at(
                 None
             }
         }
+        Cursor::Interp(i) => match i.kind {
+            // A state path renders its `state:` decl (or the implicit choice path),
+            // exactly as a CEL-slot path read does.
+            InterpKind::Path => {
+                if is_state_path(&i.raw) {
+                    state_hover(&meta, &i.raw).or_else(|| choice_hover(&i.raw))
+                } else {
+                    None
+                }
+            }
+            // An `@ref` renders the def hover (`@fond` → the `fond` def).
+            InterpKind::Ref => {
+                interp_ref_name(&i.raw).and_then(|name| ref_hover(&meta, snapshot, &name))
+            }
+            // A reserved token (`userName`) always renders and has no decl.
+            InterpKind::Reserved => Some(format!(
+                "**reserved token** `{}` — always renders; no declaration",
+                i.raw
+            )),
+        },
         Cursor::DirectiveAttrArea { .. }
         | Cursor::AttrKey {
             directive: None, ..
@@ -447,5 +467,48 @@ mod tests {
             !s.contains("string"),
             "inline type must not survive collision: {s}"
         );
+    }
+
+    /// A content line with all three interp kinds (dsl §7.6): a reserved token,
+    /// a state path, and an `@ref` — over a doc that declares `run.coins` + `@fond`.
+    const WITH_INTERPS: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.coins: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"run.coins >= 1\" }\n---\n## Shot 1.\n:bianca: Hi {{userName}}, {{run.coins}} — {{@fond}}.\n";
+
+    /// Byte offset just inside the referent of the `{{whole}}` interp in `text`.
+    fn interp_off(text: &str, whole: &str) -> usize {
+        text.find(whole).expect("interp present") + 2
+    }
+
+    /// D1: hover inside `{{run.coins}}` renders the SAME state decl (type +
+    /// default) as hovering `run.coins` in a `::set`/CEL slot.
+    #[test]
+    fn hover_on_interp_path_shows_state_decl() {
+        let doc = parsed(WITH_INTERPS);
+        let off = interp_off(WITH_INTERPS, "{{run.coins}}");
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(s.contains("run.coins"), "names the path: {s}");
+        assert!(s.contains("number"), "shows the state type: {s}");
+    }
+
+    /// D1: hover inside `{{@fond}}` renders the def hover (type + CEL).
+    #[test]
+    fn hover_on_interp_ref_shows_def() {
+        let doc = parsed(WITH_INTERPS);
+        let off = interp_off(WITH_INTERPS, "{{@fond}}");
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(s.contains("fond"), "names the def: {s}");
+        assert!(s.contains("bool"), "shows the def type: {s}");
+    }
+
+    /// D1: hover inside `{{userName}}` (Reserved) surfaces a one-line note, not a
+    /// decl lookup.
+    #[test]
+    fn hover_on_interp_reserved_shows_note() {
+        let doc = parsed(WITH_INTERPS);
+        let off = interp_off(WITH_INTERPS, "{{userName}}");
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(s.contains("reserved"), "notes the reserved token: {s}");
     }
 }

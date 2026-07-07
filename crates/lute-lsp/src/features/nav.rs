@@ -20,11 +20,11 @@
 use lute_check::SchemaImports;
 use lute_core_span::Span;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::Document;
+use lute_syntax::ast::{Document, InterpKind};
 
 use super::{
-    branch_span, choice_id, def_decl_span, is_state_path, path_at, path_uses, ref_at, ref_uses,
-    state_decl_span, Cursor,
+    branch_span, choice_id, def_decl_span, interp_ref_name, is_state_path, path_at, path_uses,
+    ref_at, ref_uses, state_decl_span, Cursor,
 };
 
 /// The declaration site of the symbol at byte offset `off`, or `None` when the
@@ -59,6 +59,14 @@ pub fn definition_at(
                 None
             }
         }
+        Cursor::Interp(i) => match i.kind {
+            // A state path jumps to its `state:`/`<branch>` decl, as a CEL path does.
+            InterpKind::Path => path_definition(doc, &i.raw),
+            // An `@ref` jumps to its def decl site (`@fond` → the `fond` key).
+            InterpKind::Ref => interp_ref_name(&i.raw).and_then(|name| def_decl_span(doc, &name)),
+            // A reserved token has no decl site.
+            InterpKind::Reserved => None,
+        },
         _ => {
             let _ = snapshot;
             None
@@ -116,6 +124,13 @@ pub fn references_at(
                 Vec::new()
             }
         }
+        Cursor::Interp(i) => match i.kind {
+            InterpKind::Path => path_uses(doc, &i.raw),
+            InterpKind::Ref => interp_ref_name(&i.raw)
+                .map(|name| ref_uses(doc, &name))
+                .unwrap_or_default(),
+            InterpKind::Reserved => Vec::new(),
+        },
         _ => Vec::new(),
     };
     if include_declaration {
@@ -391,5 +406,65 @@ mod tests {
         let doc = parsed(text);
         let off = text.find("@helped").unwrap() + 1;
         assert!(definition_at(&doc, &load_core_snapshot(), &schema_imports(), off).is_none());
+    }
+
+    /// A content line with all three interp kinds plus a `::set` on the same
+    /// state path — for interp definition / references.
+    const WITH_INTERPS: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.coins: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"run.coins >= 1\" }\n---\n## Shot 1.\n:bianca: Hi {{userName}}, {{run.coins}} — {{@fond}}.\n::set{run.coins += 1}\n";
+
+    /// D1: go-to-definition inside `{{@fond}}` jumps to the `@fond` def decl.
+    #[test]
+    fn definition_on_interp_ref_jumps_to_def_decl() {
+        let doc = parsed(WITH_INTERPS);
+        let off = WITH_INTERPS.find("{{@fond}}").unwrap() + 2;
+        let loc =
+            definition_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let def_line = line_of(WITH_INTERPS, WITH_INTERPS.find("  fond:").unwrap() + 2);
+        assert_eq!(line_of(WITH_INTERPS, loc.byte_start), def_line);
+    }
+
+    /// D1: go-to-definition inside `{{run.coins}}` jumps to the `state:` decl.
+    #[test]
+    fn definition_on_interp_path_jumps_to_state_decl() {
+        let doc = parsed(WITH_INTERPS);
+        let off = WITH_INTERPS.find("{{run.coins}}").unwrap() + 2;
+        let loc =
+            definition_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let decl_line = line_of(WITH_INTERPS, WITH_INTERPS.find("  run.coins:").unwrap() + 2);
+        assert_eq!(line_of(WITH_INTERPS, loc.byte_start), decl_line);
+    }
+
+    /// D1: find-references on a state path counts the `{{run.coins}}` interp
+    /// occurrence alongside the `::set` target use.
+    #[test]
+    fn references_on_state_path_include_interp() {
+        let doc = parsed(WITH_INTERPS);
+        let set_at = WITH_INTERPS.find("::set{").unwrap();
+        let off = WITH_INTERPS[set_at..].find("run.coins").unwrap() + set_at + 2;
+        let refs = references_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off, false);
+        assert!(
+            refs.iter()
+                .any(|r| &WITH_INTERPS[r.byte_start..r.byte_end] == "{{run.coins}}"),
+            "the interp occurrence is among references: {refs:?}"
+        );
+        assert!(
+            refs.iter()
+                .any(|r| &WITH_INTERPS[r.byte_start..r.byte_end] == "run.coins"),
+            "the ::set target use is still counted: {refs:?}"
+        );
+    }
+
+    /// D1: find-references from inside `{{@fond}}` counts the interp among the
+    /// `@fond` ref uses.
+    #[test]
+    fn references_on_interp_ref_include_interp() {
+        let doc = parsed(WITH_INTERPS);
+        let off = WITH_INTERPS.find("{{@fond}}").unwrap() + 2;
+        let refs = references_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off, false);
+        assert!(
+            refs.iter()
+                .any(|r| &WITH_INTERPS[r.byte_start..r.byte_end] == "{{@fond}}"),
+            "the @fond interp is among its own references: {refs:?}"
+        );
     }
 }
