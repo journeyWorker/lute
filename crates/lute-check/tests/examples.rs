@@ -126,3 +126,68 @@ fn diagnostics_are_sorted_by_byte_start() {
         );
     }
 }
+
+// --- E-PATH-IDENT: `-` forbidden in CEL-facing names (dsl §8.4, §4.4 CelIdent) ---
+
+#[test]
+fn hyphen_state_path_decl_rejected() {
+    // A `state:` path segment is a `CelIdent` (dsl §9.3): `-` after the tier is
+    // E-PATH-IDENT (dsl §8.4).
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.affect-total:\n    type: number\n---\n## Shot 1.\n:narrator: hi\n";
+    let res = check(&input_for(text));
+    assert!(
+        res.diagnostics.iter().any(|d| d.code == "E-PATH-IDENT"),
+        "expected E-PATH-IDENT for hyphenated state-path segment, got: {:#?}",
+        res.diagnostics
+    );
+}
+
+#[test]
+fn hyphen_set_target_rejected() {
+    // A `::set` LHS is a CEL-facing state path (dsl §7.3.4/§8.4). The target is
+    // NOT declared (so E-PATH-IDENT can only come from the `::set` path check).
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.total:\n    type: number\n---\n## Shot 1.\n::set{scene.affect-total = 1}\n";
+    let res = check(&input_for(text));
+    assert!(
+        res.diagnostics.iter().any(|d| d.code == "E-PATH-IDENT"),
+        "expected E-PATH-IDENT for hyphenated `::set` target segment, got: {:#?}",
+        res.diagnostics
+    );
+}
+
+#[test]
+fn hyphen_def_name_rejected() {
+    // A `defs` name is a CEL-facing identifier (dsl §8.1/§8.4).
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\ndefs:\n  my-def:\n    type: number\n    cel: \"1\"\n---\n## Shot 1.\n:narrator: hi\n";
+    let res = check(&input_for(text));
+    assert!(
+        res.diagnostics.iter().any(|d| d.code == "E-PATH-IDENT"),
+        "expected E-PATH-IDENT for hyphenated def name, got: {:#?}",
+        res.diagnostics
+    );
+}
+
+#[test]
+fn hyphen_def_param_rejected() {
+    // A def parameter name is CEL-facing (dsl §8.1/§8.4).
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\ndefs:\n  scale:\n    type: number\n    params:\n      a-b: number\n    cel: \"1\"\n---\n## Shot 1.\n:narrator: hi\n";
+    let res = check(&input_for(text));
+    assert!(
+        res.diagnostics.iter().any(|d| d.code == "E-PATH-IDENT"),
+        "expected E-PATH-IDENT for hyphenated def param name, got: {:#?}",
+        res.diagnostics
+    );
+}
+
+#[test]
+fn hyphen_directive_and_speaker_ok() {
+    // `-` in an asset id, attribute value, and speaker id is legal `Ident`
+    // (dsl §4.4): NOT CEL-facing, so no E-PATH-IDENT.
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::music{assetId=\"a-b\"}\n:some-speaker: hi\n";
+    let res = check(&input_for(text));
+    assert!(
+        res.diagnostics.iter().all(|d| d.code != "E-PATH-IDENT"),
+        "unexpected E-PATH-IDENT for a legal hyphenated id, got: {:#?}",
+        res.diagnostics
+    );
+}

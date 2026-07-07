@@ -6,6 +6,8 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::Meta;
 
+use crate::cel_paths::{state_path_has_hyphen, E_PATH_IDENT};
+
 /// State lifetime tier (dsl §9.1), keyed by the declared path's leading segment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Namespace {
@@ -212,6 +214,32 @@ pub fn parse_meta_kind(
     typed.extends = get_ref_list(map, "extends");
     typed.plugins = get_sub_map(map, "plugins");
     typed.defs = get_sub_map(map, "defs");
+    // §8.4 identifier alignment: a `defs` name and each of its parameter names
+    // are CEL-facing identifiers — no `-` (E-PATH-IDENT). Directive/attr/asset
+    // ids are `Ident` and keep permitting `-`; only these def positions are
+    // CEL-facing. Imported-schema defs are checked when their own doc is parsed
+    // (`MetaKind::Schema`), so both inline and imported defs are covered.
+    for (name, def) in &typed.defs {
+        if name.contains('-') {
+            diags.push(err(
+                E_PATH_IDENT,
+                format!("def name `{name}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)"),
+            ));
+        }
+        if let Some(params) = def.get("params").and_then(|p| p.as_mapping()) {
+            for pname in params.keys().filter_map(|k| k.as_str()) {
+                if pname.contains('-') {
+                    diags.push(err(
+                        E_PATH_IDENT,
+                        format!(
+                            "def `{name}` parameter `{pname}` has a `-`; CEL-facing names \
+                             forbid `-` (dsl §8.4)"
+                        ),
+                    ));
+                }
+            }
+        }
+    }
     typed.components = get_ref_list(map, "components");
     typed.component = get_str(map, "component");
     let (params, params_malformed) = get_params(map, "params");
@@ -238,6 +266,18 @@ pub fn parse_meta_kind(
                         ));
                         continue;
                     };
+                    // §8.4: each state-path segment after the tier is a
+                    // `CelIdent`; a `-` there is E-PATH-IDENT. Still record the
+                    // decl below so downstream reads don't cascade to E-UNDECLARED.
+                    if state_path_has_hyphen(path) {
+                        diags.push(err(
+                            E_PATH_IDENT,
+                            format!(
+                                "state path `{path}` has a `-` in a segment; CEL-facing \
+                                 names forbid `-` (dsl §8.4)"
+                            ),
+                        ));
+                    }
                     match serde_yaml::from_value::<StateDeclRaw>(decl_val.clone()) {
                         Ok(raw) => {
                             typed.state.decls.insert(
