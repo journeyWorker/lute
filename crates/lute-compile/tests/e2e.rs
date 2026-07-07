@@ -159,6 +159,55 @@ fn showcase_episode01() {
     );
 }
 
+/// IR A12: the `::serve` plugin record carries resolved effect bindings. The
+/// `fromAttr` template (`resultKey="debut"`) is substituted into each path at
+/// compile time; `from` is the bridge-result key or the `op`/`by` increment,
+/// with `by` collapsed to the JSON integer `1` (not `1.0`). This proves end-to-
+/// end resolution + attr substitution + integral collapse independent of the
+/// full golden.
+#[test]
+fn plugin_record_carries_resolved_effects() {
+    let input = input_for(
+        "../../docs/examples/showcase/episode01.lute",
+        Some("../../docs/examples/showcase"),
+    );
+    let artifact = compile(&input).expect("compiles");
+    let json: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string(&artifact).unwrap()).unwrap();
+    let serve = json["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["kind"] == "plugin" && c["tag"] == "serve")
+        .expect("serve plugin record present");
+    let effects = serve["effects"]
+        .as_array()
+        .expect("serve record carries an effects array");
+    assert_eq!(effects.len(), 4, "serve declares 4 writes");
+
+    // `fromAttr` (resultKey="debut") substituted + increment with integral `by`.
+    let attempts = effects
+        .iter()
+        .find(|e| e["path"] == "scene.serve.debut.attempts")
+        .expect("attempts write resolved with debut key");
+    assert_eq!(
+        attempts["from"],
+        serde_json::json!({ "op": "increment", "by": 1 }),
+        "increment `by` serializes as the JSON integer 1"
+    );
+    assert!(
+        attempts["from"]["by"].is_i64(),
+        "`by` is an integer, not 1.0"
+    );
+
+    // A bridge-result write, path likewise resolved through `debut`.
+    let rank = effects
+        .iter()
+        .find(|e| e["path"] == "scene.serve.debut.rank")
+        .expect("rank write resolved with debut key");
+    assert_eq!(rank["from"], serde_json::json!({ "bridgeResult": "rank" }));
+}
+
 #[test]
 fn components_scene() {
     golden(

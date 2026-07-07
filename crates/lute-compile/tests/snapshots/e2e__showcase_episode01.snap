@@ -275,6 +275,33 @@ expression: json
         "poster": "PT.bianca_star.0",
         "resultKey": "debut"
       },
+      "effects": [
+        {
+          "path": "scene.serve.debut.score",
+          "from": {
+            "bridgeResult": "score"
+          }
+        },
+        {
+          "path": "scene.serve.debut.rank",
+          "from": {
+            "bridgeResult": "rank"
+          }
+        },
+        {
+          "path": "scene.serve.debut.cleared",
+          "from": {
+            "bridgeResult": "cleared"
+          }
+        },
+        {
+          "path": "scene.serve.debut.attempts",
+          "from": {
+            "op": "increment",
+            "by": 1
+          }
+        }
+      ],
       "wait": true
     },
     {

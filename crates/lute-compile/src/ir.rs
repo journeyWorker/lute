@@ -427,6 +427,34 @@ pub struct BarrierCmd {
     pub at: f64,
 }
 
+/// A resolved plugin state-write binding (IR A12): where a bridge result /
+/// increment / literal lands, with `fromAttr` templates already substituted at
+/// compile time. The runtime applies these to its state store after the bridge
+/// call — no manifest lookup, no per-plugin knowledge.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Effect {
+    /// Fully-resolved dotted state path (scope + segments, `fromAttr` substituted),
+    /// e.g. `scene.serve.debut.rank`.
+    pub path: String,
+    pub from: EffectSource,
+}
+
+/// The origin of an [`Effect`]'s value.
+#[derive(Clone, Debug, Serialize)]
+#[serde(untagged)]
+pub enum EffectSource {
+    /// `{ "bridgeResult": "<key>" }` — read the named key off the bridge result.
+    BridgeResult {
+        #[serde(rename = "bridgeResult")]
+        bridge_result: String,
+    },
+    /// `{ "op": "increment", "by": 1 }` — a state mutation; `by` is integral-collapsed.
+    Op { op: String, by: serde_json::Value },
+    /// A bare literal value (scalar/array/object), integral-collapsed.
+    Literal(serde_json::Value),
+}
+
 /// Plugin-directive passthrough (plan spec-gap note 1): `kind: "plugin"`,
 /// the authored tag, and its attrs typed via the manifest `AttrDecl`s.
 #[derive(Clone, Debug, Serialize)]
@@ -435,6 +463,10 @@ pub struct OtherCmd {
     pub addr: String,
     pub tag: String,
     pub fields: BTreeMap<String, serde_json::Value>,
+    /// IR A12: resolved plugin state-write bindings from the manifest directive's
+    /// `effects.writes`. Absent when the directive declares none (skip-if-empty).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub effects: Vec<Effect>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
