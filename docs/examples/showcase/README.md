@@ -48,6 +48,8 @@ rm docs/examples/showcase/_t.lute
 | `schema/game.schema.lute` | `extends: base` — refines `user.level` default, adds `run.chapter` + `veteran` def |
 | `components/stinger.component.lute` | reusable content component (dsl §13) — `component:` + `params:` + presentational body, expanded by `::use` |
 | `episode01.lute` | the scene wiring it all together |
+| `hub-demo.lute` | non-episode companion: a revisit `<hub>` + `<when is>` over hub-recorded enums + `{{…}}` interpolation (checks clean **and** compiles) |
+| `when-is-demo.lute` | non-episode companion: `<when is>` literal arms (incl. `\|`-alternation) over a plain scene-local enum |
 
 ## Plugin export kinds shipped (all six)
 
@@ -137,3 +139,20 @@ rm docs/examples/showcase/_t.lute
 | base schema | `schema/base.schema.lute` |
 | child `extends:` base + refines a default | `schema/game.schema.lute:6, 8` |
 | episode `uses:` the child | `episode01.lute:19` |
+
+### `<hub>` + `<when is>` + `{{…}}` (`hub-demo.lute`)
+| Feature | Line |
+|---|---|
+| `{{…}}` content interpolation (§7.6) — `{{userName}}` / `{{run.affection}}` | 40–41 |
+| `<hub>` revisit menu (§7.3.2) — `once` / `when`-guarded / `exit` choices | 54–65 |
+| `<when is>` literal arms over hub-recorded enum `scene.choices.*` ∪ `unset` (§7.3.1) | 74–87 |
+| `<when is>` bool arms over hub-recorded `scene.visited.*.*` (§7.3.1) | 94–101 |
+
+### `<when is>` over a plain scene enum (`when-is-demo.lute`)
+| Feature | Line |
+|---|---|
+| scene-local ENUM decl + default (definitely assigned → no `unset` case) | 19 |
+| `<when is>` literal-pattern arms over a PLAIN scene enum `scene.mood` (§7.3.1) | 47–57 |
+| singleton literal arms (`is="calm"`, `is="tense"`) | 48, 51 |
+| `is="a\|b"` alternation arm (`is="joyful\|playful"`, §7.3.1) | 54 |
+| exhaustive `is` coverage, NO `<otherwise>` (§11.2) | 47–57 |
