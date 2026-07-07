@@ -9,7 +9,7 @@
 //! parse (syntax)                      -> Document + parse diags
 //!   -> fill_document (cel)            -> CEL asts in arena + E-CEL-PARSE diags
 //!   -> parse_meta                     -> StateSchema + defs + meta diags
-//!   -> fold <branch> decls            -> folded schema (scene.choices.*) + E-DUP-BRANCH
+//!   -> fold <branch>/<hub> decls      -> folded schema (scene.choices.* + scene.visited.*) + E-DUP-BRANCH
 //!   -> per-node walk                  -> directive/cel-slot/set/match/timeline diags
 //!   -> document-level defassign       -> E-UNDECLARED / E-MAYBE-UNSET (whole stream)
 //!   -> injection fold (lower_node)    -> InjectedCommand[] + W-INJECT-CONFLICT
@@ -23,7 +23,8 @@
 //!    source order), never per-shot — a path written in shot 1 and read in shot 2
 //!    must not read as maybe-unset.
 //! 2. **`Ctx` construction.** `state` = the [`StateSchema`] from `parse_meta`
-//!    (folded with the implicit `scene.choices.*` decls from every `<branch>`);
+//!    (folded with the implicit `scene.choices.*` / `scene.visited.*` decls from
+//!    every `<branch>` and `<hub>`);
 //!    `defs` = declared `defs:` names; `mode` from the input; `in_match` /
 //!    `match_subject` set as the walk enters a `<match>` arm (for T4.3's `$`).
 //! 3. **Determinism.** All diagnostics are sorted by `span.byte_start` then
@@ -76,19 +77,13 @@ use crate::schema_import::SchemaImports;
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
-    check_branch, check_cel_slot, check_definite_assignment, check_line_codes, check_match,
-    check_set, is_exhaustive,
+    check_branch, check_cel_slot, check_definite_assignment, check_hub, check_line_codes,
+    check_match, check_set, is_exhaustive,
 };
 
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
 /// from `fill_document`'s errors; the slot's `ast` stays `None`).
 const E_CEL_PARSE: &str = "E-CEL-PARSE";
-
-/// Transitional gate (D6): `<hub>` *checking* is deferred to Plan B (the 0.1.0
-/// checker cutover). Until then the main node walk emits this so a hub document
-/// can never pass clean-check — keeping the D6 clean-check gate sound (a hub doc
-/// cannot compile). Plan B replaces this constant with real hub semantics.
-pub const E_HUB_UNSUPPORTED: &str = "E-HUB-UNSUPPORTED";
 
 /// Parse errors that corrupt the node stream, making the `Resolved` view
 /// misleading (see the Some-vs-None policy in the module docs).
@@ -199,10 +194,12 @@ pub fn fold_env(
     // 3. Typed frontmatter + inline state schema.
     let (typed, mut fold_diags) = parse_meta(&doc.meta, &input.snapshot);
 
-    // 4. Fold every `<branch>`'s implicit `scene.choices.<id>` decl into the
-    //    schema BEFORE the checks that resolve against it (match subjects, CEL
-    //    state paths). This pre-pass owns the episode-wide `E-DUP-BRANCH`
-    //    detection so the main walk never double-counts branch ids.
+    // 4. Fold every `<branch>`/`<hub>`'s implicit recording decls
+    //    (`scene.choices.<id>` + a hub's per-choice `scene.visited.<id>.*`) into
+    //    the schema BEFORE the checks that resolve against them (match subjects,
+    //    CEL state paths). This pre-pass owns the episode-wide `E-DUP-BRANCH`
+    //    detection (hub + branch ids share one domain) so the main walk never
+    //    double-counts ids.
     // Merge imported schema (dsl §9.2) first, then the scene's inline `state:`.
     // Precedence depends on WHERE the imported decl came from (see
     // `SchemaImports::state_overridable`): a `uses`-peer path may NOT be
@@ -654,20 +651,26 @@ impl Walker<'_> {
                     }
                 }
                 Node::Hub(h) => {
-                    // Transitional D6 gate: hub *checking* is Plan B work. Emit an
-                    // error so a hub document can never pass clean-check (and thus
-                    // never compiles), keeping the D6 clean-check gate sound until
-                    // Plan B lands real hub semantics.
-                    self.diags.push(Diagnostic {
-                        code: E_HUB_UNSUPPORTED.to_string(),
-                        severity: Severity::Error,
-                        message: "<hub> checking lands in the 0.1.0 checker cutover (Plan B); document cannot pass check yet"
-                            .to_string(),
-                        span: h.span,
-                        layer: Layer::Logic,
-                        fixits: Vec::new(),
-                        provenance: None,
-                    });
+                    // `E-HUB-NO-EXIT` / `E-DUP-BRANCH` / `E-CHOICE-DUP` and the
+                    // implicit `scene.choices.*` + `scene.visited.*` decl folding
+                    // happened in the pre-pass (`fold_branches`); here we only
+                    // validate the hub's own attrs and recurse into each choice
+                    // (attrs, persist sugar, `when` guard, body) so the B1–B5
+                    // node checks apply inside hub arms too (dsl §7.3.2).
+                    self.check_attr_refs(&h.attrs, ctx, None);
+                    for choice in &h.choices {
+                        self.check_attr_refs(&choice.attrs, ctx, None);
+                        check_choice_persist(choice, ctx, &mut self.diags);
+                        if let Some(when) = &choice.when {
+                            self.diags.extend(check_cel_slot(
+                                when,
+                                self.arena,
+                                ctx,
+                                Some(&ExpectedType::Bool),
+                            ));
+                        }
+                        self.walk(&choice.body, ctx);
+                    }
                 }
             }
         }
@@ -1397,10 +1400,12 @@ fn persist_diag(code: &str, message: String, span: Span) -> Diagnostic {
     }
 }
 
-/// Pre-pass: fold every `<branch>`'s implicit `scene.choices.<id>` declaration
-/// into `schema` in document order, threading the episode-wide `seen` id set so
-/// `E-DUP-BRANCH` fires exactly once per duplicate. Recurses into nested bodies
-/// (a branch may live inside a match arm / another branch's choice).
+/// Pre-pass: fold every `<branch>`'s and `<hub>`'s implicit recording decls
+/// (`scene.choices.<id>`, plus a hub's per-choice `scene.visited.<id>.<choiceId>`)
+/// into `schema` in document order, threading the episode-wide `seen` id set
+/// (branch + hub ids share it) so `E-DUP-BRANCH` fires exactly once per duplicate.
+/// Recurses into nested bodies (a branch/hub may live inside a match arm or
+/// another choice body).
 fn fold_branches(
     doc: &Document,
     schema: &mut crate::meta::StateSchema,
@@ -1425,6 +1430,20 @@ fn fold_branches_nodes(
                 schema.decls.insert(rec.path, rec.decl);
                 diags.extend(rec.diags);
                 for choice in &b.choices {
+                    fold_branches_nodes(&choice.body, schema, seen, diags);
+                }
+            }
+            Node::Hub(h) => {
+                // Hub ids share the branch uniqueness domain (`seen`); fold the
+                // implicit `scene.choices.<hubId>` + `scene.visited.<hubId>.*`
+                // decls, then recurse into hub arms for any nested branch/hub/
+                // match (dsl §7.3.2, §11.1.3).
+                let rec = check_hub(h, seen);
+                for (path, decl) in rec.decls {
+                    schema.decls.insert(path, decl);
+                }
+                diags.extend(rec.diags);
+                for choice in &h.choices {
                     fold_branches_nodes(&choice.body, schema, seen, diags);
                 }
             }
