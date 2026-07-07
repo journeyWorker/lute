@@ -5,6 +5,7 @@ pub mod component_import;
 pub mod ctx;
 pub mod defassign;
 pub mod directives;
+pub mod fix;
 pub mod inject;
 pub mod match_check;
 pub mod meta;
@@ -20,6 +21,7 @@ pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use defassign::check_definite_assignment;
 pub use directives::E_AT_CONTEXT;
+pub use fix::{fix_document, FixResult};
 pub use inject::{
     lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,
 };
