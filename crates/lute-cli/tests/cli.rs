@@ -184,11 +184,9 @@ fn catalog_refresh_missing_dir_is_created() {
 
 // --- 0.1.0 golden coverage: the showcase `hub-demo.lute` exercises a `<hub>`,
 // `<when is="…">` literal arms, and `{{…}}` interpolation (dsl §7.3.2, §7.3.1,
-// §7.6). A `<hub>` PASSES `lute check` but its CFG lowering lands in a later
-// cutover (Plan C), so this example is exercised by the CHECK path ONLY. These
-// two tests pin both halves of that contract: clean check, and the explicit
-// E-HUB-LOWERING-UNSUPPORTED on compile (which is why it is never added to a
-// compile/e2e golden).
+// §7.6). A `<hub>` PASSES `lute check` AND (Plan C, IR A2) COMPILES to a `hub`
+// record. These two tests pin both halves: a clean, feature-bearing check, and a
+// successful compile whose artifact carries the hub record.
 
 #[test]
 fn hub_demo_example_checks_clean() {
