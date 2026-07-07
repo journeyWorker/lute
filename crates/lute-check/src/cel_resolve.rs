@@ -166,6 +166,22 @@ pub fn check_cel_slot(
             // marker-prefixed name and is distinguishable per site (structure-only
             // re-parse — all diagnostics use the slot span). Gated on `slot.ast`
             // so malformed CEL is not double-reported.
+            // A hand-written identifier beginning with the reserved `REF_MARKER`
+            // token would parse to a marker-named `Call` with no real `@` sigil and
+            // masquerade as an exempt `@ref`. The token is reserved-internal and
+            // must never appear in authored CEL, so its presence is itself out of
+            // profile — flag once here so the walk below only ever sees markers the
+            // re-parse injected at genuine `@` sites.
+            if raw_uses_reserved_marker(&slot.raw) {
+                diags.push(diag(
+                    E_CEL_PROFILE,
+                    format!(
+                        "`{}` is a reserved internal token and must not appear in CEL (dsl §8.4)",
+                        lute_cel::REF_MARKER
+                    ),
+                    slot.span,
+                ));
+            }
             let mut marked = CelArena::default();
             if let Some(mh) = lute_cel::parse_slot_marked_refs(&mut marked, &slot.raw) {
                 if let Some(mroot) = marked.get(mh) {
@@ -199,7 +215,8 @@ pub fn check_cel_slot(
 ///   leading-dot global calls are therefore rejected, not blanket-accepted.
 /// * the valid `has(path)` macro parses as a test-only [`Expr::Select`], never a
 ///   `Call` — so a residual `Call` named `has` (`has(x,y)`, `x.has()`) is NOT the
-///   macro and IS rejected. Only `isSet` is an allowed `Call`.
+///   macro and IS rejected. The only allowed `Call` is `isSet(<path>)` with NO
+///   receiver and exactly one arg ([`is_profile_isset_call`]).
 /// * comprehension macros lower to [`Expr::Comprehension`]; map/struct literals
 ///   to [`Expr::Map`]/[`Expr::Struct`] (only *list* literals are in profile) —
 ///   all rejected.
@@ -207,13 +224,16 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
     match expr {
         Expr::Call(c) => {
             let name = c.func_name.as_str();
+            // Exempt: a compile-time `@ref(args)` macro (marker-prefixed name;
+            // §8.1 owns its arity), a profile operator, or a well-formed
+            // `isSet(<path>)` call. Anything else — including `scene.x.isSet()`
+            // (receiver) and `isSet(a, b)` (wrong arity) — is out of profile.
             if name.starts_with(lute_cel::REF_MARKER)
                 || is_profile_operator(name)
-                || is_profile_fn(name)
+                || is_profile_isset_call(c)
             {
-                // A compile-time `@ref(args)` macro, a profile operator, or the
-                // `isSet()` extension: structural — recurse into target + args to
-                // catch any nested out-of-profile call.
+                // Structural — recurse into target + args to catch any nested
+                // out-of-profile call.
                 if let Some(t) = &c.target {
                     check_cel_profile(&t.expr, slot, diags);
                 }
@@ -296,12 +316,31 @@ fn is_profile_operator(func_name: &str) -> bool {
     ALLOWED.contains(&func_name)
 }
 
-/// True for the single callable function inside the closed profile: the
-/// `isSet()` Lute extension (matched case-insensitively, as elsewhere). `has()`
-/// is NOT here — its valid macro form is an `Expr::Select`, so any `Call` named
-/// `has` is out of profile.
-fn is_profile_fn(func_name: &str) -> bool {
-    func_name.eq_ignore_ascii_case("isSet")
+/// True when this `Call` is the in-profile `isSet(<path>)` extension: named
+/// `isSet` (case-insensitively, as elsewhere), with NO receiver and EXACTLY one
+/// argument (the single state path). `scene.x.isSet()` (a receiver) and
+/// `isSet(a, b)` (wrong arity) are NOT the extension and are out of profile.
+/// `has()` is never here — its valid form is an `Expr::Select`, not a `Call`.
+fn is_profile_isset_call(c: &cel_parser::ast::CallExpr) -> bool {
+    c.func_name.eq_ignore_ascii_case("isSet") && c.target.is_none() && c.args.len() == 1
+}
+
+/// True when the ORIGINAL slot text uses the reserved internal [`lute_cel::REF_MARKER`]
+/// token as (part of) an identifier — i.e. the token appears OUTSIDE a string
+/// literal. The marker is injected by the profile re-parse only at genuine `@`
+/// sites; authored CEL must never contain it, else a hand-written
+/// `__lute_at_ref__foo(...)` would parse to a marker-named `Call` and masquerade
+/// as an exempt `@ref`. Its presence is therefore itself out of profile (§8.4).
+fn raw_uses_reserved_marker(raw: &str) -> bool {
+    let marker = lute_cel::REF_MARKER.as_bytes();
+    if raw.len() < marker.len() {
+        return false;
+    }
+    let mask = lute_cel::cel_string_mask(raw);
+    raw.as_bytes()
+        .windows(marker.len())
+        .enumerate()
+        .any(|(i, w)| w == marker && !mask[i])
 }
 
 /// Conservative type-compatibility for `E-REF-TYPE` (dsl §8): return `true` (no
@@ -756,5 +795,45 @@ mod tests {
                 d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
             );
         }
+    }
+
+    #[test]
+    fn reserved_marker_in_raw_rejected() {
+        // A hand-written identifier beginning with the reserved marker token must
+        // not masquerade as an exempt `@ref` — it is itself out of profile.
+        let env = Env::default();
+        let ctx = mk_ctx(&env);
+        let raw = format!("{}x + 1", lute_cel::REF_MARKER);
+        let slot = cel_slot_condition(&raw);
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+        assert!(
+            d.iter().any(|e| e.code == E_CEL_PROFILE),
+            "reserved-marker identifier `{raw}` must flag E-CEL-PROFILE, got {:?}",
+            d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn isset_arity_and_receiver_enforced() {
+        // The `isSet(<path>)` extension takes exactly one arg and no receiver.
+        // A receiver form or wrong arity is NOT the extension -> E-CEL-PROFILE.
+        let env = Env::default();
+        let ctx = mk_ctx(&env);
+        for bad in ["scene.x.isSet()", "isSet(a, b)"] {
+            let slot = cel_slot_condition(bad);
+            let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+            assert!(
+                d.iter().any(|e| e.code == E_CEL_PROFILE),
+                "malformed isSet `{bad}` must flag E-CEL-PROFILE, got {:?}",
+                d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+            );
+        }
+        let slot = cel_slot_condition("isSet(run.y)");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+        assert!(
+            d.iter().all(|e| e.code != E_CEL_PROFILE),
+            "well-formed isSet(run.y) must stay clean, got {:?}",
+            d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+        );
     }
 }
