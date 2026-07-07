@@ -31,7 +31,7 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
     let mut prev = 0i64;
     for (i, shot) in doc.shots.iter().enumerate() {
         let mut em = Emitter::default();
-        state = walk_seq(&mut em, &shot.body, state, &mut cx, &[]);
+        state = walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut Vec::new());
         let authored = shot.number.unwrap_or(i as i64 + 1);
         let shot_no = authored.max(prev + 1);
         prev = shot_no;
