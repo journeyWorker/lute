@@ -25,6 +25,7 @@ fn line_serializes_per_spec() {
         as_label: None,
         line_id: "bianca.s01ep02.bianca_0010".into(),
         voice_key: Some("bianca-0010".into()),
+        placeholders: Vec::new(),
         code: Some("0010".into()),
         stamp: Stamp::default(),
     });
@@ -49,6 +50,7 @@ fn unvoiced_line_has_no_voice_key() {
         as_label: None,
         line_id: "bianca.s01ep02.narrator_0010".into(),
         voice_key: None,
+        placeholders: Vec::new(),
         code: None,
         stamp: Stamp::default(),
     });
@@ -98,6 +100,7 @@ fn choice_matches_spec_worked_example() {
             when: None,
             expr: None,
             target: "004-0600".into(),
+            placeholders: Vec::new(),
         }],
         converge: "004-1100".into(),
         stamp: Stamp::default(),
@@ -321,6 +324,7 @@ fn retarget_and_addr_helpers_visit_every_flow_field() {
             when: None,
             expr: None,
             target: "@1".into(),
+            placeholders: Vec::new(),
         }],
         converge: "@2".into(),
         stamp: Stamp::default(),

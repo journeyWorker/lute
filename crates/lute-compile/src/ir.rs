@@ -112,6 +112,38 @@ pub enum Command {
     Other(OtherCmd),
 }
 
+/// One `{{…}}` interpolation placeholder (IR A3): the runtime substitutes it
+/// against live state, while `text`/`label` keep the verbatim `{{…}}` marker.
+/// Kind-keyed referent — `{"kind":"path","path":…}`, `{"kind":"ref","ref":…}`,
+/// `{"kind":"reserved","token":…}` — matching the A3 example and the C1
+/// `ExprNode` kind-keyed convention. Entries appear in left-to-right order.
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Placeholder {
+    /// A state-path read (`{{run.coins}}` → `{"kind":"path","path":"run.coins"}`).
+    Path { path: String },
+    /// A `@def` / `@fn(args)` reference; the referent includes the leading `@`.
+    Ref {
+        #[serde(rename = "ref")]
+        reference: String,
+    },
+    /// A reserved token (only `userName` in 0.1).
+    Reserved { token: String },
+}
+
+/// Map one syntactic [`Interp`](lute_syntax::ast::Interp) to its typed IR
+/// [`Placeholder`]. Shared by the content-line lowering ([`crate::lower`]) and
+/// the option-label lowering ([`crate::stage`]) — the single kind→referent
+/// match, never duplicated. The referent is the interp's verbatim trimmed `raw`.
+pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placeholder {
+    use lute_syntax::ast::InterpKind;
+    match i.kind {
+        InterpKind::Path => Placeholder::Path { path: i.raw.clone() },
+        InterpKind::Ref => Placeholder::Ref { reference: i.raw.clone() },
+        InterpKind::Reserved => Placeholder::Reserved { token: i.raw.clone() },
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineCmd {
@@ -132,6 +164,10 @@ pub struct LineCmd {
     pub line_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice_key: Option<String>,
+    /// IR A3: `{{…}}` interpolations found in `text`, in left-to-right order.
+    /// Absent when the line has no interpolation (byte-stability: skip-if-empty).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub placeholders: Vec<Placeholder>,
     /// Authored (or back-filled) per-speaker `code` — feeds `lineId`/`voiceKey`
     /// in the addressing pass, NEVER serialized (3-id model, §4.2).
     #[serde(skip)]
@@ -303,6 +339,10 @@ pub struct ChoiceOption {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expr: Option<ExprNode>,
     pub target: String,
+    /// IR A3: `{{…}}` interpolations in `label`, in left-to-right order. Absent
+    /// when the label has none (skip-if-empty). Label text stays verbatim.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub placeholders: Vec<Placeholder>,
 }
 
 /// `<hub>` (§7.3.2, IR A2): structurally a `choice` plus revisit flags. The
@@ -335,6 +375,10 @@ pub struct HubOption {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expr: Option<ExprNode>,
     pub target: String,
+    /// IR A3: `{{…}}` interpolations in `label`, in left-to-right order. Absent
+    /// when the label has none (skip-if-empty). Label text stays verbatim.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub placeholders: Vec<Placeholder>,
 }
 
 #[derive(Clone, Debug, Serialize)]

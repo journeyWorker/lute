@@ -129,6 +129,43 @@ pub fn classify_interp(inner: &str) -> InterpKind {
     }
 }
 
+/// Scan a `<choice label>` / `<hub label>` string for `{{…}}` interpolations
+/// (dsl §7.6). Labels are String attrs, so — unlike content-line interps — their
+/// `{{…}}` are NOT captured into the AST at parse time; this recovers them on
+/// demand for the SAME classification model as content interps. The single
+/// source of truth shared by the checker's label validation and the compiler's
+/// option-label lowering. Classification reuses [`classify_interp`]. Every
+/// recovered interp is spanned at the whole slot (`span`) — the label's own byte
+/// offset is not retained on the AST — matching the resolver's whole-slot span
+/// fallback. An unterminated `{{` in a label is simply not scanned (conservative,
+/// never panics); a label never round-trips through the content-line parser, so
+/// its `E-INTERP-UNTERMINATED` never applies here.
+pub fn scan_label_interps(label: &str, span: Span) -> Vec<Interp> {
+    let b = label.as_bytes();
+    let mut out = Vec::new();
+    let mut j = 0;
+    while j + 1 < b.len() {
+        if b[j] == b'\\' && label[j + 1..].starts_with("{{") {
+            j += 3; // literal `\{{`
+            continue;
+        }
+        if b[j] == b'{' && b[j + 1] == b'{' {
+            match label[j + 2..].find("}}") {
+                Some(rel) => {
+                    let inner = label[j + 2..j + 2 + rel].trim().to_string();
+                    let kind = classify_interp(&inner);
+                    out.push(Interp { kind, raw: inner, span });
+                    j = j + 2 + rel + 2;
+                    continue;
+                }
+                None => break, // unterminated — nothing more to scan
+            }
+        }
+        j += 1;
+    }
+    out
+}
+
 /// The literal pattern of a `<when is="…">` arm (dsl §7.3.1). Unlike `test`,
 /// this is NOT a CEL expression: `raw` is the verbatim (trimmed) attribute
 /// value (e.g. `"soft | curt"`), preserved for match-coverage checking and

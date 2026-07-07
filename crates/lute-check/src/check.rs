@@ -62,10 +62,15 @@ use lute_manifest::schema::{SlotDecl, StateShape};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{type_accepts, Literal, PathSegment, Type};
 use lute_syntax::ast::{
-    classify_interp, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document,
+    Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document,
     Interp, InterpKind, Node,
 };
 use lute_syntax::parse;
+/// Delegate: the label-interp scanner now lives in `lute-syntax` (single source
+/// of truth with the parser's content-line scan). Re-exported `pub(crate)` so
+/// `crate::check::scan_label_interps` (used by `defassign`) and the local call
+/// sites keep resolving without change.
+pub(crate) use lute_syntax::scan_label_interps;
 
 use crate::cel_resolve::compatible;
 use crate::component_import::ComponentSet;
@@ -871,42 +876,6 @@ fn is_bare_ref(raw: &str) -> bool {
                 Some(c) => c.span.byte_end == raw.len(),
             }
     })
-}
-
-/// Scan a `<choice label>` string for `{{…}}` interpolations (dsl §7.6). Choice
-/// labels are String attrs, so — unlike content-line interps — their `{{…}}` are
-/// NOT captured into the AST; this recovers them for the SAME [`check_interps`]
-/// validation (E-UNDECLARED / E-UNDECLARED-REF / E-REF-TYPE / grammar) as content
-/// interps. Classification reuses [`classify_interp`] (single source of truth with
-/// the parser). Every recovered interp is spanned at the whole `<choice>` (`span`)
-/// — the label's own byte offset is not retained on the AST — matching the
-/// resolver's whole-slot span fallback. An unterminated `{{` is left to the
-/// content-line parser's `E-INTERP-UNTERMINATED`; a label never round-trips there,
-/// so a stray `{{` in a label is simply not scanned (conservative, never panics).
-pub(crate) fn scan_label_interps(label: &str, span: Span) -> Vec<Interp> {
-    let b = label.as_bytes();
-    let mut out = Vec::new();
-    let mut j = 0;
-    while j + 1 < b.len() {
-        if b[j] == b'\\' && label[j + 1..].starts_with("{{") {
-            j += 3; // literal `\{{`
-            continue;
-        }
-        if b[j] == b'{' && b[j + 1] == b'{' {
-            match label[j + 2..].find("}}") {
-                Some(rel) => {
-                    let inner = label[j + 2..j + 2 + rel].trim().to_string();
-                    let kind = classify_interp(&inner);
-                    out.push(Interp { kind, raw: inner, span });
-                    j = j + 2 + rel + 2;
-                    continue;
-                }
-                None => break, // unterminated — nothing more to scan
-            }
-        }
-        j += 1;
-    }
-    out
 }
 
 // --- Reusable content components (`::use`, dsl §13) ---

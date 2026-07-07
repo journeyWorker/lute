@@ -413,3 +413,116 @@ state:
         Some(serde_json::json!(0))
     );
 }
+
+// --- IR A3: `{{…}}` interpolation placeholders -------------------------------
+
+/// A content line carrying `{{…}}` interps gets an ordered, kind-keyed
+/// `placeholders` list (reserved/path/ref), while `text` stays byte-verbatim
+/// (the `{{…}}` markers are retained — that string is the localization source).
+#[test]
+fn content_line_carries_ordered_kind_keyed_placeholders() {
+    const DOC: &str = r#"---
+character: bianca
+season: 1
+episode: 2
+state:
+  run.coins: { type: number, default: 0 }
+defs:
+  fond: { type: bool, cel: "run.coins >= 1" }
+---
+
+## Shot 1.
+
+:bianca{code="0010"}: Hi {{userName}}, {{run.coins}} left, {{@fond}}.
+"#;
+    let artifact = compile(&input(DOC)).expect("clean compile");
+    let line = artifact
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::Line(l) if l.speaker == "bianca" => Some(l),
+            _ => None,
+        })
+        .expect("bianca line");
+    // `text` verbatim: the `{{…}}` markers survive into the artifact.
+    assert_eq!(line.text, "Hi {{userName}}, {{run.coins}} left, {{@fond}}.");
+    let json = serde_json::to_value(line).unwrap();
+    assert_eq!(
+        json["placeholders"],
+        serde_json::json!([
+            { "kind": "reserved", "token": "userName" },
+            { "kind": "path", "path": "run.coins" },
+            { "kind": "ref", "ref": "@fond" }
+        ]),
+        "ordered kind-keyed placeholders mirror the interps left-to-right; got {json}"
+    );
+}
+
+/// A content line with NO interps omits `placeholders` entirely (skip-if-empty)
+/// — byte-stability for the existing goldens.
+#[test]
+fn interp_free_line_omits_placeholders() {
+    let artifact = compile(&input(SCENE)).expect("clean compile");
+    let line = artifact
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::Line(l) => Some(l),
+            _ => None,
+        })
+        .expect("a content line");
+    let json = serde_json::to_value(line).unwrap();
+    assert!(
+        json.get("placeholders").is_none(),
+        "interp-free line must omit `placeholders`; got {json}"
+    );
+}
+
+/// A `<choice>` option whose LABEL interpolates carries `placeholders` (scanned
+/// from the label string); a plain label omits it. `label` stays verbatim.
+#[test]
+fn option_label_interp_carries_placeholders() {
+    const DOC: &str = r#"---
+character: b
+season: 1
+episode: 1
+state:
+  run.coins: { type: number, default: 0 }
+---
+
+## Shot 1.
+
+<branch id="pick">
+  <choice id="give" label="Give {{run.coins}} coins">
+    :narrator: Done.
+  </choice>
+  <choice id="keep" label="Keep them">
+    :narrator: Fine.
+  </choice>
+</branch>
+"#;
+    let artifact = compile(&input(DOC)).expect("clean compile");
+    let choice = artifact
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::Choice(ch) => Some(ch),
+            _ => None,
+        })
+        .expect("choice record");
+    let give = choice.options.iter().find(|o| o.id == "give").expect("give option");
+    let keep = choice.options.iter().find(|o| o.id == "keep").expect("keep option");
+    // Label verbatim, interps retained.
+    assert_eq!(give.label, "Give {{run.coins}} coins");
+    let give_json = serde_json::to_value(give).unwrap();
+    assert_eq!(
+        give_json["placeholders"],
+        serde_json::json!([{ "kind": "path", "path": "run.coins" }]),
+        "interpolating label carries its placeholder; got {give_json}"
+    );
+    let keep_json = serde_json::to_value(keep).unwrap();
+    assert!(
+        keep_json.get("placeholders").is_none(),
+        "non-interpolating label omits `placeholders`; got {keep_json}"
+    );
+}

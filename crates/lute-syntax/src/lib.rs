@@ -28,4 +28,5 @@ pub mod lex;
 pub mod parser;
 pub mod walk;
 
+pub use ast::scan_label_interps;
 pub use parser::parse;
