@@ -273,6 +273,7 @@ fn walk_branch(
             label: c.label.clone(),
             line_id: String::new(),
             when: c.when.as_ref().map(|w| w.raw.clone()),
+            expr: c.when.as_ref().and_then(|w| crate::expr::lower_expr(&w.raw)),
             target: l.sym(),
         })
         .collect();
@@ -325,6 +326,7 @@ fn walk_match(
             Arm::When { test, .. } => arms.push(MatchArm {
                 test: test.raw.clone(),
                 target: l.sym(),
+                expr: crate::expr::lower_expr(&test.raw),
             }),
             Arm::Otherwise { .. } => otherwise = Some(l.sym()),
         }

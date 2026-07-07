@@ -47,6 +47,7 @@ pub fn lower_set(set: &Set) -> Command {
         path: set.path.clone(),
         op: set.op.clone(),
         value: set.expr.raw.clone(),
+        expr: crate::expr::lower_expr(&set.expr.raw),
         stamp: Stamp::default(),
     })
 }
