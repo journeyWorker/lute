@@ -351,12 +351,14 @@ fn retarget_and_addr_helpers_visit_every_flow_field() {
 #[test]
 fn envelope_serializes_with_state_entries() {
     let a = Artifact {
-        lute: "0.0.1".into(),
+        lute: "0.1.0".into(),
+        ir_version: "0.1.0".into(),
+        capability_version: "cap-sha".into(),
         meta: ArtifactMeta {
             character: "bianca".into(),
             season: 1,
             episode: 2,
-            episode_id: "S01EP02".into(),
+            episode_id: "s01ep02".into(),
             title: Some("T".into()),
         },
         state: vec![StateEntry {
@@ -370,6 +372,6 @@ fn envelope_serializes_with_state_entries() {
     };
     assert_eq!(
         serde_json::to_string(&a).unwrap(),
-        r#"{"lute":"0.0.1","meta":{"character":"bianca","season":1,"episode":2,"episodeId":"S01EP02","title":"T"},"state":[{"path":"scene.choices.number","type":"enum","domain":["blunt","soft","unset"],"provenance":"branch:number"}],"commands":[]}"#
+        r#"{"lute":"0.1.0","irVersion":"0.1.0","capabilityVersion":"cap-sha","meta":{"character":"bianca","season":1,"episode":2,"episodeId":"s01ep02","title":"T"},"state":[{"path":"scene.choices.number","type":"enum","domain":["blunt","soft","unset"],"provenance":"branch:number"}],"commands":[]}"#
     );
 }

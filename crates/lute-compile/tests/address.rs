@@ -46,8 +46,7 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
         shots,
         &IdCx {
             character: "bianca",
-            season: 1,
-            episode: 2,
+            episode_id: "s01ep02",
         },
     )
 }

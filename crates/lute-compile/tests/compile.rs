@@ -184,10 +184,19 @@ state:
 
 #[test]
 fn clean_doc_compiles_with_envelope_expansion_and_ids() {
-    let artifact = compile(&input(SCENE)).expect("clean compile");
-    assert_eq!(artifact.lute, "0.0.1");
+    let inp = input(SCENE);
+    let artifact = compile(&inp).expect("clean compile");
+    // A9 envelope hardening: language pin, IR schema version, capability stamp.
+    assert_eq!(artifact.lute, "0.1.0");
+    assert_eq!(artifact.ir_version, "0.1.0");
+    assert_eq!(artifact.capability_version, inp.snapshot.version);
+    assert!(
+        !artifact.capability_version.is_empty(),
+        "capabilityVersion must be a non-empty snapshot stamp"
+    );
     assert_eq!(artifact.meta.character, "bianca");
-    assert_eq!(artifact.meta.episode_id, "S01EP02");
+    // A4/A9: episodeId normalized lowercase to match the lineId episode segment.
+    assert_eq!(artifact.meta.episode_id, "s01ep02");
     assert_eq!(artifact.meta.title.as_deref(), Some("Compile me"));
 
     // Folded state envelope: author decl + implicit branch decl (§4.1).
@@ -249,6 +258,55 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
             ("bianca.s01ep02.fixer_0030", None),
             ("bianca.s01ep02.fixer_0040", None),
         ]
+    );
+
+    // A4/A9 byte-for-byte: every lineId's episode segment == meta.episodeId.
+    for cmd in &artifact.commands {
+        if let Command::Line(l) = cmd {
+            if l.line_id.is_empty() {
+                continue;
+            }
+            let seg = l.line_id.split('.').nth(1).expect("lineId episode segment");
+            assert_eq!(
+                seg, artifact.meta.episode_id,
+                "lineId {} episode segment must equal meta.episodeId byte-for-byte",
+                l.line_id
+            );
+        }
+    }
+}
+
+#[test]
+fn authored_episode_id_is_used_verbatim_in_meta_and_line_ids() {
+    // A4: an authored frontmatter `episodeId` is used VERBATIM for both
+    // `meta.episodeId` and the lineId episode segment (no lowercasing, no
+    // `s{s}ep{e}` reformat) — pinning survives episode renumbering.
+    const AUTHORED: &str = r#"---
+character: bianca
+season: 1
+episode: 2
+episodeId: ep02final
+---
+
+## Shot 1.
+
+:narrator: The stage is set.
+"#;
+    let artifact = compile(&input(AUTHORED)).expect("authored episodeId doc compiles");
+    assert_eq!(artifact.meta.episode_id, "ep02final");
+    let line = artifact
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::Line(l) => Some(l),
+            _ => None,
+        })
+        .expect("a line record");
+    assert_eq!(line.line_id, "bianca.ep02final.narrator_0010");
+    assert_eq!(
+        line.line_id.split('.').nth(1),
+        Some("ep02final"),
+        "authored episodeId must be the lineId episode segment verbatim"
     );
 }
 

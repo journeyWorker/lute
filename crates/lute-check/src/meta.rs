@@ -74,6 +74,7 @@ const BUILTIN_KEYS: &[&str] = &[
     "character",
     "season",
     "episode",
+    "episodeId",
     "mode",
     "pov",
     "title",

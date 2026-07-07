@@ -18,11 +18,12 @@ pub struct ShotRecords {
     pub trailing: Vec<Label>,
 }
 
-/// Identity context for `lineId`/`voiceKey` derivation (§4.2).
+/// Identity context for `lineId`/`voiceKey` derivation (§4.2 + A4). `episode_id`
+/// is the resolved `meta.episodeId` — the derivation input for the lineId
+/// episode segment, byte-for-byte identical to the envelope value.
 pub struct IdCx<'a> {
     pub character: &'a str,
-    pub season: i64,
-    pub episode: i64,
+    pub episode_id: &'a str,
 }
 
 /// Assign every `addr`, resolve every symbolic target, and stamp identity.
@@ -88,7 +89,7 @@ fn assign_identity(cmds: &mut [Command], cx: &IdCx<'_>) {
         }
     }
     // Pass 2, final record order: fill codes, derive ids.
-    let prefix = format!("{}.s{:02}ep{:02}", cx.character, cx.season, cx.episode);
+    let prefix = format!("{}.{}", cx.character, cx.episode_id);
     for cmd in cmds.iter_mut() {
         match cmd {
             Command::Line(l) => {
@@ -188,8 +189,7 @@ mod tests {
     fn whitespaced_authored_code_is_trimmed_for_max_and_identity() {
         let cx = IdCx {
             character: "bardstale",
-            season: 1,
-            episode: 2,
+            episode_id: "s01ep02",
         };
         let mut cmds = vec![line("fixer", Some(" 0050 ")), line("fixer", None)];
         assign_identity(&mut cmds, &cx);
@@ -214,8 +214,7 @@ mod tests {
     fn code_at_u64_max_fails_closed_no_collision() {
         let cx = IdCx {
             character: "bardstale",
-            season: 1,
-            episode: 2,
+            episode_id: "s01ep02",
         };
         let mut cmds = vec![
             line("fixer", Some("18446744073709551615")),

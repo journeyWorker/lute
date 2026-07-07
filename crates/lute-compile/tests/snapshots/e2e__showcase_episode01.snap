@@ -3,12 +3,14 @@ source: crates/lute-compile/tests/e2e.rs
 expression: json
 ---
 {
-  "lute": "0.0.1",
+  "lute": "0.1.0",
+  "irVersion": "0.1.0",
+  "capabilityVersion": "38c28a673573e401e1d83c9b3b71f79d6760c33a55c920b990d78cfc26a568de",
   "meta": {
     "character": "bianca",
     "season": 1,
     "episode": 1,
-    "episodeId": "S01EP01",
+    "episodeId": "s01ep01",
     "title": "The Full Showcase"
   },
   "state": [

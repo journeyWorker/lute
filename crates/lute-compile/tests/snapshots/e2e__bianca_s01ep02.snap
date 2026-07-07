@@ -3,12 +3,14 @@ source: crates/lute-compile/tests/e2e.rs
 expression: json
 ---
 {
-  "lute": "0.0.1",
+  "lute": "0.1.0",
+  "irVersion": "0.1.0",
+  "capabilityVersion": "45f46d46fb9b72ceebd735c0fcc5ceca6312e07ad1ce5ef2dd08f4b6d18cf50c",
   "meta": {
     "character": "bianca",
     "season": 1,
     "episode": 2,
-    "episodeId": "S01EP02",
+    "episodeId": "s01ep02",
     "title": "Behold the Performance of All-Purpose Bianca"
   },
   "state": [
