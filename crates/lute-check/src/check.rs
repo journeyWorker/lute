@@ -54,13 +54,16 @@
 //! errors (unknown directive, undeclared state, non-exhaustive match, …) still
 //! yield a resolved view. A clean document is always `Some`.
 
-use lute_cel::{fill_document, scan_refs, CelArena};
+use lute_cel::{fill_document, parse_slot, scan_refs, CelArena};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::{SlotDecl, StateShape};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{type_accepts, Literal, PathSegment, Type};
-use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, ClipNode, Directive, Document, Node};
+use lute_syntax::ast::{
+    Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document, Interp,
+    InterpKind, Node,
+};
 use lute_syntax::parse;
 
 use crate::cel_resolve::compatible;
@@ -519,7 +522,10 @@ impl Walker<'_> {
     fn walk(&mut self, nodes: &[Node], ctx: &Ctx<'_>) {
         for node in nodes {
             match node {
-                Node::Line(l) => self.check_attr_refs(&l.attrs, ctx, None),
+                Node::Line(l) => {
+                    self.check_attr_refs(&l.attrs, ctx, None);
+                    self.check_interps(&l.interps, ctx);
+                }
                 Node::Directive(d) if d.tag == "use" => {
                     // `use` is a reserved directive (dsl §13): recognized BEFORE
                     // the unknown-directive check, so it is never
@@ -682,6 +688,74 @@ impl Walker<'_> {
             }
         }
     }
+
+    /// Validate the `{{…}}` interpolation referents on a content line (dsl §7.6).
+    /// An interpolation is a state READ, so each referent gets the SAME cel-layer
+    /// treatment a `<when>` guard / `::set` RHS read gets: the referent is routed
+    /// through the shared [`check_cel_slot`] resolver, so a `Path` resolves
+    /// against the folded `state:` schema (`E-UNDECLARED`) and a `Ref` against
+    /// `defs:` (`E-UNDECLARED-REF`) exactly as a guard read does. A `Ref`
+    /// additionally MUST produce a **renderable** type (number/bool/enum, §7.6) —
+    /// a declared def of any other type is `E-REF-TYPE`. The reserved `userName`
+    /// token always renders. The definite-assignment half (`E-MAYBE-UNSET`,
+    /// §9.4) is proven in the path-sensitive `defassign` pass at the line's
+    /// position — the same site guard/`::set` reads are proven — not here.
+    fn check_interps(&mut self, interps: &[Interp], ctx: &Ctx<'_>) {
+        for interp in interps {
+            let referent = match interp.kind {
+                // The reserved player-name token always renders (dsl §7.6).
+                InterpKind::Reserved => continue,
+                InterpKind::Path | InterpKind::Ref => &interp.raw,
+            };
+            // Reuse the guard/`::set` read-check verbatim: parse the referent as a
+            // value-read CEL slot over its ORIGINAL-source span, then run the
+            // shared resolver. `CelKind::AttrValue` is a non-guard read context —
+            // the guard-only §9.6 `run.choiceLog` rule must not fire on a content
+            // interpolation. A parse failure leaves `ast = None`, so the resolver
+            // skips its AST pass and never double-reports malformed CEL.
+            let mut arena = CelArena::default();
+            let mut slot = CelSlot::raw(CelKind::AttrValue, referent.clone(), interp.span);
+            if let Ok(handle) = parse_slot(&mut arena, &slot.raw, interp.span.byte_start) {
+                slot.ast = Some(handle);
+            }
+            self.diags
+                .extend(check_cel_slot(&slot, &arena, ctx, None));
+            // §7.6 rendering: an interpolated `@ref` MUST resolve to a renderable
+            // type (number/bool/enum). A DECLARED def whose produced type is
+            // known and non-renderable is `E-REF-TYPE`; an undeclared ref already
+            // flagged `E-UNDECLARED-REF` above (its name is absent from
+            // `def_types`, so this never double-reports).
+            if interp.kind == InterpKind::Ref {
+                if let Some(name) = scan_refs(referent).into_iter().find(|r| !r.is_dollar).map(|r| r.name) {
+                    if let Some(ty) = ctx.env.def_types.get(&name) {
+                        if !is_renderable(ty) {
+                            self.diags.push(Diagnostic {
+                                code: "E-REF-TYPE".to_string(),
+                                severity: Severity::Error,
+                                message: format!(
+                                    "`@{name}` produces a non-renderable type; a `{{{{…}}}}` interpolation renders only number/bool/enum (dsl §7.6)"
+                                ),
+                                span: interp.span,
+                                layer: Layer::Cel,
+                                fixits: Vec::new(),
+                                provenance: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// §7.6 renderable types for an interpolated `@ref`: a **number** (shortest
+/// decimal), a **bool** (`true`/`false`), or an **enum** (member text). Any other
+/// produced type cannot render inside `{{…}}` and is a static error.
+fn is_renderable(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Number | Type::Bool | Type::Enum(_) | Type::EnumFromOption(_)
+    )
 }
 
 // --- Reusable content components (`::use`, dsl §13) ---
