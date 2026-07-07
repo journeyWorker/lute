@@ -27,8 +27,13 @@ use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{Arm, Document, Node};
 
-/// IR version stamped into every artifact envelope (`"lute": …`, spec §4.1).
-pub const LUTE_IR_VERSION: &str = "0.0.1";
+/// Language-version pin stamped into the artifact envelope's `lute` field (DSL
+/// 0.1.0). Distinct from [`LUTE_IR_VERSION`], the IR schema version.
+pub const LUTE_LANG_VERSION: &str = "0.1.0";
+
+/// IR schema version stamped into the envelope's `irVersion` field (spec §4.1,
+/// A9). Bumped for the 0.1.0 record changes (A1–A7); engines gate parsing on it.
+pub const LUTE_IR_VERSION: &str = "0.1.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -95,8 +100,9 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
     let meta = artifact_meta(&doc, &folded);
     let idcx = address::IdCx {
         character: &meta.character,
-        season: meta.season,
-        episode: meta.episode,
+        // A4: the SAME resolved episodeId drives the lineId episode segment as
+        // feeds `meta.episodeId` — byte-for-byte identical by construction.
+        episode_id: &meta.episode_id,
     };
     let (commands, addr_diags) = address::assign_addresses(shots, &idcx);
     diags.extend(addr_diags);
@@ -106,31 +112,42 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
     }
     let branch_paths = collect_branch_paths(&doc);
     Ok(Artifact {
-        lute: LUTE_IR_VERSION.to_string(),
+        lute: LUTE_LANG_VERSION.to_string(),
+        ir_version: LUTE_IR_VERSION.to_string(),
+        capability_version: input.snapshot.version.clone(),
         meta,
         state: state_entries(&folded.env.state, &branch_paths),
         commands,
     })
 }
 
-/// Envelope meta (§4.1). `character`/`season`/`episode` are §6.1 REQUIRED
+/// Envelope meta (§4.1 + A4). `character`/`season`/`episode` are §6.1 REQUIRED
 /// keys — the gate proved them present; degrade to defaults, never panic.
-/// `title` is read from the raw frontmatter (plan spec-gap note 3).
+/// `title` and the authored `episodeId` live only in the raw frontmatter
+/// (neither is lifted into `TypedMeta`); both are read from the mapping here.
 fn artifact_meta(doc: &Document, folded: &FoldedEnv) -> ArtifactMeta {
     let character = folded.typed.character.clone().unwrap_or_default();
     let season = folded.typed.season.unwrap_or(0);
     let episode = folded.typed.episode.unwrap_or(0);
-    let title = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml)
-        .ok()
-        .and_then(|m| {
-            m.get(serde_yaml::Value::String("title".to_string()))
-                .and_then(|v| v.as_str().map(String::from))
-        });
+    let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
+    let lookup = |key: &str| -> Option<String> {
+        raw.as_ref()?
+            .get(serde_yaml::Value::String(key.to_string()))?
+            .as_str()
+            .map(String::from)
+    };
+    let title = lookup("title");
+    // A4/A9: an authored, non-empty `episodeId` is used VERBATIM; otherwise the
+    // lowercase default `s{season:02}ep{episode:02}` — the byte-for-byte
+    // derivation input the address pass reuses for every lineId episode segment.
+    let episode_id = lookup("episodeId")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("s{season:02}ep{episode:02}"));
     ArtifactMeta {
         character,
         season,
         episode,
-        episode_id: format!("S{:02}EP{:02}", season, episode),
+        episode_id,
         title,
     }
 }
@@ -279,6 +296,7 @@ fn literal_json(l: &Literal) -> serde_json::Value {
 mod tests {
     #[test]
     fn ir_version_matches_language_version() {
-        assert_eq!(super::LUTE_IR_VERSION, "0.0.1");
+        assert_eq!(super::LUTE_IR_VERSION, "0.1.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.1.0");
     }
 }

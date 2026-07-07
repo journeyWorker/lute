@@ -8,10 +8,18 @@ use serde::Serialize;
 
 use crate::expr::ExprNode;
 
-/// Envelope (§4.1): version + meta + folded state schema + flat command array.
+/// Envelope (§4.1 + A9): language-version pin + IR schema version + capability
+/// snapshot stamp + meta + folded state schema + flat command array. Field
+/// DECLARATION ORDER is the serialized order (byte-stability contract).
 #[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Artifact {
+    /// Language-version pin (DSL 0.1.0), serialized as `lute`.
     pub lute: String,
+    /// IR schema version (A9), independent of `lute`; engines gate parsing on it.
+    pub ir_version: String,
+    /// Plugin-system §13 capability snapshot stamp (A9): `snapshot.version`.
+    pub capability_version: String,
     pub meta: ArtifactMeta,
     pub state: Vec<StateEntry>,
     pub commands: Vec<Command>,
