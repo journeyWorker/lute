@@ -705,7 +705,10 @@ fn branch_span_nodes(nodes: &[Node], id: &str) -> Option<Span> {
 /// branch/hub-folded schema) from `doc` + the merged `meta` alone — the LSP
 /// handlers carry no full `CheckInput`. Three cases, mirroring the checker:
 /// - `scene.choices.<id>` -> the matching `<branch id>`/`<hub id>`'s choice ids ∪
-///   `unset` (the implicit recording enum, §11.1/§11.1.3);
+///   `unset` (the implicit recording enum, §11.1/§11.1.3); with NO matching
+///   branch/hub it falls through to the schema-decl case below, since the
+///   checker's fold (`enum_members` over the FOLDED schema) also folds an author
+///   `state: scene.choices.<id>` enum into a finite domain;
 /// - `scene.visited.<hubId>.<choiceId>` -> the folded per-choice bool: `true` /
 ///   `false` / `unset` (§9.6, §11.1.3);
 /// - else the merged `meta` schema decl's type: `Enum(members)` -> members ∪
@@ -729,11 +732,17 @@ pub(crate) fn subject_domain(
     // wrongly accepted `-` (a `is_path_byte`) here, diverging from the checker.
     let path = subject_reconstructed_path(subject_path)?;
     let path = path.as_str();
-    // Case 1: `scene.choices.<id>` -> the branch/hub's choice ids ∪ `unset`.
+    // Case 1: `scene.choices.<id>` -> the branch/hub's choice ids ∪ `unset` when a
+    // `<branch>`/`<hub>` declares `id`. When NONE does, fall through to case 3: the
+    // checker's fold (`infer_domain` -> `enum_members` over the FOLDED schema) also
+    // folds an author `state: scene.choices.<id>: { enum: … }` decl into a finite
+    // domain, so an unmatched `branch_choice_ids` must NOT early-return `None` —
+    // that would hide a domain `check()` treats as finite (§11.1, no-divergence).
     if let Some(id) = path.strip_prefix("scene.choices.") {
-        let mut members = branch_choice_ids(doc, id)?;
-        members.push("unset".to_string());
-        return Some(members);
+        if let Some(mut members) = branch_choice_ids(doc, id) {
+            members.push("unset".to_string());
+            return Some(members);
+        }
     }
     // Case 2: `scene.visited.<hubId>.<choiceId>` -> the folded bool ∪ `unset`.
     if is_visited_bool(doc, path) {
@@ -1204,6 +1213,50 @@ mod tests {
         assert!(
             matches!(resolve(&doc, test_off), Some(Cursor::Cel { .. })),
             "a test= value is still a CEL slot"
+        );
+    }
+
+    /// Plan D final-review no-divergence fix: an author-declared
+    /// `scene.choices.<id>` enum in `state:` with NO matching `<branch>`/`<hub>`
+    /// is a FINITE domain to the checker (`infer_domain` -> `enum_members` over
+    /// the folded schema, which folds author `state:` decls under
+    /// `scene.choices.*`), so an exhaustive `<match>` is accepted. `subject_domain`
+    /// must offer that SAME domain (members ∪ `unset`) instead of early-returning
+    /// `None` when `branch_choice_ids` finds no branch/hub — else hover/completion
+    /// diverge from what `check()` folds.
+    #[test]
+    fn subject_domain_authored_scene_choices_enum_without_branch() {
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.choices.manual: { type: { enum: [a, b] } }\n---\n## Shot 1.\n<match on=\"scene.choices.manual\">\n<when is=\"a\">\n:narrator: x\n</when>\n<when is=\"b\">\n:narrator: y\n</when>\n<when is=\"unset\">\n:narrator: z\n</when>\n</match>\n";
+        let (doc, _) = parse(text);
+        let (meta, _) =
+            lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
+        // No `<branch>`/`<hub>` declares `manual`, so `branch_choice_ids` is None;
+        // the domain must instead come from the author-declared enum (case 3).
+        assert_eq!(
+            subject_domain(&doc, &meta, "scene.choices.manual"),
+            Some(vec!["a".to_string(), "b".to_string(), "unset".to_string()]),
+            "authored scene.choices.* enum -> members ∪ unset (matches the checker's finite domain)"
+        );
+        // Divergence guard: the checker ACCEPTS the exhaustive match (folds the
+        // author enum as a finite domain), so the LSP offering that domain is the
+        // non-divergent behavior — not a domain `check()` never folds.
+        let input = lute_check::CheckInput {
+            text: text.to_string(),
+            uri: "when_is_domain".into(),
+            snapshot: lute_manifest::core::load_core_snapshot(),
+            providers: lute_manifest::provider::ProviderSet::default(),
+            mode: lute_check::Mode::Author,
+            imports: lute_check::SchemaImports::default(),
+            components: Default::default(),
+        };
+        let codes: Vec<String> = lute_check::check(&input)
+            .diagnostics
+            .into_iter()
+            .map(|d| d.code)
+            .collect();
+        assert!(
+            !codes.contains(&"E-NONEXHAUSTIVE".to_string()),
+            "checker folds the author enum as finite + accepts the exhaustive match: {codes:?}"
         );
     }
 }
