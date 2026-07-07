@@ -5,11 +5,11 @@ use lute_check::ctx::Env;
 use lute_check::{lower_node, Ctx, InjectKind, InjectedCommand, StageState};
 use lute_core_span::{Diagnostic, Layer, Severity};
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::{Arm, AttrValue, Branch, ClipNode, Directive, Match, Node, Timeline};
+use lute_syntax::ast::{Arm, AttrValue, Branch, ClipNode, Directive, Hub, Match, Node, Timeline};
 
 use crate::cfg::{Emitter, Label};
 use crate::ir::*;
-use crate::lower::{lower_directive, lower_line, lower_set};
+use crate::lower::{attr_bool, attr_string, lower_directive, lower_line, lower_set};
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
 use crate::schedule::schedule_timeline;
 
@@ -74,24 +74,8 @@ pub fn walk_seq(
                 state = walk_timeline(em, tl, state, cx, &cont);
             }
             Node::Hub(h) => {
-                // `<hub>` CFG lowering is not yet implemented (Plan C). The check
-                // gate (`E-HUB-UNSUPPORTED`) that used to stop a hub document
-                // before compile is gone (Plan B, real hub *checking*), so a
-                // check-passing hub doc now reaches here — emit a clean compile
-                // error instead of panicking. `compile()` surfaces it as
-                // `Result::Err` (dsl §7.3.2, §11.1.3).
-                diags.push(Diagnostic {
-                    code: "E-HUB-LOWERING-UNSUPPORTED".to_string(),
-                    severity: Severity::Error,
-                    message: "`<hub>` compilation is not yet implemented; hub CFG lowering lands \
-                              in a later cutover (Plan C) — a hub document passes check but cannot \
-                              be compiled yet (dsl §7.3.2, §11.1.3)"
-                        .to_string(),
-                    span: h.span,
-                    layer: Layer::Logic,
-                    fixits: Vec::new(),
-                    provenance: None,
-                });
+                let cont = reachable_after(&nodes[i + 1..], tail);
+                state = walk_hub(em, h, state, cx, &cont, diags);
             }
         }
     }
@@ -302,6 +286,74 @@ fn walk_branch(
         exits.push(exit);
     }
     em.bind(conv);
+    let mut joined = join_states(&state, exits);
+    let mut diags = base_diags;
+    diags.append(&mut joined.diags);
+    joined.diags = diags;
+    joined
+}
+
+fn walk_hub(
+    em: &mut Emitter,
+    h: &Hub,
+    state: StageState,
+    cx: &mut WalkCx<'_>,
+    tail: &[Node],
+    diags: &mut Vec<Diagnostic>,
+) -> StageState {
+    // The hub id is the `id` attr (no dedicated AST field, unlike a branch).
+    let id = attr_string(&h.attrs, "id").unwrap_or_default();
+    let conv = em.fresh();
+    let arms: Vec<Label> = h.choices.iter().map(|_| em.fresh()).collect();
+    let options = h
+        .choices
+        .iter()
+        .zip(&arms)
+        .map(|(c, l)| HubOption {
+            id: c.id.clone(),
+            label: c.label.clone(),
+            line_id: String::new(),
+            once: attr_bool(&c.attrs, "once").unwrap_or(false),
+            exit: attr_bool(&c.attrs, "exit").unwrap_or(false),
+            when: c.when.as_ref().map(|w| w.raw.clone()),
+            expr: c.when.as_ref().and_then(|w| crate::expr::lower_expr(&w.raw)),
+            target: l.sym(),
+        })
+        .collect();
+    let mut cmd = Command::Hub(HubCmd {
+        addr: String::new(),
+        id: id.clone(),
+        record_key: format!("scene.choices.{id}"),
+        options,
+        converge: conv.sym(),
+        stamp: Stamp::default(),
+    });
+    apply_source(&mut cmd, cx);
+    em.push(cmd);
+    // Fork (D9): every arm starts from the ENTRY state; entry diagnostics are
+    // drained first so per-arm clones don't duplicate them (as in `walk_branch`).
+    let mut state = state;
+    let base_diags = std::mem::take(&mut state.diags);
+    let mut exits = Vec::with_capacity(h.choices.len());
+    for (c, l) in h.choices.iter().zip(&arms) {
+        em.bind(*l);
+        let exit = walk_seq(em, &c.body, state.clone(), cx, tail, diags);
+        // Flat-VM contract (A2 §7): an EXIT arm ends in a forward Jump→converge,
+        // exactly like a `<choice>` arm; a NON-exit arm emits NO trailing jump —
+        // its completion returns control to the hub loop head, a RUNTIME property
+        // of the `hub` kind. No backward jump is emitted (D2/§3.2 stays flat,
+        // forward-only, "reduces to data").
+        if attr_bool(&c.attrs, "exit").unwrap_or(false) {
+            em.push(Command::Jump(JumpCmd {
+                addr: String::new(),
+                target: conv.sym(),
+            }));
+        }
+        exits.push(exit);
+    }
+    em.bind(conv);
+    // Hub arms have no dominance relation (like `<match>` arms) — arm writes are
+    // may-writes at hub exit; `join_states` applies the conservative join.
     let mut joined = join_states(&state, exits);
     let mut diags = base_diags;
     diags.append(&mut joined.diags);

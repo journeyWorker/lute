@@ -105,6 +105,7 @@ pub enum Command {
     Set(SetCmd),
     Choice(ChoiceCmd),
     Match(MatchCmd),
+    Hub(HubCmd),
     Jump(JumpCmd),
     Barrier(BarrierCmd),
     #[serde(rename = "plugin")]
@@ -304,6 +305,38 @@ pub struct ChoiceOption {
     pub target: String,
 }
 
+/// `<hub>` (§7.3.2, IR A2): structurally a `choice` plus revisit flags. The
+/// hub record is the loop head; re-presentation is a RUNTIME property of the
+/// `hub` kind, so no backward jump is emitted (D2/§3.2).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HubCmd {
+    pub addr: String,
+    pub id: String,
+    pub record_key: String,
+    pub options: Vec<HubOption>,
+    pub converge: String,
+    #[serde(flatten)]
+    pub stamp: Stamp,
+}
+
+/// One `<hub>` option: a `<choice>` option plus always-present `once`/`exit`
+/// revisit flags. `when`/`expr` appear only when the choice is guarded.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HubOption {
+    pub id: String,
+    pub label: String,
+    pub line_id: String,
+    pub once: bool,
+    pub exit: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expr: Option<ExprNode>,
+    pub target: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MatchCmd {
@@ -366,6 +399,7 @@ impl Command {
             Command::Set(c) => &mut c.addr,
             Command::Choice(c) => &mut c.addr,
             Command::Match(c) => &mut c.addr,
+            Command::Hub(c) => &mut c.addr,
             Command::Jump(c) => &mut c.addr,
             Command::Barrier(c) => &mut c.addr,
             Command::Other(c) => &mut c.addr,
@@ -393,6 +427,12 @@ impl Command {
                 }
                 f(&mut m.converge);
             }
+            Command::Hub(c) => {
+                for o in &mut c.options {
+                    f(&mut o.target);
+                }
+                f(&mut c.converge);
+            }
             _ => {}
         }
     }
@@ -412,6 +452,7 @@ impl Command {
             Command::Set(c) => Some(&mut c.stamp),
             Command::Choice(c) => Some(&mut c.stamp),
             Command::Match(c) => Some(&mut c.stamp),
+            Command::Hub(c) => Some(&mut c.stamp),
             Command::Other(c) => Some(&mut c.stamp),
             Command::Jump(_) | Command::Barrier(_) => None,
         }

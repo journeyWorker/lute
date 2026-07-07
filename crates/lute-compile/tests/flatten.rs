@@ -51,6 +51,7 @@ fn kind(cmd: &Command) -> &'static str {
         Command::Set(_) => "set",
         Command::Choice(_) => "choice",
         Command::Match(_) => "match",
+        Command::Hub(_) => "hub",
         Command::Jump(_) => "jump",
         Command::Barrier(_) => "barrier",
         Command::Other(_) => "plugin",

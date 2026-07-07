@@ -120,6 +120,11 @@ fn assign_identity(cmds: &mut [Command], cx: &IdCx<'_>) {
                     o.line_id = format!("{prefix}.{}.{}", c.branch_id, o.id);
                 }
             }
+            Command::Hub(h) => {
+                for o in &mut h.options {
+                    o.line_id = format!("{prefix}.{}.{}", h.id, o.id);
+                }
+            }
             _ => {}
         }
     }
