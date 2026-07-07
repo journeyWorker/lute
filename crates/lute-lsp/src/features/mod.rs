@@ -57,8 +57,8 @@ use lute_manifest::schema::{AssetKindDecl, DefDecl};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, CelSlot, ClipNode, Directive, Document, Interp, InterpKind, Line, Node,
-    Set,
+    Arm, Attr, AttrValue, CelSlot, ClipNode, Directive, Document, Hub, Interp, InterpKind, Line,
+    Node, Set,
 };
 
 /// Merge imported schema (dsl §9.2) into a document's typed frontmatter so the
@@ -121,6 +121,12 @@ pub(crate) enum Cursor<'a> {
     /// equivalent state-path (`Path`) / `@ref` (`Ref`) referent, or note the
     /// reserved token (`Reserved`).
     Interp(&'a Interp),
+    /// Inside a `<when is="…">` literal pattern value (dsl §7.3.1). Unlike a
+    /// `test=` guard (CEL), the `is=` value is a `|`-alternation of literals over
+    /// the enclosing `<match>` subject's FINITE domain; `subject_path` is that
+    /// subject's raw path so hover/completion can derive the domain
+    /// ([`subject_domain`]).
+    IsPattern { subject_path: &'a str },
 }
 
 /// Resolve the innermost construct containing `off` (a byte offset into the
@@ -181,7 +187,19 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
             }
             for arm in &m.arms {
                 match arm {
-                    Arm::When { is: _, test, body, span } if span_contains(*span, off) => {
+                    Arm::When { is, test, body, span } if span_contains(*span, off) => {
+                        // Check `is` FIRST: an `is=`-only `<when>` gives `test` an
+                        // empty slot spanning the WHOLE open tag (parser
+                        // blocks.rs), which would otherwise swallow the `is=`
+                        // cursor. The `is=` value is a literal pattern over the
+                        // subject's finite domain (dsl §7.3.1), NOT CEL.
+                        if let Some(pat) = is {
+                            if span_contains(pat.span, off) {
+                                return Some(Cursor::IsPattern {
+                                    subject_path: m.subject.raw.as_str(),
+                                });
+                            }
+                        }
                         if span_contains(test.span, off) {
                             return Some(Cursor::Cel {
                                 slot: test,
@@ -682,6 +700,174 @@ fn branch_span_nodes(nodes: &[Node], id: &str) -> Option<Span> {
     None
 }
 
+/// The finite value domain a `<when is="…">` literal may draw from (dsl §7.3.1),
+/// reproducing the checker's fold ([`lute_check`]'s `infer_domain` over the
+/// branch/hub-folded schema) from `doc` + the merged `meta` alone — the LSP
+/// handlers carry no full `CheckInput`. Three cases, mirroring the checker:
+/// - `scene.choices.<id>` -> the matching `<branch id>`/`<hub id>`'s choice ids ∪
+///   `unset` (the implicit recording enum, §11.1/§11.1.3);
+/// - `scene.visited.<hubId>.<choiceId>` -> the folded per-choice bool: `true` /
+///   `false` / `unset` (§9.6, §11.1.3);
+/// - else the merged `meta` schema decl's type: `Enum(members)` -> members ∪
+///   `unset`; `Bool` -> `true`/`false`/`unset`; anything else -> `None`.
+///
+/// `None` for a non-path subject (a compound `on=` expression) or a path with no
+/// finite domain — the checker's INFINITE case (requires `<otherwise>`, no `is=`
+/// menu). Shared by hover + completion so the two never diverge.
+pub(crate) fn subject_domain(
+    doc: &Document,
+    meta: &lute_check::TypedMeta,
+    subject_path: &str,
+) -> Option<Vec<String>> {
+    let path = subject_path.trim();
+    // Only a bare dotted path is a subject with a derivable domain; a compound
+    // expression (`isSet(run.x)`, `a == b`) is INFINITE — matching the checker's
+    // `subject_path` -> `select_path`, which yields None for a non-path subject.
+    if path.is_empty() || !path.bytes().all(is_path_byte) {
+        return None;
+    }
+    // Case 1: `scene.choices.<id>` -> the branch/hub's choice ids ∪ `unset`.
+    if let Some(id) = path.strip_prefix("scene.choices.") {
+        let mut members = branch_choice_ids(doc, id)?;
+        members.push("unset".to_string());
+        return Some(members);
+    }
+    // Case 2: `scene.visited.<hubId>.<choiceId>` -> the folded bool ∪ `unset`.
+    if is_visited_bool(doc, path) {
+        return Some(bool_domain());
+    }
+    // Case 3: the declared state decl's finite type.
+    match &meta.state.decls.get(path)?.ty {
+        Type::Enum(members) => {
+            let mut vals = members.clone();
+            vals.push("unset".to_string());
+            Some(vals)
+        }
+        Type::Bool => Some(bool_domain()),
+        _ => None,
+    }
+}
+
+/// `true`/`false`/`unset` — the finite domain of a `bool` (or `scene.visited.*`)
+/// `<when is>` subject; `unset` is a valid `is=` literal (§7.3.1).
+fn bool_domain() -> Vec<String> {
+    vec!["true".to_string(), "false".to_string(), "unset".to_string()]
+}
+
+/// The `id` attribute of a `<hub>` (a string literal), if present.
+fn hub_decl_id(h: &Hub) -> Option<&str> {
+    h.attrs.iter().find(|a| a.key == "id").and_then(|a| match &a.value {
+        AttrValue::Str(s) => Some(s.as_str()),
+        _ => None,
+    })
+}
+
+/// The direct choice ids of the `<branch id>` / `<hub id>` named `id`, searched
+/// depth-first through nested bodies (a branch/hub may live in a match arm or
+/// another choice body — the D2 recursion). Mirrors the checker's implicit
+/// `scene.choices.<id>` enum (`check_branch`/`check_hub`: members = the choice
+/// ids in document order). `None` when no branch/hub declares `id` (the checker's
+/// unfolded -> INFINITE -> no-domain case).
+fn branch_choice_ids(doc: &Document, id: &str) -> Option<Vec<String>> {
+    for shot in &doc.shots {
+        if let Some(ids) = branch_choice_ids_nodes(&shot.body, id) {
+            return Some(ids);
+        }
+    }
+    None
+}
+
+fn branch_choice_ids_nodes(nodes: &[Node], id: &str) -> Option<Vec<String>> {
+    for node in nodes {
+        match node {
+            Node::Branch(b) => {
+                if b.id == id {
+                    return Some(b.choices.iter().map(|c| c.id.clone()).collect());
+                }
+                for c in &b.choices {
+                    if let Some(ids) = branch_choice_ids_nodes(&c.body, id) {
+                        return Some(ids);
+                    }
+                }
+            }
+            Node::Hub(h) => {
+                if hub_decl_id(h) == Some(id) {
+                    return Some(h.choices.iter().map(|c| c.id.clone()).collect());
+                }
+                for c in &h.choices {
+                    if let Some(ids) = branch_choice_ids_nodes(&c.body, id) {
+                        return Some(ids);
+                    }
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let body = match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
+                    };
+                    if let Some(ids) = branch_choice_ids_nodes(body, id) {
+                        return Some(ids);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// True when `path` is a folded `scene.visited.<hubId>.<choiceId>` — some
+/// `<hub id="hubId">` declares a `<choice id="choiceId">` (the per-choice bool of
+/// §9.6/§11.1.3). Reproduces `check_hub`'s `scene.visited.<hubId>.<choiceId>`
+/// decl WITHOUT the fold: only a real hub+choice yields the bool domain.
+fn is_visited_bool(doc: &Document, path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("scene.visited.") else {
+        return false;
+    };
+    // A folded visited leaf is exactly `<hubId>.<choiceId>` — both single tokens.
+    let Some((hub, choice)) = rest.split_once('.') else {
+        return false;
+    };
+    if choice.contains('.') {
+        return false;
+    }
+    doc.shots
+        .iter()
+        .any(|s| visited_in_nodes(&s.body, hub, choice))
+}
+
+fn visited_in_nodes(nodes: &[Node], hub: &str, choice: &str) -> bool {
+    for node in nodes {
+        match node {
+            Node::Hub(h) => {
+                if hub_decl_id(h) == Some(hub) && h.choices.iter().any(|c| c.id == choice) {
+                    return true;
+                }
+                if h.choices.iter().any(|c| visited_in_nodes(&c.body, hub, choice)) {
+                    return true;
+                }
+            }
+            Node::Branch(b) => {
+                if b.choices.iter().any(|c| visited_in_nodes(&c.body, hub, choice)) {
+                    return true;
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let body = match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
+                    };
+                    if visited_in_nodes(body, hub, choice) {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Document span of a `state:` decl key inside the frontmatter YAML, or a `defs:`
 /// key for an `@ref`. Returns a byte-only span (line/col recomputed by the
 /// backend's `TextIndex`, per the module contract).
@@ -959,6 +1145,28 @@ mod tests {
             uses.len(),
             2,
             "only the ::set target + match subject are uses (string literal excluded), got {uses:?}"
+        );
+    }
+
+    /// D3: a cursor inside a `<when is="…">` value resolves to [`Cursor::IsPattern`]
+    /// carrying the enclosing `<match>` subject path — NOT the empty `test` slot
+    /// (which, for an `is=`-only `<when>`, spans the whole open tag). A cursor on a
+    /// `test=` value still resolves to [`Cursor::Cel`] (regression guard).
+    #[test]
+    fn resolve_when_is_vs_test() {
+        let text = "## Shot 1.\n<match on=\"scene.choices.pick\">\n<when is=\"a\">\n:f: x.\n</when>\n<when test=\"true\">\n:f: y.\n</when>\n<otherwise>\n:f: z.\n</otherwise>\n</match>\n";
+        let (doc, _) = parse(text);
+        let is_off = text.find("is=\"a\"").unwrap() + "is=\"".len();
+        match resolve(&doc, is_off) {
+            Some(Cursor::IsPattern { subject_path }) => {
+                assert_eq!(subject_path, "scene.choices.pick", "carries the match subject");
+            }
+            other => panic!("expected Cursor::IsPattern, got {other:?}"),
+        }
+        let test_off = text.find("test=\"true\"").unwrap() + "test=\"".len();
+        assert!(
+            matches!(resolve(&doc, test_off), Some(Cursor::Cel { .. })),
+            "a test= value is still a CEL slot"
         );
     }
 }

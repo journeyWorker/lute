@@ -96,6 +96,8 @@ pub fn hover_at(
                 i.raw
             )),
         },
+        Cursor::IsPattern { subject_path } => super::subject_domain(doc, &meta, subject_path)
+            .map(|domain| format!("**pattern** — domain: {}", domain.join(", "))),
         Cursor::DirectiveAttrArea { .. }
         | Cursor::AttrKey {
             directive: None, ..
@@ -510,5 +512,25 @@ mod tests {
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
         assert!(s.contains("reserved"), "notes the reserved token: {s}");
+    }
+
+    /// D3: hover on a `<when is="gold">` value whose `<match>` subject is a
+    /// declared enum shows the subject's finite domain incl. `unset` (dsl §7.3.1)
+    /// — the `is=` literal pattern menu, sourced from the same fold the checker
+    /// uses. Pre-D3 the `is` value was discarded (no hover).
+    #[test]
+    fn hover_on_when_is_shows_enum_domain() {
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n:fixer: nice.\n</when>\n<otherwise>\n:fixer: ok.\n</otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("is=\"gold\"").unwrap() + "is=\"".len() + 1; // inside "gold"
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(
+            s.contains("gold")
+                && s.contains("silver")
+                && s.contains("bronze")
+                && s.contains("unset"),
+            "hover shows the enum domain ∪ unset: {s}"
+        );
     }
 }
