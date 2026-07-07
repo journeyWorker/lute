@@ -9,7 +9,7 @@
  *   1. `## ` shot heading / `# ` document title      (§6.2, §6.3)
  *   2. `::set{ … }` assignment directive             (§7.3.4)  — tried before `::`
  *   3. `::`ident`{ … }` staging directive (leaf)      (§7.2)
- *   4. `:line[speaker]{attrs}: text` content line     (§7.1)   — text OPAQUE to EOL
+ *   4. `:speaker{attrs}: text` content line          (§7.1)   — text, may {{…}}
  *   5. `<tag …> … </tag>` logic / timeline BLOCKS     (§7.3, §7.4) — these NEST
  *   6. `/* … *​/` comments are trivia                  (§4.2)   — `extras`
  *
@@ -60,6 +60,7 @@ module.exports = grammar({
         $.branch,
         $.match,
         $.timeline,
+        $.hub,
       ),
 
     // ---- staging (leaf) ----------------------------------------------------
@@ -77,12 +78,14 @@ module.exports = grammar({
     directive: ($) => seq("::", $.ident, optional($.attrs)),
 
     // ---- content -----------------------------------------------------------
-    // Line ::= ":line[" Speaker "]" Attrs? ":" WS Text (§7.1). Text opaque.
+    // Line ::= ":" Speaker Attrs? ":" WS Text (§7.1). Text MAY interpolate (§7.6).
+    // The leading marker is a single `:`; `::set{` and `::` are longer tokens, so
+    // maximal-munch picks the directive/set forms at a `::` boundary and a line
+    // only ever starts on `:` + a non-`:` speaker.
     line: ($) =>
       seq(
-        ":line[",
+        ":",
         $.speaker,
-        "]",
         optional($.attrs),
         ":",
         optional($.text),
@@ -109,6 +112,33 @@ module.exports = grammar({
         "</choice>",
       ),
 
+    // ---- hub (nest; §7.3.2) -----------------------------------------------
+    // Hub ::= "<hub" Attrs ">" HubChoice+ "</hub>" (§7.3.2). A revisit
+    // conversation that re-presents eligible choices. `id` required; the
+    // `once`/`exit` flags and `into`/`persist`/`value`/`when` sugar all ride the
+    // generic `_tag_attr` machinery (bare-bool `once`/`exit`; string/ref values)
+    // — no new attr vocabulary needed.
+    hub: ($) =>
+      seq(
+        "<hub",
+        repeat($._tag_attr),
+        ">",
+        repeat($.hub_choice),
+        "</hub>",
+      ),
+
+    // HubChoice ::= "<choice" Attrs ">" Node* "</choice>" (§7.3.2). Same surface
+    // as a branch `choice`, but a distinct node so editors can tell a hub arm
+    // (may carry `once`/`exit`) from a branch arm.
+    hub_choice: ($) =>
+      seq(
+        "<choice",
+        repeat($._tag_attr),
+        ">",
+        repeat($._node),
+        "</choice>",
+      ),
+
     // Match ::= "<match" Attrs ">" When+ Otherwise? "</match>" (§7.3, §11.2).
     match: ($) =>
       seq(
@@ -122,11 +152,44 @@ module.exports = grammar({
 
     // When ::= "<when" Attrs ">" Node* "</when>" (§7.3).
     when: ($) =>
-      seq("<when", repeat($._tag_attr), ">", repeat($._node), "</when>"),
+      seq(
+        "<when",
+        repeat(choice($._tag_attr, $.when_is)),
+        ">",
+        repeat($._node),
+        "</when>",
+      ),
 
-    // Otherwise ::= "<otherwise>" Node* "</otherwise>" (§7.3).
+    // Otherwise ::= "<otherwise>" Node* "</otherwise>" (§7.3). NO attributes —
+    // any attribute on `<otherwise>` is a parse error (§7.3, S10).
     otherwise: ($) =>
-      seq("<otherwise", repeat($._tag_attr), ">", repeat($._node), "</otherwise>"),
+      seq("<otherwise", ">", repeat($._node), "</otherwise>"),
+
+    // ---- <when> literal pattern (`is`, §7.3.1) -----------------------------
+    // WhenIs ::= "is" "=" '"' WhenPattern '"' — the `<when is="…">` literal
+    // pattern. Unlike `test` (a CEL guard ⇒ `cel_attr`), `is` is a plain String
+    // whose *content* is a `|`-alternation of literals (enum member / true /
+    // false / Number / `unset`, §7.3.1). Given its own node (not the generic
+    // `attr` fallthrough) so editors can color each literal. `is` is a keyword
+    // only inside `<when …>` — tree-sitter's per-state lexer leaves a speaker /
+    // key named `is` elsewhere intact; it is NOT a `cel_key`.
+    when_is: ($) => seq($.when_key, "=", $.when_pattern),
+
+    when_key: ($) => "is",
+
+    // WhenPattern ::= Literal ( WS? "|" WS? Literal )* (§7.3.1). The interior is
+    // tokenized immediately (like `cel_string`) so a missing close `"` fails on
+    // the line rather than swallowing the next.
+    when_pattern: ($) =>
+      seq(
+        '"',
+        $.when_literal,
+        repeat(seq(token.immediate(/[ \t]*\|[ \t]*/), $.when_literal)),
+        token.immediate('"'),
+      ),
+
+    // Literal ::= EnumMember | "true" | "false" | Number | "unset" (§7.3.1).
+    when_literal: ($) => token.immediate(/[A-Za-z0-9_][A-Za-z0-9_.-]*/),
 
     // ---- timeline (nest, restricted body) ---------------------------------
     // Timeline ::= "<timeline" Attrs? ">" Track+ "</timeline>" (§7.4).
@@ -260,13 +323,62 @@ module.exports = grammar({
         /([^"'}\n]|"([^"\\\n]|\\[^\n])*"|'([^'\\\n]|\\[^\n])*')+/,
       ),
 
-    // Text ::= rest of line, verbatim, to EOL (§4.4). OPAQUE: `(`,`?`,`<`,`:`,
-    // quotes are not special. `token.immediate` keeps `extras` (the newline)
-    // from being skipped into the next line, and the leading space after `: `
-    // is consumed as part of the opaque run.
-    text: ($) => token.immediate(/[ \t]*[^ \t\r\n][^\r\n]*/),
+    // Text (§4.4/§7.1): the rest of a content line to EOL. Was one opaque token;
+    // now a run of opaque text chunks and `{{…}}` interpolations (§7.6). Chunks
+    // and openers are `token.immediate`, so `extras` (whitespace, comments, the
+    // newline) are never skipped mid-text: a `//` or `/*` INSIDE text stays
+    // literal text (Text is opaque, §4.2), text never spills onto the next line,
+    // and the leading space after `: ` is kept. NB: shared by `title`/`shot`
+    // headings — a heading with no `{{` yields a bare `(text)` exactly as before;
+    // a heading `{{…}}` is a harmless editor over-recognition (the spec restricts
+    // interpolation to content + `<choice label>`, enforced by the checker/LSP).
+    text: ($) =>
+      repeat1(choice($._text_chunk, $._text_special, $.escape, $.interpolation)),
 
-    // Comment ::= "/*" … "*/"  (§4.2). Trivia (an `extra`); does not nest.
-    comment: ($) => token(seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
+    // A run of literal text: anything but a brace, a backslash, or a newline.
+    // Stops at `{`/`\` so the longer `{{`/`\{{` tokens win by maximal munch.
+    _text_chunk: ($) => token.immediate(/[^{\\\r\n]+/),
+
+    // A lone `{` or `\` that does NOT open `{{`/`\{{` — literal text.
+    _text_special: ($) => token.immediate(/[{\\]/),
+
+    // Escape ::= "\{{" — a literal `{{` (renders one `{{`, §7.6). Consumed whole
+    // (3 chars) so its `{{` never opens an interpolation.
+    escape: ($) => token.immediate(/\\\{\{/),
+
+    // Interp ::= "{{" WS? ( Path | Ref | ReservedToken ) WS? "}}"  (§7.6). Only
+    // the three legal forms are admitted (a bare CEL expr is not, §7.6). The
+    // interior is immediate (no `extras` ⇒ no newline), so an unterminated `{{`
+    // fails on its line instead of swallowing the next. `ReservedToken` is
+    // `userName` (the runtime player name, §7.6).
+    interpolation: ($) =>
+      seq(
+        token.immediate("{{"),
+        optional(token.immediate(/[ \t]+/)),
+        choice(
+          alias(
+            token.immediate(/[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+/),
+            $.path,
+          ),
+          alias(token.immediate(/@[A-Za-z][A-Za-z0-9_-]*(\([^)\n]*\))?/), $.ref),
+          alias(token.immediate("userName"), $.reserved),
+        ),
+        optional(token.immediate(/[ \t]+/)),
+        token.immediate("}}"),
+      ),
+
+    // Comment (§4.2). Trivia (an `extra`); neither form nests. Block `/* … */`
+    // may span lines; line `//` runs to EOL. Per §4.2 a `//` is a comment only
+    // line-leading — this `extra` may also match a trailing `//` after structure
+    // (a harmless editor over-recognition), but a `//` INSIDE a content line's
+    // opaque Text stays text (text is immediate, so `extras` are never scanned
+    // there), and a `//` inside a quoted String is content (String is one token).
+    comment: ($) =>
+      token(
+        choice(
+          seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/"),
+          seq("//", /[^\n]*/),
+        ),
+      ),
   },
 });

@@ -18,6 +18,17 @@
   (attr (key) @_key (string) @name)
   (#eq? @_key "id")) @definition.function
 
+; `<hub id="…">` (§7.3.2) — a revisit-conversation entry; the hub id is a jump
+; target, like a branch id.
+(hub
+  (attr (key) @_key (string) @name)
+  (#eq? @_key "id")) @definition.class
+
+; hub `<choice id="…">` (§7.3.2) — each hub arm id is a jump target.
+(hub_choice
+  (attr (key) @_key (string) @name)
+  (#eq? @_key "id")) @definition.function
+
 ; ---- references -----------------------------------------------------------
 ; Bare `@ref` (§4.5) — a defs-backed guard / value reference; the ref token
 ; (leading `@` included) is both the reference site and its name. The bare
@@ -29,3 +40,7 @@
 ; §7.3/§9) — a navigable reference to declared state, mirroring the `@embedded`
 ; CEL treatment of the `::set` right-hand side.
 (cel_string (path) @name) @reference.call
+
+; State path inside a `{{…}}` interpolation (`{{run.coins}}`, §7.6) — a
+; navigable read of declared state, like the CEL-attr path above.
+(interpolation (path) @name) @reference.call
