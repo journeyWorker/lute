@@ -323,11 +323,41 @@ fn walk_match(
     let mut otherwise = None;
     for (arm, l) in m.arms.iter().zip(&labels) {
         match arm {
-            Arm::When { test, .. } => arms.push(MatchArm {
-                test: test.raw.clone(),
-                target: l.sym(),
-                expr: crate::expr::lower_expr(&test.raw),
-            }),
+            Arm::When {
+                is, test, span, ..
+            } => {
+                let expr = match crate::expr::synth_arm_expr(
+                    is.as_ref().map(|p| p.raw.as_str()),
+                    &test.raw,
+                    &m.subject.raw,
+                ) {
+                    crate::expr::ArmExpr::Lowered(expr) => expr,
+                    crate::expr::ArmExpr::UnsetOnCompoundSubject => {
+                        // A13 rule 5: `<when is="unset">` lowers to `!isSet(path)`,
+                        // which needs a bare-path subject. A compound subject cannot
+                        // be lowered — surface a compile error rather than silently
+                        // dropping the arm (its `expr` stays `None`).
+                        diags.push(Diagnostic {
+                            code: "E-WHEN-UNSET-SUBJECT".to_string(),
+                            severity: Severity::Error,
+                            message: "`<when is=\"unset\">` on a non-path <match> subject \
+                                      cannot be lowered to an executable expr (dsl §7.3.1 / \
+                                      IR A13)"
+                                .to_string(),
+                            span: *span,
+                            layer: Layer::Logic,
+                            fixits: Vec::new(),
+                            provenance: None,
+                        });
+                        None
+                    }
+                };
+                arms.push(MatchArm {
+                    test: test.raw.clone(),
+                    target: l.sym(),
+                    expr,
+                });
+            }
             Arm::Otherwise { .. } => otherwise = Some(l.sym()),
         }
     }
