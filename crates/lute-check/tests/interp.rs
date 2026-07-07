@@ -110,3 +110,23 @@ fn interp_ref_renderable_ok() {
         assert!(!c.contains(&code.to_string()), "{code} unexpected; got {c:?}");
     }
 }
+
+// `$` (the match subject) is legal ONLY in a `<when test>` (dsl §8.2), never in a
+// content interpolation — even one nested inside a `<match>` arm (§7.6 admits only
+// Path/Ref/userName). The parser classifies `{{$}}` as a `Path` raw `"$"`; it must
+// still be rejected regardless of the enclosing arm scope ⇒ E-DOLLAR-OUTSIDE-MATCH.
+#[test]
+fn interp_dollar_in_match_arm_rejected() {
+    let t = format!(
+        "{HDR}state:\n  scene.n: {{ type: number, default: 0 }}\n---\n## Shot 1.\n\
+         <match on=\"scene.n\">\n\
+         <when test=\"scene.n > 0\">\n:bianca: value {{{{$}}}}\n</when>\n\
+         <otherwise>\n:bianca: none\n</otherwise>\n\
+         </match>\n"
+    );
+    let c = codes(&t);
+    assert!(
+        c.contains(&"E-DOLLAR-OUTSIDE-MATCH".to_string()),
+        "`$` in a content interpolation is out of match scope (dsl §8.2); got {c:?}"
+    );
+}
