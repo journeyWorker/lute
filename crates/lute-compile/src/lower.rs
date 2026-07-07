@@ -171,6 +171,12 @@ pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option
 /// is listed here for completeness. `plugin` directives flow through steps 1–2
 /// (author → manifest, else none). `music`/`sfx`/`vfx`/`sprite` define no
 /// `wait` (§4.4) → `None` → the field is omitted, keeping them byte-stable.
+///
+/// Step 1 (author override) is only *reachable* through `compile()`'s D6 gate
+/// for directives whose manifest declares a `wait` attr — `video`/`camera`
+/// (dsl §999). `bg`/`cut` declare no `wait`, so an authored `wait` on them is
+/// rejected `E-UNKNOWN-ATTR` and never reaches here; they always carry the
+/// fixed resolved default (`bg`→`true`, `cut`→`false`).
 pub fn effective_wait(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option<bool> {
     if let Some(b) = attr_bool(&dir.attrs, "wait") {
         return Some(b);
@@ -333,9 +339,6 @@ mod tests {
         let v = lower_first("::cut{assetId=\"CUT.x\"}");
         assert_eq!(v["kind"], "cut");
         assert_eq!(v["wait"], false);
-        // Author `wait` overrides the family default.
-        let v = lower_first("::cut{assetId=\"CUT.x\" wait=\"true\"}");
-        assert_eq!(v["wait"], true);
         // bg/video default true; camera default false (manifest) — unchanged.
         assert_eq!(lower_first("::bg{location=\"r\"}")["wait"], true);
         assert_eq!(

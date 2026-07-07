@@ -253,6 +253,38 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
 }
 
 #[test]
+fn cut_wait_default_is_reachable_through_the_compile_gate() {
+    // C5 review: `::cut`'s manifest declares only assetId/action/full — NO
+    // `wait` — so an authored `wait` on `::cut` is rejected `E-UNKNOWN-ATTR` by
+    // the D6 check gate and never reaches lowering (the author-override path
+    // does not exist for `cut`; only `video`/`camera` declare `wait`, dsl §999).
+    // Prove the A8 materialization END-TO-END: a check-clean `::cut` compiles
+    // Ok and its record carries the resolved family default `wait: false` (v1
+    // non-blocking) — the same value the e2e goldens pin.
+    const DOC: &str = r#"---
+character: bianca
+season: 1
+episode: 2
+title: Cut gate
+---
+
+## Shot 1.
+
+::cut{assetId="CUT.scenarios.bianca.s01ep02.01" action="show" full="true"}
+
+:narrator: The beam lands full-frame.
+"#;
+    let artifact = compile(&input(DOC)).expect("clean cut doc compiles through the D6 gate");
+    let cut = artifact
+        .commands
+        .iter()
+        .map(|c| serde_json::to_value(c).unwrap())
+        .find(|v| v["kind"] == "cut")
+        .expect("a kind:\"cut\" record");
+    assert_eq!(cut["wait"], false, "cut carries the resolved family default");
+}
+
+#[test]
 fn injection_warnings_do_not_gate_and_output_is_byte_stable() {
     // The ::auto has no anchor => an anchor is INJECTED (a warning-free case);
     // W-INJECT-CONFLICT-class warnings never gate (only Errors do, D6).
