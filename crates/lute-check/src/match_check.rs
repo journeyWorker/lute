@@ -65,8 +65,8 @@ use cel_parser::ast::Expr;
 use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::types::Type;
-use lute_syntax::ast::{Arm, AttrValue, Branch, Document, IsPattern, Line, Match, Node};
+use lute_manifest::types::{Literal, Type};
+use lute_syntax::ast::{Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node};
 
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
@@ -81,6 +81,12 @@ pub const E_WHEN_PATTERN: &str = "E-WHEN-PATTERN";
 /// — otherwise every guard could be false at once and the branch would present a
 /// provably-emptyable menu. (An empty branch is `E-BRANCH-EMPTY`, not this.)
 pub const E_BRANCH_ALL_GUARDED: &str = "E-BRANCH-ALL-GUARDED";
+
+/// `E-HUB-NO-EXIT`: a `<hub>` (dsl §7.3.2, §11.1.3, D-C) that can neither exit
+/// nor auto-exit. A hub MUST carry at least one UNGUARDED (`when`-less) `exit`
+/// choice, OR have EVERY choice flagged `once` (so the eligible set provably
+/// empties and auto-exit fires). A hub satisfying neither loops forever.
+pub const E_HUB_NO_EXIT: &str = "E-HUB-NO-EXIT";
 
 /// A concrete, statically-known value an arm can match against.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -112,6 +118,18 @@ pub struct BranchRecord {
     /// The implicit declaration (`enum` of choice ids, scene-scoped, no default).
     pub decl: StateDecl,
     /// Diagnostics for this branch (currently only `E-DUP-BRANCH`).
+    pub diags: Vec<Diagnostic>,
+}
+
+/// One hub's recording result (dsl §11.1.3): the implicit declarations to fold
+/// into the schema — `scene.choices.<hubId>` (enum of choice ids ∪ `unset`) plus
+/// a per-choice `scene.visited.<hubId>.<choiceId>: bool` (default `false`) — and
+/// any diagnostics (`E-DUP-BRANCH`, `E-CHOICE-DUP`, `E-HUB-NO-EXIT`).
+#[derive(Clone, Debug)]
+pub struct HubRecord {
+    /// The implicit declarations (path -> decl) in document order.
+    pub decls: Vec<(String, StateDecl)>,
+    /// Diagnostics for this hub.
     pub diags: Vec<Diagnostic>,
 }
 
@@ -341,6 +359,135 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
         namespace: Namespace::Scene,
     };
     BranchRecord { path, decl, diags }
+}
+
+/// Record a `<hub>` (dsl §7.3.2, §11.1.3), mirroring [`check_branch`]. Emits:
+/// `E-DUP-BRANCH` if the hub id collides in the shared per-episode `seen` set
+/// (hub and branch ids record under one `scene.choices.*` domain); `E-CHOICE-DUP`
+/// on a repeated choice id (and `E-CHOICE-ID-RESERVED` on `id="unset"`, the
+/// implicit slot sentinel); `E-HUB-NO-EXIT` unless the hub has an UNGUARDED
+/// `exit` choice OR every choice is `once`. Returns the implicit recording decls:
+/// `scene.choices.<hubId>` (enum of choice ids ∪ `unset`, like a branch) plus a
+/// per-choice `scene.visited.<hubId>.<choiceId>: bool` (default `false`, §9.6).
+/// The `once`/`exit` flags arrive as bare (`BoolTrue`) attrs on each choice.
+pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
+    let id = attr_str(&hub.attrs, "id").unwrap_or("");
+    let mut diags = Vec::new();
+
+    // E-DUP-BRANCH (§11.1.3): hub and branch ids share ONE per-episode uniqueness
+    // domain (both record under `scene.choices.*`), so a hub id may not collide
+    // with a branch id (or another hub id) in the same episode.
+    if !seen.insert(id.to_string()) {
+        diags.push(diag(
+            "E-DUP-BRANCH",
+            Severity::Error,
+            format!(
+                "duplicate id `<hub id=\"{id}\">`; hub and branch ids share one uniqueness \
+                 domain and must be unique within the episode (dsl §11.1.3)"
+            ),
+            hub.span,
+        ));
+    }
+
+    // E-CHOICE-DUP / E-CHOICE-ID-RESERVED (§11.1.3, reusing §11.1): each choice id
+    // MUST be unique WITHIN the hub (it keys the recorded value + the option-label
+    // lineId, §12), and `unset` is reserved as the `scene.choices.<hubId>` default
+    // sentinel. One diagnostic per offending choice, at its span.
+    let mut choice_ids: BTreeSet<&str> = BTreeSet::new();
+    for choice in &hub.choices {
+        if !choice_ids.insert(choice.id.as_str()) {
+            diags.push(diag(
+                "E-CHOICE-DUP",
+                Severity::Error,
+                format!(
+                    "duplicate `<choice id=\"{}\">` within `<hub id=\"{id}\">`; choice ids must \
+                     be unique within a hub (dsl §11.1.3)",
+                    choice.id
+                ),
+                choice.span,
+            ));
+        }
+        if choice.id == "unset" {
+            diags.push(diag(
+                "E-CHOICE-ID-RESERVED",
+                Severity::Error,
+                format!(
+                    "`<choice id=\"unset\">` within `<hub id=\"{id}\">`; `unset` is reserved as \
+                     the implicit choice-slot default sentinel and may not be a choice id \
+                     (dsl §11.1.3)"
+                ),
+                choice.span,
+            ));
+        }
+    }
+
+    // E-HUB-NO-EXIT (§7.3.2, §11.1.3, D-C): a hub can terminate iff it has at
+    // least one UNGUARDED (`when`-less) `exit` choice, OR every choice is `once`
+    // (the eligible set provably empties → auto-exit). An empty hub is neither.
+    let has_unguarded_exit = hub
+        .choices
+        .iter()
+        .any(|c| c.when.is_none() && has_bool_attr(&c.attrs, "exit"));
+    let all_once =
+        !hub.choices.is_empty() && hub.choices.iter().all(|c| has_bool_attr(&c.attrs, "once"));
+    if !has_unguarded_exit && !all_once {
+        diags.push(diag(
+            E_HUB_NO_EXIT,
+            Severity::Error,
+            format!(
+                "`<hub id=\"{id}\">` can never exit; it needs at least one unguarded \
+                 (`when`-less) `exit` choice, or every choice must be `once` so the eligible \
+                 set provably empties (dsl §7.3.2, §11.1.3)"
+            ),
+            hub.span,
+        ));
+    }
+
+    // Implicit recording decls (§9.6, §11.1.3):
+    //  - `scene.choices.<hubId>`: enum of the hub's choice ids, scene-scoped, no
+    //    default (maybe-unset; domain = choice ids ∪ `unset`), MIRRORING a branch.
+    //  - per choice `scene.visited.<hubId>.<choiceId>: bool` default `false` — the
+    //    per-choice "taken" flag, a NEW reserved namespace kept SEPARATE from
+    //    `scene.choices.*` so `<hubId>` is both a leaf and a parent (§9.6).
+    let mut decls: Vec<(String, StateDecl)> = Vec::new();
+    let members = hub.choices.iter().map(|c| c.id.clone()).collect();
+    decls.push((
+        format!("scene.choices.{id}"),
+        StateDecl {
+            ty: Type::Enum(members),
+            default: None,
+            namespace: Namespace::Scene,
+        },
+    ));
+    for choice in &hub.choices {
+        decls.push((
+            format!("scene.visited.{id}.{}", choice.id),
+            StateDecl {
+                ty: Type::Bool,
+                default: Some(Literal::Bool(false)),
+                namespace: Namespace::Scene,
+            },
+        ));
+    }
+
+    HubRecord { decls, diags }
+}
+
+/// The plain string value of the attr keyed `key`, if present and a string
+/// literal (`key="s"`). A bare/`@ref` value or a missing key yields `None`.
+fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
+    attrs.iter().find(|a| a.key == key).and_then(|a| match &a.value {
+        AttrValue::Str(s) => Some(s.as_str()),
+        _ => None,
+    })
+}
+
+/// True when a bare boolean flag attr (`key`, e.g. `once`/`exit`) is present —
+/// parsed as [`AttrValue::BoolTrue`] (dsl §7.3.2 hub-choice flags).
+fn has_bool_attr(attrs: &[Attr], key: &str) -> bool {
+    attrs
+        .iter()
+        .any(|a| a.key == key && matches!(a.value, AttrValue::BoolTrue))
 }
 
 /// dsl §12: every content `:line`'s `lineId` (`{prefix}.{speaker}_{code}`) and

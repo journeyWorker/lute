@@ -15,14 +15,16 @@ pub mod timeline;
 
 pub use cel_paths::E_PATH_IDENT;
 pub use cel_resolve::{check_cel_slot, E_CEL_PROFILE};
-pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved, E_HUB_UNSUPPORTED};
+pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use defassign::check_definite_assignment;
 pub use inject::{
     lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,
 };
-pub use match_check::{check_branch, check_line_codes, check_match, is_exhaustive, BranchRecord};
+pub use match_check::{
+    check_branch, check_hub, check_line_codes, check_match, is_exhaustive, BranchRecord, HubRecord,
+};
 pub use meta::{
     parse_meta, parse_meta_kind, MetaKind, Namespace, StateDecl, StateSchema, TypedMeta,
 };

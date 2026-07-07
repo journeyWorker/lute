@@ -163,11 +163,13 @@ fn walk_branch(
     // else: a guarded-only branch may fall through — keep the pre-block set.
 }
 
-/// A `<hub>` (dsl §7.3.2): hub *checking* is gated by `E-HUB-UNSUPPORTED` (D6)
-/// until Plan B, so definite-assignment stays conservative here — each choice's
-/// `when` guard and body are walked on its own fork (mirroring `walk_branch`: the
-/// guard's value reads are still flagged), but nothing is folded back into the
-/// surviving set (a hub never proves a path assigned past the block).
+/// A `<hub>` (dsl §7.3.2, §11.1.3): hub arms have NO dominance relation among one
+/// another (same join rule as `<match>` arms), so a write inside one arm is a
+/// **may-write** at hub exit, never a definite assignment. Definite-assignment
+/// therefore stays conservative — each choice's `when` guard and body are walked
+/// on its own discarded fork (mirroring `walk_branch`: the guard's value reads are
+/// still flagged), but nothing is folded back into the surviving set (a hub never
+/// proves a path assigned past the block).
 fn walk_hub(hub: &Hub, schema: &StateSchema, assigned: &mut Assigned, diags: &mut Vec<Diagnostic>) {
     for choice in &hub.choices {
         let mut arm = assigned.clone();
