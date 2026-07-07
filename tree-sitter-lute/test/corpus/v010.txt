@@ -1,5 +1,5 @@
 ==================
-content line (0.1.0 :speaker{}: form, was :line[)
+content line (0.1.0 :speaker{}: form, replaces the removed content-line syntax)
 ==================
 :bianca{code="0010" emotion="delighted"}: Mr. Fixer!
 ---
@@ -171,3 +171,19 @@ otherwise takes no attributes (tightened)
     (cel_attr (cel_key) (cel_string (path)))
     (when (cel_attr (cel_key) (cel_string (ref))) (line (speaker) (text)))
     (otherwise (line (speaker) (text)))))
+
+==================
+when is signed-number literal (leading minus, structured when_pattern)
+==================
+<match on="scene.hp">
+  <when is="-1">
+    :narrator: down
+  </when>
+</match>
+---
+(source_file
+  (match
+    (cel_attr (cel_key) (cel_string (path)))
+    (when
+      (when_is (when_key) (when_pattern (when_literal)))
+      (line (speaker) (text)))))

@@ -189,7 +189,11 @@ module.exports = grammar({
       ),
 
     // Literal ::= EnumMember | "true" | "false" | Number | "unset" (§7.3.1).
-    when_literal: ($) => token.immediate(/[A-Za-z0-9_][A-Za-z0-9_.-]*/),
+    // Number (§4.4) may carry a leading "-" (e.g. `-1`, `-2.5`); the first
+    // alternative captures signed/decimal numerals, the second keeps bare
+    // enum-member / true / false / unset identifiers (and the `a|b` shape).
+    when_literal: ($) =>
+      token.immediate(/-?[0-9]+(\.[0-9]+)?|[A-Za-z0-9_][A-Za-z0-9_.-]*/),
 
     // ---- timeline (nest, restricted body) ---------------------------------
     // Timeline ::= "<timeline" Attrs? ">" Track+ "</timeline>" (§7.4).
