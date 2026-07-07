@@ -252,3 +252,144 @@ fn hub_demo_example_compiles() {
     assert_eq!(hub["id"], "chatWithBianca");
     assert_eq!(hub["recordKey"], "scene.choices.chatWithBianca");
 }
+
+// --- `lute context`: the project-resolved AUTHORING SURFACE an AI needs to
+// write valid Lute against THIS file's project (Task D4). Reuses the SAME
+// build_input/fold_env resolution check/compile use (no divergence); it is a
+// capability query, NOT validation, so it emits the surface regardless of
+// document diagnostics. exit 0 on success / 2 on an I/O failure.
+
+#[test]
+fn context_surface_has_plugin_and_core_directives() {
+    // With `--project`, the resolved snapshot activates the showcase plugin, so
+    // the surface carries the plugin `serve` directive (with its attrs +
+    // semantics) alongside the core directives, a non-empty enum map, folded
+    // `scene.*` state paths, and the resolved capabilityVersion.
+    let out = Command::new(BIN)
+        .args([
+            "context",
+            "../../docs/examples/showcase/episode01.lute",
+            "--project",
+            "../../docs/examples/showcase",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+
+    let ver = v["capabilityVersion"]
+        .as_str()
+        .expect("capabilityVersion is a string");
+    assert!(!ver.is_empty(), "resolved capabilityVersion is non-empty: {v}");
+
+    let dirs = v["directives"].as_array().expect("directives array");
+    let names: Vec<&str> = dirs.iter().filter_map(|d| d["name"].as_str()).collect();
+    assert!(
+        names.contains(&"serve"),
+        "plugin `serve` directive is present: {names:?}"
+    );
+    for core in ["bg", "music", "camera"] {
+        assert!(
+            names.contains(&core),
+            "core directive `{core}` is present: {names:?}"
+        );
+    }
+
+    let serve = dirs
+        .iter()
+        .find(|d| d["name"] == "serve")
+        .expect("the serve directive view");
+    let serve_attrs: Vec<&str> = serve["attrs"]
+        .as_array()
+        .expect("serve attrs array")
+        .iter()
+        .filter_map(|a| a["name"].as_str())
+        .collect();
+    assert!(
+        serve_attrs.contains(&"resultKey"),
+        "serve carries its resultKey attr: {serve_attrs:?}"
+    );
+    let serve_semantics: Vec<&str> = serve["semantics"]
+        .as_array()
+        .expect("serve semantics array")
+        .iter()
+        .filter_map(|s| s.as_str())
+        .collect();
+    assert!(
+        serve_semantics.contains(&"bridgeCall"),
+        "serve semantics carry `bridgeCall`: {serve_semantics:?}"
+    );
+
+    assert!(
+        v["enums"].as_object().is_some_and(|o| !o.is_empty()),
+        "enum map is non-empty: {v}"
+    );
+
+    let paths: Vec<&str> = v["stateSchema"]
+        .as_array()
+        .expect("stateSchema array")
+        .iter()
+        .filter_map(|s| s["path"].as_str())
+        .collect();
+    assert!(
+        paths.iter().any(|p| p.starts_with("scene.")),
+        "a folded `scene.*` state path is present: {paths:?}"
+    );
+}
+
+#[test]
+fn context_core_only_has_eight_core_directives() {
+    // No `--project` → the core-only `lute.core` snapshot: exactly the 8 baseline
+    // directives, no plugin `serve`, and the core capabilityVersion.
+    let out = Command::new(BIN)
+        .args(["context", "../../docs/examples/bianca-s01ep02.lute", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let names: Vec<&str> = v["directives"]
+        .as_array()
+        .expect("directives array")
+        .iter()
+        .filter_map(|d| d["name"].as_str())
+        .collect();
+    for core in ["bg", "music", "sfx", "auto", "vfx", "cut", "video", "camera"] {
+        assert!(
+            names.contains(&core),
+            "core directive `{core}` is present: {names:?}"
+        );
+    }
+    assert!(
+        !names.contains(&"serve"),
+        "core-only surface excludes the plugin `serve` directive: {names:?}"
+    );
+    assert!(
+        !v["capabilityVersion"]
+            .as_str()
+            .expect("capabilityVersion string")
+            .is_empty(),
+        "core capabilityVersion is non-empty: {v}"
+    );
+}
+
+#[test]
+fn context_missing_file_exits_two() {
+    let out = Command::new(BIN)
+        .args(["context", "/no/such/file.lute", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "an unreadable file exits 2 (I/O), matching run_check"
+    );
+}

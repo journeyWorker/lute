@@ -23,12 +23,13 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use lute_check::{check, parse_meta, CheckInput, Mode};
+use lute_check::{check, fold_env, parse_meta, CheckInput, Mode, Namespace};
 use lute_core_span::Severity;
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::project::{load_project, resolve_document_snapshot};
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
 use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::types::{Literal, Type};
 
 #[derive(Parser)]
 #[command(
@@ -84,6 +85,27 @@ enum Command {
         /// Path to the `.lute` file to tag.
         file: PathBuf,
     },
+    /// Emit the project-resolved AUTHORING SURFACE for a `.lute` file — the
+    /// directives/attrs/enums/asset-kinds/providers/state-schema/components +
+    /// capabilityVersion an AI needs to WRITE valid Lute against THIS file's
+    /// project. A capability query, NOT validation: reuses the SAME resolution
+    /// (`build_input`/`fold_env`) check/compile use, and emits regardless of
+    /// document diagnostics. Exit `0` on success, `2` on an I/O failure.
+    Context {
+        /// Path to the `.lute` file whose project surface to resolve.
+        file: PathBuf,
+        /// Emit the machine-readable JSON surface instead of a human outline.
+        #[arg(long)]
+        json: bool,
+        /// Directory of pinned provider snapshots to resolve ids against.
+        #[arg(long, value_name = "DIR")]
+        providers: Option<PathBuf>,
+        /// Project directory (`lute.project.yaml` + `plugins/`) whose installed
+        /// plugins resolve the document's activated capability snapshot (plugin
+        /// §4/§11). Omit for a core-only (`lute.core`) surface.
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
+    },
     /// Provider-catalog maintenance.
     #[command(subcommand)]
     Catalog(CatalogCommand),
@@ -124,6 +146,12 @@ fn main() -> ExitCode {
             project.as_deref(),
             out.as_deref(),
         ),
+        Command::Context {
+            file,
+            json,
+            providers,
+            project,
+        } => run_context(&file, json, providers.as_deref(), project.as_deref()),
         Command::Tag { file } => run_tag(&file),
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
             run_refresh(&dir, project.as_deref())
@@ -236,6 +264,299 @@ fn run_check(
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// Emit the project-resolved AUTHORING SURFACE for `file`: everything an AI
+/// needs to WRITE valid Lute against THIS file's project — the resolved
+/// directives/attrs/enums/asset-kinds/providers, the FOLDED state schema (author
+/// `state:` ∪ `uses:` imports ∪ implicit `<branch>`/`<hub>` choice+visited slots
+/// ∪ plugin-declared slots), the imported components, and the `capabilityVersion`
+/// they were resolved under.
+///
+/// Reuses the SAME resolution `check`/`compile` use — `build_input` (project +
+/// provider + import resolution) and `fold_env` (the folded schema) — so the
+/// surface never diverges from what the checker validates against. It is a
+/// capability QUERY, not validation: it emits the surface regardless of any
+/// document diagnostics (`fold_env` is pure/total). Exit `0` on success, `2` on
+/// an I/O failure (unreadable file), matching `run_check`.
+fn run_context(
+    file: &Path,
+    json: bool,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+) -> ExitCode {
+    let Some(input) = build_input(file, providers, project) else {
+        return ExitCode::from(2);
+    };
+    // Parse + fold exactly as `compile` does (minus codegen): the folded env's
+    // `.state` is the document's valid readable/writable state surface. No CEL
+    // fill is needed — the schema fold reads structural ids/attrs, not CEL slots.
+    let (doc, _) = lute_syntax::parse(&input.text);
+    let (folded, _, _) = fold_env(&doc, &input);
+    let surface = authoring_surface(&input, &folded.env.state);
+
+    if json {
+        match serde_json::to_string_pretty(&surface) {
+            Ok(s) => {
+                if write_stdout(&format!("{s}\n")).is_err() {
+                    return ExitCode::from(2);
+                }
+            }
+            Err(e) => {
+                eprintln!("lute: failed to serialize context: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else if write_stdout(&context_outline(&surface)).is_err() {
+        return ExitCode::from(2);
+    }
+    ExitCode::SUCCESS
+}
+
+/// Assemble the deterministic JSON authoring surface: every map is a BTreeMap
+/// (key-sorted by construction) and every array is emitted in a stable order
+/// (directives by name, state paths by path, components by name; attrs/params in
+/// declaration order). `enums`/`assetKinds`/`providers` come straight off the
+/// resolved snapshot; `directives` + `stateSchema` render each `Type` to a stable
+/// string (see `attr_type_str`/`state_type_str`).
+fn authoring_surface(input: &CheckInput, state: &lute_check::StateSchema) -> serde_json::Value {
+    use serde_json::{Map, Value};
+    let snap = &input.snapshot;
+
+    // Directives: BTreeMap key == directive name ⇒ iteration is name-sorted.
+    // Attrs keep declaration order (their authoring/positional order).
+    let directives: Vec<Value> = snap
+        .directives
+        .values()
+        .map(|d| {
+            let attrs: Vec<Value> = d
+                .attrs
+                .iter()
+                .map(|a| {
+                    let (ty, domain) = attr_type_str(&a.ty);
+                    let mut o = Map::new();
+                    o.insert("name".into(), a.name.clone().into());
+                    o.insert("type".into(), ty.into());
+                    o.insert("required".into(), a.required.into());
+                    if let Some(dom) = domain {
+                        o.insert("domain".into(), dom.into());
+                    }
+                    if let Some(def) = &a.default {
+                        o.insert("default".into(), literal_json(def));
+                    }
+                    Value::Object(o)
+                })
+                .collect();
+            let mut o = Map::new();
+            o.insert("name".into(), d.name.clone().into());
+            if let Some(layer) = &d.layer {
+                o.insert("layer".into(), layer.clone().into());
+            }
+            o.insert("attrs".into(), attrs.into());
+            o.insert("semantics".into(), d.semantics.clone().into());
+            Value::Object(o)
+        })
+        .collect();
+
+    // Folded state schema: BTreeMap key == path ⇒ iteration is path-sorted.
+    let state_schema: Vec<Value> = state
+        .decls
+        .iter()
+        .map(|(path, decl)| {
+            let (ty, domain) = state_type_str(&decl.ty);
+            let mut o = Map::new();
+            o.insert("path".into(), path.clone().into());
+            o.insert("type".into(), ty.into());
+            o.insert("namespace".into(), namespace_str(decl.namespace).into());
+            if let Some(def) = &decl.default {
+                o.insert("default".into(), literal_json(def));
+            }
+            if let Some(dom) = domain {
+                o.insert("domain".into(), dom.into());
+            }
+            Value::Object(o)
+        })
+        .collect();
+
+    // Imported components (dsl §13): BTreeMap key == name ⇒ name-sorted; params
+    // keep source (named-arg binding) order.
+    let components: Vec<Value> = input
+        .components
+        .table
+        .iter()
+        .map(|(name, def)| {
+            let params: Vec<Value> = def
+                .params
+                .iter()
+                .map(|(pname, pty)| {
+                    let (ty, domain) = attr_type_str(pty);
+                    let mut o = Map::new();
+                    o.insert("name".into(), pname.clone().into());
+                    o.insert("type".into(), ty.into());
+                    if let Some(dom) = domain {
+                        o.insert("domain".into(), dom.into());
+                    }
+                    Value::Object(o)
+                })
+                .collect();
+            let mut o = Map::new();
+            o.insert("name".into(), name.clone().into());
+            o.insert("params".into(), params.into());
+            Value::Object(o)
+        })
+        .collect();
+
+    let mut root = Map::new();
+    root.insert("capabilityVersion".into(), snap.version.clone().into());
+    root.insert("directives".into(), directives.into());
+    // enums/assetKinds/providers are BTreeMaps on the snapshot: their serde-JSON
+    // objects are key-sorted by construction. `to_value` is infallible for these
+    // concrete shapes; a defensive empty-object fallback keeps the surface total.
+    root.insert(
+        "enums".into(),
+        serde_json::to_value(&snap.enums).unwrap_or_else(|_| serde_json::json!({})),
+    );
+    root.insert(
+        "assetKinds".into(),
+        serde_json::to_value(&snap.asset_kinds).unwrap_or_else(|_| serde_json::json!({})),
+    );
+    root.insert(
+        "providers".into(),
+        serde_json::to_value(&snap.providers).unwrap_or_else(|_| serde_json::json!({})),
+    );
+    root.insert("stateSchema".into(), state_schema.into());
+    root.insert("components".into(), components.into());
+    Value::Object(root)
+}
+
+/// Render a state-path `Type` for parity with `lute_compile`'s `type_label`
+/// (non-branch slot, dsl §4.1): scalars + `enum`(+members); id-flavored types
+/// collapse to their value-level label (`string`/`enum`) exactly as the compiled
+/// artifact's state table does. The implicit-choice-slot `unset` augmentation is
+/// a runtime-envelope concern, NOT an authoring one, so it is not applied — the
+/// folded `StateDecl`'s enum members ARE the authorable domain.
+fn state_type_str(ty: &Type) -> (String, Option<Vec<String>>) {
+    match ty {
+        Type::Bool => ("bool".to_string(), None),
+        Type::Number => ("number".to_string(), None),
+        Type::Str => ("string".to_string(), None),
+        Type::Enum(members) => ("enum".to_string(), Some(members.clone())),
+        Type::List(_) => ("list".to_string(), None),
+        Type::Record(_) => ("record".to_string(), None),
+        Type::Map { .. } => ("map".to_string(), None),
+        Type::EnumFromOption(_) => ("enum".to_string(), None),
+        Type::ProviderRef(_) | Type::SlotId { .. } | Type::AssetKind(_) => {
+            ("string".to_string(), None)
+        }
+    }
+}
+
+/// Render an attr/param `Type` for the AUTHORING surface. The base labels match
+/// `type_label` (`bool`/`number`/`string`/`enum`), but reference-bearing types
+/// keep their target so an AI knows WHAT an id resolves against —
+/// `providerRef:<catalog>`, `assetKind:<kind>`, `slotId:<namespace>`,
+/// `enumFromOption:<option>` — and compound types name their element(s)
+/// (`list<T>`, `map<K,V>`, `record`). An `enum` also carries its member domain.
+fn attr_type_str(ty: &Type) -> (String, Option<Vec<String>>) {
+    match ty {
+        Type::Bool => ("bool".to_string(), None),
+        Type::Number => ("number".to_string(), None),
+        Type::Str => ("string".to_string(), None),
+        Type::Enum(members) => ("enum".to_string(), Some(members.clone())),
+        Type::List(inner) => (format!("list<{}>", attr_type_str(inner).0), None),
+        Type::Record(_) => ("record".to_string(), None),
+        Type::Map { key, value } => (
+            format!("map<{},{}>", attr_type_str(key).0, attr_type_str(value).0),
+            None,
+        ),
+        Type::EnumFromOption(opt) => (format!("enumFromOption:{opt}"), None),
+        Type::ProviderRef(name) => (format!("providerRef:{name}"), None),
+        Type::SlotId { namespace } => (format!("slotId:{namespace}"), None),
+        Type::AssetKind(name) => (format!("assetKind:{name}"), None),
+    }
+}
+
+/// The state lifetime tier (dsl §9.1) as a lowercase string — tells an AI which
+/// namespace a state path belongs to (`scene`/`run`/`user`/`app`).
+fn namespace_str(ns: Namespace) -> &'static str {
+    match ns {
+        Namespace::Scene => "scene",
+        Namespace::Run => "run",
+        Namespace::User => "user",
+        Namespace::App => "app",
+    }
+}
+
+/// Manifest `Literal` → JSON, mirroring `lute_compile`'s `literal_json`: an
+/// integral float collapses to a JSON integer (`0`, not `0.0`) for a stable
+/// authoring surface consistent with the compiled envelope.
+fn literal_json(l: &Literal) -> serde_json::Value {
+    match l {
+        Literal::Bool(b) => serde_json::Value::Bool(*b),
+        Literal::Num(n) if n.fract() == 0.0 && n.is_finite() && n.abs() < 9.0e15 => {
+            serde_json::Value::from(*n as i64)
+        }
+        Literal::Num(n) => serde_json::Value::from(*n),
+        Literal::Str(s) => serde_json::Value::String(s.clone()),
+        Literal::List(xs) => serde_json::Value::Array(xs.iter().map(literal_json).collect()),
+        Literal::Map(m) => serde_json::Value::Object(
+            m.iter().map(|(k, v)| (k.clone(), literal_json(v))).collect(),
+        ),
+    }
+}
+
+/// A compact human outline of the authoring surface (non-`--json` mode): the
+/// capabilityVersion, directive names + attr keys, enum names, state paths (with
+/// enum domains), and component names. `--json` is the machine surface; this is a
+/// short at-a-glance view.
+fn context_outline(surface: &serde_json::Value) -> String {
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "capabilityVersion: {}",
+        surface["capabilityVersion"].as_str().unwrap_or("")
+    );
+    if let Some(dirs) = surface["directives"].as_array() {
+        let _ = writeln!(out, "directives ({}):", dirs.len());
+        for d in dirs {
+            let name = d["name"].as_str().unwrap_or("");
+            let layer = d["layer"]
+                .as_str()
+                .map(|l| format!(" [{l}]"))
+                .unwrap_or_default();
+            let attrs: Vec<&str> = d["attrs"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|x| x["name"].as_str()).collect())
+                .unwrap_or_default();
+            let _ = writeln!(out, "  {name}{layer}: {}", attrs.join(", "));
+        }
+    }
+    if let Some(enums) = surface["enums"].as_object() {
+        let names: Vec<&str> = enums.keys().map(String::as_str).collect();
+        let _ = writeln!(out, "enums ({}): {}", names.len(), names.join(", "));
+    }
+    if let Some(state) = surface["stateSchema"].as_array() {
+        let _ = writeln!(out, "stateSchema ({}):", state.len());
+        for s in state {
+            let path = s["path"].as_str().unwrap_or("");
+            let ty = s["type"].as_str().unwrap_or("");
+            let dom = s["domain"]
+                .as_array()
+                .map(|d| {
+                    let members: Vec<&str> = d.iter().filter_map(|x| x.as_str()).collect();
+                    format!(" [{}]", members.join(", "))
+                })
+                .unwrap_or_default();
+            let _ = writeln!(out, "  {path}: {ty}{dom}");
+        }
+    }
+    if let Some(comps) = surface["components"].as_array() {
+        if !comps.is_empty() {
+            let names: Vec<&str> = comps.iter().filter_map(|c| c["name"].as_str()).collect();
+            let _ = writeln!(out, "components ({}): {}", names.len(), names.join(", "));
+        }
+    }
+    out
 }
 
 /// Run `compile` over one file. Exit `0` with the artifact on stdout (or
