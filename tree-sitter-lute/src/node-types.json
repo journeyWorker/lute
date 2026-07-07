@@ -141,6 +141,10 @@
           "named": true
         },
         {
+          "type": "hub",
+          "named": true
+        },
+        {
           "type": "line",
           "named": true
         },
@@ -179,9 +183,102 @@
     }
   },
   {
+    "type": "hub",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "attr",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
+          "type": "hub_choice",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "hub_choice",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "attr",
+          "named": true
+        },
+        {
+          "type": "branch",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "hub",
+          "named": true
+        },
+        {
+          "type": "line",
+          "named": true
+        },
+        {
+          "type": "match",
+          "named": true
+        },
+        {
+          "type": "set",
+          "named": true
+        },
+        {
+          "type": "timeline",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "ident",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "interpolation",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "path",
+          "named": true
+        },
+        {
+          "type": "ref",
+          "named": true
+        },
+        {
+          "type": "reserved",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "key",
@@ -247,19 +344,15 @@
       "required": false,
       "types": [
         {
-          "type": "attr",
-          "named": true
-        },
-        {
           "type": "branch",
           "named": true
         },
         {
-          "type": "cel_attr",
+          "type": "directive",
           "named": true
         },
         {
-          "type": "directive",
+          "type": "hub",
           "named": true
         },
         {
@@ -321,6 +414,10 @@
           "named": true
         },
         {
+          "type": "hub",
+          "named": true
+        },
+        {
           "type": "line",
           "named": true
         },
@@ -365,6 +462,10 @@
           "named": true
         },
         {
+          "type": "hub",
+          "named": true
+        },
+        {
           "type": "line",
           "named": true
         },
@@ -395,6 +496,25 @@
     "type": "speaker",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "text",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "escape",
+          "named": true
+        },
+        {
+          "type": "interpolation",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "timeline",
@@ -486,6 +606,10 @@
           "named": true
         },
         {
+          "type": "hub",
+          "named": true
+        },
+        {
           "type": "line",
           "named": true
         },
@@ -499,6 +623,44 @@
         },
         {
           "type": "timeline",
+          "named": true
+        },
+        {
+          "type": "when_is",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "when_is",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "when_key",
+          "named": true
+        },
+        {
+          "type": "when_pattern",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "when_pattern",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "when_literal",
           "named": true
         }
       ]
@@ -541,15 +703,15 @@
     "named": false
   },
   {
-    "type": ":line[",
-    "named": false
-  },
-  {
     "type": "</branch>",
     "named": false
   },
   {
     "type": "</choice>",
+    "named": false
+  },
+  {
+    "type": "</hub>",
     "named": false
   },
   {
@@ -581,6 +743,10 @@
     "named": false
   },
   {
+    "type": "<hub",
+    "named": false
+  },
+  {
     "type": "<match",
     "named": false
   },
@@ -609,10 +775,6 @@
     "named": false
   },
   {
-    "type": "]",
-    "named": false
-  },
-  {
     "type": "cel_expr",
     "named": true
   },
@@ -620,6 +782,10 @@
     "type": "comment",
     "named": true,
     "extra": true
+  },
+  {
+    "type": "escape",
+    "named": true
   },
   {
     "type": "frontmatter",
@@ -638,6 +804,10 @@
     "named": true
   },
   {
+    "type": "reserved",
+    "named": true
+  },
+  {
     "type": "string",
     "named": true
   },
@@ -646,19 +816,31 @@
     "named": false
   },
   {
-    "type": "text",
+    "type": "when",
+    "named": false
+  },
+  {
+    "type": "when_key",
     "named": true
   },
   {
-    "type": "when",
-    "named": false
+    "type": "when_literal",
+    "named": true
   },
   {
     "type": "{",
     "named": false
   },
   {
+    "type": "{{",
+    "named": false
+  },
+  {
     "type": "}",
+    "named": false
+  },
+  {
+    "type": "}}",
     "named": false
   }
 ]

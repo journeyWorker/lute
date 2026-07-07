@@ -3,7 +3,7 @@
 ; The DSL is three visually-distinct LAYERS (architecture.md); this file maps
 ; each to its own capture family so a real editor colors them apart:
 ;
-;   1. CONTENT (§7.1 `:line`)      — dialogue / narration  → @string + @character
+;   1. CONTENT (§7.1 `:speaker`)   — dialogue / narration  → @string + @character
 ;   2. STAGING (§7.2 `::`, §7.4 <timeline>/<track>)        → @function family
 ;   3. LOGIC   (§7.3 <branch>/<match>, §7.3.4 `::set`, CEL) → @keyword family
 ;
@@ -13,11 +13,22 @@
 ;   - state paths      → @property
 
 ; ---- CONTENT layer (§7.1) -------------------------------------------------
-; `:line[speaker]{attrs}: text` — the speaker is a character id, the text is
-; opaque dialogue / narration (both string-family, distinct from structure).
+; `:speaker{attrs}: text` — the speaker is a character id; the text is dialogue
+; / narration (string-family) that MAY embed `{{…}}` interpolations (§7.6). The
+; leading and second `:` are the content-line markers.
 (line (speaker) @character)
 (line (text) @string)
-(line ":line[" @punctuation.special)
+(line ":" @punctuation.special)
+
+; ---- interpolation (§7.6) -------------------------------------------------
+; `{{ path | @ref | userName }}` — a render-time state read embedded in content
+; text (and, per the checker, `<choice label>`). Delimiters read as special
+; punctuation; the interior reuses the property / ref / constant families, and
+; `\{{` is an escaped literal `{{`.
+(interpolation ["{{" "}}"] @punctuation.special)
+(interpolation (path) @property)
+(interpolation (reserved) @constant.builtin)
+(escape) @string.escape
 
 ; ---- STAGING layer (§7.2, §7.4) -------------------------------------------
 ; `::`ident staging directives — the directive name reads as a call (@function).
@@ -38,10 +49,20 @@
 (branch ["<branch" "</branch>"] @keyword.control)
 (choice ["<choice" "</choice>"] @keyword.control)
 
+; `<hub>` / hub `<choice>` revisit conversation (§7.3.2) — branching family; a
+; distinct node from a branch choice (a hub arm may carry `once`/`exit`).
+(hub ["<hub" "</hub>"] @keyword.control)
+(hub_choice ["<choice" "</choice>"] @keyword.control)
+
 ; `<match>` / `<when>` / `<otherwise>` first-match-wins conditional.
 (match ["<match" "</match>"] @keyword.conditional)
 (when ["<when" "</when>"] @keyword.conditional)
 (otherwise ["<otherwise" "</otherwise>"] @keyword.conditional)
+
+; `<when is="…">` literal pattern (§7.3.1) — the `is` key is an attribute; its
+; `|`-alternation of literals (enum / true / false / number / unset) are consts.
+(when_is (when_key) @attribute)
+(when_pattern (when_literal) @constant)
 
 ; ---- distinct arch captures -----------------------------------------------
 ; CEL expression (the `::set` right-hand side) — an embedded expression lang.
@@ -76,10 +97,8 @@
 
 ; ---- punctuation ----------------------------------------------------------
 [
-  "]"
   "{"
   "}"
   ">"
 ] @punctuation.bracket
 
-":" @punctuation.delimiter

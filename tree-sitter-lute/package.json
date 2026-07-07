@@ -23,9 +23,9 @@
     }
   ],
   "scripts": {
-    "generate": "tree-sitter-cli generate",
-    "test": "tree-sitter-cli test",
-    "parse": "tree-sitter-cli parse"
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test",
+    "parse": "tree-sitter parse"
   },
   "devDependencies": {
     "tree-sitter-cli": "^0.26.0"

@@ -22,14 +22,14 @@ shot heading
 ==================
 line with attrs
 ==================
-:line[bianca]{code="0010" emotion="surprised" variant="0"}: Oh!
+:bianca{code="0010" emotion="surprised" variant="0"}: Oh!
 ---
 (source_file (line (speaker) (attrs (attr (key) (string)) (attr (key) (string)) (attr (key) (string))) (text)))
 
 ==================
 line without attrs (opaque text)
 ==================
-:line[narrator]: Venny's. (`<`, `?`, `:` here are content, not structure.)
+:narrator: Venny's. (`<`, `?`, `:` here are content, not structure.)
 ---
 (source_file (line (speaker) (text)))
 
@@ -73,7 +73,7 @@ branch and choice (nesting)
 ==================
 <branch id="number">
   <choice id="blunt" label="Just ask, flatly">
-    :line[fixer]{code="0050"}: Bianca. Your number.
+    :fixer{code="0050"}: Bianca. Your number.
     ::set{scene.affect.bianca += 1}
   </choice>
 </branch>
@@ -92,13 +92,13 @@ match / when / otherwise (nesting)
 ==================
 <match on="scene.choices.number">
   <when test="@fond">
-    :line[fixer]{delivery="thought"}: Asked nicely.
+    :fixer{delivery="thought"}: Asked nicely.
   </when>
   <when test="$ == 'blunt'">
-    :line[fixer]{delivery="thought"}: Asked flatly.
+    :fixer{delivery="thought"}: Asked flatly.
   </when>
   <otherwise>
-    :line[fixer]{delivery="thought"}: Somewhere this evening.
+    :fixer{delivery="thought"}: Somewhere this evening.
   </otherwise>
 </match>
 ---

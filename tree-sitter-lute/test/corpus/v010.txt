@@ -1,0 +1,173 @@
+==================
+content line (0.1.0 :speaker{}: form, was :line[)
+==================
+:bianca{code="0010" emotion="delighted"}: Mr. Fixer!
+---
+(source_file
+  (line (speaker) (attrs (attr (key) (string)) (attr (key) (string))) (text)))
+
+==================
+content line narrator (no attrs)
+==================
+:narrator: Venny's again — the coffee shop on the corner.
+---
+(source_file (line (speaker) (text)))
+
+==================
+content line with `as` display-label override
+==================
+:bianca{as="???"}: ...who's there?
+---
+(source_file (line (speaker) (attrs (attr (key) (string))) (text)))
+
+==================
+line comment `//` at start of a body line is trivia
+==================
+// a line comment
+::pause
+---
+(source_file (comment) (directive (ident)))
+
+==================
+mid-Text `//` stays inside opaque text (not a comment)
+==================
+:narrator: Visit http://example.com now.
+---
+(source_file (line (speaker) (text)))
+
+==================
+interpolation: path + reserved userName in content text
+==================
+:narrator: You have {{run.coins}} credits, {{userName}}.
+---
+(source_file
+  (line (speaker) (text (interpolation (path)) (interpolation (reserved)))))
+
+==================
+interpolation: @ref in content text
+==================
+:fixer: Trust stands at {{@trustLevel}}.
+---
+(source_file (line (speaker) (text (interpolation (ref)))))
+
+==================
+interpolation: whitespace inside braces is tolerated
+==================
+:narrator: You have {{ run.coins }} left.
+---
+(source_file (line (speaker) (text (interpolation (path)))))
+
+==================
+interpolation escape `\{{` renders a literal, stays in text
+==================
+:narrator: Write a literal \{{ like so.
+---
+(source_file (line (speaker) (text (escape))))
+
+==================
+hub with once + exit choices (revisit conversation)
+==================
+<hub id="chatWithBianca">
+  <choice id="askCoffee" label="Ask about the coffee" once>
+    :bianca: House blend. Bold, like the clientele.
+  </choice>
+  <choice id="leave" label="Head out" exit>
+    :fixer: I'd better get moving.
+  </choice>
+</hub>
+---
+(source_file
+  (hub
+    (attr (key) (string))
+    (hub_choice
+      (attr (key) (string))
+      (attr (key) (string))
+      (attr (key))
+      (line (speaker) (text)))
+    (hub_choice
+      (attr (key) (string))
+      (attr (key) (string))
+      (attr (key))
+      (line (speaker) (text)))))
+
+==================
+hub choice with when guard beside once flag
+==================
+<hub id="chat">
+  <choice id="askVenny" label="Ask about Venny" when="scene.metVenny" once>
+    :bianca: He's around here somewhere.
+  </choice>
+  <choice id="leave" label="Head out" exit>
+    :fixer: Later.
+  </choice>
+</hub>
+---
+(source_file
+  (hub
+    (attr (key) (string))
+    (hub_choice
+      (attr (key) (string))
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (path)))
+      (attr (key))
+      (line (speaker) (text)))
+    (hub_choice
+      (attr (key) (string))
+      (attr (key) (string))
+      (attr (key))
+      (line (speaker) (text)))))
+
+==================
+when is literal-pattern alternation (structured when_pattern)
+==================
+<match on="scene.emotion">
+  <when is="blunt | curt">
+    :narrator: hi
+  </when>
+  <otherwise>
+    :narrator: bye
+  </otherwise>
+</match>
+---
+(source_file
+  (match
+    (cel_attr (cel_key) (cel_string (path)))
+    (when
+      (when_is (when_key) (when_pattern (when_literal) (when_literal)))
+      (line (speaker) (text)))
+    (otherwise (line (speaker) (text)))))
+
+==================
+when is single literal plus test guard (pattern AND guard)
+==================
+<match on="scene.emotion">
+  <when is="delighted" test="$ != 'staged'">
+    :narrator: hi
+  </when>
+</match>
+---
+(source_file
+  (match
+    (cel_attr (cel_key) (cel_string (path)))
+    (when
+      (when_is (when_key) (when_pattern (when_literal)))
+      (cel_attr (cel_key) (cel_string))
+      (line (speaker) (text)))))
+
+==================
+otherwise takes no attributes (tightened)
+==================
+<match on="scene.x">
+  <when test="@fond">
+    :narrator: yes
+  </when>
+  <otherwise>
+    :narrator: no
+  </otherwise>
+</match>
+---
+(source_file
+  (match
+    (cel_attr (cel_key) (cel_string (path)))
+    (when (cel_attr (cel_key) (cel_string (ref))) (line (speaker) (text)))
+    (otherwise (line (speaker) (text)))))
