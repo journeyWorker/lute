@@ -204,7 +204,13 @@ fn state_entries(schema: &StateSchema, branch_paths: &BTreeSet<String>) -> Vec<S
 /// reliable discriminator between a real branch slot (folded with `default:
 /// None`, seeded `"unset"` in the envelope) and an author decl at a
 /// `scene.choices.*` path (which keeps its own default/None and no `unset`).
-fn collect_branch_paths(doc: &Document) -> BTreeSet<String> {
+///
+/// `pub` so `lute context` (D4) can reuse the SAME discriminator: it appends
+/// `unset` to exactly these implicit-slot enum domains, never to author enums —
+/// no divergence from this table. The set is expansion-invariant (branches
+/// survive normalize/expand, components can't carry them), so a caller may pass
+/// the RAW parsed document and get the same paths the folded schema was built on.
+pub fn collect_branch_paths(doc: &Document) -> BTreeSet<String> {
     let mut paths = BTreeSet::new();
     for shot in &doc.shots {
         collect_branch_paths_nodes(&shot.body, &mut paths);
