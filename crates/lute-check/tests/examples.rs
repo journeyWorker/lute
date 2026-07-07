@@ -191,3 +191,33 @@ fn hyphen_directive_and_speaker_ok() {
         res.diagnostics
     );
 }
+
+#[test]
+fn hyphen_path_ident_span_is_narrow() {
+    // The meta-side E-PATH-IDENT span must point at the offending key, not the
+    // whole frontmatter block (span-quality requirement).
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.affect-total:\n    type: number\n---\n## Shot 1.\n:narrator: hi\n";
+    let res = check(&input_for(text));
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-PATH-IDENT")
+        .unwrap_or_else(|| panic!("expected an E-PATH-IDENT diagnostic, got: {:#?}", res.diagnostics));
+    let len = d.span.byte_end - d.span.byte_start;
+    assert_eq!(
+        len,
+        "scene.affect-total".len(),
+        "span should cover exactly the offending path segment, got {len} bytes: {d:#?}"
+    );
+    // Must start past the `---\n` frontmatter opener (i.e. not the whole block,
+    // which begins at byte 0), and be far narrower than the frontmatter itself.
+    assert!(
+        d.span.byte_start > "---\n".len(),
+        "span must point inside the frontmatter, not at its start: {d:#?}"
+    );
+    let block_end = text.find("\n---\n").map(|i| i + 5).expect("frontmatter close");
+    assert!(
+        len < block_end,
+        "span ({len} bytes) must be narrower than the whole frontmatter block ({block_end} bytes)"
+    );
+}

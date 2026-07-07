@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use lute_core_span::{Diagnostic, Layer, Severity};
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::DefParam;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
@@ -139,6 +139,17 @@ pub fn parse_meta_kind(
         fixits: Vec::new(),
         provenance: None,
     };
+    // Same Content-layer error, but at a caller-supplied narrow span (used for
+    // E-PATH-IDENT, which points at the offending key — not the whole block).
+    let err_at = |code: &str, message: String, sp: Span| Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        span: sp,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+    };
 
     let value: serde_yaml::Value = match serde_yaml::from_str(&meta.raw_yaml) {
         Ok(v) => v,
@@ -221,20 +232,22 @@ pub fn parse_meta_kind(
     // (`MetaKind::Schema`), so both inline and imported defs are covered.
     for (name, def) in &typed.defs {
         if name.contains('-') {
-            diags.push(err(
+            diags.push(err_at(
                 E_PATH_IDENT,
                 format!("def name `{name}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)"),
+                meta_key_span(meta, name),
             ));
         }
         if let Some(params) = def.get("params").and_then(|p| p.as_mapping()) {
             for pname in params.keys().filter_map(|k| k.as_str()) {
                 if pname.contains('-') {
-                    diags.push(err(
+                    diags.push(err_at(
                         E_PATH_IDENT,
                         format!(
                             "def `{name}` parameter `{pname}` has a `-`; CEL-facing names \
                              forbid `-` (dsl §8.4)"
                         ),
+                        meta_key_span(meta, pname),
                     ));
                 }
             }
@@ -270,12 +283,13 @@ pub fn parse_meta_kind(
                     // `CelIdent`; a `-` there is E-PATH-IDENT. Still record the
                     // decl below so downstream reads don't cascade to E-UNDECLARED.
                     if state_path_has_hyphen(path) {
-                        diags.push(err(
+                        diags.push(err_at(
                             E_PATH_IDENT,
                             format!(
                                 "state path `{path}` has a `-` in a segment; CEL-facing \
                                  names forbid `-` (dsl §8.4)"
                             ),
+                            meta_key_span(meta, path),
                         ));
                     }
                     match serde_yaml::from_value::<StateDeclRaw>(decl_val.clone()) {
@@ -304,6 +318,33 @@ pub fn parse_meta_kind(
     }
 
     (typed, diags)
+}
+
+/// Best-effort narrow document span for a meta-side diagnostic: the first byte
+/// range of `needle` within the frontmatter, mapped to document offsets. serde
+/// gives no per-key spans, so the offending identifier (a hyphenated `defs`
+/// name / def param / state path) is located textually in `raw_yaml`. Falls back
+/// to the whole-frontmatter span when `needle` is absent. `line`/`column`/`utf16`
+/// are left zeroed — [`crate::check`]'s `normalize_spans` recomputes them from the
+/// byte offsets at report time (same convention as the CEL-slot resolver).
+fn meta_key_span(meta: &Meta, needle: &str) -> Span {
+    // `raw_yaml` is the frontmatter interior sliced verbatim after the 4-byte
+    // `"---\n"` opener, which is itself included in `meta.span`; a `raw_yaml`
+    // index therefore maps to the document by adding `meta.span.byte_start + 4`.
+    const OPENER_LEN: usize = 4; // "---\n"
+    match meta.raw_yaml.find(needle) {
+        Some(idx) => {
+            let start = meta.span.byte_start + OPENER_LEN + idx;
+            Span {
+                byte_start: start,
+                byte_end: start + needle.len(),
+                line: 0,
+                column: 0,
+                utf16_range: (0, 0),
+            }
+        }
+        None => meta.span,
+    }
 }
 
 /// Raw `state:` entry (dsl §9.3): `{ type, default? }`. `Type` reuses the
