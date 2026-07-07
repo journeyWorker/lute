@@ -256,3 +256,27 @@ fn undeclared_ref_in_body_is_flagged() {
         "a body `@ref` to a non-param must be flagged; got {cs:?}"
     );
 }
+
+#[test]
+fn interp_ref_in_body_is_resolved() {
+    let dir = unique_dir();
+    // A `{{@ref}}` interpolation in a component body is a referent too (dsl §7.6,
+    // §13), resolved against the `@param` namespace: `{{@missing}}` (not a param)
+    // is E-UNDECLARED-REF, while `{{@n}}` (a declared renderable param) is clean.
+    write_lute(
+        &dir,
+        "greet.lute",
+        "---\ncomponent: greet\nparams:\n  n: number\n---\n\
+## G.\n:narrator: you have {{@n}} and {{@missing}}\n",
+    );
+    let s = scene("greet.lute", "::use{component=\"greet\" n=\"1\"}");
+    let cs = codes(&dir, &s);
+    assert!(
+        cs.contains(&"E-UNDECLARED-REF".to_string()),
+        "an undeclared body interpolation ref must flag E-UNDECLARED-REF; got {cs:?}"
+    );
+    assert!(
+        !cs.contains(&"E-REF-TYPE".to_string()),
+        "a declared renderable `@param` interpolation must be clean; got {cs:?}"
+    );
+}

@@ -524,7 +524,7 @@ impl Walker<'_> {
             match node {
                 Node::Line(l) => {
                     self.check_attr_refs(&l.attrs, ctx, None);
-                    self.check_interps(&l.interps, ctx);
+                    check_interps(&l.interps, ctx, &mut self.diags);
                 }
                 Node::Directive(d) if d.tag == "use" => {
                     // `use` is a reserved directive (dsl §13): recognized BEFORE
@@ -689,58 +689,78 @@ impl Walker<'_> {
         }
     }
 
-    /// Validate the `{{…}}` interpolation referents on a content line (dsl §7.6).
-    /// An interpolation is a state READ, so each referent gets the SAME cel-layer
-    /// treatment a `<when>` guard / `::set` RHS read gets: the referent is routed
-    /// through the shared [`check_cel_slot`] resolver, so a `Path` resolves
-    /// against the folded `state:` schema (`E-UNDECLARED`) and a `Ref` against
-    /// `defs:` (`E-UNDECLARED-REF`) exactly as a guard read does. A `Ref`
-    /// additionally MUST produce a **renderable** type (number/bool/enum, §7.6) —
-    /// a declared def of any other type is `E-REF-TYPE`. The reserved `userName`
-    /// token always renders. The definite-assignment half (`E-MAYBE-UNSET`,
-    /// §9.4) is proven in the path-sensitive `defassign` pass at the line's
-    /// position — the same site guard/`::set` reads are proven — not here.
-    fn check_interps(&mut self, interps: &[Interp], ctx: &Ctx<'_>) {
-        for interp in interps {
-            let referent = match interp.kind {
-                // The reserved player-name token always renders (dsl §7.6).
-                InterpKind::Reserved => continue,
-                InterpKind::Path | InterpKind::Ref => &interp.raw,
-            };
-            // Reuse the guard/`::set` read-check verbatim: parse the referent as a
-            // value-read CEL slot over its ORIGINAL-source span, then run the
-            // shared resolver. `CelKind::AttrValue` is a non-guard read context —
-            // the guard-only §9.6 `run.choiceLog` rule must not fire on a content
-            // interpolation. A parse failure leaves `ast = None`, so the resolver
-            // skips its AST pass and never double-reports malformed CEL.
-            let mut arena = CelArena::default();
-            let mut slot = CelSlot::raw(CelKind::AttrValue, referent.clone(), interp.span);
-            if let Ok(handle) = parse_slot(&mut arena, &slot.raw, interp.span.byte_start) {
-                slot.ast = Some(handle);
-            }
-            self.diags
-                .extend(check_cel_slot(&slot, &arena, ctx, None));
-            // §7.6 rendering: an interpolated `@ref` MUST resolve to a renderable
-            // type (number/bool/enum). A DECLARED def whose produced type is
-            // known and non-renderable is `E-REF-TYPE`; an undeclared ref already
-            // flagged `E-UNDECLARED-REF` above (its name is absent from
-            // `def_types`, so this never double-reports).
-            if interp.kind == InterpKind::Ref {
-                if let Some(name) = scan_refs(referent).into_iter().find(|r| !r.is_dollar).map(|r| r.name) {
-                    if let Some(ty) = ctx.env.def_types.get(&name) {
-                        if !is_renderable(ty) {
-                            self.diags.push(Diagnostic {
-                                code: "E-REF-TYPE".to_string(),
-                                severity: Severity::Error,
-                                message: format!(
-                                    "`@{name}` produces a non-renderable type; a `{{{{…}}}}` interpolation renders only number/bool/enum (dsl §7.6)"
-                                ),
-                                span: interp.span,
-                                layer: Layer::Cel,
-                                fixits: Vec::new(),
-                                provenance: None,
-                            });
-                        }
+}
+
+/// Validate the `{{…}}` interpolation referents on a content line (dsl §7.6).
+/// An interpolation is a state READ, so each referent gets the SAME cel-layer
+/// treatment a `<when>` guard / `::set` RHS read gets: the referent is routed
+/// through the shared [`check_cel_slot`] resolver, so a `Path` resolves against
+/// the folded `state:` schema (`E-UNDECLARED`) and a `Ref` against `defs:`
+/// (`E-UNDECLARED-REF`) exactly as a guard read does. A `Ref` additionally MUST
+/// produce a **renderable** type (number/bool/enum, §7.6) — a declared def of any
+/// other type is `E-REF-TYPE`. The reserved `userName` token always renders. The
+/// definite-assignment half (`E-MAYBE-UNSET`, §9.4) is proven in the
+/// path-sensitive `defassign` pass at the line's position — not here.
+///
+/// A free function (not a `Walker` method) so BOTH the scene walk and the
+/// component-body walk (dsl §13) validate interps with their OWN `Env`: a scene's
+/// `state:`/`defs:` or a component's `@param` namespace, respectively.
+fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+    // An interpolation is content `Text`, never a `<match>` arm test, so `$` is
+    // out of scope there (dsl §8.2). Resolve in a forced NON-match context so a
+    // `{{$}}` (which the parser classifies as a `Path` raw `"$"`) fires
+    // `E-DOLLAR-OUTSIDE-MATCH`, regardless of any enclosing arm ctx the caller
+    // threads in.
+    let interp_ctx = Ctx {
+        env: ctx.env,
+        in_match: false,
+        match_subject: None,
+    };
+    for interp in interps {
+        let referent = match interp.kind {
+            // The reserved player-name token always renders (dsl §7.6).
+            InterpKind::Reserved => continue,
+            InterpKind::Path | InterpKind::Ref => &interp.raw,
+        };
+        // Reuse the guard/`::set` read-check verbatim: parse the referent as a
+        // value-read CEL slot over the interpolation's span, then run the shared
+        // resolver. `CelKind::AttrValue` is a non-guard read context — the
+        // guard-only §9.6 `run.choiceLog` rule must not fire on a content
+        // interpolation. A parse failure leaves `ast = None`, so the resolver
+        // skips its AST pass and never double-reports malformed CEL.
+        let mut arena = CelArena::default();
+        let mut slot = CelSlot::raw(CelKind::AttrValue, referent.clone(), interp.span);
+        if let Ok(handle) = parse_slot(&mut arena, &slot.raw, interp.span.byte_start) {
+            slot.ast = Some(handle);
+        }
+        // Every cel-layer diagnostic here pertains to THIS interpolation; pin its
+        // span to the whole `{{…}}` (matching the resolver's own state-path
+        // fallback) so ref/arity/undeclared spans stay consistent and never shift
+        // to the leading `{` from the interior-relative `scan_refs` offsets.
+        for mut d in check_cel_slot(&slot, &arena, &interp_ctx, None) {
+            d.span = interp.span;
+            diags.push(d);
+        }
+        // §7.6 rendering: an interpolated `@ref` MUST resolve to a renderable
+        // type (number/bool/enum). A DECLARED def whose produced type is known and
+        // non-renderable is `E-REF-TYPE`; an undeclared ref already flagged
+        // `E-UNDECLARED-REF` above (its name is absent from `def_types`, so this
+        // never double-reports).
+        if interp.kind == InterpKind::Ref {
+            if let Some(name) = scan_refs(referent).into_iter().find(|r| !r.is_dollar).map(|r| r.name) {
+                if let Some(ty) = interp_ctx.env.def_types.get(&name) {
+                    if !is_renderable(ty) {
+                        diags.push(Diagnostic {
+                            code: "E-REF-TYPE".to_string(),
+                            severity: Severity::Error,
+                            message: format!(
+                                "`@{name}` produces a non-renderable type; a `{{{{…}}}}` interpolation renders only number/bool/enum (dsl §7.6)"
+                            ),
+                            span: interp.span,
+                            layer: Layer::Cel,
+                            fixits: Vec::new(),
+                            provenance: None,
+                        });
                     }
                 }
             }
@@ -983,7 +1003,14 @@ fn walk_component_body(
 ) {
     for node in nodes {
         match node {
-            Node::Line(l) => body_attr_refs(&l.attrs, snapshot, arena, ctx, None, diags),
+            Node::Line(l) => {
+                body_attr_refs(&l.attrs, snapshot, arena, ctx, None, diags);
+                // `{{@param}}` / `{{run.x}}` in a component body are referents too
+                // (dsl §7.6, §13): resolve against the component `@param` env in
+                // `ctx` — an undeclared ref is `E-UNDECLARED-REF`, any state read is
+                // `E-UNDECLARED` (a component body has an empty `state:` schema).
+                check_interps(&l.interps, ctx, diags);
+            }
             Node::Directive(d) if d.tag == "use" => {
                 check_use(d, components, ctx, diags);
                 body_attr_refs(&d.attrs, snapshot, arena, ctx, None, diags);
