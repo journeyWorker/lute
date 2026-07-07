@@ -5,7 +5,7 @@ expression: json
 {
   "lute": "0.1.0",
   "irVersion": "0.1.0",
-  "capabilityVersion": "45f46d46fb9b72ceebd735c0fcc5ceca6312e07ad1ce5ef2dd08f4b6d18cf50c",
+  "capabilityVersion": "511951a138df56f21d6a43979f4ba0f26be4ac6c0f94a457351bfa7cf6ba1281",
   "meta": {
     "character": "demo",
     "season": 1,

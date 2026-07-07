@@ -49,10 +49,10 @@ directives:
   - name: camera
     attrs:
       - { name: focus, type: string }
-      - { name: zoom, type: string }
-      - { name: move-x, type: string }
-      - { name: move-y, type: string }
-      - { name: shake, type: string }
+      - { name: zoom, type: number }
+      - { name: move-x, type: number }
+      - { name: move-y, type: number }
+      - { name: shake, type: number }
       - { name: reset, type: bool }
       - { name: duration, type: number }
       - { name: easing, type: string }
