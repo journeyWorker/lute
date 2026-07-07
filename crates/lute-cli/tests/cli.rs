@@ -181,3 +181,72 @@ fn catalog_refresh_missing_dir_is_created() {
     assert!(target.is_dir(), "the target dir now exists");
     std::fs::remove_dir_all(&base).unwrap();
 }
+
+// --- 0.1.0 golden coverage: the showcase `hub-demo.lute` exercises a `<hub>`,
+// `<when is="…">` literal arms, and `{{…}}` interpolation (dsl §7.3.2, §7.3.1,
+// §7.6). A `<hub>` PASSES `lute check` but its CFG lowering lands in a later
+// cutover (Plan C), so this example is exercised by the CHECK path ONLY. These
+// two tests pin both halves of that contract: clean check, and the explicit
+// E-HUB-LOWERING-UNSUPPORTED on compile (which is why it is never added to a
+// compile/e2e golden).
+
+#[test]
+fn hub_demo_example_checks_clean() {
+    let out = Command::new(BIN)
+        .args([
+            "check",
+            "../../docs/examples/showcase/hub-demo.lute",
+            "--project",
+            "../../docs/examples/showcase",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "hub-demo must check clean; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true, "hub-demo → ok:true; got {v}");
+    assert_eq!(
+        v["diagnostics"].as_array().map(Vec::len),
+        Some(0),
+        "hub-demo must be diagnostic-free (0 errors, 0 warnings); got {v}"
+    );
+    // Prove the 0.1.0 features are actually present in the resolved view — the
+    // `<hub>` and both `<when is>`-bearing matches — not a trivially clean doc.
+    let preview = v["resolved"]["commands_preview"].to_string();
+    assert!(preview.contains("<hub>"), "resolved view must contain the hub; got {preview}");
+    assert!(
+        preview.contains("scene.choices.chatWithBianca"),
+        "resolved view must contain the `<when is>` match over the hub's recorded choices; got {preview}"
+    );
+}
+
+#[test]
+fn hub_demo_example_compile_is_unsupported() {
+    // The reason hub-demo is check-only: hub CFG lowering is Plan C. Compiling it
+    // MUST fail with E-HUB-LOWERING-UNSUPPORTED (exit 1) — pinned here so no one
+    // accidentally wires the example into a compile golden expecting success.
+    let out = Command::new(BIN)
+        .args([
+            "compile",
+            "../../docs/examples/showcase/hub-demo.lute",
+            "--project",
+            "../../docs/examples/showcase",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "hub compile is not yet supported → exit 1");
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        combined.contains("E-HUB-LOWERING-UNSUPPORTED"),
+        "compile must report E-HUB-LOWERING-UNSUPPORTED; got {combined}"
+    );
+}

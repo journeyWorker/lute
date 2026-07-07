@@ -1,0 +1,101 @@
+---
+mode: inline
+character: bianca
+season: 1
+episode: 2
+title: The Revisit Hub
+pov: fixer
+luteVersion: "0.0.1"
+# Root capability profile (project lute.project.yaml). No plugin directives are
+# used here, so no scene-local `plugins:` narrowing is needed.
+profile: showcase
+# Shared run/user/app schema + defs arrive via the imported child schema, which
+# `extends:` a base (schema/game.schema.lute -> schema/base.schema.lute).
+uses: schema/game.schema.lute
+# One genuinely scene-local declaration (§9.2), written by a hub choice below.
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+---
+
+/*
+  0.1.0 golden coverage (P2 — the feature the Plan A final review requested):
+  a revisit <hub> (§7.3.2), `<when is="…">` literal-pattern arms (§7.3.1), and
+  {{…}} content interpolation (§7.6), all against `--project docs/examples/showcase`.
+
+  IMPORTANT: `<hub>` LOWERING is Plan C. A hub PASSES `lute check` but FAILS
+  `lute compile` with E-HUB-LOWERING-UNSUPPORTED, so this file is exercised by
+  the CHECK path ONLY (a `lute check --project` integration test) — it is never
+  added to any compile/e2e golden.
+*/
+
+# S01EP02 — The Revisit
+
+## Shot 1.
+
+/*
+  Content-line interpolation (§7.6): `{{userName}}` is the always-renderable
+  reserved token; `{{run.affection}}` is a DECLARED path (number, default 0 ->
+  definitely assigned -> renders clean, no E-UNDECLARED / E-MAYBE-UNSET).
+*/
+:narrator: Venny's again, and Bianca is closing up. Good to see you, {{userName}}.
+:bianca{code="0010" emotion="delighted" variant="1"}: You came back! Warmth so far: {{run.affection}}.
+
+## Shot 2.
+
+/*
+  <hub> (§7.3.2, §11.1.3): a revisit menu. The no-dead-end obligation
+  (E-HUB-NO-EXIT) is satisfied by `leave` — an UNGUARDED `exit` choice.
+  `askCoffee` is `once` (drops from the eligible set after one pick);
+  `compliment` is a `when`-guarded sticky choice whose guard is a schema @ref
+  (`helped`, cel `run.metHelpfully`, a default-bool -> definitely assigned).
+  The hub implicitly folds `scene.choices.chatWithBianca` (enum of choice ids
+  U `unset`) and `scene.visited.chatWithBianca.<choiceId>: bool` (default false).
+*/
+<hub id="chatWithBianca">
+  <choice id="askCoffee" label="Ask about the coffee" once>
+    :bianca{code="0020" emotion="content" variant="0"}: House blend. Bold, like the clientele.
+  </choice>
+  <choice id="compliment" label="Say she was kind earlier" when="@helped">
+    :fixer{code="0030"}: You were gentle about it before. It stuck with me.
+    ::set{scene.affect.bianca += 1}
+  </choice>
+  <choice id="leave" label="Head out" exit>
+    :fixer{code="0040"}: I'd better get moving.
+  </choice>
+</hub>
+
+## Shot 3.
+
+/*
+  `<when is="…">` literal-pattern arms (§7.3.1) over the hub's implicit
+  recording enum `scene.choices.chatWithBianca` (choice ids U `unset`). FULL
+  `is` coverage is exhaustive WITHOUT an <otherwise> (§11.2, the normative path).
+*/
+<match on="scene.choices.chatWithBianca">
+  <when is="askCoffee">
+    :fixer{delivery="thought"}: Coffee talk. Safe ground.
+  </when>
+  <when is="compliment">
+    :fixer{delivery="thought"}: I said the kind thing, and meant it.
+  </when>
+  <when is="leave">
+    :fixer{delivery="thought"}: Straight for the door.
+  </when>
+  <when is="unset">
+    :fixer{delivery="thought"}: I never engaged at all.
+  </when>
+</match>
+
+/*
+  A `bool` `<when is>` pair over the per-choice visited flag
+  `scene.visited.chatWithBianca.askCoffee` (default false) — the second
+  recording namespace the hub folds. `is="true"|"false"` covers the bool domain.
+*/
+<match on="scene.visited.chatWithBianca.askCoffee">
+  <when is="true">
+    :bianca{code="0050" emotion="content" variant="0"}: You already know the blend.
+  </when>
+  <when is="false">
+    :bianca{code="0060" emotion="neutral" variant="0"}: Curious about the menu?
+  </when>
+</match>
