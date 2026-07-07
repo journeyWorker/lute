@@ -221,3 +221,23 @@ fn hyphen_path_ident_span_is_narrow() {
         "span ({len} bytes) must be narrower than the whole frontmatter block ({block_end} bytes)"
     );
 }
+
+#[test]
+fn hyphen_path_ident_span_is_key_aware() {
+    // The offending identifier ALSO appears in a comment above the real key. The
+    // span must point at the mapping KEY line, not the earlier comment match.
+    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n# comment mentioning scene.affect-total here\nstate:\n  scene.affect-total:\n    type: number\n---\n## Shot 1.\n:narrator: hi\n";
+    let res = check(&input_for(text));
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-PATH-IDENT")
+        .unwrap_or_else(|| panic!("expected an E-PATH-IDENT diagnostic, got: {:#?}", res.diagnostics));
+    let comment_at = text.find("scene.affect-total").expect("comment occurrence");
+    let key_at = text.rfind("scene.affect-total").expect("key occurrence");
+    assert_ne!(comment_at, key_at, "test setup: identifier must appear twice");
+    assert_eq!(
+        d.span.byte_start, key_at,
+        "span must point at the KEY occurrence (byte {key_at}), not the comment (byte {comment_at}): {d:#?}"
+    );
+}
