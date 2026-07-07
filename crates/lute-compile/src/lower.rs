@@ -36,6 +36,7 @@ pub fn lower_line(line: &Line) -> Command {
         as_label: get("as"),
         line_id: String::new(),
         voice_key: None,
+        placeholders: line.interps.iter().map(placeholder_from_interp).collect(),
         code: get("code"),
         stamp: Stamp::default(),
     })

@@ -259,6 +259,10 @@ fn walk_branch(
             when: c.when.as_ref().map(|w| w.raw.clone()),
             expr: c.when.as_ref().and_then(|w| crate::expr::lower_expr(&w.raw)),
             target: l.sym(),
+            placeholders: lute_syntax::scan_label_interps(&c.label, c.span)
+                .iter()
+                .map(placeholder_from_interp)
+                .collect(),
         })
         .collect();
     let mut cmd = Command::Choice(ChoiceCmd {
@@ -318,6 +322,10 @@ fn walk_hub(
             when: c.when.as_ref().map(|w| w.raw.clone()),
             expr: c.when.as_ref().and_then(|w| crate::expr::lower_expr(&w.raw)),
             target: l.sym(),
+            placeholders: lute_syntax::scan_label_interps(&c.label, c.span)
+                .iter()
+                .map(placeholder_from_interp)
+                .collect(),
         })
         .collect();
     let mut cmd = Command::Hub(HubCmd {

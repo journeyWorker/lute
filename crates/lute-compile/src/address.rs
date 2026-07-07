@@ -166,6 +166,7 @@ mod tests {
             as_label: None,
             line_id: String::new(),
             voice_key: None,
+            placeholders: Vec::new(),
             code: code.map(str::to_string),
             stamp: Stamp::default(),
         })
