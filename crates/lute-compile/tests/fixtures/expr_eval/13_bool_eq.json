@@ -1,0 +1,8 @@
+{
+  "name": "bool_eq",
+  "desc": "== against a bool literal: a recorded visit flag equals true.",
+  "cel": "scene.visited.chat.ask == true",
+  "expr": { "op": "==", "l": { "path": "scene.visited.chat.ask" }, "r": { "lit": true } },
+  "state": { "scene.visited.chat.ask": true },
+  "expected": true
+}

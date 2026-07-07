@@ -1,0 +1,8 @@
+{
+  "name": "isset_present",
+  "desc": "isSet(path) true when the state slot is present (any value).",
+  "cel": "isSet(scene.affect.marina)",
+  "expr": { "isSet": "scene.affect.marina" },
+  "state": { "scene.affect.marina": 42 },
+  "expected": true
+}

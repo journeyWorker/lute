@@ -1,0 +1,8 @@
+{
+  "name": "has_present",
+  "desc": "has(path) true when the state key is present.",
+  "cel": "has(scene.flags.saw)",
+  "expr": { "has": "scene.flags.saw" },
+  "state": { "scene.flags.saw": true },
+  "expected": true
+}

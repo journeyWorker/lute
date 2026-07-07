@@ -1,0 +1,11 @@
+{
+  "name": "when_is_alternation",
+  "desc": "<when is=\"silver|bronze\"> synthesized by C2 synth_arm_expr (no cel source): the subject scene.serve.debut.rank is inlined into an == per alternative, left-folded with ||. State rank='bronze' matches the second alternative.",
+  "expr": {
+    "op": "||",
+    "l": { "op": "==", "l": { "path": "scene.serve.debut.rank" }, "r": { "lit": "silver" } },
+    "r": { "op": "==", "l": { "path": "scene.serve.debut.rank" }, "r": { "lit": "bronze" } }
+  },
+  "state": { "scene.serve.debut.rank": "bronze" },
+  "expected": true
+}

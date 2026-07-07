@@ -1,0 +1,12 @@
+{
+  "name": "ternary_select",
+  "desc": "Ternary picks the then-branch: level 5 > 0 => 'hi'.",
+  "cel": "user.level > 0 ? 'hi' : 'lo'",
+  "expr": {
+    "cond": { "op": ">", "l": { "path": "user.level" }, "r": { "lit": 0.0 } },
+    "then": { "lit": "hi" },
+    "else": { "lit": "lo" }
+  },
+  "state": { "user.level": 5 },
+  "expected": "hi"
+}

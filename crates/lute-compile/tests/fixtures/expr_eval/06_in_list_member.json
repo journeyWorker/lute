@@ -1,0 +1,12 @@
+{
+  "name": "in_list_member",
+  "desc": "`in` membership true: 'gold' is a member of ['gold','silver'].",
+  "cel": "run.rank in ['gold','silver']",
+  "expr": {
+    "op": "in",
+    "l": { "path": "run.rank" },
+    "r": { "list": [{ "lit": "gold" }, { "lit": "silver" }] }
+  },
+  "state": { "run.rank": "gold" },
+  "expected": true
+}

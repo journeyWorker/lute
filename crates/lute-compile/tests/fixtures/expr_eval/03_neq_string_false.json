@@ -1,0 +1,8 @@
+{
+  "name": "neq_string_false",
+  "desc": "!= yielding false: rank 'gold' is not != 'gold'.",
+  "cel": "run.rank != 'gold'",
+  "expr": { "op": "!=", "l": { "path": "run.rank" }, "r": { "lit": "gold" } },
+  "state": { "run.rank": "gold" },
+  "expected": false
+}
