@@ -76,6 +76,12 @@ use crate::Ctx;
 /// `<when>` has nothing to match on.
 pub const E_WHEN_PATTERN: &str = "E-WHEN-PATTERN";
 
+/// `E-BRANCH-ALL-GUARDED`: a `<branch>` whose every `<choice>` carries a `when`
+/// guard (dsl §11.1, S5). At least one UNGUARDED (`when`-less) choice is REQUIRED
+/// — otherwise every guard could be false at once and the branch would present a
+/// provably-emptyable menu. (An empty branch is `E-BRANCH-EMPTY`, not this.)
+pub const E_BRANCH_ALL_GUARDED: &str = "E-BRANCH-ALL-GUARDED";
+
 /// A concrete, statically-known value an arm can match against.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum DomainValue {
@@ -307,6 +313,24 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
                 choice.span,
             ));
         }
+    }
+    // E-BRANCH-ALL-GUARDED (dsl §11.1, S5): a non-empty branch whose EVERY
+    // `<choice>` carries a `when` guard could have every guard false at a
+    // presentation point, leaving an empty menu. At least one unguarded
+    // (`when`-less) choice is REQUIRED. (An empty branch is already
+    // `E-BRANCH-EMPTY` above; we skip it here to avoid double-flagging.)
+    if !branch.choices.is_empty() && branch.choices.iter().all(|c| c.when.is_some()) {
+        diags.push(diag(
+            E_BRANCH_ALL_GUARDED,
+            Severity::Error,
+            format!(
+                "`<branch id=\"{}\">` has no unguarded `<choice>`; every choice carries a \
+                 `when`, so the menu could be empty — a branch must contain at least one \
+                 unguarded choice (dsl §11.1)",
+                branch.id
+            ),
+            branch.span,
+        ));
     }
     // Implicit decl: enum of the branch's choice ids, scene-scoped, no default
     // (so it is maybe-unset — the domain is choice ids ∪ `unset`, §11.1).
@@ -1205,6 +1229,92 @@ mod tests {
         let mut seen = BTreeSet::new();
         let rec = check_branch(&branch("couch", &["help", "ignore"]), &mut seen);
         assert!(rec.diags.iter().all(|d| d.code != "E-BRANCH-EMPTY"));
+    }
+
+    // ---- E-BRANCH-ALL-GUARDED (dsl §11.1, S5) -------------------------------
+
+    /// Build a branch whose choices each carry an optional `when` guard (raw CEL
+    /// text; `None` = unguarded). Only `when.is_some()` matters to `check_branch`.
+    fn guarded_branch(id: &str, choices: &[(&str, Option<&str>)]) -> Branch {
+        use lute_syntax::ast::Choice;
+        let choices = choices
+            .iter()
+            .map(|(cid, guard)| Choice {
+                id: (*cid).to_string(),
+                label: String::new(),
+                when: guard.map(|g| CelSlot::raw(CelKind::Condition, g.into(), span())),
+                attrs: Vec::new(),
+                body: Vec::new(),
+                span: span(),
+            })
+            .collect();
+        Branch {
+            id: id.to_string(),
+            attrs: Vec::new(),
+            choices,
+            span: span(),
+        }
+    }
+
+    #[test]
+    fn branch_all_guarded_rejected() {
+        // Every `<choice>` carries a `when` → the eligible set can be empty, so
+        // the branch could present an empty menu: one E-BRANCH-ALL-GUARDED at the
+        // branch span.
+        let mut seen = BTreeSet::new();
+        let b = guarded_branch(
+            "approach",
+            &[("soft", Some("scene.x")), ("blunt", Some("scene.y"))],
+        );
+        let rec = check_branch(&b, &mut seen);
+        let guarded: Vec<_> = rec
+            .diags
+            .iter()
+            .filter(|d| d.code == E_BRANCH_ALL_GUARDED)
+            .collect();
+        assert_eq!(
+            guarded.len(),
+            1,
+            "one E-BRANCH-ALL-GUARDED, got {:?}",
+            rec.diags
+        );
+        assert_eq!(guarded[0].severity, Severity::Error);
+        assert!(
+            guarded[0].message.contains("approach"),
+            "{}",
+            guarded[0].message
+        );
+    }
+
+    #[test]
+    fn branch_one_unguarded_ok() {
+        // At least one `when`-less choice → the menu is never provably empty.
+        let mut seen = BTreeSet::new();
+        let b = guarded_branch("approach", &[("soft", Some("scene.x")), ("blunt", None)]);
+        let rec = check_branch(&b, &mut seen);
+        assert!(
+            rec.diags.iter().all(|d| d.code != E_BRANCH_ALL_GUARDED),
+            "got {:?}",
+            rec.diags
+        );
+    }
+
+    #[test]
+    fn empty_branch_is_not_all_guarded() {
+        // An empty branch is E-BRANCH-EMPTY, NOT also E-BRANCH-ALL-GUARDED
+        // (all-guarded applies only to a non-empty branch).
+        let mut seen = BTreeSet::new();
+        let rec = check_branch(&branch("dead", &[]), &mut seen);
+        assert!(
+            rec.diags.iter().any(|d| d.code == "E-BRANCH-EMPTY"),
+            "got {:?}",
+            rec.diags
+        );
+        assert!(
+            rec.diags.iter().all(|d| d.code != E_BRANCH_ALL_GUARDED),
+            "empty branch must not be double-flagged; got {:?}",
+            rec.diags
+        );
     }
 
     // ---- E-MATCH-DUP-OTHERWISE (dsl §11.2 at-most-one) ----------------------
