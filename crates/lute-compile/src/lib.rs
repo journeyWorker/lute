@@ -213,6 +213,17 @@ fn collect_branch_paths_nodes(nodes: &[Node], paths: &mut BTreeSet<String>) {
                     }
                 }
             }
+            Node::Hub(h) => {
+                // The hub folds an implicit `scene.choices.<hubId>` enum slot
+                // (same shape/provenance as a `<branch>`, A2). The hub id is the
+                // `id` attr (no dedicated AST field); read it via `lower::attr_string`,
+                // matching the walker + the B6 schema fold.
+                let id = crate::lower::attr_string(&h.attrs, "id").unwrap_or_default();
+                paths.insert(format!("scene.choices.{id}"));
+                for choice in &h.choices {
+                    collect_branch_paths_nodes(&choice.body, paths);
+                }
+            }
             // Lines/directives/sets carry no branches; timeline clips are
             // `Directive|Set` only (mirrors `fold_branches`, which skips them).
             _ => {}

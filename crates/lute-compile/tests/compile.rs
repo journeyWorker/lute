@@ -65,22 +65,121 @@ fn error_doc_emits_no_artifact() {
 }
 
 #[test]
-fn valid_hub_doc_fails_compile_cleanly_not_panic() {
-    // Plan B removed the transitional `E-HUB-UNSUPPORTED` CHECK gate, so a valid
-    // hub now PASSES check — but hub CFG lowering is Plan C. Compilation must
-    // reject it with a clean diagnostic (`Result::Err`), NEVER panic.
-    let hub = "---\ncharacter: b\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n\
-               <hub id=\"chat\">\n\
-               <choice id=\"ask\" label=\"Ask\" once>\n:narrator: Sure.\n</choice>\n\
-               <choice id=\"leave\" label=\"Leave\" exit>\n:narrator: Bye.\n</choice>\n</hub>\n";
-    // Precondition: the hub doc checks clean (the check gate is gone), so compile
-    // reaches lowering instead of bouncing off the D6 gate.
-    assert!(lute_check::check(&input(hub)).ok, "hub doc must pass check");
-    let err = compile(&input(hub)).unwrap_err();
+fn valid_hub_doc_compiles_to_hub_record() {
+    // Plan C: `<hub>` now LOWERS to a `hub` record (IR A2). A check-passing hub
+    // doc COMPILES — the transitional `E-HUB-LOWERING-UNSUPPORTED` is gone.
+    const HUB: &str = r#"---
+character: b
+season: 1
+episode: 1
+state:
+  scene.affect.b: { type: number, default: 0 }
+---
+
+## Shot 1.
+
+<hub id="chat">
+  <choice id="ask" label="Ask" once>
+    :narrator: Sure.
+  </choice>
+  <choice id="curious" label="Be curious" when="scene.affect.b >= 1">
+    :narrator: Hmm.
+  </choice>
+  <choice id="leave" label="Leave" exit>
+    :narrator: Bye.
+  </choice>
+</hub>
+"#;
+    // Precondition: the hub doc checks clean (B6 hub checking), so compile reaches
+    // lowering instead of bouncing off the D6 gate.
+    assert!(lute_check::check(&input(HUB)).ok, "hub doc must pass check");
+    let artifact = compile(&input(HUB)).expect("hub doc compiles to a hub record");
+
+    // The `hub` record: id, recordKey alias, filled converge, three options.
+    let hub = artifact
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::Hub(h) => Some(h),
+            _ => None,
+        })
+        .expect("hub record");
+    assert_eq!(hub.id, "chat");
+    assert_eq!(hub.record_key, "scene.choices.chat");
+    assert!(!hub.converge.is_empty(), "converge addr filled by address pass");
+    assert_eq!(hub.options.len(), 3);
+    let opt = |id: &str| hub.options.iter().find(|o| o.id == id).expect("option");
+    let ask = opt("ask");
+    assert!(ask.once && !ask.exit, "ask: once, not exit");
+    assert!(ask.when.is_none() && ask.expr.is_none(), "ask is unguarded");
+    let curious = opt("curious");
+    assert!(!curious.once && !curious.exit, "curious: neither once nor exit");
+    assert!(curious.when.is_some(), "guarded option carries the raw `when`");
+    assert!(curious.expr.is_some(), "guarded option carries the lowered A7 expr");
+    let leave = opt("leave");
+    assert!(!leave.once && leave.exit, "leave: exit, not once");
+    for o in &hub.options {
+        assert!(!o.target.is_empty(), "option {} target resolved", o.id);
+        // Option `lineId` = {character}.s{season}ep{episode}.<hubId>.<optId>.
+        assert_eq!(o.line_id, format!("b.s01ep01.chat.{}", o.id));
+    }
+
+    // Flat-VM contract (A2 §7): the EXIT arm ends in a forward Jump→converge;
+    // NON-exit arms emit NO trailing jump. This doc has no other fork, so the
+    // total Jump count is exactly 1 (from `leave`), targeting the hub converge.
+    let jumps: Vec<&str> = artifact
+        .commands
+        .iter()
+        .filter_map(|c| match c {
+            Command::Jump(j) => Some(j.target.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(jumps.len(), 1, "only the exit arm jumps to converge, got {jumps:?}");
+    assert_eq!(jumps[0], hub.converge, "the exit-arm jump targets the hub converge");
+
+    // Serialized shape: kind:"hub", recordKey, options[*].once/exit are bools.
+    let json = serde_json::to_value(
+        artifact
+            .commands
+            .iter()
+            .find(|c| matches!(c, Command::Hub(_)))
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(json["kind"], "hub");
+    assert_eq!(json["recordKey"], "scene.choices.chat");
     assert!(
-        err.iter().any(|d| d.code == "E-HUB-LOWERING-UNSUPPORTED"),
-        "compiling a hub doc must fail with E-HUB-LOWERING-UNSUPPORTED, got {err:#?}",
+        json["converge"].as_str().is_some_and(|s| !s.is_empty()),
+        "converge present"
     );
+    for o in json["options"].as_array().unwrap() {
+        assert!(o["once"].is_boolean(), "once is an always-present bool");
+        assert!(o["exit"].is_boolean(), "exit is an always-present bool");
+    }
+
+    // Folded state envelope (via `fold_env`, reusing lute-check's B6 hub fold):
+    // the implicit `scene.choices.chat` enum + per-choice `scene.visited.chat.*`.
+    let entry = |path: &str| {
+        artifact
+            .state
+            .iter()
+            .find(|s| s.path == path)
+            .unwrap_or_else(|| panic!("missing state entry {path}"))
+    };
+    let choices = entry("scene.choices.chat");
+    assert_eq!(choices.ty, "enum");
+    let dom = choices.domain.as_deref().expect("enum domain");
+    for m in ["ask", "curious", "leave", "unset"] {
+        assert!(dom.contains(&m.to_string()), "domain has {m}, got {dom:?}");
+    }
+    assert_eq!(choices.default, Some(serde_json::json!("unset")));
+    assert_eq!(choices.provenance.as_deref(), Some("branch:chat"));
+    for cid in ["ask", "curious", "leave"] {
+        let v = entry(&format!("scene.visited.chat.{cid}"));
+        assert_eq!(v.ty, "bool", "visited {cid} is bool");
+        assert_eq!(v.default, Some(serde_json::json!(false)), "visited {cid} default false");
+    }
 }
 
 #[test]

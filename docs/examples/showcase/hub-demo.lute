@@ -22,10 +22,10 @@ state:
   a revisit <hub> (§7.3.2), `<when is="…">` literal-pattern arms (§7.3.1), and
   {{…}} content interpolation (§7.6), all against `--project docs/examples/showcase`.
 
-  IMPORTANT: `<hub>` LOWERING is Plan C. A hub PASSES `lute check` but FAILS
-  `lute compile` with E-HUB-LOWERING-UNSUPPORTED, so this file is exercised by
-  the CHECK path ONLY (a `lute check --project` integration test) — it is never
-  added to any compile/e2e golden.
+  Plan C: `<hub>` LOWERING is DONE. A hub PASSES `lute check` AND COMPILES to a
+  `hub` record (IR A2) via `lute compile`, so this file is exercised by BOTH the
+  check and compile `--project` integration tests (`hub_demo_example_checks_clean`
+  + `hub_demo_example_compiles`).
 */
 
 # S01EP02 — The Revisit

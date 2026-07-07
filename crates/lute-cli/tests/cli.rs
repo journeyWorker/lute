@@ -226,10 +226,9 @@ fn hub_demo_example_checks_clean() {
 }
 
 #[test]
-fn hub_demo_example_compile_is_unsupported() {
-    // The reason hub-demo is check-only: hub CFG lowering is Plan C. Compiling it
-    // MUST fail with E-HUB-LOWERING-UNSUPPORTED (exit 1) — pinned here so no one
-    // accidentally wires the example into a compile golden expecting success.
+fn hub_demo_example_compiles() {
+    // Plan C: `<hub>` now LOWERS (IR A2), so hub-demo COMPILES — exit 0 with the
+    // artifact on stdout, carrying a `hub` record for the revisit menu.
     let out = Command::new(BIN)
         .args([
             "compile",
@@ -239,14 +238,19 @@ fn hub_demo_example_compile_is_unsupported() {
         ])
         .output()
         .unwrap();
-    assert_eq!(out.status.code(), Some(1), "hub compile is not yet supported → exit 1");
-    let combined = format!(
-        "{}{}",
-        String::from_utf8_lossy(&out.stdout),
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "hub compile succeeds → exit 0; stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert!(
-        combined.contains("E-HUB-LOWERING-UNSUPPORTED"),
-        "compile must report E-HUB-LOWERING-UNSUPPORTED; got {combined}"
-    );
+    let artifact: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let hub = artifact["commands"]
+        .as_array()
+        .expect("commands array")
+        .iter()
+        .find(|c| c["kind"] == "hub")
+        .expect("a `hub` record in the compiled artifact");
+    assert_eq!(hub["id"], "chatWithBianca");
+    assert_eq!(hub["recordKey"], "scene.choices.chatWithBianca");
 }

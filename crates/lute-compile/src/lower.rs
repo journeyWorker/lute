@@ -201,7 +201,7 @@ fn attr_f64(attrs: &[Attr], key: &str) -> Option<f64> {
     attr_string(attrs, key).and_then(|s| s.parse::<f64>().ok())
 }
 
-fn attr_bool(attrs: &[Attr], key: &str) -> Option<bool> {
+pub(crate) fn attr_bool(attrs: &[Attr], key: &str) -> Option<bool> {
     attrs
         .iter()
         .find(|a| a.key == key)
