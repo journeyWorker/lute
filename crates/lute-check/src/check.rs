@@ -70,7 +70,7 @@ use lute_syntax::parse;
 use crate::cel_resolve::compatible;
 use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
-use crate::directives::check_directive;
+use crate::directives::{at_context, check_directive};
 use crate::inject::{lower_node, InjectedCommand, StageState};
 use crate::meta::parse_meta;
 use crate::schema_import::SchemaImports;
@@ -818,6 +818,13 @@ fn check_use(
     ctx: &Ctx<'_>,
     diags: &mut Vec<Diagnostic>,
 ) {
+    // E-AT-CONTEXT (dsl §7.5): a reserved `at` on a `::use` OUTSIDE a <track>
+    // (track clips strip `at` via the parser). `::use` is dispatched here before
+    // `check_directive`, so this shared check keeps `at` from being misread as a
+    // component arg. Emitted regardless of the component's validity below.
+    if let Some(d) = at_context(dir) {
+        diags.push(d);
+    }
     let Some(name_attr) = dir.attrs.iter().find(|a| a.key == "component") else {
         diags.push(use_diag(
             E_COMPONENT_ARG,
@@ -843,7 +850,12 @@ fn check_use(
         return;
     };
     // Named-arg validation: each supplied arg binds to a param by name.
-    for attr in dir.attrs.iter().filter(|a| a.key != "component") {
+    // `at` is reserved (E-AT-CONTEXT above), never a component arg.
+    for attr in dir
+        .attrs
+        .iter()
+        .filter(|a| a.key != "component" && a.key != "at")
+    {
         match def.params.iter().find(|(p, _)| p == &attr.key) {
             None => diags.push(use_diag(
                 E_COMPONENT_ARG,

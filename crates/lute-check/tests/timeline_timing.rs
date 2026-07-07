@@ -88,3 +88,16 @@ fn at_inside_track_is_clean() {
         "`at` inside a <track> must not flag E-AT-CONTEXT; got {cs:?}"
     );
 }
+
+#[test]
+fn use_directive_at_outside_track_rejected() {
+    // The reserved `::use` directive form is dispatched to component validation
+    // BEFORE the generic directive check; a content-context `::use{… at=…}` must
+    // still flag E-AT-CONTEXT (not just E-COMPONENT-UNDECLARED / a bogus arg).
+    let t = format!("{HDR}::use{{component=\"x\" at=\"1\"}}\n");
+    let cs = codes(&t);
+    assert!(
+        cs.iter().any(|c| c == "E-AT-CONTEXT"),
+        "expected E-AT-CONTEXT for `at` on a ::use outside a track; got {cs:?}"
+    );
+}
