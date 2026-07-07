@@ -19,6 +19,7 @@ pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use defassign::check_definite_assignment;
+pub use directives::E_AT_CONTEXT;
 pub use inject::{
     lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,
 };
@@ -31,4 +32,6 @@ pub use meta::{
 pub use schema_import::{resolve_imports, SchemaImports};
 pub use set_op::check_set;
 pub use tag::{tag_document, TagOutcome};
-pub use timeline::{resolve_timeline, ResolvedRow, ResolvedTimeline};
+pub use timeline::{
+    resolve_timeline, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING, E_TIMELINE_DURATION,
+};

@@ -20,6 +20,10 @@
 //!   `[at, at+duration)` half-open intervals overlap.
 //! - **`E-WRITE-CONFLICT`** — two clips on DIFFERENT tracks whose resolved
 //!   state-write targets overlap at overlapping times (see model below).
+//! - **`E-CLIP-TIMING`** — one clip carries BOTH `at` and `delay` (§7.5, §11.4).
+//! - **`E-TIMELINE-DURATION`** — an explicit `duration` below the max resolved
+//!   clip end (§11.4); `E-AT-CONTEXT` (`at` outside a track) is raised at the
+//!   directive site in `directives.rs`, not here.
 //! - **`W-TIMELINE-TRACKS`** — more than 8 tracks.
 //! - **`W-TIMELINE-CLIPS`** — more than 12 clips in a single track.
 //! - **`W-TIMELINE-TOTAL`** — more than 40 clips across all tracks.
@@ -47,6 +51,16 @@ use lute_manifest::types::PathSegment;
 use lute_syntax::ast::{AttrValue, ClipNode, Timeline, TrackKey};
 
 use crate::ctx::Ctx;
+
+/// `E-CLIP-TIMING`: a single `<track>` clip carrying BOTH `at` (an absolute
+/// timeline position) and `delay` (a relative nudge) — mutually exclusive on one
+/// clip (dsl §7.5, §11.4).
+pub const E_CLIP_TIMING: &str = "E-CLIP-TIMING";
+
+/// `E-TIMELINE-DURATION`: an explicit `<timeline duration>` that is LESS THAN the
+/// maximum resolved clip end across all tracks — a timeline may not truncate its
+/// own content (dsl §11.4).
+pub const E_TIMELINE_DURATION: &str = "E-TIMELINE-DURATION";
 
 /// One resolved clip: its absolute start, the subject it drives, a short
 /// human-readable summary, and its duration (seconds, best-effort).
@@ -174,6 +188,19 @@ pub fn resolve_timeline(
                 }
             }
 
+            // E-CLIP-TIMING (dsl §7.5, §11.4): `at` (absolute position) and
+            // `delay` (relative nudge) are mutually exclusive on one clip.
+            if clip.at.is_some() && clip_has_delay(&clip.node) {
+                diags.push(diag(
+                    E_CLIP_TIMING,
+                    Severity::Error,
+                    format!(
+                        "clip in track `{canon}` carries both `at` and `delay`; they are mutually exclusive (dsl §7.5)"
+                    ),
+                    clip.span,
+                ));
+            }
+
             rows.push(ResolvedRow {
                 at,
                 subject: canon.clone(),
@@ -218,12 +245,27 @@ pub fn resolve_timeline(
         }
     }
 
-    // Final barrier: explicit `duration` if parseable, else max clip end.
-    let barrier_at = tl
-        .duration
-        .as_ref()
-        .and_then(|slot| parse_f64(&slot.raw))
-        .unwrap_or(max_end);
+    // Final barrier: explicit `duration` if parseable, else max clip end. An
+    // explicit duration BELOW the max resolved clip end truncates the timeline's
+    // own content (dsl §11.4) → E-TIMELINE-DURATION (reported at the duration
+    // slot span); the barrier still records the authored value.
+    let barrier_at = match tl.duration.as_ref().and_then(|slot| parse_f64(&slot.raw)) {
+        Some(explicit) => {
+            if explicit < max_end {
+                let span = tl.duration.as_ref().map_or(tl.span, |s| s.span);
+                diags.push(diag(
+                    E_TIMELINE_DURATION,
+                    Severity::Error,
+                    format!(
+                        "timeline duration {explicit} is below the max resolved clip end {max_end}; a timeline may not truncate its own content (dsl §11.4)"
+                    ),
+                    span,
+                ));
+            }
+            explicit
+        }
+        None => max_end,
+    };
 
     (ResolvedTimeline { rows, barrier_at }, diags)
 }
@@ -369,6 +411,15 @@ fn clip_duration(node: &ClipNode) -> f64 {
             })
             .unwrap_or(0.0),
         ClipNode::Set(_) => 0.0,
+    }
+}
+
+/// True when a clip's directive carries a `delay` timing attr (§7.5). `<set>`
+/// clips carry no timing, so they never carry a `delay`.
+fn clip_has_delay(node: &ClipNode) -> bool {
+    match node {
+        ClipNode::Directive(d) => d.attrs.iter().any(|a| a.key == "delay"),
+        ClipNode::Set(_) => false,
     }
 }
 
@@ -834,6 +885,91 @@ mod tests {
                 .iter()
                 .any(|d| d.code == "E-TRACK-KEY" || d.code == "E-DUP-TRACK"),
             "got {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+    }
+
+    /// A clip carrying BOTH `at` (absolute position) and `delay` (relative nudge)
+    /// is contradictory (dsl §7.5, §11.4) -> E-CLIP-TIMING at the clip span.
+    #[test]
+    fn at_and_delay_same_clip() {
+        let tl = Timeline {
+            duration: None,
+            span: span(),
+            tracks: vec![Track {
+                key: TrackKey::Subject("camera".to_string()),
+                clips: vec![Clip {
+                    node: ClipNode::Directive(Directive {
+                        tag: "camera".to_string(),
+                        attrs: vec![Attr {
+                            key: "delay".to_string(),
+                            value: AttrValue::Str("0.5".to_string()),
+                            value_span: span(),
+                            span: span(),
+                        }],
+                        span: span(),
+                    }),
+                    at: Some(1.0),
+                    span: span(),
+                }],
+                span: span(),
+            }],
+        };
+        let (_r, diags) = resolve_timeline(&tl, &ctx(), &lute_manifest::core::load_core_snapshot());
+        assert!(
+            diags.iter().any(|d| d.code == "E-CLIP-TIMING"),
+            "at+delay on one clip must flag E-CLIP-TIMING; got {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+    }
+
+    /// An explicit `<timeline duration>` below the max resolved clip end truncates
+    /// its own content (dsl §11.4) -> E-TIMELINE-DURATION.
+    #[test]
+    fn duration_below_content_rejected() {
+        // camera track: one clip dur 1.0 (at omitted => 0.0) -> resolved end 1.0.
+        let tl = Timeline {
+            duration: Some(lute_syntax::ast::CelSlot::raw(
+                lute_syntax::ast::CelKind::AttrValue,
+                "0.3".into(),
+                span(),
+            )),
+            span: span(),
+            tracks: vec![Track {
+                key: TrackKey::Subject("camera".to_string()),
+                clips: vec![clip(None, "1.0")],
+                span: span(),
+            }],
+        };
+        let (_r, diags) = resolve_timeline(&tl, &ctx(), &lute_manifest::core::load_core_snapshot());
+        assert!(
+            diags.iter().any(|d| d.code == "E-TIMELINE-DURATION"),
+            "duration 0.3 < max clip end 1.0 must flag E-TIMELINE-DURATION; got {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+    }
+
+    /// An explicit duration >= the max resolved clip end is clean (the showcase
+    /// shape: duration 1.4, max clip end below it).
+    #[test]
+    fn duration_above_content_is_clean() {
+        let tl = Timeline {
+            duration: Some(lute_syntax::ast::CelSlot::raw(
+                lute_syntax::ast::CelKind::AttrValue,
+                "1.4".into(),
+                span(),
+            )),
+            span: span(),
+            tracks: vec![Track {
+                key: TrackKey::Subject("camera".to_string()),
+                clips: vec![clip(None, "1.0")],
+                span: span(),
+            }],
+        };
+        let (_r, diags) = resolve_timeline(&tl, &ctx(), &lute_manifest::core::load_core_snapshot());
+        assert!(
+            !diags.iter().any(|d| d.code == "E-TIMELINE-DURATION"),
+            "duration 1.4 >= max clip end 1.0 must be clean; got {:?}",
             diags.iter().map(|d| &d.code).collect::<Vec<_>>()
         );
     }
