@@ -393,3 +393,64 @@ fn context_missing_file_exits_two() {
         "an unreadable file exits 2 (I/O), matching run_check"
     );
 }
+
+#[test]
+fn context_choice_slot_domain_includes_unset() {
+    // A REAL implicit `scene.choices.<hubId|branchId>` slot's authorable domain is
+    // choice ids ∪ `unset` — the author must write `<when is="unset">` for the
+    // pre-choice state — so `lute context` MUST carry `unset` LAST (members then
+    // unset), byte-identical to compile's/check's implicit-slot domain (no
+    // divergence). An author-declared enum at any OTHER path keeps its declared
+    // members (no spurious `unset`). `hub-demo` folds the hub `chatWithBianca` into
+    // one implicit choice slot AND declares plain enums (`run.sofaOutcome`, …).
+    let out = Command::new(BIN)
+        .args([
+            "context",
+            "../../docs/examples/showcase/hub-demo.lute",
+            "--project",
+            "../../docs/examples/showcase",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let schema = v["stateSchema"].as_array().expect("stateSchema array");
+    let domain_of = |path: &str| -> Vec<String> {
+        let entry = schema
+            .iter()
+            .find(|e| e["path"] == path)
+            .unwrap_or_else(|| panic!("stateSchema entry for {path}; got {v}"));
+        entry["domain"]
+            .as_array()
+            .unwrap_or_else(|| panic!("domain array for {path}; got {entry}"))
+            .iter()
+            .filter_map(|x| x.as_str().map(str::to_string))
+            .collect()
+    };
+
+    // The implicit hub choice slot: choice ids ∪ `unset`, `unset` LAST — matching
+    // the compiled artifact's `state` table domain for the same path.
+    assert_eq!(
+        domain_of("scene.choices.chatWithBianca"),
+        vec!["askCoffee", "compliment", "leave", "unset"],
+        "implicit choice-slot domain is choice ids ∪ unset (matching compile): {v}"
+    );
+
+    // A plain author enum (NOT a branch/hub slot) keeps ONLY its declared members.
+    let author = domain_of("run.sofaOutcome");
+    assert_eq!(
+        author,
+        vec!["warm", "cold"],
+        "author enum keeps its declared members, no spurious unset: {v}"
+    );
+    assert!(
+        !domain_of("app.lang").contains(&"unset".to_string())
+            && !domain_of("app.rating").contains(&"unset".to_string()),
+        "author enums must never gain an implicit-slot unset: {v}"
+    );
+}

@@ -16,7 +16,7 @@
 //!   never depends on a live/remote catalog — refresh only canonicalizes and
 //!   re-stamps the already-pinned artifacts, so `refresh` then `load` round-trips.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -293,7 +293,12 @@ fn run_context(
     // fill is needed — the schema fold reads structural ids/attrs, not CEL slots.
     let (doc, _) = lute_syntax::parse(&input.text);
     let (folded, _, _) = fold_env(&doc, &input);
-    let surface = authoring_surface(&input, &folded.env.state);
+    // The ACTUAL implicit choice slots (`scene.choices.<branchId|hubId>`): reuse
+    // compile's own discriminator so the surface's enum domains match the compiled
+    // state table byte-for-byte (choice ids ∪ `unset`) — no divergence. The set is
+    // expansion-invariant, so the raw parsed `doc` yields the same paths.
+    let branch_paths = lute_compile::collect_branch_paths(&doc);
+    let surface = authoring_surface(&input, &folded.env.state, &branch_paths);
 
     if json {
         match serde_json::to_string_pretty(&surface) {
@@ -317,9 +322,13 @@ fn run_context(
 /// (key-sorted by construction) and every array is emitted in a stable order
 /// (directives by name, state paths by path, components by name; attrs/params in
 /// declaration order). `enums`/`assetKinds`/`providers` come straight off the
-/// resolved snapshot; `directives` + `stateSchema` render each `Type` to a stable
-/// string (see `attr_type_str`/`state_type_str`).
-fn authoring_surface(input: &CheckInput, state: &lute_check::StateSchema) -> serde_json::Value {
+/// string (see `attr_type_str`/`state_type_str`). `branch_paths` marks the ACTUAL
+/// implicit choice slots so their enum domains gain `unset` (matching compile).
+fn authoring_surface(
+    input: &CheckInput,
+    state: &lute_check::StateSchema,
+    branch_paths: &BTreeSet<String>,
+) -> serde_json::Value {
     use serde_json::{Map, Value};
     let snap = &input.snapshot;
 
@@ -363,7 +372,11 @@ fn authoring_surface(input: &CheckInput, state: &lute_check::StateSchema) -> ser
         .decls
         .iter()
         .map(|(path, decl)| {
-            let (ty, domain) = state_type_str(&decl.ty);
+            // A path folded from a real `<branch>`/`<hub>` is an implicit choice
+            // slot: its authorable enum domain is choice ids ∪ `unset` (compile's
+            // state-table domain), NOT the folded members alone. Author enums at
+            // any other path are not in `branch_paths` and keep their members.
+            let (ty, domain) = state_type_str(branch_paths.contains(path), &decl.ty);
             let mut o = Map::new();
             o.insert("path".into(), path.clone().into());
             o.insert("type".into(), ty.into());
@@ -430,17 +443,25 @@ fn authoring_surface(input: &CheckInput, state: &lute_check::StateSchema) -> ser
 }
 
 /// Render a state-path `Type` for parity with `lute_compile`'s `type_label`
-/// (non-branch slot, dsl §4.1): scalars + `enum`(+members); id-flavored types
-/// collapse to their value-level label (`string`/`enum`) exactly as the compiled
-/// artifact's state table does. The implicit-choice-slot `unset` augmentation is
-/// a runtime-envelope concern, NOT an authoring one, so it is not applied — the
-/// folded `StateDecl`'s enum members ARE the authorable domain.
-fn state_type_str(ty: &Type) -> (String, Option<Vec<String>>) {
+/// (dsl §4.1): scalars + `enum`(+members); id-flavored types collapse to their
+/// value-level label (`string`/`enum`) exactly as the compiled artifact's state
+/// table does. `is_implicit` (path ∈ `collect_branch_paths`) marks a REAL
+/// `<branch>`/`<hub>` choice slot: its enum domain is choice ids ∪ `unset` — the
+/// author must write `<when is="unset">` for the pre-choice state — appended LAST,
+/// byte-identical to `type_label(true, …)`. A plain author enum (`is_implicit ==
+/// false`) keeps its folded members as the authorable domain, no `unset`.
+fn state_type_str(is_implicit: bool, ty: &Type) -> (String, Option<Vec<String>>) {
     match ty {
         Type::Bool => ("bool".to_string(), None),
         Type::Number => ("number".to_string(), None),
         Type::Str => ("string".to_string(), None),
-        Type::Enum(members) => ("enum".to_string(), Some(members.clone())),
+        Type::Enum(members) => {
+            let mut domain = members.clone();
+            if is_implicit {
+                domain.push("unset".to_string());
+            }
+            ("enum".to_string(), Some(domain))
+        }
         Type::List(_) => ("list".to_string(), None),
         Type::Record(_) => ("record".to_string(), None),
         Type::Map { .. } => ("map".to_string(), None),
