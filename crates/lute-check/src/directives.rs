@@ -30,6 +30,13 @@ use lute_syntax::ast::{Attr, AttrValue, Directive};
 
 use crate::ctx::Ctx;
 
+/// `E-AT-CONTEXT`: the timeline-position key `at` on a directive OUTSIDE a
+/// `<track>` clip (dsl §7.5). `at` is reserved to staging directives inside a
+/// `<track>`; the parser strips it from track clips, so any `at` still present
+/// on a directive reaching [`check_directive`] is a non-track use — a dedicated
+/// diagnostic, never an `E-UNKNOWN-ATTR` fallthrough.
+pub const E_AT_CONTEXT: &str = "E-AT-CONTEXT";
+
 /// Validate a single directive against the resolved capability snapshot
 /// (dsl §7.2, plugin §8). Returns every diagnostic the directive produces; an
 /// empty vec means the directive and all its attributes are well-formed.
@@ -75,6 +82,21 @@ pub fn check_directive(
 
     // Per-attribute validation.
     for attr in &dir.attrs {
+        // `at` is reserved to <track> clips (dsl §7.5). The parser strips `at`
+        // from track clips, so its presence here means a non-track directive —
+        // the dedicated E-AT-CONTEXT, never the E-UNKNOWN-ATTR fallthrough.
+        if attr.key == "at" {
+            diags.push(diag(
+                E_AT_CONTEXT,
+                Severity::Error,
+                format!(
+                    "`at` is valid only on a <track> clip; `::{}` here is not a timeline clip (dsl §7.5)",
+                    dir.tag
+                ),
+                dir.span,
+            ));
+            continue;
+        }
         let Some(adecl) = decl.attrs.iter().find(|a| a.name == attr.key) else {
             diags.push(diag(
                 "E-UNKNOWN-ATTR",
