@@ -58,7 +58,7 @@ use std::collections::BTreeSet;
 
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, Branch, CelSlot, ClipNode, Hub, Match, Node, Set, Timeline};
+use lute_syntax::ast::{Arm, Branch, CelSlot, ClipNode, Hub, InterpKind, Match, Node, Set, Timeline};
 
 use crate::cel_paths::{collect_path_uses, is_state_path, PathRole};
 use crate::meta::StateSchema;
@@ -93,8 +93,21 @@ fn walk_nodes(
             Node::Match(m) => walk_match(m, schema, assigned, diags),
             Node::Timeline(tl) => walk_timeline(tl, schema, assigned, diags),
             Node::Hub(hub) => walk_hub(hub, schema, assigned, diags),
-            // Content/staging leaves carry no state reads or writes.
-            Node::Line(_) | Node::Directive(_) => {}
+            // A `{{path}}` interpolation on a content line is a state READ at the
+            // line's position (dsl §7.6, §9.4): give it the SAME definite-
+            // assignment treatment as a guard / `::set` read — a maybe-unset path
+            // (declared, no default, no dominating write, no guard) is
+            // `E-MAYBE-UNSET`. `Ref`/`Reserved` interps carry no state path.
+            // (`E-UNDECLARED` for the path and `E-UNDECLARED-REF` for the ref are
+            // the cel-layer resolver's job, mirroring how guard reads split.)
+            Node::Line(line) => {
+                for interp in &line.interps {
+                    if interp.kind == InterpKind::Path {
+                        check_read(&interp.raw, schema, assigned, interp.span, diags);
+                    }
+                }
+            }
+            Node::Directive(_) => {}
         }
     }
 }
