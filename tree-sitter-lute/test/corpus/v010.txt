@@ -187,3 +187,23 @@ when is signed-number literal (leading minus, structured when_pattern)
     (when
       (when_is (when_key) (when_pattern (when_literal)))
       (line (speaker) (text)))))
+
+==================
+choice persist sugar: into= run-path target (0.1.0, renamed from 0.0.1 as=)
+==================
+<branch id="rest">
+  <choice id="couch" label="Offer the couch" persist="run" into="run.metHelpfully" value="warm">
+    :fixer: Take the couch — you look exhausted.
+  </choice>
+</branch>
+---
+(source_file
+  (branch
+    (attr (key) (string))
+    (choice
+      (attr (key) (string))
+      (attr (key) (string))
+      (attr (key) (string))
+      (attr (key) (string))
+      (attr (key) (string))
+      (line (speaker) (text)))))
