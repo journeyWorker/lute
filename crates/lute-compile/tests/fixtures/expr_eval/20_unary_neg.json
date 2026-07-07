@@ -1,0 +1,11 @@
+{
+  "name": "unary_neg",
+  "desc": "Unary minus lowers to a NEGATE node (op '-', no r); negating coins 4 = -4.",
+  "cel": "-run.coins",
+  "expr": {
+    "op": "-",
+    "l": { "path": "run.coins" }
+  },
+  "state": { "run.coins": 4 },
+  "expected": -4.0
+}
