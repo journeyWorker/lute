@@ -96,6 +96,7 @@ fn choice_matches_spec_worked_example() {
             label: "Just ask, flatly".into(),
             line_id: "bianca.s01ep02.number.blunt".into(),
             when: None,
+            expr: None,
             target: "004-0600".into(),
         }],
         converge: "004-1100".into(),
@@ -115,6 +116,7 @@ fn match_jump_barrier_serialize() {
         arms: vec![MatchArm {
             test: "(scene.affect.bianca >= 1)".into(),
             target: "005-0800".into(),
+            expr: expr::lower_expr("(scene.affect.bianca >= 1)"),
         }],
         otherwise: Some("005-1200".into()),
         converge: "005-1400".into(),
@@ -122,7 +124,7 @@ fn match_jump_barrier_serialize() {
     });
     assert_eq!(
         j(&m),
-        r#"{"kind":"match","addr":"005-0700","subject":"scene.choices.number","arms":[{"test":"(scene.affect.bianca >= 1)","target":"005-0800"}],"otherwise":"005-1200","converge":"005-1400"}"#
+        r#"{"kind":"match","addr":"005-0700","subject":"scene.choices.number","arms":[{"test":"(scene.affect.bianca >= 1)","target":"005-0800","expr":{"op":">=","l":{"path":"scene.affect.bianca"},"r":{"lit":1.0}}}],"otherwise":"005-1200","converge":"005-1400"}"#
     );
     let jm = Command::Jump(JumpCmd {
         addr: "004-0700".into(),
@@ -169,11 +171,12 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
         path: "scene.affect.bianca".into(),
         op: "+=".into(),
         value: "1".into(),
+        expr: expr::lower_expr("1"),
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&set),
-        r#"{"kind":"set","addr":"004-0900","path":"scene.affect.bianca","op":"+=","value":"1"}"#
+        r#"{"kind":"set","addr":"004-0900","path":"scene.affect.bianca","op":"+=","value":"1","expr":{"lit":1.0}}"#
     );
     let mut fields = BTreeMap::new();
     fields.insert(
@@ -316,6 +319,7 @@ fn retarget_and_addr_helpers_visit_every_flow_field() {
             label: "X".into(),
             line_id: String::new(),
             when: None,
+            expr: None,
             target: "@1".into(),
         }],
         converge: "@2".into(),

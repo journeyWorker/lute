@@ -9,6 +9,7 @@
 pub mod address;
 pub mod cfg;
 pub mod expand;
+pub mod expr;
 pub mod ir;
 pub mod lower;
 pub mod normalize;

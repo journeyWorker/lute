@@ -550,6 +550,7 @@ dependencies = [
 name = "lute-compile"
 version = "0.0.1"
 dependencies = [
+ "cel-parser",
  "insta",
  "lute-cel",
  "lute-check",

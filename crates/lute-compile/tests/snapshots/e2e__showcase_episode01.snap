@@ -248,7 +248,10 @@ expression: json
       "addr": "002-0800",
       "path": "scene.saw_demo",
       "op": "=",
-      "value": "true"
+      "value": "true",
+      "expr": {
+        "lit": true
+      }
     },
     {
       "kind": "line",
@@ -277,11 +280,36 @@ expression: json
       "arms": [
         {
           "test": "scene.serve.debut.rank == 'gold'",
-          "target": "003-0300"
+          "target": "003-0300",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "scene.serve.debut.rank"
+            },
+            "r": {
+              "lit": "gold"
+            }
+          }
         },
         {
           "test": "scene.serve.debut.rank in ['silver', 'bronze']",
-          "target": "003-0600"
+          "target": "003-0600",
+          "expr": {
+            "op": "in",
+            "l": {
+              "path": "scene.serve.debut.rank"
+            },
+            "r": {
+              "list": [
+                {
+                  "lit": "silver"
+                },
+                {
+                  "lit": "bronze"
+                }
+              ]
+            }
+          }
         }
       ],
       "otherwise": "003-0900",
@@ -303,7 +331,10 @@ expression: json
       "addr": "003-0400",
       "path": "scene.affect.bianca",
       "op": "+=",
-      "value": "1"
+      "value": "1",
+      "expr": {
+        "lit": 1.0
+      }
     },
     {
       "kind": "jump",
@@ -326,7 +357,10 @@ expression: json
       "addr": "003-0700",
       "path": "run.affection",
       "op": "+=",
-      "value": "1"
+      "value": "1",
+      "expr": {
+        "lit": 1.0
+      }
     },
     {
       "kind": "jump",
@@ -374,6 +408,9 @@ expression: json
           "label": "Ask gently",
           "lineId": "bianca.s01ep01.approach.soft",
           "when": "(true)",
+          "expr": {
+            "lit": true
+          },
           "target": "004-0500"
         },
         {
@@ -381,6 +418,15 @@ expression: json
           "label": "Ask, and linger a while",
           "lineId": "bianca.s01ep01.approach.linger",
           "when": "(user.level >= (1))",
+          "expr": {
+            "op": ">=",
+            "l": {
+              "path": "user.level"
+            },
+            "r": {
+              "lit": 1.0
+            }
+          },
           "target": "004-0900"
         }
       ],
@@ -414,14 +460,20 @@ expression: json
       "addr": "004-0600",
       "path": "scene.affect.bianca",
       "op": "+=",
-      "value": "1"
+      "value": "1",
+      "expr": {
+        "lit": 1.0
+      }
     },
     {
       "kind": "set",
       "addr": "004-0700",
       "path": "run.metHelpfully",
       "op": "=",
-      "value": "true"
+      "value": "true",
+      "expr": {
+        "lit": true
+      }
     },
     {
       "kind": "jump",
@@ -442,14 +494,20 @@ expression: json
       "addr": "004-1000",
       "path": "run.affection",
       "op": "+=",
-      "value": "1"
+      "value": "1",
+      "expr": {
+        "lit": 1.0
+      }
     },
     {
       "kind": "set",
       "addr": "004-1100",
       "path": "run.sofaOutcome",
       "op": "=",
-      "value": "'warm'"
+      "value": "'warm'",
+      "expr": {
+        "lit": "warm"
+      }
     },
     {
       "kind": "jump",
@@ -480,11 +538,29 @@ expression: json
       "arms": [
         {
           "test": "(scene.affect.bianca >= 1)",
-          "target": "005-0200"
+          "target": "005-0200",
+          "expr": {
+            "op": ">=",
+            "l": {
+              "path": "scene.affect.bianca"
+            },
+            "r": {
+              "lit": 1.0
+            }
+          }
         },
         {
           "test": "scene.choices.approach == 'blunt'",
-          "target": "005-0400"
+          "target": "005-0400",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "scene.choices.approach"
+            },
+            "r": {
+              "lit": "blunt"
+            }
+          }
         }
       ],
       "otherwise": "005-0600",
@@ -536,11 +612,29 @@ expression: json
       "arms": [
         {
           "test": "run.metHelpfully == true",
-          "target": "005-0900"
+          "target": "005-0900",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "run.metHelpfully"
+            },
+            "r": {
+              "lit": true
+            }
+          }
         },
         {
           "test": "run.metHelpfully == false",
-          "target": "005-1100"
+          "target": "005-1100",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "run.metHelpfully"
+            },
+            "r": {
+              "lit": false
+            }
+          }
         }
       ],
       "converge": "005-1300"
@@ -584,7 +678,16 @@ expression: json
       "arms": [
         {
           "test": "run.sofaOutcome == 'warm'",
-          "target": "005-1400"
+          "target": "005-1400",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "run.sofaOutcome"
+            },
+            "r": {
+              "lit": "warm"
+            }
+          }
         }
       ],
       "otherwise": "005-1600",
@@ -629,7 +732,16 @@ expression: json
       "arms": [
         {
           "test": "app.rating == 'teen'",
-          "target": "006-0200"
+          "target": "006-0200",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "app.rating"
+            },
+            "r": {
+              "lit": "teen"
+            }
+          }
         }
       ],
       "otherwise": "006-0400",
@@ -668,11 +780,29 @@ expression: json
       "arms": [
         {
           "test": "(user.level >= (3))",
-          "target": "006-0700"
+          "target": "006-0700",
+          "expr": {
+            "op": ">=",
+            "l": {
+              "path": "user.level"
+            },
+            "r": {
+              "lit": 3.0
+            }
+          }
         },
         {
           "test": "(user.level >= 2)",
-          "target": "006-0900"
+          "target": "006-0900",
+          "expr": {
+            "op": ">=",
+            "l": {
+              "path": "user.level"
+            },
+            "r": {
+              "lit": 2.0
+            }
+          }
         }
       ],
       "otherwise": "006-1100",
@@ -765,7 +895,16 @@ expression: json
       "arms": [
         {
           "test": "app.lang == 'ko'",
-          "target": "006-1900"
+          "target": "006-1900",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "app.lang"
+            },
+            "r": {
+              "lit": "ko"
+            }
+          }
         }
       ],
       "otherwise": "006-2100",

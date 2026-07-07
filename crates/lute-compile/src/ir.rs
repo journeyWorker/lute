@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use crate::expr::ExprNode;
+
 /// Envelope (§4.1): version + meta + folded state schema + flat command array.
 #[derive(Clone, Debug, Serialize)]
 pub struct Artifact {
@@ -271,6 +273,8 @@ pub struct SetCmd {
     pub path: String,
     pub op: String,
     pub value: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expr: Option<ExprNode>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -295,6 +299,8 @@ pub struct ChoiceOption {
     pub line_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub when: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expr: Option<ExprNode>,
     pub target: String,
 }
 
@@ -315,6 +321,8 @@ pub struct MatchCmd {
 pub struct MatchArm {
     pub test: String,
     pub target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expr: Option<ExprNode>,
 }
 
 #[derive(Clone, Debug, Serialize)]

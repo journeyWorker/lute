@@ -304,7 +304,10 @@ expression: json
       "addr": "003-1200",
       "path": "scene.flags.saw_beam",
       "op": "=",
-      "value": "true"
+      "value": "true",
+      "expr": {
+        "lit": true
+      }
     },
     {
       "kind": "line",
@@ -443,7 +446,10 @@ expression: json
       "addr": "004-0700",
       "path": "scene.affect.bianca",
       "op": "+=",
-      "value": "1"
+      "value": "1",
+      "expr": {
+        "lit": 1.0
+      }
     },
     {
       "kind": "jump",
@@ -650,11 +656,29 @@ expression: json
       "arms": [
         {
           "test": "(scene.affect.bianca >= 1)",
-          "target": "005-1100"
+          "target": "005-1100",
+          "expr": {
+            "op": ">=",
+            "l": {
+              "path": "scene.affect.bianca"
+            },
+            "r": {
+              "lit": 1.0
+            }
+          }
         },
         {
           "test": "scene.choices.number == 'blunt'",
-          "target": "005-1300"
+          "target": "005-1300",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "scene.choices.number"
+            },
+            "r": {
+              "lit": "blunt"
+            }
+          }
         }
       ],
       "otherwise": "005-1500",
