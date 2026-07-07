@@ -14,7 +14,7 @@ pub mod tag;
 pub mod timeline;
 
 pub use cel_paths::E_PATH_IDENT;
-pub use cel_resolve::check_cel_slot;
+pub use cel_resolve::{check_cel_slot, E_CEL_PROFILE};
 pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved, E_HUB_UNSUPPORTED};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
