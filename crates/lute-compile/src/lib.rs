@@ -275,7 +275,7 @@ fn type_label(is_implicit: bool, ty: &Type) -> (String, Option<Vec<String>>) {
 
 /// Manifest literal -> JSON. Integral floats collapse to JSON integers so the
 /// envelope reads `0`, not `0.0` (§4.1 example).
-fn literal_json(l: &Literal) -> serde_json::Value {
+pub(crate) fn literal_json(l: &Literal) -> serde_json::Value {
     match l {
         Literal::Bool(b) => serde_json::Value::Bool(*b),
         Literal::Num(n) if n.fract() == 0.0 && n.is_finite() && n.abs() < 9.0e15 => {

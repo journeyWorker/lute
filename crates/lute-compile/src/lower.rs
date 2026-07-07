@@ -5,9 +5,9 @@
 
 use std::collections::BTreeMap;
 
-use lute_manifest::schema::DirectiveDecl;
+use lute_manifest::schema::{DirectiveDecl, WriteDecl, WriteValue};
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_manifest::types::{Literal, Type};
+use lute_manifest::types::{Literal, PathSegment, Type};
 use lute_syntax::ast::{Attr, AttrValue, Directive, Line, Set};
 
 use crate::ir::*;
@@ -155,10 +155,17 @@ pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option
                 }
                 fields.insert(a.key.clone(), attr_json(a, decl));
             }
+            // IR A12: resolve the manifest directive's declared `effects.writes`
+            // into artifact-local bindings (fromAttr templates substituted).
+            let effects = decl
+                .and_then(|d| d.effects.as_ref())
+                .map(|eff| eff.writes.iter().map(|w| resolve_effect(w, dir)).collect())
+                .unwrap_or_default();
             Command::Other(OtherCmd {
                 addr: String::new(),
                 tag: dir.tag.clone(),
                 fields,
+                effects,
                 stamp,
             })
         }
@@ -249,6 +256,37 @@ fn attr_json(attr: &Attr, decl: Option<&DirectiveDecl>) -> serde_json::Value {
             },
             _ => serde_json::Value::String(s.clone()),
         },
+    }
+}
+
+/// Resolve one manifest `WriteDecl` into an artifact-local [`Effect`] (IR A12).
+/// The path is `scope` + each segment joined by `.`, with `fromAttr` segments
+/// replaced by the record's attr value (e.g. `resultKey="debut"` → `debut`).
+/// The source is the bridge-result key, the `op`/`by` increment (integral `by`),
+/// or a literal — all integral-collapsed via `literal_json` (no duplication).
+fn resolve_effect(w: &WriteDecl, dir: &Directive) -> Effect {
+    let mut segments = vec![w.scope.clone()];
+    for seg in &w.path {
+        match seg {
+            PathSegment::Literal(s) => segments.push(s.clone()),
+            PathSegment::FromAttr { from_attr } => {
+                segments.push(attr_string(&dir.attrs, &from_attr.name).unwrap_or_default())
+            }
+        }
+    }
+    let from = match &w.value {
+        WriteValue::FromBridgeResult { from_bridge_result } => EffectSource::BridgeResult {
+            bridge_result: from_bridge_result.clone(),
+        },
+        WriteValue::Op { op, by } => EffectSource::Op {
+            op: op.clone(),
+            by: crate::literal_json(&Literal::Num(*by)),
+        },
+        WriteValue::Literal(lit) => EffectSource::Literal(crate::literal_json(lit)),
+    };
+    Effect {
+        path: segments.join("."),
+        from,
     }
 }
 

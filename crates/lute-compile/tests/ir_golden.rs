@@ -191,6 +191,7 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
         addr: "001-0100".into(),
         tag: "minigame".into(),
         fields,
+        effects: vec![],
         stamp: Stamp::default(),
     });
     assert_eq!(
