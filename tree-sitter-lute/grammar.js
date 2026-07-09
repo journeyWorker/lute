@@ -37,7 +37,11 @@ module.exports = grammar({
     // the shift/reduce ambiguity of a node that could attach to either a shot
     // body or the top level.
     source_file: ($) =>
-      seq(optional($.frontmatter), repeat($._pre_item), repeat($.shot)),
+      seq(
+        optional($.frontmatter),
+        repeat($._pre_item),
+        repeat(choice($.shot, $.quest)),
+      ),
 
     // Items legal before the first shot heading: the document title and bare
     // nodes (the corpus' top-level directive lives here).
@@ -60,6 +64,8 @@ module.exports = grammar({
         $.branch,
         $.match,
         $.timeline,
+        $.on,
+        $.objective,
       ),
 
     // ---- staging (leaf) ----------------------------------------------------
@@ -149,6 +155,42 @@ module.exports = grammar({
         "</track>",
       ),
 
+    // ---- quest blocks (nest; dsl 0.2.0 §6) ---------------------------------
+    // Quest ::= "<quest" Attrs ">" QuestBody "</quest>" (§6.3). A DOCUMENT
+    // TOP-LEVEL declaration (mirrors `shot`, not a `_node` alternative) — the
+    // quest kind admits `<quest>` only at the top level.
+    quest: ($) =>
+      seq(
+        "<quest",
+        repeat($._tag_attr),
+        ">",
+        repeat($._node),
+        "</quest>",
+      ),
+
+    // On ::= "<on" Attrs ">" Node* "</on>" (§4.1). The Event-Condition-Action
+    // trigger; `event` is a plain String key (NOT CEL), `when` is the optional
+    // CEL guard (routed through `cel_key`/`cel_attr` below).
+    on: ($) =>
+      seq(
+        "<on",
+        repeat($._tag_attr),
+        ">",
+        repeat($._node),
+        "</on>",
+      ),
+
+    // Objective ::= "<objective" Attrs ">" Node* "</objective>"
+    //            |  "<objective" Attrs "/>"  (§6.4) — self-closing when the
+    // body is empty (the common case: an objective with no completion body).
+    // The FIRST alternative to try is the self-close so the `/>` vs `>` choice
+    // is LR(1)-clean (`/` never opens `_tag_attr`).
+    objective: ($) =>
+      choice(
+        seq("<objective", repeat($._tag_attr), "/>"),
+        seq("<objective", repeat($._tag_attr), ">", repeat($._node), "</objective>"),
+      ),
+
     // ---- attributes (§4.5) -------------------------------------------------
     // Attrs ::= "{" ( Attr ( WS Attr )* )? "}"  — the brace-delimited form used
     // by `:line` and `::` directives. Tag attributes reuse `_tag_attr` directly.
@@ -178,7 +220,7 @@ module.exports = grammar({
     // `<match>` subject, `test` a `<when>` guard, `when` a `<choice>` guard. A
     // named node (lexes ahead of the generic `key` on a tie) so editors treat
     // these keys distinctly and know their value is embedded CEL.
-    cel_key: ($) => choice("on", "test", "when"),
+    cel_key: ($) => choice("on", "test", "when", "done", "start", "fail"),
 
     // CelString (§4.4) — a double-quoted CEL expression used as an attribute
     // value. Unlike the opaque `string` token, its interior is *structured* so
