@@ -227,7 +227,7 @@ mod tests {
         text.find(needle).expect("needle present") + 1
     }
 
-    const WITH_DEF_FOND: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@fond\">\n    :fixer: gently.\n  </when>\n  <otherwise>\n    :fixer: bluntly.\n  </otherwise>\n</match>\n";
+    const WITH_DEF_FOND: &str = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@fond\">\n    :fixer: gently.\n  </when>\n  <otherwise>\n    :fixer: bluntly.\n  </otherwise>\n</match>\n";
 
     #[test]
     fn hover_on_ref_shows_def_cel() {
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn hover_on_state_path_shows_type_and_default() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 3 }\n---\n## Shot 1.\n::set{scene.affect.bianca += 1}\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 3 }\n---\n## Shot 1.\n::set{scene.affect.bianca += 1}\n";
         let doc = parsed(text);
         // Cursor on the `::set` target path (first occurrence in the body).
         let body_start = text.find("::set{").unwrap();
@@ -403,7 +403,7 @@ mod tests {
     #[test]
     fn hover_on_imported_state_path_shows_type() {
         // `run.gold` is NOT declared inline — it is only imported via `uses:`.
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold += 1}\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold += 1}\n";
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("run.gold").unwrap() + set_at + 2;
@@ -416,7 +416,7 @@ mod tests {
     #[test]
     fn hover_on_imported_ref_shows_def() {
         // `@helped` is NOT declared inline — it is only imported via `uses:`.
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@helped\">\n    :fixer: yes.\n  </when>\n  <otherwise>\n    :fixer: no.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@helped\">\n    :fixer: yes.\n  </when>\n  <otherwise>\n    :fixer: no.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = pos_on(text, "@helped");
         let h = hover_at(&doc, &load_core_snapshot(), &schema_imports(), off).unwrap();
@@ -432,7 +432,7 @@ mod tests {
         // imported state authoritative on collision (E-STATE-REDECLARE), so the
         // feature merge must mirror that: hover reflects the IMPORTED type
         // (number), not the inline string.
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.gold: { type: string }\n---\n## Shot 1.\n::set{run.gold += 1}\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.gold: { type: string }\n---\n## Shot 1.\n::set{run.gold += 1}\n";
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("run.gold").unwrap() + set_at + 2;

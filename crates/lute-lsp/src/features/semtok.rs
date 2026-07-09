@@ -429,7 +429,7 @@ mod tests {
     /// the distinct `statePath` type — the two CEL sub-token classes.
     #[test]
     fn ref_and_state_path_get_distinct_types() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :f: a.\n  </when>\n  <otherwise>\n    :f: b.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :f: a.\n  </when>\n  <otherwise>\n    :f: b.\n  </otherwise>\n</match>\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
 

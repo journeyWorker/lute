@@ -161,9 +161,9 @@ mod tests {
     use super::*;
 
     const NO_ATTRS: &str =
-        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator: hi there\n";
-    const WITH_ATTRS: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{delivery=\"thought\"}: hmm\n";
-    const ALREADY: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{code=\"0010\"}: kept\n";
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator: hi there\n";
+    const WITH_ATTRS: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{delivery=\"thought\"}: hmm\n";
+    const ALREADY: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{code=\"0010\"}: kept\n";
 
     #[test]
     fn tags_line_without_attrs() {
@@ -193,7 +193,7 @@ mod tests {
     fn no_attr_block_gets_fresh_code_block() {
         // §7.1 no-attr path: `:bianca: hi` -> `:bianca{code="0010"}: hi`.
         let src =
-            "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi\n";
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
@@ -207,7 +207,7 @@ mod tests {
     fn merge_into_existing_attr_block_is_first() {
         // §7.1 merge path: `code` lands as the FIRST attr, right after `{`.
         let src =
-            "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca{emotion=\"x\"}: hi\n";
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca{emotion=\"x\"}: hi\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
@@ -227,7 +227,7 @@ mod tests {
     #[test]
     fn new_codes_step_above_same_speaker_max() {
         // same speaker `a`: one tagged 0050 + one untagged -> untagged gets 0060
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"0050\"}: one\n:a: two\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"0050\"}: one\n:a: two\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(out.text.contains(":a{code=\"0050\"}: one"));
@@ -242,7 +242,7 @@ mod tests {
     fn per_speaker_counters_are_independent() {
         // interleaved speakers: each starts its OWN sequence at 0010.
         // a: "one"(untagged), "three"(untagged) -> 0010, 0020 ; b: "two"(untagged) -> 0010
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a: one\n:b: two\n:a: three\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a: one\n:b: two\n:a: three\n";
         let out = tag_document(src);
         assert_eq!(out.added, 3);
         assert!(
@@ -288,7 +288,7 @@ mod tests {
         // A `/* … */` comment inside the attr block is blanked before parsing but
         // kept in the original text; merging `code` right after `{` must preserve
         // it, parse clean, and be idempotent on a second run.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator{ /* keep me */ emotion=\"x\"}: hi\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator{ /* keep me */ emotion=\"x\"}: hi\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(out.text.contains("code=\"0010\""), "got:\n{}", out.text);
@@ -315,7 +315,7 @@ mod tests {
         // A `{` inside a comment in the TEXT (after the second `:`) must NOT be
         // mistaken for an attr block; the code goes in a fresh `{code=…}` after
         // the speaker ident, the text is untouched, and re-tagging is a no-op.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi /* { */ there\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi /* { */ there\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
@@ -339,7 +339,7 @@ mod tests {
     fn code_above_u32_max_does_not_collide() {
         // same speaker `a` at u32::MAX + an untagged `a` line -> a's counter steps
         // to 4294967305 (u64 counter, so no saturation/collision at u32::MAX).
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"4294967295\"}: one\n:a: two\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"4294967295\"}: one\n:a: two\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         // new code is strictly above the existing max (no duplicate 4294967295)
@@ -359,7 +359,7 @@ mod tests {
     fn code_at_u64_max_fails_closed_no_collision() {
         // same speaker `a` at u64::MAX + an untagged `a` line -> a's counter
         // overflows -> fail closed for that line (per speaker).
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"18446744073709551615\"}: one\n:a: two\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"18446744073709551615\"}: one\n:a: two\n";
         let out = tag_document(src);
         assert_eq!(
             out.added, 0,

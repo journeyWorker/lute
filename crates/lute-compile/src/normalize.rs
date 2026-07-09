@@ -463,6 +463,7 @@ mod tests {
         // silently (spec-gap note 9); compile() then aborts at the §5 diag gate,
         // so no artifact is produced. RED before the Timeline arm in normalize_nodes.
         let src = r#"---
+kind: scene
 character: x
 season: 1
 episode: 1
@@ -492,6 +493,7 @@ episode: 1
         // sentinels, no spliced `::auto`, no residual `::use`.
         let base = Path::new("../../docs/examples/components");
         let src = r#"---
+kind: scene
 character: demo
 season: 1
 episode: 1
@@ -535,6 +537,7 @@ components: [greet.component.lute]
     #[test]
     fn persist_synthesizes_trailing_set_nodes() {
         let src = r#"---
+kind: scene
 character: sofia
 season: 1
 episode: 1

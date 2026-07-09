@@ -418,7 +418,7 @@ mod tests {
 
     #[test]
     fn completion_of_def_names_after_at() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n::set{scene.y = @}\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n::set{scene.y = @}\n";
         let doc = parsed(text);
         let off = text.find("= @").unwrap() + 3; // just past `@`
         let items = complete_at(
@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn completion_of_state_paths_in_set_expr() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca = }\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca = }\n";
         let doc = parsed(text);
         // Cursor after the `=` (expr slot) — state paths are offered.
         let off = text.rfind("= }").unwrap() + 2;
@@ -654,7 +654,7 @@ mod tests {
     fn completion_offers_imported_state_path() {
         // `run.gold` is only imported via `uses:`, not declared inline.
         let text =
-            "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold = }\n";
+            "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold = }\n";
         let doc = parsed(text);
         let off = text.rfind("= }").unwrap() + 2;
         let items = complete_at(
@@ -675,7 +675,7 @@ mod tests {
     fn completion_offers_imported_def_name() {
         // `@helped` is only imported via `uses:`, not declared inline.
         let text =
-            "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{scene.y = @}\n";
+            "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{scene.y = @}\n";
         let doc = parsed(text);
         let off = text.find("= @").unwrap() + 3;
         let items = complete_at(

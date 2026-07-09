@@ -322,7 +322,7 @@ fn divergence_holds_under_plugin_defs() {
     // only the ref differs between the two cases.
     let scene = |guard: &str| {
         format!(
-            "---\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n"
+            "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n"
         )
     };
 
@@ -471,7 +471,7 @@ fn divergence_holds_under_uses_import() {
 
     // (b) non-vacuous: a missing import produces E-USES-NOT-FOUND; its headless
     // and LSP projections must agree too (the new §9.2 codes' projection).
-    let bad = "---\ncharacter: x\nseason: 1\nepisode: 1\nuses: __no_such_schema__.lute\n---\n## Shot 1.\n:x: hi\n";
+    let bad = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: __no_such_schema__.lute\n---\n## Shot 1.\n:x: hi\n";
     let (bdoc, _) = lute_syntax::parse(bad);
     let (bmeta, _) = lute_check::parse_meta(
         &bdoc.meta,
@@ -532,7 +532,7 @@ fn divergence_holds_under_components() {
     .unwrap();
 
     // (a) happy path: import + ::use a valid component cleanly; projections agree.
-    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [greet.lute]\n---\n## Shot 1.\n::use{component=\"greet\" who=\"bianca\"}\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [greet.lute]\n---\n## Shot 1.\n::use{component=\"greet\" who=\"bianca\"}\n";
     let (doc, _) = lute_syntax::parse(text);
     let (meta0, _) = lute_check::parse_meta(
         &doc.meta,
@@ -577,7 +577,7 @@ fn divergence_holds_under_components() {
 
     // (b) non-vacuous: an unknown ::use produces E-COMPONENT-UNDECLARED; its
     // headless and LSP projections must agree too (the new §13 codes' projection).
-    let bad = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::use{component=\"ghost\" who=\"x\"}\n";
+    let bad = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::use{component=\"ghost\" who=\"x\"}\n";
     let (bdoc, _) = lute_syntax::parse(bad);
     let (bmeta, _) = lute_check::parse_meta(
         &bdoc.meta,

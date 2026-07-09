@@ -488,7 +488,7 @@ mod tests {
     fn run_path_no_default_read_is_maybe_unset() {
         // `run.metHelpfully` declared without a default; read in a guarded arm's
         // body with no prior `::set` and no guard on THIS path.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.metHelpfully: { type: bool }\n  run.gate: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"run.gate\">\n<when test=\"run.gate\">\n::set{run.gate = run.metHelpfully}\n</when>\n</match>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.metHelpfully: { type: bool }\n  run.gate: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"run.gate\">\n<when test=\"run.gate\">\n::set{run.gate = run.metHelpfully}\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -500,7 +500,7 @@ mod tests {
     #[test]
     fn dominating_write_proves_path() {
         // `::set{run.x = 1}` dominates the later read `run.x` in the `<when>` test.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n:narrator: hi\n</when>\n</match>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n:narrator: hi\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -513,7 +513,7 @@ mod tests {
     fn compound_assign_first_reads_old_value() {
         // `run.x += 1` reads the old value first; `run.x` has no default and no
         // prior write -> the old-value read is maybe-unset.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x += 1}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x += 1}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -529,7 +529,7 @@ mod tests {
         // `<match on="isSet(run.x)">` is a SUBJECT guard; a non-exhaustive match
         // may fall through, so the subject guard must NOT prove `run.x` past the
         // block. A later read of `run.x` is therefore maybe-unset.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n:narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n:narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -543,7 +543,7 @@ mod tests {
         // `<match on="has(run.x)">` with an `<otherwise>` is exhaustive, but no
         // arm writes `run.x`; the subject guard must NOT survive `intersect_all`.
         // A later read of `run.x` is maybe-unset.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n:narrator: a\n</when>\n<otherwise>\n:narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n:narrator: a\n</when>\n<otherwise>\n:narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -558,7 +558,7 @@ mod tests {
     fn j2_scene_read_before_write_is_maybe_unset() {
         // A non-defaulted `scene.s` read before any write follows ordinary
         // path-sensitive analysis (§9.4) -> maybe-unset.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.s}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -570,7 +570,7 @@ mod tests {
     #[test]
     fn j1_defaulted_scene_read_is_ok() {
         // A schema-defaulted `scene.d` read is seeded at scene entry -> no error.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.d: { type: number, default: 0 }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.d}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.d: { type: number, default: 0 }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.d}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -582,7 +582,7 @@ mod tests {
     #[test]
     fn scene_write_then_read_is_ok() {
         // A dominating `::set{scene.s = 1}` proves the later read -> no error.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.s = 1}\n::set{scene.out = scene.s}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.s = 1}\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(

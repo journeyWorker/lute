@@ -1,4 +1,5 @@
 ---
+kind: scene
 # A scene imports reusable content components (dsl §13) via `components:`
 # (canonicalized + cycle-checked + diamond-deduped like `uses:`, §9.2) and
 # invokes one with the reserved built-in directive `::use`.

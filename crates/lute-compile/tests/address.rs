@@ -52,6 +52,7 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
 }
 
 const SRC: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 2

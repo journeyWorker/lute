@@ -146,7 +146,7 @@ mod tests {
 
     /// A Bianca-shaped fixture: a `<branch id="number">` plus a `<match on=…>` on
     /// its folded choice path, and a `@fond` def used in one arm.
-    const BIANCA: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<branch id=\"number\">\n  <choice id=\"blunt\" label=\"Flat\">\n    :fixer: number.\n  </choice>\n  <choice id=\"soft\" label=\"Gentle\">\n    ::set{scene.affect.bianca += 1}\n  </choice>\n</branch>\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :fixer: gently.\n  </when>\n  <otherwise>\n    :fixer: bluntly.\n  </otherwise>\n</match>\n";
+    const BIANCA: &str = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<branch id=\"number\">\n  <choice id=\"blunt\" label=\"Flat\">\n    :fixer: number.\n  </choice>\n  <choice id=\"soft\" label=\"Gentle\">\n    ::set{scene.affect.bianca += 1}\n  </choice>\n</branch>\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :fixer: gently.\n  </when>\n  <otherwise>\n    :fixer: bluntly.\n  </otherwise>\n</match>\n";
 
     #[test]
     fn definition_on_choices_path_jumps_to_branch() {
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn references_on_ref_used_twice_returns_two() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :f: a.\n  </when>\n  <when test=\"@fond && true\">\n    :f: b.\n  </when>\n  <otherwise>\n    :f: c.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :f: a.\n  </when>\n  <when test=\"@fond && true\">\n    :f: b.\n  </when>\n  <otherwise>\n    :f: c.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@fond").unwrap() + 1; // on the first use
         let refs = references_at(
@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn references_on_state_path_counts_set_and_reads() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca += 1}\n<match on=\"scene.affect.bianca\">\n  <otherwise>\n    :f: x.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca += 1}\n<match on=\"scene.affect.bianca\">\n  <otherwise>\n    :f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("scene.affect.bianca").unwrap() + set_at + 2;
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn references_include_declaration_unions_decl_span() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca += 1}\n<match on=\"scene.affect.bianca\">\n  <otherwise>\n    :f: x.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca += 1}\n<match on=\"scene.affect.bianca\">\n  <otherwise>\n    :f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("scene.affect.bianca").unwrap() + set_at + 2;
@@ -359,7 +359,7 @@ mod tests {
     fn references_on_imported_ref_returns_uses() {
         // `@helped` is only imported via `uses:` — its in-document uses are still
         // collected (nav scans the body; the declaration lives in another file).
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@helped\">\n    :f: a.\n  </when>\n  <when test=\"@helped && true\">\n    :f: b.\n  </when>\n  <otherwise>\n    :f: c.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@helped\">\n    :f: a.\n  </when>\n  <when test=\"@helped && true\">\n    :f: b.\n  </when>\n  <otherwise>\n    :f: c.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@helped").unwrap() + 1;
         let refs = references_at(&doc, &load_core_snapshot(), &schema_imports(), off, false);
@@ -373,7 +373,7 @@ mod tests {
     fn references_on_imported_state_path_returns_uses() {
         // `run.gold` is only imported via `uses:` — its `::set` target + CEL read
         // are still collected.
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold += 1}\n<match on=\"run.gold\">\n  <otherwise>\n    :f: x.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold += 1}\n<match on=\"run.gold\">\n  <otherwise>\n    :f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("run.gold").unwrap() + set_at + 2;
@@ -387,7 +387,7 @@ mod tests {
         // imported schema file, for which `SchemaImports` records no span), so
         // go-to-definition degrades gracefully to `None` — never a panic or a
         // phantom span (best-effort, local-only; dsl §9.2).
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@helped\">\n    :f: a.\n  </when>\n  <otherwise>\n    :f: b.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@helped\">\n    :f: a.\n  </when>\n  <otherwise>\n    :f: b.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@helped").unwrap() + 1;
         assert!(definition_at(&doc, &load_core_snapshot(), &schema_imports(), off).is_none());

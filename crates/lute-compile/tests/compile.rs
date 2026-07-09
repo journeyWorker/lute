@@ -17,6 +17,7 @@ fn input(text: &str) -> CheckInput {
 }
 
 const SCENE: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 2
@@ -59,7 +60,7 @@ defs:
 fn error_doc_emits_no_artifact() {
     // Undeclared state write => Error diagnostic => gate refuses (D6).
     let bad =
-        "---\ncharacter: b\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n::set{scene.nope = 1}\n";
+        "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n::set{scene.nope = 1}\n";
     let err = compile(&input(bad)).unwrap_err();
     assert!(err.iter().any(|d| d.code == "E-UNDECLARED"), "{err:#?}");
 }
@@ -69,6 +70,7 @@ fn valid_hub_doc_compiles_to_hub_record() {
     // Plan C: `<hub>` now LOWERS to a `hub` record (IR A2). A check-passing hub
     // doc COMPILES — the transitional compile-time hub gate is gone.
     const HUB: &str = r#"---
+kind: scene
 character: b
 season: 1
 episode: 1
@@ -282,6 +284,7 @@ fn authored_episode_id_is_used_verbatim_in_meta_and_line_ids() {
     // `meta.episodeId` and the lineId episode segment (no lowercasing, no
     // `s{s}ep{e}` reformat) — pinning survives episode renumbering.
     const AUTHORED: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 2
@@ -320,6 +323,7 @@ fn cut_wait_default_is_reachable_through_the_compile_gate() {
     // Ok and its record carries the resolved family default `wait: false` (v1
     // non-blocking) — the same value the e2e goldens pin.
     const DOC: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 2
@@ -361,6 +365,7 @@ fn implicit_choice_slot_defaults_unset_without_forcing_author_entries() {
     // `<branch>` whose implicit `scene.choices.couch` slot must be seeded
     // `default: "unset"` (§4.1) while neither author entry is force-unset.
     const DOC: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 3
@@ -430,6 +435,7 @@ fn author_scene_choices_enum_without_branch_is_not_forced_unset() {
     // id="couch">` in the same doc IS an implicit slot: seeded `default:
     // "unset"`, domain ∪ `unset`, `branch:couch` provenance.
     const DOC: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 3
@@ -512,6 +518,7 @@ state:
 #[test]
 fn content_line_carries_ordered_kind_keyed_placeholders() {
     const DOC: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 2
@@ -573,6 +580,7 @@ fn interp_free_line_omits_placeholders() {
 #[test]
 fn option_label_interp_carries_placeholders() {
     const DOC: &str = r#"---
+kind: scene
 character: b
 season: 1
 episode: 1
