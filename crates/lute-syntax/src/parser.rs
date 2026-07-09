@@ -92,7 +92,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         cursor: 0,
         diags,
     };
-    let (title, shots) = p.parse_document_inner();
+    let (title, shots, quests) = p.parse_document_inner();
 
     let doc = Document {
         meta: Meta {
@@ -101,7 +101,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         },
         title,
         shots,
-        quests: Vec::new(),
+        quests,
         span: Span::from_bytes(&p.idx, 0, text.len()),
     };
     (doc, p.diags)
@@ -186,9 +186,10 @@ impl Parser<'_> {
         }
     }
 
-    fn parse_document_inner(&mut self) -> (Option<(String, Span)>, Vec<Shot>) {
+    fn parse_document_inner(&mut self) -> (Option<(String, Span)>, Vec<Shot>, Vec<Quest>) {
         let mut title = None;
         let mut shots = Vec::new();
+        let mut quests = Vec::new();
         loop {
             self.skip_blanks();
             if self.cursor >= self.lines.len() {
@@ -197,6 +198,9 @@ impl Parser<'_> {
             let trimmed = self.trimmed(self.cursor);
             if trimmed.starts_with("## ") {
                 shots.push(self.parse_shot());
+            } else if trimmed.starts_with('<') && open_tag_name(&trimmed).as_deref() == Some("quest")
+            {
+                quests.push(self.parse_quest());
             } else if trimmed.starts_with("# ") && shots.is_empty() && title.is_none() {
                 title = Some(self.parse_title());
             } else if trimmed.starts_with("# ") {
@@ -220,7 +224,7 @@ impl Parser<'_> {
                 self.cursor += 1;
             }
         }
-        (title, shots)
+        (title, shots, quests)
     }
 
     /// `Title ::= "# " Text` (§6.2). Text is opaque to EOL.
@@ -319,6 +323,8 @@ impl Parser<'_> {
                 Some("match") => return Some(Node::Match(self.parse_match())),
                 Some("timeline") => return Some(Node::Timeline(self.parse_timeline())),
                 Some("hub") => return Some(Node::Hub(self.parse_hub())),
+                Some("on") => return Some(Node::On(self.parse_on())),
+                Some("objective") => return Some(Node::Objective(self.parse_objective())),
                 _ => {
                     self.emit_line(
                         E_UNCLASSIFIED,
@@ -1208,5 +1214,41 @@ mod tests {
         let sp = l.interps[0].span;
         assert_eq!(&src[sp.byte_start..sp.byte_end], "{{userName}}");
         assert_eq!(l.interps[0].raw, "userName");
+    }
+
+    #[test]
+    fn quest_doc_collects_top_level_quests() {
+        // A quest doc: NO `## ` headings, one or more top-level <quest> blocks.
+        let (doc, diags) = parse(
+            "<quest id=\"q1\" title=\"One\" start=\"run.a\">\n\
+             <objective id=\"o1\" done=\"run.b\"/>\n\
+             </quest>\n\
+             <quest id=\"q2\">\n\
+             <objective id=\"o2\" done=\"run.c\"/>\n\
+             </quest>\n",
+        );
+        assert!(diags.is_empty(), "{diags:?}");
+        assert_eq!(doc.quests.len(), 2);
+        assert_eq!(doc.quests[0].id, "q1");
+        assert_eq!(doc.quests[0].body.len(), 1); // one <objective> Node
+        assert!(doc.shots.is_empty());
+    }
+
+    #[test]
+    fn on_and_objective_are_nodes_in_a_body() {
+        let (doc, diags) = parse(
+            "<quest id=\"q\">\n\
+             <on event=\"questComplete\">\n:x: hi\n</on>\n\
+             </quest>\n",
+        );
+        assert!(diags.is_empty(), "{diags:?}");
+        assert!(matches!(doc.quests[0].body[0], Node::On(_)));
+    }
+
+    #[test]
+    fn nested_quest_is_unclassified() {
+        // <quest> is top-level only; nested it must fall through to the error path.
+        let (_, diags) = parse("<quest id=\"q\">\n<quest id=\"inner\"></quest>\n</quest>\n");
+        assert!(diags.iter().any(|d| d.code == "E-UNCLASSIFIED"), "{diags:?}");
     }
 }
