@@ -1,3 +1,4 @@
+pub mod admission;
 pub mod cel_paths;
 pub mod cel_resolve;
 pub mod check;
@@ -13,6 +14,7 @@ pub mod set_op;
 pub mod tag;
 pub mod timeline;
 
+pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_paths::E_PATH_IDENT;
 pub use cel_resolve::{check_cel_slot, E_CEL_PROFILE};
 pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved};
