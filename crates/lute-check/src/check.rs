@@ -420,6 +420,26 @@ pub fn check(input: &CheckInput) -> CheckResult {
         walker.walk(&shot.body, &base_ctx);
     }
 
+    // Transitional (Plan A): quest-kind documents are validated by Plan C.
+    // check() otherwise walks only `doc.shots`, so a top-level `<quest>` (parsed
+    // into `doc.quests`) would bypass the D6 clean-check gate entirely. Reject
+    // each `<quest>` at its span AND route its body through the walker (so nested
+    // `<on>`/`<objective>` hit the transitional gate too), keeping quest docs
+    // un-compilable until Plan C lands real semantics.
+    for quest in &doc.quests {
+        walker.diags.push(Diagnostic {
+            code: E_QUEST_UNSUPPORTED.to_string(),
+            severity: Severity::Error,
+            message: "<quest> checking lands in a later 0.2.0 plan (Plan C); document cannot pass check yet"
+                .to_string(),
+            span: quest.span,
+            layer: Layer::Logic,
+            fixits: Vec::new(),
+            provenance: None,
+        });
+        walker.walk(&quest.body, &base_ctx);
+    }
+
     // 6. Document-level definite-assignment over the concatenated node stream
     //    (carry-forward #1): `scene.*`/`run.*` persist across shots.
     let all_nodes: Vec<Node> = doc
