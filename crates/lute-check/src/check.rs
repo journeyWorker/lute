@@ -1917,15 +1917,17 @@ fn spans_overlap(a: Span, b: Span) -> bool {
 
 /// Extract the state path an `E-UNDECLARED` message names, for path-aware dedup.
 /// All three producers embed the path as the first backtick-quoted token that
-/// starts with a state tier (`scene.`/`run.`/`user.`/`app.`) — `set_op` also
-/// quotes `::set` first, so we scan for the tier-prefixed token, not just the
-/// first quote. `None` (no tier token) falls back to span-only collapse.
+/// starts with a state tier (`scene.`/`run.`/`user.`/`app.`/`quest.`) —
+/// `set_op` also quotes `::set` first, so we scan for the tier-prefixed token,
+/// not just the first quote. `None` (no tier token) falls back to span-only
+/// collapse.
 fn undeclared_path(message: &str) -> Option<&str> {
     message.split('`').find(|tok| {
         tok.starts_with("scene.")
             || tok.starts_with("run.")
             || tok.starts_with("user.")
             || tok.starts_with("app.")
+            || tok.starts_with("quest.")
     })
 }
 

@@ -20,7 +20,9 @@
 use cel_parser::ast::{EntryExpr, Expr};
 
 /// State-tier roots that introduce a declared state-path read (dsl §9.1).
-pub(crate) const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app"];
+/// Tier-GENERAL: kept scalar-agnostic on purpose (0.3.0's relational tiers
+/// reuse this same list, dsl 0.2.0 §5).
+pub(crate) const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app", "quest"];
 
 /// How a state path appears in an expression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -652,7 +652,11 @@ fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> DomainInfo {
             let maybe_unset = decl.default.is_none()
                 && matches!(
                     decl.namespace,
-                    Namespace::Scene | Namespace::Run | Namespace::User | Namespace::App
+                    Namespace::Scene
+                        | Namespace::Run
+                        | Namespace::User
+                        | Namespace::App
+                        | Namespace::Quest
                 );
             DomainInfo {
                 domain,
