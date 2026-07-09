@@ -1,0 +1,266 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "quest",
+  "lute": "0.2.0",
+  "irVersion": "0.2.0",
+  "capabilityVersion": "45f46d46fb9b72ceebd735c0fcc5ceca6312e07ad1ce5ef2dd08f4b6d18cf50c",
+  "meta": {
+    "title": "Act 1 — Emerald Grove"
+  },
+  "state": [
+    {
+      "path": "quest.findMissingScouts.objectives.findScouts.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:findMissingScouts"
+    },
+    {
+      "path": "quest.findMissingScouts.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:findMissingScouts"
+    },
+    {
+      "path": "quest.rescueHalsin.objectives.freeHalsin.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:rescueHalsin"
+    },
+    {
+      "path": "quest.rescueHalsin.objectives.reachGrove.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:rescueHalsin"
+    },
+    {
+      "path": "quest.rescueHalsin.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:rescueHalsin"
+    },
+    {
+      "path": "run.act",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "run.groveOutcome",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "path": "run.metHalsin",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.npc.halsin.dead",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.npc.halsin.freed",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.region",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "path": "run.scouts.found",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "user.reputation.grove",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "user.xp",
+      "type": "number",
+      "default": 0
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "rescueHalsin",
+      "title": "Rescue the First Druid",
+      "titleLineId": "rescueHalsin.title",
+      "start": {
+        "raw": "run.act == 1",
+        "expr": {
+          "op": "==",
+          "l": {
+            "path": "run.act"
+          },
+          "r": {
+            "lit": 1.0
+          }
+        }
+      },
+      "fail": {
+        "raw": "run.npc.halsin.dead",
+        "expr": {
+          "path": "run.npc.halsin.dead"
+        }
+      },
+      "objectives": [
+        {
+          "id": "reachGrove",
+          "title": "Reach the Emerald Grove",
+          "titleLineId": "rescueHalsin.reachGrove",
+          "done": {
+            "raw": "run.region == 'grove'",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "run.region"
+              },
+              "r": {
+                "lit": "grove"
+              }
+            }
+          },
+          "optional": false
+        },
+        {
+          "id": "freeHalsin",
+          "title": "Free Halsin from the cage",
+          "titleLineId": "rescueHalsin.freeHalsin",
+          "done": {
+            "raw": "run.npc.halsin.freed",
+            "expr": {
+              "path": "run.npc.halsin.freed"
+            }
+          },
+          "optional": false
+        }
+      ]
+    },
+    {
+      "kind": "on",
+      "addr": "001-0200",
+      "event": "questComplete",
+      "body": "001-0300"
+    },
+    {
+      "kind": "set",
+      "addr": "001-0300",
+      "path": "user.xp",
+      "op": "+=",
+      "value": "300",
+      "expr": {
+        "lit": 300.0
+      }
+    },
+    {
+      "kind": "set",
+      "addr": "001-0400",
+      "path": "run.metHalsin",
+      "op": "=",
+      "value": "true",
+      "expr": {
+        "lit": true
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "001-0500",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Halsin rolled his shoulders and looked north. \"Moonrise, then.\"",
+      "lineId": "rescueHalsin.narrator_0010"
+    },
+    {
+      "kind": "on",
+      "addr": "001-0600",
+      "event": "questFailed",
+      "body": "001-0700"
+    },
+    {
+      "kind": "set",
+      "addr": "001-0700",
+      "path": "run.groveOutcome",
+      "op": "=",
+      "value": "\"halsinDead\"",
+      "expr": {
+        "lit": "halsinDead"
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "001-0800",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The cage held only silence now.",
+      "lineId": "rescueHalsin.narrator_0020"
+    },
+    {
+      "kind": "quest",
+      "addr": "002-0100",
+      "id": "findMissingScouts",
+      "title": "The Missing Scouts",
+      "titleLineId": "findMissingScouts.title",
+      "start": {
+        "raw": "run.metHalsin",
+        "expr": {
+          "path": "run.metHalsin"
+        }
+      },
+      "objectives": [
+        {
+          "id": "findScouts",
+          "title": "Find the missing scouts",
+          "titleLineId": "findMissingScouts.findScouts",
+          "done": {
+            "raw": "run.scouts.found >= 3",
+            "expr": {
+              "op": ">=",
+              "l": {
+                "path": "run.scouts.found"
+              },
+              "r": {
+                "lit": 3.0
+              }
+            }
+          },
+          "optional": false
+        }
+      ]
+    },
+    {
+      "kind": "on",
+      "addr": "002-0200",
+      "event": "questComplete",
+      "body": "002-0300"
+    },
+    {
+      "kind": "set",
+      "addr": "002-0300",
+      "path": "user.reputation.grove",
+      "op": "+=",
+      "value": "1",
+      "expr": {
+        "lit": 1.0
+      }
+    }
+  ]
+}

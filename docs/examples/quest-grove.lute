@@ -1,0 +1,46 @@
+---
+kind: quest
+luteVersion: "0.2.0"
+title: Act 1 — Emerald Grove
+state:
+  run.act:               { type: number, default: 0 }
+  run.region:             { type: string, default: "" }
+  run.npc.halsin.dead:    { type: bool,   default: false }
+  run.npc.halsin.freed:   { type: bool,   default: false }
+  run.metHalsin:          { type: bool,   default: false }
+  run.groveOutcome:       { type: string, default: "" }
+  run.scouts.found:       { type: number, default: 0 }
+  user.xp:                { type: number, default: 0 }
+  user.reputation.grove:  { type: number, default: 0 }
+---
+
+/*
+  Worked example of the Lute Scenario DSL 0.2.0 quest kind (see
+  ../proposals/scenario-dsl/0.2.0.md Appendix D). Self-contained: every
+  run.* / user.* path `start`/`fail`/`done` reads is declared inline above,
+  each with a default, so the checker's definite-assignment gate is clean.
+*/
+
+<quest id="rescueHalsin" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
+<objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
+<objective id="freeHalsin" title="Free Halsin from the cage" done="run.npc.halsin.freed"/>
+
+<on event="questComplete">
+::set{user.xp += 300}
+::set{run.metHalsin = true}
+:narrator: Halsin rolled his shoulders and looked north. "Moonrise, then."
+</on>
+
+<on event="questFailed">
+::set{run.groveOutcome = "halsinDead"}
+:narrator: The cage held only silence now.
+</on>
+</quest>
+
+<quest id="findMissingScouts" title="The Missing Scouts" start="run.metHalsin">
+<objective id="findScouts" title="Find the missing scouts" done="run.scouts.found >= 3"/>
+
+<on event="questComplete">
+::set{user.reputation.grove += 1}
+</on>
+</quest>
