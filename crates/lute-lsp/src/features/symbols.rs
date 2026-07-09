@@ -105,8 +105,11 @@ fn collect_children(nodes: &[Node], idx: &TextIndex, out: &mut Vec<DocumentSymbo
                     kids,
                 ));
             }
-            // Leaves and staging blocks are not outline symbols.
-            Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+            // Leaves and staging blocks are not outline symbols. `<on>`/
+            // `<objective>` are transitional no-ops here (dsl 0.2.0 Plan A);
+            // Plan E adds real outline symbols for them.
+            Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) | Node::On(_)
+            | Node::Objective(_) => {}
         }
     }
 }

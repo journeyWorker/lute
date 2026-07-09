@@ -94,6 +94,10 @@ fn expand_nodes(
                     expand_nodes(&mut c.body, defs, subject, diags);
                 }
             }
+            // Transitional (dsl 0.2.0 Plan A): compile is unreachable on a
+            // document using `<on>`/`<objective>` (the checker's D6 gate
+            // rejects it), so a no-op here is sound. Plan D adds real expansion.
+            Node::On(_) | Node::Objective(_) => {}
         }
     }
 }

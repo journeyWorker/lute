@@ -72,8 +72,9 @@ fn fold_nodes(nodes: &[Node], idx: &TextIndex, out: &mut Vec<FoldingRange>) {
                 }
             }
             // Leaf nodes (`:line`, `::directive`, `::set`) are single constructs,
-            // not foldable regions.
-            Node::Line(_) | Node::Directive(_) | Node::Set(_) => {}
+            // not foldable regions. `<on>`/`<objective>` are transitional
+            // no-ops here (dsl 0.2.0 Plan A); Plan E adds real folding for them.
+            Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::On(_) | Node::Objective(_) => {}
         }
     }
 }
