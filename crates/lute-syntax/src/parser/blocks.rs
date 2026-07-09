@@ -7,7 +7,7 @@
 //! lifted onto [`Clip::at`] (the "`at` outside a timeline" rule is a §7.5 schema
 //! check, deferred to the checker).
 
-use super::attrs::{take_cel, take_str, take_str_spanned};
+use super::attrs::{take_bool, take_cel, take_str, take_str_spanned};
 use super::{
     close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
 };
@@ -21,6 +21,8 @@ struct OpenTag {
     start_o: usize,
     /// Original-text offset just past the `>` (or line end).
     end_o: usize,
+    /// True for a self-closing `<tag …/>` (dsl 0.2.0 §6.4).
+    self_closing: bool,
 }
 
 impl Parser<'_> {
@@ -37,11 +39,16 @@ impl Parser<'_> {
         let (attrs, after) = self.scan_attrs(j, b'>');
         let start_o = self.orig(cstart);
         let end_o = self.orig(after);
+        // dsl 0.2.0 §6.4 self-closing `<tag/>`: the `>` was preceded by `/`. The
+        // attr scanner tolerates the lone `/` (skips it as an unparseable token),
+        // so detect it from the raw byte just before the consumed terminator.
+        let self_closing = after >= 2 && self.body.as_bytes()[after - 2] == b'/';
         self.cursor += 1;
         OpenTag {
             attrs,
             start_o,
             end_o,
+            self_closing,
         }
     }
 
@@ -106,6 +113,87 @@ impl Parser<'_> {
             id,
             attrs,
             choices,
+            span: self.span_o(open.start_o, end_o),
+        }
+    }
+
+    /// `On ::= "<on" Attrs ">" Node* "</on>"` (dsl 0.2.0 §4.1). The ECA trigger:
+    /// `event` is a plain String (NOT CEL); `when` is an optional CEL guard.
+    pub(super) fn parse_on(&mut self) -> On {
+        let open = self.parse_open_tag();
+        let mut attrs = open.attrs.clone();
+        let (event, event_span) = take_str_spanned(&mut attrs, "event")
+            .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
+        let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let (body, end_o) = self.parse_block_body("on", &open);
+        On {
+            event,
+            event_span,
+            when,
+            attrs,
+            body,
+            span: self.span_o(open.start_o, end_o),
+        }
+    }
+
+    /// `QuestDecl ::= "<quest" Attrs ">" QuestBody "</quest>"` (dsl 0.2.0 §6.3).
+    /// TOP-LEVEL ONLY — the caller (`parse_document_inner`) invokes this
+    /// directly; `<quest>` is never dispatched through [`Parser::next_node`].
+    pub(super) fn parse_quest(&mut self) -> Quest {
+        let open = self.parse_open_tag();
+        let mut attrs = open.attrs.clone();
+        let (id, id_span) = take_str_spanned(&mut attrs, "id")
+            .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
+        let title = take_str(&mut attrs, "title");
+        let start = take_cel(&mut attrs, "start", CelKind::Condition);
+        let fail = take_cel(&mut attrs, "fail", CelKind::Condition);
+        let (body, end_o) = self.parse_block_body("quest", &open);
+        Quest {
+            id,
+            id_span,
+            title,
+            start,
+            fail,
+            attrs,
+            body,
+            span: self.span_o(open.start_o, end_o),
+        }
+    }
+
+    /// `Objective ::= "<objective" Attrs ">" Node* "</objective>" | "<objective"
+    /// Attrs "/>"` (dsl 0.2.0 §6.4). `done` is required but a MISSING `done`
+    /// still yields a valid AST (empty CEL slot) — `E-OBJECTIVE-MISSING-DONE`
+    /// is a Plan C checker diagnostic, NOT a parse error. Mirrors
+    /// `parse_when`/`parse_match`'s empty-slot idiom exactly.
+    pub(super) fn parse_objective(&mut self) -> Objective {
+        let open = self.parse_open_tag();
+        let mut attrs = open.attrs.clone();
+        let (id, id_span) = take_str_spanned(&mut attrs, "id")
+            .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
+        let done = take_cel(&mut attrs, "done", CelKind::Condition).unwrap_or_else(|| {
+            CelSlot::raw(
+                CelKind::Condition,
+                String::new(),
+                self.span_o(open.start_o, open.end_o),
+            )
+        });
+        let when = take_cel(&mut attrs, "when", CelKind::Condition);
+        let title = take_str(&mut attrs, "title");
+        let optional = take_bool(&mut attrs, "optional");
+        let (body, end_o) = if open.self_closing {
+            (Vec::new(), open.end_o)
+        } else {
+            self.parse_block_body("objective", &open)
+        };
+        Objective {
+            id,
+            id_span,
+            done,
+            when,
+            title,
+            optional,
+            attrs,
+            body,
             span: self.span_o(open.start_o, end_o),
         }
     }
@@ -459,5 +547,50 @@ mod tests {
         let Node::Branch(br) = &doc.shots[0].body[1] else { panic!("expected Branch") };
         let Node::Hub(h2) = &br.choices[0].body[0] else { panic!("expected Hub in branch choice") };
         assert_eq!(h2.choices.len(), 1);
+    }
+
+    #[test]
+    fn on_parses_event_when_and_body() {
+        let (doc, diags) = crate::parse(
+            "## Shot 1.\n<on event=\"combatEnd\" when=\"run.dead\">\n:narrator: silence.\n</on>\n",
+        );
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::On(on) = &doc.shots[0].body[0] else { panic!("{:?}", doc.shots[0].body) };
+        assert_eq!(on.event, "combatEnd");
+        assert!(on.when.is_some());
+        assert_eq!(on.body.len(), 1);
+    }
+
+    #[test]
+    fn objective_self_closing_has_empty_body() {
+        let (doc, diags) = crate::parse(
+            "## Shot 1.\n<objective id=\"reach\" title=\"Reach\" done=\"run.here\"/>\n",
+        );
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Objective(o) = &doc.shots[0].body[0] else { panic!() };
+        assert_eq!(o.id, "reach");
+        assert_eq!(o.title.as_deref(), Some("Reach"));
+        assert!(o.done.raw.contains("run.here"));
+        assert!(o.body.is_empty());
+        assert!(!o.optional);
+    }
+
+    #[test]
+    fn objective_optional_flag_parses() {
+        let (doc, _) = crate::parse(
+            "## Shot 1.\n<objective id=\"x\" done=\"a\" optional/>\n",
+        );
+        let Node::Objective(o) = &doc.shots[0].body[0] else { panic!() };
+        assert!(o.optional);
+    }
+
+    #[test]
+    fn objective_long_form_body_emits() {
+        let (doc, diags) = crate::parse(
+            "## Shot 1.\n<objective id=\"x\" done=\"a\">\n::set{run.x = 1}\n</objective>\n",
+        );
+        assert!(diags.is_empty(), "{diags:?}");
+        let Node::Objective(o) = &doc.shots[0].body[0] else { panic!() };
+        assert_eq!(o.body.len(), 1);
     }
 }
