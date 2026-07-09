@@ -588,27 +588,51 @@ fn has_bool_attr(attrs: &[Attr], key: &str) -> bool {
         .any(|a| a.key == key && matches!(a.value, AttrValue::BoolTrue))
 }
 
-/// dsl §12: every content `:line`'s `lineId` (`{prefix}.{speaker}_{code}`) and
-/// `voiceKey` (`{speaker}-{code}`) derive from its `(speaker, trimmed code)`
-/// pair (see `lute-compile`'s addressing pass). Two `:line`s for the SAME
-/// speaker carrying the SAME trimmed `code` therefore compile to IDENTICAL
-/// `lineId`/`voiceKey` values — corrupting the translation + voice-bank join
-/// keys. Flag the SECOND (and each later) occurrence of a repeated
-/// `(speaker, code)` pair with `E-DUP-LINE-CODE`, at that line's span.
+/// dsl §12 (scene) / dsl 0.2.0 §7 (quest): every content `:line`'s `lineId`
+/// (`{prefix}.{speaker}_{code}`) and `voiceKey` (`{speaker}-{code}`) derive
+/// from its `(speaker, trimmed code)` pair (see `lute-compile`'s addressing
+/// pass). Two `:line`s for the SAME speaker carrying the SAME trimmed `code`
+/// therefore compile to IDENTICAL `lineId`/`voiceKey` values — corrupting the
+/// translation + voice-bank join keys. Flag the SECOND (and each later)
+/// occurrence of a repeated `(speaker, code)` pair with `E-DUP-LINE-CODE`, at
+/// that line's span.
 ///
 /// Codes are compared as TRIMMED STRINGS — exactly the key the addressing pass
 /// uses (`code.trim()`), so ` 0050 ` and `0050` collide but `0050` and `50` do
 /// not. Only authored string codes participate; an untagged line derives its
 /// code later (uniquely per speaker) and a non-literal code (`@ref`) has no
-/// static value to compare, so neither can statically collide. Document order,
-/// deterministic (the caller's final `(byte_start, code)` sort settles ties).
+/// static value to compare, so neither can statically collide.
+///
+/// **Identity scope** (dsl 0.2.0 §7): a scene's lines share ONE scope — the
+/// whole document (all shots), unchanged from 0.1.0. A quest's lines (reached
+/// via a `<quest>`'s `<on>`/`<objective>` arms) are scoped PER `<quest>` —
+/// each `<quest>` is its own identity domain, so the SAME (speaker, code)
+/// pair may repeat across two different quests without colliding, but not
+/// twice within one. Document order, deterministic (the caller's final
+/// `(byte_start, code)` sort settles ties).
 pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
-    let mut lines: Vec<&Line> = Vec::new();
-    for shot in &doc.shots {
-        collect_lines(&shot.body, &mut lines);
-    }
-    let mut seen: BTreeSet<(&str, String)> = BTreeSet::new();
     let mut diags = Vec::new();
+
+    let mut scene_lines: Vec<&Line> = Vec::new();
+    for shot in &doc.shots {
+        collect_lines(&shot.body, &mut scene_lines);
+    }
+    check_dup_line_codes(&scene_lines, &mut diags);
+
+    for quest in &doc.quests {
+        let mut quest_lines: Vec<&Line> = Vec::new();
+        collect_lines(&quest.body, &mut quest_lines);
+        check_dup_line_codes(&quest_lines, &mut diags);
+    }
+
+    diags
+}
+
+/// Flag every repeated `(speaker, code)` pair WITHIN `lines` — the caller
+/// decides the identity scope (whole document for a scene, per-`<quest>` for
+/// a quest, dsl 0.2.0 §7) by choosing which lines to pass in one call.
+fn check_dup_line_codes<'a>(lines: &[&'a Line], diags: &mut Vec<Diagnostic>) {
+    let mut seen: BTreeSet<(&'a str, String)> = BTreeSet::new();
     for line in lines {
         let Some(code) = authored_code(line) else {
             continue;
@@ -626,7 +650,6 @@ pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
             ));
         }
     }
-    diags
 }
 
 /// The line's authored `code`, trimmed to the exact string the addressing pass
@@ -668,7 +691,9 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
                     collect_lines(&choice.body, out);
                 }
             }
-            Node::Directive(_) | Node::Set(_) | Node::Timeline(_) | Node::Objective(_) | Node::On(_) => {}
+            Node::Objective(o) => collect_lines(&o.body, out),
+            Node::On(o) => collect_lines(&o.body, out),
+            Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
         }
     }
 }
