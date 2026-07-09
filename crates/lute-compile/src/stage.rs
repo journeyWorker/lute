@@ -77,6 +77,11 @@ pub fn walk_seq(
                 let cont = reachable_after(&nodes[i + 1..], tail);
                 state = walk_hub(em, h, state, cx, &cont, diags);
             }
+            // Transitional (dsl 0.2.0 Plan A): compile is unreachable on a
+            // document using `<on>`/`<objective>` (the checker's D6 gate
+            // rejects it), so a no-op (state carries through unchanged) is
+            // sound. Plan D adds real staging.
+            Node::On(_) | Node::Objective(_) => {}
         }
     }
     state

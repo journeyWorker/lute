@@ -108,6 +108,11 @@ fn walk_nodes(
                 }
             }
             Node::Directive(_) => {}
+            // Transitional (dsl 0.2.0 Plan A): `<on>`/`<objective>` checking
+            // (incl. may-write analysis) is deferred to Plan C; the top-level
+            // `E-QUEST-UNSUPPORTED` gate already rejects any document using
+            // them, so this is unreachable in practice.
+            Node::On(_) | Node::Objective(_) => {}
         }
     }
 }

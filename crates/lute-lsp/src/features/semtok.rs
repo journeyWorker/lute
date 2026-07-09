@@ -246,6 +246,9 @@ fn walk_nodes(nodes: &[Node], out: &mut Vec<RawTok>) {
                     walk_nodes(&c.body, out);
                 }
             }
+            // Transitional (dsl 0.2.0 Plan A): no semantic tokens emitted for
+            // `<on>`/`<objective>` yet. Plan E adds real highlighting.
+            Node::On(_) | Node::Objective(_) => {}
         }
     }
 }

@@ -151,7 +151,7 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
                     collect_lines(&choice.body, out);
                 }
             }
-            Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+            Node::Directive(_) | Node::Set(_) | Node::Timeline(_) | Node::Objective(_) | Node::On(_) => {}
         }
     }
 }

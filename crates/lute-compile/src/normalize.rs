@@ -264,6 +264,10 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                     bind_params(&mut c.body, args, params);
                 }
             }
+            // Transitional (dsl 0.2.0 Plan A): compile is unreachable on a
+            // document using `<on>`/`<objective>` (the checker's D6 gate
+            // rejects it), so a no-op here is sound. Plan D adds real binding.
+            Node::On(_) | Node::Objective(_) => {}
         }
     }
 }

@@ -90,6 +90,13 @@ use crate::{
 /// from `fill_document`'s errors; the slot's `ast` stays `None`).
 const E_CEL_PARSE: &str = "E-CEL-PARSE";
 
+/// Transitional gate (dsl 0.2.0 Plan A): `<on>`/`<objective>` *checking* +
+/// admission is deferred to Plan C. Until then the main node walk emits this so
+/// a document using either construct can never pass clean-check — keeping the
+/// D6 clean-check gate sound (such a document cannot compile). Plan C replaces
+/// this constant with real ECA-trigger / objective semantics.
+const E_QUEST_UNSUPPORTED: &str = "E-QUEST-UNSUPPORTED";
+
 /// Parse errors that corrupt the node stream, making the `Resolved` view
 /// misleading (see the Some-vs-None policy in the module docs).
 const STRUCTURAL_CODES: &[&str] = &[
@@ -694,6 +701,37 @@ impl Walker<'_> {
                         self.walk(&choice.body, ctx);
                     }
                 }
+                Node::Objective(o) => {
+                    // Transitional D6 gate (dsl 0.2.0 Plan A): `<objective>`
+                    // checking is Plan C work. Emit an error so a document using
+                    // it can never pass clean-check (and thus never compiles),
+                    // keeping the D6 clean-check gate sound until Plan C lands
+                    // real objective semantics.
+                    self.diags.push(Diagnostic {
+                        code: E_QUEST_UNSUPPORTED.to_string(),
+                        severity: Severity::Error,
+                        message: "<objective> checking lands in a later 0.2.0 plan (Plan C); document cannot pass check yet"
+                            .to_string(),
+                        span: o.span,
+                        layer: Layer::Logic,
+                        fixits: Vec::new(),
+                        provenance: None,
+                    });
+                }
+                Node::On(o) => {
+                    // Transitional D6 gate (dsl 0.2.0 Plan A): `<on>` checking is
+                    // Plan C work. Same rationale as the `<objective>` arm above.
+                    self.diags.push(Diagnostic {
+                        code: E_QUEST_UNSUPPORTED.to_string(),
+                        severity: Severity::Error,
+                        message: "<on> checking lands in a later 0.2.0 plan (Plan C); document cannot pass check yet"
+                            .to_string(),
+                        span: o.span,
+                        layer: Layer::Logic,
+                        fixits: Vec::new(),
+                        provenance: None,
+                    });
+                }
             }
         }
     }
@@ -1162,6 +1200,16 @@ fn walk_component_body(
                 "a component body must be presentational (dsl §13): a `<hub>` logic block is not allowed in v1".to_string(),
                 h.span,
             )),
+            Node::Objective(o) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                "a component body must be presentational (dsl §13): an `<objective>` logic block is not allowed in v1".to_string(),
+                o.span,
+            )),
+            Node::On(o) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                "a component body must be presentational (dsl §13): an `<on>` logic block is not allowed in v1".to_string(),
+                o.span,
+            )),
         }
     }
 }
@@ -1243,7 +1291,7 @@ fn collect_use_targets(nodes: &[Node], out: &mut Vec<String>) {
                     collect_use_targets(&c.body, out);
                 }
             }
-            Node::Line(_) | Node::Set(_) => {}
+            Node::Line(_) | Node::Set(_) | Node::Objective(_) | Node::On(_) => {}
         }
     }
 }
@@ -1625,7 +1673,7 @@ fn fold_slots_nodes(
                     fold_slots_nodes(&c.body, snapshot, schema);
                 }
             }
-            Node::Line(_) | Node::Set(_) => {}
+            Node::Line(_) | Node::Set(_) | Node::Objective(_) | Node::On(_) => {}
         }
     }
 }
@@ -1874,5 +1922,7 @@ fn node_summary(node: &Node) -> String {
         Node::Match(m) => format!("<match on=\"{}\"> ({} arms)", m.subject.raw, m.arms.len()),
         Node::Timeline(tl) => format!("<timeline> ({} tracks)", tl.tracks.len()),
         Node::Hub(h) => format!("<hub> ({} choices)", h.choices.len()),
+        Node::On(o) => format!("<on event=\"{}\">", o.event),
+        Node::Objective(o) => format!("<objective id=\"{}\">", o.id),
     }
 }

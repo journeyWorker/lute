@@ -234,6 +234,9 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
             }
             resolve_attrs(&h.attrs, None, off)
         }
+        // Transitional (dsl 0.2.0 Plan A): cursor resolution inside `<on>`/
+        // `<objective>` is not implemented yet. Plan E adds real resolution.
+        Node::On(_) | Node::Objective(_) => None,
     }
 }
 
@@ -312,6 +315,8 @@ fn node_span(node: &Node) -> Span {
         Node::Match(m) => m.span,
         Node::Timeline(t) => t.span,
         Node::Hub(h) => h.span,
+        Node::On(o) => o.span,
+        Node::Objective(o) => o.span,
     }
 }
 
@@ -561,6 +566,9 @@ pub(crate) fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
                     }
                     return in_attrs(&h.attrs, off);
                 }
+                // Transitional (dsl 0.2.0 Plan A): attr lookup inside `<on>`/
+                // `<objective>` is not implemented yet. Plan E adds it.
+                Node::On(_) | Node::Objective(_) => return None,
             }
         }
         None
