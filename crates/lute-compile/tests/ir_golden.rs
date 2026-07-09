@@ -407,7 +407,7 @@ fn quest_record_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"quest","addr":"001-0100","id":"rescueHalsin","title":"Rescue","titleLineId":"rescueHalsin.title","start":{"raw":"run.act == 1"},"objectives":[{"id":"reachGrove","title":"Reach","titleLineId":"rescueHalsin.reachGrove","done":{"raw":"run.region == 'grove'"},"optional":false}]}"#
+        r#"{"kind":"quest","addr":"001-0100","id":"rescueHalsin","title":"Rescue","titleLineId":"rescueHalsin.title","start":{"raw":"run.act == 1"},"objectives":[{"id":"reachGrove","title":"Reach","titleLineId":"rescueHalsin.reachGrove","done":{"raw":"run.region == 'grove'"},"optional":false,"body":null}]}"#
     );
 }
 
