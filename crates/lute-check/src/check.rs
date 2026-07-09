@@ -77,7 +77,6 @@ use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
 use crate::directives::{at_context, check_directive};
 use crate::inject::{lower_node, InjectedCommand, StageState};
-use crate::meta::parse_meta;
 use crate::schema_import::SchemaImports;
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
@@ -208,14 +207,21 @@ pub fn fold_env(
     input: &CheckInput,
 ) -> (FoldedEnv, Vec<Diagnostic>, Vec<Diagnostic>) {
     // 3. Resolve the root document kind (dsl 0.2.0 §3.1) FIRST: it gates which
-    //    per-kind frontmatter keys the meta parse below allows (Task 2 wires
-    //    the kind into `parse_meta_kind`; here it is folded into `FoldedEnv`
-    //    and defaults to `Scene` — the degrade-safe path — when unresolved).
+    //    per-kind frontmatter keys the meta parse below allows. Defaults to
+    //    `Scene` — the degrade-safe path — when unresolved (missing/unknown
+    //    `kind:`), so a mis-kinded doc still gets the scene-triad required-key
+    //    treatment it had pre-0.2.0.
     let (doc_kind, kind_diags) = crate::meta::resolve_doc_kind(&doc.meta);
     let doc_kind = doc_kind.unwrap_or(crate::meta::DocKind::Scene);
+    let meta_kind = match doc_kind {
+        crate::meta::DocKind::Scene => crate::meta::MetaKind::Scene,
+        crate::meta::DocKind::Quest => crate::meta::MetaKind::Quest,
+    };
 
-    // 3b. Typed frontmatter + inline state schema.
-    let (typed, mut fold_diags) = parse_meta(&doc.meta, &input.snapshot);
+    // 3b. Typed frontmatter + inline state schema, dispatched by the resolved
+    //     kind (dsl 0.2.0 §3.1, §6.1): a Quest doc carries none of the scene
+    //     triad and rejects it as an unknown key.
+    let (typed, mut fold_diags) = crate::meta::parse_meta_kind(&doc.meta, &input.snapshot, meta_kind);
     fold_diags.splice(0..0, kind_diags);
 
     // 4. Fold every `<branch>`/`<hub>`'s implicit recording decls
