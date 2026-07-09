@@ -83,6 +83,9 @@ pub fn hover_at(
         | Cursor::AttrValue {
             directive: None, ..
         } => None,
+        // Transitional (Plan E Task 2 -> Task 3): quest/on/objective keyword
+        // + event-value hover not implemented yet. Task 3 renders real docs.
+        Cursor::OnEventValue(_) | Cursor::ConstructAttrArea { .. } => None,
     }?;
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
