@@ -1674,7 +1674,13 @@ fn persist_diag(code: &str, message: String, span: Span) -> Diagnostic {
 /// into `schema` in document order, threading the episode-wide `seen` id set
 /// (branch + hub ids share it) so `E-DUP-BRANCH` fires exactly once per duplicate.
 /// Recurses into nested bodies (a branch/hub may live inside a match arm or
-/// another choice body).
+/// another choice body). A `<branch>` is ALSO admitted directly inside a quest
+/// body (dsl 0.2.0 §6.7), reached via `<quest>` top level or an `<on>`/
+/// `<objective>` arm — `doc.quests` is folded here too so a quest `<branch>`
+/// gets the SAME `E-CHOICE-DUP`/implicit-decl treatment a scene one gets
+/// (`<hub>` is never legal in a quest doc, dsl 0.2.0 §6.7 — grammar admission
+/// rejects it separately, so it is never reached from a quest walk in
+/// practice, but the recursion below tolerates it structurally regardless).
 fn fold_branches(
     doc: &Document,
     schema: &mut crate::meta::StateSchema,
@@ -1683,6 +1689,9 @@ fn fold_branches(
 ) {
     for shot in &doc.shots {
         fold_branches_nodes(&shot.body, schema, seen, diags);
+    }
+    for quest in &doc.quests {
+        fold_branches_nodes(&quest.body, schema, seen, diags);
     }
 }
 
@@ -1725,7 +1734,13 @@ fn fold_branches_nodes(
                     }
                 }
             }
-            _ => {}
+            // Quest-only arms (dsl 0.2.0 §4, §6.4): a `<branch>`/`<match>` may
+            // live directly inside an `<on>` event arm or an `<objective>`
+            // body (grammar admission's `Emittable` context), so the fold
+            // recurses through them too.
+            Node::On(o) => fold_branches_nodes(&o.body, schema, seen, diags),
+            Node::Objective(o) => fold_branches_nodes(&o.body, schema, seen, diags),
+            Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
         }
     }
 }
@@ -1744,6 +1759,9 @@ fn fold_directive_slots(
 ) {
     for shot in &doc.shots {
         fold_slots_nodes(&shot.body, snapshot, schema);
+    }
+    for quest in &doc.quests {
+        fold_slots_nodes(&quest.body, snapshot, schema);
     }
 }
 
@@ -1783,7 +1801,14 @@ fn fold_slots_nodes(
                     fold_slots_nodes(&c.body, snapshot, schema);
                 }
             }
-            Node::Line(_) | Node::Set(_) | Node::Objective(_) | Node::On(_) => {}
+            // Quest-only arms (dsl 0.2.0 §4, §6.4): a directive-opening slot
+            // (e.g. `::minigame{resultKey="k"}`) may be used directly inside
+            // an `<on>` event arm or an `<objective>` body — recurse so its
+            // declared state slots open for the quest walk + defassign, same
+            // as a scene shot's directives do.
+            Node::On(o) => fold_slots_nodes(&o.body, snapshot, schema),
+            Node::Objective(o) => fold_slots_nodes(&o.body, snapshot, schema),
+            Node::Line(_) | Node::Set(_) => {}
         }
     }
 }
