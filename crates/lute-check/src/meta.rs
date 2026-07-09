@@ -64,19 +64,14 @@ pub struct TypedMeta {
     pub params_malformed: bool,
 }
 
-/// Core built-in top-level meta keys valid in EVERY document kind (dsl §6.1).
-/// Keys here are never "unknown"; a top-level key outside this set, not in the
-/// kind-specific allowance below, and not owned by an active plugin's
-/// `frontmatter` export is a static error (dsl §6.1). `components:` (the import
-/// list, dsl §13) is valid everywhere; `component:`/`params:` are NOT — see
-/// [`COMPONENT_ONLY_KEYS`].
-const BUILTIN_KEYS: &[&str] = &[
-    "character",
-    "season",
-    "episode",
-    "episodeId",
+/// Frontmatter keys valid in EVERY root document kind (dsl 0.2.0 §6.1): the
+/// kind-agnostic core keys. `kind:` itself is handled separately (valid only
+/// for a root kind — Scene/Quest — never Schema/Component, dsl 0.2.0 §3.1), so
+/// it is NOT in this list; the unknown-key loop below tests it independently.
+/// `components:` (the import list, dsl §13) is valid everywhere; `component:`/
+/// `params:` are NOT — see [`COMPONENT_ONLY_KEYS`].
+const UNIVERSAL_KEYS: &[&str] = &[
     "mode",
-    "pov",
     "title",
     "luteVersion",
     "contentLang",
@@ -89,6 +84,11 @@ const BUILTIN_KEYS: &[&str] = &[
     "components",
 ];
 
+/// Frontmatter keys valid ONLY in a `MetaKind::Scene` document (dsl 0.1.0 §6.1,
+/// dsl 0.2.0 §3.1/§6.1): the scene identity triad plus the scene-only extras.
+/// A Quest document declaring any of these is `E-META-UNKNOWN-KEY`.
+const SCENE_KEYS: &[&str] = &["character", "season", "episode", "episodeId", "pov"];
+
 /// Frontmatter keys that are valid ONLY in a component file (dsl §13): the
 /// component's own name (`component:`) and its parameter signature (`params:`).
 /// In a scene or schema doc these are unknown top-level keys.
@@ -99,7 +99,9 @@ const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 /// Which document kind's frontmatter is being parsed. A `Schema` doc (imported
 /// via `uses:`, dsl §9.2) and a `Component` doc (imported via `components:`,
 /// dsl §13) are NOT scenes — neither carries the required character/season/
-/// episode keys.
+/// episode keys. `Quest` (dsl 0.2.0 §3.1, §6.1) is a second ROOT kind: like
+/// Scene it carries `kind:`, but (like Schema/Component) requires no keys and
+/// additionally rejects the scene-only [`SCENE_KEYS`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MetaKind {
     Scene,
@@ -107,6 +109,9 @@ pub enum MetaKind {
     /// A reusable-content component file (dsl §13): lifts `component:`+`params:`,
     /// skips the scene-required keys exactly like `Schema`.
     Component,
+    /// The quest kind (dsl 0.2.0 §3.1, §6.1): a second ROOT document kind. No
+    /// required keys; rejects [`SCENE_KEYS`].
+    Quest,
 }
 
 /// A ROOT document's domain kind (dsl 0.2.0 §3.1): the frontmatter `kind:`
@@ -278,7 +283,9 @@ pub fn parse_meta_kind(
             ));
             continue;
         };
-        let known = BUILTIN_KEYS.contains(&key)
+        let known = UNIVERSAL_KEYS.contains(&key)
+            || (key == "kind" && matches!(kind, MetaKind::Scene | MetaKind::Quest))
+            || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
             || (component_key_allowed && COMPONENT_ONLY_KEYS.contains(&key))
             || snapshot.frontmatter.contains_key(key);
         if !known {
