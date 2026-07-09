@@ -76,6 +76,10 @@ pub fn complete_at(
             directive: None, ..
         } => Vec::new(),
         Cursor::SetPath { .. } => state_path_items(&meta),
+        // Transitional (Plan E Task 2 -> Task 3): quest/on/objective
+        // construct completion not implemented yet. Task 3 adds the
+        // hardcoded attr-key table + `<on event>` value completion.
+        Cursor::OnEventValue(_) | Cursor::ConstructAttrArea { .. } => Vec::new(),
     }
 }
 
