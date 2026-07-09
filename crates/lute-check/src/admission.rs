@@ -133,7 +133,14 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
 ///     Plan A, so it needs an explicit check here);
 /// (b) a quest doc with a non-empty `doc.shots` (a `## `/`# ` heading — quest
 ///     forbids headings everywhere, dsl 0.2.0 §6.2/§6.7);
-/// (c) any [`Node`] whose [`NodeKind`] is not admitted by its `(kind, context)`
+/// (c) a quest doc with a `doc.title` (a document-level `# ` heading — the
+///     parser stores a WELL-PLACED lone `# ` line separately from `doc.shots`,
+///     so it needs its own explicit check here, same as (a)'s `<quest>`/
+///     `doc.shots` split);
+/// (d) a quest doc with an EMPTY `doc.quests` (dsl 0.2.0 §6.2:
+///     `QuestDoc ::= Meta QuestDecl+` requires at least one `<quest>`; a quest
+///     doc that declares none is not a well-formed `QuestDoc` at all);
+/// (e) any [`Node`] whose [`NodeKind`] is not admitted by its `(kind, context)`
 ///     position, walking `doc.shots` (scene) or `doc.quests` (quest) with the
 ///     context transitions described in the module docs.
 pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
@@ -157,6 +164,15 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
             }
         }
         DocKind::Quest => {
+            if let Some((_, title_span)) = &doc.title {
+                diags.push(diag(
+                    "a document `# ` title is not admitted in a quest document; the quest \
+                     kind forbids `# `/`## ` headings everywhere and admits only `<quest>` \
+                     at the document top level (dsl 0.2.0 §6.2, §6.7)"
+                        .to_string(),
+                    *title_span,
+                ));
+            }
             for shot in &doc.shots {
                 diags.push(diag(
                     format!(
@@ -166,6 +182,15 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                         shot.heading
                     ),
                     shot.span,
+                ));
+            }
+            if doc.quests.is_empty() {
+                diags.push(diag(
+                    "a quest document declares no `<quest>`; a quest doc is a pack of one \
+                     or more `<quest>` declarations (dsl 0.2.0 §6.2: `QuestDoc ::= Meta \
+                     QuestDecl+`)"
+                        .to_string(),
+                    doc.span,
                 ));
             }
             for quest in &doc.quests {
