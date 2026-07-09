@@ -620,3 +620,69 @@ fn divergence_holds_under_components() {
         "E-COMPONENT-UNDECLARED projection diverged between surfaces"
     );
 }
+
+/// No-divergence for the 0.2.0 quest kind (Plan E Task 6): the invariant that
+/// held for every scene-kind construct must also hold for `<quest>`/`<on>`/
+/// `<objective>` — new AST variants, new diagnostic codes, but the SAME single
+/// diagnostic surface. Two cases, mirroring `divergence_holds_under_components`:
+/// (a) an error-clean quest (a declared `run.grove` state path read by an
+/// objective's `done` guard and written by a `questComplete` `<on>` handler)
+/// and (b) a quest whose objective omits `done`, which yields
+/// `E-OBJECTIVE-MISSING-DONE` — its headless and LSP projections must agree
+/// byte-for-byte, proving the quest-specific diagnostic (anchored at the
+/// `<objective>` construct, not a content line) reprojects identically.
+#[test]
+fn divergence_holds_for_quest_docs() {
+    // (a) happy path: a clean quest doc is error-free; projections agree.
+    let text = "---\nkind: quest\nstate:\n  run.grove: { type: bool, default: false }\n---\n\
+                <quest id=\"rescueHalsin\" title=\"Rescue Halsin\">\n\
+                <objective id=\"reachGrove\" title=\"Reach the grove\" done=\"run.grove\"/>\n\
+                <on event=\"questComplete\">\n::set{run.grove = true}\n</on>\n\
+                </quest>\n";
+    let res = check(&input_for(text));
+    assert!(
+        res.diagnostics.iter().all(|d| d.severity != Severity::Error),
+        "a clean quest doc must be error-free; got {:?}",
+        res.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+    let index = idx(text);
+    let headless: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &index))
+        .collect();
+    let via_lsp: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .collect();
+    assert_eq!(
+        headless, via_lsp,
+        "headless and LSP surfaces diverged for a clean quest doc"
+    );
+
+    // (b) non-vacuous: an objective with no `done` flags E-OBJECTIVE-MISSING-DONE
+    // (dsl 0.2.0 §6.4); its headless and LSP projections must agree too.
+    let bad = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\"/>\n</quest>\n";
+    let bres = check(&input_for(bad));
+    assert!(
+        bres.diagnostics.iter().any(|d| d.code == "E-OBJECTIVE-MISSING-DONE"),
+        "an objective with no done= must yield E-OBJECTIVE-MISSING-DONE; got {:?}",
+        bres.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+    let bindex = idx(bad);
+    let bheadless: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &bindex))
+        .collect();
+    let bvia_lsp: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex)))
+        .collect();
+    assert_eq!(
+        bheadless, bvia_lsp,
+        "E-OBJECTIVE-MISSING-DONE projection diverged between surfaces"
+    );
+}
