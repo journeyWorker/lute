@@ -57,8 +57,12 @@ impl AssembleError {
 }
 
 /// dsl §10 reserved terms a non-core plugin MUST NOT (re)define as a directive.
-/// `cut` is core-owned, so it is only reserved against NON-core plugins.
-const RESERVED_DIRECTIVE_NAMES: &[&str] = &["scene", "cut"];
+/// `cut` is core-owned, so it is only reserved against NON-core plugins. Also
+/// reserves the 0.2.0 quest surface tags `on`/`quest`/`objective` (dsl Appendix C:
+/// "the tags `on`, `quest`, `objective` become reserved ... surfaced at assembly
+/// time"); none of the three are core-owned, so they are reserved against every
+/// (non-core) plugin, same as `scene`.
+const RESERVED_DIRECTIVE_NAMES: &[&str] = &["scene", "cut", "on", "quest", "objective"];
 
 /// Merge every ACTIVE plugin's loaded package onto the embedded `lute.core`
 /// base into a single deterministic capability snapshot (plugin §13). Returns

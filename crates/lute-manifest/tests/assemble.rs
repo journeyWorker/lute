@@ -536,3 +536,42 @@ fn assemble_rejects_reserved_builtin_event_name() {
         "reserved builtin lifecycle event name must be ReservedName, got {errs:?}"
     );
 }
+
+#[test]
+fn assemble_rejects_reserved_quest_surface_tags_as_plugin_directive_names() {
+    // dsl Appendix C (0.2.0): "the tags `on`, `quest`, `objective` become
+    // reserved ... a scene that used them as plugin directive/attr names ...
+    // is the only theoretical conflict, surfaced at assembly time."
+    for reserved in ["on", "quest", "objective"] {
+        let reg = InstalledPlugins {
+            by_id: BTreeMap::from([(
+                "idola.minigame".to_string(),
+                InstalledPlugin {
+                    loaded: plugin_with_directive("idola.minigame", reserved),
+                },
+            )]),
+        };
+        let active = vec![
+            ActivePlugin {
+                id: "lute.core".into(),
+                options: BTreeMap::new(),
+            },
+            ActivePlugin {
+                id: "idola.minigame".into(),
+                options: BTreeMap::new(),
+            },
+        ];
+        let (snap, errs) = assemble_snapshot(&active, &reg);
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                lute_manifest::assemble::AssembleError::ReservedName { id, .. } if id == reserved
+            )),
+            "reserved quest surface tag `{reserved}` as a plugin directive name must be ReservedName, got {errs:?}"
+        );
+        assert!(
+            snap.directive(reserved).is_none(),
+            "reserved directive `{reserved}` must not be merged into the snapshot"
+        );
+    }
+}
