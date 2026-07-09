@@ -225,6 +225,17 @@ pub(super) fn take_str(attrs: &mut Vec<Attr>, key: &str) -> Option<String> {
     }
 }
 
+/// Remove the first attr named `key` and report whether it was present as a
+/// bare boolean-true flag (dsl 0.2.0 §6.4 `optional`). A bare `key` with no
+/// `=` parses to `AttrValue::BoolTrue`; a `key="…"` value is still consumed but
+/// reported `false` (it is not a bare flag).
+pub(super) fn take_bool(attrs: &mut Vec<Attr>, key: &str) -> bool {
+    if let Some(pos) = attrs.iter().position(|a| a.key == key) {
+        return matches!(attrs.remove(pos).value, AttrValue::BoolTrue);
+    }
+    false
+}
+
 /// Take (remove) the string value of attribute `key` together with its
 /// `value_span`, if present. Used for literal (non-CEL) attributes like
 /// `<when is="…">` (dsl §7.3.1) that must keep their source span without being
