@@ -101,6 +101,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
         },
         title,
         shots,
+        quests: Vec::new(),
         span: Span::from_bytes(&p.idx, 0, text.len()),
     };
     (doc, p.diags)
@@ -668,6 +669,8 @@ fn node_end(n: &Node) -> usize {
         Node::Match(m) => m.span.byte_end,
         Node::Timeline(t) => t.span.byte_end,
         Node::Hub(h) => h.span.byte_end,
+        Node::Objective(o) => o.span.byte_end,
+        Node::On(o) => o.span.byte_end,
     }
 }
 
