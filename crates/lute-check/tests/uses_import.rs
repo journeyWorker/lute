@@ -510,3 +510,58 @@ fn scene_inline_refines_extends_base_default() {
         "refining an extends base must not redeclare; got {refined:?}"
     );
 }
+
+// --- CheckFix F4: project-wide `<quest id>` uniqueness via the import graph
+// (dsl 0.2.0 §6.3) -----------------------------------------------------------
+
+#[test]
+fn sibling_imports_declaring_same_quest_id_errors() {
+    // Two DIFFERENT `uses` peers declaring the same `<quest id>` collide even
+    // though NEITHER is the importing document itself — quest ids are unique
+    // project-wide (§6.3), not merely per document.
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "x.lute",
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n",
+    );
+    write_lute(
+        &dir,
+        "y.lute",
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o2\" done=\"b\"/>\n</quest>\n",
+    );
+    let res = resolve_imports(
+        &dir,
+        &["x.lute".to_string(), "y.lute".to_string()],
+        &[],
+        zero_span(),
+    );
+    let codes = resolve_codes(&res);
+    assert!(
+        codes.contains(&"E-QUEST-ID-DUP"),
+        "expected E-QUEST-ID-DUP, got {codes:?}"
+    );
+    assert!(
+        res.imported_quest_ids.contains_key("q"),
+        "imported_quest_ids missing `q`: {:?}",
+        res.imported_quest_ids
+    );
+}
+
+#[test]
+fn single_imported_quest_id_is_recorded_without_a_dup() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "x.lute",
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n",
+    );
+    let res = resolve_imports(&dir, &["x.lute".to_string()], &[], zero_span());
+    let codes = resolve_codes(&res);
+    assert!(!codes.contains(&"E-QUEST-ID-DUP"), "{codes:?}");
+    let origin = res.imported_quest_ids.get("q");
+    assert!(
+        origin.is_some_and(|p| p.ends_with("x.lute")),
+        "expected `q` -> x.lute, got {origin:?}"
+    );
+}

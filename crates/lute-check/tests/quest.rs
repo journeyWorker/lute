@@ -406,3 +406,49 @@ fn duplicate_quest_id_does_not_spuriously_flag_reserved_decl() {
     assert!(cs.contains(&"E-QUEST-ID-DUP".to_string()), "{cs:?}");
     assert!(!cs.contains(&"E-QUEST-RESERVED-DECL".to_string()), "{cs:?}");
 }
+
+// --- CheckFix F4: project-wide `<quest id>` uniqueness via the import graph
+// (dsl 0.2.0 §6.3) -----------------------------------------------------------
+
+fn codes_with_imports(text: &str, imports: SchemaImports) -> Vec<String> {
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "quest".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports,
+        components: Default::default(),
+    };
+    check(&input).diagnostics.into_iter().map(|d| d.code).collect()
+}
+
+#[test]
+fn redeclaring_an_import_reachable_quest_id_errors() {
+    // doc A `uses` B; B declares `<quest id="q">` (captured by the import
+    // resolver into `imported_quest_ids`). A ALSO declares its own
+    // `<quest id="q">` -> E-QUEST-ID-DUP, project-wide (dsl 0.2.0 §6.3), even
+    // though A never repeats the id WITHIN its own document.
+    let mut imports = SchemaImports::default();
+    imports
+        .imported_quest_ids
+        .insert("q".to_string(), std::path::PathBuf::from("b.lute"));
+    let cs = codes_with_imports(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n",
+        imports,
+    );
+    assert!(cs.contains(&"E-QUEST-ID-DUP".to_string()), "{cs:?}");
+}
+
+#[test]
+fn no_import_reachable_collision_is_clean() {
+    let mut imports = SchemaImports::default();
+    imports
+        .imported_quest_ids
+        .insert("other".to_string(), std::path::PathBuf::from("b.lute"));
+    let cs = codes_with_imports(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n",
+        imports,
+    );
+    assert!(!cs.contains(&"E-QUEST-ID-DUP".to_string()), "{cs:?}");
+}

@@ -277,7 +277,14 @@ pub fn fold_env(
     //     0.2.0 §5.2) into the schema, threading a SEPARATE per-document `seen`
     //     id set (quest ids key the `quest.<id>.*` tier, a namespace distinct
     //     from `scene.choices.*`) so `E-QUEST-ID-DUP` fires exactly once per
-    //     duplicate.
+    //     duplicate. `seen_quests` is SEEDED from `input.imports.imported_quest_ids`
+    //     (dsl 0.2.0 §6.3: quest ids are unique PROJECT-WIDE, across the import
+    //     graph, not merely within this document) — redeclaring an
+    //     import-reachable id then fails the same `seen_quests.insert` check as
+    //     an in-document repeat, reusing `E-QUEST-ID-DUP` unchanged. A collision
+    //     BETWEEN two import-reachable docs that this document itself never
+    //     redeclares is instead caught in `resolve_imports` directly (this
+    //     document's own `<quest>` fold never sees it).
     //
     //     `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` are RESERVED
     //     (dsl 0.2.0 §5.2/§9.3: "implicitly declared and MUST NOT be
@@ -293,7 +300,8 @@ pub fn fold_env(
     //     identical decl.
     let pre_existing_state: std::collections::BTreeSet<String> =
         schema.decls.keys().cloned().collect();
-    let mut seen_quests = std::collections::BTreeSet::new();
+    let mut seen_quests: std::collections::BTreeSet<String> =
+        input.imports.imported_quest_ids.keys().cloned().collect();
     for quest in &doc.quests {
         let record = check_quest(quest, &mut seen_quests);
         for (path, decl) in record.decls {

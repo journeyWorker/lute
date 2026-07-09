@@ -46,6 +46,17 @@ pub struct SchemaImports {
     /// path resolved from a `uses` peer (depth 0) stays `E-STATE-REDECLARE` if the
     /// scene redeclares it.
     pub state_overridable: BTreeSet<String>,
+    /// Every `<quest id>` reachable via the import graph (dsl 0.2.0 §6.3: a quest
+    /// id is unique PROJECT-WIDE — "like a named `run.*` fact ... not an
+    /// implementation leak" — not merely per document), keyed by id -> one
+    /// declaring file (byte-sorted-first on a same-id collision, for messaging).
+    /// A collision BETWEEN two import-reachable docs (neither the document under
+    /// check) is reported directly (`resolve_imports`, `E-QUEST-ID-DUP`), since
+    /// the importing document's own `<quest>` fold (`check_quest`) only ever
+    /// walks ITS OWN `<quest>`s; that fold instead seeds its `seen_quests` set
+    /// from these keys, so redeclaring an import-reachable id is
+    /// `E-QUEST-ID-DUP` too.
+    pub imported_quest_ids: BTreeMap<String, PathBuf>,
 }
 
 /// Which frontmatter edge reached an imported document — used only to word the
@@ -65,11 +76,18 @@ impl Edge {
     }
 }
 
-/// The parsed subset of one imported doc kept after traversal: its declared state
-/// paths and defs (the doc's own edges are consumed during traversal).
+/// The parsed subset of one imported doc kept after traversal: its declared
+/// state paths, defs, and `<quest id>`s (the doc's own edges are consumed
+/// during traversal).
 struct ParsedDoc {
     state: BTreeMap<String, StateDecl>,
     defs: BTreeMap<String, serde_yaml::Value>,
+    /// Every non-empty `<quest id>` this doc declares (dsl 0.2.0 §6.3
+    /// project-wide uniqueness); an id-less `<quest>` is that doc's OWN
+    /// malformed-id problem (`E-QUEST-ID-MISSING`, reported when THAT doc is
+    /// directly checked), not something this traversal can meaningfully
+    /// collide on.
+    quest_ids: BTreeSet<String>,
 }
 
 fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
@@ -208,11 +226,42 @@ pub fn resolve_imports(
         }
     }
 
+    // Every `<quest id>` reachable via the import graph (dsl 0.2.0 §6.3): unlike
+    // `state`/`defs` above, quest-id uniqueness is NOT depth-scoped (no
+    // `extends` "closer override wins" relaxation applies — a quest id is a
+    // flat, global identity, §6.3) — ANY id declared by >= 2 DISTINCT reachable
+    // files collides, regardless of their depths.
+    let mut quest_by_name: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+    for (canon, doc) in &parsed {
+        for id in &doc.quest_ids {
+            quest_by_name.entry(id.clone()).or_default().push(canon.clone());
+        }
+    }
+    let mut imported_quest_ids: BTreeMap<String, PathBuf> = BTreeMap::new();
+    for (id, mut files) in quest_by_name {
+        files.sort();
+        files.dedup();
+        if files.len() >= 2 {
+            diags.push(uses_diag(
+                "E-QUEST-ID-DUP",
+                format!(
+                    "duplicate `<quest id=\"{id}\">` across imports (`{}` and `{}`); quest \
+                     ids must be unique project-wide (dsl 0.2.0 §6.3)",
+                    files[0].display(),
+                    files[1].display()
+                ),
+                at,
+            ));
+        }
+        imported_quest_ids.insert(id, files[0].clone());
+    }
+
     SchemaImports {
         state,
         defs,
         diags,
         state_overridable,
+        imported_quest_ids,
     }
 }
 
@@ -279,6 +328,7 @@ fn read_and_parse(
     let empty = ParsedDoc {
         state: BTreeMap::new(),
         defs: BTreeMap::new(),
+        quest_ids: BTreeSet::new(),
     };
     let text = match std::fs::read_to_string(canon) {
         Ok(t) => t,
@@ -308,7 +358,25 @@ fn read_and_parse(
     let defs = tm.defs;
     let uses = tm.uses;
     let extends = tm.extends;
-    (ParsedDoc { state, defs }, uses, extends)
+    // `doc.quests` comes from the syntax-level parse above (kind-agnostic, Plan
+    // A) — independent of `MetaKind::Schema`'s frontmatter-only extraction, so
+    // a `<quest>` reachable through `uses`/`extends` is seen here even though
+    // this traversal never resolves the imported doc's OWN `kind:`.
+    let quest_ids: BTreeSet<String> = doc
+        .quests
+        .iter()
+        .map(|q| q.id.clone())
+        .filter(|id| !id.is_empty())
+        .collect();
+    (
+        ParsedDoc {
+            state,
+            defs,
+            quest_ids,
+        },
+        uses,
+        extends,
+    )
 }
 
 /// Report `E-USES-DUP-*` for every depth level at which >= 2 DISTINCT files
