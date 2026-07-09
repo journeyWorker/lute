@@ -169,3 +169,135 @@ fn duplicate_line_code_within_a_quest_errors() {
                     <on event=\"questActive\">\n:x{code=\"0010\"}: one\n:x{code=\"0010\"}: two\n</on>\n</quest>\n");
     assert!(cs.contains(&"E-DUP-LINE-CODE".to_string()), "{cs:?}");
 }
+
+// --- Review Finding 1: quest branch folding (fold_branches over doc.quests) -
+
+#[test]
+fn quest_branch_duplicate_choice_ids_errors() {
+    // A <branch> living directly in a <quest> body was never folded by the
+    // scene-only fold_branches pre-pass, so its E-CHOICE-DUP dup-detection
+    // never ran (and its implicit scene.choices.<id> decl was never folded).
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
+         <branch id=\"b\">\n<choice id=\"c\" label=\"A\">\n:x: hi\n</choice>\n\
+         <choice id=\"c\" label=\"B\">\n:x: bye\n</choice>\n</branch>\n</quest>\n",
+    );
+    assert!(cs.contains(&"E-CHOICE-DUP".to_string()), "{cs:?}");
+}
+
+// --- Review Finding 2: quest directive-slot expansion (fold_directive_slots
+// over doc.quests) ---------------------------------------------------------
+
+/// Same synthetic `::minigame` directive as `tests/directive_slots.rs` (the
+/// core snapshot carries no directive with declared state slots).
+fn snapshot_with_minigame() -> lute_manifest::snapshot::CapabilitySnapshot {
+    use lute_manifest::schema::*;
+    use lute_manifest::types::{Field, FromAttr, Literal as Lit, PathSegment, Type};
+    let mut snap = lute_manifest::core::load_core_snapshot();
+    snap.state_shapes.insert(
+        "minigameResult".into(),
+        StateShape {
+            name: "minigameResult".into(),
+            fields: vec![Field {
+                name: "rank".into(),
+                ty: Type::Enum(vec![
+                    "fail".into(),
+                    "bronze".into(),
+                    "silver".into(),
+                    "gold".into(),
+                ]),
+                default: Some(Lit::Str("fail".into())),
+                required: false,
+                shape: None,
+            }],
+        },
+    );
+    snap.directives.insert(
+        "minigame".into(),
+        DirectiveDecl {
+            name: "minigame".into(),
+            layer: Some("bridge".into()),
+            attrs: vec![
+                AttrDecl {
+                    name: "kind".into(),
+                    required: true,
+                    ty: Type::Str,
+                    default: None,
+                },
+                AttrDecl {
+                    name: "id".into(),
+                    required: true,
+                    ty: Type::Str,
+                    default: None,
+                },
+                AttrDecl {
+                    name: "resultKey".into(),
+                    required: true,
+                    ty: Type::SlotId {
+                        namespace: "scene.minigame".into(),
+                    },
+                    default: None,
+                },
+                AttrDecl {
+                    name: "wait".into(),
+                    required: false,
+                    ty: Type::Bool,
+                    default: Some(Lit::Bool(true)),
+                },
+            ],
+            semantics: vec![],
+            state: Some(DirectiveState {
+                declares: vec![SlotDecl {
+                    scope: "scene".into(),
+                    path: vec![
+                        PathSegment::Literal("minigame".into()),
+                        PathSegment::FromAttr {
+                            from_attr: FromAttr {
+                                name: "resultKey".into(),
+                                slot_type: Some("localId".into()),
+                            },
+                        },
+                    ],
+                    shape: "minigameResult".into(),
+                }],
+            }),
+            effects: None,
+            bridge: None,
+            lower: Lowering::Builtin {
+                kind: "builtin".into(),
+                name: "bridgeMinigame".into(),
+            },
+        },
+    );
+    snap
+}
+
+fn codes_with(text: &str, snap: lute_manifest::snapshot::CapabilitySnapshot) -> Vec<String> {
+    let input = CheckInput {
+        text: text.into(),
+        uri: "quest".into(),
+        snapshot: snap,
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+    };
+    check(&input).diagnostics.into_iter().map(|d| d.code).collect()
+}
+
+#[test]
+fn quest_on_directive_slot_opens_scene_path() {
+    // `fold_directive_slots` roots only in doc.shots; a quest `<on>` body's
+    // `::minigame` never opened `scene.minigame.service01.rank`, so a valid
+    // read of it wrongly reported E-UNDECLARED.
+    let text = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"true\"/>\n\
+                <on event=\"questActive\">\n\
+                ::minigame{kind=\"rhythm\" id=\"x\" resultKey=\"service01\" wait=\"true\"}\n\
+                <match on=\"scene.minigame.service01.rank\">\n\
+                <when test=\"$ == 'gold'\">\n:x: hi\n</when>\n\
+                <otherwise>\n:x: bye\n</otherwise>\n\
+                </match>\n</on>\n</quest>\n";
+    let cs = codes_with(text, snapshot_with_minigame());
+    assert!(!cs.contains(&"E-UNDECLARED".to_string()), "{cs:?}");
+}
+
