@@ -55,6 +55,8 @@ fn kind(cmd: &Command) -> &'static str {
         Command::Jump(_) => "jump",
         Command::Barrier(_) => "barrier",
         Command::Other(_) => "plugin",
+        Command::Quest(_) => "quest",
+        Command::On(_) => "on",
     }
 }
 

@@ -28,12 +28,13 @@ use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{Arm, Document, Node};
 
 /// Language-version pin stamped into the artifact envelope's `lute` field (DSL
-/// 0.1.0). Distinct from [`LUTE_IR_VERSION`], the IR schema version.
-pub const LUTE_LANG_VERSION: &str = "0.1.0";
+/// 0.2.0). Distinct from [`LUTE_IR_VERSION`], the IR schema version.
+pub const LUTE_LANG_VERSION: &str = "0.2.0";
 
 /// IR schema version stamped into the envelope's `irVersion` field (spec §4.1,
-/// A9). Bumped for the 0.1.0 record changes (A1–A7); engines gate parsing on it.
-pub const LUTE_IR_VERSION: &str = "0.1.0";
+/// A9). Bumped for the 0.2.0 kind envelope + quest/on records (IR addendum);
+/// engines gate parsing on it.
+pub const LUTE_IR_VERSION: &str = "0.2.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -112,10 +113,11 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
     }
     let branch_paths = collect_branch_paths(&doc);
     Ok(Artifact {
+        kind: DocKind::Scene,
         lute: LUTE_LANG_VERSION.to_string(),
         ir_version: LUTE_IR_VERSION.to_string(),
         capability_version: input.snapshot.version.clone(),
-        meta,
+        meta: ArtifactMeta::Scene(meta),
         state: state_entries(&folded.env.state, &branch_paths),
         commands,
     })
@@ -125,7 +127,7 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
 /// keys — the gate proved them present; degrade to defaults, never panic.
 /// `title` and the authored `episodeId` live only in the raw frontmatter
 /// (neither is lifted into `TypedMeta`); both are read from the mapping here.
-fn artifact_meta(doc: &Document, folded: &FoldedEnv) -> ArtifactMeta {
+fn artifact_meta(doc: &Document, folded: &FoldedEnv) -> SceneMeta {
     let character = folded.typed.character.clone().unwrap_or_default();
     let season = folded.typed.season.unwrap_or(0);
     let episode = folded.typed.episode.unwrap_or(0);
@@ -143,7 +145,7 @@ fn artifact_meta(doc: &Document, folded: &FoldedEnv) -> ArtifactMeta {
     let episode_id = lookup("episodeId")
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| format!("s{season:02}ep{episode:02}"));
-    ArtifactMeta {
+    SceneMeta {
         character,
         season,
         episode,
@@ -296,7 +298,7 @@ pub(crate) fn literal_json(l: &Literal) -> serde_json::Value {
 mod tests {
     #[test]
     fn ir_version_matches_language_version() {
-        assert_eq!(super::LUTE_IR_VERSION, "0.1.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.1.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.2.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.2.0");
     }
 }

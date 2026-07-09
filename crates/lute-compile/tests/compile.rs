@@ -2,7 +2,7 @@
 //! stamping, CEL expansion in situ, and byte determinism.
 
 use lute_check::{CheckInput, Mode};
-use lute_compile::{compile, Command};
+use lute_compile::{compile, ArtifactMeta, Command};
 
 fn input(text: &str) -> CheckInput {
     CheckInput {
@@ -13,6 +13,15 @@ fn input(text: &str) -> CheckInput {
         mode: Mode::Ci,
         imports: Default::default(),
         components: Default::default(),
+    }
+}
+
+/// Unwrap a scene artifact's untagged `meta` (0.2.0 kind envelope) — these
+/// pre-0.2.0 tests exercise `kind: scene` docs only.
+fn scene_meta(a: &lute_compile::Artifact) -> &lute_compile::SceneMeta {
+    match &a.meta {
+        ArtifactMeta::Scene(m) => m,
+        ArtifactMeta::Quest(_) => panic!("expected scene meta"),
     }
 }
 
@@ -189,17 +198,17 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.1.0");
-    assert_eq!(artifact.ir_version, "0.1.0");
+    assert_eq!(artifact.lute, "0.2.0");
+    assert_eq!(artifact.ir_version, "0.2.0");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
         "capabilityVersion must be a non-empty snapshot stamp"
     );
-    assert_eq!(artifact.meta.character, "bianca");
+    assert_eq!(scene_meta(&artifact).character, "bianca");
     // A4/A9: episodeId normalized lowercase to match the lineId episode segment.
-    assert_eq!(artifact.meta.episode_id, "s01ep02");
-    assert_eq!(artifact.meta.title.as_deref(), Some("Compile me"));
+    assert_eq!(scene_meta(&artifact).episode_id, "s01ep02");
+    assert_eq!(scene_meta(&artifact).title.as_deref(), Some("Compile me"));
 
     // Folded state envelope: author decl + implicit branch decl (§4.1).
     let paths: Vec<&str> = artifact.state.iter().map(|s| s.path.as_str()).collect();
@@ -270,7 +279,7 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
             }
             let seg = l.line_id.split('.').nth(1).expect("lineId episode segment");
             assert_eq!(
-                seg, artifact.meta.episode_id,
+                seg, scene_meta(&artifact).episode_id,
                 "lineId {} episode segment must equal meta.episodeId byte-for-byte",
                 l.line_id
             );
@@ -296,7 +305,7 @@ episodeId: ep02final
 :narrator: The stage is set.
 "#;
     let artifact = compile(&input(AUTHORED)).expect("authored episodeId doc compiles");
-    assert_eq!(artifact.meta.episode_id, "ep02final");
+    assert_eq!(scene_meta(&artifact).episode_id, "ep02final");
     let line = artifact
         .commands
         .iter()
