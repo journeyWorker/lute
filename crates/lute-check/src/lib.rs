@@ -24,7 +24,8 @@ pub use inject::{
     lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,
 };
 pub use match_check::{
-    check_branch, check_hub, check_line_codes, check_match, is_exhaustive, BranchRecord, HubRecord,
+    check_branch, check_hub, check_line_codes, check_match, check_quest, is_exhaustive,
+    BranchRecord, HubRecord, QuestRecord,
 };
 pub use meta::{
     parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace, StateDecl,

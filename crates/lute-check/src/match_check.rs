@@ -66,7 +66,9 @@ use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::{Literal, Type};
-use lute_syntax::ast::{Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node};
+use lute_syntax::ast::{
+    Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node, Quest,
+};
 
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
@@ -471,6 +473,102 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
     }
 
     HubRecord { decls, diags }
+}
+
+/// One quest's recording result (dsl 0.2.0 §5.2, §6.3, §6.4): the folded
+/// reserved `quest.<id>.*` decls to fold into the schema, plus any
+/// diagnostics (`E-QUEST-ID-DUP`, `E-OBJECTIVE-ID-DUP`,
+/// `E-OBJECTIVE-MISSING-DONE`).
+#[derive(Clone, Debug)]
+pub struct QuestRecord {
+    /// The implicit reserved declarations (path -> decl), quest-state first
+    /// then per-objective `done` in document order.
+    pub decls: Vec<(String, StateDecl)>,
+    /// Diagnostics for this quest.
+    pub diags: Vec<Diagnostic>,
+}
+
+/// Record a `<quest>` (dsl 0.2.0 §5.2, §6.3, §6.4), mirroring [`check_hub`].
+/// Emits `E-QUEST-ID-DUP` on a repeat id in the caller-owned `seen_quests` set
+/// — a namespace SEPARATE from the branch/hub `scene.choices.*` `seen` set
+/// (quest ids key the `quest.<id>.*` tier, dsl 0.2.0 §5.2); `E-OBJECTIVE-ID-DUP`
+/// on a repeated `<objective id>` WITHIN this quest; `E-OBJECTIVE-MISSING-DONE`
+/// on an `<objective>` whose `done` slot is empty (the parser always yields a
+/// syntactically valid — possibly empty — CEL slot for a missing `done`, dsl
+/// 0.2.0 §6.4). Objectives are found by scanning `quest.body` for
+/// `Node::Objective` — grammar admission (Task 5) guarantees they appear only
+/// directly in a quest body, never nested.
+///
+/// Returns the implicit reserved decls (dsl 0.2.0 §5.2): `quest.<id>.state`
+/// (an enum `[active, complete, failed]`, deterministic order, no default —
+/// maybe-unset until the engine populates it) plus, per objective,
+/// `quest.<id>.objectives.<oid>.done: bool` (default `false`).
+pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRecord {
+    let id = quest.id.as_str();
+    let mut diags = Vec::new();
+
+    if !seen_quests.insert(id.to_string()) {
+        diags.push(diag(
+            "E-QUEST-ID-DUP",
+            Severity::Error,
+            format!(
+                "duplicate `<quest id=\"{id}\">`; quest ids must be unique (dsl 0.2.0 §6.3)"
+            ),
+            quest.id_span,
+        ));
+    }
+
+    let mut decls: Vec<(String, StateDecl)> = vec![(
+        format!("quest.{id}.state"),
+        StateDecl {
+            ty: Type::Enum(vec![
+                "active".to_string(),
+                "complete".to_string(),
+                "failed".to_string(),
+            ]),
+            default: None,
+            namespace: Namespace::Quest,
+        },
+    )];
+
+    let mut objective_ids: BTreeSet<&str> = BTreeSet::new();
+    for node in &quest.body {
+        let Node::Objective(o) = node else { continue };
+        if !objective_ids.insert(o.id.as_str()) {
+            diags.push(diag(
+                "E-OBJECTIVE-ID-DUP",
+                Severity::Error,
+                format!(
+                    "duplicate `<objective id=\"{}\">` within `<quest id=\"{id}\">`; objective \
+                     ids must be unique within a quest (dsl 0.2.0 §6.4)",
+                    o.id
+                ),
+                o.span,
+            ));
+        }
+        if o.done.raw.trim().is_empty() {
+            diags.push(diag(
+                "E-OBJECTIVE-MISSING-DONE",
+                Severity::Error,
+                format!(
+                    "`<objective id=\"{}\">` within `<quest id=\"{id}\">` has no `done` \
+                     completion predicate; `done` is required (dsl 0.2.0 §6.4)",
+                    o.id
+                ),
+                o.span,
+            ));
+        }
+        decls.push((
+            format!("quest.{id}.objectives.{}.done", o.id),
+            StateDecl {
+                ty: Type::Bool,
+                default: Some(Literal::Bool(false)),
+                namespace: Namespace::Quest,
+            },
+        ));
+    }
+
+    QuestRecord { decls, diags }
 }
 
 /// The plain string value of the attr keyed `key`, if present and a string

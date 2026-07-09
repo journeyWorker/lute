@@ -82,7 +82,7 @@ use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
     check_branch, check_cel_slot, check_definite_assignment, check_hub, check_line_codes,
-    check_match, check_set, is_exhaustive,
+    check_match, check_quest, check_set, is_exhaustive,
 };
 
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
@@ -279,6 +279,20 @@ pub fn fold_env(
     }
     let mut seen_branches = std::collections::BTreeSet::new();
     fold_branches(doc, &mut schema, &mut seen_branches, &mut fold_diags);
+
+    // 4a. Fold every `<quest>`'s implicit reserved `quest.<id>.*` decls (dsl
+    //     0.2.0 §5.2) into the schema, threading a SEPARATE per-document `seen`
+    //     id set (quest ids key the `quest.<id>.*` tier, a namespace distinct
+    //     from `scene.choices.*`) so `E-QUEST-ID-DUP` fires exactly once per
+    //     duplicate.
+    let mut seen_quests = std::collections::BTreeSet::new();
+    for quest in &doc.quests {
+        let record = check_quest(quest, &mut seen_quests);
+        for (path, decl) in record.decls {
+            schema.decls.insert(path, decl);
+        }
+        fold_diags.extend(record.diags);
+    }
 
     // 4b. Expand every active directive's `state.declares[]` into concrete state
     //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
