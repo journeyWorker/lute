@@ -278,11 +278,42 @@ pub fn fold_env(
     //     id set (quest ids key the `quest.<id>.*` tier, a namespace distinct
     //     from `scene.choices.*`) so `E-QUEST-ID-DUP` fires exactly once per
     //     duplicate.
+    //
+    //     `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` are RESERVED
+    //     (dsl 0.2.0 §5.2/§9.3: "implicitly declared and MUST NOT be
+    //     author-declared") — snapshot every state path that already exists
+    //     BEFORE any reserved decl is folded (the author's inline `state:` and
+    //     any imported schema, both merged above) so a reserved path that
+    //     collides with one of THOSE is flagged (`E-QUEST-RESERVED-DECL`)
+    //     instead of silently clobbered by `schema.decls.insert`. A collision
+    //     with a path THIS loop itself already folded (the `E-QUEST-ID-DUP`
+    //     repeat-id case, an identical decl either way) is NOT flagged — the
+    //     snapshot is frozen before the loop starts, so a same-id repeat
+    //     resolves against the pre-loop state and simply re-inserts the
+    //     identical decl.
+    let pre_existing_state: std::collections::BTreeSet<String> =
+        schema.decls.keys().cloned().collect();
     let mut seen_quests = std::collections::BTreeSet::new();
     for quest in &doc.quests {
         let record = check_quest(quest, &mut seen_quests);
         for (path, decl) in record.decls {
-            schema.decls.insert(path, decl);
+            if pre_existing_state.contains(&path) {
+                fold_diags.push(Diagnostic {
+                    code: "E-QUEST-RESERVED-DECL".to_string(),
+                    severity: Severity::Error,
+                    message: format!(
+                        "state path `{path}` collides with an implicitly-declared reserved \
+                         quest field (dsl 0.2.0 §5.2); it must not be author-declared in \
+                         `state:`"
+                    ),
+                    span: doc.meta.span,
+                    layer: Layer::Content,
+                    fixits: Vec::new(),
+                    provenance: None,
+                });
+            } else {
+                schema.decls.insert(path, decl);
+            }
         }
         fold_diags.extend(record.diags);
     }
