@@ -101,6 +101,33 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
             }
             Some("match") => assert_cel_clean("match.subject", c["subject"].as_str().unwrap()),
             Some("set") => assert_cel_clean("set.value", c["value"].as_str().unwrap()),
+            // dsl 0.2.0 quest/on records (IR addendum §3): `start`/`fail`/
+            // `done`/`when` are `{raw, expr}` CEL pairs — clean; each
+            // objective/on `body` target resolves like any other
+            // control-flow target (same `valid` set, quest-indexed units).
+            Some("quest") => {
+                if let Some(start) = c["start"]["raw"].as_str() {
+                    assert_cel_clean("quest.start", start);
+                }
+                if let Some(fail) = c["fail"]["raw"].as_str() {
+                    assert_cel_clean("quest.fail", fail);
+                }
+                for obj in c["objectives"].as_array().into_iter().flatten() {
+                    assert_cel_clean("objective.done", obj["done"]["raw"].as_str().unwrap());
+                    if let Some(when) = obj["when"]["raw"].as_str() {
+                        assert_cel_clean("objective.when", when);
+                    }
+                    if let Some(body) = obj["body"].as_str() {
+                        assert_target(body, &valid);
+                    }
+                }
+            }
+            Some("on") => {
+                if let Some(when) = c["when"]["raw"].as_str() {
+                    assert_cel_clean("on.when", when);
+                }
+                assert_target(c["body"].as_str().expect("on.body"), &valid);
+            }
             _ => {}
         }
     }
@@ -157,6 +184,11 @@ fn showcase_episode01() {
         "../../docs/examples/showcase/episode01.lute",
         Some("../../docs/examples/showcase"),
     );
+}
+
+#[test]
+fn quest_grove() {
+    golden("quest_grove", "../../docs/examples/quest-grove.lute", None);
 }
 
 /// IR A12: the `::serve` plugin record carries resolved effect bindings. The
