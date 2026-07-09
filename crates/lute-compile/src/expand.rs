@@ -28,6 +28,16 @@ pub fn expand_document(doc: &mut Document, defs: &DefTable<'_>) -> Vec<Diagnosti
     for shot in &mut doc.shots {
         expand_nodes(&mut shot.body, defs, None, &mut diags);
     }
+    for quest in &mut doc.quests {
+        if let Some(s) = &mut quest.start {
+            expand_slot(s, defs, None, &mut diags);
+        }
+        if let Some(f) = &mut quest.fail {
+            expand_slot(f, defs, None, &mut diags);
+        }
+        expand_attrs(&mut quest.attrs, defs, None, &mut diags);
+        expand_nodes(&mut quest.body, defs, None, &mut diags);
+    }
     diags
 }
 
@@ -94,10 +104,21 @@ fn expand_nodes(
                     expand_nodes(&mut c.body, defs, subject, diags);
                 }
             }
-            // Transitional (dsl 0.2.0 Plan A): compile is unreachable on a
-            // document using `<on>`/`<objective>` (the checker's D6 gate
-            // rejects it), so a no-op here is sound. Plan D adds real expansion.
-            Node::On(_) | Node::Objective(_) => {}
+            Node::On(on) => {
+                if let Some(w) = &mut on.when {
+                    expand_slot(w, defs, subject, diags);
+                }
+                expand_attrs(&mut on.attrs, defs, subject, diags);
+                expand_nodes(&mut on.body, defs, subject, diags);
+            }
+            Node::Objective(o) => {
+                expand_slot(&mut o.done, defs, subject, diags);
+                if let Some(w) = &mut o.when {
+                    expand_slot(w, defs, subject, diags);
+                }
+                expand_attrs(&mut o.attrs, defs, subject, diags);
+                expand_nodes(&mut o.body, defs, subject, diags);
+            }
         }
     }
 }
@@ -485,5 +506,57 @@ mod tests {
             &[("outer", &["b"]), ("f", &["a", "b"])],
         );
         assert_eq!(expand("@outer(2)", &t, None).unwrap(), "((((2)) + (1)))");
+    }
+
+    // Plan D review (Important finding 1): `expand_document` walked only
+    // `doc.shots` and `Node::On`/`Node::Objective` were a no-op, so a
+    // checker-clean quest using a declared `@def` in an objective's `done`
+    // (or `$` in a `<match>` nested in a quest body, or `@def` in an `<on
+    // when>`) reached `stage::walk_quest` UN-expanded — `@`/`$` leaked into
+    // the artifact instead of `@`/`$`-free CEL.
+    #[test]
+    fn expand_document_traverses_quest_bodies_and_expands_on_objective_slots() {
+        let src = "---\nkind: quest\nstate:\n  run.region: { type: string, default: \"\" }\n  run.act: { type: number, default: 0 }\n---\n\n<quest id=\"q1\" title=\"Q1\">\n<objective id=\"o1\" title=\"O1\" done=\"@inGrove\"/>\n\n<match on=\"run.region\">\n  <when test=\"$ == 'grove'\">\n  ::set{run.act = 1}\n  </when>\n  <otherwise>\n  ::set{run.act = 0}\n  </otherwise>\n</match>\n\n<on event=\"questComplete\" when=\"@inGrove\">\n:narrator: done\n</on>\n</quest>\n";
+        let (mut doc, diags) = lute_syntax::parse(src);
+        assert!(
+            diags.iter().all(|d| d.severity != lute_core_span::Severity::Error),
+            "{diags:#?}"
+        );
+        assert_eq!(doc.quests.len(), 1, "fixture must parse one <quest>");
+
+        let t = tables(&[("inGrove", "run.region == 'grove'")], &[]);
+        let defs = DefTable {
+            bodies: &t.0,
+            params: &t.1,
+        };
+        let ediags = expand_document(&mut doc, &defs);
+        assert!(ediags.is_empty(), "{ediags:#?}");
+
+        let quest = &doc.quests[0];
+        let Node::Objective(o) = &quest.body[0] else {
+            panic!("expected objective, got {:?}", quest.body.first());
+        };
+        assert_eq!(o.done.raw, "(run.region == 'grove')");
+        assert!(!o.done.raw.contains('@'));
+
+        let Node::Match(m) = &quest.body[1] else {
+            panic!("expected match, got {:?}", quest.body.get(1));
+        };
+        let tests: Vec<&str> = m
+            .arms
+            .iter()
+            .filter_map(|a| match a {
+                Arm::When { test, .. } => Some(test.raw.as_str()),
+                Arm::Otherwise { .. } => None,
+            })
+            .collect();
+        assert_eq!(tests, vec!["run.region == 'grove'"]);
+
+        let Node::On(on) = &quest.body[2] else {
+            panic!("expected on, got {:?}", quest.body.get(2));
+        };
+        let when = on.when.as_ref().expect("on.when");
+        assert_eq!(when.raw, "(run.region == 'grove')");
+        assert!(!when.raw.contains('@'));
     }
 }
