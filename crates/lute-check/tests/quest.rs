@@ -350,3 +350,22 @@ fn objective_missing_id_errors() {
     let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective done=\"x\"/>\n</quest>\n");
     assert!(cs.contains(&"E-OBJECTIVE-ID-MISSING".to_string()), "{cs:?}");
 }
+
+// --- CheckFix F2/F3: quest-doc admission (§6.2) -----------------------------
+
+#[test]
+fn quest_doc_with_no_quests_is_not_admitted() {
+    // §6.2: `QuestDoc ::= Meta QuestDecl+` requires >= 1 `<quest>`.
+    let cs = codes("---\nkind: quest\n---\n");
+    assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
+}
+
+#[test]
+fn quest_doc_with_document_title_is_not_admitted() {
+    // a leading `# ` line becomes `doc.title`, not a `doc.shots` entry — the
+    // quest kind forbids headings everywhere (§6.2/§6.7), including this one.
+    let cs = codes(
+        "---\nkind: quest\n---\n# Title\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n",
+    );
+    assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
+}
