@@ -369,3 +369,40 @@ fn quest_doc_with_document_title_is_not_admitted() {
     );
     assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
 }
+
+// --- CheckFix F8: author-declared reserved `quest.<id>.*` path (§5.2/§9.3) -
+
+#[test]
+fn inline_declaration_of_reserved_quest_state_errors() {
+    // §5.2/§9.3: quest.<id>.state is implicitly declared and MUST NOT be
+    // author-declared; the fold must flag the collision, not silently
+    // overwrite the author's decl with the reserved one.
+    let cs = codes(
+        "---\nkind: quest\nstate:\n  quest.q.state: { type: string }\n---\n\
+         <quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n",
+    );
+    assert!(cs.contains(&"E-QUEST-RESERVED-DECL".to_string()), "{cs:?}");
+}
+
+#[test]
+fn inline_declaration_of_reserved_objective_done_errors() {
+    let cs = codes(
+        "---\nkind: quest\nstate:\n  quest.q.objectives.o.done: { type: string }\n---\n\
+         <quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n",
+    );
+    assert!(cs.contains(&"E-QUEST-RESERVED-DECL".to_string()), "{cs:?}");
+}
+
+#[test]
+fn duplicate_quest_id_does_not_spuriously_flag_reserved_decl() {
+    // Two <quest id="q"> (already E-QUEST-ID-DUP) fold the IDENTICAL
+    // reserved quest.q.state decl twice; the second fold must not ALSO
+    // report E-QUEST-RESERVED-DECL (the pre-existing-state snapshot is
+    // frozen before the quest loop starts, not updated as it runs).
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n\
+         <quest id=\"q\">\n<objective id=\"o2\" done=\"b\"/>\n</quest>\n",
+    );
+    assert!(cs.contains(&"E-QUEST-ID-DUP".to_string()), "{cs:?}");
+    assert!(!cs.contains(&"E-QUEST-RESERVED-DECL".to_string()), "{cs:?}");
+}
