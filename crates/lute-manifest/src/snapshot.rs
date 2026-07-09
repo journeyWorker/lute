@@ -5,6 +5,12 @@ use sha2::{Digest, Sha256};
 use crate::schema::*;
 use crate::types::Literal;
 
+/// The built-in quest lifecycle events (dsl 0.2.0 §6.6): quest-scoped, fired
+/// by the engine, usable as `<on event=…>`. NOT capability-provided (§4.5) —
+/// the single source of truth shared by `assemble`'s reserved-name check and
+/// the checker's `E-UNKNOWN-EVENT`.
+pub const BUILTIN_LIFECYCLE_EVENTS: &[&str] = &["questActive", "questComplete", "questFailed"];
+
 #[derive(Clone, Debug, Default)]
 pub struct CapabilitySnapshot {
     pub version: String,                           // capabilityVersion
@@ -21,6 +27,7 @@ pub struct CapabilitySnapshot {
     /// Installed-but-inactive tag → owning plugin id (plugin §11.2 fix-it). Not
     /// part of the resolved capability surface, so NOT folded into the version.
     pub inactive: BTreeMap<String, String>,
+    pub events: BTreeMap<String, EventDecl>,
 }
 
 #[derive(Clone, Debug)]
@@ -36,6 +43,10 @@ impl CapabilitySnapshot {
 
     pub fn directive(&self, name: &str) -> Option<&DirectiveDecl> {
         self.directives.get(name)
+    }
+
+    pub fn event(&self, name: &str) -> Option<&EventDecl> {
+        self.events.get(name)
     }
 }
 
@@ -159,6 +170,18 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
         h.update(b"=");
         h.update(format!("{ty:?}").as_bytes());
         h.update(b";");
+    }
+    // GUARDED: only fold `events` when populated, so an event-LESS snapshot
+    // hashes byte-identically to a pre-events snapshot (no lute-compile golden
+    // churn for packages that don't use the dsl 0.2.0 §4.5 events export).
+    if !snap.events.is_empty() {
+        h.update(b"\nevents\n");
+        for (name, e) in &snap.events {
+            h.update(name.as_bytes());
+            h.update(b"=");
+            h.update(format!("{e:?}").as_bytes());
+            h.update(b";");
+        }
     }
     format!("{:x}", h.finalize())
 }
@@ -320,5 +343,39 @@ mod tests {
             capability_version(&a),
             "inactive index is metadata, not hashed"
         );
+    }
+
+    #[test]
+    fn events_absent_keeps_capability_version_stable() {
+        // An event-LESS snapshot must hash identically to a fresh default — the
+        // guarded events section must NOT perturb existing (event-less) snapshots.
+        let base = capability_version(&CapabilitySnapshot::default());
+        assert_eq!(capability_version(&CapabilitySnapshot::default()), base);
+    }
+
+    #[test]
+    fn declaring_an_event_changes_capability_version() {
+        let a = CapabilitySnapshot::default();
+        let mut b = CapabilitySnapshot::default();
+        b.events.insert(
+            "combatEnd".into(),
+            EventDecl {
+                name: "combatEnd".into(),
+            },
+        );
+        assert_ne!(capability_version(&a), capability_version(&b));
+    }
+
+    #[test]
+    fn event_accessor_finds_declared_event() {
+        let mut s = CapabilitySnapshot::default();
+        s.events.insert(
+            "combatEnd".into(),
+            EventDecl {
+                name: "combatEnd".into(),
+            },
+        );
+        assert!(s.event("combatEnd").is_some());
+        assert!(s.event("nope").is_none());
     }
 }
