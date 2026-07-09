@@ -523,6 +523,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(defassign_diags);
     diags.extend(line_code_diags);
     diags.extend(inject_diags);
+    // Table-driven grammar admission (dsl 0.2.0 §3.3, §6.7): per-kind,
+    // per-context construct legality. `E-GRAMMAR-NOT-ADMITTED` is semantic, NOT
+    // a `STRUCTURAL_CODE` — the resolved view stays `Some` even when a document
+    // uses a construct its kind forbids.
+    diags.extend(crate::admission::check_admission(&doc, folded.doc_kind));
 
     // is_exhaustive suppression (carry-forward, T4.6 x T4.4): drop a maybe-unset
     // read whose span is a domain-exhaustive `<match>` subject.
