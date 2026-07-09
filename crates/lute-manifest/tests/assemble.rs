@@ -43,6 +43,7 @@ fn plugin_with_directive(id: &str, dname: &str) -> LoadedPlugin {
         defs: vec![],
         frontmatter: BTreeMap::new(),
         asset_kinds: vec![],
+        events: vec![],
     }
 }
 

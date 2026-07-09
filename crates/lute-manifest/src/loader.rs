@@ -21,6 +21,7 @@ pub struct LoadedPlugin {
     pub defs: Vec<DefDecl>,
     pub frontmatter: BTreeMap<String, Type>,
     pub asset_kinds: Vec<AssetKindDecl>,
+    pub events: Vec<EventDecl>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -102,6 +103,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
         defs: Vec::new(),
         frontmatter: BTreeMap::new(),
         asset_kinds: Vec::new(),
+        events: Vec::new(),
     };
 
     // Read each declared export. A relative export path resolves under `dir`.
@@ -147,6 +149,9 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                     |k| k.kind.clone(),
                     e,
                 )
+            }),
+            "events" => read_kind::<EventsFile, _>(&path, &mut errs, |f, e| {
+                merge_named(&mut out.events, f.events, "event", |ev| ev.name.clone(), e)
             }),
             other => errs.push(LoadError::UnknownExport {
                 export: other.to_string(),
