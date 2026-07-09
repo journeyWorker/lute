@@ -139,7 +139,8 @@ expression: json
               }
             }
           },
-          "optional": false
+          "optional": false,
+          "body": null
         },
         {
           "id": "freeHalsin",
@@ -151,7 +152,8 @@ expression: json
               "path": "run.npc.halsin.freed"
             }
           },
-          "optional": false
+          "optional": false,
+          "body": null
         }
       ]
     },
@@ -242,7 +244,8 @@ expression: json
               }
             }
           },
-          "optional": false
+          "optional": false,
+          "body": null
         }
       ]
     },

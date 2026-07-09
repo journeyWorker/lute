@@ -546,7 +546,8 @@ pub struct QuestCmd {
 /// addendum §3.1). Declaration data only — the engine derives the lifecycle
 /// (all non-`optional` objectives `done` ⇒ quest `complete`); the compiler
 /// emits no control flow for completion. `body` targets the objective's
-/// completion-body segment (§3.2), or `None` when the body is empty.
+/// completion-body segment (§3.2); `null` (always serialized, never
+/// omitted) when the body is empty.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectiveEntry {
@@ -559,7 +560,12 @@ pub struct ObjectiveEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub when: Option<CelPair>,
     pub optional: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// dsl 0.2.0 IR addendum §3.1/§3.2: `body` is ALWAYS present in the
+    /// inlined objective entry — `null` (never omitted) when the objective
+    /// body is empty. Unlike the sibling `Option` fields above (which are
+    /// genuinely optional-authored attrs, omitted when absent), `body` is a
+    /// declaration-shape field the engine always expects to find (final
+    /// review F1).
     pub body: Option<String>,
 }
 
