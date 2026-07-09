@@ -75,6 +75,13 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
         timelines: 0,
     };
     let mut state = StageState::default();
+    // §5 pass 6 prep: `meta` is computed BEFORE the shot loop so every
+    // `ShotRecords.prefix` (the lineId identity prefix, §4/§5.6, D7) can be
+    // set inline — scene is ONE document-wide identity scope, so every shot
+    // gets the SAME `{character}.{episodeId}` prefix (byte-identical to
+    // 0.1.0's single continuous back-fill counter).
+    let meta = artifact_meta(&doc, &folded);
+    let prefix = format!("{}.{}", meta.character, meta.episode_id);
     let mut shots = Vec::new();
     let mut prev_shot = 0i64;
     for (i, shot) in doc.shots.iter().enumerate() {
@@ -89,6 +96,7 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
         let (recs, trailing) = em.finish();
         shots.push(address::ShotRecords {
             shot: shot_no,
+            prefix: prefix.clone(),
             recs,
             trailing,
         });
@@ -98,14 +106,7 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
     state.diags.clear();
 
     // §5 pass 6 — addressing + identity.
-    let meta = artifact_meta(&doc, &folded);
-    let idcx = address::IdCx {
-        character: &meta.character,
-        // A4: the SAME resolved episodeId drives the lineId episode segment as
-        // feeds `meta.episodeId` — byte-for-byte identical by construction.
-        episode_id: &meta.episode_id,
-    };
-    let (commands, addr_diags) = address::assign_addresses(shots, &idcx);
+    let (commands, addr_diags) = address::assign_addresses(shots);
     diags.extend(addr_diags);
 
     if diags.iter().any(|d| d.severity == Severity::Error) {
