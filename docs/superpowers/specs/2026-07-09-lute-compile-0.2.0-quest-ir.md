@@ -34,6 +34,8 @@ Mirror the scene `branch:<id>` provenance convention (0.1.0 §4.1): reserved que
 
 A quest document's `commands` array is produced per `<quest>` declaration (the addressing unit; §5). Each quest contributes, in document order:
 
+> **Direct quest-body content (normative).** A `<quest>` body admits, besides `<objective>`/`<on>`, bare `content-line`/`::directive`/`::set`/`<branch>`/`<match>` directly (dsl 0.2.0 §6.3, §6.7 — the checker admits them and folds their `<branch>` decls). The compiler LOWERS these as ordinary records (`line`/`set`/plugin/`choice`/`match`, the existing 0.1.0 record types) into the same per-quest addressing unit, in document order alongside the `quest` head record and the `on` records — NEVER dropped. The engine assigns their execution meaning (Lute emits a faithful record stream; §8 of the DSL — execution is the engine's). Their `lineId` uses the `{questId}` prefix (§4).
+
 ### 3.1 `quest` record (declaration head)
 
 ```json
