@@ -4,7 +4,7 @@
 
 use lute_check::ctx::Env;
 use lute_check::StageState;
-use lute_compile::address::{assign_addresses, IdCx, ShotRecords};
+use lute_compile::address::{assign_addresses, ShotRecords};
 use lute_compile::cfg::Emitter;
 use lute_compile::stage::{walk_seq, WalkCx};
 use lute_compile::Command;
@@ -38,17 +38,12 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
         let (recs, trailing) = em.finish();
         shots.push(ShotRecords {
             shot: shot_no,
+            prefix: "bianca.s01ep02".to_string(),
             recs,
             trailing,
         });
     }
-    assign_addresses(
-        shots,
-        &IdCx {
-            character: "bianca",
-            episode_id: "s01ep02",
-        },
-    )
+    assign_addresses(shots)
 }
 
 const SRC: &str = r#"---
