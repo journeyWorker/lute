@@ -685,4 +685,32 @@ fn divergence_holds_for_quest_docs() {
         bheadless, bvia_lsp,
         "E-OBJECTIVE-MISSING-DONE projection diverged between surfaces"
     );
+
+    // (c) non-vacuous, CEL-attribute anchor: an objective whose `done` reads an
+    // undeclared state path flags a CEL-layer diagnostic anchored at the `done=`
+    // attribute's CEL span (NOT the `<objective>` construct span
+    // E-OBJECTIVE-MISSING-DONE uses above) -- the quest-CEL-attribute
+    // reprojection path.
+    let cel_bad = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.missing\"/>\n</quest>\n";
+    let cel_res = check(&input_for(cel_bad));
+    assert!(
+        cel_res.diagnostics.iter().any(|d| d.code == "E-UNDECLARED"),
+        "an objective done= reading an undeclared state path must yield E-UNDECLARED; got {:?}",
+        cel_res.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+    let cel_index = idx(cel_bad);
+    let cel_headless: Vec<Norm> = cel_res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &cel_index))
+        .collect();
+    let cel_via_lsp: Vec<Norm> = cel_res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &cel_index)))
+        .collect();
+    assert_eq!(
+        cel_headless, cel_via_lsp,
+        "E-UNDECLARED projection diverged between surfaces on the quest done= CEL-attribute path"
+    );
 }
