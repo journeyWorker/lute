@@ -18,6 +18,17 @@
   (attr (key) @_key (string) @name)
   (#eq? @_key "id")) @definition.function
 
+; `<quest id="…">` (§6.3, NEW) — the quest id is a project-wide jump target.
+(quest
+  (attr (key) @_key (string) @name)
+  (#eq? @_key "id")) @definition.class
+
+; `<objective id="…">` (§6.4, NEW) — each objective id inside a quest is a
+; jump target (self-closing or long form; `attr` is reached either way).
+(objective
+  (attr (key) @_key (string) @name)
+  (#eq? @_key "id")) @definition.function
+
 ; ---- references -----------------------------------------------------------
 ; Bare `@ref` (§4.5) — a defs-backed guard / value reference; the ref token
 ; (leading `@` included) is both the reference site and its name. The bare

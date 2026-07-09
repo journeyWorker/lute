@@ -1,0 +1,82 @@
+==================
+quest with objective and on (nesting parity with branch/match)
+==================
+<quest id="rescueHalsin">
+  <objective id="reachGrove" done="run.region == 'grove'">
+    :line[narrator]: You made it to the grove.
+  </objective>
+  <on event="questComplete">
+    ::set{user.xp += 300}
+  </on>
+</quest>
+---
+(source_file
+  (quest
+    (attr (key) (string))
+    (objective
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (path)))
+      (line (speaker) (text)))
+    (on
+      (attr (key) (string))
+      (set (path) (assign_op) (cel_expr)))))
+
+==================
+self-closing objective (empty body, dsl 0.2.0 §6.4)
+==================
+<quest id="q">
+  <objective id="o" done="run.d"/>
+</quest>
+---
+(source_file
+  (quest
+    (attr (key) (string))
+    (objective
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (path))))))
+
+==================
+quest start/fail + objective when + on when — CEL-valued attrs (cel_key extension)
+==================
+<quest id="q" start="run.act == 1" fail="run.npc.halsin.dead">
+  <objective id="o" done="run.d" when="run.w"/>
+  <on event="questComplete" when="run.act == 1">
+    ::set{user.xp += 1}
+  </on>
+</quest>
+---
+(source_file
+  (quest
+    (attr (key) (string))
+    (cel_attr (cel_key) (cel_string (path)))
+    (cel_attr (cel_key) (cel_string (path)))
+    (objective
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (path)))
+      (cel_attr (cel_key) (cel_string (path))))
+    (on
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (path)))
+      (set (path) (assign_op) (cel_expr)))))
+
+==================
+multiple top-level quests (source_file admits repeated quest, mirrors shot)
+==================
+<quest id="a">
+  <objective id="o1" done="run.a"/>
+</quest>
+<quest id="b">
+  <objective id="o2" done="run.b"/>
+</quest>
+---
+(source_file
+  (quest
+    (attr (key) (string))
+    (objective
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (path)))))
+  (quest
+    (attr (key) (string))
+    (objective
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (path))))))
