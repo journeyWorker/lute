@@ -15,6 +15,10 @@ pub enum Namespace {
     Run,
     User,
     App,
+    /// `quest.<id>.*` (dsl 0.2.0 §5): a scratch tier scoped to one quest
+    /// instance, MAY carry engine-reserved implicit sub-namespaces
+    /// (`quest.<id>.state`, `quest.<id>.objectives.<oid>.done`, §5.2).
+    Quest,
 }
 
 /// A single `state:` declaration (dsl §9.3): `type` + optional `default`, plus
@@ -468,6 +472,7 @@ pub(crate) fn namespace_of(path: &str) -> Option<Namespace> {
         "run" => Some(Namespace::Run),
         "user" => Some(Namespace::User),
         "app" => Some(Namespace::App),
+        "quest" => Some(Namespace::Quest),
         _ => None,
     }
 }
