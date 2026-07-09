@@ -14,6 +14,10 @@ use crate::expr::ExprNode;
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Artifact {
+    /// Document kind discriminator (dsl 0.2.0 §2/§3.1) — FIRST field, the
+    /// byte-stability contract (IR addendum §1): most fundamental
+    /// discriminator, read before anything else to know `meta`'s shape.
+    pub kind: DocKind,
     /// Language-version pin (DSL 0.1.0), serialized as `lute`.
     pub lute: String,
     /// IR schema version (A9), independent of `lute`; engines gate parsing on it.
@@ -25,15 +29,37 @@ pub struct Artifact {
     pub commands: Vec<Command>,
 }
 
+/// Kind-polymorphic envelope `meta` (dsl 0.2.0, IR addendum §1): untagged so
+/// the wire shape is exactly `SceneMeta`'s or `QuestMeta`'s own fields — the
+/// consumer reads `Artifact.kind` to know which. `SceneMeta` = the 0.1.0
+/// `ArtifactMeta` fields verbatim (BYTE-IDENTICAL scene output).
+#[derive(Clone, Debug, Serialize)]
+#[serde(untagged)]
+pub enum ArtifactMeta {
+    Scene(SceneMeta),
+    Quest(QuestMeta),
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArtifactMeta {
+pub struct SceneMeta {
     pub character: String,
     pub season: i64,
     pub episode: i64,
     pub episode_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+}
+
+/// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1): MAY serialize
+/// as `{}` when neither is authored.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuestMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_lang: Option<String>,
 }
 
 /// One folded state slot (§4.1): the engine's init/type table.
@@ -95,6 +121,26 @@ impl Role {
     }
 }
 
+/// Document kind (dsl 0.2.0 §2/§3.1): `"scene"` | `"quest"`, mirrors
+/// `lute_check::meta::DocKind` — kept as a SEPARATE compile-local serde enum
+/// so `Serialize` never leaks onto lute-check's public type (serialization
+/// concerns stay in the crate that owns the wire format). Mapped once, here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DocKind {
+    Scene,
+    Quest,
+}
+
+impl From<lute_check::DocKind> for DocKind {
+    fn from(k: lute_check::DocKind) -> Self {
+        match k {
+            lute_check::DocKind::Scene => DocKind::Scene,
+            lute_check::DocKind::Quest => DocKind::Quest,
+        }
+    }
+}
+
 /// One record (§4.4). Internally tagged on `kind`; the `Other` variant is the
 /// plugin-directive passthrough (plan spec-gap note 1) and serializes as
 /// `kind: "plugin"`.
@@ -116,6 +162,8 @@ pub enum Command {
     Hub(HubCmd),
     Jump(JumpCmd),
     Barrier(BarrierCmd),
+    Quest(QuestCmd),
+    On(OnCmd),
     #[serde(rename = "plugin")]
     Other(OtherCmd),
 }
@@ -471,6 +519,88 @@ pub struct OtherCmd {
     pub stamp: Stamp,
 }
 
+/// `<quest>` declaration head (dsl 0.2.0 §6.3, IR addendum §3.1). A
+/// declaration head like `HubCmd`: carries no executable body of its own —
+/// the objective table is inlined (mirrors `HubCmd.options`); objective
+/// completion bodies + `<on>` arms follow as their own addressed records,
+/// referenced by `ObjectiveEntry.body`/`OnCmd.body` targets.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuestCmd {
+    pub addr: String,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title_line_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start: Option<CelPair>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fail: Option<CelPair>,
+    pub objectives: Vec<ObjectiveEntry>,
+    #[serde(flatten)]
+    pub stamp: Stamp,
+}
+
+/// One objective inlined in `QuestCmd.objectives` (dsl 0.2.0 §6.4, IR
+/// addendum §3.1). Declaration data only — the engine derives the lifecycle
+/// (all non-`optional` objectives `done` ⇒ quest `complete`); the compiler
+/// emits no control flow for completion. `body` targets the objective's
+/// completion-body segment (§3.2), or `None` when the body is empty.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectiveEntry {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title_line_id: Option<String>,
+    pub done: CelPair,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<CelPair>,
+    pub optional: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+}
+
+/// `<on>` event-condition-action record (dsl 0.2.0 §4, §6.6, IR addendum
+/// §3.3): an independent event rule (NOT part of the quest's declaration
+/// table, unlike an objective), so it is its own standalone record.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnCmd {
+    pub addr: String,
+    pub event: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<CelPair>,
+    pub body: String,
+    #[serde(flatten)]
+    pub stamp: Stamp,
+}
+
+/// A CEL slot's raw text + its portable lowered form (IR A7 `ExprNode`
+/// shape), reused for every 0.2.0 quest-kind CEL attr (`start`/`fail`/
+/// `done`/`when`/`on.when`) — the `{raw, expr}` dual-field shape
+/// (`HubOption.when`/`.expr`, flattened for a choice option, nested here).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CelPair {
+    pub raw: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expr: Option<ExprNode>,
+}
+
+impl CelPair {
+    /// Lower a raw CEL fragment via [`crate::expr::lower_expr`] into the
+    /// `{raw, expr}` pair — `expr` is `None` for empty/out-of-profile CEL.
+    pub fn from_raw(raw: &str) -> Self {
+        CelPair {
+            raw: raw.to_string(),
+            expr: crate::expr::lower_expr(raw),
+        }
+    }
+}
+
 impl Command {
     /// The record's `addr` slot (filled by the addressing pass, Task 11).
     pub fn addr_mut(&mut self) -> &mut String {
@@ -491,6 +621,8 @@ impl Command {
             Command::Jump(c) => &mut c.addr,
             Command::Barrier(c) => &mut c.addr,
             Command::Other(c) => &mut c.addr,
+            Command::Quest(c) => &mut c.addr,
+            Command::On(c) => &mut c.addr,
         }
     }
 
@@ -521,7 +653,29 @@ impl Command {
                 }
                 f(&mut c.converge);
             }
-            _ => {}
+            // Quest/On carry symbolic `body`/objective-`body` targets that
+            // MUST be rewritten to concrete addrs (IR addendum §5) — kept
+            // EXPLICIT rather than folding into the `_` wildcard below.
+            Command::Quest(q) => {
+                for o in &mut q.objectives {
+                    if let Some(b) = &mut o.body {
+                        f(b);
+                    }
+                }
+            }
+            Command::On(o) => f(&mut o.body),
+            Command::Line(_)
+            | Command::Background(_)
+            | Command::Music(_)
+            | Command::Sfx(_)
+            | Command::Vfx(_)
+            | Command::Sprite(_)
+            | Command::Camera(_)
+            | Command::Cut(_)
+            | Command::Video(_)
+            | Command::Set(_)
+            | Command::Barrier(_)
+            | Command::Other(_) => {}
         }
     }
 
@@ -542,6 +696,8 @@ impl Command {
             Command::Match(c) => Some(&mut c.stamp),
             Command::Hub(c) => Some(&mut c.stamp),
             Command::Other(c) => Some(&mut c.stamp),
+            Command::Quest(c) => Some(&mut c.stamp),
+            Command::On(c) => Some(&mut c.stamp),
             Command::Jump(_) | Command::Barrier(_) => None,
         }
     }
