@@ -21,7 +21,7 @@ pub use cel_resolve::{check_cel_slot, E_CEL_PROFILE};
 pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
-pub use defassign::check_definite_assignment;
+pub use defassign::{check_definite_assignment, check_quest_guard_defassign};
 pub use directives::E_AT_CONTEXT;
 pub use inject::{
     lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,

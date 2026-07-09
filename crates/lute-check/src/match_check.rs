@@ -70,6 +70,7 @@ use lute_syntax::ast::{
     Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node, Quest,
 };
 
+use crate::cel_paths::E_PATH_IDENT;
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
 
@@ -518,6 +519,22 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
         ));
     }
 
+    // §8.4 CelIdent alignment: the quest id is a CEL-facing segment of the
+    // reserved `quest.<id>.state`/`quest.<id>.objectives.*` paths — a `-`
+    // there is illegal (CEL parses it as subtraction). Still fold the decl
+    // below so downstream reads don't cascade to E-UNDECLARED (mirrors how
+    // meta.rs treats a hyphenated inline `state:` path).
+    if id.contains('-') {
+        diags.push(diag(
+            E_PATH_IDENT,
+            Severity::Error,
+            format!(
+                "quest id `{id}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)"
+            ),
+            quest.id_span,
+        ));
+    }
+
     let mut decls: Vec<(String, StateDecl)> = vec![(
         format!("quest.{id}.state"),
         StateDecl {
@@ -544,6 +561,20 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
                     o.id
                 ),
                 o.span,
+            ));
+        }
+        // §8.4 CelIdent alignment: the objective id is a CEL-facing segment
+        // of `quest.<id>.objectives.<oid>.done` — same treatment as the
+        // quest id above.
+        if o.id.contains('-') {
+            diags.push(diag(
+                E_PATH_IDENT,
+                Severity::Error,
+                format!(
+                    "objective id `{}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)",
+                    o.id
+                ),
+                o.id_span,
             ));
         }
         if o.done.raw.trim().is_empty() {
