@@ -27,8 +27,17 @@
         {
           "type": "REPEAT",
           "content": {
-            "type": "SYMBOL",
-            "name": "shot"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "shot"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quest"
+              }
+            ]
           }
         }
       ]
@@ -105,6 +114,14 @@
         {
           "type": "SYMBOL",
           "name": "timeline"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "on"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "objective"
         }
       ]
     },
@@ -454,6 +471,124 @@
         }
       ]
     },
+    "quest": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "<quest"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_tag_attr"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ">"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_node"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "</quest>"
+        }
+      ]
+    },
+    "on": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "<on"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_tag_attr"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ">"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_node"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "</on>"
+        }
+      ]
+    },
+    "objective": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "<objective"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_tag_attr"
+              }
+            },
+            {
+              "type": "STRING",
+              "value": "/>"
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "<objective"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_tag_attr"
+              }
+            },
+            {
+              "type": "STRING",
+              "value": ">"
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_node"
+              }
+            },
+            {
+              "type": "STRING",
+              "value": "</objective>"
+            }
+          ]
+        }
+      ]
+    },
     "attrs": {
       "type": "SEQ",
       "members": [
@@ -566,6 +701,18 @@
         {
           "type": "STRING",
           "value": "when"
+        },
+        {
+          "type": "STRING",
+          "value": "done"
+        },
+        {
+          "type": "STRING",
+          "value": "start"
+        },
+        {
+          "type": "STRING",
+          "value": "fail"
         }
       ]
     },
