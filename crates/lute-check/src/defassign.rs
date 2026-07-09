@@ -58,7 +58,9 @@ use std::collections::BTreeSet;
 
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, Branch, CelSlot, ClipNode, Hub, InterpKind, Match, Node, Set, Timeline};
+use lute_syntax::ast::{
+    Arm, Branch, CelSlot, ClipNode, Hub, InterpKind, Match, Node, Objective, On, Set, Timeline,
+};
 
 use crate::cel_paths::{collect_path_uses, is_state_path, PathRole};
 use crate::meta::StateSchema;
@@ -108,11 +110,8 @@ fn walk_nodes(
                 }
             }
             Node::Directive(_) => {}
-            // Transitional (dsl 0.2.0 Plan A): `<on>`/`<objective>` checking
-            // (incl. may-write analysis) is deferred to Plan C; the top-level
-            // `E-QUEST-UNSUPPORTED` gate already rejects any document using
-            // them, so this is unreachable in practice.
-            Node::On(_) | Node::Objective(_) => {}
+            Node::On(on) => walk_on(on, schema, assigned, diags),
+            Node::Objective(o) => walk_objective(o, schema, assigned, diags),
         }
     }
 }
@@ -193,6 +192,42 @@ fn walk_hub(hub: &Hub, schema: &StateSchema, assigned: &mut Assigned, diags: &mu
         check_label_reads(&choice.label, schema, &arm, choice.span, diags);
         walk_nodes(&choice.body, schema, &mut arm, diags);
     }
+}
+
+/// An `<on>` arm (dsl 0.2.0 §4.4): `<on>` arms have NO dominance relation among
+/// one another (the same join rule as `<match>`/`<hub>` arms) — a write inside
+/// one arm is a **may-write**, never a definite assignment. Mirrors
+/// [`walk_hub`]: the `when` guard proves paths for THIS arm only, the body
+/// walks on a forked, DISCARDED set — nothing folds back into the surviving
+/// set (a path first written only inside `<on>` arms stays maybe-unset unless
+/// every arm writes it or it carries a schema `default`).
+fn walk_on(on: &On, schema: &StateSchema, assigned: &Assigned, diags: &mut Vec<Diagnostic>) {
+    let mut arm = assigned.clone();
+    if let Some(cond) = &on.when {
+        apply_condition(cond, schema, &mut arm, diags);
+    }
+    walk_nodes(&on.body, schema, &mut arm, diags);
+}
+
+/// An `<objective>` (dsl 0.2.0 §6.4): the body emits ONCE, when `done` first
+/// holds — a discrete, non-dominating transition exactly like an `<on>` arm
+/// (§4.4), so it gets the SAME may-write join as [`walk_on`]. `done` is a
+/// value READ (like a `<match>` subject, [`walk_match`]) — it does not gate
+/// the body, so it is checked via [`check_reads`], not [`apply_condition`].
+/// `when` DOES gate visibility (mirrors a hub/branch choice guard) and proves
+/// paths for this arm only.
+fn walk_objective(
+    o: &Objective,
+    schema: &StateSchema,
+    assigned: &Assigned,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut arm = assigned.clone();
+    check_reads(&o.done, schema, &arm, diags);
+    if let Some(cond) = &o.when {
+        apply_condition(cond, schema, &mut arm, diags);
+    }
+    walk_nodes(&o.body, schema, &mut arm, diags);
 }
 
 /// Definite-assignment for a `<choice label>`'s `{{path}}` interpolations (dsl
