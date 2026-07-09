@@ -633,3 +633,79 @@ state:
         "non-interpolating label omits `placeholders`; got {keep_json}"
     );
 }
+
+// --- dsl 0.2.0: kind: quest compile flow -------------------------------------
+
+/// Mirrors the DSL Appendix D worked example (trimmed): one `<quest>` with 2
+/// objectives + an `<on event="questComplete">` arm carrying a `::set` + a
+/// `:narrator:` line. `run.*` paths read by `start`/`done` are declared
+/// inline via `state:` (with defaults, so defassign is clean) so `check()`
+/// passes.
+const QUEST_SRC: &str = r#"---
+kind: quest
+state:
+  run.act: { type: bool, default: false }
+  run.region: { type: bool, default: false }
+---
+
+<quest id="rescueHalsin" title="Rescue" start="run.act">
+<objective id="reachGrove" title="Reach" done="run.region"/>
+<objective id="freeHalsin" done="run.act"/>
+
+<on event="questComplete">
+::set{run.act = true}
+:narrator: The quest is complete.
+</on>
+</quest>
+"#;
+
+#[test]
+fn quest_doc_compiles_to_quest_artifact() {
+    let art = compile(&input(QUEST_SRC)).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    assert_eq!(j["kind"], "quest");
+    let cmds = j["commands"].as_array().unwrap();
+    let q = cmds.iter().find(|c| c["kind"] == "quest").expect("quest record");
+    assert_eq!(q["id"], "rescueHalsin");
+    assert_eq!(q["objectives"].as_array().unwrap().len(), 2);
+    assert!(cmds.iter().any(|c| c["kind"] == "on" && c["event"] == "questComplete"));
+    // an <on> body content line lowered as a line record with a {questId} lineId:
+    assert!(cmds.iter().any(|c| c["kind"] == "line"
+        && c["lineId"].as_str().map_or(false, |s| s.starts_with("rescueHalsin."))));
+}
+
+/// A checker-admitted DIRECT quest-body-level content line + `::set` (dsl
+/// 0.2.0 §6.3/§6.7 — sibling to `<objective>`/`<on>`, not nested inside
+/// either) is LOWERED as an ordinary record in the SAME per-quest stream —
+/// NEVER silently dropped (IR addendum §3 preamble note).
+#[test]
+fn direct_quest_body_content_is_lowered_not_dropped() {
+    const SRC: &str = r#"---
+kind: quest
+state:
+  run.act: { type: bool, default: false }
+---
+
+<quest id="rescueHalsin" title="Rescue">
+:narrator: A quest begins.
+::set{run.act = true}
+<objective id="reachGrove" done="run.act"/>
+</quest>
+"#;
+    let art = compile(&input(SRC)).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let cmds = j["commands"].as_array().unwrap();
+    let narrator_line = cmds
+        .iter()
+        .find(|c| c["kind"] == "line" && c["text"] == "A quest begins.")
+        .expect("direct quest-body content-line record");
+    assert_eq!(
+        narrator_line["lineId"].as_str().map(|s| s.starts_with("rescueHalsin.")),
+        Some(true)
+    );
+    assert!(
+        cmds.iter()
+            .any(|c| c["kind"] == "set" && c["path"] == "run.act"),
+        "direct quest-body `::set` must lower, not drop: {cmds:#?}"
+    );
+}
