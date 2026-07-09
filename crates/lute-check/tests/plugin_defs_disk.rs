@@ -70,7 +70,7 @@ fn codes_for_scene(scene: &str) -> Vec<String> {
         .collect()
 }
 
-const HDR: &str = "---\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n";
+const HDR: &str = "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n";
 
 #[test]
 fn plugin_bool_def_from_disk_is_declared_and_clean() {

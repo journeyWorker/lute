@@ -848,7 +848,7 @@ mod tests {
     /// same-spelled dotted string literal in a sibling arm test as a use.
     #[test]
     fn references_ignore_path_inside_cel_string_literal() {
-        let text = "---\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.marina = 1}\n<match on=\"scene.affect.marina\">\n<when test=\"'scene.affect.marina' == 'x'\">\n:f: a.\n</when>\n<otherwise>\n:f: b.\n</otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.marina = 1}\n<match on=\"scene.affect.marina\">\n<when test=\"'scene.affect.marina' == 'x'\">\n:f: a.\n</when>\n<otherwise>\n:f: b.\n</otherwise>\n</match>\n";
         let (doc, _) = parse(text);
         // Cursor on the `::set` target path.
         let off = text.find("scene.affect.marina = 1").unwrap();

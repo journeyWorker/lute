@@ -30,9 +30,9 @@ fn codes(text: &str) -> Vec<String> {
     run(text).diagnostics.into_iter().map(|d| d.code).collect()
 }
 
-const FM: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n";
+const FM: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n";
 const FM_FLAG: &str =
-    "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n";
+    "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n";
 
 // (a) A hub with only sticky (`once`) / guarded (`when`) choices — no unguarded
 // exit and not every choice `once` — cannot provably terminate: E-HUB-NO-EXIT.
@@ -158,7 +158,7 @@ fn hub_passes_clean_check_end_to_end() {
 #[test]
 fn hub_choice_when_guard_is_checked_by_defassign() {
     let out = codes(
-        "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number }\n---\n## Shot 1.\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number }\n---\n## Shot 1.\n\
          <hub id=\"h\">\n<choice id=\"a\" label=\"A\" when=\"scene.n > 0\">\n:narrator: hi.\n</choice>\n\
          <choice id=\"leave\" label=\"Leave\" exit>\n:narrator: bye.\n</choice>\n</hub>\n",
     );
