@@ -606,6 +606,18 @@ pub fn walk_quest(
     // sequentially with its top-level siblings, exactly like a scene body.
     let mut state = StageState::default();
     let mut obj_idx = 0usize;
+    // Empty-`<on>`-body labels (F5, final review P1): `OnCmd.body` is a
+    // REQUIRED target (String, not Option, IR addendum §3.3), so an EMPTY
+    // `<on>` body still must resolve somewhere. It must NOT bind to
+    // whatever record happens to follow it in this document-order walk
+    // (that dangles the handler onto unrelated content) — it must resolve
+    // to the quest unit's ONE-PAST-END converge, exactly like `walk_branch`
+    // binds `conv` only after ALL arms are walked. So these labels are
+    // collected here and bound ONLY after the whole pass-2 loop finishes;
+    // with nothing left to push, they trail past the unit's last record and
+    // `address::assign_addresses` resolves them all to that same
+    // `addr_of(shot, recs.len())` past-end address.
+    let mut empty_on_labels: Vec<Label> = Vec::new();
     for (i, node) in quest.body.iter().enumerate() {
         match node {
             Node::Objective(o) => {
@@ -626,8 +638,12 @@ pub fn walk_quest(
                 });
                 apply_source(&mut on_cmd, cx);
                 em.push(on_cmd);
-                em.bind(label);
-                walk_seq(em, &on.body, StageState::default(), cx, &[], diags);
+                if on.body.is_empty() {
+                    empty_on_labels.push(label);
+                } else {
+                    em.bind(label);
+                    walk_seq(em, &on.body, StageState::default(), cx, &[], diags);
+                }
             }
             Node::Line(_) | Node::Directive(_) | Node::Set(_) => {
                 let look = if matches!(node, Node::Directive(d) if d.tag == "auto") {
@@ -652,5 +668,10 @@ pub fn walk_quest(
                 )
             }
         }
+    }
+    // All empty-`<on>`-body labels converge here, AFTER every top-level
+    // sibling has been walked — the unit's one-past-end (F5).
+    for label in empty_on_labels {
+        em.bind(label);
     }
 }

@@ -709,3 +709,57 @@ state:
         "direct quest-body `::set` must lower, not drop: {cmds:#?}"
     );
 }
+
+/// F5 (final review P1): an EMPTY `<on>` body's `body` target is a REQUIRED
+/// `String` (dsl 0.2.0 IR addendum §3.3) that MUST resolve to the quest
+/// unit's ONE-PAST-END converge, never whatever record happens to follow it
+/// in the pass-2 document-order walk. Before the fix, `walk_quest` bound the
+/// fresh label immediately after pushing the `on` record; with an empty
+/// body `walk_seq` emits nothing, so the label silently attached to the
+/// NEXT emitted record (here, the `::set`) — the handler would run the
+/// WRONG content when `questComplete` actually fires. The objective arm
+/// already guards this (`obj_labels` is `None` for an empty body); `<on>`
+/// must match: the empty-on's `body` addr is the quest unit's past-end,
+/// `"001-0400"` (quest + on + set = 3 records, `addr_of(1, 3)`), not the
+/// `set` record's own addr, and not a dangling `@n` symbolic label.
+#[test]
+fn empty_on_body_targets_unit_past_end_not_following_content() {
+    const SRC: &str = r#"---
+kind: quest
+state:
+  run.act: { type: bool, default: false }
+---
+
+<quest id="rescueHalsin" title="Rescue">
+<objective id="reachGrove" done="run.act"/>
+<on event="questComplete">
+</on>
+::set{run.act = true}
+</quest>
+"#;
+    let art = compile(&input(SRC)).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let cmds = j["commands"].as_array().unwrap();
+    let on = cmds
+        .iter()
+        .find(|c| c["kind"] == "on" && c["event"] == "questComplete")
+        .expect("on record");
+    let set = cmds
+        .iter()
+        .find(|c| c["kind"] == "set" && c["path"] == "run.act")
+        .expect("set record");
+    let on_body = on["body"].as_str().expect("on.body must be a string addr, never null/@n");
+    assert!(
+        !on_body.starts_with('@'),
+        "on.body must be addressed, never a dangling symbolic label: {on_body}"
+    );
+    assert_ne!(
+        on_body,
+        set["addr"].as_str().unwrap(),
+        "empty <on> body must NOT dangle onto the following `::set` record: {cmds:#?}"
+    );
+    assert_eq!(
+        on_body, "001-0400",
+        "empty <on> body must target the quest unit's one-past-end converge          (IR addendum §3.3), not any live record: {cmds:#?}"
+    );
+}
