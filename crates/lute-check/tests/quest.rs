@@ -336,3 +336,17 @@ fn quest_start_guard_clean_with_default() {
     let cs = codes(text);
     assert!(!cs.contains(&"E-MAYBE-UNSET".to_string()), "{cs:?}");
 }
+
+// --- CheckFix F6/F7: `<quest id>`/`<objective id>` required (§6.3/§6.4) -----
+
+#[test]
+fn quest_missing_id_errors() {
+    let cs = codes("---\nkind: quest\n---\n<quest>\n<objective id=\"o\" done=\"a\"/>\n</quest>\n");
+    assert!(cs.contains(&"E-QUEST-ID-MISSING".to_string()), "{cs:?}");
+}
+
+#[test]
+fn objective_missing_id_errors() {
+    let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective done=\"x\"/>\n</quest>\n");
+    assert!(cs.contains(&"E-OBJECTIVE-ID-MISSING".to_string()), "{cs:?}");
+}
