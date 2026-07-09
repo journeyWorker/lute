@@ -52,6 +52,20 @@ pub(crate) fn is_state_path(path: &str) -> bool {
         .is_some_and(|root| STATE_ROOTS.contains(&root))
 }
 
+/// `true` for a RESERVED quest path (dsl 0.2.0 §5.2): `quest.<id>.state`
+/// (3 segments, segment 2 == `state`) or `quest.<id>.objectives.<oid>.done`
+/// (5 segments, segment 2 == `objectives`, segment 4 == `done`). These are
+/// engine-populated, implicitly-declared sub-namespaces of `quest.<id>.*` —
+/// content MAY read them but MUST NOT `::set` them (`E-QUEST-RESERVED-WRITE`).
+pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
+    let segs: Vec<&str> = path.split('.').collect();
+    match segs.as_slice() {
+        ["quest", _, "state"] => true,
+        ["quest", _, "objectives", _, "done"] => true,
+        _ => false,
+    }
+}
+
 /// `E-PATH-IDENT`: a `-` in a CEL-facing name — a state-path segment, a `defs`
 /// name, or a def parameter name (dsl §8.4, §4.4 `CelIdent`). CEL parses `-` as
 /// subtraction, so these positions forbid it; `Ident` positions (directive/attr/
