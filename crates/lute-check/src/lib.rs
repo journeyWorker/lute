@@ -27,7 +27,8 @@ pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, is_exhaustive, BranchRecord, HubRecord,
 };
 pub use meta::{
-    parse_meta, parse_meta_kind, MetaKind, Namespace, StateDecl, StateSchema, TypedMeta,
+    parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace, StateDecl,
+    StateSchema, TypedMeta, E_KIND_MISSING, E_UNKNOWN_KIND,
 };
 pub use schema_import::{resolve_imports, SchemaImports};
 pub use set_op::check_set;

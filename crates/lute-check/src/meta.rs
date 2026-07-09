@@ -109,6 +109,79 @@ pub enum MetaKind {
     Component,
 }
 
+/// A ROOT document's domain kind (dsl 0.2.0 §3.1): the frontmatter `kind:`
+/// discriminator. Import-role docs (`MetaKind::Schema`/`MetaKind::Component`)
+/// never carry `kind:` and are never a `DocKind` — only a Scene or Quest root
+/// document resolves one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DocKind {
+    Scene,
+    Quest,
+}
+
+/// `<quest>`/`kind:`/etc. diagnostic codes owned by [`resolve_doc_kind`] (dsl
+/// 0.2.0 Appendix B).
+pub const E_KIND_MISSING: &str = "E-KIND-MISSING";
+pub const E_UNKNOWN_KIND: &str = "E-UNKNOWN-KIND";
+
+/// Resolve the frontmatter `kind:` scalar (dsl 0.2.0 §3.1) — a cheap peek of
+/// `meta.raw_yaml` run BEFORE the full [`parse_meta_kind`] pass (kind gates
+/// which per-kind keys that pass allows). An absent `kind` is `E-KIND-MISSING`;
+/// a present but unrecognized value is `E-UNKNOWN-KIND`; either way this
+/// returns `None` so the caller can degrade to a safe default. On a YAML parse
+/// failure this returns `(None, [])` — the separate `E-META-PARSE` diagnostic
+/// surfaces from `parse_meta_kind`, never duplicated here.
+pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
+    let value: serde_yaml::Value = match serde_yaml::from_str(&meta.raw_yaml) {
+        Ok(v) => v,
+        Err(_) => return (None, Vec::new()),
+    };
+    let empty = serde_yaml::Mapping::new();
+    let map = match &value {
+        serde_yaml::Value::Mapping(m) => m,
+        serde_yaml::Value::Null => &empty,
+        _ => return (None, Vec::new()),
+    };
+    let span = meta.span;
+    let err = |code: &str, message: String| Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+    };
+    match map.get(yaml_key("kind")) {
+        None => (
+            None,
+            vec![err(
+                E_KIND_MISSING,
+                "required frontmatter key `kind` is missing; every root document must \
+                 declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)"
+                    .to_string(),
+            )],
+        ),
+        Some(v) => {
+            let kind_str = v.as_str().map(str::to_string).unwrap_or_else(|| format!("{v:?}"));
+            match kind_str.as_str() {
+                "scene" => (Some(DocKind::Scene), Vec::new()),
+                "quest" => (Some(DocKind::Quest), Vec::new()),
+                other => (
+                    None,
+                    vec![err(
+                        E_UNKNOWN_KIND,
+                        format!(
+                            "unknown document kind `{other}`; expected `scene` or `quest` \
+                             (dsl 0.2.0 §3.1)"
+                        ),
+                    )],
+                ),
+            }
+        }
+    }
+}
+
 /// Parse the peeled YAML frontmatter (dsl §6.1) into typed form plus the inline
 /// `state:` schema (dsl §9.3). Never panics on malformed YAML: a parse failure
 /// surfaces `E-META-PARSE` and yields a best-effort (empty) `TypedMeta`.

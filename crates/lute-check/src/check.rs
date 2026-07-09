@@ -190,6 +190,10 @@ pub struct FoldedEnv {
     pub env: Env,
     /// def name -> raw CEL body, merged plugin < imported < inline (D4 input).
     pub def_bodies: std::collections::BTreeMap<String, String>,
+    /// The resolved root document kind (dsl 0.2.0 §3.1): `Scene` when
+    /// unresolved (missing/unknown `kind:`) so scene stays the degrade-safe
+    /// path and downstream dispatch never panics.
+    pub doc_kind: crate::meta::DocKind,
 }
 
 /// Fold the analysis environment from an already-parsed document. Returns two
@@ -203,8 +207,16 @@ pub fn fold_env(
     doc: &Document,
     input: &CheckInput,
 ) -> (FoldedEnv, Vec<Diagnostic>, Vec<Diagnostic>) {
-    // 3. Typed frontmatter + inline state schema.
+    // 3. Resolve the root document kind (dsl 0.2.0 §3.1) FIRST: it gates which
+    //    per-kind frontmatter keys the meta parse below allows (Task 2 wires
+    //    the kind into `parse_meta_kind`; here it is folded into `FoldedEnv`
+    //    and defaults to `Scene` — the degrade-safe path — when unresolved).
+    let (doc_kind, kind_diags) = crate::meta::resolve_doc_kind(&doc.meta);
+    let doc_kind = doc_kind.unwrap_or(crate::meta::DocKind::Scene);
+
+    // 3b. Typed frontmatter + inline state schema.
     let (typed, mut fold_diags) = parse_meta(&doc.meta, &input.snapshot);
+    fold_diags.splice(0..0, kind_diags);
 
     // 4. Fold every `<branch>`/`<hub>`'s implicit recording decls
     //    (`scene.choices.<id>` + a hub's per-choice `scene.visited.<id>.*`) into
@@ -363,6 +375,7 @@ pub fn fold_env(
             typed,
             env,
             def_bodies,
+            doc_kind,
         },
         fold_diags,
         state_merge_diags,
