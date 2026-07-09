@@ -5,7 +5,9 @@ use lute_check::ctx::Env;
 use lute_check::{lower_node, Ctx, InjectKind, InjectedCommand, StageState};
 use lute_core_span::{Diagnostic, Layer, Severity};
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::{Arm, AttrValue, Branch, ClipNode, Directive, Hub, Match, Node, Timeline};
+use lute_syntax::ast::{
+    Arm, AttrValue, Branch, ClipNode, Directive, Hub, Match, Node, Quest, Timeline,
+};
 
 use crate::cfg::{Emitter, Label};
 use crate::ir::*;
@@ -77,11 +79,17 @@ pub fn walk_seq(
                 let cont = reachable_after(&nodes[i + 1..], tail);
                 state = walk_hub(em, h, state, cx, &cont, diags);
             }
-            // Transitional (dsl 0.2.0 Plan A): compile is unreachable on a
-            // document using `<on>`/`<objective>` (the checker's D6 gate
-            // rejects it), so a no-op (state carries through unchanged) is
-            // sound. Plan D adds real staging.
-            Node::On(_) | Node::Objective(_) => {}
+            // dsl 0.2.0 §6.7: `<on>`/`<objective>` are QUEST-BODY-LEVEL
+            // ONLY — grammar admission forbids them inside a scene body AND
+            // inside any NESTED (`Emittable`) body within a quest (a
+            // branch/match arm, an on/objective body). `walk_quest` drives
+            // the quest-body-level walk directly (never through this
+            // generic `walk_seq`), so this arm is structurally unreachable
+            // for every `walk_seq` call site (IR addendum §6).
+            Node::On(_) | Node::Objective(_) => unreachable!(
+                "dsl 0.2.0 §6.7: <on>/<objective> are quest-body-level only; \
+                 walk_seq is never called with a node list that can contain them"
+            ),
         }
     }
     state
@@ -535,4 +543,114 @@ fn component_attr(d: &Directive) -> String {
             _ => None,
         })
         .unwrap_or_default()
+}
+
+/// Walk a `<quest>` declaration (dsl 0.2.0 §6.3, IR addendum §3): emits the
+/// `quest` declaration head FIRST (objective table inlined, symbolic `body`
+/// targets for non-empty objective bodies via `em.fresh()` — the quest
+/// record must be the FIRST record, IR addendum §3.1), then walks the WHOLE
+/// `quest.body` in document order — `<objective>`/`<on>` bind their
+/// pre-allocated/fresh label and recurse into `walk_seq` for their body;
+/// direct content (`Line`/`Directive`/`Set`/`Branch`/`Match`, dsl 0.2.0 §6.3,
+/// §6.7 — the checker admits them directly in a quest body and folds their
+/// `<branch>` decls) lowers via the SAME primitives a scene body uses (IR
+/// addendum §3 preamble note) — NEVER dropped, no new record types.
+/// `<hub>`/`<timeline>` are forbidden everywhere in a quest doc (§6.7); the
+/// checker gates them out (D6), so those arms are unreachable here.
+pub fn walk_quest(
+    em: &mut Emitter,
+    quest: &Quest,
+    cx: &mut WalkCx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    // Pass 1: pre-scan the quest body's TOP-LEVEL objectives (grammar
+    // admission guarantees they appear only directly here, never nested,
+    // dsl 0.2.0 §6.7) — allocate a fresh label for each non-empty body and
+    // build the inlined `objectives[]` table BEFORE the quest record is
+    // pushed.
+    let mut obj_labels: Vec<Option<Label>> = Vec::new();
+    let mut objectives: Vec<ObjectiveEntry> = Vec::new();
+    for node in &quest.body {
+        if let Node::Objective(o) = node {
+            let label = (!o.body.is_empty()).then(|| em.fresh());
+            objectives.push(ObjectiveEntry {
+                id: o.id.clone(),
+                title: o.title.clone(),
+                title_line_id: o.title.as_ref().map(|_| format!("{}.{}", quest.id, o.id)),
+                done: CelPair::from_raw(&o.done.raw),
+                when: o.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+                optional: o.optional,
+                body: label.map(Label::sym),
+            });
+            obj_labels.push(label);
+        }
+    }
+    let mut cmd = Command::Quest(QuestCmd {
+        addr: String::new(),
+        id: quest.id.clone(),
+        title: quest.title.clone(),
+        title_line_id: quest.title.as_ref().map(|_| format!("{}.title", quest.id)),
+        start: quest.start.as_ref().map(|s| CelPair::from_raw(&s.raw)),
+        fail: quest.fail.as_ref().map(|s| CelPair::from_raw(&s.raw)),
+        objectives,
+        stamp: Stamp::default(),
+    });
+    apply_source(&mut cmd, cx);
+    em.push(cmd);
+
+    // Pass 2: real document-order walk. Each objective-body / on-arm body is
+    // an INDEPENDENT, temporally-disconnected trigger (not "one of N
+    // alternatives now" like a branch/match arm) — it starts from a FRESH
+    // `StageState::default()`, discarded afterward (no join, no carry into
+    // the top-level thread). Direct top-level content threads `state`
+    // sequentially with its top-level siblings, exactly like a scene body.
+    let mut state = StageState::default();
+    let mut obj_idx = 0usize;
+    for (i, node) in quest.body.iter().enumerate() {
+        match node {
+            Node::Objective(o) => {
+                if let Some(label) = obj_labels[obj_idx] {
+                    em.bind(label);
+                    walk_seq(em, &o.body, StageState::default(), cx, &[], diags);
+                }
+                obj_idx += 1;
+            }
+            Node::On(on) => {
+                let label = em.fresh();
+                let mut on_cmd = Command::On(OnCmd {
+                    addr: String::new(),
+                    event: on.event.clone(),
+                    when: on.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+                    body: label.sym(),
+                    stamp: Stamp::default(),
+                });
+                apply_source(&mut on_cmd, cx);
+                em.push(on_cmd);
+                em.bind(label);
+                walk_seq(em, &on.body, StageState::default(), cx, &[], diags);
+            }
+            Node::Line(_) | Node::Directive(_) | Node::Set(_) => {
+                let look = if matches!(node, Node::Directive(d) if d.tag == "auto") {
+                    reachable_after(&quest.body[i + 1..], &[])
+                } else {
+                    Vec::new()
+                };
+                state = emit_primitive(em, node, state, &look, cx, None);
+            }
+            Node::Branch(b) => {
+                let cont = reachable_after(&quest.body[i + 1..], &[]);
+                state = walk_branch(em, b, state, cx, &cont, diags);
+            }
+            Node::Match(m) => {
+                let cont = reachable_after(&quest.body[i + 1..], &[]);
+                state = walk_match(em, m, state, cx, &cont, diags);
+            }
+            Node::Timeline(_) | Node::Hub(_) => {
+                unreachable!(
+                    "dsl 0.2.0 §6.7: <hub>/<timeline> are forbidden everywhere \
+                     in a quest doc — the checker gates this out (D6)"
+                )
+            }
+        }
+    }
 }
