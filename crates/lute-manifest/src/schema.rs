@@ -46,6 +46,11 @@ pub struct EnumsFile {
     pub enums: std::collections::BTreeMap<String, Vec<String>>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct EventsFile {
+    pub events: Vec<EventDecl>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DirectiveDecl {
     pub name: String,
@@ -187,6 +192,15 @@ pub struct DefDecl {
     pub max: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub values: Option<Vec<String>>,
+}
+
+/// A capability-declared world event (dsl 0.2.0 §4.5): a named event kind an
+/// active plugin makes fireable via `<on event="…">`. Payload (if any) is
+/// ordinary plugin `state`, written by the engine before the event fires — NOT
+/// part of this declaration. Name is a `CelIdent`-shaped event kind.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EventDecl {
+    pub name: String,
 }
 
 /// Deserialize `DefDecl.params` in SOURCE order (dsl §8.1). Accepts either the
