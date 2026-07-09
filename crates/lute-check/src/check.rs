@@ -89,13 +89,6 @@ use crate::{
 /// from `fill_document`'s errors; the slot's `ast` stays `None`).
 const E_CEL_PARSE: &str = "E-CEL-PARSE";
 
-/// Transitional gate (dsl 0.2.0 Plan A): `<on>`/`<objective>` *checking* +
-/// admission is deferred to Plan C. Until then the main node walk emits this so
-/// a document using either construct can never pass clean-check — keeping the
-/// D6 clean-check gate sound (such a document cannot compile). Plan C replaces
-/// this constant with real ECA-trigger / objective semantics.
-const E_QUEST_UNSUPPORTED: &str = "E-QUEST-UNSUPPORTED";
-
 /// Parse errors that corrupt the node stream, making the `Resolved` view
 /// misleading (see the Some-vs-None policy in the module docs).
 const STRUCTURAL_CODES: &[&str] = &[
@@ -449,38 +442,63 @@ pub fn check(input: &CheckInput) -> CheckResult {
         exhaustive_subject_spans: Vec::new(),
         components: &input.components,
     };
-    for shot in &doc.shots {
-        walker.walk(&shot.body, &base_ctx);
+    // Kind-dispatched walk (dsl 0.2.0 §3.1): scene walks `doc.shots` (dsl
+    // 0.1.0 grammar, unchanged); quest walks `doc.quests` — each quest's own
+    // `start`/`fail` CEL guards (dsl 0.2.0 §6.3) are pure predicates the
+    // engine derives `quest.<id>.state` from, so they get the SAME `Bool`
+    // `check_cel_slot` treatment a `<when test>` guard gets — then the
+    // quest's body, which recurses through the real `Node::On`/
+    // `Node::Objective` walk arms below.
+    match folded.doc_kind {
+        crate::meta::DocKind::Scene => {
+            for shot in &doc.shots {
+                walker.walk(&shot.body, &base_ctx);
+            }
+        }
+        crate::meta::DocKind::Quest => {
+            for quest in &doc.quests {
+                if let Some(start) = &quest.start {
+                    walker.diags.extend(check_cel_slot(
+                        start,
+                        &arena,
+                        &base_ctx,
+                        Some(&ExpectedType::Bool),
+                    ));
+                }
+                if let Some(fail) = &quest.fail {
+                    walker.diags.extend(check_cel_slot(
+                        fail,
+                        &arena,
+                        &base_ctx,
+                        Some(&ExpectedType::Bool),
+                    ));
+                }
+                walker.walk(&quest.body, &base_ctx);
+            }
+        }
     }
 
-    // Transitional (Plan A): quest-kind documents are validated by Plan C.
-    // check() otherwise walks only `doc.shots`, so a top-level `<quest>` (parsed
-    // into `doc.quests`) would bypass the D6 clean-check gate entirely. Reject
-    // each `<quest>` at its span AND route its body through the walker (so nested
-    // `<on>`/`<objective>` hit the transitional gate too), keeping quest docs
-    // un-compilable until Plan C lands real semantics.
-    for quest in &doc.quests {
-        walker.diags.push(Diagnostic {
-            code: E_QUEST_UNSUPPORTED.to_string(),
-            severity: Severity::Error,
-            message: "<quest> checking lands in a later 0.2.0 plan (Plan C); document cannot pass check yet"
-                .to_string(),
-            span: quest.span,
-            layer: Layer::Logic,
-            fixits: Vec::new(),
-            provenance: None,
-        });
-        walker.walk(&quest.body, &base_ctx);
-    }
-
-    // 6. Document-level definite-assignment over the concatenated node stream
-    //    (carry-forward #1): `scene.*`/`run.*` persist across shots.
-    let all_nodes: Vec<Node> = doc
-        .shots
-        .iter()
-        .flat_map(|s| s.body.iter().cloned())
-        .collect();
-    let defassign_diags = check_definite_assignment(&all_nodes, &env.state, &base_ctx);
+    // 6. Definite assignment, kind-dispatched (dsl 0.2.0 §4.4): scene runs
+    //    ONCE over the whole concatenated shot stream (carry-forward #1 —
+    //    `scene.*`/`run.*` persist across shots within the episode); quest
+    //    runs PER `quest.body` — quest instances share no dominance relation
+    //    with one another, so each quest's def-assignment is its own scope,
+    //    never folded across quests.
+    let defassign_diags: Vec<Diagnostic> = match folded.doc_kind {
+        crate::meta::DocKind::Scene => {
+            let all_nodes: Vec<Node> = doc
+                .shots
+                .iter()
+                .flat_map(|s| s.body.iter().cloned())
+                .collect();
+            check_definite_assignment(&all_nodes, &env.state, &base_ctx)
+        }
+        crate::meta::DocKind::Quest => doc
+            .quests
+            .iter()
+            .flat_map(|q| check_definite_assignment(&q.body, &env.state, &base_ctx))
+            .collect(),
+    };
 
     // 6b. Duplicate authored line codes (dsl §12): two `:line`s for the same
     //     speaker with the same trimmed `code` derive identical `lineId`/
@@ -495,11 +513,21 @@ pub fn check(input: &CheckInput) -> CheckResult {
         fold_injections(&shot.body, &mut inject_state, &mut injections);
     }
     let inject_diags = std::mem::take(&mut inject_state.diags);
-    let commands_preview: Vec<String> = doc
-        .shots
-        .iter()
-        .flat_map(|s| s.body.iter().map(node_summary))
-        .collect();
+    // `node_summary` already covers `Node::On`/`Node::Objective` (Plan A), so
+    // the quest arm reuses it verbatim — no wildcard, both surfaces summarized
+    // identically.
+    let commands_preview: Vec<String> = match folded.doc_kind {
+        crate::meta::DocKind::Scene => doc
+            .shots
+            .iter()
+            .flat_map(|s| s.body.iter().map(node_summary))
+            .collect(),
+        crate::meta::DocKind::Quest => doc
+            .quests
+            .iter()
+            .flat_map(|q| q.body.iter().map(node_summary))
+            .collect(),
+    };
 
     // 8. Collect every diagnostic, then apply the ordering contract.
     let mut diags = Vec::new();
@@ -760,35 +788,59 @@ impl Walker<'_> {
                     }
                 }
                 Node::Objective(o) => {
-                    // Transitional D6 gate (dsl 0.2.0 Plan A): `<objective>`
-                    // checking is Plan C work. Emit an error so a document using
-                    // it can never pass clean-check (and thus never compiles),
-                    // keeping the D6 clean-check gate sound until Plan C lands
-                    // real objective semantics.
-                    self.diags.push(Diagnostic {
-                        code: E_QUEST_UNSUPPORTED.to_string(),
-                        severity: Severity::Error,
-                        message: "<objective> checking lands in a later 0.2.0 plan (Plan C); document cannot pass check yet"
-                            .to_string(),
-                        span: o.span,
-                        layer: Layer::Logic,
-                        fixits: Vec::new(),
-                        provenance: None,
-                    });
+                    // Completion predicate (dsl 0.2.0 §6.4): a value READ like a
+                    // match subject — it doesn't gate the body (§6.3: `when`
+                    // controls visibility, not the completion obligation), so it
+                    // gets the SAME `Bool` `check_cel_slot` treatment a
+                    // `<when test>` guard gets. `E-OBJECTIVE-MISSING-DONE` (an
+                    // empty `done`) was already flagged by `check_quest`'s fold
+                    // pass (Task 4); an empty raw's CEL `ast` stays `None`, so
+                    // this pass is a no-op for a missing `done` beyond the
+                    // `E-CEL-PARSE` `fill_document` already reported once.
+                    self.diags.extend(check_cel_slot(
+                        &o.done,
+                        self.arena,
+                        ctx,
+                        Some(&ExpectedType::Bool),
+                    ));
+                    if let Some(when) = &o.when {
+                        self.diags.extend(check_cel_slot(
+                            when,
+                            self.arena,
+                            ctx,
+                            Some(&ExpectedType::Bool),
+                        ));
+                    }
+                    // §7.6: an objective `title` MAY embed `{{…}}` interpolations,
+                    // same as a choice label.
+                    if let Some(title) = &o.title {
+                        check_interps(
+                            &scan_label_interps(title, o.span),
+                            ctx,
+                            &mut self.diags,
+                        );
+                    }
+                    self.check_attr_refs(&o.attrs, ctx, None);
+                    self.walk(&o.body, ctx);
                 }
                 Node::On(o) => {
-                    // Transitional D6 gate (dsl 0.2.0 Plan A): `<on>` checking is
-                    // Plan C work. Same rationale as the `<objective>` arm above.
-                    self.diags.push(Diagnostic {
-                        code: E_QUEST_UNSUPPORTED.to_string(),
-                        severity: Severity::Error,
-                        message: "<on> checking lands in a later 0.2.0 plan (Plan C); document cannot pass check yet"
-                            .to_string(),
-                        span: o.span,
-                        layer: Layer::Logic,
-                        fixits: Vec::new(),
-                        provenance: None,
-                    });
+                    // ECA trigger (dsl 0.2.0 §4.1): the `event` name (a plain
+                    // String, NOT CEL) resolves against the built-in lifecycle
+                    // events + capability-declared world events; the `when`
+                    // guard flows through the SAME `check_cel_slot` profile gate
+                    // every other boolean guard gets.
+                    self.diags
+                        .extend(crate::on::check_on_event(o, self.snapshot));
+                    if let Some(when) = &o.when {
+                        self.diags.extend(check_cel_slot(
+                            when,
+                            self.arena,
+                            ctx,
+                            Some(&ExpectedType::Bool),
+                        ));
+                    }
+                    self.check_attr_refs(&o.attrs, ctx, None);
+                    self.walk(&o.body, ctx);
                 }
             }
         }

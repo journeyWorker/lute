@@ -94,9 +94,11 @@ fn objective_missing_done_errors() {
 #[test]
 fn quest_state_readable_in_match() {
     // quest.q.state is an implicitly-declared enum; a match over it covering unset is clean.
-    let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
+    let cs = codes("---\nkind: quest\nstate:\n  run.d: { type: bool, default: false }\n---\n\
+                    <quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
                     <on event=\"questComplete\">\n<match on=\"quest.q.state\">\n\
-                    <when is=\"complete\">:x: done</when>\n<otherwise>:x: -</otherwise>\n</match>\n</on>\n</quest>\n");
+                    <when is=\"complete\">\n:x: done\n</when>\n<otherwise>\n:x: -\n</otherwise>\n\
+                    </match>\n</on>\n</quest>\n");
     assert!(!cs.iter().any(|c| c == "E-UNDECLARED"), "{cs:?}");
 }
 
@@ -112,7 +114,7 @@ fn scene_rejects_on_and_objective_and_quest() {
 #[test]
 fn quest_rejects_hub_timeline_and_headings() {
     let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n\
-                    <hub id=\"h\">\n<choice id=\"c\" label=\"L\" exit>:x: bye</choice>\n</hub>\n</quest>\n");
+                    <hub id=\"h\">\n<choice id=\"c\" label=\"L\" exit>\n:x: bye\n</choice>\n</hub>\n</quest>\n");
     assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
 }
 
