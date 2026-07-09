@@ -82,7 +82,7 @@ use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
     check_branch, check_cel_slot, check_definite_assignment, check_hub, check_line_codes,
-    check_match, check_quest, check_set, is_exhaustive,
+    check_match, check_quest, check_quest_guard_defassign, check_set, is_exhaustive,
 };
 
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
@@ -496,7 +496,22 @@ pub fn check(input: &CheckInput) -> CheckResult {
         crate::meta::DocKind::Quest => doc
             .quests
             .iter()
-            .flat_map(|q| check_definite_assignment(&q.body, &env.state, &base_ctx))
+            .flat_map(|q| {
+                // `start`/`fail` (dsl 0.2.0 §6.3) are evaluated at QUEST ENTRY —
+                // nothing dominates them, so they get their own fresh
+                // (empty-assigned-set) defassign check rather than folding into
+                // `q.body`'s walk (which would wrongly let an in-body write
+                // "prove" a guard evaluated strictly before the body runs).
+                let mut ds = Vec::new();
+                if let Some(start) = &q.start {
+                    ds.extend(check_quest_guard_defassign(start, &env.state));
+                }
+                if let Some(fail) = &q.fail {
+                    ds.extend(check_quest_guard_defassign(fail, &env.state));
+                }
+                ds.extend(check_definite_assignment(&q.body, &env.state, &base_ctx));
+                ds
+            })
             .collect(),
     };
 

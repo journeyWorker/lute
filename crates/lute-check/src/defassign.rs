@@ -81,6 +81,21 @@ pub fn check_definite_assignment(
     diags
 }
 
+/// Definite-assignment for a quest's `start`/`fail` CEL guard (dsl 0.2.0 §6.3,
+/// §9.4). These are evaluated at QUEST ENTRY — nothing dominates them (they are
+/// the first thing the engine evaluates for the quest), so the assigned set
+/// starts EMPTY, exactly like a fresh [`check_definite_assignment`] call. They
+/// get the SAME read-role treatment a `<match on>` SUBJECT gets ([`walk_match`]
+/// via [`check_reads`]): a value-read check only — `has(p)`/`isSet(p)` here
+/// proves nothing (there is no guarded body for a quest-entry predicate to
+/// prove into), so [`check_reads`], not [`apply_condition`], is reused.
+pub fn check_quest_guard_defassign(slot: &CelSlot, schema: &StateSchema) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let assigned = Assigned::new();
+    check_reads(slot, schema, &assigned, &mut diags);
+    diags
+}
+
 /// Forward-walk a node sequence, threading the assigned set through in order.
 fn walk_nodes(
     nodes: &[Node],

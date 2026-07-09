@@ -301,3 +301,38 @@ fn quest_on_directive_slot_opens_scene_path() {
     assert!(!cs.contains(&"E-UNDECLARED".to_string()), "{cs:?}");
 }
 
+// --- Review Finding 3: quest/objective id CelIdent validation (§8.4) -------
+
+#[test]
+fn quest_id_with_hyphen_errors() {
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"bad-id\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
+    );
+    assert!(cs.contains(&"E-PATH-IDENT".to_string()), "{cs:?}");
+}
+
+#[test]
+fn objective_id_with_hyphen_errors() {
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"bad-oid\" done=\"run.d\"/>\n</quest>\n",
+    );
+    assert!(cs.contains(&"E-PATH-IDENT".to_string()), "{cs:?}");
+}
+
+// --- Review Finding 4: quest start/fail definite-assignment (§9.4) ---------
+
+#[test]
+fn quest_start_guard_maybe_unset_without_default() {
+    let text = "---\nkind: quest\nstate:\n  run.ready: { type: bool }\n---\n\
+                <quest id=\"q\" start=\"run.ready\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let cs = codes(text);
+    assert!(cs.contains(&"E-MAYBE-UNSET".to_string()), "{cs:?}");
+}
+
+#[test]
+fn quest_start_guard_clean_with_default() {
+    let text = "---\nkind: quest\nstate:\n  run.ready: { type: bool, default: false }\n---\n\
+                <quest id=\"q\" start=\"run.ready\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let cs = codes(text);
+    assert!(!cs.contains(&"E-MAYBE-UNSET".to_string()), "{cs:?}");
+}
