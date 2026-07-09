@@ -78,6 +78,9 @@ pub fn assemble_snapshot(
         .keys()
         .map(|k| (k.clone(), "lute.core".to_string()))
         .collect();
+    // Track which plugin owns each merged event for precise dup errors (no
+    // core-embedded events, so this starts empty).
+    let mut ev_owner: BTreeMap<String, String> = BTreeMap::new();
 
     for ap in active {
         if ap.id == "lute.core" {
@@ -180,6 +183,26 @@ pub fn assemble_snapshot(
             &ap.id,
             &mut errs,
         );
+        for e in &pkg.events {
+            if crate::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&e.name.as_str()) {
+                errs.push(AssembleError::ReservedName {
+                    id: e.name.clone(),
+                    plugin: ap.id.clone(),
+                });
+                continue;
+            }
+            if let Some(first) = ev_owner.get(&e.name) {
+                errs.push(AssembleError::DuplicateAcrossPlugins {
+                    kind: "event".into(),
+                    id: e.name.clone(),
+                    first: first.clone(),
+                    second: ap.id.clone(),
+                });
+                continue;
+            }
+            ev_owner.insert(e.name.clone(), ap.id.clone());
+            snap.events.insert(e.name.clone(), e.clone());
+        }
         for b in &pkg.bridge {
             let k = (b.service.clone(), b.operation.clone());
             match snap.bridge_capabilities.entry(k) {

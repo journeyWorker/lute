@@ -2,7 +2,7 @@ use lute_manifest::assemble::assemble_snapshot;
 use lute_manifest::loader::LoadedPlugin;
 use lute_manifest::resolve::{ActivePlugin, InstalledPlugin, InstalledPlugins};
 use lute_manifest::schema::{
-    AssetKindDecl, AssetResolve, AttrDecl, DirectiveDecl, Lowering, PluginManifest,
+    AssetKindDecl, AssetResolve, AttrDecl, DirectiveDecl, EventDecl, Lowering, PluginManifest,
 };
 use lute_manifest::types::Type;
 use std::collections::BTreeMap;
@@ -435,5 +435,104 @@ fn assemble_rejects_unknown_asset_kind() {
         }
         .code(),
         "E-PLUGIN-UNKNOWN-ASSETKIND"
+    );
+}
+
+fn event_decl(name: &str) -> EventDecl {
+    EventDecl { name: name.into() }
+}
+
+#[test]
+fn assemble_merges_events() {
+    let mut pkg = plugin_with_directive("idola.minigame", "minigame");
+    pkg.events.push(event_decl("combatEnd"));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([(
+            "idola.minigame".to_string(),
+            InstalledPlugin { loaded: pkg },
+        )]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.minigame".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(
+        snap.events.contains_key("combatEnd"),
+        "plugin event merged into snapshot"
+    );
+}
+
+#[test]
+fn assemble_rejects_cross_plugin_event_dup() {
+    let mut a = plugin_with_directive("plug.a", "da");
+    a.events.push(event_decl("combatEnd"));
+    let mut b = plugin_with_directive("plug.b", "db");
+    b.events.push(event_decl("combatEnd"));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([
+            ("plug.a".to_string(), InstalledPlugin { loaded: a }),
+            ("plug.b".to_string(), InstalledPlugin { loaded: b }),
+        ]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "plug.a".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "plug.b".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (_snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::assemble::AssembleError::DuplicateAcrossPlugins { kind, id, .. }
+                if kind == "event" && id == "combatEnd"
+        )),
+        "cross-plugin dup event must be DuplicateAcrossPlugins{{kind:\"event\"}}, got {errs:?}"
+    );
+}
+
+#[test]
+fn assemble_rejects_reserved_builtin_event_name() {
+    let mut pkg = plugin_with_directive("idola.minigame", "minigame");
+    pkg.events.push(event_decl("questComplete"));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([(
+            "idola.minigame".to_string(),
+            InstalledPlugin { loaded: pkg },
+        )]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.minigame".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (_snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::assemble::AssembleError::ReservedName { id, .. } if id == "questComplete"
+        )),
+        "reserved builtin lifecycle event name must be ReservedName, got {errs:?}"
     );
 }
