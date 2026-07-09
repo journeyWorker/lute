@@ -61,6 +61,7 @@ fn node<'a>(n: &'a Node, f: &mut impl FnMut(&'a CelSlot)) {
         Node::Match(m) => match_node(m, f),
         Node::Timeline(t) => timeline(t, f),
         Node::Hub(h) => hub(h, f),
+        Node::Objective(_) | Node::On(_) => {}
     }
 }
 
@@ -147,6 +148,7 @@ fn node_mut(n: &mut Node, f: &mut impl FnMut(&mut CelSlot)) {
         Node::Match(m) => match_node_mut(m, f),
         Node::Timeline(t) => timeline_mut(t, f),
         Node::Hub(h) => hub_mut(h, f),
+        Node::Objective(_) | Node::On(_) => {}
     }
 }
 
@@ -375,6 +377,7 @@ mod tests {
                 body,
                 span: span(),
             }],
+            quests: Vec::new(),
             span: span(),
         }
     }
