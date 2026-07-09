@@ -22,7 +22,7 @@ use lute_manifest::types::Type;
 use lute_syntax::ast::{Arm, AttrValue, Document, Node};
 use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind};
 
-use super::{attr_enum_values, type_label, Cursor};
+use super::{attr_enum_values, type_label, Cursor, QuestConstruct};
 
 /// Completion candidates at byte offset `off`. Empty when the cursor is somewhere
 /// with nothing to offer.
@@ -33,6 +33,12 @@ pub fn complete_at(
     imports: &SchemaImports,
     off: usize,
 ) -> Vec<CompletionItem> {
+    // `kind:` frontmatter value completion (dsl 0.2.0 §3.1) — `resolve()` is
+    // BODY-only (it walks `doc.shots`/`doc.quests`, never the frontmatter
+    // YAML), so this is a small dedicated detector, checked first.
+    if let Some(items) = kind_value_items(doc, off) {
+        return items;
+    }
     let (mut meta, _) = parse_meta(&doc.meta, snapshot);
     super::merge_imports(&mut meta, imports);
     let Some(cursor) = super::resolve(doc, off) else {
@@ -76,11 +82,111 @@ pub fn complete_at(
             directive: None, ..
         } => Vec::new(),
         Cursor::SetPath { .. } => state_path_items(&meta),
-        // Transitional (Plan E Task 2 -> Task 3): quest/on/objective
-        // construct completion not implemented yet. Task 3 adds the
-        // hardcoded attr-key table + `<on event>` value completion.
-        Cursor::OnEventValue(_) | Cursor::ConstructAttrArea { .. } => Vec::new(),
+        Cursor::OnEventValue(_) => event_name_items(snapshot),
+        Cursor::ConstructAttrArea { construct } => construct_attr_key_items(construct),
     }
+}
+
+/// The fixed (non-snapshot) attr-key set for a `<quest>`/`<on>`/`<objective>`
+/// open tag (dsl 0.2.0 §6.3/§4/§6.4), kind `FIELD`. Unlike `::directive`
+/// attrs, these three constructs have a small closed set that is NOT
+/// capability-schema-driven, so the table is hardcoded here (mirroring how
+/// the tree-sitter grammar's `cel_key` enumerates the CEL-valued attr names) —
+/// always the full set, since `id`/`title`/`start`/`fail`/`event`/`when`/
+/// `done`/`optional` are parsed into dedicated AST fields (not a `Vec<Attr>`),
+/// so "already present" cannot be read back generically the way a
+/// directive's `attrs` list allows.
+fn construct_attr_key_items(construct: QuestConstruct) -> Vec<CompletionItem> {
+    let keys: &[(&str, &str)] = match construct {
+        QuestConstruct::Quest => &[
+            ("id", "string"),
+            ("title", "string"),
+            ("start", "cel<bool>"),
+            ("fail", "cel<bool>"),
+        ],
+        QuestConstruct::On => &[("event", "string"), ("when", "cel<bool>")],
+        QuestConstruct::Objective => &[
+            ("id", "string"),
+            ("done", "cel<bool>"),
+            ("when", "cel<bool>"),
+            ("title", "string"),
+            ("optional", "bool"),
+        ],
+    };
+    keys.iter()
+        .map(|(name, ty)| CompletionItem {
+            label: name.to_string(),
+            kind: Some(CompletionItemKind::FIELD),
+            detail: Some(ty.to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// Every known lifecycle/world event name for an `<on event="…">` value
+/// position (dsl 0.2.0 §4.5): the built-ins union the capability-declared
+/// events, kind `EVENT`.
+fn event_name_items(snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
+    let mut names: BTreeSet<String> = lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    names.extend(snapshot.events.keys().cloned());
+    names
+        .into_iter()
+        .map(|n| CompletionItem {
+            label: n,
+            kind: Some(CompletionItemKind::EVENT),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// `Some` (possibly empty) when `off` lands on the VALUE half of a `kind:`
+/// line in the peeled frontmatter YAML (dsl 0.2.0 §3.1's `scene`/`quest`
+/// discriminator); `None` when `off` is not there, so the caller falls
+/// through to the normal body-cursor resolution. Mirrors
+/// `super::find_yaml_key_span`'s line-scan + `FRONTMATTER_BASE` convention.
+fn kind_value_items(doc: &Document, off: usize) -> Option<Vec<CompletionItem>> {
+    const FRONTMATTER_BASE: usize = 4; // len("---\n")
+    let raw = &doc.meta.raw_yaml;
+    if raw.is_empty() || off < FRONTMATTER_BASE {
+        return None;
+    }
+    let local = off - FRONTMATTER_BASE;
+    if local > raw.len() {
+        return None;
+    }
+    let mut line_start = 0usize;
+    for line in raw.split_inclusive('\n') {
+        let line_end = line_start + line.len();
+        if local < line_start || local > line_end {
+            line_start = line_end;
+            continue;
+        }
+        // `off` is on THIS line — either it's the `kind:` line (checked
+        // below) or it isn't a completion position at all.
+        let content = line.trim_start();
+        let rest = content.strip_prefix("kind")?;
+        let after_colon = rest.trim_start().strip_prefix(':')?;
+        // The first VALUE byte sits right after the colon; everything from
+        // there to end-of-line (incl. leading whitespace) is "value area".
+        let value_start = line_end - after_colon.len();
+        if local < value_start {
+            return None; // cursor is on the `kind` KEY, not its value.
+        }
+        return Some(
+            ["scene", "quest"]
+                .into_iter()
+                .map(|k| CompletionItem {
+                    label: k.to_string(),
+                    kind: Some(CompletionItemKind::ENUM_MEMBER),
+                    ..Default::default()
+                })
+                .collect(),
+        );
+    }
+    None
 }
 
 /// Every directive name (`::bg`, `::camera`, …), kind `FUNCTION`.
@@ -232,6 +338,9 @@ fn choice_path_items(doc: &Document) -> Vec<CompletionItem> {
     for shot in &doc.shots {
         collect_branch_ids(&shot.body, &mut ids);
     }
+    for quest in &doc.quests {
+        collect_branch_ids(&quest.body, &mut ids);
+    }
     ids.into_iter()
         .map(|id| CompletionItem {
             label: format!("scene.choices.{id}"),
@@ -261,6 +370,8 @@ fn collect_branch_ids(nodes: &[Node], out: &mut Vec<String>) {
                     collect_branch_ids(body, out);
                 }
             }
+            Node::On(o) => collect_branch_ids(&o.body, out),
+            Node::Objective(ob) => collect_branch_ids(&ob.body, out),
             _ => {}
         }
     }
@@ -302,6 +413,10 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
                         }
                     }
                 }
+                Node::On(o) if super::span_contains(o.span, off) => scan(&o.body, off, out),
+                Node::Objective(ob) if super::span_contains(ob.span, off) => {
+                    scan(&ob.body, off, out)
+                }
                 _ => {}
             }
         }
@@ -309,6 +424,9 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
     let mut out = Vec::new();
     for shot in &doc.shots {
         scan(&shot.body, off, &mut out);
+    }
+    for quest in &doc.quests {
+        scan(&quest.body, off, &mut out);
     }
     out
 }
@@ -694,5 +812,80 @@ mod tests {
             "offers imported def name: {:?}",
             labels(&items)
         );
+    }
+
+    // ---- dsl 0.2.0 §4/§6.3/§6.4: quest/on/objective + kind: completion ----
+
+    fn complete(text: &str, off: usize) -> Vec<CompletionItem> {
+        let doc = parsed(text);
+        complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        )
+    }
+
+    #[test]
+    fn on_event_value_completion_lists_builtin_lifecycle_events() {
+        let text = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"quest\">\n</on>\n</quest>\n";
+        let off = text.find("\"quest\"").unwrap() + 1;
+        let items = complete(text, off);
+        let ls = labels(&items);
+        assert!(ls.contains(&"questComplete"), "{ls:?}");
+        assert!(ls.contains(&"questActive"), "{ls:?}");
+        assert!(ls.contains(&"questFailed"), "{ls:?}");
+    }
+
+    #[test]
+    fn objective_attr_area_completion_lists_done_when_optional() {
+        let text = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\">\n</objective>\n</quest>\n";
+        let off = text.find("<objective ").unwrap() + "<objective ".len();
+        let items = complete(text, off);
+        let ls = labels(&items);
+        for k in ["id", "done", "when", "title", "optional"] {
+            assert!(ls.contains(&k), "missing {k}: {ls:?}");
+        }
+    }
+
+    #[test]
+    fn on_attr_area_completion_lists_event_and_when() {
+        let text = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n</on>\n</quest>\n";
+        let off = text.find("<on ").unwrap() + "<on ".len();
+        let items = complete(text, off);
+        let ls = labels(&items);
+        assert!(ls.contains(&"event"), "{ls:?}");
+        assert!(ls.contains(&"when"), "{ls:?}");
+    }
+
+    #[test]
+    fn quest_attr_area_completion_lists_id_title_start_fail() {
+        let text = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n";
+        let off = text.find("<quest ").unwrap() + "<quest ".len();
+        let items = complete(text, off);
+        let ls = labels(&items);
+        for k in ["id", "title", "start", "fail"] {
+            assert!(ls.contains(&k), "missing {k}: {ls:?}");
+        }
+    }
+
+    #[test]
+    fn kind_frontmatter_value_completion_lists_scene_and_quest() {
+        let text = "---\nkind: \n---\n";
+        let off = text.find("kind: ").unwrap() + "kind: ".len();
+        let items = complete(text, off);
+        let ls = labels(&items);
+        assert!(ls.contains(&"scene"), "{ls:?}");
+        assert!(ls.contains(&"quest"), "{ls:?}");
+    }
+
+    #[test]
+    fn kind_frontmatter_key_position_offers_no_completion() {
+        // The cursor on the `kind` KEY itself (not the value) is not a
+        // completion position — only the value half detects.
+        let text = "---\nkind: scene\n---\n";
+        let off = text.find("kind").unwrap() + 1;
+        assert!(complete(text, off).is_empty());
     }
 }
