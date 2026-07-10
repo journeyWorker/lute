@@ -2,10 +2,10 @@
 
 - **Date:** 2026-07-10
 - **Status:** approved design; spec-first (documents/decisions before implementation)
-- **Version (PENDING — see §0):** a **breaking** foundation minor. Working recommendation **(c)**:
-  ship the closed-vocabulary catalog **before/under** `0.3.0`, which layers relational facts on it.
-  Final number (`0.2.2` / renumber the relational spec to `0.4.0` and take `0.3.0` / a dedicated
-  pre-`0.3.0`) is the user's call because it touches the existing `feat/lute-0.3.0` branch.
+- **Version:** **0.2.2** — a **breaking** foundation minor (pre-1.0 allowance, dsl 0.1.0 §2). Ships
+  the closed-vocabulary catalog **before/under** the relational-facts `0.3.0`, which layers relations
+  on it. (Decision 2026-07-10: `0.2.2` keeps `0.3.0` = relational facts; the existing
+  `feat/lute-0.3.0` branch is NOT renumbered.)
 - **Drives:** a new `scenario-dsl` extension proposal (attribute value domains), errata to
   `plugin-system/0.0.1.md` (`{ domain: … }` Type + declaration-file format), `crates/lute-manifest`
   (`Type` + merged vocabulary), `crates/lute-check` (attr-domain + content-line validation, declared-
