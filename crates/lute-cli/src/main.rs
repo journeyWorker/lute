@@ -319,6 +319,21 @@ fn run_check(
 /// surfaced to the caller rather than silently dropped — a project-wide
 /// check must not silently under-report because one subdirectory failed to
 /// list.
+///
+/// A symlinked FILE (unlike a symlinked directory) IS picked up by the walk
+/// above — `DirEntry::file_type` reports the link's own type, not its
+/// target's, so it never matches `is_dir()`, but its `entry.path()` still
+/// ends in `.lute`. Left alone, a symlink alias and its target are the SAME
+/// physical document reachable under two DISTINCT `PathBuf`s, which would
+/// make `check_project_quest_ids` see every `<quest id>` in that document
+/// TWICE and report a false cross-file `E-QUEST-ID-DUP` (0.2.1 review F2).
+/// So every discovered path is canonicalized and deduped by that canonical
+/// identity, keeping exactly one — the byte-sorted-FIRST — display path per
+/// physical document (sorting first so the choice is deterministic and,
+/// among an original file and its alias, prefers whichever path string sorts
+/// first rather than depending on directory-iteration order). A canonicalize
+/// failure (e.g. a dangling symlink) is surfaced exactly like every other
+/// walk I/O error above, never silently skipped or panicked on.
 fn find_lute_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
@@ -334,30 +349,49 @@ fn find_lute_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
         }
     }
     out.sort();
-    Ok(out)
+
+    let mut seen_canonical = BTreeSet::new();
+    let mut deduped = Vec::with_capacity(out.len());
+    for path in out {
+        let canonical = std::fs::canonicalize(&path)?;
+        if seen_canonical.insert(canonical) {
+            deduped.push(path);
+        }
+    }
+    Ok(deduped)
 }
 
 /// Run `check` over every `*.lute` file recursively found under `dir`
-/// (sorted, deterministic — [`find_lute_files`]), reusing `build_input` with
-/// `--project <dir>` so each file's capability resolution matches `lute check
-/// <file> --project <dir>` exactly, THEN additionally cross-validates
-/// project-wide `<quest id>` uniqueness (dsl 0.2.0 §6.3,
+/// (sorted, deterministic, symlink-deduped — [`find_lute_files`]), reusing
+/// `build_input` with `--project <dir>` so each file's capability resolution
+/// matches `lute check <file> --project <dir>` exactly, THEN additionally
+/// cross-validates project-wide `<quest id>` uniqueness (dsl 0.2.0 §6.3,
 /// [`lute_check::check_project_quest_ids`]) — the residual `check()`'s own
 /// `E-QUEST-ID-DUP` (0.2.0 F4, scoped to one document's OWN
 /// `uses:`/`extends:` import graph) cannot see: two quest docs sharing an id
 /// with no import edge between them at all.
 ///
-/// The project-wide pass is the SOLE authority on quest-id uniqueness in this
-/// mode: each file's own `E-QUEST-ID-DUP` (a same-file repeat OR an
-/// import-reachable collision — both already 0.2.0 F4) is stripped from its
-/// per-file report before folding it in, since `check_project_quest_ids`
-/// re-derives every such case directly (plus the non-import-linked residual
-/// it exists for) — keeping both would double-report one real-world
-/// collision as two diagnostics.
+/// Neither surface is the sole authority: `check_project_quest_ids` only ever
+/// sees the files THIS walk found, so it cannot re-derive an import-graph
+/// collision `check()` catches whose OTHER party lives outside `dir` (0.2.1
+/// review F1 — blanket-stripping every per-file `E-QUEST-ID-DUP` and trusting
+/// the project pass alone silently swallowed that case). So every per-file
+/// diagnostic is KEPT by default; only a per-file `E-QUEST-ID-DUP` whose
+/// exact `(file, span)` is a MEMBER of an in-`dir` colliding group
+/// ([`lute_check::colliding_occurrences`] — every occurrence of an id
+/// declared 2+ times among the walked docs, not just the ones
+/// `check_project_quest_ids` itself emits a diagnostic for) is suppressed,
+/// since that whole group is already covered by exactly one
+/// `check_project_quest_ids` diagnostic. Membership, not anchor equality, is
+/// the right test: the SAME real collision can anchor its per-file
+/// diagnostic (fired wherever `check()`'s import resolution detected the
+/// redeclare) on a different file than the one `check_project_quest_ids`
+/// picks (it always skips the group's path-sorted-first occurrence) — see
+/// [`lute_check::colliding_occurrences`]'s own doc comment.
 ///
-/// Exit `0` clean, `1` when any file has an `Error` diagnostic (after that
-/// strip) or the project-wide pass finds any collision, `2` on an I/O failure
-/// walking `dir` or reading a file.
+/// Exit `0` clean, `1` when any file has a (post-suppression) `Error`
+/// diagnostic or the project-wide pass finds any collision, `2` on an I/O
+/// failure walking `dir` or reading a file.
 fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCode {
     let files = match find_lute_files(dir) {
         Ok(f) => f,
@@ -378,19 +412,27 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
         let (doc, _) = lute_syntax::parse(&input.text);
         docs.push((file.clone(), doc));
 
-        let mut result = check(&input);
-        // `check_project_quest_ids` below is the SOLE authority on quest-id
-        // uniqueness in this mode (see doc comment above) — strip its
-        // per-file counterpart so one collision is never reported twice.
-        result.diagnostics.retain(|d| d.code != "E-QUEST-ID-DUP");
-        result.ok = !result
-            .diagnostics
-            .iter()
-            .any(|d| d.severity == Severity::Error);
+        let result = check(&input);
         file_results.push((file.clone(), result));
     }
 
     let project_diags = check_project_quest_ids(&docs);
+    // Every occurrence project-wide already covers (see the fn doc comment
+    // above) — used below to suppress ONLY the per-file `E-QUEST-ID-DUP`s
+    // this pass demonstrably re-reports, never the ones it structurally
+    // cannot see (an import-graph collision reaching outside `dir`).
+    let covered = lute_check::colliding_occurrences(&docs);
+    for (path, result) in &mut file_results {
+        result.diagnostics.retain(|d| {
+            d.code != "E-QUEST-ID-DUP"
+                || !covered.iter().any(|(p, s)| p == path && *s == d.span)
+        });
+        result.ok = !result
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error);
+    }
+
     let project_ok = !project_diags
         .iter()
         .any(|(_, d)| d.severity == Severity::Error);

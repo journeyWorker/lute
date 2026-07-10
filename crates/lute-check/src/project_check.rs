@@ -14,12 +14,18 @@
 //!
 //! [`check_project_quest_ids`] closes the gap by looking at every doc in the
 //! project directly, with no import-graph traversal at all — so it naturally
-//! also re-derives every collision `check()` already reports per-file. It is
-//! meant to be the SOLE authority `lute check-project` uses for quest-id
-//! uniqueness: the caller strips `E-QUEST-ID-DUP` from each file's own
-//! `check()` result before folding it into a project report, so one real-world
-//! collision is reported exactly once here — never a per-file copy AND a
-//! project-wide copy of the same dup.
+//! also re-derives every collision `check()` already reports per-file (an
+//! in-document repeat, or a redeclare against an import-reachable id). That
+//! overlap is why `lute check-project`'s caller does NOT treat this pass as
+//! the sole authority and blanket-strip every per-file `E-QUEST-ID-DUP`: an
+//! import-graph collision can involve a doc OUTSIDE the walked directory
+//! (`resolve_imports` sees it via the checked file's OWN `uses:`/`extends:`
+//! graph; this pass never can, since it only ever looks at the files the
+//! caller walked). Instead the caller keeps every per-file diagnostic and
+//! uses [`colliding_occurrences`] to suppress ONLY the ones this pass
+//! demonstrably re-reports (0.2.1 review F1), so a real collision is never
+//! silently swallowed just because it also happens to be
+//! project-wide-visible.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -42,6 +48,28 @@ fn diag(message: String, span: Span) -> Diagnostic {
     }
 }
 
+/// Every non-empty `<quest id>` occurrence in `docs`, grouped by id — the
+/// shared traversal behind both [`check_project_quest_ids`] (which flags
+/// every occurrence past the group's first) and [`colliding_occurrences`]
+/// (which needs every MEMBER of a colliding group, first occurrence
+/// included). An empty id is skipped here too (see
+/// [`check_project_quest_ids`]'s own doc comment on why).
+fn group_by_id<'a>(docs: &'a [(PathBuf, Document)]) -> BTreeMap<&'a str, Vec<(&'a Path, Span)>> {
+    let mut by_id: BTreeMap<&str, Vec<(&Path, Span)>> = BTreeMap::new();
+    for (path, doc) in docs {
+        for quest in &doc.quests {
+            if quest.id.is_empty() {
+                continue;
+            }
+            by_id
+                .entry(quest.id.as_str())
+                .or_default()
+                .push((path.as_path(), quest.id_span));
+        }
+    }
+    by_id
+}
+
 /// Every `E-QUEST-ID-DUP` collision across `docs`, paired with the file each
 /// diagnostic is anchored in (a plain `Diagnostic` carries no path — the caller
 /// needs the pairing to print `path:line:col` or to group a JSON report by
@@ -62,21 +90,8 @@ fn diag(message: String, span: Span) -> Diagnostic {
 /// is not an identity two authors could have intentionally, or even
 /// accidentally in any interesting sense, collided on).
 pub fn check_project_quest_ids(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
-    let mut by_id: BTreeMap<&str, Vec<(&Path, Span)>> = BTreeMap::new();
-    for (path, doc) in docs {
-        for quest in &doc.quests {
-            if quest.id.is_empty() {
-                continue;
-            }
-            by_id
-                .entry(quest.id.as_str())
-                .or_default()
-                .push((path.as_path(), quest.id_span));
-        }
-    }
-
     let mut out = Vec::new();
-    for (id, occurrences) in by_id {
+    for (id, occurrences) in group_by_id(docs) {
         if occurrences.len() < 2 {
             continue;
         }
@@ -96,6 +111,41 @@ pub fn check_project_quest_ids(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Di
             };
             out.push((file.to_path_buf(), diag(message, span)));
         }
+    }
+    out
+}
+
+/// Every `(path, id_span)` occurrence in `docs` that belongs to a quest id
+/// declared 2+ times among `docs` — i.e. every member of a group
+/// [`check_project_quest_ids`] would flag (including the group's own FIRST
+/// occurrence, which that function does NOT emit a diagnostic for, since it
+/// is the baseline the rest collide against).
+///
+/// `lute check-project`'s caller (0.2.1 review F1) uses this to decide
+/// whether a per-file `E-QUEST-ID-DUP` it kept from `check()` (an
+/// in-document repeat, or a redeclare against an import-reachable id — both
+/// anchored at THAT file's own `quest.id_span`, 0.2.0 F4) is a collision this
+/// project-wide pass ALREADY reports once for: if the diagnostic's own
+/// `(path, span)` is a member of this set, some OTHER occurrence of the same
+/// id exists among the WALKED docs, so [`check_project_quest_ids`] is already
+/// the single canonical report for that whole group — regardless of which
+/// specific occurrence it happened to anchor ITS OWN diagnostic on (a
+/// same-id-different-importer collision can anchor the per-file diagnostic on
+/// a different file than the one `check_project_quest_ids` picks, since the
+/// project pass always skips the group's first-by-path occurrence while the
+/// per-file diagnostic fires wherever `check()`'s import resolution happened
+/// to detect the redeclare — membership, not anchor equality, is the
+/// correct test). A per-file diagnostic whose `(path, span)` is NOT a member
+/// here came from a collision this pass structurally cannot see at all (an
+/// import-graph collision reaching a doc outside the walked set) and MUST be
+/// kept.
+pub fn colliding_occurrences(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Span)> {
+    let mut out = Vec::new();
+    for occurrences in group_by_id(docs).into_values() {
+        if occurrences.len() < 2 {
+            continue;
+        }
+        out.extend(occurrences.into_iter().map(|(p, s)| (p.to_path_buf(), s)));
     }
     out
 }
@@ -238,5 +288,45 @@ mod tests {
         let out = check_project_quest_ids(&docs);
         assert_eq!(out.len(), 1, "only `alpha` collides: {out:?}");
         assert_eq!(out[0].0, Path::new("b.lute"));
+    }
+
+    #[test]
+    fn colliding_occurrences_empty_when_no_docs_collide() {
+        let docs = vec![
+            (PathBuf::from("a.lute"), doc(vec![quest("alpha", 1)])),
+            (PathBuf::from("b.lute"), doc(vec![quest("beta", 1)])),
+        ];
+        assert!(colliding_occurrences(&docs).is_empty(), "{docs:?}");
+    }
+
+    #[test]
+    fn colliding_occurrences_includes_the_groups_first_member_too() {
+        // `check_project_quest_ids` never emits a diagnostic for the group's
+        // FIRST occurrence (a.lute's) -- `colliding_occurrences` still must
+        // report it as a member, since the caller needs to recognize a
+        // per-file diagnostic anchored on EITHER file as covered.
+        let docs = vec![
+            (PathBuf::from("a.lute"), doc(vec![quest("q", 1)])),
+            (PathBuf::from("b.lute"), doc(vec![quest("q", 2)])),
+        ];
+        let out = colliding_occurrences(&docs);
+        assert_eq!(out.len(), 2, "{out:?}");
+        assert!(
+            out.contains(&(PathBuf::from("a.lute"), span(1))),
+            "{out:?}"
+        );
+        assert!(
+            out.contains(&(PathBuf::from("b.lute"), span(2))),
+            "{out:?}"
+        );
+    }
+
+    #[test]
+    fn colliding_occurrences_ignores_empty_ids() {
+        let docs = vec![
+            (PathBuf::from("a.lute"), doc(vec![quest("", 1)])),
+            (PathBuf::from("b.lute"), doc(vec![quest("", 1)])),
+        ];
+        assert!(colliding_occurrences(&docs).is_empty(), "{docs:?}");
     }
 }

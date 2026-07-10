@@ -242,6 +242,129 @@ fn check_project_import_linked_dup_is_not_double_reported() {
     assert_eq!(total, 1, "{v}");
 }
 
+// --- F1 (0.2.1 review): import-graph dup reaching OUTSIDE the walked dir ---
+
+#[test]
+fn check_project_flags_import_graph_dup_reaching_outside_walked_dir() {
+    // `scene.lute` (inside the walked dir) `uses:` TWO docs OUTSIDE the
+    // walked dir, both declaring `<quest id="q">`. Neither import target is
+    // ever seen by `check_project_quest_ids` (it only walks `dir`), so the
+    // ONLY surface that can catch this collision at all is `check()`'s own
+    // import-graph resolver (`resolve_imports`) running on `scene.lute`
+    // itself. RED before the fix: `run_check_project` blanket-stripped every
+    // per-file `E-QUEST-ID-DUP` and trusted the project-wide pass as sole
+    // authority, so this real collision was silently swallowed -> exit 0.
+    let root = temp_dir("f1-out-of-dir-dup");
+    let dir = root.join("proj");
+    write(
+        &root,
+        "outside/doc1.lute",
+        "---\nstate:\n  run.o1: { type: bool, default: false }\n---\n\
+         <quest id=\"q\">\n<objective id=\"o1\" done=\"run.o1\"/>\n</quest>\n",
+    );
+    write(
+        &root,
+        "outside/doc2.lute",
+        "---\nstate:\n  run.o2: { type: bool, default: false }\n---\n\
+         <quest id=\"q\">\n<objective id=\"o2\" done=\"run.o2\"/>\n</quest>\n",
+    );
+    write(
+        &dir,
+        "scene.lute",
+        "---\nkind: quest\nuses:\n  - ../outside/doc1.lute\n  - ../outside/doc2.lute\n\
+         state:\n  run.scene: { type: bool, default: false }\n---\n\
+         <quest id=\"scene_q\">\n<objective id=\"oscene\" done=\"run.scene\"/>\n</quest>\n",
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "an import-graph collision reaching outside the walked dir must still fail the run: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("E-QUEST-ID-DUP"), "{stdout}");
+
+    // Structurally: the project-wide pass has NOTHING to say here (neither
+    // import target is in the walked set); the dup must come from
+    // scene.lute's own per-file result instead.
+    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
+    assert_eq!(v["ok"], false, "{v}");
+    assert!(
+        v["project_diagnostics"].as_array().unwrap().is_empty(),
+        "the project-wide pass cannot see either out-of-dir doc: {v}"
+    );
+    let files = v["files"].as_array().unwrap();
+    assert_eq!(files.len(), 1, "{v}");
+    assert!(
+        files[0]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-QUEST-ID-DUP"),
+        "scene.lute's own per-file result must carry the collision: {v}"
+    );
+}
+
+// --- F2 (0.2.1 review): a symlinked alias must not double-count a doc ------
+
+#[cfg(unix)]
+#[test]
+fn check_project_symlink_alias_does_not_fabricate_a_cross_file_dup() {
+    // `alias.lute` is a symlink to `a.lute` -- the SAME physical document
+    // reachable under two path strings. RED before the fix: `find_lute_files`
+    // pushed both path strings verbatim, so `check_project_quest_ids` saw the
+    // SAME `<quest id="q">` "twice" (once per path) and reported a false
+    // cross-file `E-QUEST-ID-DUP`.
+    let dir = temp_dir("f2-symlink-alias");
+    let real = write(&dir, "a.lute", &clean_quest_doc("q", "run.a"));
+    let alias = dir.join("alias.lute");
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert!(
+        out.status.success(),
+        "a symlink alias to an already-walked doc must not fabricate a cross-file dup: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("E-QUEST-ID-DUP"),
+        "false dup from one physical doc counted twice: {stdout}"
+    );
+
+    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    assert_eq!(
+        v["files"].as_array().unwrap().len(),
+        1,
+        "the alias must be deduped to ONE physical doc, not checked twice: {v}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn check_project_broken_symlink_exits_two_not_panic() {
+    // A dangling symlink can't be canonicalized -- must surface as the SAME
+    // io-error convention as every other walk failure ("never silently
+    // under-report"), never panic.
+    let dir = temp_dir("f2-broken-symlink");
+    let missing = dir.join("missing.lute");
+    let broken = dir.join("broken.lute");
+    std::os::unix::fs::symlink(&missing, &broken).unwrap();
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "an unresolvable symlink must be an io error, not a panic or a silent skip: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
 // --- misc CLI behavior -------------------------------------------------------
 
 #[test]
