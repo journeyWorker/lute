@@ -64,6 +64,18 @@ impl AssembleError {
 /// (non-core) plugin, same as `scene`.
 const RESERVED_DIRECTIVE_NAMES: &[&str] = &["scene", "cut", "on", "quest", "objective"];
 
+/// dsl §7.5/§10 timing attribute keys — `at`, `duration`, `delay`, `wait` — are
+/// "cross-cutting reserved across all directives and profiles" (§7.5); a plugin
+/// manifest "MUST NOT declare any of these as one of its attribute names —
+/// doing so is an assembly-time error" (§7.5), which §10 restates by pointing
+/// back at §7.5. `lute.core` legitimately OWNS these keys on its own staging
+/// directives (`camera`'s `duration`/`delay`/`wait`, `video`'s `wait`), so —
+/// exactly like `RESERVED_DIRECTIVE_NAMES` — this is enforced only against
+/// NON-core plugin directive attrs, never core's own embedded declarations,
+/// and never against authored-document usage (that's the checker's concern,
+/// not assembly's).
+const RESERVED_TIMING_ATTR_NAMES: &[&str] = &["at", "duration", "delay", "wait"];
+
 /// Merge every ACTIVE plugin's loaded package onto the embedded `lute.core`
 /// base into a single deterministic capability snapshot (plugin §13). Returns
 /// the assembled snapshot plus any cross-plugin duplicate / reserved-name /
@@ -115,6 +127,21 @@ pub fn assemble_snapshot(
                     id: d.name.clone(),
                     plugin: ap.id.clone(),
                 });
+                continue;
+            }
+            let reserved_attrs: Vec<&str> = d
+                .attrs
+                .iter()
+                .map(|a| a.name.as_str())
+                .filter(|n| RESERVED_TIMING_ATTR_NAMES.contains(n))
+                .collect();
+            if !reserved_attrs.is_empty() {
+                for name in reserved_attrs {
+                    errs.push(AssembleError::ReservedName {
+                        id: name.to_string(),
+                        plugin: ap.id.clone(),
+                    });
+                }
                 continue;
             }
             if let Some(first) = dir_owner.get(&d.name) {

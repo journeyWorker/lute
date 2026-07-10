@@ -575,3 +575,98 @@ fn assemble_rejects_reserved_quest_surface_tags_as_plugin_directive_names() {
         );
     }
 }
+
+/// A plugin directive whose lone attr is named `attr_name` (instead of the
+/// default `x` used by [`plugin_with_directive`]).
+fn plugin_with_directive_attr(id: &str, dname: &str, attr_name: &str) -> LoadedPlugin {
+    let mut p = plugin_with_directive(id, dname);
+    p.directives[0].attrs[0].name = attr_name.into();
+    p
+}
+
+/// dsl §7.5/§10: `at`, `duration`, `delay`, `wait` are "cross-cutting reserved
+/// across all directives and profiles"; a plugin manifest declaring one as an
+/// attribute name is an assembly-time error. Each reserved key, used as a
+/// plugin directive's attr name, must be rejected as `ReservedName` and the
+/// offending directive must NOT be merged into the snapshot.
+#[test]
+fn assemble_rejects_reserved_timing_attr_names_on_plugin_directives() {
+    for reserved in ["at", "duration", "delay", "wait"] {
+        let reg = InstalledPlugins {
+            by_id: BTreeMap::from([(
+                "idola.minigame".to_string(),
+                InstalledPlugin {
+                    loaded: plugin_with_directive_attr("idola.minigame", "minigame", reserved),
+                },
+            )]),
+        };
+        let active = vec![
+            ActivePlugin {
+                id: "lute.core".into(),
+                options: BTreeMap::new(),
+            },
+            ActivePlugin {
+                id: "idola.minigame".into(),
+                options: BTreeMap::new(),
+            },
+        ];
+        let (snap, errs) = assemble_snapshot(&active, &reg);
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                lute_manifest::assemble::AssembleError::ReservedName { id, plugin }
+                    if id == reserved && plugin == "idola.minigame"
+            )),
+            "reserved timing attr `{reserved}` on a plugin directive must be ReservedName, got {errs:?}"
+        );
+        assert!(
+            snap.directive("minigame").is_none(),
+            "a plugin directive declaring reserved timing attr `{reserved}` must not be merged"
+        );
+    }
+}
+
+/// A plugin directive with an ordinary (non-reserved) attr name must assemble
+/// clean, and `lute.core`'s OWN timing-keyed attrs (`camera`'s
+/// `duration`/`delay`/`wait`, `video`'s `wait`) must survive assembly
+/// untouched — the reservation is scoped to plugin exports only, never core's
+/// own embedded declarations.
+#[test]
+fn assemble_leaves_core_timing_attrs_and_normal_plugin_attrs_untouched() {
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([(
+            "idola.minigame".to_string(),
+            InstalledPlugin {
+                loaded: plugin_with_directive("idola.minigame", "minigame"),
+            },
+        )]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.minigame".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(
+        snap.directive("minigame").is_some(),
+        "plugin directive with a normal (non-reserved) attr name must merge"
+    );
+    let camera = snap.directive("camera").expect("core `camera` directive");
+    for reserved in ["duration", "delay", "wait"] {
+        assert!(
+            camera.attrs.iter().any(|a| a.name == reserved),
+            "core `camera` must keep its own `{reserved}` attr"
+        );
+    }
+    let video = snap.directive("video").expect("core `video` directive");
+    assert!(
+        video.attrs.iter().any(|a| a.name == "wait"),
+        "core `video` must keep its own `wait` attr"
+    );
+}
