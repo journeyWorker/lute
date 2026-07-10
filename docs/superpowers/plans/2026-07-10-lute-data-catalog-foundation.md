@@ -13,7 +13,7 @@
 - **BREAKING** (pre-1.0 allowance, dsl 0.1.0 §2). Every syntactic break ships a `lute fix` codemod rule.
 - **Depends on 0.2.1** (`docs/superpowers/plans/2026-07-10-lute-0.2.1-editor-hygiene.md`) landing first: this plan EXTENDS 0.2.1's content-line attribute schema (adds domain refs), RESHAPES 0.2.1's `delivery="…"` enforcement into bare flags, and RETARGETS 0.2.1's modern `:speaker:` TextMate rule to `@speaker:`.
 - Design of record: `docs/superpowers/specs/2026-07-10-lute-data-catalog-foundation-design.md`.
-- **Version number: OPEN DECISION** (does not affect any task's code). Recommended sequencing (c): this foundation ships before/under the relational-facts `0.3.0`, which builds on it. Concrete number is either `0.2.2` (keep `0.3.0` = relational facts) or renumber relational facts to `0.4.0` and take `0.3.0` here — the user's call because it touches the existing `feat/lute-0.3.0` branch. Do NOT renumber that branch without confirmation.
+- **Version: `0.2.2`** (breaking, pre-1.0 allowance; does not affect any task's code). Sequencing (c): this foundation ships before/under the relational-facts `0.3.0`, which builds on it. Decision 2026-07-10 — `0.2.2` keeps `0.3.0` = relational facts; the `feat/lute-0.3.0` branch is NOT renumbered.
 - The fixed-core enums (`delivery` role members, staging `show|hide`, `musicAction`) stay in `lute.core` and are NOT author-extensible. Everything else is data vocabulary.
 - Run only each task's tests + that crate's suite; no whole-workspace runs or formatters per task.
 
