@@ -506,6 +506,7 @@ fn describe(ty: &Type) -> &'static str {
         Type::SlotId { .. } => "a slot id",
         Type::Enum(_) | Type::EnumFromOption(_) => "an enum value",
         Type::ProviderRef(_) => "a provider id",
+        Type::Domain(_) => "a domain id",
         Type::AssetKind(_) => "an asset id",
     }
 }

@@ -372,7 +372,7 @@ fn type_label(append_unset: bool, ty: &Type) -> (String, Option<Vec<String>>) {
         Type::Map { .. } => ("map".to_string(), None),
         // Id-flavored types are strings at the value level (§7 plugin types).
         Type::EnumFromOption(_) => ("enum".to_string(), None),
-        Type::ProviderRef(_) | Type::SlotId { .. } | Type::AssetKind(_) => {
+        Type::ProviderRef(_) | Type::Domain(_) | Type::SlotId { .. } | Type::AssetKind(_) => {
             ("string".to_string(), None)
         }
     }

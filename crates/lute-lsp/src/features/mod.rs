@@ -622,6 +622,7 @@ pub(crate) fn type_label(ty: &Type) -> String {
         Type::Map { key, value } => format!("map<{}, {}>", type_label(key), type_label(value)),
         Type::EnumFromOption(name) => format!("enum(option:{name})"),
         Type::ProviderRef(name) => format!("providerRef({name})"),
+        Type::Domain(name) => format!("domain({name})"),
         Type::SlotId { namespace } => format!("slotId({namespace})"),
         Type::AssetKind(k) => format!("assetKind({k})"),
     }
