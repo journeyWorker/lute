@@ -28,6 +28,7 @@ use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
+use lute_syntax::ast::Meta;
 
 use crate::meta::{parse_meta_kind, MetaKind, StateDecl, StateSchema};
 
@@ -415,6 +416,14 @@ fn resolve_edges(
 /// Read + parse one canonical import, reporting `E-USES-NOT-FOUND` on an I/O
 /// failure and `E-USES-PARSE` on any parse/frontmatter error. Returns the doc's
 /// declared state/defs plus its own `uses`/`extends` refs (for further traversal).
+///
+/// A `.yaml`/`.yml` target (data-catalog foundation B2) is a PURE declaration
+/// map: no `---` envelope, no body — the whole file IS the frontmatter. It is
+/// wrapped in a synthetic [`Meta`] spanning the whole file and fed through the
+/// SAME [`parse_meta_kind`] lift a `.lute`/`.schema.lute`/`.component.lute`
+/// target's REAL frontmatter uses, so state/defs/enums/entities merge
+/// identically; the Lute body parser (`lute_syntax::parse`) is skipped
+/// entirely — a bare YAML file has no shots/`<quest>`s to walk.
 fn read_and_parse(
     canon: &Path,
     diags: &mut Vec<Diagnostic>,
@@ -437,9 +446,42 @@ fn read_and_parse(
             return (empty, Vec::new(), Vec::new());
         }
     };
-    let (doc, pdiags) = lute_syntax::parse(&text);
-    let (tm, mdiags) = parse_meta_kind(&doc.meta, &CapabilitySnapshot::default(), MetaKind::Schema);
-    let issues = pdiags.len() + mdiags.len();
+    let is_yaml_decl = matches!(
+        canon.extension().and_then(|e| e.to_str()),
+        Some("yaml") | Some("yml")
+    );
+    let (tm, issues, quest_ids) = if is_yaml_decl {
+        let byte_end = text.len();
+        let meta = Meta {
+            raw_yaml: text,
+            span: Span {
+                byte_start: 0,
+                byte_end,
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            },
+        };
+        let (tm, mdiags) =
+            parse_meta_kind(&meta, &CapabilitySnapshot::default(), MetaKind::Schema);
+        (tm, mdiags.len(), BTreeSet::new())
+    } else {
+        let (doc, pdiags) = lute_syntax::parse(&text);
+        let (tm, mdiags) =
+            parse_meta_kind(&doc.meta, &CapabilitySnapshot::default(), MetaKind::Schema);
+        // `doc.quests` comes from the syntax-level parse above (kind-agnostic,
+        // Plan A) — independent of `MetaKind::Schema`'s frontmatter-only
+        // extraction, so a `<quest>` reachable through `uses`/`extends` is seen
+        // here even though this traversal never resolves the imported doc's
+        // OWN `kind:`. A `.yaml` target has no body, hence no quests (above).
+        let quest_ids: BTreeSet<String> = doc
+            .quests
+            .iter()
+            .map(|q| q.id.clone())
+            .filter(|id| !id.is_empty())
+            .collect();
+        (tm, pdiags.len() + mdiags.len(), quest_ids)
+    };
     if issues > 0 {
         diags.push(uses_diag(
             "E-USES-PARSE",
@@ -455,16 +497,6 @@ fn read_and_parse(
     let domains = tm.domains;
     let uses = tm.uses;
     let extends = tm.extends;
-    // `doc.quests` comes from the syntax-level parse above (kind-agnostic, Plan
-    // A) — independent of `MetaKind::Schema`'s frontmatter-only extraction, so
-    // a `<quest>` reachable through `uses`/`extends` is seen here even though
-    // this traversal never resolves the imported doc's OWN `kind:`.
-    let quest_ids: BTreeSet<String> = doc
-        .quests
-        .iter()
-        .map(|q| q.id.clone())
-        .filter(|id| !id.is_empty())
-        .collect();
     (
         ParsedDoc {
             state,

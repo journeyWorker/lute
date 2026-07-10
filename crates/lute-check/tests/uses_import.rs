@@ -159,6 +159,77 @@ fn resolves_single_import() {
     );
 }
 
+// --- Task B2 — `.yaml`/`.yml` targets resolve as pure declaration maps
+// (data-catalog foundation 0.3.0 draft): no `---` envelope, no body -- the
+// whole file IS the declaration, merged identically to `.schema.lute`.
+
+#[test]
+fn resolves_single_yaml_import() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "schema.yaml",
+        "state:\n  run.x: { type: bool, default: false }\ndefs:\n  greeting: hi\n",
+    );
+    let res = resolve_imports(&dir, &["schema.yaml".to_string()], &[], zero_span());
+    assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
+    assert!(
+        res.state.decls.contains_key("run.x"),
+        "run.x missing: {:?}",
+        res.state.decls.keys().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        res.defs.get("greeting").and_then(|v| v.as_str()),
+        Some("hi"),
+        "greeting def missing or wrong: {:?}",
+        res.defs
+    );
+}
+
+#[test]
+fn yaml_import_lifts_enums_and_entities_domains() {
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "schema.yml",
+        "enums:\n  action: [wave, bow]\nentities:\n  character: { members: [shadowheart, halsin] }\n",
+    );
+    let res = resolve_imports(&dir, &["schema.yml".to_string()], &[], zero_span());
+    assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
+    let action = res
+        .domains
+        .get("action")
+        .unwrap_or_else(|| panic!("action domain missing: {:?}", res.domains.keys().collect::<Vec<_>>()));
+    assert_eq!(action.members, vec!["wave".to_string(), "bow".to_string()]);
+    let character = res
+        .domains
+        .get("character")
+        .expect("character domain missing");
+    assert_eq!(
+        character.members,
+        vec!["shadowheart".to_string(), "halsin".to_string()]
+    );
+}
+
+#[test]
+fn schema_lute_import_still_resolves_alongside_yaml_support() {
+    // Regression guard: `.schema.lute` targets keep working unchanged (B2 is
+    // strictly additive) after the resolver learns `.yaml`/`.yml`.
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "schema.lute",
+        "---\nstate:\n  run.y: { type: bool, default: true }\n---\n",
+    );
+    let res = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
+    assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
+    assert!(
+        res.state.decls.contains_key("run.y"),
+        "run.y missing: {:?}",
+        res.state.decls.keys().collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn cycle_is_e_uses_cycle() {
     let dir = unique_dir();
