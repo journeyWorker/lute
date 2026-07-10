@@ -59,7 +59,7 @@ use lute_cel::{fill_document, parse_slot, scan_refs, CelArena};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::{SlotDecl, StateShape};
-use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::{type_accepts, Literal, PathSegment, Type};
 use lute_syntax::ast::{
     Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document,
@@ -77,7 +77,7 @@ use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
 use crate::directives::{at_context, check_directive};
 use crate::inject::{lower_node, InjectedCommand, StageState};
-use crate::schema_import::SchemaImports;
+use crate::schema_import::{merge_domains, SchemaImports};
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
@@ -483,10 +483,20 @@ pub fn check(input: &CheckInput) -> CheckResult {
         match_subject: None,
     };
 
+    // 4c. The FULL merged domain vocabulary a `{domain: X}`-typed attr
+    // resolves against (data-catalog foundation A4): `snapshot.domains`
+    // (A2 — core baseline + active-plugin `enums`) UNION project-authored
+    // domains lifted from this scene's schema imports (A3's
+    // `merge_domains`). Computed ONCE here and threaded by reference to
+    // every `check_directive` call site (the scene walk, timeline clips,
+    // and component bodies) below — never recomputed per-attr.
+    let (domains, domain_diags) = merge_domains(&input.snapshot, &input.imports, doc.meta.span);
+
     // 5. Per-node validator walk (directives / cel-slots / set / match / timeline).
     let mut walker = Walker {
         snapshot: &input.snapshot,
         providers: &input.providers,
+        domains: &domains,
         arena: &arena,
         diags: Vec::new(),
         timeline_tables: Vec::new(),
@@ -610,8 +620,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
         &input.components,
         &input.snapshot,
         &input.providers,
+        &domains,
         doc.meta.span,
     ));
+    diags.extend(domain_diags);
     diags.extend(state_merge_diags);
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
@@ -670,6 +682,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
 struct Walker<'a> {
     snapshot: &'a CapabilitySnapshot,
     providers: &'a ProviderSet,
+    /// The FULL merged domain vocabulary (data-catalog foundation A4):
+    /// `snapshot.domains` UNION project-authored schema-import domains
+    /// (A3's `merge_domains`), computed ONCE in `check()` and threaded here
+    /// so `Type::Domain(name)` attrs resolve without recomputing the union.
+    domains: &'a std::collections::BTreeMap<String, Domain>,
     arena: &'a CelArena,
     diags: Vec<Diagnostic>,
     timeline_tables: Vec<ResolvedTimeline>,
@@ -699,8 +716,13 @@ impl Walker<'_> {
                     self.check_attr_refs(&d.attrs, ctx, None);
                 }
                 Node::Directive(d) => {
-                    self.diags
-                        .extend(check_directive(d, self.snapshot, self.providers, ctx));
+                    self.diags.extend(check_directive(
+                        d,
+                        self.snapshot,
+                        self.providers,
+                        self.domains,
+                        ctx,
+                    ));
                     self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
                 }
                 Node::Set(s) => {
@@ -805,6 +827,7 @@ impl Walker<'_> {
                                         d,
                                         self.snapshot,
                                         self.providers,
+                                        self.domains,
                                         ctx,
                                     ));
                                     self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
@@ -1245,6 +1268,7 @@ fn validate_components(
     components: &ComponentSet,
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
+    domains: &std::collections::BTreeMap<String, Domain>,
     at: Span,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
@@ -1277,6 +1301,7 @@ fn validate_components(
                 &shot.body,
                 snapshot,
                 providers,
+                domains,
                 &arena,
                 &ctx,
                 components,
@@ -1319,10 +1344,12 @@ fn component_env(params: &[(String, Type)]) -> Env {
 /// (incl. nested `::use`) are presentational and validated; a `::set` (state
 /// write), `<branch>`/`<match>` (logic block), or `<timeline>` is the v1
 /// presentational-scope error `E-COMPONENT-BODY`.
+#[allow(clippy::too_many_arguments)]
 fn walk_component_body(
     nodes: &[Node],
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
+    domains: &std::collections::BTreeMap<String, Domain>,
     arena: &CelArena,
     ctx: &Ctx<'_>,
     components: &ComponentSet,
@@ -1343,7 +1370,7 @@ fn walk_component_body(
                 body_attr_refs(&d.attrs, snapshot, arena, ctx, None, diags);
             }
             Node::Directive(d) => {
-                diags.extend(check_directive(d, snapshot, providers, ctx));
+                diags.extend(check_directive(d, snapshot, providers, domains, ctx));
                 body_attr_refs(&d.attrs, snapshot, arena, ctx, Some(&d.tag), diags);
             }
             Node::Set(s) => diags.push(use_diag(

@@ -20,11 +20,13 @@
 //!   plugins; if no plugin resolves that option to a string list we skip the
 //!   membership check rather than emit a false `E-BAD-ENUM`.
 
+use std::collections::BTreeMap;
+
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::asset::{self, AssetIssue, DecomposeError};
 use lute_manifest::provider::{IdStatus, ProviderSet};
 use lute_manifest::schema::AttrDecl;
-use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::{type_accepts, Literal, Type};
 use lute_syntax::ast::{Attr, AttrValue, Directive};
 
@@ -61,12 +63,19 @@ pub fn at_context(dir: &Directive) -> Option<Diagnostic> {
 /// (dsl §7.2, plugin §8). Returns every diagnostic the directive produces; an
 /// empty vec means the directive and all its attributes are well-formed.
 ///
+/// `domains` is the FULL merged domain vocabulary (data-catalog foundation
+/// A4) — `snapshot.domains` (A2 baseline) UNION project-authored domains from
+/// schema imports (A3's `schema_import::merge_domains`) — computed ONCE by
+/// the caller and threaded by reference so `Type::Domain(name)` attrs resolve
+/// without recomputing the union per attribute.
+///
 /// `_ctx` is threaded for parity with the other `check_*` entrypoints and for
 /// the match-scope hooks later tasks consume; T4.2 does not branch on it.
 pub fn check_directive(
     dir: &Directive,
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
+    domains: &BTreeMap<String, Domain>,
     _ctx: &Ctx<'_>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -125,7 +134,9 @@ pub fn check_directive(
             // directive that DOES declare one of these (core camera/video)
             // never reaches this branch -- the `find` above already matched.
             if let Some(universal) = universal_timing_decl(&attr.key) {
-                check_attr_value(&dir.tag, &universal, attr, snapshot, providers, &mut diags);
+                check_attr_value(
+                    &dir.tag, &universal, attr, snapshot, providers, domains, &mut diags,
+                );
                 continue;
             }
             diags.push(diag(
@@ -136,7 +147,7 @@ pub fn check_directive(
             ));
             continue;
         };
-        check_attr_value(&dir.tag, adecl, attr, snapshot, providers, &mut diags);
+        check_attr_value(&dir.tag, adecl, attr, snapshot, providers, domains, &mut diags);
     }
 
     // Missing required attributes (dsl §7.2).
@@ -186,6 +197,7 @@ fn check_attr_value(
     attr: &Attr,
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
+    domains: &BTreeMap<String, Domain>,
     diags: &mut Vec<Diagnostic>,
 ) {
     // CEL-valued attributes are resolved in T4.3, not here.
@@ -206,6 +218,9 @@ fn check_attr_value(
         }
         Type::ProviderRef(provider) => {
             check_provider_ref(provider, attr, providers, diags);
+        }
+        Type::Domain(name) => {
+            check_domain_member(tag, name, attr, domains, snapshot, providers, diags);
         }
         Type::AssetKind(kind) => check_asset_id(kind, attr, snapshot, providers, diags),
         ty => {
@@ -307,6 +322,76 @@ fn check_provider_ref(
             attr.value_span,
         )),
     }
+}
+
+/// Resolve a `{domain: name}`-typed attr value against the FULL merged
+/// domain vocabulary (data-catalog foundation A4): `domains` is
+/// `snapshot.domains` (A2 — core baseline + active-plugin `enums`) UNION
+/// project-authored domains lifted from schema imports (A3's
+/// `schema_import::merge_domains`), computed once by the caller.
+///
+/// Resolution order (mirrors the brief's design notes, structurally a string
+/// per `types::type_accepts` — a bare-ident `true` is a hard `E-ATTR-TYPE`
+/// before any of this runs):
+/// 1. `name` names BOTH a domain AND a declared provider (`snapshot.
+///    providers`) — provider-backed: reuse [`check_provider_ref`] (id
+///    membership, not the domain's static `members`).
+/// 2. `name` resolves to a CLOSED domain (`Domain.open == false`) — reuse
+///    [`check_enum_member`] verbatim (the SAME membership check
+///    `Type::Enum` uses); a non-member is `E-BAD-ENUM`.
+/// 3. `name` resolves to an OPEN domain (`Domain{open:true}`, A3: ids minted
+///    by the engine at runtime, not enumerable at compile time) — accept any
+///    string; NEVER closed-checked.
+/// 4. `name` is absent from `domains` but IS a declared provider — the
+///    `domain`-typed attr doubles as a provider reference: reuse
+///    [`check_provider_ref`].
+/// 5. else — `name` is not a known domain at all: `E-DOMAIN-UNKNOWN`.
+fn check_domain_member(
+    tag: &str,
+    name: &str,
+    attr: &Attr,
+    domains: &BTreeMap<String, Domain>,
+    snapshot: &CapabilitySnapshot,
+    providers: &ProviderSet,
+    diags: &mut Vec<Diagnostic>,
+) {
+    // Structural: a domain-typed value is always a string (types.rs
+    // `type_accepts`); a bare-ident `true` cannot name a domain member/id.
+    if matches!(attr.value, AttrValue::BoolTrue) {
+        diags.push(diag(
+            "E-ATTR-TYPE",
+            Severity::Error,
+            format!("attribute `{}` expects a `{name}` domain id string", attr.key),
+            attr.value_span,
+        ));
+        return;
+    }
+    let is_provider = snapshot.providers.contains_key(name);
+    if let Some(dom) = domains.get(name) {
+        if is_provider {
+            check_provider_ref(name, attr, providers, diags);
+        } else if !dom.open {
+            check_enum_member(tag, &attr.key, &dom.members, attr, diags);
+        }
+        // else: open, non-provider domain — registry-style ids minted by the
+        // engine at runtime (A3); always-accept, never closed-checked.
+        return;
+    }
+    if is_provider {
+        check_provider_ref(name, attr, providers, diags);
+        return;
+    }
+    diags.push(diag(
+        "E-DOMAIN-UNKNOWN",
+        Severity::Error,
+        format!(
+            "`{name}` is not a known domain — declared by neither the plugin/core \
+             vocabulary nor a project schema (dsl data-catalog foundation, `::{tag}` \
+             attribute `{}`)",
+            attr.key
+        ),
+        attr.value_span,
+    ));
 }
 
 /// Validate an authored `assetId` against its declared `assetKind` (plugin §6.9,
@@ -611,6 +696,10 @@ mod tests {
         ProviderSet::default()
     }
 
+    fn empty_domains() -> BTreeMap<String, Domain> {
+        BTreeMap::new()
+    }
+
     fn ctx() -> Ctx<'static> {
         static ENV: LazyLock<Env> = LazyLock::new(Env::default);
         Ctx {
@@ -623,7 +712,7 @@ mod tests {
     #[test]
     fn unknown_directive_errors_with_layer_staging() {
         let d = directive("teleport", &[]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(errs
             .iter()
             .any(|e| e.code == "E-UNKNOWN-DIRECTIVE" && e.layer == lute_core_span::Layer::Staging));
@@ -632,14 +721,14 @@ mod tests {
     #[test]
     fn bad_enum_value_errors() {
         let d = directive("music", &[("action", "explode")]); // not in musicAction enum
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(errs.iter().any(|e| e.code == "E-BAD-ENUM"));
     }
 
     #[test]
     fn known_directive_valid_attrs_pass() {
         let d = directive("music", &[("action", "start"), ("mood", "peaceful")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -648,7 +737,7 @@ mod tests {
         // Numeric camera attrs are declared `number`; a non-numeric literal is a
         // check-time type error (closes the coercion seam — Plan C review).
         let d = directive("camera", &[("zoom", "hard")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
             "expected E-ATTR-TYPE for non-numeric zoom, got {errs:?}"
@@ -660,7 +749,7 @@ mod tests {
         // `::camera{shake="hard"}` must be rejected at check, not silently dropped
         // by the compiler's get_f64 coercion (Plan C review).
         let d = directive("camera", &[("shake", "hard")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
             "expected E-ATTR-TYPE for non-numeric shake, got {errs:?}"
@@ -674,7 +763,7 @@ mod tests {
             "camera",
             &[("zoom", "1.1"), ("move-x", "0.2"), ("move-y", "0.3"), ("shake", "0.4")],
         );
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -703,7 +792,7 @@ mod tests {
             ],
             span: span(),
         };
-        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -712,7 +801,7 @@ mod tests {
         // `music` (core) declares no timing attrs at all -- the fallback must
         // apply to core directives just as much as plugin ones.
         let d = directive("music", &[("action", "start"), ("delay", "1.0")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -721,7 +810,7 @@ mod tests {
         // `::p{duration="soon"}` -- the fallback type-checks; it is not a
         // blanket accept.
         let d = directive("p", &[("duration", "soon")]);
-        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
             "expected E-ATTR-TYPE for non-numeric duration, got {errs:?}"
@@ -737,7 +826,7 @@ mod tests {
         // `::p{wait="maybe"}` -- not `true`/`false`, so the bool type
         // diagnostic fires just like a declared `wait` attr would.
         let d = directive("p", &[("wait", "maybe")]);
-        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
             "expected E-ATTR-TYPE for non-bool wait, got {errs:?}"
@@ -762,7 +851,7 @@ mod tests {
                 span(),
             )),
         );
-        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -771,7 +860,7 @@ mod tests {
         // Regression guard: `at` stays context-gated, never folded into the
         // universal-timing fallback.
         let d = directive("music", &[("at", "1.0")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-AT-CONTEXT"),
             "expected E-AT-CONTEXT, got {errs:?}"
@@ -788,7 +877,7 @@ mod tests {
         // duration/delay/wait -- any other undeclared key is still
         // E-UNKNOWN-ATTR.
         let d = directive("p", &[("bogus", "1")]);
-        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-UNKNOWN-ATTR"),
             "expected E-UNKNOWN-ATTR for `bogus`, got {errs:?}"
@@ -801,7 +890,7 @@ mod tests {
         // (staging.yaml) -- the declared path must keep taking precedence
         // over the fallback and stay clean.
         let d = directive("camera", &[("duration", "0.5"), ("wait", "false")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
 }

@@ -1,17 +1,25 @@
-//! Task A3 — project-authored `enums:`/`entities:` declarations feed the
+//! Task A3/A4 — project-authored `enums:`/`entities:` declarations feed the
 //! merged domain vocabulary (dsl data-catalog foundation, 0.3.0 draft §3.1).
 //! A schema doc's `enums:`/`entities:` lift into `SchemaImports.domains`
 //! exactly like `state:`/`defs:` (`resolve_imports`); `merge_domains` unions
 //! that with the plugin/core baseline (`CapabilitySnapshot.domains`, A2),
-//! reusing `E-DOMAIN-DUP` (A2) on a cross-source name collision. Value-level
-//! membership validation (an attr typed `{domain: action}` accepting/
-//! rejecting a value) is A4 — out of scope here.
+//! reusing `E-DOMAIN-DUP` (A2) on a cross-source name collision (A3 tests
+//! above this line). Value-level membership validation — a `{domain: X}`-
+//! typed attr accepting/rejecting a value against the SAME merged view
+//! (`check_attr_value`'s `Type::Domain` arm) — is A4 (tests below).
+use lute_check::directives::check_directive;
 use lute_check::resolve_imports;
 use lute_check::schema_import::merge_domains;
+use lute_check::ctx::{Ctx, Env};
 use lute_check::{check, CheckInput, Mode};
 use lute_core_span::Span;
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
+use lute_manifest::schema::{AttrDecl, DirectiveDecl, Lowering};
+use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
+use lute_manifest::types::Type;
+use lute_syntax::ast::{Attr, AttrValue, Directive};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -188,4 +196,143 @@ fn scene_uses_enum_schema_checks_clean_and_domain_is_merged() {
         merged.get("action").map(|d| d.members.clone()),
         Some(vec!["wave".to_string(), "bow".to_string()])
     );
+}
+
+// --- Task A4: `{domain: X}`-typed attr values validate against the SAME
+// merged vocabulary A3 built above -- proving `merge_domains` is wired into
+// the LIVE `check_directive`/`check_attr_value` path, not dead code. ---
+
+fn ctx() -> Ctx<'static> {
+    static ENV: std::sync::LazyLock<Env> = std::sync::LazyLock::new(Env::default);
+    Ctx {
+        env: &ENV,
+        in_match: false,
+        match_subject: None,
+    }
+}
+
+/// Register a synthetic directive `probe` (one attr `x`, typed by the YAML
+/// `type_yaml`, e.g. `"{ domain: mood }"`) on a CLONE of `snapshot`, invoke it
+/// with `x="<value>"` through the REAL `check_directive` entrypoint, and
+/// return the produced diagnostic codes. `domains` is threaded exactly as
+/// `check()`'s real pipeline threads it (`Walker`/`validate_components`), so
+/// this exercises the SAME `Type::Domain` resolution arm the live checker
+/// runs, not a reimplementation.
+fn codes_with_domain_attr_against(
+    type_yaml: &str,
+    value: &str,
+    snapshot: &CapabilitySnapshot,
+    domains: &BTreeMap<String, Domain>,
+) -> Vec<String> {
+    let ty: Type = serde_yaml::from_str(type_yaml)
+        .unwrap_or_else(|e| panic!("bad type yaml `{type_yaml}`: {e}"));
+    let mut snap = snapshot.clone();
+    snap.directives.insert(
+        "probe".to_string(),
+        DirectiveDecl {
+            name: "probe".to_string(),
+            layer: None,
+            attrs: vec![AttrDecl {
+                name: "x".to_string(),
+                required: false,
+                ty,
+                default: None,
+            }],
+            semantics: Vec::new(),
+            state: None,
+            effects: None,
+            bridge: None,
+            lower: Lowering::Builtin {
+                kind: "builtin".to_string(),
+                name: "noop".to_string(),
+            },
+        },
+    );
+    let dir = Directive {
+        tag: "probe".to_string(),
+        attrs: vec![Attr {
+            key: "x".to_string(),
+            value: AttrValue::Str(value.to_string()),
+            value_span: zero_span(),
+            span: zero_span(),
+        }],
+        span: zero_span(),
+    };
+    check_directive(&dir, &snap, &ProviderSet::default(), domains, &ctx())
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
+}
+
+/// Convenience for the core-baseline-only cases: no project schema is in
+/// play, so the merged view IS `snapshot.domains` directly (A2's baseline).
+fn codes_with_domain_attr(type_yaml: &str, value: &str) -> Vec<String> {
+    let snapshot = load_core_snapshot();
+    let domains = snapshot.domains.clone();
+    codes_with_domain_attr_against(type_yaml, value, &snapshot, &domains)
+}
+
+#[test]
+fn unknown_domain_ref_errors() {
+    // an attr typed { domain: nope } -> E-DOMAIN-UNKNOWN
+    assert!(codes_with_domain_attr("{ domain: nope }", "x").contains(&"E-DOMAIN-UNKNOWN".into()));
+}
+
+#[test]
+fn domain_member_ok_nonmember_errors() {
+    // { domain: mood } — mood is a lute.core baseline enum-style domain
+    assert!(!codes_with_domain_attr("{ domain: mood }", "peaceful")
+        .iter()
+        .any(|c| c == "E-BAD-ENUM"));
+    assert!(codes_with_domain_attr("{ domain: mood }", "zzz").contains(&"E-BAD-ENUM".into()));
+}
+
+#[test]
+fn project_declared_domain_validates() {
+    // A schema doc declares enums: { action: [wave, bow] }; imported, then an
+    // attr { domain: action } accepts "wave" and errors "zzz" -- proving the
+    // PROJECT domain (lifted by A3's `merge_domains`, absent from core) is
+    // what `check_attr_value`'s `Type::Domain` arm actually resolved against.
+    let dir = unique_dir();
+    write_lute(&dir, "schema.lute", "---\nenums:\n  action: [wave, bow]\n---\n");
+    let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
+    assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
+    let snapshot = load_core_snapshot();
+    // Core ships no "action" domain: it can ONLY resolve via the project fold.
+    assert!(!snapshot.domains.contains_key("action"));
+    let (merged, diags) = merge_domains(&snapshot, &imports, zero_span());
+    assert!(diags.is_empty(), "unexpected merge diags: {diags:?}");
+    assert!(
+        !codes_with_domain_attr_against("{ domain: action }", "wave", &snapshot, &merged)
+            .iter()
+            .any(|c| c == "E-BAD-ENUM" || c == "E-DOMAIN-UNKNOWN"),
+        "`wave` is a declared `action` member; must not error"
+    );
+    assert!(
+        codes_with_domain_attr_against("{ domain: action }", "zzz", &snapshot, &merged)
+            .contains(&"E-BAD-ENUM".to_string()),
+        "`zzz` is not a declared `action` member"
+    );
+}
+
+/// Constraint (data-catalog foundation design): an OPEN-style domain
+/// (`entities: { <kind>: { open: engine } }`, A3) is NEVER closed-checked --
+/// any string is accepted, unlike a closed `enums:`/`entities.members` domain.
+#[test]
+fn open_domain_accepts_any_string() {
+    let dir = unique_dir();
+    write_lute(&dir, "schema.lute", "---\nentities:\n  npc: { open: engine }\n---\n");
+    let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
+    assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
+    let snapshot = load_core_snapshot();
+    let (merged, diags) = merge_domains(&snapshot, &imports, zero_span());
+    assert!(diags.is_empty());
+    assert!(merged["npc"].open);
+    let codes = codes_with_domain_attr_against(
+        "{ domain: npc }",
+        "any-runtime-minted-id",
+        &snapshot,
+        &merged,
+    );
+    assert!(codes.is_empty(), "open domain must always-accept, got {codes:?}");
 }
