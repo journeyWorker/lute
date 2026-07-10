@@ -138,6 +138,13 @@ pub(crate) enum Cursor<'a> {
     /// capability-schema one, so completion/hover key off `construct`
     /// instead of a directive name.
     ConstructAttrArea { construct: QuestConstruct },
+    /// On the `:speaker` name itself (dsl §7.1), between the leading `:` and
+    /// the attrs `{`/the second `:` — NOT a capability-schema position (a
+    /// content line's speaker has no directive), so it carries no data.
+    /// Drives speaker-id completion (character/cast catalog ids + the
+    /// `narrator` keyword); speaker-id VALIDATION stays out of scope for
+    /// 0.2.1 (deferred to the 0.2.2 foundation minor).
+    Speaker,
 }
 
 /// Which 0.2.0 quest-kind construct (dsl 0.2.0 §4/§6.3/§6.4) a
@@ -401,6 +408,16 @@ fn resolve_line(l: &Line, off: usize) -> Option<Cursor<'_>> {
     // The `:speaker{attrs}` head resolves first (attrs never overlap the text).
     if let Some(c) = resolve_attrs(&l.attrs, None, off) {
         return Some(c);
+    }
+    // The speaker NAME itself (dsl §7.1): `Line` carries no dedicated span for
+    // it (only `span`/`text_span`), so it's derived the same way
+    // `lute_check::tag::tag_scope` computes `speaker_end` — the ident runs
+    // from just past the leading `:` for exactly `speaker.len()` bytes (an
+    // ident holds no comments/whitespace, so no raw-text rescan is needed).
+    let speaker_start = l.span.byte_start + 1;
+    let speaker_end = speaker_start + l.speaker.len();
+    if speaker_start <= off && off <= speaker_end {
+        return Some(Cursor::Speaker);
     }
     // A `{{…}}` interpolation inside the content text (dsl §7.6).
     l.interps
