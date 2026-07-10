@@ -6,7 +6,7 @@ expression: json
   "kind": "scene",
   "lute": "0.2.0",
   "irVersion": "0.2.0",
-  "capabilityVersion": "56bc9947f549b6b0461e8eb2485f1aa09c79a5e655bb242827d2e1d2ce15a850",
+  "capabilityVersion": "e5556c4916bd49b7ce220ec25d80b42d4b313d8949e937ba2e97eabb605d79a9",
   "meta": {
     "character": "bianca",
     "season": 1,
@@ -274,7 +274,8 @@ expression: json
         "kind": "rhythm",
         "performer": "bianca_star",
         "poster": "PT.bianca_star.0",
-        "resultKey": "debut"
+        "resultKey": "debut",
+        "sync": true
       },
       "effects": [
         {
@@ -302,8 +303,7 @@ expression: json
             "by": 1
           }
         }
-      ],
-      "wait": true
+      ]
     },
     {
       "kind": "match",

@@ -85,9 +85,9 @@ defs:
   Plugin bridge directive (::serve). ONE directive whose attrs use BOTH a
   `providerRef` id (`performer` -> castId catalog) AND an `assetKind` id
   (`poster` -> decomposed PT.<actor>.<variant>). `resultKey` opens a typed
-  scene.serve.debut.* slot; wait="true" makes the bridge write dominate the read.
+  scene.serve.debut.* slot; sync="true" makes the bridge write dominate the read.
 */
-::serve{kind="rhythm" performer="bianca_star" poster="PT.bianca_star.0" resultKey="debut" wait="true"}
+::serve{kind="rhythm" performer="bianca_star" poster="PT.bianca_star.0" resultKey="debut" sync="true"}
 
 /*
   Story logic reads only the declared slot state the bridge wrote (§11.2). rank

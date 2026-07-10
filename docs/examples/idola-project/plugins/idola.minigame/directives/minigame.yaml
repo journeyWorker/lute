@@ -1,3 +1,6 @@
+# `sync` (bool) is plugin-owned blocking semantics — NOT the dsl §7.5 staging
+# `wait` timing key, which is cross-cutting reserved (§10) and MUST NOT be
+# declared as a plugin attribute name.
 directives:
   - name: minigame
     layer: bridge
@@ -5,7 +8,7 @@ directives:
       - { name: kind,      required: true, type: { enumFromOption: allowedKinds } }
       - { name: id,        required: true, type: { providerRef: minigameId } }
       - { name: resultKey, required: true, type: { slotId: { namespace: scene.minigame } } }
-      - { name: wait,      type: bool, default: true }
+      - { name: sync,      type: bool, default: true }
     semantics: [ "writes.sceneState", "bridgeCall" ]
     state:
       declares:

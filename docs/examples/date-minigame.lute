@@ -39,10 +39,10 @@ state:
 /*
   The `::minigame` directive is provided by the idola.minigame plugin, activated by the
   date-minigame profile. `kind` is gated by the profile's allowedKinds; `resultKey` opens a
-  typed slot scene.minigame.service01.* (shape minigameResult). wait="true" holds the script
+  typed slot scene.minigame.service01.* (shape minigameResult). sync="true" holds the script
   until the game finishes, so the write dominates the read below.
 */
-::minigame{kind="rhythm" id="bianca_service_01" resultKey="service01" wait="true"}
+::minigame{kind="rhythm" id="bianca_service_01" resultKey="service01" sync="true"}
 
 ## Shot 2.
 
