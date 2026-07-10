@@ -15,7 +15,7 @@ use lute_check::{check, CheckInput, Mode};
 use lute_core_span::Span;
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
-use lute_manifest::schema::{AttrDecl, DirectiveDecl, Lowering};
+use lute_manifest::schema::{AttrDecl, DirectiveDecl, Lowering, ProviderDecl};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::Type;
 use lute_syntax::ast::{Attr, AttrValue, Directive};
@@ -335,4 +335,75 @@ fn open_domain_accepts_any_string() {
         &merged,
     );
     assert!(codes.is_empty(), "open domain must always-accept, got {codes:?}");
+}
+
+/// Regression (foundation A4 order): a CLOSED domain whose name ALSO matches
+/// a declared provider (`snapshot.providers`) must resolve by the domain's
+/// static `members` -- NOT the provider path. The A4 draft order let ANY
+/// same-named provider win over even a closed domain; A5 reuses this
+/// resolver for content-line `emotion`/`action`, so a real provider/domain
+/// name collision would silently skip enum-membership checking.
+///
+/// No shipped core domain/provider pair collides today, so this constructs
+/// the minimal artificial collision by hand: a project-declared closed
+/// `enums: { action: [wave, bow] }` domain (A3 lift), plus a synthetic
+/// `action` `ProviderDecl` inserted directly into a `snapshot.providers`
+/// clone (there is no schema-level `providers:` import key to drive this
+/// through `uses:`, so this mirrors how `codes_with_domain_attr_against`
+/// already clones its `snapshot` arg to register a synthetic directive).
+///
+/// With the test's empty `ProviderSet` (`codes_with_domain_attr_against`
+/// always passes `ProviderSet::default()`), the provider path resolves ANY
+/// id to `E-UNKNOWN-ID` (`IdStatus::Absent`); the closed-domain path
+/// resolves `zzz` to `E-BAD-ENUM` and `wave` clean. The two paths are
+/// cleanly distinguishable, so this proves which one actually ran.
+#[test]
+fn closed_domain_membership_wins_over_same_named_provider() {
+    let dir = unique_dir();
+    write_lute(&dir, "schema.lute", "---\nenums:\n  action: [wave, bow]\n---\n");
+    let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
+    assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
+    let mut snapshot = load_core_snapshot();
+    // Core ships no "action" domain or provider: both are exclusively this
+    // test's synthetic setup, so nothing outside this test can collide.
+    assert!(!snapshot.domains.contains_key("action"));
+    assert!(!snapshot.providers.contains_key("action"));
+    snapshot.providers.insert(
+        "action".to_string(),
+        ProviderDecl {
+            name: "action".to_string(),
+            id_shape: None,
+            snapshot: "test".to_string(),
+        },
+    );
+    let (merged, diags) = merge_domains(&snapshot, &imports, zero_span());
+    assert!(diags.is_empty(), "unexpected merge diags: {diags:?}");
+    assert_eq!(merged["action"].members, vec!["wave".to_string(), "bow".to_string()]);
+    assert!(!merged["action"].open, "`enums:` lifts as a CLOSED domain");
+
+    // A declared `action` MEMBER validates clean. Pre-fix (provider-first)
+    // this ALSO fails: the provider path (empty `ProviderSet`) resolves
+    // every id, including a real member, to `E-UNKNOWN-ID`.
+    let ok_codes =
+        codes_with_domain_attr_against("{ domain: action }", "wave", &snapshot, &merged);
+    assert!(
+        !ok_codes
+            .iter()
+            .any(|c| c == "E-BAD-ENUM" || c == "E-UNKNOWN-ID" || c == "E-DOMAIN-UNKNOWN"),
+        "`wave` is a declared `action` member; must not error, got {ok_codes:?}"
+    );
+
+    // The discriminating case: a NON-member value. Provider-first order
+    // (pre-fix) resolves it to `E-UNKNOWN-ID`, never `E-BAD-ENUM` --
+    // this assertion FAILS under the current (A4) provider-first order.
+    let bad_codes =
+        codes_with_domain_attr_against("{ domain: action }", "zzz", &snapshot, &merged);
+    assert!(
+        bad_codes.contains(&"E-BAD-ENUM".to_string()),
+        "closed-domain membership must win over the same-named provider; got {bad_codes:?}"
+    );
+    assert!(
+        !bad_codes.iter().any(|c| c == "E-UNKNOWN-ID"),
+        "provider path must NOT run for a name that resolves to a closed domain; got {bad_codes:?}"
+    );
 }

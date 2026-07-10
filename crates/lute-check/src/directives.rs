@@ -330,22 +330,20 @@ fn check_provider_ref(
 /// project-authored domains lifted from schema imports (A3's
 /// `schema_import::merge_domains`), computed once by the caller.
 ///
-/// Resolution order (mirrors the brief's design notes, structurally a string
-/// per `types::type_accepts` — a bare-ident `true` is a hard `E-ATTR-TYPE`
-/// before any of this runs):
-/// 1. `name` names BOTH a domain AND a declared provider (`snapshot.
-///    providers`) — provider-backed: reuse [`check_provider_ref`] (id
-///    membership, not the domain's static `members`).
-/// 2. `name` resolves to a CLOSED domain (`Domain.open == false`) — reuse
-///    [`check_enum_member`] verbatim (the SAME membership check
-///    `Type::Enum` uses); a non-member is `E-BAD-ENUM`.
-/// 3. `name` resolves to an OPEN domain (`Domain{open:true}`, A3: ids minted
-///    by the engine at runtime, not enumerable at compile time) — accept any
-///    string; NEVER closed-checked.
-/// 4. `name` is absent from `domains` but IS a declared provider — the
-///    `domain`-typed attr doubles as a provider reference: reuse
-///    [`check_provider_ref`].
-/// 5. else — `name` is not a known domain at all: `E-DOMAIN-UNKNOWN`.
+/// Resolution order (structurally a string per `types::type_accepts` — a
+/// bare-ident `true` is a hard `E-ATTR-TYPE` before any of this runs):
+/// 1. `name` resolves to a CLOSED domain (`Domain.open == false`) — that
+///    domain's own membership is AUTHORITATIVE, even over a same-named
+///    declared provider: reuse [`check_enum_member`] verbatim (the SAME
+///    membership check `Type::Enum` uses); a non-member is `E-BAD-ENUM`.
+/// 2. `name` is a declared provider (`snapshot.providers`) — provider-backed:
+///    reuse [`check_provider_ref`] (id membership, not static members). This
+///    covers OPEN/registry-backed entity names (A3: ids minted by the engine
+///    at runtime) AND any name absent from `domains` entirely that doubles
+///    as a provider reference.
+/// 3. `name` resolves to an OPEN domain (`Domain{open:true}`) that is NOT a
+///    provider — accept any string; NEVER closed-checked.
+/// 4. else — `name` is not a known domain at all: `E-DOMAIN-UNKNOWN`.
 fn check_domain_member(
     tag: &str,
     name: &str,
@@ -366,32 +364,33 @@ fn check_domain_member(
         ));
         return;
     }
-    let is_provider = snapshot.providers.contains_key(name);
-    if let Some(dom) = domains.get(name) {
-        if is_provider {
-            check_provider_ref(name, attr, providers, diags);
-        } else if !dom.open {
-            check_enum_member(tag, &attr.key, &dom.members, attr, diags);
-        }
-        // else: open, non-provider domain — registry-style ids minted by the
-        // engine at runtime (A3); always-accept, never closed-checked.
-        return;
-    }
-    if is_provider {
+    let dom = domains.get(name);
+    if let Some(dom) = dom.filter(|d| !d.open) {
+        // Step 1: a CLOSED domain's own membership wins — even over a
+        // same-named provider (foundation A4 order; A5 reuses this resolver
+        // for content-line `emotion`/`action`).
+        check_enum_member(tag, &attr.key, &dom.members, attr, diags);
+    } else if snapshot.providers.contains_key(name) {
+        // Step 2: provider-backed (OPEN/registry-backed entity names, or a
+        // name outside `domains` entirely that is a provider reference).
         check_provider_ref(name, attr, providers, diags);
-        return;
+    } else if dom.is_some() {
+        // Step 3: OPEN, non-provider domain — registry-style ids minted by
+        // the engine at runtime (A3); always-accept, never closed-checked.
+    } else {
+        // Step 4: not a known domain at all.
+        diags.push(diag(
+            "E-DOMAIN-UNKNOWN",
+            Severity::Error,
+            format!(
+                "`{name}` is not a known domain — declared by neither the plugin/core \
+                 vocabulary nor a project schema (dsl data-catalog foundation, `::{tag}` \
+                 attribute `{}`)",
+                attr.key
+            ),
+            attr.value_span,
+        ));
     }
-    diags.push(diag(
-        "E-DOMAIN-UNKNOWN",
-        Severity::Error,
-        format!(
-            "`{name}` is not a known domain — declared by neither the plugin/core \
-             vocabulary nor a project schema (dsl data-catalog foundation, `::{tag}` \
-             attribute `{}`)",
-            attr.key
-        ),
-        attr.value_span,
-    ));
 }
 
 /// Validate an authored `assetId` against its declared `assetKind` (plugin §6.9,
