@@ -344,7 +344,13 @@ fn check_provider_ref(
 /// 3. `name` resolves to an OPEN domain (`Domain{open:true}`) that is NOT a
 ///    provider — accept any string; NEVER closed-checked.
 /// 4. else — `name` is not a known domain at all: `E-DOMAIN-UNKNOWN`.
-fn check_domain_member(
+///
+/// `pub(crate)`: content-line `emotion`/`action` (data-catalog foundation A5,
+/// `crate::content_line::check_content_line_attrs`) call this DIRECTLY so
+/// their domain-typed values resolve through the exact SAME resolver a
+/// `{domain: X}`-typed directive attr uses, rather than a bespoke second
+/// membership check.
+pub(crate) fn check_domain_member(
     tag: &str,
     name: &str,
     attr: &Attr,
@@ -699,6 +705,15 @@ mod tests {
         BTreeMap::new()
     }
 
+    /// The A2 baseline `domains` view (`snapshot.domains`, no project schema
+    /// imports) — for tests that exercise a core `{domain: X}`-typed staging
+    /// attr (`music.action`/`volume`, `auto.anchor`, `vfx.type` — A5 dedupe).
+    /// `empty_domains()` above stays correct for every OTHER test here, none
+    /// of which touch a domain-typed attr.
+    fn core_domains() -> BTreeMap<String, Domain> {
+        load_core_snapshot().domains
+    }
+
     fn ctx() -> Ctx<'static> {
         static ENV: LazyLock<Env> = LazyLock::new(Env::default);
         Ctx {
@@ -720,14 +735,14 @@ mod tests {
     #[test]
     fn bad_enum_value_errors() {
         let d = directive("music", &[("action", "explode")]); // not in musicAction enum
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &core_domains(), &ctx());
         assert!(errs.iter().any(|e| e.code == "E-BAD-ENUM"));
     }
 
     #[test]
     fn known_directive_valid_attrs_pass() {
         let d = directive("music", &[("action", "start"), ("mood", "peaceful")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &core_domains(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -800,7 +815,7 @@ mod tests {
         // `music` (core) declares no timing attrs at all -- the fallback must
         // apply to core directives just as much as plugin ones.
         let d = directive("music", &[("action", "start"), ("delay", "1.0")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &core_domains(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
 

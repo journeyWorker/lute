@@ -702,7 +702,13 @@ impl Walker<'_> {
             match node {
                 Node::Line(l) => {
                     self.check_attr_refs(&l.attrs, ctx, None);
-                    crate::content_line::check_content_line_attrs(l, &mut self.diags);
+                    crate::content_line::check_content_line_attrs(
+                        l,
+                        self.snapshot,
+                        self.providers,
+                        self.domains,
+                        &mut self.diags,
+                    );
                     check_interps(&l.interps, ctx, &mut self.diags);
                 }
                 Node::Directive(d) if d.tag == "use" => {

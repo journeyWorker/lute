@@ -8,9 +8,9 @@ directives:
     lower: { record: setBackground, fields: {} }
   - name: music
     attrs:
-      - { name: action, type: { enum: [start, change, stop, resume, fade-out] } }
+      - { name: action, type: { domain: musicAction } }
       - { name: mood, type: string }
-      - { name: volume, type: { enum: [silent, down, normal, up, full] } }
+      - { name: volume, type: { domain: volume } }
       - { name: assetId, type: string }
       - { name: track, type: string }
     semantics: [ "mutatesScene" ]
@@ -24,13 +24,13 @@ directives:
   - name: auto
     attrs:
       - { name: character, type: string }
-      - { name: anchor, type: { enum: [left, center, right] } }
+      - { name: anchor, type: { domain: anchor } }
       - { name: action, type: string }
     semantics: [ "reads.onStage", "usesAnchor", "mayExitCharacter", "writes.characterState" ]
     lower: { kind: builtin, name: autoStage }
   - name: vfx
     attrs:
-      - { name: type, type: { enum: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop] } }
+      - { name: type, type: { domain: vfxType } }
       - { name: label, type: string }
       - { name: transition, type: string }
     lower: { record: playVfx, fields: {} }
