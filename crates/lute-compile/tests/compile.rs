@@ -763,3 +763,160 @@ state:
         "empty <on> body must target the quest unit's one-past-end converge          (IR addendum §3.3), not any live record: {cmds:#?}"
     );
 }
+
+#[test]
+fn hub_choice_use_expands_component_records_with_source_stamp() {
+    // REACHABILITY (task-021): a hub choice body is ordinary SceneBody content
+    // (admission.rs: "Recursing into a <branch>/<match>/<hub> child body STAYS
+    // SceneBody") and check.rs's `Node::Hub` walk validates `::use` in a hub
+    // choice exactly like `Node::Branch` (same `check_use` + `self.walk`
+    // recursion, check.rs ~L815-843) — so this doc checks clean; `compile()`
+    // runs the D6 gate via `check()` internally, proving it end to end.
+    let mut table = std::collections::BTreeMap::new();
+    let (comp_body, comp_diags) = lute_syntax::parse(
+        "---\ncomponent: greet\n---\n\n## Scene 1.\n\n\
+         ::auto{character=\"bianca\" action=\"fade-in-up\"}\n\
+         :narrator: A familiar face steps into the light.\n",
+    );
+    assert!(
+        comp_diags.iter().all(|d| d.severity != lute_core_span::Severity::Error),
+        "{comp_diags:#?}"
+    );
+    table.insert(
+        "greet".to_string(),
+        lute_check::ComponentDef {
+            params: Vec::new(),
+            body: comp_body,
+            src: std::path::PathBuf::from("test://greet"),
+        },
+    );
+    let comps = lute_check::ComponentSet {
+        table,
+        diags: Vec::new(),
+    };
+
+    const HUB_USE: &str = r#"---
+kind: scene
+character: b
+season: 1
+episode: 1
+---
+
+## Shot 1.
+
+<hub id="chat">
+  <choice id="ask" label="Ask" once>
+    ::use{component="greet"}
+  </choice>
+  <choice id="leave" label="Leave" exit>
+    :narrator: Bye.
+  </choice>
+</hub>
+"#;
+    let mut inp = input(HUB_USE);
+    inp.components = comps;
+
+    let check_result = lute_check::check(&inp);
+    assert!(
+        check_result.ok,
+        "::use inside a <hub> choice body must check clean: {:#?}",
+        check_result.diagnostics
+    );
+
+    let artifact = compile(&inp).expect("hub-choice ::use doc compiles");
+    let sprite = artifact.commands.iter().find_map(|c| match c {
+        Command::Sprite(s) if s.character == "bianca" => Some(s),
+        _ => None,
+    });
+    assert!(
+        sprite.is_some(),
+        "the component's ::auto record must survive compilation \
+         (before the fix it is silently dropped): {:#?}",
+        artifact.commands
+    );
+    let sprite = sprite.unwrap();
+    assert_eq!(
+        sprite.stamp.source.as_ref().map(|s| s.component.as_str()),
+        Some("greet"),
+        "component-sourced record must carry the source.component stamp"
+    );
+
+    let narrator_line = artifact.commands.iter().find_map(|c| match c {
+        Command::Line(l) if l.text.starts_with("A familiar face") => Some(l),
+        _ => None,
+    });
+    assert!(
+        narrator_line.is_some(),
+        "the component's narrator line must survive compilation: {:#?}",
+        artifact.commands
+    );
+    assert_eq!(
+        narrator_line
+            .unwrap()
+            .stamp
+            .source
+            .as_ref()
+            .map(|s| s.component.as_str()),
+        Some("greet")
+    );
+
+    // No residual `::use`/component-sentinel record survives lowering.
+    assert!(
+        artifact
+            .commands
+            .iter()
+            .all(|c| !matches!(c, Command::Other(o) if o.tag == "use")),
+        "no residual ::use record"
+    );
+}
+
+#[test]
+fn hub_choice_persist_synthesizes_trailing_set_record() {
+    // Companion regression: `persist="run" into="run.metGreeted"` sugar on a
+    // <hub> choice must synthesize a trailing ::set, exactly like a <branch>
+    // choice (dsl §11.1.1; check.rs's `check_choice_persist` is already shared
+    // verbatim between Branch and Hub choices, so the grammar admits it — the
+    // gap was purely in `lute-compile`'s normalize pass never visiting Hub).
+    const HUB_PERSIST: &str = r#"---
+kind: scene
+character: b
+season: 1
+episode: 1
+state:
+  run.metGreeted: { type: bool, default: false }
+---
+
+## Shot 1.
+
+<hub id="chat">
+  <choice id="ask" label="Ask" once>
+    :narrator: Hi.
+  </choice>
+  <choice id="thank" label="Thank her" exit persist="run" into="run.metGreeted">
+    :narrator: Thanks.
+  </choice>
+</hub>
+"#;
+    let inp = input(HUB_PERSIST);
+    let check_result = lute_check::check(&inp);
+    assert!(
+        check_result.ok,
+        "persist sugar on a <hub> choice must check clean: {:#?}",
+        check_result.diagnostics
+    );
+
+    let artifact = compile(&inp).expect("hub persist doc compiles");
+    let set = artifact.commands.iter().find_map(|c| match c {
+        Command::Set(s) if s.path == "run.metGreeted" => Some(s),
+        _ => None,
+    });
+    assert!(
+        set.is_some(),
+        "persist=\"run\" into=\"run.metGreeted\" on a hub choice must synthesize \
+         a ::set (before the fix, synth_persist is never called for Hub): {:#?}",
+        artifact.commands
+    );
+    let set = set.unwrap();
+    assert_eq!(set.op, "=");
+    assert_eq!(set.value, "true");
+}
