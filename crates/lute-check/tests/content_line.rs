@@ -49,3 +49,17 @@ fn known_content_attrs_are_clean() {
     ));
     assert!(!cs.iter().any(|c| c == "E-UNKNOWN-ATTR"), "{cs:?}");
 }
+
+#[test]
+fn emotion_member_clean_nonmember_errors() {
+    // uses the HDR + codes() harness already in content_line.rs tests
+    assert!(!codes(&format!("{HDR}:x{{emotion=\"neutral\"}}: hi\n")).iter().any(|c| c == "E-BAD-ENUM"));
+    assert!(codes(&format!("{HDR}:x{{emotion=\"zzz\"}}: hi\n")).contains(&"E-BAD-ENUM".to_string()));
+}
+
+#[test]
+fn action_is_open_by_default() {
+    // action stays free-form in a core-only context (no project action domain)
+    let cs = codes(&format!("{HDR}:x{{action=\"wave\"}}: hi\n"));
+    assert!(!cs.iter().any(|c| c == "E-DOMAIN-UNKNOWN" || c == "E-BAD-ENUM"), "{cs:?}");
+}
