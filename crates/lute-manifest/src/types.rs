@@ -18,6 +18,7 @@ pub enum Type {
     Map { key: Box<Type>, value: Box<Type> },
     EnumFromOption(String),       // attribute types only
     ProviderRef(String),          // any typed position
+    Domain(String),               // any typed position; membership checked at check-stage
     SlotId { namespace: String }, // attribute types only
     AssetKind(String),            // attribute types only
 }
@@ -123,6 +124,10 @@ pub fn type_accepts(ty: &Type, lit: &Literal) -> bool {
         // An `assetKind`-typed attribute value is an authored asset-id string
         // (e.g. a `CH` id); structural decompose/validate is the checker's job.
         (Type::AssetKind(_), Literal::Str(_)) => true,
+        // A `domain`-typed value is a named reference into the merged
+        // vocabulary; structurally any string, membership is a check-stage
+        // concern (mirrors `assetKind`/`providerRef`).
+        (Type::Domain(_), Literal::Str(_)) => true,
         _ => false,
     }
 }
@@ -169,6 +174,7 @@ enum TypeDef {
     },
     EnumFromOption(String),
     ProviderRef(String),
+    Domain(String),
     SlotId {
         namespace: String,
     },
@@ -203,6 +209,7 @@ impl From<TypeDef> for Type {
             },
             TypeDef::EnumFromOption(s) => Type::EnumFromOption(s),
             TypeDef::ProviderRef(s) => Type::ProviderRef(s),
+            TypeDef::Domain(s) => Type::Domain(s),
             TypeDef::SlotId { namespace } => Type::SlotId { namespace },
             TypeDef::AssetKind(s) => Type::AssetKind(s),
         }
@@ -224,6 +231,7 @@ impl From<&Type> for TypeDef {
             },
             Type::EnumFromOption(s) => TypeDef::EnumFromOption(s.clone()),
             Type::ProviderRef(s) => TypeDef::ProviderRef(s.clone()),
+            Type::Domain(s) => TypeDef::Domain(s.clone()),
             Type::SlotId { namespace } => TypeDef::SlotId {
                 namespace: namespace.clone(),
             },
@@ -298,6 +306,15 @@ mod tests {
         let y = "providerRef: character";
         let t: Type = serde_yaml::from_str(y).unwrap();
         assert!(matches!(&t, Type::ProviderRef(n) if n == "character"));
+    }
+
+    #[test]
+    fn domain_type_roundtrips_and_accepts_string() {
+        let ty: Type = serde_yaml::from_str("{ domain: emotion }").unwrap();
+        assert_eq!(ty, Type::Domain("emotion".into()));
+        assert_eq!(serde_yaml::to_string(&ty).unwrap().trim(), "domain: emotion");
+        assert!(type_accepts(&ty, &Literal::Str("neutral".into()))); // structural: any string
+        assert!(!type_accepts(&ty, &Literal::Bool(true)));
     }
 
     #[test]
