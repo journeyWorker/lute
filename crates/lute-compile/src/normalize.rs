@@ -71,6 +71,12 @@ fn normalize_nodes(
                     normalize_nodes(&mut c.body, components, schema, diags);
                 }
             }
+            Node::Hub(h) => {
+                for c in &mut h.choices {
+                    synth_persist(c, schema);
+                    normalize_nodes(&mut c.body, components, schema, diags);
+                }
+            }
             Node::Match(m) => {
                 for arm in &mut m.arms {
                     match arm {
