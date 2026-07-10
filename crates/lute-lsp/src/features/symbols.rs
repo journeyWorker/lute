@@ -5,11 +5,16 @@
 //!
 //! - one [`DocumentSymbol`] per shot — [`SymbolKind::MODULE`], named by the shot
 //!   heading (the `## …` text);
-//! - each `<branch>` / `<match>` inside a shot as a nested child —
+//! - one [`DocumentSymbol`] per top-level `<quest>` (dsl 0.2.0 §6.3) —
+//!   [`SymbolKind::NAMESPACE`], named by its `id`;
+//! - each `<branch>` / `<match>` inside a shot (or quest) as a nested child —
 //!   [`SymbolKind::ENUM`] for a branch (a closed set of choices) and
 //!   [`SymbolKind::OBJECT`] for a match (a subject dispatched over arms) — found
 //!   depth-first so a branch nested in a match arm (or a choice body) still nests
-//!   under its shot.
+//!   under its shot/quest;
+//! - each `<on>` / `<objective>` inside a quest as a nested child (dsl 0.2.0
+//!   §4, §6.4) — [`SymbolKind::EVENT`] named by the trigger's `event`, and
+//!   [`SymbolKind::PROPERTY`] named by the objective's `id`.
 //!
 //! ## Ranges
 //! `range` is the construct's full span; `selection_range` is the "interesting"
@@ -19,7 +24,7 @@
 //! symbol positions carry the same UTF-16-correct ranges as every other surface.
 
 use lute_core_span::TextIndex;
-use lute_syntax::ast::{Arm, Document, Match, Node, Shot};
+use lute_syntax::ast::{Arm, Document, Match, Node, Quest, Shot};
 use tower_lsp_server::ls_types::{DocumentSymbol, Range, SymbolKind};
 
 use crate::backend::{byte_to_position, span_to_range};
@@ -28,7 +33,9 @@ use crate::features::byte_span;
 /// The document outline: one shot symbol per shot, with its `<branch>`/`<match>`
 /// blocks nested as children.
 pub fn document_symbols(doc: &Document, idx: &TextIndex) -> Vec<DocumentSymbol> {
-    doc.shots.iter().map(|s| shot_symbol(s, idx)).collect()
+    let mut out: Vec<DocumentSymbol> = doc.shots.iter().map(|s| shot_symbol(s, idx)).collect();
+    out.extend(doc.quests.iter().map(|q| quest_symbol(q, idx)));
+    out
 }
 
 /// A shot → a MODULE symbol named by its heading, children = nested blocks.
@@ -49,8 +56,21 @@ fn shot_symbol(shot: &Shot, idx: &TextIndex) -> DocumentSymbol {
     )
 }
 
-/// Collect the `<branch>`/`<match>` blocks in `nodes` as child symbols,
-/// descending through nested bodies so any depth of nesting is preserved.
+/// A `<quest>` -> a top-level symbol named by its id, children = its nested
+/// `<on>`/`<objective>` arms (dsl 0.2.0 §6.3). `Quest` is not a [`Node`] (a
+/// top-level declaration alongside [`Shot`]), so it gets its own entry point
+/// mirroring `shot_symbol`.
+fn quest_symbol(quest: &Quest, idx: &TextIndex) -> DocumentSymbol {
+    let range = span_to_range(&quest.span, idx);
+    let sel = keyword_range(quest.span.byte_start, "<quest", idx);
+    let mut children = Vec::new();
+    collect_children(&quest.body, idx, &mut children);
+    symbol(quest.id.clone(), SymbolKind::NAMESPACE, range, sel, children)
+}
+
+/// Collect the `<branch>`/`<match>`/`<on>`/`<objective>` blocks in `nodes` as
+/// child symbols, descending through nested bodies so any depth of nesting is
+/// preserved.
 fn collect_children(nodes: &[Node], idx: &TextIndex, out: &mut Vec<DocumentSymbol>) {
     for node in nodes {
         match node {
@@ -101,6 +121,30 @@ fn collect_children(nodes: &[Node], idx: &TextIndex, out: &mut Vec<DocumentSymbo
                     "hub".to_string(),
                     SymbolKind::ENUM,
                     span_to_range(&h.span, idx),
+                    sel,
+                    kids,
+                ));
+            }
+            Node::On(o) => {
+                let mut kids = Vec::new();
+                collect_children(&o.body, idx, &mut kids);
+                let sel = keyword_range(o.span.byte_start, "<on", idx);
+                out.push(symbol(
+                    o.event.clone(),
+                    SymbolKind::EVENT,
+                    span_to_range(&o.span, idx),
+                    sel,
+                    kids,
+                ));
+            }
+            Node::Objective(ob) => {
+                let mut kids = Vec::new();
+                collect_children(&ob.body, idx, &mut kids);
+                let sel = keyword_range(ob.span.byte_start, "<objective", idx);
+                out.push(symbol(
+                    ob.id.clone(),
+                    SymbolKind::PROPERTY,
+                    span_to_range(&ob.span, idx),
                     sel,
                     kids,
                 ));
@@ -237,5 +281,38 @@ mod tests {
             s.range.end.line >= s.selection_range.end.line,
             "range encloses selection"
         );
+    }
+
+    // ---- dsl 0.2.0 §6.3/§4: quest / on / objective symbols ----
+
+    const QUEST_DOC: &str = "---\nkind: quest\n---\n\
+        <quest id=\"q\">\n\
+        <objective id=\"o\" done=\"a\">\n:narrator: hi\n</objective>\n\
+        <on event=\"questComplete\">\n:narrator: bye\n</on>\n\
+        </quest>\n";
+
+    /// ACCEPTANCE: a `<quest>` is a top-level symbol named by its id, with an
+    /// EVENT child for `<on>` and a PROPERTY child for `<objective>` — before
+    /// the fix, `document_symbols` walked `doc.shots` only (a quest doc has
+    /// none) and `<on>`/`<objective>` were Plan-A no-ops, so a quest doc
+    /// yielded NO symbols at all.
+    #[test]
+    fn quest_is_a_top_level_symbol_with_on_and_objective_children() {
+        let syms = symbols(QUEST_DOC);
+        assert_eq!(syms.len(), 1, "one top-level quest symbol");
+        let q = &syms[0];
+        assert_eq!(q.name, "q", "named by the quest id");
+        let kids = q.children.as_ref().expect("quest has children");
+        assert_eq!(kids.len(), 2);
+        let on = kids
+            .iter()
+            .find(|c| c.kind == SymbolKind::EVENT)
+            .expect("an <on> child (EVENT)");
+        assert_eq!(on.name, "questComplete", "named by the event");
+        let obj = kids
+            .iter()
+            .find(|c| c.kind == SymbolKind::PROPERTY)
+            .expect("an <objective> child (PROPERTY)");
+        assert_eq!(obj.name, "o", "named by the objective id");
     }
 }

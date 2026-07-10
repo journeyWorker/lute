@@ -64,6 +64,11 @@
 (when_is (when_key) @attribute)
 (when_pattern (when_literal) @constant)
 
+; `<quest>` / `<on>` / `<objective>` quest-kind constructs (dsl 0.2.0 §4, §6).
+(quest ["<quest" "</quest>"] @keyword.control)
+(on ["<on" "</on>"] @keyword.control)
+(objective ["<objective" "</objective>" "/>"] @keyword.control)
+
 ; ---- distinct arch captures -----------------------------------------------
 ; CEL expression (the `::set` right-hand side) — an embedded expression lang.
 (cel_expr) @embedded

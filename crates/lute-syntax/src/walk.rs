@@ -18,14 +18,20 @@
 //!   recurse `body`; `Otherwise{body}` → recurse `body`.
 //! - [`Node::Timeline`] → `duration` (if any); then per track, per clip:
 //!   `ClipNode::Directive` → attr refs; `ClipNode::Set` → `expr`.
+//! - [`Node::Objective`] → `done`; `when` (if any); `attrs` refs; then `body`.
+//! - [`Node::On`] → `when` (if any); `attrs` refs; then `body`.
 //!
+//! ## Document-level order (dsl 0.2.0)
+//! Every `shot.body` (as above), THEN every `quest` in `doc.quests`. Per
+//! [`Quest`]: `start` (if any), `fail` (if any), `attrs` refs, then `body`.
 //! Only `AttrValue::Ref(slot)` attrs are slots; bare/other attr values are not.
 //! This order MUST stay byte-identical to what `lute-cel::fill` historically
 //! walked — the StableId sequence (and thus determinism, goldens, examples) rides
 //! on it.
 
 use crate::ast::{
-    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Document, Hub, Match, Node, Timeline,
+    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Document, Hub, Match, Node, Objective, On,
+    Quest, Timeline,
 };
 
 /// Visit every [`CelSlot`] in `doc` in the canonical pre-order, borrowing each.
@@ -35,6 +41,9 @@ use crate::ast::{
 pub fn for_each_cel_slot<'a>(doc: &'a Document, f: &mut impl FnMut(&'a CelSlot)) {
     for shot in &doc.shots {
         body(&shot.body, f);
+    }
+    for q in &doc.quests {
+        quest(q, f);
     }
 }
 
@@ -61,6 +70,8 @@ fn node<'a>(n: &'a Node, f: &mut impl FnMut(&'a CelSlot)) {
         Node::Match(m) => match_node(m, f),
         Node::Timeline(t) => timeline(t, f),
         Node::Hub(h) => hub(h, f),
+        Node::Objective(o) => objective(o, f),
+        Node::On(o) => on(o, f),
     }
 }
 
@@ -84,6 +95,34 @@ fn hub<'a>(h: &'a Hub, f: &mut impl FnMut(&'a CelSlot)) {
         attrs(&choice.attrs, f);
         body(&choice.body, f);
     }
+}
+
+fn quest<'a>(q: &'a Quest, f: &mut impl FnMut(&'a CelSlot)) {
+    if let Some(s) = &q.start {
+        f(s);
+    }
+    if let Some(fl) = &q.fail {
+        f(fl);
+    }
+    attrs(&q.attrs, f);
+    body(&q.body, f);
+}
+
+fn objective<'a>(o: &'a Objective, f: &mut impl FnMut(&'a CelSlot)) {
+    f(&o.done);
+    if let Some(w) = &o.when {
+        f(w);
+    }
+    attrs(&o.attrs, f);
+    body(&o.body, f);
+}
+
+fn on<'a>(o: &'a On, f: &mut impl FnMut(&'a CelSlot)) {
+    if let Some(w) = &o.when {
+        f(w);
+    }
+    attrs(&o.attrs, f);
+    body(&o.body, f);
 }
 
 fn match_node<'a>(m: &'a Match, f: &mut impl FnMut(&'a CelSlot)) {
@@ -122,6 +161,9 @@ pub fn for_each_cel_slot_mut(doc: &mut Document, f: &mut impl FnMut(&mut CelSlot
     for shot in &mut doc.shots {
         body_mut(&mut shot.body, f);
     }
+    for q in &mut doc.quests {
+        quest_mut(q, f);
+    }
 }
 
 fn attrs_mut(attrs: &mut [Attr], f: &mut impl FnMut(&mut CelSlot)) {
@@ -147,6 +189,8 @@ fn node_mut(n: &mut Node, f: &mut impl FnMut(&mut CelSlot)) {
         Node::Match(m) => match_node_mut(m, f),
         Node::Timeline(t) => timeline_mut(t, f),
         Node::Hub(h) => hub_mut(h, f),
+        Node::Objective(o) => objective_mut(o, f),
+        Node::On(o) => on_mut(o, f),
     }
 }
 
@@ -170,6 +214,34 @@ fn hub_mut(h: &mut Hub, f: &mut impl FnMut(&mut CelSlot)) {
         attrs_mut(&mut choice.attrs, f);
         body_mut(&mut choice.body, f);
     }
+}
+
+fn quest_mut(q: &mut Quest, f: &mut impl FnMut(&mut CelSlot)) {
+    if let Some(s) = &mut q.start {
+        f(s);
+    }
+    if let Some(fl) = &mut q.fail {
+        f(fl);
+    }
+    attrs_mut(&mut q.attrs, f);
+    body_mut(&mut q.body, f);
+}
+
+fn objective_mut(o: &mut Objective, f: &mut impl FnMut(&mut CelSlot)) {
+    f(&mut o.done);
+    if let Some(w) = &mut o.when {
+        f(w);
+    }
+    attrs_mut(&mut o.attrs, f);
+    body_mut(&mut o.body, f);
+}
+
+fn on_mut(o: &mut On, f: &mut impl FnMut(&mut CelSlot)) {
+    if let Some(w) = &mut o.when {
+        f(w);
+    }
+    attrs_mut(&mut o.attrs, f);
+    body_mut(&mut o.body, f);
 }
 
 fn match_node_mut(m: &mut Match, f: &mut impl FnMut(&mut CelSlot)) {
@@ -375,6 +447,7 @@ mod tests {
                 body,
                 span: span(),
             }],
+            quests: Vec::new(),
             span: span(),
         }
     }
@@ -409,5 +482,19 @@ mod tests {
         let mut ids = Vec::new();
         for_each_cel_slot(&doc, &mut |s| ids.push(s.id.0));
         assert_eq!(ids, (1..=18).collect::<Vec<u64>>());
+    }
+
+    #[test]
+    fn quest_slots_visited_in_canonical_order() {
+        let (doc, _) = crate::parse(
+            "<quest id=\"q\" start=\"run.s\" fail=\"run.f\">\n\
+             <objective id=\"o\" done=\"run.d\" when=\"run.w\"/>\n\
+             <on event=\"questComplete\" when=\"run.g\">\n:x: hi\n</on>\n\
+             </quest>\n",
+        );
+        let mut raws: Vec<String> = Vec::new();
+        super::for_each_cel_slot(&doc, &mut |s| raws.push(s.raw.clone()));
+        // start, fail, objective.done, objective.when, on.when — in this order.
+        assert_eq!(raws, vec!["run.s", "run.f", "run.d", "run.w", "run.g"]);
     }
 }

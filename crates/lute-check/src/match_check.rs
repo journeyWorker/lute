@@ -66,8 +66,11 @@ use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::{Literal, Type};
-use lute_syntax::ast::{Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node};
+use lute_syntax::ast::{
+    Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node, Quest,
+};
 
+use crate::cel_paths::E_PATH_IDENT;
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
 
@@ -473,6 +476,175 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
     HubRecord { decls, diags }
 }
 
+/// One quest's recording result (dsl 0.2.0 §5.2, §6.3, §6.4): the folded
+/// reserved `quest.<id>.*` decls to fold into the schema, plus any
+/// diagnostics (`E-QUEST-ID-DUP`, `E-OBJECTIVE-ID-DUP`,
+/// `E-OBJECTIVE-MISSING-DONE`).
+#[derive(Clone, Debug)]
+pub struct QuestRecord {
+    /// The implicit reserved declarations (path -> decl), quest-state first
+    /// then per-objective `done` in document order.
+    pub decls: Vec<(String, StateDecl)>,
+    /// Diagnostics for this quest.
+    pub diags: Vec<Diagnostic>,
+}
+
+/// Record a `<quest>` (dsl 0.2.0 §5.2, §6.3, §6.4), mirroring [`check_hub`].
+/// Emits `E-QUEST-ID-DUP` on a repeat id in the caller-owned `seen_quests` set
+/// — a namespace SEPARATE from the branch/hub `scene.choices.*` `seen` set
+/// (quest ids key the `quest.<id>.*` tier, dsl 0.2.0 §5.2); `E-OBJECTIVE-ID-DUP`
+/// on a repeated `<objective id>` WITHIN this quest; `E-OBJECTIVE-MISSING-DONE`
+/// on an `<objective>` whose `done` slot is empty (the parser always yields a
+/// syntactically valid — possibly empty — CEL slot for a missing `done`, dsl
+/// 0.2.0 §6.4). Objectives are found by scanning `quest.body` for
+/// `Node::Objective` — grammar admission (Task 5) guarantees they appear only
+/// directly in a quest body, never nested.
+///
+/// `id`/`<objective id>` are REQUIRED (dsl 0.2.0 §6.3/§6.4); the parser still
+/// yields a syntactically valid AST with `id = ""` for a missing attr (the
+/// same empty-slot idiom as a missing `done`, blocks.rs). An empty quest id is
+/// `E-QUEST-ID-MISSING`, an empty objective id is `E-OBJECTIVE-ID-MISSING` —
+/// EITHER short-circuits the corresponding reserved-decl fold (below) so a
+/// malformed `quest..state` / `quest.<id>.objectives..done` path never reaches
+/// the schema; every other per-construct diagnostic (dup / hyphen / missing
+/// `done`) still runs so a malformed id doesn't hide its siblings' problems.
+///
+/// Returns the implicit reserved decls (dsl 0.2.0 §5.2): `quest.<id>.state`
+/// (an enum `[active, complete, failed]`, deterministic order, no default —
+/// maybe-unset until the engine populates it) plus, per objective,
+/// `quest.<id>.objectives.<oid>.done: bool` (default `false`) — omitted for a
+/// quest or objective with a missing id (see above).
+pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRecord {
+    let id = quest.id.as_str();
+    let mut diags = Vec::new();
+
+    if id.is_empty() {
+        diags.push(diag(
+            "E-QUEST-ID-MISSING",
+            Severity::Error,
+            "`<quest>` has no `id`; a quest id is required (dsl 0.2.0 §6.3)".to_string(),
+            quest.id_span,
+        ));
+    } else {
+        if !seen_quests.insert(id.to_string()) {
+            diags.push(diag(
+                "E-QUEST-ID-DUP",
+                Severity::Error,
+                format!(
+                    "duplicate `<quest id=\"{id}\">`; quest ids must be unique (dsl 0.2.0 §6.3)"
+                ),
+                quest.id_span,
+            ));
+        }
+
+        // §8.4 CelIdent alignment: the quest id is a CEL-facing segment of the
+        // reserved `quest.<id>.state`/`quest.<id>.objectives.*` paths — a `-`
+        // there is illegal (CEL parses it as subtraction). Still fold the decl
+        // below so downstream reads don't cascade to E-UNDECLARED (mirrors how
+        // meta.rs treats a hyphenated inline `state:` path).
+        if id.contains('-') {
+            diags.push(diag(
+                E_PATH_IDENT,
+                Severity::Error,
+                format!(
+                    "quest id `{id}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)"
+                ),
+                quest.id_span,
+            ));
+        }
+    }
+
+    // A missing quest id makes every `quest.<id>.*` path malformed
+    // (`quest..state`, `quest..objectives.<oid>.done`) — fold nothing for this
+    // quest rather than poison the schema with an unaddressable path.
+    let mut decls: Vec<(String, StateDecl)> = if id.is_empty() {
+        Vec::new()
+    } else {
+        vec![(
+            format!("quest.{id}.state"),
+            StateDecl {
+                ty: Type::Enum(vec![
+                    "active".to_string(),
+                    "complete".to_string(),
+                    "failed".to_string(),
+                ]),
+                default: None,
+                namespace: Namespace::Quest,
+            },
+        )]
+    };
+
+    let mut objective_ids: BTreeSet<&str> = BTreeSet::new();
+    for node in &quest.body {
+        let Node::Objective(o) = node else { continue };
+        if o.id.is_empty() {
+            diags.push(diag(
+                "E-OBJECTIVE-ID-MISSING",
+                Severity::Error,
+                format!(
+                    "an `<objective>` within `<quest id=\"{id}\">` has no `id`; an objective \
+                     id is required (dsl 0.2.0 §6.4)"
+                ),
+                o.id_span,
+            ));
+        } else {
+            if !objective_ids.insert(o.id.as_str()) {
+                diags.push(diag(
+                    "E-OBJECTIVE-ID-DUP",
+                    Severity::Error,
+                    format!(
+                        "duplicate `<objective id=\"{}\">` within `<quest id=\"{id}\">`; objective \
+                         ids must be unique within a quest (dsl 0.2.0 §6.4)",
+                        o.id
+                    ),
+                    o.span,
+                ));
+            }
+            // §8.4 CelIdent alignment: the objective id is a CEL-facing segment
+            // of `quest.<id>.objectives.<oid>.done` — same treatment as the
+            // quest id above.
+            if o.id.contains('-') {
+                diags.push(diag(
+                    E_PATH_IDENT,
+                    Severity::Error,
+                    format!(
+                        "objective id `{}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)",
+                        o.id
+                    ),
+                    o.id_span,
+                ));
+            }
+        }
+        if o.done.raw.trim().is_empty() {
+            diags.push(diag(
+                "E-OBJECTIVE-MISSING-DONE",
+                Severity::Error,
+                format!(
+                    "`<objective id=\"{}\">` within `<quest id=\"{id}\">` has no `done` \
+                     completion predicate; `done` is required (dsl 0.2.0 §6.4)",
+                    o.id
+                ),
+                o.span,
+            ));
+        }
+        // A malformed (empty) quest OR objective id makes this decl's path
+        // unaddressable — skip folding it (`E-QUEST-ID-MISSING` /
+        // `E-OBJECTIVE-ID-MISSING` already flagged the construct above).
+        if !id.is_empty() && !o.id.is_empty() {
+            decls.push((
+                format!("quest.{id}.objectives.{}.done", o.id),
+                StateDecl {
+                    ty: Type::Bool,
+                    default: Some(Literal::Bool(false)),
+                    namespace: Namespace::Quest,
+                },
+            ));
+        }
+    }
+
+    QuestRecord { decls, diags }
+}
+
 /// The plain string value of the attr keyed `key`, if present and a string
 /// literal (`key="s"`). A bare/`@ref` value or a missing key yields `None`.
 fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
@@ -490,27 +662,51 @@ fn has_bool_attr(attrs: &[Attr], key: &str) -> bool {
         .any(|a| a.key == key && matches!(a.value, AttrValue::BoolTrue))
 }
 
-/// dsl §12: every content `:line`'s `lineId` (`{prefix}.{speaker}_{code}`) and
-/// `voiceKey` (`{speaker}-{code}`) derive from its `(speaker, trimmed code)`
-/// pair (see `lute-compile`'s addressing pass). Two `:line`s for the SAME
-/// speaker carrying the SAME trimmed `code` therefore compile to IDENTICAL
-/// `lineId`/`voiceKey` values — corrupting the translation + voice-bank join
-/// keys. Flag the SECOND (and each later) occurrence of a repeated
-/// `(speaker, code)` pair with `E-DUP-LINE-CODE`, at that line's span.
+/// dsl §12 (scene) / dsl 0.2.0 §7 (quest): every content `:line`'s `lineId`
+/// (`{prefix}.{speaker}_{code}`) and `voiceKey` (`{speaker}-{code}`) derive
+/// from its `(speaker, trimmed code)` pair (see `lute-compile`'s addressing
+/// pass). Two `:line`s for the SAME speaker carrying the SAME trimmed `code`
+/// therefore compile to IDENTICAL `lineId`/`voiceKey` values — corrupting the
+/// translation + voice-bank join keys. Flag the SECOND (and each later)
+/// occurrence of a repeated `(speaker, code)` pair with `E-DUP-LINE-CODE`, at
+/// that line's span.
 ///
 /// Codes are compared as TRIMMED STRINGS — exactly the key the addressing pass
 /// uses (`code.trim()`), so ` 0050 ` and `0050` collide but `0050` and `50` do
 /// not. Only authored string codes participate; an untagged line derives its
 /// code later (uniquely per speaker) and a non-literal code (`@ref`) has no
-/// static value to compare, so neither can statically collide. Document order,
-/// deterministic (the caller's final `(byte_start, code)` sort settles ties).
+/// static value to compare, so neither can statically collide.
+///
+/// **Identity scope** (dsl 0.2.0 §7): a scene's lines share ONE scope — the
+/// whole document (all shots), unchanged from 0.1.0. A quest's lines (reached
+/// via a `<quest>`'s `<on>`/`<objective>` arms) are scoped PER `<quest>` —
+/// each `<quest>` is its own identity domain, so the SAME (speaker, code)
+/// pair may repeat across two different quests without colliding, but not
+/// twice within one. Document order, deterministic (the caller's final
+/// `(byte_start, code)` sort settles ties).
 pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
-    let mut lines: Vec<&Line> = Vec::new();
-    for shot in &doc.shots {
-        collect_lines(&shot.body, &mut lines);
-    }
-    let mut seen: BTreeSet<(&str, String)> = BTreeSet::new();
     let mut diags = Vec::new();
+
+    let mut scene_lines: Vec<&Line> = Vec::new();
+    for shot in &doc.shots {
+        collect_lines(&shot.body, &mut scene_lines);
+    }
+    check_dup_line_codes(&scene_lines, &mut diags);
+
+    for quest in &doc.quests {
+        let mut quest_lines: Vec<&Line> = Vec::new();
+        collect_lines(&quest.body, &mut quest_lines);
+        check_dup_line_codes(&quest_lines, &mut diags);
+    }
+
+    diags
+}
+
+/// Flag every repeated `(speaker, code)` pair WITHIN `lines` — the caller
+/// decides the identity scope (whole document for a scene, per-`<quest>` for
+/// a quest, dsl 0.2.0 §7) by choosing which lines to pass in one call.
+fn check_dup_line_codes<'a>(lines: &[&'a Line], diags: &mut Vec<Diagnostic>) {
+    let mut seen: BTreeSet<(&'a str, String)> = BTreeSet::new();
     for line in lines {
         let Some(code) = authored_code(line) else {
             continue;
@@ -528,7 +724,6 @@ pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
             ));
         }
     }
-    diags
 }
 
 /// The line's authored `code`, trimmed to the exact string the addressing pass
@@ -570,6 +765,8 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
                     collect_lines(&choice.body, out);
                 }
             }
+            Node::Objective(o) => collect_lines(&o.body, out),
+            Node::On(o) => collect_lines(&o.body, out),
             Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
         }
     }
@@ -652,7 +849,11 @@ fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> DomainInfo {
             let maybe_unset = decl.default.is_none()
                 && matches!(
                     decl.namespace,
-                    Namespace::Scene | Namespace::Run | Namespace::User | Namespace::App
+                    Namespace::Scene
+                        | Namespace::Run
+                        | Namespace::User
+                        | Namespace::App
+                        | Namespace::Quest
                 );
             DomainInfo {
                 domain,
@@ -1596,6 +1797,7 @@ mod tests {
                 body,
                 span: span(),
             }],
+            quests: Vec::new(),
             span: span(),
         }
     }
@@ -1843,4 +2045,96 @@ mod tests {
         assert!(errs.is_empty(), "bool covered by is=true/false: {errs:?}");
     }
 
+
+    // --- CheckFix F6/F7: `<quest id>`/`<objective id>` required (§6.3/§6.4) ---
+
+    fn objective(id: &str, done_raw: &str) -> lute_syntax::ast::Objective {
+        lute_syntax::ast::Objective {
+            id: id.to_string(),
+            id_span: span(),
+            done: CelSlot::raw(CelKind::Condition, done_raw.to_string(), span()),
+            when: None,
+            title: None,
+            optional: false,
+            attrs: Vec::new(),
+            body: Vec::new(),
+            span: span(),
+        }
+    }
+
+    fn quest_with_body(id: &str, body: Vec<Node>) -> Quest {
+        Quest {
+            id: id.to_string(),
+            id_span: span(),
+            title: None,
+            start: None,
+            fail: None,
+            attrs: Vec::new(),
+            body,
+            span: span(),
+        }
+    }
+
+    #[test]
+    fn quest_missing_id_skips_reserved_fold() {
+        let q = quest_with_body("", vec![Node::Objective(objective("o", "a"))]);
+        let mut seen = BTreeSet::new();
+        let rec = check_quest(&q, &mut seen);
+        assert!(
+            rec.diags.iter().any(|d| d.code == "E-QUEST-ID-MISSING"),
+            "{:?}",
+            rec.diags
+        );
+        assert!(
+            rec.decls.is_empty(),
+            "a quest with no id must fold NO reserved decls (both its own state \
+             and every objective's done): {:?}",
+            rec.decls
+        );
+    }
+
+    #[test]
+    fn objective_missing_id_skips_only_its_own_decl() {
+        let q = quest_with_body(
+            "q",
+            vec![
+                Node::Objective(objective("", "a")),
+                Node::Objective(objective("o2", "b")),
+            ],
+        );
+        let mut seen = BTreeSet::new();
+        let rec = check_quest(&q, &mut seen);
+        assert!(
+            rec.diags.iter().any(|d| d.code == "E-OBJECTIVE-ID-MISSING"),
+            "{:?}",
+            rec.diags
+        );
+        let paths: Vec<&str> = rec.decls.iter().map(|(p, _)| p.as_str()).collect();
+        assert!(
+            !paths.iter().any(|p| p.contains("..")),
+            "no malformed (doubled-dot) reserved path: {paths:?}"
+        );
+        assert_eq!(
+            paths,
+            vec!["quest.q.state", "quest.q.objectives.o2.done"],
+            "the quest's own state decl and the well-formed objective's done decl \
+             still fold; only the id-less objective's decl is skipped"
+        );
+    }
+
+    #[test]
+    fn two_quests_missing_id_are_not_flagged_as_duplicates() {
+        // Two DIFFERENT quests with no `id` must not collide on the shared
+        // empty-string key in `seen_quests` (that would wrongly fire
+        // E-QUEST-ID-DUP instead of two independent E-QUEST-ID-MISSING).
+        let mut seen = BTreeSet::new();
+        let a = quest_with_body("", vec![]);
+        let b = quest_with_body("", vec![]);
+        let rec_a = check_quest(&a, &mut seen);
+        let rec_b = check_quest(&b, &mut seen);
+        assert!(!rec_a.diags.iter().any(|d| d.code == "E-QUEST-ID-DUP"));
+        assert!(!rec_b.diags.iter().any(|d| d.code == "E-QUEST-ID-DUP"));
+        assert!(rec_a.diags.iter().any(|d| d.code == "E-QUEST-ID-MISSING"));
+        assert!(rec_b.diags.iter().any(|d| d.code == "E-QUEST-ID-MISSING"));
+    }
 }

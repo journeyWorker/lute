@@ -153,6 +153,14 @@
           "named": true
         },
         {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
+          "named": true
+        },
+        {
           "type": "set",
           "named": true
         },
@@ -239,6 +247,14 @@
         },
         {
           "type": "match",
+          "named": true
+        },
+        {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
           "named": true
         },
         {
@@ -336,6 +352,116 @@
     }
   },
   {
+    "type": "objective",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "attr",
+          "named": true
+        },
+        {
+          "type": "branch",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "hub",
+          "named": true
+        },
+        {
+          "type": "line",
+          "named": true
+        },
+        {
+          "type": "match",
+          "named": true
+        },
+        {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
+          "named": true
+        },
+        {
+          "type": "set",
+          "named": true
+        },
+        {
+          "type": "timeline",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "on",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "attr",
+          "named": true
+        },
+        {
+          "type": "branch",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "hub",
+          "named": true
+        },
+        {
+          "type": "line",
+          "named": true
+        },
+        {
+          "type": "match",
+          "named": true
+        },
+        {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
+          "named": true
+        },
+        {
+          "type": "set",
+          "named": true
+        },
+        {
+          "type": "timeline",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "otherwise",
     "named": true,
     "fields": {},
@@ -361,6 +487,69 @@
         },
         {
           "type": "match",
+          "named": true
+        },
+        {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
+          "named": true
+        },
+        {
+          "type": "set",
+          "named": true
+        },
+        {
+          "type": "timeline",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "quest",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "attr",
+          "named": true
+        },
+        {
+          "type": "branch",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
+          "named": true
+        },
+        {
+          "type": "directive",
+          "named": true
+        },
+        {
+          "type": "hub",
+          "named": true
+        },
+        {
+          "type": "line",
+          "named": true
+        },
+        {
+          "type": "match",
+          "named": true
+        },
+        {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
           "named": true
         },
         {
@@ -426,6 +615,14 @@
           "named": true
         },
         {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
+          "named": true
+        },
+        {
           "type": "set",
           "named": true
         },
@@ -471,6 +668,18 @@
         },
         {
           "type": "match",
+          "named": true
+        },
+        {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
+          "named": true
+        },
+        {
+          "type": "quest",
           "named": true
         },
         {
@@ -618,6 +827,14 @@
           "named": true
         },
         {
+          "type": "objective",
+          "named": true
+        },
+        {
+          "type": "on",
+          "named": true
+        },
+        {
           "type": "set",
           "named": true
         },
@@ -691,6 +908,10 @@
     "named": false
   },
   {
+    "type": "/>",
+    "named": false
+  },
+  {
     "type": ":",
     "named": false
   },
@@ -719,7 +940,19 @@
     "named": false
   },
   {
+    "type": "</objective>",
+    "named": false
+  },
+  {
+    "type": "</on>",
+    "named": false
+  },
+  {
     "type": "</otherwise>",
+    "named": false
+  },
+  {
+    "type": "</quest>",
     "named": false
   },
   {
@@ -751,7 +984,19 @@
     "named": false
   },
   {
+    "type": "<objective",
+    "named": false
+  },
+  {
+    "type": "<on",
+    "named": false
+  },
+  {
     "type": "<otherwise",
+    "named": false
+  },
+  {
+    "type": "<quest",
     "named": false
   },
   {
@@ -784,8 +1029,16 @@
     "extra": true
   },
   {
+    "type": "done",
+    "named": false
+  },
+  {
     "type": "escape",
     "named": true
+  },
+  {
+    "type": "fail",
+    "named": false
   },
   {
     "type": "frontmatter",
@@ -806,6 +1059,10 @@
   {
     "type": "reserved",
     "named": true
+  },
+  {
+    "type": "start",
+    "named": false
   },
   {
     "type": "string",

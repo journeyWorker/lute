@@ -5,6 +5,7 @@ pub struct Document {
     pub meta: Meta,
     pub title: Option<(String, Span)>,
     pub shots: Vec<Shot>,
+    pub quests: Vec<Quest>,
     pub span: Span,
 }
 
@@ -31,6 +32,8 @@ pub enum Node {
     Match(Match),
     Timeline(Timeline),
     Hub(Hub),
+    Objective(Objective),
+    On(On),
 }
 
 #[derive(Clone, Debug)]
@@ -90,6 +93,53 @@ pub struct Match {
 pub struct Hub {
     pub attrs: Vec<Attr>,
     pub choices: Vec<Choice>,
+    pub span: Span,
+}
+
+/// `<quest id …> QuestBody </quest>` (dsl 0.2.0 §6.3). A TOP-LEVEL declaration
+/// (never a [`Node`]); `body` reuses the shared `Node` stream (only the arms
+/// admitted by dsl 0.2.0 §6.7 are legal — enforced in lute-check, not here).
+/// `start`/`fail` are optional CEL guards; `title` is a localizable String
+/// captured raw (interps recovered on demand via `scan_label_interps`).
+#[derive(Clone, Debug)]
+pub struct Quest {
+    pub id: String,
+    pub id_span: Span,
+    pub title: Option<String>,
+    pub start: Option<CelSlot>,
+    pub fail: Option<CelSlot>,
+    /// Residual (post-extraction) attrs, mirroring [`Branch`]; normally empty.
+    pub attrs: Vec<Attr>,
+    pub body: Vec<Node>,
+    pub span: Span,
+}
+
+/// `<objective id done …> Node* </objective>` or self-closing
+/// `<objective … />` (dsl 0.2.0 §6.4). `done` is the required completion
+/// predicate; `when` gates visibility; `optional` is a bare boolean flag.
+#[derive(Clone, Debug)]
+pub struct Objective {
+    pub id: String,
+    pub id_span: Span,
+    pub done: CelSlot,
+    pub when: Option<CelSlot>,
+    pub title: Option<String>,
+    pub optional: bool,
+    pub attrs: Vec<Attr>,
+    pub body: Vec<Node>,
+    pub span: Span,
+}
+
+/// `<on event … [when …]> Node* </on>` (dsl 0.2.0 §4). The ECA trigger:
+/// `event` names a built-in lifecycle or capability world event (a plain
+/// String, NOT CEL); `when` is an optional CEL guard.
+#[derive(Clone, Debug)]
+pub struct On {
+    pub event: String,
+    pub event_span: Span,
+    pub when: Option<CelSlot>,
+    pub attrs: Vec<Attr>,
+    pub body: Vec<Node>,
     pub span: Span,
 }
 

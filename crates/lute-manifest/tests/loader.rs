@@ -163,3 +163,25 @@ fn loads_asset_kinds_rejects_dup() {
     );
     fs::remove_dir_all(&tmp).ok();
 }
+
+/// Build a plugin package that exports `events/`.
+fn write_events_pkg(root: &std::path::Path) {
+    fs::create_dir_all(root.join("events")).unwrap();
+    fs::write(
+        root.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  events: events/\n",
+    )
+    .unwrap();
+    fs::write(root.join("events/a.yaml"), "events:\n  - name: combatEnd\n").unwrap();
+}
+
+#[test]
+fn loads_events_export() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_ev_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_events_pkg(&tmp);
+    let loaded = load_plugin_dir(&tmp).expect("loads");
+    assert_eq!(loaded.events.len(), 1);
+    assert_eq!(loaded.events[0].name, "combatEnd");
+    fs::remove_dir_all(&tmp).ok();
+}

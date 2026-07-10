@@ -6,7 +6,9 @@
 //!
 //! - every shot (`## …` heading through its last body node);
 //! - every `<...>` logic/staging block: `<branch>`, `<match>`, `<timeline>`;
-//! - every `<track>` inside a `<timeline>`.
+//! - every `<track>` inside a `<timeline>`;
+//! - every `<quest>` (dsl 0.2.0 §6.3, a top-level declaration like a shot) and
+//!   its nested `<on>`/`<objective>` bodies (dsl 0.2.0 §4, §6.4).
 //!
 //! A region that begins and ends on the SAME source line is not foldable (there
 //! is nothing to collapse), so single-line blocks are dropped. `<choice>` /
@@ -35,6 +37,12 @@ pub fn folding_ranges(doc: &Document, idx: &TextIndex) -> Vec<FoldingRange> {
     for shot in &doc.shots {
         push_fold(&mut out, &shot.span, idx);
         fold_nodes(&shot.body, idx, &mut out);
+    }
+    // `<quest>` is a top-level declaration (dsl 0.2.0 §6.3), not a `Node` — it
+    // gets its own fold entry point mirroring the shot loop above.
+    for quest in &doc.quests {
+        push_fold(&mut out, &quest.span, idx);
+        fold_nodes(&quest.body, idx, &mut out);
     }
     out
 }
@@ -71,8 +79,16 @@ fn fold_nodes(nodes: &[Node], idx: &TextIndex, out: &mut Vec<FoldingRange>) {
                     fold_nodes(&c.body, idx, out);
                 }
             }
-            // Leaf nodes (`:line`, `::directive`, `::set`) are single constructs,
-            // not foldable regions.
+            Node::On(o) => {
+                push_fold(out, &o.span, idx);
+                fold_nodes(&o.body, idx, out);
+            }
+            Node::Objective(ob) => {
+                push_fold(out, &ob.span, idx);
+                fold_nodes(&ob.body, idx, out);
+            }
+            // Leaf nodes (`:line`, `::directive`, `::set`) are single
+            // constructs, not foldable regions.
             Node::Line(_) | Node::Directive(_) | Node::Set(_) => {}
         }
     }
@@ -250,5 +266,42 @@ mod tests {
         let text = "## Shot 1.\n:narrator: only prose.\n";
         let all = folds(text);
         assert_eq!(all.len(), 1, "only the shot folds; the lone :line does not");
+    }
+
+    // ---- dsl 0.2.0 §6.3/§4: quest / on / objective folding ----
+
+    const QUEST_DOC: &str = "---\nkind: quest\n---\n\
+        <quest id=\"q\">\n\
+        <objective id=\"o\" done=\"a\">\n:narrator: hi\n</objective>\n\
+        <on event=\"questComplete\">\n:narrator: bye\n</on>\n\
+        </quest>\n";
+
+    /// ACCEPTANCE: a `<quest>` folds its own multi-line span, and its nested
+    /// `<on>`/`<objective>` bodies fold too — before the fix, `folding_ranges`
+    /// walked `doc.shots` only (a quest doc has none) and `<on>`/`<objective>`
+    /// were Plan-A no-ops, so a quest doc folded NOTHING.
+    #[test]
+    fn quest_and_on_and_objective_all_fold() {
+        let idx = TextIndex::new(QUEST_DOC);
+        let all = folds(QUEST_DOC);
+        assert!(!all.is_empty(), "a quest doc must fold something");
+
+        let quest_start = idx.position(QUEST_DOC.find("<quest").unwrap()).line - 1;
+        assert!(
+            all.iter().any(|f| f.start_line == quest_start),
+            "no fold anchored on <quest>: {all:?}"
+        );
+
+        let on_start = idx.position(QUEST_DOC.find("<on ").unwrap()).line - 1;
+        assert!(
+            all.iter().any(|f| f.start_line == on_start),
+            "no fold anchored on <on>: {all:?}"
+        );
+
+        let obj_start = idx.position(QUEST_DOC.find("<objective ").unwrap()).line - 1;
+        assert!(
+            all.iter().any(|f| f.start_line == obj_start),
+            "no fold anchored on <objective>: {all:?}"
+        );
     }
 }

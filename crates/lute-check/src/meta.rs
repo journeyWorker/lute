@@ -15,6 +15,10 @@ pub enum Namespace {
     Run,
     User,
     App,
+    /// `quest.<id>.*` (dsl 0.2.0 §5): a scratch tier scoped to one quest
+    /// instance, MAY carry engine-reserved implicit sub-namespaces
+    /// (`quest.<id>.state`, `quest.<id>.objectives.<oid>.done`, §5.2).
+    Quest,
 }
 
 /// A single `state:` declaration (dsl §9.3): `type` + optional `default`, plus
@@ -64,19 +68,14 @@ pub struct TypedMeta {
     pub params_malformed: bool,
 }
 
-/// Core built-in top-level meta keys valid in EVERY document kind (dsl §6.1).
-/// Keys here are never "unknown"; a top-level key outside this set, not in the
-/// kind-specific allowance below, and not owned by an active plugin's
-/// `frontmatter` export is a static error (dsl §6.1). `components:` (the import
-/// list, dsl §13) is valid everywhere; `component:`/`params:` are NOT — see
-/// [`COMPONENT_ONLY_KEYS`].
-const BUILTIN_KEYS: &[&str] = &[
-    "character",
-    "season",
-    "episode",
-    "episodeId",
+/// Frontmatter keys valid in EVERY root document kind (dsl 0.2.0 §6.1): the
+/// kind-agnostic core keys. `kind:` itself is handled separately (valid only
+/// for a root kind — Scene/Quest — never Schema/Component, dsl 0.2.0 §3.1), so
+/// it is NOT in this list; the unknown-key loop below tests it independently.
+/// `components:` (the import list, dsl §13) is valid everywhere; `component:`/
+/// `params:` are NOT — see [`COMPONENT_ONLY_KEYS`].
+const UNIVERSAL_KEYS: &[&str] = &[
     "mode",
-    "pov",
     "title",
     "luteVersion",
     "contentLang",
@@ -89,6 +88,11 @@ const BUILTIN_KEYS: &[&str] = &[
     "components",
 ];
 
+/// Frontmatter keys valid ONLY in a `MetaKind::Scene` document (dsl 0.1.0 §6.1,
+/// dsl 0.2.0 §3.1/§6.1): the scene identity triad plus the scene-only extras.
+/// A Quest document declaring any of these is `E-META-UNKNOWN-KEY`.
+const SCENE_KEYS: &[&str] = &["character", "season", "episode", "episodeId", "pov"];
+
 /// Frontmatter keys that are valid ONLY in a component file (dsl §13): the
 /// component's own name (`component:`) and its parameter signature (`params:`).
 /// In a scene or schema doc these are unknown top-level keys.
@@ -99,7 +103,9 @@ const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 /// Which document kind's frontmatter is being parsed. A `Schema` doc (imported
 /// via `uses:`, dsl §9.2) and a `Component` doc (imported via `components:`,
 /// dsl §13) are NOT scenes — neither carries the required character/season/
-/// episode keys.
+/// episode keys. `Quest` (dsl 0.2.0 §3.1, §6.1) is a second ROOT kind: like
+/// Scene it carries `kind:`, but (like Schema/Component) requires no keys and
+/// additionally rejects the scene-only [`SCENE_KEYS`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MetaKind {
     Scene,
@@ -107,6 +113,82 @@ pub enum MetaKind {
     /// A reusable-content component file (dsl §13): lifts `component:`+`params:`,
     /// skips the scene-required keys exactly like `Schema`.
     Component,
+    /// The quest kind (dsl 0.2.0 §3.1, §6.1): a second ROOT document kind. No
+    /// required keys; rejects [`SCENE_KEYS`].
+    Quest,
+}
+
+/// A ROOT document's domain kind (dsl 0.2.0 §3.1): the frontmatter `kind:`
+/// discriminator. Import-role docs (`MetaKind::Schema`/`MetaKind::Component`)
+/// never carry `kind:` and are never a `DocKind` — only a Scene or Quest root
+/// document resolves one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DocKind {
+    Scene,
+    Quest,
+}
+
+/// `<quest>`/`kind:`/etc. diagnostic codes owned by [`resolve_doc_kind`] (dsl
+/// 0.2.0 Appendix B).
+pub const E_KIND_MISSING: &str = "E-KIND-MISSING";
+pub const E_UNKNOWN_KIND: &str = "E-UNKNOWN-KIND";
+
+/// Resolve the frontmatter `kind:` scalar (dsl 0.2.0 §3.1) — a cheap peek of
+/// `meta.raw_yaml` run BEFORE the full [`parse_meta_kind`] pass (kind gates
+/// which per-kind keys that pass allows). An absent `kind` is `E-KIND-MISSING`;
+/// a present but unrecognized value is `E-UNKNOWN-KIND`; either way this
+/// returns `None` so the caller can degrade to a safe default. On a YAML parse
+/// failure this returns `(None, [])` — the separate `E-META-PARSE` diagnostic
+/// surfaces from `parse_meta_kind`, never duplicated here.
+pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
+    let value: serde_yaml::Value = match serde_yaml::from_str(&meta.raw_yaml) {
+        Ok(v) => v,
+        Err(_) => return (None, Vec::new()),
+    };
+    let empty = serde_yaml::Mapping::new();
+    let map = match &value {
+        serde_yaml::Value::Mapping(m) => m,
+        serde_yaml::Value::Null => &empty,
+        _ => return (None, Vec::new()),
+    };
+    let span = meta.span;
+    let err = |code: &str, message: String| Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+    };
+    match map.get(yaml_key("kind")) {
+        None => (
+            None,
+            vec![err(
+                E_KIND_MISSING,
+                "required frontmatter key `kind` is missing; every root document must \
+                 declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)"
+                    .to_string(),
+            )],
+        ),
+        Some(v) => {
+            let kind_str = v.as_str().map(str::to_string).unwrap_or_else(|| format!("{v:?}"));
+            match kind_str.as_str() {
+                "scene" => (Some(DocKind::Scene), Vec::new()),
+                "quest" => (Some(DocKind::Quest), Vec::new()),
+                other => (
+                    None,
+                    vec![err(
+                        E_UNKNOWN_KIND,
+                        format!(
+                            "unknown document kind `{other}`; expected `scene` or `quest` \
+                             (dsl 0.2.0 §3.1)"
+                        ),
+                    )],
+                ),
+            }
+        }
+    }
 }
 
 /// Parse the peeled YAML frontmatter (dsl §6.1) into typed form plus the inline
@@ -205,7 +287,9 @@ pub fn parse_meta_kind(
             ));
             continue;
         };
-        let known = BUILTIN_KEYS.contains(&key)
+        let known = UNIVERSAL_KEYS.contains(&key)
+            || (key == "kind" && matches!(kind, MetaKind::Scene | MetaKind::Quest))
+            || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
             || (component_key_allowed && COMPONENT_ONLY_KEYS.contains(&key))
             || snapshot.frontmatter.contains_key(key);
         if !known {
@@ -388,6 +472,7 @@ pub(crate) fn namespace_of(path: &str) -> Option<Namespace> {
         "run" => Some(Namespace::Run),
         "user" => Some(Namespace::User),
         "app" => Some(Namespace::App),
+        "quest" => Some(Namespace::Quest),
         _ => None,
     }
 }

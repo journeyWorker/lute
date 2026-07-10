@@ -52,7 +52,7 @@ const GREET: &str = "---\ncomponent: greet\nparams:\n  who: string\n---\n\
 ## Scene 1.\n::auto{character=@who}\n:narrator: Hello there.\n";
 
 fn scene(components: &str, body: &str) -> String {
-    format!("---\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [{components}]\n---\n## Shot 1.\n{body}\n")
+    format!("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [{components}]\n---\n## Shot 1.\n{body}\n")
 }
 
 #[test]
@@ -156,7 +156,7 @@ fn use_ref_arg_type_mismatch_flags() {
     );
     // The scene declares a string-typed def `label`; passing it to a `number`
     // param is a DEFINITE type mismatch (str != number) resolvable in scene scope.
-    let s = "---\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\ndefs:\n  label: { type: string, cel: \"'x'\" }\n---\n## Shot 1.\n::use{component=\"c\" count=@label}\n";
+    let s = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\ndefs:\n  label: { type: string, cel: \"'x'\" }\n---\n## Shot 1.\n::use{component=\"c\" count=@label}\n";
     let cs = codes(&dir, s);
     assert!(
         cs.contains(&"E-COMPONENT-ARG".to_string()),
@@ -173,7 +173,7 @@ fn use_ref_arg_compatible_ok() {
         "---\ncomponent: c\nparams:\n  count: number\n---\n## C.\n:narrator: badge.\n",
     );
     // A number-typed def for a number param is compatible — no E-COMPONENT-ARG.
-    let s = "---\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\ndefs:\n  num: { type: number, cel: \"3\" }\n---\n## Shot 1.\n::use{component=\"c\" count=@num}\n";
+    let s = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\ndefs:\n  num: { type: number, cel: \"3\" }\n---\n## Shot 1.\n::use{component=\"c\" count=@num}\n";
     let cs = codes(&dir, s);
     assert!(
         !cs.contains(&"E-COMPONENT-ARG".to_string()),

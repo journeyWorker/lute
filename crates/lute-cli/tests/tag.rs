@@ -25,7 +25,7 @@ fn tag_backfills_code_and_is_idempotent() {
     let f = dir.join("scene.lute");
     std::fs::write(
         &f,
-        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator: hi\n",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator: hi\n",
     )
     .unwrap();
     let out = Command::new(BIN)
@@ -48,7 +48,7 @@ fn tag_backfills_code_and_is_idempotent() {
     );
     assert_eq!(
         after,
-        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator{code=\"0010\"}: hi\n",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator{code=\"0010\"}: hi\n",
         "full file must match the 0.1.0 :speaker{{code}} rewrite exactly"
     );
     // idempotent: second run changes nothing
