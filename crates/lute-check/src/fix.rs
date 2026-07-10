@@ -69,6 +69,12 @@ pub fn fix_document(text: &str) -> FixResult {
     for shot in &doc2.shots {
         collect_choices(&shot.body, &mut choices);
     }
+    // Quest bodies (dsl 0.2.0 §6.7) can nest `<branch>`/`<choice as=>` too —
+    // migrate them like scene bodies (mirrors the doc.quests traversal every
+    // other 0.2.0 walker uses).
+    for quest in &doc2.quests {
+        collect_choices(&quest.body, &mut choices);
+    }
     let mut edits2: Vec<(usize, usize, String)> = Vec::new();
     for c in &choices {
         if let Some(a) = c.attrs.iter().find(|a| a.key == "as") {
@@ -132,6 +138,8 @@ fn collect_choices<'a>(nodes: &'a [Node], out: &mut Vec<&'a Choice>) {
                     }
                 }
             }
+            Node::On(o) => collect_choices(&o.body, out),
+            Node::Objective(o) => collect_choices(&o.body, out),
             Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
         }
     }
@@ -234,5 +242,31 @@ mod tests {
         let again = fix_document(&out.text);
         assert_eq!(again.changed, 0, "second pass is a no-op");
         assert_eq!(again.text, out.text);
+    }
+
+    #[test]
+    fn migrates_choice_as_inside_quest_on_and_objective_bodies() {
+        // 0.2.0 merge fix: `fix_document` phase 2 must also seed from
+        // `doc.quests` (not just `doc.shots`) and `collect_choices` must
+        // recurse `Node::On`/`Node::Objective` bodies, so a `<branch>`/
+        // `<choice as=>` nested inside EITHER a quest's `<on>` body or an
+        // `<objective>` body gets migrated — pre-merge, `fix_document` only
+        // walked `doc.shots`, so this quest doc would parse clean but yield
+        // `changed: 0` and leave both `as=` keys untouched.
+        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.x\">\n:narrator: hi\n</choice>\n</branch>\n</on>\n<objective id=\"o\" done=\"run.d\">\n<branch id=\"b2\">\n<choice id=\"c2\" label=\"M\" as=\"run.y\">\n:narrator: yo\n</choice>\n</branch>\n</objective>\n</quest>\n";
+        let out = fix_document(src);
+        assert_eq!(out.changed, 2, "got:\n{}", out.text);
+        assert!(
+            out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
+            "on-nested choice not migrated, got:\n{}",
+            out.text
+        );
+        assert!(
+            out.text.contains("<choice id=\"c2\" label=\"M\" into=\"run.y\">"),
+            "objective-nested choice not migrated, got:\n{}",
+            out.text
+        );
+        assert!(!out.text.contains("as=\"run.x\""), "got:\n{}", out.text);
+        assert!(!out.text.contains("as=\"run.y\""), "got:\n{}", out.text);
     }
 }
