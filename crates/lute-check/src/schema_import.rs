@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 
 use crate::meta::{parse_meta_kind, MetaKind, StateDecl, StateSchema};
 
@@ -39,6 +39,21 @@ use crate::meta::{parse_meta_kind, MetaKind, StateDecl, StateSchema};
 pub struct SchemaImports {
     pub state: StateSchema,
     pub defs: BTreeMap<String, serde_yaml::Value>,
+    /// Project-authored `enums:`/`entities:` domains (dsl data-catalog
+    /// foundation A3), merged across the import graph the SAME way as
+    /// `state`/`defs` above: gathered per name from every reachable schema
+    /// doc, a name declared by >= 2 DISTINCT files is a cross-source
+    /// collision — reported as `E-DOMAIN-DUP` (A2's cross-plugin dup code,
+    /// reused verbatim rather than a new `E-USES-DUP-*` code, per the
+    /// data-catalog foundation design) — and the winner is the MIN-depth
+    /// decl (byte-sorted-first file breaks a tie). UNLIKE `state`/`defs`
+    /// there is no `extends`-base "may add members" relaxation yet (0.3.0
+    /// leaves additive `extends` growth for entity/relation composition;
+    /// deferred here, see the module docs). This is ONLY the
+    /// project-declared side; [`merge_domains`] unions it with the plugin/
+    /// core baseline (`CapabilitySnapshot.domains`) — THAT is the actual
+    /// merged vocabulary the checker consults for `Type::Domain` resolution.
+    pub domains: BTreeMap<String, Domain>,
     pub diags: Vec<Diagnostic>,
     /// State paths whose resolved winner came from an `extends` base (composition
     /// depth >= 1). The importing scene's inline `state:` MAY refine such a path
@@ -77,11 +92,12 @@ impl Edge {
 }
 
 /// The parsed subset of one imported doc kept after traversal: its declared
-/// state paths, defs, and `<quest id>`s (the doc's own edges are consumed
-/// during traversal).
+/// state paths, defs, project-authored domains, and `<quest id>`s (the doc's
+/// own edges are consumed during traversal).
 struct ParsedDoc {
     state: BTreeMap<String, StateDecl>,
     defs: BTreeMap<String, serde_yaml::Value>,
+    domains: BTreeMap<String, Domain>,
     /// Every non-empty `<quest id>` this doc declares (dsl 0.2.0 §6.3
     /// project-wide uniqueness); an id-less `<quest>` is that doc's OWN
     /// malformed-id problem (`E-QUEST-ID-MISSING`, reported when THAT doc is
@@ -171,6 +187,7 @@ pub fn resolve_imports(
     let mut state_by_name: BTreeMap<String, Vec<(PathBuf, usize, StateDecl)>> = BTreeMap::new();
     let mut def_by_name: BTreeMap<String, Vec<(PathBuf, usize, serde_yaml::Value)>> =
         BTreeMap::new();
+    let mut domain_by_name: BTreeMap<String, Vec<(PathBuf, usize, Domain)>> = BTreeMap::new();
     for (canon, doc) in &parsed {
         let depth = dist.get(canon).copied().unwrap_or(0);
         for (path, decl) in &doc.state {
@@ -185,6 +202,12 @@ pub fn resolve_imports(
                 .entry(name.clone())
                 .or_default()
                 .push((canon.clone(), depth, v.clone()));
+        }
+        for (name, dom) in &doc.domains {
+            domain_by_name
+                .entry(name.clone())
+                .or_default()
+                .push((canon.clone(), depth, dom.clone()));
         }
     }
 
@@ -226,6 +249,38 @@ pub fn resolve_imports(
         }
     }
 
+    // Project-authored `enums:`/`entities:` domains (data-catalog foundation
+    // A3): gathered per name like state/defs above, but resolved like the
+    // quest-id fold below — NOT depth-scoped (no `extends`-base "may add
+    // members" relaxation yet, see `SchemaImports::domains`'s doc comment):
+    // ANY name declared by >= 2 DISTINCT reachable files collides, reusing
+    // A2's `E-DOMAIN-DUP` code (not a new `E-USES-DUP-*` one — the
+    // data-catalog foundation design treats every domain-name collision,
+    // plugin/plugin, plugin/project, or project/project, identically). The
+    // winner is still the MIN-depth decl (byte-sorted-first file breaks a
+    // tie), via the SAME `pick_winner` state/defs use, so resolution stays
+    // deterministic even though the dup report itself is depth-agnostic.
+    let mut domains = BTreeMap::new();
+    for (name, entries) in domain_by_name {
+        let mut files: Vec<&PathBuf> = entries.iter().map(|(f, _, _)| f).collect();
+        files.sort();
+        files.dedup();
+        if files.len() >= 2 {
+            diags.push(uses_diag(
+                "E-DOMAIN-DUP",
+                format!(
+                    "domain `{name}` is declared by more than one schema import (`{}` and `{}`); a domain name must be declared by exactly one source",
+                    files[0].display(),
+                    files[1].display()
+                ),
+                at,
+            ));
+        }
+        if let Some((winner, _)) = pick_winner(&entries) {
+            domains.insert(name, winner);
+        }
+    }
+
     // Every `<quest id>` reachable via the import graph (dsl 0.2.0 §6.3): unlike
     // `state`/`defs` above, quest-id uniqueness is NOT depth-scoped (no
     // `extends` "closer override wins" relaxation applies — a quest id is a
@@ -259,10 +314,50 @@ pub fn resolve_imports(
     SchemaImports {
         state,
         defs,
+        domains,
         diags,
         state_overridable,
         imported_quest_ids,
     }
+}
+
+/// Union a resolved schema import's project-declared domains (data-catalog
+/// foundation A3, [`SchemaImports::domains`]) with the plugin/core baseline
+/// already on `snapshot` ([`CapabilitySnapshot::domains`], A2) — the ACTUAL
+/// merged domain vocabulary a later checker task (A4) resolves
+/// `Type::Domain(name)` against, mirroring how `check.rs::fold_env` unions
+/// `input.snapshot.defs` with `input.imports.defs`.
+///
+/// A name declared on BOTH sides — a plugin/project clash — is reported via
+/// the SAME `E-DOMAIN-DUP` code `assemble.rs`'s `merge_map` uses for a
+/// cross-plugin collision (data-catalog foundation design: "a plugin/project
+/// name clash is an error, never a silent shadow"); the plugin/core entry
+/// wins (first owner wins, matching `merge_map`'s drop-and-report
+/// semantics) and the project entry is dropped, not merged/overridden. Pure
+/// and total; never panics.
+pub fn merge_domains(
+    snapshot: &CapabilitySnapshot,
+    imports: &SchemaImports,
+    at: Span,
+) -> (BTreeMap<String, Domain>, Vec<Diagnostic>) {
+    let mut merged = snapshot.domains.clone();
+    let mut diags = Vec::new();
+    for (name, dom) in &imports.domains {
+        if merged.contains_key(name) {
+            diags.push(uses_diag(
+                "E-DOMAIN-DUP",
+                format!(
+                    "domain `{name}` is declared by a project schema but already exists in \
+                     the plugin/core vocabulary; a domain name must be declared by exactly \
+                     one source"
+                ),
+                at,
+            ));
+            continue;
+        }
+        merged.insert(name.clone(), dom.clone());
+    }
+    (merged, diags)
 }
 
 /// Relax an edge in the 0-1 BFS: record `canon` at `depth` (and enqueue it) when
@@ -328,6 +423,7 @@ fn read_and_parse(
     let empty = ParsedDoc {
         state: BTreeMap::new(),
         defs: BTreeMap::new(),
+        domains: BTreeMap::new(),
         quest_ids: BTreeSet::new(),
     };
     let text = match std::fs::read_to_string(canon) {
@@ -356,6 +452,7 @@ fn read_and_parse(
     }
     let state = tm.state.decls;
     let defs = tm.defs;
+    let domains = tm.domains;
     let uses = tm.uses;
     let extends = tm.extends;
     // `doc.quests` comes from the syntax-level parse above (kind-agnostic, Plan
@@ -372,6 +469,7 @@ fn read_and_parse(
         ParsedDoc {
             state,
             defs,
+            domains,
             quest_ids,
         },
         uses,

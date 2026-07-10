@@ -41,9 +41,21 @@ pub struct CapabilitySnapshot {
 
 /// An enum-style named vocabulary: an ordered member list, same shape as an
 /// `enums` entry. See `CapabilitySnapshot::domains`.
+///
+/// `open` distinguishes the two data-catalog foundation A3 declaration shapes
+/// (0.3.0 draft §3.1 `entities:`): `false` (the default — every plugin/core
+/// `enums` fold and a project `enums:`/`entities: { members: […] }` entry) is
+/// a CLOSED, statically-enumerable domain — `members` is authoritative and
+/// membership is checked against it. `true` (a project `entities: { open:
+/// engine }` entry, `lute-manifest::entities::parse_entities`) is an
+/// OPEN/registry-style domain: ids are minted by the engine at runtime, not
+/// enumerable at compile time, so `members` stays empty and a later checker
+/// task (A4) must treat membership as always-accept (or provider-backed)
+/// rather than closed-list membership.
 #[derive(Clone, Debug)]
 pub struct Domain {
     pub members: Vec<String>,
+    pub open: bool,
 }
 
 #[derive(Clone, Debug)]
