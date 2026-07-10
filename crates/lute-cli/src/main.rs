@@ -721,7 +721,7 @@ fn state_type_str(is_implicit: bool, ty: &Type) -> (String, Option<Vec<String>>)
         Type::Record(_) => ("record".to_string(), None),
         Type::Map { .. } => ("map".to_string(), None),
         Type::EnumFromOption(_) => ("enum".to_string(), None),
-        Type::ProviderRef(_) | Type::SlotId { .. } | Type::AssetKind(_) => {
+        Type::ProviderRef(_) | Type::Domain(_) | Type::SlotId { .. } | Type::AssetKind(_) => {
             ("string".to_string(), None)
         }
     }
@@ -747,6 +747,7 @@ fn attr_type_str(ty: &Type) -> (String, Option<Vec<String>>) {
         ),
         Type::EnumFromOption(opt) => (format!("enumFromOption:{opt}"), None),
         Type::ProviderRef(name) => (format!("providerRef:{name}"), None),
+        Type::Domain(name) => (format!("domain:{name}"), None),
         Type::SlotId { namespace } => (format!("slotId:{namespace}"), None),
         Type::AssetKind(name) => (format!("assetKind:{name}"), None),
     }

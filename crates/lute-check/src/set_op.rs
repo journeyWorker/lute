@@ -212,6 +212,7 @@ fn type_name(ty: &Type) -> &'static str {
         Type::Map { .. } => "map",
         Type::EnumFromOption(_) => "enumFromOption",
         Type::ProviderRef(_) => "providerRef",
+        Type::Domain(_) => "domain",
         Type::SlotId { .. } => "slotId",
         Type::AssetKind(_) => "assetKind",
     }

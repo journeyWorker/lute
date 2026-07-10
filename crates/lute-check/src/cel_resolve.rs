@@ -407,7 +407,7 @@ pub(crate) fn compatible(produced: &Type, expected: &ExpectedType) -> bool {
 fn is_id_type(t: &Type) -> bool {
     matches!(
         t,
-        Type::ProviderRef(_) | Type::SlotId { .. } | Type::AssetKind(_)
+        Type::ProviderRef(_) | Type::Domain(_) | Type::SlotId { .. } | Type::AssetKind(_)
     )
 }
 
@@ -428,6 +428,7 @@ fn ty_desc(t: &Type) -> String {
         Type::Record(_) => "a record".to_string(),
         Type::Map { .. } => "a map".to_string(),
         Type::ProviderRef(_) => "a provider ref".to_string(),
+        Type::Domain(_) => "a domain ref".to_string(),
         Type::SlotId { .. } => "a slot id".to_string(),
         Type::AssetKind(_) => "an asset kind".to_string(),
     }
