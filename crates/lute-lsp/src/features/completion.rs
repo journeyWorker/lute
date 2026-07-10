@@ -75,12 +75,15 @@ pub fn complete_at(
                 state_path_items(&meta)
             }
         }
+        // A content-line attr key/value (dsl §7.1's `:speaker{…}:` — no owning
+        // directive/capability schema, unlike a `::directive`'s attrs).
         Cursor::AttrKey {
             directive: None, ..
-        }
-        | Cursor::AttrValue {
-            directive: None, ..
-        } => Vec::new(),
+        } => content_line_attr_key_items(),
+        Cursor::AttrValue {
+            directive: None,
+            key,
+        } => content_line_attr_value_items(key),
         Cursor::SetPath { .. } => state_path_items(&meta),
         // Interp interiors (dsl §7.6) get hover/def/references (Task D1) but no
         // completion — a `{{…}}` referent is authored inline, matching the prior
@@ -89,6 +92,7 @@ pub fn complete_at(
         Cursor::IsPattern { subject_path } => is_pattern_items(doc, &meta, subject_path),
         Cursor::OnEventValue(_) => event_name_items(snapshot),
         Cursor::ConstructAttrArea { construct } => construct_attr_key_items(construct),
+        Cursor::Speaker => speaker_items(providers),
     }
 }
 
@@ -125,6 +129,89 @@ fn construct_attr_key_items(construct: QuestConstruct) -> Vec<CompletionItem> {
             detail: Some(ty.to_string()),
             ..Default::default()
         })
+        .collect()
+}
+
+/// Content-line attribute keys (dsl 0.1.0 §7.1, §12.1): a `:speaker{…}:` line's
+/// fixed 7-key vocabulary is, like [`construct_attr_key_items`]'s three quest
+/// constructs, NOT capability-schema-driven (it belongs to the content-line
+/// grammar itself, validated by `lute_check::content_line` rather than a
+/// [`snapshot`]-declared `DirectiveDecl`) — always the full set; kind `FIELD`.
+fn content_line_attr_key_items() -> Vec<CompletionItem> {
+    const KEYS: &[(&str, &str)] = &[
+        ("code", "string"),
+        ("emotion", "enum"),
+        ("variant", "number"),
+        ("action", "string"),
+        ("dialogMotion", "string"),
+        ("delivery", "spoken|thought|voiceover"),
+        ("as", "string"),
+    ];
+    KEYS.iter()
+        .map(|(name, ty)| CompletionItem {
+            label: name.to_string(),
+            kind: Some(CompletionItemKind::FIELD),
+            detail: Some(ty.to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// Content-line attribute VALUES: only `delivery` has a closed domain in
+/// 0.2.1 (dsl §7.1) — every other content-line key is `string`/`number`
+/// typed with no enumerable domain, so it offers nothing.
+fn content_line_attr_value_items(key: &str) -> Vec<CompletionItem> {
+    if key != "delivery" {
+        return Vec::new();
+    }
+    ["spoken", "thought", "voiceover"]
+        .iter()
+        .map(|v| CompletionItem {
+            label: v.to_string(),
+            kind: Some(CompletionItemKind::ENUM_MEMBER),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// Character/cast ids from the pinned `character` provider snapshot (same
+/// well-known provider name the `CH` [`AssetKindDecl`]'s `characterId`
+/// segment resolves against, dsl plugin §8/§10) — mirrors
+/// [`asset_segment_items`]'s `Type::ProviderRef` lookup: dedup + sort across
+/// every pinned snapshot. Empty (never fabricated) when no snapshot declares
+/// `character` — 0.2.1 has no dedicated cast-catalog provider kind of its
+/// own, so this reuses the one the asset-id grammar already established.
+fn character_ids(providers: &ProviderSet) -> Vec<String> {
+    providers
+        .snapshots()
+        .iter()
+        .filter_map(|s| s.entries.get("character"))
+        .flatten()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(String::from)
+        .collect()
+}
+
+/// `:speaker{…}:` name completion (dsl §7.1): pinned `character` catalog ids
+/// (kind `VALUE`, as [`asset_segment_items`] offers provider ids) plus the
+/// always-valid `narrator` keyword (kind `KEYWORD`). Speaker-id VALIDATION
+/// stays out of scope for 0.2.1 (deferred to the 0.2.2 foundation minor) —
+/// this only completes + claims the span.
+fn speaker_items(providers: &ProviderSet) -> Vec<CompletionItem> {
+    character_ids(providers)
+        .into_iter()
+        .map(|id| CompletionItem {
+            label: id,
+            kind: Some(CompletionItemKind::VALUE),
+            ..Default::default()
+        })
+        .chain(std::iter::once(CompletionItem {
+            label: "narrator".to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            ..Default::default()
+        }))
         .collect()
 }
 
@@ -1150,5 +1237,83 @@ mod tests {
         let text = "---\nkind: scene\n---\n";
         let off = text.find("kind").unwrap() + 1;
         assert!(complete(text, off).is_empty());
+    }
+
+    #[test]
+    fn content_line_attr_key_completion_offers_delivery_and_emotion() {
+        // Cursor on the KEY half of an existing content-line attr (`code`, with
+        // a `=` + quoted value so it's NOT a bareword `BoolTrue` attr, whose
+        // key/value spans coincide and would resolve as an `AttrValue`
+        // instead — resolves to `Cursor::AttrKey { directive: None, .. }`
+        // (dsl §7.1 content lines have no owning directive/capability schema).
+        let text = "## Shot 1.\n:x{code=\"c1\"}: hi\n";
+        let off = text.find("code").unwrap() + 2; // inside `code`, before `=`
+        let items = complete(text, off);
+        let ls = labels(&items);
+        assert!(ls.contains(&"delivery"), "missing delivery: {ls:?}");
+        assert!(ls.contains(&"emotion"), "missing emotion: {ls:?}");
+    }
+
+    #[test]
+    fn content_line_delivery_value_completion_offers_exactly_three_members() {
+        // Cursor inside the empty `delivery=""` value -> `Cursor::AttrValue {
+        // directive: None, key: "delivery" }`.
+        let text = "## Shot 1.\n:x{delivery=\"\"}: hi\n";
+        let off = text.find("delivery=\"").unwrap() + "delivery=\"".len();
+        let items = complete(text, off);
+        let ls = labels(&items);
+        for v in ["spoken", "thought", "voiceover"] {
+            assert!(ls.contains(&v), "missing {v}: {ls:?}");
+        }
+        assert_eq!(ls.len(), 3, "delivery has exactly 3 members: {ls:?}");
+    }
+
+    #[test]
+    fn content_line_other_attr_key_has_no_value_completion() {
+        // `emotion` has no closed domain in 0.2.1 (only `delivery` does).
+        let text = "## Shot 1.\n:x{emotion=\"\"}: hi\n";
+        let off = text.find("emotion=\"").unwrap() + "emotion=\"".len();
+        assert!(complete(text, off).is_empty());
+    }
+
+    #[test]
+    fn speaker_completion_offers_narrator_with_no_provider() {
+        // Cursor on the speaker NAME itself -> `Cursor::Speaker`. No provider
+        // snapshot pinned, so only the `narrator` keyword is offered.
+        let text = "## Shot 1.\n:nar: hi\n";
+        let off = text.find(":nar").unwrap() + 2; // inside `nar`
+        let items = complete(text, off);
+        let ls = labels(&items);
+        assert_eq!(ls, vec!["narrator"], "narrator-only, no catalog: {ls:?}");
+    }
+
+    #[test]
+    fn speaker_completion_offers_character_ids_when_provider_pinned() {
+        use lute_manifest::provider::ProviderSnapshot;
+        use std::collections::BTreeMap;
+        let text = "## Shot 1.\n:bia: hi\n";
+        let doc = parsed(text);
+        let off = text.find(":bia").unwrap() + 2; // inside `bia`
+        let providers = ProviderSet::from_one(ProviderSnapshot {
+            manifest_version: "1".to_string(),
+            provider_version: "1".to_string(),
+            entries: BTreeMap::from([(
+                "character".to_string(),
+                vec!["bianca".to_string(), "ren".to_string()],
+            )]),
+            stale: false,
+        });
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &providers,
+            &SchemaImports::default(),
+            off,
+        );
+        let ls = labels(&items);
+        assert!(
+            ls.contains(&"bianca") && ls.contains(&"ren") && ls.contains(&"narrator"),
+            "catalog ids + narrator: {ls:?}"
+        );
     }
 }

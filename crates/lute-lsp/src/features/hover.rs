@@ -104,7 +104,8 @@ pub fn hover_at(
         }
         | Cursor::AttrValue {
             directive: None, ..
-        } => None,
+        }
+        | Cursor::Speaker => None,
         Cursor::OnEventValue(event) => event_hover(snapshot, event),
         Cursor::ConstructAttrArea { construct } => Some(construct_hover(construct)),
     }?;
