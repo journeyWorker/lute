@@ -1,5 +1,3 @@
----
-extends: base.schema.lute
+extends: base.schema.yaml
 state:
   run.blessed: { type: bool, default: true }
----

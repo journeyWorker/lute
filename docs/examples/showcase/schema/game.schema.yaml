@@ -1,12 +1,10 @@
----
-# Child schema (dsl §9.2 `extends:`). Refines base.schema.lute: OVERRIDES the
+# Child schema (dsl §9.2 `extends:`). Refines base.schema.yaml: OVERRIDES the
 # `user.level` default (1 -> 2, same type — a silent default-only refinement),
 # ADDS a new state path (`run.chapter`) and a new def (`veteran`). Precedence
 # low -> high: base < this. The episode imports THIS child via `uses:`.
-extends: base.schema.lute
+extends: base.schema.yaml
 state:
   user.level:  { type: number, default: 2 }
   run.chapter: { type: number, default: 1 }
 defs:
   veteran: { type: bool, cel: "user.level >= 2" }
----

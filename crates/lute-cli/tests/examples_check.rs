@@ -1,5 +1,6 @@
 // crates/lute-cli/tests/examples_check.rs
 // Mirrors the harness in crates/lute-cli/tests/cli.rs (assert_cmd style).
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn check(args: &[&str]) -> std::process::Output {
@@ -11,9 +12,15 @@ fn check(args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 
+fn examples_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples")
+}
+
 #[test]
 fn extends_demo_scene_checks_clean_under_project() {
-    // renamed extends-scene.lute -> extends-demo.lute, uses child.schema.lute
+    // renamed extends-scene.lute -> extends-demo.lute, uses child.schema.yaml
+    // (0.3.0 B4: declaration files migrated .schema.lute -> .schema.yaml, the
+    // Lute `---` envelope stripped, per foundation B2/B4).
     let out = check(&[
         "../../docs/examples/extends-demo.lute",
         "--project",
@@ -23,8 +30,39 @@ fn extends_demo_scene_checks_clean_under_project() {
 }
 
 #[test]
-fn standalone_schema_fragment_has_no_kind_missing() {
-    let out = check(&["../../docs/examples/base.schema.lute"]);
-    let s = String::from_utf8_lossy(&out.stdout);
-    assert!(!s.contains("E-KIND-MISSING") && !s.contains("E-META-MISSING"), "{s}");
+fn extends_demo_chain_uses_declaration_yaml_not_schema_lute() {
+    // B4: `child.schema.yaml`/`base.schema.yaml` are the declaration files
+    // under docs/examples/ now — the old `.schema.lute` envelope form is gone.
+    assert!(
+        examples_dir().join("child.schema.yaml").exists(),
+        "child.schema.yaml must exist after the B4 .schema.lute -> .schema.yaml migration"
+    );
+    assert!(
+        examples_dir().join("base.schema.yaml").exists(),
+        "base.schema.yaml must exist after the B4 .schema.lute -> .schema.yaml migration"
+    );
+    assert!(
+        !examples_dir().join("child.schema.lute").exists()
+            && !examples_dir().join("base.schema.lute").exists()
+            && !examples_dir().join("state.schema.lute").exists(),
+        "the old .schema.lute envelope files must be gone after migration"
+    );
+}
+
+#[test]
+fn showcase_episode_checks_clean_with_yaml_schema_chain() {
+    // B4: showcase/schema/{base,game}.schema.lute -> .schema.yaml; episode01's
+    // `uses:` (and game's `extends:`) target the new names.
+    let showcase = examples_dir().join("showcase");
+    assert!(
+        showcase.join("schema/game.schema.yaml").exists()
+            && showcase.join("schema/base.schema.yaml").exists(),
+        "showcase/schema/{{base,game}}.schema.yaml must exist after migration"
+    );
+    let out = check(&[
+        "../../docs/examples/showcase/episode01.lute",
+        "--project",
+        "../../docs/examples/showcase",
+    ]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
 }

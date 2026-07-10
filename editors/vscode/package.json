@@ -62,7 +62,13 @@
           "statePath": ["variable.other.path.lute"]
         }
       }
-    ]
+    ],
+    "configurationDefaults": {
+      "yaml.schemas": {
+        "schemas/lute.schema.json": "**/*.schema.yaml",
+        "schemas/lute.plugin.json": "**/plugins/**/*.yaml"
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "echo \"lute: no build step (plain JS)\"",

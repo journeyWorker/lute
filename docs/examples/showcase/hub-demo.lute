@@ -11,8 +11,8 @@ luteVersion: "0.1.0"
 # used here, so no scene-local `plugins:` narrowing is needed.
 profile: showcase
 # Shared run/user/app schema + defs arrive via the imported child schema, which
-# `extends:` a base (schema/game.schema.lute -> schema/base.schema.lute).
-uses: schema/game.schema.lute
+# `extends:` a base (schema/game.schema.yaml -> schema/base.schema.yaml).
+uses: schema/game.schema.yaml
 # One genuinely scene-local declaration (§9.2), written by a hub choice below.
 state:
   scene.affect.bianca: { type: number, default: 0 }

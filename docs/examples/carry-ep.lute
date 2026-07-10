@@ -3,7 +3,7 @@ kind: scene
 character: sofia
 season: 1
 episode: 3
-uses: state.schema.lute
+uses: state.schema.yaml
 ---
 
 ## Shot 1.

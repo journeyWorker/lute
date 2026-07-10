@@ -1,6 +1,4 @@
----
 state:
   run.blessed: { type: bool, default: false }
 defs:
   wealthy: { type: bool, cel: "run.blessed" }
----
