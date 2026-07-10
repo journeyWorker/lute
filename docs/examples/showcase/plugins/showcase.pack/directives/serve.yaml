@@ -2,7 +2,10 @@
 # on ONE directive, a `providerRef`-typed attr (`performer`, resolved against the
 # `castId` catalog) and an `assetKind`-typed attr (`poster`, decomposed into the
 # `PT` segments). `resultKey` opens a typed `scene.serve.<key>.*` slot (shape
-# `serveResult`); the bridge write dominates the later read when `wait="true"`.
+# `serveResult`); the bridge write dominates the later read when `sync="true"`.
+# `sync` (bool) is plugin-owned blocking semantics — NOT the dsl §7.5 staging
+# `wait` timing key, which is cross-cutting reserved (§10) and MUST NOT be
+# declared as a plugin attribute name.
 directives:
   - name: serve
     layer: bridge
@@ -11,7 +14,7 @@ directives:
       - { name: performer, required: true, type: { providerRef: castId } }
       - { name: poster,    required: true, type: { assetKind: PT } }
       - { name: resultKey, required: true, type: { slotId: { namespace: scene.serve } } }
-      - { name: wait,      type: bool, default: true }
+      - { name: sync,      type: bool, default: true }
     semantics: [ "writes.sceneState", "bridgeCall" ]
     state:
       declares:
