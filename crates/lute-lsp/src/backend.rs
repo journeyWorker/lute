@@ -21,8 +21,8 @@
 use std::path::{Path, PathBuf};
 
 use dashmap::DashMap;
-use lute_check::{check, CheckInput, Mode};
-use lute_core_span::{Span, TextIndex};
+use lute_check::{check, check_cel_slot, parse_meta_kind, resolve_imports, CheckInput, MetaKind, Mode};
+use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     CompletionOptions, CompletionParams, CompletionResponse, Diagnostic as LspDiagnostic,
@@ -77,6 +77,18 @@ impl Backend {
     /// Error at the document start — otherwise a scene that is itself clean would
     /// silently validate against a broken project (plugin §11).
     async fn analyze(&self, uri: Uri, snapshot: &DocumentSnapshot) {
+        // B3 (data-catalog foundation 0.3.0): a project declaration `.yaml`
+        // (under the project's `schema:`/`catalog:` dir) is a pure declaration
+        // map, not a `.lute` scene — it has no body for `check()` to walk. Claim
+        // it here and run the declaration-specific semantic pass instead; every
+        // other document (every `.lute`, and any `.yaml` NOT under those dirs)
+        // keeps today's `check()` walk below, unchanged.
+        if let Some(path) = uri_to_path(&uri) {
+            if let Some(root) = claimed_declaration_yaml(&path) {
+                self.analyze_declaration(uri, snapshot, &path, &root).await;
+                return;
+            }
+        }
         let (cap, providers, rdiags) = self.snapshot_for(&uri, &snapshot.text);
         // Resolve `uses:` schema imports (dsl §9.2) with the SAME resolver the
         // editor features use (`imports_for`), so diagnostics and features never
@@ -105,6 +117,182 @@ impl Backend {
         diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
         self.client
             .publish_diagnostics(uri, diags, Some(snapshot.version))
+            .await;
+    }
+
+    /// Analyze an open project declaration `.yaml`/`.yml` — state/defs/enums/
+    /// entities under a project's `schema:`/`catalog:` dir ([`claimed_declaration_yaml`],
+    /// data-catalog foundation B3) — and publish semantic diagnostics on the
+    /// SAME file. A declaration has no body ([`schema_import`](lute_check::schema_import)'s
+    /// module docs: "no `---` envelope, no body — the whole file IS the
+    /// frontmatter"), so unlike [`analyze`](Self::analyze) this never calls
+    /// `check()`; it drives the SAME building blocks `check()` drives for a
+    /// scene's imported schema, applied to THIS file's own declaration:
+    /// * [`parse_meta_kind`] (`MetaKind::Schema`) — the EXACT parse B2's
+    ///   `schema_import::read_and_parse` uses for a `.yaml`/`.yml` import target
+    ///   (a synthetic whole-file `Meta`, no `---` envelope) — reused verbatim so
+    ///   a declaration parses identically whether opened directly or imported.
+    /// * [`resolve_imports`] — this file's OWN `uses:`/`extends:` (dsl §9.2),
+    ///   the SAME resolver [`imports_for`](Self::imports_for) runs for a scene,
+    ///   so the state schema `defs:` CEL is checked against includes whatever
+    ///   this declaration itself imports.
+    /// * [`lute_check::schema_import::merge_domains`] — this file's own
+    ///   `enums:`/`entities:` unioned with its imports, checked against the
+    ///   project's active baseline (A4), catching an `E-DOMAIN-DUP` collision
+    ///   exactly as `check()` does for a scene.
+    /// * [`check_cel_slot`] — the checker's own CEL/path/`@ref` resolver (dsl
+    ///   §8/§9), run once per `defs:` entry's `cel:` body against the merged
+    ///   state/def tables above. `check()` itself does not yet drive this for
+    ///   ANY document's `defs:` (`def_bodies` is still a D4 stub — see
+    ///   `check.rs`'s `FoldedEnv::def_bodies` doc comment); the LSP is the
+    ///   first caller, closing exactly the gap B3 exists to close.
+    async fn analyze_declaration(
+        &self,
+        uri: Uri,
+        snapshot: &DocumentSnapshot,
+        file_path: &Path,
+        project_root: &Path,
+    ) {
+        let idx = TextIndex::new(&snapshot.text);
+        let whole = Span {
+            byte_start: 0,
+            byte_end: snapshot.text.len(),
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        };
+        let meta = lute_syntax::ast::Meta {
+            raw_yaml: snapshot.text.clone(),
+            span: whole,
+        };
+        let (typed, mut diags) = parse_meta_kind(
+            &meta,
+            &lute_manifest::snapshot::CapabilitySnapshot::default(),
+            MetaKind::Schema,
+        );
+
+        let dir = file_path.parent().unwrap_or_else(|| Path::new("."));
+        let imports = resolve_imports(dir, &typed.uses, &typed.extends, whole);
+        diags.extend(imports.diags.clone());
+
+        let project = match lute_manifest::project::load_project(project_root) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("lute-lsp: {e}");
+                None
+            }
+        };
+        let (baseline, rdiags) = lute_manifest::project::resolve_document_snapshot(
+            project.as_ref(),
+            typed.profile.as_deref(),
+            &typed.plugins,
+        );
+
+        // Domain refs: this file's own `enums:`/`entities:` (not part of
+        // `imports.domains`, which only covers files REACHED via `uses:`/
+        // `extends:` — see `SchemaImports::domains`) unioned with its imports,
+        // checked against the project's active baseline. On a same-name
+        // collision the import-graph side wins (mirrors `resolve_imports`'s own
+        // "shallower wins" convention: this file, depth 0, is the shallowest).
+        let mut own_domains = imports.domains.clone();
+        for (name, dom) in &typed.domains {
+            own_domains.entry(name.clone()).or_insert_with(|| dom.clone());
+        }
+        let domain_imports = lute_check::SchemaImports {
+            domains: own_domains,
+            ..Default::default()
+        };
+        let (_domains, domain_diags) =
+            lute_check::schema_import::merge_domains(&baseline, &domain_imports, whole);
+        diags.extend(domain_diags);
+
+        // The merged state schema `defs:` CEL paths resolve against: this
+        // file's own inline `state:` overrides an imported decl of the same
+        // path (mirrors `check.rs::fold_env`'s inline-over-imported precedence).
+        let mut state = imports.state.clone();
+        for (path, decl) in &typed.state.decls {
+            state.decls.insert(path.clone(), decl.clone());
+        }
+
+        // The `@ref` existence/type tables `defs:` CEL bodies resolve `@name`
+        // uses against: plugin/project baseline < imported < inline (same
+        // precedence `check.rs::fold_env` uses for a scene's `defs`).
+        let mut def_names: std::collections::BTreeSet<String> =
+            baseline.defs.keys().cloned().collect();
+        def_names.extend(imports.defs.keys().cloned());
+        def_names.extend(typed.defs.keys().cloned());
+        let mut def_types: std::collections::BTreeMap<String, lute_manifest::types::Type> =
+            std::collections::BTreeMap::new();
+        for (name, d) in &baseline.defs {
+            def_types.insert(name.clone(), d.ty.clone());
+        }
+        for (name, v) in imports.defs.iter().chain(typed.defs.iter()) {
+            if let Some(t) = v
+                .get("type")
+                .cloned()
+                .and_then(|t| serde_yaml::from_value(t).ok())
+            {
+                def_types.insert(name.clone(), t);
+            }
+        }
+        let env = lute_check::ctx::Env {
+            mode: Mode::Author,
+            state,
+            defs: def_names,
+            def_types,
+            // Arity/arg-type checks (`E-REF-ARITY`/`E-REF-ARG-TYPE`) on a
+            // `@ref(args)` USE inside a def's own `cel:` are conservatively
+            // skipped (empty table => `check_cel_slot` silently omits them,
+              // never a false positive) — parametrized-def bodies are rarer
+            // than the path/undeclared-ref case B3's test targets, and B2's
+            // `params_from_yaml` extractor is private to `check.rs`.
+            def_params: std::collections::BTreeMap::new(),
+        };
+        let ctx = lute_check::Ctx {
+            env: &env,
+            in_match: false,
+            match_subject: None,
+        };
+
+        // Validate each `defs:` entry's own `cel:` body (dsl §8): CEL parse
+        // validity, `@ref`/state-path resolution, and — when the def declares a
+        // `type:` — that the body's produced type is compatible with it.
+        let mut arena = lute_cel::CelArena::default();
+        for (name, val) in &typed.defs {
+            let Some(raw) = val.get("cel").and_then(|c| c.as_str()) else {
+                continue;
+            };
+            let span = find_key_span(&snapshot.text, name).unwrap_or(whole);
+            let mut slot = lute_syntax::ast::CelSlot::raw(
+                lute_syntax::ast::CelKind::SetExpr,
+                raw.to_string(),
+                span,
+            );
+            match lute_cel::parse_slot(&mut arena, raw, span.byte_start) {
+                Ok(handle) => slot.ast = Some(handle),
+                Err(e) => diags.push(Diagnostic {
+                    code: "E-CEL-PARSE".to_string(),
+                    severity: Severity::Error,
+                    message: e.message,
+                    span: e.span,
+                    layer: Layer::Cel,
+                    fixits: Vec::new(),
+                    provenance: None,
+                }),
+            }
+            let expected = val
+                .get("type")
+                .cloned()
+                .and_then(|t| serde_yaml::from_value::<lute_manifest::types::Type>(t).ok())
+                .map(lute_check::ctx::ExpectedType::Ty);
+            diags.extend(check_cel_slot(&slot, &arena, &ctx, expected.as_ref()));
+        }
+
+        let mut lsp_diags: Vec<LspDiagnostic> =
+            diags.iter().map(|d| to_lsp_diagnostic(d, &idx)).collect();
+        lsp_diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
+        self.client
+            .publish_diagnostics(uri, lsp_diags, Some(snapshot.version))
             .await;
     }
 
@@ -526,6 +714,63 @@ fn find_project_root(file_path: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Whether `file_path` is a project declaration `.yaml`/`.yml` the LSP claims
+/// for semantic linting (data-catalog foundation B3): a YAML file under the
+/// discovered project's `schema/` or `catalog/` subdirectory. Returns the
+/// project root on a claim (the caller needs it again for baseline
+/// resolution), `None` otherwise — so `lute.project.yaml` itself (sits at the
+/// project root, not under either subdir) and any unrelated `.yaml` (CI
+/// configs, ...) are never claimed; `.lute` handling is untouched (this gate
+/// is checked ONLY when the extension is `.yaml`/`.yml`). Per the design
+/// notes' "simplest robust rule" guidance: prefer the two conventional
+/// declaration dirs over parsing every scene's `uses:`/`extends:` project-wide
+/// to find which files are import-reachable.
+fn claimed_declaration_yaml(file_path: &Path) -> Option<PathBuf> {
+    let is_yaml = matches!(
+        file_path.extension().and_then(|e| e.to_str()),
+        Some("yaml") | Some("yml")
+    );
+    if !is_yaml {
+        return None;
+    }
+    let root = find_project_root(file_path)?;
+    let rel = file_path.strip_prefix(&root).ok()?;
+    let first = rel.components().next()?;
+    matches!(first.as_os_str().to_str(), Some("schema") | Some("catalog")).then_some(root)
+}
+
+/// Best-effort span of the mapping key `key` anywhere in whole-file YAML
+/// `text` (a claimed declaration document — no `---` envelope, so byte 0 IS
+/// the frontmatter start; unlike `features::find_yaml_key_span`'s `.lute`
+/// `+4`-past-`"---\n"` convention). Matches only where `key` sits at a line
+/// start (after indent) immediately followed by `:`, so a same-named
+/// substring inside a value never steals the span — mirrors
+/// `lute_check::meta`'s private `meta_key_span` (documented there as "kept in
+/// sync" with `lute_lsp`'s own copy; this is a THIRD context — whole-file, no
+/// envelope — so it gets its own copy rather than reusing either private
+/// original). `None` when `key` never appears as a mapping key; callers fall
+/// back to the whole-file span.
+fn find_key_span(text: &str, key: &str) -> Option<Span> {
+    let mut line_start = 0usize;
+    for line in text.split_inclusive('\n') {
+        let indent = line.len() - line.trim_start().len();
+        if let Some(rest) = line.trim_start().strip_prefix(key) {
+            if rest.trim_start().starts_with(':') {
+                let start = line_start + indent;
+                return Some(Span {
+                    byte_start: start,
+                    byte_end: start + key.len(),
+                    line: 0,
+                    column: 0,
+                    utf16_range: (0, 0),
+                });
+            }
+        }
+        line_start += line.len();
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -791,6 +1036,174 @@ mod tests {
             .expect("range.start present");
         assert_eq!(start.get("line").and_then(|l| l.as_u64()), Some(0));
         assert_eq!(start.get("character").and_then(|c| c.as_u64()), Some(0));
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// B3 claim rule: only a `.yaml`/`.yml` under a discovered project's
+    /// `schema/` or `catalog/` subdirectory is claimed. `lute.project.yaml`
+    /// itself (project root, not under either dir), a `.lute` file (wrong
+    /// extension, even under `schema/`), and a `.yaml` with no project above
+    /// it must all resolve to `None` — B3 must not claim more than the
+    /// declaration dirs.
+    #[test]
+    fn claimed_declaration_yaml_claims_schema_and_catalog_dirs_only() {
+        use std::fs;
+
+        let root = std::env::temp_dir().join(format!("lute_lsp_claim_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("schema")).unwrap();
+        fs::create_dir_all(root.join("catalog")).unwrap();
+        fs::write(root.join("lute.project.yaml"), "defaultProfile: default\n").unwrap();
+
+        assert_eq!(
+            claimed_declaration_yaml(&root.join("schema/state.yaml")),
+            Some(root.clone()),
+            "a .yaml under schema/ must be claimed"
+        );
+        assert_eq!(
+            claimed_declaration_yaml(&root.join("catalog/enums.yml")),
+            Some(root.clone()),
+            "a .yml under catalog/ must be claimed"
+        );
+        assert_eq!(
+            claimed_declaration_yaml(&root.join("lute.project.yaml")),
+            None,
+            "the project manifest itself must NOT be claimed"
+        );
+        assert_eq!(
+            claimed_declaration_yaml(&root.join("schema/scene.lute")),
+            None,
+            "a non-.yaml file under schema/ must NOT be claimed"
+        );
+        assert_eq!(
+            claimed_declaration_yaml(&root.join("other/loose.yaml")),
+            None,
+            "a .yaml outside schema/catalog must NOT be claimed"
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// B3: opening a project declaration `.yaml` (under `schema/`) whose
+    /// `defs:` entry's `cel:` reads an undeclared state path publishes an
+    /// `E-UNDECLARED` diagnostic ON that same `.yaml` URI — today (pre-B3) the
+    /// file is unclaimed and no semantic diagnostic is ever published for it.
+    /// Drives a real `LspService<Backend>`: initialize -> didOpen the `.yaml`
+    /// under a temp project -> assert the publish for THAT uri carries the
+    /// undeclared-path diagnostic.
+    #[tokio::test(flavor = "current_thread")]
+    async fn analyze_declaration_yaml_flags_undeclared_cel_path() {
+        use futures::StreamExt;
+        use std::fs;
+        use tower::{Service, ServiceExt};
+        use tower_lsp_server::jsonrpc::Request as RpcRequest;
+        use tower_lsp_server::LspService;
+
+        let root = std::env::temp_dir().join(format!("lute_lsp_decl_dirty_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("schema")).unwrap();
+        fs::write(root.join("lute.project.yaml"), "defaultProfile: default\nprofiles:\n  default: {}\n").unwrap();
+        let decl_path = root.join("schema/state.yaml");
+        // `run.nope` is never declared under `state:` — a bad/undeclared path.
+        fs::write(
+            &decl_path,
+            "state:\n  run.trust: { type: number, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.nope\" }\n",
+        )
+        .unwrap();
+        let uri_str = format!("file://{}", decl_path.display());
+
+        let (mut service, mut socket) = LspService::new(Backend::new);
+        let init = RpcRequest::build("initialize")
+            .params(serde_json::json!({ "capabilities": {} }))
+            .id(1)
+            .finish();
+        service.ready().await.unwrap().call(init).await.unwrap();
+
+        let open = RpcRequest::build("textDocument/didOpen")
+            .params(serde_json::json!({
+                "textDocument": {
+                    "uri": uri_str, "languageId": "yaml", "version": 1,
+                    "text": fs::read_to_string(&decl_path).unwrap()
+                }
+            }))
+            .finish();
+        service.ready().await.unwrap().call(open).await.unwrap();
+        let opened = socket.next().await.expect("didOpen should publish");
+        assert_eq!(opened.method(), "textDocument/publishDiagnostics");
+        let params = opened.params().expect("publish carries params");
+        assert_eq!(
+            params.get("uri").and_then(|u| u.as_str()),
+            Some(uri_str.as_str()),
+            "the diagnostic must publish ON the declaration .yaml's own URI"
+        );
+        let diags = params
+            .get("diagnostics")
+            .and_then(|d| d.as_array())
+            .expect("publish carries a diagnostics array");
+        let undeclared = diags.iter().find(|d| {
+            d.get("code").and_then(|c| c.as_str()) == Some("E-UNDECLARED")
+                && d.get("message")
+                    .and_then(|m| m.as_str())
+                    .is_some_and(|m| m.contains("run.nope"))
+        });
+        assert!(
+            undeclared.is_some(),
+            "expected an E-UNDECLARED diagnostic for `run.nope`, got {diags:?}"
+        );
+        assert_eq!(
+            undeclared.unwrap().get("source").and_then(|s| s.as_str()),
+            Some("lute")
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// B3: a clean declaration `.yaml` (every `defs:` CEL path declared)
+    /// publishes NO diagnostics.
+    #[tokio::test(flavor = "current_thread")]
+    async fn analyze_declaration_yaml_clean_publishes_no_diagnostics() {
+        use futures::StreamExt;
+        use std::fs;
+        use tower::{Service, ServiceExt};
+        use tower_lsp_server::jsonrpc::Request as RpcRequest;
+        use tower_lsp_server::LspService;
+
+        let root = std::env::temp_dir().join(format!("lute_lsp_decl_clean_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("schema")).unwrap();
+        fs::write(root.join("lute.project.yaml"), "defaultProfile: default\nprofiles:\n  default: {}\n").unwrap();
+        let decl_path = root.join("schema/state.yaml");
+        fs::write(
+            &decl_path,
+            "state:\n  run.trust: { type: number, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.trust > 0\" }\n",
+        )
+        .unwrap();
+        let uri_str = format!("file://{}", decl_path.display());
+
+        let (mut service, mut socket) = LspService::new(Backend::new);
+        let init = RpcRequest::build("initialize")
+            .params(serde_json::json!({ "capabilities": {} }))
+            .id(1)
+            .finish();
+        service.ready().await.unwrap().call(init).await.unwrap();
+
+        let open = RpcRequest::build("textDocument/didOpen")
+            .params(serde_json::json!({
+                "textDocument": {
+                    "uri": uri_str, "languageId": "yaml", "version": 1,
+                    "text": fs::read_to_string(&decl_path).unwrap()
+                }
+            }))
+            .finish();
+        service.ready().await.unwrap().call(open).await.unwrap();
+        let opened = socket.next().await.expect("didOpen should publish");
+        let diags = opened
+            .params()
+            .and_then(|p| p.get("diagnostics").cloned())
+            .and_then(|d| d.as_array().cloned())
+            .expect("publish carries a diagnostics array");
+        assert!(
+            diags.is_empty(),
+            "a clean declaration .yaml must publish no diagnostics, got {diags:?}"
+        );
         fs::remove_dir_all(&root).ok();
     }
 }
