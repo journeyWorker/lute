@@ -16,8 +16,8 @@ plugins:
     resultScope: scene
     allowedKinds: [rhythm]
 # Shared run/user/app schema + defs arrive via the imported child schema, which
-# `extends:` a base (schema/game.schema.lute -> schema/base.schema.lute).
-uses: schema/game.schema.lute
+# `extends:` a base (schema/game.schema.yaml -> schema/base.schema.yaml).
+uses: schema/game.schema.yaml
 # Reusable content components (dsl §13): imported like `uses:` (canonicalized,
 # cycle-checked, diamond-deduped) and expanded inline by `::use`.
 components: [components/stinger.component.lute]

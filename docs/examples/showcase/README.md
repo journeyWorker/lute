@@ -23,13 +23,15 @@ cp docs/examples/showcase/episode01.lute docs/examples/showcase/_t.lute
 rm docs/examples/showcase/_t.lute
 ```
 
-> Schema docs (`schema/*.schema.lute`) and component files (`components/*.component.lute`)
+> Schema declarations (`schema/*.schema.yaml`) and component files (`components/*.component.lute`)
 > carry no `character`/`season`/`episode` because they are **imported** (validated in
 > import / component mode) by the episode, not run as scenes — like
-> `docs/examples/state.schema.lute` and `base.schema.lute`. Since 0.2.1 fragment-shape
-> inference (dsl §D6c), a `state:`/`defs:`-only or `component:`-shaped fragment is
-> recognized by shape and no longer raises a false `E-KIND-MISSING`/`E-META-MISSING`
-> standalone; the episode check still validates each import transitively either way.
+> `docs/examples/state.schema.yaml` and `base.schema.yaml`. Since 0.2.1 fragment-shape
+> inference (dsl §D6c), a `component:`-shaped `.lute` fragment is recognized by shape and no
+> longer raises a false `E-KIND-MISSING`/`E-META-MISSING` standalone; since 0.3.0 B2/B4 a
+> `.schema.yaml` declaration is a pure map (no `---` envelope, no body) resolved by `uses:`/
+> `extends:` import and — under `schema:`/`catalog:` — claimed by the LSP directly; the
+> episode check still validates each import transitively either way.
 
 ## Layout
 
@@ -45,8 +47,8 @@ rm docs/examples/showcase/_t.lute
 | `plugins/showcase.pack/assetkinds/poster.yaml` | `PT.<actor>.<variant>` asset kind (segments) |
 | `plugins/showcase.pack/defs/showcase.yaml` | plugin-exported def `@showcaseReady` |
 | `catalog/cast.yaml` | pinned `castId` ids (`marina_star`, `kenshi_host`) |
-| `schema/base.schema.lute` | base `run`/`user`/`app` state + defs (`helped`, `atLeast(n)`) |
-| `schema/game.schema.lute` | `extends: base` — refines `user.level` default, adds `run.chapter` + `veteran` def |
+| `schema/base.schema.yaml` | base `run`/`user`/`app` state + defs (`helped`, `atLeast(n)`) |
+| `schema/game.schema.yaml` | `extends: base` — refines `user.level` default, adds `run.chapter` + `veteran` def |
 | `components/stinger.component.lute` | reusable content component (dsl §13) — `component:` + `params:` + presentational body, expanded by `::use` |
 | `episode01.lute` | the scene wiring it all together |
 | `hub-demo.lute` | non-episode companion: a revisit `<hub>` + `<when is>` over hub-recorded enums + `{{…}}` interpolation (checks clean **and** compiles) |
@@ -69,15 +71,15 @@ rm docs/examples/showcase/_t.lute
 | `components:` (import content components, dsl §13) | 22 |
 | inline `state:` (scene tier) | 24–26 |
 | inline `defs:` (`@fond`) | 28–29 |
-| `extends:` (composition) | `schema/game.schema.lute:6` |
+| `extends:` (composition) | `schema/game.schema.yaml:5` |
 
 ### State tiers (all four) + writes + policy
 | Feature | Location |
 |---|---|
 | `scene.*` decl + default | `episode01.lute:25–26` |
-| `run.*` decl + default | `schema/base.schema.lute:6–8`, `schema/game.schema.lute:9` |
-| `user.*` decl + default (base→child override) | `schema/base.schema.lute:9` → `schema/game.schema.lute:8` |
-| `app.*` decl + default | `schema/base.schema.lute:10–11` |
+| `run.*` decl + default | `schema/base.schema.yaml:5–7`, `schema/game.schema.yaml:8` |
+| `user.*` decl + default (base→child override) | `schema/base.schema.yaml:8` → `schema/game.schema.yaml:7` |
+| `app.*` decl + default | `schema/base.schema.yaml:9–10` |
 | `::set` pure `=` write | `episode01.lute:77` |
 | `::set` compound op (`+=`) | `episode01.lute:100, 104, 131` |
 | write policy respected (no `app.*` write) | `app.rating` (188) + `app.lang` (230) only read — no `::set` targets `app.*` |
@@ -137,8 +139,8 @@ rm docs/examples/showcase/_t.lute
 ### Composition
 | Feature | Location |
 |---|---|
-| base schema | `schema/base.schema.lute` |
-| child `extends:` base + refines a default | `schema/game.schema.lute:6, 8` |
+| base schema | `schema/base.schema.yaml` |
+| child `extends:` base + refines a default | `schema/game.schema.yaml:5, 7` |
 | episode `uses:` the child | `episode01.lute:19` |
 
 ### `<hub>` + `<when is>` + `{{…}}` (`hub-demo.lute`)
