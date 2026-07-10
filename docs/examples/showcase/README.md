@@ -24,11 +24,12 @@ rm docs/examples/showcase/_t.lute
 ```
 
 > Schema docs (`schema/*.schema.lute`) and component files (`components/*.component.lute`)
-> intentionally fail a *standalone* `lute check` with `E-META-MISSING` — they carry no
-> `character`/`season`/`episode` because they are **imported** (validated in import /
-> component mode) by the episode, not run as scenes. This matches
-> `docs/examples/state.schema.lute` and `extends-base.lute`. The episode check validates
-> them transitively.
+> carry no `character`/`season`/`episode` because they are **imported** (validated in
+> import / component mode) by the episode, not run as scenes — like
+> `docs/examples/state.schema.lute` and `base.schema.lute`. Since 0.2.1 fragment-shape
+> inference (dsl §D6c), a `state:`/`defs:`-only or `component:`-shaped fragment is
+> recognized by shape and no longer raises a false `E-KIND-MISSING`/`E-META-MISSING`
+> standalone; the episode check still validates each import transitively either way.
 
 ## Layout
 

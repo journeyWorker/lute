@@ -1,0 +1,8 @@
+# docs/examples/lute.project.yaml
+# Root project so opening any loose example resolves core-only capabilities.
+# Examples needing plugins live under their own subprojects (idola-project/,
+# plugindef-project/, showcase/) and are checked with --project <subproject>.
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}

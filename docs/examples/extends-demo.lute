@@ -3,7 +3,7 @@ kind: scene
 character: sofia
 season: 1
 episode: 4
-uses: extends-child.lute
+uses: child.schema.lute
 ---
 
 ## Shot 1.
