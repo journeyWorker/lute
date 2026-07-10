@@ -1,0 +1,383 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://lute.dev/schemas/lute.schema.json",
+  "title": "Lute project declaration document (state/defs/enums/entities)",
+  "description": "STRUCTURE-only schema for a Lute project declaration doc (dsl §9.2/§9.3, data-catalog foundation A3/B4): the `.yaml` form (B4) of what is today a kind-less `.lute` frontmatter block imported via `uses:`/`extends:`. Mirrors `crates/lute-check/src/meta.rs::{UNIVERSAL_KEYS,parse_meta_kind}` (top-level keys, `state:`), `crates/lute-manifest/src/entities.rs` (`enums:`/`entities:`), and `crates/lute-manifest/src/types.rs::TypeDef` (the `type:` tagged forms). Does NOT validate CEL body validity, state-path resolution, or domain membership — those stay in the Lute checker (B3).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "luteVersion": {
+      "type": "string"
+    },
+    "contentLang": {
+      "type": "string"
+    },
+    "profile": {
+      "type": "string"
+    },
+    "plugins": {
+      "type": "object",
+      "description": "Plugin id -> option overrides (untyped at this layer; option shapes are plugin-declared)."
+    },
+    "uses": {
+      "$ref": "#/definitions/refList"
+    },
+    "extends": {
+      "$ref": "#/definitions/refList"
+    },
+    "components": {
+      "$ref": "#/definitions/refList"
+    },
+    "state": {
+      "type": "object",
+      "description": "dsl §9.3: dotted state path -> declaration. Path tier/segment validity is semantic (checker), not shape.",
+      "additionalProperties": {
+        "$ref": "#/definitions/stateDecl"
+      }
+    },
+    "defs": {
+      "type": "object",
+      "description": "dsl §8.1 inline defs: name -> declaration (untyped at parse time in meta.rs; shape below models the fields the checker actually reads).",
+      "additionalProperties": {
+        "$ref": "#/definitions/inlineDefDecl"
+      }
+    },
+    "enums": {
+      "$ref": "#/definitions/enumsMap"
+    },
+    "entities": {
+      "type": "object",
+      "description": "0.3.0 draft §3.1: entity kind -> closed member list or engine-open marker.",
+      "additionalProperties": {
+        "$ref": "#/definitions/entityDecl"
+      }
+    }
+  },
+  "definitions": {
+    "refList": {
+      "description": "`uses:`/`extends:`/`components:` accept a single ref or a list (meta.rs::get_ref_list).",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "enumsMap": {
+      "type": "object",
+      "description": "entities.rs::parse_enums — { name: [member...] }, each becomes a closed Domain.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "entityDecl": {
+      "description": "entities.rs::parse_entities — `{ members: [...] }` (closed) or `{ open: <any> }` (engine-populated; the VALUE is never inspected, only key presence). Neither key present silently produces no domain in Rust — flagged here as a real shape mistake.",
+      "type": "object",
+      "anyOf": [
+        {
+          "required": [
+            "members"
+          ],
+          "properties": {
+            "members": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "required": [
+            "open"
+          ]
+        }
+      ]
+    },
+    "stateDecl": {
+      "description": "meta.rs::StateDeclRaw — { type, default? }.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "$ref": "#/definitions/type"
+        },
+        "default": {
+          "$ref": "#/definitions/literal"
+        }
+      }
+    },
+    "inlineDefDecl": {
+      "description": "Inline frontmatter `defs:` entries are stored as untyped YAML in Rust (meta.rs); nothing here is `required` (a missing `type`/`cel` is not a Rust parse error, just a def the checker can't resolve). Fields ARE shape-checked when present.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/definitions/type"
+        },
+        "cel": {
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/params"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "params": {
+      "description": "dsl §8.1 `params:` (schema.rs::de_params) — a MAPPING `{ p: <Type> }` (source-order preserved) OR a SEQUENCE of `{ name, type }` entries (the plugin defs.yaml list spelling).",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/type"
+          }
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "$ref": "#/definitions/type"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "field": {
+      "description": "types.rs::Field — a record member.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/type"
+        },
+        "default": {
+          "$ref": "#/definitions/literal"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "shape": {
+          "type": "string",
+          "description": "A record field MAY reference a named shape instead of an inline `type:`."
+        }
+      }
+    },
+    "literal": {
+      "description": "types.rs::Literal — untagged: bool | number | string | list | map (string keys).",
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/literal"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/literal"
+          }
+        }
+      ]
+    },
+    "type": {
+      "description": "types.rs::TypeDef — the plugin §7 Type wire form. Bare unit tags (`bool`/`number`/`string`) or a SINGLE-key tagged map (`serde_yaml::with::singleton_map_recursive` requires EXACTLY one key to resolve the variant, hence `additionalProperties: false` + `required` per branch below).",
+      "oneOf": [
+        {
+          "const": "bool"
+        },
+        {
+          "const": "number"
+        },
+        {
+          "const": "string"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enum"
+          ],
+          "properties": {
+            "enum": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "list"
+          ],
+          "properties": {
+            "list": {
+              "$ref": "#/definitions/type"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "record"
+          ],
+          "properties": {
+            "record": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/field"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "map"
+          ],
+          "properties": {
+            "map": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "value"
+              ],
+              "properties": {
+                "key": {
+                  "$ref": "#/definitions/type"
+                },
+                "value": {
+                  "$ref": "#/definitions/type"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enumFromOption"
+          ],
+          "properties": {
+            "enumFromOption": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "providerRef"
+          ],
+          "properties": {
+            "providerRef": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "domain"
+          ],
+          "properties": {
+            "domain": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "slotId"
+          ],
+          "properties": {
+            "slotId": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "namespace"
+              ],
+              "properties": {
+                "namespace": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "assetKind"
+          ],
+          "properties": {
+            "assetKind": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

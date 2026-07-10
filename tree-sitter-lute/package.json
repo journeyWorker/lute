@@ -28,6 +28,7 @@
     "parse": "tree-sitter parse"
   },
   "devDependencies": {
+    "ajv": "^8.20.0",
     "tree-sitter-cli": "^0.26.0"
   }
 }

@@ -1,0 +1,791 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://lute.dev/schemas/lute.plugin.json",
+  "title": "Lute plugin manifest + export files",
+  "description": "STRUCTURE-only schema for `plugin.yaml` (PluginManifest, plugin §5) and every export file kind it can `exports:` (plugin §6-10): directives, state/{shapes,templates}, providers, bridge, defs (LIST form), frontmatter, enums, events, assetkinds. Mirrors `crates/lute-manifest/src/schema.rs` 1:1 (each definition below is named after its Rust struct). `additionalProperties` is left permissive everywhere EXCEPT the `type:` tagged-map forms (borrowed from lute.schema.json), matching that none of these structs derive `#[serde(deny_unknown_fields)]` in Rust — only the manifest `Type` union's `singleton_map_recursive` genuinely requires a closed single-key shape. A document matches exactly ONE of the `oneOf` branches below, discriminated by its own required top-level key (`directives:`, `stateShapes:`, `id:`+`version:`+`kind:`+`exports:`, …).",
+  "oneOf": [
+    {
+      "$ref": "#/definitions/pluginManifest"
+    },
+    {
+      "$ref": "#/definitions/directivesFile"
+    },
+    {
+      "$ref": "#/definitions/shapesFile"
+    },
+    {
+      "$ref": "#/definitions/templatesFile"
+    },
+    {
+      "$ref": "#/definitions/providersFile"
+    },
+    {
+      "$ref": "#/definitions/bridgeFile"
+    },
+    {
+      "$ref": "#/definitions/defsFile"
+    },
+    {
+      "$ref": "#/definitions/frontmatterFile"
+    },
+    {
+      "$ref": "#/definitions/enumsFile"
+    },
+    {
+      "$ref": "#/definitions/eventsFile"
+    },
+    {
+      "$ref": "#/definitions/assetKindsFile"
+    }
+  ],
+  "definitions": {
+    "type": {
+      "$ref": "https://lute.dev/schemas/lute.schema.json#/definitions/type"
+    },
+    "field": {
+      "$ref": "https://lute.dev/schemas/lute.schema.json#/definitions/field"
+    },
+    "literal": {
+      "$ref": "https://lute.dev/schemas/lute.schema.json#/definitions/literal"
+    },
+    "pluginManifest": {
+      "description": "schema.rs::PluginManifest — plugin.yaml root.",
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "kind",
+        "exports"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "depends": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/depends"
+          }
+        },
+        "exports": {
+          "type": "object",
+          "description": "loader.rs's export dispatch — an unrecognized key is a real LoadError::UnknownExport.",
+          "propertyNames": {
+            "enum": [
+              "directives",
+              "state",
+              "providers",
+              "bridge",
+              "defs",
+              "enums",
+              "frontmatter",
+              "docs",
+              "assetkinds",
+              "events"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/optionDecl"
+          }
+        }
+      }
+    },
+    "depends": {
+      "description": "schema.rs::Depends.",
+      "type": "object",
+      "required": [
+        "id",
+        "range"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "range": {
+          "type": "string"
+        }
+      }
+    },
+    "optionDecl": {
+      "description": "schema.rs::OptionDecl — a plugin.yaml `options:` entry.",
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/type"
+        },
+        "default": {
+          "$ref": "#/definitions/literal"
+        }
+      }
+    },
+    "directivesFile": {
+      "description": "schema.rs::DirectivesFile.",
+      "type": "object",
+      "required": [
+        "directives"
+      ],
+      "properties": {
+        "directives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/directiveDecl"
+          }
+        }
+      }
+    },
+    "directiveDecl": {
+      "description": "schema.rs::DirectiveDecl.",
+      "type": "object",
+      "required": [
+        "name",
+        "attrs",
+        "lower"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "layer": {
+          "type": "string"
+        },
+        "attrs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/attrDecl"
+          }
+        },
+        "semantics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Closed vocabulary — validated by the checker, not shape-checked here."
+        },
+        "state": {
+          "$ref": "#/definitions/directiveState"
+        },
+        "effects": {
+          "$ref": "#/definitions/directiveEffects"
+        },
+        "bridge": {
+          "$ref": "#/definitions/bridgeRef"
+        },
+        "lower": {
+          "$ref": "#/definitions/lowering"
+        }
+      }
+    },
+    "attrDecl": {
+      "description": "schema.rs::AttrDecl.",
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/definitions/type"
+        },
+        "default": {
+          "$ref": "#/definitions/literal"
+        }
+      }
+    },
+    "directiveState": {
+      "description": "schema.rs::DirectiveState.",
+      "type": "object",
+      "required": [
+        "declares"
+      ],
+      "properties": {
+        "declares": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/slotDecl"
+          }
+        }
+      }
+    },
+    "slotDecl": {
+      "description": "schema.rs::SlotDecl.",
+      "type": "object",
+      "required": [
+        "scope",
+        "path",
+        "shape"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/pathSegment"
+          }
+        },
+        "shape": {
+          "type": "string"
+        }
+      }
+    },
+    "pathSegment": {
+      "description": "types.rs::PathSegment — untagged: a literal string, or `{ fromAttr: {...} }`.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "required": [
+            "fromAttr"
+          ],
+          "properties": {
+            "fromAttr": {
+              "$ref": "#/definitions/fromAttr"
+            }
+          }
+        }
+      ]
+    },
+    "fromAttr": {
+      "description": "types.rs::FromAttr (camelCase).",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "slotType": {
+          "type": "string"
+        }
+      }
+    },
+    "directiveEffects": {
+      "description": "schema.rs::DirectiveEffects.",
+      "type": "object",
+      "required": [
+        "writes"
+      ],
+      "properties": {
+        "writes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/writeDecl"
+          }
+        }
+      }
+    },
+    "writeDecl": {
+      "description": "schema.rs::WriteDecl.",
+      "type": "object",
+      "required": [
+        "scope",
+        "path",
+        "value"
+      ],
+      "properties": {
+        "scope": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/pathSegment"
+          }
+        },
+        "value": {
+          "$ref": "#/definitions/writeValue"
+        }
+      }
+    },
+    "writeValue": {
+      "description": "schema.rs::WriteValue — untagged: `{ fromBridgeResult }` | `{ op, by }` | Literal.",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "fromBridgeResult"
+          ],
+          "properties": {
+            "fromBridgeResult": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op",
+            "by"
+          ],
+          "properties": {
+            "op": {
+              "type": "string"
+            },
+            "by": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "$ref": "#/definitions/literal"
+        }
+      ]
+    },
+    "bridgeRef": {
+      "description": "schema.rs::BridgeRef.",
+      "type": "object",
+      "required": [
+        "service",
+        "operation"
+      ],
+      "properties": {
+        "service": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        }
+      }
+    },
+    "lowering": {
+      "description": "schema.rs::Lowering — untagged: `{ record, fields }` | `{ kind, name }`.",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "record",
+            "fields"
+          ],
+          "properties": {
+            "record": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "name"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "shapesFile": {
+      "description": "schema.rs::ShapesFile — state/*.yaml `stateShapes:` form.",
+      "type": "object",
+      "required": [
+        "stateShapes"
+      ],
+      "properties": {
+        "stateShapes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stateShape"
+          }
+        }
+      }
+    },
+    "stateShape": {
+      "description": "schema.rs::StateShape.",
+      "type": "object",
+      "required": [
+        "name",
+        "fields"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/field"
+          }
+        }
+      }
+    },
+    "templatesFile": {
+      "description": "schema.rs::TemplatesFile — state/*.yaml `stateTemplates:` form.",
+      "type": "object",
+      "required": [
+        "stateTemplates"
+      ],
+      "properties": {
+        "stateTemplates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/stateTemplate"
+          }
+        }
+      }
+    },
+    "stateTemplate": {
+      "description": "schema.rs::StateTemplate.",
+      "type": "object",
+      "required": [
+        "name",
+        "scope",
+        "path",
+        "shape"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/pathSegment"
+          }
+        },
+        "shape": {
+          "type": "string"
+        }
+      }
+    },
+    "providersFile": {
+      "description": "schema.rs::ProvidersFile.",
+      "type": "object",
+      "required": [
+        "providers"
+      ],
+      "properties": {
+        "providers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/providerDecl"
+          }
+        }
+      }
+    },
+    "providerDecl": {
+      "description": "schema.rs::ProviderDecl.",
+      "type": "object",
+      "required": [
+        "name",
+        "snapshot"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "idShape": {
+          "type": "string"
+        },
+        "snapshot": {
+          "type": "string"
+        }
+      }
+    },
+    "bridgeFile": {
+      "description": "schema.rs::BridgeFile.",
+      "type": "object",
+      "required": [
+        "bridgeCapabilities"
+      ],
+      "properties": {
+        "bridgeCapabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/bridgeCapability"
+          }
+        }
+      }
+    },
+    "bridgeCapability": {
+      "description": "schema.rs::BridgeCapability.",
+      "type": "object",
+      "required": [
+        "service",
+        "operation"
+      ],
+      "properties": {
+        "service": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "replay": {
+          "type": "string"
+        },
+        "result": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/field"
+          }
+        }
+      }
+    },
+    "defsFile": {
+      "description": "schema.rs::DefsFile — defs/*.yaml `defs:` LIST form (each entry a full DefDecl, unlike a project doc's inline `defs:` MAP).",
+      "type": "object",
+      "required": [
+        "defs"
+      ],
+      "properties": {
+        "defs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/defDecl"
+          }
+        }
+      }
+    },
+    "defDecl": {
+      "description": "schema.rs::DefDecl — `name`/`type`/`cel` have no serde default, so they are genuinely required.",
+      "type": "object",
+      "required": [
+        "name",
+        "type",
+        "cel"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/type"
+        },
+        "params": {
+          "$ref": "https://lute.dev/schemas/lute.schema.json#/definitions/params"
+        },
+        "cel": {
+          "type": "string"
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "frontmatterFile": {
+      "description": "schema.rs::FrontmatterFile.",
+      "type": "object",
+      "required": [
+        "frontmatter"
+      ],
+      "properties": {
+        "frontmatter": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/frontmatterDecl"
+          }
+        }
+      }
+    },
+    "frontmatterDecl": {
+      "description": "schema.rs::FrontmatterDecl.",
+      "type": "object",
+      "required": [
+        "key",
+        "schema"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/definitions/type"
+        }
+      }
+    },
+    "enumsFile": {
+      "description": "schema.rs::EnumsFile — enums.yaml `enums:` (same shape as a project doc's `enums:`).",
+      "type": "object",
+      "required": [
+        "enums"
+      ],
+      "properties": {
+        "enums": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "eventsFile": {
+      "description": "schema.rs::EventsFile.",
+      "type": "object",
+      "required": [
+        "events"
+      ],
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/eventDecl"
+          }
+        }
+      }
+    },
+    "eventDecl": {
+      "description": "schema.rs::EventDecl.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "assetKindsFile": {
+      "description": "schema.rs::AssetKindsFile.",
+      "type": "object",
+      "required": [
+        "assetKinds"
+      ],
+      "properties": {
+        "assetKinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/assetKindDecl"
+          }
+        }
+      }
+    },
+    "assetKindDecl": {
+      "description": "schema.rs::AssetKindDecl (camelCase). `sep` defaults \".\"; `resolve` defaults \"compose\".",
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "sep": {
+          "type": "string"
+        },
+        "resolve": {
+          "enum": [
+            "compose",
+            "query"
+          ]
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/assetSegment"
+          }
+        },
+        "provider": {
+          "type": "string"
+        },
+        "match": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/assetMatch"
+          }
+        },
+        "aliases": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "fallback": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "persistence": {
+          "type": "string"
+        }
+      }
+    },
+    "assetSegment": {
+      "description": "schema.rs::AssetSegment (camelCase).",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "const": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/type"
+        }
+      }
+    },
+    "assetMatch": {
+      "description": "schema.rs::AssetMatch (camelCase).",
+      "type": "object",
+      "required": [
+        "attr",
+        "field"
+      ],
+      "properties": {
+        "attr": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "via": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
