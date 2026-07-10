@@ -48,7 +48,7 @@ pub fn hover_at(
             // enum attr documents its domain; else the attr's own declaration.
             if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
                 asset_segment_hover(kind, doc, off)
-            } else if let Some(vals) = attr_enum_values(snapshot, dir, key) {
+            } else if let Some(vals) = attr_enum_values(snapshot, imports, dir, key) {
                 Some(format!("**enum** `{key}`\n\ndomain: {}", vals.join(", ")))
             } else {
                 attr_hover(snapshot, dir, key)

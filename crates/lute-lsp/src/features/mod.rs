@@ -656,10 +656,20 @@ pub(crate) fn literal_label(lit: &Literal) -> String {
     }
 }
 
-/// The enum domain of a directive attribute, following an inline `enum` type or an
-/// `enumFromOption` indirection through `snapshot.enums`. `None` for non-enum attrs.
+/// The enum domain of a directive attribute, following an inline `enum` type, an
+/// `enumFromOption` indirection through `snapshot.enums`, or a `{domain: X}`-typed
+/// attr (data-catalog foundation A5) resolved against the FULL merged vocabulary —
+/// `snapshot.domains` ∪ `imports.domains`, via [`lute_check::schema_import::merge_domains`],
+/// the SAME merge `check()` feeds its `Walker` (mirrors A4's checker resolution, so a
+/// project-declared domain completes/hovers exactly like a plugin/core one). CLOSED
+/// domains list their members; OPEN (registry-minted, `Domain::open`) domains have no
+/// static member list, so they resolve to `None` here (same as a non-enum attr: honest,
+/// never fabricated) — same for a project/core domain-name collision (`merge_domains`'s
+/// `E-DOMAIN-DUP` diag is dropped; that surface is `check()`'s job, not hover/completion's).
+/// `None` for non-enum, non-domain, or open-domain attrs.
 pub(crate) fn attr_enum_values(
     snapshot: &CapabilitySnapshot,
+    imports: &lute_check::SchemaImports,
     directive: &str,
     key: &str,
 ) -> Option<Vec<String>> {
@@ -668,6 +678,11 @@ pub(crate) fn attr_enum_values(
     match &attr.ty {
         Type::Enum(members) => Some(members.clone()),
         Type::EnumFromOption(name) => snapshot.enums.get(name).cloned(),
+        Type::Domain(name) => {
+            let zero_span = Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) };
+            let (merged, _) = lute_check::schema_import::merge_domains(snapshot, imports, zero_span);
+            merged.get(name).filter(|d| !d.open).map(|d| d.members.clone())
+        }
         _ => None,
     }
 }
