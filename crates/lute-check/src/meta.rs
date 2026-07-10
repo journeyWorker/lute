@@ -405,6 +405,22 @@ pub fn parse_meta_kind(
     (typed, diags)
 }
 
+/// Infer the import-role kind of a KIND-LESS root document from its frontmatter
+/// shape (dsl §9.2/§13): a document opened standalone that is actually a Schema
+/// or Component fragment. Returns None for a genuine scene missing `kind:`.
+pub fn infer_meta_kind_from_shape(meta: &Meta, has_body: bool) -> Option<MetaKind> {
+    let value: serde_yaml::Value = serde_yaml::from_str(&meta.raw_yaml).ok()?;
+    let map = value.as_mapping()?;
+    let has = |k: &str| map.contains_key(yaml_key(k));
+    if COMPONENT_ONLY_KEYS.iter().any(|k| has(k)) {
+        return Some(MetaKind::Component);
+    }
+    if !has_body && (has("state") || has("defs")) {
+        return Some(MetaKind::Schema);
+    }
+    None
+}
+
 /// Best-effort narrow document span for a meta-side diagnostic pointing at the
 /// offending identifier (a hyphenated `defs` name / def param / state path).
 /// serde gives no per-key spans, so the key is located textually in `raw_yaml`.

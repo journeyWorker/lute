@@ -204,11 +204,23 @@ pub fn fold_env(
     //    `Scene` — the degrade-safe path — when unresolved (missing/unknown
     //    `kind:`), so a mis-kinded doc still gets the scene-triad required-key
     //    treatment it had pre-0.2.0.
-    let (doc_kind, kind_diags) = crate::meta::resolve_doc_kind(&doc.meta);
-    let doc_kind = doc_kind.unwrap_or(crate::meta::DocKind::Scene);
-    let meta_kind = match doc_kind {
-        crate::meta::DocKind::Scene => crate::meta::MetaKind::Scene,
-        crate::meta::DocKind::Quest => crate::meta::MetaKind::Quest,
+    let (resolved_kind, kind_diags) = crate::meta::resolve_doc_kind(&doc.meta);
+    let has_body = !doc.shots.is_empty() || !doc.quests.is_empty();
+    let (doc_kind, meta_kind, kind_diags) = match resolved_kind {
+        Some(crate::meta::DocKind::Scene) => {
+            (crate::meta::DocKind::Scene, crate::meta::MetaKind::Scene, kind_diags)
+        }
+        Some(crate::meta::DocKind::Quest) => {
+            (crate::meta::DocKind::Quest, crate::meta::MetaKind::Quest, kind_diags)
+        }
+        None => match crate::meta::infer_meta_kind_from_shape(&doc.meta, has_body) {
+            // A fragment opened standalone: validate in its import role, drop the
+            // root-only E-KIND-MISSING/E-META-MISSING false positives. Any body
+            // (e.g. a component's `## Scene`) still walks as `DocKind::Scene` —
+            // the same degrade-safe shape as the genuine-missing-kind default.
+            Some(mk) => (crate::meta::DocKind::Scene, mk, Vec::new()),
+            None => (crate::meta::DocKind::Scene, crate::meta::MetaKind::Scene, kind_diags), // genuine missing kind
+        },
     };
 
     // 3b. Typed frontmatter + inline state schema, dispatched by the resolved
