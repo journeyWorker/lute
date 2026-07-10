@@ -41,6 +41,27 @@
         "scopeName": "source.lute",
         "path": "./syntaxes/lute.tmLanguage.json"
       }
+    ],
+    "semanticTokenTypes": [
+      { "id": "content", "description": "Dialogue / narration text" },
+      { "id": "staging", "description": "Staging directive" },
+      { "id": "logic", "description": "Logic/timeline tag" },
+      { "id": "cel", "description": "CEL condition" },
+      { "id": "ref", "description": "Def / param reference" },
+      { "id": "statePath", "description": "State path" }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "lute",
+        "scopes": {
+          "content": ["string.unquoted.dialogue.lute"],
+          "staging": ["entity.name.function.directive.lute"],
+          "logic": ["entity.name.tag.lute"],
+          "cel": ["meta.embedded.cel.lute"],
+          "ref": ["variable.other.ref.lute"],
+          "statePath": ["variable.other.path.lute"]
+        }
+      }
     ]
   },
   "scripts": {
