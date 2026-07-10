@@ -3,6 +3,7 @@ pub mod cel_paths;
 pub mod cel_resolve;
 pub mod check;
 pub mod component_import;
+pub mod content_line;
 pub mod ctx;
 pub mod defassign;
 pub mod directives;
