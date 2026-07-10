@@ -90,8 +90,18 @@ pub fn check_content_line_attrs(
             // A2) — always present in the merged `domains` view, so this always
             // resolves through the closed-membership step of the shared resolver
             // (`E-BAD-ENUM` on a non-member). No bespoke local emotion list.
+            //
+            // `check_domain_member` is shared with `{domain: X}`-typed directive
+            // attrs and stamps `Layer::Staging` on everything it emits; content
+            // lines are `Layer::Content` diagnostics (dsl 0.1.0 §7.1), so we
+            // collect into a scratch vec and re-layer before folding into `diags`.
             "emotion" => {
-                check_domain_member(&line.speaker, "emotion", attr, domains, snapshot, providers, diags);
+                let mut scratch = Vec::new();
+                check_domain_member(&line.speaker, "emotion", attr, domains, snapshot, providers, &mut scratch);
+                for mut d in scratch {
+                    d.layer = Layer::Content;
+                    diags.push(d);
+                }
             }
             // `action`: OPEN by default (preserves 0.1.0's free-string behavior —
             // core ships no `action` domain at all). Only consult the shared
@@ -101,7 +111,12 @@ pub fn check_content_line_attrs(
             // `action="wave"` stays clean with zero domain lookups.
             "action" => {
                 if domains.contains_key("action") || snapshot.providers.contains_key("action") {
-                    check_domain_member(&line.speaker, "action", attr, domains, snapshot, providers, diags);
+                    let mut scratch = Vec::new();
+                    check_domain_member(&line.speaker, "action", attr, domains, snapshot, providers, &mut scratch);
+                    for mut d in scratch {
+                        d.layer = Layer::Content;
+                        diags.push(d);
+                    }
                 }
             }
             _ => {}

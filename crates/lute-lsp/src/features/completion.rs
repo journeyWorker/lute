@@ -58,7 +58,7 @@ pub fn complete_at(
             if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
                 asset_segment_items(kind, doc, providers, off)
             } else {
-                enum_value_items(snapshot, dir, key)
+                enum_value_items(snapshot, imports, dir, key)
             }
         }
         Cursor::Cel {
@@ -319,14 +319,17 @@ fn attr_key_items(
         .collect()
 }
 
-/// The enum members of an enum-typed attribute value, kind `ENUM_MEMBER`. Empty
-/// for a non-enum attr.
+/// The enum members of an enum- or domain-typed attribute value (data-catalog
+/// foundation A5, resolved against the merged snapshot ∪ project-schema
+/// vocabulary), kind `ENUM_MEMBER`. Empty for a non-enum, non-domain, or
+/// open-domain attr.
 fn enum_value_items(
     snapshot: &CapabilitySnapshot,
+    imports: &SchemaImports,
     directive: &str,
     key: &str,
 ) -> Vec<CompletionItem> {
-    attr_enum_values(snapshot, directive, key)
+    attr_enum_values(snapshot, imports, directive, key)
         .into_iter()
         .flatten()
         .map(|v| CompletionItem {
