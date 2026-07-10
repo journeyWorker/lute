@@ -16,6 +16,15 @@ pub struct CapabilitySnapshot {
     pub version: String,                           // capabilityVersion
     pub plugins: BTreeMap<String, ResolvedPlugin>, // id -> {version, options}
     pub enums: BTreeMap<String, Vec<String>>,
+    /// Enum-style named vocabularies folded from each active plugin's `enums`
+    /// export (plugin foundation A2), referenced by `Type::Domain(name)`
+    /// (foundation A1) and resolved at check-stage. Keyed the same as
+    /// `enums`; kept as a distinct map (rather than reusing `enums` directly)
+    /// so a later task can grow registry-backed domains without perturbing
+    /// the existing `enums`/`EnumFromOption` surface. A cross-plugin name
+    /// collision is dropped (first owner wins) and reported as
+    /// `E-DOMAIN-DUP` by `assemble` — see `assemble.rs`'s `merge_map`.
+    pub domains: BTreeMap<String, Domain>,
     pub directives: BTreeMap<String, DirectiveDecl>, // by ::name
     pub providers: BTreeMap<String, ProviderDecl>,
     pub state_shapes: BTreeMap<String, StateShape>,
@@ -28,6 +37,13 @@ pub struct CapabilitySnapshot {
     /// part of the resolved capability surface, so NOT folded into the version.
     pub inactive: BTreeMap<String, String>,
     pub events: BTreeMap<String, EventDecl>,
+}
+
+/// An enum-style named vocabulary: an ordered member list, same shape as an
+/// `enums` entry. See `CapabilitySnapshot::domains`.
+#[derive(Clone, Debug)]
+pub struct Domain {
+    pub members: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
