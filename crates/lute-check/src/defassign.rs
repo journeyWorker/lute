@@ -58,7 +58,9 @@ use std::collections::BTreeSet;
 
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, Branch, CelSlot, ClipNode, Hub, InterpKind, Match, Node, Set, Timeline};
+use lute_syntax::ast::{
+    Arm, Branch, CelSlot, ClipNode, Hub, InterpKind, Match, Node, Objective, On, Set, Timeline,
+};
 
 use crate::cel_paths::{collect_path_uses, is_state_path, PathRole};
 use crate::meta::StateSchema;
@@ -76,6 +78,21 @@ pub fn check_definite_assignment(
     let mut diags = Vec::new();
     let mut assigned = Assigned::new();
     walk_nodes(nodes, schema, &mut assigned, &mut diags);
+    diags
+}
+
+/// Definite-assignment for a quest's `start`/`fail` CEL guard (dsl 0.2.0 §6.3,
+/// §9.4). These are evaluated at QUEST ENTRY — nothing dominates them (they are
+/// the first thing the engine evaluates for the quest), so the assigned set
+/// starts EMPTY, exactly like a fresh [`check_definite_assignment`] call. They
+/// get the SAME read-role treatment a `<match on>` SUBJECT gets ([`walk_match`]
+/// via [`check_reads`]): a value-read check only — `has(p)`/`isSet(p)` here
+/// proves nothing (there is no guarded body for a quest-entry predicate to
+/// prove into), so [`check_reads`], not [`apply_condition`], is reused.
+pub fn check_quest_guard_defassign(slot: &CelSlot, schema: &StateSchema) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let assigned = Assigned::new();
+    check_reads(slot, schema, &assigned, &mut diags);
     diags
 }
 
@@ -108,6 +125,8 @@ fn walk_nodes(
                 }
             }
             Node::Directive(_) => {}
+            Node::On(on) => walk_on(on, schema, assigned, diags),
+            Node::Objective(o) => walk_objective(o, schema, assigned, diags),
         }
     }
 }
@@ -188,6 +207,42 @@ fn walk_hub(hub: &Hub, schema: &StateSchema, assigned: &mut Assigned, diags: &mu
         check_label_reads(&choice.label, schema, &arm, choice.span, diags);
         walk_nodes(&choice.body, schema, &mut arm, diags);
     }
+}
+
+/// An `<on>` arm (dsl 0.2.0 §4.4): `<on>` arms have NO dominance relation among
+/// one another (the same join rule as `<match>`/`<hub>` arms) — a write inside
+/// one arm is a **may-write**, never a definite assignment. Mirrors
+/// [`walk_hub`]: the `when` guard proves paths for THIS arm only, the body
+/// walks on a forked, DISCARDED set — nothing folds back into the surviving
+/// set (a path first written only inside `<on>` arms stays maybe-unset unless
+/// every arm writes it or it carries a schema `default`).
+fn walk_on(on: &On, schema: &StateSchema, assigned: &Assigned, diags: &mut Vec<Diagnostic>) {
+    let mut arm = assigned.clone();
+    if let Some(cond) = &on.when {
+        apply_condition(cond, schema, &mut arm, diags);
+    }
+    walk_nodes(&on.body, schema, &mut arm, diags);
+}
+
+/// An `<objective>` (dsl 0.2.0 §6.4): the body emits ONCE, when `done` first
+/// holds — a discrete, non-dominating transition exactly like an `<on>` arm
+/// (§4.4), so it gets the SAME may-write join as [`walk_on`]. `done` is a
+/// value READ (like a `<match>` subject, [`walk_match`]) — it does not gate
+/// the body, so it is checked via [`check_reads`], not [`apply_condition`].
+/// `when` DOES gate visibility (mirrors a hub/branch choice guard) and proves
+/// paths for this arm only.
+fn walk_objective(
+    o: &Objective,
+    schema: &StateSchema,
+    assigned: &Assigned,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut arm = assigned.clone();
+    check_reads(&o.done, schema, &arm, diags);
+    if let Some(cond) = &o.when {
+        apply_condition(cond, schema, &mut arm, diags);
+    }
+    walk_nodes(&o.body, schema, &mut arm, diags);
 }
 
 /// Definite-assignment for a `<choice label>`'s `{{path}}` interpolations (dsl
@@ -448,7 +503,7 @@ mod tests {
     fn run_path_no_default_read_is_maybe_unset() {
         // `run.metHelpfully` declared without a default; read in a guarded arm's
         // body with no prior `::set` and no guard on THIS path.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.metHelpfully: { type: bool }\n  run.gate: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"run.gate\">\n<when test=\"run.gate\">\n::set{run.gate = run.metHelpfully}\n</when>\n</match>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.metHelpfully: { type: bool }\n  run.gate: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"run.gate\">\n<when test=\"run.gate\">\n::set{run.gate = run.metHelpfully}\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -460,7 +515,7 @@ mod tests {
     #[test]
     fn dominating_write_proves_path() {
         // `::set{run.x = 1}` dominates the later read `run.x` in the `<when>` test.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n:narrator: hi\n</when>\n</match>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n:narrator: hi\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -473,7 +528,7 @@ mod tests {
     fn compound_assign_first_reads_old_value() {
         // `run.x += 1` reads the old value first; `run.x` has no default and no
         // prior write -> the old-value read is maybe-unset.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x += 1}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x += 1}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -489,7 +544,7 @@ mod tests {
         // `<match on="isSet(run.x)">` is a SUBJECT guard; a non-exhaustive match
         // may fall through, so the subject guard must NOT prove `run.x` past the
         // block. A later read of `run.x` is therefore maybe-unset.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n:narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n:narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -503,7 +558,7 @@ mod tests {
         // `<match on="has(run.x)">` with an `<otherwise>` is exhaustive, but no
         // arm writes `run.x`; the subject guard must NOT survive `intersect_all`.
         // A later read of `run.x` is maybe-unset.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n:narrator: a\n</when>\n<otherwise>\n:narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n:narrator: a\n</when>\n<otherwise>\n:narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -518,7 +573,7 @@ mod tests {
     fn j2_scene_read_before_write_is_maybe_unset() {
         // A non-defaulted `scene.s` read before any write follows ordinary
         // path-sensitive analysis (§9.4) -> maybe-unset.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.s}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -530,7 +585,7 @@ mod tests {
     #[test]
     fn j1_defaulted_scene_read_is_ok() {
         // A schema-defaulted `scene.d` read is seeded at scene entry -> no error.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.d: { type: number, default: 0 }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.d}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.d: { type: number, default: 0 }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.d}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -542,7 +597,7 @@ mod tests {
     #[test]
     fn scene_write_then_read_is_ok() {
         // A dominating `::set{scene.s = 1}` proves the later read -> no error.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.s = 1}\n::set{scene.out = scene.s}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.s = 1}\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(

@@ -7,6 +7,7 @@ use lute_core_span::Severity;
 use lute_manifest::types::Type;
 
 const SCENE: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 2

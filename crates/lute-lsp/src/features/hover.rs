@@ -24,7 +24,7 @@ use tower_lsp_server::ls_types::{Hover, HoverContents, MarkupContent, MarkupKind
 
 use super::{
     attr_enum_values, choice_id, def_info, interp_ref_name, is_state_path, literal_label, path_at,
-    ref_at, type_label, Cursor,
+    ref_at, type_label, Cursor, QuestConstruct,
 };
 
 /// Hover documentation for the construct at byte offset `off`, or `None` when the
@@ -105,6 +105,8 @@ pub fn hover_at(
         | Cursor::AttrValue {
             directive: None, ..
         } => None,
+        Cursor::OnEventValue(event) => event_hover(snapshot, event),
+        Cursor::ConstructAttrArea { construct } => Some(construct_hover(construct)),
     }?;
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
@@ -226,6 +228,50 @@ fn ref_hover(
     Some(s)
 }
 
+/// Render an `<on event="…">` value: whether it's a built-in lifecycle event
+/// (dsl 0.2.0 §4.5) or a capability-declared world event (Plan B). `None` for
+/// an unknown name — `check()` owns flagging `E-UNKNOWN-EVENT`, not this
+/// best-effort fn.
+fn event_hover(snapshot: &CapabilitySnapshot, event: &str) -> Option<String> {
+    if lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&event) {
+        return Some(format!(
+            "**{event}** — built-in lifecycle event (dsl 0.2.0 §4.5)"
+        ));
+    }
+    snapshot
+        .event(event)
+        .map(|d| format!("**{}** — capability-declared world event (dsl 0.2.0 §4.5)", d.name))
+}
+
+/// Render a keyword doc for the `<quest>`/`<on>`/`<objective>` construct (dsl
+/// 0.2.0 §6.3/§4/§6.4). These have no capability-schema decl (unlike
+/// `::directive`), so the text is a small hardcoded blurb — always `Some`,
+/// mirroring `directive_hover`'s shape but with a fixed attr-key set instead
+/// of a `DirectiveDecl` lookup.
+fn construct_hover(construct: QuestConstruct) -> String {
+    match construct {
+        QuestConstruct::Quest => {
+            "**\\<quest>** — a top-level quest declaration (dsl 0.2.0 §6.3).\n\n\
+             **attributes:**\n- `id` (required): string\n- `title`: string\n\
+             - `start`: cel<bool>\n- `fail`: cel<bool>"
+                .to_string()
+        }
+        QuestConstruct::On => {
+            "**\\<on>** — an ECA trigger fired by a lifecycle or \
+             capability-declared world event (dsl 0.2.0 §4).\n\n\
+             **attributes:**\n- `event` (required): string\n- `when`: cel<bool>"
+                .to_string()
+        }
+        QuestConstruct::Objective => {
+            "**\\<objective>** — a quest objective (dsl 0.2.0 §6.4); \
+             self-closing or with a body.\n\n\
+             **attributes:**\n- `id` (required): string\n- `done` (required): cel<bool>\n\
+             - `when`: cel<bool>\n- `title`: string\n- `optional`: bool"
+                .to_string()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,7 +295,7 @@ mod tests {
         text.find(needle).expect("needle present") + 1
     }
 
-    const WITH_DEF_FOND: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@fond\">\n    :fixer: gently.\n  </when>\n  <otherwise>\n    :fixer: bluntly.\n  </otherwise>\n</match>\n";
+    const WITH_DEF_FOND: &str = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@fond\">\n    :fixer: gently.\n  </when>\n  <otherwise>\n    :fixer: bluntly.\n  </otherwise>\n</match>\n";
 
     #[test]
     fn hover_on_ref_shows_def_cel() {
@@ -280,7 +326,7 @@ mod tests {
 
     #[test]
     fn hover_on_state_path_shows_type_and_default() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 3 }\n---\n## Shot 1.\n::set{scene.affect.bianca += 1}\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 3 }\n---\n## Shot 1.\n::set{scene.affect.bianca += 1}\n";
         let doc = parsed(text);
         // Cursor on the `::set` target path (first occurrence in the body).
         let body_start = text.find("::set{").unwrap();
@@ -425,7 +471,7 @@ mod tests {
     #[test]
     fn hover_on_imported_state_path_shows_type() {
         // `run.gold` is NOT declared inline — it is only imported via `uses:`.
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold += 1}\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold += 1}\n";
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("run.gold").unwrap() + set_at + 2;
@@ -438,7 +484,7 @@ mod tests {
     #[test]
     fn hover_on_imported_ref_shows_def() {
         // `@helped` is NOT declared inline — it is only imported via `uses:`.
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@helped\">\n    :fixer: yes.\n  </when>\n  <otherwise>\n    :fixer: no.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@helped\">\n    :fixer: yes.\n  </when>\n  <otherwise>\n    :fixer: no.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = pos_on(text, "@helped");
         let h = hover_at(&doc, &load_core_snapshot(), &schema_imports(), off).unwrap();
@@ -454,7 +500,7 @@ mod tests {
         // imported state authoritative on collision (E-STATE-REDECLARE), so the
         // feature merge must mirror that: hover reflects the IMPORTED type
         // (number), not the inline string.
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.gold: { type: string }\n---\n## Shot 1.\n::set{run.gold += 1}\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.gold: { type: string }\n---\n## Shot 1.\n::set{run.gold += 1}\n";
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("run.gold").unwrap() + set_at + 2;
@@ -532,5 +578,68 @@ mod tests {
                 && s.contains("unset"),
             "hover shows the enum domain ∪ unset: {s}"
         );
+    }
+
+    // ---- dsl 0.2.0 §4/§6.3/§6.4: quest / on / objective hover ----
+
+    const QUEST_DOC: &str = "---\nkind: quest\nstate:\n  run.d: { type: bool, default: false }\n---\n\
+        <quest id=\"q\">\n\
+        <objective id=\"o\" done=\"run.d\">\n</objective>\n\
+        <on event=\"questComplete\">\n</on>\n\
+        </quest>\n";
+
+    #[test]
+    fn hover_on_on_construct_renders_a_doc() {
+        let doc = parsed(QUEST_DOC);
+        let off = QUEST_DOC.find("<on ").unwrap() + 1;
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        assert!(contents_text(&h).contains("on"), "{}", contents_text(&h));
+    }
+
+    #[test]
+    fn hover_on_objective_construct_renders_a_doc() {
+        let doc = parsed(QUEST_DOC);
+        let off = QUEST_DOC.find("<objective ").unwrap() + 1;
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        assert!(
+            contents_text(&h).contains("objective"),
+            "{}",
+            contents_text(&h)
+        );
+    }
+
+    #[test]
+    fn hover_on_quest_construct_renders_a_doc() {
+        let doc = parsed(QUEST_DOC);
+        let off = QUEST_DOC.find("<quest ").unwrap() + 1;
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        assert!(
+            contents_text(&h).contains("quest"),
+            "{}",
+            contents_text(&h)
+        );
+    }
+
+    #[test]
+    fn hover_on_builtin_event_value_names_it_lifecycle() {
+        let doc = parsed(QUEST_DOC);
+        let off = pos_on(QUEST_DOC, "questComplete");
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(s.contains("questComplete"), "{s}");
+        assert!(s.contains("lifecycle"), "{s}");
+    }
+
+    #[test]
+    fn hover_on_objective_done_still_resolves_the_state_decl() {
+        // The `done=` CEL slot flows through the EXISTING `Cursor::Cel` path
+        // (unchanged) — a regression check that quest resolution didn't
+        // break the ordinary state-path hover for content INSIDE a quest.
+        let doc = parsed(QUEST_DOC);
+        let off = QUEST_DOC.find("done=\"run.d\"").unwrap() + "done=\"".len() + 1;
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(s.contains("run.d"), "{s}");
+        assert!(s.contains("bool"), "{s}");
     }
 }

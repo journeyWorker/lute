@@ -33,6 +33,9 @@ pub fn normalize_document(
     for shot in &mut doc.shots {
         normalize_nodes(&mut shot.body, components, schema, &mut diags);
     }
+    for quest in &mut doc.quests {
+        normalize_nodes(&mut quest.body, components, schema, &mut diags);
+    }
     diags
 }
 
@@ -101,6 +104,8 @@ fn normalize_nodes(
                     }
                 }
             }
+            Node::On(on) => normalize_nodes(&mut on.body, components, schema, diags),
+            Node::Objective(o) => normalize_nodes(&mut o.body, components, schema, diags),
             _ => {}
         }
         i += 1;
@@ -263,6 +268,21 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                     bind_attrs(&mut c.attrs, args, params);
                     bind_params(&mut c.body, args, params);
                 }
+            }
+            Node::On(on) => {
+                if let Some(w) = &mut on.when {
+                    bind_slot(w, args, params);
+                }
+                bind_attrs(&mut on.attrs, args, params);
+                bind_params(&mut on.body, args, params);
+            }
+            Node::Objective(o) => {
+                bind_slot(&mut o.done, args, params);
+                if let Some(w) = &mut o.when {
+                    bind_slot(w, args, params);
+                }
+                bind_attrs(&mut o.attrs, args, params);
+                bind_params(&mut o.body, args, params);
             }
         }
     }
@@ -459,6 +479,7 @@ mod tests {
         // silently (spec-gap note 9); compile() then aborts at the §5 diag gate,
         // so no artifact is produced. RED before the Timeline arm in normalize_nodes.
         let src = r#"---
+kind: scene
 character: x
 season: 1
 episode: 1
@@ -488,6 +509,7 @@ episode: 1
         // sentinels, no spliced `::auto`, no residual `::use`.
         let base = Path::new("../../docs/examples/components");
         let src = r#"---
+kind: scene
 character: demo
 season: 1
 episode: 1
@@ -531,6 +553,7 @@ components: [greet.component.lute]
     #[test]
     fn persist_synthesizes_trailing_set_nodes() {
         let src = r#"---
+kind: scene
 character: sofia
 season: 1
 episode: 1
@@ -596,6 +619,168 @@ episode: 1
         assert_eq!(last_set(2), ("run.tip", "=", "5"));
         // The authored line plus exactly one synthesized Set per persisting choice.
         assert_eq!(b.choices[0].body.len(), 2);
+    }
+
+    fn tag_of(n: &Node) -> String {
+        match n {
+            Node::Directive(d) => format!("::{}", d.tag),
+            Node::Line(l) => format!(":{}", l.speaker),
+            Node::Objective(_) => "objective".to_string(),
+            Node::On(_) => "on".to_string(),
+            _ => "other".to_string(),
+        }
+    }
+
+    /// No `::use` survives normalization anywhere, including nested
+    /// `<on>`/`<objective>` bodies.
+    fn no_use_directive(nodes: &[Node]) -> bool {
+        nodes.iter().all(|n| match n {
+            Node::Directive(d) => d.tag != "use",
+            Node::On(o) => no_use_directive(&o.body),
+            Node::Objective(o) => no_use_directive(&o.body),
+            _ => true,
+        })
+    }
+
+    // Plan D review (Important finding 1): `normalize_nodes` fell into
+    // `_ => {}` for `Node::On`/`Node::Objective`, so a `::use` inside an
+    // `<on>`/`<objective>` body was never inline-expanded — it survived as a
+    // literal `::use` directive, which `lower_directive` silently drops at
+    // lowering time (the component's content never reaches the artifact).
+    #[test]
+    fn normalize_document_traverses_quest_bodies_expanding_use_in_on_and_objective() {
+        let base = Path::new("../../docs/examples/components");
+        let src = r#"---
+kind: quest
+components: [greet.component.lute]
+---
+
+<quest id="q1">
+<objective id="o1" done="true"/>
+
+::use{component="greet" who="bianca"}
+
+<on event="questComplete">
+::use{component="greet" who="halsin"}
+</on>
+</quest>
+"#;
+        let mut doc = parse_clean(src);
+        assert_eq!(doc.quests.len(), 1, "fixture must parse one <quest>");
+        let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
+        assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
+        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        assert!(diags.is_empty(), "{diags:#?}");
+
+        let quest = &doc.quests[0];
+        let tags: Vec<String> = quest.body.iter().map(tag_of).collect();
+        assert_eq!(
+            tags,
+            vec![
+                "objective".to_string(),
+                format!("::{COMPONENT_BEGIN}"),
+                "::auto".to_string(),
+                ":narrator".to_string(),
+                format!("::{COMPONENT_END}"),
+                "on".to_string(),
+            ]
+        );
+        let Node::On(on) = &quest.body[5] else {
+            panic!("expected on, got {:?}", quest.body.get(5));
+        };
+        let on_tags: Vec<String> = on.body.iter().map(tag_of).collect();
+        assert_eq!(
+            on_tags,
+            vec![
+                format!("::{COMPONENT_BEGIN}"),
+                "::auto".to_string(),
+                ":narrator".to_string(),
+                format!("::{COMPONENT_END}"),
+            ],
+            "the ::use inside <on> must expand, not be dropped silently"
+        );
+        assert!(no_use_directive(&quest.body));
+    }
+
+    // Plan D review (Important finding 1, `bind_params`): line 270 was
+    // `Node::On(_) | Node::Objective(_) => {}`, so a component whose OWN
+    // body declares an `<on>`/`<objective>` guarded by `@param` leaked the
+    // unbound `@param` into the spliced quest content instead of the
+    // resolved `::use` arg.
+    #[test]
+    fn use_binds_params_inside_component_on_and_objective_bodies() {
+        let component_src = r#"---
+component: reactor
+params:
+  n: number
+---
+
+## Scene 1.
+
+<on event="questComplete" when="@n > 0" foo=@n>
+::set{run.score = run.score + @n}
+</on>
+<objective id="bonus" done="@n > 3" when="@n > 1">
+::set{run.bonus = @n}
+</objective>
+"#;
+        let comp_doc = parse_clean(component_src);
+        let mut table = BTreeMap::new();
+        table.insert(
+            "reactor".to_string(),
+            lute_check::ComponentDef {
+                params: vec![("n".to_string(), Type::Number)],
+                body: comp_doc,
+                src: std::path::PathBuf::from("test://reactor"),
+            },
+        );
+        let comps = ComponentSet {
+            table,
+            diags: Vec::new(),
+        };
+
+        let src = r#"---
+kind: quest
+---
+
+<quest id="q1">
+<objective id="o1" done="true"/>
+
+::use{component="reactor" n=5}
+</quest>
+"#;
+        let mut doc = parse_clean(src);
+        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        assert!(diags.is_empty(), "{diags:#?}");
+
+        let quest = &doc.quests[0];
+        let Node::On(on) = &quest.body[2] else {
+            panic!("expected on, got {:?}", quest.body.get(2));
+        };
+        let when = on.when.as_ref().expect("on.when");
+        assert_eq!(when.raw, "5 > 0");
+        assert!(!when.raw.contains('@'));
+        let foo = on.attrs.iter().find(|a| a.key == "foo").expect("foo attr");
+        assert!(
+            matches!(&foo.value, AttrValue::Str(s) if s == "5"),
+            "{foo:?}"
+        );
+        let Node::Set(s) = &on.body[0] else {
+            panic!("expected set, got {:?}", on.body.first());
+        };
+        assert_eq!(s.expr.raw, "run.score + 5");
+
+        let Node::Objective(obj) = &quest.body[3] else {
+            panic!("expected objective, got {:?}", quest.body.get(3));
+        };
+        assert_eq!(obj.done.raw, "5 > 3");
+        assert!(!obj.done.raw.contains('@'));
+        let owhen = obj.when.as_ref().expect("objective.when");
+        assert_eq!(owhen.raw, "5 > 1");
+        let Node::Set(s2) = &obj.body[0] else {
+            panic!("expected set, got {:?}", obj.body.first());
+        };
+        assert_eq!(s2.expr.raw, "5");
     }
 
     #[test]

@@ -23,7 +23,7 @@ fn codes(text: &str) -> Vec<String> {
         .collect()
 }
 
-const HDR: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
     run.rank: { type: { enum: [fail, bronze, silver, gold] }, default: fail }\n---\n## Shot 1.\n";
 
 #[test]

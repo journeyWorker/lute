@@ -11,7 +11,7 @@ use lute_core_span::Severity;
 
 fn flatten(body: &str) -> (Vec<Rec>, Vec<Label>) {
     let src =
-        format!("---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n\n## Shot 1.\n\n{body}\n");
+        format!("---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n\n## Shot 1.\n\n{body}\n");
     let (doc, diags) = lute_syntax::parse(&src);
     assert!(
         diags.iter().all(|d| d.severity != Severity::Error),
@@ -55,6 +55,8 @@ fn kind(cmd: &Command) -> &'static str {
         Command::Jump(_) => "jump",
         Command::Barrier(_) => "barrier",
         Command::Other(_) => "plugin",
+        Command::Quest(_) => "quest",
+        Command::On(_) => "on",
     }
 }
 

@@ -58,7 +58,7 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{
     Arm, Attr, AttrValue, CelSlot, ClipNode, Directive, Document, Hub, Interp, InterpKind, Line,
-    Node, Set,
+    Node, Objective, On, Quest, Set,
 };
 
 /// Merge imported schema (dsl §9.2) into a document's typed frontmatter so the
@@ -127,12 +127,34 @@ pub(crate) enum Cursor<'a> {
     /// subject's raw path so hover/completion can derive the domain
     /// ([`subject_domain`]).
     IsPattern { subject_path: &'a str },
+    /// On an `<on event="…">` EVENT value (dsl 0.2.0 §4) — a plain lifecycle
+    /// or capability-declared world event name, NOT CEL. Drives event-name
+    /// completion/hover.
+    OnEventValue(&'a str),
+    /// Inside a `<quest>`/`<on>`/`<objective>` open tag but not on any
+    /// specific attr (dsl 0.2.0 §6.3/§4/§6.4) — whitespace, the bare
+    /// keyword, or about to type a new attribute. Unlike `::directive`,
+    /// these three constructs have a small FIXED attr set, not a
+    /// capability-schema one, so completion/hover key off `construct`
+    /// instead of a directive name.
+    ConstructAttrArea { construct: QuestConstruct },
+}
+
+/// Which 0.2.0 quest-kind construct (dsl 0.2.0 §4/§6.3/§6.4) a
+/// [`Cursor::ConstructAttrArea`] belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QuestConstruct {
+    Quest,
+    On,
+    Objective,
 }
 
 /// Resolve the innermost construct containing `off` (a byte offset into the
 /// original document text). Walks shots -> bodies -> nested `<branch>`/`<match>`/
-/// `<timeline>` bodies, descending into attributes and CEL slots. `None` when the
-/// offset lands on structural trivia (headings, whitespace, the frontmatter).
+/// `<timeline>` bodies, AND `<quest>`s -> bodies -> nested `<on>`/`<objective>`
+/// bodies (dsl 0.2.0 §6.3), descending into attributes and CEL slots. `None`
+/// when the offset lands on structural trivia (headings, whitespace, the
+/// frontmatter).
 pub(crate) fn resolve(doc: &Document, off: usize) -> Option<Cursor<'_>> {
     for shot in &doc.shots {
         if span_contains(shot.span, off) {
@@ -141,7 +163,48 @@ pub(crate) fn resolve(doc: &Document, off: usize) -> Option<Cursor<'_>> {
             }
         }
     }
+    for quest in &doc.quests {
+        if span_contains(quest.span, off) {
+            if let Some(c) = resolve_quest(quest, off) {
+                return Some(c);
+            }
+        }
+    }
     None
+}
+
+/// Resolve a cursor inside a `<quest>` (dsl 0.2.0 §6.3): its header CEL guards
+/// (`start`/`fail`), then its body, then its own residual attrs — falling
+/// back to a construct attr-area cursor (mirrors `resolve_node`'s
+/// `Node::On`/`Node::Objective` handling below; `Quest` is not a [`Node`], so
+/// it needs its own entry point). Always `Some` — the caller only descends
+/// here when `off` is within the quest's span.
+fn resolve_quest(q: &Quest, off: usize) -> Option<Cursor<'_>> {
+    if let Some(s) = &q.start {
+        if span_contains(s.span, off) {
+            return Some(Cursor::Cel {
+                slot: s,
+                in_match_subject: false,
+            });
+        }
+    }
+    if let Some(fl) = &q.fail {
+        if span_contains(fl.span, off) {
+            return Some(Cursor::Cel {
+                slot: fl,
+                in_match_subject: false,
+            });
+        }
+    }
+    if let Some(c) = resolve_nodes(&q.body, off) {
+        return Some(c);
+    }
+    if let Some(c) = resolve_attrs(&q.attrs, None, off) {
+        return Some(c);
+    }
+    Some(Cursor::ConstructAttrArea {
+        construct: QuestConstruct::Quest,
+    })
 }
 
 /// First node in `nodes` whose span contains `off`, resolved to its finest hit.
@@ -258,6 +321,64 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
             }
             resolve_attrs(&h.attrs, None, off)
         }
+        Node::On(o) => Some(resolve_on(o, off)),
+        Node::Objective(ob) => Some(resolve_objective(ob, off)),
+    }
+}
+
+/// An `<on>` resolves to: its `when` guard, its `event` value, a hit inside
+/// its body, a residual attr, or — as the final fallback — the construct
+/// attr-area (dsl 0.2.0 §4). Always `Some`, mirroring `resolve_directive`.
+fn resolve_on(o: &On, off: usize) -> Cursor<'_> {
+    if let Some(w) = &o.when {
+        if span_contains(w.span, off) {
+            return Cursor::Cel {
+                slot: w,
+                in_match_subject: false,
+            };
+        }
+    }
+    if span_contains(o.event_span, off) {
+        return Cursor::OnEventValue(&o.event);
+    }
+    if let Some(c) = resolve_nodes(&o.body, off) {
+        return c;
+    }
+    if let Some(c) = resolve_attrs(&o.attrs, None, off) {
+        return c;
+    }
+    Cursor::ConstructAttrArea {
+        construct: QuestConstruct::On,
+    }
+}
+
+/// An `<objective>` resolves to: its `done` predicate, its `when` guard, a
+/// hit inside its body (empty for the self-closing form), a residual attr, or
+/// — as the final fallback — the construct attr-area (dsl 0.2.0 §6.4). Always
+/// `Some`, mirroring `resolve_directive`.
+fn resolve_objective(ob: &Objective, off: usize) -> Cursor<'_> {
+    if span_contains(ob.done.span, off) {
+        return Cursor::Cel {
+            slot: &ob.done,
+            in_match_subject: false,
+        };
+    }
+    if let Some(w) = &ob.when {
+        if span_contains(w.span, off) {
+            return Cursor::Cel {
+                slot: w,
+                in_match_subject: false,
+            };
+        }
+    }
+    if let Some(c) = resolve_nodes(&ob.body, off) {
+        return c;
+    }
+    if let Some(c) = resolve_attrs(&ob.attrs, None, off) {
+        return c;
+    }
+    Cursor::ConstructAttrArea {
+        construct: QuestConstruct::Objective,
     }
 }
 
@@ -344,6 +465,8 @@ fn node_span(node: &Node) -> Span {
         Node::Match(m) => m.span,
         Node::Timeline(t) => t.span,
         Node::Hub(h) => h.span,
+        Node::On(o) => o.span,
+        Node::Objective(o) => o.span,
     }
 }
 
@@ -593,6 +716,10 @@ pub(crate) fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
                     }
                     return in_attrs(&h.attrs, off);
                 }
+                Node::On(o) => return in_attrs(&o.attrs, off).or_else(|| scan(&o.body, off)),
+                Node::Objective(ob) => {
+                    return in_attrs(&ob.attrs, off).or_else(|| scan(&ob.body, off))
+                }
             }
         }
         None
@@ -600,6 +727,16 @@ pub(crate) fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
     for shot in &doc.shots {
         if span_contains(shot.span, off) {
             if let Some(a) = scan(&shot.body, off) {
+                return Some(a);
+            }
+        }
+    }
+    for quest in &doc.quests {
+        if span_contains(quest.span, off) {
+            if let Some(a) = in_attrs(&quest.attrs, off) {
+                return Some(a);
+            }
+            if let Some(a) = scan(&quest.body, off) {
                 return Some(a);
             }
         }
@@ -662,6 +799,7 @@ pub(crate) fn branch_span(doc: &Document, id: &str) -> Option<Span> {
     doc.shots
         .iter()
         .find_map(|s| branch_span_nodes(&s.body, id))
+        .or_else(|| doc.quests.iter().find_map(|q| branch_span_nodes(&q.body, id)))
 }
 
 fn branch_span_nodes(nodes: &[Node], id: &str) -> Option<Span> {
@@ -692,6 +830,16 @@ fn branch_span_nodes(nodes: &[Node], id: &str) -> Option<Span> {
                     if let Some(sp) = branch_span_nodes(body, id) {
                         return Some(sp);
                     }
+                }
+            }
+            Node::On(o) => {
+                if let Some(sp) = branch_span_nodes(&o.body, id) {
+                    return Some(sp);
+                }
+            }
+            Node::Objective(ob) => {
+                if let Some(sp) = branch_span_nodes(&ob.body, id) {
+                    return Some(sp);
                 }
             }
             _ => {}
@@ -1013,6 +1161,9 @@ pub(crate) fn path_uses(doc: &Document, path: &str) -> Vec<Span> {
             &mut out,
         );
     }
+    for quest in &doc.quests {
+        collect_set_paths(&quest.body, path, &mut out);
+    }
     for slot in all_slots(doc) {
         let base = slot.span.byte_start;
         for (tok, sp) in path_tokens(&slot.raw) {
@@ -1058,6 +1209,8 @@ fn collect_set_paths(nodes: &[Node], path: &str, out: &mut Vec<Span>) {
                     }
                 }
             }
+            Node::On(o) => collect_set_paths(&o.body, path, out),
+            Node::Objective(ob) => collect_set_paths(&ob.body, path, out),
             _ => {}
         }
     }
@@ -1173,7 +1326,7 @@ mod tests {
     /// same-spelled dotted string literal in a sibling arm test as a use.
     #[test]
     fn references_ignore_path_inside_cel_string_literal() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca = 1}\n<match on=\"scene.affect.bianca\">\n<when test=\"'scene.affect.bianca' == 'x'\">\n:f: a.\n</when>\n<otherwise>\n:f: b.\n</otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca = 1}\n<match on=\"scene.affect.bianca\">\n<when test=\"'scene.affect.bianca' == 'x'\">\n:f: a.\n</when>\n<otherwise>\n:f: b.\n</otherwise>\n</match>\n";
         let (doc, _) = parse(text);
         // Cursor on the `::set` target path.
         let off = text.find("scene.affect.bianca = 1").unwrap();
@@ -1257,6 +1410,88 @@ mod tests {
         assert!(
             !codes.contains(&"E-NONEXHAUSTIVE".to_string()),
             "checker folds the author enum as finite + accepts the exhaustive match: {codes:?}"
+        );
+    }
+
+    // ---- dsl 0.2.0 §6.3/§4/§6.4: quest-body cursor resolution ----
+
+    const QUEST_DOC: &str = "---\nkind: quest\n---\n\
+        <quest id=\"q\" start=\"run.s\" fail=\"run.f\">\n\
+        <objective id=\"o\" done=\"run.d\">\n\
+        <branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n::set{run.x = 1}\n</choice>\n</branch>\n\
+        </objective>\n\
+        <on event=\"questComplete\">\n:narrator: bye\n</on>\n\
+        </quest>\n";
+
+    /// ACCEPTANCE: before the fix, `resolve` walked `doc.shots` only (a quest
+    /// doc has none), so EVERY cursor position in a quest doc resolved `None`.
+    #[test]
+    fn resolve_reaches_quest_start_fail_objective_done_and_on_event() {
+        let (doc, _) = parse(QUEST_DOC);
+
+        let start_off = QUEST_DOC.find("run.s").unwrap() + 1;
+        assert!(
+            matches!(resolve(&doc, start_off), Some(Cursor::Cel { .. })),
+            "quest start= is a CEL cursor"
+        );
+
+        let fail_off = QUEST_DOC.find("run.f").unwrap() + 1;
+        assert!(
+            matches!(resolve(&doc, fail_off), Some(Cursor::Cel { .. })),
+            "quest fail= is a CEL cursor"
+        );
+
+        let done_off = QUEST_DOC.find("run.d").unwrap() + 1;
+        assert!(
+            matches!(resolve(&doc, done_off), Some(Cursor::Cel { .. })),
+            "objective done= is a CEL cursor"
+        );
+
+        let event_off = QUEST_DOC.find("questComplete").unwrap() + 1;
+        assert!(
+            matches!(resolve(&doc, event_off), Some(Cursor::OnEventValue(_))),
+            "on event= is an OnEventValue cursor"
+        );
+    }
+
+    /// A cursor resting inside a `<quest>`/`<on>`/`<objective>` open tag, on no
+    /// specific attr, resolves to a construct attr-area cursor (drives
+    /// attr-key completion + keyword hover) rather than `None`.
+    #[test]
+    fn resolve_quest_attr_area_is_some() {
+        let (doc, _) = parse(QUEST_DOC);
+        let off = QUEST_DOC.find("<quest ").unwrap() + 1;
+        assert!(
+            matches!(
+                resolve(&doc, off),
+                Some(Cursor::ConstructAttrArea {
+                    construct: QuestConstruct::Quest
+                })
+            ),
+            "got {:?}",
+            resolve(&doc, off)
+        );
+    }
+
+    /// `branch_span` finds a `<branch>` nested inside a quest's `<objective>`
+    /// body (dsl 0.2.0 §6.7 nesting) — before the fix it walked `doc.shots`
+    /// only.
+    #[test]
+    fn branch_span_reaches_into_quest_objective_body() {
+        let (doc, _) = parse(QUEST_DOC);
+        assert!(branch_span(&doc, "b").is_some());
+    }
+
+    /// `path_uses` (via `collect_set_paths`) finds a `::set` nested inside a
+    /// quest's `<objective>`/`<branch>`/`<choice>` body — before the fix it
+    /// walked `doc.shots` only.
+    #[test]
+    fn path_uses_reaches_into_quest_body() {
+        let (doc, _) = parse(QUEST_DOC);
+        let uses = path_uses(&doc, "run.x");
+        assert!(
+            uses.iter().any(|s| QUEST_DOC[s.byte_start..s.byte_end] == *"run.x"),
+            "got {uses:?}"
         );
     }
 }

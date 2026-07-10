@@ -8,7 +8,7 @@ use lute_manifest::schema::DefDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
 
-const HDR: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n";
+const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n";
 
 fn codes(text: &str) -> Vec<String> {
     let input = CheckInput {
@@ -134,13 +134,13 @@ fn check_codes(text: &str, snap: CapabilitySnapshot) -> Vec<String> {
 
 // Minimal valid scenes whose whole `<when test>` value is a bare plugin-def ref
 // (a Condition slot ⇒ expected Bool). Only the `test=` ref differs.
-const SCENE_WARMTH: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n\
+const SCENE_WARMTH: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
     state:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n\
     <match on=\"scene.flag\">\n\
     <when test=\"@warmth\">:narrator: a\n</when>\n\
     <otherwise>:narrator: b\n</otherwise>\n\
     </match>\n";
-const SCENE_COUNT: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n\
+const SCENE_COUNT: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
     state:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n\
     <match on=\"scene.flag\">\n\
     <when test=\"@count\">:narrator: a\n</when>\n\
@@ -222,7 +222,7 @@ fn call_form_whole_slot_number_def_in_bool_guard_flags_ref_type() {
             values: None,
         },
     );
-    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@countAtLeast(2)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@countAtLeast(2)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
     let codes = check_codes(scene, snap);
     assert!(
         codes.contains(&"E-REF-TYPE".to_string()),
@@ -251,7 +251,7 @@ fn compound_call_comparison_is_not_whole_slot() {
             values: None,
         },
     );
-    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@toNum(scene.n) == @toNum(2)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@toNum(scene.n) == @toNum(2)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
     let codes = check_codes(scene, snap);
     assert!(
         !codes.contains(&"E-REF-TYPE".to_string()),
@@ -278,7 +278,7 @@ fn arity_mismatch_flags() {
             values: None,
         },
     );
-    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
     assert!(check_codes(scene, snap).contains(&"E-REF-ARITY".to_string()));
 }
 
@@ -300,7 +300,7 @@ fn arity_match_is_clean() {
             values: None,
         },
     );
-    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(2)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(2)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
     assert!(!check_codes(scene, snap).contains(&"E-REF-ARITY".to_string()));
 }
 
@@ -319,7 +319,7 @@ fn paramless_def_called_with_args_flags_arity() {
             values: None,
         },
     );
-    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@warm(1)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@warm(1)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
     assert!(check_codes(scene, snap).contains(&"E-REF-ARITY".to_string()));
 }
 
@@ -342,7 +342,7 @@ fn arg_type_mismatch_flags() {
             values: None,
         },
     );
-    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast('hi')\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast('hi')\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
     assert!(check_codes(scene, snap).contains(&"E-REF-ARG-TYPE".to_string()));
 }
 
@@ -364,7 +364,7 @@ fn arg_type_match_is_clean() {
             values: None,
         },
     );
-    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(2)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(2)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
     assert!(!check_codes(scene, snap).contains(&"E-REF-ARG-TYPE".to_string()));
 }
 
@@ -387,6 +387,6 @@ fn unresolvable_arg_is_not_flagged() {
             values: None,
         },
     );
-    let scene = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(scene.n + 1)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"@atLeast(scene.n + 1)\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n";
     assert!(!check_codes(scene, snap).contains(&"E-REF-ARG-TYPE".to_string()));
 }

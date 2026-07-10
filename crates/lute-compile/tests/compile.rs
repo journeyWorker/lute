@@ -2,7 +2,7 @@
 //! stamping, CEL expansion in situ, and byte determinism.
 
 use lute_check::{CheckInput, Mode};
-use lute_compile::{compile, Command};
+use lute_compile::{compile, ArtifactMeta, Command};
 
 fn input(text: &str) -> CheckInput {
     CheckInput {
@@ -16,7 +16,17 @@ fn input(text: &str) -> CheckInput {
     }
 }
 
+/// Unwrap a scene artifact's untagged `meta` (0.2.0 kind envelope) — these
+/// pre-0.2.0 tests exercise `kind: scene` docs only.
+fn scene_meta(a: &lute_compile::Artifact) -> &lute_compile::SceneMeta {
+    match &a.meta {
+        ArtifactMeta::Scene(m) => m,
+        ArtifactMeta::Quest(_) => panic!("expected scene meta"),
+    }
+}
+
 const SCENE: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 2
@@ -59,7 +69,7 @@ defs:
 fn error_doc_emits_no_artifact() {
     // Undeclared state write => Error diagnostic => gate refuses (D6).
     let bad =
-        "---\ncharacter: b\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n::set{scene.nope = 1}\n";
+        "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n::set{scene.nope = 1}\n";
     let err = compile(&input(bad)).unwrap_err();
     assert!(err.iter().any(|d| d.code == "E-UNDECLARED"), "{err:#?}");
 }
@@ -69,6 +79,7 @@ fn valid_hub_doc_compiles_to_hub_record() {
     // Plan C: `<hub>` now LOWERS to a `hub` record (IR A2). A check-passing hub
     // doc COMPILES — the transitional compile-time hub gate is gone.
     const HUB: &str = r#"---
+kind: scene
 character: b
 season: 1
 episode: 1
@@ -187,17 +198,17 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.1.0");
-    assert_eq!(artifact.ir_version, "0.1.0");
+    assert_eq!(artifact.lute, "0.2.0");
+    assert_eq!(artifact.ir_version, "0.2.0");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
         "capabilityVersion must be a non-empty snapshot stamp"
     );
-    assert_eq!(artifact.meta.character, "bianca");
+    assert_eq!(scene_meta(&artifact).character, "bianca");
     // A4/A9: episodeId normalized lowercase to match the lineId episode segment.
-    assert_eq!(artifact.meta.episode_id, "s01ep02");
-    assert_eq!(artifact.meta.title.as_deref(), Some("Compile me"));
+    assert_eq!(scene_meta(&artifact).episode_id, "s01ep02");
+    assert_eq!(scene_meta(&artifact).title.as_deref(), Some("Compile me"));
 
     // Folded state envelope: author decl + implicit branch decl (§4.1).
     let paths: Vec<&str> = artifact.state.iter().map(|s| s.path.as_str()).collect();
@@ -268,7 +279,7 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
             }
             let seg = l.line_id.split('.').nth(1).expect("lineId episode segment");
             assert_eq!(
-                seg, artifact.meta.episode_id,
+                seg, scene_meta(&artifact).episode_id,
                 "lineId {} episode segment must equal meta.episodeId byte-for-byte",
                 l.line_id
             );
@@ -282,6 +293,7 @@ fn authored_episode_id_is_used_verbatim_in_meta_and_line_ids() {
     // `meta.episodeId` and the lineId episode segment (no lowercasing, no
     // `s{s}ep{e}` reformat) — pinning survives episode renumbering.
     const AUTHORED: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 2
@@ -293,7 +305,7 @@ episodeId: ep02final
 :narrator: The stage is set.
 "#;
     let artifact = compile(&input(AUTHORED)).expect("authored episodeId doc compiles");
-    assert_eq!(artifact.meta.episode_id, "ep02final");
+    assert_eq!(scene_meta(&artifact).episode_id, "ep02final");
     let line = artifact
         .commands
         .iter()
@@ -320,6 +332,7 @@ fn cut_wait_default_is_reachable_through_the_compile_gate() {
     // Ok and its record carries the resolved family default `wait: false` (v1
     // non-blocking) — the same value the e2e goldens pin.
     const DOC: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 2
@@ -361,6 +374,7 @@ fn implicit_choice_slot_defaults_unset_without_forcing_author_entries() {
     // `<branch>` whose implicit `scene.choices.couch` slot must be seeded
     // `default: "unset"` (§4.1) while neither author entry is force-unset.
     const DOC: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 3
@@ -430,6 +444,7 @@ fn author_scene_choices_enum_without_branch_is_not_forced_unset() {
     // id="couch">` in the same doc IS an implicit slot: seeded `default:
     // "unset"`, domain ∪ `unset`, `branch:couch` provenance.
     const DOC: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 3
@@ -512,6 +527,7 @@ state:
 #[test]
 fn content_line_carries_ordered_kind_keyed_placeholders() {
     const DOC: &str = r#"---
+kind: scene
 character: bianca
 season: 1
 episode: 2
@@ -573,6 +589,7 @@ fn interp_free_line_omits_placeholders() {
 #[test]
 fn option_label_interp_carries_placeholders() {
     const DOC: &str = r#"---
+kind: scene
 character: b
 season: 1
 episode: 1
@@ -614,5 +631,135 @@ state:
     assert!(
         keep_json.get("placeholders").is_none(),
         "non-interpolating label omits `placeholders`; got {keep_json}"
+    );
+}
+
+// --- dsl 0.2.0: kind: quest compile flow -------------------------------------
+
+/// Mirrors the DSL Appendix D worked example (trimmed): one `<quest>` with 2
+/// objectives + an `<on event="questComplete">` arm carrying a `::set` + a
+/// `:narrator:` line. `run.*` paths read by `start`/`done` are declared
+/// inline via `state:` (with defaults, so defassign is clean) so `check()`
+/// passes.
+const QUEST_SRC: &str = r#"---
+kind: quest
+state:
+  run.act: { type: bool, default: false }
+  run.region: { type: bool, default: false }
+---
+
+<quest id="rescueHalsin" title="Rescue" start="run.act">
+<objective id="reachGrove" title="Reach" done="run.region"/>
+<objective id="freeHalsin" done="run.act"/>
+
+<on event="questComplete">
+::set{run.act = true}
+:narrator: The quest is complete.
+</on>
+</quest>
+"#;
+
+#[test]
+fn quest_doc_compiles_to_quest_artifact() {
+    let art = compile(&input(QUEST_SRC)).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    assert_eq!(j["kind"], "quest");
+    let cmds = j["commands"].as_array().unwrap();
+    let q = cmds.iter().find(|c| c["kind"] == "quest").expect("quest record");
+    assert_eq!(q["id"], "rescueHalsin");
+    assert_eq!(q["objectives"].as_array().unwrap().len(), 2);
+    assert!(cmds.iter().any(|c| c["kind"] == "on" && c["event"] == "questComplete"));
+    // an <on> body content line lowered as a line record with a {questId} lineId:
+    assert!(cmds.iter().any(|c| c["kind"] == "line"
+        && c["lineId"].as_str().map_or(false, |s| s.starts_with("rescueHalsin."))));
+}
+
+/// A checker-admitted DIRECT quest-body-level content line + `::set` (dsl
+/// 0.2.0 §6.3/§6.7 — sibling to `<objective>`/`<on>`, not nested inside
+/// either) is LOWERED as an ordinary record in the SAME per-quest stream —
+/// NEVER silently dropped (IR addendum §3 preamble note).
+#[test]
+fn direct_quest_body_content_is_lowered_not_dropped() {
+    const SRC: &str = r#"---
+kind: quest
+state:
+  run.act: { type: bool, default: false }
+---
+
+<quest id="rescueHalsin" title="Rescue">
+:narrator: A quest begins.
+::set{run.act = true}
+<objective id="reachGrove" done="run.act"/>
+</quest>
+"#;
+    let art = compile(&input(SRC)).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let cmds = j["commands"].as_array().unwrap();
+    let narrator_line = cmds
+        .iter()
+        .find(|c| c["kind"] == "line" && c["text"] == "A quest begins.")
+        .expect("direct quest-body content-line record");
+    assert_eq!(
+        narrator_line["lineId"].as_str().map(|s| s.starts_with("rescueHalsin.")),
+        Some(true)
+    );
+    assert!(
+        cmds.iter()
+            .any(|c| c["kind"] == "set" && c["path"] == "run.act"),
+        "direct quest-body `::set` must lower, not drop: {cmds:#?}"
+    );
+}
+
+/// F5 (final review P1): an EMPTY `<on>` body's `body` target is a REQUIRED
+/// `String` (dsl 0.2.0 IR addendum §3.3) that MUST resolve to the quest
+/// unit's ONE-PAST-END converge, never whatever record happens to follow it
+/// in the pass-2 document-order walk. Before the fix, `walk_quest` bound the
+/// fresh label immediately after pushing the `on` record; with an empty
+/// body `walk_seq` emits nothing, so the label silently attached to the
+/// NEXT emitted record (here, the `::set`) — the handler would run the
+/// WRONG content when `questComplete` actually fires. The objective arm
+/// already guards this (`obj_labels` is `None` for an empty body); `<on>`
+/// must match: the empty-on's `body` addr is the quest unit's past-end,
+/// `"001-0400"` (quest + on + set = 3 records, `addr_of(1, 3)`), not the
+/// `set` record's own addr, and not a dangling `@n` symbolic label.
+#[test]
+fn empty_on_body_targets_unit_past_end_not_following_content() {
+    const SRC: &str = r#"---
+kind: quest
+state:
+  run.act: { type: bool, default: false }
+---
+
+<quest id="rescueHalsin" title="Rescue">
+<objective id="reachGrove" done="run.act"/>
+<on event="questComplete">
+</on>
+::set{run.act = true}
+</quest>
+"#;
+    let art = compile(&input(SRC)).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let cmds = j["commands"].as_array().unwrap();
+    let on = cmds
+        .iter()
+        .find(|c| c["kind"] == "on" && c["event"] == "questComplete")
+        .expect("on record");
+    let set = cmds
+        .iter()
+        .find(|c| c["kind"] == "set" && c["path"] == "run.act")
+        .expect("set record");
+    let on_body = on["body"].as_str().expect("on.body must be a string addr, never null/@n");
+    assert!(
+        !on_body.starts_with('@'),
+        "on.body must be addressed, never a dangling symbolic label: {on_body}"
+    );
+    assert_ne!(
+        on_body,
+        set["addr"].as_str().unwrap(),
+        "empty <on> body must NOT dangle onto the following `::set` record: {cmds:#?}"
+    );
+    assert_eq!(
+        on_body, "001-0400",
+        "empty <on> body must target the quest unit's one-past-end converge          (IR addendum §3.3), not any live record: {cmds:#?}"
     );
 }

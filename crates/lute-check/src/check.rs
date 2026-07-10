@@ -77,13 +77,12 @@ use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
 use crate::directives::{at_context, check_directive};
 use crate::inject::{lower_node, InjectedCommand, StageState};
-use crate::meta::parse_meta;
 use crate::schema_import::SchemaImports;
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
     check_branch, check_cel_slot, check_definite_assignment, check_hub, check_line_codes,
-    check_match, check_set, is_exhaustive,
+    check_match, check_quest, check_quest_guard_defassign, check_set, is_exhaustive,
 };
 
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
@@ -183,6 +182,10 @@ pub struct FoldedEnv {
     pub env: Env,
     /// def name -> raw CEL body, merged plugin < imported < inline (D4 input).
     pub def_bodies: std::collections::BTreeMap<String, String>,
+    /// The resolved root document kind (dsl 0.2.0 §3.1): `Scene` when
+    /// unresolved (missing/unknown `kind:`) so scene stays the degrade-safe
+    /// path and downstream dispatch never panics.
+    pub doc_kind: crate::meta::DocKind,
 }
 
 /// Fold the analysis environment from an already-parsed document. Returns two
@@ -196,8 +199,23 @@ pub fn fold_env(
     doc: &Document,
     input: &CheckInput,
 ) -> (FoldedEnv, Vec<Diagnostic>, Vec<Diagnostic>) {
-    // 3. Typed frontmatter + inline state schema.
-    let (typed, mut fold_diags) = parse_meta(&doc.meta, &input.snapshot);
+    // 3. Resolve the root document kind (dsl 0.2.0 §3.1) FIRST: it gates which
+    //    per-kind frontmatter keys the meta parse below allows. Defaults to
+    //    `Scene` — the degrade-safe path — when unresolved (missing/unknown
+    //    `kind:`), so a mis-kinded doc still gets the scene-triad required-key
+    //    treatment it had pre-0.2.0.
+    let (doc_kind, kind_diags) = crate::meta::resolve_doc_kind(&doc.meta);
+    let doc_kind = doc_kind.unwrap_or(crate::meta::DocKind::Scene);
+    let meta_kind = match doc_kind {
+        crate::meta::DocKind::Scene => crate::meta::MetaKind::Scene,
+        crate::meta::DocKind::Quest => crate::meta::MetaKind::Quest,
+    };
+
+    // 3b. Typed frontmatter + inline state schema, dispatched by the resolved
+    //     kind (dsl 0.2.0 §3.1, §6.1): a Quest doc carries none of the scene
+    //     triad and rejects it as an unknown key.
+    let (typed, mut fold_diags) = crate::meta::parse_meta_kind(&doc.meta, &input.snapshot, meta_kind);
+    fold_diags.splice(0..0, kind_diags);
 
     // 4. Fold every `<branch>`/`<hub>`'s implicit recording decls
     //    (`scene.choices.<id>` + a hub's per-choice `scene.visited.<id>.*`) into
@@ -254,6 +272,59 @@ pub fn fold_env(
     }
     let mut seen_branches = std::collections::BTreeSet::new();
     fold_branches(doc, &mut schema, &mut seen_branches, &mut fold_diags);
+
+    // 4a. Fold every `<quest>`'s implicit reserved `quest.<id>.*` decls (dsl
+    //     0.2.0 §5.2) into the schema, threading a SEPARATE per-document `seen`
+    //     id set (quest ids key the `quest.<id>.*` tier, a namespace distinct
+    //     from `scene.choices.*`) so `E-QUEST-ID-DUP` fires exactly once per
+    //     duplicate. `seen_quests` is SEEDED from `input.imports.imported_quest_ids`
+    //     (dsl 0.2.0 §6.3: quest ids are unique PROJECT-WIDE, across the import
+    //     graph, not merely within this document) — redeclaring an
+    //     import-reachable id then fails the same `seen_quests.insert` check as
+    //     an in-document repeat, reusing `E-QUEST-ID-DUP` unchanged. A collision
+    //     BETWEEN two import-reachable docs that this document itself never
+    //     redeclares is instead caught in `resolve_imports` directly (this
+    //     document's own `<quest>` fold never sees it).
+    //
+    //     `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` are RESERVED
+    //     (dsl 0.2.0 §5.2/§9.3: "implicitly declared and MUST NOT be
+    //     author-declared") — snapshot every state path that already exists
+    //     BEFORE any reserved decl is folded (the author's inline `state:` and
+    //     any imported schema, both merged above) so a reserved path that
+    //     collides with one of THOSE is flagged (`E-QUEST-RESERVED-DECL`)
+    //     instead of silently clobbered by `schema.decls.insert`. A collision
+    //     with a path THIS loop itself already folded (the `E-QUEST-ID-DUP`
+    //     repeat-id case, an identical decl either way) is NOT flagged — the
+    //     snapshot is frozen before the loop starts, so a same-id repeat
+    //     resolves against the pre-loop state and simply re-inserts the
+    //     identical decl.
+    let pre_existing_state: std::collections::BTreeSet<String> =
+        schema.decls.keys().cloned().collect();
+    let mut seen_quests: std::collections::BTreeSet<String> =
+        input.imports.imported_quest_ids.keys().cloned().collect();
+    for quest in &doc.quests {
+        let record = check_quest(quest, &mut seen_quests);
+        for (path, decl) in record.decls {
+            if pre_existing_state.contains(&path) {
+                fold_diags.push(Diagnostic {
+                    code: "E-QUEST-RESERVED-DECL".to_string(),
+                    severity: Severity::Error,
+                    message: format!(
+                        "state path `{path}` collides with an implicitly-declared reserved \
+                         quest field (dsl 0.2.0 §5.2); it must not be author-declared in \
+                         `state:`"
+                    ),
+                    span: doc.meta.span,
+                    layer: Layer::Content,
+                    fixits: Vec::new(),
+                    provenance: None,
+                });
+            } else {
+                schema.decls.insert(path, decl);
+            }
+        }
+        fold_diags.extend(record.diags);
+    }
 
     // 4b. Expand every active directive's `state.declares[]` into concrete state
     //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
@@ -356,6 +427,7 @@ pub fn fold_env(
             typed,
             env,
             def_bodies,
+            doc_kind,
         },
         fold_diags,
         state_merge_diags,
@@ -409,18 +481,78 @@ pub fn check(input: &CheckInput) -> CheckResult {
         exhaustive_subject_spans: Vec::new(),
         components: &input.components,
     };
-    for shot in &doc.shots {
-        walker.walk(&shot.body, &base_ctx);
+    // Kind-dispatched walk (dsl 0.2.0 §3.1): scene walks `doc.shots` (dsl
+    // 0.1.0 grammar, unchanged); quest walks `doc.quests` — each quest's own
+    // `start`/`fail` CEL guards (dsl 0.2.0 §6.3) are pure predicates the
+    // engine derives `quest.<id>.state` from, so they get the SAME `Bool`
+    // `check_cel_slot` treatment a `<when test>` guard gets — then the
+    // quest's body, which recurses through the real `Node::On`/
+    // `Node::Objective` walk arms below.
+    match folded.doc_kind {
+        crate::meta::DocKind::Scene => {
+            for shot in &doc.shots {
+                walker.walk(&shot.body, &base_ctx);
+            }
+        }
+        crate::meta::DocKind::Quest => {
+            for quest in &doc.quests {
+                if let Some(start) = &quest.start {
+                    walker.diags.extend(check_cel_slot(
+                        start,
+                        &arena,
+                        &base_ctx,
+                        Some(&ExpectedType::Bool),
+                    ));
+                }
+                if let Some(fail) = &quest.fail {
+                    walker.diags.extend(check_cel_slot(
+                        fail,
+                        &arena,
+                        &base_ctx,
+                        Some(&ExpectedType::Bool),
+                    ));
+                }
+                walker.walk(&quest.body, &base_ctx);
+            }
+        }
     }
 
-    // 6. Document-level definite-assignment over the concatenated node stream
-    //    (carry-forward #1): `scene.*`/`run.*` persist across shots.
-    let all_nodes: Vec<Node> = doc
-        .shots
-        .iter()
-        .flat_map(|s| s.body.iter().cloned())
-        .collect();
-    let defassign_diags = check_definite_assignment(&all_nodes, &env.state, &base_ctx);
+    // 6. Definite assignment, kind-dispatched (dsl 0.2.0 §4.4): scene runs
+    //    ONCE over the whole concatenated shot stream (carry-forward #1 —
+    //    `scene.*`/`run.*` persist across shots within the episode); quest
+    //    runs PER `quest.body` — quest instances share no dominance relation
+    //    with one another, so each quest's def-assignment is its own scope,
+    //    never folded across quests.
+    let defassign_diags: Vec<Diagnostic> = match folded.doc_kind {
+        crate::meta::DocKind::Scene => {
+            let all_nodes: Vec<Node> = doc
+                .shots
+                .iter()
+                .flat_map(|s| s.body.iter().cloned())
+                .collect();
+            check_definite_assignment(&all_nodes, &env.state, &base_ctx)
+        }
+        crate::meta::DocKind::Quest => doc
+            .quests
+            .iter()
+            .flat_map(|q| {
+                // `start`/`fail` (dsl 0.2.0 §6.3) are evaluated at QUEST ENTRY —
+                // nothing dominates them, so they get their own fresh
+                // (empty-assigned-set) defassign check rather than folding into
+                // `q.body`'s walk (which would wrongly let an in-body write
+                // "prove" a guard evaluated strictly before the body runs).
+                let mut ds = Vec::new();
+                if let Some(start) = &q.start {
+                    ds.extend(check_quest_guard_defassign(start, &env.state));
+                }
+                if let Some(fail) = &q.fail {
+                    ds.extend(check_quest_guard_defassign(fail, &env.state));
+                }
+                ds.extend(check_definite_assignment(&q.body, &env.state, &base_ctx));
+                ds
+            })
+            .collect(),
+    };
 
     // 6b. Duplicate authored line codes (dsl §12): two `:line`s for the same
     //     speaker with the same trimmed `code` derive identical `lineId`/
@@ -435,11 +567,21 @@ pub fn check(input: &CheckInput) -> CheckResult {
         fold_injections(&shot.body, &mut inject_state, &mut injections);
     }
     let inject_diags = std::mem::take(&mut inject_state.diags);
-    let commands_preview: Vec<String> = doc
-        .shots
-        .iter()
-        .flat_map(|s| s.body.iter().map(node_summary))
-        .collect();
+    // `node_summary` already covers `Node::On`/`Node::Objective` (Plan A), so
+    // the quest arm reuses it verbatim — no wildcard, both surfaces summarized
+    // identically.
+    let commands_preview: Vec<String> = match folded.doc_kind {
+        crate::meta::DocKind::Scene => doc
+            .shots
+            .iter()
+            .flat_map(|s| s.body.iter().map(node_summary))
+            .collect(),
+        crate::meta::DocKind::Quest => doc
+            .quests
+            .iter()
+            .flat_map(|q| q.body.iter().map(node_summary))
+            .collect(),
+    };
 
     // 8. Collect every diagnostic, then apply the ordering contract.
     let mut diags = Vec::new();
@@ -463,6 +605,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(defassign_diags);
     diags.extend(line_code_diags);
     diags.extend(inject_diags);
+    // Table-driven grammar admission (dsl 0.2.0 §3.3, §6.7): per-kind,
+    // per-context construct legality. `E-GRAMMAR-NOT-ADMITTED` is semantic, NOT
+    // a `STRUCTURAL_CODE` — the resolved view stays `Some` even when a document
+    // uses a construct its kind forbids.
+    diags.extend(crate::admission::check_admission(&doc, folded.doc_kind));
 
     // is_exhaustive suppression (carry-forward, T4.6 x T4.4): drop a maybe-unset
     // read whose span is a domain-exhaustive `<match>` subject.
@@ -693,6 +840,61 @@ impl Walker<'_> {
                         }
                         self.walk(&choice.body, ctx);
                     }
+                }
+                Node::Objective(o) => {
+                    // Completion predicate (dsl 0.2.0 §6.4): a value READ like a
+                    // match subject — it doesn't gate the body (§6.3: `when`
+                    // controls visibility, not the completion obligation), so it
+                    // gets the SAME `Bool` `check_cel_slot` treatment a
+                    // `<when test>` guard gets. `E-OBJECTIVE-MISSING-DONE` (an
+                    // empty `done`) was already flagged by `check_quest`'s fold
+                    // pass (Task 4); an empty raw's CEL `ast` stays `None`, so
+                    // this pass is a no-op for a missing `done` beyond the
+                    // `E-CEL-PARSE` `fill_document` already reported once.
+                    self.diags.extend(check_cel_slot(
+                        &o.done,
+                        self.arena,
+                        ctx,
+                        Some(&ExpectedType::Bool),
+                    ));
+                    if let Some(when) = &o.when {
+                        self.diags.extend(check_cel_slot(
+                            when,
+                            self.arena,
+                            ctx,
+                            Some(&ExpectedType::Bool),
+                        ));
+                    }
+                    // §7.6: an objective `title` MAY embed `{{…}}` interpolations,
+                    // same as a choice label.
+                    if let Some(title) = &o.title {
+                        check_interps(
+                            &scan_label_interps(title, o.span),
+                            ctx,
+                            &mut self.diags,
+                        );
+                    }
+                    self.check_attr_refs(&o.attrs, ctx, None);
+                    self.walk(&o.body, ctx);
+                }
+                Node::On(o) => {
+                    // ECA trigger (dsl 0.2.0 §4.1): the `event` name (a plain
+                    // String, NOT CEL) resolves against the built-in lifecycle
+                    // events + capability-declared world events; the `when`
+                    // guard flows through the SAME `check_cel_slot` profile gate
+                    // every other boolean guard gets.
+                    self.diags
+                        .extend(crate::on::check_on_event(o, self.snapshot));
+                    if let Some(when) = &o.when {
+                        self.diags.extend(check_cel_slot(
+                            when,
+                            self.arena,
+                            ctx,
+                            Some(&ExpectedType::Bool),
+                        ));
+                    }
+                    self.check_attr_refs(&o.attrs, ctx, None);
+                    self.walk(&o.body, ctx);
                 }
             }
         }
@@ -1162,6 +1364,16 @@ fn walk_component_body(
                 "a component body must be presentational (dsl §13): a `<hub>` logic block is not allowed in v1".to_string(),
                 h.span,
             )),
+            Node::Objective(o) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                "a component body must be presentational (dsl §13): an `<objective>` logic block is not allowed in v1".to_string(),
+                o.span,
+            )),
+            Node::On(o) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                "a component body must be presentational (dsl §13): an `<on>` logic block is not allowed in v1".to_string(),
+                o.span,
+            )),
         }
     }
 }
@@ -1243,7 +1455,7 @@ fn collect_use_targets(nodes: &[Node], out: &mut Vec<String>) {
                     collect_use_targets(&c.body, out);
                 }
             }
-            Node::Line(_) | Node::Set(_) => {}
+            Node::Line(_) | Node::Set(_) | Node::Objective(_) | Node::On(_) => {}
         }
     }
 }
@@ -1516,7 +1728,13 @@ fn persist_diag(code: &str, message: String, span: Span) -> Diagnostic {
 /// into `schema` in document order, threading the episode-wide `seen` id set
 /// (branch + hub ids share it) so `E-DUP-BRANCH` fires exactly once per duplicate.
 /// Recurses into nested bodies (a branch/hub may live inside a match arm or
-/// another choice body).
+/// another choice body). A `<branch>` is ALSO admitted directly inside a quest
+/// body (dsl 0.2.0 §6.7), reached via `<quest>` top level or an `<on>`/
+/// `<objective>` arm — `doc.quests` is folded here too so a quest `<branch>`
+/// gets the SAME `E-CHOICE-DUP`/implicit-decl treatment a scene one gets
+/// (`<hub>` is never legal in a quest doc, dsl 0.2.0 §6.7 — grammar admission
+/// rejects it separately, so it is never reached from a quest walk in
+/// practice, but the recursion below tolerates it structurally regardless).
 fn fold_branches(
     doc: &Document,
     schema: &mut crate::meta::StateSchema,
@@ -1525,6 +1743,9 @@ fn fold_branches(
 ) {
     for shot in &doc.shots {
         fold_branches_nodes(&shot.body, schema, seen, diags);
+    }
+    for quest in &doc.quests {
+        fold_branches_nodes(&quest.body, schema, seen, diags);
     }
 }
 
@@ -1567,7 +1788,13 @@ fn fold_branches_nodes(
                     }
                 }
             }
-            _ => {}
+            // Quest-only arms (dsl 0.2.0 §4, §6.4): a `<branch>`/`<match>` may
+            // live directly inside an `<on>` event arm or an `<objective>`
+            // body (grammar admission's `Emittable` context), so the fold
+            // recurses through them too.
+            Node::On(o) => fold_branches_nodes(&o.body, schema, seen, diags),
+            Node::Objective(o) => fold_branches_nodes(&o.body, schema, seen, diags),
+            Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
         }
     }
 }
@@ -1586,6 +1813,9 @@ fn fold_directive_slots(
 ) {
     for shot in &doc.shots {
         fold_slots_nodes(&shot.body, snapshot, schema);
+    }
+    for quest in &doc.quests {
+        fold_slots_nodes(&quest.body, snapshot, schema);
     }
 }
 
@@ -1625,6 +1855,13 @@ fn fold_slots_nodes(
                     fold_slots_nodes(&c.body, snapshot, schema);
                 }
             }
+            // Quest-only arms (dsl 0.2.0 §4, §6.4): a directive-opening slot
+            // (e.g. `::minigame{resultKey="k"}`) may be used directly inside
+            // an `<on>` event arm or an `<objective>` body — recurse so its
+            // declared state slots open for the quest walk + defassign, same
+            // as a scene shot's directives do.
+            Node::On(o) => fold_slots_nodes(&o.body, snapshot, schema),
+            Node::Objective(o) => fold_slots_nodes(&o.body, snapshot, schema),
             Node::Line(_) | Node::Set(_) => {}
         }
     }
@@ -1830,15 +2067,17 @@ fn spans_overlap(a: Span, b: Span) -> bool {
 
 /// Extract the state path an `E-UNDECLARED` message names, for path-aware dedup.
 /// All three producers embed the path as the first backtick-quoted token that
-/// starts with a state tier (`scene.`/`run.`/`user.`/`app.`) — `set_op` also
-/// quotes `::set` first, so we scan for the tier-prefixed token, not just the
-/// first quote. `None` (no tier token) falls back to span-only collapse.
+/// starts with a state tier (`scene.`/`run.`/`user.`/`app.`/`quest.`) —
+/// `set_op` also quotes `::set` first, so we scan for the tier-prefixed token,
+/// not just the first quote. `None` (no tier token) falls back to span-only
+/// collapse.
 fn undeclared_path(message: &str) -> Option<&str> {
     message.split('`').find(|tok| {
         tok.starts_with("scene.")
             || tok.starts_with("run.")
             || tok.starts_with("user.")
             || tok.starts_with("app.")
+            || tok.starts_with("quest.")
     })
 }
 
@@ -1874,5 +2113,7 @@ fn node_summary(node: &Node) -> String {
         Node::Match(m) => format!("<match on=\"{}\"> ({} arms)", m.subject.raw, m.arms.len()),
         Node::Timeline(tl) => format!("<timeline> ({} tracks)", tl.tracks.len()),
         Node::Hub(h) => format!("<hub> ({} choices)", h.choices.len()),
+        Node::On(o) => format!("<on event=\"{}\">", o.event),
+        Node::Objective(o) => format!("<objective id=\"{}\">", o.id),
     }
 }

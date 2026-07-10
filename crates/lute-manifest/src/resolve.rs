@@ -562,6 +562,7 @@ mod tests {
             defs: vec![],
             frontmatter: Default::default(),
             asset_kinds: vec![],
+            events: vec![],
         }
     }
 

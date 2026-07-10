@@ -300,7 +300,7 @@ mod tests {
 
     fn nodes(body: &str) -> Vec<Node> {
         let src =
-            format!("---\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n\n## Shot 1.\n\n{body}\n");
+            format!("---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n\n## Shot 1.\n\n{body}\n");
         let (doc, diags) = lute_syntax::parse(&src);
         assert!(
             diags.iter().all(|d| d.severity != Severity::Error),

@@ -128,7 +128,7 @@ fn check_codes(text: &str, snap: CapabilitySnapshot) -> Vec<String> {
         .collect()
 }
 
-const SCENE: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 5\n---\n## Shot 1.\n\
+const SCENE: &str = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 5\n---\n## Shot 1.\n\
 ::minigame{kind=\"rhythm\" id=\"x\" resultKey=\"service01\" wait=\"true\"}\n\
 <match on=\"scene.minigame.service01.rank\">\n\
 <when test=\"$ == 'gold'\">:bianca: a\n</when>\n\
@@ -219,7 +219,7 @@ fn cyclic_state_shapes_do_not_overflow() {
             },
         },
     );
-    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::cyc{k=\"slot\"}\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::cyc{k=\"slot\"}\n";
     let input = CheckInput {
         text: text.into(),
         uri: "cyc".into(),
@@ -239,7 +239,7 @@ fn unknown_tag_from_inactive_plugin_gets_fixit() {
     snap.inactive
         .insert("minigame".into(), "idola.minigame".into());
     let text =
-        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::minigame{kind=\"rhythm\"}\n";
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::minigame{kind=\"rhythm\"}\n";
     let input = CheckInput {
         text: text.into(),
         uri: "t".into(),

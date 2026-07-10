@@ -106,7 +106,7 @@ fn providers() -> ProviderSet {
 }
 
 fn scene(directive: &str) -> String {
-    format!("---\ncharacter: bianca\nseason: 1\nepisode: 5\n---\n## Shot 1.\n{directive}\n")
+    format!("---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 5\n---\n## Shot 1.\n{directive}\n")
 }
 
 fn check_codes(text: &str, snap: CapabilitySnapshot, providers: ProviderSet) -> Vec<String> {

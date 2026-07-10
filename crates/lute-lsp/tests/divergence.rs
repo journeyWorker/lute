@@ -322,7 +322,7 @@ fn divergence_holds_under_plugin_defs() {
     // only the ref differs between the two cases.
     let scene = |guard: &str| {
         format!(
-            "---\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n"
+            "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">:narrator: a\n</when>\n<otherwise>:narrator: b\n</otherwise>\n</match>\n"
         )
     };
 
@@ -471,7 +471,7 @@ fn divergence_holds_under_uses_import() {
 
     // (b) non-vacuous: a missing import produces E-USES-NOT-FOUND; its headless
     // and LSP projections must agree too (the new §9.2 codes' projection).
-    let bad = "---\ncharacter: x\nseason: 1\nepisode: 1\nuses: __no_such_schema__.lute\n---\n## Shot 1.\n:x: hi\n";
+    let bad = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: __no_such_schema__.lute\n---\n## Shot 1.\n:x: hi\n";
     let (bdoc, _) = lute_syntax::parse(bad);
     let (bmeta, _) = lute_check::parse_meta(
         &bdoc.meta,
@@ -532,7 +532,7 @@ fn divergence_holds_under_components() {
     .unwrap();
 
     // (a) happy path: import + ::use a valid component cleanly; projections agree.
-    let text = "---\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [greet.lute]\n---\n## Shot 1.\n::use{component=\"greet\" who=\"bianca\"}\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [greet.lute]\n---\n## Shot 1.\n::use{component=\"greet\" who=\"bianca\"}\n";
     let (doc, _) = lute_syntax::parse(text);
     let (meta0, _) = lute_check::parse_meta(
         &doc.meta,
@@ -577,7 +577,7 @@ fn divergence_holds_under_components() {
 
     // (b) non-vacuous: an unknown ::use produces E-COMPONENT-UNDECLARED; its
     // headless and LSP projections must agree too (the new §13 codes' projection).
-    let bad = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::use{component=\"ghost\" who=\"x\"}\n";
+    let bad = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::use{component=\"ghost\" who=\"x\"}\n";
     let (bdoc, _) = lute_syntax::parse(bad);
     let (bmeta, _) = lute_check::parse_meta(
         &bdoc.meta,
@@ -618,5 +618,99 @@ fn divergence_holds_under_components() {
     assert_eq!(
         bheadless, bvia_lsp,
         "E-COMPONENT-UNDECLARED projection diverged between surfaces"
+    );
+}
+
+/// No-divergence for the 0.2.0 quest kind (Plan E Task 6): the invariant that
+/// held for every scene-kind construct must also hold for `<quest>`/`<on>`/
+/// `<objective>` — new AST variants, new diagnostic codes, but the SAME single
+/// diagnostic surface. Two cases, mirroring `divergence_holds_under_components`:
+/// (a) an error-clean quest (a declared `run.grove` state path read by an
+/// objective's `done` guard and written by a `questComplete` `<on>` handler)
+/// and (b) a quest whose objective omits `done`, which yields
+/// `E-OBJECTIVE-MISSING-DONE` — its headless and LSP projections must agree
+/// byte-for-byte, proving the quest-specific diagnostic (anchored at the
+/// `<objective>` construct, not a content line) reprojects identically.
+#[test]
+fn divergence_holds_for_quest_docs() {
+    // (a) happy path: a clean quest doc is error-free; projections agree.
+    let text = "---\nkind: quest\nstate:\n  run.grove: { type: bool, default: false }\n---\n\
+                <quest id=\"rescueHalsin\" title=\"Rescue Halsin\">\n\
+                <objective id=\"reachGrove\" title=\"Reach the grove\" done=\"run.grove\"/>\n\
+                <on event=\"questComplete\">\n::set{run.grove = true}\n</on>\n\
+                </quest>\n";
+    let res = check(&input_for(text));
+    assert!(
+        res.diagnostics.iter().all(|d| d.severity != Severity::Error),
+        "a clean quest doc must be error-free; got {:?}",
+        res.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+    let index = idx(text);
+    let headless: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &index))
+        .collect();
+    let via_lsp: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .collect();
+    assert_eq!(
+        headless, via_lsp,
+        "headless and LSP surfaces diverged for a clean quest doc"
+    );
+
+    // (b) non-vacuous: an objective with no `done` flags E-OBJECTIVE-MISSING-DONE
+    // (dsl 0.2.0 §6.4); its headless and LSP projections must agree too.
+    let bad = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\"/>\n</quest>\n";
+    let bres = check(&input_for(bad));
+    assert!(
+        bres.diagnostics.iter().any(|d| d.code == "E-OBJECTIVE-MISSING-DONE"),
+        "an objective with no done= must yield E-OBJECTIVE-MISSING-DONE; got {:?}",
+        bres.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+    let bindex = idx(bad);
+    let bheadless: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &bindex))
+        .collect();
+    let bvia_lsp: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex)))
+        .collect();
+    assert_eq!(
+        bheadless, bvia_lsp,
+        "E-OBJECTIVE-MISSING-DONE projection diverged between surfaces"
+    );
+
+    // (c) non-vacuous, CEL-attribute anchor: an objective whose `done` reads an
+    // undeclared state path flags a CEL-layer diagnostic anchored at the `done=`
+    // attribute's CEL span (NOT the `<objective>` construct span
+    // E-OBJECTIVE-MISSING-DONE uses above) -- the quest-CEL-attribute
+    // reprojection path.
+    let cel_bad = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.missing\"/>\n</quest>\n";
+    let cel_res = check(&input_for(cel_bad));
+    assert!(
+        cel_res.diagnostics.iter().any(|d| d.code == "E-UNDECLARED"),
+        "an objective done= reading an undeclared state path must yield E-UNDECLARED; got {:?}",
+        cel_res.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+    let cel_index = idx(cel_bad);
+    let cel_headless: Vec<Norm> = cel_res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &cel_index))
+        .collect();
+    let cel_via_lsp: Vec<Norm> = cel_res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &cel_index)))
+        .collect();
+    assert_eq!(
+        cel_headless, cel_via_lsp,
+        "E-UNDECLARED projection diverged between surfaces on the quest done= CEL-attribute path"
     );
 }

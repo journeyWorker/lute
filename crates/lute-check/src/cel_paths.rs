@@ -20,7 +20,9 @@
 use cel_parser::ast::{EntryExpr, Expr};
 
 /// State-tier roots that introduce a declared state-path read (dsl §9.1).
-pub(crate) const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app"];
+/// Tier-GENERAL: kept scalar-agnostic on purpose (0.3.0's relational tiers
+/// reuse this same list, dsl 0.2.0 §5).
+pub(crate) const STATE_ROOTS: &[&str] = &["scene", "run", "user", "app", "quest"];
 
 /// How a state path appears in an expression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +50,20 @@ pub(crate) fn is_state_path(path: &str) -> bool {
     path.split('.')
         .next()
         .is_some_and(|root| STATE_ROOTS.contains(&root))
+}
+
+/// `true` for a RESERVED quest path (dsl 0.2.0 §5.2): `quest.<id>.state`
+/// (3 segments, segment 2 == `state`) or `quest.<id>.objectives.<oid>.done`
+/// (5 segments, segment 2 == `objectives`, segment 4 == `done`). These are
+/// engine-populated, implicitly-declared sub-namespaces of `quest.<id>.*` —
+/// content MAY read them but MUST NOT `::set` them (`E-QUEST-RESERVED-WRITE`).
+pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
+    let segs: Vec<&str> = path.split('.').collect();
+    match segs.as_slice() {
+        ["quest", _, "state"] => true,
+        ["quest", _, "objectives", _, "done"] => true,
+        _ => false,
+    }
 }
 
 /// `E-PATH-IDENT`: a `-` in a CEL-facing name — a state-path segment, a `defs`

@@ -8,7 +8,7 @@
 use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
-const HDR: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n";
+const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n";
 
 fn codes(text: &str) -> Vec<String> {
     let input = CheckInput {

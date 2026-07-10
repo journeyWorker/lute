@@ -33,15 +33,60 @@ pub fn tag_document(text: &str) -> TagOutcome {
         };
     }
 
-    // Every `:line` in document order (into branch choices' + match arms' bodies).
-    let mut lines: Vec<&Line> = Vec::new();
+    let bytes = text.as_bytes();
+    let mut inserts: Vec<(usize, String)> = Vec::new();
+
+    // Scene identity scope (dsl 0.2.0 §7): every shot's `:line`s (into branch
+    // choices' + match arms' bodies) share ONE scope — the whole document —
+    // unchanged from 0.1.0.
+    let mut scene_lines: Vec<&Line> = Vec::new();
     for shot in &doc.shots {
-        collect_lines(&shot.body, &mut lines);
+        collect_lines(&shot.body, &mut scene_lines);
+    }
+    tag_scope(scene_lines, bytes, &mut inserts);
+
+    // Per-quest identity scope (dsl 0.2.0 §7): a quest's lines (reached via
+    // its `<on>`/`<objective>` arms) are scoped PER `<quest>` — each `<quest>`
+    // is its own identity domain, so the SAME (speaker, code) pair may repeat
+    // across two different quests without colliding (mirrors
+    // `match_check.rs::check_line_codes`'s per-quest scoping). Each quest
+    // therefore gets its OWN fresh per-speaker counter.
+    for quest in &doc.quests {
+        let mut quest_lines: Vec<&Line> = Vec::new();
+        collect_lines(&quest.body, &mut quest_lines);
+        tag_scope(quest_lines, bytes, &mut inserts);
     }
 
-    // Per-speaker highest existing numeric `code` (dsl §12: `code` is a
-    // PER-SPEAKER counter — `fixer` 0010/0020…, `bianca` 0010/0020…, `takeru`
-    // 0010… all coexist; the lineId keys on speaker + code). Default 0.
+    if inserts.is_empty() {
+        return TagOutcome {
+            text: text.to_string(),
+            added: 0,
+        };
+    }
+
+    // Splice back-to-front (descending offset) so earlier offsets stay valid.
+    inserts.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
+    let mut out = text.to_string();
+    for (at, inserted) in &inserts {
+        out.insert_str(*at, inserted);
+    }
+
+    TagOutcome {
+        text: out,
+        added: inserts.len(),
+    }
+}
+
+/// Back-fill codes for ONE identity scope (dsl 0.2.0 §7) — the whole document
+/// for the scene scope, a single `<quest>` for a quest scope — appending
+/// `(byte offset, inserted string)` insertions into `inserts` in document
+/// order. Existing codes are never touched; new codes step above THIS SCOPE's
+/// highest existing numeric `code` PER SPEAKER (dsl §12): `fixer` 0010/0020…,
+/// `bianca` 0010/0020… coexist within one scope, and — since each scope gets
+/// its own fresh counter map — the same (speaker, code) pair may recur in a
+/// DIFFERENT scope without colliding.
+fn tag_scope(lines: Vec<&Line>, bytes: &[u8], inserts: &mut Vec<(usize, String)>) {
+    // Per-speaker highest existing numeric `code` within this scope. Default 0.
     let mut max_code: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     for line in &lines {
         let cur = max_code.entry(line.speaker.clone()).or_insert(0);
@@ -61,17 +106,7 @@ pub fn tag_document(text: &str) -> TagOutcome {
         .into_iter()
         .filter(|l| !l.attrs.iter().any(|a| a.key == "code"))
         .collect();
-    if untagged.is_empty() {
-        return TagOutcome {
-            text: text.to_string(),
-            added: 0,
-        };
-    }
 
-    // Build the insertions (byte offset + inserted string) in document order,
-    // stepping each speaker's own counter above its existing max by 10.
-    let bytes = text.as_bytes();
-    let mut inserts: Vec<(usize, String)> = Vec::with_capacity(untagged.len());
     for line in &untagged {
         // Next code in THIS speaker's sequence (above its existing max). A
         // speaker whose counter overflows fails closed for THIS line only
@@ -112,22 +147,12 @@ pub fn tag_document(text: &str) -> TagOutcome {
             inserts.push((speaker_end, format!("{{code=\"{code}\"}}")));
         }
     }
-
-    // Splice back-to-front (descending offset) so earlier offsets stay valid.
-    inserts.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
-    let mut out = text.to_string();
-    for (at, inserted) in &inserts {
-        out.insert_str(*at, inserted);
-    }
-
-    TagOutcome {
-        text: out,
-        added: inserts.len(),
-    }
 }
 
-/// Collect every `Node::Line` in document order, descending into branch choices'
-/// bodies and match arms' bodies (mirrors `check.rs::Walker::walk`'s recursion).
+/// Collect every `Node::Line` in document order, descending into branch
+/// choices' bodies, match arms' bodies, hub choices' bodies, and on/objective
+/// bodies (mirrors `check.rs::Walker::walk` / `match_check.rs::collect_lines`'s
+/// recursion — dsl 0.2.0 §7 extends the walk into quest arms).
 fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
     for node in nodes {
         match node {
@@ -151,6 +176,8 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
                     collect_lines(&choice.body, out);
                 }
             }
+            Node::Objective(o) => collect_lines(&o.body, out),
+            Node::On(o) => collect_lines(&o.body, out),
             Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
         }
     }
@@ -161,9 +188,9 @@ mod tests {
     use super::*;
 
     const NO_ATTRS: &str =
-        "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator: hi there\n";
-    const WITH_ATTRS: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{delivery=\"thought\"}: hmm\n";
-    const ALREADY: &str = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{code=\"0010\"}: kept\n";
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator: hi there\n";
+    const WITH_ATTRS: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{delivery=\"thought\"}: hmm\n";
+    const ALREADY: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{code=\"0010\"}: kept\n";
 
     #[test]
     fn tags_line_without_attrs() {
@@ -193,7 +220,7 @@ mod tests {
     fn no_attr_block_gets_fresh_code_block() {
         // §7.1 no-attr path: `:bianca: hi` -> `:bianca{code="0010"}: hi`.
         let src =
-            "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi\n";
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
@@ -207,7 +234,7 @@ mod tests {
     fn merge_into_existing_attr_block_is_first() {
         // §7.1 merge path: `code` lands as the FIRST attr, right after `{`.
         let src =
-            "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca{emotion=\"x\"}: hi\n";
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca{emotion=\"x\"}: hi\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
@@ -227,7 +254,7 @@ mod tests {
     #[test]
     fn new_codes_step_above_same_speaker_max() {
         // same speaker `a`: one tagged 0050 + one untagged -> untagged gets 0060
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"0050\"}: one\n:a: two\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"0050\"}: one\n:a: two\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(out.text.contains(":a{code=\"0050\"}: one"));
@@ -242,7 +269,7 @@ mod tests {
     fn per_speaker_counters_are_independent() {
         // interleaved speakers: each starts its OWN sequence at 0010.
         // a: "one"(untagged), "three"(untagged) -> 0010, 0020 ; b: "two"(untagged) -> 0010
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a: one\n:b: two\n:a: three\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a: one\n:b: two\n:a: three\n";
         let out = tag_document(src);
         assert_eq!(out.added, 3);
         assert!(
@@ -288,7 +315,7 @@ mod tests {
         // A `/* … */` comment inside the attr block is blanked before parsing but
         // kept in the original text; merging `code` right after `{` must preserve
         // it, parse clean, and be idempotent on a second run.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator{ /* keep me */ emotion=\"x\"}: hi\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator{ /* keep me */ emotion=\"x\"}: hi\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(out.text.contains("code=\"0010\""), "got:\n{}", out.text);
@@ -315,7 +342,7 @@ mod tests {
         // A `{` inside a comment in the TEXT (after the second `:`) must NOT be
         // mistaken for an attr block; the code goes in a fresh `{code=…}` after
         // the speaker ident, the text is untouched, and re-tagging is a no-op.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi /* { */ there\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi /* { */ there\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
@@ -339,7 +366,7 @@ mod tests {
     fn code_above_u32_max_does_not_collide() {
         // same speaker `a` at u32::MAX + an untagged `a` line -> a's counter steps
         // to 4294967305 (u64 counter, so no saturation/collision at u32::MAX).
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"4294967295\"}: one\n:a: two\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"4294967295\"}: one\n:a: two\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         // new code is strictly above the existing max (no duplicate 4294967295)
@@ -359,12 +386,72 @@ mod tests {
     fn code_at_u64_max_fails_closed_no_collision() {
         // same speaker `a` at u64::MAX + an untagged `a` line -> a's counter
         // overflows -> fail closed for that line (per speaker).
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"18446744073709551615\"}: one\n:a: two\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"18446744073709551615\"}: one\n:a: two\n";
         let out = tag_document(src);
         assert_eq!(
             out.added, 0,
             "counter overflow must fail closed, not emit a colliding code"
         );
         assert_eq!(out.text.matches("18446744073709551615").count(), 1);
+    }
+
+    // ---- dsl 0.2.0 §7: quest bodies (on/objective arms) ----
+
+    #[test]
+    fn quest_on_body_line_is_tagged() {
+        // Before the fix, `tag_document` walked `doc.shots` only and a
+        // quest doc (no shots) tagged ZERO lines even with untagged content
+        // reachable via a `<quest>`'s `<on>` arm.
+        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n:narrator: hi\n</on>\n</quest>\n";
+        let out = tag_document(src);
+        assert_eq!(out.added, 1, "got:\n{}", out.text);
+        assert!(
+            out.text.contains(":narrator{code=\"0010\"}: hi"),
+            "got:\n{}",
+            out.text
+        );
+    }
+
+    #[test]
+    fn quest_objective_body_line_is_tagged() {
+        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\">\n:narrator: hi\n</objective>\n</quest>\n";
+        let out = tag_document(src);
+        assert_eq!(out.added, 1, "got:\n{}", out.text);
+        assert!(
+            out.text.contains(":narrator{code=\"0010\"}: hi"),
+            "got:\n{}",
+            out.text
+        );
+    }
+
+    #[test]
+    fn per_quest_code_scope_is_independent() {
+        // §7: each `<quest>` is its own identity domain — the SAME speaker
+        // starts its OWN 0010 sequence in EACH quest, independent of every
+        // other quest (and of the scene scope).
+        let src = "---\nkind: quest\n---\n\
+                   <quest id=\"q1\">\n<on event=\"questComplete\">\n:narrator: one\n</on>\n</quest>\n\
+                   <quest id=\"q2\">\n<on event=\"questComplete\">\n:narrator: two\n</on>\n</quest>\n";
+        let out = tag_document(src);
+        assert_eq!(out.added, 2, "got:\n{}", out.text);
+        assert!(
+            out.text.contains(":narrator{code=\"0010\"}: one"),
+            "q1 starts its own sequence:\n{}",
+            out.text
+        );
+        assert!(
+            out.text.contains(":narrator{code=\"0010\"}: two"),
+            "q2 starts its own sequence independent of q1:\n{}",
+            out.text
+        );
+    }
+
+    #[test]
+    fn quest_tagging_is_idempotent() {
+        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n:narrator: hi\n</on>\n</quest>\n";
+        let once = tag_document(src).text;
+        let twice = tag_document(&once);
+        assert_eq!(twice.added, 0);
+        assert_eq!(twice.text, once);
     }
 }

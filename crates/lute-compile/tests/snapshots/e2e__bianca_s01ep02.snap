@@ -3,8 +3,9 @@ source: crates/lute-compile/tests/e2e.rs
 expression: json
 ---
 {
-  "lute": "0.1.0",
-  "irVersion": "0.1.0",
+  "kind": "scene",
+  "lute": "0.2.0",
+  "irVersion": "0.2.0",
   "capabilityVersion": "511951a138df56f21d6a43979f4ba0f26be4ac6c0f94a457351bfa7cf6ba1281",
   "meta": {
     "character": "bianca",

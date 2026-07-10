@@ -1,16 +1,23 @@
-//! `::set` op/type matrix + write policy (dsl §7.3.4, §9.5).
+//! `::set` op/type matrix + write policy (dsl §7.3.4, §9.5, dsl 0.2.0 §5.4).
 //!
 //! Validates a single `::set{Path AssignOp CelExpr}` directive against the
-//! inline `state:` schema. Three static errors, kept distinct:
+//! inline `state:` schema. The write-policy half is a reusable [`WriteOwner`]
+//! classification ([`classify_write`], 0.3.0-forward: a relation owner slots in
+//! as one more variant), currently distinguishing THREE static errors:
 //!
 //! - **`E-APP-READONLY`** (§9.5) — the target's tier is `app.*`. `app.*` is
 //!   read-only to content; the engine/settings layer owns those writes, so any
 //!   `::set{app.*}` is a static error regardless of op or type. This short-
 //!   circuits: an `app.*` target is never additionally reported undeclared or
 //!   op/type-mismatched (its declaration and value shape are engine business).
-//! - **`E-UNDECLARED`** (§9.4/§9.5) — a non-`app` state-tier target whose path is
-//!   absent from the inline `state:` schema. `::set` MUST target a declared path
-//!   (§7.3.4: "The `Path` MUST be a declared state path").
+//! - **`E-QUEST-RESERVED-WRITE`** (dsl 0.2.0 §5.4) — the target is a RESERVED
+//!   quest path (`quest.<id>.state` / `quest.<id>.objectives.<oid>.done`,
+//!   §5.2): engine-populated, author-unwritable. Short-circuits identically to
+//!   `app.*`.
+//! - **`E-UNDECLARED`** (§9.4/§9.5) — a non-`app`/reserved-quest state-tier
+//!   target whose path is absent from the inline `state:` schema. `::set` MUST
+//!   target a declared path (§7.3.4: "The `Path` MUST be a declared state
+//!   path").
 //! - **`E-SET-OP-TYPE`** (§7.3.4) — the `AssignOp` is incompatible with the
 //!   declared type of the target. `=` is a pure write, valid for any type;
 //!   the compound/arithmetic ops `+=`/`-=`/`*=` read-modify-write a numeric
@@ -25,9 +32,39 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::Set;
 
-use crate::cel_paths::{state_path_has_hyphen, E_PATH_IDENT};
+use crate::cel_paths::{is_reserved_quest_path, state_path_has_hyphen, E_PATH_IDENT};
 use crate::meta::{namespace_of, Namespace, StateSchema};
 use crate::Ctx;
+
+/// The OWNER of a `::set` target path (dsl §9.5, dsl 0.2.0 §5.4): which
+/// write-policy tier governs it. 0.3.0-forward: this is the reusable
+/// write-policy seam — a future relation write-owner adds a variant here
+/// rather than growing ad hoc booleans in [`check_set`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WriteOwner {
+    /// An ordinary declared content path — the existing declared/op-type
+    /// matrix applies.
+    Content,
+    /// `app.*` (dsl §9.5): read-only to content, the engine/settings layer
+    /// owns these writes.
+    AppReadonly,
+    /// A reserved `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` path
+    /// (dsl 0.2.0 §5.2, §5.4): engine-populated, author-unwritable.
+    QuestReserved,
+}
+
+/// Classify a `::set` target path's write owner (dsl §9.5, dsl 0.2.0 §5.4).
+/// `schema` is threaded for parity with a future owner that needs it (e.g. a
+/// 0.3.0 relation); this classification is purely path-shape driven today.
+pub(crate) fn classify_write(path: &str, _schema: &StateSchema) -> WriteOwner {
+    if namespace_of(path) == Some(Namespace::App) {
+        WriteOwner::AppReadonly
+    } else if is_reserved_quest_path(path) {
+        WriteOwner::QuestReserved
+    } else {
+        WriteOwner::Content
+    }
+}
 
 /// Check a `::set` directive's target write-policy and op/type compatibility
 /// (dsl §7.3.4, §9.5). Reads nothing from `Ctx` today; it is threaded for
@@ -51,20 +88,37 @@ pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnos
         ));
     }
 
-    // §9.5 write policy: `app.*` is read-only to content. Short-circuit — the
-    // engine owns app declarations and their value shapes, so we neither report
-    // it undeclared nor run the op/type matrix on it.
-    if namespace_of(&set.path) == Some(Namespace::App) {
-        diags.push(diag(
-            "E-APP-READONLY",
-            format!(
-                "`::set` cannot write `{}`: the `app.*` namespace is read-only to content \
-                 (dsl §9.5); the engine/settings layer owns these writes",
-                set.path
-            ),
-            set.path_span,
-        ));
-        return diags;
+    // Write policy (dsl §9.5, dsl 0.2.0 §5.4): `app.*` is read-only to content;
+    // a reserved `quest.<id>.state`/`…objectives.*.done` path is
+    // engine-populated and author-unwritable. Both short-circuit — neither is
+    // additionally reported undeclared or op/type-mismatched (their
+    // declaration and value shape are engine business).
+    match classify_write(&set.path, schema) {
+        WriteOwner::AppReadonly => {
+            diags.push(diag(
+                "E-APP-READONLY",
+                format!(
+                    "`::set` cannot write `{}`: the `app.*` namespace is read-only to content \
+                     (dsl §9.5); the engine/settings layer owns these writes",
+                    set.path
+                ),
+                set.path_span,
+            ));
+            return diags;
+        }
+        WriteOwner::QuestReserved => {
+            diags.push(diag(
+                "E-QUEST-RESERVED-WRITE",
+                format!(
+                    "`::set` cannot write `{}`: it is a reserved quest path, \
+                     engine-populated and author-unwritable (dsl 0.2.0 §5.2, §5.4)",
+                    set.path
+                ),
+                set.path_span,
+            ));
+            return diags;
+        }
+        WriteOwner::Content => {}
     }
 
     // The target must resolve to a declared state path (§7.3.4/§9.4). §9.1 admits

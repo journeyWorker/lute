@@ -37,7 +37,7 @@
 
 use lute_cel::scan_refs;
 use lute_core_span::TextIndex;
-use lute_syntax::ast::{Arm, ClipNode, Directive, Document, InterpKind, Line, Node, Set};
+use lute_syntax::ast::{Arm, ClipNode, Directive, Document, InterpKind, Line, Node, Quest, Set};
 use tower_lsp_server::ls_types::{SemanticToken, SemanticTokenType, SemanticTokensLegend};
 
 use super::{all_slots, interp_referent_span, is_state_path, path_tokens};
@@ -128,11 +128,30 @@ pub fn semantic_tokens(doc: &Document, idx: &TextIndex) -> Vec<SemanticToken> {
     for shot in &doc.shots {
         walk_nodes(&shot.body, idx.text(), &mut raw);
     }
+    // `<quest>` is a top-level declaration (dsl 0.2.0 §6.3), not a `Node` — it
+    // gets its own header token + body walk mirroring the shot loop above.
+    for quest in &doc.quests {
+        quest_tokens(quest, &mut raw);
+        walk_nodes(&quest.body, idx.text(), &mut raw);
+    }
     // CEL sub-tokens: every slot's `@ref`s, state paths, and plain tokens.
     for slot in all_slots(doc) {
         slot_tokens(slot.span.byte_start, &slot.raw, &mut raw);
     }
     delta_encode(to_absolute(raw, idx))
+}
+
+/// The quest-header keyword token: `<quest` (Logic layer, mirroring
+/// `<branch`/`<hub`). `id`/`title` are plain strings (not separately
+/// classified, same as a `<branch id>`); `start`/`fail` CEL values are covered
+/// by the CEL-slot walk above.
+fn quest_tokens(q: &Quest, out: &mut Vec<RawTok>) {
+    push(
+        out,
+        q.span.byte_start,
+        q.span.byte_start + "<quest".len(),
+        TokType::Logic,
+    );
 }
 
 /// Emit structural tokens for a body's nodes (recursing into nested blocks).
@@ -241,6 +260,28 @@ fn walk_nodes(nodes: &[Node], src: &str, out: &mut Vec<RawTok>) {
                     );
                     walk_nodes(&c.body, src, out);
                 }
+            }
+            Node::On(o) => {
+                // `<on` open keyword (dsl 0.2.0 §4 ECA trigger; logic layer).
+                push(
+                    out,
+                    o.span.byte_start,
+                    o.span.byte_start + "<on".len(),
+                    TokType::Logic,
+                );
+                walk_nodes(&o.body, src, out);
+            }
+            Node::Objective(ob) => {
+                // `<objective` open keyword (dsl 0.2.0 §6.4; logic layer) —
+                // covers the self-closing `<objective … />` form too, since it
+                // is still the same leading bytes.
+                push(
+                    out,
+                    ob.span.byte_start,
+                    ob.span.byte_start + "<objective".len(),
+                    TokType::Logic,
+                );
+                walk_nodes(&ob.body, src, out);
             }
         }
     }
@@ -452,7 +493,7 @@ mod tests {
     /// the distinct `statePath` type — the two CEL sub-token classes.
     #[test]
     fn ref_and_state_path_get_distinct_types() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :f: a.\n  </when>\n  <otherwise>\n    :f: b.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :f: a.\n  </when>\n  <otherwise>\n    :f: b.\n  </otherwise>\n</match>\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
 
@@ -650,5 +691,46 @@ mod tests {
             .expect("ref sub-token on the {{@fond}} interior");
         assert_eq!(ref_tok.3, ty("ref"), "interp ref interior is ref");
         assert_eq!(ref_tok.2, "@fond".len() as u32);
+    }
+
+    // ---- dsl 0.2.0 §6.3/§4: quest / on / objective keyword tokens ----
+
+    const QUEST_DOC: &str = "---\nkind: quest\n---\n\
+        <quest id=\"q\">\n\
+        <objective id=\"o\" done=\"a\">\n:narrator: hi\n</objective>\n\
+        <on event=\"questComplete\">\n:narrator: bye\n</on>\n\
+        </quest>\n";
+
+    /// ACCEPTANCE: `<quest`/`<on`/`<objective` open keywords carry the LOGIC
+    /// layer, and the CONTENT tokens inside their bodies are still emitted —
+    /// before the fix, `semantic_tokens` walked `doc.shots` only (a quest doc
+    /// has none) and `<on>`/`<objective>` were Plan-A no-ops, so a quest doc
+    /// emitted NO structural tokens at all.
+    #[test]
+    fn quest_on_objective_keywords_are_logic_tokens() {
+        let idx = TextIndex::new(QUEST_DOC);
+        let decoded = decode(&tokens(QUEST_DOC));
+        let logic = ty("logic");
+        let content = ty("content");
+
+        for (needle, kw_len) in [
+            ("<quest", "<quest".len()),
+            ("<on ", "<on".len()),
+            ("<objective ", "<objective".len()),
+        ] {
+            let p = idx.position(QUEST_DOC.find(needle).unwrap());
+            let tok = decoded
+                .iter()
+                .find(|&&(l, c, _, ty)| l == p.line - 1 && c == p.utf16_col && ty == logic)
+                .unwrap_or_else(|| panic!("no LOGIC token for {needle:?}: {decoded:?}"));
+            assert_eq!(tok.2, kw_len as u32, "{needle:?} keyword length");
+        }
+
+        // The `:narrator:` lines inside both bodies still carry CONTENT tokens.
+        assert_eq!(
+            decoded.iter().filter(|&&(_, _, _, ty)| ty == content).count(),
+            4,
+            "two narrator lines * (speaker + text) = 4 content tokens: {decoded:?}"
+        );
     }
 }
