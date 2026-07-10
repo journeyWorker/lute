@@ -362,6 +362,92 @@ fn assemble_rejects_cross_plugin_asset_kind_dup() {
     );
 }
 
+/// A plugin with one directive (`plugin_with_directive`) plus a single enum
+/// declaration — the `enums` export that A2 folds into `snap.domains`.
+fn plugin_with_enum(id: &str, dname: &str, ename: &str, members: &[&str]) -> LoadedPlugin {
+    let mut p = plugin_with_directive(id, dname);
+    p.enums.insert(
+        ename.into(),
+        members.iter().map(|m| m.to_string()).collect(),
+    );
+    p
+}
+
+#[test]
+fn assemble_rejects_cross_plugin_domain_dup() {
+    let a = plugin_with_enum("plug.a", "da", "mood", &["calm"]);
+    let b = plugin_with_enum("plug.b", "db", "mood", &["tense"]);
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([
+            ("plug.a".to_string(), InstalledPlugin { loaded: a }),
+            ("plug.b".to_string(), InstalledPlugin { loaded: b }),
+        ]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "plug.a".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "plug.b".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        errs.iter().any(|e| e.code() == "E-DOMAIN-DUP"),
+        "cross-plugin dup enum name must emit E-DOMAIN-DUP on `domains`, got {errs:?}"
+    );
+    // first owner wins: `mood` keeps plug.a's members, plug.b's are dropped.
+    assert_eq!(
+        snap.domains.get("mood").map(|d| d.members.clone()),
+        Some(vec!["calm".to_string()])
+    );
+}
+
+#[test]
+fn assemble_unions_distinct_domain_names() {
+    let a = plugin_with_enum("plug.a", "da", "mood", &["calm"]);
+    let b = plugin_with_enum("plug.b", "db", "tone", &["formal"]);
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([
+            ("plug.a".to_string(), InstalledPlugin { loaded: a }),
+            ("plug.b".to_string(), InstalledPlugin { loaded: b }),
+        ]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "plug.a".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "plug.b".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        !errs.iter().any(|e| e.code() == "E-DOMAIN-DUP"),
+        "distinct enum names must union, not dup, got {errs:?}"
+    );
+    assert_eq!(
+        snap.domains.get("mood").map(|d| d.members.clone()),
+        Some(vec!["calm".to_string()])
+    );
+    assert_eq!(
+        snap.domains.get("tone").map(|d| d.members.clone()),
+        Some(vec!["formal".to_string()])
+    );
+}
+
 /// A directive whose attr is typed `assetKind(kind)`, with `assetId` name.
 fn directive_with_asset_ref(dname: &str, kind: &str) -> DirectiveDecl {
     DirectiveDecl {

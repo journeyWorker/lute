@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::core::load_core_snapshot;
 use crate::resolve::{ActivePlugin, InstalledPlugins};
 use crate::schema::StateShape;
-use crate::snapshot::{capability_version, CapabilitySnapshot, ResolvedPlugin};
+use crate::snapshot::{capability_version, CapabilitySnapshot, Domain, ResolvedPlugin};
 use crate::types::Type;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -46,6 +46,12 @@ impl AssembleError {
     /// checker's `E-*` diagnostic-code family so consumers can key on it.
     pub fn code(&self) -> &'static str {
         match self {
+            // Reuses the generic cross-plugin dup machinery (`merge_map`) with
+            // `kind == "domain"`, but reports the foundation A2 code instead
+            // of the generic one — same drop-and-report path, distinct code.
+            AssembleError::DuplicateAcrossPlugins { kind, .. } if kind == "domain" => {
+                "E-DOMAIN-DUP"
+            }
             AssembleError::DuplicateAcrossPlugins { .. } => "E-PLUGIN-DUP-ACROSS",
             AssembleError::ReservedName { .. } => "E-PLUGIN-RESERVED-NAME",
             AssembleError::MissingActivePlugin { .. } => "E-PLUGIN-MISSING-ACTIVE",
@@ -204,6 +210,22 @@ pub fn assemble_snapshot(
             &mut snap.enums,
             pkg.enums.iter().map(|(k, v)| (k.clone(), v.clone())),
             "enum",
+            &ap.id,
+            &mut errs,
+        );
+        // Fold the same plugin `enums` export into `domains` (plugin
+        // foundation A2): `Type::Domain(name)` resolves against this map at
+        // check-stage, distinct from the `enums`/`EnumFromOption` surface
+        // above. Reuses `merge_map` — the SAME drop-and-report machinery —
+        // so a name collision against an unrelated plugin peer is dropped
+        // (first owner wins) and reported, here tagged `kind: "domain"` so
+        // `AssembleError::code()` surfaces it as `E-DOMAIN-DUP`.
+        merge_map(
+            &mut snap.domains,
+            pkg.enums
+                .iter()
+                .map(|(k, v)| (k.clone(), Domain { members: v.clone() })),
+            "domain",
             &ap.id,
             &mut errs,
         );
