@@ -1,5 +1,5 @@
 //! Project-wide `<quest id>` uniqueness across every parsed `.lute` document in
-//! a directory (dsl 0.2.1 §6.3, the 0.2.0 F4 residual).
+//! a directory (dsl 0.2.0 §6.3, the 0.2.0 F4 residual).
 //!
 //! `check()`'s own `E-QUEST-ID-DUP` (0.2.0 F4, [`crate::match_check::check_quest`]
 //! and [`crate::schema_import::resolve_imports`]'s `imported_quest_ids`) only sees

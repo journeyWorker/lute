@@ -12,7 +12,7 @@
 //! - `lute check-project <dir> [--json] [--providers <dir>]` — recursively
 //!   `check` every `*.lute` file under `<dir>` (deterministic sorted order,
 //!   `--project <dir>` resolution for each), PLUS project-wide `<quest id>`
-//!   uniqueness (dsl 0.2.1 §6.3) for quest docs `check`'s own
+//!   uniqueness (dsl 0.2.0 §6.3) for quest docs `check`'s own
 //!   import-graph-scoped `E-QUEST-ID-DUP` (0.2.0 F4) cannot see: two quest
 //!   docs sharing an id with no `uses:`/`extends:` edge between them. Exit
 //!   `0` clean, `1` when any file has an `Error` or the project-wide pass
@@ -74,7 +74,7 @@ enum Command {
     },
     /// Statically validate EVERY `.lute` document under a directory
     /// (recursively, deterministic sorted order), like `check` on each file,
-    /// PLUS project-wide `<quest id>` uniqueness (dsl 0.2.1 §6.3) for quest
+    /// PLUS project-wide `<quest id>` uniqueness (dsl 0.2.0 §6.3) for quest
     /// docs `check`'s own import-graph-scoped `E-QUEST-ID-DUP` (0.2.0 F4)
     /// cannot see.
     CheckProject {
@@ -341,7 +341,7 @@ fn find_lute_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 /// (sorted, deterministic — [`find_lute_files`]), reusing `build_input` with
 /// `--project <dir>` so each file's capability resolution matches `lute check
 /// <file> --project <dir>` exactly, THEN additionally cross-validates
-/// project-wide `<quest id>` uniqueness (dsl 0.2.1 §6.3,
+/// project-wide `<quest id>` uniqueness (dsl 0.2.0 §6.3,
 /// [`lute_check::check_project_quest_ids`]) — the residual `check()`'s own
 /// `E-QUEST-ID-DUP` (0.2.0 F4, scoped to one document's OWN
 /// `uses:`/`extends:` import graph) cannot see: two quest docs sharing an id
