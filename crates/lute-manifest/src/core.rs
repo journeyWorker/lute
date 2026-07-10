@@ -50,7 +50,15 @@ pub fn load_core_snapshot() -> CapabilitySnapshot {
     let domains: BTreeMap<String, Domain> = enums
         .enums
         .iter()
-        .map(|(k, v)| (k.clone(), Domain { members: v.clone() }))
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                Domain {
+                    members: v.clone(),
+                    open: false,
+                },
+            )
+        })
         .collect();
 
     let mut snap = CapabilitySnapshot {

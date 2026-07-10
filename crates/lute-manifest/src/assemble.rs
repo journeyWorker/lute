@@ -224,7 +224,15 @@ pub fn assemble_snapshot(
             &mut snap.domains,
             pkg.enums
                 .iter()
-                .map(|(k, v)| (k.clone(), Domain { members: v.clone() })),
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        Domain {
+                            members: v.clone(),
+                            open: false,
+                        },
+                    )
+                }),
             "domain",
             &ap.id,
             &mut errs,
