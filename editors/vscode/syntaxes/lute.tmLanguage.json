@@ -59,12 +59,10 @@
     },
     "line": {
       "name": "meta.line.lute",
-      "begin": "^[ \\t]*(:line)(\\[)([^\\]]+)(\\])",
+      "begin": "^[ \\t]*(:)([A-Za-z][\\w-]*)",
       "beginCaptures": {
-        "1": { "name": "keyword.control.line.lute" },
-        "2": { "name": "punctuation.definition.speaker.begin.lute" },
-        "3": { "name": "entity.name.type.speaker.lute" },
-        "4": { "name": "punctuation.definition.speaker.end.lute" }
+        "1": { "name": "punctuation.definition.speaker.begin.lute" },
+        "2": { "name": "entity.name.type.speaker.lute" }
       },
       "end": "$",
       "patterns": [
@@ -107,7 +105,7 @@
     },
     "tag": {
       "name": "meta.tag.lute",
-      "begin": "(</?)(timeline|track|branch|choice|match|when|otherwise)\\b",
+      "begin": "(</?)(timeline|track|branch|choice|match|when|otherwise|quest|on|objective)\\b",
       "beginCaptures": {
         "1": { "name": "punctuation.definition.tag.begin.lute" },
         "2": { "name": "entity.name.tag.lute" }
