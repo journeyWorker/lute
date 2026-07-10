@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use crate::schema::{DirectivesFile, EnumsFile, PluginManifest};
-use crate::snapshot::{capability_version, CapabilitySnapshot, ResolvedPlugin};
+use crate::snapshot::{capability_version, CapabilitySnapshot, Domain, ResolvedPlugin};
 
 const MANIFEST: &str = include_str!("../assets/lute.core/plugin.yaml");
 const STAGING: &str = include_str!("../assets/lute.core/directives/staging.yaml");
@@ -38,9 +38,25 @@ pub fn load_core_snapshot() -> CapabilitySnapshot {
         },
     );
 
+    // Seed `domains` from the same core enum map that seeds `enums` (mirrors
+    // the plugin-loop fold in `assemble.rs`, which does the identical
+    // `name -> Domain { members }` mapping for each active plugin's `enums`
+    // export): built here, at the SAME seed site as `enums: enums.enums`
+    // below, so the two stay in sync by construction rather than via a
+    // separate mechanism. Without this, `lute.core`'s baseline enums
+    // (emotion/mood/volume/anchor/vfxType/musicAction) would land in
+    // `snap.enums` but never in `snap.domains`, leaving `domains` an
+    // incomplete view of the merged vocabulary.
+    let domains: BTreeMap<String, Domain> = enums
+        .enums
+        .iter()
+        .map(|(k, v)| (k.clone(), Domain { members: v.clone() }))
+        .collect();
+
     let mut snap = CapabilitySnapshot {
         plugins,
         directives,
+        domains,
         enums: enums.enums,
         ..Default::default()
     };
@@ -77,5 +93,18 @@ mod tests {
         let snap = load_core_snapshot();
         let e = snap.enums.get("musicAction").unwrap();
         assert!(e.contains(&"fade-out".to_string()));
+    }
+
+    #[test]
+    fn core_baseline_enums_are_domains() {
+        let snap = load_core_snapshot();
+        for name in ["emotion", "mood", "volume", "anchor", "vfxType", "musicAction"] {
+            assert!(
+                snap.domains.contains_key(name),
+                "missing core domain {name}: {:?}",
+                snap.domains.keys().collect::<Vec<_>>()
+            );
+        }
+        assert_eq!(snap.domains["emotion"].members, snap.enums["emotion"]);
     }
 }

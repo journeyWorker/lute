@@ -375,8 +375,11 @@ fn plugin_with_enum(id: &str, dname: &str, ename: &str, members: &[&str]) -> Loa
 
 #[test]
 fn assemble_rejects_cross_plugin_domain_dup() {
-    let a = plugin_with_enum("plug.a", "da", "mood", &["calm"]);
-    let b = plugin_with_enum("plug.b", "db", "mood", &["tense"]);
+    // "genre" (not a `lute.core` baseline enum — see enums.yaml) keeps this
+    // a pure plugin-vs-plugin collision; core-seeded domains (foundation A2
+    // hardening) are covered separately.
+    let a = plugin_with_enum("plug.a", "da", "genre", &["calm"]);
+    let b = plugin_with_enum("plug.b", "db", "genre", &["tense"]);
     let reg = InstalledPlugins {
         by_id: BTreeMap::from([
             ("plug.a".to_string(), InstalledPlugin { loaded: a }),
@@ -402,16 +405,18 @@ fn assemble_rejects_cross_plugin_domain_dup() {
         errs.iter().any(|e| e.code() == "E-DOMAIN-DUP"),
         "cross-plugin dup enum name must emit E-DOMAIN-DUP on `domains`, got {errs:?}"
     );
-    // first owner wins: `mood` keeps plug.a's members, plug.b's are dropped.
+    // first owner wins: `genre` keeps plug.a's members, plug.b's are dropped.
     assert_eq!(
-        snap.domains.get("mood").map(|d| d.members.clone()),
+        snap.domains.get("genre").map(|d| d.members.clone()),
         Some(vec!["calm".to_string()])
     );
 }
 
 #[test]
 fn assemble_unions_distinct_domain_names() {
-    let a = plugin_with_enum("plug.a", "da", "mood", &["calm"]);
+    // "genre"/"tone" (neither is a `lute.core` baseline enum) keep this
+    // scoped to plugin-vs-plugin union, not core-shadowing.
+    let a = plugin_with_enum("plug.a", "da", "genre", &["calm"]);
     let b = plugin_with_enum("plug.b", "db", "tone", &["formal"]);
     let reg = InstalledPlugins {
         by_id: BTreeMap::from([
@@ -439,7 +444,7 @@ fn assemble_unions_distinct_domain_names() {
         "distinct enum names must union, not dup, got {errs:?}"
     );
     assert_eq!(
-        snap.domains.get("mood").map(|d| d.members.clone()),
+        snap.domains.get("genre").map(|d| d.members.clone()),
         Some(vec!["calm".to_string()])
     );
     assert_eq!(
