@@ -2,7 +2,7 @@
 //! a directory (dsl 0.2.1 §6.3, the 0.2.0 F4 residual).
 //!
 //! `check()`'s own `E-QUEST-ID-DUP` (0.2.0 F4, [`crate::match_check::check_quest`]
-//! + [`crate::schema_import::resolve_imports`]'s `imported_quest_ids`) only sees
+//! and [`crate::schema_import::resolve_imports`]'s `imported_quest_ids`) only sees
 //! a collision within ONE document, or between that document and files it
 //! reaches through its OWN `uses:`/`extends:` import graph. Two quest docs that
 //! declare the same id but are never linked by an import edge — the common case

@@ -9,6 +9,16 @@
 //!   pinned provider catalog. Exit `0` when clean, `1` when any `Error`-severity
 //!   diagnostic is present (`CheckResult::ok`), `2` on an I/O failure. `--json`
 //!   prints the serialized [`CheckResult`]; otherwise a human line per diagnostic.
+//! - `lute check-project <dir> [--json] [--providers <dir>]` — recursively
+//!   `check` every `*.lute` file under `<dir>` (deterministic sorted order,
+//!   `--project <dir>` resolution for each), PLUS project-wide `<quest id>`
+//!   uniqueness (dsl 0.2.1 §6.3) for quest docs `check`'s own
+//!   import-graph-scoped `E-QUEST-ID-DUP` (0.2.0 F4) cannot see: two quest
+//!   docs sharing an id with no `uses:`/`extends:` edge between them. Exit
+//!   `0` clean, `1` when any file has an `Error` or the project-wide pass
+//!   finds a collision, `2` on an I/O failure. `--json` prints a structured
+//!   report (per-file `CheckResult`s + the project-wide diagnostics);
+//!   otherwise per-file human lines plus a project-wide section.
 //! - `lute catalog refresh <dir>` — re-stamp every pinned provider snapshot in
 //!   `<dir>` against the current `capabilityVersion` and clear its `stale` flag,
 //!   rewriting each file in the flat on-disk format `ProviderSet::load` reads
@@ -23,7 +33,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use lute_check::{check, fold_env, parse_meta, CheckInput, Mode, Namespace};
+use lute_check::{
+    check, check_project_quest_ids, fold_env, parse_meta, CheckInput, Mode, Namespace,
+};
 use lute_core_span::Severity;
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::project::{load_project, resolve_document_snapshot};
@@ -59,6 +71,24 @@ enum Command {
         /// §4/§11). Omit for a core-only (`lute.core`) check.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
+    },
+    /// Statically validate EVERY `.lute` document under a directory
+    /// (recursively, deterministic sorted order), like `check` on each file,
+    /// PLUS project-wide `<quest id>` uniqueness (dsl 0.2.1 §6.3) for quest
+    /// docs `check`'s own import-graph-scoped `E-QUEST-ID-DUP` (0.2.0 F4)
+    /// cannot see.
+    CheckProject {
+        /// Directory to walk recursively for `*.lute` files; also the
+        /// project root passed to `load_project` (plugin §4/§11), so every
+        /// file's capability resolution matches `lute check <file> --project
+        /// <dir>`.
+        dir: PathBuf,
+        /// Emit a structured JSON report instead of human-readable lines.
+        #[arg(long)]
+        json: bool,
+        /// Directory of pinned provider snapshots to resolve ids against.
+        #[arg(long, value_name = "DIR")]
+        providers: Option<PathBuf>,
     },
     /// Compile a checked `.lute` document to its JSON command-record artifact.
     Compile {
@@ -142,6 +172,11 @@ fn main() -> ExitCode {
             providers,
             project,
         } => run_check(&file, json, providers.as_deref(), project.as_deref()),
+        Command::CheckProject {
+            dir,
+            json,
+            providers,
+        } => run_check_project(&dir, json, providers.as_deref()),
         Command::Compile {
             file,
             json,
@@ -270,6 +305,174 @@ fn run_check(
     }
 
     if result.ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
+/// Recursively collect every `*.lute` file under `dir`, sorted byte-wise
+/// (`PathBuf`'s `Ord` is byte-lexicographic) for deterministic output
+/// regardless of the OS's directory-iteration order. Symlinked directories
+/// are not followed (`read_dir`'s default — avoids an infinite walk on a
+/// cyclic symlink). Any I/O error walking `dir` or a subdirectory is
+/// surfaced to the caller rather than silently dropped — a project-wide
+/// check must not silently under-report because one subdirectory failed to
+/// list.
+fn find_lute_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("lute") {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// Run `check` over every `*.lute` file recursively found under `dir`
+/// (sorted, deterministic — [`find_lute_files`]), reusing `build_input` with
+/// `--project <dir>` so each file's capability resolution matches `lute check
+/// <file> --project <dir>` exactly, THEN additionally cross-validates
+/// project-wide `<quest id>` uniqueness (dsl 0.2.1 §6.3,
+/// [`lute_check::check_project_quest_ids`]) — the residual `check()`'s own
+/// `E-QUEST-ID-DUP` (0.2.0 F4, scoped to one document's OWN
+/// `uses:`/`extends:` import graph) cannot see: two quest docs sharing an id
+/// with no import edge between them at all.
+///
+/// The project-wide pass is the SOLE authority on quest-id uniqueness in this
+/// mode: each file's own `E-QUEST-ID-DUP` (a same-file repeat OR an
+/// import-reachable collision — both already 0.2.0 F4) is stripped from its
+/// per-file report before folding it in, since `check_project_quest_ids`
+/// re-derives every such case directly (plus the non-import-linked residual
+/// it exists for) — keeping both would double-report one real-world
+/// collision as two diagnostics.
+///
+/// Exit `0` clean, `1` when any file has an `Error` diagnostic (after that
+/// strip) or the project-wide pass finds any collision, `2` on an I/O failure
+/// walking `dir` or reading a file.
+fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCode {
+    let files = match find_lute_files(dir) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("lute: cannot walk {}: {e}", dir.display());
+            return ExitCode::from(2);
+        }
+    };
+
+    let mut file_results: Vec<(PathBuf, lute_check::CheckResult)> =
+        Vec::with_capacity(files.len());
+    let mut docs: Vec<(PathBuf, lute_syntax::ast::Document)> = Vec::with_capacity(files.len());
+
+    for file in &files {
+        let Some(input) = build_input(file, providers, Some(dir)) else {
+            return ExitCode::from(2);
+        };
+        let (doc, _) = lute_syntax::parse(&input.text);
+        docs.push((file.clone(), doc));
+
+        let mut result = check(&input);
+        // `check_project_quest_ids` below is the SOLE authority on quest-id
+        // uniqueness in this mode (see doc comment above) — strip its
+        // per-file counterpart so one collision is never reported twice.
+        result.diagnostics.retain(|d| d.code != "E-QUEST-ID-DUP");
+        result.ok = !result
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error);
+        file_results.push((file.clone(), result));
+    }
+
+    let project_diags = check_project_quest_ids(&docs);
+    let project_ok = !project_diags
+        .iter()
+        .any(|(_, d)| d.severity == Severity::Error);
+    let ok = project_ok && file_results.iter().all(|(_, r)| r.ok);
+
+    if json {
+        // Reuse each type's own `Serialize` impl (`CheckResult`/`Diagnostic`,
+        // both defined — and derived — in lute-check/lute-core-span) and
+        // merge in the file path as a sibling key, rather than declaring a
+        // new wrapper type (would need `serde`'s derive macro as a direct
+        // dependency this crate doesn't otherwise need).
+        let files_json: Vec<serde_json::Value> = file_results
+            .iter()
+            .map(|(path, result)| {
+                let mut v =
+                    serde_json::to_value(result).unwrap_or_else(|_| serde_json::json!({}));
+                if let serde_json::Value::Object(map) = &mut v {
+                    map.insert("path".into(), path.display().to_string().into());
+                }
+                v
+            })
+            .collect();
+        let project_json: Vec<serde_json::Value> = project_diags
+            .iter()
+            .map(|(path, d)| {
+                let mut v = serde_json::to_value(d).unwrap_or_else(|_| serde_json::json!({}));
+                if let serde_json::Value::Object(map) = &mut v {
+                    map.insert("path".into(), path.display().to_string().into());
+                }
+                v
+            })
+            .collect();
+        let report = serde_json::json!({
+            "ok": ok,
+            "files": files_json,
+            "project_diagnostics": project_json,
+        });
+        match serde_json::to_string_pretty(&report) {
+            Ok(s) => println!("{s}"),
+            Err(e) => {
+                eprintln!("lute: failed to serialize result: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        if files.is_empty() {
+            println!("lute: no .lute files found under {}", dir.display());
+        }
+        for (path, result) in &file_results {
+            print_human(path, result);
+        }
+        if !project_diags.is_empty() {
+            println!("project-wide quest-id collisions:");
+            for (path, d) in &project_diags {
+                println!(
+                    "{}:{}:{}: {} [{}] {}",
+                    path.display(),
+                    d.span.line,
+                    d.span.column,
+                    severity_str(d.severity),
+                    d.code,
+                    d.message,
+                );
+            }
+        }
+        if ok {
+            println!(
+                "ok: {} ({} file(s), 0 project-wide collision(s))",
+                dir.display(),
+                file_results.len()
+            );
+        } else {
+            println!(
+                "failed: {} ({} file(s), {} project-wide collision(s))",
+                dir.display(),
+                file_results.len(),
+                project_diags.len()
+            );
+        }
+    }
+
+    if ok {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
