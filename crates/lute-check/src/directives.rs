@@ -115,6 +115,19 @@ pub fn check_directive(
             continue;
         }
         let Some(adecl) = decl.attrs.iter().find(|a| a.name == attr.key) else {
+            // dsl §7.5: `duration`/`delay`/`wait` are cross-cutting reserved
+            // timing keys valid on ANY directive (core or plugin) even when
+            // its own schema does not declare them -- plugins are in fact
+            // FORBIDDEN from declaring them (assembly-time
+            // E-PLUGIN-RESERVED-NAME, plugin §10). Type-check the undeclared
+            // use exactly like a directive that DID declare it would, via a
+            // synthetic decl, so it never falls through to E-UNKNOWN-ATTR. A
+            // directive that DOES declare one of these (core camera/video)
+            // never reaches this branch -- the `find` above already matched.
+            if let Some(universal) = universal_timing_decl(&attr.key) {
+                check_attr_value(&dir.tag, &universal, attr, snapshot, providers, &mut diags);
+                continue;
+            }
             diags.push(diag(
                 "E-UNKNOWN-ATTR",
                 Severity::Error,
@@ -139,6 +152,28 @@ pub fn check_directive(
     }
 
     diags
+}
+
+/// Synthetic [`AttrDecl`] for an undeclared reserved timing key, so
+/// [`check_attr_value`] type-checks an undeclared `duration`/`delay`/`wait`
+/// exactly like a directive that DID declare it would (dsl §7.5, §11.3):
+/// `duration`/`delay` are `number`, `wait` is `bool`. Returns `None` for any
+/// other key -- callers fall through to `E-UNKNOWN-ATTR` in that case. Never
+/// `required` (a directive that omits it simply gets no timing behavior; the
+/// compiler already treats an absent `wait` as non-blocking and an absent
+/// `duration`/`delay` as zero -- dsl §11.3, §11.4).
+fn universal_timing_decl(key: &str) -> Option<AttrDecl> {
+    let ty = match key {
+        "duration" | "delay" => Type::Number,
+        "wait" => Type::Bool,
+        _ => return None,
+    };
+    Some(AttrDecl {
+        name: key.to_string(),
+        required: false,
+        ty,
+        default: None,
+    })
 }
 
 /// Validate one supplied attribute's value against its declared type.
@@ -496,7 +531,8 @@ mod tests {
     use lute_core_span::Span;
     use lute_manifest::core::load_core_snapshot;
     use lute_manifest::provider::ProviderSet;
-    use lute_syntax::ast::{Attr, AttrValue};
+    use lute_manifest::schema::{DirectiveDecl, Lowering};
+    use lute_syntax::ast::{Attr, AttrValue, CelKind, CelSlot};
     use std::sync::LazyLock;
 
     fn span() -> Span {
@@ -523,6 +559,51 @@ mod tests {
                 .collect(),
             span: span(),
         }
+    }
+
+    /// A directive with one attr set to an arbitrary [`AttrValue`] (Str/Ref/
+    /// BoolTrue), for cases the Str-only `directive()` helper cannot build.
+    fn directive_with_value(tag: &str, key: &str, value: AttrValue) -> Directive {
+        Directive {
+            tag: tag.to_string(),
+            attrs: vec![Attr {
+                key: key.to_string(),
+                value,
+                value_span: span(),
+                span: span(),
+            }],
+            span: span(),
+        }
+    }
+
+    /// Core snapshot plus one plugin-shaped directive (`p`) that declares NO
+    /// timing attrs at all -- standing in for a real plugin directive, which
+    /// (0.2.1 §7.5 assembly enforcement, commit 791304b) is FORBIDDEN from
+    /// declaring `duration`/`delay`/`wait` itself.
+    fn plugin_snapshot() -> CapabilitySnapshot {
+        let mut snap = load_core_snapshot();
+        snap.directives.insert(
+            "p".to_string(),
+            DirectiveDecl {
+                name: "p".to_string(),
+                layer: None,
+                attrs: vec![AttrDecl {
+                    name: "label".to_string(),
+                    required: false,
+                    ty: Type::Str,
+                    default: None,
+                }],
+                semantics: Vec::new(),
+                state: None,
+                effects: None,
+                bridge: None,
+                lower: Lowering::Builtin {
+                    kind: "builtin".to_string(),
+                    name: "noop".to_string(),
+                },
+            },
+        );
+        snap
     }
 
     fn empty_providers() -> ProviderSet {
@@ -592,6 +673,133 @@ mod tests {
             "camera",
             &[("zoom", "1.1"), ("move-x", "0.2"), ("move-y", "0.3"), ("shake", "0.4")],
         );
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        assert!(errs.is_empty(), "{errs:?}");
+    }
+
+    // -- 0.2.1 §7.5: undeclared duration/delay/wait as universal timing attrs --
+
+    #[test]
+    fn undeclared_duration_and_wait_on_plugin_directive_no_unknown_attr() {
+        // `::p{duration="0.5" wait="true"}` -- plugin directive `p` declares
+        // neither key (and, per 791304b, is FORBIDDEN from declaring them);
+        // the fallback must accept both instead of E-UNKNOWN-ATTR.
+        let d = Directive {
+            tag: "p".to_string(),
+            attrs: vec![
+                Attr {
+                    key: "duration".to_string(),
+                    value: AttrValue::Str("0.5".to_string()),
+                    value_span: span(),
+                    span: span(),
+                },
+                Attr {
+                    key: "wait".to_string(),
+                    value: AttrValue::Str("true".to_string()),
+                    value_span: span(),
+                    span: span(),
+                },
+            ],
+            span: span(),
+        };
+        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &ctx());
+        assert!(errs.is_empty(), "{errs:?}");
+    }
+
+    #[test]
+    fn undeclared_delay_on_core_directive_without_timing_decl_no_unknown_attr() {
+        // `music` (core) declares no timing attrs at all -- the fallback must
+        // apply to core directives just as much as plugin ones.
+        let d = directive("music", &[("action", "start"), ("delay", "1.0")]);
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        assert!(errs.is_empty(), "{errs:?}");
+    }
+
+    #[test]
+    fn undeclared_duration_wrong_type_errors() {
+        // `::p{duration="soon"}` -- the fallback type-checks; it is not a
+        // blanket accept.
+        let d = directive("p", &[("duration", "soon")]);
+        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
+            "expected E-ATTR-TYPE for non-numeric duration, got {errs:?}"
+        );
+        assert!(
+            !errs.iter().any(|e| e.code == "E-UNKNOWN-ATTR"),
+            "duration must never be E-UNKNOWN-ATTR, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn undeclared_wait_wrong_type_errors() {
+        // `::p{wait="maybe"}` -- not `true`/`false`, so the bool type
+        // diagnostic fires just like a declared `wait` attr would.
+        let d = directive("p", &[("wait", "maybe")]);
+        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
+            "expected E-ATTR-TYPE for non-bool wait, got {errs:?}"
+        );
+        assert!(
+            !errs.iter().any(|e| e.code == "E-UNKNOWN-ATTR"),
+            "wait must never be E-UNKNOWN-ATTR, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn undeclared_duration_cel_ref_is_left_for_later_resolution() {
+        // `::p{duration=@someNumberRef}` -- a CEL ref is skipped here (T4.3's
+        // job), same as a declared numeric attr would be; it must not be
+        // rejected as a literal type mismatch.
+        let d = directive_with_value(
+            "p",
+            "duration",
+            AttrValue::Ref(CelSlot::raw(
+                CelKind::AttrValue,
+                "someNumberRef".to_string(),
+                span(),
+            )),
+        );
+        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &ctx());
+        assert!(errs.is_empty(), "{errs:?}");
+    }
+
+    #[test]
+    fn at_on_non_track_directive_still_at_context() {
+        // Regression guard: `at` stays context-gated, never folded into the
+        // universal-timing fallback.
+        let d = directive("music", &[("at", "1.0")]);
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-AT-CONTEXT"),
+            "expected E-AT-CONTEXT, got {errs:?}"
+        );
+        assert!(
+            !errs.iter().any(|e| e.code == "E-UNKNOWN-ATTR"),
+            "at must never fall through to E-UNKNOWN-ATTR, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn genuinely_unknown_attr_still_errors() {
+        // Regression guard: the fallback is scoped to exactly
+        // duration/delay/wait -- any other undeclared key is still
+        // E-UNKNOWN-ATTR.
+        let d = directive("p", &[("bogus", "1")]);
+        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-UNKNOWN-ATTR"),
+            "expected E-UNKNOWN-ATTR for `bogus`, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn camera_declared_timing_attrs_still_pass() {
+        // Regression guard: core `camera` DECLARES duration/delay/wait
+        // (staging.yaml) -- the declared path must keep taking precedence
+        // over the fallback and stay clean.
+        let d = directive("camera", &[("duration", "0.5"), ("wait", "false")]);
         let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
