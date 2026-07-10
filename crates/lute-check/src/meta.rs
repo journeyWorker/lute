@@ -412,6 +412,12 @@ pub fn infer_meta_kind_from_shape(meta: &Meta, has_body: bool) -> Option<MetaKin
     let value: serde_yaml::Value = serde_yaml::from_str(&meta.raw_yaml).ok()?;
     let map = value.as_mapping()?;
     let has = |k: &str| map.contains_key(yaml_key(k));
+    // Only genuinely kind-LESS docs are shape-inferred. A `kind:` that is
+    // present but unrecognized must keep resolving through `resolve_doc_kind`
+    // so its E-UNKNOWN-KIND diagnostic is never swallowed here.
+    if has("kind") {
+        return None;
+    }
     if COMPONENT_ONLY_KEYS.iter().any(|k| has(k)) {
         return Some(MetaKind::Component);
     }
