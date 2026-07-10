@@ -515,6 +515,7 @@ fn namespace_str(ns: Namespace) -> &'static str {
         Namespace::Run => "run",
         Namespace::User => "user",
         Namespace::App => "app",
+        Namespace::Quest => "quest",
     }
 }
 
