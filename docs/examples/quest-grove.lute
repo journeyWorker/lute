@@ -21,7 +21,7 @@ state:
   each with a default, so the checker's definite-assignment gate is clean.
 */
 
-<quest id="rescueHalsin" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
+<quest id="rescueHalsinGrove" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
 <objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
 <objective id="freeHalsin" title="Free Halsin from the cage" done="run.npc.halsin.freed"/>
 

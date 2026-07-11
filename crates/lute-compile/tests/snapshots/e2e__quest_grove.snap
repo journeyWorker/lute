@@ -29,19 +29,19 @@ expression: json
       "provenance": "quest:findMissingScouts"
     },
     {
-      "path": "quest.rescueHalsin.objectives.freeHalsin.done",
+      "path": "quest.rescueHalsinGrove.objectives.freeHalsin.done",
       "type": "bool",
       "default": false,
-      "provenance": "quest:rescueHalsin"
+      "provenance": "quest:rescueHalsinGrove"
     },
     {
-      "path": "quest.rescueHalsin.objectives.reachGrove.done",
+      "path": "quest.rescueHalsinGrove.objectives.reachGrove.done",
       "type": "bool",
       "default": false,
-      "provenance": "quest:rescueHalsin"
+      "provenance": "quest:rescueHalsinGrove"
     },
     {
-      "path": "quest.rescueHalsin.state",
+      "path": "quest.rescueHalsinGrove.state",
       "type": "enum",
       "domain": [
         "active",
@@ -49,7 +49,7 @@ expression: json
         "failed",
         "unset"
       ],
-      "provenance": "quest:rescueHalsin"
+      "provenance": "quest:rescueHalsinGrove"
     },
     {
       "path": "run.act",
@@ -101,9 +101,9 @@ expression: json
     {
       "kind": "quest",
       "addr": "001-0100",
-      "id": "rescueHalsin",
+      "id": "rescueHalsinGrove",
       "title": "Rescue the First Druid",
-      "titleLineId": "rescueHalsin.title",
+      "titleLineId": "rescueHalsinGrove.title",
       "start": {
         "raw": "run.act == 1",
         "expr": {
@@ -126,7 +126,7 @@ expression: json
         {
           "id": "reachGrove",
           "title": "Reach the Emerald Grove",
-          "titleLineId": "rescueHalsin.reachGrove",
+          "titleLineId": "rescueHalsinGrove.reachGrove",
           "done": {
             "raw": "run.region == 'grove'",
             "expr": {
@@ -145,7 +145,7 @@ expression: json
         {
           "id": "freeHalsin",
           "title": "Free Halsin from the cage",
-          "titleLineId": "rescueHalsin.freeHalsin",
+          "titleLineId": "rescueHalsinGrove.freeHalsin",
           "done": {
             "raw": "run.npc.halsin.freed",
             "expr": {
@@ -189,7 +189,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "Halsin rolled his shoulders and looked north. \"Moonrise, then.\"",
-      "lineId": "rescueHalsin.narrator_0010"
+      "lineId": "rescueHalsinGrove.narrator_0010"
     },
     {
       "kind": "on",
@@ -213,7 +213,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "The cage held only silence now.",
-      "lineId": "rescueHalsin.narrator_0020"
+      "lineId": "rescueHalsinGrove.narrator_0020"
     },
     {
       "kind": "quest",

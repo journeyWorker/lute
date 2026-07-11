@@ -466,6 +466,147 @@ with the human-facing overview in [`plugin-system.md`](plugin-system.md). The co
 in this document consumes the resolved **capability snapshot** that spec produces; the named
 lowering hooks a plugin may target live in *Compiler — stateful resolution* above.
 
+## Relational facts & Datalog derivation (0.3.0)
+
+Unlike the design-session sections above (pre-implementation TS draft), this section documents
+the **shipped Rust implementation** (`lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`
+crates) of dsl 0.3.0's relational state kernel. Normative spec:
+[`proposals/scenario-dsl/0.3.0.md`](proposals/scenario-dsl/0.3.0.md).
+
+### The model (spec §3–§4)
+
+Closed vocabulary blocks in frontmatter, unioned across `uses`/`extends` composition:
+
+- `entities:` — entity-kind decls, either a closed `members:` list or `open: engine` (the
+  engine mints ids for an open kind at runtime; **not** membership-checkable statically, D10).
+- `enums:` — as 0.2.0, reused as fact-arg domains too.
+- `relations:` — `name: { args: [Kind|Enum|bool, …], tier?, derive?, reserved?, key? }`. `tier`
+  defaults to `run`; `derive: true` marks a relation as engine-computed by `rules:` (never
+  author-written); `reserved: true` marks a relation as engine-populated by non-Datalog means.
+- `facts:` — ground seed facts, checked exactly like a seeded `::assert` (D12: no wildcards).
+- `rules:` — Horn clauses, `Head :- Body` (spec Appendix C grammar).
+
+**One id, one kind** (§3.1): a closed-kind member cannot double as a different closed kind's
+member. Composition diagnoses peer collisions and `extends` signature drift — see Diagnostics.
+
+### `::assert` / `::retract` (spec §5)
+
+New leaf body directives, admitted everywhere `::set` is (scene content, `<on>`/quest/objective
+arms) — **NOT inside `<track>` clips** (D9; an `::assert` there parses as an unknown directive).
+`::assert` args are ground literals only; `_` wildcards are retract-pattern-only
+(`E-RETRACT-WILDCARD-ASSERT` on an assert-side wildcard).
+
+Write policy (`fact_write.rs`), checked in order: `derive: true` → `E-DERIVED-WRITE` (it's
+`rules:`-computed); `reserved: true` → `E-RELATION-RESERVED-WRITE`; `app`-tier → `E-FACT-TIER-WRITE`
+(mirrors `E-APP-READONLY` for scalar state); otherwise the pattern's arity/domain is validated by
+the same closure checker seed facts use. Lowered to `Command::Assert`/`Command::Retract`
+(`AssertCmd`/`RetractCmd`) — ground-literal patterns, addr-ordered alongside every other command.
+
+### The Datalog rule surface (spec §7)
+
+`Rule ::= Head :- Body`, `Body` = comma-separated positive atoms, `not`-negated atoms,
+`Term = Term` / `Term != Term` comparisons, and `cel("…")` guards (§7.3). A rule head relation
+MUST be `derive: true` (`E-DERIVE-UNDECLARED`); a `derive: true` relation with zero rules is
+`W-DERIVE-NO-RULES` (warning — legal but permanently empty, almost always a typo'd head name).
+
+**Static analyses only (D1) — `datalog_check.rs`, pure graph properties of the DECLARED rule
+set, never an evaluation:**
+
+- **Safety** (`E-DATALOG-UNSAFE`) — every head/negated-atom variable must be bound by a
+  positive atom or an equality.
+- **Stratification** (`E-DATALOG-UNSTRATIFIED`) — no cycle through a `not` edge in the
+  predicate-dependency graph, checked on the MERGED post-composition rule set (a cross-file
+  negation cycle is caught, not missed per-document).
+- **Function-freedom** (`E-DATALOG-FUNCTION`) — compound/function terms (`f(x)`, arithmetic)
+  are rejected at the grammar level (`lute-syntax/src/datalog.rs`): Datalog, not Prolog.
+- **Guard firewall** (`E-DATALOG-GUARD-FACT`, D7) — a rule-body `cel(...)` guard may read
+  scalar state but NEVER `holds`/`count`/`validAt`/`now()`: threading a fact query through a
+  guard would hide a non-monotonic dependency from the safety/stratification analysis above.
+- Ground `Const` terms — including in rule heads, e.g. `alerted(absolute, F)` — are
+  domain-checked under `E-FACT-DOMAIN` too (D6, a deliberate extension past Appendix A's
+  asserted/seeded/retract-pattern scope).
+
+### The CEL fact-query surface (spec §8)
+
+`holds(rel(args))`, `count(rel(args))`, `validAt(rel(args), narrativeTimeExpr)`, and `now()` are
+closed CEL-profile additions (`cel_resolve.rs`), condition-surface only (guard-firewalled per
+above, never a rule-body dependency):
+
+- Every query's relation pattern is validated against the merged `RelVocab` the same way seeded
+  facts and `::assert`/`::retract` are (`E-RELATION-UNKNOWN`/`E-RELATION-ARITY`/`E-FACT-DOMAIN`).
+- `validAt` over a `derive: true` relation whose rule closure carries a CEL guard in some
+  feeding stratum is `E-VALIDAT-DERIVED`: a guard makes membership depend on a scalar read, and
+  scalars keep no history, so "was this true at T" is ill-defined without re-running the
+  fixpoint (which Lute never does). `holds`/`count` stay fine on the same relation — they only
+  read "now".
+- A `<match on="…">` subject may not itself be a relation query (`E-MATCH-RELATION-SUBJECT`) —
+  match subjects stay scalar, preserving the exhaustiveness/definite-assignment guarantees in
+  *Existing directives* / *State* above.
+
+### Narrative time (spec §6, D11)
+
+`Type::NarrativeTime` is an ENGINE-surfaced type: a plugin's `state_shapes` capability export
+may declare an anchor path of this type, but an AUTHOR `state:` decl of `type: narrativeTime`
+is rejected (`E-TEMPORAL-ARG` at the decl site). The only checker surface over narrative time is
+**ordering-only** (`temporal.rs`): `<`, `<=`, `==`, `>`, `>=` between two narrative-time values
+are admitted; `!=` is rejected (D8 — identity-negation is a broader predicate than §6's ordering
+surface; write `!(a == b)` instead). Interval/tombstone/key-auto-invalidation/evaluation-instant
+semantics (spec §3.2/§6.1/§8.1) are entirely engine-side; Lute only emits the data that drives
+them.
+
+### Artifact fields (compiled JSON, spec §10 "reduces to data")
+
+`Artifact` gains, alongside the unchanged 0.1.0/0.2.0 fields, entries `#[serde(skip_serializing_if
+= "Vec::is_empty")]` so a document with no relational declarations is byte-identical to 0.2.0
+minus the version bump (D15):
+
+- `entities` / `enums` / `relations` — merged, name-sorted vocabulary.
+- `seedFacts` — merged seed `facts:`, in vocabulary (import-then-inline) order.
+- `rules` — merged Datalog `rules:`, emitted **as data** for the engine's fixpoint.
+- `Command::Assert(AssertCmd)` / `Command::Retract(RetractCmd)` — per-write delta records,
+  addr-ordered alongside every other command.
+
+### THE static/dynamic boundary — read this before touching any of the above
+
+> **Lute is the STATIC layer ONLY: parse → statically check → emit JSON. The ENGINE evaluates
+> the Datalog least-fixpoint at RUNTIME.** Spec §7.2: "[Derivation] is recomputed by the
+> engine; content never sees a partially-updated view." Spec §10: "…a finite rule set + a
+> finite stream of assert/retract deltas. **The engine evaluates the fixpoint
+> deterministically**; nothing is author-iterated."
+
+No part of this implementation is a Datalog evaluator, fixpoint loop, semi-naive engine, fact
+store, or timestamp logic — every checker pass above is a compile-time property of the
+DECLARED schema/rule set, never a runtime derivation over live facts.
+
+### Checker pass ordering (`lute-check/src/check.rs::fold_env`)
+
+1. **Schema** — `rel_schema::build_rel_vocab` merges the `uses`/`extends`-composed vocabulary
+   into one `RelVocab`, validating decl shape (`E-RELATION-*`, `E-ENTITY-KIND-*`,
+   `E-KIND-NAME-CLASH`, `E-USES-DUP-RELATION`, `E-EXTENDS-RELATION-SIG`) and seed facts.
+2. **Datalog graph analyses** — `datalog_check::check_rules` (per-rule safety/shape), then
+   `check_stratification` (whole-rule-set negation-cycle + guard-taint), over the merged vocab.
+3. **Write policy** — `fact_write::check_assert`/`check_retract`, per `::assert`/`::retract`
+   node, during the AST walk.
+4. **CEL queries** — `cel_resolve::check_fact_queries` (per fact-query pattern) and
+   `check_rule_guards` (the guard firewall over every rule body).
+5. **Temporal** — `temporal::check_temporal`, the ordering-only narrative-time pass, over the
+   same CEL-slot walk as step 4.
+
+### Diagnostics — the 0.3.0 delta (spec Appendix A has the full authoritative list)
+
+| Code | Status | Note |
+|---|---|---|
+| `E-DOMAIN-DUP` | **Narrowed (D2)** | Still fires for plugin/core-vs-project and cross-plugin collisions; no longer fires for project-project `enums:`/entity-kind peer collisions (superseded by the two rows below). |
+| `E-USES-DUP-RELATION` | **New (D2)** | A `uses`-PEER collision on an `enums:` name — the project-project half `E-DOMAIN-DUP` used to own. |
+| `E-KIND-NAME-CLASH` | **New (D2)** | A peer collision on an entity-KIND name, or a kind name colliding with a relation name. |
+| `E-DATALOG-PARSE` | **New, spec-amendment flagged (D3)** | An `::assert`/`::retract` payload, or a `facts:`/`rules:` entry, that fails the Appendix C grammar (`lute-syntax/src/datalog.rs::{parse_fact,parse_rule}`). Appendix A has no code for a structurally malformed fact/rule string today — this is a plan-local addition flagged for a spec Appendix A amendment, shipped with adversarial fixtures like every Appendix A code. |
+| `E-RELATION-UNKNOWN`, `E-RELATION-DUP`, `E-RELATION-EMPTY`, `E-RELATION-ARITY`, `E-RELATION-DOMAIN`, `E-ENTITY-KIND-SHAPE`, `E-ENTITY-KIND-CLASH`, `E-EXTENDS-RELATION-SIG`, `E-FACT-DOMAIN`, `E-DERIVED-WRITE`, `E-RELATION-RESERVED-WRITE`, `E-FACT-TIER-WRITE`, `E-RETRACT-WILDCARD-ASSERT`, `E-TEMPORAL-ARG`, `E-VALIDAT-DERIVED`, `E-DERIVE-UNDECLARED`, `E-DERIVE-TIER`, `W-DERIVE-NO-RULES`, `E-DATALOG-FUNCTION`, `E-DATALOG-UNSAFE`, `E-DATALOG-UNSTRATIFIED`, `E-DATALOG-GUARD-FACT`, `E-MATCH-RELATION-SUBJECT` | New, Appendix A-native | Full definitions in the spec; each ships with at least one adversarial fixture (one-fixture-per-invariant discipline, spec §12). |
+
+**Worked example:** [`examples/quest-rescue-halsin.lute`](examples/quest-rescue-halsin.lute) +
+[`examples/act1.schema.yaml`](examples/act1.schema.yaml) — the spec's own Appendix B scenario
+end-to-end (derived recursion `canReach`, epistemic derivation `believesLocation`, seeds,
+key-relations, quest gating on `holds`).
+
 ## Roadmap / open items
 
 1. **`::camera` `wait` defaults** — each camera verb declares its `wait` default in schema,

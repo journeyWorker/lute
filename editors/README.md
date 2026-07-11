@@ -51,10 +51,14 @@ Highlighting is two layers that combine:
    project/plugin/schema knowledge the static grammar cannot see.
 
 > **Note:** the tree-sitter grammar ([`../tree-sitter-lute/`](../tree-sitter-lute)) is
-> **0.1.0-current** — it parses `:speaker{attrs}: text` content lines, `//` line comments,
-> `{{…}}` interpolation, `<hub>` revisit blocks, `<when is>` literal patterns, and the
-> attrs-free `<otherwise>`. It is the Neovim baseline highlighting/folding host; `lute-lsp`
-> semantic tokens stay authoritative for the project/plugin/schema-aware refinement the
-> static grammar cannot see.
+> **0.3.0-current** — it parses `@speaker{attrs}: text` content lines, `//` line comments,
+> `{{…}}` interpolation, `<hub>` revisit blocks, `<when is>` literal patterns, the
+> attrs-free `<otherwise>`, `<quest>`/`<objective>`/`<on>` nesting, and the 0.3.0 relational-fact
+> leaves `::assert{…}`/`::retract{…}` (`fact_pattern`/`fact_arg`/`wildcard`, dsl 0.3.0 §5 +
+> Appendix C). It is the Neovim baseline highlighting/folding host; `lute-lsp` semantic tokens
+> stay authoritative for the project/plugin/schema-aware refinement the static grammar cannot
+> see (`::assert`/`::retract` get static-grammar coloring only — see
+> [`../docs/architecture.md`](../docs/architecture.md#relational-facts--datalog-derivation-030)
+> for the full 0.3.0 relational-layer surface).
 
 Root markers used to locate a project: `lute.project.yaml`, then `.git`.
