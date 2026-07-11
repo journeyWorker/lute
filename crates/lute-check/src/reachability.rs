@@ -1,8 +1,10 @@
 //! §5.2/§5.3 whole-document reachability pass (dsl 0.4.0 T4/T5): `E-ARM-DEAD`
-//! (dead guard + subsumption) and `W-OTHERWISE-DEAD`. Modeled on
-//! `check_line_codes` (`match_check.rs`, called `check.rs:711`) — a free
-//! function walking the whole [`Document`], called once in `check()` step 8.
-//! All analysis is LOCAL to one `<match>`/`<branch>`/`<hub>` (§5.2 — no
+//! (dead guard + subsumption), `W-OTHERWISE-DEAD` (§5.2), and the quest
+//! lifecycle (§5.3) — `E-QUEST-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`,
+//! `W-OBJECTIVE-HIDDEN`. Modeled on `check_line_codes` (`match_check.rs`,
+//! called `check.rs:711`) — a free function walking the whole
+//! [`Document`], called once in `check()` step 8. All analysis is LOCAL to
+//! one `<match>`/`<branch>`/`<hub>`/`<quest>` (§5.2/§5.3 — no
 //! cross-construct graph). Every diagnostic here is [`Layer::Logic`].
 //!
 //! ## The PROVABLE-ONLY boundary (§5.1)
@@ -28,7 +30,7 @@
 use std::collections::BTreeMap;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, CelSlot, Document, Match, Node};
+use lute_syntax::ast::{Arm, CelSlot, Document, Match, Node, Objective, Quest};
 
 use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
@@ -48,6 +50,27 @@ pub(crate) const E_ARM_DEAD: &str = "E-ARM-DEAD";
 /// subject's whole domain. A warning (not an error) — a defensive
 /// `<otherwise>` is a legitimate hedge against schema evolution (0.3 §12).
 pub(crate) const W_OTHERWISE_DEAD: &str = "W-OTHERWISE-DEAD";
+
+/// `E-QUEST-UNREACHABLE` (dsl 0.4.0 §5.3): a `<quest>` that can provably
+/// never complete — `start` decides false (never activates) or `fail`
+/// decides true (fails at the first evaluation instant, precedence over
+/// completion, `0.2 §6.3`). ONE diagnostic per quest naming whichever
+/// standalone cause(s) hold (D21).
+pub(crate) const E_QUEST_UNREACHABLE: &str = "E-QUEST-UNREACHABLE";
+
+/// `E-OBJECTIVE-UNSATISFIABLE` (dsl 0.4.0 §5.3): an `<objective>` whose
+/// `done` predicate decides false — it can never complete on any run. A
+/// REQUIRED (`!optional`) objective additionally makes the enclosing quest
+/// unreachable; that consequence rides as a NOTE on this diagnostic, never
+/// as a second `E-QUEST-UNREACHABLE` (C4).
+pub(crate) const E_OBJECTIVE_UNSATISFIABLE: &str = "E-OBJECTIVE-UNSATISFIABLE";
+
+/// `W-OBJECTIVE-HIDDEN` (dsl 0.4.0 §5.3): a REQUIRED (`!optional`)
+/// objective whose `when` visibility gate decides false — provably never
+/// visible or tracked, yet still gates completion (the `0.2 §6.3` softlock
+/// prose made checkable). A warning: `done` is evaluated independently of
+/// visibility, so completion may still be reachable.
+pub(crate) const W_OBJECTIVE_HIDDEN: &str = "W-OBJECTIVE-HIDDEN";
 
 /// §5.2/§5.3 whole-document pass. Walks `doc.shots` + `doc.quests`
 /// recursively (arm/choice/on/objective bodies, mirroring
@@ -71,6 +94,7 @@ pub(crate) fn check_reachability(doc: &Document, folded: &FoldedEnv) -> Vec<Diag
         walk_reach(&shot.body, &defs, &base_ctx, &mut diags);
     }
     for quest in &doc.quests {
+        diags.extend(check_quest_reach(quest, &defs, &base_ctx));
         walk_reach(&quest.body, &defs, &base_ctx, &mut diags);
     }
     diags
@@ -127,7 +151,10 @@ fn walk_reach(nodes: &[Node], defs: &DefTable<'_>, ctx: &DecideCtx<'_>, diags: &
                 }
             }
             Node::On(o) => walk_reach(&o.body, defs, ctx, diags),
-            Node::Objective(o) => walk_reach(&o.body, defs, ctx, diags),
+            Node::Objective(o) => {
+                diags.extend(check_objective_reach(o, defs, ctx));
+                walk_reach(&o.body, defs, ctx, diags);
+            }
             Node::Line(_)
             | Node::Directive(_)
             | Node::Set(_)
@@ -350,6 +377,115 @@ pub(crate) fn check_choices_reach<'a>(
         }
     }
     diags
+}
+
+/// Per-`<quest>` engine (dsl 0.4.0 §5.3 rule 2, D21): `start` deciding
+/// false or `fail` deciding true each root `E-QUEST-UNREACHABLE` — ONE
+/// diagnostic per quest naming whichever standalone cause(s) hold (a dead
+/// `start` AND a true `fail` are DISTINCT roots, both named).
+/// `start: None`/`fail: None` never fire — only an EXPLICIT guard can be
+/// provably decided. `ctx.dollar` MUST be `None` — no `$` is in scope at a
+/// quest's `start`/`fail` attrs (the base ctx `check_reachability` already
+/// builds).
+fn check_quest_reach(quest: &Quest, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec<Diagnostic> {
+    let dead_start = quest
+        .start
+        .as_ref()
+        .is_some_and(|s| matches!(decide_slot(&s.raw, defs, ctx), Some(Decided::Bool(false))));
+    let true_fail = quest
+        .fail
+        .as_ref()
+        .is_some_and(|f| matches!(decide_slot(&f.raw, defs, ctx), Some(Decided::Bool(true))));
+    if !dead_start && !true_fail {
+        return Vec::new();
+    }
+    vec![diag(
+        E_QUEST_UNREACHABLE,
+        Severity::Error,
+        quest_unreachable_message(dead_start, true_fail),
+        quest.span,
+    )]
+}
+
+/// Per-`<objective>` engine (dsl 0.4.0 §5.3 rules 1 and 3). `done` deciding
+/// false is `E-OBJECTIVE-UNSATISFIABLE` — appending the required-quest note
+/// when `!optional` (C4: NEVER a second `E-QUEST-UNREACHABLE`; enforced
+/// here by construction, since `check_quest_reach` never looks at
+/// objectives at all). A REQUIRED objective (`!optional`) whose `when`
+/// decides false is separately `W-OBJECTIVE-HIDDEN` — independent of
+/// whether `done` is itself decided, since visibility and completion are
+/// evaluated independently (§5.3). `ctx.dollar` MUST be `None` — no `$` is
+/// in scope at an `<objective>`'s attrs.
+fn check_objective_reach(o: &Objective, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    if let Some(Decided::Bool(false)) = decide_slot(&o.done.raw, defs, ctx) {
+        diags.push(diag(
+            E_OBJECTIVE_UNSATISFIABLE,
+            Severity::Error,
+            objective_unsat_message(!o.optional),
+            o.span,
+        ));
+    }
+    if !o.optional {
+        if let Some(when) = &o.when {
+            if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
+                diags.push(diag(
+                    W_OBJECTIVE_HIDDEN,
+                    Severity::Warning,
+                    objective_hidden_message(),
+                    o.span,
+                ));
+            }
+        }
+    }
+    diags
+}
+
+/// `E-QUEST-UNREACHABLE` message (dsl 0.4.0 §5.3 rule 2, D21): joins
+/// whichever standalone cause(s) hold — never a `start`-only phrase when
+/// `fail` also holds, or vice versa (the §5.4 worked example's
+/// parenthetical: "distinct roots ... so both appear").
+fn quest_unreachable_message(dead_start: bool, true_fail: bool) -> String {
+    let mut causes = Vec::new();
+    if dead_start {
+        causes.push("`start` decides false — the quest never activates");
+    }
+    if true_fail {
+        causes.push(
+            "`fail` decides true — fail precedes completion (0.2 §6.3), so an activated \
+             instance fails at the first evaluation instant",
+        );
+    }
+    format!("quest can never complete: {} (dsl 0.4 §5.3)", causes.join("; "))
+}
+
+/// The §5.3/C4 quest-consequence note (Task 5 rules, quoted verbatim):
+/// appended to [`objective_unsat_message`]'s output when the objective is
+/// required (`!optional`).
+const REQUIRED_QUEST_NOTE: &str =
+    "; the objective — and, being required, the quest — can never complete (dsl 0.4 §5.3)";
+
+/// `E-OBJECTIVE-UNSATISFIABLE` message (dsl 0.4.0 §5.3 rule 1): `required`
+/// appends [`REQUIRED_QUEST_NOTE`] verbatim; an `optional` objective's dead
+/// `done` still fires the code (it too can never complete), just without
+/// the quest-level consequence (C4).
+fn objective_unsat_message(required: bool) -> String {
+    let mut msg =
+        "`done` is provably false: the objective can never complete on any run".to_string();
+    if required {
+        msg.push_str(REQUIRED_QUEST_NOTE);
+    } else {
+        msg.push_str(" (dsl 0.4 §5.3)");
+    }
+    msg
+}
+
+/// `W-OBJECTIVE-HIDDEN` message (dsl 0.4.0 §5.3 rule 3): carries `0.2
+/// §6.3`'s own advice — mark the objective `optional` or fix the gate.
+fn objective_hidden_message() -> String {
+    "objective's `when` is provably false: it is never visible or tracked, yet still gates \
+     completion (dsl 0.4 §5.3) — mark it `optional` or fix the gate (0.2 §6.3)"
+        .to_string()
 }
 
 /// Cause-1 message (dsl 0.4.0 §5.2 rule 1): names the guard text and states

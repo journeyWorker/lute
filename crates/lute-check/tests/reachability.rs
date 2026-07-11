@@ -406,3 +406,171 @@ fn undecided_guard_is_never_flagged() {
          boundary (dsl 0.4 §5.1): {out:?}"
     );
 }
+
+// ---------------------------------------------------------------------
+// 0.4.0 T5: quest reachability (dsl 0.4 §5.3) — `E-QUEST-UNREACHABLE`
+// (dead `start` / true `fail`, D21), `E-OBJECTIVE-UNSATISFIABLE` (dead
+// `done`, + the required-quest note, C4), `W-OBJECTIVE-HIDDEN` (dead
+// `when` on a required objective). Quest guards decide with `dollar: None`
+// (no `$` in scope outside a `<match>` subject).
+// ---------------------------------------------------------------------
+
+// `run.rank` (enum, defaulted), `run.flag` (bool, defaulted) — mirrors HDR's
+// schema shape but under `kind: quest` (no scene triad, no `## Shot`).
+const QUEST_HDR: &str = "---\nkind: quest\nstate:\n  \
+    run.rank: { type: { enum: [fail, bronze, silver, gold] }, default: fail }\n  \
+    run.flag: { type: bool, default: false }\n---\n";
+
+// Cause 1 of `E-QUEST-UNREACHABLE`: a literal-comparison `start` that
+// decides false (R1/R3) — the quest never activates. The message names
+// `start`.
+#[test]
+fn dead_start_is_quest_unreachable() {
+    let text = format!(
+        "{QUEST_HDR}<quest id=\"q\" start=\"1 > 2\">\n\
+         <objective id=\"o\" done=\"true\"/>\n</quest>\n"
+    );
+    let res = run(&text);
+    let hit = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-QUEST-UNREACHABLE")
+        .unwrap_or_else(|| {
+            panic!("dead start must flag E-QUEST-UNREACHABLE: {:?}", res.diagnostics)
+        });
+    assert!(hit.message.contains("start"), "message must name `start`: {}", hit.message);
+}
+
+// Cause 2: `fail` deciding TRUE (fail precedes completion, dsl 0.2 §6.3) is
+// the SAME code, a distinct cause — the message names `fail`.
+#[test]
+fn true_fail_is_quest_unreachable() {
+    let text = format!(
+        "{QUEST_HDR}<quest id=\"q\" fail=\"2 > 1\">\n\
+         <objective id=\"o\" done=\"true\"/>\n</quest>\n"
+    );
+    let res = run(&text);
+    let hit = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-QUEST-UNREACHABLE")
+        .unwrap_or_else(|| {
+            panic!("true fail must flag E-QUEST-UNREACHABLE: {:?}", res.diagnostics)
+        });
+    assert!(hit.message.contains("fail"), "message must name `fail`: {}", hit.message);
+}
+
+// A `done` deciding false (here via R2: `platnum` is foreign to
+// `run.rank`'s domain, the §5.4 worked example's own objective) is
+// `E-OBJECTIVE-UNSATISFIABLE`, NEVER `E-QUEST-UNREACHABLE` (C4) — the
+// required-quest consequence rides as a note on THIS diagnostic's message
+// instead.
+#[test]
+fn foreign_done_is_objective_unsat() {
+    let text = format!(
+        "{QUEST_HDR}<quest id=\"q\">\n\
+         <objective id=\"o\" done=\"run.rank == 'platnum'\"/>\n</quest>\n"
+    );
+    let res = run(&text);
+    assert!(
+        !res.diagnostics.iter().any(|d| d.code == "E-QUEST-UNREACHABLE"),
+        "an objective-only defect must never pile on E-QUEST-UNREACHABLE (C4): {:?}",
+        res.diagnostics
+    );
+    let hit = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-OBJECTIVE-UNSATISFIABLE")
+        .unwrap_or_else(|| {
+            panic!("dead done must flag E-OBJECTIVE-UNSATISFIABLE: {:?}", res.diagnostics)
+        });
+    assert!(
+        hit.message.contains("being required, the quest"),
+        "a required objective's message must append the quest consequence note: {}",
+        hit.message
+    );
+}
+
+// The inverse: an `optional` objective's dead `done` still fires the code
+// (it too can never complete) but WITHOUT the quest-consequence note — an
+// optional objective never makes the quest unreachable.
+#[test]
+fn optional_dead_done_has_no_quest_note() {
+    let text = format!(
+        "{QUEST_HDR}<quest id=\"q\">\n\
+         <objective id=\"o\" done=\"run.rank == 'platnum'\" optional/>\n</quest>\n"
+    );
+    let res = run(&text);
+    let hit = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-OBJECTIVE-UNSATISFIABLE")
+        .unwrap_or_else(|| {
+            panic!("an optional dead done must still flag the code: {:?}", res.diagnostics)
+        });
+    assert!(
+        !hit.message.contains("being required"),
+        "an optional objective must carry no quest-consequence note: {}",
+        hit.message
+    );
+}
+
+// The §5.4 quest worked example verbatim: a dead `start` (`1 > 2`) AND a
+// foreign `done` (`platnum`) are DISTINCT roots — both codes fire, each
+// exactly once (dsl 0.4 §5.4's parenthetical).
+#[test]
+fn spec_54_quest_example_two_roots() {
+    let text = format!(
+        "{QUEST_HDR}<quest id=\"ghostHunt\" title=\"A quest nobody gets\" start=\"1 > 2\">\n\
+         <objective id=\"catch\" done=\"run.rank == 'platnum'\"/>\n</quest>\n"
+    );
+    let out = codes(&text);
+    assert_eq!(
+        out.iter().filter(|c| c.as_str() == "E-QUEST-UNREACHABLE").count(),
+        1,
+        "{out:?}"
+    );
+    assert_eq!(
+        out.iter().filter(|c| c.as_str() == "E-OBJECTIVE-UNSATISFIABLE").count(),
+        1,
+        "{out:?}"
+    );
+}
+
+// `W-OBJECTIVE-HIDDEN`: a required objective's `when` decides false — the
+// objective is provably never visible, yet still gates completion (dsl 0.2
+// §6.3). A WARNING: `done` is evaluated independently of visibility, so
+// `res.ok` stays true.
+#[test]
+fn hidden_required_objective_warns() {
+    let text = format!(
+        "{QUEST_HDR}<quest id=\"q\">\n\
+         <objective id=\"o\" when=\"false\" done=\"run.flag\"/>\n</quest>\n"
+    );
+    let res = run(&text);
+    assert!(res.ok, "a warning-only doc must stay res.ok: {:?}", res.diagnostics);
+    assert!(
+        res.diagnostics.iter().any(|d| d.code == "W-OBJECTIVE-HIDDEN"),
+        "{:?}",
+        res.diagnostics
+    );
+}
+
+// The PROVABLE-ONLY boundary at the quest level: `holds(...)` is a fact
+// query (R5, always undecided) — a quest whose `start` gates on one stays
+// clean, exactly the quest-grove/rescue-halsin shape (dsl 0.4 §5.1).
+#[test]
+fn holds_guards_stay_undecided() {
+    let vocab = "entities:\n  c: { members: [ana] }\nrelations:\n  inParty: { args: [c] }\n";
+    let text = format!(
+        "---\nkind: quest\n{vocab}---\n<quest id=\"q\" start=\"holds(inParty(ana))\">\n\
+         <objective id=\"o\" done=\"true\"/>\n</quest>\n"
+    );
+    let out = codes(&text);
+    assert!(
+        !out.iter().any(|c| c == "E-QUEST-UNREACHABLE"
+            || c == "E-OBJECTIVE-UNSATISFIABLE"
+            || c == "W-OBJECTIVE-HIDDEN"),
+        "an R5 fact-query guard must stay undecided, never flagged: {out:?}"
+    );
+}
