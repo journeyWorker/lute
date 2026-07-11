@@ -430,7 +430,7 @@ mod tests {
 
     #[test]
     fn expand_document_rewrites_slots_with_match_subject_scope() {
-        let src = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n\n## Shot 1.\n\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :fixer{delivery=\"thought\"}: a\n  </when>\n  <when test=\"$ == 'blunt'\">\n    :fixer{delivery=\"thought\"}: b\n  </when>\n  <otherwise>\n    :fixer{delivery=\"thought\"}: c\n  </otherwise>\n</match>\n";
+        let src = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n\n## Shot 1.\n\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @fixer{delivery=\"thought\"}: a\n  </when>\n  <when test=\"$ == 'blunt'\">\n    @fixer{delivery=\"thought\"}: b\n  </when>\n  <otherwise>\n    @fixer{delivery=\"thought\"}: c\n  </otherwise>\n</match>\n";
         let (mut doc, diags) = lute_syntax::parse(src);
         assert!(diags
             .iter()
@@ -516,7 +516,7 @@ mod tests {
     // the artifact instead of `@`/`$`-free CEL.
     #[test]
     fn expand_document_traverses_quest_bodies_and_expands_on_objective_slots() {
-        let src = "---\nkind: quest\nstate:\n  run.region: { type: string, default: \"\" }\n  run.act: { type: number, default: 0 }\n---\n\n<quest id=\"q1\" title=\"Q1\">\n<objective id=\"o1\" title=\"O1\" done=\"@inGrove\"/>\n\n<match on=\"run.region\">\n  <when test=\"$ == 'grove'\">\n  ::set{run.act = 1}\n  </when>\n  <otherwise>\n  ::set{run.act = 0}\n  </otherwise>\n</match>\n\n<on event=\"questComplete\" when=\"@inGrove\">\n:narrator: done\n</on>\n</quest>\n";
+        let src = "---\nkind: quest\nstate:\n  run.region: { type: string, default: \"\" }\n  run.act: { type: number, default: 0 }\n---\n\n<quest id=\"q1\" title=\"Q1\">\n<objective id=\"o1\" title=\"O1\" done=\"@inGrove\"/>\n\n<match on=\"run.region\">\n  <when test=\"$ == 'grove'\">\n  ::set{run.act = 1}\n  </when>\n  <otherwise>\n  ::set{run.act = 0}\n  </otherwise>\n</match>\n\n<on event=\"questComplete\" when=\"@inGrove\">\n@narrator: done\n</on>\n</quest>\n";
         let (mut doc, diags) = lute_syntax::parse(src);
         assert!(
             diags.iter().all(|d| d.severity != lute_core_span::Severity::Error),

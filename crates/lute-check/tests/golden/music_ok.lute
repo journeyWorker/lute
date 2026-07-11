@@ -12,6 +12,6 @@ title: Music cue
 
 ::music{action="start" mood="peaceful" volume="down" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3"}
 
-:narrator: The loop settles into something almost pleasant.
+@narrator: The loop settles into something almost pleasant.
 
 ::music{action="fade-out"}

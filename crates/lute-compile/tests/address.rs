@@ -55,16 +55,16 @@ episode: 2
 
 ## Shot 1.
 
-:fixer{code="0010"}: ...
-:narrator: He waited.
+@fixer{code="0010"}: ...
+@narrator: He waited.
 
 ## Shot 4.
 
-:fixer{code="0050"}: Bianca. Your number.
-:fixer: And again.
+@fixer{code="0050"}: Bianca. Your number.
+@fixer: And again.
 <branch id="number">
   <choice id="blunt" label="Just ask, flatly">
-    :bianca{code="0010" emotion="surprised"}: Oh!
+    @bianca{code="0010" emotion="surprised"}: Oh!
   </choice>
   <choice id="soft" label="Ask gently">
     ::set{scene.affect.bianca += 1}

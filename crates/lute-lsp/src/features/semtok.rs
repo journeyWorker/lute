@@ -7,7 +7,7 @@
 //!
 //! | token type  | what carries it (classified STRUCTURALLY, by node kind)      |
 //! |-------------|--------------------------------------------------------------|
-//! | `content`   | a `:line` speaker + its text (the §7.1 content node)          |
+//! | `content`   | an `@line` speaker + its text (the §7.1 content node)          |
 //! | `staging`   | a `::directive` tag, `<timeline>` / `<track>` open keywords  |
 //! | `logic`     | `::set` / `<branch>` / `<match>` open keywords               |
 //! | `cel`       | a CEL literal / bare token inside a slot (and the `$` subject)|
@@ -160,8 +160,8 @@ fn walk_nodes(nodes: &[Node], src: &str, out: &mut Vec<RawTok>) {
     for node in nodes {
         match node {
             Node::Line(l) => {
-                // Speaker sits just past the leading `:` (dsl §7.1: `:speaker`).
-                let sp_start = l.span.byte_start + ":".len();
+                // Speaker sits just past the leading `@` (dsl §7.1: `@speaker`).
+                let sp_start = l.span.byte_start + "@".len();
                 push(out, sp_start, sp_start + l.speaker.len(), TokType::Content);
                 if !l.text.is_empty() {
                     line_text_tokens(l, src, out);
@@ -493,7 +493,7 @@ mod tests {
     /// the distinct `statePath` type — the two CEL sub-token classes.
     #[test]
     fn ref_and_state_path_get_distinct_types() {
-        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    :f: a.\n  </when>\n  <otherwise>\n    :f: b.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @f: a.\n  </when>\n  <otherwise>\n    @f: b.\n  </otherwise>\n</match>\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
 
@@ -525,7 +525,7 @@ mod tests {
     /// the arm openers go untokenized and the logic layer is under-highlighted.
     #[test]
     fn choice_and_arm_openers_are_logic_tokens() {
-        let text = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\">\n:f: a.\n</choice>\n</branch>\n<match on=\"scene.x\">\n<when test=\"$ == 1\">\n:f: b.\n</when>\n<otherwise>\n:f: c.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\">\n@f: a.\n</choice>\n</branch>\n<match on=\"scene.x\">\n<when test=\"$ == 1\">\n@f: b.\n</when>\n<otherwise>\n@f: c.\n</otherwise>\n</match>\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
         for (kw, len) in [("<choice", 7u32), ("<when", 5), ("<otherwise", 10)] {
@@ -639,7 +639,7 @@ mod tests {
     /// ASCII idents, dsl §7.1) must shift the `startChar` in UTF-16 units too.
     #[test]
     fn lengths_are_utf16_not_bytes() {
-        let text = "## Shot 1.\n:narrator{note=\"π\"}: café\n";
+        let text = "## Shot 1.\n@narrator{note=\"π\"}: café\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
 
@@ -666,7 +666,7 @@ mod tests {
     /// token over the whole line text.
     #[test]
     fn interp_path_and_ref_get_sub_tokens() {
-        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.coins: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"run.coins >= 1\" }\n---\n## Shot 1.\n:bianca: Hi {{userName}}, {{run.coins}} — {{@fond}}.\n";
+        let text = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.coins: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"run.coins >= 1\" }\n---\n## Shot 1.\n@bianca: Hi {{userName}}, {{run.coins}} — {{@fond}}.\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
 
@@ -697,8 +697,8 @@ mod tests {
 
     const QUEST_DOC: &str = "---\nkind: quest\n---\n\
         <quest id=\"q\">\n\
-        <objective id=\"o\" done=\"a\">\n:narrator: hi\n</objective>\n\
-        <on event=\"questComplete\">\n:narrator: bye\n</on>\n\
+        <objective id=\"o\" done=\"a\">\n@narrator: hi\n</objective>\n\
+        <on event=\"questComplete\">\n@narrator: bye\n</on>\n\
         </quest>\n";
 
     /// ACCEPTANCE: `<quest`/`<on`/`<objective` open keywords carry the LOGIC
@@ -726,7 +726,7 @@ mod tests {
             assert_eq!(tok.2, kw_len as u32, "{needle:?} keyword length");
         }
 
-        // The `:narrator:` lines inside both bodies still carry CONTENT tokens.
+        // The `@narrator:` lines inside both bodies still carry CONTENT tokens.
         assert_eq!(
             decoded.iter().filter(|&&(_, _, _, ty)| ty == content).count(),
             4,

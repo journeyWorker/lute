@@ -38,8 +38,8 @@ state:
   reserved token; `{{run.affection}}` is a DECLARED path (number, default 0 ->
   definitely assigned -> renders clean, no E-UNDECLARED / E-MAYBE-UNSET).
 */
-:narrator: Venny's again, and Bianca is closing up. Good to see you, {{userName}}.
-:bianca{code="0010" emotion="delighted" variant="1"}: You came back! Warmth so far: {{run.affection}}.
+@narrator: Venny's again, and Bianca is closing up. Good to see you, {{userName}}.
+@bianca{code="0010" emotion="delighted" variant="1"}: You came back! Warmth so far: {{run.affection}}.
 
 ## Shot 2.
 
@@ -54,14 +54,14 @@ state:
 */
 <hub id="chatWithBianca">
   <choice id="askCoffee" label="Ask about the coffee" once>
-    :bianca{code="0020" emotion="content" variant="0"}: House blend. Bold, like the clientele.
+    @bianca{code="0020" emotion="content" variant="0"}: House blend. Bold, like the clientele.
   </choice>
   <choice id="compliment" label="Say she was kind earlier" when="@helped">
-    :fixer{code="0030"}: You were gentle about it before. It stuck with me.
+    @fixer{code="0030"}: You were gentle about it before. It stuck with me.
     ::set{scene.affect.bianca += 1}
   </choice>
   <choice id="leave" label="Head out" exit>
-    :fixer{code="0040"}: I'd better get moving.
+    @fixer{code="0040"}: I'd better get moving.
   </choice>
 </hub>
 
@@ -74,16 +74,16 @@ state:
 */
 <match on="scene.choices.chatWithBianca">
   <when is="askCoffee">
-    :fixer{delivery="thought"}: Coffee talk. Safe ground.
+    @fixer{delivery="thought"}: Coffee talk. Safe ground.
   </when>
   <when is="compliment">
-    :fixer{delivery="thought"}: I said the kind thing, and meant it.
+    @fixer{delivery="thought"}: I said the kind thing, and meant it.
   </when>
   <when is="leave">
-    :fixer{delivery="thought"}: Straight for the door.
+    @fixer{delivery="thought"}: Straight for the door.
   </when>
   <when is="unset">
-    :fixer{delivery="thought"}: I never engaged at all.
+    @fixer{delivery="thought"}: I never engaged at all.
   </when>
 </match>
 
@@ -94,9 +94,9 @@ state:
 */
 <match on="scene.visited.chatWithBianca.askCoffee">
   <when is="true">
-    :bianca{code="0050" emotion="content" variant="0"}: You already know the blend.
+    @bianca{code="0050" emotion="content" variant="0"}: You already know the blend.
   </when>
   <when is="false">
-    :bianca{code="0060" emotion="neutral" variant="0"}: Curious about the menu?
+    @bianca{code="0060" emotion="neutral" variant="0"}: Curious about the menu?
   </when>
 </match>

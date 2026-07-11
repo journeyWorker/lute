@@ -25,7 +25,7 @@ fn tag_backfills_code_and_is_idempotent() {
     let f = dir.join("scene.lute");
     std::fs::write(
         &f,
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator: hi\n",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n",
     )
     .unwrap();
     let out = Command::new(BIN)
@@ -43,13 +43,13 @@ fn tag_backfills_code_and_is_idempotent() {
     // present somewhere. A tagger that placed the code in the wrong slot (or
     // reordered/dropped other attrs) would fail this, unlike a bare substring.
     assert!(
-        after.contains(":narrator{code=\"0010\"}: hi"),
-        "expected `:narrator{{code=\"0010\"}}: hi`, got:\n{after}"
+        after.contains("@narrator{code=\"0010\"}: hi"),
+        "expected `@narrator{{code=\"0010\"}}: hi`, got:\n{after}"
     );
     assert_eq!(
         after,
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator{code=\"0010\"}: hi\n",
-        "full file must match the 0.1.0 :speaker{{code}} rewrite exactly"
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator{code=\"0010\"}: hi\n",
+        "full file must match the @speaker{{code}} rewrite exactly"
     );
     // idempotent: second run changes nothing
     let out2 = Command::new(BIN)

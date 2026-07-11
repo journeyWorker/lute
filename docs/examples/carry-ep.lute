@@ -8,7 +8,7 @@ uses: state.schema.yaml
 
 ## Shot 1.
 
-:narrator: Previously, a choice was made.
+@narrator: Previously, a choice was made.
 
 <match on="run.choseHelp">
 <when test="$ == true">:sofia: Thanks for helping me back then.

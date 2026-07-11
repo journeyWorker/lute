@@ -33,7 +33,7 @@ fn codes(text: &str) -> Vec<String> {
 fn interp_undeclared_path() {
     let t = format!(
         "{HDR}state:\n  app.lang: {{ type: string, default: en }}\n---\n## Shot 1.\n\
-         :bianca: I sense a {{{{run.ghost}}}}\n"
+         @bianca: I sense a {{{{run.ghost}}}}\n"
     );
     let c = codes(&t);
     assert!(c.contains(&"E-UNDECLARED".to_string()), "got {c:?}");
@@ -45,7 +45,7 @@ fn interp_undeclared_path() {
 fn interp_maybe_unset_path() {
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: number }}\n---\n## Shot 1.\n\
-         :bianca: you have {{{{run.x}}}}\n"
+         @bianca: you have {{{{run.x}}}}\n"
     );
     let c = codes(&t);
     assert!(c.contains(&"E-MAYBE-UNSET".to_string()), "got {c:?}");
@@ -57,7 +57,7 @@ fn interp_maybe_unset_path() {
 fn interp_undeclared_ref() {
     let t = format!(
         "{HDR}state:\n  app.lang: {{ type: string, default: en }}\n---\n## Shot 1.\n\
-         :bianca: {{{{@nope}}}}\n"
+         @bianca: {{{{@nope}}}}\n"
     );
     let c = codes(&t);
     assert!(c.contains(&"E-UNDECLARED-REF".to_string()), "got {c:?}");
@@ -66,7 +66,7 @@ fn interp_undeclared_ref() {
 // `{{userName}}` — the reserved token always renders ⇒ no interp diagnostic.
 #[test]
 fn interp_username_ok() {
-    let t = format!("{HDR}---\n## Shot 1.\n:bianca: hello {{{{userName}}}}\n");
+    let t = format!("{HDR}---\n## Shot 1.\n@bianca: hello {{{{userName}}}}\n");
     let c = codes(&t);
     for code in ["E-UNDECLARED", "E-MAYBE-UNSET", "E-UNDECLARED-REF", "E-REF-TYPE"] {
         assert!(!c.contains(&code.to_string()), "{code} unexpected; got {c:?}");
@@ -78,7 +78,7 @@ fn interp_username_ok() {
 fn interp_declared_path_ok() {
     let t = format!(
         "{HDR}state:\n  app.lang: {{ type: string, default: en }}\n---\n## Shot 1.\n\
-         :bianca: language is {{{{app.lang}}}}\n"
+         @bianca: language is {{{{app.lang}}}}\n"
     );
     let c = codes(&t);
     for code in ["E-UNDECLARED", "E-MAYBE-UNSET", "E-UNDECLARED-REF", "E-REF-TYPE"] {
@@ -92,7 +92,7 @@ fn interp_declared_path_ok() {
 fn interp_ref_nonrenderable_type() {
     let t = format!(
         "{HDR}defs:\n  greeting: {{ type: string, cel: \"'hi'\" }}\n---\n## Shot 1.\n\
-         :bianca: {{{{@greeting}}}}\n"
+         @bianca: {{{{@greeting}}}}\n"
     );
     let c = codes(&t);
     assert!(c.contains(&"E-REF-TYPE".to_string()), "str def in interp must flag E-REF-TYPE; got {c:?}");
@@ -103,7 +103,7 @@ fn interp_ref_nonrenderable_type() {
 fn interp_ref_renderable_ok() {
     let t = format!(
         "{HDR}defs:\n  coins: {{ type: number, cel: \"1\" }}\n---\n## Shot 1.\n\
-         :bianca: you have {{{{@coins}}}} coins\n"
+         @bianca: you have {{{{@coins}}}} coins\n"
     );
     let c = codes(&t);
     for code in ["E-UNDECLARED-REF", "E-REF-TYPE", "E-MAYBE-UNSET", "E-UNDECLARED"] {
@@ -120,8 +120,8 @@ fn interp_dollar_in_match_arm_rejected() {
     let t = format!(
         "{HDR}state:\n  scene.n: {{ type: number, default: 0 }}\n---\n## Shot 1.\n\
          <match on=\"scene.n\">\n\
-         <when test=\"scene.n > 0\">\n:bianca: value {{{{$}}}}\n</when>\n\
-         <otherwise>\n:bianca: none\n</otherwise>\n\
+         <when test=\"scene.n > 0\">\n@bianca: value {{{{$}}}}\n</when>\n\
+         <otherwise>\n@bianca: none\n</otherwise>\n\
          </match>\n"
     );
     let c = codes(&t);
@@ -140,7 +140,7 @@ fn interp_dollar_in_match_arm_rejected() {
 fn interp_arbitrary_cel_rejected() {
     let t = format!(
         "{HDR}state:\n  run.coins: {{ type: number, default: 0 }}\n---\n## Shot 1.\n\
-         :bianca: you have {{{{run.coins + 1}}}} coins\n"
+         @bianca: you have {{{{run.coins + 1}}}} coins\n"
     );
     let c = codes(&t);
     assert!(c.contains(&"E-CEL-PROFILE".to_string()), "arbitrary CEL in interp must flag E-CEL-PROFILE; got {c:?}");
@@ -155,7 +155,7 @@ fn interp_legal_forms_no_grammar_error() {
          scene.affect.bianca: {{ type: number, default: 0 }}\n\
          defs:\n  fond: {{ type: bool, cel: \"scene.affect.bianca >= 1\" }}\n  \
          atLeast: {{ type: bool, params: {{ n: number }}, cel: \"run.coins >= 1\" }}\n---\n## Shot 1.\n\
-         :bianca: {{{{run.coins}}}} {{{{@fond}}}} {{{{@atLeast(1)}}}} {{{{userName}}}}\n"
+         @bianca: {{{{run.coins}}}} {{{{@fond}}}} {{{{@atLeast(1)}}}} {{{{userName}}}}\n"
     );
     let c = codes(&t);
     assert!(!c.contains(&"E-CEL-PROFILE".to_string()), "legal interp forms must not flag E-CEL-PROFILE; got {c:?}");
@@ -170,7 +170,7 @@ fn choice_label_interp_branch_undeclared_path() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"{{{{run.ghost}}}}\">\n:bianca: hi\n</choice>\n\
+         <choice id=\"c\" label=\"{{{{run.ghost}}}}\">\n@bianca: hi\n</choice>\n\
          </branch>\n"
     );
     let c = codes(&t);
@@ -184,7 +184,7 @@ fn choice_label_interp_hub_undeclared_ref() {
     let t = format!(
         "{HDR}---\n## Shot 1.\n\
          <hub id=\"h\">\n\
-         <choice id=\"c\" label=\"{{{{@nope}}}}\" exit>\n:bianca: hi\n</choice>\n\
+         <choice id=\"c\" label=\"{{{{@nope}}}}\" exit>\n@bianca: hi\n</choice>\n\
          </hub>\n"
     );
     let c = codes(&t);
@@ -198,7 +198,7 @@ fn choice_label_interp_branch_maybe_unset() {
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: number }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"{{{{run.x}}}}\">\n:bianca: hi\n</choice>\n\
+         <choice id=\"c\" label=\"{{{{run.x}}}}\">\n@bianca: hi\n</choice>\n\
          </branch>\n"
     );
     let c = codes(&t);
@@ -212,7 +212,7 @@ fn choice_label_interp_username_clean() {
     let t = format!(
         "{HDR}---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"{{{{userName}}}}\">\n:bianca: hi\n</choice>\n\
+         <choice id=\"c\" label=\"{{{{userName}}}}\">\n@bianca: hi\n</choice>\n\
          </branch>\n"
     );
     let c = codes(&t);

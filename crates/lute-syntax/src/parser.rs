@@ -9,7 +9,7 @@
 //!    into the ORIGINAL text (no remap table). All [`Span`]s are original-source
 //!    offsets and line/column come from a [`TextIndex`] over the original text.
 //! 3. The body is split into lines and each non-blank line is classified by the
-//!    normative §4.3 precedence (`## ` → `# ` → `::set{` → `::` → `:`ident →
+//!    normative §4.3 precedence (`## ` → `# ` → `::set{` → `::` → `@`ident →
 //!    `<`tag → error). Block opens (`<branch>`/`<match>`/`<timeline>`) recurse
 //!    via a per-block loop that matches the JSX self-naming close by tag name.
 
@@ -311,8 +311,14 @@ impl Parser<'_> {
         if trimmed.starts_with("::") {
             return Some(self.parse_directive());
         }
-        // dsl §4.3 rule 5: `:` ident — content line. (`::` rules already matched above.)
-        if trimmed.starts_with(':')
+        // dsl §4.3 rule 5: content line. The sigil is `@` (0.2.2, foundation
+        // C1); a lone leading `:` here is the sigil removed in 0.2.2 (through
+        // 0.2.1), OR the older `:line[speaker]` bracket form (0.0.1) — both
+        // route into `parse_line`, which accepts `@ident` as a real `Line`
+        // and rejects any `:`-led shape with a `migrate` fix-it (dsl §7.1) so
+        // `lute fix` (Task C3) can bulk-migrate a whole pre-0.2.2 document.
+        // `::` rules already matched above, so a lone `:` here is never `::`.
+        if (trimmed.starts_with('@') || trimmed.starts_with(':'))
             && trimmed.as_bytes().get(1).is_some_and(|b| b.is_ascii_alphabetic())
         {
             return self.parse_line();
@@ -446,15 +452,16 @@ impl Parser<'_> {
         })
     }
 
-    /// `Line ::= ":" Speaker Attrs? ":" WS Text` (dsl §7.1). Text is opaque to
-    /// EOL except `{{…}}` (§4.4, §7.6). Layer = Content.
+    /// `Line ::= "@" Speaker Attrs? ":" WS Text` (dsl §7.1, 0.2.2 — the sigil
+    /// was `:` through 0.2.1, foundation C1). Text is opaque to EOL except
+    /// `{{…}}` (§4.4, §7.6). Layer = Content.
     fn parse_line(&mut self) -> Option<Node> {
         let i = self.cursor;
         let (s, e) = self.lines[i];
         let cstart = s + leading_ws(&self.body[s..e]);
         let line_end = s + self.body[s..e].trim_end().len();
         let b = self.body.as_bytes();
-        let mut j = cstart + 1; // past ':'
+        let mut j = cstart + 1; // past the sigil (`@`, or legacy `:`)
         let sp_start = j;
         while j < e && is_ident_byte(b[j]) {
             j += 1;
@@ -463,9 +470,10 @@ impl Parser<'_> {
         // Migration fix-it (dsl §7.1): the removed 0.0.1 bracket form
         // `:line[speaker]{…}: text`. Reject it as before, but carry a `migrate`
         // fix-it whose single TextEdit rewrites the `:line[speaker]` span (the
-        // content-line `:` through the closing `]`) to `:speaker`, so `lute fix`
-        // (Task D5) can apply it — the dropped line node leaves no AST to drive
-        // the rewrite from, so the fix-it is the only migration handle.
+        // leading sigil through the closing `]`) to `@speaker` — the CURRENT
+        // 0.2.2 content-line form (foundation C1) — so `lute fix` (Task D5)
+        // can apply it — the dropped line node leaves no AST to drive the
+        // rewrite from, so the fix-it is the only migration handle.
         if speaker == "line" && j < e && b[j] == b'[' {
             let inner_start = j + 1;
             let mut k = inner_start;
@@ -477,7 +485,7 @@ impl Parser<'_> {
             let edit_span = self.span(cstart, if has_close { k + 1 } else { k });
             self.emit_line(
                 E_UNCLASSIFIED,
-                "`:line[speaker]` was removed in 0.1.0 — write `:speaker{…}: text`",
+                "`:line[speaker]` was removed — write `@speaker{…}: text` (dsl §7.1, 0.2.2)",
                 i,
                 Layer::Content,
             );
@@ -486,15 +494,45 @@ impl Parser<'_> {
             if has_close {
                 if let Some(d) = self.diags.last_mut() {
                     d.fixits.push(Fixit {
-                        title: "Migrate `:line[speaker]` to `:speaker`".to_string(),
+                        title: "Migrate `:line[speaker]` to `@speaker`".to_string(),
                         kind: "migrate".to_string(),
                         edit: vec![TextEdit {
                             span: edit_span,
-                            new_text: format!(":{inner}"),
+                            new_text: format!("@{inner}"),
                         }],
                         confidence: 100,
                     });
                 }
+            }
+            self.cursor += 1;
+            return None;
+        }
+        // Migration fix-it (dsl §7.1, foundation C1): any OTHER `:`-led
+        // content line used the sigil that was valid through 0.2.1. A
+        // single-byte `migrate` fix-it swaps just the sigil to `@` — the rest
+        // of the line is re-validated by `lute fix`'s phase-2 re-parse (Task
+        // C3), not here — so this fires regardless of what follows the
+        // speaker (missing second `:`, malformed attrs, …); those stay their
+        // own diagnostics once the sigil is no longer in the way. The line is
+        // dropped either way (not a valid `Line` under the current grammar).
+        if b[cstart] == b':' {
+            let sigil_span = self.span(cstart, cstart + 1);
+            self.emit_line(
+                E_UNCLASSIFIED,
+                "content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1)",
+                i,
+                Layer::Content,
+            );
+            if let Some(d) = self.diags.last_mut() {
+                d.fixits.push(Fixit {
+                    title: "Migrate content-line sigil `:` to `@`".to_string(),
+                    kind: "migrate".to_string(),
+                    edit: vec![TextEdit {
+                        span: sigil_span,
+                        new_text: "@".to_string(),
+                    }],
+                    confidence: 100,
+                });
             }
             self.cursor += 1;
             return None;
@@ -823,7 +861,7 @@ mod tests {
 
     #[test]
     fn line_text_is_opaque_to_eol() {
-        let (doc, _) = parse("---\ncharacter: x\n---\n## Shot 1.\n:narrator: (a) <b> : c\n");
+        let (doc, _) = parse("---\ncharacter: x\n---\n## Shot 1.\n@narrator: (a) <b> : c\n");
         if let Node::Line(l) = &doc.shots[0].body[0] {
             assert_eq!(l.text, "(a) <b> : c");
             assert_eq!(l.speaker, "narrator");
@@ -849,7 +887,7 @@ mod tests {
             "## Shot 99999999999999999999.",
             "## Shot 1.Title",
         ] {
-            let (_, diags) = parse(&format!("{bad}\n:narrator: hi.\n"));
+            let (_, diags) = parse(&format!("{bad}\n@narrator: hi.\n"));
             assert!(diags.iter().any(|d| d.code == "E-SHOT-HEADING"), "{bad}");
         }
     }
@@ -860,7 +898,7 @@ mod tests {
     fn title_after_first_shot_is_placement_error() {
         // §6.2: a `# ` title after the first shot is E-TITLE-PLACEMENT, not
         // the generic E-UNCLASSIFIED.
-        let (_doc, diags) = parse("## Shot 1.\n:narrator: hi.\n# Late Title\n");
+        let (_doc, diags) = parse("## Shot 1.\n@narrator: hi.\n# Late Title\n");
         assert!(
             diags.iter().any(|d| d.code == E_TITLE_PLACEMENT),
             "late title must be E-TITLE-PLACEMENT: {diags:?}"
@@ -874,7 +912,7 @@ mod tests {
     #[test]
     fn second_title_before_shot_is_placement_error() {
         // §6.2: at most one `# ` title; the SECOND is E-TITLE-PLACEMENT.
-        let (doc, diags) = parse("# First\n# Second\n## Shot 1.\n:narrator: hi.\n");
+        let (doc, diags) = parse("# First\n# Second\n## Shot 1.\n@narrator: hi.\n");
         assert_eq!(
             doc.title.as_ref().map(|(t, _)| t.as_str()),
             Some("First"),
@@ -892,7 +930,7 @@ mod tests {
     fn single_title_before_shot_is_clean() {
         // Regression guard: the normal case (one `# ` title before the first
         // shot) produces no diagnostic.
-        let (doc, diags) = parse("# The Title\n## Shot 1.\n:narrator: hi.\n");
+        let (doc, diags) = parse("# The Title\n## Shot 1.\n@narrator: hi.\n");
         assert!(diags.is_empty(), "well-placed title must be clean: {diags:?}");
         assert_eq!(doc.title.as_ref().map(|(t, _)| t.as_str()), Some("The Title"));
     }
@@ -908,14 +946,14 @@ mod tests {
             "## 프롤로그",
             "## 에필로그",
         ] {
-            let (_, diags) = parse(&format!("{good}\n:narrator: hi.\n"));
+            let (_, diags) = parse(&format!("{good}\n@narrator: hi.\n"));
             assert!(diags.is_empty(), "{good}: {diags:?}");
         }
     }
 
     #[test]
     fn otherwise_with_attrs_is_parse_error() {
-        let src = "## Shot 1.\n<match on=\"app.rating\">\n<when test=\"$ == 'teen'\">\n:narrator: a.\n</when>\n<otherwise foo=\"bar\">\n:narrator: b.\n</otherwise>\n</match>\n";
+        let src = "## Shot 1.\n<match on=\"app.rating\">\n<when test=\"$ == 'teen'\">\n@narrator: a.\n</when>\n<otherwise foo=\"bar\">\n@narrator: b.\n</otherwise>\n</match>\n";
         let (_, diags) = parse(src);
         assert!(diags
             .iter()
@@ -963,7 +1001,7 @@ mod tests {
         // is blanked, the boundary is recomputed to recognize the content line,
         // so its `Text` is opaque and the body `/* boom` is literal — NOT an
         // unterminated block comment. `find_unterminated_comment` reports none.
-        let body = "/* p */ :bianca: a /* boom";
+        let body = "/* p */ @bianca: a /* boom";
         assert_eq!(find_unterminated_comment(body), 0);
     }
 
@@ -972,7 +1010,7 @@ mod tests {
         // End-to-end: a `/*` inside a content line's opaque `Text` is literal
         // (§4.2 exclusion 2), so no E-COMMENT-UNTERMINATED is raised and the
         // `Text` keeps the `/*` verbatim. The leading `/* p */` is still blanked.
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n/* p */ :bianca: a /* boom\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n/* p */ @bianca: a /* boom\n";
         let (doc, diags) = parse(src);
         assert!(
             !diags.iter().any(|d| d.code == E_COMMENT_UNTERMINATED),
@@ -990,7 +1028,7 @@ mod tests {
         // an escaped backslash must not spill the string state past `}` `:`, or a
         // `/*` in the opaque `Text` would be wrongly stripped / flagged
         // (§4.2 exclusion 2). The `Text` keeps its `/* … */` verbatim.
-        let (doc, diags) = parse("## Shot 1.\n:bianca{u=\"\\\\\"}: keep /* literal */\n");
+        let (doc, diags) = parse("## Shot 1.\n@bianca{u=\"\\\\\"}: keep /* literal */\n");
         assert!(diags.is_empty(), "{diags:?}");
         let Node::Line(l) = &doc.shots[0].body[0] else {
             panic!("expected Line")
@@ -1003,7 +1041,7 @@ mod tests {
         // Regression (T2.3 review Critical): attr-derived CEL slots must have
         // span == the inner value bytes, so src[slot.span] == slot.raw (matching
         // Set slots). Otherwise Phase-3 CEL sub-diagnostics drift by key.len()+2.
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n<when test=\"$ == 'gold'\">\n:narrator: hi\n</when>\n<otherwise>\n:narrator: bye\n</otherwise>\n</match>\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n<when test=\"$ == 'gold'\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
         let slot_ok = |s: &CelSlot| {
@@ -1029,7 +1067,7 @@ mod tests {
         // dsl §7.3.1: `<when is="…">` is the 0.1.0 headline construct. The literal
         // pattern MUST be preserved on the arm, distinct from `test` (which stays
         // an empty synthesized CelSlot when absent).
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"soft | curt\">\n:narrator: hi\n</when>\n</match>\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"soft | curt\">\n@narrator: hi\n</when>\n</match>\n";
         let (doc, _diags) = parse(src);
         let Node::Match(m) = &doc.shots[0].body[0] else {
             panic!("expected Match")
@@ -1046,7 +1084,7 @@ mod tests {
     fn when_is_and_test_both_preserved() {
         // A `<when>` may carry both a literal `is` pattern and a `test` guard;
         // neither clobbers the other.
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"gold\" test=\"$ != 'x'\">\n:narrator: hi\n</when>\n</match>\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"gold\" test=\"$ != 'x'\">\n@narrator: hi\n</when>\n</match>\n";
         let (doc, _diags) = parse(src);
         let Node::Match(m) = &doc.shots[0].body[0] else {
             panic!("expected Match")
@@ -1061,7 +1099,7 @@ mod tests {
     #[test]
     fn when_without_is_has_none() {
         // A test-only `<when>` carries no `is` pattern.
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when test=\"$ == 1\">\n:narrator: hi\n</when>\n</match>\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when test=\"$ == 1\">\n@narrator: hi\n</when>\n</match>\n";
         let (doc, _diags) = parse(src);
         let Node::Match(m) = &doc.shots[0].body[0] else {
             panic!("expected Match")
@@ -1078,7 +1116,7 @@ mod tests {
         // Final-review fixture: a full <match> whose single guarded arm uses the
         // literal `is` pattern (no `test`) must parse with the `is` value intact —
         // the pattern is not dropped at the parse layer (dsl §7.3.1).
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"soft\">\n:narrator: soft\n</when>\n<otherwise>\n:narrator: else\n</otherwise>\n</match>\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"soft\">\n@narrator: soft\n</when>\n<otherwise>\n@narrator: else\n</otherwise>\n</match>\n";
         let (doc, _diags) = parse(src);
         let Node::Match(m) = &doc.shots[0].body[0] else {
             panic!("expected Match")
@@ -1096,7 +1134,7 @@ mod tests {
         // §7.3: a <branch> body admits only <choice> children. A direct content line is
         // invalid structure and MUST be reported (not silently dropped), mirroring
         // the <track>/E-TIMELINE-CONTENT rule.
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n<branch id=\"b\">\n:narrator: stray\n<choice id=\"c\" label=\"L\">\n:narrator: ok\n</choice>\n</branch>\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<branch id=\"b\">\n@narrator: stray\n<choice id=\"c\" label=\"L\">\n@narrator: ok\n</choice>\n</branch>\n";
         let (_doc, diags) = parse(src);
         assert!(
             diags.iter().any(|d| d.code == E_LOGIC_CONTENT),
@@ -1108,7 +1146,7 @@ mod tests {
     fn stray_directive_under_match_is_diagnosed() {
         // §7.3: a <match> body admits only <when>/<otherwise>. A direct ::set is
         // invalid structure and MUST be reported, not silently skipped.
-        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.x\">\n::set{scene.x = 1}\n<otherwise>\n:narrator: ok\n</otherwise>\n</match>\n";
+        let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.x\">\n::set{scene.x = 1}\n<otherwise>\n@narrator: ok\n</otherwise>\n</match>\n";
         let (_doc, diags) = parse(src);
         assert!(
             diags.iter().any(|d| d.code == E_LOGIC_CONTENT),
@@ -1118,7 +1156,7 @@ mod tests {
 
     #[test]
     fn content_line_short_form() {
-        let (doc, diags) = parse("## Shot 1.\n:bianca{code=\"0010\"}: Hello!\n:narrator: Quiet.\n");
+        let (doc, diags) = parse("## Shot 1.\n@bianca{code=\"0010\"}: Hello!\n@narrator: Quiet.\n");
         assert!(diags.is_empty(), "{diags:?}");
         let body = &doc.shots[0].body;
         let Node::Line(l) = &body[0] else { panic!() };
@@ -1134,15 +1172,16 @@ mod tests {
         let (_, diags) = parse(src);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].code, "E-UNCLASSIFIED");
-        assert!(diags[0].message.contains("0.1.0"), "fix-it hint: {}", diags[0].message);
-        // 0.1.0 migration (dsl §7.1): the diagnostic carries a `migrate` fix-it
-        // whose single TextEdit rewrites the removed `:line[speaker]` bracket form
-        // to `:speaker`. `lute fix` (Task D5) applies it (phase 1).
+        assert!(diags[0].message.contains("0.2.2"), "fix-it hint: {}", diags[0].message);
+        // 0.2.2 migration (dsl §7.1, foundation C1): the diagnostic carries a
+        // `migrate` fix-it whose single TextEdit rewrites the removed
+        // `:line[speaker]` bracket form to `@speaker` — the CURRENT sigil.
+        // `lute fix` (Task C3/D5) applies it (phase 1).
         assert_eq!(diags[0].fixits.len(), 1, "expected one migrate fix-it");
         let fx = &diags[0].fixits[0];
         assert_eq!(fx.kind, "migrate", "fix-it kind: {}", fx.kind);
         assert_eq!(fx.edit.len(), 1);
-        assert_eq!(fx.edit[0].new_text, ":bianca");
+        assert_eq!(fx.edit[0].new_text, "@bianca");
         // The edit span covers exactly `:line[bianca]` (`:` through the `]`).
         let sp = fx.edit[0].span;
         assert_eq!(&src[sp.byte_start..sp.byte_end], ":line[bianca]");
@@ -1150,7 +1189,7 @@ mod tests {
 
     #[test]
     fn content_line_missing_second_colon_is_error() {
-        let (_, diags) = parse("## Shot 1.\n:bianca no colon here\n");
+        let (_, diags) = parse("## Shot 1.\n@bianca no colon here\n");
         assert_eq!(diags[0].code, "E-UNCLASSIFIED");
     }
 
@@ -1158,7 +1197,7 @@ mod tests {
 
     #[test]
     fn line_comment_leading_is_trivia() {
-        let (doc, diags) = parse("## Shot 1.\n// a note\n:bianca: Hi.\n");
+        let (doc, diags) = parse("## Shot 1.\n// a note\n@bianca: Hi.\n");
         assert!(diags.is_empty(), "{diags:?}");
         assert_eq!(doc.shots[0].body.len(), 1);
     }
@@ -1166,7 +1205,7 @@ mod tests {
     #[test]
     fn line_comment_mid_line_is_not_a_comment() {
         // dsl §4.2: `//` only at line start; inside Text it is literal.
-        let (doc, _) = parse("## Shot 1.\n:bianca: see https://example.com // really\n");
+        let (doc, _) = parse("## Shot 1.\n@bianca: see https://example.com // really\n");
         let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
         assert!(l.text.contains("https://example.com // really"));
     }
@@ -1174,7 +1213,7 @@ mod tests {
     #[test]
     fn block_comment_not_recognized_inside_text() {
         // dsl §4.2 exclusion 2: Text is truly opaque after the second colon.
-        let (doc, diags) = parse("## Shot 1.\n:bianca: I love /* this */ you.\n");
+        let (doc, diags) = parse("## Shot 1.\n@bianca: I love /* this */ you.\n");
         assert!(diags.is_empty(), "{diags:?}");
         let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
         assert_eq!(l.text, "I love /* this */ you.");
@@ -1182,7 +1221,7 @@ mod tests {
 
     #[test]
     fn unterminated_block_comment_inside_text_is_fine() {
-        let (_, diags) = parse("## Shot 1.\n:bianca: half /* open\n:narrator: next line intact\n");
+        let (_, diags) = parse("## Shot 1.\n@bianca: half /* open\n@narrator: next line intact\n");
         assert!(diags.is_empty(), "{diags:?}");
     }
 
@@ -1190,7 +1229,7 @@ mod tests {
 
     #[test]
     fn interps_are_scanned_and_classified() {
-        let (doc, diags) = parse("## Shot 1.\n:bianca: Hi {{userName}}, you have {{run.coins}} and {{@fond}}.\n");
+        let (doc, diags) = parse("## Shot 1.\n@bianca: Hi {{userName}}, you have {{run.coins}} and {{@fond}}.\n");
         assert!(diags.is_empty(), "{diags:?}");
         let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
         let kinds: Vec<_> = l.interps.iter().map(|p| (p.kind, p.raw.as_str())).collect();
@@ -1203,7 +1242,7 @@ mod tests {
 
     #[test]
     fn escaped_and_unterminated_interp() {
-        let (doc, diags) = parse("## Shot 1.\n:bianca: literal \\{{ stays.\n:fixer: broken {{run.coins\n");
+        let (doc, diags) = parse("## Shot 1.\n@bianca: literal \\{{ stays.\n@fixer: broken {{run.coins\n");
         let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
         assert!(l.interps.is_empty());
         assert!(diags.iter().any(|d| d.code == "E-INTERP-UNTERMINATED"));
@@ -1211,7 +1250,7 @@ mod tests {
 
     #[test]
     fn interp_inner_whitespace_is_trimmed() {
-        let (doc, diags) = parse("## Shot 1.\n:bianca: You have {{ run.coins }} left.\n");
+        let (doc, diags) = parse("## Shot 1.\n@bianca: You have {{ run.coins }} left.\n");
         assert!(diags.is_empty(), "{diags:?}");
         let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
         assert_eq!(l.interps.len(), 1);
@@ -1223,7 +1262,7 @@ mod tests {
     fn empty_interp_is_scanned_as_empty_path() {
         // Parser stays dumb: `{{}}` is a well-formed (if useless) interpolation
         // with empty `raw`; the checker rejects the empty referent (Plan B).
-        let (doc, diags) = parse("## Shot 1.\n:bianca: nothing here {{}} really.\n");
+        let (doc, diags) = parse("## Shot 1.\n@bianca: nothing here {{}} really.\n");
         assert!(diags.is_empty(), "{diags:?}");
         let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
         assert_eq!(l.interps.len(), 1);
@@ -1234,7 +1273,7 @@ mod tests {
     #[test]
     fn escaped_then_real_interp_same_line() {
         // `\{{` is a literal (no interp); a later unescaped `{{later}}` still scans.
-        let (doc, diags) = parse("## Shot 1.\n:bianca: braces \\{{ then {{later}}.\n");
+        let (doc, diags) = parse("## Shot 1.\n@bianca: braces \\{{ then {{later}}.\n");
         assert!(diags.is_empty(), "{diags:?}");
         let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
         let kinds: Vec<_> = l.interps.iter().map(|p| (p.kind, p.raw.as_str())).collect();
@@ -1246,7 +1285,7 @@ mod tests {
         // A multi-byte prefix must not throw off the byte offsets: slicing the
         // ORIGINAL source by the interp span lands on char boundaries and covers
         // exactly the `{{…}}`.
-        let src = "## Shot 1.\n:bianca: 안녕 {{userName}}!\n";
+        let src = "## Shot 1.\n@bianca: 안녕 {{userName}}!\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
         let Node::Line(l) = &doc.shots[0].body[0] else { panic!() };
@@ -1278,7 +1317,7 @@ mod tests {
     fn on_and_objective_are_nodes_in_a_body() {
         let (doc, diags) = parse(
             "<quest id=\"q\">\n\
-             <on event=\"questComplete\">\n:x: hi\n</on>\n\
+             <on event=\"questComplete\">\n@x: hi\n</on>\n\
              </quest>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");

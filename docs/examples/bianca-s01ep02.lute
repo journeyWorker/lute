@@ -35,42 +35,42 @@ defs:
 ::music{action="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="down"}
 ::sfx{sound="drink_bar_hum" assetId="PLACEHOLDER_drink_bar_hum"}
 
-:narrator: Venny's. The chain restaurant that has never offended anyone, no matter how hard it tries. Soft overhead lighting, a faint jazz cover loop from somewhere over the ceiling tiles, the gentle white-noise of a drink-bar fountain.
+@narrator: Venny's. The chain restaurant that has never offended anyone, no matter how hard it tries. Soft overhead lighting, a faint jazz cover loop from somewhere over the ceiling tiles, the gentle white-noise of a drink-bar fountain.
 
-:narrator: I stepped up to the welcome stand.
+@narrator: I stepped up to the welcome stand.
 
-:fixer{code="0010"}: ...
+@fixer{code="0010"}: ...
 
 ## Shot 2.
 
 ::auto{character="bianca" anchor="center" action="fade-in-up"}
 ::camera{focus="bianca" zoom="1.1" duration="0.5"} /* NEW: settle on her as she turns. */
 
-:narrator: A hostess walked over with a menu pressed to her chest. Her face caught.
+@narrator: A hostess walked over with a menu pressed to her chest. Her face caught.
 
-:bianca{code="0010" emotion="surprised" variant="0"}: Oh!
-:bianca{code="0020" emotion="delighted" variant="1"}: Mr. Fixer!
-:bianca{code="0030" emotion="delighted" variant="1"}: From the ramen counter! You eat at Mechageki too, isn't it wonderful?
+@bianca{code="0010" emotion="surprised" variant="0"}: Oh!
+@bianca{code="0020" emotion="delighted" variant="1"}: Mr. Fixer!
+@bianca{code="0030" emotion="delighted" variant="1"}: From the ramen counter! You eat at Mechageki too, isn't it wonderful?
 
-:narrator: That was the face. It had a name now, and the name worked here.
+@narrator: That was the face. It had a name now, and the name worked here.
 
-:bianca{code="0040" emotion="shy" variant="0"}: I'm Bianca.
-:bianca{code="0050" emotion="shy" variant="0"}: Pleased to meet you, properly this time. Please follow me, won't you?
+@bianca{code="0040" emotion="shy" variant="0"}: I'm Bianca.
+@bianca{code="0050" emotion="shy" variant="0"}: Pleased to meet you, properly this time. Please follow me, won't you?
 
-:narrator: She brightened by an absurd amount.
+@narrator: She brightened by an absurd amount.
 
-:fixer{code="0020"}: Bianca.
+@fixer{code="0020"}: Bianca.
 
-:narrator: So the woman from the ramen counter had a name and a job, and the job came with a menu pressed to her chest. I followed.
+@narrator: So the woman from the ramen counter had a name and a job, and the job came with a menu pressed to her chest. I followed.
 
 ## Shot 3.
 
-:narrator: Halfway down the aisle, between two empty booths, her steps stopped. Her gaze dropped to the corner of the skirting board. A small grey shadow was paused there.
+@narrator: Halfway down the aisle, between two empty booths, her steps stopped. Her gaze dropped to the corner of the skirting board. A small grey shadow was paused there.
 
-:bianca{code="0060" emotion="content" variant="0"}: Oh, a mouse.
-:bianca{code="0070" emotion="content" variant="0"}: They do carry the bubonic plague, you know.
+@bianca{code="0060" emotion="content" variant="0"}: Oh, a mouse.
+@bianca{code="0070" emotion="content" variant="0"}: They do carry the bubonic plague, you know.
 
-:narrator: The line was delivered in her ordinary register, soft and precise, almost informational. I had not finished hearing it before her index finger came up.
+@narrator: The line was delivered in her ordinary register, soft and precise, almost informational. I had not finished hearing it before her index finger came up.
 
 /*
   NEW: the "performance" — one choreographed beat on a 1.4s local clock, four tracks.
@@ -94,68 +94,68 @@ defs:
 </timeline>
 ::set{scene.flags.saw_beam = true}
 
-:narrator: I flinched. I blinked. When I opened my eyes, where the mouse had been there was only a small black smudge.
+@narrator: I flinched. I blinked. When I opened my eyes, where the mouse had been there was only a small black smudge.
 
-:fixer{code="0030"}: The mouse.
-:fixer{code="0040"}: The mouse just disappeared!
+@fixer{code="0030"}: The mouse.
+@fixer{code="0040"}: The mouse just disappeared!
 
-:narrator: Bianca brought her fingertip to her lips and blew a small puff of air across the tip with the satisfaction of a chef sending off a perfect plate.
+@narrator: Bianca brought her fingertip to her lips and blew a small puff of air across the tip with the satisfaction of a chef sending off a perfect plate.
 
-:bianca{code="0080" emotion="delighted" variant="1"}: Ta-da!
-:bianca{code="0090" emotion="delighted" variant="1"}: Behold the performance of all-purpose Bianca, isn't it wonderful?
+@bianca{code="0080" emotion="delighted" variant="1"}: Ta-da!
+@bianca{code="0090" emotion="delighted" variant="1"}: Behold the performance of all-purpose Bianca, isn't it wonderful?
 
-:narrator: I took one step back. My central nervous system briefly logged out and logged back in.
+@narrator: I took one step back. My central nervous system briefly logged out and logged back in.
 
-:fixer{delivery="thought"}: An android, then. Which would, on reflection, explain the ramen.
+@fixer{delivery="thought"}: An android, then. Which would, on reflection, explain the ramen.
 
 ## Shot 4.
 
-:fixer{delivery="thought"}: If I do not handle this android properly, something is going to go very badly wrong.
+@fixer{delivery="thought"}: If I do not handle this android properly, something is going to go very badly wrong.
 
-:narrator: The thought arrived fully formed. It did not ask permission. I reached for my phone.
+@narrator: The thought arrived fully formed. It did not ask permission. I reached for my phone.
 
 /* demo: a choice of TONE (canon always gets the number — both paths do; the gentle ask warms her). */
 <branch id="number">
   <choice id="blunt" label="Just ask, flatly">
-    :fixer{code="0050"}: Bianca. Your number.
+    @fixer{code="0050"}: Bianca. Your number.
   </choice>
   <choice id="soft" label="Ask gently">
-    :fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
+    @fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
     ::set{scene.affect.bianca += 1}
   </choice>
 </branch>
 
-:bianca{code="0100" emotion="surprised" variant="0"}: Oh!
-:bianca{code="0110" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.
+@bianca{code="0100" emotion="surprised" variant="0"}: Oh!
+@bianca{code="0110" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.
 
-:narrator: She produced her own phone at a velocity that suggested she had been hoping someone would ask. She held it up to mine.
+@narrator: She produced her own phone at a velocity that suggested she had been hoping someone would ask. She held it up to mine.
 
 ::sfx{sound="phone_chime" assetId="sound-sfx-common-phone-0.mp3"}
 
-:bianca{code="0120" emotion="content" variant="0"}: We can walk around together when my shift is done, perhaps?
-:bianca{code="0130" emotion="content" variant="0"}: There's so much I haven't seen yet, you see. I would like that very much.
-:bianca{code="0140" emotion="shy" variant="0"}: I was decommissioned not long ago, you see.
-:bianca{code="0150" emotion="shy" variant="0"}: I am still very much in the middle of my civilian acclimation.
+@bianca{code="0120" emotion="content" variant="0"}: We can walk around together when my shift is done, perhaps?
+@bianca{code="0130" emotion="content" variant="0"}: There's so much I haven't seen yet, you see. I would like that very much.
+@bianca{code="0140" emotion="shy" variant="0"}: I was decommissioned not long ago, you see.
+@bianca{code="0150" emotion="shy" variant="0"}: I am still very much in the middle of my civilian acclimation.
 
-:fixer{code="0060"}: When does your shift end.
-:bianca{code="0160" emotion="delighted" variant="1"}: Five-thirty, Mr. Fixer!
-:bianca{code="0170" emotion="delighted" variant="1"}: I'll meet you at the entrance.
+@fixer{code="0060"}: When does your shift end.
+@bianca{code="0160" emotion="delighted" variant="1"}: Five-thirty, Mr. Fixer!
+@bianca{code="0170" emotion="delighted" variant="1"}: I'll meet you at the entrance.
 
 ## Shot 5.
 
 ::music{action="fade-out"}
 
-:narrator: She led me to the booth. I sat. She handed me a menu and skipped, very lightly, back toward the kitchen. The mouse-shaped smudge was still on the carpet three booths away, plainly visible to anyone walking past.
+@narrator: She led me to the booth. I sat. She handed me a menu and skipped, very lightly, back toward the kitchen. The mouse-shaped smudge was still on the carpet three booths away, plainly visible to anyone walking past.
 
 ::auto{character="takeru" anchor="left" action="fade-in-slow"}
 
-:takeru{code="0010" emotion="neutral" variant="0"}: Welcome, sir.
-:takeru{code="0020" emotion="content" variant="0"}: ...A stain has appeared, three booths down. Bianca-san. See to it before the dinner rush, please.
-:bianca{code="0180" emotion="surprised" variant="0"}: At once, manager!
+@takeru{code="0010" emotion="neutral" variant="0"}: Welcome, sir.
+@takeru{code="0020" emotion="content" variant="0"}: ...A stain has appeared, three booths down. Bianca-san. See to it before the dinner rush, please.
+@bianca{code="0180" emotion="surprised" variant="0"}: At once, manager!
 
-:narrator: She skipped back across the floor with a cloth in hand. I watched the manager file the smudge as some customer-side mishap and continue his perimeter walk.
+@narrator: She skipped back across the floor with a cloth in hand. I watched the manager file the smudge as some customer-side mishap and continue his perimeter walk.
 
-:fixer{code="0070"}: ...
+@fixer{code="0070"}: ...
 
 /*
   NEW: state-driven callback — the inner monologue varies by how you asked.
@@ -163,16 +163,16 @@ defs:
 */
 <match on="scene.choices.number">
   <when test="@fond">
-    :fixer{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening. I asked nicely, which I am electing not to examine.
+    @fixer{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening. I asked nicely, which I am electing not to examine.
   </when>
   <when test="$ == 'blunt'">
-    :fixer{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening.
+    @fixer{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening.
   </when>
   <otherwise>
-    :fixer{delivery="thought"}: I am, apparently, taking that woman somewhere this evening.
+    @fixer{delivery="thought"}: I am, apparently, taking that woman somewhere this evening.
   </otherwise>
 </match>
 
-:narrator: The part of me that catalogues life events was already cataloguing.
+@narrator: The part of me that catalogues life events was already cataloguing.
 
 ::music{action="stop"}

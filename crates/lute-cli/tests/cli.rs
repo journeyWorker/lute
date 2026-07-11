@@ -500,10 +500,11 @@ fn context_choice_slot_domain_includes_unset() {
     );
 }
 
-// --- `lute fix`: the 0.0.1 → 0.1.0 migration codemod (Task D5). Rewrites the
-// file in place — `:line[speaker]{…}: text` → `:speaker{…}: text` (phase 1,
-// parser migrate fix-it) AND `<choice>`/`<hub>` choice `as="…"` → `into="…"`
-// (phase 2, AST walk). Exit 0; re-running is an idempotent no-op.
+// --- `lute fix`: the pre-0.2.2 migration codemod (Task C3/D5). Rewrites the
+// file in place — `:line[speaker]{…}: text` → `@speaker{…}: text`, any other
+// content line's leading `:` sigil → `@` (phase 1, parser migrate fix-its),
+// AND `<choice>`/`<hub>` choice `as="…"` → `into="…"` (phase 2, AST walk).
+// Exit 0; re-running is an idempotent no-op.
 
 #[test]
 fn fix_migrates_line_and_choice_as_in_place_idempotent() {
@@ -522,7 +523,7 @@ fn fix_migrates_line_and_choice_as_in_place_idempotent() {
         String::from_utf8_lossy(&out.stderr)
     );
     let after = std::fs::read_to_string(&f).unwrap();
-    let expected = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" into=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n";
+    let expected = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@bianca{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" into=\"run.flag\">\n@fixer: yo\n</choice>\n</branch>\n";
     assert_eq!(after, expected, "both phases must migrate in place");
 
     // Idempotent: a second run rewrites nothing (file byte-identical).

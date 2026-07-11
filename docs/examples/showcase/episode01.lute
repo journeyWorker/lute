@@ -46,9 +46,9 @@ defs:
 ::sfx{sound="drink_bar_hum" assetId="PLACEHOLDER_drink_bar_hum"}
 ::auto{character="bianca" action="fade-in-up"}
 
-:narrator: Venny's again. The chain restaurant that has never offended anyone.
-:bianca{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
-:fixer{code="0010"}: I did.
+@narrator: Venny's again. The chain restaurant that has never offended anyone.
+@bianca{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
+@fixer{code="0010"}: I did.
 
 ## Shot 2.
 
@@ -77,7 +77,7 @@ defs:
 /* State writes: a pure `=` write (scene tier) ... */
 ::set{scene.saw_demo = true}
 
-:fixer{delivery="thought"}: A rehearsed entrance. She has been practising.
+@fixer{delivery="thought"}: A rehearsed entrance. She has been practising.
 
 ## Shot 3.
 
@@ -97,21 +97,21 @@ defs:
 */
 <match on="scene.serve.debut.rank">
   <when test="$ == 'gold'">
-    :bianca{code="0020" emotion="delighted" variant="1"}: A perfect service!
+    @bianca{code="0020" emotion="delighted" variant="1"}: A perfect service!
     ::set{scene.affect.bianca += 1}
   </when>
   <when test="$ in ['silver', 'bronze']">
-    :bianca{code="0030" emotion="content" variant="0"}: Not bad at all, Mr. Fixer.
+    @bianca{code="0030" emotion="content" variant="0"}: Not bad at all, Mr. Fixer.
     ::set{run.affection += 1}
   </when>
   <otherwise>
-    :bianca{code="0040" emotion="shy" variant="0"}: Shall we try once more?
+    @bianca{code="0040" emotion="shy" variant="0"}: Shall we try once more?
   </otherwise>
 </match>
 
 ## Shot 4.
 
-:fixer{delivery="thought"}: I should ask for her number before the shift swallows her.
+@fixer{delivery="thought"}: I should ask for her number before the shift swallows her.
 
 /*
   <branch> + <choice> with `when` guards AND the persist="run" sugar (§11.1.1):
@@ -121,19 +121,19 @@ defs:
 */
 <branch id="approach">
   <choice id="blunt" label="Just ask, flatly">
-    :fixer{code="0050"}: Bianca. Your number.
+    @fixer{code="0050"}: Bianca. Your number.
   </choice>
   <choice id="soft" label="Ask gently" when="@showcaseReady" persist="run" into="run.metHelpfully">
-    :fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
+    @fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
     ::set{scene.affect.bianca += 1}
   </choice>
   <choice id="linger" label="Ask, and linger a while" when="@atLeast(1)" persist="run" into="run.sofaOutcome" value="warm">
-    :fixer{code="0054"}: And perhaps I'll stay through your break.
+    @fixer{code="0054"}: And perhaps I'll stay through your break.
     ::set{run.affection += 1}
   </choice>
 </branch>
 
-:bianca{code="0060" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.
+@bianca{code="0060" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.
 ::sfx{sound="phone_chime" assetId="sound-sfx-common-phone-0.mp3"}
 
 ## Shot 5.
@@ -145,13 +145,13 @@ defs:
 */
 <match on="scene.choices.approach">
   <when test="@fond">
-    :fixer{delivery="thought"}: I asked nicely, which I am electing not to examine.
+    @fixer{delivery="thought"}: I asked nicely, which I am electing not to examine.
   </when>
   <when test="$ == 'blunt'">
-    :fixer{delivery="thought"}: Straight to the point. It worked.
+    @fixer{delivery="thought"}: Straight to the point. It worked.
   </when>
   <otherwise>
-    :fixer{delivery="thought"}: Whatever it was, it is done.
+    @fixer{delivery="thought"}: Whatever it was, it is done.
   </otherwise>
 </match>
 
@@ -163,19 +163,19 @@ defs:
 */
 <match on="run.metHelpfully">
   <when test="$ == true">
-    :bianca{code="0070" emotion="content" variant="0"}: You were kind about it. I noticed.
+    @bianca{code="0070" emotion="content" variant="0"}: You were kind about it. I noticed.
   </when>
   <when test="$ == false">
-    :bianca{code="0080" emotion="neutral" variant="0"}: There you are.
+    @bianca{code="0080" emotion="neutral" variant="0"}: There you are.
   </when>
 </match>
 
 <match on="run.sofaOutcome">
   <when test="$ == 'warm'">
-    :bianca{code="0090" emotion="delighted" variant="1"}: Staying? That would be lovely.
+    @bianca{code="0090" emotion="delighted" variant="1"}: Staying? That would be lovely.
   </when>
   <otherwise>
-    :bianca{code="0100" emotion="shy" variant="0"}: Some other evening, then.
+    @bianca{code="0100" emotion="shy" variant="0"}: Some other evening, then.
   </otherwise>
 </match>
 
@@ -188,10 +188,10 @@ defs:
 */
 <match on="app.rating">
   <when test="$ == 'teen'">
-    :narrator: A gentle evening, suitable for all.
+    @narrator: A gentle evening, suitable for all.
   </when>
   <otherwise>
-    :narrator: The night deepens.
+    @narrator: The night deepens.
   </otherwise>
 </match>
 
@@ -202,13 +202,13 @@ defs:
 */
 <match on="scene.affect.bianca">
   <when test="@atLeast(3)">
-    :fixer{delivery="thought"}: She has earned a veteran's welcome.
+    @fixer{delivery="thought"}: She has earned a veteran's welcome.
   </when>
   <when test="@veteran">
-    :fixer{delivery="thought"}: Seasoned enough for what comes next.
+    @fixer{delivery="thought"}: Seasoned enough for what comes next.
   </when>
   <otherwise>
-    :fixer{delivery="thought"}: Early days yet.
+    @fixer{delivery="thought"}: Early days yet.
   </otherwise>
 </match>
 
@@ -230,9 +230,9 @@ defs:
 */
 <match on="app.lang">
   <when test="$ == 'ko'">
-    :narrator: Subtitles render in Korean.
+    @narrator: Subtitles render in Korean.
   </when>
   <otherwise>
-    :narrator: Subtitles render in English.
+    @narrator: Subtitles render in English.
   </otherwise>
 </match>

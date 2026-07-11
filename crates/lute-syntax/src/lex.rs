@@ -68,10 +68,15 @@ pub fn strip_comments(text: &str) -> String {
     strip_comments_checked(text).unwrap_or_else(|_| text.to_string())
 }
 
-/// Byte offset (line-relative) just past the second `:` of a 0.1.0 content line
-/// (`":" Ident Attrs? ":"`), i.e. where opaque `Text` begins (dsl §4.2, §4.4).
-/// `None` if the trimmed line is not a content line (a `::`-directive, a missing
-/// second `:`, or no leading `:`ident). Quote-aware inside the optional `{…}`
+/// Byte offset (line-relative) just past the second `:` of a content line
+/// (`"@"|":" Ident Attrs? ":"`, dsl §7.1), i.e. where opaque `Text` begins
+/// (dsl §4.2, §4.4). The leading sigil is `@` (0.2.2+, foundation C1) or the
+/// legacy `:` (through 0.2.1, still routed through a `migrate` fix-it by the
+/// parser rather than treated as a content line) — either way `Text` is
+/// opaque, so the comment stripper must recognize both to avoid blanking a
+/// literal `/* … */` inside an as-yet-unmigrated line's Text. `None` if the
+/// trimmed line is not a content line (a `::`-directive, a missing second
+/// `:`, or no leading sigil+ident). Quote-aware inside the optional `{…}`
 /// attr list so a `"}"` in an attr value does not close the block early.
 ///
 /// Both comment scans use this as the opacity boundary: a `"` at/after it is a
@@ -82,8 +87,10 @@ pub(crate) fn content_text_start(line: &str) -> Option<usize> {
     let ws = line.len() - line.trim_start().len();
     let b = line.as_bytes();
     let mut j = ws;
-    if b.get(j) != Some(&b':') {
-        return None;
+    match b.get(j) {
+        Some(b'@') => {}
+        Some(b':') => {}
+        _ => return None,
     }
     j += 1;
     if j >= b.len() || b[j] == b':' || !b[j].is_ascii_alphabetic() {
@@ -141,7 +148,7 @@ pub(crate) fn text_start_for_line(text: &str, line_start: usize) -> usize {
 /// Blanking a `/* … */` (or a line-leading `//`) that precedes the content
 /// construct on the same line (dsl §4.2 permits inline trivia before line
 /// classification) can reveal a content line the *raw* line hid — its un-blanked
-/// comment bytes would defeat the `:`ident prefix match in [`content_text_start`].
+/// comment bytes would defeat the sigil+ident prefix match in [`content_text_start`].
 /// Recomputing on the blanked view fixes the boundary so the opaque `Text` after
 /// the second `:` is not re-scanned for comments. Returns [`usize::MAX`] when the
 /// line is not a content line. Requires `line_start <= scanned == out.len()`.
@@ -369,7 +376,7 @@ mod tests {
         // §4.2 exclusion 2: past a content line's second `:` the `Text` is truly
         // opaque, so a `/*` or a mid-`Text` `//` is literal, not a comment.
         // Nothing is blanked and the line survives verbatim.
-        let input = ":bianca: I love /* c */ and // b";
+        let input = "@bianca: I love /* c */ and // b";
         let out = strip_comments_checked(input).unwrap();
         assert_eq!(out, input, "content Text must be verbatim: {out:?}");
         assert_eq!(out.len(), input.len());
@@ -380,7 +387,7 @@ mod tests {
         // A `"` inside opaque `Text` is literal (never opens a String), so it
         // cannot leak string state past the newline and suppress a real comment
         // on the next line (§4.2, §4.4: a String never spans a raw newline).
-        let input = ":bianca: he said \"hi\n/* real */";
+        let input = "@bianca: he said \"hi\n/* real */";
         let out = strip_comments_checked(input).unwrap();
         assert!(out.contains("he said \"hi"), "opaque Text altered: {out:?}");
         assert!(!out.contains("real"), "next-line comment survived: {out:?}");
@@ -394,10 +401,10 @@ mod tests {
         // *blanked* view (else the raw leading bytes hide the `:`ident) so the
         // `Text` after the second `:` stays opaque: its inner `/* c */` is
         // literal and NOT stripped, while the leading trivia IS blanked.
-        let input = "/* pre */ :bianca: keep /* c */ here";
+        let input = "/* pre */ @bianca: keep /* c */ here";
         let out = strip_comments_checked(input).unwrap();
         assert!(!out.contains("pre"), "leading comment survived: {out:?}");
-        assert!(out.contains(":bianca:"), "construct lost: {out:?}");
+        assert!(out.contains("@bianca:"), "construct lost: {out:?}");
         assert!(
             out.contains("keep /* c */ here"),
             "opaque Text altered: {out:?}"
@@ -447,7 +454,7 @@ mod tests {
         // wrongly returning `None` so comments get recognized inside opaque
         // `Text` (§4.2 exclusion 2, §4.4). The `Text` after the second `:` stays
         // opaque, so its `/* … */` survives verbatim.
-        let input = r#":bianca{u="\\"}: keep /* literal */"#;
+        let input = r#"@bianca{u="\\"}: keep /* literal */"#;
         let out = strip_comments_checked(input).unwrap();
         assert_eq!(out, input, "opaque Text altered: {out:?}");
         assert_eq!(out.len(), input.len());

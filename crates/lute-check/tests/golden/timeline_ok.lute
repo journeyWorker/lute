@@ -12,7 +12,7 @@ state:
 
 ## Shot 1.
 
-:narrator: Her index finger came up.
+@narrator: Her index finger came up.
 
 <timeline duration="1.4">
   <track subject="camera">
@@ -32,4 +32,4 @@ state:
 </timeline>
 ::set{scene.flags.saw_beam = true}
 
-:narrator: When I opened my eyes, there was only a small black smudge.
+@narrator: When I opened my eyes, there was only a small black smudge.

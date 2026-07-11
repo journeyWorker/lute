@@ -1,5 +1,5 @@
 //! `lute tag` localization pass (dsl §12): back-fill a stable `code` into every
-//! untagged content line (`:speaker{…}: text`, §7.1). Pure + total; the CLI
+//! untagged content line (`@speaker{…}: text`, §7.1). Pure + total; the CLI
 //! wraps this with file I/O.
 
 use lute_core_span::Severity;
@@ -143,7 +143,7 @@ fn tag_scope(lines: Vec<&Line>, bytes: &[u8], inserts: &mut Vec<(usize, String)>
             inserts.push((at, inserted));
         } else {
             // No attr block: fresh `{code="ID"}` between the speaker ident and
-            // the second `:` (`:bianca: hi` -> `:bianca{code="0010"}: hi`).
+            // the second `:` (`@bianca: hi` -> `@bianca{code="0010"}: hi`).
             inserts.push((speaker_end, format!("{{code=\"{code}\"}}")));
         }
     }
@@ -188,16 +188,16 @@ mod tests {
     use super::*;
 
     const NO_ATTRS: &str =
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator: hi there\n";
-    const WITH_ATTRS: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{delivery=\"thought\"}: hmm\n";
-    const ALREADY: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:fixer{code=\"0010\"}: kept\n";
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi there\n";
+    const WITH_ATTRS: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@fixer{delivery=\"thought\"}: hmm\n";
+    const ALREADY: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@fixer{code=\"0010\"}: kept\n";
 
     #[test]
     fn tags_line_without_attrs() {
         let out = tag_document(NO_ATTRS);
         assert_eq!(out.added, 1);
         assert!(
-            out.text.contains(":narrator{code=\"0010\"}: hi there"),
+            out.text.contains("@narrator{code=\"0010\"}: hi there"),
             "got:\n{}",
             out.text
         );
@@ -210,7 +210,7 @@ mod tests {
         // `code` is merged as the FIRST attribute, existing attrs preserved.
         assert!(
             out.text
-                .contains(":fixer{code=\"0010\" delivery=\"thought\"}: hmm"),
+                .contains("@fixer{code=\"0010\" delivery=\"thought\"}: hmm"),
             "got:\n{}",
             out.text
         );
@@ -218,13 +218,13 @@ mod tests {
 
     #[test]
     fn no_attr_block_gets_fresh_code_block() {
-        // §7.1 no-attr path: `:bianca: hi` -> `:bianca{code="0010"}: hi`.
+        // §7.1 no-attr path: `@bianca: hi` -> `@bianca{code="0010"}: hi`.
         let src =
-            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi\n";
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@bianca: hi\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
-            out.text.contains(":bianca{code=\"0010\"}: hi"),
+            out.text.contains("@bianca{code=\"0010\"}: hi"),
             "got:\n{}",
             out.text
         );
@@ -234,11 +234,11 @@ mod tests {
     fn merge_into_existing_attr_block_is_first() {
         // §7.1 merge path: `code` lands as the FIRST attr, right after `{`.
         let src =
-            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca{emotion=\"x\"}: hi\n";
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@bianca{emotion=\"x\"}: hi\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
-            out.text.contains(":bianca{code=\"0010\" emotion=\"x\"}: hi"),
+            out.text.contains("@bianca{code=\"0010\" emotion=\"x\"}: hi"),
             "got:\n{}",
             out.text
         );
@@ -254,12 +254,12 @@ mod tests {
     #[test]
     fn new_codes_step_above_same_speaker_max() {
         // same speaker `a`: one tagged 0050 + one untagged -> untagged gets 0060
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"0050\"}: one\n:a: two\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a{code=\"0050\"}: one\n@a: two\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
-        assert!(out.text.contains(":a{code=\"0050\"}: one"));
+        assert!(out.text.contains("@a{code=\"0050\"}: one"));
         assert!(
-            out.text.contains(":a{code=\"0060\"}: two"),
+            out.text.contains("@a{code=\"0060\"}: two"),
             "got:\n{}",
             out.text
         );
@@ -269,21 +269,21 @@ mod tests {
     fn per_speaker_counters_are_independent() {
         // interleaved speakers: each starts its OWN sequence at 0010.
         // a: "one"(untagged), "three"(untagged) -> 0010, 0020 ; b: "two"(untagged) -> 0010
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a: one\n:b: two\n:a: three\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a: one\n@b: two\n@a: three\n";
         let out = tag_document(src);
         assert_eq!(out.added, 3);
         assert!(
-            out.text.contains(":a{code=\"0010\"}: one"),
+            out.text.contains("@a{code=\"0010\"}: one"),
             "got:\n{}",
             out.text
         );
         assert!(
-            out.text.contains(":b{code=\"0010\"}: two"),
+            out.text.contains("@b{code=\"0010\"}: two"),
             "b starts its own sequence:\n{}",
             out.text
         );
         assert!(
-            out.text.contains(":a{code=\"0020\"}: three"),
+            out.text.contains("@a{code=\"0020\"}: three"),
             "a's second line:\n{}",
             out.text
         );
@@ -315,7 +315,7 @@ mod tests {
         // A `/* … */` comment inside the attr block is blanked before parsing but
         // kept in the original text; merging `code` right after `{` must preserve
         // it, parse clean, and be idempotent on a second run.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:narrator{ /* keep me */ emotion=\"x\"}: hi\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator{ /* keep me */ emotion=\"x\"}: hi\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(out.text.contains("code=\"0010\""), "got:\n{}", out.text);
@@ -342,11 +342,11 @@ mod tests {
         // A `{` inside a comment in the TEXT (after the second `:`) must NOT be
         // mistaken for an attr block; the code goes in a fresh `{code=…}` after
         // the speaker ident, the text is untouched, and re-tagging is a no-op.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:bianca: hi /* { */ there\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@bianca: hi /* { */ there\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
-            out.text.contains(":bianca{code=\"0010\"}: hi /* { */ there"),
+            out.text.contains("@bianca{code=\"0010\"}: hi /* { */ there"),
             "got:\n{}",
             out.text
         );
@@ -366,7 +366,7 @@ mod tests {
     fn code_above_u32_max_does_not_collide() {
         // same speaker `a` at u32::MAX + an untagged `a` line -> a's counter steps
         // to 4294967305 (u64 counter, so no saturation/collision at u32::MAX).
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"4294967295\"}: one\n:a: two\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a{code=\"4294967295\"}: one\n@a: two\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         // new code is strictly above the existing max (no duplicate 4294967295)
@@ -386,7 +386,7 @@ mod tests {
     fn code_at_u64_max_fails_closed_no_collision() {
         // same speaker `a` at u64::MAX + an untagged `a` line -> a's counter
         // overflows -> fail closed for that line (per speaker).
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:a{code=\"18446744073709551615\"}: one\n:a: two\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a{code=\"18446744073709551615\"}: one\n@a: two\n";
         let out = tag_document(src);
         assert_eq!(
             out.added, 0,
@@ -402,11 +402,11 @@ mod tests {
         // Before the fix, `tag_document` walked `doc.shots` only and a
         // quest doc (no shots) tagged ZERO lines even with untagged content
         // reachable via a `<quest>`'s `<on>` arm.
-        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n:narrator: hi\n</on>\n</quest>\n";
+        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n@narrator: hi\n</on>\n</quest>\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1, "got:\n{}", out.text);
         assert!(
-            out.text.contains(":narrator{code=\"0010\"}: hi"),
+            out.text.contains("@narrator{code=\"0010\"}: hi"),
             "got:\n{}",
             out.text
         );
@@ -414,11 +414,11 @@ mod tests {
 
     #[test]
     fn quest_objective_body_line_is_tagged() {
-        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\">\n:narrator: hi\n</objective>\n</quest>\n";
+        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\">\n@narrator: hi\n</objective>\n</quest>\n";
         let out = tag_document(src);
         assert_eq!(out.added, 1, "got:\n{}", out.text);
         assert!(
-            out.text.contains(":narrator{code=\"0010\"}: hi"),
+            out.text.contains("@narrator{code=\"0010\"}: hi"),
             "got:\n{}",
             out.text
         );
@@ -430,17 +430,17 @@ mod tests {
         // starts its OWN 0010 sequence in EACH quest, independent of every
         // other quest (and of the scene scope).
         let src = "---\nkind: quest\n---\n\
-                   <quest id=\"q1\">\n<on event=\"questComplete\">\n:narrator: one\n</on>\n</quest>\n\
-                   <quest id=\"q2\">\n<on event=\"questComplete\">\n:narrator: two\n</on>\n</quest>\n";
+                   <quest id=\"q1\">\n<on event=\"questComplete\">\n@narrator: one\n</on>\n</quest>\n\
+                   <quest id=\"q2\">\n<on event=\"questComplete\">\n@narrator: two\n</on>\n</quest>\n";
         let out = tag_document(src);
         assert_eq!(out.added, 2, "got:\n{}", out.text);
         assert!(
-            out.text.contains(":narrator{code=\"0010\"}: one"),
+            out.text.contains("@narrator{code=\"0010\"}: one"),
             "q1 starts its own sequence:\n{}",
             out.text
         );
         assert!(
-            out.text.contains(":narrator{code=\"0010\"}: two"),
+            out.text.contains("@narrator{code=\"0010\"}: two"),
             "q2 starts its own sequence independent of q1:\n{}",
             out.text
         );
@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn quest_tagging_is_idempotent() {
-        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n:narrator: hi\n</on>\n</quest>\n";
+        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n@narrator: hi\n</on>\n</quest>\n";
         let once = tag_document(src).text;
         let twice = tag_document(&once);
         assert_eq!(twice.added, 0);

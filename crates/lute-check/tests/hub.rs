@@ -40,8 +40,8 @@ const FM_FLAG: &str =
 fn hub_no_exit_rejected() {
     let out = codes(&format!(
         "{FM_FLAG}## Shot 1.\n<hub id=\"h\">\n\
-         <choice id=\"a\" label=\"A\" once>\n:narrator: a.\n</choice>\n\
-         <choice id=\"b\" label=\"B\" when=\"scene.flag\">\n:narrator: b.\n</choice>\n</hub>\n",
+         <choice id=\"a\" label=\"A\" once>\n@narrator: a.\n</choice>\n\
+         <choice id=\"b\" label=\"B\" when=\"scene.flag\">\n@narrator: b.\n</choice>\n</hub>\n",
     ));
     assert!(
         out.contains(&"E-HUB-NO-EXIT".to_string()),
@@ -54,8 +54,8 @@ fn hub_no_exit_rejected() {
 fn hub_unguarded_exit_ok() {
     let out = codes(&format!(
         "{FM}## Shot 1.\n<hub id=\"h\">\n\
-         <choice id=\"a\" label=\"A\" once>\n:narrator: a.\n</choice>\n\
-         <choice id=\"leave\" label=\"Leave\" exit>\n:narrator: bye.\n</choice>\n</hub>\n",
+         <choice id=\"a\" label=\"A\" once>\n@narrator: a.\n</choice>\n\
+         <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye.\n</choice>\n</hub>\n",
     ));
     assert!(
         !out.contains(&"E-HUB-NO-EXIT".to_string()),
@@ -69,8 +69,8 @@ fn hub_unguarded_exit_ok() {
 fn hub_all_once_ok() {
     let text = format!(
         "{FM}## Shot 1.\n<hub id=\"h\">\n\
-         <choice id=\"a\" label=\"A\" once>\n:narrator: a.\n</choice>\n\
-         <choice id=\"b\" label=\"B\" once>\n:narrator: b.\n</choice>\n</hub>\n",
+         <choice id=\"a\" label=\"A\" once>\n@narrator: a.\n</choice>\n\
+         <choice id=\"b\" label=\"B\" once>\n@narrator: b.\n</choice>\n</hub>\n",
     );
     let res = run(&text);
     assert!(res.ok, "an all-`once` hub must check clean; got {:?}", res.diagnostics);
@@ -83,15 +83,15 @@ fn hub_all_once_ok() {
 fn hub_records_choices_and_visited() {
     let text = format!(
         "{FM}## Shot 1.\n<hub id=\"h\">\n\
-         <choice id=\"a\" label=\"A\" once>\n:narrator: a.\n</choice>\n\
-         <choice id=\"leave\" label=\"Leave\" exit>\n:narrator: bye.\n</choice>\n</hub>\n\
+         <choice id=\"a\" label=\"A\" once>\n@narrator: a.\n</choice>\n\
+         <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye.\n</choice>\n</hub>\n\
          <match on=\"scene.choices.h\">\n\
-         <when is=\"a\">\n:narrator: pa.\n</when>\n\
-         <when is=\"leave\">\n:narrator: pl.\n</when>\n\
-         <when is=\"unset\">\n:narrator: pu.\n</when>\n</match>\n\
+         <when is=\"a\">\n@narrator: pa.\n</when>\n\
+         <when is=\"leave\">\n@narrator: pl.\n</when>\n\
+         <when is=\"unset\">\n@narrator: pu.\n</when>\n</match>\n\
          <match on=\"scene.visited.h.a\">\n\
-         <when is=\"true\">\n:narrator: yes.\n</when>\n\
-         <when is=\"false\">\n:narrator: no.\n</when>\n</match>\n",
+         <when is=\"true\">\n@narrator: yes.\n</when>\n\
+         <when is=\"false\">\n@narrator: no.\n</when>\n</match>\n",
     );
     let res = run(&text);
     let out: Vec<String> = res.diagnostics.iter().map(|d| d.code.clone()).collect();
@@ -109,9 +109,9 @@ fn hub_records_choices_and_visited() {
 fn hub_dup_id_with_branch() {
     let out = codes(&format!(
         "{FM}## Shot 1.\n<branch id=\"dup\">\n\
-         <choice id=\"x\" label=\"X\">\n:narrator: x.\n</choice>\n</branch>\n\
+         <choice id=\"x\" label=\"X\">\n@narrator: x.\n</choice>\n</branch>\n\
          <hub id=\"dup\">\n\
-         <choice id=\"a\" label=\"A\" exit>\n:narrator: a.\n</choice>\n</hub>\n",
+         <choice id=\"a\" label=\"A\" exit>\n@narrator: a.\n</choice>\n</hub>\n",
     ));
     assert!(
         out.contains(&"E-DUP-BRANCH".to_string()),
@@ -124,8 +124,8 @@ fn hub_dup_id_with_branch() {
 fn hub_dup_choice_id() {
     let out = codes(&format!(
         "{FM}## Shot 1.\n<hub id=\"h\">\n\
-         <choice id=\"a\" label=\"A\" exit>\n:narrator: a1.\n</choice>\n\
-         <choice id=\"a\" label=\"A2\">\n:narrator: a2.\n</choice>\n</hub>\n",
+         <choice id=\"a\" label=\"A\" exit>\n@narrator: a1.\n</choice>\n\
+         <choice id=\"a\" label=\"A2\">\n@narrator: a2.\n</choice>\n</hub>\n",
     ));
     assert!(
         out.contains(&"E-CHOICE-DUP".to_string()),
@@ -140,8 +140,8 @@ fn hub_passes_clean_check_end_to_end() {
     let text = format!(
         "{FM}## Shot 1.\n<hub id=\"chatWithBianca\">\n\
          <choice id=\"askCoffee\" label=\"Ask about the coffee\" once>\n\
-         :narrator: House blend. Bold, like the clientele.\n</choice>\n\
-         <choice id=\"leave\" label=\"Head out\" exit>\n:narrator: I'd better get moving.\n</choice>\n</hub>\n",
+         @narrator: House blend. Bold, like the clientele.\n</choice>\n\
+         <choice id=\"leave\" label=\"Head out\" exit>\n@narrator: I'd better get moving.\n</choice>\n</hub>\n",
     );
     let res = run(&text);
     let out: Vec<String> = res.diagnostics.iter().map(|d| d.code.clone()).collect();
@@ -159,8 +159,8 @@ fn hub_passes_clean_check_end_to_end() {
 fn hub_choice_when_guard_is_checked_by_defassign() {
     let out = codes(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: number }\n---\n## Shot 1.\n\
-         <hub id=\"h\">\n<choice id=\"a\" label=\"A\" when=\"scene.n > 0\">\n:narrator: hi.\n</choice>\n\
-         <choice id=\"leave\" label=\"Leave\" exit>\n:narrator: bye.\n</choice>\n</hub>\n",
+         <hub id=\"h\">\n<choice id=\"a\" label=\"A\" when=\"scene.n > 0\">\n@narrator: hi.\n</choice>\n\
+         <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye.\n</choice>\n</hub>\n",
     );
     assert!(
         out.contains(&"E-MAYBE-UNSET".to_string()),

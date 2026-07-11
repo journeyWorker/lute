@@ -16,4 +16,4 @@ params:
    read/write and no logic block (§13.4). */
 ::music{action="change" mood=@cue}
 ::vfx{type="whiteOut" label=@cue transition="fade"}
-:narrator: A beat of silence, then the moment lands.
+@narrator: A beat of silence, then the moment lands.

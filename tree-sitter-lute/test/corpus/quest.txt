@@ -3,7 +3,7 @@ quest with objective and on (nesting parity with branch/match)
 ==================
 <quest id="rescueHalsin">
   <objective id="reachGrove" done="run.region == 'grove'">
-    :narrator: You made it to the grove.
+    @narrator: You made it to the grove.
   </objective>
   <on event="questComplete">
     ::set{user.xp += 300}

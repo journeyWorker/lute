@@ -518,7 +518,7 @@ mod tests {
 
     #[test]
     fn hub_parses_choices_with_flags() {
-        let src = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"a\" label=\"Ask\" once>\n:bianca: Sure.\n</choice>\n<choice id=\"leave\" label=\"Go\" exit>\n:fixer: Bye.\n</choice>\n</hub>\n";
+        let src = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"a\" label=\"Ask\" once>\n@bianca: Sure.\n</choice>\n<choice id=\"leave\" label=\"Go\" exit>\n@fixer: Bye.\n</choice>\n</hub>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
         let Node::Hub(h) = &doc.shots[0].body[0] else { panic!() };
@@ -529,7 +529,7 @@ mod tests {
 
     #[test]
     fn hub_rejects_non_choice_children() {
-        let src = "## Shot 1.\n<hub id=\"chat\">\n:narrator: stray\n</hub>\n";
+        let src = "## Shot 1.\n<hub id=\"chat\">\n@narrator: stray\n</hub>\n";
         let (_, diags) = parse(src);
         assert!(diags.iter().any(|d| d.code == "E-LOGIC-CONTENT"));
     }
@@ -538,7 +538,7 @@ mod tests {
     fn hub_nested_in_choice_bodies_parse() {
         // Node::Hub must flow through next_node inside <choice> bodies, both in a
         // sibling <hub> and inside a <branch>'s <choice> (dsl §7.3.2).
-        let src = "## Shot 1.\n<hub id=\"outer\">\n<choice id=\"a\" label=\"A\">\n<hub id=\"inner\">\n<choice id=\"x\" label=\"X\">\n:bianca: hi\n</choice>\n</hub>\n</choice>\n</hub>\n<branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n<hub id=\"h2\">\n<choice id=\"y\" label=\"Y\">\n:fixer: yo\n</choice>\n</hub>\n</choice>\n</branch>\n";
+        let src = "## Shot 1.\n<hub id=\"outer\">\n<choice id=\"a\" label=\"A\">\n<hub id=\"inner\">\n<choice id=\"x\" label=\"X\">\n@bianca: hi\n</choice>\n</hub>\n</choice>\n</hub>\n<branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n<hub id=\"h2\">\n<choice id=\"y\" label=\"Y\">\n@fixer: yo\n</choice>\n</hub>\n</choice>\n</branch>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
         let Node::Hub(outer) = &doc.shots[0].body[0] else { panic!("expected outer Hub") };
@@ -552,7 +552,7 @@ mod tests {
     #[test]
     fn on_parses_event_when_and_body() {
         let (doc, diags) = crate::parse(
-            "## Shot 1.\n<on event=\"combatEnd\" when=\"run.dead\">\n:narrator: silence.\n</on>\n",
+            "## Shot 1.\n<on event=\"combatEnd\" when=\"run.dead\">\n@narrator: silence.\n</on>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");
         let Node::On(on) = &doc.shots[0].body[0] else { panic!("{:?}", doc.shots[0].body) };

@@ -296,7 +296,7 @@ mod tests {
         text.find(needle).expect("needle present") + 1
     }
 
-    const WITH_DEF_FOND: &str = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@fond\">\n    :fixer: gently.\n  </when>\n  <otherwise>\n    :fixer: bluntly.\n  </otherwise>\n</match>\n";
+    const WITH_DEF_FOND: &str = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@fond\">\n    @fixer: gently.\n  </when>\n  <otherwise>\n    @fixer: bluntly.\n  </otherwise>\n</match>\n";
 
     #[test]
     fn hover_on_ref_shows_def_cel() {
@@ -485,7 +485,7 @@ mod tests {
     #[test]
     fn hover_on_imported_ref_shows_def() {
         // `@helped` is NOT declared inline — it is only imported via `uses:`.
-        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@helped\">\n    :fixer: yes.\n  </when>\n  <otherwise>\n    :fixer: no.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.affect.bianca\">\n  <when test=\"@helped\">\n    @fixer: yes.\n  </when>\n  <otherwise>\n    @fixer: no.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = pos_on(text, "@helped");
         let h = hover_at(&doc, &load_core_snapshot(), &schema_imports(), off).unwrap();
@@ -520,7 +520,7 @@ mod tests {
 
     /// A content line with all three interp kinds (dsl §7.6): a reserved token,
     /// a state path, and an `@ref` — over a doc that declares `run.coins` + `@fond`.
-    const WITH_INTERPS: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.coins: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"run.coins >= 1\" }\n---\n## Shot 1.\n:bianca: Hi {{userName}}, {{run.coins}} — {{@fond}}.\n";
+    const WITH_INTERPS: &str = "---\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  run.coins: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"run.coins >= 1\" }\n---\n## Shot 1.\n@bianca: Hi {{userName}}, {{run.coins}} — {{@fond}}.\n";
 
     /// Byte offset just inside the referent of the `{{whole}}` interp in `text`.
     fn interp_off(text: &str, whole: &str) -> usize {
@@ -567,7 +567,7 @@ mod tests {
     /// uses. Pre-D3 the `is` value was discarded (no hover).
     #[test]
     fn hover_on_when_is_shows_enum_domain() {
-        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n:fixer: nice.\n</when>\n<otherwise>\n:fixer: ok.\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"gold\"").unwrap() + "is=\"".len() + 1; // inside "gold"
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();

@@ -12,4 +12,4 @@ title: Background staging
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
 
-:narrator: Venny's. Soft overhead light, a faint jazz loop, the white-noise of a drink-bar fountain.
+@narrator: Venny's. Soft overhead light, a faint jazz loop, the white-noise of a drink-bar fountain.

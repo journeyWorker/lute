@@ -26,14 +26,14 @@ fn codes(text: &str) -> Vec<String> {
 fn on_without_event_errors() {
     // <on> with no event= -> E-ON-NO-EVENT.
     let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n\
-                    <on>\n:x: hi\n</on>\n</quest>\n");
+                    <on>\n@x: hi\n</on>\n</quest>\n");
     assert!(cs.contains(&"E-ON-NO-EVENT".to_string()), "{cs:?}");
 }
 
 #[test]
 fn on_unknown_event_errors() {
     let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n\
-                    <on event=\"noSuchEvent\">\n:x: hi\n</on>\n</quest>\n");
+                    <on event=\"noSuchEvent\">\n@x: hi\n</on>\n</quest>\n");
     assert!(cs.contains(&"E-UNKNOWN-EVENT".to_string()), "{cs:?}");
 }
 

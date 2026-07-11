@@ -41,11 +41,11 @@ defs:
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
 ::auto{character="bianca" action="fade-in-up"}
-:bianca{code="0010" emotion="surprised"}: Oh!
+@bianca{code="0010" emotion="surprised"}: Oh!
 
 <branch id="number">
   <choice id="blunt" label="Flat">
-    :fixer{code="0010"}: Number.
+    @fixer{code="0010"}: Number.
   </choice>
   <choice id="soft" label="Gentle">
     ::set{scene.affect.bianca += 1}
@@ -54,13 +54,13 @@ defs:
 
 <match on="scene.choices.number">
   <when test="@fond">
-    :fixer{delivery="thought"}: Nice.
+    @fixer{delivery="thought"}: Nice.
   </when>
   <when test="$ == 'blunt'">
-    :fixer{delivery="thought"}: Flat.
+    @fixer{delivery="thought"}: Flat.
   </when>
   <otherwise>
-    :fixer{delivery="thought"}: Hm.
+    @fixer{delivery="thought"}: Hm.
   </otherwise>
 </match>
 "#;
@@ -91,13 +91,13 @@ state:
 
 <hub id="chat">
   <choice id="ask" label="Ask" once>
-    :narrator: Sure.
+    @narrator: Sure.
   </choice>
   <choice id="curious" label="Be curious" when="scene.affect.b >= 1">
-    :narrator: Hmm.
+    @narrator: Hmm.
   </choice>
   <choice id="leave" label="Leave" exit>
-    :narrator: Bye.
+    @narrator: Bye.
   </choice>
 </hub>
 "#;
@@ -302,7 +302,7 @@ episodeId: ep02final
 
 ## Shot 1.
 
-:narrator: The stage is set.
+@narrator: The stage is set.
 "#;
     let artifact = compile(&input(AUTHORED)).expect("authored episodeId doc compiles");
     assert_eq!(scene_meta(&artifact).episode_id, "ep02final");
@@ -343,7 +343,7 @@ title: Cut gate
 
 ::cut{assetId="CUT.scenarios.bianca.s01ep02.01" action="show" full="true"}
 
-:narrator: The beam lands full-frame.
+@narrator: The beam lands full-frame.
 "#;
     let artifact = compile(&input(DOC)).expect("clean cut doc compiles through the D6 gate");
     let cut = artifact
@@ -387,14 +387,14 @@ state:
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
 ::auto{character="bianca" action="fade-in-up"}
-:bianca{code="0010"}: Hi.
+@bianca{code="0010"}: Hi.
 
 <branch id="couch">
   <choice id="help" label="Help">
-    :fixer{code="0010"}: Sure.
+    @fixer{code="0010"}: Sure.
   </choice>
   <choice id="ignore" label="Ignore">
-    :fixer{code="0020"}: No.
+    @fixer{code="0020"}: No.
   </choice>
 </branch>
 "#;
@@ -458,14 +458,14 @@ state:
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
 ::auto{character="bianca" action="fade-in-up"}
-:bianca{code="0010"}: Hi.
+@bianca{code="0010"}: Hi.
 
 <branch id="couch">
   <choice id="help" label="Help">
-    :fixer{code="0010"}: Sure.
+    @fixer{code="0010"}: Sure.
   </choice>
   <choice id="ignore" label="Ignore">
-    :fixer{code="0020"}: No.
+    @fixer{code="0020"}: No.
   </choice>
 </branch>
 "#;
@@ -539,7 +539,7 @@ defs:
 
 ## Shot 1.
 
-:bianca{code="0010"}: Hi {{userName}}, {{run.coins}} left, {{@fond}}.
+@bianca{code="0010"}: Hi {{userName}}, {{run.coins}} left, {{@fond}}.
 "#;
     let artifact = compile(&input(DOC)).expect("clean compile");
     let line = artifact
@@ -601,10 +601,10 @@ state:
 
 <branch id="pick">
   <choice id="give" label="Give {{run.coins}} coins">
-    :narrator: Done.
+    @narrator: Done.
   </choice>
   <choice id="keep" label="Keep them">
-    :narrator: Fine.
+    @narrator: Fine.
   </choice>
 </branch>
 "#;
@@ -638,7 +638,7 @@ state:
 
 /// Mirrors the DSL Appendix D worked example (trimmed): one `<quest>` with 2
 /// objectives + an `<on event="questComplete">` arm carrying a `::set` + a
-/// `:narrator:` line. `run.*` paths read by `start`/`done` are declared
+/// `@narrator:` line. `run.*` paths read by `start`/`done` are declared
 /// inline via `state:` (with defaults, so defassign is clean) so `check()`
 /// passes.
 const QUEST_SRC: &str = r#"---
@@ -654,7 +654,7 @@ state:
 
 <on event="questComplete">
 ::set{run.act = true}
-:narrator: The quest is complete.
+@narrator: The quest is complete.
 </on>
 </quest>
 "#;
@@ -687,7 +687,7 @@ state:
 ---
 
 <quest id="rescueHalsin" title="Rescue">
-:narrator: A quest begins.
+@narrator: A quest begins.
 ::set{run.act = true}
 <objective id="reachGrove" done="run.act"/>
 </quest>
@@ -776,7 +776,7 @@ fn hub_choice_use_expands_component_records_with_source_stamp() {
     let (comp_body, comp_diags) = lute_syntax::parse(
         "---\ncomponent: greet\n---\n\n## Scene 1.\n\n\
          ::auto{character=\"bianca\" action=\"fade-in-up\"}\n\
-         :narrator: A familiar face steps into the light.\n",
+         @narrator: A familiar face steps into the light.\n",
     );
     assert!(
         comp_diags.iter().all(|d| d.severity != lute_core_span::Severity::Error),
@@ -809,7 +809,7 @@ episode: 1
     ::use{component="greet"}
   </choice>
   <choice id="leave" label="Leave" exit>
-    :narrator: Bye.
+    @narrator: Bye.
   </choice>
 </hub>
 "#;
@@ -890,10 +890,10 @@ state:
 
 <hub id="chat">
   <choice id="ask" label="Ask" once>
-    :narrator: Hi.
+    @narrator: Hi.
   </choice>
   <choice id="thank" label="Thank her" exit persist="run" into="run.metGreeted">
-    :narrator: Thanks.
+    @narrator: Thanks.
   </choice>
 </hub>
 "#;

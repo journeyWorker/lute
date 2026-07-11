@@ -49,7 +49,7 @@ fn codes(dir: &Path, scene: &str) -> Vec<String> {
 }
 
 const GREET: &str = "---\ncomponent: greet\nparams:\n  who: string\n---\n\
-## Scene 1.\n::auto{character=@who}\n:narrator: Hello there.\n";
+## Scene 1.\n::auto{character=@who}\n@narrator: Hello there.\n";
 
 fn scene(components: &str, body: &str) -> String {
     format!("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [{components}]\n---\n## Shot 1.\n{body}\n")
@@ -117,7 +117,7 @@ fn mistyped_arg_is_component_arg() {
     write_lute(
         &dir,
         "badge.lute",
-        "---\ncomponent: badge\nparams:\n  count: number\n---\n## B.\n:narrator: badge.\n",
+        "---\ncomponent: badge\nparams:\n  count: number\n---\n## B.\n@narrator: badge.\n",
     );
     let s = scene(
         "badge.lute",
@@ -136,7 +136,7 @@ fn numeric_arg_of_number_param_is_clean() {
     write_lute(
         &dir,
         "badge.lute",
-        "---\ncomponent: badge\nparams:\n  count: number\n---\n## B.\n:narrator: badge.\n",
+        "---\ncomponent: badge\nparams:\n  count: number\n---\n## B.\n@narrator: badge.\n",
     );
     let s = scene("badge.lute", "::use{component=\"badge\" count=\"3\"}");
     let cs = codes(&dir, &s);
@@ -152,7 +152,7 @@ fn use_ref_arg_type_mismatch_flags() {
     write_lute(
         &dir,
         "c.lute",
-        "---\ncomponent: c\nparams:\n  count: number\n---\n## C.\n:narrator: badge.\n",
+        "---\ncomponent: c\nparams:\n  count: number\n---\n## C.\n@narrator: badge.\n",
     );
     // The scene declares a string-typed def `label`; passing it to a `number`
     // param is a DEFINITE type mismatch (str != number) resolvable in scene scope.
@@ -170,7 +170,7 @@ fn use_ref_arg_compatible_ok() {
     write_lute(
         &dir,
         "c.lute",
-        "---\ncomponent: c\nparams:\n  count: number\n---\n## C.\n:narrator: badge.\n",
+        "---\ncomponent: c\nparams:\n  count: number\n---\n## C.\n@narrator: badge.\n",
     );
     // A number-typed def for a number param is compatible — no E-COMPONENT-ARG.
     let s = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\ndefs:\n  num: { type: number, cel: \"3\" }\n---\n## Shot 1.\n::use{component=\"c\" count=@num}\n";
@@ -212,8 +212,8 @@ fn state_read_in_body_is_v1_error() {
         &dir,
         "logic.lute",
         "---\ncomponent: logic\n---\n## L.\n<match on=\"scene.x\">\n\
-<when test=\"$ == true\">:narrator: a\n</when>\n\
-<otherwise>:narrator: b\n</otherwise>\n</match>\n",
+<when test=\"$ == true\">@narrator: a\n</when>\n\
+<otherwise>@narrator: b\n</otherwise>\n</match>\n",
     );
     let s = scene("logic.lute", "::use{component=\"logic\"}");
     let cs = codes(&dir, &s);
@@ -267,7 +267,7 @@ fn interp_ref_in_body_is_resolved() {
         &dir,
         "greet.lute",
         "---\ncomponent: greet\nparams:\n  n: number\n---\n\
-## G.\n:narrator: you have {{@n}} and {{@missing}}\n",
+## G.\n@narrator: you have {{@n}} and {{@missing}}\n",
     );
     let s = scene("greet.lute", "::use{component=\"greet\" n=\"1\"}");
     let cs = codes(&dir, &s);

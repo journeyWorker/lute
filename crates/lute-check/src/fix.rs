@@ -1,13 +1,13 @@
 //! `lute fix` migration codemod (dsl §7.1, §7.3). Byte-exact,
 //! comment-preserving span rewrites over one `.lute` document:
 //!
-//!   1. **`:line[speaker]{…}: text` → `:speaker{…}: text`** — the removed 0.0.1
-//!      bracket content-line form. The 0.1.0 parser REJECTS `:line[` with an
+//!   1. **`:line[speaker]{…}: text` → `@speaker{…}: text`** — the removed 0.0.1
+//!      bracket content-line form. The parser REJECTS `:line[` with an
 //!      `E-UNCLASSIFIED` diagnostic and recovers by DROPPING the line node, so
 //!      there is no AST node to drive the rewrite from. Instead the parser
 //!      attaches a `migrate`-kind `Fixit` (a `TextEdit` replacing the
-//!      `:line[speaker]` span with `:speaker`) to that diagnostic; phase 1
-//!      applies those fix-its.
+//!      `:line[speaker]` span with `@speaker` — the CURRENT 0.2.2 sigil,
+//!      foundation C1) to that diagnostic; phase 1 applies those fix-its.
 //!   2. **`<choice>`/`<hub>`-choice `as="…"` → `into="…"`** — the persist-target
 //!      attr rename. `as="…"` on a choice PARSES cleanly (a generic attr; its
 //!      persist meaning is a CHECK-stage concern), so once phase 1 has removed
@@ -15,18 +15,18 @@
 //!      AST's `<choice>`/`<hub>` choices for an `as` key and rewrites it to
 //!      `into`. **`as` on a CONTENT LINE stays** — it is a display-label override
 //!      (dsl §7.1), never a persist target, so `Line.attrs` are never touched.
-//!   3. **content `Line`'s leading `:` sigil → `@`** (dsl 0.2.2 §7.1, Task C3
-//!      foundation) — lands BEFORE the 0.3.0 grammar break (C1) that will make
-//!      `@` the only legal content-line sigil, so this walks real 0.2.x-shaped
-//!      `Line` nodes (the same phase-2 re-parsed AST) and rewrites the single
-//!      byte at `Line.span.byte_start` (the leading `:`). Idempotent: a line
-//!      already starting `@` is skipped — moot today, since the current
-//!      grammar doesn't parse `@`-led lines at all (an unrecognized line is
-//!      `E-UNCLASSIFIED`, which trips phase 2's parse-error guard), so
-//!      re-running `fix_document` on already-migrated output is a no-op.
-//!      Collected into the SAME edit list as rule 2 and spliced in ONE pass —
-//!      rule 2 is length-changing (`as` -> `into`), so a separate later splice
-//!      would corrupt rule 3's already-computed offsets.
+//!   3. **any OTHER content-line leading `:` sigil → `@`** (dsl 0.2.2 §7.1,
+//!      Task C3 foundation, now that the 0.3.0 grammar break — C1 — has
+//!      landed and `@` is the only legal content-line sigil) — the parser
+//!      attaches the SAME kind of single-byte `migrate` `Fixit` as rule 1 to
+//!      every `:`-led content line's `E-UNCLASSIFIED` diagnostic (regardless
+//!      of what follows: missing second `:`, malformed attrs, …), so PHASE 1
+//!      now migrates every sigil in one pass, same as rule 1. The phase-2
+//!      AST walk below (over `Line` nodes with a leading `:` byte) is kept as
+//!      a defensive no-op — by construction phase 1 already rewrote every
+//!      `:`-led line, so phase 2's re-parse never sees one — rather than
+//!      deleted, since it costs nothing and guards against a future gap in
+//!      the parser's fix-it coverage.
 //!
 //! Mirrors `tag.rs`'s splice discipline: collect target `(start, end,
 //! replacement)` spans, then splice back-to-front (descending `byte_start`) so
@@ -51,7 +51,10 @@ pub struct FixResult {
 /// document (or one whose phase-1 output still fails to parse) is returned
 /// with `changed: 0` / phase-1-only.
 pub fn fix_document(text: &str) -> FixResult {
-    // -- phase 1: apply the parser's `:line[` migrate fix-its (back-to-front) --
+    // -- phase 1: apply the parser's `migrate` fix-its (back-to-front) — the
+    // `:line[speaker]` bracket form (rule 1) AND any other `:`-led content
+    // line's sigil (rule 3) both attach one here, so phase 1 migrates every
+    // sigil in the document, not just the legacy bracket form --
     let (_doc, diags) = parse(text);
     let mut edits: Vec<(usize, usize, String)> = Vec::new();
     for d in &diags {
@@ -66,12 +69,11 @@ pub fn fix_document(text: &str) -> FixResult {
     let phase1 = edits.len();
     let text1 = splice(text, edits);
 
-    // -- phase 2: re-parse; if clean, (a) rewrite choice/hub `as` keys to
-    // `into`, and (b) rewrite each content line's leading `:` sigil to `@`
-    // (dsl 0.2.2 §7.1, Task C3 foundation — see module docs, rule 3). Both are
-    // AST-driven span edits over `text1`, collected into ONE list and spliced
-    // together: rule (a) is length-changing (`as` -> `into`), so a separate
-    // later splice pass would shift rule (b)'s already-computed offsets.
+    // -- phase 2: re-parse; if clean, rewrite choice/hub `as` keys to `into`.
+    // The leading-`:` sigil walk below (rule 3) is a defensive no-op here —
+    // phase 1 already rewrote every `:`-led line via its own `migrate`
+    // fix-it (see module docs) — kept in case a future parser change adds a
+    // `:`-led shape phase 1 doesn't cover.
     let (doc2, diags2) = parse(&text1);
     // A remaining parse error means phase 1 didn't fully migrate (or the doc had
     // an unrelated structural error): skip phase 2, return the phase-1 text.
@@ -113,13 +115,12 @@ pub fn fix_document(text: &str) -> FixResult {
     }
     let bytes1 = text1.as_bytes();
     for l in &lines {
-        // `Line.span.byte_start` is the offset of the leading `:` (`parse_line`
-        // sets `span = self.span(cstart, line_end)` where `cstart` is the `:`
-        // itself, dsl §7.1) — a single-byte replace. Idempotent: a line whose
-        // leading byte is already `@` emits nothing; unreachable pre-C1 today
-        // since the grammar only recognizes `:`-led content lines (an
-        // `@`-led line is `E-UNCLASSIFIED`, which trips the parse-error guard
-        // above and skips phase 2 entirely), but kept for when C1 lands.
+        // `Line.span.byte_start` is the offset of the leading sigil
+        // (`parse_line` sets `span = self.span(cstart, line_end)` where
+        // `cstart` is the sigil byte itself, dsl §7.1) — a single-byte
+        // replace. Always a no-op in practice (see the phase-2 comment
+        // above): phase 1's `migrate` fix-its already rewrote every `:`-led
+        // line, so every `Line` reaching here already starts `@`.
         let start = l.span.byte_start;
         if bytes1.get(start) == Some(&b':') {
             edits2.push((start, start + 1, "@".to_string()));
@@ -328,8 +329,8 @@ mod tests {
             ":line[bianca]{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n",
         );
         let out = fix_document(&src);
-        // phase1 (`:line[` removal) + phase2 (`as`→`into` + both lines' `:`→`@`).
-        assert_eq!(out.changed, 4, "all rules fire; got:\n{}", out.text);
+        // phase1 (`:line[` removal + both lines' `:`→`@`) + phase2 (`as`→`into`).
+        assert_eq!(out.changed, 3, "all rules fire; got:\n{}", out.text);
         assert!(out.text.contains("@bianca{emotion=\"x\"}: hi"), "got:\n{}", out.text);
         assert!(
             out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),

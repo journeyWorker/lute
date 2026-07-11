@@ -131,8 +131,8 @@ fn check_codes(text: &str, snap: CapabilitySnapshot) -> Vec<String> {
 const SCENE: &str = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 5\n---\n## Shot 1.\n\
 ::minigame{kind=\"rhythm\" id=\"x\" resultKey=\"service01\" wait=\"true\"}\n\
 <match on=\"scene.minigame.service01.rank\">\n\
-<when test=\"$ == 'gold'\">:bianca: a\n</when>\n\
-<otherwise>:bianca: b\n</otherwise>\n\
+<when test=\"$ == 'gold'\">@bianca: a\n</when>\n\
+<otherwise>@bianca: b\n</otherwise>\n\
 </match>\n";
 
 #[test]

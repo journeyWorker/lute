@@ -35,7 +35,7 @@ state:
 
 ## Shot 1.
 
-:narrator: Bianca watches you from across the counter, reading the room.
+@narrator: Bianca watches you from across the counter, reading the room.
 
 ## Shot 2.
 
@@ -47,12 +47,12 @@ state:
 */
 <match on="scene.mood">
   <when is="calm">
-    :fixer{delivery="thought"}: Steady breathing. Nothing to prove tonight.
+    @fixer{delivery="thought"}: Steady breathing. Nothing to prove tonight.
   </when>
   <when is="tense">
-    :fixer{delivery="thought"}: Shoulders drawn tight — I should tread carefully.
+    @fixer{delivery="thought"}: Shoulders drawn tight — I should tread carefully.
   </when>
   <when is="joyful|playful">
-    :fixer{delivery="thought"}: Light in the eyes, whichever way it tilts.
+    @fixer{delivery="thought"}: Light in the eyes, whichever way it tilts.
   </when>
 </match>

@@ -75,7 +75,7 @@ pub fn complete_at(
                 state_path_items(&meta)
             }
         }
-        // A content-line attr key/value (dsl §7.1's `:speaker{…}:` — no owning
+        // A content-line attr key/value (dsl §7.1's `@speaker{…}:` — no owning
         // directive/capability schema, unlike a `::directive`'s attrs).
         Cursor::AttrKey {
             directive: None, ..
@@ -132,7 +132,7 @@ fn construct_attr_key_items(construct: QuestConstruct) -> Vec<CompletionItem> {
         .collect()
 }
 
-/// Content-line attribute keys (dsl 0.1.0 §7.1, §12.1): a `:speaker{…}:` line's
+/// Content-line attribute keys (dsl 0.1.0 §7.1, §12.1): a `@speaker{…}:` line's
 /// fixed 7-key vocabulary is, like [`construct_attr_key_items`]'s three quest
 /// constructs, NOT capability-schema-driven (it belongs to the content-line
 /// grammar itself, validated by `lute_check::content_line` rather than a
@@ -194,7 +194,7 @@ fn character_ids(providers: &ProviderSet) -> Vec<String> {
         .collect()
 }
 
-/// `:speaker{…}:` name completion (dsl §7.1): pinned `character` catalog ids
+/// `@speaker{…}:` name completion (dsl §7.1): pinned `character` catalog ids
 /// (kind `VALUE`, as [`asset_segment_items`] offers provider ids) plus the
 /// always-valid `narrator` keyword (kind `KEYWORD`). Speaker-id VALIDATION
 /// stays out of scope for 0.2.1 (deferred to the 0.2.2 foundation minor) —
@@ -698,7 +698,7 @@ mod tests {
 
     #[test]
     fn completion_of_choice_ids_in_match_subject() {
-        let text = "## Shot 1.\n<branch id=\"number\">\n  <choice id=\"a\" label=\"A\">\n    :f: a.\n  </choice>\n</branch>\n<match on=\"\">\n  <otherwise>\n    :f: x.\n  </otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"number\">\n  <choice id=\"a\" label=\"A\">\n    @f: a.\n  </choice>\n</branch>\n<match on=\"\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
         let items = complete_at(
@@ -720,7 +720,7 @@ mod tests {
     /// descend into hub choices).
     #[test]
     fn completion_of_choice_ids_offers_hub_nested_branch() {
-        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" label=\"Ask\" once>\n<branch id=\"inner\">\n<choice id=\"a\" label=\"A\">\n:f: a.\n</choice>\n</branch>\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n:f: bye.\n</choice>\n</hub>\n<match on=\"\">\n<otherwise>\n:f: x.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" label=\"Ask\" once>\n<branch id=\"inner\">\n<choice id=\"a\" label=\"A\">\n@f: a.\n</choice>\n</branch>\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n<match on=\"\">\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
         let items = complete_at(
@@ -742,7 +742,7 @@ mod tests {
     /// hub's own id, not just ids nested inside its choice bodies.
     #[test]
     fn completion_of_choice_ids_offers_hub_own_id() {
-        let text = "## Shot 1.\n<hub id=\"chatWithBianca\">\n<choice id=\"ask\" label=\"Ask\" once>\n:f: a.\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n:f: bye.\n</choice>\n</hub>\n<match on=\"\">\n<otherwise>\n:f: x.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<hub id=\"chatWithBianca\">\n<choice id=\"ask\" label=\"Ask\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n<match on=\"\">\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
         let items = complete_at(
@@ -764,7 +764,7 @@ mod tests {
     /// into hub choices).
     #[test]
     fn attr_key_completion_dedupes_present_keys_in_hub_choice() {
-        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" label=\"Ask\" once>\n::camera{focus=\"b\" }\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n:f: bye.\n</choice>\n</hub>\n";
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" label=\"Ask\" once>\n::camera{focus=\"b\" }\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n";
         let doc = parsed(text);
         // Cursor in the whitespace after the first attr (still the attr area).
         let off = text.find("\" }").unwrap() + 2;
@@ -1026,7 +1026,7 @@ mod tests {
     /// state paths (the pre-D3 fall-through when `is` was discarded).
     #[test]
     fn completion_in_when_is_offers_enum_members() {
-        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n:fixer: nice.\n</when>\n<otherwise>\n:fixer: ok.\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"gold\"").unwrap() + "is=\"".len() + 1; // inside "gold"
         let items = complete_at(
@@ -1051,7 +1051,7 @@ mod tests {
     /// `unset` (the implicit recording enum, dsl §11.1.3).
     #[test]
     fn completion_in_when_is_offers_hub_choice_ids() {
-        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" label=\"Coffee?\" once>\n:f: a.\n</choice>\n<choice id=\"leave\" label=\"Bye\" exit>\n:f: bye.\n</choice>\n</hub>\n<match on=\"scene.choices.chat\">\n<when is=\"askCoffee\">\n:f: x.\n</when>\n<otherwise>\n:f: y.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" label=\"Coffee?\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" label=\"Bye\" exit>\n@f: bye.\n</choice>\n</hub>\n<match on=\"scene.choices.chat\">\n<when is=\"askCoffee\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"askCoffee\"").unwrap() + "is=\"".len() + 1;
         let items = complete_at(
@@ -1073,7 +1073,7 @@ mod tests {
     /// §11.1.3), so `is=` completion offers true/false/unset.
     #[test]
     fn completion_in_when_is_offers_visited_bool() {
-        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" label=\"Coffee?\" once>\n:f: a.\n</choice>\n<choice id=\"leave\" label=\"Bye\" exit>\n:f: bye.\n</choice>\n</hub>\n<match on=\"scene.visited.chat.askCoffee\">\n<when is=\"true\">\n:f: x.\n</when>\n<otherwise>\n:f: y.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" label=\"Coffee?\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" label=\"Bye\" exit>\n@f: bye.\n</choice>\n</hub>\n<match on=\"scene.visited.chat.askCoffee\">\n<when is=\"true\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"true\"").unwrap() + "is=\"".len() + 1;
         let items = complete_at(
@@ -1094,7 +1094,7 @@ mod tests {
     /// CEL slot (offers def names), never the `is=` literal domain.
     #[test]
     fn completion_on_when_test_is_unchanged_cel() {
-        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\ndefs:\n  warm: { type: bool, cel: \"true\" }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when test=\"@warm\">\n:fixer: nice.\n</when>\n<otherwise>\n:fixer: ok.\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\ndefs:\n  warm: { type: bool, cel: \"true\" }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when test=\"@warm\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@warm").unwrap() + 1; // just past `@`
         let items = complete_at(
@@ -1121,7 +1121,7 @@ mod tests {
     /// choices because `-` is a path byte).
     #[test]
     fn completion_in_when_is_rejects_non_cel_subject() {
-        let text = "## Shot 1.\n<branch id=\"pick-one\">\n<choice id=\"a\" label=\"A\">\n:f: a.\n</choice>\n<choice id=\"b\" label=\"B\">\n:f: b.\n</choice>\n</branch>\n<match on=\"scene.choices.pick-one\">\n<when is=\"a\">\n:f: x.\n</when>\n<otherwise>\n:f: y.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"pick-one\">\n<choice id=\"a\" label=\"A\">\n@f: a.\n</choice>\n<choice id=\"b\" label=\"B\">\n@f: b.\n</choice>\n</branch>\n<match on=\"scene.choices.pick-one\">\n<when is=\"a\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"a\"").unwrap() + "is=\"".len() + 1;
         let items = complete_at(
@@ -1145,7 +1145,7 @@ mod tests {
     /// first's — the pre-fix walk early-returned on the FIRST match.
     #[test]
     fn completion_in_when_is_uses_last_duplicate_branch() {
-        let text = "## Shot 1.\n<branch id=\"dup\">\n<choice id=\"first1\" label=\"F1\">\n:f: a.\n</choice>\n<choice id=\"first2\" label=\"F2\">\n:f: b.\n</choice>\n</branch>\n<branch id=\"dup\">\n<choice id=\"last1\" label=\"L1\">\n:f: c.\n</choice>\n<choice id=\"last2\" label=\"L2\">\n:f: d.\n</choice>\n</branch>\n<match on=\"scene.choices.dup\">\n<when is=\"last1\">\n:f: x.\n</when>\n<otherwise>\n:f: y.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"dup\">\n<choice id=\"first1\" label=\"F1\">\n@f: a.\n</choice>\n<choice id=\"first2\" label=\"F2\">\n@f: b.\n</choice>\n</branch>\n<branch id=\"dup\">\n<choice id=\"last1\" label=\"L1\">\n@f: c.\n</choice>\n<choice id=\"last2\" label=\"L2\">\n@f: d.\n</choice>\n</branch>\n<match on=\"scene.choices.dup\">\n<when is=\"last1\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"last1\"").unwrap() + "is=\"".len() + 1;
         let items = complete_at(
@@ -1249,7 +1249,7 @@ mod tests {
         // key/value spans coincide and would resolve as an `AttrValue`
         // instead — resolves to `Cursor::AttrKey { directive: None, .. }`
         // (dsl §7.1 content lines have no owning directive/capability schema).
-        let text = "## Shot 1.\n:x{code=\"c1\"}: hi\n";
+        let text = "## Shot 1.\n@x{code=\"c1\"}: hi\n";
         let off = text.find("code").unwrap() + 2; // inside `code`, before `=`
         let items = complete(text, off);
         let ls = labels(&items);
@@ -1261,7 +1261,7 @@ mod tests {
     fn content_line_delivery_value_completion_offers_exactly_three_members() {
         // Cursor inside the empty `delivery=""` value -> `Cursor::AttrValue {
         // directive: None, key: "delivery" }`.
-        let text = "## Shot 1.\n:x{delivery=\"\"}: hi\n";
+        let text = "## Shot 1.\n@x{delivery=\"\"}: hi\n";
         let off = text.find("delivery=\"").unwrap() + "delivery=\"".len();
         let items = complete(text, off);
         let ls = labels(&items);
@@ -1274,7 +1274,7 @@ mod tests {
     #[test]
     fn content_line_other_attr_key_has_no_value_completion() {
         // `emotion` has no closed domain in 0.2.1 (only `delivery` does).
-        let text = "## Shot 1.\n:x{emotion=\"\"}: hi\n";
+        let text = "## Shot 1.\n@x{emotion=\"\"}: hi\n";
         let off = text.find("emotion=\"").unwrap() + "emotion=\"".len();
         assert!(complete(text, off).is_empty());
     }
@@ -1283,8 +1283,8 @@ mod tests {
     fn speaker_completion_offers_narrator_with_no_provider() {
         // Cursor on the speaker NAME itself -> `Cursor::Speaker`. No provider
         // snapshot pinned, so only the `narrator` keyword is offered.
-        let text = "## Shot 1.\n:nar: hi\n";
-        let off = text.find(":nar").unwrap() + 2; // inside `nar`
+        let text = "## Shot 1.\n@nar: hi\n";
+        let off = text.find("@nar").unwrap() + 2; // inside `nar`
         let items = complete(text, off);
         let ls = labels(&items);
         assert_eq!(ls, vec!["narrator"], "narrator-only, no catalog: {ls:?}");
@@ -1294,9 +1294,9 @@ mod tests {
     fn speaker_completion_offers_character_ids_when_provider_pinned() {
         use lute_manifest::provider::ProviderSnapshot;
         use std::collections::BTreeMap;
-        let text = "## Shot 1.\n:bia: hi\n";
+        let text = "## Shot 1.\n@bia: hi\n";
         let doc = parsed(text);
-        let off = text.find(":bia").unwrap() + 2; // inside `bia`
+        let off = text.find("@bia").unwrap() + 2; // inside `bia`
         let providers = ProviderSet::from_one(ProviderSnapshot {
             manifest_version: "1".to_string(),
             provider_version: "1".to_string(),

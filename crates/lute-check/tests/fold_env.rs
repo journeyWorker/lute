@@ -21,10 +21,10 @@ defs:
 
 <branch id="number">
   <choice id="blunt" label="Flat">
-    :fixer: a
+    @fixer: a
   </choice>
   <choice id="soft" label="Gentle">
-    :fixer: b
+    @fixer: b
   </choice>
 </branch>
 "#;

@@ -30,7 +30,7 @@ fn codes(text: &str) -> Vec<String> {
 #[test]
 fn scene_kind_missing_errors() {
     // a doc with the scene triad but no `kind:` -> E-KIND-MISSING.
-    assert!(codes("---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:x: hi\n")
+    assert!(codes("---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@x: hi\n")
         .contains(&"E-KIND-MISSING".to_string()));
 }
 
@@ -42,7 +42,7 @@ fn unknown_kind_errors() {
 #[test]
 fn kind_scene_is_clean_discriminator() {
     // explicit kind: scene + triad -> no E-KIND-MISSING/E-UNKNOWN-KIND.
-    let cs = codes("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:x: hi\n");
+    let cs = codes("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@x: hi\n");
     assert!(!cs.iter().any(|c| c == "E-KIND-MISSING" || c == "E-UNKNOWN-KIND"), "{cs:?}");
 }
 
@@ -97,7 +97,7 @@ fn quest_state_readable_in_match() {
     let cs = codes("---\nkind: quest\nstate:\n  run.d: { type: bool, default: false }\n---\n\
                     <quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
                     <on event=\"questComplete\">\n<match on=\"quest.q.state\">\n\
-                    <when is=\"complete\">\n:x: done\n</when>\n<otherwise>\n:x: -\n</otherwise>\n\
+                    <when is=\"complete\">\n@x: done\n</when>\n<otherwise>\n@x: -\n</otherwise>\n\
                     </match>\n</on>\n</quest>\n");
     assert!(!cs.iter().any(|c| c == "E-UNDECLARED"), "{cs:?}");
 }
@@ -107,20 +107,20 @@ fn quest_state_readable_in_match() {
 #[test]
 fn scene_rejects_on_and_objective_and_quest() {
     let cs = codes("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-                    <on event=\"questComplete\">\n:x: hi\n</on>\n");
+                    <on event=\"questComplete\">\n@x: hi\n</on>\n");
     assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
 }
 
 #[test]
 fn quest_rejects_hub_timeline_and_headings() {
     let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n\
-                    <hub id=\"h\">\n<choice id=\"c\" label=\"L\" exit>\n:x: bye\n</choice>\n</hub>\n</quest>\n");
+                    <hub id=\"h\">\n<choice id=\"c\" label=\"L\" exit>\n@x: bye\n</choice>\n</hub>\n</quest>\n");
     assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
 }
 
 #[test]
 fn quest_doc_with_shot_heading_is_not_admitted() {
-    let cs = codes("---\nkind: quest\n---\n## Shot 1.\n:x: hi\n");
+    let cs = codes("---\nkind: quest\n---\n## Shot 1.\n@x: hi\n");
     assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
 }
 
@@ -134,7 +134,7 @@ fn nested_objective_inside_on_arm_not_admitted() {
 #[test]
 fn quest_body_admits_objective_on_match_branch_set_content() {
     let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
-                    <on event=\"questComplete\">\n::set{run.x = 1}\n:x: hi\n</on>\n</quest>\n");
+                    <on event=\"questComplete\">\n::set{run.x = 1}\n@x: hi\n</on>\n</quest>\n");
     assert!(!cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
 }
 
@@ -166,7 +166,7 @@ fn no_more_quest_unsupported() {
 fn duplicate_line_code_within_a_quest_errors() {
     // two lines with the same speaker+code inside one quest -> E-DUP-LINE-CODE.
     let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n\
-                    <on event=\"questActive\">\n:x{code=\"0010\"}: one\n:x{code=\"0010\"}: two\n</on>\n</quest>\n");
+                    <on event=\"questActive\">\n@x{code=\"0010\"}: one\n@x{code=\"0010\"}: two\n</on>\n</quest>\n");
     assert!(cs.contains(&"E-DUP-LINE-CODE".to_string()), "{cs:?}");
 }
 
@@ -179,8 +179,8 @@ fn quest_branch_duplicate_choice_ids_errors() {
     // never ran (and its implicit scene.choices.<id> decl was never folded).
     let cs = codes(
         "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
-         <branch id=\"b\">\n<choice id=\"c\" label=\"A\">\n:x: hi\n</choice>\n\
-         <choice id=\"c\" label=\"B\">\n:x: bye\n</choice>\n</branch>\n</quest>\n",
+         <branch id=\"b\">\n<choice id=\"c\" label=\"A\">\n@x: hi\n</choice>\n\
+         <choice id=\"c\" label=\"B\">\n@x: bye\n</choice>\n</branch>\n</quest>\n",
     );
     assert!(cs.contains(&"E-CHOICE-DUP".to_string()), "{cs:?}");
 }
@@ -294,8 +294,8 @@ fn quest_on_directive_slot_opens_scene_path() {
                 <on event=\"questActive\">\n\
                 ::minigame{kind=\"rhythm\" id=\"x\" resultKey=\"service01\" wait=\"true\"}\n\
                 <match on=\"scene.minigame.service01.rank\">\n\
-                <when test=\"$ == 'gold'\">\n:x: hi\n</when>\n\
-                <otherwise>\n:x: bye\n</otherwise>\n\
+                <when test=\"$ == 'gold'\">\n@x: hi\n</when>\n\
+                <otherwise>\n@x: bye\n</otherwise>\n\
                 </match>\n</on>\n</quest>\n";
     let cs = codes_with(text, snapshot_with_minigame());
     assert!(!cs.contains(&"E-UNDECLARED".to_string()), "{cs:?}");

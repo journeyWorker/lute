@@ -449,7 +449,7 @@ mod tests {
             .iter()
             .map(|n| match n {
                 Node::Directive(d) => format!("::{}", d.tag),
-                Node::Line(l) => format!(":{}", l.speaker),
+                Node::Line(l) => format!("@{}", l.speaker),
                 _ => "other".to_string(),
             })
             .collect();
@@ -458,9 +458,9 @@ mod tests {
             vec![
                 format!("::{COMPONENT_BEGIN}"),
                 "::auto".to_string(),
-                ":narrator".to_string(),
+                "@narrator".to_string(),
                 format!("::{COMPONENT_END}"),
-                ":narrator".to_string(),
+                "@narrator".to_string(),
             ]
         );
         // `character=@who` became the VALUE-LEVEL string arg (whole-slot bind).
@@ -525,7 +525,7 @@ components: [greet.component.lute]
 ## Shot 1.
 
 ::use{component="greet" extra="oops"}
-:narrator: And the scene carries on.
+@narrator: And the scene carries on.
 "#;
         let mut doc = parse_clean(src);
         let comps = resolve_components(base, &["greet.component.lute".to_string()], doc.meta.span);
@@ -569,13 +569,13 @@ episode: 1
 
 <branch id="sofaHelp">
   <choice id="help" label="Help her up" persist="run" into="run.metHelpfully">
-    :sofia: Thank you.
+    @sofia: Thank you.
   </choice>
   <choice id="warmly" label="Stay a while" persist="run" into="run.outcome" value="warm">
-    :sofia: Kind.
+    @sofia: Kind.
   </choice>
   <choice id="tip" label="Leave a tip" persist="run" into="run.tip" value="5">
-    :sofia: Oh.
+    @sofia: Oh.
   </choice>
 </branch>
 "#;
@@ -630,7 +630,7 @@ episode: 1
     fn tag_of(n: &Node) -> String {
         match n {
             Node::Directive(d) => format!("::{}", d.tag),
-            Node::Line(l) => format!(":{}", l.speaker),
+            Node::Line(l) => format!("@{}", l.speaker),
             Node::Objective(_) => "objective".to_string(),
             Node::On(_) => "on".to_string(),
             _ => "other".to_string(),
@@ -686,7 +686,7 @@ components: [greet.component.lute]
                 "objective".to_string(),
                 format!("::{COMPONENT_BEGIN}"),
                 "::auto".to_string(),
-                ":narrator".to_string(),
+                "@narrator".to_string(),
                 format!("::{COMPONENT_END}"),
                 "on".to_string(),
             ]
@@ -700,7 +700,7 @@ components: [greet.component.lute]
             vec![
                 format!("::{COMPONENT_BEGIN}"),
                 "::auto".to_string(),
-                ":narrator".to_string(),
+                "@narrator".to_string(),
                 format!("::{COMPONENT_END}"),
             ],
             "the ::use inside <on> must expand, not be dropped silently"

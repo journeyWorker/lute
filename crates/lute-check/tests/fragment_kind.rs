@@ -24,14 +24,14 @@ fn standalone_schema_fragment_has_no_kind_or_meta_error() {
 
 #[test]
 fn standalone_component_fragment_has_no_kind_error() {
-    let cs = codes("---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n:x: hi\n");
+    let cs = codes("---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n@x: hi\n");
     assert!(!cs.iter().any(|c| c == "E-KIND-MISSING"), "{cs:?}");
 }
 
 #[test]
 fn scene_missing_kind_still_errors() {
     // A doc with body nodes but no kind: is a real mistake -> still E-KIND-MISSING.
-    let cs = codes("---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:x: hi\n");
+    let cs = codes("---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@x: hi\n");
     assert!(cs.contains(&"E-KIND-MISSING".to_string()), "{cs:?}");
 }
 

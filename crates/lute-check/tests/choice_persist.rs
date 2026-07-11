@@ -213,12 +213,12 @@ fn persist_bare_run_target_errors() {
 #[test]
 fn content_line_as_still_label_override() {
     // dsl §7.1: `as=` on a CONTENT LINE is the display-label override, NOT the
-    // persist sugar. A `:speaker{as="???"}: text` line carries no `persist`, so
+    // persist sugar. A `@speaker{as="???"}: text` line carries no `persist`, so
     // the persist family never fires — the rename of the persist target attr
     // (`as`→`into`, §11.1.1) leaves content-line `as` untouched.
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
-         :bianca{{as=\"Hostess\"}}: Welcome in.\n"
+         @bianca{{as=\"Hostess\"}}: Welcome in.\n"
     );
     assert_clean(&codes(&t));
 }

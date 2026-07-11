@@ -138,7 +138,7 @@ pub(crate) enum Cursor<'a> {
     /// capability-schema one, so completion/hover key off `construct`
     /// instead of a directive name.
     ConstructAttrArea { construct: QuestConstruct },
-    /// On the `:speaker` name itself (dsl §7.1), between the leading `:` and
+    /// On the `@speaker` name itself (dsl §7.1), between the leading `@` and
     /// the attrs `{`/the second `:` — NOT a capability-schema position (a
     /// content line's speaker has no directive), so it carries no data.
     /// Drives speaker-id completion (character/cast catalog ids + the
@@ -412,7 +412,7 @@ fn resolve_line(l: &Line, off: usize) -> Option<Cursor<'_>> {
     // The speaker NAME itself (dsl §7.1): `Line` carries no dedicated span for
     // it (only `span`/`text_span`), so it's derived the same way
     // `lute_check::tag::tag_scope` computes `speaker_end` — the ident runs
-    // from just past the leading `:` for exactly `speaker.len()` bytes (an
+    // from just past the leading `@` for exactly `speaker.len()` bytes (an
     // ident holds no comments/whitespace, so no raw-text rescan is needed).
     let speaker_start = l.span.byte_start + 1;
     let speaker_end = speaker_start + l.speaker.len();
@@ -1359,7 +1359,7 @@ mod tests {
     /// same-spelled dotted string literal in a sibling arm test as a use.
     #[test]
     fn references_ignore_path_inside_cel_string_literal() {
-        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca = 1}\n<match on=\"scene.affect.bianca\">\n<when test=\"'scene.affect.bianca' == 'x'\">\n:f: a.\n</when>\n<otherwise>\n:f: b.\n</otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.bianca = 1}\n<match on=\"scene.affect.bianca\">\n<when test=\"'scene.affect.bianca' == 'x'\">\n@f: a.\n</when>\n<otherwise>\n@f: b.\n</otherwise>\n</match>\n";
         let (doc, _) = parse(text);
         // Cursor on the `::set` target path.
         let off = text.find("scene.affect.bianca = 1").unwrap();
@@ -1386,7 +1386,7 @@ mod tests {
     /// `test=` value still resolves to [`Cursor::Cel`] (regression guard).
     #[test]
     fn resolve_when_is_vs_test() {
-        let text = "## Shot 1.\n<match on=\"scene.choices.pick\">\n<when is=\"a\">\n:f: x.\n</when>\n<when test=\"true\">\n:f: y.\n</when>\n<otherwise>\n:f: z.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<match on=\"scene.choices.pick\">\n<when is=\"a\">\n@f: x.\n</when>\n<when test=\"true\">\n@f: y.\n</when>\n<otherwise>\n@f: z.\n</otherwise>\n</match>\n";
         let (doc, _) = parse(text);
         let is_off = text.find("is=\"a\"").unwrap() + "is=\"".len();
         match resolve(&doc, is_off) {
@@ -1412,7 +1412,7 @@ mod tests {
     /// diverge from what `check()` folds.
     #[test]
     fn subject_domain_authored_scene_choices_enum_without_branch() {
-        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.choices.manual: { type: { enum: [a, b] } }\n---\n## Shot 1.\n<match on=\"scene.choices.manual\">\n<when is=\"a\">\n:narrator: x\n</when>\n<when is=\"b\">\n:narrator: y\n</when>\n<when is=\"unset\">\n:narrator: z\n</when>\n</match>\n";
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.choices.manual: { type: { enum: [a, b] } }\n---\n## Shot 1.\n<match on=\"scene.choices.manual\">\n<when is=\"a\">\n@narrator: x\n</when>\n<when is=\"b\">\n@narrator: y\n</when>\n<when is=\"unset\">\n@narrator: z\n</when>\n</match>\n";
         let (doc, _) = parse(text);
         let (meta, _) =
             lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
@@ -1453,7 +1453,7 @@ mod tests {
         <objective id=\"o\" done=\"run.d\">\n\
         <branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n::set{run.x = 1}\n</choice>\n</branch>\n\
         </objective>\n\
-        <on event=\"questComplete\">\n:narrator: bye\n</on>\n\
+        <on event=\"questComplete\">\n@narrator: bye\n</on>\n\
         </quest>\n";
 
     /// ACCEPTANCE: before the fix, `resolve` walked `doc.shots` only (a quest

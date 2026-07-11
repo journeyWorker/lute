@@ -14,16 +14,16 @@ state:
 
 ::auto{character="bianca" anchor="left" action="fade-in-up"}
 
-:narrator: I reached for my phone.
+@narrator: I reached for my phone.
 
 <branch id="number">
   <choice id="blunt" label="Just ask, flatly">
-    :fixer{code="0050"}: Bianca. Your number.
+    @fixer{code="0050"}: Bianca. Your number.
   </choice>
   <choice id="soft" label="Ask gently">
-    :fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
+    @fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
     ::set{scene.affect.bianca += 1}
   </choice>
 </branch>
 
-:bianca{code="0110" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.
+@bianca{code="0110" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.

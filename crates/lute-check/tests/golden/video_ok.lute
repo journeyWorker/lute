@@ -12,4 +12,4 @@ title: Video playback
 
 ::video{assetId="MOVIE.scenarios.bianca.s01ep02.intro" action="show" wait="true"}
 
-:narrator: The cutscene rolls, and the room holds its breath until it finishes.
+@narrator: The cutscene rolls, and the room holds its breath until it finishes.

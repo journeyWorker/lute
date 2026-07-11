@@ -1,22 +1,29 @@
 ==================
-content line (0.1.0 :speaker{}: form, replaces the removed content-line syntax)
+content line (0.2.2 @speaker{}: form, replaces the `:` sigil, foundation C1)
 ==================
-:bianca{code="0010" emotion="delighted"}: Mr. Fixer!
+@bianca{code="0010" emotion="delighted"}: Mr. Fixer!
 ---
 (source_file
   (line (speaker) (attrs (attr (key) (string)) (attr (key) (string))) (text)))
 
 ==================
+`:speaker:` is no longer a content line (0.2.2 sigil is `@`, foundation C1)
+:error
+==================
+:bianca: Mr. Fixer!
+---
+
+==================
 content line narrator (no attrs)
 ==================
-:narrator: Venny's again — the coffee shop on the corner.
+@narrator: Venny's again — the coffee shop on the corner.
 ---
 (source_file (line (speaker) (text)))
 
 ==================
 content line with `as` display-label override
 ==================
-:bianca{as="???"}: ...who's there?
+@bianca{as="???"}: ...who's there?
 ---
 (source_file (line (speaker) (attrs (attr (key) (string))) (text)))
 
@@ -31,14 +38,14 @@ line comment `//` at start of a body line is trivia
 ==================
 mid-Text `//` stays inside opaque text (not a comment)
 ==================
-:narrator: Visit http://example.com now.
+@narrator: Visit http://example.com now.
 ---
 (source_file (line (speaker) (text)))
 
 ==================
 interpolation: path + reserved userName in content text
 ==================
-:narrator: You have {{run.coins}} credits, {{userName}}.
+@narrator: You have {{run.coins}} credits, {{userName}}.
 ---
 (source_file
   (line (speaker) (text (interpolation (path)) (interpolation (reserved)))))
@@ -46,21 +53,21 @@ interpolation: path + reserved userName in content text
 ==================
 interpolation: @ref in content text
 ==================
-:fixer: Trust stands at {{@trustLevel}}.
+@fixer: Trust stands at {{@trustLevel}}.
 ---
 (source_file (line (speaker) (text (interpolation (ref)))))
 
 ==================
 interpolation: whitespace inside braces is tolerated
 ==================
-:narrator: You have {{ run.coins }} left.
+@narrator: You have {{ run.coins }} left.
 ---
 (source_file (line (speaker) (text (interpolation (path)))))
 
 ==================
 interpolation escape `\{{` renders a literal, stays in text
 ==================
-:narrator: Write a literal \{{ like so.
+@narrator: Write a literal \{{ like so.
 ---
 (source_file (line (speaker) (text (escape))))
 
@@ -69,10 +76,10 @@ hub with once + exit choices (revisit conversation)
 ==================
 <hub id="chatWithBianca">
   <choice id="askCoffee" label="Ask about the coffee" once>
-    :bianca: House blend. Bold, like the clientele.
+    @bianca: House blend. Bold, like the clientele.
   </choice>
   <choice id="leave" label="Head out" exit>
-    :fixer: I'd better get moving.
+    @fixer: I'd better get moving.
   </choice>
 </hub>
 ---
@@ -95,10 +102,10 @@ hub choice with when guard beside once flag
 ==================
 <hub id="chat">
   <choice id="askVenny" label="Ask about Venny" when="scene.metVenny" once>
-    :bianca: He's around here somewhere.
+    @bianca: He's around here somewhere.
   </choice>
   <choice id="leave" label="Head out" exit>
-    :fixer: Later.
+    @fixer: Later.
   </choice>
 </hub>
 ---
@@ -122,10 +129,10 @@ when is literal-pattern alternation (structured when_pattern)
 ==================
 <match on="scene.emotion">
   <when is="blunt | curt">
-    :narrator: hi
+    @narrator: hi
   </when>
   <otherwise>
-    :narrator: bye
+    @narrator: bye
   </otherwise>
 </match>
 ---
@@ -142,7 +149,7 @@ when is single literal plus test guard (pattern AND guard)
 ==================
 <match on="scene.emotion">
   <when is="delighted" test="$ != 'staged'">
-    :narrator: hi
+    @narrator: hi
   </when>
 </match>
 ---
@@ -159,10 +166,10 @@ otherwise takes no attributes (tightened)
 ==================
 <match on="scene.x">
   <when test="@fond">
-    :narrator: yes
+    @narrator: yes
   </when>
   <otherwise>
-    :narrator: no
+    @narrator: no
   </otherwise>
 </match>
 ---
@@ -177,7 +184,7 @@ when is signed-number literal (leading minus, structured when_pattern)
 ==================
 <match on="scene.hp">
   <when is="-1">
-    :narrator: down
+    @narrator: down
   </when>
 </match>
 ---
@@ -193,7 +200,7 @@ choice persist sugar: into= run-path target (0.1.0, renamed from 0.0.1 as=)
 ==================
 <branch id="rest">
   <choice id="couch" label="Offer the couch" persist="run" into="run.metHelpfully" value="warm">
-    :fixer: Take the couch — you look exhausted.
+    @fixer: Take the couch — you look exhausted.
   </choice>
 </branch>
 ---

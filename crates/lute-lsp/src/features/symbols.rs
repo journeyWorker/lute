@@ -261,7 +261,7 @@ mod tests {
     /// not an empty vector).
     #[test]
     fn shot_without_blocks_has_no_children() {
-        let text = "## Shot 1.\n:narrator: just prose.\n::bg{location=\"x\"}\n";
+        let text = "## Shot 1.\n@narrator: just prose.\n::bg{location=\"x\"}\n";
         let syms = symbols(text);
         assert_eq!(syms.len(), 1);
         assert!(syms[0].children.is_none(), "no branch/match → no children");
@@ -271,7 +271,7 @@ mod tests {
     /// full `range`.
     #[test]
     fn shot_selection_range_is_the_heading() {
-        let text = "## Shot 1.\n:narrator: prose.\n:narrator: more.\n";
+        let text = "## Shot 1.\n@narrator: prose.\n@narrator: more.\n";
         let s = &symbols(text)[0];
         assert_eq!(s.selection_range.start.line, 0, "heading is line 0");
         assert_eq!(s.selection_range.start.character, 0);
@@ -287,8 +287,8 @@ mod tests {
 
     const QUEST_DOC: &str = "---\nkind: quest\n---\n\
         <quest id=\"q\">\n\
-        <objective id=\"o\" done=\"a\">\n:narrator: hi\n</objective>\n\
-        <on event=\"questComplete\">\n:narrator: bye\n</on>\n\
+        <objective id=\"o\" done=\"a\">\n@narrator: hi\n</objective>\n\
+        <on event=\"questComplete\">\n@narrator: bye\n</on>\n\
         </quest>\n";
 
     /// ACCEPTANCE: a `<quest>` is a top-level symbol named by its id, with an

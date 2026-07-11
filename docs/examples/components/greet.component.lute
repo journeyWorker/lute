@@ -14,4 +14,4 @@ params:
 /* `@who` is the param, bound to the `::use` arg at expansion time; it is legal
    here only because `character` is a `string`-typed attr (dsl Appendix A). */
 ::auto{character=@who action="fade-in-up"}
-:narrator: A familiar face steps into the light.
+@narrator: A familiar face steps into the light.
