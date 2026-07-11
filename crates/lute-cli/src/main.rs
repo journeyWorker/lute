@@ -42,12 +42,13 @@ use clap::{Parser, Subcommand};
 use lute_check::{
     check, check_project_quest_ids, fold_env, parse_meta, CheckInput, Mode, Namespace,
 };
-use lute_core_span::Severity;
+use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::project::{load_project, resolve_document_snapshot};
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
+use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
 
 #[derive(Parser)]
 #[command(
@@ -152,6 +153,51 @@ enum Command {
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
     },
+    /// Preview a `.lute` document's behavior against author-supplied mocks —
+    /// the D1-quarantined authoring evaluator (dsl 0.4.0 §4). Resolves the
+    /// document identically to `check` (`build_input`), refuses (exit 1) a
+    /// document with check errors OR invalid mocks (`E-TRACE-*`, rendered
+    /// exactly like check diagnostics — run `check` first), then walks it
+    /// once, deterministically, reporting every decision and why. Exit `0`
+    /// complete, `1` refused, `2` I/O, `3` incomplete (an `unknown` guard
+    /// halted the walk, dsl 0.4.0 §4.4/§4.5).
+    Trace {
+        /// Path to the `.lute` file to trace.
+        file: PathBuf,
+        /// A scalar state seed: a DECLARED state path and a literal,
+        /// `<path>=<literal>` (repeatable).
+        #[arg(long = "state", value_name = "PATH=LITERAL", value_parser = parse_state_flag)]
+        state: Vec<(String, String)>,
+        /// A ground fact, valid-now, over the declared vocabulary — e.g.
+        /// `"inParty(shadowheart)"` (repeatable).
+        #[arg(long = "fact", value_name = "REL(ARG…)")]
+        fact: Vec<String>,
+        /// A menu selection at a `<branch>`/`<hub>` id, in order:
+        /// `<branchOrHubId>=<choiceId>[,<choiceId>…]` (repeatable; a hub may
+        /// force a whole ordered visit sequence via one flag's comma list).
+        #[arg(long = "choose", value_name = "ID=CHOICEID[,CHOICEID…]", value_parser = parse_choose_flag)]
+        choose: Vec<(String, Vec<String>)>,
+        /// Fire a quest capability/lifecycle event, in CLI order (repeatable).
+        #[arg(long = "event", value_name = "NAME")]
+        event: Vec<String>,
+        /// A YAML document carrying the same four surfaces (`state:`/
+        /// `facts:`/`choose:`/`events:`, dsl 0.4.0 §4.3); CLI flags compose
+        /// with it, the flag winning on a conflict.
+        #[arg(long, value_name = "FILE")]
+        mock: Option<PathBuf>,
+        /// Emit the machine-readable `TraceReport` as JSON instead of the
+        /// human transcript.
+        #[arg(long)]
+        json: bool,
+        /// Directory of pinned provider snapshots to resolve ids against.
+        #[arg(long, value_name = "DIR")]
+        providers: Option<PathBuf>,
+        /// Project directory (`lute.project.yaml` + `plugins/`) whose
+        /// installed plugins resolve the document's activated capability
+        /// snapshot (plugin §4/§11). Omit for a core-only (`lute.core`) trace.
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
+    },
     /// Provider-catalog maintenance.
     #[command(subcommand)]
     Catalog(CatalogCommand),
@@ -169,6 +215,33 @@ enum CatalogCommand {
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
     },
+}
+
+/// Parse a `--state <path>=<literal>` flag into `(path, literal)` — a plain
+/// clap `value_parser`, so a malformed flag (no `=`) is rejected by clap
+/// ITSELF as a usage error (exit `2`, matching the `2` = "I/O/usage" tier of
+/// the trace exit-code contract) before `run_trace` ever runs.
+fn parse_state_flag(raw: &str) -> Result<(String, String), String> {
+    raw.split_once('=')
+        .map(|(path, literal)| (path.to_string(), literal.to_string()))
+        .ok_or_else(|| format!("`--state` must be `<path>=<literal>`, got `{raw}`"))
+}
+
+/// Parse a `--choose <branchOrHubId>=<choiceId>[,<choiceId>…]` flag into
+/// `(id, choice ids)` — a hub's comma list forces its whole ordered visit
+/// sequence (dsl 0.4.0 §4.3/§4.4). Same clap-level rejection as
+/// [`parse_state_flag`] for a malformed flag.
+fn parse_choose_flag(raw: &str) -> Result<(String, Vec<String>), String> {
+    let (id, rest) = raw.split_once('=').ok_or_else(|| {
+        format!("`--choose` must be `<id>=<choiceId>[,<choiceId>...]`, got `{raw}`")
+    })?;
+    let choices: Vec<String> = rest.split(',').map(str::to_string).collect();
+    if id.is_empty() || choices.iter().any(|c| c.is_empty()) {
+        return Err(format!(
+            "`--choose` must be `<id>=<choiceId>[,<choiceId>...]`, got `{raw}`"
+        ));
+    }
+    Ok((id.to_string(), choices))
 }
 
 fn main() -> ExitCode {
@@ -203,6 +276,27 @@ fn main() -> ExitCode {
             providers,
             project,
         } => run_context(&file, json, providers.as_deref(), project.as_deref()),
+        Command::Trace {
+            file,
+            state,
+            fact,
+            choose,
+            event,
+            mock,
+            json,
+            providers,
+            project,
+        } => run_trace(
+            &file,
+            state,
+            fact,
+            choose,
+            event,
+            mock.as_deref(),
+            json,
+            providers.as_deref(),
+            project.as_deref(),
+        ),
         Command::Tag { file } => run_tag(&file),
         Command::Fix { file } => run_fix(&file),
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
@@ -999,6 +1093,136 @@ fn write_stdout(s: &str) -> std::io::Result<()> {
     o.flush()
 }
 
+/// Run `trace` over one file (dsl 0.4.0 §4.3/§4.5): resolve the document
+/// IDENTICALLY to `check`/`compile` ([`build_input`]), load + merge the
+/// `--mock` file with the CLI's own `--state`/`--fact`/`--choose`/`--event`
+/// flags into one [`MockSet`] ([`merge`] — "CLI flags compose with the
+/// file; on a conflict the flag wins"), then hand off to
+/// [`lute_trace::trace_document`] — the entire §4.3 mock-validation gate,
+/// the §4.4 walk, and the §4.5 report are ITS concern; this function owns
+/// only flag assembly, file I/O, and the exit-code/render mapping.
+///
+/// Exit codes (§4.5): `0` [`TraceExit::Complete`], `1`
+/// [`TraceExit::Refused`] (a document check error OR an invalid mock — the
+/// `E-TRACE-*` diagnostics render in EXACTLY [`print_diagnostics`]'s
+/// check-diagnostic line format; a refusal whose diagnostics are NOT all
+/// `E-TRACE-*` came from the `check` gate itself, so a "run `lute check`
+/// first" hint is appended), `2` I/O (unreadable `.lute`/`--mock` file, or a
+/// malformed `--mock` YAML document — the same tier `run_check`/`run_compile`
+/// use for a read failure), `3` [`TraceExit::Incomplete`] (an `unknown`
+/// guard halted the walk, or an unresolved objective/quest atom).
+fn run_trace(
+    file: &Path,
+    state: Vec<(String, String)>,
+    fact: Vec<String>,
+    choose: Vec<(String, Vec<String>)>,
+    event: Vec<String>,
+    mock: Option<&Path>,
+    json: bool,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+) -> ExitCode {
+    let Some(input) = build_input(file, providers, project) else {
+        return ExitCode::from(2);
+    };
+
+    let file_mocks = match mock {
+        Some(path) => {
+            let text = match std::fs::read_to_string(path) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("lute: cannot read {}: {e}", path.display());
+                    return ExitCode::from(2);
+                }
+            };
+            match parse_mock_yaml(&text) {
+                Ok(m) => m,
+                Err(d) => {
+                    // A malformed `--mock` YAML document is a file-level I/O/
+                    // format failure, not a schema-validation refusal — `2`,
+                    // matching `run_check`'s/`run_compile`'s read-failure tier.
+                    eprintln!(
+                        "lute: {}:{}:{}: [{}] {}",
+                        path.display(),
+                        d.span.line,
+                        d.span.column,
+                        d.code,
+                        d.message
+                    );
+                    return ExitCode::from(2);
+                }
+            }
+        }
+        None => MockSet::default(),
+    };
+
+    // `--state`/`--mock` literals and `--choose` targets carry no real
+    // source text, so every flag-origin entry is spanned at the same
+    // zeroed placeholder ([`lute_trace::mock`]'s own "CLI-arg synthetic
+    // span" convention — that helper is `pub(crate)` there, so this mirrors
+    // it byte-for-byte rather than reaching into the crate's internals).
+    let span = lute_core_span::Span { byte_start: 0, byte_end: 0, line: 0, column: 0, utf16_range: (0, 0) };
+    let flag_mocks = MockSet {
+        state: state.into_iter().map(|(path, literal)| (path, literal, span)).collect(),
+        facts: fact,
+        choose: choose.into_iter().collect(),
+        events: event,
+    };
+
+    let mocks = merge(file_mocks, flag_mocks);
+    let (report, exit) = lute_trace::trace_document(&input, mocks);
+
+    match exit {
+        TraceExit::Complete => {
+            print_trace_report(&report, json);
+            ExitCode::SUCCESS
+        }
+        TraceExit::Incomplete => {
+            print_trace_report(&report, json);
+            ExitCode::from(3)
+        }
+        TraceExit::Refused(diags) => {
+            if json {
+                match serde_json::to_string_pretty(&diags) {
+                    Ok(s) => println!("{s}"),
+                    Err(e) => {
+                        eprintln!("lute: failed to serialize diagnostics: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            } else {
+                print_diagnostics(file, &diags);
+                // Every `E-TRACE-*` code is mock/choice validation (D1
+                // quarantine: `lute-check` cannot know that vocabulary, so
+                // its OWN diagnostics never carry it) — a refusal carrying
+                // anything else came from the `check` gate itself (§4.3:
+                // "MUST refuse a document with check errors ... run `check`
+                // first").
+                if diags.iter().any(|d| !d.code.starts_with("E-TRACE-")) {
+                    println!(
+                        "trace refused: {} has check error(s) — run `lute check` first",
+                        file.display()
+                    );
+                } else {
+                    println!("trace refused: {} — invalid mock input", file.display());
+                }
+            }
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// Render one [`TraceReport`] to stdout — `--json` -> [`TraceReport::render_json`]
+/// (§4.5 machine form), otherwise [`TraceReport::render_human`] (the
+/// transcript already ends in `\n`, so `print!` avoids a doubled blank line).
+fn print_trace_report(report: &TraceReport, json: bool) {
+    if json {
+        println!("{}", report.render_json());
+    } else {
+        print!("{}", report.render_human());
+    }
+}
+
 /// Back-fill a stable `code` into every untagged `:line` (dsl §12), rewriting
 /// the file in place. A thin shell over [`lute_check::tag_document`] (the pure
 /// core that owns the tagging logic): read the file, tag, and — only when at
@@ -1063,13 +1287,16 @@ fn run_fix(file: &Path) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// One `file:line:col: severity [CODE] message` line per diagnostic, then a
-/// summary. Mirrors the sorted order `check()` already applied. A primary
-/// that collapsed same-root repeats (dsl 0.4.0 §8.2 C1/C5) appends a trailing
-/// ` (+N more: 12:3, 47:9, …)` — line:column, comma-joined, document order.
-fn print_human(file: &Path, result: &lute_check::CheckResult) {
+/// One `file:line:col: severity [CODE] message` line per diagnostic. A
+/// primary that collapsed same-root repeats (dsl 0.4.0 §8.2 C1/C5) appends a
+/// trailing ` (+N more: 12:3, 47:9, …)` — line:column, comma-joined, document
+/// order. Shared by [`print_human`] (the `check`/`compile` diagnostic list)
+/// and `run_trace`'s Refused rendering (dsl 0.4.0 §4.5: "the `E-TRACE-*`
+/// codes render exactly as check diagnostics do") — ONE line format, never a
+/// second convention.
+fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic]) {
     let path = file.display();
-    for d in &result.diagnostics {
+    for d in diagnostics {
         let more = if d.covered.is_empty() {
             String::new()
         } else {
@@ -1089,6 +1316,14 @@ fn print_human(file: &Path, result: &lute_check::CheckResult) {
             d.message,
         );
     }
+}
+
+/// A summary line per diagnostic (via [`print_diagnostics`]), then a
+/// pass/fail count summary. Mirrors the sorted order `check()` already
+/// applied.
+fn print_human(file: &Path, result: &lute_check::CheckResult) {
+    let path = file.display();
+    print_diagnostics(file, &result.diagnostics);
     // §8.3: counting is by primaries — collapse (0.4.0 T14) already reduced
     // `result.diagnostics` to one entry per root cause, so a plain count needs
     // no change here. Five reads of one typo are ONE error.
