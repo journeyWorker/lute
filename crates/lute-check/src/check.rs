@@ -1758,7 +1758,7 @@ fn component_interp_scan(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diag
 /// too (`is_whole_slot` accepts it there) — a component `<match>` dispatches
 /// on the PARAM VALUE, never a call result. `None` for a compound
 /// expression, a literal, or `$`.
-fn bare_param_ref(raw: &str) -> Option<String> {
+pub(crate) fn bare_param_ref(raw: &str) -> Option<String> {
     let content_start = raw.len() - raw.trim_start().len();
     let content_end = raw.trim_end().len();
     let mut whole = scan_refs(raw).into_iter().filter(|r| {
@@ -1820,13 +1820,33 @@ fn walk_component_body(
                 // here (a component has no `state:` schema to resolve one
                 // against, and the purity contract forbids the read anyway).
                 component_interp_scan(&l.interps, ctx, diags);
-                // dsl 0.4.0 §7.2/§6.2: a content-line `when=` guard follows
-                // the SAME params-only rule as every other component-body CEL
-                // slot — the positive ambient-state scan is the AUTHORITATIVE
-                // diagnosis (D6), so a bare-param guard (`when="@tier == …"`)
-                // stays clean while an ambient-state guard (`when="run.x"`)
-                // flags `E-COMPONENT-STATE`.
+                // dsl 0.4.0 §7.2/§6.2: a content-line `when=` guard gets BOTH
+                // the positive ambient-state scan (D6: the AUTHORITATIVE
+                // `E-COMPONENT-STATE` diagnosis for a bare-param guard vs. an
+                // ambient-state read) AND the ordinary `check_cel_slot`
+                // treatment every other component-body CEL slot gets — a
+                // component `when=` is still a `Bool` Condition slot, so an
+                // undeclared `@ref` is `E-UNDECLARED-REF` and a `$` read
+                // trips `E-DOLLAR-OUTSIDE-MATCH` exactly as it would at scene
+                // level (finding 1: `check_cel_slot` was skipped here
+                // entirely, so both went unchecked). D9 (dsl 0.4.0 §7.2): `$`
+                // is NOT in scope in a content-line `when=` — force
+                // in_match=false/match_subject=None even when this line sits
+                // inside a component-body `<match>` arm (mirrors the
+                // scene-level rule, check.rs's `Walker::walk` `Node::Line`
+                // arm).
                 if let Some(when) = &l.when {
+                    let ctx_no_dollar = Ctx {
+                        env: ctx.env,
+                        in_match: false,
+                        match_subject: None,
+                    };
+                    diags.extend(check_cel_slot(
+                        when,
+                        arena,
+                        &ctx_no_dollar,
+                        Some(&ExpectedType::Bool),
+                    ));
                     component_slot_state_scan(when, arena, diags);
                 }
             }
