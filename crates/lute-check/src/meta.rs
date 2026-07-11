@@ -36,6 +36,23 @@ pub struct StateSchema {
     pub decls: BTreeMap<String, StateDecl>,
 }
 
+/// A parsed seed fact from a `facts:` list (spec §4). Seeds are ground
+/// (checked as for `::assert` — no `_` wildcard, decision D12).
+#[derive(Clone, Debug)]
+pub struct FactDecl {
+    pub fact: lute_syntax::datalog::FactPattern,
+    pub raw: String,
+    pub span: Span,
+}
+
+/// A parsed rule from a `rules:` list (spec §7.1).
+#[derive(Clone, Debug)]
+pub struct RuleDecl {
+    pub rule: lute_syntax::datalog::Rule,
+    pub raw: String,
+    pub span: Span,
+}
+
 /// Typed frontmatter (dsl §6.1). Built-in core keys are lifted into fields;
 /// `plugins`/`defs` are retained structurally for downstream tasks.
 #[derive(Clone, Debug, Default)]
@@ -77,6 +94,23 @@ pub struct TypedMeta {
     /// shrunken signature (dsl §13). `false` when `params:` is absent or wholly
     /// valid.
     pub params_malformed: bool,
+    /// Project-authored `entities:` entity-kind decls (0.3.0 draft §3.1, T4),
+    /// parsed via `lute_manifest::relations::parse_entity_kinds`. Distinct
+    /// from [`Self::domains`] (the 0.2.2 attr-layer projection): this is the
+    /// full decl shape the relational checker (Tasks 6/7) needs.
+    pub rel_kinds: lute_manifest::relations::ParsedKinds,
+    /// Project-authored `relations:` decls (0.3.0 draft §4, T4), parsed via
+    /// `lute_manifest::relations::parse_relations`.
+    pub rel_relations: lute_manifest::relations::ParsedRelations,
+    /// Project-authored `facts:` seeds (0.3.0 draft §4), each string parsed
+    /// via `lute_syntax::datalog::parse_fact`. A malformed entry is diagnosed
+    /// here at lift (`E-DATALOG-PARSE`/`E-DATALOG-FUNCTION`) and simply
+    /// omitted from this list.
+    pub rel_facts: Vec<FactDecl>,
+    /// Project-authored `rules:` (0.3.0 draft §7.1), each string parsed via
+    /// `lute_syntax::datalog::parse_rule`. Same omit-on-error discipline as
+    /// [`Self::rel_facts`].
+    pub rel_rules: Vec<RuleDecl>,
 }
 
 /// Frontmatter keys valid in EVERY root document kind (dsl 0.2.0 §6.1): the
@@ -98,6 +132,9 @@ const UNIVERSAL_KEYS: &[&str] = &[
     "defs",
     "enums",
     "entities",
+    "relations",
+    "facts",
+    "rules",
     "components",
 ];
 
@@ -323,25 +360,180 @@ pub fn parse_meta_kind(
     typed.extends = get_ref_list(map, "extends");
     typed.plugins = get_sub_map(map, "plugins");
     typed.defs = get_sub_map(map, "defs");
-    // Project-authored `enums:`/`entities:` (dsl data-catalog foundation A3;
-    // 0.3.0 draft §3.1 kinds, 0.3.0 T4): same YAML-lift discipline as `defs`
-    // above, but delegated to `lute_manifest::entities::parse_enums` /
-    // `lute_manifest::relations::{parse_entity_kinds, kinds_to_domains}` (the
-    // latter owns the two `entities:` decl shapes, A2's `Domain` type).
-    // `entities:` is folded in AFTER `enums:` so a same-doc name collision
-    // resolves to the `entities:` entry (last-write-wins; not diagnosed here
-    // — see `TypedMeta::domains`'s doc comment). This is an interim minimal
-    // lift (0.3.0 T4); the full `rel_kinds`/`rel_relations` lift + `E-PATH-
-    // IDENT`/dup diagnostics land in T5.
-    typed.domains = lute_manifest::entities::parse_enums(
+    // Project-authored `enums:`/`entities:`/`relations:` (dsl data-catalog
+    // foundation A3; 0.3.0 draft §3.1 kinds, §4 relations, 0.3.0 T4/T5): same
+    // YAML-lift discipline as `defs` above, but delegated to
+    // `lute_manifest::entities::parse_enums` /
+    // `lute_manifest::relations::{parse_entity_kinds, parse_relations,
+    // kinds_to_domains}` (the latter owns the `entities:`/`relations:` decl
+    // shapes, A2's `Domain` type). `entities:` is folded into `domains` AFTER
+    // `enums:` so a same-doc name collision resolves to the `entities:` entry
+    // (last-write-wins; not diagnosed here — see `TypedMeta::domains`'s doc
+    // comment).
+    let project_enums = lute_manifest::entities::parse_enums(
         map.get(yaml_key("enums")).unwrap_or(&serde_yaml::Value::Null),
     );
-    typed.domains.extend(lute_manifest::relations::kinds_to_domains(
-        &lute_manifest::relations::parse_entity_kinds(
-            map.get(yaml_key("entities")).unwrap_or(&serde_yaml::Value::Null),
-        )
-        .kinds,
-    ));
+    typed.domains = project_enums.clone();
+    typed.rel_kinds = lute_manifest::relations::parse_entity_kinds(
+        map.get(yaml_key("entities")).unwrap_or(&serde_yaml::Value::Null),
+    );
+    typed.rel_relations = lute_manifest::relations::parse_relations(
+        map.get(yaml_key("relations")).unwrap_or(&serde_yaml::Value::Null),
+    );
+    // Domain projection for the 0.2.2 attr layer (entities win over enums, as before).
+    typed
+        .domains
+        .extend(lute_manifest::relations::kinds_to_domains(&typed.rel_kinds.kinds));
+
+    // `facts:`/`rules:` (dsl 0.3.0 §4/§7.1, T5): each entry is a QUOTED
+    // STRING (§4 Quoting — an unquoted `head :- body` misparses as a YAML
+    // mapping, not a scalar). A non-sequence, non-null block value is one
+    // E-DATALOG-PARSE at the whole meta span; per entry, a non-string value
+    // is E-DATALOG-PARSE (same span); a string is parsed via
+    // `parse_fact`/`parse_rule` — `Malformed` → E-DATALOG-PARSE, `FunctionTerm`
+    // → E-DATALOG-FUNCTION, both at the entry's textual span. A failing entry
+    // is simply omitted from `rel_facts`/`rel_rules` (never a partial decl,
+    // mirroring D13's downstream-skip discipline).
+    match map.get(yaml_key("facts")) {
+        None | Some(serde_yaml::Value::Null) => {}
+        Some(serde_yaml::Value::Sequence(seq)) => {
+            for entry in seq {
+                let Some(raw) = entry.as_str() else {
+                    diags.push(err_at(
+                        "E-DATALOG-PARSE",
+                        "`facts:` entries must be quoted strings (dsl 0.3.0 §4 Quoting)"
+                            .to_string(),
+                        span,
+                    ));
+                    continue;
+                };
+                match lute_syntax::datalog::parse_fact(raw) {
+                    Ok(fact) => typed.rel_facts.push(FactDecl {
+                        fact,
+                        raw: raw.to_string(),
+                        span: meta_key_span(meta, raw),
+                    }),
+                    Err(lute_syntax::datalog::DatalogError::Malformed { msg, .. }) => {
+                        diags.push(err_at(
+                            "E-DATALOG-PARSE",
+                            format!("malformed fact `{raw}`: {msg}"),
+                            meta_key_span(meta, raw),
+                        ));
+                    }
+                    Err(lute_syntax::datalog::DatalogError::FunctionTerm { name, .. }) => {
+                        diags.push(err_at(
+                            "E-DATALOG-FUNCTION",
+                            format!(
+                                "fact `{raw}` uses a function/compound term `{name}(...)`; \
+                                 facts admit only ground identifiers/booleans (dsl §7.1)"
+                            ),
+                            meta_key_span(meta, raw),
+                        ));
+                    }
+                }
+            }
+        }
+        Some(_) => diags.push(err_at(
+            "E-DATALOG-PARSE",
+            "`facts:` must be a list of quoted fact strings (dsl 0.3.0 §4)".to_string(),
+            span,
+        )),
+    }
+    match map.get(yaml_key("rules")) {
+        None | Some(serde_yaml::Value::Null) => {}
+        Some(serde_yaml::Value::Sequence(seq)) => {
+            for entry in seq {
+                let Some(raw) = entry.as_str() else {
+                    diags.push(err_at(
+                        "E-DATALOG-PARSE",
+                        "`rules:` entries must be quoted strings (dsl 0.3.0 §4 Quoting)"
+                            .to_string(),
+                        span,
+                    ));
+                    continue;
+                };
+                match lute_syntax::datalog::parse_rule(raw) {
+                    Ok(rule) => typed.rel_rules.push(RuleDecl {
+                        rule,
+                        raw: raw.to_string(),
+                        span: meta_key_span(meta, raw),
+                    }),
+                    Err(lute_syntax::datalog::DatalogError::Malformed { msg, .. }) => {
+                        diags.push(err_at(
+                            "E-DATALOG-PARSE",
+                            format!("malformed rule `{raw}`: {msg}"),
+                            meta_key_span(meta, raw),
+                        ));
+                    }
+                    Err(lute_syntax::datalog::DatalogError::FunctionTerm { name, .. }) => {
+                        diags.push(err_at(
+                            "E-DATALOG-FUNCTION",
+                            format!(
+                                "rule `{raw}` uses a function/compound term `{name}(...)`; \
+                                 rule terms admit only Var/Const/bool (dsl §7.1)"
+                            ),
+                            meta_key_span(meta, raw),
+                        ));
+                    }
+                }
+            }
+        }
+        Some(_) => diags.push(err_at(
+            "E-DATALOG-PARSE",
+            "`rules:` must be a list of quoted rule strings (dsl 0.3.0 §4)".to_string(),
+            span,
+        )),
+    }
+
+    // §8.4 identifier alignment: relation names, entity-kind names, `enums:`
+    // names, and declared member ids are CEL-facing identifiers — no `-`
+    // (E-PATH-IDENT). Directive/attr/asset ids are `Ident` and keep
+    // permitting `-`; only these relational-vocabulary positions are
+    // CEL-facing (T5).
+    let path_ident_diag = |name: &str| -> Option<Diagnostic> {
+        if name.contains('-') {
+            Some(err_at(
+                E_PATH_IDENT,
+                format!(
+                    "`{name}` has a `-`; relation/entity-kind/enum names and entity ids \
+                     are CEL-facing (dsl §8.4)"
+                ),
+                meta_key_span(meta, name),
+            ))
+        } else {
+            None
+        }
+    };
+    for (name, decl) in &typed.rel_kinds.kinds {
+        if let Some(d) = path_ident_diag(name) {
+            diags.push(d);
+        }
+        if let lute_manifest::relations::KindShape::Members(members) = &decl.shape {
+            for member in members {
+                if let Some(d) = path_ident_diag(member) {
+                    diags.push(d);
+                }
+            }
+        }
+    }
+    for name in typed.rel_relations.relations.keys() {
+        if let Some(d) = path_ident_diag(name) {
+            diags.push(d);
+        }
+    }
+    for name in project_enums.keys() {
+        if let Some(d) = path_ident_diag(name) {
+            diags.push(d);
+        }
+    }
+
+    // Authoritative same-block duplicate detection (0.3.0 T4/T5):
+    // `serde_yaml::Mapping` collapses a repeated YAML key before
+    // `parse_entity_kinds`/`parse_relations` ever see it, so their own
+    // `dups` field is best-effort. This raw-text scan is the authoritative
+    // source consumed by the checker (Task 7).
+    typed.rel_relations.dups = scan_block_dup_names(&meta.raw_yaml, "relations");
+    typed.rel_kinds.dups = scan_block_dup_names(&meta.raw_yaml, "entities");
     // §8.4 identifier alignment: a `defs` name and each of its parameter names
     // are CEL-facing identifiers — no `-` (E-PATH-IDENT). Directive/attr/asset
     // ids are `Ident` and keep permitting `-`; only these def positions are
@@ -500,6 +692,58 @@ fn meta_key_span(meta: &Meta, needle: &str) -> Span {
         Some(idx) => at(base + idx),
         None => meta.span,
     }
+}
+
+/// Authoritative same-block duplicate-key scan for `relations:`/`entities:`
+/// (dsl 0.3.0 T5): `serde_yaml::Mapping` silently collapses a repeated
+/// mapping key before [`lute_manifest::relations::parse_relations`]/
+/// `parse_entity_kinds` ever see it, so their own `dups` field is
+/// best-effort. This is a dumb, total line scan over the RAW frontmatter
+/// text (never a YAML re-parse): find the top-level `<block_key>:` line,
+/// then collect every direct child key at the FIRST indent level seen under
+/// it (a deeper-nested key, e.g. `members:`/`args:` inside a block-style
+/// entry, is ignored — only entries at the entry-list's own indent count).
+/// A name repeated at that level is recorded once, at its second
+/// occurrence.
+fn scan_block_dup_names(raw_yaml: &str, block_key: &str) -> Vec<String> {
+    let prefix = format!("{block_key}:");
+    let mut seen: BTreeMap<String, u32> = BTreeMap::new();
+    let mut dups = Vec::new();
+    let mut in_block = false;
+    let mut entry_indent: Option<usize> = None;
+    for line in raw_yaml.lines() {
+        let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
+        if indent == 0 {
+            in_block = trimmed.starts_with(&prefix);
+            entry_indent = None;
+            continue;
+        }
+        if !in_block || trimmed.is_empty() {
+            continue;
+        }
+        let want_indent = *entry_indent.get_or_insert(indent);
+        if indent != want_indent {
+            continue;
+        }
+        let Some(colon) = trimmed.find(':') else {
+            continue;
+        };
+        let name = trimmed[..colon].trim();
+        if name.is_empty()
+            || !name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            continue;
+        }
+        let count = seen.entry(name.to_string()).or_insert(0);
+        *count += 1;
+        if *count == 2 {
+            dups.push(name.to_string());
+        }
+    }
+    dups
 }
 
 /// Raw `state:` entry (dsl §9.3): `{ type, default? }`. `Type` reuses the
