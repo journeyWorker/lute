@@ -829,6 +829,24 @@ impl Walker<'_> {
                         &mut self.diags,
                     );
                     check_interps(&l.interps, ctx, &mut self.diags);
+                    if let Some(when) = &l.when {
+                        // D9 (dsl 0.4.0 §7.2): `$` is NOT in scope in a
+                        // content-line `when=`, matching `<on when>` — force
+                        // in_match=false/match_subject=None even when this
+                        // line sits inside a `<match>` arm (the quest
+                        // start/fail precedent above: check.rs:~608).
+                        let ctx_no_dollar = Ctx {
+                            env: ctx.env,
+                            in_match: false,
+                            match_subject: None,
+                        };
+                        self.diags.extend(check_cel_slot(
+                            when,
+                            self.arena,
+                            &ctx_no_dollar,
+                            Some(&ExpectedType::Bool),
+                        ));
+                    }
                 }
                 Node::Directive(d) if d.tag == "use" => {
                     // `use` is a reserved directive (dsl §13): recognized BEFORE
@@ -1750,6 +1768,15 @@ fn walk_component_body(
                 // here (a component has no `state:` schema to resolve one
                 // against, and the purity contract forbids the read anyway).
                 component_interp_scan(&l.interps, ctx, diags);
+                // dsl 0.4.0 §7.2/§6.2: a content-line `when=` guard follows
+                // the SAME params-only rule as every other component-body CEL
+                // slot — the positive ambient-state scan is the AUTHORITATIVE
+                // diagnosis (D6), so a bare-param guard (`when="@tier == …"`)
+                // stays clean while an ambient-state guard (`when="run.x"`)
+                // flags `E-COMPONENT-STATE`.
+                if let Some(when) = &l.when {
+                    component_slot_state_scan(when, arena, diags);
+                }
             }
             Node::Directive(d) if d.tag == "use" => {
                 check_use(d, components, ctx, diags);
