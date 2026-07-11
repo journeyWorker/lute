@@ -91,7 +91,7 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
         match c["kind"].as_str() {
             Some("line") => {
                 assert!(c["lineId"].as_str().is_some_and(|s| !s.is_empty()));
-                let voiced = c["role"] == "dialogue" || c["role"] == "voiceover";
+                let voiced = matches!(c["role"].as_str(), Some("dialogue" | "voiceover" | "offscreen"));
                 assert_eq!(
                     c["voiceKey"].is_string(),
                     voiced,

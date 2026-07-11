@@ -132,11 +132,14 @@ fn construct_attr_key_items(construct: QuestConstruct) -> Vec<CompletionItem> {
         .collect()
 }
 
-/// Content-line attribute keys (dsl 0.1.0 §7.1, §12.1): a `@speaker{…}:` line's
-/// fixed 7-key vocabulary is, like [`construct_attr_key_items`]'s three quest
+/// Content-line attribute keys (dsl 0.2.2 §7.1, §D7): a `@speaker{…}:` line's
+/// fixed 9-key vocabulary is, like [`construct_attr_key_items`]'s three quest
 /// constructs, NOT capability-schema-driven (it belongs to the content-line
 /// grammar itself, validated by `lute_check::content_line` rather than a
 /// [`snapshot`]-declared `DirectiveDecl`) — always the full set; kind `FIELD`.
+/// `mono`/`os`/`vo` are bare boolean delivery flags (`AttrValue::BoolTrue`,
+/// mutually exclusive — `E-DELIVERY-CONFLICT` on more than one), not
+/// `key="value"` attrs, so they carry no completable value domain.
 fn content_line_attr_key_items() -> Vec<CompletionItem> {
     const KEYS: &[(&str, &str)] = &[
         ("code", "string"),
@@ -144,7 +147,9 @@ fn content_line_attr_key_items() -> Vec<CompletionItem> {
         ("variant", "number"),
         ("action", "string"),
         ("dialogMotion", "string"),
-        ("delivery", "spoken|thought|voiceover"),
+        ("mono", "flag"),
+        ("os", "flag"),
+        ("vo", "flag"),
         ("as", "string"),
     ];
     KEYS.iter()
@@ -157,21 +162,13 @@ fn content_line_attr_key_items() -> Vec<CompletionItem> {
         .collect()
 }
 
-/// Content-line attribute VALUES: only `delivery` has a closed domain in
-/// 0.2.1 (dsl §7.1) — every other content-line key is `string`/`number`
-/// typed with no enumerable domain, so it offers nothing.
-fn content_line_attr_value_items(key: &str) -> Vec<CompletionItem> {
-    if key != "delivery" {
-        return Vec::new();
-    }
-    ["spoken", "thought", "voiceover"]
-        .iter()
-        .map(|v| CompletionItem {
-            label: v.to_string(),
-            kind: Some(CompletionItemKind::ENUM_MEMBER),
-            ..Default::default()
-        })
-        .collect()
+/// Content-line attribute VALUES: 0.2.2 retires the closed `delivery="…"`
+/// enum (dsl §D7 replaces it with the bare `mono`/`os`/`vo` flags, which have
+/// no `key="value"` form to complete into) — every content-line key is now
+/// `string`/`number`/flag typed with no enumerable value domain, so this
+/// offers nothing.
+fn content_line_attr_value_items(_key: &str) -> Vec<CompletionItem> {
+    Vec::new()
 }
 
 /// Character/cast ids from the pinned `character` provider snapshot (same
@@ -1243,7 +1240,7 @@ mod tests {
     }
 
     #[test]
-    fn content_line_attr_key_completion_offers_delivery_and_emotion() {
+    fn content_line_attr_key_completion_offers_delivery_flags_and_emotion() {
         // Cursor on the KEY half of an existing content-line attr (`code`, with
         // a `=` + quoted value so it's NOT a bareword `BoolTrue` attr, whose
         // key/value spans coincide and would resolve as an `AttrValue`
@@ -1253,27 +1250,26 @@ mod tests {
         let off = text.find("code").unwrap() + 2; // inside `code`, before `=`
         let items = complete(text, off);
         let ls = labels(&items);
-        assert!(ls.contains(&"delivery"), "missing delivery: {ls:?}");
+        for f in ["mono", "os", "vo"] {
+            assert!(ls.contains(&f), "missing {f}: {ls:?}");
+        }
         assert!(ls.contains(&"emotion"), "missing emotion: {ls:?}");
+        assert!(!ls.contains(&"delivery"), "0.2.1 delivery key retired: {ls:?}");
     }
 
     #[test]
-    fn content_line_delivery_value_completion_offers_exactly_three_members() {
-        // Cursor inside the empty `delivery=""` value -> `Cursor::AttrValue {
-        // directive: None, key: "delivery" }`.
-        let text = "## Shot 1.\n@x{delivery=\"\"}: hi\n";
-        let off = text.find("delivery=\"").unwrap() + "delivery=\"".len();
-        let items = complete(text, off);
-        let ls = labels(&items);
-        for v in ["spoken", "thought", "voiceover"] {
-            assert!(ls.contains(&v), "missing {v}: {ls:?}");
-        }
-        assert_eq!(ls.len(), 3, "delivery has exactly 3 members: {ls:?}");
+    fn content_line_delivery_flag_key_has_no_value_completion() {
+        // `mono`/`os`/`vo` are bare boolean flags (dsl 0.2.2 §D7) — no closed
+        // `key="value"` domain (retires 0.2.1's 3-member `delivery=""` enum).
+        let text = "## Shot 1.\n@x{mono=\"\"}: hi\n";
+        let off = text.find("mono=\"").unwrap() + "mono=\"".len();
+        assert!(complete(text, off).is_empty());
     }
 
     #[test]
     fn content_line_other_attr_key_has_no_value_completion() {
-        // `emotion` has no closed domain in 0.2.1 (only `delivery` does).
+        // No content-line key carries a closed value domain in 0.2.2 (the
+        // 0.2.1 `delivery` enum is retired in favor of bare flags, §D7).
         let text = "## Shot 1.\n@x{emotion=\"\"}: hi\n";
         let off = text.find("emotion=\"").unwrap() + "emotion=\"".len();
         assert!(complete(text, off).is_empty());

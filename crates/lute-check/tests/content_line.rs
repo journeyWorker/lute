@@ -17,23 +17,33 @@ fn codes(text: &str) -> Vec<String> {
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
 
 #[test]
-fn delivery_typo_is_error() {
-    let cs = codes(&format!("{HDR}@x{{delivery=\"thouhgt\"}}: hi\n"));
-    assert!(cs.contains(&"E-DELIVERY-VALUE".to_string()), "{cs:?}");
+fn two_delivery_flags_conflict() {
+    let cs = codes(&format!("{HDR}@x{{mono os}}: hi\n"));
+    assert!(cs.contains(&"E-DELIVERY-CONFLICT".to_string()), "{cs:?}");
 }
 
 #[test]
-fn delivery_on_narrator_is_error() {
-    let cs = codes(&format!("{HDR}@narrator{{delivery=\"thought\"}}: hi\n"));
+fn single_delivery_flag_ok() {
+    for f in ["mono", "os", "vo"] {
+        let cs = codes(&format!("{HDR}@x{{{f}}}: hi\n"));
+        assert!(!cs.iter().any(|c| c.starts_with("E-DELIVERY")), "{f}: {cs:?}");
+    }
+}
+
+#[test]
+fn delivery_flag_on_narrator_errors() {
+    let cs = codes(&format!("{HDR}@narrator{{mono}}: hi\n"));
     assert!(cs.contains(&"E-DELIVERY-NARRATOR".to_string()), "{cs:?}");
 }
 
 #[test]
-fn every_valid_delivery_is_clean() {
-    for v in ["spoken", "thought", "voiceover"] {
-        let cs = codes(&format!("{HDR}@x{{delivery=\"{v}\"}}: hi\n"));
-        assert!(!cs.iter().any(|c| c.starts_with("E-DELIVERY")), "{v}: {cs:?}");
-    }
+fn delivery_string_attr_is_unknown_not_a_value_domain() {
+    // 0.2.2 retires the `delivery="…"` enum-valued form entirely — the key
+    // itself is no longer in `KNOWN_ATTRS`, so it falls through to
+    // `E-UNKNOWN-ATTR` (retiring 0.2.1's `E-DELIVERY-VALUE`).
+    let cs = codes(&format!("{HDR}@x{{delivery=\"thought\"}}: hi\n"));
+    assert!(cs.contains(&"E-UNKNOWN-ATTR".to_string()), "{cs:?}");
+    assert!(!cs.iter().any(|c| c == "E-DELIVERY-VALUE"), "{cs:?}");
 }
 
 #[test]
@@ -45,7 +55,7 @@ fn unknown_content_attr_is_error() {
 #[test]
 fn known_content_attrs_are_clean() {
     let cs = codes(&format!(
-        "{HDR}@x{{code=\"0010\" emotion=\"neutral\" variant=\"0\" action=\"wave\" dialogMotion=\"m\" as=\"???\"}}: hi\n"
+        "{HDR}@x{{code=\"0010\" emotion=\"neutral\" variant=\"0\" action=\"wave\" dialogMotion=\"m\" mono as=\"???\"}}: hi\n"
     ));
     assert!(!cs.iter().any(|c| c == "E-UNKNOWN-ATTR"), "{cs:?}");
 }
