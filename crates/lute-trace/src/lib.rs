@@ -39,7 +39,12 @@
 //! the K3 lift).
 
 pub mod eval;
+pub mod mock;
 pub mod value;
 
 pub use eval::{eval, EffectiveState, EvalEnv, FactStore, Pat, Read};
+pub use mock::{
+    merge, parse_mock_yaml, validate, MockSet, E_TRACE_CHOICE, E_TRACE_MOCK_FACT,
+    E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED,
+};
 pub use value::{UnresolvedAtom, Value};
