@@ -57,6 +57,9 @@ fn standalone_component_param_ref_resolves_no_type_error() {
     );
     assert!(!cs.iter().any(|c| c == "E-UNDECLARED-REF"), "{cs:?}");
     assert!(!cs.iter().any(|c| c == "E-REF-TYPE"), "{cs:?}");
+    // A bare `@who` (0 args) matches its 0-arity `def_params` entry — no arity
+    // error, the parity counterpart to the call-form regression below.
+    assert!(!cs.iter().any(|c| c == "E-REF-ARITY"), "{cs:?}");
 }
 
 #[test]
@@ -81,4 +84,17 @@ fn scene_doc_not_polluted_by_component_param_seeding() {
          @narrator: {{@ghost}}\n",
     );
     assert!(cs.contains(&"E-UNDECLARED-REF".to_string()), "{cs:?}");
+}
+
+#[test]
+fn standalone_component_param_call_form_flags_ref_arity() {
+    // A component param is a 0-ARITY value ref: the call form `@who("x")` must
+    // flag E-REF-ARITY in a STANDALONE check exactly as it does transitively
+    // via `::use` (`component_env` seeds an empty `def_params` entry). Locks
+    // standalone/transitive arity parity (post-review fix).
+    let cs = codes(
+        "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n\
+         ::auto{character=@who(\"x\") action=\"fade-in-up\"}\n@narrator: hi\n",
+    );
+    assert!(cs.contains(&"E-REF-ARITY".to_string()), "{cs:?}");
 }

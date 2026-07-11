@@ -391,7 +391,10 @@ pub fn fold_env(
     // component file itself (which walks as `DocKind::Scene` per the
     // fragment-shape inference above) resolves its own `@param` refs instead
     // of false-flagging `E-UNDECLARED-REF`. Guarded to `MetaKind::Component`
-    // only — a normal scene/quest/schema doc's `defs` is untouched.
+    // only — a normal scene/quest/schema doc's `defs` is untouched. The
+    // parallel `def_types` (E-REF-TYPE) and `def_params` (empty → 0-arity, so
+    // `@p(x)` is E-REF-ARITY, matching `component_env`) tables are seeded from
+    // `params:` under the SAME guard below — keep all three in sync.
     if meta_kind == crate::meta::MetaKind::Component {
         defs.extend(typed.params.iter().map(|p| p.name.clone()));
     }
@@ -461,6 +464,16 @@ pub fn fold_env(
     // Inline frontmatter defs (untyped YAML): same extraction; scene-local override.
     for (name, v) in &typed.defs {
         def_params.insert(name.clone(), params_from_yaml(v));
+    }
+    // A component's declared params are 0-ARITY value refs in its own body:
+    // a bare `@p` is well-formed, `@p(x)` is `E-REF-ARITY` — the SAME empty
+    // entries `component_env` seeds for the transitive `::use` path, so a
+    // STANDALONE check of the component file agrees with the transitive one on
+    // arity (final-review parity fix). Guarded to `MetaKind::Component`.
+    if meta_kind == crate::meta::MetaKind::Component {
+        for param in &typed.params {
+            def_params.insert(param.name.clone(), Vec::new());
+        }
     }
 
     // def name -> raw CEL body for the D4 expander. Same three sources and the
