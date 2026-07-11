@@ -123,6 +123,33 @@ fn distinct_subjects_do_not_collapse() {
     );
 }
 
+// Finding 5 (C1 over-collapse): `collapse_same_root` keyed on the FIRST
+// backtick token, but a `::set` undeclared-target message quotes the
+// DIRECTIVE first (`` `::set` target `run.x` … ``, set_op.rs) — so two
+// DISTINCT bad writes (`run.x`, `run.y`) wrongly shared the collapse key
+// `("E-UNDECLARED", "::set")` and merged into one primary (the second
+// hidden in `covered[]`). The real root subject — the undeclared PATH, not
+// the leading `::set` token — must be the collapse key.
+#[test]
+fn distinct_undeclared_set_targets_do_not_collapse() {
+    let t = format!(
+        "{HDR}---\n## Shot 1.\n\
+         ::set{{run.x = 1}}\n\
+         ::set{{run.y = 2}}\n"
+    );
+    let diags = diagnose(&t);
+    let undeclared: Vec<&Diagnostic> = diags.iter().filter(|d| d.code == "E-UNDECLARED").collect();
+    assert_eq!(
+        undeclared.len(),
+        2,
+        "two distinct ::set undeclared targets must stay 2 primaries, got {diags:?}"
+    );
+    assert!(
+        undeclared.iter().all(|d| d.covered.is_empty()),
+        "neither primary should carry the other as covered[]: {undeclared:?}"
+    );
+}
+
 // `E-MAYBE-UNSET` is a site-specific analysis (each site's own dominators/
 // guards) and is EXEMPT from C1 — two unset-read sites of the SAME declared
 // path both survive collapse.
