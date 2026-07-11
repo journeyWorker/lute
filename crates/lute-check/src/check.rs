@@ -248,7 +248,7 @@ pub fn fold_env(
     //     declaration checked (§3.1/§4) and every seed `facts:` entry
     //     validated via `check_atom` (D12 wildcard-in-seed included).
     let (domains, domain_diags) = merge_domains(&input.snapshot, &input.imports, doc.meta.span);
-    let (vocab, rel_diags) =
+    let (mut vocab, rel_diags) =
         crate::rel_schema::build_rel_vocab(&input.imports, &typed, &domains, &doc.meta);
     fold_diags.extend(domain_diags);
     fold_diags.extend(rel_diags);
@@ -258,6 +258,11 @@ pub fn fold_env(
     // the vocab is still a plain local here (not yet frozen into `Env`'s
     // `Arc`), which Task 9's stratification/guard-taint pass relies on too.
     fold_diags.extend(crate::datalog_check::check_rules(&vocab, &domains));
+    // Whole-rule-set graph analyses (dsl 0.3.0 §7.2/§6, 0.3.0 T9): negation-
+    // cycle stratification + the guard-taint closure. Mutates `vocab` in
+    // place (fills `guard_tainted`) BEFORE it is frozen into `Env`'s `Arc`
+    // below — the one place in this pipeline `vocab` is still a plain local.
+    fold_diags.extend(crate::datalog_check::check_stratification(&mut vocab));
 
     // 4. Fold every `<branch>`/`<hub>`'s implicit recording decls
     //    (`scene.choices.<id>` + a hub's per-choice `scene.visited.<id>.*`) into

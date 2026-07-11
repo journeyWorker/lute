@@ -16,8 +16,12 @@
 //! `KindShape` match `check_atom` runs internally (its own copy is private to
 //! `rel_schema.rs`).
 //!
-//! Stratification + guard-taint (whole-rule-set graph analyses) are Task 9;
-//! this module stays purely per-rule.
+//! Stratification + guard-taint ([`check_stratification`], Task 9) are the
+//! whole-rule-set graph analyses: Tarjan SCC over the predicate-dependency
+//! graph (`E-DATALOG-UNSTRATIFIED` for a negation cycle) and the guard-taint
+//! closure that fills [`RelVocab::guard_tainted`] for Task 11's
+//! `E-VALIDAT-DERIVED`. Both are pure graph analyses over `vocab.rules` — no
+//! fixpoint over facts (D1); everything above this stays purely per-rule.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -31,6 +35,7 @@ use crate::rel_schema::{check_atom, RelVocab, E_FACT_DOMAIN, E_RELATION_ARITY, E
 pub const E_DERIVE_UNDECLARED: &str = "E-DERIVE-UNDECLARED"; // §7.1
 pub const W_DERIVE_NO_RULES: &str = "W-DERIVE-NO-RULES"; // §7.1 — Severity::Warning
 pub const E_DATALOG_UNSAFE: &str = "E-DATALOG-UNSAFE"; // §7.2
+pub const E_DATALOG_UNSTRATIFIED: &str = "E-DATALOG-UNSTRATIFIED"; // §7.2
 
 /// Per-rule + per-derived-relation checks (§7.1/§7.2, D1): head legality,
 /// body-atom closure, and safety for every rule in `vocab.rules`, plus
@@ -453,4 +458,246 @@ fn warn(code: &str, message: String, span: Span) -> Diagnostic {
         fixits: Vec::new(),
         provenance: None,
     }
+}
+
+/// Stratification + guard-taint (§7.2/§6, Task 9, D1): whole-rule-set graph
+/// analyses over the MERGED `vocab.rules` — no fixpoint over facts, ever.
+///
+/// **Stratification.** Nodes = declared relation names (`vocab.relations`'
+/// keys; entity kinds are excluded — they are never rule heads, so an edge
+/// FROM a kind can never close a cycle). For every rule `H :- …L…` whose
+/// head `H` resolves to a declared relation (an unknown head is skipped —
+/// [`check_head`] already reported `E-RELATION-UNKNOWN`/`E-DERIVE-UNDECLARED`
+/// for it), and for every `Pos`/`Neg` body atom `L` that ALSO resolves to a
+/// declared relation (a kind-as-`K(X)` or an undeclared name contributes no
+/// edge — the former can never cycle back, the latter is [`check_body_atom`]'s
+/// concern), add a structural edge `pred(L) → H`, tagged negative when `L` is
+/// `Neg`. Tarjan's algorithm ([`tarjan_sccs`], iterative — an explicit stack
+/// simulates the call frames so the depth-first walk never recurses) assigns
+/// every node its strongly-connected-component id; any NEGATIVE edge whose
+/// two endpoints share an SCC — including a direct self-edge, `p :- not p`,
+/// which is trivially its own single-node "cycle" — is a negation cycle
+/// (`E-DATALOG-UNSTRATIFIED`, at the rule that carries the offending literal,
+/// naming every relation in that SCC, sorted). A purely POSITIVE cycle (e.g.
+/// `canReach`'s self-recursion) shares an SCC too but is never flagged — only
+/// a negated edge closing the cycle is unstratifiable (§7.2).
+///
+/// **Guard taint.** Seed = every relation that is some rule's head where that
+/// rule's body carries a `Guard` literal. Propagate forward along the SAME
+/// structural edges (irrespective of polarity — reading a tainted relation
+/// through `not` still inherits the taint, spec §6) until the reachable set
+/// stops growing (a fixpoint over the NAME set, bounded by `vocab.relations`'
+/// size). `vocab.guard_tainted` becomes the reachable set intersected with
+/// `derive: true` relations (the field's contract — a base relation is never
+/// a member; D1 gives it no "rule closure" to taint).
+pub fn check_stratification(vocab: &mut RelVocab) -> Vec<Diagnostic> {
+    let nodes: BTreeSet<String> = vocab.relations.keys().cloned().collect();
+    let (adjacency, edges) = predicate_edges(vocab, &nodes);
+    let scc_of = tarjan_sccs(&nodes, &adjacency);
+
+    let mut out = Vec::new();
+    for edge in &edges {
+        if !edge.negated {
+            continue;
+        }
+        if scc_of[&edge.from] != scc_of[&edge.to] {
+            continue;
+        }
+        let scc_id = scc_of[&edge.from];
+        let mut members: Vec<&str> = scc_of
+            .iter()
+            .filter(|&(_, &id)| id == scc_id)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        members.sort_unstable();
+        out.push(diag(
+            E_DATALOG_UNSTRATIFIED,
+            format!(
+                "relation(s) `{}` form a negation cycle: a rule's negated body literal may never \
+                 depend on itself, even indirectly through other rules (dsl 0.3.0 §7.2) — \
+                 stratify the rules so recursion never crosses `not`",
+                members.join("`, `")
+            ),
+            edge.span,
+        ));
+    }
+
+    vocab.guard_tainted = compute_guard_taint(vocab, &adjacency);
+    out
+}
+
+/// One structural predicate-dependency edge (§7.2): `from` is a body atom's
+/// relation, `to` is the rule's head relation ("`to`'s rule reads `from`"),
+/// `negated` is true iff the body atom is `Neg`, and `span` is the owning
+/// rule's span (where a stratification diagnostic for this edge is anchored).
+struct PredEdge {
+    from: String,
+    to: String,
+    negated: bool,
+    span: Span,
+}
+
+/// Build the predicate-dependency graph (§7.2) over `vocab.rules`: an
+/// adjacency map (`from` → every `to` it reaches, for [`tarjan_sccs`] and taint
+/// propagation) plus the flat edge list (for the per-edge negation-cycle
+/// check). Only atoms naming a `node` (a declared relation) contribute an
+/// edge — an entity-kind atom (`K(X)`) or an atom naming an undeclared
+/// relation is invisible to this graph (see [`check_stratification`]'s doc).
+fn predicate_edges(
+    vocab: &RelVocab,
+    nodes: &BTreeSet<String>,
+) -> (BTreeMap<String, Vec<String>>, Vec<PredEdge>) {
+    let mut adjacency: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut edges = Vec::new();
+    for rule_decl in &vocab.rules {
+        let head = &rule_decl.rule.head.relation;
+        if !nodes.contains(head) {
+            continue;
+        }
+        for lit in &rule_decl.rule.body {
+            let (atom, negated) = match lit {
+                BodyLiteral::Pos(a) => (a, false),
+                BodyLiteral::Neg(a) => (a, true),
+                BodyLiteral::Guard { .. } | BodyLiteral::Cmp { .. } => continue,
+            };
+            if !nodes.contains(&atom.relation) {
+                continue;
+            }
+            adjacency
+                .entry(atom.relation.clone())
+                .or_default()
+                .push(head.clone());
+            edges.push(PredEdge {
+                from: atom.relation.clone(),
+                to: head.clone(),
+                negated,
+                span: rule_decl.span,
+            });
+        }
+    }
+    (adjacency, edges)
+}
+
+/// Tarjan's strongly-connected-components algorithm (§7.2), iterative: an
+/// explicit `work` stack of `(node, next-child-index)` frames simulates the
+/// recursive DFS call stack (a rule set is always small, but never recurse
+/// unboundedly on user input). Every node in `nodes` gets an SCC id, even an
+/// isolated one with no edges (its own singleton component) — the caller
+/// only cares whether two DISTINCT nodes (or a node and itself via a direct
+/// self-edge) share an id.
+fn tarjan_sccs(
+    nodes: &BTreeSet<String>,
+    adjacency: &BTreeMap<String, Vec<String>>,
+) -> BTreeMap<String, usize> {
+    let empty: Vec<String> = Vec::new();
+    let mut index_of: BTreeMap<String, usize> = BTreeMap::new();
+    let mut lowlink: BTreeMap<String, usize> = BTreeMap::new();
+    let mut on_stack: BTreeSet<String> = BTreeSet::new();
+    let mut tarjan_stack: Vec<String> = Vec::new();
+    let mut scc_of: BTreeMap<String, usize> = BTreeMap::new();
+    let mut next_index = 0usize;
+    let mut next_scc = 0usize;
+
+    for start in nodes {
+        if index_of.contains_key(start) {
+            continue;
+        }
+        let mut work: Vec<(String, usize)> = vec![(start.clone(), 0)];
+        index_of.insert(start.clone(), next_index);
+        lowlink.insert(start.clone(), next_index);
+        next_index += 1;
+        tarjan_stack.push(start.clone());
+        on_stack.insert(start.clone());
+
+        while !work.is_empty() {
+            let top = work.len() - 1;
+            let node = work[top].0.clone();
+            let child_i = work[top].1;
+            let neighbors = adjacency.get(&node).unwrap_or(&empty);
+            if child_i < neighbors.len() {
+                work[top].1 += 1;
+                let next = neighbors[child_i].clone();
+                if !index_of.contains_key(&next) {
+                    index_of.insert(next.clone(), next_index);
+                    lowlink.insert(next.clone(), next_index);
+                    next_index += 1;
+                    tarjan_stack.push(next.clone());
+                    on_stack.insert(next.clone());
+                    work.push((next, 0));
+                } else if on_stack.contains(&next) {
+                    let next_index_val = index_of[&next];
+                    if next_index_val < lowlink[&node] {
+                        lowlink.insert(node, next_index_val);
+                    }
+                }
+            } else {
+                work.pop();
+                let node_low = lowlink[&node];
+                if let Some((parent, _)) = work.last() {
+                    let parent = parent.clone();
+                    if node_low < lowlink[&parent] {
+                        lowlink.insert(parent, node_low);
+                    }
+                }
+                if node_low == index_of[&node] {
+                    loop {
+                        let w = tarjan_stack.pop().expect("SCC root must be on the stack");
+                        on_stack.remove(&w);
+                        let done = w == node;
+                        scc_of.insert(w, next_scc);
+                        if done {
+                            break;
+                        }
+                    }
+                    next_scc += 1;
+                }
+            }
+        }
+    }
+    scc_of
+}
+
+/// The guard-taint closure (§6, D1: no fixpoint over facts — this is a
+/// fixpoint over the NAME set, ≤ `vocab.relations.len()` passes): seed with
+/// every relation headed by a rule whose body carries a `Guard` literal, then
+/// repeatedly walk `adjacency` forward (any polarity — §6 draws no
+/// distinction) until no pass adds a new name. The result is filtered to
+/// `derive: true` relations, matching [`RelVocab::guard_tainted`]'s contract.
+fn compute_guard_taint(
+    vocab: &RelVocab,
+    adjacency: &BTreeMap<String, Vec<String>>,
+) -> BTreeSet<String> {
+    let mut tainted: BTreeSet<String> = vocab
+        .rules
+        .iter()
+        .filter(|r| {
+            r.rule
+                .body
+                .iter()
+                .any(|lit| matches!(lit, BodyLiteral::Guard { .. }))
+        })
+        .map(|r| r.rule.head.relation.clone())
+        .collect();
+
+    loop {
+        let mut grew = false;
+        for (from, reached) in adjacency {
+            if !tainted.contains(from) {
+                continue;
+            }
+            for to in reached {
+                if tainted.insert(to.clone()) {
+                    grew = true;
+                }
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+
+    tainted
+        .into_iter()
+        .filter(|name| vocab.relations.get(name).is_some_and(|decl| decl.derive))
+        .collect()
 }
