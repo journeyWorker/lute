@@ -287,11 +287,26 @@ pub fn parse_meta_kind(
     let value: serde_yaml::Value = match serde_yaml::from_str(&meta.raw_yaml) {
         Ok(v) => v,
         Err(e) => {
-            diags.push(err(
-                "E-META-PARSE",
-                format!("invalid meta frontmatter YAML: {e}"),
-            ));
-            return (TypedMeta::default(), diags);
+            // A literal duplicate key inside `entities:`/`relations:`
+            // (same-block dup, dsl 0.3.0 T5/T7) makes `serde_yaml::from_str`
+            // reject the ENTIRE frontmatter — it does NOT silently collapse
+            // the repeat, despite an earlier assumption in this codebase.
+            // Retry against a text-sanitized copy (every occurrence after the
+            // first of a same-indent-level `entities:`/`relations:` child key
+            // commented out) so every OTHER frontmatter field still lifts;
+            // the authoritative dup NAME still comes from
+            // `scan_block_dup_names` against the UNMODIFIED `meta.raw_yaml`
+            // below, never this sanitized copy.
+            match serde_yaml::from_str(&sanitize_dup_block_keys(&meta.raw_yaml)) {
+                Ok(v) => v,
+                Err(_) => {
+                    diags.push(err(
+                        "E-META-PARSE",
+                        format!("invalid meta frontmatter YAML: {e}"),
+                    ));
+                    return (TypedMeta::default(), diags);
+                }
+            }
         }
     };
 
@@ -663,7 +678,7 @@ pub fn infer_meta_kind_from_shape(meta: &Meta, has_body: bool) -> Option<MetaKin
 /// Falls back to a naive first occurrence, then the whole-frontmatter span, only
 /// when no key line matches. `line`/`column`/`utf16` are left zeroed —
 /// [`crate::check`]'s `normalize_spans` recomputes them from the byte offsets.
-fn meta_key_span(meta: &Meta, needle: &str) -> Span {
+pub(crate) fn meta_key_span(meta: &Meta, needle: &str) -> Span {
     // `raw_yaml` is the frontmatter interior sliced verbatim after the 4-byte
     // `"---\n"` opener (itself included in `meta.span`); a `raw_yaml` offset maps
     // to the document by adding `meta.span.byte_start + 4`.
@@ -744,6 +759,78 @@ fn scan_block_dup_names(raw_yaml: &str, block_key: &str) -> Vec<String> {
         }
     }
     dups
+}
+
+/// Recovery helper for [`parse_meta_kind`]'s initial whole-document YAML
+/// parse (dsl 0.3.0 T5/T7): `serde_yaml` REJECTS a literal duplicate key
+/// anywhere in the document (it does not silently collapse a repeat, contra
+/// [`scan_block_dup_names`]'s original assumption), which would otherwise
+/// take down the ENTIRE frontmatter lift over a same-block
+/// `entities:`/`relations:` dup that this crate has a dedicated diagnostic
+/// for (`E-KIND-NAME-CLASH`/`E-RELATION-DUP`). Returns a copy of `raw_yaml`
+/// with every occurrence AFTER THE FIRST of a same-indent-level child key
+/// under `entities:`/`relations:` commented out (indent preserved, a `#`
+/// inserted) — just enough for the retry parse to succeed and lift every
+/// OTHER field; mirrors `scan_block_dup_names`'s exact block/indent-tracking
+/// so both agree on which key is "the" duplicate.
+fn sanitize_dup_block_keys(raw_yaml: &str) -> String {
+    const BLOCKS: [&str; 2] = ["entities", "relations"];
+    let mut seen: BTreeMap<(&str, String), u32> = BTreeMap::new();
+    let mut in_block: Option<&str> = None;
+    let mut entry_indent: Option<usize> = None;
+    let mut out = String::with_capacity(raw_yaml.len());
+    for line in raw_yaml.split_inclusive('\n') {
+        let body_len = line.trim_end_matches(['\n', '\r']).len();
+        let (body, nl) = line.split_at(body_len);
+        let trimmed = body.trim_start();
+        let indent = body.len() - trimmed.len();
+        if indent == 0 {
+            in_block = BLOCKS
+                .iter()
+                .copied()
+                .find(|k| trimmed.starts_with(&format!("{k}:")));
+            entry_indent = None;
+            out.push_str(line);
+            continue;
+        }
+        let Some(block) = in_block else {
+            out.push_str(line);
+            continue;
+        };
+        if trimmed.is_empty() {
+            out.push_str(line);
+            continue;
+        }
+        let want_indent = *entry_indent.get_or_insert(indent);
+        if indent != want_indent {
+            out.push_str(line);
+            continue;
+        }
+        let Some(colon) = trimmed.find(':') else {
+            out.push_str(line);
+            continue;
+        };
+        let name = trimmed[..colon].trim();
+        if name.is_empty()
+            || !name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            out.push_str(line);
+            continue;
+        }
+        let count = seen.entry((block, name.to_string())).or_insert(0);
+        *count += 1;
+        if *count >= 2 {
+            out.push_str(&body[..indent]);
+            out.push('#');
+            out.push_str(trimmed);
+            out.push_str(nl);
+        } else {
+            out.push_str(line);
+        }
+    }
+    out
 }
 
 /// Raw `state:` entry (dsl §9.3): `{ type, default? }`. `Type` reuses the

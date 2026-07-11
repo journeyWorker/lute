@@ -221,6 +221,21 @@ pub fn resolve_imports(
     // Directed-cycle detection over the reachable subgraph (DFS 3-coloring).
     detect_cycles(&adj, &mut diags, at);
 
+    // 0.3.0 T7: structural relation-decl validation (`E-ENTITY-KIND-SHAPE`,
+    // `E-KIND-NAME-CLASH`/`E-RELATION-DUP` same-block dups,
+    // `E-RELATION-EMPTY`/`-DOMAIN`, `E-DERIVE-TIER`,
+    // `E-RELATION-RESERVED-WRITE`) runs per IMPORTED file too, at the
+    // import-statement span `at` (matching how `E-USES-*` reports today) —
+    // so a malformed decl surfaces at every document that imports it, not
+    // only when that file is checked directly.
+    for doc in parsed.values() {
+        diags.extend(crate::rel_schema::validate_rel_decls(
+            &doc.rel_kinds,
+            &doc.rel_relations,
+            &|_| at,
+        ));
+    }
+
     // --- Phase 2: gather EVERY declaration per NAME, then resolve deterministically.
     let mut state_by_name: BTreeMap<String, Vec<(PathBuf, usize, StateDecl)>> = BTreeMap::new();
     let mut def_by_name: BTreeMap<String, Vec<(PathBuf, usize, serde_yaml::Value)>> =
@@ -701,7 +716,7 @@ fn emit_level_dups<T>(
 /// `child` MUST be a superset re-listing of `base` (same shape); a missing
 /// base member, or a `members:`/`open:` shape flip, is the mismatch reported
 /// as `E-EXTENDS-RELATION-SIG`. `None` when the re-declaration is legal.
-fn kind_shape_mismatch(child: &KindShape, base: &KindShape) -> Option<String> {
+pub(crate) fn kind_shape_mismatch(child: &KindShape, base: &KindShape) -> Option<String> {
     match (child, base) {
         (KindShape::Members(c), KindShape::Members(b)) => {
             let missing = missing_members(c, b);
@@ -718,7 +733,7 @@ fn kind_shape_mismatch(child: &KindShape, base: &KindShape) -> Option<String> {
 
 /// `base`'s members not re-listed in `child` — the D5 superset check shared
 /// by entity kinds and `enums:` entries.
-fn missing_members(child: &[String], base: &[String]) -> Vec<String> {
+pub(crate) fn missing_members(child: &[String], base: &[String]) -> Vec<String> {
     let child_set: BTreeSet<&String> = child.iter().collect();
     base.iter()
         .filter(|m| !child_set.contains(m))
@@ -730,7 +745,7 @@ fn missing_members(child: &[String], base: &[String]) -> Vec<String> {
 /// match the base's FULL decl (`args`+`tier`+`derive`+`reserved`+`key`,
 /// `malformed_fields` excluded — it is not part of the declared signature).
 /// Returns the differing field names, empty when identical.
-fn relation_sig_diff(child: &RelationDecl, base: &RelationDecl) -> Vec<&'static str> {
+pub(crate) fn relation_sig_diff(child: &RelationDecl, base: &RelationDecl) -> Vec<&'static str> {
     let mut out = Vec::new();
     if child.args != base.args {
         out.push("args");

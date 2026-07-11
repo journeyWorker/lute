@@ -13,6 +13,7 @@ pub mod match_check;
 pub mod meta;
 pub mod on;
 pub mod project_check;
+pub mod rel_schema;
 pub mod schema_import;
 pub mod set_op;
 pub mod tag;
@@ -40,6 +41,7 @@ pub use meta::{
 };
 pub use on::{check_on_event, E_ON_NO_EVENT, E_UNKNOWN_EVENT};
 pub use project_check::{check_project_quest_ids, colliding_occurrences};
+pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use schema_import::{resolve_imports, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner};
 pub use tag::{tag_document, TagOutcome};
