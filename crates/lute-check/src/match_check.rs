@@ -967,8 +967,11 @@ fn arm_coverage(is: Option<&IsPattern>, test_raw: &str, subject: Option<&str>) -
 /// One classified literal from a `<when is="…">` alternation (dsl §7.3.1):
 /// the four token kinds the grammar admits. Shared by [`analyze_is_pattern`]
 /// (coverage folding, §11.2) and the `E-WHEN-LITERAL-DOMAIN` domain check
-/// (0.4.0 §5.2) so both read ONE classification.
-enum WhenLiteral {
+/// (0.4.0 §5.2) so both read ONE classification. `pub(crate)`: also shared
+/// with `reachability.rs` (0.4.0 T4 — the E-ARM-DEAD subsumption union reads
+/// the SAME classification, so the two codes never disagree about a
+/// literal's meaning).
+pub(crate) enum WhenLiteral {
     Bool(bool),
     /// The `unset` case (§9.4) — not a `DomainValue`; membership is decided
     /// by `maybe_unset`, never by domain member equality.
@@ -981,8 +984,9 @@ enum WhenLiteral {
 
 /// Classify one trimmed `is=` alternative (dsl §7.3.1): `WhenPattern ::=
 /// Literal ("|" Literal)*`, `Literal = EnumMember | "true" | "false" |
-/// Number | "unset"`. This is NOT CEL.
-fn classify_when_literal(lit: &str) -> WhenLiteral {
+/// Number | "unset"`. This is NOT CEL. `pub(crate)`: shared with
+/// `reachability.rs` (0.4.0 T4).
+pub(crate) fn classify_when_literal(lit: &str) -> WhenLiteral {
     match lit {
         "true" => WhenLiteral::Bool(true),
         "false" => WhenLiteral::Bool(false),
@@ -1072,7 +1076,7 @@ pub(crate) fn is_pattern_literals(raw: &str, span: Span) -> Vec<(String, Span)> 
 /// 3, including an `Infinite` subject — rule 4); every other literal kind is
 /// checked only when the domain is `Finite` (rules 1-2) — an `Infinite`
 /// subject makes no finite claim to violate.
-fn literal_is_foreign(lit: &WhenLiteral, dom: &DomainInfo) -> bool {
+pub(crate) fn literal_is_foreign(lit: &WhenLiteral, dom: &DomainInfo) -> bool {
     if !dom.resolved {
         return false;
     }

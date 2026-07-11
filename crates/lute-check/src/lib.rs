@@ -17,6 +17,7 @@ pub mod match_check;
 pub mod meta;
 pub mod on;
 pub mod project_check;
+pub mod reachability;
 pub mod rel_schema;
 pub mod schema_import;
 pub mod set_op;
