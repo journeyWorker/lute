@@ -10,15 +10,21 @@
 //!   diagnostic is present (`CheckResult::ok`), `2` on an I/O failure. `--json`
 //!   prints the serialized [`CheckResult`]; otherwise a human line per diagnostic.
 //! - `lute check-project <dir> [--json] [--providers <dir>]` — recursively
-//!   `check` every `*.lute` file under `<dir>` (deterministic sorted order,
-//!   `--project <dir>` resolution for each), PLUS project-wide `<quest id>`
-//!   uniqueness (dsl 0.2.0 §6.3) for quest docs `check`'s own
-//!   import-graph-scoped `E-QUEST-ID-DUP` (0.2.0 F4) cannot see: two quest
-//!   docs sharing an id with no `uses:`/`extends:` edge between them. Exit
-//!   `0` clean, `1` when any file has an `Error` or the project-wide pass
-//!   finds a collision, `2` on an I/O failure. `--json` prints a structured
-//!   report (per-file `CheckResult`s + the project-wide diagnostics);
-//!   otherwise per-file human lines plus a project-wide section.
+//!   `check` every `*.lute` file under `<dir>` (deterministic sorted order),
+//!   resolving EACH file's project root independently as its nearest
+//!   ancestor directory containing a `lute.project.yaml` (bounded below by
+//!   `<dir>` itself; falls back to `<dir>` when no ancestor has one) — so a
+//!   `<dir>` containing nested subprojects checks each file against ITS OWN
+//!   subproject, not the walk root. PLUS project-wide `<quest id>`
+//!   uniqueness (dsl 0.2.0 §6.3), scoped PER RESOLVED PROJECT ROOT (two
+//!   different subprojects declaring the same id is not a collision), for
+//!   quest docs `check`'s own import-graph-scoped `E-QUEST-ID-DUP` (0.2.0
+//!   F4) cannot see: two quest docs sharing an id with no `uses:`/`extends:`
+//!   edge between them. Exit `0` clean, `1` when any file has an `Error` or
+//!   any resolved root's quest-id pass finds a collision, `2` on an I/O
+//!   failure. `--json` prints a structured report (per-file `CheckResult`s +
+//!   the project-wide diagnostics); otherwise per-file human lines plus a
+//!   project-wide section.
 //! - `lute catalog refresh <dir>` — re-stamp every pinned provider snapshot in
 //!   `<dir>` against the current `capabilityVersion` and clear its `stale` flag,
 //!   rewriting each file in the flat on-disk format `ProviderSet::load` reads
@@ -362,25 +368,66 @@ fn find_lute_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     Ok(deduped)
 }
 
+/// Resolve the project root for `file` (found under `walk_root` by
+/// [`find_lute_files`]): the NEAREST ancestor directory — starting at
+/// `file`'s own parent, walking upward — whose `lute.project.yaml` exists.
+/// Bounded below by `walk_root` itself, which is always the LAST directory
+/// tested; the walk never ascends above it. Returns `walk_root` unchanged
+/// when no ancestor up to and including it has a manifest, preserving
+/// today's flat single-project behavior for a `walk_root` with no nested
+/// subprojects. Deterministic and total: every path's `Path::parent()`
+/// ancestry is finite, so the walk always terminates; the only filesystem
+/// interaction is an existence check, never a read.
+fn project_root_for(file: &Path, walk_root: &Path) -> PathBuf {
+    let mut dir = file.parent().unwrap_or(walk_root);
+    loop {
+        if dir.join("lute.project.yaml").is_file() {
+            return dir.to_path_buf();
+        }
+        if dir == walk_root {
+            return walk_root.to_path_buf();
+        }
+        dir = match dir.parent() {
+            Some(parent) => parent,
+            None => return walk_root.to_path_buf(),
+        };
+    }
+}
+
 /// Run `check` over every `*.lute` file recursively found under `dir`
-/// (sorted, deterministic, symlink-deduped — [`find_lute_files`]), reusing
-/// `build_input` with `--project <dir>` so each file's capability resolution
-/// matches `lute check <file> --project <dir>` exactly, THEN additionally
-/// cross-validates project-wide `<quest id>` uniqueness (dsl 0.2.0 §6.3,
-/// [`lute_check::check_project_quest_ids`]) — the residual `check()`'s own
-/// `E-QUEST-ID-DUP` (0.2.0 F4, scoped to one document's OWN
-/// `uses:`/`extends:` import graph) cannot see: two quest docs sharing an id
-/// with no import edge between them at all.
+/// (sorted, deterministic, symlink-deduped — [`find_lute_files`]), but
+/// resolving EACH file's project independently rather than reusing `dir` as
+/// one flat project for every file: [`project_root_for`] walks from the
+/// file's own directory upward for the NEAREST ancestor containing a
+/// `lute.project.yaml`, bounded below by `dir` itself (falls back to `dir`
+/// when no ancestor up to and including it has one — identical to the old
+/// flat-project behavior). `build_input` is called with THAT resolved root,
+/// so a file under a nested subproject (its own `lute.project.yaml` +
+/// `plugins/` + `catalog/`) resolves against ITS OWN capability snapshot and
+/// pinned catalog, matching `lute check <file> --project <that subproject>`
+/// exactly — never the walk root's, when a nearer root exists.
 ///
-/// Neither surface is the sole authority: `check_project_quest_ids` only ever
-/// sees the files THIS walk found, so it cannot re-derive an import-graph
-/// collision `check()` catches whose OTHER party lives outside `dir` (0.2.1
-/// review F1 — blanket-stripping every per-file `E-QUEST-ID-DUP` and trusting
-/// the project pass alone silently swallowed that case). So every per-file
-/// diagnostic is KEPT by default; only a per-file `E-QUEST-ID-DUP` whose
-/// exact `(file, span)` is a MEMBER of an in-`dir` colliding group
-/// ([`lute_check::colliding_occurrences`] — every occurrence of an id
-/// declared 2+ times among the walked docs, not just the ones
+/// THEN additionally cross-validates `<quest id>` uniqueness (dsl 0.2.0
+/// §6.3, [`lute_check::check_project_quest_ids`]) — the residual `check()`'s
+/// own `E-QUEST-ID-DUP` (0.2.0 F4, scoped to one document's OWN
+/// `uses:`/`extends:` import graph) cannot see: two quest docs sharing an id
+/// with no import edge between them at all. This pass is scoped PER
+/// RESOLVED PROJECT ROOT, not pooled across the whole walked tree: the
+/// walked docs are grouped by their resolved root (preserving each group's
+/// relative file order) and both quest-id passes run independently within
+/// each group, so the same id declared in two DIFFERENT subprojects is never
+/// flagged as a collision — only a repeat WITHIN one resolved root is.
+///
+/// Neither surface is the sole authority: `check_project_quest_ids` only
+/// ever sees the files THIS walk found within the SAME resolved-root group,
+/// so it cannot re-derive an import-graph collision `check()` catches whose
+/// OTHER party lives outside `dir` (0.2.1 review F1 — blanket-stripping
+/// every per-file `E-QUEST-ID-DUP` and trusting the project pass alone
+/// silently swallowed that case). So every per-file diagnostic is KEPT by
+/// default; only a per-file `E-QUEST-ID-DUP` whose exact `(file, span)` is a
+/// MEMBER of a colliding group WITHIN ITS OWN resolved root
+/// ([`lute_check::colliding_occurrences`], run per group — every occurrence
+/// of an id declared 2+ times among that group's docs, not just the ones
 /// `check_project_quest_ids` itself emits a diagnostic for) is suppressed,
 /// since that whole group is already covered by exactly one
 /// `check_project_quest_ids` diagnostic. Membership, not anchor equality, is
@@ -391,8 +438,8 @@ fn find_lute_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 /// [`lute_check::colliding_occurrences`]'s own doc comment.
 ///
 /// Exit `0` clean, `1` when any file has a (post-suppression) `Error`
-/// diagnostic or the project-wide pass finds any collision, `2` on an I/O
-/// failure walking `dir` or reading a file.
+/// diagnostic or any resolved root's quest-id pass finds a collision, `2` on
+/// an I/O failure walking `dir` or reading a file.
 fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCode {
     let files = match find_lute_files(dir) {
         Ok(f) => f,
@@ -405,9 +452,14 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
     let mut file_results: Vec<(PathBuf, lute_check::CheckResult)> =
         Vec::with_capacity(files.len());
     let mut docs: Vec<(PathBuf, lute_syntax::ast::Document)> = Vec::with_capacity(files.len());
+    // The resolved project root for `files[i]`/`docs[i]` (same index order)
+    // — [`project_root_for`]'s nearest-ancestor `lute.project.yaml` lookup,
+    // bounded below by the walk root `dir` itself.
+    let mut roots: Vec<PathBuf> = Vec::with_capacity(files.len());
 
     for file in &files {
-        let Some(input) = build_input(file, providers, Some(dir)) else {
+        let root = project_root_for(file, dir);
+        let Some(input) = build_input(file, providers, Some(&root)) else {
             return ExitCode::from(2);
         };
         let (doc, _) = lute_syntax::parse(&input.text);
@@ -415,14 +467,33 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
 
         let result = check(&input);
         file_results.push((file.clone(), result));
+        roots.push(root);
     }
 
-    let project_diags = check_project_quest_ids(&docs);
-    // Every occurrence project-wide already covers (see the fn doc comment
-    // above) — used below to suppress ONLY the per-file `E-QUEST-ID-DUP`s
-    // this pass demonstrably re-reports, never the ones it structurally
-    // cannot see (an import-graph collision reaching outside `dir`).
-    let covered = lute_check::colliding_occurrences(&docs);
+    // Scope project-wide <quest id> uniqueness (dsl 0.2.0 §6.3) PER RESOLVED
+    // PROJECT ROOT rather than pooling across the whole walked tree: two
+    // different subprojects each declaring the same id is not a collision,
+    // only a repeat WITHIN one resolved root is. Group `docs` by `roots[i]`
+    // (same index order), preserving each group's relative file order, then
+    // run both quest-id passes independently per group and union the
+    // results below.
+    let mut by_root: BTreeMap<PathBuf, Vec<(PathBuf, lute_syntax::ast::Document)>> =
+        BTreeMap::new();
+    for (idx, entry) in docs.iter().enumerate() {
+        by_root.entry(roots[idx].clone()).or_default().push(entry.clone());
+    }
+
+    let mut project_diags = Vec::new();
+    // Every occurrence within its own resolved root already covers (see the
+    // fn doc comment above) — used below to suppress ONLY the per-file
+    // `E-QUEST-ID-DUP`s that pass demonstrably re-reports, never the ones it
+    // structurally cannot see (an import-graph collision reaching outside
+    // `dir`, or a same-id declare in a SIBLING project root).
+    let mut covered = Vec::new();
+    for group in by_root.values() {
+        project_diags.extend(check_project_quest_ids(group));
+        covered.extend(lute_check::colliding_occurrences(group));
+    }
     for (path, result) in &mut file_results {
         result.diagnostics.retain(|d| {
             d.code != "E-QUEST-ID-DUP"
