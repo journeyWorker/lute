@@ -7,6 +7,7 @@ pub mod component_import;
 pub mod content_line;
 pub mod ctx;
 pub mod datalog_check;
+pub mod decide;
 pub mod defassign;
 pub mod directives;
 pub mod fact_write;
@@ -26,6 +27,7 @@ pub mod timeline;
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_paths::E_PATH_IDENT;
 pub use cel_expand::{expand_cel, DefTable};
+pub use decide::{apply_op, decide, decide_slot, DecideCtx, Decided, DollarBinding};
 pub use cel_resolve::{
     check_cel_slot, check_rule_guards, E_CEL_PROFILE, E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT,
     E_VALIDAT_DERIVED,
@@ -46,7 +48,7 @@ pub use inject::{
 };
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, is_exhaustive,
-    BranchRecord, HubRecord, QuestRecord,
+    BranchRecord, DomainInfo, HubRecord, QuestRecord,
 };
 pub use meta::{
     parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace, StateDecl,

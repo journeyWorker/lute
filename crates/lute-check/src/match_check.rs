@@ -93,7 +93,7 @@ pub const E_HUB_NO_EXIT: &str = "E-HUB-NO-EXIT";
 
 /// A concrete, statically-known value an arm can match against.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum DomainValue {
+pub enum DomainValue {
     Str(String),
     Bool(bool),
     /// A decimal `Number` literal (dsl §7.3.1), kept as its trimmed source text.
@@ -104,7 +104,7 @@ enum DomainValue {
 
 /// The inferred value domain of a `<match>` subject (dsl §11.2).
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum Domain {
+pub enum Domain {
     /// Finite domain with a known, enumerable set of values.
     Finite(Vec<DomainValue>),
     /// Infinite / unknowable domain (number, string, unresolved subject): an
@@ -804,16 +804,19 @@ pub fn is_exhaustive(m: &Match, schema: &StateSchema) -> bool {
 }
 
 /// The inferred domain of a subject plus whether the subject is maybe-unset.
-struct DomainInfo {
-    domain: Domain,
-    maybe_unset: bool,
+/// `pub`: shared with `decide.rs`'s R2 (§5.1 finite-domain membership) and
+/// re-exported at the crate root for `lute-compile`/`lute-trace` (0.4.0 T2).
+#[derive(Clone, Debug, PartialEq)]
+pub struct DomainInfo {
+    pub domain: Domain,
+    pub maybe_unset: bool,
 }
 
 /// Infer the subject's value domain (dsl §11.2). A `bool`/`enum` decl or a
 /// `scene.choices.<id>` path is FINITE; anything else is INFINITE (requires
 /// `<otherwise>`). Maybe-unset: a `scene.choices.*` subject always (a branch may
 /// not have been reached), or a `run.*`/`user.*`/`app.*` decl with no `default`.
-fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> DomainInfo {
+pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> DomainInfo {
     let Some(path) = subject else {
         return DomainInfo {
             domain: Domain::Infinite,
@@ -1035,7 +1038,7 @@ fn is_unset_test(expr: &Expr, subject: Option<&str>) -> bool {
 /// Reconstruct the subject's dotted path (`run.rank`, `scene.choices.x`). Returns
 /// `None` for a non-path subject (`isSet(run.x)`, an empty/missing `on=`) — an
 /// unresolved subject is treated as an infinite domain.
-fn subject_path(m: &Match) -> Option<String> {
+pub(crate) fn subject_path(m: &Match) -> Option<String> {
     let expr = parse_expr(&m.subject.raw)?;
     crate::cel_paths::select_path(&expr)
 }
