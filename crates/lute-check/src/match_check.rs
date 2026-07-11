@@ -91,6 +91,16 @@ pub const E_BRANCH_ALL_GUARDED: &str = "E-BRANCH-ALL-GUARDED";
 /// empties and auto-exit fires). A hub satisfying neither loops forever.
 pub const E_HUB_NO_EXIT: &str = "E-HUB-NO-EXIT";
 
+/// `E-WHEN-LITERAL-DOMAIN`: an `<when is="…">` literal outside the subject's
+/// decided finite domain (dsl 0.4 §5.2, §6.3) — a foreign enum member (a
+/// typo), a number/bool literal against a mismatched domain, or `unset` on a
+/// subject that is never unset (a defaulted path; a component param, §6.3).
+/// Such an arm can never fire and the cause is the literal itself; this code
+/// OWNS that root — it never additionally piles on `E-ARM-DEAD` for the same
+/// arm (D4), and the foreign literal contributes nothing to coverage/
+/// subsumption downstream.
+pub const E_WHEN_LITERAL_DOMAIN: &str = "E-WHEN-LITERAL-DOMAIN";
+
 /// A concrete, statically-known value an arm can match against.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DomainValue {
@@ -182,6 +192,21 @@ pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagno
                         .to_string(),
                     *span,
                 ));
+            }
+            for (lit_raw, lit_span) in is
+                .as_ref()
+                .map(|pat| is_pattern_literals(&pat.raw, pat.span))
+                .unwrap_or_default()
+            {
+                let lit = classify_when_literal(&lit_raw);
+                if literal_is_foreign(&lit, &info) {
+                    diags.push(diag(
+                        E_WHEN_LITERAL_DOMAIN,
+                        Severity::Error,
+                        foreign_literal_message(&lit_raw, &lit, &info.domain),
+                        lit_span,
+                    ));
+                }
             }
             let cov = arm_coverage(is.as_ref(), &test.raw, subject.as_deref());
             if cov.values.iter().any(|v| covered.contains(v)) {
@@ -810,6 +835,18 @@ pub fn is_exhaustive(m: &Match, schema: &StateSchema) -> bool {
 pub struct DomainInfo {
     pub domain: Domain,
     pub maybe_unset: bool,
+    /// Whether the subject was actually resolved against the schema: a
+    /// known `bool`/`enum` decl, a `scene.choices.*` branch with folded
+    /// members, or any other declared decl (`Domain::Infinite` included —
+    /// e.g. a declared `number`). `false` when `infer_domain` has NO schema
+    /// knowledge about the subject at all (an unparseable `on=`, an
+    /// undeclared path, or `scene.choices.*` with members not yet folded).
+    /// `E-WHEN-LITERAL-DOMAIN` (0.4.0 §5.2) requires `resolved` before
+    /// claiming anything about the domain — an undeclared path already gets
+    /// its own `E-UNDECLARED` elsewhere, and piling a domain claim atop it
+    /// would be exactly the kind of unprovable pile-on §5.1's Closure
+    /// clause forbids.
+    pub resolved: bool,
 }
 
 /// Infer the subject's value domain (dsl §11.2). A `bool`/`enum` decl or a
@@ -821,19 +858,25 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
         return DomainInfo {
             domain: Domain::Infinite,
             maybe_unset: false,
+            resolved: false,
         };
     };
     // `scene.choices.<branchId>`: domain = branch choice ids ∪ `unset` (§11.1).
     if path.strip_prefix("scene.choices.").is_some() {
-        let domain = match enum_members(path, schema) {
-            Some(vals) => Domain::Finite(vals),
+        return match enum_members(path, schema) {
+            Some(vals) => DomainInfo {
+                domain: Domain::Finite(vals),
+                maybe_unset: true,
+                resolved: true,
+            },
             // Members unknown (branch decl not folded in yet) => can't prove
-            // coverage; treat as infinite so `<otherwise>` is required.
-            None => Domain::Infinite,
-        };
-        return DomainInfo {
-            domain,
-            maybe_unset: true,
+            // coverage OR a domain claim; treat as infinite/unresolved so
+            // `<otherwise>` is required and no §5.2 literal check runs.
+            None => DomainInfo {
+                domain: Domain::Infinite,
+                maybe_unset: true,
+                resolved: false,
+            },
         };
     }
     match schema.decls.get(path) {
@@ -862,11 +905,13 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
             DomainInfo {
                 domain,
                 maybe_unset,
+                resolved: true,
             }
         }
         None => DomainInfo {
             domain: Domain::Infinite,
             maybe_unset: false,
+            resolved: false,
         },
     }
 }
@@ -919,25 +964,51 @@ fn arm_coverage(is: Option<&IsPattern>, test_raw: &str, subject: Option<&str>) -
     cov
 }
 
-/// Parse a `<when is="…">` literal pattern (dsl §7.3.1):
-/// `WhenPattern ::= Literal ("|" Literal)*`, `Literal = EnumMember | "true" |
-/// "false" | Number | "unset"`. This is NOT CEL — split on `|`, trim each
-/// literal, and fold it into `cov`: `true`/`false` are bool domain values,
-/// `unset` covers the unset case (§9.4), a decimal `Number` is a numeric value,
-/// and any other ident is an enum member matched by string equality on the
-/// subject (§8.2). Empty alternatives (a stray `|`) are skipped.
+/// One classified literal from a `<when is="…">` alternation (dsl §7.3.1):
+/// the four token kinds the grammar admits. Shared by [`analyze_is_pattern`]
+/// (coverage folding, §11.2) and the `E-WHEN-LITERAL-DOMAIN` domain check
+/// (0.4.0 §5.2) so both read ONE classification.
+enum WhenLiteral {
+    Bool(bool),
+    /// The `unset` case (§9.4) — not a `DomainValue`; membership is decided
+    /// by `maybe_unset`, never by domain member equality.
+    Unset,
+    /// A decimal `Number` literal, kept as its trimmed source text.
+    Num(String),
+    /// An enum-member ident, matched by string equality (§8.2).
+    Str(String),
+}
+
+/// Classify one trimmed `is=` alternative (dsl §7.3.1): `WhenPattern ::=
+/// Literal ("|" Literal)*`, `Literal = EnumMember | "true" | "false" |
+/// Number | "unset"`. This is NOT CEL.
+fn classify_when_literal(lit: &str) -> WhenLiteral {
+    match lit {
+        "true" => WhenLiteral::Bool(true),
+        "false" => WhenLiteral::Bool(false),
+        "unset" => WhenLiteral::Unset,
+        _ if is_number_literal(lit) => WhenLiteral::Num(lit.to_string()),
+        _ => WhenLiteral::Str(lit.to_string()),
+    }
+}
+
+/// Parse a `<when is="…">` literal pattern (dsl §7.3.1) into `cov`: split on
+/// `|`, trim each literal, and classify it ([`classify_when_literal`]) —
+/// `true`/`false` are bool domain values, `unset` covers the unset case
+/// (§9.4), a decimal `Number` is a numeric value, and any other ident is an
+/// enum member matched by string equality on the subject (§8.2). Empty
+/// alternatives (a stray `|`) are skipped.
 fn analyze_is_pattern(raw: &str, cov: &mut ArmCoverage) {
     for lit in raw.split('|') {
         let lit = lit.trim();
         if lit.is_empty() {
             continue;
         }
-        match lit {
-            "true" => cov.values.push(DomainValue::Bool(true)),
-            "false" => cov.values.push(DomainValue::Bool(false)),
-            "unset" => cov.covers_unset = true,
-            _ if is_number_literal(lit) => cov.values.push(DomainValue::Num(lit.to_string())),
-            _ => cov.values.push(DomainValue::Str(lit.to_string())),
+        match classify_when_literal(lit) {
+            WhenLiteral::Bool(b) => cov.values.push(DomainValue::Bool(b)),
+            WhenLiteral::Unset => cov.covers_unset = true,
+            WhenLiteral::Num(n) => cov.values.push(DomainValue::Num(n)),
+            WhenLiteral::Str(s) => cov.values.push(DomainValue::Str(s)),
         }
     }
 }
@@ -949,6 +1020,109 @@ fn analyze_is_pattern(raw: &str, cov: &mut ArmCoverage) {
 fn is_number_literal(lit: &str) -> bool {
     let head = lit.strip_prefix(['+', '-']).unwrap_or(lit);
     matches!(head.bytes().next(), Some(b'0'..=b'9' | b'.')) && lit.parse::<f64>().is_ok()
+}
+
+/// Per-literal sub-spans of a `<when is="…">` pattern (dsl §7.3.1, 0.4.0
+/// §5.2): split on `|` exactly like [`analyze_is_pattern`], but keep each
+/// trimmed literal's own byte range instead of folding it into coverage —
+/// `E-WHEN-LITERAL-DOMAIN` must point AT THE LITERAL, not the whole pattern
+/// (the §5.4 worked example). Byte offsets are computed relative to
+/// `span.byte_start`; `line`/`column`/`utf16_range` are filled in from the
+/// literal's own text (a same-line estimate — `check()`'s `normalize_spans`
+/// pass, check.rs, re-derives every diagnostic's display position from
+/// `byte_start`/`byte_end` before returning). An empty alternative (a stray
+/// `|`) is skipped, matching `analyze_is_pattern`. `pub(crate)`: reused by
+/// Task 4 (subsumption per-literal identity) and Task 7 (param `is=`
+/// checks).
+pub(crate) fn is_pattern_literals(raw: &str, span: Span) -> Vec<(String, Span)> {
+    let mut out = Vec::new();
+    let mut offset = 0usize;
+    for part in raw.split('|') {
+        let trimmed = part.trim();
+        if !trimmed.is_empty() {
+            let lead = part.len() - part.trim_start().len();
+            let rel = offset + lead;
+            let rel_u32 = rel as u32;
+            let start = span.byte_start + rel;
+            let end = start + trimmed.len();
+            out.push((
+                trimmed.to_string(),
+                Span {
+                    byte_start: start,
+                    byte_end: end,
+                    line: span.line,
+                    column: span.column + rel_u32,
+                    utf16_range: (
+                        span.utf16_range.0 + rel_u32,
+                        span.utf16_range.0 + rel_u32 + trimmed.encode_utf16().count() as u32,
+                    ),
+                },
+            ));
+        }
+        offset += part.len() + 1;
+    }
+    out
+}
+
+/// Whether a classified `is=` literal is PROVABLY outside `dom`'s domain
+/// (dsl 0.4.0 §5.2 rules 1-4). Requires `dom.resolved` — an unresolvable
+/// subject (an unparseable `on=`, an undeclared path) makes no domain claim,
+/// so nothing here is ever flagged (§5.1's Closure: no unprovable pile-on).
+/// `unset` is checked against `maybe_unset` regardless of domain shape (rule
+/// 3, including an `Infinite` subject — rule 4); every other literal kind is
+/// checked only when the domain is `Finite` (rules 1-2) — an `Infinite`
+/// subject makes no finite claim to violate.
+fn literal_is_foreign(lit: &WhenLiteral, dom: &DomainInfo) -> bool {
+    if !dom.resolved {
+        return false;
+    }
+    if matches!(lit, WhenLiteral::Unset) {
+        return !dom.maybe_unset;
+    }
+    let Domain::Finite(vals) = &dom.domain else {
+        return false;
+    };
+    match lit {
+        WhenLiteral::Bool(b) => !vals.contains(&DomainValue::Bool(*b)),
+        WhenLiteral::Str(s) => !vals.iter().any(|v| matches!(v, DomainValue::Str(x) if x == s)),
+        WhenLiteral::Num(_) => true, // `Domain::Finite` is always bool/enum; a Num never fits.
+        WhenLiteral::Unset => unreachable!("handled above"),
+    }
+}
+
+/// Build the `E-WHEN-LITERAL-DOMAIN` message (dsl 0.4.0 §5.2): names the
+/// offending literal and, for a `Finite` domain, its members (matching the
+/// §5.4 worked example: `` `platnum` is not a member of the subject's domain
+/// [fail, bronze, silver, gold] ``). The `unset`-on-a-never-unset-subject
+/// case (rules 3-4) has no member list to print, so it states the reason
+/// directly instead.
+fn foreign_literal_message(lit_display: &str, lit: &WhenLiteral, domain: &Domain) -> String {
+    if matches!(lit, WhenLiteral::Unset) {
+        return "`unset` is not a member of the subject's domain: this subject can never be \
+                 unset (dsl 0.4 §5.2)"
+            .to_string();
+    }
+    let Domain::Finite(vals) = domain else {
+        unreachable!("rule 4: an `Infinite` domain only ever flags the `unset` literal");
+    };
+    format!(
+        "`{lit_display}` is not a member of the subject's domain [{}] (dsl 0.4 §5.2)",
+        domain_members_display(vals),
+    )
+}
+
+/// Render a `Domain::Finite` member list for a diagnostic message, e.g.
+/// `fail, bronze, silver, gold` (bare, unquoted — matches the §5.4 worked
+/// example's `[fail, bronze, silver, gold]`).
+fn domain_members_display(vals: &[DomainValue]) -> String {
+    vals.iter()
+        .map(|v| match v {
+            DomainValue::Str(s) => s.clone(),
+            DomainValue::Bool(b) => b.to_string(),
+            DomainValue::Num(n) => n.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn analyze_expr(expr: &Expr, subject: Option<&str>, cov: &mut ArmCoverage) {
