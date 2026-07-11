@@ -154,10 +154,10 @@ non-blocking so dialogue rides over it; a focus-then-speak beat sets `wait="true
 ::sfx{sound="문이 노크 없이 벌컥" assetId="PLACEHOLDER_door_slam"}
 ::camera{shake="0.3" duration="0.2"}                          /* no wait → next runs concurrently */
 ::auto{character="sofia" anchor="center" action="fade-in-up"}
-:sofia{code="0010" emotion="delighted" variant="1" action="sway"}: 매니저. 안녕…
+@sofia{code="0010" emotion="delighted" variant="1" action="sway"}: 매니저. 안녕…
 
 ::camera{focus="sofia" zoom="@closeUp" duration="0.5" wait="true"}  /* holds → the line waits for the pan */
-:sofia{code="0020" emotion="neutral" action="lean"}: 그러니까, 매니저. 딱 한 뼘. 두 뼘.
+@sofia{code="0020" emotion="neutral" action="lean"}: 그러니까, 매니저. 딱 한 뼘. 두 뼘.
 ```
 
 ### 3. `<timeline>` — multi-track choreography block (After-Effects model)
@@ -228,11 +228,11 @@ Locked rules:
 ```
 <branch id="couch">                          # unique-in-episode; auto-records to scene.choices.couch
   <choice id="help" label="같이 옮긴다">       # id = recorded key; label = shown text
-    :fixer{code="0020"}: ...알겠습니다.
+    @fixer{code="0020"}: ...알겠습니다.
     ::set{scene.affect.sofia += 2}           # scene.* spans shots within THIS episode
   </choice>
   <choice id="ignore" label="모른 척한다" when="@warm">   # when = availability gate (CEL)
-    :fixer{code="0030"}: 제 업무 범위를 다시 확인하고 오겠습니다.
+    @fixer{code="0030"}: 제 업무 범위를 다시 확인하고 오겠습니다.
     ::set{scene.affect.sofia -= 1}
   </choice>
 </branch>
