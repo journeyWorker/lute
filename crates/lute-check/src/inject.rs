@@ -446,6 +446,7 @@ mod tests {
         Node::Line(Line {
             speaker: speaker.to_string(),
             attrs,
+            when: None,
             text: "…".to_string(),
             text_span: span(),
             interps: Vec::new(),

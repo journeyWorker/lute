@@ -42,6 +42,12 @@ pub enum Node {
 pub struct Line {
     pub speaker: String,
     pub attrs: Vec<Attr>,
+    /// The gated-line guard (dsl 0.4.0 §7.2): `@s{when="G"}: T` emits the
+    /// line iff `G` holds — a `CelKind::Condition` slot, extracted from the
+    /// `when` attr the same way `Choice.when` is (`take_cel`, parser.rs). `$`
+    /// is NOT in scope (matches `<on when>`). `None` when no `when=` attr was
+    /// authored (the common case — B1: parse-identical to pre-0.4.0 docs).
+    pub when: Option<CelSlot>,
     pub text: String,
     pub text_span: Span,
     pub interps: Vec<Interp>,

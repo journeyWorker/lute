@@ -622,6 +622,11 @@ impl Parser<'_> {
             attrs = a;
             j = after;
         }
+        // Extract `when=` into a typed slot BEFORE storing residual attrs
+        // (dsl 0.4.0 §7.2; mirrors `Choice.when`, parser/blocks.rs
+        // `parse_choice`) — so it is visible to the CEL walk + StableId pass
+        // instead of sitting inertly in `Line.attrs`.
+        let when = attrs::take_cel(&mut attrs, "when", CelKind::Condition);
         // `scan_attrs` took `&mut self` but leaves `self.body` unchanged, so the
         // byte view is still valid — re-borrow past the mutable call.
         let b = self.body.as_bytes();
@@ -652,6 +657,7 @@ impl Parser<'_> {
         Some(Node::Line(Line {
             speaker,
             attrs,
+            when,
             text,
             text_span,
             interps,

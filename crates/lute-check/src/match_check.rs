@@ -2014,6 +2014,7 @@ mod tests {
         Node::Line(Line {
             speaker: speaker.into(),
             attrs,
+            when: None,
             text: "…".into(),
             text_span: sp,
             interps: Vec::new(),
