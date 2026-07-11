@@ -2,10 +2,15 @@
 //! merged domain vocabulary (dsl data-catalog foundation, 0.3.0 draft §3.1).
 //! A schema doc's `enums:`/`entities:` lift into `SchemaImports.domains`
 //! exactly like `state:`/`defs:` (`resolve_imports`); `merge_domains` unions
-//! that with the plugin/core baseline (`CapabilitySnapshot.domains`, A2),
-//! reusing `E-DOMAIN-DUP` (A2) on a cross-source name collision (A3 tests
-//! above this line). Value-level membership validation — a `{domain: X}`-
-//! typed attr accepting/rejecting a value against the SAME merged view
+//! that with the plugin/core baseline (`CapabilitySnapshot.domains`, A2).
+//! A cross-source PROJECT-PROJECT collision (0.3.0 T6, decision D2) no
+//! longer reuses `E-DOMAIN-DUP`: a peer `enums:`/`relations:` name dup is
+//! `E-USES-DUP-RELATION` and a peer `entities:` name dup is
+//! `E-KIND-NAME-CLASH` (`crates/lute-check/tests/rel_compose.rs` covers the
+//! full `uses`/`extends` composition surface) — `E-DOMAIN-DUP` now fires
+//! ONLY for a plugin/core-vs-project or cross-plugin clash (tests below).
+//! Value-level membership validation — a `{domain: X}`-typed attr
+//! accepting/rejecting a value against the SAME merged view
 //! (`check_attr_value`'s `Type::Domain` arm) — is A4 (tests below).
 use lute_check::directives::check_directive;
 use lute_check::resolve_imports;
@@ -104,10 +109,11 @@ fn project_entities_open_engine_domain_is_open() {
     assert!(npc.members.is_empty());
 }
 
-/// Two `uses` peers declaring the SAME domain name is a cross-source
-/// collision — reuses A2's `E-DOMAIN-DUP` (not a new `E-USES-DUP-*` code).
+/// Two `uses` peers declaring the SAME `enums:` name is a cross-source peer
+/// collision — `E-USES-DUP-RELATION`, NOT `E-DOMAIN-DUP` (0.3.0 T6, D2; the
+/// `entities:` peer-collision variant is `E-KIND-NAME-CLASH`, next test).
 #[test]
-fn domain_declared_by_two_peers_is_e_domain_dup() {
+fn enum_declared_by_two_peers_is_e_uses_dup_relation() {
     let dir = unique_dir();
     write_lute(&dir, "x.lute", "---\nenums:\n  mood: [calm]\n---\n");
     write_lute(&dir, "y.lute", "---\nenums:\n  mood: [tense]\n---\n");
@@ -115,9 +121,27 @@ fn domain_declared_by_two_peers_is_e_domain_dup() {
     let res = resolve_imports(&dir, &["a.lute".to_string()], &[], zero_span());
     let codes: Vec<&str> = res.diags.iter().map(|d| d.code.as_str()).collect();
     assert!(
-        codes.contains(&"E-DOMAIN-DUP"),
-        "expected E-DOMAIN-DUP, got {codes:?}"
+        codes.contains(&"E-USES-DUP-RELATION"),
+        "expected E-USES-DUP-RELATION, got {codes:?}"
     );
+    assert!(!codes.contains(&"E-DOMAIN-DUP"), "D2 transition: {codes:?}");
+}
+
+/// The `entities:` counterpart: two `uses` peers declaring the SAME
+/// entity-KIND name is `E-KIND-NAME-CLASH`, NOT `E-DOMAIN-DUP` (0.3.0 T6, D2).
+#[test]
+fn entity_kind_declared_by_two_peers_is_e_kind_name_clash() {
+    let dir = unique_dir();
+    write_lute(&dir, "x.lute", "---\nentities:\n  npc: { members: [ana] }\n---\n");
+    write_lute(&dir, "y.lute", "---\nentities:\n  npc: { members: [bo] }\n---\n");
+    write_lute(&dir, "a.lute", "---\nuses: [x.lute, y.lute]\n---\n");
+    let res = resolve_imports(&dir, &["a.lute".to_string()], &[], zero_span());
+    let codes: Vec<&str> = res.diags.iter().map(|d| d.code.as_str()).collect();
+    assert!(
+        codes.contains(&"E-KIND-NAME-CLASH"),
+        "expected E-KIND-NAME-CLASH, got {codes:?}"
+    );
+    assert!(!codes.contains(&"E-DOMAIN-DUP"), "D2 transition: {codes:?}");
 }
 
 /// `merge_domains` unions a project schema's domains with the plugin/core
