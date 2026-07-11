@@ -5,6 +5,7 @@ pub mod entities;
 pub mod loader;
 pub mod project;
 pub mod provider;
+pub mod relations;
 pub mod resolve;
 pub mod schema;
 pub mod snapshot;
