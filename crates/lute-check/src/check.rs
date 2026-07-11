@@ -56,7 +56,7 @@
 //! yield a resolved view. A clean document is always `Some`.
 
 use lute_cel::{fill_document, parse_slot, scan_refs, CelArena};
-use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
+use lute_core_span::{Diagnostic, Fixit, Layer, Severity, Span, TextEdit, TextIndex};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::{SlotDecl, StateShape};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
@@ -2121,6 +2121,14 @@ const E_PERSIST_MISSING_INTO: &str = "E-PERSIST-MISSING-INTO";
 const E_PERSIST_VALUE: &str = "E-PERSIST-VALUE";
 const E_PERSIST_CONFLICT: &str = "E-PERSIST-CONFLICT";
 
+/// `W-CHOICE-INTO-NO-PERSIST` (dsl 0.4 §7.3): the into⇒persist sugar was
+/// deliberately DROPPED (0.4.0 §7.3, §3 B1–B3) — a `<choice>` carrying `into=`
+/// with no `persist=` PARSES and checks clean today but records nothing at
+/// runtime, a silent no-op trap. `Severity::Warning` (B4: never flips
+/// `res.ok`) so it never blocks a document; `lute fix` MUST NOT auto-migrate
+/// either remedy (D16) since both change the author's meaning.
+const W_CHOICE_INTO_NO_PERSIST: &str = "W-CHOICE-INTO-NO-PERSIST";
+
 /// Validate a `<choice>`'s run-fact promotion sugar (dsl §11.1.1):
 /// `persist="run" into="run.<path>" [value="<lit>"]` records a NAMED, declared
 /// `run.*` fact when the choice is selected. The sugar is EXACTLY a
@@ -2133,6 +2141,12 @@ const E_PERSIST_CONFLICT: &str = "E-PERSIST-CONFLICT";
 fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
     // Only choices carrying a `persist` attr participate.
     let Some(persist) = choice.attrs.iter().find(|a| a.key == "persist") else {
+        // §7.3: the into⇒persist sugar was dropped — a bare `into=` with no
+        // `persist=` is a silent no-op (it parses and checks clean today but
+        // records nothing), so name the trap instead of implying the write.
+        if let Some(into_attr) = choice.attrs.iter().find(|a| a.key == "into") {
+            diags.push(choice_into_no_persist_diag(into_attr));
+        }
         return;
     };
     // Rule 1 (§11.1.1): cross-episode facts live in `run.*`, so `persist` MUST
@@ -2313,6 +2327,65 @@ fn persist_diag(code: &str, message: String, span: Span) -> Diagnostic {
         layer: Layer::Logic,
         fixits: Vec::new(),
         provenance: None,
+    }
+}
+
+/// Build the `W-CHOICE-INTO-NO-PERSIST` diagnostic (dsl 0.4 §7.3) for a
+/// `<choice>` carrying `into_attr` with no sibling `persist=`. `Severity::
+/// Warning` (B4: never flips `res.ok`). Two `"refactor"` fixits (D16) name
+/// BOTH remedies so an author picks one via an LSP code action (Task 15) —
+/// `lute fix` can never apply either by construction, since `fix_document`
+/// (fix.rs) doesn't read checker diagnostics at all: (1) insert `persist=
+/// "run" ` immediately before `into=`; (2) delete the dead `into=` attr,
+/// plus its one preceding separator byte (dsl §4.5 attrs are whitespace-
+/// separated) so no stray double space is left behind.
+fn choice_into_no_persist_diag(into_attr: &Attr) -> Diagnostic {
+    let insert_at = into_attr.span.byte_start;
+    let remove_start = insert_at.saturating_sub(1);
+    Diagnostic {
+        code: W_CHOICE_INTO_NO_PERSIST.to_string(),
+        severity: Severity::Warning,
+        message: "`into=` without `persist=` records nothing — add `persist=\"run\"` to persist \
+                   the fact, or remove the dead `into=` (dsl 0.4 §7.3)"
+            .to_string(),
+        span: into_attr.span,
+        layer: Layer::Logic,
+        fixits: vec![
+            Fixit {
+                title: "add persist=\"run\"".to_string(),
+                kind: "refactor".to_string(),
+                edit: vec![TextEdit {
+                    span: zeroed_span(insert_at, insert_at),
+                    new_text: "persist=\"run\" ".to_string(),
+                }],
+                confidence: 100,
+            },
+            Fixit {
+                title: "remove into=".to_string(),
+                kind: "refactor".to_string(),
+                edit: vec![TextEdit {
+                    span: zeroed_span(remove_start, into_attr.span.byte_end),
+                    new_text: String::new(),
+                }],
+                confidence: 100,
+            },
+        ],
+        provenance: None,
+    }
+}
+
+/// A byte-range `Span` with `line`/`column`/`utf16_range` left zeroed — the
+/// house zero-then-normalize convention every other ad hoc span producer in
+/// this module follows (`cel_resolve.rs`, `datalog_check.rs`, `meta.rs`);
+/// `normalize_spans` below recomputes real positions for it (diagnostic AND
+/// fixit-edit spans alike) from its bytes through one shared `TextIndex`.
+fn zeroed_span(byte_start: usize, byte_end: usize) -> Span {
+    Span {
+        byte_start,
+        byte_end,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
     }
 }
 
@@ -2695,13 +2768,17 @@ fn undeclared_path(message: &str) -> Option<&str> {
 
 /// Re-derive every diagnostic's `line`/`column`/`utf16_range` from its byte
 /// offsets through one shared [`TextIndex`], so both the CLI and the LSP report
-/// identical positions (the divergence golden). Offsets are clamped to the text
-/// length defensively; they are within bounds by construction.
+/// identical positions (the divergence golden). Every fixit `TextEdit` span
+/// gets the same treatment — a fixit-carrying diagnostic (`W-CHOICE-INTO-
+/// NO-PERSIST`, Task 12) can leave its edit spans zeroed exactly like the
+/// house zero-then-normalize convention for `d.span` itself. Offsets are
+/// clamped to the text length defensively; they are within bounds by
+/// construction.
 fn normalize_spans(idx: &TextIndex, text: &str, diags: &mut [Diagnostic]) {
     let len = text.len();
-    for d in diags {
-        let mut start = d.span.byte_start.min(len);
-        let mut end = d.span.byte_end.min(len).max(start);
+    let fix_up = |span: Span| -> Span {
+        let mut start = span.byte_start.min(len);
+        let mut end = span.byte_end.min(len).max(start);
         // Snap to char boundaries so from_bytes never slices mid-code-point
         // (honors the "never panics" contract even if a producer ever emits an
         // interior offset; unreachable today, all producers emit boundary offsets).
@@ -2711,7 +2788,15 @@ fn normalize_spans(idx: &TextIndex, text: &str, diags: &mut [Diagnostic]) {
         while end < len && !text.is_char_boundary(end) {
             end += 1;
         }
-        d.span = Span::from_bytes(idx, start, end);
+        Span::from_bytes(idx, start, end)
+    };
+    for d in diags {
+        d.span = fix_up(d.span);
+        for f in &mut d.fixits {
+            for e in &mut f.edit {
+                e.span = fix_up(e.span);
+            }
+        }
     }
 }
 
