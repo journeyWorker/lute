@@ -20,7 +20,7 @@ defs:
   Worked example of the Lute Scenario DSL (see ../proposals/scenario-dsl/0.0.1.md and ../architecture.md).
   The spine, narration, dialogue, and assetIds are faithful to the real
   content-catalog S01EP02 (linear). Note the unified content node (§7.1): every content
-  line uses the @speaker: form — narration is @narrator, monologue is @fixer{delivery="thought"}.
+  line uses the @speaker: form — narration is @narrator, monologue is @fixer{mono}.
   Three things are woven in to demonstrate the new surface, each marked NEW / demo:
     - ::camera               (no camera in the legacy format)
     - <timeline> + <track>   (the finger-beam "performance" as one multi-track beat)
@@ -106,11 +106,11 @@ defs:
 
 @narrator: I took one step back. My central nervous system briefly logged out and logged back in.
 
-@fixer{delivery="thought"}: An android, then. Which would, on reflection, explain the ramen.
+@fixer{mono}: An android, then. Which would, on reflection, explain the ramen.
 
 ## Shot 4.
 
-@fixer{delivery="thought"}: If I do not handle this android properly, something is going to go very badly wrong.
+@fixer{mono}: If I do not handle this android properly, something is going to go very badly wrong.
 
 @narrator: The thought arrived fully formed. It did not ask permission. I reached for my phone.
 
@@ -163,13 +163,13 @@ defs:
 */
 <match on="scene.choices.number">
   <when test="@fond">
-    @fixer{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening. I asked nicely, which I am electing not to examine.
+    @fixer{mono}: I am taking that woman on a walking tour of the neighbourhood this evening. I asked nicely, which I am electing not to examine.
   </when>
   <when test="$ == 'blunt'">
-    @fixer{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening.
+    @fixer{mono}: I am taking that woman on a walking tour of the neighbourhood this evening.
   </when>
   <otherwise>
-    @fixer{delivery="thought"}: I am, apparently, taking that woman somewhere this evening.
+    @fixer{mono}: I am, apparently, taking that woman somewhere this evening.
   </otherwise>
 </match>
 

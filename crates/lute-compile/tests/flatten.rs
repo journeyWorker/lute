@@ -100,10 +100,10 @@ fn branch_flattens_to_header_arms_jumps_converge() {
 fn match_flattens_with_otherwise_and_omits_it_when_absent() {
     let m = r#"<match on="scene.flags.saw_beam">
   <when test="$ == true">
-    @fixer{delivery="thought"}: saw
+    @fixer{mono}: saw
   </when>
   <otherwise>
-    @fixer{delivery="thought"}: not
+    @fixer{mono}: not
   </otherwise>
 </match>
 @narrator: on."#;
@@ -125,10 +125,10 @@ fn match_flattens_with_otherwise_and_omits_it_when_absent() {
     // No <otherwise> arm (gate-proven covered) => field omitted (§11.2).
     let covered = r#"<match on="scene.flags.saw_beam">
   <when test="$ == true">
-    @fixer{delivery="thought"}: t
+    @fixer{mono}: t
   </when>
   <when test="$ == false">
-    @fixer{delivery="thought"}: f
+    @fixer{mono}: f
   </when>
 </match>
 @narrator: on."#;
@@ -145,10 +145,10 @@ fn nested_block_lays_inner_convergence_before_outer_jump() {
   <choice id="a" label="A">
     <match on="scene.flags.saw_beam">
       <when test="$ == true">
-        @fixer{delivery="thought"}: saw
+        @fixer{mono}: saw
       </when>
       <otherwise>
-        @fixer{delivery="thought"}: not
+        @fixer{mono}: not
       </otherwise>
     </match>
   </choice>

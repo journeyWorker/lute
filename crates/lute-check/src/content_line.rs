@@ -10,20 +10,22 @@ use std::collections::BTreeMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
-use lute_syntax::ast::{AttrValue, Line};
+use lute_syntax::ast::{Attr, Line};
 
 use crate::directives::check_domain_member;
 
-/// Known content-line attribute keys (dsl 0.1.0 §7.1). Mirrors the `get(...)`
-/// reads in `lute-compile`'s `lower_line`.
+/// Known content-line attribute keys (dsl 0.2.2 §7.1, §D7). Mirrors the
+/// `get(...)`/`attr_bool(...)` reads in `lute-compile`'s `lower_line`.
 const KNOWN_ATTRS: &[&str] = &[
-    "code", "emotion", "variant", "action", "dialogMotion", "delivery", "as",
+    "code", "emotion", "variant", "action", "dialogMotion", "mono", "os", "vo", "as",
 ];
 
-const DELIVERY_DOMAIN: &[&str] = &["spoken", "thought", "voiceover"];
+/// The mutually-exclusive delivery bare flags (dsl 0.2.2 §D7): at most one
+/// may be set per content line.
+const DELIVERY_FLAGS: &[&str] = &["mono", "os", "vo"];
 
 pub const E_UNKNOWN_ATTR: &str = "E-UNKNOWN-ATTR";
-pub const E_DELIVERY_VALUE: &str = "E-DELIVERY-VALUE";
+pub const E_DELIVERY_CONFLICT: &str = "E-DELIVERY-CONFLICT";
 pub const E_DELIVERY_NARRATOR: &str = "E-DELIVERY-NARRATOR";
 
 fn err(code: &str, message: String, span: Span) -> Diagnostic {
@@ -38,9 +40,10 @@ fn err(code: &str, message: String, span: Span) -> Diagnostic {
     }
 }
 
-/// Validate a content line's attributes: unknown keys, the `delivery` domain,
-/// the narrator-forbids-delivery rule (dsl 0.1.0 §12.1), and the `emotion`/
-/// `action` domain-typed values (data-catalog foundation A5).
+/// Validate a content line's attributes: unknown keys, the delivery bare-flag
+/// exclusivity + narrator-forbids-delivery rules (dsl 0.2.2 §D7, carried
+/// forward from 0.1.0 §12.1), and the `emotion`/`action` domain-typed values
+/// (data-catalog foundation A5).
 ///
 /// `snapshot`/`providers`/`domains` are the SAME merged capability surface
 /// `check()` threads through the `Walker` (`domains` computed once in
@@ -54,6 +57,7 @@ pub fn check_content_line_attrs(
     domains: &BTreeMap<String, Domain>,
     diags: &mut Vec<Diagnostic>,
 ) {
+    let mut delivery_flags: Vec<&Attr> = Vec::new();
     for attr in &line.attrs {
         if !KNOWN_ATTRS.contains(&attr.key.as_str()) {
             diags.push(err(
@@ -64,27 +68,24 @@ pub fn check_content_line_attrs(
             continue;
         }
         match attr.key.as_str() {
-            "delivery" => {
+            // `mono`/`os`/`vo`: bare boolean delivery flags (dsl 0.2.2 §D7,
+            // AttrValue::BoolTrue by grammar convention, `{ident}⇒true`). At
+            // most one per line (checked once below, after the loop, so the
+            // conflict diagnostic can point at every flag involved); any
+            // flag on `narrator` is always an error regardless of conflict.
+            "mono" | "os" | "vo" => {
                 if line.speaker == "narrator" {
                     diags.push(err(
                         E_DELIVERY_NARRATOR,
-                        "`delivery` is not allowed on `narrator` — narration takes no delivery \
-                         (dsl 0.1.0 §12.1)".to_string(),
+                        format!(
+                            "`{}` is not allowed on `narrator` — narration takes no delivery \
+                             (dsl 0.1.0 §12.1)",
+                            attr.key
+                        ),
                         attr.span,
                     ));
                 }
-                if let AttrValue::Str(v) = &attr.value {
-                    if !DELIVERY_DOMAIN.contains(&v.as_str()) {
-                        diags.push(err(
-                            E_DELIVERY_VALUE,
-                            format!(
-                                "unknown `delivery` value `{v}`; expected one of \
-                                 spoken|thought|voiceover (dsl 0.1.0 §12.1)"
-                            ),
-                            attr.span,
-                        ));
-                    }
-                }
+                delivery_flags.push(attr);
             }
             // `emotion`: a CLOSED lute.core baseline enum-style domain (seeded in
             // A2) — always present in the merged `domains` view, so this always
@@ -120,6 +121,28 @@ pub fn check_content_line_attrs(
                 }
             }
             _ => {}
+        }
+    }
+    // `mono`/`os`/`vo` are mutually exclusive (dsl 0.2.2 §D7) — two or more
+    // set on the same line is `E-DELIVERY-CONFLICT`, stamped at EVERY
+    // conflicting flag's span so an editor squiggles all of them.
+    if delivery_flags.len() > 1 {
+        for attr in &delivery_flags {
+            diags.push(err(
+                E_DELIVERY_CONFLICT,
+                format!(
+                    "content line carries {} delivery flags ({}); at most one of \
+                     `mono`/`os`/`vo` is allowed (dsl 0.2.2 §D7)",
+                    delivery_flags.len(),
+                    DELIVERY_FLAGS
+                        .iter()
+                        .filter(|f| delivery_flags.iter().any(|a| &a.key == *f))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("/"),
+                ),
+                attr.span,
+            ));
         }
     }
 }

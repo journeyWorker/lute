@@ -189,7 +189,7 @@ mod tests {
 
     const NO_ATTRS: &str =
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi there\n";
-    const WITH_ATTRS: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@fixer{delivery=\"thought\"}: hmm\n";
+    const WITH_ATTRS: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@fixer{mono}: hmm\n";
     const ALREADY: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@fixer{code=\"0010\"}: kept\n";
 
     #[test]
@@ -210,7 +210,7 @@ mod tests {
         // `code` is merged as the FIRST attribute, existing attrs preserved.
         assert!(
             out.text
-                .contains("@fixer{code=\"0010\" delivery=\"thought\"}: hmm"),
+                .contains("@fixer{code=\"0010\" mono}: hmm"),
             "got:\n{}",
             out.text
         );

@@ -74,16 +74,16 @@ state:
 */
 <match on="scene.choices.chatWithBianca">
   <when is="askCoffee">
-    @fixer{delivery="thought"}: Coffee talk. Safe ground.
+    @fixer{mono}: Coffee talk. Safe ground.
   </when>
   <when is="compliment">
-    @fixer{delivery="thought"}: I said the kind thing, and meant it.
+    @fixer{mono}: I said the kind thing, and meant it.
   </when>
   <when is="leave">
-    @fixer{delivery="thought"}: Straight for the door.
+    @fixer{mono}: Straight for the door.
   </when>
   <when is="unset">
-    @fixer{delivery="thought"}: I never engaged at all.
+    @fixer{mono}: I never engaged at all.
   </when>
 </match>
 

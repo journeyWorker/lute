@@ -26,12 +26,12 @@ state:
 
 <match on="scene.choices.number">
   <when test="$ == 'soft'">
-    @fixer{delivery="thought"}: I asked nicely, which I am electing not to examine.
+    @fixer{mono}: I asked nicely, which I am electing not to examine.
   </when>
   <when test="$ == 'blunt'">
-    @fixer{delivery="thought"}: I am taking that woman on a walking tour of the neighbourhood this evening.
+    @fixer{mono}: I am taking that woman on a walking tour of the neighbourhood this evening.
   </when>
   <otherwise>
-    @fixer{delivery="thought"}: I am, apparently, taking that woman somewhere this evening.
+    @fixer{mono}: I am, apparently, taking that woman somewhere this evening.
   </otherwise>
 </match>

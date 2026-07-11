@@ -59,6 +59,33 @@ fn unvoiced_line_has_no_voice_key() {
     assert!(!Role::Monologue.voiced());
     assert!(Role::Dialogue.voiced());
     assert!(Role::Voiceover.voiced());
+    assert!(Role::Offscreen.voiced());
+}
+
+#[test]
+fn offscreen_line_serializes_as_voiced() {
+    // dsl 0.2.2 §D7: `{os}` lowers to `Role::Offscreen`, still voiced (heard
+    // off-screen audio) — carries a `voiceKey` like dialogue/voiceover.
+    let cmd = Command::Line(LineCmd {
+        addr: "002-0600".into(),
+        role: Role::Offscreen,
+        speaker: "fixer".into(),
+        text: "Behind the door.".into(),
+        emotion: None,
+        variant: None,
+        action: None,
+        dialog_motion: None,
+        as_label: None,
+        line_id: "bianca.s01ep02.fixer_0010".into(),
+        voice_key: Some("fixer-0010".into()),
+        placeholders: Vec::new(),
+        code: None,
+        stamp: Stamp::default(),
+    });
+    assert_eq!(
+        j(&cmd),
+        r#"{"kind":"line","addr":"002-0600","role":"offscreen","speaker":"fixer","text":"Behind the door.","lineId":"bianca.s01ep02.fixer_0010","voiceKey":"fixer-0010"}"#
+    );
 }
 
 #[test]

@@ -68,10 +68,10 @@ state:
 
 <match on="scene.affect.bianca">
   <when test="$ >= 2">
-    @fixer{delivery="thought"}: She is glowing. I have, apparently, passed some test I did not know I was taking.
+    @fixer{mono}: She is glowing. I have, apparently, passed some test I did not know I was taking.
   </when>
   <otherwise>
-    @fixer{delivery="thought"}: She files the result away with the patience of someone who has all evening.
+    @fixer{mono}: She files the result away with the patience of someone who has all evening.
   </otherwise>
 </match>
 

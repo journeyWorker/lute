@@ -2,7 +2,7 @@
 //! stamping, CEL expansion in situ, and byte determinism.
 
 use lute_check::{CheckInput, Mode};
-use lute_compile::{compile, ArtifactMeta, Command};
+use lute_compile::{compile, ArtifactMeta, Command, Role};
 
 fn input(text: &str) -> CheckInput {
     CheckInput {
@@ -54,13 +54,13 @@ defs:
 
 <match on="scene.choices.number">
   <when test="@fond">
-    @fixer{delivery="thought"}: Nice.
+    @fixer{mono}: Nice.
   </when>
   <when test="$ == 'blunt'">
-    @fixer{delivery="thought"}: Flat.
+    @fixer{mono}: Flat.
   </when>
   <otherwise>
-    @fixer{delivery="thought"}: Hm.
+    @fixer{mono}: Hm.
   </otherwise>
 </match>
 "#;
@@ -919,4 +919,60 @@ state:
     let set = set.unwrap();
     assert_eq!(set.op, "=");
     assert_eq!(set.value, "true");
+}
+
+#[test]
+fn offscreen_and_voiceover_lines_are_voiced_and_emit_no_extra_sprite() {
+    // dsl 0.2.2 §D7: `os`/`vo` change role (and are voiced — heard, just
+    // with no on-screen sprite this line) but do NOT themselves introduce a
+    // sprite command — `lower_line` only ever lowers a `:line` to
+    // `Command::Line`; sprite records come exclusively from `::auto` (char-
+    // cast §7.1 currently has no per-line sprite-resolution path to skip).
+    const DOC: &str = r#"---
+kind: scene
+character: b
+season: 1
+episode: 1
+---
+
+## Shot 1.
+
+::auto{character="fixer" anchor="center" action="fade-in-up"}
+@fixer{vo}: A voiceover aside.
+@fixer{os}: Behind the door.
+@fixer: Back on stage.
+"#;
+    let artifact = compile(&input(DOC)).expect("os/vo doc compiles");
+    let sprite_count = artifact
+        .commands
+        .iter()
+        .filter(|c| matches!(c, Command::Sprite(_)))
+        .count();
+    assert_eq!(
+        sprite_count, 1,
+        "only ::auto's own sprite record — os/vo lines add none: {:#?}",
+        artifact.commands
+    );
+
+    let by_text = |t: &str| {
+        artifact
+            .commands
+            .iter()
+            .find_map(|c| match c {
+                Command::Line(l) if l.text == t => Some(l),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing line {t:?}"))
+    };
+    let vo = by_text("A voiceover aside.");
+    assert_eq!(vo.role, Role::Voiceover);
+    assert!(vo.voice_key.is_some(), "voiceover is voiced (heard)");
+
+    let os = by_text("Behind the door.");
+    assert_eq!(os.role, Role::Offscreen);
+    assert!(os.voice_key.is_some(), "offscreen is voiced (heard)");
+
+    let dlg = by_text("Back on stage.");
+    assert_eq!(dlg.role, Role::Dialogue);
+    assert!(dlg.voice_key.is_some());
 }

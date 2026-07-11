@@ -13,16 +13,27 @@ use lute_syntax::ast::{Attr, AttrValue, Directive, Line, Set};
 use crate::ir::*;
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
 
+/// Bare-ident delivery flag (dsl 0.2.2 §D7: `mono`/`os`/`vo`, `AttrValue::
+/// BoolTrue` by grammar convention — the checker (`content_line.rs`) gates
+/// at-most-one before this ever runs, so priority among the three is moot
+/// on a checked document; still deterministic when called directly (unit
+/// tests, or an author-mode document with the conflict warning suppressed).
+fn has_delivery_flag(attrs: &[Attr], key: &str) -> bool {
+    attrs.iter().any(|a| a.key == key && matches!(a.value, AttrValue::BoolTrue))
+}
+
 pub fn lower_line(line: &Line) -> Command {
     let get = |k: &str| attr_string(&line.attrs, k);
     let role = if line.speaker == "narrator" {
         Role::Narration
+    } else if has_delivery_flag(&line.attrs, "mono") {
+        Role::Monologue
+    } else if has_delivery_flag(&line.attrs, "vo") {
+        Role::Voiceover
+    } else if has_delivery_flag(&line.attrs, "os") {
+        Role::Offscreen
     } else {
-        match get("delivery").as_deref() {
-            Some("thought") => Role::Monologue,
-            Some("voiceover") => Role::Voiceover,
-            _ => Role::Dialogue,
-        }
+        Role::Dialogue
     };
     Command::Line(LineCmd {
         addr: String::new(),
@@ -329,10 +340,12 @@ mod tests {
         let v = lower_first("@narrator: Venny's.");
         assert_eq!(v["kind"], "line");
         assert_eq!(v["role"], "narration");
-        let v = lower_first("@fixer{delivery=\"thought\"}: Hm.");
+        let v = lower_first("@fixer{mono}: Hm.");
         assert_eq!(v["role"], "monologue");
-        let v = lower_first("@fixer{delivery=\"voiceover\"}: Later.");
+        let v = lower_first("@fixer{vo}: Later.");
         assert_eq!(v["role"], "voiceover");
+        let v = lower_first("@fixer{os}: Behind the door.");
+        assert_eq!(v["role"], "offscreen");
         let v = lower_first(
             "@bianca{code=\"0010\" emotion=\"surprised\" variant=\"0\" as=\"Hostess\"}: Oh!",
         );
@@ -344,8 +357,6 @@ mod tests {
         assert_eq!(v["as"], "Hostess");
         // `code` is consumed into identity later — never a JSON field.
         assert!(v.get("code").is_none());
-        // `delivery` is consumed into `role`.
-        assert!(v.get("delivery").is_none());
     }
 
     #[test]

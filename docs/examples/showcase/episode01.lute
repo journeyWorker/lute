@@ -77,7 +77,7 @@ defs:
 /* State writes: a pure `=` write (scene tier) ... */
 ::set{scene.saw_demo = true}
 
-@fixer{delivery="thought"}: A rehearsed entrance. She has been practising.
+@fixer{mono}: A rehearsed entrance. She has been practising.
 
 ## Shot 3.
 
@@ -111,7 +111,7 @@ defs:
 
 ## Shot 4.
 
-@fixer{delivery="thought"}: I should ask for her number before the shift swallows her.
+@fixer{mono}: I should ask for her number before the shift swallows her.
 
 /*
   <branch> + <choice> with `when` guards AND the persist="run" sugar (§11.1.1):
@@ -145,13 +145,13 @@ defs:
 */
 <match on="scene.choices.approach">
   <when test="@fond">
-    @fixer{delivery="thought"}: I asked nicely, which I am electing not to examine.
+    @fixer{mono}: I asked nicely, which I am electing not to examine.
   </when>
   <when test="$ == 'blunt'">
-    @fixer{delivery="thought"}: Straight to the point. It worked.
+    @fixer{mono}: Straight to the point. It worked.
   </when>
   <otherwise>
-    @fixer{delivery="thought"}: Whatever it was, it is done.
+    @fixer{mono}: Whatever it was, it is done.
   </otherwise>
 </match>
 
@@ -202,13 +202,13 @@ defs:
 */
 <match on="scene.affect.bianca">
   <when test="@atLeast(3)">
-    @fixer{delivery="thought"}: She has earned a veteran's welcome.
+    @fixer{mono}: She has earned a veteran's welcome.
   </when>
   <when test="@veteran">
-    @fixer{delivery="thought"}: Seasoned enough for what comes next.
+    @fixer{mono}: Seasoned enough for what comes next.
   </when>
   <otherwise>
-    @fixer{delivery="thought"}: Early days yet.
+    @fixer{mono}: Early days yet.
   </otherwise>
 </match>
 

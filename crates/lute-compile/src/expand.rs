@@ -430,7 +430,7 @@ mod tests {
 
     #[test]
     fn expand_document_rewrites_slots_with_match_subject_scope() {
-        let src = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n\n## Shot 1.\n\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @fixer{delivery=\"thought\"}: a\n  </when>\n  <when test=\"$ == 'blunt'\">\n    @fixer{delivery=\"thought\"}: b\n  </when>\n  <otherwise>\n    @fixer{delivery=\"thought\"}: c\n  </otherwise>\n</match>\n";
+        let src = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\nstate:\n  scene.affect.bianca: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.bianca >= 1\" }\n---\n\n## Shot 1.\n\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @fixer{mono}: a\n  </when>\n  <when test=\"$ == 'blunt'\">\n    @fixer{mono}: b\n  </when>\n  <otherwise>\n    @fixer{mono}: c\n  </otherwise>\n</match>\n";
         let (mut doc, diags) = lute_syntax::parse(src);
         assert!(diags
             .iter()

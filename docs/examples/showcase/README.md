@@ -113,7 +113,7 @@ rm docs/examples/showcase/_t.lute
 |---|---|
 | `:narrator` | `episode01.lute:48, 190, 193` |
 | `:speaker` w/ attrs (`code`/`emotion`/`variant`) | 49, 99, 103, … |
-| `:speaker{delivery="thought"}` monologue | 79, 113, 147, … |
+| `:speaker{mono}` monologue | 79, 113, 147, … |
 | core staging directives (`::bg` `::music` `::sfx` `::auto` `::camera` `::cut` `::vfx`) | 43–46, 68–73, 136, 222–223 |
 | plugin directive `::serve` | 89 |
 | plugin attr `providerRef` id (`performer`) | 89 → `catalog/cast.yaml` |

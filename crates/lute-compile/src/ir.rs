@@ -105,7 +105,10 @@ pub struct Source {
     pub component: String,
 }
 
-/// `:line` role (§4.4). Voiced roles carry a `voiceKey` (§4.2).
+/// `:line` role (§4.4, foundation D7). Voiced roles carry a `voiceKey`
+/// (§4.2): `Dialogue`/`Voiceover`/`Offscreen` are heard (an off-screen line
+/// is still spoken audio, just with no on-screen sprite this line);
+/// `Monologue` (inner voice, not spoken aloud) and `Narration` are not.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -113,11 +116,12 @@ pub enum Role {
     Narration,
     Monologue,
     Voiceover,
+    Offscreen,
 }
 
 impl Role {
     pub fn voiced(self) -> bool {
-        matches!(self, Role::Dialogue | Role::Voiceover)
+        matches!(self, Role::Dialogue | Role::Voiceover | Role::Offscreen)
     }
 }
 
