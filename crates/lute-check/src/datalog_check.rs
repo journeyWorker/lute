@@ -441,6 +441,7 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
         layer: Layer::Logic,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }
 
@@ -457,6 +458,7 @@ fn warn(code: &str, message: String, span: Span) -> Diagnostic {
         layer: Layer::Logic,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }
 

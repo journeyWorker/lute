@@ -130,6 +130,7 @@ fn normalize_nodes(
                                     layer: Layer::Content,
                                     fixits: Vec::new(),
                                     provenance: None,
+                                    covered: Vec::new(),
                                 });
                             }
                         }
@@ -210,6 +211,7 @@ fn expand_use(
             layer: Layer::Content,
             fixits: Vec::new(),
             provenance: None,
+            covered: Vec::new(),
         });
         return Vec::new();
     };
@@ -255,6 +257,7 @@ fn expand_use(
             layer: Layer::Content,
             fixits: Vec::new(),
             provenance: None,
+            covered: Vec::new(),
         });
         return Vec::new();
     }

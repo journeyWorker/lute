@@ -1064,12 +1064,24 @@ fn run_fix(file: &Path) -> ExitCode {
 }
 
 /// One `file:line:col: severity [CODE] message` line per diagnostic, then a
-/// summary. Mirrors the sorted order `check()` already applied.
+/// summary. Mirrors the sorted order `check()` already applied. A primary
+/// that collapsed same-root repeats (dsl 0.4.0 §8.2 C1/C5) appends a trailing
+/// ` (+N more: 12:3, 47:9, …)` — line:column, comma-joined, document order.
 fn print_human(file: &Path, result: &lute_check::CheckResult) {
     let path = file.display();
     for d in &result.diagnostics {
+        let more = if d.covered.is_empty() {
+            String::new()
+        } else {
+            let locs: Vec<String> = d
+                .covered
+                .iter()
+                .map(|s| format!("{}:{}", s.line, s.column))
+                .collect();
+            format!(" (+{} more: {})", locs.len(), locs.join(", "))
+        };
         println!(
-            "{path}:{}:{}: {} [{}] {}",
+            "{path}:{}:{}: {} [{}] {}{more}",
             d.span.line,
             d.span.column,
             severity_str(d.severity),
@@ -1077,6 +1089,9 @@ fn print_human(file: &Path, result: &lute_check::CheckResult) {
             d.message,
         );
     }
+    // §8.3: counting is by primaries — collapse (0.4.0 T14) already reduced
+    // `result.diagnostics` to one entry per root cause, so a plain count needs
+    // no change here. Five reads of one typo are ONE error.
     let errors = result
         .diagnostics
         .iter()

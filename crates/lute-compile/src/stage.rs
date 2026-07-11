@@ -429,6 +429,7 @@ fn walk_match(
                             layer: Layer::Logic,
                             fixits: Vec::new(),
                             provenance: None,
+                            covered: Vec::new(),
                         });
                         None
                     }

@@ -538,5 +538,6 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
         layer: Layer::Logic,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }

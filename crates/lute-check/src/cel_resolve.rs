@@ -873,6 +873,7 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
         layer: Layer::Cel,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }
 

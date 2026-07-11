@@ -57,6 +57,7 @@ fn import_extends_type_diag_precedes_inline_state_merge_at_same_span() {
         layer: Layer::Content,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     };
 
     let imports = SchemaImports {

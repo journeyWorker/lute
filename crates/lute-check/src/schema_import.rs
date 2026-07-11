@@ -153,6 +153,7 @@ fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
         layer: Layer::Content,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }
 

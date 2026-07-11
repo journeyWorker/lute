@@ -85,6 +85,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
                 layer: Layer::Content,
                 fixits: Vec::new(),
                 provenance: None,
+                covered: Vec::new(),
             });
             body_slice.to_string()
         }
@@ -175,6 +176,7 @@ impl Parser<'_> {
             layer,
             fixits: Vec::new(),
             provenance: None,
+            covered: Vec::new(),
         });
     }
 

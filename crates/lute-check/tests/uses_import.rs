@@ -98,6 +98,7 @@ fn import_diags_are_surfaced() {
         layer: lute_core_span::Layer::Content,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     };
     let imports = SchemaImports {
         diags: vec![d],
