@@ -35,6 +35,10 @@ pub enum Read {
 
 /// §4.3 effective state: a trace-applied write, a mock seed, or a schema
 /// `default:` — read in exactly that order, falling through to unset.
+/// `#[derive(Clone)]` backs Task 20's PRE-EVENT SNAPSHOT (`0.4.0 §4.4`
+/// quest walk): an `<on>` guard evaluates against a clone taken BEFORE its
+/// event's arms run, never the live, in-flow-mutated state.
+#[derive(Clone)]
 pub struct EffectiveState<'a> {
     schema: &'a StateSchema,
     seed: BTreeMap<String, Value>,
@@ -54,7 +58,17 @@ impl<'a> EffectiveState<'a> {
     }
 
     /// §4.3 read order: trace write → mock seed → schema `default:` →
-    /// unset.
+    /// unset. A RESERVED quest path (`quest.<id>.state` /
+    /// `quest.<id>.objectives.<oid>.done`) skips the `default:` tier
+    /// entirely (dsl 0.4.0 §4.4: "trace derives them from its own walk" —
+    /// the §4.3 exception) — `objectives.<oid>.done`'s schema decl carries
+    /// `default: Some(false)` (`match_check.rs`'s implicit fold) for the
+    /// REAL engine's benefit; trace would otherwise read every objective
+    /// `false` (never `Unset`) before [`crate::walk`]'s quest walk ever
+    /// runs. [`is_reserved_quest_path`] is this crate's own copy of
+    /// `lute_check::cel_paths::is_reserved_quest_path` — `pub(crate)` to
+    /// that crate, so not reusable across the D1 quarantine boundary
+    /// ([`expr_path`] carries the same idiom below).
     pub fn read(&self, path: &str) -> Read {
         if let Some(v) = self.writes.get(path) {
             return Read::Value(v.clone());
@@ -62,8 +76,10 @@ impl<'a> EffectiveState<'a> {
         if let Some(v) = self.seed.get(path) {
             return Read::Value(v.clone());
         }
-        if let Some(default) = self.schema.decls.get(path).and_then(|d| d.default.as_ref()) {
-            return Read::Value(literal_to_value(default));
+        if !is_reserved_quest_path(path) {
+            if let Some(default) = self.schema.decls.get(path).and_then(|d| d.default.as_ref()) {
+                return Read::Value(literal_to_value(default));
+            }
         }
         Read::Unset
     }
@@ -75,6 +91,17 @@ impl<'a> EffectiveState<'a> {
     pub fn write(&mut self, path: &str, v: Value) {
         self.writes.insert(path.to_string(), v);
     }
+}
+
+/// `true` for a RESERVED quest path (dsl 0.2.0 §5.2, dsl 0.4.0 §4.4):
+/// `quest.<id>.state` (3 segments, segment 2 == `state`) or
+/// `quest.<id>.objectives.<oid>.done` (5 segments, segment 2 ==
+/// `objectives`, segment 4 == `done`) — [`EffectiveState::read`]'s own
+/// copy of `lute_check::cel_paths::is_reserved_quest_path` (`pub(crate)`
+/// there, so not reusable across the D1 quarantine boundary).
+pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
+    let segs: Vec<&str> = path.split('.').collect();
+    matches!(segs.as_slice(), ["quest", _, "state"] | ["quest", _, "objectives", _, "done"])
 }
 
 /// A single fact-pattern position (§4.3 bounded scan): a ground term or the
@@ -108,6 +135,7 @@ fn render_pattern(relation: &str, pattern: &[Pat]) -> String {
 /// The mock fact set as modified by trace-applied `::assert`/`::retract`
 /// deltas (§4.3), plus the relational vocabulary needed to tell a
 /// `derive:true` relation apart from an ordinary closed-world one.
+#[derive(Clone)]
 pub struct FactStore<'a> {
     facts: BTreeSet<(String, Vec<String>)>,
     rel_vocab: &'a RelVocab,
@@ -815,5 +843,47 @@ mod tests {
         let (v, unresolved) = eval_str("validAt(inParty(sofia, grove), now())", &env);
         assert_eq!(v, Value::Unknown);
         assert_eq!(unresolved, vec![UnresolvedAtom::Time]);
+    }
+
+    // -- reserved quest paths (Task 20, dsl 0.4.0 §4.4's `quest.<id>.state`/
+    //    `…objectives.*.done` exception) ---------------------------------
+
+    #[test]
+    fn reserved_quest_objective_done_starts_unset_despite_a_schema_default() {
+        // `match_check.rs::check_quest` folds every `quest.<id>.objectives.
+        // <oid>.done` decl with `default: Some(false)` for the REAL engine's
+        // benefit — trace must bypass that default entirely (§4.4: "trace
+        // derives them from its own walk") so an objective genuinely reads
+        // `Unset` until Task 20's own quest walk writes it `true`.
+        let schema = schema_with(&[(
+            "quest.rescueHalsin.objectives.reach.done",
+            Type::Bool,
+            Some(Literal::Bool(false)),
+        )]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        assert_eq!(state.read("quest.rescueHalsin.objectives.reach.done"), Read::Unset);
+
+        // Same for `quest.<id>.state` (no schema default at all in
+        // practice, but the bypass must hold even if one were present).
+        let schema2 = schema_with(&[("quest.rescueHalsin.state", Type::Str, Some(Literal::Str("active".to_string())))]);
+        let state2 = EffectiveState::new(&schema2, BTreeMap::new());
+        assert_eq!(state2.read("quest.rescueHalsin.state"), Read::Unset);
+    }
+
+    #[test]
+    fn reserved_quest_path_bypass_is_narrowly_scoped() {
+        // An ORDINARY path with the identical shape-adjacent name must
+        // still use its schema default — the bypass is `is_reserved_quest_path`-
+        // gated, never a blanket "quest.*" skip.
+        let schema = schema_with(&[("quest.rescueHalsin.objectives.reach.notDone", Type::Bool, Some(Literal::Bool(true)))]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        assert_eq!(state.read("quest.rescueHalsin.objectives.reach.notDone"), Read::Value(Value::Bool(true)));
+
+        // A once-decided objective still overrides via a trace WRITE (the
+        // bypass only removes the `default:` tier, never `writes`/`seed`).
+        let schema2 = schema_with(&[("quest.q.objectives.o.done", Type::Bool, Some(Literal::Bool(false)))]);
+        let mut state2 = EffectiveState::new(&schema2, BTreeMap::new());
+        state2.write("quest.q.objectives.o.done", Value::Bool(true));
+        assert_eq!(state2.read("quest.q.objectives.o.done"), Read::Value(Value::Bool(true)));
     }
 }

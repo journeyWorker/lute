@@ -1,0 +1,255 @@
+//! The quest walk — events, monotonic objectives, fail precedence (dsl
+//! 0.4.0 §4.4, Task 20). Fixtures: `docs/examples/quest-rescue-halsin.lute`
+//! (the §4.6 worked example, adapted per its own header comment) for the
+//! event/objective/completion/fail-precedence mechanics (a)-(c); a small
+//! synthetic quest for the pre-event-snapshot mechanism (d), which
+//! `quest-rescue-halsin.lute` doesn't exercise (it has only one `<on>` per
+//! event).
+//!
+//! Harness mirrors `tests/walk.rs`'s `input_for`/`load_input` idiom (each
+//! integration-test binary carries its own small copy — the house
+//! precedent `tests/mock.rs`/`tests/walk.rs` already both follow).
+
+use std::path::Path;
+
+use lute_check::{CheckInput, Mode};
+use lute_trace::{trace_document, Decision, MockSet, Step, TraceExit, UnresolvedEntry};
+
+/// Assemble a [`CheckInput`] for `text` exactly as `lute check`/`lute
+/// compile`/`lute trace` do (no `--project`; `base` resolves any `uses:`/
+/// `components:` relative paths).
+fn input_for(text: &str, uri: &str, base: &Path) -> CheckInput {
+    let (doc, parse_diags) = lute_syntax::parse(text);
+    assert!(parse_diags.is_empty(), "fixture must parse clean: {parse_diags:?}");
+    let (meta0, _) = lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
+    let (snapshot, _) =
+        lute_manifest::project::resolve_document_snapshot(None, meta0.profile.as_deref(), &meta0.plugins);
+    let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
+    let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
+    CheckInput {
+        text: text.to_string(),
+        uri: uri.to_string(),
+        snapshot,
+        providers: lute_manifest::provider::ProviderSet::default(),
+        mode: Mode::Ci,
+        imports,
+        components,
+    }
+}
+
+/// Load and assemble a real `docs/examples/*.lute` fixture by path
+/// (relative to this crate's `Cargo.toml`, the house `../../docs/examples/…`
+/// idiom).
+fn load_input(path: &str) -> CheckInput {
+    let file = Path::new(path);
+    let text = std::fs::read_to_string(file).unwrap_or_else(|e| panic!("read {path}: {e}"));
+    let base = file.parent().unwrap_or_else(|| Path::new("."));
+    input_for(&text, path, base)
+}
+
+fn facts_and_event(facts: &[&str]) -> MockSet {
+    MockSet {
+        facts: facts.iter().map(|f| f.to_string()).collect(),
+        events: vec!["questActive".to_string()],
+        ..Default::default()
+    }
+}
+
+fn assert_complete(exit: &TraceExit) {
+    assert!(matches!(exit, TraceExit::Complete), "expected Complete, got {exit:?}");
+}
+
+fn assert_incomplete(exit: &TraceExit) {
+    assert!(matches!(exit, TraceExit::Incomplete), "expected Incomplete, got {exit:?}");
+}
+
+fn quest_decision<'a>(decisions: &'a [Decision], outcome: &str) -> Option<&'a Decision> {
+    decisions.iter().find(|d| d.construct == "quest" && d.outcome == outcome)
+}
+
+fn has_step_assert(steps: &[Step], text: &str) -> bool {
+    steps.iter().any(|s| matches!(s, Step::Assert { text: t } if t == text))
+}
+
+fn has_step_retract(steps: &[Step], text: &str) -> bool {
+    steps.iter().any(|s| matches!(s, Step::Retract { text: t } if t == text))
+}
+
+fn has_step_set(steps: &[Step], path: &str, value: &str) -> bool {
+    steps
+        .iter()
+        .any(|s| matches!(s, Step::Set { path: p, value: v, .. } if p == path && v == value))
+}
+
+fn has_line_containing(steps: &[Step], needle: &str) -> bool {
+    steps.iter().any(|s| matches!(s, Step::Line { text, .. } if text.contains(needle)))
+}
+
+fn objective_unresolved<'a>(unresolved: &'a [UnresolvedEntry], id: &str) -> Option<&'a UnresolvedEntry> {
+    unresolved.iter().find(|u| u.construct == "objective" && u.id == id)
+}
+
+// ---------------------------------------------------------------------
+// (a) The §4.6 quest transcript: start decides true -> active, the
+//     `<on questActive>` handler's assert lands, `learn`'s `done` (an
+//     unsupplied `derive:true` relation) goes unknown -> exit 3, naming
+//     `believesLocation` + the mock hint.
+// ---------------------------------------------------------------------
+
+#[test]
+fn quest_activates_and_halts_on_unresolved_derived_objective() {
+    let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
+    let mocks = facts_and_event(&["inParty(shadowheart)"]);
+
+    let (report, exit) = trace_document(&input, mocks);
+    assert_incomplete(&exit);
+
+    // `start` decided true -> active.
+    let active = quest_decision(&report.decisions, "active").expect("quest must record an active decision");
+    assert_eq!(active.id, "rescueHalsin");
+
+    // The `<on event="questActive">` handler fired: its `::assert` landed
+    // in the transcript.
+    assert!(
+        has_step_assert(&report.steps, "heardLocation(player, halsin, grove)"),
+        "questActive handler's assert must be visible: {:?}",
+        report.steps
+    );
+
+    // `learn`'s `done` (`holds(believesLocation(...))`, `derive:true`,
+    // never supplied) is unresolved, naming `believesLocation` and the
+    // §4.6 "supply it as a mock" hint.
+    let learn = objective_unresolved(&report.unresolved, "learn").expect("`learn` must be unresolved");
+    assert!(
+        learn.atoms.iter().any(|a| a.contains("believesLocation") && a.contains("--fact")),
+        "unresolved atoms must name believesLocation + the mock hint: {:?}",
+        learn.atoms
+    );
+
+    // Never reaches completion or failure.
+    assert!(quest_decision(&report.decisions, "complete").is_none());
+    assert!(quest_decision(&report.decisions, "failed").is_none());
+}
+
+// ---------------------------------------------------------------------
+// (b) Supplying both derived facts completes the quest: exit 0, state
+//     complete, `questComplete` handlers' writes visible.
+// ---------------------------------------------------------------------
+
+#[test]
+fn supplying_derived_facts_completes_the_quest() {
+    let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
+    let mocks = facts_and_event(&[
+        "inParty(shadowheart)",
+        "believesLocation(player, halsin, grove)",
+        "canReach(player, grove)",
+    ]);
+
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert!(report.unresolved.is_empty(), "a complete trace has nothing left unresolved: {:?}", report.unresolved);
+
+    let complete = quest_decision(&report.decisions, "complete").expect("quest must record a complete decision");
+    assert_eq!(complete.id, "rescueHalsin");
+
+    // Both objectives recorded done.
+    let reach_done = report
+        .decisions
+        .iter()
+        .any(|d| d.construct == "objective" && d.id == "reach" && d.outcome == "done");
+    let learn_done = report
+        .decisions
+        .iter()
+        .any(|d| d.construct == "objective" && d.id == "learn" && d.outcome == "done");
+    assert!(reach_done, "reach must be recorded done: {:?}", report.decisions);
+    assert!(learn_done, "learn must be recorded done: {:?}", report.decisions);
+
+    // `questComplete`'s writes are visible in the transcript.
+    assert!(has_step_retract(&report.steps, "captive(halsin)"), "retract must be visible: {:?}", report.steps);
+    assert!(has_step_assert(&report.steps, "inParty(halsin)"), "assert must be visible: {:?}", report.steps);
+    assert!(has_step_set(&report.steps, "user.xp", "300"), "set must be visible: {:?}", report.steps);
+}
+
+// ---------------------------------------------------------------------
+// (c) Fail precedence (`0.2 §6.3`): a seeded `atLocation(halsin,
+//     moonrise)` fails the quest EVEN THOUGH both objectives would
+//     otherwise complete.
+// ---------------------------------------------------------------------
+
+#[test]
+fn fail_takes_precedence_over_derived_completion() {
+    let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
+    let mocks = facts_and_event(&[
+        "inParty(shadowheart)",
+        "believesLocation(player, halsin, grove)",
+        "canReach(player, grove)",
+        "atLocation(halsin, moonrise)",
+    ]);
+
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit); // every guard fully decided; the quest itself failed
+
+    let failed = quest_decision(&report.decisions, "failed").expect("quest must record a failed decision");
+    assert_eq!(failed.id, "rescueHalsin");
+
+    // Completion never fires, even though both objectives are done.
+    assert!(
+        quest_decision(&report.decisions, "complete").is_none(),
+        "fail must PREEMPT completion, never both: {:?}",
+        report.decisions
+    );
+    assert!(!has_step_retract(&report.steps, "captive(halsin)"), "questComplete must never fire");
+    assert!(!has_step_set(&report.steps, "user.xp", "300"), "questComplete's ::set must never fire");
+}
+
+// ---------------------------------------------------------------------
+// (d) Pre-event snapshot: an `<on>` guard reading a path an EARLIER
+//     `<on>` handler for the SAME event just wrote sees the OLD (pre-
+//     event) value, never that in-flow write.
+// ---------------------------------------------------------------------
+
+fn pre_event_snapshot_fixture() -> String {
+    "---\n\
+     kind: quest\n\
+     luteVersion: \"0.4.0\"\n\
+     title: Pre-event snapshot\n\
+     state:\n  \
+       run.flag: { type: bool, default: true }\n\
+     ---\n\n\
+     <quest id=\"q\" title=\"Q\" start=\"true\">\n\
+     <on event=\"questActive\">\n\
+     ::set{ run.flag = false }\n\
+     </on>\n\
+     <on event=\"questActive\" when=\"run.flag\">\n\
+     @narrator: saw flag\n\
+     </on>\n\
+     </quest>\n"
+        .to_string()
+}
+
+#[test]
+fn on_guard_reads_pre_event_snapshot_not_a_sibling_arms_write() {
+    let text = pre_event_snapshot_fixture();
+    let input = input_for(&text, "pre_event_snapshot.lute", Path::new("."));
+
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    // The first handler's write landed.
+    assert!(has_step_set(&report.steps, "run.flag", "false"), "the first handler's ::set must land: {:?}", report.steps);
+
+    // The second handler's guard (`when="run.flag"`) fired using the
+    // PRE-EVENT value (schema default `true`) — NOT the sibling arm's
+    // live write. If the walk wrongly used live state, this line would
+    // never appear.
+    assert!(
+        has_line_containing(&report.steps, "saw flag"),
+        "the second handler must fire on the OLD (pre-event) value: {:?}",
+        report.steps
+    );
+    let on_decisions: Vec<&Decision> = report.decisions.iter().filter(|d| d.construct == "on").collect();
+    assert!(
+        on_decisions.iter().any(|d| d.outcome == "fires"),
+        "at least one on-decision must record a fire: {on_decisions:?}"
+    );
+}

@@ -1,6 +1,7 @@
-//! §4.4 walk semantics: the deterministic, document-ordered scene walk over
-//! `doc.shots` (quest kinds are Task 20's) plus the §4.3 pipeline that gets
-//! a document there — check gate, mock validation, D14's
+//! §4.4 walk semantics: the deterministic, document-ordered walk over
+//! `doc.shots` (the scene walk, Task 19) and `doc.quests` (the quest walk —
+//! events, monotonic objectives, fail precedence, Task 20) plus the §4.3
+//! pipeline that gets a document there — check gate, mock validation, D14's
 //! `normalize_document` + `expand_document` reuse, then the walk itself.
 //!
 //! ## Pipeline (§4.3, verbatim order)
@@ -12,7 +13,7 @@
 //! 4. `lute_compile::normalize::normalize_document` (components bound, §6.4
 //!    folds, `when=`/`persist=` desugared) then
 //!    `lute_compile::expand::expand_document` (`@`/`$`-free) — D14.
-//! 5. Walk `doc.shots` linearly.
+//! 5. Walk `doc.shots` (scene) then `doc.quests` (quest) linearly.
 //!
 //! ## Why every CEL slot is RE-PARSED, never read via `slot.ast`
 //! `expand_document`'s `expand_slot` rewrites `slot.raw` (text substitution)
@@ -37,7 +38,7 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
     Arm, Assert, AttrValue, Branch, CelSlot, Choice, ClipNode, Directive, Document, Hub, Interp,
-    InterpKind, IsPattern, Line, Match, Node, Retract, Set, Timeline,
+    InterpKind, IsPattern, Line, Match, Node, Objective, Quest, Retract, Set, Timeline,
 };
 use lute_syntax::datalog::FactTerm;
 
@@ -779,6 +780,261 @@ fn walk_document(doc: &Document, w: &mut Walk<'_>) -> Flow {
     Flow::Continue
 }
 
+// ---------------------------------------------------------------------
+// Quest walk (Task 20, dsl 0.4.0 §4.4): events, monotonic objectives,
+// fail precedence. `quest.<id>.state`/`quest.<id>.objectives.<oid>.done`
+// are RESERVED paths trace derives from its OWN walk here — never the
+// schema `default:` ([`crate::eval::is_reserved_quest_path`],
+// `EffectiveState::read`) — so a quest's `state` and every objective's
+// `done` genuinely start `Unset` until this section decides and writes
+// them.
+// ---------------------------------------------------------------------
+
+/// A quest's lifecycle position, tracked locally through [`walk_quest`]
+/// (mirrored into `quest.<id>.state` via [`EffectiveState::write`] on every
+/// transition — the reserved-path write IS the report-visible record).
+/// `start` deciding `false`/`unknown` never produces a live [`QuestState`]
+/// at all (`walk_quest` returns before this type is ever constructed) — a
+/// quest that never activates has no lifecycle to track.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum QuestState {
+    Active,
+    Complete,
+    Failed,
+}
+
+fn quest_state_path(quest_id: &str) -> String {
+    format!("quest.{quest_id}.state")
+}
+
+fn objective_done_path(quest_id: &str, objective_id: &str) -> String {
+    format!("quest.{quest_id}.objectives.{objective_id}.done")
+}
+
+/// An `<objective done="…">` slot's rendered guard text — mirrors
+/// [`render_choice_guard`] for a non-optional [`CelSlot`] (`done` is never
+/// `Option`; a missing `done=` still yields a syntactically valid, possibly
+/// empty, slot — `parse_objective`).
+fn render_done_guard(done: &CelSlot) -> Option<String> {
+    let t = done.raw.trim();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
+fn is_objective_done(w: &Walk<'_>, quest_id: &str, objective_id: &str) -> bool {
+    matches!(
+        w.state.read(&objective_done_path(quest_id, objective_id)),
+        Read::Value(Value::Bool(true))
+    )
+}
+
+/// Re-evaluate every `<objective>` in `quest.body` (document order) whose
+/// `done` isn't ALREADY recorded true — monotonic (§4.4: "once `true`,
+/// recorded"): a done objective is never re-evaluated, so nothing it
+/// decided can un-decide on a later pass. A fresh `true` is written to the
+/// reserved `objectives.<oid>.done` path (visible to any later read/
+/// interp, D19-style); `false`/`unknown` write nothing (the path stays
+/// `Unset` until a pass decides `true` — §4.3's own "starts Unset"
+/// exception). `unknown` records an [`UnresolvedEntry`] (never halts —
+/// unlike `<match>`, an objective is a lifecycle FACT the report tables,
+/// not a control-flow gate the walk must stop on).
+fn reevaluate_objectives(quest: &Quest, w: &mut Walk<'_>) {
+    for node in &quest.body {
+        let Node::Objective(o) = node else { continue };
+        if o.id.is_empty() || is_objective_done(w, &quest.id, &o.id) {
+            continue;
+        }
+        let mut atoms = Vec::new();
+        let v = match slot_expr(&o.done.raw) {
+            Some(expr) => as_guard_value(eval(&expr, &w.env(), &mut atoms)),
+            None => Value::Unknown, // gate-proven unreachable post-check (E-OBJECTIVE-MISSING-DONE)
+        };
+        let guard = render_done_guard(&o.done);
+        match v {
+            Value::Bool(true) => {
+                w.state.write(&objective_done_path(&quest.id, &o.id), Value::Bool(true));
+                w.push_decision("objective", &o.id, o.span, "done".to_string(), guard, false, false, Vec::new());
+            }
+            Value::Bool(false) => {
+                w.push_decision("objective", &o.id, o.span, "pending".to_string(), guard, false, false, Vec::new());
+            }
+            Value::Unknown | Value::Num(_) | Value::Str(_) => {
+                w.record_unresolved("objective", &o.id, o.span, guard.unwrap_or_default(), atoms);
+            }
+        }
+    }
+}
+
+fn quest_required_objectives(quest: &Quest) -> impl Iterator<Item = &Objective> {
+    quest.body.iter().filter_map(|n| match n {
+        Node::Objective(o) if !o.optional && !o.id.is_empty() => Some(o),
+        _ => None,
+    })
+}
+
+/// "All required objectives done" (§4.4 completion) — vacuously `false`
+/// for a quest with zero required objectives: a quest can never complete
+/// by having nothing to complete (only `fail`, or an unending `active`,
+/// applies to such a quest).
+fn quest_complete(quest: &Quest, w: &Walk<'_>) -> bool {
+    let mut any = false;
+    for o in quest_required_objectives(quest) {
+        any = true;
+        if !is_objective_done(w, &quest.id, &o.id) {
+            return false;
+        }
+    }
+    any
+}
+
+/// One event's `<on>` dispatch (§4.4): ALL matching `<on event>` guards in
+/// `quest.body` (document order) evaluate against the SAME PRE-EVENT
+/// SNAPSHOT — `state`/`facts` cloned ONCE before any of this event's arms
+/// run (`0.2 §4.2`) — so an earlier-firing handler's write is invisible to
+/// a LATER handler's guard for this SAME event (only a SUBSEQUENT event's
+/// snapshot would see it). A firing handler's BODY then walks against the
+/// LIVE state/facts via the ordinary [`walk_nodes`] — sequential in-flow
+/// visibility resumes inside the body, only the guard is snapshotted.
+/// `unknown` records unresolved and does not fire (trace never guesses);
+/// only a NESTED `<match>`/`<branch>`/`<hub>` inside a firing handler's
+/// body can propagate a non-`Continue` [`Flow`] out of this function.
+fn dispatch_event(quest: &Quest, event_name: &str, w: &mut Walk<'_>) -> Flow {
+    let snap_state = w.state.clone();
+    let snap_facts = w.facts.clone();
+    let snap_env = EvalEnv { state: &snap_state, facts: &snap_facts };
+    for node in &quest.body {
+        let Node::On(on) = node else { continue };
+        if on.event != event_name {
+            continue;
+        }
+        let mut atoms = Vec::new();
+        let guard_v = eval_choice_guard(on.when.as_ref(), &snap_env, &mut atoms);
+        let guard_text = render_choice_guard(on.when.as_ref());
+        match guard_v {
+            Value::Bool(true) => {
+                w.push_decision("on", event_name, on.span, "fires".to_string(), guard_text, false, false, Vec::new());
+                let flow = walk_nodes(&on.body, w, None);
+                if !matches!(flow, Flow::Continue) {
+                    return flow;
+                }
+            }
+            Value::Bool(false) => {
+                w.push_decision("on", event_name, on.span, "skipped".to_string(), guard_text, false, false, Vec::new());
+            }
+            Value::Unknown | Value::Num(_) | Value::Str(_) => {
+                w.record_unresolved("on", event_name, on.span, guard_text.unwrap_or_default(), atoms);
+            }
+        }
+    }
+    Flow::Continue
+}
+
+/// After activation and after every event (§4.4): re-evaluate objectives
+/// (monotonic), evaluate `fail` BEFORE derived completion (`0.2 §6.3`
+/// precedence — a quest whose objectives would ALL be done still fails if
+/// `fail` decides true THIS pass), then check completion. Fires exactly
+/// one of `questFailed`/`questComplete` on a fresh transition; a quest
+/// already `Complete`/`Failed` never reaches this function again
+/// (`walk_quest`'s own `Active`-only loop guard).
+fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow {
+    reevaluate_objectives(quest, w);
+
+    let mut fail_atoms = Vec::new();
+    let fail_v = match quest.fail.as_ref().and_then(|f| slot_expr(&f.raw)) {
+        Some(expr) => as_guard_value(eval(&expr, &w.env(), &mut fail_atoms)),
+        None => Value::Bool(false),
+    };
+    if matches!(fail_v, Value::Bool(true)) {
+        *state = QuestState::Failed;
+        w.state.write(&quest_state_path(&quest.id), Value::Str("failed".to_string()));
+        let guard = render_choice_guard(quest.fail.as_ref());
+        w.push_decision("quest", &quest.id, quest.span, "failed".to_string(), guard, false, false, Vec::new());
+        return dispatch_event(quest, "questFailed", w);
+    }
+
+    if quest_complete(quest, w) {
+        *state = QuestState::Complete;
+        w.state.write(&quest_state_path(&quest.id), Value::Str("complete".to_string()));
+        w.push_decision("quest", &quest.id, quest.span, "complete".to_string(), None, false, false, Vec::new());
+        return dispatch_event(quest, "questComplete", w);
+    }
+
+    Flow::Continue
+}
+
+/// One `<quest>`'s full lifecycle (§4.4). `start` absent activates
+/// trivially (default `true`, [`eval_choice_guard`]); deciding `false`
+/// never activates — reported via a `"never"` [`Decision`], nothing further
+/// runs; deciding `unknown` leaves the quest (and, by construction, every
+/// objective — nothing below this point ever runs) unresolved. Once
+/// active, `questActive` fires as the quest's OWN first event (§4.4: "the
+/// quest activates (and `questActive` handlers fire)"), settled once, then
+/// every `--event` in CLI order — each re-dispatches and re-settles; a
+/// transition to `Complete`/`Failed` is terminal, stopping further event
+/// processing for THIS quest (the `Active`-only loop guard below).
+fn walk_quest(quest: &Quest, events: &[String], w: &mut Walk<'_>) -> Flow {
+    let mut atoms = Vec::new();
+    let start_v = eval_choice_guard(quest.start.as_ref(), &w.env(), &mut atoms);
+    let start_guard = render_choice_guard(quest.start.as_ref());
+    match start_v {
+        Value::Bool(false) => {
+            w.push_decision("quest", &quest.id, quest.span, "never".to_string(), start_guard, false, false, Vec::new());
+            return Flow::Continue;
+        }
+        Value::Unknown | Value::Num(_) | Value::Str(_) => {
+            w.record_unresolved("quest", &quest.id, quest.span, start_guard.unwrap_or_default(), atoms);
+            return Flow::Continue;
+        }
+        Value::Bool(true) => {}
+    }
+
+    w.state.write(&quest_state_path(&quest.id), Value::Str("active".to_string()));
+    w.push_decision("quest", &quest.id, quest.span, "active".to_string(), start_guard, false, false, Vec::new());
+    let mut state = QuestState::Active;
+
+    let flow = dispatch_event(quest, "questActive", w);
+    if !matches!(flow, Flow::Continue) {
+        return flow;
+    }
+    let flow = settle_quest(quest, &mut state, w);
+    if !matches!(flow, Flow::Continue) {
+        return flow;
+    }
+
+    for event in events {
+        if !matches!(state, QuestState::Active) {
+            break;
+        }
+        let flow = dispatch_event(quest, event, w);
+        if !matches!(flow, Flow::Continue) {
+            return flow;
+        }
+        let flow = settle_quest(quest, &mut state, w);
+        if !matches!(flow, Flow::Continue) {
+            return flow;
+        }
+    }
+
+    Flow::Continue
+}
+
+/// `doc.quests` linearly, document order (mirrors [`walk_document`]'s own
+/// shape) — admission (§3.3/§6.7) guarantees a check-clean document never
+/// populates both `doc.shots` and `doc.quests`, so [`trace_document`]
+/// calling both this and [`walk_document`] unconditionally is safe.
+fn walk_quests(doc: &Document, events: &[String], w: &mut Walk<'_>) -> Flow {
+    for quest in &doc.quests {
+        let flow = walk_quest(quest, events, w);
+        if !matches!(flow, Flow::Continue) {
+            return flow;
+        }
+    }
+    Flow::Continue
+}
+
 fn seed_state(mocks: &MockSet, schema: &StateSchema) -> BTreeMap<String, Value> {
     let mut out = BTreeMap::new();
     for (path, raw, _span) in &mocks.state {
@@ -857,7 +1113,9 @@ pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, Trace
         return (empty_report(&input.uri, &mocks), TraceExit::Refused(diags));
     }
 
-    // 5. Walk `doc.shots` linearly.
+    // 5. Walk `doc.shots` (the scene walk, Task 19) then `doc.quests` (the
+    //    quest walk, Task 20) — admission guarantees a check-clean document
+    //    never populates both, so running both unconditionally is safe.
     let seed = seed_state(&mocks, &folded.env.state);
     let state = EffectiveState::new(&folded.env.state, seed);
     let mut facts = FactStore::new(&folded.env.rel_vocab);
@@ -877,7 +1135,10 @@ pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, Trace
         coverage_arms: BTreeMap::new(),
     };
 
-    let flow = walk_document(&doc, &mut w);
+    let mut flow = walk_document(&doc, &mut w);
+    if matches!(flow, Flow::Continue) {
+        flow = walk_quests(&doc, &mocks.events, &mut w);
+    }
 
     let report = TraceReport {
         file: input.uri.clone(),
@@ -887,9 +1148,14 @@ pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, Trace
         unresolved: w.unresolved,
         coverage: Coverage { choices: w.coverage_choices, arms: w.coverage_arms },
     };
+    // An objective/quest-`start` `unknown` (Task 20) records an unresolved
+    // atom WITHOUT returning `Flow::Incomplete` (it never halts the walk,
+    // unlike an unknown `<match>` guard) — so `Incomplete` is driven by
+    // EITHER signal, matching §4.5's exit-3 contract for both halted and
+    // merely-unresolved-but-otherwise-complete walks.
     let exit = match flow {
-        Flow::Continue => TraceExit::Complete,
-        Flow::Incomplete => TraceExit::Incomplete,
+        Flow::Continue if report.unresolved.is_empty() => TraceExit::Complete,
+        Flow::Continue | Flow::Incomplete => TraceExit::Incomplete,
         Flow::Refused(ds) => TraceExit::Refused(ds),
     };
     (report, exit)
