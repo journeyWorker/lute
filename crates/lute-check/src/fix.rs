@@ -1,4 +1,4 @@
-//! `lute fix` 0.0.1 → 0.1.0 migration codemod (dsl §7.1, §7.3). Two byte-exact,
+//! `lute fix` migration codemod (dsl §7.1, §7.3). Byte-exact,
 //! comment-preserving span rewrites over one `.lute` document:
 //!
 //!   1. **`:line[speaker]{…}: text` → `:speaker{…}: text`** — the removed 0.0.1
@@ -15,6 +15,18 @@
 //!      AST's `<choice>`/`<hub>` choices for an `as` key and rewrites it to
 //!      `into`. **`as` on a CONTENT LINE stays** — it is a display-label override
 //!      (dsl §7.1), never a persist target, so `Line.attrs` are never touched.
+//!   3. **content `Line`'s leading `:` sigil → `@`** (dsl 0.2.2 §7.1, Task C3
+//!      foundation) — lands BEFORE the 0.3.0 grammar break (C1) that will make
+//!      `@` the only legal content-line sigil, so this walks real 0.2.x-shaped
+//!      `Line` nodes (the same phase-2 re-parsed AST) and rewrites the single
+//!      byte at `Line.span.byte_start` (the leading `:`). Idempotent: a line
+//!      already starting `@` is skipped — moot today, since the current
+//!      grammar doesn't parse `@`-led lines at all (an unrecognized line is
+//!      `E-UNCLASSIFIED`, which trips phase 2's parse-error guard), so
+//!      re-running `fix_document` on already-migrated output is a no-op.
+//!      Collected into the SAME edit list as rule 2 and spliced in ONE pass —
+//!      rule 2 is length-changing (`as` -> `into`), so a separate later splice
+//!      would corrupt rule 3's already-computed offsets.
 //!
 //! Mirrors `tag.rs`'s splice discipline: collect target `(start, end,
 //! replacement)` spans, then splice back-to-front (descending `byte_start`) so
@@ -23,7 +35,7 @@
 //! byte offset maps 1:1 onto the original text.
 
 use lute_core_span::Severity;
-use lute_syntax::ast::{Arm, Choice, Node};
+use lute_syntax::ast::{Arm, Choice, Line, Node};
 use lute_syntax::parse;
 
 /// The result of a migration pass: the (possibly rewritten) document text and
@@ -34,10 +46,10 @@ pub struct FixResult {
     pub changed: usize,
 }
 
-/// Migrate a 0.0.1-shaped document to 0.1.0 in place (see module docs).
-/// Idempotent, deterministic, total: an already-0.1.0 document (or one whose
-/// phase-1 output still fails to parse) is returned with `changed: 0` /
-/// phase-1-only.
+/// Migrate a 0.0.1-shaped document toward 0.2.2-readiness in place (see
+/// module docs). Idempotent, deterministic, total: an already-migrated
+/// document (or one whose phase-1 output still fails to parse) is returned
+/// with `changed: 0` / phase-1-only.
 pub fn fix_document(text: &str) -> FixResult {
     // -- phase 1: apply the parser's `:line[` migrate fix-its (back-to-front) --
     let (_doc, diags) = parse(text);
@@ -54,7 +66,12 @@ pub fn fix_document(text: &str) -> FixResult {
     let phase1 = edits.len();
     let text1 = splice(text, edits);
 
-    // -- phase 2: re-parse; if clean, rewrite choice/hub `as` keys to `into` ---
+    // -- phase 2: re-parse; if clean, (a) rewrite choice/hub `as` keys to
+    // `into`, and (b) rewrite each content line's leading `:` sigil to `@`
+    // (dsl 0.2.2 §7.1, Task C3 foundation — see module docs, rule 3). Both are
+    // AST-driven span edits over `text1`, collected into ONE list and spliced
+    // together: rule (a) is length-changing (`as` -> `into`), so a separate
+    // later splice pass would shift rule (b)'s already-computed offsets.
     let (doc2, diags2) = parse(&text1);
     // A remaining parse error means phase 1 didn't fully migrate (or the doc had
     // an unrelated structural error): skip phase 2, return the phase-1 text.
@@ -75,6 +92,14 @@ pub fn fix_document(text: &str) -> FixResult {
     for quest in &doc2.quests {
         collect_choices(&quest.body, &mut choices);
     }
+    let mut lines: Vec<&Line> = Vec::new();
+    for shot in &doc2.shots {
+        collect_lines(&shot.body, &mut lines);
+    }
+    for quest in &doc2.quests {
+        collect_lines(&quest.body, &mut lines);
+    }
+
     let mut edits2: Vec<(usize, usize, String)> = Vec::new();
     for c in &choices {
         if let Some(a) = c.attrs.iter().find(|a| a.key == "as") {
@@ -84,6 +109,20 @@ pub fn fix_document(text: &str) -> FixResult {
             // byte_start + key.len())`.
             let start = a.span.byte_start;
             edits2.push((start, start + a.key.len(), "into".to_string()));
+        }
+    }
+    let bytes1 = text1.as_bytes();
+    for l in &lines {
+        // `Line.span.byte_start` is the offset of the leading `:` (`parse_line`
+        // sets `span = self.span(cstart, line_end)` where `cstart` is the `:`
+        // itself, dsl §7.1) — a single-byte replace. Idempotent: a line whose
+        // leading byte is already `@` emits nothing; unreachable pre-C1 today
+        // since the grammar only recognizes `:`-led content lines (an
+        // `@`-led line is `E-UNCLASSIFIED`, which trips the parse-error guard
+        // above and skips phase 2 entirely), but kept for when C1 lands.
+        let start = l.span.byte_start;
+        if bytes1.get(start) == Some(&b':') {
+            edits2.push((start, start + 1, "@".to_string()));
         }
     }
     let phase2 = edits2.len();
@@ -145,6 +184,40 @@ fn collect_choices<'a>(nodes: &'a [Node], out: &mut Vec<&'a Choice>) {
     }
 }
 
+/// Collect every content `Line` in document order, recursing into branch
+/// choices' bodies, hub choices' bodies, match-arm bodies, and on/objective
+/// bodies (mirrors `collect_choices` above; dsl 0.2.2 §7.1, Task C3
+/// foundation — a `Line` never nests inside a `Directive`/`Set`/`Timeline`).
+fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
+    for node in nodes {
+        match node {
+            Node::Line(l) => out.push(l),
+            Node::Branch(b) => {
+                for choice in &b.choices {
+                    collect_lines(&choice.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for choice in &h.choices {
+                    collect_lines(&choice.body, out);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            collect_lines(body, out)
+                        }
+                    }
+                }
+            }
+            Node::On(o) => collect_lines(&o.body, out),
+            Node::Objective(o) => collect_lines(&o.body, out),
+            Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,7 +233,7 @@ mod tests {
         let out = fix_document(&wrap(":line[bianca]{emotion=\"x\"}: hi\n"));
         assert!(out.changed >= 1, "changed: {}", out.changed);
         assert!(
-            out.text.contains(":bianca{emotion=\"x\"}: hi"),
+            out.text.contains("@bianca{emotion=\"x\"}: hi"),
             "got:\n{}",
             out.text
         );
@@ -172,7 +245,7 @@ mod tests {
         let out = fix_document(&wrap(":line[narrator]: plain\n"));
         assert!(out.changed >= 1, "changed: {}", out.changed);
         assert!(
-            out.text.contains(":narrator: plain"),
+            out.text.contains("@narrator: plain"),
             "got:\n{}",
             out.text
         );
@@ -184,10 +257,15 @@ mod tests {
         let out = fix_document(&wrap(
             "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.flag\">\n:bianca: hi\n</choice>\n</branch>\n",
         ));
-        assert_eq!(out.changed, 1, "got:\n{}", out.text);
+        assert_eq!(out.changed, 2, "got:\n{}", out.text);
         assert!(
             out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
             "got:\n{}",
+            out.text
+        );
+        assert!(
+            out.text.contains("@bianca: hi"),
+            "nested content-line sigil not migrated, got:\n{}",
             out.text
         );
     }
@@ -197,10 +275,15 @@ mod tests {
         let out = fix_document(&wrap(
             "<hub id=\"h\">\n<choice id=\"c\" label=\"L\" as=\"run.flag\">\n:bianca: hi\n</choice>\n</hub>\n",
         ));
-        assert_eq!(out.changed, 1, "got:\n{}", out.text);
+        assert_eq!(out.changed, 2, "got:\n{}", out.text);
         assert!(
             out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
             "got:\n{}",
+            out.text
+        );
+        assert!(
+            out.text.contains("@bianca: hi"),
+            "nested content-line sigil not migrated, got:\n{}",
             out.text
         );
     }
@@ -208,21 +291,35 @@ mod tests {
     #[test]
     fn content_line_as_label_override_is_untouched() {
         // `:bianca{as="???"}: hi` is a display-label override (dsl §7.1), NOT a
-        // persist target — it must survive byte-identical.
+        // persist target — the `as` attr itself must survive untouched, even
+        // though the line's leading sigil still migrates to `@` (dsl 0.2.2
+        // §7.1, Task C3).
         let src = wrap(":bianca{as=\"curt\"}: hi\n");
         let out = fix_document(&src);
-        assert_eq!(out.changed, 0, "content-line `as` must not migrate");
-        assert_eq!(out.text, src, "byte-identical");
+        assert_eq!(out.changed, 1, "only the sigil migrates: {}", out.changed);
+        assert!(
+            out.text.contains("@bianca{as=\"curt\"}: hi"),
+            "label-override `as` must survive untouched, got:\n{}",
+            out.text
+        );
     }
 
     #[test]
-    fn already_010_doc_is_byte_identical() {
+    fn already_010_choice_only_sigil_migrates() {
+        // A doc already migrated to 0.1.0 (`into=`, no `:line[`) has nothing
+        // left for the `as`→`into` rule to fire on; only the new sigil
+        // rewrite fires (dsl 0.2.2 §7.1, Task C3).
         let src = wrap(
             "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" into=\"run.flag\">\n:speaker: hi\n</choice>\n</branch>\n",
         );
         let out = fix_document(&src);
-        assert_eq!(out.changed, 0);
-        assert_eq!(out.text, src, "byte-identical");
+        assert_eq!(out.changed, 1, "got:\n{}", out.text);
+        assert!(out.text.contains("@speaker: hi"), "got:\n{}", out.text);
+        assert!(
+            out.text.contains("into=\"run.flag\""),
+            "already-migrated choice attr must stay untouched, got:\n{}",
+            out.text
+        );
     }
 
     #[test]
@@ -231,13 +328,15 @@ mod tests {
             ":line[bianca]{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n",
         );
         let out = fix_document(&src);
-        assert_eq!(out.changed, 2, "both phases fire; got:\n{}", out.text);
-        assert!(out.text.contains(":bianca{emotion=\"x\"}: hi"), "got:\n{}", out.text);
+        // phase1 (`:line[` removal) + phase2 (`as`→`into` + both lines' `:`→`@`).
+        assert_eq!(out.changed, 4, "all rules fire; got:\n{}", out.text);
+        assert!(out.text.contains("@bianca{emotion=\"x\"}: hi"), "got:\n{}", out.text);
         assert!(
             out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
             "got:\n{}",
             out.text
         );
+        assert!(out.text.contains("@fixer: yo"), "got:\n{}", out.text);
         // Idempotent: re-running the migrated doc changes nothing.
         let again = fix_document(&out.text);
         assert_eq!(again.changed, 0, "second pass is a no-op");
@@ -255,7 +354,7 @@ mod tests {
         // `changed: 0` and leave both `as=` keys untouched.
         let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.x\">\n:narrator: hi\n</choice>\n</branch>\n</on>\n<objective id=\"o\" done=\"run.d\">\n<branch id=\"b2\">\n<choice id=\"c2\" label=\"M\" as=\"run.y\">\n:narrator: yo\n</choice>\n</branch>\n</objective>\n</quest>\n";
         let out = fix_document(src);
-        assert_eq!(out.changed, 2, "got:\n{}", out.text);
+        assert_eq!(out.changed, 4, "got:\n{}", out.text);
         assert!(
             out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
             "on-nested choice not migrated, got:\n{}",
@@ -268,5 +367,24 @@ mod tests {
         );
         assert!(!out.text.contains("as=\"run.x\""), "got:\n{}", out.text);
         assert!(!out.text.contains("as=\"run.y\""), "got:\n{}", out.text);
+        assert!(
+            out.text.contains("@narrator: hi"),
+            "on-nested line sigil not migrated, got:\n{}",
+            out.text
+        );
+        assert!(
+            out.text.contains("@narrator: yo"),
+            "objective-nested line sigil not migrated, got:\n{}",
+            out.text
+        );
+    }
+
+    #[test]
+    fn migrates_speaker_colon_to_at() {
+        let out = fix_document("## Shot 1.\n:bianca{code=\"0010\"}: hi\n:narrator: x\n");
+        assert!(out.text.contains("@bianca{code=\"0010\"}: hi"));
+        assert!(out.text.contains("@narrator: x"));
+        // idempotent
+        assert_eq!(fix_document(&out.text).text, out.text);
     }
 }
