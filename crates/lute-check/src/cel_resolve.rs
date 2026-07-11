@@ -19,14 +19,16 @@
 //! `scan_refs` pass still runs on the raw.
 
 use cel_parser::ast::Expr;
+use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{CelKind, CelSlot};
-use lute_syntax::datalog::BodyLiteral;
+use lute_syntax::datalog::{BodyLiteral, FactArg, FactTerm};
+use std::collections::BTreeMap;
 
 use crate::cel_paths::collect_path_uses;
 use crate::ctx::ExpectedType;
-use crate::rel_schema::RelVocab;
+use crate::rel_schema::{check_atom, RelVocab};
 use crate::Ctx;
 use lute_manifest::types::Type;
 
@@ -46,6 +48,20 @@ const GUARD_FIREWALL_CALLS: &[&str] = &["holds", "count", "validAt", "now"];
 /// `E-DATALOG-GUARD-FACT` (0.3.0, §7.2/§7.3 + D7): a rule-body guard reads
 /// the fact store or narrative time via `holds`/`count`/`validAt`/`now`.
 pub const E_DATALOG_GUARD_FACT: &str = "E-DATALOG-GUARD-FACT";
+
+/// dsl 0.3.0 §6: `validAt` queried against a `derive:true` relation whose
+/// rule closure carries a CEL guard in some feeding stratum (`guard_tainted`,
+/// Task 9) — a derived fact's history is not reconstructible once a guard
+/// makes membership depend on a scalar read, so a POINT-IN-TIME query over it
+/// is ill-defined. `holds`/`count` stay fine on the SAME relation (they only
+/// read "now", never history).
+pub const E_VALIDAT_DERIVED: &str = "E-VALIDAT-DERIVED";
+
+/// dsl 0.3.0 §8: a `<match on>` subject is a fact query (`holds`/`count`/
+/// `validAt`). Relations are guard-only — a match subject must stay
+/// enum/bool/scalar so exhaustiveness analysis (`match_check.rs`) stays
+/// decidable.
+pub const E_MATCH_RELATION_SUBJECT: &str = "E-MATCH-RELATION-SUBJECT";
 
 /// Validate a single CEL slot's `@ref`, `$`, and state-path reads (dsl §8, §9.4,
 /// §9.6). All diagnostics are [`Layer::Cel`].
@@ -199,6 +215,15 @@ pub fn check_cel_slot(
             if let Some(mh) = lute_cel::parse_slot_marked_refs(&mut marked, &slot.raw) {
                 if let Some(mroot) = marked.get(mh) {
                     check_cel_profile(&mroot.expr, slot, &mut diags);
+                    // Vocabulary-aware fact-query pass (dsl 0.3.0 §6/§8, T11):
+                    // `holds`/`count`/`validAt` patterns against `RelVocab`
+                    // (E-RELATION-UNKNOWN/-ARITY/E-FACT-DOMAIN), the
+                    // guard-tainted-derived `validAt` restriction
+                    // (E-VALIDAT-DERIVED), and the match-subject firewall
+                    // (E-MATCH-RELATION-SUBJECT). Runs on the SAME marker
+                    // re-parse as the profile gate above — gated on `slot.ast`
+                    // by the same outer `if`, so malformed CEL never cascades.
+                    check_fact_queries(&mroot.expr, slot, ctx, &mut diags);
                 }
             }
         }
@@ -315,25 +340,50 @@ fn check_guard_fact_access(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>)
 /// * comprehension macros lower to [`Expr::Comprehension`]; map/struct literals
 ///   to [`Expr::Map`]/[`Expr::Struct`] (only *list* literals are in profile) —
 ///   all rejected.
+/// * a `holds`/`count`/`validAt`/`now` fact-query/narrative-time call
+///   ([`is_profile_fact_query`], dsl 0.3.0 §6/§8, T11) is exempt but does
+///   NOT get the ordinary structural recursion: the pattern arg (`holds`/
+///   `count`'s sole arg, `validAt`'s first arg) is a relation `Call`, not a
+///   CEL sub-expression — its bare idents would otherwise trip
+///   [`is_profile_ident_root`] below. Only `validAt`'s SECOND arg (a genuine
+///   CEL expr, e.g. `now()`) is recursed into; the pattern itself is
+///   validated by [`check_fact_queries`] instead.
 fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
     match expr {
         Expr::Call(c) => {
             let name = c.func_name.as_str();
             // Exempt: a compile-time `@ref(args)` macro (marker-prefixed name;
-            // §8.1 owns its arity), a profile operator, or a well-formed
-            // `isSet(<path>)` call. Anything else — including `scene.x.isSet()`
-            // (receiver) and `isSet(a, b)` (wrong arity) — is out of profile.
+            // §8.1 owns its arity), a profile operator, a well-formed
+            // `isSet(<path>)` call, or a well-shaped fact-query/`now()` call
+            // (dsl 0.3.0 §6/§8). Anything else — including `scene.x.isSet()`
+            // (receiver), `isSet(a, b)` (wrong arity), `holds()` (wrong
+            // arity), and `holds(scene.x)` (non-call pattern arg) — is out of
+            // profile.
             if name.starts_with(lute_cel::REF_MARKER)
                 || is_profile_operator(name)
                 || is_profile_isset_call(c)
+                || is_profile_fact_query(c)
             {
-                // Structural — recurse into target + args to catch any nested
-                // out-of-profile call.
-                if let Some(t) = &c.target {
-                    check_cel_profile(&t.expr, slot, diags);
-                }
-                for a in &c.args {
-                    check_cel_profile(&a.expr, slot, diags);
+                if is_profile_fact_query(c) {
+                    // A fact-query/now() call: do NOT recurse into the
+                    // pattern arg (args[0], a relation Call — validated by
+                    // check_fact_queries, never a CEL sub-expression).
+                    // `validAt`'s second arg IS a genuine CEL expr and gets
+                    // the ordinary recursion.
+                    if name == "validAt" {
+                        if let Some(t) = c.args.get(1) {
+                            check_cel_profile(&t.expr, slot, diags);
+                        }
+                    }
+                } else {
+                    // Structural — recurse into target + args to catch any
+                    // nested out-of-profile call.
+                    if let Some(t) = &c.target {
+                        check_cel_profile(&t.expr, slot, diags);
+                    }
+                    for a in &c.args {
+                        check_cel_profile(&a.expr, slot, diags);
+                    }
                 }
             } else {
                 // An out-of-profile function/method call. Report and stop
@@ -342,8 +392,9 @@ fn check_cel_profile(expr: &Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
                     E_CEL_PROFILE,
                     format!(
                         "`{name}(…)` is outside the Lute-CEL profile — only operators, \
-                         literals, lists, `?:`, `in`, `has()`, and `isSet()` are \
-                         permitted (dsl §8.4)"
+                         literals, lists, `?:`, `in`, `has()`, `isSet()`, `holds()`, \
+                         `count()`, `validAt()`, and `now()` are permitted (dsl §8.4, \
+                         0.3.0 §8)"
                     ),
                     slot.span,
                 ));
@@ -442,6 +493,191 @@ fn is_profile_isset_call(c: &cel_parser::ast::CallExpr) -> bool {
         && c.target.is_none()
         && c.args.len() == 1
         && crate::cel_paths::select_path(&c.args[0].expr).is_some()
+}
+
+/// True iff `c` is a structurally well-shaped fact-query/narrative-time call
+/// (dsl 0.3.0 §6/§8): `holds(Call)` | `count(Call)` | `validAt(Call, expr)` |
+/// `now()` — NO receiver, EXACT arity, and (for `holds`/`count`/`validAt`) a
+/// `Call`-shaped first argument (the relation pattern — its OWN shape/
+/// vocabulary validity is [`check_fact_queries`]'s job, never recursed into
+/// here). Matched by EXACT name (mirrors [`GUARD_FIREWALL_CALLS`], not
+/// [`is_profile_isset_call`]'s case-insensitive match). A malformed shape —
+/// wrong arity, a non-`Call` pattern arg (`holds(scene.x)`), a receiver
+/// (`x.holds(…)`), or an unrecognized name — is NOT admitted here and falls
+/// into the ordinary [`E_CEL_PROFILE`] rejection.
+fn is_profile_fact_query(c: &cel_parser::ast::CallExpr) -> bool {
+    if c.target.is_some() {
+        return false;
+    }
+    match c.func_name.as_str() {
+        "holds" | "count" => c.args.len() == 1 && matches!(c.args[0].expr, Expr::Call(_)),
+        "validAt" => c.args.len() == 2 && matches!(c.args[0].expr, Expr::Call(_)),
+        "now" => c.args.is_empty(),
+        _ => false,
+    }
+}
+
+/// Vocabulary-aware fact-query pass (dsl 0.3.0 §6/§8, T11): validates every
+/// `holds`/`count`/`validAt` pattern against `ctx.env.rel_vocab`. Mirrors
+/// [`check_cel_profile`]'s own recursion shape (own recursion into `Call`
+/// target/args, `List` elements, `Select` operand; leaves are inert) so a
+/// fact query nested inside an operator call (`count(x) + 1 <= 3`) or a
+/// list is still found. Runs on the SAME marker re-parse as the profile
+/// gate — called from `check_cel_slot` right after `check_cel_profile`, so a
+/// malformed (non-admitted) fact-query shape is already `E_CEL_PROFILE`-
+/// flagged there and is left alone here (an ordinary `Call` with no relation
+/// pattern to check).
+fn check_fact_queries(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+    match expr {
+        Expr::Call(c) => {
+            if is_profile_fact_query(c) {
+                check_fact_query_call(c, slot, ctx, diags);
+                // `validAt`'s second arg is a genuine CEL expr (may itself
+                // nest another fact query, e.g. `validAt(rel(a), now())`).
+                if c.func_name == "validAt" {
+                    if let Some(t) = c.args.get(1) {
+                        check_fact_queries(&t.expr, slot, ctx, diags);
+                    }
+                }
+                return;
+            }
+            // Not a (well-shaped) fact query: an ordinary call — recurse into
+            // target + args so a fact query nested inside an operator call
+            // (`count(x) >= 1`, itself the synthetic `_>=_` Call) is found.
+            if let Some(t) = &c.target {
+                check_fact_queries(&t.expr, slot, ctx, diags);
+            }
+            for a in &c.args {
+                check_fact_queries(&a.expr, slot, ctx, diags);
+            }
+        }
+        Expr::List(list) => {
+            for el in &list.elements {
+                check_fact_queries(&el.expr, slot, ctx, diags);
+            }
+        }
+        Expr::Select(sel) => check_fact_queries(&sel.operand.expr, slot, ctx, diags),
+        Expr::Comprehension(_)
+        | Expr::Map(_)
+        | Expr::Struct(_)
+        | Expr::Ident(_)
+        | Expr::Literal(_)
+        | Expr::Unspecified => {}
+    }
+}
+
+/// Validate one admitted fact-query `Call` (dsl 0.3.0 §6/§8): `now()` has no
+/// pattern (admitted here, TYPED as narrative-time in Task 12 — nothing to
+/// check yet); `holds`/`count`/`validAt` carry a relation pattern in
+/// `args[0]` (guaranteed `Expr::Call` by [`is_profile_fact_query`]).
+fn check_fact_query_call(
+    c: &cel_parser::ast::CallExpr,
+    slot: &CelSlot,
+    ctx: &Ctx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let name = c.func_name.as_str();
+    if name == "now" {
+        return;
+    }
+    // §8: relations are guard-only — a `<match on>` subject must stay
+    // enum/bool/scalar so exhaustiveness analysis stays decidable. Flag and
+    // skip pattern validation entirely (don't cascade unknown-relation/arity/
+    // domain noise onto an already-illegal subject).
+    if slot.kind == CelKind::MatchSubject {
+        diags.push(diag(
+            E_MATCH_RELATION_SUBJECT,
+            "relations are guard-only; a `<match on>` subject must stay \
+             enum/bool/scalar so exhaustiveness stays decidable (dsl 0.3.0 §8)"
+                .to_string(),
+            slot.span,
+        ));
+        return;
+    }
+    let Expr::Call(pattern) = &c.args[0].expr else {
+        unreachable!("is_profile_fact_query guarantees args[0] is a Call");
+    };
+    let relation = pattern.func_name.as_str();
+    let Some(args) = pattern_terms(pattern) else {
+        diags.push(diag(
+            E_CEL_PROFILE,
+            "fact-query patterns take compile-time-ground literals or `_` \
+             (dsl 0.3.0 §5/§8)"
+                .to_string(),
+            slot.span,
+        ));
+        return;
+    };
+    let vocab: &RelVocab = &ctx.env.rel_vocab;
+    // `check_atom`'s `domains` parameter (the merged plugin/project catalog
+    // vocabulary, A4) is intentionally NOT threaded in here — `check_cel_slot`
+    // has no `domains` access (T11's surface is `cel_resolve.rs` only; see
+    // the task report). A relation arg declared against an entity kind or an
+    // `enums:` name — the ONLY shapes these fixtures (and realistically any
+    // fact-query pattern) exercise — is unaffected: `check_atom` resolves
+    // those BEFORE ever consulting `domains`. Only an arg declared against a
+    // plugin/project *catalog* domain (rather than a kind/enum) would skip
+    // its membership check here — a scoped, documented gap.
+    diags.extend(check_atom(
+        vocab,
+        &BTreeMap::new(),
+        relation,
+        &args,
+        /* wildcard_ok */ true,
+        slot.span,
+    ));
+    // §6: `validAt` over a `derive:true` relation whose rule closure carries
+    // a CEL guard in some feeding stratum is ill-defined — a guard makes
+    // membership depend on a scalar read, and scalars keep no history.
+    // `holds`/`count` stay fine on the SAME relation (they only read "now").
+    if name == "validAt" {
+        if let Some(decl) = vocab.relations.get(relation) {
+            if decl.derive && vocab.guard_tainted.contains(relation) {
+                diags.push(diag(
+                    E_VALIDAT_DERIVED,
+                    format!(
+                        "`validAt` over derived relation `{relation}` is ill-defined — \
+                         its rule closure carries a CEL guard, and scalars keep no \
+                         history (dsl 0.3.0 §6)"
+                    ),
+                    slot.span,
+                ));
+            }
+        }
+    }
+}
+
+/// Convert a fact-query pattern `Call`'s args into [`FactArg`]s for
+/// [`check_atom`] (dsl 0.3.0 §5/§8, the adapter T11's plan calls for):
+/// `Ident("_")` (a literal wildcard, OR the substituted `$` match subject —
+/// same token, same meaning here) -> [`FactTerm::Wildcard`]; any other
+/// `Ident` NOT marker-prefixed -> [`FactTerm::Ident`]; a boolean `Literal`
+/// -> [`FactTerm::Bool`]. Anything else — a path `Select`, arithmetic, a
+/// nested `Call`, a non-bool literal, or a marker-prefixed `@ref` ident — is
+/// NOT compile-time-ground; returns `None` for the WHOLE pattern (a single
+/// non-ground arg invalidates it, per `Iterator::collect`'s `Option`
+/// short-circuit). Spans are unavailable (cel-parser drops sub-expression
+/// positions) so every [`FactArg::span`] is a `(0, 0)` placeholder —
+/// `check_atom` never reads it, always reporting at the caller-supplied span.
+fn pattern_terms(c: &cel_parser::ast::CallExpr) -> Option<Vec<FactArg>> {
+    c.args
+        .iter()
+        .map(|a| match &a.expr {
+            Expr::Ident(name) if name == "_" => Some(FactArg {
+                term: FactTerm::Wildcard,
+                span: (0, 0),
+            }),
+            Expr::Ident(name) if !name.starts_with(lute_cel::REF_MARKER) => Some(FactArg {
+                term: FactTerm::Ident(name.clone()),
+                span: (0, 0),
+            }),
+            Expr::Literal(Val::Boolean(b)) => Some(FactArg {
+                term: FactTerm::Bool(*b),
+                span: (0, 0),
+            }),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The bare identifiers the Lute-CEL profile admits as an expression root (dsl
