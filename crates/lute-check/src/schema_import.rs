@@ -750,7 +750,7 @@ pub(crate) fn relation_sig_diff(child: &RelationDecl, base: &RelationDecl) -> Ve
     if child.args != base.args {
         out.push("args");
     }
-    if child.tier != base.tier {
+    if child.tier.as_deref().unwrap_or("run") != base.tier.as_deref().unwrap_or("run") {
         out.push("tier");
     }
     if child.derive != base.derive {

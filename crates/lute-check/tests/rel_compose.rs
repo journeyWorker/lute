@@ -173,6 +173,41 @@ fn extends_relation_signature_checks_key_too() {
 }
 
 #[test]
+fn extends_tier_default_run_matches_explicit_run() {
+    // Spec §4: `tier:` defaults to `run` when omitted. A base declaring the
+    // relation with `tier:` omitted and a child re-declaring it with the
+    // explicit default (`tier: run`) have the SAME effective signature and
+    // must NOT trip `E-EXTENDS-RELATION-SIG` — checked both orders.
+    let dir = unique_dir();
+    write(
+        &dir,
+        "base_omitted.yaml",
+        "entities:\n  c: { members: [x] }\nrelations:\n  r: { args: [c] }\n",
+    );
+    write(
+        &dir,
+        "child_explicit.yaml",
+        "extends: base_omitted.yaml\nrelations:\n  r: { args: [c], tier: run }\n",
+    );
+    let a = lute_check::resolve_imports(&dir, &["child_explicit.yaml".into()], &[], span());
+    assert!(!codes(&a).contains(&"E-EXTENDS-RELATION-SIG"), "{:?}", a.diags);
+
+    // reverse: base explicit, child omitted
+    write(
+        &dir,
+        "base_explicit.yaml",
+        "entities:\n  c: { members: [x] }\nrelations:\n  r: { args: [c], tier: run }\n",
+    );
+    write(
+        &dir,
+        "child_omitted.yaml",
+        "extends: base_explicit.yaml\nrelations:\n  r: { args: [c] }\n",
+    );
+    let b = lute_check::resolve_imports(&dir, &["child_omitted.yaml".into()], &[], span());
+    assert!(!codes(&b).contains(&"E-EXTENDS-RELATION-SIG"), "{:?}", b.diags);
+}
+
+#[test]
 fn facts_and_rules_union_across_dag() {
     let dir = unique_dir();
     write(
