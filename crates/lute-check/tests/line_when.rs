@@ -196,6 +196,61 @@ fn component_line_when_params_only() {
 }
 
 #[test]
+fn component_line_when_also_runs_ordinary_cel_validation() {
+    // Finding 1: a component-body `when=` must run the SAME ordinary CEL
+    // validation (`check_cel_slot`) as every other component-body slot —
+    // not just the positive `E-COMPONENT-STATE` ambient-state scan. An
+    // undeclared `@ref` is E-UNDECLARED-REF (neither dedup'd code, dsl §13).
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "undeclared_ref.lute",
+        "---\ncomponent: undeclared_ref\n---\n## Scene 1.\n\
+         @narrator{when=\"@missing\"}: hi\n",
+    );
+    let s = scene("undeclared_ref.lute", "::use{component=\"undeclared_ref\"}");
+    let cs = component_codes(&dir, &s);
+    assert!(
+        cs.contains(&"E-UNDECLARED-REF".to_string()),
+        "an undeclared @ref in a component when= must be E-UNDECLARED-REF; got {cs:?}"
+    );
+
+    // D9: `$` is out of scope in a content-line when=, even inside a
+    // component body — check_cel_slot must run under a no-dollar ctx.
+    let dir2 = unique_dir();
+    write_lute(
+        &dir2,
+        "dollar_leak.lute",
+        "---\ncomponent: dollar_leak\nparams:\n  tier: { enum: [cold, fond] }\n---\n\
+         ## Scene 1.\n\
+         @narrator{when=\"$ == 'fond'\"}: hi\n",
+    );
+    let s2 = scene("dollar_leak.lute", "::use{component=\"dollar_leak\" tier=\"fond\"}");
+    let cs2 = component_codes(&dir2, &s2);
+    assert!(
+        cs2.contains(&"E-DOLLAR-OUTSIDE-MATCH".to_string()),
+        "`$` in a component when= must be E-DOLLAR-OUTSIDE-MATCH; got {cs2:?}"
+    );
+
+    // A declared-param guard stays clean under the new validation, exactly
+    // as it did before (no regression on the params-only happy path).
+    let dir3 = unique_dir();
+    write_lute(
+        &dir3,
+        "clean_param.lute",
+        "---\ncomponent: clean_param\nparams:\n  tier: { enum: [cold, fond] }\n---\n\
+         ## Scene 1.\n\
+         @narrator{when=\"@tier == 'fond'\"}: hi\n",
+    );
+    let s3 = scene("clean_param.lute", "::use{component=\"clean_param\" tier=\"fond\"}");
+    let cs3 = component_codes(&dir3, &s3);
+    assert!(
+        !cs3.iter().any(|c| c.starts_with("E-")),
+        "a declared-param when= guard must stay clean; got {cs3:?}"
+    );
+}
+
+#[test]
 fn known_attrs_never_sees_when() {
     // Extraction (T9's parser change) precedes content_line.rs's known-attr
     // check, so `when=` never trips E-UNKNOWN-ATTR.

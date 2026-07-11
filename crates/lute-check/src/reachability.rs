@@ -36,8 +36,8 @@ use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
 use crate::decide::{decide_slot, DecideCtx, Decided, DollarBinding};
 use crate::match_check::{
-    classify_when_literal, infer_domain, is_pattern_literals, literal_is_foreign, subject_path,
-    Domain, DomainInfo, DomainValue, WhenLiteral,
+    classify_when_literal, infer_domain, is_pattern_literals, literal_is_foreign, param_domain,
+    subject_path, Domain, DomainInfo, DomainValue, WhenLiteral,
 };
 
 /// `E-ARM-DEAD` (dsl 0.4.0 §5.2): a `<when>` arm or `<choice>` that can
@@ -83,11 +83,31 @@ pub(crate) fn check_reachability(doc: &Document, folded: &FoldedEnv) -> Vec<Diag
         bodies: &folded.def_bodies,
         params: &folded.env.def_params,
     };
-    let empty_params: BTreeMap<String, DomainInfo> = BTreeMap::new();
+    // dsl 0.4.0 §6.2/§6.3 (finding 3): a STANDALONE component-file
+    // self-check's OWN `params:` domain table — mirrors check.rs's
+    // `Walker` `param_domains` construction (`param_domain(ty)`) and
+    // `validate_components`'s per-component table (T7/T8) — empty for an
+    // ordinary Scene/Quest walk. Without this, a bare-`@param` `<match>`
+    // subject in a STANDALONE component self-check degraded to an
+    // unresolved (`infer_domain`) domain: a `$`-comparison guard foreign to
+    // the param's domain never decided (no E-ARM-DEAD) and a covered
+    // `<otherwise>` never flagged W-OTHERWISE-DEAD — only the TRANSITIVE
+    // `::use` import path (`walk_component_body`'s own reachability call)
+    // diagnosed them.
+    let param_domains: BTreeMap<String, DomainInfo> = if folded.typed.component.is_some() {
+        folded
+            .typed
+            .params
+            .iter()
+            .map(|p| (p.name.clone(), param_domain(&p.ty)))
+            .collect()
+    } else {
+        BTreeMap::new()
+    };
     let base_ctx = DecideCtx {
         schema: &folded.env.state,
         dollar: None,
-        params: &empty_params,
+        params: &param_domains,
     };
     let mut diags = Vec::new();
     for shot in &doc.shots {
@@ -112,7 +132,19 @@ fn walk_reach(nodes: &[Node], defs: &DefTable<'_>, ctx: &DecideCtx<'_>, diags: &
     for node in nodes {
         match node {
             Node::Match(m) => {
-                let dom = infer_domain(subject_path(m).as_deref(), ctx.schema);
+                // dsl 0.4.0 §6.2/§6.3 (finding 3): a bare `@param` subject
+                // resolves against `ctx.params` FIRST — the STANDALONE
+                // component-file self-check path's own domain table
+                // (`check_reachability`, seeded from `folded.typed.component`)
+                // — mirroring the TRANSITIVE `::use` walk's
+                // `walk_component_body` (`param_domains.get(&name)`). A
+                // state/path subject, or an `@param` name `ctx.params`
+                // doesn't carry (an ordinary Scene/Quest walk, where
+                // `ctx.params` is always empty), falls back to the ordinary
+                // state-path `infer_domain`.
+                let dom = crate::check::bare_param_ref(&m.subject.raw)
+                    .and_then(|name| ctx.params.get(&name).cloned())
+                    .unwrap_or_else(|| infer_domain(subject_path(m).as_deref(), ctx.schema));
                 let match_ctx = DecideCtx {
                     schema: ctx.schema,
                     dollar: Some(DollarBinding::Domain(&dom)),
@@ -209,6 +241,19 @@ fn domain_valid_item(lit_raw: &str, dom: &DomainInfo) -> Option<CoverItem> {
     })
 }
 
+/// D4: true when the arm's `is=` pattern carries AT LEAST ONE literal
+/// foreign to `dom` (`domain_valid_item` returns `None` exactly for a
+/// foreign literal — the SAME `literal_is_foreign` classification
+/// `E-WHEN-LITERAL-DOMAIN` uses, `match_check.rs`). D4 (finding 2): the
+/// foreign-literal code OWNS the root for such an arm — cause 1
+/// (dead-guard) below MUST NOT also report `E-ARM-DEAD` on it, even when
+/// the arm's guard independently decides false.
+fn arm_has_foreign_literal(pat: &lute_syntax::ast::IsPattern, dom: &DomainInfo) -> bool {
+    is_pattern_literals(&pat.raw, pat.span)
+        .iter()
+        .any(|(lit_raw, _)| domain_valid_item(lit_raw, dom).is_none())
+}
+
 /// The accumulated subsumption union `U` (dsl 0.4.0 §5.2 rule 2): every
 /// domain-valid literal (+ the `unset` case) contributed by an earlier
 /// UNGUARDED `<when>` arm, each remembering the FIRST arm that contributed
@@ -274,8 +319,14 @@ pub(crate) fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<
                 // Cause 1: decided-false guard (dsl 0.4.0 §5.2 rule 1). A
                 // guard present AND is-pattern present: the decided-false
                 // guard alone kills the arm — same code, this cause named
-                // (cause 2 is skipped once this fires).
-                if !test.raw.trim().is_empty() {
+                // (cause 2 is skipped once this fires). D4 (finding 2): an
+                // arm whose `is=` pattern carries a foreign literal is
+                // ALREADY rooted by `E-WHEN-LITERAL-DOMAIN` — that code
+                // OWNS the root, so cause 1 MUST NOT also fire on it, even
+                // when the guard independently decides false (avoids the
+                // `is="platnum" test="1 > 2"` double-report).
+                let foreign_literal = is.as_ref().is_some_and(|pat| arm_has_foreign_literal(pat, &dom));
+                if !foreign_literal && !test.raw.trim().is_empty() {
                     if let Some(Decided::Bool(false)) = decide_slot(&test.raw, defs, ctx) {
                         diags.push(diag(
                             E_ARM_DEAD,

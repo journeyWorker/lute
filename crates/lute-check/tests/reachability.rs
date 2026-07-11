@@ -97,6 +97,29 @@ fn mixed_alternation_flags_only_foreign() {
     );
 }
 
+// Finding 2 (D4 double-report): an arm carrying BOTH a foreign `is` literal
+// AND a decided-false `test=` guard must flag ONLY E-WHEN-LITERAL-DOMAIN —
+// the foreign-literal code owns the root; cause 1 (dead-guard) must never
+// ALSO report E-ARM-DEAD on the same arm.
+#[test]
+fn foreign_literal_with_decided_false_guard_is_not_also_arm_dead() {
+    let out = codes(&format!(
+        "{HDR}<match on=\"run.rank\">\n\
+         <when is=\"platnum\" test=\"1 > 2\">\n@narrator: x\n</when>\n\
+         <otherwise>\n@narrator: o\n</otherwise>\n\
+         </match>\n"
+    ));
+    assert!(
+        out.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
+        "the foreign literal must still flag: {out:?}"
+    );
+    assert!(
+        !out.contains(&"E-ARM-DEAD".to_string()),
+        "D4: a foreign-literal arm must NEVER also be E-ARM-DEAD, even with \
+         its own decided-false guard: {out:?}"
+    );
+}
+
 // A bool literal against an enum domain is a domain-SHAPE mismatch (rule 2),
 // not merely a missing member.
 #[test]
@@ -572,5 +595,67 @@ fn holds_guards_stay_undecided() {
             || c == "E-OBJECTIVE-UNSATISFIABLE"
             || c == "W-OBJECTIVE-HIDDEN"),
         "an R5 fact-query guard must stay undecided, never flagged: {out:?}"
+    );
+}
+
+// -- Finding 3: standalone component-file reachability param domains ------
+//
+// A component file checked STANDALONE (no `::use`/`resolve_components`)
+// routes `<match on="@param">` through `check_param_match` (T7/T8
+// exhaustiveness), but the SEPARATE reachability pass (`check_reachability`,
+// this module) previously built `$`'s domain from schema paths + an EMPTY
+// param map — so a bare-`@param` subject's domain was never seeded on the
+// standalone path (only the TRANSITIVE `::use` import path, via
+// `walk_component_body`'s own reachability call, diagnosed these).
+
+#[test]
+fn standalone_component_dollar_eq_guard_foreign_to_param_is_arm_dead() {
+    let cs = codes(
+        "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
+         ## Scene 1.\n\
+         <match on=\"@tier\">\n\
+         <when test=\"$ == 'gone'\">\n@narrator: x\n</when>\n\
+         <otherwise>\n@narrator: o\n</otherwise>\n\
+         </match>\n",
+    );
+    assert!(
+        cs.contains(&"E-ARM-DEAD".to_string()),
+        "a $ comparison foreign to the dispatched param's domain must decide \
+         false in a STANDALONE component self-check: {cs:?}"
+    );
+}
+
+#[test]
+fn standalone_component_covered_param_otherwise_is_dead() {
+    let cs = codes(
+        "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
+         ## Scene 1.\n\
+         <match on=\"@tier\">\n\
+         <when is=\"cold|warm|fond\">\n@narrator: x\n</when>\n\
+         <otherwise>\n@narrator: o\n</otherwise>\n\
+         </match>\n",
+    );
+    assert!(
+        cs.contains(&"W-OTHERWISE-DEAD".to_string()),
+        "an <otherwise> after a fully-covered param domain must flag \
+         W-OTHERWISE-DEAD in a STANDALONE component self-check: {cs:?}"
+    );
+}
+
+#[test]
+fn scene_reachability_not_polluted_by_param_seeding() {
+    // An ordinary SCENE doc must stay unaffected: `ctx.params` stays empty,
+    // so a bare `@ghost`-shaped subject never resolves through it (guarded
+    // to `MetaKind::Component` only, mirroring `fragment_kind.rs`'s
+    // `scene_doc_not_polluted_by_component_param_seeding`).
+    let out = codes(&format!(
+        "{HDR}<match on=\"run.rank\">\n\
+         <when test=\"$ == 'gone'\">\n@narrator: x\n</when>\n\
+         <otherwise>\n@narrator: o\n</otherwise>\n\
+         </match>\n"
+    ));
+    assert!(
+        out.contains(&"E-ARM-DEAD".to_string()),
+        "the ordinary state-path domain path must still decide: {out:?}"
     );
 }
