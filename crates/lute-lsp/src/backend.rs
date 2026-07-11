@@ -295,19 +295,26 @@ impl Backend {
                     // raw backend text — the leak T13 flagged as out-of-scope
                     // for its own crate (`lute-check` has no declaration-path
                     // caller). `span` here is `find_key_span`'s DEF-NAME key
-                    // span, NOT the `cel:` value's own span, so a rebased
-                    // fixit edit would land on the wrong bytes (splicing into
-                    // the key, not the CEL text) — fixits are dropped at this
-                    // site for that reason; the message is still correct and
-                    // ANTLR-vocabulary-free, which is the load-bearing §8.1
-                    // requirement. `check.rs`'s own E-CEL-PARSE site (the
-                    // slot's true span) keeps its fixits untouched.
+                    // span, NOT the `cel:` value's own span. `translate_cel_parse`
+                    // is used ONLY for its `t.message` (the ANTLR-free win) —
+                    // NEVER for `t.span`: that span is REBASED on whatever
+                    // `slot_span` it was passed (here, `span`, the key span), so
+                    // a rule that finds a local token (e.g. T2 rule 4's bare `=`)
+                    // returns an offset *relative to the key*, landing the
+                    // squiggle PAST the key instead of on the CEL text that
+                    // actually failed (finding 7). The published diagnostic stays
+                    // anchored on the stable key `span` instead. Fixits are
+                    // dropped at this site for the same underlying reason — the
+                    // `cel:` value span isn't recoverable here, so a rebased
+                    // fixit edit would splice into the wrong bytes too.
+                    // `check.rs`'s own E-CEL-PARSE site (the slot's true span)
+                    // keeps both its span and its fixits untouched.
                     let t = translate_cel_parse(raw, span, &e);
                     diags.push(Diagnostic {
                         code: "E-CEL-PARSE".to_string(),
                         severity: Severity::Error,
                         message: t.message,
-                        span: t.span.unwrap_or(span),
+                        span,
                         layer: Layer::Cel,
                         fixits: Vec::new(),
                         provenance: None,
@@ -1317,11 +1324,13 @@ mod tests {
             .finish();
         service.ready().await.unwrap().call(init).await.unwrap();
 
+        let text = fs::read_to_string(&decl_path).unwrap();
+
         let open = RpcRequest::build("textDocument/didOpen")
             .params(serde_json::json!({
                 "textDocument": {
                     "uri": uri_str, "languageId": "yaml", "version": 1,
-                    "text": fs::read_to_string(&decl_path).unwrap()
+                    "text": text.clone()
                 }
             }))
             .finish();
@@ -1355,6 +1364,39 @@ mod tests {
         assert!(
             message.contains("did you mean"),
             "expected the writer-voiced T2 bare-`=` suggestion, got: {message}"
+        );
+        // Finding 7: the diagnostic's range must stay anchored on the
+        // `defs:` KEY span (`find_key_span`'s own copy), never
+        // `translate_cel_parse`'s `t.span` — that span is REBASED on the
+        // same key span it was PASSED as `slot_span`, so a rule that finds a
+        // local token (T2 rule 4's bare `=`, here) reports an offset PAST
+        // the key instead of at it. Only the MESSAGE comes from
+        // `translate_cel_parse`; the span must come from the original key
+        // span computed at this call site.
+        let idx = TextIndex::new(&text);
+        let key_span = find_key_span(&text, "x").expect("`x` is a `defs:` key in the fixture");
+        let expected_start = byte_to_position(key_span.byte_start, &idx);
+        let expected_end = byte_to_position(key_span.byte_end, &idx);
+        let range = cel_parse.get("range").expect("E-CEL-PARSE carries a range");
+        let actual_start = (
+            range["start"]["line"].as_u64().unwrap(),
+            range["start"]["character"].as_u64().unwrap(),
+        );
+        let actual_end = (
+            range["end"]["line"].as_u64().unwrap(),
+            range["end"]["character"].as_u64().unwrap(),
+        );
+        assert_eq!(
+            actual_start,
+            (expected_start.line as u64, expected_start.character as u64),
+            "E-CEL-PARSE range.start must equal the `defs:` key span (found {actual_start:?}), \
+             not a translate_cel_parse-rebased offset past it"
+        );
+        assert_eq!(
+            actual_end,
+            (expected_end.line as u64, expected_end.character as u64),
+            "E-CEL-PARSE range.end must equal the `defs:` key span (found {actual_end:?}), \
+             not a translate_cel_parse-rebased offset past it"
         );
         fs::remove_dir_all(&root).ok();
     }
