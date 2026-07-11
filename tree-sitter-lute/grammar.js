@@ -9,7 +9,7 @@
  *   1. `## ` shot heading / `# ` document title      (§6.2, §6.3)
  *   2. `::set{ … }` assignment directive             (§7.3.4)  — tried before `::`
  *   3. `::`ident`{ … }` staging directive (leaf)      (§7.2)
- *   4. `:speaker{attrs}: text` content line          (§7.1)   — text, may {{…}}
+ *   4. `@speaker{attrs}: text` content line          (§7.1)   — text, may {{…}}
  *   5. `<tag …> … </tag>` logic / timeline BLOCKS     (§7.3, §7.4) — these NEST
  *   6. `/* … *​/` comments are trivia                  (§4.2)   — `extras`
  *

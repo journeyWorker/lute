@@ -1,7 +1,7 @@
 ; tree-sitter-lute — foldable regions for the Lute Scenario DSL.
 ;
 ; Fold the multi-line structural blocks: shot bodies and every nesting logic /
-; timeline block (§6.3, §7.3, §7.4). Leaf nodes (`:speaker` line, `::`directive,
+; timeline block (§6.3, §7.3, §7.4). Leaf nodes (`@speaker` line, `::`directive,
 ; `::set`) are single-line and never folded.
 
 ; Shot body (§6.3) — `## heading` … up to the next shot / EOF.

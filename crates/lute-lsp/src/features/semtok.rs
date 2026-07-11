@@ -643,7 +643,7 @@ mod tests {
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
 
-        // Speaker `narrator` sits just past the leading `:` (dsl §7.1) — 8 units.
+        // Speaker `narrator` sits just past the leading `@` (dsl §7.1) — 8 units.
         let sp = idx.position(text.find("narrator").unwrap());
         let speaker = decoded
             .iter()

@@ -97,7 +97,7 @@ pub(crate) enum Cursor<'a> {
     /// empty braces). Drives attr-key completion; no hover.
     DirectiveAttrArea { directive: &'a str },
     /// On an attribute KEY. `directive` is the owning directive tag (`None` for a
-    /// `:speaker{…}` line attribute, which has no capability schema).
+    /// `@speaker{…}` line attribute, which has no capability schema).
     AttrKey {
         directive: Option<&'a str>,
         key: &'a str,
@@ -139,7 +139,7 @@ pub(crate) enum Cursor<'a> {
     /// instead of a directive name.
     ConstructAttrArea { construct: QuestConstruct },
     /// On the `@speaker` name itself (dsl §7.1), between the leading `@` and
-    /// the attrs `{`/the second `:` — NOT a capability-schema position (a
+    /// the attrs `{`/the `:` before the text — NOT a capability-schema position (a
     /// content line's speaker has no directive), so it carries no data.
     /// Drives speaker-id completion (character/cast catalog ids + the
     /// `narrator` keyword); speaker-id VALIDATION stays out of scope for
@@ -405,7 +405,7 @@ fn resolve_directive(d: &Directive, off: usize) -> Cursor<'_> {
 }
 
 fn resolve_line(l: &Line, off: usize) -> Option<Cursor<'_>> {
-    // The `:speaker{attrs}` head resolves first (attrs never overlap the text).
+    // The `@speaker{attrs}` head resolves first (attrs never overlap the text).
     if let Some(c) = resolve_attrs(&l.attrs, None, off) {
         return Some(c);
     }
