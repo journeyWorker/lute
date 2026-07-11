@@ -55,7 +55,7 @@
 //! errors (unknown directive, undeclared state, non-exhaustive match, …) still
 //! yield a resolved view. A clean document is always `Some`.
 
-use lute_cel::{fill_document, parse_slot, scan_refs, CelArena};
+use lute_cel::{fill_document, parse_slot, scan_refs, CelArena, CelParseError};
 use lute_core_span::{Diagnostic, Fixit, Layer, Severity, Span, TextEdit, TextIndex};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::{SlotDecl, StateShape};
@@ -66,6 +66,7 @@ use lute_syntax::ast::{
     Interp, InterpKind, Node,
 };
 use lute_syntax::parse;
+use lute_syntax::walk::for_each_cel_slot;
 /// Delegate: the label-interp scanner now lives in `lute-syntax` (single source
 /// of truth with the parser's content-line scan). Re-exported `pub(crate)` so
 /// `crate::check::scan_label_interps` (used by `defassign`) and the local call
@@ -73,6 +74,7 @@ use lute_syntax::parse;
 pub(crate) use lute_syntax::scan_label_interps;
 
 use crate::cel_expand::DefTable;
+use crate::cel_message::translate_cel_parse;
 use crate::cel_resolve::{check_rule_guards, compatible};
 use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
@@ -92,6 +94,55 @@ use crate::{
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
 /// from `fill_document`'s errors; the slot's `ast` stays `None`).
 const E_CEL_PARSE: &str = "E-CEL-PARSE";
+
+/// Translate every CEL parse failure `fill_document` reported into a
+/// writer-voiced `E-CEL-PARSE` [`Diagnostic`] (dsl 0.4.0 §8.1, T13) —
+/// `cel_message::translate_cel_parse` builds the message/fixits/span from the
+/// FAILED slot's own `raw`/`span`, never `err.message`.
+///
+/// `fill_document(&mut arena, doc)` already consumed the mutable walk; this
+/// re-walks `doc` IMMUTABLY in the exact same pre-order
+/// (`lute_syntax::walk::for_each_cel_slot` mirrors `for_each_cel_slot_mut`
+/// structurally) to recover each failed slot's full `raw`/`span` — a slot is
+/// exactly one of `cel_errors` iff it is non-structural-gap (`raw` not
+/// whitespace-only, the same filter `fill_document` itself applies) AND was
+/// left `ast: None` (fill_document's ONLY paths are `ast = Some(handle)` on
+/// success or push an error on failure; it never reorders/inserts/removes
+/// slots), so zipping the two same-order sequences pairs each error with its
+/// own slot 1:1.
+fn cel_parse_diagnostics(doc: &Document, cel_errors: Vec<CelParseError>) -> Vec<Diagnostic> {
+    let mut failed: Vec<(&str, Span)> = Vec::new();
+    for_each_cel_slot(doc, &mut |slot| {
+        if slot.raw.trim().is_empty() {
+            return;
+        }
+        if slot.ast.is_none() {
+            failed.push((slot.raw.as_str(), slot.span));
+        }
+    });
+    debug_assert_eq!(
+        failed.len(),
+        cel_errors.len(),
+        "fill_document's error count must match the (raw non-empty, ast=None) slots found by \
+         re-walking the same document in the same pre-order"
+    );
+    failed
+        .into_iter()
+        .zip(cel_errors)
+        .map(|((raw, slot_span), err)| {
+            let t = translate_cel_parse(raw, slot_span, &err);
+            Diagnostic {
+                code: E_CEL_PARSE.to_string(),
+                severity: Severity::Error,
+                message: t.message,
+                span: t.span.unwrap_or(slot_span),
+                layer: Layer::Cel,
+                fixits: t.fixits,
+                provenance: None,
+            }
+        })
+        .collect()
+}
 
 /// Parse errors that corrupt the node stream, making the `Resolved` view
 /// misleading (see the Some-vs-None policy in the module docs).
@@ -537,20 +588,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // 2. Fill every CEL slot; a parse failure is reported ONCE here and never
     //    aborts the walk (CelSlot isolation). check_cel_slot skips the AST pass
     //    for a slot whose `ast` stayed `None`, so no duplicate CEL diagnostics.
+    //    dsl 0.4.0 §8.1 (T13): the writer-voiced translation lives in
+    //    `cel_message`, never the backend's own `err.message`.
     let mut arena = CelArena::default();
     let cel_errors = fill_document(&mut arena, &mut doc);
-    let cel_diags: Vec<Diagnostic> = cel_errors
-        .into_iter()
-        .map(|e| Diagnostic {
-            code: E_CEL_PARSE.to_string(),
-            severity: Severity::Error,
-            message: e.message,
-            span: e.span,
-            layer: Layer::Cel,
-            fixits: Vec::new(),
-            provenance: None,
-        })
-        .collect();
+    let cel_diags: Vec<Diagnostic> = cel_parse_diagnostics(&doc, cel_errors);
 
     // 3–4b. Typed frontmatter + folded schema + merged def tables (one SoT:
     // the public fold_env accessor the compiler also consumes).
@@ -1492,18 +1534,7 @@ fn validate_components(
         let mut body = def.body.clone();
         let mut arena = CelArena::default();
         let cel_errors = fill_document(&mut arena, &mut body);
-        let mut body_diags: Vec<Diagnostic> = cel_errors
-            .into_iter()
-            .map(|e| Diagnostic {
-                code: E_CEL_PARSE.to_string(),
-                severity: Severity::Error,
-                message: e.message,
-                span: e.span,
-                layer: Layer::Cel,
-                fixits: Vec::new(),
-                provenance: None,
-            })
-            .collect();
+        let mut body_diags: Vec<Diagnostic> = cel_parse_diagnostics(&body, cel_errors);
         for shot in &body.shots {
             walk_component_body(
                 &shot.body,
@@ -1534,6 +1565,12 @@ fn validate_components(
         for mut d in body_diags {
             d.message = format!("component `{name}` ({}): {}", def.src.display(), d.message);
             d.span = at;
+            // T13: a CEL-parse fixit's edit span (if any) is in the COMPONENT
+            // file's own byte-space — this document's diagnostic surface
+            // cannot represent it (same reason the span itself collapses to
+            // `at` above), so it is dropped rather than shipped pointing at
+            // the wrong document.
+            d.fixits.clear();
             out.push(d);
         }
     }
