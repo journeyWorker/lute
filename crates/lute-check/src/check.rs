@@ -186,6 +186,13 @@ pub struct FoldedEnv {
     /// unresolved (missing/unknown `kind:`) so scene stays the degrade-safe
     /// path and downstream dispatch never panics.
     pub doc_kind: crate::meta::DocKind,
+    /// The FULL merged domain vocabulary (data-catalog foundation A4):
+    /// `snapshot.domains` UNION project-authored schema-import domains (A3's
+    /// `merge_domains`) — computed ONCE here (0.3.0 T7 moved this from
+    /// `check()`) so a caller that folds directly, like `lute-compile`, sees
+    /// the SAME vocabulary without recomputing it or double-emitting
+    /// `E-DOMAIN-DUP`.
+    pub domains: std::collections::BTreeMap<String, Domain>,
 }
 
 /// Fold the analysis environment from an already-parsed document. Returns two
@@ -228,6 +235,23 @@ pub fn fold_env(
     //     triad and rejects it as an unknown key.
     let (typed, mut fold_diags) = crate::meta::parse_meta_kind(&doc.meta, &input.snapshot, meta_kind);
     fold_diags.splice(0..0, kind_diags);
+
+    // 3c. The FULL merged domain vocabulary (data-catalog foundation A4):
+    //     `snapshot.domains` (A2 — core baseline + active-plugin `enums`)
+    //     UNION project-authored domains lifted from this scene's schema
+    //     imports (A3's `merge_domains`) — computed ONCE here (0.3.0 T7 moved
+    //     this from `check()`) so `lute-compile` (which calls `fold_env`
+    //     directly) sees the SAME vocabulary, never double-emitting
+    //     `E-DOMAIN-DUP`. Then the merged, validated relational vocabulary
+    //     (dsl 0.3.0 §3/§4): imports ∪ this document's inline
+    //     `entities:`/`relations:`/`enums:`/`facts:`/`rules:`, every
+    //     declaration checked (§3.1/§4) and every seed `facts:` entry
+    //     validated via `check_atom` (D12 wildcard-in-seed included).
+    let (domains, domain_diags) = merge_domains(&input.snapshot, &input.imports, doc.meta.span);
+    let (vocab, rel_diags) =
+        crate::rel_schema::build_rel_vocab(&input.imports, &typed, &domains, &doc.meta);
+    fold_diags.extend(domain_diags);
+    fold_diags.extend(rel_diags);
 
     // 4. Fold every `<branch>`/`<hub>`'s implicit recording decls
     //    (`scene.choices.<id>` + a hub's per-choice `scene.visited.<id>.*`) into
@@ -433,6 +457,7 @@ pub fn fold_env(
         defs,
         def_types,
         def_params,
+        rel_vocab: std::sync::Arc::new(vocab),
     };
     (
         FoldedEnv {
@@ -440,6 +465,7 @@ pub fn fold_env(
             env,
             def_bodies,
             doc_kind,
+            domains,
         },
         fold_diags,
         state_merge_diags,
@@ -487,16 +513,18 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // resolves against (data-catalog foundation A4): `snapshot.domains`
     // (A2 — core baseline + active-plugin `enums`) UNION project-authored
     // domains lifted from this scene's schema imports (A3's
-    // `merge_domains`). Computed ONCE here and threaded by reference to
-    // every `check_directive` call site (the scene walk, timeline clips,
-    // and component bodies) below — never recomputed per-attr.
-    let (domains, domain_diags) = merge_domains(&input.snapshot, &input.imports, doc.meta.span);
+    // `merge_domains`) — computed ONCE in `fold_env` (0.3.0 T7 moved this
+    // out of `check()` so a direct `fold_env` caller, like `lute-compile`,
+    // sees the identical vocabulary) and threaded by reference to every
+    // `check_directive` call site (the scene walk, timeline clips, and
+    // component bodies) below — never recomputed per-attr.
+    let domains = &folded.domains;
 
     // 5. Per-node validator walk (directives / cel-slots / set / match / timeline).
     let mut walker = Walker {
         snapshot: &input.snapshot,
         providers: &input.providers,
-        domains: &domains,
+        domains,
         arena: &arena,
         diags: Vec::new(),
         timeline_tables: Vec::new(),
@@ -620,10 +648,9 @@ pub fn check(input: &CheckInput) -> CheckResult {
         &input.components,
         &input.snapshot,
         &input.providers,
-        &domains,
+        domains,
         doc.meta.span,
     ));
-    diags.extend(domain_diags);
     diags.extend(state_merge_diags);
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
@@ -1345,6 +1372,7 @@ fn component_env(params: &[(String, Type)]) -> Env {
         defs,
         def_types,
         def_params,
+        rel_vocab: std::sync::Arc::new(crate::rel_schema::RelVocab::default()),
     }
 }
 

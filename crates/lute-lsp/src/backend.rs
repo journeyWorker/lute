@@ -247,6 +247,7 @@ impl Backend {
             // than the path/undeclared-ref case B3's test targets, and B2's
             // `params_from_yaml` extractor is private to `check.rs`.
             def_params: std::collections::BTreeMap::new(),
+            ..Default::default()
         };
         let ctx = lute_check::Ctx {
             env: &env,

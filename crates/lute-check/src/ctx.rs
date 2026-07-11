@@ -8,10 +8,12 @@
 //! `Default`-able so those tasks can grow it without touching call sites.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use lute_manifest::types::Type;
 
 use crate::meta::StateSchema;
+use crate::rel_schema::RelVocab;
 
 /// Analysis mode. `Author` is the interactive LSP default (lenient about
 /// catalog staleness); `Ci` is the batch/build mode that later tasks may treat
@@ -57,6 +59,12 @@ pub struct Env {
     /// def name -> ordered (param name, type), for `@name(args)` arity/arg-type
     /// checks (dsl §8.1). Same sources & precedence as `def_types`.
     pub def_params: BTreeMap<String, Vec<(String, Type)>>,
+    /// The document's merged, validated relational vocabulary (dsl 0.3.0
+    /// §3/§4, 0.3.0 T7): imports ∪ inline `entities:`/`relations:`/`enums:`/
+    /// `facts:`/`rules:`. `Arc`-wrapped — `Env` is `Clone`, the vocab is
+    /// shared and never mutated after `fold_env` builds it (Task 9's guard-
+    /// taint fill happens on a fresh, non-shared copy before it lands here).
+    pub rel_vocab: Arc<RelVocab>,
 }
 
 /// Checker context threaded through the directive/CEL/state validators.
