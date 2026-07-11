@@ -9,8 +9,9 @@
 //! instead of a hunt through every recursive matcher.
 //!
 //! ## Canonical pre-order (per shot body, per node in source order)
-//! - [`Node::Line`] / [`Node::Directive`] → each `AttrValue::Ref` slot in `attrs`
-//!   order.
+//! - [`Node::Line`] → `when` (if any), then each `AttrValue::Ref` slot in
+//!   `attrs` order. [`Node::Directive`] → each `AttrValue::Ref` slot in
+//!   `attrs` order.
 //! - [`Node::Set`] → `expr`.
 //! - [`Node::Branch`] → `attrs` refs; then per `choice`: `choice.when` (if any),
 //!   `choice.attrs` refs, then recurse `choice.body`.
@@ -32,8 +33,8 @@
 //! on it.
 
 use crate::ast::{
-    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Document, Hub, Match, Node, Objective, On,
-    Quest, Timeline,
+    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Document, Hub, Line, Match, Node, Objective,
+    On, Quest, Timeline,
 };
 
 /// Visit every [`CelSlot`] in `doc` in the canonical pre-order, borrowing each.
@@ -65,7 +66,7 @@ fn body<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a CelSlot)) {
 
 fn node<'a>(n: &'a Node, f: &mut impl FnMut(&'a CelSlot)) {
     match n {
-        Node::Line(l) => attrs(&l.attrs, f),
+        Node::Line(l) => line(l, f),
         Node::Directive(d) => attrs(&d.attrs, f),
         Node::Set(s) => f(&s.expr),
         Node::Branch(b) => branch(b, f),
@@ -76,6 +77,13 @@ fn node<'a>(n: &'a Node, f: &mut impl FnMut(&'a CelSlot)) {
         Node::On(o) => on(o, f),
         Node::Assert(_) | Node::Retract(_) => {}
     }
+}
+
+fn line<'a>(l: &'a Line, f: &mut impl FnMut(&'a CelSlot)) {
+    if let Some(w) = &l.when {
+        f(w);
+    }
+    attrs(&l.attrs, f);
 }
 
 fn branch<'a>(b: &'a Branch, f: &mut impl FnMut(&'a CelSlot)) {
@@ -185,7 +193,7 @@ fn body_mut(nodes: &mut [Node], f: &mut impl FnMut(&mut CelSlot)) {
 
 fn node_mut(n: &mut Node, f: &mut impl FnMut(&mut CelSlot)) {
     match n {
-        Node::Line(l) => attrs_mut(&mut l.attrs, f),
+        Node::Line(l) => line_mut(l, f),
         Node::Directive(d) => attrs_mut(&mut d.attrs, f),
         Node::Set(s) => f(&mut s.expr),
         Node::Branch(b) => branch_mut(b, f),
@@ -196,6 +204,13 @@ fn node_mut(n: &mut Node, f: &mut impl FnMut(&mut CelSlot)) {
         Node::On(o) => on_mut(o, f),
         Node::Assert(_) | Node::Retract(_) => {}
     }
+}
+
+fn line_mut(l: &mut Line, f: &mut impl FnMut(&mut CelSlot)) {
+    if let Some(w) = &mut l.when {
+        f(w);
+    }
+    attrs_mut(&mut l.attrs, f);
 }
 
 fn branch_mut(b: &mut Branch, f: &mut impl FnMut(&mut CelSlot)) {
@@ -341,6 +356,7 @@ mod tests {
                     ref_attr("mood", "s0"),
                     ref_attr("focus", "s1"),
                 ],
+                when: None,
                 text: "hi".to_string(),
                 text_span: span(),
                 interps: Vec::new(),
@@ -376,6 +392,7 @@ mod tests {
                         body: vec![Node::Line(Line {
                             speaker: "narrator".to_string(),
                             attrs: vec![ref_attr("mood", "s9")],
+                            when: None,
                             text: String::new(),
                             text_span: span(),
                             interps: Vec::new(),
