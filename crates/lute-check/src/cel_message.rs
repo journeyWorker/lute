@@ -44,7 +44,7 @@ use lute_core_span::{Fixit, Span, TextEdit};
 /// `line`/`column`/`utf16_range` are left zeroed — the house zero-then-
 /// normalize convention (`check.rs`'s `normalize_spans` fills them in from one
 /// shared `TextIndex`, same as every other ad hoc span producer in this crate).
-pub(crate) struct Translation {
+pub struct Translation {
     pub message: String,
     pub fixits: Vec<Fixit>,
     pub span: Option<Span>,
@@ -58,7 +58,7 @@ pub(crate) struct Translation {
 /// span/fixit-edit is `slot_span.byte_start`-rebased from a LOCAL offset into
 /// `raw`). `backend` = lute-cel's own [`CelParseError`] for this slot, read
 /// ONLY for its `span` on the T3 fallback — never its `message`.
-pub(crate) fn translate_cel_parse(raw: &str, slot_span: Span, backend: &CelParseError) -> Translation {
+pub fn translate_cel_parse(raw: &str, slot_span: Span, backend: &CelParseError) -> Translation {
     // Rule 1: whitespace-only. `fill_document` already filters a literally
     // whitespace-only `raw` before ever calling `parse_slot` (a structural gap,
     // not a CEL fragment — D10, dsl §8.1), so this never fires through that

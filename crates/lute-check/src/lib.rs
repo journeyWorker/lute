@@ -1,7 +1,7 @@
 pub mod admission;
 pub mod cel_paths;
 pub mod cel_expand;
-mod cel_message;
+pub mod cel_message;
 pub mod cel_resolve;
 pub mod check;
 pub mod component_import;
@@ -28,6 +28,7 @@ pub mod timeline;
 
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_paths::E_PATH_IDENT;
+pub use cel_message::{translate_cel_parse, Translation};
 pub use cel_expand::{expand_cel, DefTable};
 pub use decide::{apply_op, decide, decide_slot, DecideCtx, Decided, DollarBinding};
 pub use cel_resolve::{

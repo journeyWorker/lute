@@ -32,6 +32,7 @@ use lute_manifest::provider::ProviderSet;
 // by `ls-types` 0.0.6), NOT `lsp_types`. We only ever *read* the converted type,
 // produced by the single conversion path `lute_lsp::convert::to_lsp_diagnostic`.
 use tower_lsp_server::ls_types;
+use std::str::FromStr;
 
 /// The comparable projection of one diagnostic: `(code, severity-discriminant,
 /// message, start (line0, utf16col), end (line0, utf16col))`. Both surfaces
@@ -58,6 +59,14 @@ fn input_for(text: &str) -> CheckInput {
 /// to — the same index the LSP backend builds in `analyze()`.
 fn idx(text: &str) -> TextIndex<'_> {
     TextIndex::new(text)
+}
+
+/// A dummy document `Uri` shared by every golden below. `to_lsp_diagnostic`
+/// (Task 15) needs a `uri` only to stamp `covered`'s related-information
+/// `Location`s — irrelevant to this golden's `(code, severity, message,
+/// start, end)` projection, so every call site reuses this ONE constant.
+fn test_uri() -> ls_types::Uri {
+    ls_types::Uri::from_str("file:///divergence-test.lute").unwrap()
 }
 
 /// Shared severity discriminant for the headless side (Error=1 .. Hint=4, aligned
@@ -150,7 +159,7 @@ fn headless_and_lsp_diagnostics_match() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
         .collect();
 
     // Same length, same order (check() already sorts), same content.
@@ -186,7 +195,7 @@ fn headless_and_lsp_diagnostics_match_warning_bearing() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
         .collect();
 
     assert_eq!(
@@ -260,7 +269,7 @@ fn divergence_holds_under_plugin_project() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
         .collect();
     assert_eq!(
         headless, via_lsp,
@@ -376,7 +385,7 @@ fn divergence_holds_under_plugin_defs() {
     let la: Vec<Norm> = res_a
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &ia)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &ia, &test_uri())))
         .collect();
     assert_eq!(
         ha, la,
@@ -406,7 +415,7 @@ fn divergence_holds_under_plugin_defs() {
     let lb: Vec<Norm> = res_b
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &ib)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &ib, &test_uri())))
         .collect();
     assert_eq!(
         hb, lb,
@@ -462,7 +471,7 @@ fn divergence_holds_under_uses_import() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
         .collect();
     assert_eq!(
         headless, via_lsp,
@@ -507,7 +516,7 @@ fn divergence_holds_under_uses_import() {
     let bvia_lsp: Vec<Norm> = bres
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex, &test_uri())))
         .collect();
     assert_eq!(
         bheadless, bvia_lsp,
@@ -568,7 +577,7 @@ fn divergence_holds_under_components() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
         .collect();
     assert_eq!(
         headless, via_lsp,
@@ -613,7 +622,7 @@ fn divergence_holds_under_components() {
     let bvia_lsp: Vec<Norm> = bres
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex, &test_uri())))
         .collect();
     assert_eq!(
         bheadless, bvia_lsp,
@@ -654,7 +663,7 @@ fn divergence_holds_for_quest_docs() {
     let via_lsp: Vec<Norm> = res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
         .collect();
     assert_eq!(
         headless, via_lsp,
@@ -679,7 +688,7 @@ fn divergence_holds_for_quest_docs() {
     let bvia_lsp: Vec<Norm> = bres
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex, &test_uri())))
         .collect();
     assert_eq!(
         bheadless, bvia_lsp,
@@ -707,7 +716,7 @@ fn divergence_holds_for_quest_docs() {
     let cel_via_lsp: Vec<Norm> = cel_res
         .diagnostics
         .iter()
-        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &cel_index)))
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &cel_index, &test_uri())))
         .collect();
     assert_eq!(
         cel_headless, cel_via_lsp,

@@ -16,7 +16,12 @@
 //! completion / definition / references functions keyed on a cursor byte offset,
 //! wired into the backend as thin handlers. Folding / semantic-tokens / symbols
 //! land in Task 6.4.
+//!
+//! Task 15 adds the FIRST code-action surface: [`code_action`] maps a
+//! [`Diagnostic`](lute_core_span::Diagnostic)'s `fixits` to LSP `CodeAction`s,
+//! and [`convert::to_lsp_diagnostic`] maps `covered` to `DiagnosticRelatedInformation`.
 
 pub mod backend;
+pub mod code_action;
 pub mod convert;
 pub mod features;

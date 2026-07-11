@@ -24,8 +24,15 @@
 //! - `code` -> `NumberOrString::String` (our codes are stable strings, e.g.
 //!   `E-UNDECLARED`); `source` is fixed to `"lute"`; `message` is carried verbatim.
 //!
-//! `layer`, `fixits`, and `provenance` are Phase-6.3+ concerns (code actions /
-//! related information) and are intentionally not surfaced here yet.
+//! `layer` and `provenance` are Phase-6.3+ concerns and are intentionally not
+//! surfaced here yet. `fixits` are Task 15's concern too, but consumed
+//! elsewhere ([`crate::code_action`] maps them to `CodeAction`s directly off
+//! the cached original `Diagnostic`s — this module never surfaces them on the
+//! published `Diagnostic` itself, which has no such field on the wire).
+//! `covered` (dsl 0.4.0 §8.2 C1/C5, Task 14) IS surfaced here (Task 15): each
+//! entry becomes one `DiagnosticRelatedInformation` "also here" pointer in the
+//! SAME document, through the identical `Span -> Range` conversion every other
+//! position in this module uses.
 
 use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
 // v0.23 of `tower-lsp-server` re-exports the LSP type crate as `ls_types`
@@ -34,26 +41,60 @@ use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
 use tower_lsp_server::ls_types as lsp_types;
 
 /// Convert a single core [`Diagnostic`] to its LSP wire form, resolving the byte
-/// span to a UTF-16 [`Range`](lsp_types::Range) through `idx`.
+/// span to a UTF-16 [`Range`](lsp_types::Range) through `idx`. `uri` is the
+/// document the diagnostic belongs to — needed only to stamp `covered`'s
+/// related-information `Location`s (dsl 0.4.0 §8.2, Task 15); every OTHER field
+/// is `uri`-independent.
 ///
 /// `idx` MUST index the exact document text the diagnostic's byte offsets refer
 /// to (a fresh `TextIndex::new(&text)` over the open document), so positions match
 /// the headless path that `check()` normalized against.
-pub fn to_lsp_diagnostic(d: &Diagnostic, idx: &TextIndex) -> lsp_types::Diagnostic {
+pub fn to_lsp_diagnostic(d: &Diagnostic, idx: &TextIndex, uri: &lsp_types::Uri) -> lsp_types::Diagnostic {
     lsp_types::Diagnostic {
         range: to_lsp_range(&d.span, idx),
         severity: Some(to_lsp_severity(d.severity)),
         code: Some(lsp_types::NumberOrString::String(d.code.clone())),
         source: Some("lute".into()),
         message: d.message.clone(),
+        related_information: covered_related_information(d, idx, uri),
         ..Default::default()
     }
 }
 
+/// Map `d.covered` (dsl 0.4.0 §8.2 C1/C5: `lute-check`'s `collapse_same_root`,
+/// Task 14) to LSP `DiagnosticRelatedInformation` entries — one "also here"
+/// pointer per folded repeat occurrence, in the SAME document `uri` the primary
+/// diagnostic lives in. `None` (never `Some(vec![])`) when `covered` is empty —
+/// the overwhelming common case — so the wire form omits the field entirely
+/// (`related_information`'s `skip_serializing_if`).
+fn covered_related_information(
+    d: &Diagnostic,
+    idx: &TextIndex,
+    uri: &lsp_types::Uri,
+) -> Option<Vec<lsp_types::DiagnosticRelatedInformation>> {
+    if d.covered.is_empty() {
+        return None;
+    }
+    Some(
+        d.covered
+            .iter()
+            .map(|span| lsp_types::DiagnosticRelatedInformation {
+                location: lsp_types::Location {
+                    uri: uri.clone(),
+                    range: to_lsp_range(span, idx),
+                },
+                message: "also here".to_string(),
+            })
+            .collect(),
+    )
+}
+
 /// Map a byte [`Span`] to an LSP [`Range`](lsp_types::Range): each endpoint's byte
 /// offset goes through [`TextIndex::position`] and is de-1-indexed for the line and
-/// used as-is for the (already 0-based UTF-16) character.
-fn to_lsp_range(span: &Span, idx: &TextIndex) -> lsp_types::Range {
+/// used as-is for the (already 0-based UTF-16) character. `pub(crate)` so
+/// [`crate::code_action`] (Task 15) reuses the SAME conversion for fixit-edit
+/// spans instead of hand-rolling a second one.
+pub(crate) fn to_lsp_range(span: &Span, idx: &TextIndex) -> lsp_types::Range {
     lsp_types::Range {
         start: to_lsp_position(span.byte_start, idx),
         end: to_lsp_position(span.byte_end, idx),
@@ -84,6 +125,11 @@ fn to_lsp_severity(sev: Severity) -> lsp_types::DiagnosticSeverity {
 mod tests {
     use super::*;
     use lute_core_span::{Layer, Span};
+    use std::str::FromStr;
+
+    fn test_uri() -> lsp_types::Uri {
+        lsp_types::Uri::from_str("file:///test.lute").unwrap()
+    }
 
     /// Text whose byte 5 lands on line 3 at UTF-16 column 1: `a`\n`b`\n`hello`.
     /// Bytes: a(0) \n(1) b(2) \n(3) h(4) e(5) l(6) l(7) o(8). `position(5)` ->
@@ -125,7 +171,7 @@ mod tests {
             provenance: None,
             covered: Vec::new(),
         };
-        let l = to_lsp_diagnostic(&d, &line_index());
+        let l = to_lsp_diagnostic(&d, &line_index(), &test_uri());
         assert_eq!(l.range.start.line, 2, "line 3 -> 0-based 2");
         assert_eq!(l.range.start.character, 1, "utf16 col within line 3");
         assert_eq!(
@@ -156,7 +202,7 @@ mod tests {
                 utf16_range: (1, 5),
             },
         );
-        let l = to_lsp_diagnostic(&d, &idx);
+        let l = to_lsp_diagnostic(&d, &idx, &test_uri());
         assert_eq!((l.range.start.line, l.range.start.character), (0, 1));
         assert_eq!((l.range.end.line, l.range.end.character), (1, 1));
     }
@@ -180,7 +226,7 @@ mod tests {
                 utf16_range: (2, 3),
             },
         );
-        let l = to_lsp_diagnostic(&d, &idx);
+        let l = to_lsp_diagnostic(&d, &idx, &test_uri());
         assert_eq!(l.range.start.line, 0);
         assert_eq!(
             l.range.start.character, 2,
@@ -208,8 +254,61 @@ mod tests {
             (Severity::Hint, lsp_types::DiagnosticSeverity::HINT),
         ];
         for (core, lsp) in cases {
-            let l = to_lsp_diagnostic(&diag("E-X", core, span), &idx);
+            let l = to_lsp_diagnostic(&diag("E-X", core, span), &idx, &test_uri());
             assert_eq!(l.severity, Some(lsp), "{core:?} must map to {lsp:?}");
         }
+    }
+
+    /// Task 15 (dsl 0.4.0 §8.2 C1/C5): a non-empty `covered` becomes one
+    /// `DiagnosticRelatedInformation` per entry, each pointing at that span's
+    /// own `Range` (through the SAME `Span -> Range` conversion) in the SAME
+    /// `uri` the primary diagnostic was published for. An empty `covered`
+    /// (the common case) must leave `related_information` absent (`None`), not
+    /// `Some(vec![])` — the wire form should omit the field, not emit an empty
+    /// array.
+    #[test]
+    fn covered_spans_become_related_information() {
+        let idx = TextIndex::new("aaaa\nbbbb\ncccc\n");
+        let mut d = diag(
+            "E-UNDECLARED",
+            Severity::Error,
+            Span {
+                byte_start: 0,
+                byte_end: 4,
+                line: 1,
+                column: 1,
+                utf16_range: (0, 4),
+            },
+        );
+        d.covered = vec![
+            Span {
+                byte_start: 5,
+                byte_end: 9,
+                line: 2,
+                column: 1,
+                utf16_range: (5, 9),
+            },
+            Span {
+                byte_start: 10,
+                byte_end: 14,
+                line: 3,
+                column: 1,
+                utf16_range: (10, 14),
+            },
+        ];
+        let uri = test_uri();
+        let l = to_lsp_diagnostic(&d, &idx, &uri);
+        let related = l.related_information.expect("covered must populate related_information");
+        assert_eq!(related.len(), 2);
+        assert_eq!(related[0].location.uri, uri);
+        assert_eq!((related[0].location.range.start.line, related[0].location.range.start.character), (1, 0));
+        assert_eq!((related[1].location.range.start.line, related[1].location.range.start.character), (2, 0));
+        assert_eq!(related[0].message, "also here");
+        assert_eq!(related[1].message, "also here");
+
+        // Empty `covered` -> `None`, not `Some(vec![])`.
+        let no_covered = diag("E-X", Severity::Warning, d.span);
+        let l2 = to_lsp_diagnostic(&no_covered, &idx, &uri);
+        assert!(l2.related_information.is_none());
     }
 }
