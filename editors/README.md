@@ -51,14 +51,28 @@ Highlighting is two layers that combine:
    project/plugin/schema knowledge the static grammar cannot see.
 
 > **Note:** the tree-sitter grammar ([`../tree-sitter-lute/`](../tree-sitter-lute)) is
-> **0.3.0-current** — it parses `@speaker{attrs}: text` content lines, `//` line comments,
+> **0.4.0-current** — it parses `@speaker{attrs}: text` content lines, `//` line comments,
 > `{{…}}` interpolation, `<hub>` revisit blocks, `<when is>` literal patterns, the
-> attrs-free `<otherwise>`, `<quest>`/`<objective>`/`<on>` nesting, and the 0.3.0 relational-fact
+> attrs-free `<otherwise>`, `<quest>`/`<objective>`/`<on>` nesting, the 0.3.0 relational-fact
 > leaves `::assert{…}`/`::retract{…}` (`fact_pattern`/`fact_arg`/`wildcard`, dsl 0.3.0 §5 +
-> Appendix C). It is the Neovim baseline highlighting/folding host; `lute-lsp` semantic tokens
+> Appendix C), and 0.4.0's `when=` content-line guard + param-scoped `<match>` in component
+> bodies. It is the Neovim baseline highlighting/folding host; `lute-lsp` semantic tokens
 > stay authoritative for the project/plugin/schema-aware refinement the static grammar cannot
 > see (`::assert`/`::retract` get static-grammar coloring only — see
 > [`../docs/architecture.md`](../docs/architecture.md#relational-facts--datalog-derivation-030)
 > for the full 0.3.0 relational-layer surface).
+>
+> **0.4.0 adds zero new grammar nodes** (dsl 0.4.0 §3 B1 — vocabulary-and-tooling only,
+> pinned by `tree-sitter-lute/test/corpus/writer_experience.txt` as a stable-tree regression
+> test, not an assumption): `when=` is an ordinary `cel_attr` — parsed as
+> `(cel_attr (cel_key) (cel_string …))`, identical to `<match on>`/`<when test>`/
+> `<choice when>` — and a component-body `<match on="@tier">` is an ordinary `match`/`when`
+> tree. Both therefore highlight for free through the existing generic captures in
+> [`nvim/queries/lute/highlights.scm`](nvim/queries/lute/highlights.scm) — `(cel_attr
+> (cel_key) @attribute)` for the `when` key, `(cel_string) @embedded` / `(cel_string (path)
+> @property)` for its guard value — with no query changes, and no TextMate grammar changes,
+> required for either 0.4.0 surface. See
+> [`../docs/architecture.md`](../docs/architecture.md#writer-experience-040) for the full
+> 0.4.0 writer-experience surface.
 
 Root markers used to locate a project: `lute.project.yaml`, then `.git`.

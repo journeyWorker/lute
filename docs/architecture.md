@@ -612,6 +612,322 @@ DECLARED schema/rule set, never a runtime derivation over live facts.
 end-to-end (derived recursion `canReach`, epistemic derivation `believesLocation`, seeds,
 key-relations, quest gating on `holds`).
 
+## Writer experience (0.4.0)
+
+Documents the **shipped Rust implementation** (`lute-check`, `lute-compile`, `lute-cli`,
+`lute-lsp`, plus the new terminal crate **`lute-trace`**) of dsl 0.4.0's writer-experience
+layer. Normative spec: [`proposals/scenario-dsl/0.4.0.md`](proposals/scenario-dsl/0.4.0.md).
+Five deltas, all either tooling over existing semantics or sugar reducing to existing
+records — **zero new grammar productions** (spec §3 B1; see *Highlighting model* in
+[`editors/README.md`](../editors/README.md) for the corpus proof).
+
+### `decide()` — the §5.1 decided-constant fragment
+
+The one reusable primitive of this release (`lute-check/src/decide.rs`), consumed by
+reachability (below), param-scoped `<match>` (§6), the compile-time §6.4 fold, `when=` dead
+guards (§7.2), and `lute-trace`'s ground-operation evaluator (D3 — the ONE shared seam,
+`apply_op`). `decide(expr, ctx) -> Option<Decided>` is **total** (never panics) and
+implements **exactly** R1–R5 — the spec's Closure clause forbids anything stronger (no SAT,
+no interval/path-sensitive narrowing, no cross-shot state flow); a non-finite arithmetic
+result (overflow, `/0`) also stays undecided rather than deciding to `NaN`/`inf`:
+
+- **R1 (literals)** — a literal AST node decides to itself.
+- **R2 (domain membership)** — `S == lit` / `S != lit` / `S in […]` where `S` is a
+  finite-domain subject (`DollarBinding::Domain` — a declared `enum`/`bool` path, `$` bound
+  to one, or an `enum`/`bool` component param) decide by set membership against `lit`
+  outside/inside the domain. `unset` is a domain member only when the subject is
+  maybe-unset — a defaulted path or a bound param is never `unset`.
+- **R3 (ground operations)** — all operands decided → `apply_op` (the CEL synthetic-operator
+  vocabulary: `_&&_`, `_==_`, `_+_`, `_?_:_`, `@in`, `!_`, …), shared verbatim with
+  `lute-trace`.
+- **R4 (connectives)** — `&&`/`||` short-circuit on a decided-false/decided-true side even
+  with an undecided other side (K2); `!d` negates; `c ? x : y` with a decided `c` decides to
+  the chosen branch's decision.
+- **R5 (everything else undecided)** — a state-path read, `isSet()`/`has()`, any fact query
+  (`holds`/`count`/`validAt`), `now()`, comprehensions — `None`, always. No assumption about
+  runtime values is ever made.
+
+`decide_slot(raw, defs, ctx)` is the §5.1 entry point: it textually expands `@def`s
+(`cel_expand`, moved to `lute-check` in T1 so the checker can expand-then-decide with no
+dependency cycle), re-parses the expanded text via `lute_cel::parse_slot_marked_refs` so `$`
+and `@param` markers survive expansion as `Ident`s, then calls `decide`. A bodiless ref (a
+component param) or any expansion failure (cycle, unresolved def, arity mismatch) leaves the
+raw text intact — the marked re-parse then resolves it as a param marker (R2) or lands in R5.
+`DollarBinding` has two modes: `Domain(&DomainInfo)` for checker contexts (R2 domain
+reasoning over `$`) and `Value(Decided)` for the compile-time §6.4 fold, where the subject
+is already a decided literal.
+
+**Soundness is exactly the boundary discipline:** a decided constant is provably the
+expression's runtime value on *every* reachable run (R2 by schema closure — the same schema
+is the source of truth for checker and engine — the rest by literal semantics), so `decide()`
+can never false-positive. Every consumer's soundness argument reduces to "correctly consuming
+`Option<Decided>` — never treating `None` as a value" (spelled out in
+`reachability.rs`'s module doc).
+
+### Reachability & the provable-only boundary (spec §5)
+
+A new whole-document pass (`lute-check/src/reachability.rs`, modeled on `check_line_codes` —
+a free function over `&Document`, wired once in `check()` step 8) plus a per-literal
+extension of the existing exhaustiveness engine (`match_check.rs`). All analysis is **local**
+to one `<match>`/`<branch>`/`<hub>`/`<quest>` — no cross-construct graph, no cross-document
+reasoning (spec §9 non-goals).
+
+> **Boundary (normative, restated in `reachability.rs`'s module doc).** An error here fires
+> **only** when `decide_slot` resolves a guard to `Some(Decided::Bool(false))`, or an arm's
+> `is` set is provably subsumed by earlier **unguarded** sibling arms. An undecided guard is
+> **never** flagged. A §5 error on a document that has a satisfying run is a conformance bug,
+> not a tuning matter.
+
+| Code | Severity | Fires when |
+|---|---|---|
+| `E-WHEN-LITERAL-DOMAIN` | error | an `is` literal (or `unset`) outside the subject's decided finite domain — a foreign enum member, a domain-shape mismatch, or `unset` on a never-unset subject. Owns the foreign-literal root by construction (D4): contributes nothing to subsumption unions or `W-OTHERWISE-DEAD` coverage, so an all-foreign arm is skipped by the dead-arm pass below (already rooted). |
+| `E-ARM-DEAD` | error | an arm/choice that can never fire: (1) a decided-false `test`/`when` guard, or (2) an `is` set fully subsumed by the union of earlier **unguarded** siblings' `is` sets (first-match-wins). Guarded earlier arms never count toward subsumption. |
+| `W-OTHERWISE-DEAD` | warning | an `<otherwise>` provably unreachable because earlier unguarded `is` arms already cover the whole domain — a warning, not an error: a defensive `<otherwise>` is a legitimate hedge against schema evolution. |
+| `E-OBJECTIVE-UNSATISFIABLE` | error | an `<objective done>` that decides false. If the objective is required, the quest-level consequence rides as a **note on this diagnostic**, never a second error (C4). |
+| `E-QUEST-UNREACHABLE` | error | a `<quest>` that can never complete: `start` decides false (never activates), or `fail` decides true (precedence over completion). One diagnostic per quest, naming whichever standalone cause(s) hold (D21) — a dead `start` *and* a dead objective's `done` yield both `E-QUEST-UNREACHABLE` and `E-OBJECTIVE-UNSATISFIABLE` (distinct roots). |
+| `W-OBJECTIVE-HIDDEN` | warning | a **required** objective whose visibility `when` decides false — the `0.2 §6.3` softlock prose, now checkable. A warning because `done` is independent of visibility, so completion may still be reachable. |
+
+Interaction with the pre-existing checker: an `E-ARM-DEAD` arm suppresses the pre-existing
+`W-OVERLAP-ARMS` on the same span (a new post-pass suppressor, modeled on
+`suppress_exhaustive_subject_reads`) — the dead-arm error is the root (C4); `E-HUB-NO-EXIT`
+and `E-BRANCH-ALL-GUARDED` keep their purely-structural definitions unchanged.
+**Corpus fixture (D17):** `cargo run -p lute-cli -- check-project docs/examples` is the
+normative gate that the shipped example corpus checks clean under §5 — re-run in every task
+that touches this pass and again at the final release gate (below).
+
+### Component param dispatch (spec §6)
+
+A component body stays presentational (`0.1 §13.4`), but 0.4.0 admits **exactly one**
+exception: a `<match>` whose subject is a bare declared param reference (`on="@tier"`).
+Dispatch on a param is a pure read of an invocation argument — it touches no ambient state
+and records nothing, so it doesn't violate the purity contract that keeps `<branch>`/`<hub>`
+forbidden (recording a choice is a state *write*, which no component-body shape may do).
+
+`walk_component_body` (`lute-check/src/check.rs`) admits the param-`<match>` shape and
+recurses through its arms; every other shape hits one of two diagnostics:
+
+- **`E-COMPONENT-STATE`** — new (D6): a **positive scan** (unlike the ordinary
+  declared-schema resolution `check_cel_slot` uses) over every component-body CEL slot and
+  `{{…}}` interpolation for a state-path read, fact query, or `now()` — and, orthogonally
+  (D7), any directive anywhere in the body whose *resolved* decl declares actual writes
+  (`DirectiveState.declares` or `DirectiveEffects.writes` non-empty — tested for
+  non-emptiness, not merely `Option::is_some`, so a future write-free `DirectiveEffects`
+  variant can't false-flag a presentational directive). The empty component env's incidental
+  `E-UNDECLARED`/`E-RELATION-UNKNOWN` for the same sites are then RETAIN-filtered out (they'd
+  misreport a path that may be perfectly declared *in the consuming scene*); `E-UNDECLARED-REF`
+  (an unknown `@param`) is untouched.
+- **`E-COMPONENT-BODY`** — narrowed, not removed: still fires for `<branch>`/`<hub>`/
+  `<timeline>`/`<on>`/`<objective>`/`::set`/`::assert`/`::retract` and for a `<match>` whose
+  subject is anything other than a bare param (a compound expression, a literal — no domain
+  to dispatch on).
+
+**Exhaustiveness (§6.3)** applies the existing `0.1 §11.2` obligation over the param's
+declared type: `bool`/`enum` params are coverable by `is` arms (a param is **never**
+`unset` — every invocation binds every param — so `is="unset"` on a param subject is itself
+`E-WHEN-LITERAL-DOMAIN`); `number`/`string` params always require `<otherwise>`
+(`E-NONEXHAUSTIVE`). `E-ARM-DEAD` and `E-WHEN-LITERAL-DOMAIN` apply inside component bodies
+exactly as at scene level — component-body `<match>`es are walked by the same reachability
+per-construct functions, reused rather than duplicated.
+
+**Compile-time fold (§6.4, `lute-compile/src/normalize.rs::fold_component_matches`, run
+inside `expand_use`).** `::use` expansion decides the param-`<match>` under §5.1 with the
+bound args substituted as `DollarBinding::Value`:
+
+1. **Static selection** — if every arm condition decides (the common case: args are literal
+   at almost every call site), expansion replaces the whole `<match>` with the selected
+   arm's nodes (or `<otherwise>`'s). No match record is emitted — the component costs
+   nothing at runtime.
+2. **Residual dispatch** — otherwise (an arg bound to a non-literal, e.g. a caller-side
+   `@def` ref reading the caller's own state), the `<match>` lowers to an ordinary match
+   command record on the substituted subject — the same record kind a scene-level `<match>`
+   already produces.
+
+Either path emits only record shapes that already exist: no new IR, no new engine
+obligation. Worked example: [`examples/components/reaction.component.lute`](examples/components/reaction.component.lute)
+/ [`examples/affinity-reaction.lute`](examples/affinity-reaction.lute) — the deduplicated
+affinity-reaction pair from spec §6.5.
+
+### `when=` gated-line sugar (spec §7)
+
+The audited ceremony tax concentrated in the gated line: 8 lines (`<match>` + `<when>` +
+the line + closers + mandatory `<otherwise>`) to show one line conditionally. `when=` joins
+the content-line attr vocabulary (`lute-syntax/src/ast.rs`: `Line.when: Option<CelSlot>`,
+parsed by `parse_line`'s `take_cel`) as a `CelString` guard — same key/type/closed profile as
+`<choice when>`/`<on when>`.
+
+- **Desugar shape (D8, `lute-compile/src/normalize.rs::synth_when_match`)** — a normalize-pass
+  rewrite, running BEFORE expand/stage/address: `Line{when: Some(g), ..}` ⇒
+  `Match{ subject: g, arms: [When{is: None, test: "$", body: [the line, when=None]},
+  Otherwise{body: []}] }`. This is exactly the spec's canonical equivalence
+  (`@s{when="G"}: T` ≡ `<match on="G"><when test="$">@s: T</when><otherwise/></match>`) — a
+  dedicated identity test JSON-compares the sugared artifact's `MatchCmd` (incl. `arms[].expr`)
+  against the hand-expanded twin's, modulo `addr`/label churn.
+- **`$` is NOT in scope (D9)** — the guard is checked under a `Ctx{ in_match: false,
+  match_subject: None }` clone even when the line sits inside a `<match>` arm
+  (`check.rs`, `Node::Line` walk), matching `<on when>`'s existing rule; a bare `$` in a
+  `when=` slot is `E-DOLLAR-OUTSIDE-MATCH`.
+- **Identity invariants (§7.4)** — the sugar never adds, removes, renames, or reorders
+  content lines relative to its explicit equivalent: `code` back-fill, `lineId` derivation,
+  `voiceKey`, and `lute tag` behavior are byte-for-byte unaffected. A document using no sugar
+  compiles byte-identically to 0.3.0 (spec §3 B2). A guard that decides false under §5.1 is
+  itself `E-ARM-DEAD` on the synthesized one-arm match — the same reachability pass, no
+  special-casing.
+- **`W-CHOICE-INTO-NO-PERSIST` (§7.3)** — the audit's obvious second sugar (implying
+  `persist="run"` from a bare `into=`) was **rejected**: today `into=` without `persist=`
+  silently records nothing, and reinterpreting it would silently start writing `run.*` state
+  in documents that are valid *today* — exactly the meaning-change B1–B3 forbid. 0.4.0 instead
+  names the trap as a warning offering both remedies (add `persist="run"`, or remove the dead
+  `into=`) as `fixits` with `kind: "refactor"` — **never** `"migrate"`, and **never** applied
+  by `lute fix`, since both remedies change the author's meaning (D16); the only surface is an
+  author-chosen LSP code action (`lute-lsp/src/code_action.rs`).
+
+### Diagnostic presentation (spec §8)
+
+Two presentation contracts, conformance requirements for any shipping checker/CLI/LSP but not
+language semantics (spec §3 B4 — message text and collapse counts are not compatibility
+surface).
+
+**`covered` + collapse (§8.2).** `Diagnostic` gains one additive field,
+`covered: Vec<Span>` (`lute-core-span/src/lib.rs`, `#[serde(default,
+skip_serializing_if = "Vec::is_empty")]`), populated only by `lute-check`'s post-passes,
+wired at the tail of `check()` step 8/9, in this order:
+
+1. **C3 — `suppress_unproven_absence`** (D12): when a `uses:`/`extends:`/`components:` import
+   fails (`E-USES-NOT-FOUND`/`-PARSE`/`-CYCLE`, `E-COMPONENT-PARSE`), drop every
+   absence-of-declaration diagnostic whose claim depends on the merge that failed to build —
+   `E-UNDECLARED`, `E-UNDECLARED-REF`, `E-MAYBE-UNSET`, `E-RELATION-UNKNOWN`,
+   `E-COMPONENT-UNDECLARED`. Runs BEFORE C1 so a suppressed diagnostic never reaches C1's
+   key-building pass.
+2. **C1 — `collapse_same_root`** (D11): diagnostics sharing a code and a root subject (the
+   undeclared path / ref name / relation name / reserved path / component name — the first
+   backtick-quoted token of the message) collapse to one primary at the first document-order
+   occurrence, carrying every further occurrence's span in `covered`. Site-specific analyses
+   (e.g. `E-MAYBE-UNSET`, whose verdict depends on each site's own dominators/guards) are
+   exempt. Human output renders the primary with a trailing `(+N more: 12:3, 47:9, …)`;
+   `ok`/error counting is by primaries — five reads of one typo is one error.
+3. **C4 — implied-consequence suppression**: covered above (`E-ARM-DEAD` ⇒ no
+   `W-OVERLAP-ARMS`; `E-OBJECTIVE-UNSATISFIABLE` ⇒ its quest consequence rides as a note,
+   never a second `E-QUEST-UNREACHABLE`) — enforced by construction at each emission site,
+   not a separate post-pass.
+4. **C5 — presentation only**: collapse never changes ordering (primaries still sort exactly
+   as today) or determinism, and never crosses files.
+
+**`E-CEL-PARSE` message contract (§8.1, `lute-check/src/cel_message.rs`).** A CEL syntax
+error used to reach the writer as the embedded backend parser's own text verbatim (ANTLR
+"no viable alternative…", "token recognition error…") or the panic-path's blanket "invalid
+CEL expression". `translate_cel_parse` replaces both with a **pre-parse lexical scan** of the
+raw slot text (string-mask aware via `cel_string_mask`, so `&`/`|`/`=`/`and`/`or`/`not`
+*inside* a CEL string literal is inert), independent of the backend's own error taxonomy:
+
+- **T1 (no leakage)** — the message MUST NOT contain backend vocabulary in any surface (CLI
+  human, CLI JSON `message`, LSP).
+- **T2 (six detections, first-match-wins over the masked bytes)** — whitespace-only slot;
+  unbalanced quote; `=<`/`=>` (reversed comparison); a bare `=` (assignment where `==` was
+  meant); a bare `&`/`|` (C-style logic); a whole-identifier `and`/`or`/`not`. Each names the
+  canonical fix (e.g. `run.act = 1` → "did you mean `run.act == 1`?").
+- **T3 (fallback)** — a neutral "not a valid condition expression" plus the slot text, at the
+  backend's recovered span when it looks like a real position in this slot, else the whole
+  slot. Never the raw backend text, even on the panic path.
+- **T4 (unchanged mechanics)** — code, severity, and the existing parse-failure suppression of
+  downstream per-slot analyses (profile, refs, paths, temporal, domain — C2) are untouched;
+  this is a message contract only. `lute-cel` itself stays byte-untouched and keeps no message
+  policy of its own — the "one evaluator" discipline extended to "one message policy, and it
+  lives in the checker".
+
+### `lute trace` — the D1 quarantine (spec §4)
+
+`lute trace` is the third leg of the authoring loop (`check` proves, `compile` emits, `trace`
+*explains*) and, by design, the weakest: it holds **no** authority. It is the tree's first
+expression evaluator, so D1 ("Lute declares; the engine executes") is restated as hard,
+structurally-enforced conformance rules — not conventions.
+
+**Crate map.** `lute-trace` is a **new terminal crate**
+(`src/{lib,value,eval,mock,walk,report}.rs`) depending on `lute-core-span`, `lute-syntax`,
+`lute-cel`, `lute-manifest`, `lute-check`, `lute-compile` — wired **only** into `lute-cli`
+(the one reverse edge, `lute-cli/Cargo.toml`'s `lute-trace` path dep). The workspace
+`members = ["crates/*"]` glob picks it up with no root edit. `crates/lute-trace/tests/
+quarantine.rs` reads every sibling manifest's raw `Cargo.toml` text — `lute-core-span`,
+`lute-syntax`, `lute-cel`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-lsp` — and
+fails the build if **any** contains the string `lute-trace`; this is a reviewable one-line
+manifest diff, not a convention.
+
+**§4.2 rules, restated as implemented:**
+
+1. **`trace` MUST NOT feed `check`/`compile`.** No diagnostic, verdict, or artifact byte may
+   depend on whether `trace` ran. Verified structurally (the quarantine test above) and by
+   smoke (final gate step 4, below).
+2. **`trace` output is never a static guarantee.** The §5 codes, computed by the checker
+   alone, are the only static reachability surface.
+3. **No engine machinery.** No Datalog fixpoint — a `derive: true` relation's `holds`/`count`
+   is a **bounded scan of the supplied mock fact set** (`eval::FactStore`; pattern lookup,
+   never derivation), reusing `rel_schema::check_atom` for the same
+   unknown/arity/foreign-arg checks seeded facts get (D18); no capability bridge, dice, or
+   scheduler.
+4. **Isolation is structural.** Per the crate map above.
+5. **The evaluated subset is closed.** `eval::eval` implements exactly §4.3's subset under
+   three-valued (Kleene/K3) logic: `Value::Unknown` propagates — `false && unknown = false`,
+   `true || unknown = true`, otherwise unknown; a comparison/arithmetic/`?:` node with an
+   unknown operand is unknown. The ONE shared seam with `decide()` is `apply_op` (D3) — R3's
+   ground-operation semantics, lifted over `Unknown` here, written once in `lute-check`.
+   `isSet()`/`has()` are **definite** (D19 — see below); a bare value read of an unset path is
+   `unknown`.
+
+**Walk (§4.4, `walk::trace_document`).** Document-ordered, applying writes as it goes
+(`::set`, mock-fact `::assert`/`::retract`); `<match>` arms top-to-bottom, an `unknown` arm
+halts the trace at that point (exit 3, unresolved atoms reported — trace never guesses past
+an unknown guard); `<branch>`/`<hub>` eligibility is re-evaluated at each presentation point
+against the then-effective state, so a choice enabled by an earlier in-flow write is never
+wrongly refused; `::use` is expanded via the SAME `lute-compile` normalize/expand entry
+points the compiler uses (`normalize_document`/`expand_document`, made `pub` for this), so
+component binding, the `when=` desugar, and the persist desugar are inherited by construction
+— zero duplicated logic (D14). Desugared records render with a `"(… sugar)"` annotation.
+
+**Output (§4.5).** Deterministic for identical inputs; human transcript or `--json`
+(`TraceReport::render_json`, normative top-level keys `file`/`seeds`/`steps`/`decisions`/
+`unresolved`/`coverage`). Exit codes: `0` complete, `1` refused (check errors or invalid
+mocks — `E-TRACE-*` render exactly as check diagnostics do), `2` I/O, `3` incomplete (an
+`unknown` guard halted the walk).
+
+**D20 — auto-selection honesty (flagged for spec confirmation).** At a `<branch>`/`<hub>`
+with no `--choose` entry, zero true-eligible choices, and at least one unknown-guarded
+choice, the walk halts incomplete (exit 3) rather than guessing past the unknown eligibility
+— `--choose` remains the documented escape hatch to force past it.
+
+### Diagnostics — the 0.4.0 delta (spec Appendix A has the full authoritative list)
+
+| Code | Status | Note |
+|---|---|---|
+| `E-TRACE-MOCK-UNDECLARED`, `E-TRACE-MOCK-TYPE`, `E-TRACE-MOCK-FACT`, `E-TRACE-CHOICE` | New | Trace-only mock validation (§4.3) and forced-choice refusal (§4.4); render exactly as check diagnostics in both output forms. |
+| `E-ARM-DEAD`, `E-WHEN-LITERAL-DOMAIN`, `W-OTHERWISE-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN` | New | §5 reachability — see the table above. |
+| `W-CHOICE-INTO-NO-PERSIST` | New | §7.3 bare-`into=` trap. |
+| `E-COMPONENT-STATE` | New | §6 component purity — see above. |
+| `E-COMPONENT-BODY` | **Narrowed** | No longer fires for the admitted param-`<match>` shape; message now names the exception. Still fires for every other logic/write construct. |
+| `E-CEL-PARSE` | **Message contract** | T1–T4, never raw backend text — see above. |
+| `E-UNDECLARED`, `E-UNDECLARED-REF`, `E-RELATION-UNKNOWN`, `E-CHOICELOG-READ`, `E-COMPONENT-UNDECLARED` | **Collapse (C1/C5)** | Same-root occurrences fold into one primary + `covered`. |
+| `E-USES-NOT-FOUND`, `E-USES-PARSE`, `E-USES-CYCLE`, `E-COMPONENT-PARSE` | **Suppression (C3)** | Now suppress dependent absence diagnostics in the affected namespace. |
+| `W-OVERLAP-ARMS` | **Suppressed on `E-ARM-DEAD`** | C4 — the dead-arm error is the root. |
+| *(version consts)* | **D13** | `LUTE_LANG_VERSION`/`LUTE_IR_VERSION` (`lute-compile/src/lib.rs`) bumped to `"0.4.0"` with the 5 insta goldens + envelope tests updated in the same commit (T22). Spec B2's "byte-identical" is read as modulo the version stamp (the 0.3.0 D15 precedent); `luteVersion` in frontmatter is a universal key only, never validated against the consts. Flagged for spec confirmation. |
+
+**Reused unchanged, exercised in new fixtures:** `E-NONEXHAUSTIVE`/`E-UNSET-UNCOVERED` (param
+matches), `E-COMPONENT-ARG`/`-UNDECLARED`/`-CYCLE`/`-DUP`/`-PARSE`, `E-UNKNOWN-ATTR`,
+`E-HUB-NO-EXIT`/`E-BRANCH-ALL-GUARDED` (purely structural, untouched), `E-DUP-LINE-CODE`
+(identity), `E-DOLLAR-OUTSIDE-MATCH` (D9).
+
+**Interpretations flagged for spec confirmation (not yet ratified in the normative text):**
+
+- **D19** — `isSet()`/`has()` in `trace` are **definite** (true iff an effective value exists
+  via trace-write → mock seed → schema default; false on unset), while a *value* read of an
+  unset path is `unknown`. This keeps both inside §4.3's "Evaluated" list and lets
+  `!isSet(run.x)` decide on a fresh mock world with no seeded state.
+- **D20** — the auto-selection-honesty rule above: an unresolved `<branch>`/`<hub>` with no
+  true-eligible choice and at least one unknown-guarded choice halts incomplete rather than
+  guessing, even absent an explicit `--choose`.
+- **D13** — the version-stamp reading of B2's "byte-identical" (above).
+
+**Worked example:** [`examples/gated-line.lute`](examples/gated-line.lute) (§7.2) and
+[`examples/choice-persist.lute`](examples/choice-persist.lute) (the spec §4.6 trace walkthrough
+— `lute trace docs/examples/choice-persist.lute --choose sofaHelp=help`).
+
 ## Roadmap / open items
 
 1. **`::camera` `wait` defaults** — each camera verb declares its `wait` default in schema,
