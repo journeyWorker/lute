@@ -59,6 +59,7 @@ fn rank_domain() -> DomainInfo {
             DomainValue::Str("gold".to_string()),
         ]),
         maybe_unset: false,
+        resolved: true,
     }
 }
 
@@ -126,6 +127,7 @@ fn d_param(raw: &str) -> Option<Decided> {
                 DomainValue::Str("fond".to_string()),
             ]),
             maybe_unset: false,
+            resolved: true,
         },
     );
     let ctx = DecideCtx {
