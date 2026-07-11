@@ -42,3 +42,43 @@ fn unrecognized_kind_with_schema_shape_still_errors() {
     let cs = codes("---\nkind: reward\nstate:\n  run.blessed: { type: bool, default: false }\n---\n");
     assert!(cs.contains(&"E-UNKNOWN-KIND".to_string()), "{cs:?}");
 }
+
+#[test]
+fn standalone_component_param_ref_resolves_no_type_error() {
+    // dsl §13/§8.1: a component's declared `params:` ARE the `@param` ref
+    // namespace for its OWN presentational body — already true when the
+    // component is expanded transitively via `::use`; this must ALSO hold
+    // for a STANDALONE `lute check` of the component file itself. `@who` is
+    // legal here because `::auto`'s `character` attr is `string`-typed (dsl
+    // Appendix A), matching `who: string`.
+    let cs = codes(
+        "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n\
+         ::auto{character=@who action=\"fade-in-up\"}\n@narrator: hi\n",
+    );
+    assert!(!cs.iter().any(|c| c == "E-UNDECLARED-REF"), "{cs:?}");
+    assert!(!cs.iter().any(|c| c == "E-REF-TYPE"), "{cs:?}");
+}
+
+#[test]
+fn standalone_component_param_type_mismatch_flags_ref_type() {
+    // A `number`-typed param used where `::auto`'s `character` attr expects a
+    // `string` is a produced-type mismatch (dsl §8) — proves `def_types`
+    // (not merely `defs`) is seeded from `params:` for the standalone walk.
+    let cs = codes(
+        "---\ncomponent: greet\nparams:\n  n: number\n---\n## Scene 1.\n\
+         ::auto{character=@n action=\"fade-in-up\"}\n@narrator: hi\n",
+    );
+    assert!(cs.contains(&"E-REF-TYPE".to_string()), "{cs:?}");
+}
+
+#[test]
+fn scene_doc_not_polluted_by_component_param_seeding() {
+    // A normal SCENE doc must NOT gain a `@param` namespace from this fix —
+    // an undeclared `@ghost` ref still flags E-UNDECLARED-REF exactly as
+    // before (the seeding is guarded to `MetaKind::Component` only).
+    let cs = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         @narrator: {{@ghost}}\n",
+    );
+    assert!(cs.contains(&"E-UNDECLARED-REF".to_string()), "{cs:?}");
+}

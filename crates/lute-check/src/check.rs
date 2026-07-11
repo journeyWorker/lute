@@ -384,6 +384,17 @@ pub fn fold_env(
     let mut defs: std::collections::BTreeSet<String> = typed.defs.keys().cloned().collect();
     defs.extend(input.snapshot.defs.keys().cloned());
     defs.extend(input.imports.defs.keys().cloned());
+    // A component's declared `params:` ARE the `@param` ref namespace for its
+    // OWN presentational body (dsl §13/§8.1) — already true when the
+    // component is expanded transitively via `::use` (`component_env`
+    // above). Seed the SAME names here so a STANDALONE `lute check` of the
+    // component file itself (which walks as `DocKind::Scene` per the
+    // fragment-shape inference above) resolves its own `@param` refs instead
+    // of false-flagging `E-UNDECLARED-REF`. Guarded to `MetaKind::Component`
+    // only — a normal scene/quest/schema doc's `defs` is untouched.
+    if meta_kind == crate::meta::MetaKind::Component {
+        defs.extend(typed.params.iter().map(|p| p.name.clone()));
+    }
 
     // The def name -> produced `Type` table the `@ref` type-context check
     // (`E-REF-TYPE`, dsl §8) resolves against, merged from two sources.
@@ -414,6 +425,14 @@ pub fn fold_env(
             .and_then(|tv| serde_yaml::from_value::<lute_manifest::types::Type>(tv).ok())
         {
             def_types.insert(name.clone(), t);
+        }
+    }
+    // Same seed for the type table (drives `E-REF-TYPE`, dsl §8): a
+    // standalone component body's `@param` use in a typed attr slot must
+    // still be type-checked, not merely resolved.
+    if meta_kind == crate::meta::MetaKind::Component {
+        for param in &typed.params {
+            def_types.insert(param.name.clone(), param.ty.clone());
         }
     }
 
