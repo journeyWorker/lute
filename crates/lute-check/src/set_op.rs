@@ -215,6 +215,7 @@ fn type_name(ty: &Type) -> &'static str {
         Type::Domain(_) => "domain",
         Type::SlotId { .. } => "slotId",
         Type::AssetKind(_) => "assetKind",
+        Type::NarrativeTime => "narrativeTime",
     }
 }
 

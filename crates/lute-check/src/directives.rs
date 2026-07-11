@@ -598,6 +598,7 @@ fn describe(ty: &Type) -> &'static str {
         Type::ProviderRef(_) => "a provider id",
         Type::Domain(_) => "a domain id",
         Type::AssetKind(_) => "an asset id",
+        Type::NarrativeTime => "a narrative-time value",
     }
 }
 

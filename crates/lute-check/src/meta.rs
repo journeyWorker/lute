@@ -617,6 +617,24 @@ pub fn parse_meta_kind(
                         ));
                     }
                     match serde_yaml::from_value::<StateDeclRaw>(decl_val.clone()) {
+                        Ok(raw) if matches!(raw.ty, Type::NarrativeTime) => {
+                            // D11: `narrativeTime` is engine-surfaced only (a
+                            // plugin capability's `state_shapes` anchor path,
+                            // dsl 0.3.0 §6) — never author-declarable. Skip
+                            // the decl entirely so a later read of `path`
+                            // falls back to plain `E-UNDECLARED`, never a
+                            // phantom narrative-time-typed path.
+                            diags.push(err_at(
+                                crate::temporal::E_TEMPORAL_ARG,
+                                format!(
+                                    "state path `{path}` cannot declare `type: narrativeTime`; \
+                                     narrative-time paths are engine-surfaced (plugin capability \
+                                     state shapes) only — author state is number|bool|string|enum \
+                                     (dsl 0.3.0 §6, D11)"
+                                ),
+                                meta_key_span(meta, path),
+                            ));
+                        }
                         Ok(raw) => {
                             typed.state.decls.insert(
                                 path.to_string(),

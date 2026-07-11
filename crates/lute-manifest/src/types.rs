@@ -21,6 +21,13 @@ pub enum Type {
     Domain(String),               // any typed position; membership checked at check-stage
     SlotId { namespace: String }, // attribute types only
     AssetKind(String),            // attribute types only
+    /// dsl 0.3.0 §6, D11: opaque, ordering-only narrative-time value. NEVER
+    /// author-declarable state (an author `state:`/schema-doc decl of it is
+    /// `E-TEMPORAL-ARG` at the decl, `lute-check/src/meta.rs`) — this variant
+    /// exists only so a plugin capability's `state_shapes` export (the
+    /// engine->state contract) can surface an anchor path. No `Literal`
+    /// inhabits it (`type_accepts` below always returns `false`).
+    NarrativeTime,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -128,6 +135,9 @@ pub fn type_accepts(ty: &Type, lit: &Literal) -> bool {
         // vocabulary; structurally any string, membership is a check-stage
         // concern (mirrors `assetKind`/`providerRef`).
         (Type::Domain(_), Literal::Str(_)) => true,
+        // dsl 0.3.0 §6: narrative-time is opaque — no `Literal` ever
+        // inhabits it (not a bool, number, string, or anything else).
+        (Type::NarrativeTime, _) => false,
         _ => false,
     }
 }
@@ -179,6 +189,7 @@ enum TypeDef {
         namespace: String,
     },
     AssetKind(String),
+    NarrativeTime,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -212,6 +223,7 @@ impl From<TypeDef> for Type {
             TypeDef::Domain(s) => Type::Domain(s),
             TypeDef::SlotId { namespace } => Type::SlotId { namespace },
             TypeDef::AssetKind(s) => Type::AssetKind(s),
+            TypeDef::NarrativeTime => Type::NarrativeTime,
         }
     }
 }
@@ -236,6 +248,7 @@ impl From<&Type> for TypeDef {
                 namespace: namespace.clone(),
             },
             Type::AssetKind(s) => TypeDef::AssetKind(s.clone()),
+            Type::NarrativeTime => TypeDef::NarrativeTime,
         }
     }
 }
@@ -433,6 +446,19 @@ mod tests {
         let t2: Type = serde_yaml::from_str(&out).unwrap();
         assert_eq!(t, t2, "roundtrip mismatch for {y:?}");
         assert_eq!(out.trim_end(), "assetKind: CH");
+    }
+
+    #[test]
+    fn narrative_time_roundtrips_and_accepts_nothing() {
+        // dsl 0.3.0 §6, Task 12: opaque, ordering-only — no literal ever
+        // inhabits it (D11: never author-declarable, but the wire form still
+        // round-trips so an engine-declared anchor's `type:` deserializes).
+        let ty: Type = serde_yaml::from_str("narrativeTime").unwrap();
+        assert_eq!(ty, Type::NarrativeTime);
+        assert_eq!(serde_yaml::to_string(&ty).unwrap().trim(), "narrativeTime");
+        assert!(!type_accepts(&ty, &Literal::Str("x".into())));
+        assert!(!type_accepts(&ty, &Literal::Num(1.0)));
+        assert!(!type_accepts(&ty, &Literal::Bool(true)));
     }
 
     #[test]

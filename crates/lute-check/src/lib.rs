@@ -19,6 +19,7 @@ pub mod rel_schema;
 pub mod schema_import;
 pub mod set_op;
 pub mod tag;
+pub mod temporal;
 pub mod timeline;
 
 pub use admission::{check_admission, node_kind, NodeKind};
@@ -55,6 +56,7 @@ pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use schema_import::{resolve_imports, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner};
 pub use tag::{tag_document, TagOutcome};
+pub use temporal::{check_temporal, E_TEMPORAL_ARG};
 pub use timeline::{
     resolve_timeline, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING, E_TIMELINE_DURATION,
 };

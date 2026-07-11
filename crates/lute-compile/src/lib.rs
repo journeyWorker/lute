@@ -375,6 +375,10 @@ fn type_label(append_unset: bool, ty: &Type) -> (String, Option<Vec<String>>) {
         Type::ProviderRef(_) | Type::Domain(_) | Type::SlotId { .. } | Type::AssetKind(_) => {
             ("string".to_string(), None)
         }
+        // dsl 0.3.0 §6: an engine-declared narrative-time anchor's wire label
+        // matches the state-decl `type:` form. Never author-writable (D11);
+        // only reachable here via a folded plugin capability anchor path.
+        Type::NarrativeTime => ("narrativeTime".to_string(), None),
     }
 }
 
