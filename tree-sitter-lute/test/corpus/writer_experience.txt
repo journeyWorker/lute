@@ -1,0 +1,51 @@
+==================
+when= content-line attr is an ordinary cel_attr (0.4.0 T16, spec §3 B1: zero new grammar)
+==================
+@sofia{when="run.metHelpfully" emotion="soft"}: You helped me back then.
+---
+(source_file
+  (line
+    (speaker)
+    (attrs
+      (cel_attr (cel_key) (cel_string (path)))
+      (attr (key) (string)))
+    (text)))
+
+==================
+component-file <match on="@tier"> with three <when is> arms is an ordinary match (0.4.0 T16, spec §3 B1)
+==================
+---
+component: reaction
+params:
+  tier: { enum: [cold, warm, fond] }
+---
+
+## Scene 1.
+
+<match on="@tier">
+  <when is="fond">
+    @bianca{emotion="delighted"}: You remembered! You actually remembered.
+  </when>
+  <when is="warm">
+    @bianca{emotion="content"}: Not bad at all, Mr. Fixer.
+  </when>
+  <when is="cold">
+    @bianca{emotion="neutral"}: ...Shall we begin?
+  </when>
+</match>
+----------------------------------------
+(source_file
+  (frontmatter)
+  (shot
+    (text)
+    (match
+      (cel_attr (cel_key) (cel_string (ref)))
+      (when
+        (when_is (when_key) (when_pattern (when_literal)))
+        (line (speaker) (attrs (attr (key) (string))) (text)))
+      (when
+        (when_is (when_key) (when_pattern (when_literal)))
+        (line (speaker) (attrs (attr (key) (string))) (text)))
+      (when
+        (when_is (when_key) (when_pattern (when_literal)))
+        (line (speaker) (attrs (attr (key) (string))) (text))))))
