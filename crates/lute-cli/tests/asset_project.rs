@@ -17,7 +17,7 @@ fn mgart_valid_is_clean() {
     let out = Command::new(lute_bin())
         .args([
             "check",
-            "../../docs/examples/arcia-portrait.lute",
+            "../../docs/examples/arcia-project/arcia-portrait.lute",
             "--project",
             "../../docs/examples/arcia-project",
             "--json",
