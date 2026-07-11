@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use lute_manifest::schema::{DirectiveDecl, WriteDecl, WriteValue};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, PathSegment, Type};
-use lute_syntax::ast::{Attr, AttrValue, Directive, Line, Set};
+use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, Line, Retract, Set};
 
 use crate::ir::*;
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
@@ -60,6 +60,46 @@ pub fn lower_set(set: &Set) -> Command {
         op: set.op.clone(),
         value: set.expr.raw.clone(),
         expr: crate::expr::lower_expr(&set.expr.raw),
+        stamp: Stamp::default(),
+    })
+}
+
+/// A [`FactTerm`] as its ground string (dsl 0.3.0 §5): `Ident` verbatim,
+/// `Bool` as `"true"`/`"false"`, `Wildcard` as `"_"` (retract-pattern-only —
+/// never emitted from an `::assert`, checker-enforced `E-RETRACT-WILDCARD-
+/// ASSERT`).
+fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
+    use lute_syntax::datalog::FactTerm;
+    match t {
+        FactTerm::Ident(s) => s.clone(),
+        FactTerm::Bool(b) => b.to_string(),
+        FactTerm::Wildcard => "_".to_string(),
+    }
+}
+
+/// Lower an `::assert{ GroundFact }` (dsl 0.3.0 §5) to its delta command
+/// record. Emitted as DATA only (D1) — no evaluation, no fact store; the
+/// engine applies the write. The D13 malformed-parse sentinel
+/// (`pattern.relation.is_empty()`) never reaches here: compile is check-
+/// gated (`lib.rs`'s D6 gate) and a sentinel pattern is always paired with
+/// an `E-DATALOG-PARSE`/`E-DATALOG-FUNCTION` Error diagnostic.
+pub fn lower_assert(a: &Assert) -> Command {
+    Command::Assert(AssertCmd {
+        addr: String::new(),
+        relation: a.pattern.relation.clone(),
+        args: a.pattern.args.iter().map(|arg| fact_term_string(&arg.term)).collect(),
+        stamp: Stamp::default(),
+    })
+}
+
+/// Lower a `::retract{ RetractPattern }` (dsl 0.3.0 §5) to its delta command
+/// record — mirrors [`lower_assert`]; `_` wildcard args pass through as
+/// `"_"` verbatim (§5 RetractPattern).
+pub fn lower_retract(r: &Retract) -> Command {
+    Command::Retract(RetractCmd {
+        addr: String::new(),
+        relation: r.pattern.relation.clone(),
+        args: r.pattern.args.iter().map(|arg| fact_term_string(&arg.term)).collect(),
         stamp: Stamp::default(),
     })
 }
@@ -333,6 +373,20 @@ mod tests {
             other => panic!("unexpected node {other:?}"),
         };
         serde_json::to_value(&cmd).unwrap()
+    }
+
+    #[test]
+    fn lowers_assert_and_retract() {
+        let ns = nodes("::assert{ inParty(ana) }\n::retract{ atLoc(ana, _) }");
+        let Node::Assert(a) = &ns[0] else { panic!() };
+        let v = serde_json::to_value(lower_assert(a)).unwrap();
+        assert_eq!(v["kind"], "assert");
+        assert_eq!(v["relation"], "inParty");
+        assert_eq!(v["args"], serde_json::json!(["ana"]));
+        let Node::Retract(r) = &ns[1] else { panic!() };
+        let v = serde_json::to_value(lower_retract(r)).unwrap();
+        assert_eq!(v["kind"], "retract");
+        assert_eq!(v["args"], serde_json::json!(["ana", "_"]));
     }
 
     #[test]

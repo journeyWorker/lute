@@ -976,3 +976,53 @@ episode: 1
     assert_eq!(dlg.role, Role::Dialogue);
     assert!(dlg.voice_key.is_some());
 }
+
+/// dsl 0.3.0 §5 delta lowering (0.3.0 T14): an `<on>` arm interleaving
+/// `::set`/`::assert`/`::retract` lowers each in DOCUMENT ORDER, and every
+/// assert/retract record carries a real (non-empty, addressed) `addr` —
+/// never left as an empty placeholder.
+#[test]
+fn assert_retract_interleave_with_set_in_document_order() {
+    const SRC: &str = r#"---
+kind: quest
+entities:
+  c: { members: [ana] }
+relations:
+  inParty: { args: [c] }
+  atLoc: { args: [c, c] }
+state:
+  run.act: { type: bool, default: false }
+---
+
+<quest id="rescueHalsin" title="Rescue">
+<objective id="reachGrove" done="run.act"/>
+
+<on event="questComplete">
+::set{run.act = true}
+::assert{ inParty(ana) }
+::retract{ atLoc(ana, _) }
+</on>
+</quest>
+"#;
+    let art = compile(&input(SRC)).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let cmds = j["commands"].as_array().unwrap();
+    let kinds: Vec<&str> = cmds.iter().map(|c| c["kind"].as_str().unwrap()).collect();
+    let set_i = kinds.iter().position(|k| *k == "set").expect("set record");
+    let assert_i = kinds.iter().position(|k| *k == "assert").expect("assert record");
+    let retract_i = kinds.iter().position(|k| *k == "retract").expect("retract record");
+    assert!(
+        set_i < assert_i && assert_i < retract_i,
+        "document order preserved: {kinds:?}"
+    );
+
+    let assert_rec = &cmds[assert_i];
+    assert_eq!(assert_rec["relation"], "inParty");
+    assert_eq!(assert_rec["args"], serde_json::json!(["ana"]));
+    assert!(assert_rec["addr"].as_str().is_some_and(|s| !s.is_empty()));
+
+    let retract_rec = &cmds[retract_i];
+    assert_eq!(retract_rec["relation"], "atLoc");
+    assert_eq!(retract_rec["args"], serde_json::json!(["ana", "_"]));
+    assert!(retract_rec["addr"].as_str().is_some_and(|s| !s.is_empty()));
+}

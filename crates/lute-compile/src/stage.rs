@@ -11,7 +11,9 @@ use lute_syntax::ast::{
 
 use crate::cfg::{Emitter, Label};
 use crate::ir::*;
-use crate::lower::{attr_bool, attr_string, lower_directive, lower_line, lower_set};
+use crate::lower::{
+    attr_bool, attr_string, lower_assert, lower_directive, lower_line, lower_retract, lower_set,
+};
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
 use crate::schedule::schedule_timeline;
 
@@ -186,6 +188,8 @@ fn emit_primitive(
         Node::Line(l) => Some(lower_line(l)),
         Node::Directive(d) => lower_directive(d, cx.snapshot),
         Node::Set(s) => Some(lower_set(s)),
+        Node::Assert(a) => Some(lower_assert(a)),
+        Node::Retract(r) => Some(lower_retract(r)),
         _ => None,
     };
     // Placement (plan spec-gap note 4): an `::auto`'s injections (anchor,
