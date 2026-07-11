@@ -67,10 +67,10 @@ profile: date-minigame
 
 <match on="scene.minigame.service01.rank">
   <when test="$ == 'gold'">
-    :marina{code="0030" emotion="delighted" variant="1"}: Wonderful! A perfect service!
+    @marina{code="0030" emotion="delighted" variant="1"}: Wonderful! A perfect service!
   </when>
   <otherwise>
-    :marina{code="0050" emotion="shy" variant="0"}: Shall we try once more? The rhythm takes practice.
+    @marina{code="0050" emotion="shy" variant="0"}: Shall we try once more? The rhythm takes practice.
   </otherwise>
 </match>
 ```
