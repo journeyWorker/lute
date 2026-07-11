@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.2.0",
-  "irVersion": "0.2.0",
+  "lute": "0.3.0",
+  "irVersion": "0.3.0",
   "capabilityVersion": "3236d059a0e6d6cc34cadcf2542f1a4a0fecda4c2d3769ec63cf186c55ae5275",
   "meta": {
     "character": "bianca",

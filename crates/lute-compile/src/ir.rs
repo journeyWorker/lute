@@ -26,7 +26,110 @@ pub struct Artifact {
     pub capability_version: String,
     pub meta: ArtifactMeta,
     pub state: Vec<StateEntry>,
+    /// Merged relational entity kinds (dsl 0.3.0 §3.1), name-sorted
+    /// (`RelVocab.kinds` is a `BTreeMap` — deterministic order). Omitted
+    /// entirely for a document with no relational declarations (D15 — byte-
+    /// identical to 0.2.0 minus the version strings).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub entities: Vec<EntityKindEntry>,
+    /// Merged relational `enums:` (dsl 0.3.0 §3), name-sorted.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub enums: Vec<EnumEntry>,
+    /// Merged relation declarations (dsl 0.3.0 §4), name-sorted.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub relations: Vec<RelationEntry>,
+    /// Merged seed `facts:` (dsl 0.3.0 §4), in vocabulary (import-then-
+    /// inline) order.
+    #[serde(rename = "seedFacts", skip_serializing_if = "Vec::is_empty")]
+    pub seed_facts: Vec<SeedFactEntry>,
+    /// Merged Datalog `rules:` (dsl 0.3.0 §7.1), in vocabulary order. Emitted
+    /// as DATA for the engine's fixpoint — Lute performs NO evaluation (D1).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<RuleEntry>,
     pub commands: Vec<Command>,
+}
+
+/// One merged entity kind (dsl 0.3.0 §3.1).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntityKindEntry {
+    pub name: String,
+    /// `None` for `open: engine` kinds (§3.1) — the engine mints members.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub members: Option<Vec<String>>,
+    pub open: bool,
+}
+
+/// One merged `enums:` entry (dsl 0.3.0 §3).
+#[derive(Clone, Debug, Serialize)]
+pub struct EnumEntry {
+    pub name: String,
+    pub members: Vec<String>,
+}
+
+/// One merged relation declaration (dsl 0.3.0 §4).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationEntry {
+    pub name: String,
+    pub args: Vec<String>,
+    /// Effective tier for base relations (default `run` applied); ABSENT
+    /// for `derive: true` (§4 — a derived relation has no write tier).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
+    pub derive: bool,
+    pub reserved: bool,
+    /// 0-based functional-key arg indices (§4); empty when undeclared.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub key: Vec<usize>,
+}
+
+/// One seed `facts:` ground tuple (dsl 0.3.0 §4).
+#[derive(Clone, Debug, Serialize)]
+pub struct SeedFactEntry {
+    pub relation: String,
+    /// Ground literals as strings; bools serialize as `"true"`/`"false"`
+    /// (§4 — seed facts are ground, never `_`).
+    pub args: Vec<String>,
+}
+
+/// One Datalog rule (dsl 0.3.0 §7.1), emitted as STRUCTURED data — head +
+/// body — for the engine's least-fixpoint evaluator. Lute performs NO
+/// evaluation (D1); this is the declared rule set, verbatim.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleEntry {
+    pub head: AtomEntry,
+    pub body: Vec<BodyEntry>,
+    /// The rule's original source text (`rules:` entry), for engine
+    /// diagnostics/tooling.
+    pub raw: String,
+}
+
+/// One rule atom: a relation name applied to terms (dsl 0.3.0 §7.1).
+#[derive(Clone, Debug, Serialize)]
+pub struct AtomEntry {
+    pub relation: String,
+    pub terms: Vec<TermEntry>,
+}
+
+/// One rule term: a variable (leading-uppercase ident) or a ground constant
+/// (dsl 0.3.0 §7.1). Bools lower to `Const` with a `"true"`/`"false"` value.
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum TermEntry {
+    Var { name: String },
+    Const { value: String },
+}
+
+/// One rule body literal (dsl 0.3.0 §7.1): a positive/negated atom, a CEL
+/// guard, or a term comparison.
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum BodyEntry {
+    Atom { atom: AtomEntry, negated: bool },
+    Guard { cel: String },
+    Cmp { lhs: TermEntry, rhs: TermEntry, negated: bool },
 }
 
 /// Kind-polymorphic envelope `meta` (dsl 0.2.0, IR addendum §1): untagged so

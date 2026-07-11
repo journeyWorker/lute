@@ -24,17 +24,18 @@ use lute_cel::CelArena;
 use lute_check::meta::StateSchema;
 use lute_check::{check, fold_env, CheckInput, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
+use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{Arm, Document, Node};
 
 /// Language-version pin stamped into the artifact envelope's `lute` field (DSL
 /// 0.2.0). Distinct from [`LUTE_IR_VERSION`], the IR schema version.
-pub const LUTE_LANG_VERSION: &str = "0.2.0";
+pub const LUTE_LANG_VERSION: &str = "0.3.0";
 
 /// IR schema version stamped into the envelope's `irVersion` field (spec §4.1,
-/// A9). Bumped for the 0.2.0 kind envelope + quest/on records (IR addendum);
-/// engines gate parsing on it.
-pub const LUTE_IR_VERSION: &str = "0.2.0";
+/// A9). Bumped for the 0.3.0 relational schema/seed-facts/rules emission
+/// (D15); engines gate parsing on it.
+pub const LUTE_IR_VERSION: &str = "0.3.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -142,6 +143,7 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
     }
     let branch_paths = collect_branch_paths(&doc);
     let quest_reserved = collect_quest_reserved_paths(&doc);
+    let (entities, enums, relations, seed_facts, rules) = rel_entries(&folded.env.rel_vocab);
     Ok(Artifact {
         kind: folded.doc_kind.into(),
         lute: LUTE_LANG_VERSION.to_string(),
@@ -149,8 +151,155 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
         capability_version: input.snapshot.version.clone(),
         meta,
         state: state_entries(&folded.env.state, &branch_paths, &quest_reserved),
+        entities,
+        enums,
+        relations,
+        seed_facts,
+        rules,
         commands,
     })
+}
+
+/// Lower the checker's merged relational vocabulary (0.3.0 T7's
+/// `RelVocab`, threaded via `Env.rel_vocab`) to the artifact's DATA entry
+/// types (D1 — declarations only, no evaluation). `vocab`'s maps are
+/// `BTreeMap`s (name-sorted, deterministic); facts/rules keep vocabulary
+/// (import-then-inline union) order. `KindShape::Invalid` kinds and
+/// malformed-parse-sentinel facts/rules never reach this function — compile
+/// only runs past the D6 check gate (`compile`, above) on a clean check, and
+/// every such shape is an Error diagnostic that gate would have caught.
+fn rel_entries(
+    vocab: &lute_check::RelVocab,
+) -> (
+    Vec<EntityKindEntry>,
+    Vec<EnumEntry>,
+    Vec<RelationEntry>,
+    Vec<SeedFactEntry>,
+    Vec<RuleEntry>,
+) {
+    let entities = vocab
+        .kinds
+        .iter()
+        .map(|(name, decl)| match &decl.shape {
+            KindShape::Members(members) => EntityKindEntry {
+                name: name.clone(),
+                members: Some(members.clone()),
+                open: false,
+            },
+            KindShape::Open => EntityKindEntry {
+                name: name.clone(),
+                members: None,
+                open: true,
+            },
+            KindShape::Invalid => unreachable!(
+                "dsl 0.3.0 §3.1: an invalid entity-kind shape is E-ENTITY-KIND-SHAPE, an \
+                 Error diagnostic the D6 check gate rejects before compile ever runs"
+            ),
+        })
+        .collect();
+    let enums = vocab
+        .enums
+        .iter()
+        .map(|(name, members)| EnumEntry {
+            name: name.clone(),
+            members: members.clone(),
+        })
+        .collect();
+    let relations = vocab
+        .relations
+        .iter()
+        .map(|(name, decl)| RelationEntry {
+            name: name.clone(),
+            args: decl.args.clone(),
+            tier: vocab.tier_of(decl).map(str::to_string),
+            derive: decl.derive,
+            reserved: decl.reserved,
+            key: decl.key.iter().map(|&k| k as usize).collect(),
+        })
+        .collect();
+    let seed_facts = vocab
+        .facts
+        .iter()
+        .map(|f| SeedFactEntry {
+            relation: f.fact.relation.clone(),
+            args: f
+                .fact
+                .args
+                .iter()
+                .map(|a| fact_term_string(&a.term))
+                .collect(),
+        })
+        .collect();
+    let rules = vocab
+        .rules
+        .iter()
+        .map(|r| RuleEntry {
+            head: atom_entry(&r.rule.head),
+            body: r.rule.body.iter().map(body_entry).collect(),
+            raw: r.raw.clone(),
+        })
+        .collect();
+    (entities, enums, relations, seed_facts, rules)
+}
+
+/// `FactTerm -> String` (D15 seed-fact arg lowering): `Ident` verbatim,
+/// `Bool` as `"true"`/`"false"`. `Wildcard` never occurs in a seed fact
+/// (D12/`E-RETRACT-WILDCARD-ASSERT` — check-gated) but lowers to `"_"`
+/// rather than panic, matching every other node here's total discipline.
+fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
+    use lute_syntax::datalog::FactTerm;
+    match t {
+        FactTerm::Ident(s) => s.clone(),
+        FactTerm::Bool(b) => b.to_string(),
+        FactTerm::Wildcard => "_".to_string(),
+    }
+}
+
+/// `RuleTerm -> TermEntry` (§7.1): `Var`/`Const` verbatim; `Bool` lowers to
+/// `Const` with a `"true"`/`"false"` value (ir.rs `TermEntry` doc).
+fn term_entry(t: &lute_syntax::datalog::RuleTerm) -> TermEntry {
+    use lute_syntax::datalog::RuleTerm;
+    match t {
+        RuleTerm::Var(name) => TermEntry::Var { name: name.clone() },
+        RuleTerm::Const(value) => TermEntry::Const {
+            value: value.clone(),
+        },
+        RuleTerm::Bool(b) => TermEntry::Const {
+            value: b.to_string(),
+        },
+    }
+}
+
+/// `RuleAtom -> AtomEntry` (§7.1).
+fn atom_entry(a: &lute_syntax::datalog::RuleAtom) -> AtomEntry {
+    AtomEntry {
+        relation: a.relation.clone(),
+        terms: a.terms.iter().map(term_entry).collect(),
+    }
+}
+
+/// `BodyLiteral -> BodyEntry` (§7.1): `Pos`/`Neg` share `Atom{negated}`;
+/// `Guard`/`Cmp` map field-for-field.
+fn body_entry(l: &lute_syntax::datalog::BodyLiteral) -> BodyEntry {
+    use lute_syntax::datalog::BodyLiteral;
+    match l {
+        BodyLiteral::Pos(a) => BodyEntry::Atom {
+            atom: atom_entry(a),
+            negated: false,
+        },
+        BodyLiteral::Neg(a) => BodyEntry::Atom {
+            atom: atom_entry(a),
+            negated: true,
+        },
+        BodyLiteral::Guard { cel, .. } => BodyEntry::Guard { cel: cel.clone() },
+        BodyLiteral::Cmp {
+            lhs, rhs, negated, ..
+        } => BodyEntry::Cmp {
+            lhs: term_entry(lhs),
+            rhs: term_entry(rhs),
+            negated: *negated,
+        },
+    }
 }
 
 /// Envelope meta (§4.1 + A4). `character`/`season`/`episode` are §6.1 REQUIRED
@@ -403,9 +552,57 @@ pub(crate) fn literal_json(l: &Literal) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
+    use lute_check::{CheckInput, Mode};
+
+    fn test_input(text: &str) -> CheckInput {
+        CheckInput {
+            text: text.to_string(),
+            uri: "test".into(),
+            snapshot: lute_manifest::core::load_core_snapshot(),
+            providers: Default::default(),
+            mode: Mode::Ci,
+            imports: Default::default(),
+            components: Default::default(),
+        }
+    }
+
     #[test]
     fn ir_version_matches_language_version() {
-        assert_eq!(super::LUTE_IR_VERSION, "0.2.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.2.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.3.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.3.0");
+    }
+
+    #[test]
+    fn artifact_emits_relational_schema() {
+        let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nentities:\n  c: { members: [ana] }\n  npc: { open: engine }\nenums:\n  trust: [low, high]\nrelations:\n  inParty: { args: [c] }\n  vibe: { args: [c, trust], derive: true }\nfacts:\n  - \"inParty(ana)\"\nrules:\n  - \"vibe(X, low) :- inParty(X)\"\n---\n## Shot 1.\n@narrator: hi\n::assert{ inParty(ana) }\n";
+        let input = test_input(text);
+        let art = super::compile(&input).expect("compiles");
+        let v = serde_json::to_value(&art).unwrap();
+        assert_eq!(v["lute"], "0.3.0");
+        assert_eq!(v["irVersion"], "0.3.0");
+        assert_eq!(v["entities"][0]["name"], "c");
+        assert_eq!(v["entities"][1]["open"], true);
+        assert_eq!(v["enums"][0]["name"], "trust");
+        assert_eq!(v["relations"][0]["name"], "inParty");
+        assert_eq!(v["relations"][0]["tier"], "run", "default tier applied");
+        assert!(v["relations"][1]["tier"].is_null(), "derived: no tier (§4)");
+        assert_eq!(v["seedFacts"][0]["relation"], "inParty");
+        assert_eq!(v["rules"][0]["head"]["relation"], "vibe");
+        assert_eq!(v["rules"][0]["body"][0]["kind"], "atom");
+    }
+
+    #[test]
+    fn plain_document_emits_no_relational_fields() {
+        let art = super::compile(&test_input(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n",
+        ))
+        .unwrap();
+        let v = serde_json::to_value(&art).unwrap();
+        for k in ["entities", "enums", "relations", "seedFacts", "rules"] {
+            assert!(
+                v.get(k).is_none(),
+                "{k} must be skipped when empty (spec §2)"
+            );
+        }
     }
 }

@@ -17,8 +17,8 @@ fn compile_bianca_exits_zero_with_artifact_json() {
         String::from_utf8_lossy(&out.stderr)
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(v["lute"], "0.2.0");
-    assert_eq!(v["irVersion"], "0.2.0");
+    assert_eq!(v["lute"], "0.3.0");
+    assert_eq!(v["irVersion"], "0.3.0");
     assert!(
         v["capabilityVersion"].as_str().is_some_and(|s| !s.is_empty()),
         "capabilityVersion must be a non-empty snapshot stamp"
