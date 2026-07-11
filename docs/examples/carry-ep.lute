@@ -11,8 +11,10 @@ uses: state.schema.yaml
 @narrator: Previously, a choice was made.
 
 <match on="run.choseHelp">
-<when test="$ == true">:sofia: Thanks for helping me back then.
+<when test="$ == true">
+@sofia: Thanks for helping me back then.
 </when>
-<otherwise>:sofia: ...
+<otherwise>
+@sofia: ...
 </otherwise>
 </match>

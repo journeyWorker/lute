@@ -10,8 +10,10 @@ state:
 ## Shot 1.
 
 <match on="scene.flag">
-  <when test="@warm">:narrator: warm path
+  <when test="@warm">
+  @narrator: warm path
 </when>
-  <otherwise>:narrator: cold path
+  <otherwise>
+  @narrator: cold path
 </otherwise>
 </match>

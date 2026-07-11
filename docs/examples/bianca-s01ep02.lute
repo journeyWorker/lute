@@ -20,7 +20,7 @@ defs:
   Worked example of the Lute Scenario DSL (see ../proposals/scenario-dsl/0.0.1.md and ../architecture.md).
   The spine, narration, dialogue, and assetIds are faithful to the real
   content-catalog S01EP02 (linear). Note the unified content node (§7.1): every content
-  line uses the :speaker: form — narration is :narrator, monologue is :fixer{delivery="thought"}.
+  line uses the @speaker: form — narration is @narrator, monologue is @fixer{delivery="thought"}.
   Three things are woven in to demonstrate the new surface, each marked NEW / demo:
     - ::camera               (no camera in the legacy format)
     - <timeline> + <track>   (the finger-beam "performance" as one multi-track beat)

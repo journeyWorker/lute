@@ -13,8 +13,10 @@ defs:
 ## Shot 1.
 
 <match on="scene.flag">
-  <when test="@atLeast(3)">:narrator: high enough
+  <when test="@atLeast(3)">
+  @narrator: high enough
 </when>
-  <otherwise>:narrator: not yet
+  <otherwise>
+  @narrator: not yet
 </otherwise>
 </match>
