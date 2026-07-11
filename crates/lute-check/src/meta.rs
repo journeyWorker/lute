@@ -52,9 +52,10 @@ pub struct TypedMeta {
     pub defs: BTreeMap<String, serde_yaml::Value>,
     /// Project-authored `enums:`/`entities:` declarations (dsl data-catalog
     /// foundation A3; 0.3.0 draft §3.1), parsed via
-    /// `lute_manifest::entities::{parse_enums, parse_entities}` into
-    /// enum-style/open [`Domain`]s. Lifted into the checker's merged domain
-    /// vocabulary the SAME way as `state`/`defs` (`crate::schema_import`,
+    /// `lute_manifest::entities::parse_enums` /
+    /// `lute_manifest::relations::{parse_entity_kinds, kinds_to_domains}`
+    /// into enum-style/open [`Domain`]s. Lifted into the checker's merged
+    /// domain vocabulary the SAME way as `state`/`defs` (`crate::schema_import`,
     /// alongside `CapabilitySnapshot.domains`, A2). A same-doc `enums:`/
     /// `entities:` name collision is NOT diagnosed here (`entities:` simply
     /// wins) — cross-source collisions are `schema_import`'s job
@@ -322,17 +323,24 @@ pub fn parse_meta_kind(
     typed.extends = get_ref_list(map, "extends");
     typed.plugins = get_sub_map(map, "plugins");
     typed.defs = get_sub_map(map, "defs");
-    // Project-authored `enums:`/`entities:` (dsl data-catalog foundation A3):
-    // same YAML-lift discipline as `defs` above, but delegated to
-    // `lute_manifest::entities` (the parser owns the two declaration shapes,
-    // A2's `Domain` type). `entities:` is folded in AFTER `enums:` so a
-    // same-doc name collision resolves to the `entities:` entry (last-write-
-    // wins; not diagnosed here — see `TypedMeta::domains`'s doc comment).
+    // Project-authored `enums:`/`entities:` (dsl data-catalog foundation A3;
+    // 0.3.0 draft §3.1 kinds, 0.3.0 T4): same YAML-lift discipline as `defs`
+    // above, but delegated to `lute_manifest::entities::parse_enums` /
+    // `lute_manifest::relations::{parse_entity_kinds, kinds_to_domains}` (the
+    // latter owns the two `entities:` decl shapes, A2's `Domain` type).
+    // `entities:` is folded in AFTER `enums:` so a same-doc name collision
+    // resolves to the `entities:` entry (last-write-wins; not diagnosed here
+    // — see `TypedMeta::domains`'s doc comment). This is an interim minimal
+    // lift (0.3.0 T4); the full `rel_kinds`/`rel_relations` lift + `E-PATH-
+    // IDENT`/dup diagnostics land in T5.
     typed.domains = lute_manifest::entities::parse_enums(
         map.get(yaml_key("enums")).unwrap_or(&serde_yaml::Value::Null),
     );
-    typed.domains.extend(lute_manifest::entities::parse_entities(
-        map.get(yaml_key("entities")).unwrap_or(&serde_yaml::Value::Null),
+    typed.domains.extend(lute_manifest::relations::kinds_to_domains(
+        &lute_manifest::relations::parse_entity_kinds(
+            map.get(yaml_key("entities")).unwrap_or(&serde_yaml::Value::Null),
+        )
+        .kinds,
     ));
     // §8.4 identifier alignment: a `defs` name and each of its parameter names
     // are CEL-facing identifiers — no `-` (E-PATH-IDENT). Directive/attr/asset
