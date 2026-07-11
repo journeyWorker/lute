@@ -1,0 +1,44 @@
+---
+kind: quest
+luteVersion: "0.3.0"
+uses: act1.schema.yaml
+title: Act 1 — Emerald Grove
+state:
+  user.xp: { type: number, default: 0 }
+---
+
+/*
+  Spec Appendix B (dsl 0.3.0, docs/proposals/scenario-dsl/0.3.0.md) worked
+  example, verbatim modulo D14: `<on event="npcSpoke">` becomes
+  `<on event="questActive">` (a BUILTIN_LIFECYCLE_EVENTS member) so this
+  checks clean under the core-only docs/examples/lute.project.yaml without
+  inventing a `profile: bg-encounter` plugin. Statically equivalent -- the
+  same ::assert/::narrator body fires once the quest is live either way.
+
+  `connected` is seeded via the schema `facts:` block, so `canReach`
+  (transitive, recursive) can derive from load: `reach` gates on physically
+  walking the seeded topology (atLocation -> canReach), independent of ever
+  hearing about Halsin. `questActive` asserts the author-side percept
+  `heardLocation` and does NOT also move the player, so `learn` gates on
+  `believesLocation` alone -- the two objectives are never vacuously
+  co-satisfied by one action. `questComplete` retracts `captive(halsin)`
+  (seeded, so a valid fact exists to retract) and asserts `inParty(halsin)`
+  -- one `character` id (halsin) throughout, never a second synthetic entity
+  for "captive Halsin" (spec section 3.1's one-id-one-kind rule).
+*/
+
+<quest id="rescueHalsin" title="Rescue the First Druid" start="holds(inParty(shadowheart))" fail="holds(atLocation(halsin, moonrise))">
+  <objective id="reach" title="Reach the grove" done="holds(canReach(player, grove))"/>
+  <objective id="learn" title="Learn where Halsin is held" done="holds(believesLocation(player, halsin, grove))"/>
+
+  <on event="questActive">
+    ::assert{ heardLocation(player, halsin, grove) }
+    @narrator: "The cages are past the inner grove," Halsin said.
+  </on>
+
+  <on event="questComplete">
+    ::retract{ captive(halsin) }
+    ::assert{ inParty(halsin) }
+    ::set{ user.xp += 300 }
+  </on>
+</quest>

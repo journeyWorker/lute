@@ -1,0 +1,400 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "quest",
+  "lute": "0.3.0",
+  "irVersion": "0.3.0",
+  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "meta": {
+    "title": "Act 1 — Emerald Grove"
+  },
+  "state": [
+    {
+      "path": "quest.rescueHalsin.objectives.learn.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:rescueHalsin"
+    },
+    {
+      "path": "quest.rescueHalsin.objectives.reach.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:rescueHalsin"
+    },
+    {
+      "path": "quest.rescueHalsin.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:rescueHalsin"
+    },
+    {
+      "path": "user.xp",
+      "type": "number",
+      "default": 0
+    }
+  ],
+  "entities": [
+    {
+      "name": "character",
+      "members": [
+        "shadowheart",
+        "halsin",
+        "player"
+      ],
+      "open": false
+    },
+    {
+      "name": "location",
+      "members": [
+        "camp",
+        "grove",
+        "moonrise"
+      ],
+      "open": false
+    }
+  ],
+  "relations": [
+    {
+      "name": "atLocation",
+      "args": [
+        "character",
+        "location"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false,
+      "key": [
+        0
+      ]
+    },
+    {
+      "name": "believesLocation",
+      "args": [
+        "character",
+        "character",
+        "location"
+      ],
+      "derive": true,
+      "reserved": false
+    },
+    {
+      "name": "canReach",
+      "args": [
+        "character",
+        "location"
+      ],
+      "derive": true,
+      "reserved": false
+    },
+    {
+      "name": "captive",
+      "args": [
+        "character"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false
+    },
+    {
+      "name": "connected",
+      "args": [
+        "location",
+        "location"
+      ],
+      "tier": "app",
+      "derive": false,
+      "reserved": false
+    },
+    {
+      "name": "heardLocation",
+      "args": [
+        "character",
+        "character",
+        "location"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false,
+      "key": [
+        0,
+        1
+      ]
+    },
+    {
+      "name": "inParty",
+      "args": [
+        "character"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false
+    }
+  ],
+  "seedFacts": [
+    {
+      "relation": "inParty",
+      "args": [
+        "shadowheart"
+      ]
+    },
+    {
+      "relation": "captive",
+      "args": [
+        "halsin"
+      ]
+    },
+    {
+      "relation": "atLocation",
+      "args": [
+        "player",
+        "camp"
+      ]
+    },
+    {
+      "relation": "connected",
+      "args": [
+        "camp",
+        "grove"
+      ]
+    },
+    {
+      "relation": "connected",
+      "args": [
+        "grove",
+        "moonrise"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "head": {
+        "relation": "canReach",
+        "terms": [
+          {
+            "kind": "var",
+            "name": "C"
+          },
+          {
+            "kind": "var",
+            "name": "L"
+          }
+        ]
+      },
+      "body": [
+        {
+          "kind": "atom",
+          "atom": {
+            "relation": "atLocation",
+            "terms": [
+              {
+                "kind": "var",
+                "name": "C"
+              },
+              {
+                "kind": "var",
+                "name": "L"
+              }
+            ]
+          },
+          "negated": false
+        }
+      ],
+      "raw": "canReach(C, L)            :- atLocation(C, L)"
+    },
+    {
+      "head": {
+        "relation": "canReach",
+        "terms": [
+          {
+            "kind": "var",
+            "name": "C"
+          },
+          {
+            "kind": "var",
+            "name": "L2"
+          }
+        ]
+      },
+      "body": [
+        {
+          "kind": "atom",
+          "atom": {
+            "relation": "canReach",
+            "terms": [
+              {
+                "kind": "var",
+                "name": "C"
+              },
+              {
+                "kind": "var",
+                "name": "L1"
+              }
+            ]
+          },
+          "negated": false
+        },
+        {
+          "kind": "atom",
+          "atom": {
+            "relation": "connected",
+            "terms": [
+              {
+                "kind": "var",
+                "name": "L1"
+              },
+              {
+                "kind": "var",
+                "name": "L2"
+              }
+            ]
+          },
+          "negated": false
+        }
+      ],
+      "raw": "canReach(C, L2)           :- canReach(C, L1), connected(L1, L2)"
+    },
+    {
+      "head": {
+        "relation": "believesLocation",
+        "terms": [
+          {
+            "kind": "var",
+            "name": "H"
+          },
+          {
+            "kind": "var",
+            "name": "S"
+          },
+          {
+            "kind": "var",
+            "name": "L"
+          }
+        ]
+      },
+      "body": [
+        {
+          "kind": "atom",
+          "atom": {
+            "relation": "heardLocation",
+            "terms": [
+              {
+                "kind": "var",
+                "name": "H"
+              },
+              {
+                "kind": "var",
+                "name": "S"
+              },
+              {
+                "kind": "var",
+                "name": "L"
+              }
+            ]
+          },
+          "negated": false
+        }
+      ],
+      "raw": "believesLocation(H, S, L) :- heardLocation(H, S, L)"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "rescueHalsin",
+      "title": "Rescue the First Druid",
+      "titleLineId": "rescueHalsin.title",
+      "start": {
+        "raw": "holds(inParty(shadowheart))"
+      },
+      "fail": {
+        "raw": "holds(atLocation(halsin, moonrise))"
+      },
+      "objectives": [
+        {
+          "id": "reach",
+          "title": "Reach the grove",
+          "titleLineId": "rescueHalsin.reach",
+          "done": {
+            "raw": "holds(canReach(player, grove))"
+          },
+          "optional": false,
+          "body": null
+        },
+        {
+          "id": "learn",
+          "title": "Learn where Halsin is held",
+          "titleLineId": "rescueHalsin.learn",
+          "done": {
+            "raw": "holds(believesLocation(player, halsin, grove))"
+          },
+          "optional": false,
+          "body": null
+        }
+      ]
+    },
+    {
+      "kind": "on",
+      "addr": "001-0200",
+      "event": "questActive",
+      "body": "001-0300"
+    },
+    {
+      "kind": "assert",
+      "addr": "001-0300",
+      "relation": "heardLocation",
+      "args": [
+        "player",
+        "halsin",
+        "grove"
+      ]
+    },
+    {
+      "kind": "line",
+      "addr": "001-0400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "\"The cages are past the inner grove,\" Halsin said.",
+      "lineId": "rescueHalsin.narrator_0010"
+    },
+    {
+      "kind": "on",
+      "addr": "001-0500",
+      "event": "questComplete",
+      "body": "001-0600"
+    },
+    {
+      "kind": "retract",
+      "addr": "001-0600",
+      "relation": "captive",
+      "args": [
+        "halsin"
+      ]
+    },
+    {
+      "kind": "assert",
+      "addr": "001-0700",
+      "relation": "inParty",
+      "args": [
+        "halsin"
+      ]
+    },
+    {
+      "kind": "set",
+      "addr": "001-0800",
+      "path": "user.xp",
+      "op": "+=",
+      "value": "300",
+      "expr": {
+        "lit": 300.0
+      }
+    }
+  ]
+}
