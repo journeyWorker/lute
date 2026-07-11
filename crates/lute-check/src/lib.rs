@@ -1,6 +1,7 @@
 pub mod admission;
 pub mod cel_paths;
 pub mod cel_expand;
+mod cel_message;
 pub mod cel_resolve;
 pub mod check;
 pub mod component_import;
