@@ -208,6 +208,15 @@ fn quest_grove() {
     golden("quest_grove", "../../docs/examples/quest-grove.lute", None);
 }
 
+#[test]
+fn quest_rescue_halsin() {
+    golden(
+        "quest_rescue_halsin",
+        "../../docs/examples/quest-rescue-halsin.lute",
+        None,
+    );
+}
+
 /// IR A12: the `::serve` plugin record carries resolved effect bindings. The
 /// `fromAttr` template (`resultKey="debut"`) is substituted into each path at
 /// compile time; `from` is the bridge-result key or the `op`/`by` increment,

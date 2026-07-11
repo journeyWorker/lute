@@ -66,3 +66,17 @@ fn showcase_episode_checks_clean_with_yaml_schema_chain() {
     ]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
 }
+
+#[test]
+fn rescue_halsin_quest_checks_clean_under_project() {
+    // 0.3.0 T15: spec Appendix B worked example (act1.schema.yaml +
+    // quest-rescue-halsin.lute) — derived recursion (canReach), epistemic
+    // derivation (believesLocation), seeds, key-relations, quest gating on
+    // `holds`, exercised end-to-end under the core-only project.
+    let out = check(&[
+        "../../docs/examples/quest-rescue-halsin.lute",
+        "--project",
+        "../../docs/examples",
+    ]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+}

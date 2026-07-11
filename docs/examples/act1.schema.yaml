@@ -1,0 +1,27 @@
+# Appendix B (dsl 0.3.0) — act-1 relational schema. Declaration files are plain
+# .yaml since 0.2.2 (the spec text's `act1.schema.lute` predates that migration,
+# D14: statically equivalent, no `---`/Lute envelope for a pure declaration file).
+entities:
+  character: { members: [shadowheart, halsin, player] }
+  location:  { members: [camp, grove, moonrise] }
+
+relations:
+  inParty:          { args: [character], tier: run }
+  atLocation:       { args: [character, location], tier: run, key: [0] }
+  captive:          { args: [character], tier: run }
+  connected:        { args: [location, location], tier: app }                          # static map topology
+  heardLocation:    { args: [character, character, location], tier: run, key: [0, 1] } # hearer, subject, location
+  canReach:         { args: [character, location], derive: true }
+  believesLocation: { args: [character, character, location], derive: true }           # holder, subject, location
+
+facts:
+  - "inParty(shadowheart)"
+  - "captive(halsin)"
+  - "atLocation(player, camp)"
+  - "connected(camp, grove)"
+  - "connected(grove, moonrise)"
+
+rules:
+  - "canReach(C, L)            :- atLocation(C, L)"
+  - "canReach(C, L2)           :- canReach(C, L1), connected(L1, L2)"
+  - "believesLocation(H, S, L) :- heardLocation(H, S, L)"
