@@ -46,6 +46,15 @@
 (set "::set{" @keyword.control)
 (set (assign_op) @operator)
 
+; `::assert`/`::retract` relational-fact writes (dsl 0.3.0 §5) — staging
+; leaves that mutate the fact store; kept in the logic keyword family beside
+; `::set` since they are also state-affecting directives.
+(assert "::assert{" @keyword.control)
+(retract "::retract{" @keyword.control)
+(fact_pattern (ident) @function)
+(fact_arg (ident) @variable)
+(wildcard) @constant.builtin
+
 ; `<branch>` / `<choice>` control-flow branching.
 (branch ["<branch" "</branch>"] @keyword.control)
 (choice ["<choice" "</choice>"] @keyword.control)

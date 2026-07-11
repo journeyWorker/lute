@@ -92,6 +92,22 @@
           "patterns": [{ "include": "#expr" }]
         },
         {
+          "name": "meta.directive.fact.lute",
+          "begin": "(::)(assert|retract)(\\{)",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.directive.lute" },
+            "2": { "name": "keyword.control.fact.lute" },
+            "3": { "name": "punctuation.section.braces.begin.lute" }
+          },
+          "end": "(\\})|$",
+          "endCaptures": { "1": { "name": "punctuation.section.braces.end.lute" } },
+          "patterns": [
+            { "match": "[A-Za-z][A-Za-z0-9_]*(?=\\()", "name": "entity.name.function.relation.lute" },
+            { "match": "_", "name": "constant.language.wildcard.lute" },
+            { "match": "[A-Za-z][A-Za-z0-9_]*", "name": "variable.other.entity.lute" }
+          ]
+        },
+        {
           "name": "meta.directive.lute",
           "begin": "(::)([A-Za-z_][\\w-]*)",
           "beginCaptures": {

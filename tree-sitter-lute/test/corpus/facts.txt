@@ -1,0 +1,75 @@
+==================
+assert leaf (unary fact)
+==================
+---
+kind: scene
+---
+
+## Shot 1.
+::assert{ inParty(shadowheart) }
+----------------------------------------
+
+(source_file
+  (frontmatter)
+  (shot
+    (text)
+    (assert (fact_pattern (ident) (fact_arg (ident))))))
+
+==================
+assert binary fact
+==================
+---
+kind: scene
+---
+
+## Shot 1.
+::assert{ atLocation(shadowheart, grove) }
+----------------------------------------
+
+(source_file
+  (frontmatter)
+  (shot
+    (text)
+    (assert (fact_pattern (ident) (fact_arg (ident)) (fact_arg (ident))))))
+
+==================
+retract with wildcard
+==================
+---
+kind: scene
+---
+
+## Shot 1.
+::retract{ atLocation(shadowheart, _) }
+----------------------------------------
+
+(source_file
+  (frontmatter)
+  (shot
+    (text)
+    (retract (fact_pattern (ident) (fact_arg (ident)) (fact_arg (wildcard))))))
+
+==================
+assert inside quest on-arm
+==================
+---
+kind: quest
+---
+
+<quest id="q" title="t">
+<on event="questComplete">
+::retract{ captive(halsin) }
+::assert{ inParty(halsin) }
+</on>
+</quest>
+----------------------------------------
+
+(source_file
+  (frontmatter)
+  (quest
+    (attr (key) (string))
+    (attr (key) (string))
+    (on
+      (attr (key) (string))
+      (retract (fact_pattern (ident) (fact_arg (ident))))
+      (assert (fact_pattern (ident) (fact_arg (ident)))))))
