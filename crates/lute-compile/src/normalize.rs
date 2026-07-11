@@ -290,6 +290,8 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                 bind_attrs(&mut o.attrs, args, params);
                 bind_params(&mut o.body, args, params);
             }
+            // Fact args are ground — no `@param` binding target (0.3.0 T2).
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }

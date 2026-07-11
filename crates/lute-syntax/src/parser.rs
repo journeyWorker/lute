@@ -14,6 +14,7 @@
 //!    via a per-block loop that matches the JSX self-naming close by tag name.
 
 use crate::ast::*;
+use crate::datalog::{parse_fact, DatalogError, FactPattern};
 use crate::lex::{
     line_text_start_blanked, peel_frontmatter, strip_comments_checked, text_start_for_line,
     CommentError,
@@ -51,6 +52,12 @@ pub const E_INTERP_UNTERMINATED: &str = "E-INTERP-UNTERMINATED";
 /// second `# ` title appeared. At most one title MAY precede the first shot
 /// (§6.2 / I1).
 pub const E_TITLE_PLACEMENT: &str = "E-TITLE-PLACEMENT";
+/// Diagnostic code: an `::assert`/`::retract` payload does not parse per the
+/// Appendix C fact-pattern grammar (dsl 0.3.0 §5, Appendix C / D3).
+pub const E_DATALOG_PARSE: &str = "E-DATALOG-PARSE";
+/// Diagnostic code: an `::assert`/`::retract` payload contains a compound/
+/// function term (dsl 0.3.0 §7.1).
+pub const E_DATALOG_FUNCTION: &str = "E-DATALOG-FUNCTION";
 
 /// Parse a `.lute` document into its AST and parse diagnostics.
 ///
@@ -305,6 +312,12 @@ impl Parser<'_> {
     /// Precondition: `cursor` is on a non-blank, non-heading, non-close line.
     fn next_node(&mut self) -> Option<Node> {
         let trimmed = self.trimmed(self.cursor);
+        if trimmed.starts_with("::assert{") {
+            return Some(self.parse_fact_directive(false));
+        }
+        if trimmed.starts_with("::retract{") {
+            return Some(self.parse_fact_directive(true));
+        }
         if trimmed.starts_with("::set{") {
             return Some(self.parse_set());
         }
@@ -450,6 +463,72 @@ impl Parser<'_> {
             expr,
             span,
         })
+    }
+
+    /// `Assert ::= "::assert{" FactPattern "}"` / `Retract ::= "::retract{"
+    /// FactPattern "}"` (dsl 0.3.0 §5, Appendix C). Layer = Logic. The payload
+    /// is parsed by the ONE shared Datalog grammar (`crate::datalog::parse_fact`,
+    /// 0.3.0 T1) — NOT the `key="value"` attr form `::set`/`::directive` use.
+    /// A parse failure still produces a node carrying the D13 empty-relation
+    /// sentinel (`pattern.relation == ""`) so every downstream consumer skips
+    /// an already-diagnosed pattern in exactly one place. Wildcard legality
+    /// (`_` in `::assert`) is NOT checked here — that's the checker's job
+    /// (0.3.0 T10); the parser accepts `_` in both directives.
+    fn parse_fact_directive(&mut self, retract: bool) -> Node {
+        let i = self.cursor;
+        let (s, e) = self.lines[i];
+        let cstart = s + leading_ws(&self.body[s..e]);
+        let prefix_len = if retract { "::retract".len() } else { "::assert".len() };
+        let open = cstart + prefix_len; // at '{'
+        let close = self.find_matching_brace(open);
+        self.cursor += 1;
+
+        let Some(close) = close else {
+            self.emit_line(
+                E_DATALOG_PARSE,
+                "malformed fact pattern: missing closing `}` (dsl 0.3.0 §5, Appendix C)",
+                i,
+                Layer::Logic,
+            );
+            let span = self.span(cstart, e);
+            return build_fact_node(retract, sentinel_fact_pattern(), self.orig(open + 1), String::new(), span);
+        };
+
+        let inner_start = open + 1;
+        let inner = &self.body[inner_start..close];
+        let trim_lead = leading_ws(inner);
+        let raw = inner.trim().to_string();
+        let base = inner_start + trim_lead; // body-relative start of `raw`
+        let pattern_base = self.orig(base);
+        let span = self.span(cstart, close + 1);
+
+        let pattern = match parse_fact(&raw) {
+            Ok(p) => p,
+            Err(DatalogError::FunctionTerm { at, name }) => {
+                self.emit_o(
+                    E_DATALOG_FUNCTION,
+                    format!(
+                        "`{name}(…)` — function/compound terms are not Datalog; terms are declared constants or (in rules) variables (dsl 0.3.0 §7.1)"
+                    ),
+                    self.orig(base + at),
+                    self.orig(base + at + name.len().max(1)),
+                    Layer::Logic,
+                );
+                sentinel_fact_pattern()
+            }
+            Err(DatalogError::Malformed { at, msg }) => {
+                self.emit_o(
+                    E_DATALOG_PARSE,
+                    format!("malformed fact pattern: {msg} (dsl 0.3.0 §5, Appendix C)"),
+                    self.orig(base + at),
+                    self.orig(base + at),
+                    Layer::Logic,
+                );
+                sentinel_fact_pattern()
+            }
+        };
+
+        build_fact_node(retract, pattern, pattern_base, raw, span)
     }
 
     /// `Line ::= "@" Speaker Attrs? ":" WS Text` (dsl §7.1, 0.2.2 — the sigil
@@ -647,6 +726,21 @@ fn leading_ws(s: &str) -> usize {
     s.len() - s.trim_start().len()
 }
 
+/// The D13 malformed-parse sentinel: an empty-relation [`FactPattern`] every
+/// downstream consumer (checker, compiler) recognizes as "already diagnosed,
+/// skip".
+fn sentinel_fact_pattern() -> FactPattern {
+    FactPattern { relation: String::new(), relation_span: (0, 0), args: Vec::new(), span: (0, 0) }
+}
+
+fn build_fact_node(retract: bool, pattern: FactPattern, pattern_base: usize, raw: String, span: Span) -> Node {
+    if retract {
+        Node::Retract(Retract { pattern, pattern_base, raw, span })
+    } else {
+        Node::Assert(Assert { pattern, pattern_base, raw, span })
+    }
+}
+
 fn split_lines(body: &str) -> Vec<(usize, usize)> {
     let mut v = Vec::new();
     let mut start = 0;
@@ -743,6 +837,8 @@ fn node_end(n: &Node) -> usize {
         Node::Hub(h) => h.span.byte_end,
         Node::Objective(o) => o.span.byte_end,
         Node::On(o) => o.span.byte_end,
+        Node::Assert(a) => a.span.byte_end,
+        Node::Retract(r) => r.span.byte_end,
     }
 }
 

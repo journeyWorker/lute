@@ -51,7 +51,10 @@ pub fn walk_seq(
             Node::Directive(d) if d.tag == COMPONENT_END => {
                 cx.components.pop();
             }
-            Node::Line(_) | Node::Directive(_) | Node::Set(_) => {
+            // Fact args are ground — nothing authored, `lower_node`'s
+            // wildcard skips them; lowering to `Command::Assert`/`Retract`
+            // is Task 14.
+            Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {
                 // Only an `::auto` entrance consumes the lookahead
                 // (`entry-emotion-lookahead`); build the CFG-reachable
                 // continuation just for it and pass nothing otherwise, so the
@@ -645,7 +648,10 @@ pub fn walk_quest(
                     walk_seq(em, &on.body, StageState::default(), cx, &[], diags);
                 }
             }
-            Node::Line(_) | Node::Directive(_) | Node::Set(_) => {
+            // Fact args are ground — nothing authored, `lower_node`'s
+            // wildcard skips them; lowering to `Command::Assert`/`Retract`
+            // is Task 14.
+            Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {
                 let look = if matches!(node, Node::Directive(d) if d.tag == "auto") {
                     reachable_after(&quest.body[i + 1..], &[])
                 } else {

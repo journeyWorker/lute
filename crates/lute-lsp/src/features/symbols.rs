@@ -151,6 +151,7 @@ fn collect_children(nodes: &[Node], idx: &TextIndex, out: &mut Vec<DocumentSymbo
             }
             // Leaves and staging blocks are not outline symbols.
             Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }

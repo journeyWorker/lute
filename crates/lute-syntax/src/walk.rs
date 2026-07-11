@@ -20,6 +20,8 @@
 //!   `ClipNode::Directive` → attr refs; `ClipNode::Set` → `expr`.
 //! - [`Node::Objective`] → `done`; `when` (if any); `attrs` refs; then `body`.
 //! - [`Node::On`] → `when` (if any); `attrs` refs; then `body`.
+//! - [`Node::Assert`] / [`Node::Retract`] → no `CelSlot`s (args are
+//!   compile-time-ground; 0.3.0 T2). No-op.
 //!
 //! ## Document-level order (dsl 0.2.0)
 //! Every `shot.body` (as above), THEN every `quest` in `doc.quests`. Per
@@ -72,6 +74,7 @@ fn node<'a>(n: &'a Node, f: &mut impl FnMut(&'a CelSlot)) {
         Node::Hub(h) => hub(h, f),
         Node::Objective(o) => objective(o, f),
         Node::On(o) => on(o, f),
+        Node::Assert(_) | Node::Retract(_) => {}
     }
 }
 
@@ -191,6 +194,7 @@ fn node_mut(n: &mut Node, f: &mut impl FnMut(&mut CelSlot)) {
         Node::Hub(h) => hub_mut(h, f),
         Node::Objective(o) => objective_mut(o, f),
         Node::On(o) => on_mut(o, f),
+        Node::Assert(_) | Node::Retract(_) => {}
     }
 }
 

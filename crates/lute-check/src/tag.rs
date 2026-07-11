@@ -179,6 +179,7 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
             Node::Objective(o) => collect_lines(&o.body, out),
             Node::On(o) => collect_lines(&o.body, out),
             Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }

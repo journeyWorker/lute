@@ -938,6 +938,8 @@ impl Walker<'_> {
                     self.check_attr_refs(&o.attrs, ctx, None);
                     self.walk(&o.body, ctx);
                 }
+                // validated by fact_write (0.3.0 T10)
+                Node::Assert(_) | Node::Retract(_) => {}
             }
         }
     }
@@ -1420,6 +1422,22 @@ fn walk_component_body(
                 "a component body must be presentational (dsl §13): an `<on>` logic block is not allowed in v1".to_string(),
                 o.span,
             )),
+            Node::Assert(a) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                format!(
+                    "a component body must be presentational (dsl §13): `::assert` of `{}` writes state, not allowed in v1",
+                    a.pattern.relation
+                ),
+                a.span,
+            )),
+            Node::Retract(r) => diags.push(use_diag(
+                E_COMPONENT_BODY,
+                format!(
+                    "a component body must be presentational (dsl §13): `::retract` of `{}` writes state, not allowed in v1",
+                    r.pattern.relation
+                ),
+                r.span,
+            )),
         }
     }
 }
@@ -1501,7 +1519,12 @@ fn collect_use_targets(nodes: &[Node], out: &mut Vec<String>) {
                     collect_use_targets(&c.body, out);
                 }
             }
-            Node::Line(_) | Node::Set(_) | Node::Objective(_) | Node::On(_) => {}
+            Node::Line(_)
+            | Node::Set(_)
+            | Node::Objective(_)
+            | Node::On(_)
+            | Node::Assert(_)
+            | Node::Retract(_) => {}
         }
     }
 }
@@ -1841,6 +1864,7 @@ fn fold_branches_nodes(
             Node::On(o) => fold_branches_nodes(&o.body, schema, seen, diags),
             Node::Objective(o) => fold_branches_nodes(&o.body, schema, seen, diags),
             Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }
@@ -1909,6 +1933,7 @@ fn fold_slots_nodes(
             Node::On(o) => fold_slots_nodes(&o.body, snapshot, schema),
             Node::Objective(o) => fold_slots_nodes(&o.body, snapshot, schema),
             Node::Line(_) | Node::Set(_) => {}
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }
@@ -2161,5 +2186,7 @@ fn node_summary(node: &Node) -> String {
         Node::Hub(h) => format!("<hub> ({} choices)", h.choices.len()),
         Node::On(o) => format!("<on event=\"{}\">", o.event),
         Node::Objective(o) => format!("<objective id=\"{}\">", o.id),
+        Node::Assert(a) => format!("::assert{{{}(…)}}", a.pattern.relation),
+        Node::Retract(r) => format!("::retract{{{}(…)}}", r.pattern.relation),
     }
 }
