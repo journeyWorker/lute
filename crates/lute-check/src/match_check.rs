@@ -1090,10 +1090,11 @@ fn is_number_literal(lit: &str) -> bool {
 /// literal's own text (a same-line estimate — `check()`'s `normalize_spans`
 /// pass, check.rs, re-derives every diagnostic's display position from
 /// `byte_start`/`byte_end` before returning). An empty alternative (a stray
-/// `|`) is skipped, matching `analyze_is_pattern`. `pub(crate)`: reused by
-/// Task 4 (subsumption per-literal identity) and Task 7 (param `is=`
-/// checks).
-pub(crate) fn is_pattern_literals(raw: &str, span: Span) -> Vec<(String, Span)> {
+/// `|`) is skipped, matching `analyze_is_pattern`. `pub`: reused by Task 4
+/// (subsumption per-literal identity), Task 7 (param `is=` checks), and
+/// Task 8 (`lute-compile`'s §6.4 `fold_component_matches` — is-arm literal
+/// membership against a decided subject constant).
+pub fn is_pattern_literals(raw: &str, span: Span) -> Vec<(String, Span)> {
     let mut out = Vec::new();
     let mut offset = 0usize;
     for part in raw.split('|') {

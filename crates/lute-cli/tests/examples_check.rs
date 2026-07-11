@@ -80,3 +80,25 @@ fn rescue_halsin_quest_checks_clean_under_project() {
     ]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
 }
+
+#[test]
+fn affinity_reaction_pair_checks_clean_under_project() {
+    // 0.4.0 T8 (dsl §6.4/§6.5): the deduplicated affinity-reaction worked
+    // example — the component (`reaction.component.lute`, a param-scoped
+    // `<match>` admitted by 0.4.0 §6.2/§6.3) AND its caller
+    // (`affinity-reaction.lute`) must BOTH check clean, standalone, under
+    // the shared `docs/examples` project — the corpus gate this task's own
+    // acceptance criteria hold new example files to.
+    let out = check(&[
+        "../../docs/examples/affinity-reaction.lute",
+        "--project",
+        "../../docs/examples",
+    ]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let out = check(&[
+        "../../docs/examples/components/reaction.component.lute",
+        "--project",
+        "../../docs/examples",
+    ]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+}

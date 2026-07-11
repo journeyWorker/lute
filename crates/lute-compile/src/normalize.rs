@@ -12,7 +12,9 @@
 use std::collections::BTreeMap;
 
 use lute_check::meta::StateSchema;
-use lute_check::ComponentSet;
+use lute_check::{
+    decide_slot, is_pattern_literals, ComponentSet, DecideCtx, Decided, DefTable, DollarBinding,
+};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
@@ -201,6 +203,9 @@ fn expand_use(
     bind_params(&mut body, &args, &def.params);
     // Nested `::use` in the body expands recursively (acyclic per checker).
     normalize_nodes(&mut body, components, schema, diags);
+    // §6.4: static selection / residual dispatch for any param-scoped
+    // `<match>` in the bound body — runs ONLY here, on this clone (B2).
+    fold_component_matches(&mut body, schema);
 
     let span = d.span;
     let begin = Node::Directive(Directive {
@@ -223,6 +228,149 @@ fn expand_use(
     out.append(&mut body);
     out.push(end);
     out
+}
+
+/// §6.4: fold a param-scoped `<match>` at `::use` expansion time (dsl 0.4.0
+/// §6.4) — runs at the END of [`expand_use`] on the bound clone, and ONLY
+/// there (B2: a scene-level `<match>` is never touched by this pass —
+/// `normalize_nodes`'s own `Node::Match` arm recurses into arm bodies only
+/// to expand a nested `::use`, never calling this fold).
+///
+/// By the time this runs, `bind_params` has ALREADY textually substituted
+/// every `@param` occurrence in `nodes` with its bound arg's CEL text: a
+/// literal arg becomes a literal (`'fond'`, `true`, `3`); a caller-side
+/// `@def` ref (`tier=@currentTier`) becomes that ref's bare text
+/// (`@currentTier`). A component body may never itself hold a `@def` (§6.2
+/// purity — `E-COMPONENT-STATE`), so no def table is ever needed here, and
+/// the substituted `@currentTier` text is unexpandable (D3: a bodiless ref
+/// stays a marker) — undecided by construction, exactly the case-2 split.
+///
+/// Case 1 (subject AND every needed arm condition decide): splice the
+/// selected arm's body in place of the match — no match record emitted.
+/// This function's OWN scan loop re-visits the spliced nodes at the SAME
+/// index (it never advances `i` after a splice), so a nested param
+/// `<match>` folds recursively too — `normalize_nodes`'s outer `::use` loop
+/// does NOT re-scan past a splice (`i += n`, above), so this recursion has
+/// to live here, not there.
+///
+/// Case 2 (subject or any needed condition undecided): leave the
+/// `Node::Match` intact — it lowers to the ordinary `MatchCmd` later
+/// (stage.rs `walk_match`) — but still recurse into every arm's body: an
+/// unrelated NESTED param `<match>` inside a residual arm may still fold on
+/// its own terms.
+pub fn fold_component_matches(nodes: &mut Vec<Node>, schema: &StateSchema) {
+    let mut i = 0;
+    while i < nodes.len() {
+        let selection = if let Node::Match(m) = &nodes[i] {
+            decide_component_expr(&m.subject.raw, None, schema)
+                .and_then(|subj| select_component_arm(&m.arms, &subj, schema))
+        } else {
+            None
+        };
+        if let Some(idx) = selection {
+            let Node::Match(m) = nodes.remove(i) else {
+                unreachable!("`selection` is Some only when nodes[i] was Node::Match")
+            };
+            let body = match m.arms.into_iter().nth(idx) {
+                Some(Arm::When { body, .. }) | Some(Arm::Otherwise { body, .. }) => body,
+                None => unreachable!("idx came from select_component_arm over these SAME arms"),
+            };
+            nodes.splice(i..i, body);
+            continue; // re-scan from `i`: the recursion this fold owns (see doc comment).
+        }
+        if let Node::Match(m) = &mut nodes[i] {
+            for arm in &mut m.arms {
+                match arm {
+                    Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                        fold_component_matches(body, schema)
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+}
+
+/// Decide `raw` under §5.1 with an empty def table and an empty param-domain
+/// map (nothing is ever left to resolve through either by the time this
+/// runs — see [`fold_component_matches`]'s doc comment). `dollar` is
+/// `Some(v)` in arm-decision mode (`$` bound to the already-decided
+/// subject, `DollarBinding::Value`) and `None` in subject-decision mode (no
+/// `$` in scope for the subject slot itself).
+fn decide_component_expr(
+    raw: &str,
+    dollar: Option<Decided>,
+    schema: &StateSchema,
+) -> Option<Decided> {
+    let empty_bodies = BTreeMap::new();
+    let empty_def_params = BTreeMap::new();
+    let defs = DefTable {
+        bodies: &empty_bodies,
+        params: &empty_def_params,
+    };
+    let empty_params = BTreeMap::new();
+    let ctx = DecideCtx {
+        schema,
+        dollar: dollar.map(DollarBinding::Value),
+        params: &empty_params,
+    };
+    decide_slot(raw, &defs, &ctx)
+}
+
+/// Walk `arms` top-to-bottom against the decided subject `subj` (§6.4 step
+/// 2): an `is` pattern is literal-set membership ([`is_pattern_literals`] +
+/// [`is_literal_matches`]) — always decidable given a decided subject, no
+/// runtime unknowns possible; a `test` guard decides via `decide_slot` with
+/// `$` bound to `subj`. `is` + `test` together is AND (dsl §7.3.1) — an
+/// `is` miss skips the arm WITHOUT needing `test` to decide (sound: the arm
+/// provably doesn't fire regardless of `test`'s value).
+///
+/// Returns `Some(idx)` — the DEFINITELY-selected arm — only when every arm
+/// visited before it definitely does NOT fire; `None` the instant an arm's
+/// firing is itself undecided (§6.4 case 2 — the caller leaves the whole
+/// match as a residual record). `<otherwise>` always selects when reached
+/// (exhaustiveness is proven statically, §6.3).
+fn select_component_arm(arms: &[Arm], subj: &Decided, schema: &StateSchema) -> Option<usize> {
+    for (idx, arm) in arms.iter().enumerate() {
+        match arm {
+            Arm::Otherwise { .. } => return Some(idx),
+            Arm::When { is, test, .. } => {
+                if let Some(pat) = is {
+                    let literals = is_pattern_literals(&pat.raw, pat.span);
+                    if !literals.iter().any(|(lit, _)| is_literal_matches(lit, subj)) {
+                        continue; // `is` provably misses: skip, `test` irrelevant.
+                    }
+                }
+                if test.raw.trim().is_empty() {
+                    return Some(idx); // `is` matched (or absent) and no guard to add.
+                }
+                match decide_component_expr(&test.raw, Some(subj.clone()), schema) {
+                    Some(Decided::Bool(true)) => return Some(idx),
+                    Some(Decided::Bool(false)) => continue,
+                    _ => return None, // undecided (or an ill-typed non-bool verdict): bail.
+                }
+            }
+        }
+    }
+    None // exhaustiveness is a checker invariant; total fallback: stay residual.
+}
+
+/// Mirror `lute_check::match_check`'s `classify_when_literal` classification
+/// (dsl §7.3.1: `EnumMember | "true" | "false" | Number | "unset"`) to
+/// compare one `is=` literal against a §6.4-decided constant. A param is
+/// never `unset` (§6.3, checker-enforced via `E-WHEN-LITERAL-DOMAIN`), so
+/// `unset` never matches here.
+fn is_literal_matches(lit: &str, decided: &Decided) -> bool {
+    match lit {
+        "unset" => false,
+        "true" => matches!(decided, Decided::Bool(true)),
+        "false" => matches!(decided, Decided::Bool(false)),
+        _ => match decided {
+            Decided::Num(n) => lit.parse::<f64>().map(|v| v == *n).unwrap_or(false),
+            Decided::Str(s) => s == lit,
+            Decided::Bool(_) => false,
+        },
+    }
 }
 
 /// Bind `@param` uses to `::use` args. A whole-slot `@param` attr value is

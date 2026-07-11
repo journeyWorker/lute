@@ -49,7 +49,7 @@ pub use inject::{
 };
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, is_exhaustive,
-    BranchRecord, DomainInfo, HubRecord, QuestRecord,
+    is_pattern_literals, BranchRecord, DomainInfo, HubRecord, QuestRecord,
 };
 pub use meta::{
     parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace, StateDecl,

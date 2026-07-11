@@ -574,6 +574,22 @@ pub fn check(input: &CheckInput) -> CheckResult {
     let domains = &folded.domains;
 
     // 5. Per-node validator walk (directives / cel-slots / set / match / timeline).
+    // dsl 0.4.0 §6.2/§6.3: a STANDALONE component-file self-check's OWN
+    // `params:` domain table (mirrors `validate_components`'s per-component
+    // `param_domains` construction, `param_domain(ty)`) — empty for a
+    // Scene/Quest walk, where `Node::Match` never takes the param-admission
+    // branch below.
+    let param_domains: std::collections::BTreeMap<String, DomainInfo> =
+        if folded.typed.component.is_some() {
+            folded
+                .typed
+                .params
+                .iter()
+                .map(|p| (p.name.clone(), param_domain(&p.ty)))
+                .collect()
+        } else {
+            std::collections::BTreeMap::new()
+        };
     let mut walker = Walker {
         snapshot: &input.snapshot,
         providers: &input.providers,
@@ -583,6 +599,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
         timeline_tables: Vec::new(),
         exhaustive_subject_spans: Vec::new(),
         components: &input.components,
+        param_domains,
     };
     // Kind-dispatched walk (dsl 0.2.0 §3.1): scene walks `doc.shots` (dsl
     // 0.1.0 grammar, unchanged); quest walks `doc.quests` — each quest's own
@@ -786,6 +803,16 @@ struct Walker<'a> {
     exhaustive_subject_spans: Vec<Span>,
     /// Resolved `components:` table (dsl §13): the target of `::use` invocations.
     components: &'a ComponentSet,
+    /// dsl 0.4.0 §6.2/§6.3: this document's OWN declared `params:` domains,
+    /// non-empty ONLY for a STANDALONE `MetaKind::Component` self-check (the
+    /// `Node::Match` arm below dispatches a bare-`@param` subject through
+    /// `check_param_match` — the SAME admission rule `walk_component_body`
+    /// applies transitively — instead of the ordinary state-path
+    /// exhaustiveness engine, which has no notion of a param's declared
+    /// domain and would false-flag `E-NONEXHAUSTIVE` on every finite-domain
+    /// param match, `docs/examples/components/reaction.component.lute`
+    /// (0.4.0 T8) included). Always empty for a Scene/Quest walk.
+    param_domains: std::collections::BTreeMap<String, DomainInfo>,
 }
 
 impl Walker<'_> {
@@ -860,7 +887,6 @@ impl Walker<'_> {
                     }
                 }
                 Node::Match(m) => {
-                    self.diags.extend(check_match(m, &ctx.env.state, ctx));
                     // The subject expression is evaluated OUTSIDE match scope: `$`
                     // is only valid in a `<when test>` (dsl §8.2), never in `on=`.
                     // Force `in_match=false` so a nested `<match on="$">` (whose
@@ -880,8 +906,27 @@ impl Walker<'_> {
                         &subject_ctx,
                         subject_expected.as_ref(),
                     ));
-                    if is_exhaustive(m, &ctx.env.state) {
-                        self.exhaustive_subject_spans.push(m.subject.span);
+                    // dsl 0.4.0 §6.2/§6.3: a bare `@param` subject naming one of
+                    // THIS document's own declared params (`self.param_domains`
+                    // is non-empty ONLY for a standalone `MetaKind::Component`
+                    // self-check) dispatches through the SAME admitted-form
+                    // check the transitive `walk_component_body` walk applies —
+                    // never the ordinary state-path exhaustiveness engine, which
+                    // has no notion of a param's declared domain and would
+                    // false-flag `E-NONEXHAUSTIVE` on every finite-domain param
+                    // match.
+                    match bare_param_ref(&m.subject.raw)
+                        .and_then(|name| self.param_domains.get(&name).cloned())
+                    {
+                        Some(dom) => {
+                            self.diags.extend(check_param_match(m, dom, ctx));
+                        }
+                        None => {
+                            self.diags.extend(check_match(m, &ctx.env.state, ctx));
+                            if is_exhaustive(m, &ctx.env.state) {
+                                self.exhaustive_subject_spans.push(m.subject.span);
+                            }
+                        }
                     }
                     // Arms (tests + bodies) evaluate WITHIN match scope: `$` binds
                     // to the subject (carry-forward #2).
