@@ -35,7 +35,7 @@
 //! byte offset maps 1:1 onto the original text.
 
 use lute_core_span::Severity;
-use lute_syntax::ast::{Arm, Choice, Line, Node};
+use lute_syntax::ast::{Arm, AttrValue, Choice, Line, Node};
 use lute_syntax::parse;
 
 /// The result of a migration pass: the (possibly rewritten) document text and
@@ -124,6 +124,48 @@ pub fn fix_document(text: &str) -> FixResult {
         let start = l.span.byte_start;
         if bytes1.get(start) == Some(&b':') {
             edits2.push((start, start + 1, "@".to_string()));
+        }
+    }
+
+    // -- `delivery="…"` → bare flag (dsl 0.2.2 §7.1, Task D3 foundation):
+    // runs in this SAME edits2/text1 pass as the sigil + `as`→`into` rules
+    // above. `delivery="thought"`/`"voiceover"` rewrite to the bare
+    // `{mono}`/`{vo}` flags; `delivery="spoken"` is dropped outright (spoken
+    // is the 0.2.2 default, no flag needed) — if it was the line's only
+    // attr the now-empty `{…}` is dropped too (a brace-less
+    // `@speaker: text` line parses fine per `parse_line` above), otherwise
+    // just the attr plus one adjacent whitespace separator is removed so
+    // the remaining attrs stay single-space-clean. Idempotent: a bare
+    // `{mono}`/`{vo}` flag has no `delivery` key, so it never matches. A
+    // `delivery=` attr span sits strictly inside `{…}`, well past the
+    // leading sigil byte the rule above targets, so the two rules never
+    // overlap.
+    for l in &lines {
+        for a in &l.attrs {
+            if a.key != "delivery" {
+                continue;
+            }
+            let AttrValue::Str(v) = &a.value else {
+                continue;
+            };
+            let start = a.span.byte_start;
+            let end = a.span.byte_end;
+            match v.as_str() {
+                "thought" => edits2.push((start, end, "mono".to_string())),
+                "voiceover" => edits2.push((start, end, "vo".to_string())),
+                "spoken" => {
+                    if l.attrs.len() == 1 {
+                        match find_enclosing_braces(bytes1, l.span.byte_start, l.text_span.byte_start, start, end) {
+                            Some((bs, be)) => edits2.push((bs, be, String::new())),
+                            None => edits2.push((start, end, String::new())),
+                        }
+                    } else {
+                        let (ws, we) = widen_removed_attr(bytes1, start, end);
+                        edits2.push((ws, we, String::new()));
+                    }
+                }
+                _ => {}
+            }
         }
     }
     let phase2 = edits2.len();
@@ -217,6 +259,74 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
             Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
         }
     }
+}
+
+/// Given a `delivery=` [`Attr`](lute_syntax::ast::Attr) span `[attr_start,
+/// attr_end)` that is a content line's ONLY attr, locate the enclosing
+/// `{`/`}` byte pair so the codemod can drop the whole now-empty `{…}`
+/// (Task D3) rather than leave stray braces behind. Only whitespace may sit
+/// between the brace and the attr (that's how `scan_attrs` reaches it as the
+/// sole entry), so a non-whitespace, non-brace byte aborts the scan.
+/// `[scan_start, scan_end)` bounds the search to the line's own
+/// speaker/attrs prefix (`Line.span.byte_start` .. `Line.text_span.byte_start`)
+/// so it can never wander into the line's text or a neighboring line.
+fn find_enclosing_braces(
+    bytes: &[u8],
+    scan_start: usize,
+    scan_end: usize,
+    attr_start: usize,
+    attr_end: usize,
+) -> Option<(usize, usize)> {
+    let mut open = None;
+    let mut i = attr_start;
+    while i > scan_start {
+        i -= 1;
+        match bytes[i] {
+            b'{' => {
+                open = Some(i);
+                break;
+            }
+            b' ' | b'\t' => continue,
+            _ => break,
+        }
+    }
+    let open = open?;
+    let mut close = None;
+    let mut j = attr_end;
+    while j < scan_end {
+        match bytes[j] {
+            b'}' => {
+                close = Some(j);
+                break;
+            }
+            b' ' | b'\t' => j += 1,
+            _ => break,
+        }
+    }
+    let close = close?;
+    Some((open, close + 1))
+}
+
+/// Widen a to-be-deleted attr's `[start, end)` span to also swallow ONE
+/// adjacent whitespace separator, so dropping a first/middle attr among
+/// siblings doesn't leave a stray double space and dropping the LAST attr
+/// doesn't leave a stray leading space before `}` (dsl §4.5 attrs are
+/// whitespace-separated). Prefers the TRAILING separator; falls back to the
+/// LEADING one only when there's no trailing whitespace to take (i.e. the
+/// attr was last, immediately followed by `}`/line end).
+fn widen_removed_attr(bytes: &[u8], start: usize, end: usize) -> (usize, usize) {
+    let mut new_end = end;
+    while new_end < bytes.len() && matches!(bytes[new_end], b' ' | b'\t') {
+        new_end += 1;
+    }
+    if new_end > end {
+        return (start, new_end);
+    }
+    let mut new_start = start;
+    while new_start > 0 && matches!(bytes[new_start - 1], b' ' | b'\t') {
+        new_start -= 1;
+    }
+    (new_start, end)
 }
 
 #[cfg(test)]
@@ -387,5 +497,57 @@ mod tests {
         assert!(out.text.contains("@narrator: x"));
         // idempotent
         assert_eq!(fix_document(&out.text).text, out.text);
+    }
+
+    #[test]
+    fn migrates_delivery_attr_to_flag() {
+        let out = fix_document("## Shot 1.\n@x{delivery=\"thought\"}: a\n@y{delivery=\"voiceover\"}: b\n");
+        assert!(out.text.contains("{mono}") && out.text.contains("{vo}"), "got:\n{}", out.text);
+        assert!(!out.text.contains("delivery="), "got:\n{}", out.text);
+    }
+
+    #[test]
+    fn migrates_delivery_spoken_is_removed() {
+        // `delivery="spoken"` is the 0.2.2 default — removed outright, no
+        // flag substituted, and (being the line's only attr) the now-empty
+        // `{…}` drops too so the line reads as a bare `@speaker: text`
+        // (confirmed the parser accepts a brace-less content line).
+        let out = fix_document("## Shot 1.\n@z{delivery=\"spoken\"}: c\n");
+        assert!(!out.text.contains("delivery="), "got:\n{}", out.text);
+        assert!(
+            !out.text.contains('{') && !out.text.contains('}'),
+            "empty braces must be dropped too, got:\n{}",
+            out.text
+        );
+        assert!(out.text.contains("@z: c"), "got:\n{}", out.text);
+        // still parses clean.
+        let (_doc, diags) = parse(&out.text);
+        assert!(
+            !diags.iter().any(|d| d.severity == Severity::Error),
+            "migrated output must still parse: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn migrates_delivery_spoken_among_other_attrs_keeps_braces() {
+        // `spoken` removal among sibling attrs must not orphan them or leave
+        // a stray double space — only the `delivery=` attr (plus exactly one
+        // adjacent separator) is dropped, whichever side it sits on.
+        let out = fix_document(
+            "## Shot 1.\n@z{emotion=\"x\" delivery=\"spoken\"}: c\n@w{delivery=\"spoken\" emotion=\"x\"}: d\n",
+        );
+        assert!(!out.text.contains("delivery="), "got:\n{}", out.text);
+        assert!(out.text.contains("@z{emotion=\"x\"}: c"), "got:\n{}", out.text);
+        assert!(out.text.contains("@w{emotion=\"x\"}: d"), "got:\n{}", out.text);
+    }
+
+    #[test]
+    fn delivery_flag_migration_is_idempotent() {
+        // Already-bare `{mono}`/`{vo}` flags (no `delivery=` key) must emit
+        // no edits — the rule only ever fires on a `delivery=` attr key.
+        let src = "## Shot 1.\n@x{mono}: a\n@y{vo}: b\n@z: c\n";
+        let out = fix_document(src);
+        assert_eq!(out.changed, 0, "already-bare flags must not be touched: {}", out.text);
+        assert_eq!(out.text, src);
     }
 }
