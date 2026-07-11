@@ -102,3 +102,16 @@ fn affinity_reaction_pair_checks_clean_under_project() {
     ]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
 }
+
+#[test]
+fn gated_line_checks_clean_under_project() {
+    // 0.4.0 T11 (dsl §7.2/§7.4): the `when=` gated-line sugar worked
+    // example — a sugared content line and its hand-written explicit-match
+    // twin — must check clean under the shared `docs/examples` project.
+    let out = check(&[
+        "../../docs/examples/gated-line.lute",
+        "--project",
+        "../../docs/examples",
+    ]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+}

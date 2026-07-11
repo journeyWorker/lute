@@ -291,6 +291,16 @@ fn affinity_reaction() {
     );
 }
 
+/// dsl 0.4.0 §7.2/§7.4 (T11): the `when=` gated-line sugar worked example
+/// — a sugared content line (shot 1) plus its hand-written explicit-match
+/// twin (shot 2). Proves the desugar end-to-end through the SAME artifact-
+/// invariants + determinism gate every other golden runs through (a
+/// synthesized match record is real IR, not a special case).
+#[test]
+fn gated_line() {
+    golden("gated_line", "../../docs/examples/gated-line.lute", None);
+}
+
 /// The strengthened resolvability check must REJECT a dangling target — proving
 /// it is a genuine graph proof, not an "any 8-char string" shape check.
 #[test]
