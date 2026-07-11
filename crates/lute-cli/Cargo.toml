@@ -14,6 +14,7 @@ lute-manifest = { path = "../lute-manifest" }
 lute-check = { path = "../lute-check" }
 lute-syntax = { path = "../lute-syntax" }
 lute-compile = { path = "../lute-compile" }
+lute-trace = { path = "../lute-trace" }
 clap = { version = "4", features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
