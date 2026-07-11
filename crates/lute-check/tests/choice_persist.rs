@@ -3,7 +3,7 @@
 //! run-fact promotion (the engine materializes the `::set`). Fed through the
 //! assembled `check()` over inline `state:` frontmatter (mirrors `ref_type.rs`'s
 //! `codes()`-over-inline-schema harness).
-use lute_check::{check, CheckInput, Mode, SchemaImports};
+use lute_check::{check, CheckInput, CheckResult, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n";
@@ -23,6 +23,21 @@ fn codes(text: &str) -> Vec<String> {
         .into_iter()
         .map(|d| d.code)
         .collect()
+}
+
+/// Like [`codes`] but returns the full [`CheckResult`] — Task 12's tests need
+/// `res.ok` (B4) and per-diagnostic `severity`/`fixits`, not just codes.
+fn diagnose(text: &str) -> CheckResult {
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "choice_persist".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+    };
+    check(&input)
 }
 
 /// A clean result carries no persist-family diagnostic and no `E-UNDECLARED`
@@ -221,4 +236,161 @@ fn content_line_as_still_label_override() {
          @bianca{{as=\"Hostess\"}}: Welcome in.\n"
     );
     assert_clean(&codes(&t));
+}
+
+#[test]
+fn bare_into_warns_on_branch_choice() {
+    // dsl 0.4 §7.3 / Appendix A: a branch choice carrying `into=` with no
+    // `persist=` is a silent no-op today — checks clean and records nothing.
+    // It must now flag exactly one W-CHOICE-INTO-NO-PERSIST, and (B4) a
+    // warning never flips the verdict.
+    let t = format!(
+        "{HDR}---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"help\" label=\"Help\" into=\"run.metHelpfully\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    let res = diagnose(&t);
+    let warnings: Vec<_> = res
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "W-CHOICE-INTO-NO-PERSIST")
+        .collect();
+    assert_eq!(
+        warnings.len(),
+        1,
+        "a bare `into=` on a branch choice must flag exactly one \
+         W-CHOICE-INTO-NO-PERSIST; got {:?}",
+        res.diagnostics
+    );
+    assert!(
+        res.ok,
+        "a warning must never flip the verdict (B4); got {:?}",
+        res.diagnostics
+    );
+}
+
+#[test]
+fn bare_into_warns_on_hub_choice() {
+    // Same trap, a hub choice this time (§7.3 covers both `<branch>` and
+    // `<hub>` choices).
+    let t = format!(
+        "{HDR}---\n## Shot 1.\n\
+         <hub id=\"h\">\n\
+         <choice id=\"help\" label=\"Help\" into=\"run.metHelpfully\" exit>\n\
+         </choice>\n\
+         </hub>\n"
+    );
+    let res = diagnose(&t);
+    let warnings: Vec<_> = res
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "W-CHOICE-INTO-NO-PERSIST")
+        .collect();
+    assert_eq!(
+        warnings.len(),
+        1,
+        "a bare `into=` on a hub choice must flag exactly one \
+         W-CHOICE-INTO-NO-PERSIST; got {:?}",
+        res.diagnostics
+    );
+    assert!(
+        res.ok,
+        "a warning must never flip the verdict (B4); got {:?}",
+        res.diagnostics
+    );
+}
+
+#[test]
+fn persist_present_stays_silent() {
+    // The full sugar (`persist="run" into="run.<path>"`) never warns — and
+    // every existing E-PERSIST-* behavior stays untouched (`assert_clean`
+    // already pins the latter; this pins the former too).
+    let t = format!(
+        "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"Help\" persist=\"run\" into=\"run.helped\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    let cs = codes(&t);
+    assert_clean(&cs);
+    assert!(
+        !cs.contains(&"W-CHOICE-INTO-NO-PERSIST".to_string()),
+        "the full persist sugar must never warn; got {cs:?}"
+    );
+}
+
+#[test]
+fn no_into_no_warning() {
+    // A choice with neither `persist=` nor `into=` is ordinary — no trap to
+    // name.
+    let t = format!(
+        "{HDR}---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"Plain\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    assert!(
+        !codes(&t).contains(&"W-CHOICE-INTO-NO-PERSIST".to_string()),
+        "a choice with no `into=` must never warn; got {:?}",
+        codes(&t)
+    );
+}
+
+#[test]
+fn fixits_carry_both_remedies() {
+    // D16: the warning carries exactly two `"refactor"` fixits, and each
+    // one's edit splices the ORIGINAL source into the expected remedy text.
+    let t = format!(
+        "{HDR}---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"help\" label=\"Help\" into=\"run.metHelpfully\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    let res = diagnose(&t);
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "W-CHOICE-INTO-NO-PERSIST")
+        .expect("bare `into=` must warn");
+    assert_eq!(d.fixits.len(), 2, "got {:?}", d.fixits);
+    assert!(
+        d.fixits.iter().all(|f| f.kind == "refactor"),
+        "both fixits must be kind \"refactor\" (D16, never \"migrate\"); got {:?}",
+        d.fixits
+    );
+
+    let add = d
+        .fixits
+        .iter()
+        .find(|f| f.title.contains("add"))
+        .expect("an `add persist=\"run\"` fixit");
+    assert_eq!(add.edit.len(), 1, "got {:?}", add.edit);
+    let e = &add.edit[0];
+    let mut spliced = t.clone();
+    spliced.replace_range(e.span.byte_start..e.span.byte_end, &e.new_text);
+    assert!(
+        spliced.contains(
+            "<choice id=\"help\" label=\"Help\" persist=\"run\" into=\"run.metHelpfully\">"
+        ),
+        "add-persist fixit must splice to the sugared form; got:\n{spliced}"
+    );
+
+    let remove = d
+        .fixits
+        .iter()
+        .find(|f| f.title.contains("remove"))
+        .expect("a `remove into=` fixit");
+    assert_eq!(remove.edit.len(), 1, "got {:?}", remove.edit);
+    let e2 = &remove.edit[0];
+    let mut spliced2 = t.clone();
+    spliced2.replace_range(e2.span.byte_start..e2.span.byte_end, &e2.new_text);
+    assert!(
+        spliced2.contains("<choice id=\"help\" label=\"Help\">"),
+        "remove-into fixit must splice `into=` cleanly away; got:\n{spliced2}"
+    );
 }

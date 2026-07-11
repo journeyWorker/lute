@@ -402,6 +402,25 @@ mod tests {
     }
 
     #[test]
+    fn lute_fix_never_touches_bare_into() {
+        // D16: `fix_document` never reads checker diagnostics — a `<choice
+        // into=…>` with no `persist=` (W-CHOICE-INTO-NO-PERSIST, check.rs)
+        // is a checker-only warning with two author-chosen fixits; `lute
+        // fix` must leave it byte-identical (changed == 0). Neither existing
+        // rule touches it: there is no `as` attr to rewrite to `into`, and
+        // the content line already uses the current `@` sigil.
+        let src = wrap(
+            "<branch id=\"b\">\n<choice id=\"help\" label=\"Help\" into=\"run.metHelpfully\">\n@bianca: hi\n</choice>\n</branch>\n",
+        );
+        let out = fix_document(&src);
+        assert_eq!(out.changed, 0, "got:\n{}", out.text);
+        assert_eq!(
+            out.text, src,
+            "lute fix must leave a bare `into=` byte-identical (D16)"
+        );
+    }
+
+    #[test]
     fn content_line_as_label_override_is_untouched() {
         // `:bianca{as="???"}: hi` is a display-label override (dsl §7.1), NOT a
         // persist target — the `as` attr itself must survive untouched, even
