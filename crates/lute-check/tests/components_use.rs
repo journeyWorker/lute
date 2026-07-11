@@ -207,7 +207,10 @@ fn recursive_components_is_cycle() {
 #[test]
 fn state_read_in_body_is_v1_error() {
     let dir = unique_dir();
-    // A `<match>` reading scene state in a body is a v1 presentational-scope error.
+    // A `<match>` reading scene state in a body is the purity-contract error
+    // `E-COMPONENT-STATE` (dsl 0.4.0 §6.2) — the code narrowing this task
+    // mandates: the subject reads ambient state, so `E-COMPONENT-BODY` (the
+    // "not an admitted form" verdict) no longer fires for it.
     write_lute(
         &dir,
         "logic.lute",
@@ -218,8 +221,8 @@ fn state_read_in_body_is_v1_error() {
     let s = scene("logic.lute", "::use{component=\"logic\"}");
     let cs = codes(&dir, &s);
     assert!(
-        cs.contains(&"E-COMPONENT-BODY".to_string()),
-        "a `<match>` logic block / state read in a body must flag E-COMPONENT-BODY; got {cs:?}"
+        cs.contains(&"E-COMPONENT-STATE".to_string()),
+        "a `<match>` subject reading ambient scene state in a body must flag E-COMPONENT-STATE; got {cs:?}"
     );
 }
 

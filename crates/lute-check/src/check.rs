@@ -1108,46 +1108,67 @@ fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>)
                 &interp.raw
             }
         };
-        // Reuse the guard/`::set` read-check verbatim: parse the referent as a
-        // value-read CEL slot over the interpolation's span, then run the shared
-        // resolver. `CelKind::AttrValue` is a non-guard read context — the
-        // guard-only §9.6 `run.choiceLog` rule must not fire on a content
-        // interpolation. A parse failure leaves `ast = None`, so the resolver
-        // skips its AST pass and never double-reports malformed CEL.
-        let mut arena = CelArena::default();
-        let mut slot = CelSlot::raw(CelKind::AttrValue, referent.clone(), interp.span);
-        if let Ok(handle) = parse_slot(&mut arena, &slot.raw, interp.span.byte_start) {
-            slot.ast = Some(handle);
-        }
-        // Every cel-layer diagnostic here pertains to THIS interpolation; pin its
-        // span to the whole `{{…}}` (matching the resolver's own state-path
-        // fallback) so ref/arity/undeclared spans stay consistent and never shift
-        // to the leading `{` from the interior-relative `scan_refs` offsets.
-        for mut d in check_cel_slot(&slot, &arena, &interp_ctx, None) {
-            d.span = interp.span;
-            diags.push(d);
-        }
-        // §7.6 rendering: an interpolated `@ref` MUST resolve to a renderable
-        // type (number/bool/enum). A DECLARED def whose produced type is known and
-        // non-renderable is `E-REF-TYPE`; an undeclared ref already flagged
-        // `E-UNDECLARED-REF` above (its name is absent from `def_types`, so this
-        // never double-reports).
-        if interp.kind == InterpKind::Ref {
-            if let Some(name) = scan_refs(referent).into_iter().find(|r| !r.is_dollar).map(|r| r.name) {
-                if let Some(ty) = interp_ctx.env.def_types.get(&name) {
-                    if !is_renderable(ty) {
-                        diags.push(Diagnostic {
-                            code: "E-REF-TYPE".to_string(),
-                            severity: Severity::Error,
-                            message: format!(
-                                "`@{name}` produces a non-renderable type; a `{{{{…}}}}` interpolation renders only number/bool/enum (dsl §7.6)"
-                            ),
-                            span: interp.span,
-                            layer: Layer::Cel,
-                            fixits: Vec::new(),
-                            provenance: None,
-                        });
-                    }
+        check_interp_referent(referent, interp, &interp_ctx, diags);
+    }
+}
+
+/// Validate ONE non-`Reserved` interpolation referent (`Path` or `Ref`, dsl
+/// §7.6) whose grammar the caller already confirmed: parse `referent` as a
+/// value-read CEL slot pinned to the interp's span, run [`check_cel_slot`]
+/// (so a `Path` resolves against the caller's `ctx.env.state`/`defs` and a
+/// `Ref` against `defs:`), then — for a `Ref` — the renderable-type check.
+/// Shared by [`check_interps`] (scene bodies) and [`component_interp_scan`]'s
+/// `Ref`/`$` branches (component bodies, dsl 0.4.0 §6.2): the two callers
+/// differ ONLY in how an ordinary `Path` referent is treated before reaching
+/// here — `check_interps` routes it here too (declared-`state:` lookup),
+/// `component_interp_scan` never does (a component-body `Path` is always
+/// ambient state, dsl §6.2) — except `{{$}}`, which stays on this shared path
+/// everywhere so `E-DOLLAR-OUTSIDE-MATCH` fires uniformly.
+fn check_interp_referent(
+    referent: &str,
+    interp: &Interp,
+    interp_ctx: &Ctx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    // Reuse the guard/`::set` read-check verbatim: parse the referent as a
+    // value-read CEL slot over the interpolation's span, then run the shared
+    // resolver. `CelKind::AttrValue` is a non-guard read context — the
+    // guard-only §9.6 `run.choiceLog` rule must not fire on a content
+    // interpolation. A parse failure leaves `ast = None`, so the resolver
+    // skips its AST pass and never double-reports malformed CEL.
+    let mut arena = CelArena::default();
+    let mut slot = CelSlot::raw(CelKind::AttrValue, referent.to_string(), interp.span);
+    if let Ok(handle) = parse_slot(&mut arena, &slot.raw, interp.span.byte_start) {
+        slot.ast = Some(handle);
+    }
+    // Every cel-layer diagnostic here pertains to THIS interpolation; pin its
+    // span to the whole `{{…}}` (matching the resolver's own state-path
+    // fallback) so ref/arity/undeclared spans stay consistent and never shift
+    // to the leading `{` from the interior-relative `scan_refs` offsets.
+    for mut d in check_cel_slot(&slot, &arena, interp_ctx, None) {
+        d.span = interp.span;
+        diags.push(d);
+    }
+    // §7.6 rendering: an interpolated `@ref` MUST resolve to a renderable
+    // type (number/bool/enum). A DECLARED def whose produced type is known and
+    // non-renderable is `E-REF-TYPE`; an undeclared ref already flagged
+    // `E-UNDECLARED-REF` above (its name is absent from `def_types`, so this
+    // never double-reports).
+    if interp.kind == InterpKind::Ref {
+        if let Some(name) = scan_refs(referent).into_iter().find(|r| !r.is_dollar).map(|r| r.name) {
+            if let Some(ty) = interp_ctx.env.def_types.get(&name) {
+                if !is_renderable(ty) {
+                    diags.push(Diagnostic {
+                        code: "E-REF-TYPE".to_string(),
+                        severity: Severity::Error,
+                        message: format!(
+                            "`@{name}` produces a non-renderable type; a `{{{{…}}}}` interpolation renders only number/bool/enum (dsl §7.6)"
+                        ),
+                        span: interp.span,
+                        layer: Layer::Cel,
+                        fixits: Vec::new(),
+                        provenance: None,
+                    });
                 }
             }
         }
@@ -1224,6 +1245,16 @@ const E_COMPONENT_UNDECLARED: &str = "E-COMPONENT-UNDECLARED";
 const E_COMPONENT_ARG: &str = "E-COMPONENT-ARG";
 const E_COMPONENT_CYCLE: &str = "E-COMPONENT-CYCLE";
 const E_COMPONENT_BODY: &str = "E-COMPONENT-BODY";
+
+/// dsl 0.4.0 §6.1/§6.2: a component-body position depends on or affects
+/// ambient state — a CEL reference to a state path, a fact query
+/// (`holds`/`count`/`validAt`), `now()`, or a directive whose resolved
+/// manifest/lowering declares state or bridge-result writes. Distinct from
+/// `E_COMPONENT_BODY` (a construct that is never admitted, regardless of what
+/// it reads/writes): this code names the purity defect itself, so a plain
+/// `E-UNDECLARED`/`E-RELATION-UNKNOWN` the empty component env would
+/// otherwise misreport for the SAME site never surfaces (D6).
+const E_COMPONENT_STATE: &str = "E-COMPONENT-STATE";
 
 /// Build a `Layer::Staging` diagnostic for a `::use` invocation / component body
 /// (dsl §13).
@@ -1409,6 +1440,20 @@ fn validate_components(
                 &mut body_diags,
             );
         }
+        // D6 (dsl 0.4.0 §6.2): the positive `E-COMPONENT-STATE` scan
+        // (`component_slot_state_scan`/`component_interp_scan`) is the
+        // AUTHORITATIVE diagnosis for an ambient-state read inside a
+        // component body. The SAME site also reaches the ordinary
+        // `check_cel_slot`/`check_directive` pipeline (run unconditionally so
+        // ref/arity/profile checks still apply) against the EMPTY component
+        // `state:`/`RelVocab` (`component_env`), which incidentally
+        // misreports it as `E-UNDECLARED`/`E-RELATION-UNKNOWN` — a path that
+        // may be perfectly declared in the CONSUMING scene. Drop those two
+        // incidental codes; `E-UNDECLARED-REF` (an unknown `@param`) is a
+        // real defect and stays untouched (D6).
+        body_diags.retain(|d| {
+            d.code != "E-UNDECLARED" && d.code != crate::rel_schema::E_RELATION_UNKNOWN
+        });
         for mut d in body_diags {
             d.message = format!("component `{name}` ({}): {}", def.src.display(), d.message);
             d.span = at;
@@ -1446,10 +1491,183 @@ fn component_env(params: &[(String, Type)]) -> Env {
     }
 }
 
-/// Walk a component body in component mode (dsl §13). Lines + staging directives
-/// (incl. nested `::use`) are presentational and validated; a `::set` (state
-/// write), `<branch>`/`<match>` (logic block), or `<timeline>` is the v1
-/// presentational-scope error `E-COMPONENT-BODY`.
+/// Positive scan over one component-body CEL slot for a dependency on
+/// ambient state (dsl 0.4.0 §6.1/§6.2): a state-path READ
+/// (`cel_paths::collect_path_uses`, the SAME reconstruction the scene-level
+/// `check_cel_slot` uses), a fact query, or `now()` (`is_profile_fact_query`,
+/// via a MARKED re-parse — mirrors `check_cel_slot`'s own Pass 3, since
+/// `@ref`s must be marker-substituted before a real `now()`/`holds(...)` call
+/// is distinguishable from a parameterized `@ref(args)`). One
+/// `E-COMPONENT-STATE` diagnostic per occurrence, at the slot's span — this
+/// is a POSITIVE scan (it finds what a component body may NOT do), unlike
+/// `check_cel_slot`'s declared-schema resolution (D6: the empty component env
+/// would otherwise misreport these same sites as
+/// `E-UNDECLARED`/`E-RELATION-UNKNOWN`).
+fn component_slot_state_scan(slot: &CelSlot, arena: &CelArena, diags: &mut Vec<Diagnostic>) {
+    if let Some(handle) = slot.ast.clone() {
+        if let Some(root) = arena.get(handle) {
+            for use_ in crate::cel_paths::collect_path_uses(&root.expr) {
+                diags.push(use_diag(
+                    E_COMPONENT_STATE,
+                    format!(
+                        "`{}` reads ambient state — a component body may not depend on it; bind it through a param (dsl 0.4 §6.2)",
+                        use_.path
+                    ),
+                    slot.span,
+                ));
+            }
+        }
+    }
+    let mut marked = CelArena::default();
+    if let Some(mh) = lute_cel::parse_slot_marked_refs(&mut marked, &slot.raw) {
+        if let Some(mroot) = marked.get(mh) {
+            scan_fact_queries(&mroot.expr, slot, diags);
+        }
+    }
+}
+
+/// Recurse `expr` (a MARKED re-parse) for every fact-query/`now()` call
+/// (`is_profile_fact_query`, cel_resolve.rs) — mirrors `check_fact_queries`'s
+/// own recursion shape (cel_resolve.rs) so a call nested inside an operator
+/// (`count(x) >= 1`) or a `validAt` second arg is still found; a well-shaped
+/// hit does NOT recurse into its OWN pattern arg (a relation `Call`, not a
+/// CEL sub-expression).
+fn scan_fact_queries(expr: &cel_parser::ast::Expr, slot: &CelSlot, diags: &mut Vec<Diagnostic>) {
+    use cel_parser::ast::Expr;
+    match expr {
+        Expr::Call(c) => {
+            if crate::cel_resolve::is_profile_fact_query(c) {
+                let message = if c.func_name == "now" {
+                    "`now()` reads narrative time — a component body may not depend on ambient state; bind it through a param (dsl 0.4 §6.2)".to_string()
+                } else {
+                    format!(
+                        "`{}(…)` queries the fact store — a component body may not depend on ambient state; bind it through a param (dsl 0.4 §6.2)",
+                        c.func_name
+                    )
+                };
+                diags.push(use_diag(E_COMPONENT_STATE, message, slot.span));
+                // `validAt`'s second arg is a genuine CEL expr (may itself
+                // nest another fact query, e.g. `validAt(rel(a), now())`).
+                if c.func_name == "validAt" {
+                    if let Some(t) = c.args.get(1) {
+                        scan_fact_queries(&t.expr, slot, diags);
+                    }
+                }
+                return;
+            }
+            if let Some(t) = &c.target {
+                scan_fact_queries(&t.expr, slot, diags);
+            }
+            for a in &c.args {
+                scan_fact_queries(&a.expr, slot, diags);
+            }
+        }
+        Expr::List(list) => {
+            for el in &list.elements {
+                scan_fact_queries(&el.expr, slot, diags);
+            }
+        }
+        Expr::Select(sel) => scan_fact_queries(&sel.operand.expr, slot, diags),
+        Expr::Comprehension(_)
+        | Expr::Map(_)
+        | Expr::Struct(_)
+        | Expr::Ident(_)
+        | Expr::Literal(_)
+        | Expr::Unspecified => {}
+    }
+}
+
+/// Validate a content line's `{{…}}` interpolations inside a component body
+/// (dsl 0.4.0 §6.2): the component analog of [`check_interps`], differing
+/// ONLY in how an ordinary `Path` interpolation is treated — a component has
+/// no `state:` schema to resolve one against, so any REAL dotted-path
+/// referent is unconditionally `E-COMPONENT-STATE` (`{{$}}` is never
+/// meaningful outside a `<match test>` and stays on the ordinary
+/// [`check_interp_referent`]/`E-DOLLAR-OUTSIDE-MATCH` path, same as at scene
+/// level). A `@ref` interpolation keeps its ordinary
+/// `E-UNDECLARED-REF`/`E-REF-TYPE` semantics (resolved against the
+/// component's `@param` env in `ctx`).
+fn component_interp_scan(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+    let interp_ctx = Ctx {
+        env: ctx.env,
+        in_match: false,
+        match_subject: None,
+    };
+    for interp in interps {
+        match interp.kind {
+            InterpKind::Reserved => {}
+            InterpKind::Path => {
+                let has_dollar = scan_refs(&interp.raw).iter().any(|r| r.is_dollar);
+                if has_dollar {
+                    check_interp_referent(&interp.raw, interp, &interp_ctx, diags);
+                    continue;
+                }
+                diags.push(use_diag(
+                    E_COMPONENT_STATE,
+                    format!(
+                        "`{}` reads ambient state — a component body may not depend on it; bind it through a param (dsl 0.4 §6.2)",
+                        interp.raw
+                    ),
+                    interp.span,
+                ));
+            }
+            InterpKind::Ref => {
+                if !is_bare_ref(&interp.raw) {
+                    diags.push(interp_grammar_diag(&interp.raw, interp.span));
+                    continue;
+                }
+                check_interp_referent(&interp.raw, interp, &interp_ctx, diags);
+            }
+        }
+    }
+}
+
+/// `Some(name)` when `raw` (a component `<match on>` subject, dsl 0.4.0 §6.2)
+/// is EXACTLY a bare `@param` reference — no call args, nothing before or
+/// after it. Mirrors the `is_whole_slot` idiom (cel_resolve.rs:126-134) with
+/// one deliberate narrowing: a call group (`@name(args)`) disqualifies here
+/// too (`is_whole_slot` accepts it there) — a component `<match>` dispatches
+/// on the PARAM VALUE, never a call result. `None` for a compound
+/// expression, a literal, or `$`.
+fn bare_param_ref(raw: &str) -> Option<String> {
+    let content_start = raw.len() - raw.trim_start().len();
+    let content_end = raw.trim_end().len();
+    let mut whole = scan_refs(raw).into_iter().filter(|r| {
+        !r.is_dollar
+            && r.call.is_none()
+            && r.span.byte_start == content_start
+            && r.span.byte_end == content_end
+    });
+    let first = whole.next()?;
+    whole.next().is_none().then_some(first.name)
+}
+
+/// D7 (dsl 0.4.0 §6.1/§6.2, the corrected non-`is_some()` form): `true` when
+/// `tag`'s RESOLVED directive decl declares ACTUAL writes — non-empty
+/// `state.declares` (engine-written result slots) or non-empty
+/// `effects.writes` (incl. `WriteValue::FromBridgeResult`). Tested for
+/// NON-EMPTINESS, not merely `Option::is_some`: a decl that carries a
+/// `state`/`effects` block with nothing declared in it (or a bare `bridge:`
+/// ref with no declared landing site) stays presentational. An unknown tag
+/// (no resolved decl) is `false` here — `check_directive` reports
+/// `E-UNKNOWN-DIRECTIVE` on its own path, never this one.
+fn directive_writes_state(snapshot: &CapabilitySnapshot, tag: &str) -> bool {
+    snapshot.directive(tag).is_some_and(|decl| {
+        decl.state.as_ref().is_some_and(|s| !s.declares.is_empty())
+            || decl.effects.as_ref().is_some_and(|e| !e.writes.is_empty())
+    })
+}
+
+/// Walk a component body in component mode (dsl 0.4.0 §6, §13). Lines +
+/// purely-presentational staging directives (incl. nested `::use`) are
+/// validated as before; `<branch>`/`<hub>`/`<timeline>`/`<on>`/`<objective>`/
+/// `::set`/`::assert`/`::retract` stay `E-COMPONENT-BODY` (§6.1's ban).
+/// `<match>` is no longer a blanket rejection (§6.2): a `<match on="@param">`
+/// is ADMITTED and its arms walk recursively through this same function; any
+/// other subject either reads ambient state (`E-COMPONENT-STATE`) or has no
+/// domain to dispatch on (`E-COMPONENT-BODY`). A directive whose resolved
+/// decl declares actual state/bridge-result writes is `E-COMPONENT-STATE`
+/// wherever it appears in the body (D7), not just at the top level.
 #[allow(clippy::too_many_arguments)]
 fn walk_component_body(
     nodes: &[Node],
@@ -1465,24 +1683,45 @@ fn walk_component_body(
         match node {
             Node::Line(l) => {
                 body_attr_refs(&l.attrs, snapshot, arena, ctx, None, diags);
-                // `{{@param}}` / `{{run.x}}` in a component body are referents too
-                // (dsl §7.6, §13): resolve against the component `@param` env in
-                // `ctx` — an undeclared ref is `E-UNDECLARED-REF`, any state read is
-                // `E-UNDECLARED` (a component body has an empty `state:` schema).
-                check_interps(&l.interps, ctx, diags);
+                // `{{@param}}` in a component body is a referent too (dsl
+                // §7.6, §6.2): resolved against the component `@param` env in
+                // `ctx` — an undeclared ref is `E-UNDECLARED-REF`. A bare
+                // `{{run.x}}`-style state path is ALWAYS `E-COMPONENT-STATE`
+                // here (a component has no `state:` schema to resolve one
+                // against, and the purity contract forbids the read anyway).
+                component_interp_scan(&l.interps, ctx, diags);
             }
             Node::Directive(d) if d.tag == "use" => {
                 check_use(d, components, ctx, diags);
                 body_attr_refs(&d.attrs, snapshot, arena, ctx, None, diags);
             }
             Node::Directive(d) => {
-                diags.extend(check_directive(d, snapshot, providers, domains, ctx));
-                body_attr_refs(&d.attrs, snapshot, arena, ctx, Some(&d.tag), diags);
+                // D7 (dsl 0.4.0 §6.1/§6.2): a directive whose resolved decl
+                // declares actual state/bridge-result writes affects ambient
+                // state and is NOT covered by the staging allowance —
+                // `E-COMPONENT-STATE`, wherever in the body it sits (an
+                // ordinary position or a param-scoped `<match>` arm). Short-
+                // circuits the ordinary attr/ref validation below, mirroring
+                // how every other rejected construct in this walk skips
+                // further validation once its purity verdict is decided.
+                if directive_writes_state(snapshot, &d.tag) {
+                    diags.push(use_diag(
+                        E_COMPONENT_STATE,
+                        format!(
+                            "`::{}` declares state/bridge-result writes — a component body may not affect ambient state (dsl 0.4 §6.1)",
+                            d.tag
+                        ),
+                        d.span,
+                    ));
+                } else {
+                    diags.extend(check_directive(d, snapshot, providers, domains, ctx));
+                    body_attr_refs(&d.attrs, snapshot, arena, ctx, Some(&d.tag), diags);
+                }
             }
             Node::Set(s) => diags.push(use_diag(
                 E_COMPONENT_BODY,
                 format!(
-                    "a component body must be presentational (dsl §13): `::set` of `{}` writes state, not allowed in v1",
+                    "a component body must be presentational (dsl 0.4 §6.2): `::set` of `{}` writes state — only a param-scoped `<match>` is admitted for logic, not a state write",
                     s.path
                 ),
                 s.span,
@@ -1490,40 +1729,106 @@ fn walk_component_body(
             Node::Branch(b) => diags.push(use_diag(
                 E_COMPONENT_BODY,
                 format!(
-                    "a component body must be presentational (dsl §13): the `<branch {}>` logic block is not allowed in v1",
+                    "a component body must be presentational (dsl 0.4 §6.2): the `<branch {}>` logic block is not allowed — presenting a menu records the selection, a state write; only a param-scoped `<match>` is admitted",
                     b.id
                 ),
                 b.span,
             )),
-            Node::Match(m) => diags.push(use_diag(
-                E_COMPONENT_BODY,
-                "a component body must be presentational (dsl §13): a `<match>` logic block is not allowed in v1".to_string(),
-                m.span,
-            )),
+            Node::Match(m) => {
+                // Subject-slot CEL validation happens OUTSIDE match scope
+                // (dsl §8.2, mirrors the scene-level `Walker`): resolved
+                // against the SAME component `@param` env every other slot
+                // uses, so a bare ref to an UNDECLARED param (case iv, §6.2)
+                // surfaces its own `E-UNDECLARED-REF` here — no admission
+                // code is stacked on top of it.
+                let subject_ctx = Ctx {
+                    env: ctx.env,
+                    in_match: false,
+                    match_subject: None,
+                };
+                diags.extend(check_cel_slot(&m.subject, arena, &subject_ctx, None));
+
+                match bare_param_ref(&m.subject.raw) {
+                    Some(name) if ctx.env.defs.contains(&name) => {
+                        // (i) Admitted: `on="@param"` (dsl §6.2). Arms
+                        // evaluate WITHIN match scope (`$` binds to the
+                        // param, mirroring the scene walker) so a nested
+                        // `<when test="$ == …">` / nested param `<match>`
+                        // sees it; exhaustiveness lands in Task 7.
+                        let arm_ctx = Ctx {
+                            env: ctx.env,
+                            in_match: true,
+                            match_subject: Some(m.subject.raw.clone()),
+                        };
+                        for arm in &m.arms {
+                            match arm {
+                                Arm::When { test, body, .. } => {
+                                    diags.extend(check_cel_slot(
+                                        test,
+                                        arena,
+                                        &arm_ctx,
+                                        Some(&ExpectedType::Bool),
+                                    ));
+                                    component_slot_state_scan(test, arena, diags);
+                                    walk_component_body(
+                                        body, snapshot, providers, domains, arena, &arm_ctx,
+                                        components, diags,
+                                    );
+                                }
+                                Arm::Otherwise { body, .. } => walk_component_body(
+                                    body, snapshot, providers, domains, arena, &arm_ctx,
+                                    components, diags,
+                                ),
+                            }
+                        }
+                    }
+                    Some(_) => {
+                        // (iv) A bare ref to an UNDECLARED param: the
+                        // subject-slot check above already reported
+                        // `E-UNDECLARED-REF` — that IS the root defect.
+                    }
+                    None => {
+                        // (ii)/(iii): not a bare param ref. A subject that
+                        // reads ambient state (a state path, a fact query,
+                        // `now()`) is `E-COMPONENT-STATE`; any other shape (a
+                        // literal, a compound over params) has no domain to
+                        // dispatch on and is `E-COMPONENT-BODY`.
+                        let before = diags.len();
+                        component_slot_state_scan(&m.subject, arena, diags);
+                        if diags.len() == before {
+                            diags.push(use_diag(
+                                E_COMPONENT_BODY,
+                                "a component body must be presentational (dsl 0.4 §6.2): a `<match>` subject must be a bare declared param, e.g. on=\"@tier\" — dispatch needs a domain".to_string(),
+                                m.span,
+                            ));
+                        }
+                    }
+                }
+            }
             Node::Timeline(tl) => diags.push(use_diag(
                 E_COMPONENT_BODY,
-                "a component body must be presentational (dsl §13): a `<timeline>` is not allowed in v1".to_string(),
+                "a component body must be presentational (dsl 0.4 §6.2): a `<timeline>` is not allowed; only a param-scoped `<match>` is admitted for logic".to_string(),
                 tl.span,
             )),
             Node::Hub(h) => diags.push(use_diag(
                 E_COMPONENT_BODY,
-                "a component body must be presentational (dsl §13): a `<hub>` logic block is not allowed in v1".to_string(),
+                "a component body must be presentational (dsl 0.4 §6.2): a `<hub>` logic block is not allowed — presenting a menu records the selection, a state write; only a param-scoped `<match>` is admitted".to_string(),
                 h.span,
             )),
             Node::Objective(o) => diags.push(use_diag(
                 E_COMPONENT_BODY,
-                "a component body must be presentational (dsl §13): an `<objective>` logic block is not allowed in v1".to_string(),
+                "a component body must be presentational (dsl 0.4 §6.2): an `<objective>` logic block is not allowed; only a param-scoped `<match>` is admitted".to_string(),
                 o.span,
             )),
             Node::On(o) => diags.push(use_diag(
                 E_COMPONENT_BODY,
-                "a component body must be presentational (dsl §13): an `<on>` logic block is not allowed in v1".to_string(),
+                "a component body must be presentational (dsl 0.4 §6.2): an `<on>` logic block is not allowed; only a param-scoped `<match>` is admitted".to_string(),
                 o.span,
             )),
             Node::Assert(a) => diags.push(use_diag(
                 E_COMPONENT_BODY,
                 format!(
-                    "a component body must be presentational (dsl §13): `::assert` of `{}` writes state, not allowed in v1",
+                    "a component body must be presentational (dsl 0.4 §6.2): `::assert` of `{}` writes state — only a param-scoped `<match>` is admitted for logic, not a state write",
                     a.pattern.relation
                 ),
                 a.span,
@@ -1531,7 +1836,7 @@ fn walk_component_body(
             Node::Retract(r) => diags.push(use_diag(
                 E_COMPONENT_BODY,
                 format!(
-                    "a component body must be presentational (dsl §13): `::retract` of `{}` writes state, not allowed in v1",
+                    "a component body must be presentational (dsl 0.4 §6.2): `::retract` of `{}` writes state — only a param-scoped `<match>` is admitted for logic, not a state write",
                     r.pattern.relation
                 ),
                 r.span,
@@ -1542,6 +1847,11 @@ fn walk_component_body(
 
 /// Validate the `@ref`-valued attrs of a component-body node against the param
 /// ref namespace (the free-function analog of [`Walker::check_attr_refs`]).
+/// Every `AttrValue::Ref` slot ALSO gets the positive ambient-state scan (dsl
+/// 0.4.0 §6.2) — a `Line`, a `::use` invocation, and an ordinary staging
+/// directive's attrs all route through this one helper, so `E-COMPONENT-STATE`
+/// covers every attr-valued CEL slot in a component body uniformly, not just
+/// `<match>` subjects/tests and `{{…}}` interpolations.
 fn body_attr_refs(
     attrs: &[Attr],
     snapshot: &CapabilitySnapshot,
@@ -1557,6 +1867,7 @@ fn body_attr_refs(
                 .and_then(|decl| decl.attrs.iter().find(|a| a.name == attr.key))
                 .map(|a| ExpectedType::Ty(a.ty.clone()));
             diags.extend(check_cel_slot(slot, arena, ctx, expected.as_ref()));
+            component_slot_state_scan(slot, arena, diags);
         }
     }
 }
