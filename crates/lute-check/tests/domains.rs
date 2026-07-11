@@ -171,7 +171,7 @@ fn merge_domains_flags_clash_with_core_domain() {
 fn scene_uses_enum_schema_checks_clean_and_domain_is_merged() {
     let dir = unique_dir();
     write_lute(&dir, "schema.lute", "---\nenums:\n  action: [wave, bow]\n---\n");
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: schema.lute\n---\n## Shot 1.\n:x: hi\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: schema.lute\n---\n## Shot 1.\n@x: hi\n";
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
     let snapshot = load_core_snapshot();

@@ -84,13 +84,17 @@ module.exports = grammar({
     directive: ($) => seq("::", $.ident, optional($.attrs)),
 
     // ---- content -----------------------------------------------------------
-    // Line ::= ":" Speaker Attrs? ":" WS Text (§7.1). Text MAY interpolate (§7.6).
-    // The leading marker is a single `:`; `::set{` and `::` are longer tokens, so
-    // maximal-munch picks the directive/set forms at a `::` boundary and a line
-    // only ever starts on `:` + a non-`:` speaker.
+    // Line ::= "@" Speaker Attrs? ":" WS Text (§7.1). Text MAY interpolate (§7.6).
+    // The leading marker is a single `@` (0.2.2, foundation C1 — was `:` in
+    // 0.1.0/0.2.0); `::set{` and `::` are longer tokens on the SAME `:` prefix
+    // family and are unaffected. A line only ever starts on `@` + a speaker
+    // ident, which is positionally distinct from the inline `@ref` macro
+    // (`ref` only ever appears as an attr VALUE, inside a `cel_string`, or
+    // inside `{{…}}` — never at `_node` position), so no grammar conflict
+    // arises between line-start `@` and expression-context `@ref`.
     line: ($) =>
       seq(
-        ":",
+        "@",
         $.speaker,
         optional($.attrs),
         ":",

@@ -489,7 +489,7 @@ mod tests {
         let (doc, _) = crate::parse(
             "<quest id=\"q\" start=\"run.s\" fail=\"run.f\">\n\
              <objective id=\"o\" done=\"run.d\" when=\"run.w\"/>\n\
-             <on event=\"questComplete\" when=\"run.g\">\n:x: hi\n</on>\n\
+             <on event=\"questComplete\" when=\"run.g\">\n@x: hi\n</on>\n\
              </quest>\n",
         );
         let mut raws: Vec<String> = Vec::new();

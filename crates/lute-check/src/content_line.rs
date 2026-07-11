@@ -1,4 +1,4 @@
-//! Built-in content-line (`:speaker{…}:`) attribute schema (dsl 0.1.0 §7.1, §12.1).
+//! Built-in content-line (`@speaker{…}:`) attribute schema (dsl 0.1.0 §7.1, §12.1).
 //! Content lines are NOT capability-schema-driven; their attribute set is a fixed
 //! part of the scene-kind vocabulary, validated here — EXCEPT `emotion`/`action`,
 //! which are domain-typed (data-catalog foundation A5) and resolve through the

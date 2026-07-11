@@ -14,16 +14,16 @@ state:
 
 ::auto{character="marina" anchor="left" action="fade-in-up"}
 
-:narrator: I reached for my phone.
+@narrator: I reached for my phone.
 
 <branch id="number">
   <choice id="blunt" label="Just ask, flatly">
-    :fixer{code="0050"}: Marina. Your number.
+    @fixer{code="0050"}: Marina. Your number.
   </choice>
   <choice id="soft" label="Ask gently">
-    :fixer{code="0052"}: Marina — would you mind terribly if I had your number?
+    @fixer{code="0052"}: Marina — would you mind terribly if I had your number?
     ::set{scene.affect.marina += 1}
   </choice>
 </branch>
 
-:marina{code="0110" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.
+@marina{code="0110" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.

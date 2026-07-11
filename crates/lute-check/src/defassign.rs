@@ -515,7 +515,7 @@ mod tests {
     #[test]
     fn dominating_write_proves_path() {
         // `::set{run.x = 1}` dominates the later read `run.x` in the `<when>` test.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n:narrator: hi\n</when>\n</match>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n@narrator: hi\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -544,7 +544,7 @@ mod tests {
         // `<match on="isSet(run.x)">` is a SUBJECT guard; a non-exhaustive match
         // may fall through, so the subject guard must NOT prove `run.x` past the
         // block. A later read of `run.x` is therefore maybe-unset.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n:narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n@narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
@@ -558,7 +558,7 @@ mod tests {
         // `<match on="has(run.x)">` with an `<otherwise>` is exhaustive, but no
         // arm writes `run.x`; the subject guard must NOT survive `intersect_all`.
         // A later read of `run.x` is maybe-unset.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n:narrator: a\n</when>\n<otherwise>\n:narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let errs = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(

@@ -31,9 +31,9 @@ fn is_arms_cover_enum_no_otherwise_is_exhaustive() {
     // `is` arms cover the full enum with NO <otherwise> => no E-NONEXHAUSTIVE.
     let out = codes(&format!(
         "{HDR}<match on=\"run.rank\">\n\
-         <when is=\"fail | bronze\">\n:narrator: a\n</when>\n\
-         <when is=\"silver\">\n:narrator: b\n</when>\n\
-         <when is=\"gold\">\n:narrator: c\n</when>\n\
+         <when is=\"fail | bronze\">\n@narrator: a\n</when>\n\
+         <when is=\"silver\">\n@narrator: b\n</when>\n\
+         <when is=\"gold\">\n@narrator: c\n</when>\n\
          </match>\n"
     ));
     assert!(
@@ -47,8 +47,8 @@ fn is_arms_missing_member_is_nonexhaustive() {
     // omit `gold` => E-NONEXHAUSTIVE (is-derived coverage is normative, §11.2).
     let out = codes(&format!(
         "{HDR}<match on=\"run.rank\">\n\
-         <when is=\"fail | bronze\">\n:narrator: a\n</when>\n\
-         <when is=\"silver\">\n:narrator: b\n</when>\n\
+         <when is=\"fail | bronze\">\n@narrator: a\n</when>\n\
+         <when is=\"silver\">\n@narrator: b\n</when>\n\
          </match>\n"
     ));
     assert!(
@@ -62,8 +62,8 @@ fn when_with_neither_is_nor_test_is_e_when_pattern() {
     // a `<when>` with neither `is` nor `test` => E-WHEN-PATTERN (§7.3.1, D-D).
     let out = codes(&format!(
         "{HDR}<match on=\"run.rank\">\n\
-         <when>\n:narrator: a\n</when>\n\
-         <otherwise>\n:narrator: b\n</otherwise>\n\
+         <when>\n@narrator: a\n</when>\n\
+         <otherwise>\n@narrator: b\n</otherwise>\n\
          </match>\n"
     ));
     assert!(
@@ -78,9 +78,9 @@ fn is_and_test_arm_parses_and_is_drives_coverage() {
     // the enum is exhaustive with no <otherwise> and no E-WHEN-PATTERN.
     let out = codes(&format!(
         "{HDR}<match on=\"run.rank\">\n\
-         <when is=\"fail | bronze\">\n:narrator: a\n</when>\n\
-         <when is=\"silver\">\n:narrator: b\n</when>\n\
-         <when is=\"gold\" test=\"$ != 'x'\">\n:narrator: c\n</when>\n\
+         <when is=\"fail | bronze\">\n@narrator: a\n</when>\n\
+         <when is=\"silver\">\n@narrator: b\n</when>\n\
+         <when is=\"gold\" test=\"$ != 'x'\">\n@narrator: c\n</when>\n\
          </match>\n"
     ));
     assert!(

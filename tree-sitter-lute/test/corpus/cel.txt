@@ -3,7 +3,7 @@ match/when CEL-valued attrs are a distinct CEL node (state path + @ref)
 ==================
 <match on="scene.choices.number">
   <when test="@fond">
-    :narrator: hi
+    @narrator: hi
   </when>
 </match>
 ---
@@ -19,7 +19,7 @@ when test with $ subject and single-quoted CEL literal ('blunt')
 ==================
 <match on="scene.x">
   <when test="$ == 'blunt'">
-    :narrator: hi
+    @narrator: hi
   </when>
 </match>
 ---
@@ -35,7 +35,7 @@ choice `when` guard is a CEL node beside plain id/label attrs
 ==================
 <branch id="x">
   <choice id="a" label="A" when="@fond">
-    :narrator: hi
+    @narrator: hi
   </choice>
 </branch>
 ---

@@ -263,7 +263,7 @@ mod tests {
     /// `:line` node inside it does not add a second fold.
     #[test]
     fn leaf_nodes_do_not_fold() {
-        let text = "## Shot 1.\n:narrator: only prose.\n";
+        let text = "## Shot 1.\n@narrator: only prose.\n";
         let all = folds(text);
         assert_eq!(all.len(), 1, "only the shot folds; the lone :line does not");
     }
@@ -272,8 +272,8 @@ mod tests {
 
     const QUEST_DOC: &str = "---\nkind: quest\n---\n\
         <quest id=\"q\">\n\
-        <objective id=\"o\" done=\"a\">\n:narrator: hi\n</objective>\n\
-        <on event=\"questComplete\">\n:narrator: bye\n</on>\n\
+        <objective id=\"o\" done=\"a\">\n@narrator: hi\n</objective>\n\
+        <on event=\"questComplete\">\n@narrator: bye\n</on>\n\
         </quest>\n";
 
     /// ACCEPTANCE: a `<quest>` folds its own multi-line span, and its nested
