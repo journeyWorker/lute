@@ -8,7 +8,11 @@
 //! `false && U = false`, `true || U = true`, otherwise a connective is `U`;
 //! a comparison/arithmetic node with a `U` operand is `U`; `?:` with a `U`
 //! condition is `U` (never guesses a branch, mirrors `decide()`'s own
-//! ternary rule). `isSet()`/`has()` are DEFINITE (D19) — presence, not
+//! ternary rule). List-literal indexing (`list[i]`, §4.3) is its own
+//! function — the index and, when it decides to an in-range integer, the
+//! selected element are evaluated; a non-list target or an
+//! unknown/non-integer/out-of-range index is `U`. `isSet()`/`has()` are
+//! DEFINITE (D19) — presence, not
 //! value. `holds`/`count` run a bounded scan of the supplied fact set
 //! (never a Datalog fixpoint, §4.2 rule 3). `now()`/`validAt(...)` are
 //! always `U` — narrative time has no mock surface. Every `U` this module
@@ -360,6 +364,27 @@ fn eval_in(needle: &IdedExpr, list: &IdedExpr, env: &EvalEnv<'_>, unresolved: &m
     eval_ground(op::IN, &idents, env, unresolved)
 }
 
+/// `list[index]` over a list LITERAL (dsl 0.4.0 §4.3: "indexing" is
+/// explicitly in the evaluated subset, alongside `in` over list literals —
+/// the same list-literal restriction the CEL profile enforces for `in`,
+/// `cel_resolve.rs::is_profile_operator`). The index is evaluated first (so
+/// an unknown index still records its atom); a non-list target, a
+/// non-decided/non-numeric/non-integer index, or an out-of-range index is
+/// `Unknown` — never a panic, never a guess.
+fn eval_index(target: &IdedExpr, index: &IdedExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
+    let Expr::List(elements) = &target.expr else {
+        return Value::Unknown;
+    };
+    let idx = match eval(&index.expr, env, unresolved) {
+        Value::Num(n) if n.fract() == 0.0 && n >= 0.0 => n as usize,
+        _ => return Value::Unknown,
+    };
+    match elements.elements.get(idx) {
+        Some(el) => eval(&el.expr, env, unresolved),
+        None => Value::Unknown,
+    }
+}
+
 /// `holds(pattern)` / `count(pattern)` (§4.3): looks the pattern up via
 /// [`FactStore`]; `None` (derive:true + zero matches) records a
 /// [`UnresolvedAtom::DerivedFact`] with the rendered pattern as the
@@ -406,6 +431,7 @@ fn eval_call(c: &CallExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAto
         (op::LOGICAL_OR, [a, b]) => eval_or(a, b, env, unresolved),
         (op::CONDITIONAL, [c0, t, e]) => eval_conditional(c0, t, e, env, unresolved),
         (op::IN, [needle, list]) => eval_in(needle, list, env, unresolved),
+        (op::INDEX, [target, idx]) => eval_index(target, idx, env, unresolved),
         (op::ADD, [a, b])
         | (op::SUBSTRACT, [a, b])
         | (op::MULTIPLY, [a, b])
@@ -611,6 +637,59 @@ mod tests {
                 UnresolvedAtom::Path("run.b".to_string())
             ]
         );
+    }
+
+    // -- Indexing (dsl 0.4.0 §4.3: "indexing" is in the evaluated subset) --
+
+    #[test]
+    fn index_into_list_literal_with_concrete_int_returns_element() {
+        let schema = schema_with(&[]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        let vocab = RelVocab::default();
+        let facts = FactStore::new(&vocab);
+        let env = EvalEnv { state: &state, facts: &facts };
+        let (v, unresolved) = eval_str("[10, 20, 30][1]", &env);
+        assert_eq!(v, Value::Num(20.0));
+        assert!(unresolved.is_empty());
+    }
+
+    #[test]
+    fn index_out_of_range_is_unknown() {
+        let schema = schema_with(&[]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        let vocab = RelVocab::default();
+        let facts = FactStore::new(&vocab);
+        let env = EvalEnv { state: &state, facts: &facts };
+        let (v, _unresolved) = eval_str("[10, 20][5]", &env);
+        assert_eq!(v, Value::Unknown);
+    }
+
+    #[test]
+    fn index_with_unknown_index_is_unknown_and_records_its_atom() {
+        let schema = schema_with(&[]); // run.idx unset -> Unknown
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        let vocab = RelVocab::default();
+        let facts = FactStore::new(&vocab);
+        let env = EvalEnv { state: &state, facts: &facts };
+        let (v, unresolved) = eval_str("[10, 20][run.idx]", &env);
+        assert_eq!(v, Value::Unknown);
+        assert_eq!(unresolved, vec![UnresolvedAtom::Path("run.idx".to_string())]);
+    }
+
+    #[test]
+    fn index_a_check_clean_guard_decides_concretely_not_unknown() {
+        // Mirrors the finding: a document that passed `check` (INDEX is
+        // admitted by the closed profile, cel_resolve.rs) must not fall
+        // through to Unknown/Incomplete at trace time when every operand
+        // is decided.
+        let schema = schema_with(&[]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        let vocab = RelVocab::default();
+        let facts = FactStore::new(&vocab);
+        let env = EvalEnv { state: &state, facts: &facts };
+        let (v, unresolved) = eval_str("[10, 20, 30][1] == 20", &env);
+        assert_eq!(v, Value::Bool(true));
+        assert!(unresolved.is_empty());
     }
 
     // -- Effective-state precedence --------------------------------------
