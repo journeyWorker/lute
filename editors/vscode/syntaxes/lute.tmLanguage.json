@@ -59,7 +59,7 @@
     },
     "line": {
       "name": "meta.line.lute",
-      "begin": "^[ \\t]*(:)([A-Za-z][\\w-]*)",
+      "begin": "^[ \\t]*(@)([A-Za-z][\\w-]*)",
       "beginCaptures": {
         "1": { "name": "punctuation.definition.speaker.begin.lute" },
         "2": { "name": "entity.name.type.speaker.lute" }

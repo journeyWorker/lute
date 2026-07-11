@@ -3,7 +3,7 @@
 ; The DSL is three visually-distinct LAYERS (architecture.md); this file maps
 ; each to its own capture family so a real editor colors them apart:
 ;
-;   1. CONTENT (§7.1 `:speaker`)   — dialogue / narration  → @string + @character
+;   1. CONTENT (§7.1 `@speaker`)   — dialogue / narration  → @string + @character
 ;   2. STAGING (§7.2 `::`, §7.4 <timeline>/<track>)        → @function family
 ;   3. LOGIC   (§7.3 <branch>/<match>, §7.3.4 `::set`, CEL) → @keyword family
 ;
@@ -13,11 +13,12 @@
 ;   - state paths      → @property
 
 ; ---- CONTENT layer (§7.1) -------------------------------------------------
-; `:speaker{attrs}: text` — the speaker is a character id; the text is dialogue
+; `@speaker{attrs}: text` — the speaker is a character id; the text is dialogue
 ; / narration (string-family) that MAY embed `{{…}}` interpolations (§7.6). The
-; leading and second `:` are the content-line markers.
+; leading `@` and the `:` before the text are the content-line markers.
 (line (speaker) @character)
 (line (text) @string)
+(line "@" @punctuation.special)
 (line ":" @punctuation.special)
 
 ; ---- interpolation (§7.6) -------------------------------------------------

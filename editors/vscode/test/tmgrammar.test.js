@@ -8,14 +8,15 @@ test("tag rule scopes 0.2.0 quest/on/objective", () => {
   }
 });
 
-test("line rule matches modern :speaker: content lines", () => {
+test("line rule matches modern @speaker: content lines", () => {
   const begin = new RegExp(gr.repository.line.begin);
-  expect(begin.test(":narrator:")).toBe(true);
-  expect(begin.test(':bianca{code="0010"}:')).toBe(true);
+  expect(begin.test("@narrator:")).toBe(true);
+  expect(begin.test('@bianca{code="0010"}:')).toBe(true);
 });
 
 test("line rule does not swallow :: directives", () => {
   const begin = new RegExp(gr.repository.line.begin);
   expect(begin.test("::set{")).toBe(false);
   expect(begin.test("::auto")).toBe(false);
+  expect(begin.test(":narrator:")).toBe(false);
 });
