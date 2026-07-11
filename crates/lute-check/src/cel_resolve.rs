@@ -22,9 +22,11 @@ use cel_parser::ast::Expr;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{CelKind, CelSlot};
+use lute_syntax::datalog::BodyLiteral;
 
 use crate::cel_paths::collect_path_uses;
 use crate::ctx::ExpectedType;
+use crate::rel_schema::RelVocab;
 use crate::Ctx;
 use lute_manifest::types::Type;
 
@@ -33,6 +35,17 @@ use lute_manifest::types::Type;
 /// parses as an `Expr::Select`, not a call), plus comprehension macros and
 /// map/struct literals. Emitted at the slot span. New in 0.1.0.
 pub const E_CEL_PROFILE: &str = "E-CEL-PROFILE";
+
+/// dsl 0.3.0 §9.3 + D7: names whose read implies a hidden non-monotonic
+/// dependency on the fact store or narrative time — banned inside a rule-body
+/// CEL guard (`cel("...")` in a `rules:` entry). `now` is D7's deliberate
+/// extension beyond the spec's `holds`/`count`/`validAt` — a guard has no
+/// business reading the clock either.
+const GUARD_FIREWALL_CALLS: &[&str] = &["holds", "count", "validAt", "now"];
+
+/// `E-DATALOG-GUARD-FACT` (0.3.0, §7.2/§7.3 + D7): a rule-body guard reads
+/// the fact store or narrative time via `holds`/`count`/`validAt`/`now`.
+pub const E_DATALOG_GUARD_FACT: &str = "E-DATALOG-GUARD-FACT";
 
 /// Validate a single CEL slot's `@ref`, `$`, and state-path reads (dsl §8, §9.4,
 /// §9.6). All diagnostics are [`Layer::Cel`].
@@ -192,6 +205,88 @@ pub fn check_cel_slot(
     }
 
     diags
+}
+
+/// Validate every rule guard's CEL (dsl 0.3.0 §7.2/§7.3, 0.3.0 T8): the
+/// firewall (`holds`/`count`/`validAt`/`now` → [`E_DATALOG_GUARD_FACT`], D7)
+/// plus the ordinary closed CEL profile ([`check_cel_profile`]) and
+/// path-declaredness ([`collect_path_uses`] → `E-UNDECLARED`) checks against
+/// the folded schema — all three passes run unconditionally over the SAME
+/// parse, so more than one may fire for a single guard (matching
+/// `check_cel_slot`'s own independent-pass discipline). Implemented here (not
+/// `datalog_check.rs`) so `check_cel_profile`/`check_state_path` stay
+/// private. Uses its own local [`CelArena`] per guard — a rule guard's raw
+/// CEL text was never parsed by the document's normal `fill_document` pass
+/// (it lives inside a Datalog rule string, Task 1's grammar), so this is its
+/// first and only parse. A guard whose CEL fails to parse is silently
+/// skipped — no evaluator, no cascade (matches `check_cel_slot`'s
+/// `slot.ast: None` skip); the rule's own shape was already validated by
+/// `datalog_check::check_rules`.
+pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for rule in &vocab.rules {
+        for lit in &rule.rule.body {
+            let BodyLiteral::Guard { cel, .. } = lit else {
+                continue;
+            };
+            let mut arena = CelArena::default();
+            let Some(handle) = lute_cel::parse_slot_marked_refs(&mut arena, cel) else {
+                continue;
+            };
+            let Some(root) = arena.get(handle) else {
+                continue;
+            };
+            check_guard_fact_access(&root.expr, rule.span, &mut diags);
+            let slot = CelSlot::raw(CelKind::Condition, cel.clone(), rule.span);
+            for use_ in collect_path_uses(&root.expr) {
+                check_state_path(&use_.path, &slot, ctx, &mut diags);
+            }
+            check_cel_profile(&root.expr, &slot, &mut diags);
+        }
+    }
+    diags
+}
+
+/// The [`GUARD_FIREWALL_CALLS`] walk (D7): a `Call` (with or without a
+/// receiver — matched by name alone) reaches [`E_DATALOG_GUARD_FACT`] and
+/// stops descending (the whole call is rejected, mirroring
+/// [`check_cel_profile`]'s own stop-on-reject shape); everything else
+/// recurses the same way `check_cel_profile` does.
+fn check_guard_fact_access(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>) {
+    match expr {
+        Expr::Call(c) => {
+            let name = c.func_name.as_str();
+            if GUARD_FIREWALL_CALLS.contains(&name) {
+                diags.push(diag(
+                    E_DATALOG_GUARD_FACT,
+                    format!(
+                        "`{name}(…)` reads the fact store or narrative time inside a rule guard; \
+                         rules have no access to time or facts (dsl 0.3.0 §9.3, D7)"
+                    ),
+                    span,
+                ));
+                return;
+            }
+            if let Some(t) = &c.target {
+                check_guard_fact_access(&t.expr, span, diags);
+            }
+            for a in &c.args {
+                check_guard_fact_access(&a.expr, span, diags);
+            }
+        }
+        Expr::List(list) => {
+            for el in &list.elements {
+                check_guard_fact_access(&el.expr, span, diags);
+            }
+        }
+        Expr::Select(sel) => check_guard_fact_access(&sel.operand.expr, span, diags),
+        Expr::Comprehension(_)
+        | Expr::Map(_)
+        | Expr::Struct(_)
+        | Expr::Ident(_)
+        | Expr::Literal(_)
+        | Expr::Unspecified => {}
+    }
 }
 
 /// The Lute-CEL profile gate (dsl §8.4). The environment is **closed**: the only

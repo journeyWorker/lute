@@ -72,7 +72,7 @@ use lute_syntax::parse;
 /// sites keep resolving without change.
 pub(crate) use lute_syntax::scan_label_interps;
 
-use crate::cel_resolve::compatible;
+use crate::cel_resolve::{check_rule_guards, compatible};
 use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
 use crate::directives::{at_context, check_directive};
@@ -252,6 +252,12 @@ pub fn fold_env(
         crate::rel_schema::build_rel_vocab(&input.imports, &typed, &domains, &doc.meta);
     fold_diags.extend(domain_diags);
     fold_diags.extend(rel_diags);
+    // Per-rule Datalog checks (dsl 0.3.0 §7.1/§7.2, 0.3.0 T8): heads, body
+    // atoms, safety — over the MERGED rule set. Runs here (not in `check()`)
+    // so `lute-compile`'s direct `fold_env` caller sees the same diagnostics;
+    // the vocab is still a plain local here (not yet frozen into `Env`'s
+    // `Arc`), which Task 9's stratification/guard-taint pass relies on too.
+    fold_diags.extend(crate::datalog_check::check_rules(&vocab, &domains));
 
     // 4. Fold every `<branch>`/`<hub>`'s implicit recording decls
     //    (`scene.choices.<id>` + a hub's per-choice `scene.visited.<id>.*`) into
@@ -638,6 +644,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(parse_diags);
     diags.extend(cel_diags);
     diags.extend(fold_diags);
+    // Rule-guard CEL firewall (dsl 0.3.0 §7.2/§7.3, D7, 0.3.0 T8): holds()/
+    // count()/validAt()/now() inside a rule-body guard, plus the ordinary
+    // profile/path-declaredness checks — after `base_ctx` (needs `ctx.env`)
+    // is constructed above.
+    diags.extend(check_rule_guards(&env.rel_vocab, &base_ctx));
     diags.extend(input.imports.diags.clone());
     // Component-import resolution diagnostics (dsl §13) + the per-component body
     // validation and `::use` expansion-cycle diagnostics, both reported at the
