@@ -210,6 +210,7 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
         layer: Layer::Content,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     };
     match map.get(yaml_key("kind")) {
         None => (
@@ -271,6 +272,7 @@ pub fn parse_meta_kind(
         layer: Layer::Content,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     };
     // Same Content-layer error, but at a caller-supplied narrow span (used for
     // E-PATH-IDENT, which points at the offending key — not the whole block).
@@ -282,6 +284,7 @@ pub fn parse_meta_kind(
         layer: Layer::Content,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     };
 
     let value: serde_yaml::Value = match serde_yaml::from_str(&meta.raw_yaml) {

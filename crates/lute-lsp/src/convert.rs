@@ -101,6 +101,7 @@ mod tests {
             layer: Layer::Cel,
             fixits: vec![],
             provenance: None,
+            covered: Vec::new(),
         }
     }
 
@@ -122,6 +123,7 @@ mod tests {
             layer: Layer::Cel,
             fixits: vec![],
             provenance: None,
+            covered: Vec::new(),
         };
         let l = to_lsp_diagnostic(&d, &line_index());
         assert_eq!(l.range.start.line, 2, "line 3 -> 0-based 2");

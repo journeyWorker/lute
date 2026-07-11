@@ -147,6 +147,7 @@ fn expand_slot(
             layer: Layer::Cel,
             fixits: Vec::new(),
             provenance: None,
+            covered: Vec::new(),
         }),
     }
 }

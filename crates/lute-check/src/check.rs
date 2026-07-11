@@ -139,6 +139,7 @@ fn cel_parse_diagnostics(doc: &Document, cel_errors: Vec<CelParseError>) -> Vec<
                 layer: Layer::Cel,
                 fixits: t.fixits,
                 provenance: None,
+                covered: Vec::new(),
             }
         })
         .collect()
@@ -349,6 +350,7 @@ pub fn fold_env(
                         layer: Layer::Content,
                         fixits: Vec::new(),
                         provenance: None,
+                        covered: Vec::new(),
                     });
                 }
                 schema.decls.insert(path.clone(), decl.clone());
@@ -365,6 +367,7 @@ pub fn fold_env(
                     layer: Layer::Content,
                     fixits: Vec::new(),
                     provenance: None,
+                    covered: Vec::new(),
                 });
             }
             None => {
@@ -420,6 +423,7 @@ pub fn fold_env(
                     layer: Layer::Content,
                     fixits: Vec::new(),
                     provenance: None,
+                    covered: Vec::new(),
                 });
             } else {
                 schema.decls.insert(path, decl);
@@ -802,6 +806,14 @@ pub fn check(input: &CheckInput) -> CheckResult {
             .cmp(&b.span.byte_start)
             .then_with(|| a.code.cmp(&b.code))
     });
+
+    // C3 (dsl 0.4.0 §8.2/D12): a failed uses/extends/components import
+    // suppresses the absence diagnostics that depend on the merge it never
+    // built. C1 (§8.2/D11): collapse the remaining same-root repeats to one
+    // primary + `covered` occurrences. Both run AFTER the sort above, so
+    // `diags` is already document order — C1 collapse never reorders it.
+    let diags = suppress_unproven_absence(diags);
+    let diags = collapse_same_root(diags);
 
     // Some-vs-None policy for the resolved view.
     let structural_break = diags
@@ -1276,6 +1288,7 @@ fn check_interp_referent(
                         layer: Layer::Cel,
                         fixits: Vec::new(),
                         provenance: None,
+                        covered: Vec::new(),
                     });
                 }
             }
@@ -1311,6 +1324,7 @@ fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
         layer: Layer::Cel,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }
 
@@ -1375,6 +1389,7 @@ fn use_diag(code: &str, message: String, span: Span) -> Diagnostic {
         layer: Layer::Staging,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }
 
@@ -2364,6 +2379,7 @@ fn persist_diag(code: &str, message: String, span: Span) -> Diagnostic {
         layer: Layer::Logic,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }
 
@@ -2408,6 +2424,7 @@ fn choice_into_no_persist_diag(into_attr: &Attr) -> Diagnostic {
             },
         ],
         provenance: None,
+        covered: Vec::new(),
     }
 }
 
@@ -2801,6 +2818,98 @@ fn undeclared_path(message: &str) -> Option<&str> {
             || tok.starts_with("app.")
             || tok.starts_with("quest.")
     })
+}
+
+/// C3 (dsl 0.4.0 §8.2/D12): a failed `uses:`/`extends:`/`components:` import
+/// means the checker never built the merge an absence diagnostic's claim
+/// depends on, so any such diagnostic is unproven noise on top of the real
+/// root cause (the import failure itself). Document-wide, not per-slot: ANY
+/// `E-USES-NOT-FOUND`/`E-USES-PARSE`/`E-USES-CYCLE` drops `E-UNDECLARED`/
+/// `E-UNDECLARED-REF`/`E-MAYBE-UNSET`/`E-RELATION-UNKNOWN`; ANY
+/// `E-COMPONENT-PARSE` drops `E-COMPONENT-UNDECLARED`. Runs AFTER
+/// `dedup_undeclared` (whose overlap-merge is orthogonal and still useful
+/// pre-suppression), BEFORE `collapse_same_root` (D12) — a diagnostic
+/// suppressed here never reaches C1's key-building pass at all.
+fn suppress_unproven_absence(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    let uses_failed = diags.iter().any(|d| {
+        matches!(
+            d.code.as_str(),
+            "E-USES-NOT-FOUND" | "E-USES-PARSE" | "E-USES-CYCLE"
+        )
+    });
+    let component_failed = diags.iter().any(|d| d.code == "E-COMPONENT-PARSE");
+    if !uses_failed && !component_failed {
+        return diags;
+    }
+    diags
+        .into_iter()
+        .filter(|d| {
+            let uses_dependent = uses_failed
+                && matches!(
+                    d.code.as_str(),
+                    "E-UNDECLARED" | "E-UNDECLARED-REF" | "E-MAYBE-UNSET" | "E-RELATION-UNKNOWN"
+                );
+            let component_dependent = component_failed && d.code == "E-COMPONENT-UNDECLARED";
+            !(uses_dependent || component_dependent)
+        })
+        .collect()
+}
+
+/// C1's collapsible code set (dsl 0.4.0 §8.2/D11): every "this subject was
+/// never declared/available" diagnostic whose message repeats identically at
+/// every read site. Site-specific analyses — `E-MAYBE-UNSET` chief among them,
+/// whose verdict depends on each site's own dominators/guards — are EXEMPT:
+/// not in this set, so each of their occurrences stays independently
+/// meaningful.
+const COLLAPSE_CODES: &[&str] = &[
+    "E-UNDECLARED",
+    "E-UNDECLARED-REF",
+    "E-RELATION-UNKNOWN",
+    "E-CHOICELOG-READ",
+    "E-COMPONENT-UNDECLARED",
+];
+
+/// C1 (dsl 0.4.0 §8.2/D11): collapse same-(code, root-subject) diagnostics
+/// over [`COLLAPSE_CODES`] to ONE primary at the first document-order
+/// occurrence, carrying every further occurrence's span onto
+/// `primary.covered` (also document order — "five reads of one typo are ONE
+/// error"). Runs AFTER the `(byte_start, code)` sort, so `diags` already IS
+/// document order: the FIRST time a key is seen becomes the primary and stays
+/// exactly where it was pushed; every later diagnostic with the same key is
+/// folded into that primary's `covered` instead of being pushed at all — so
+/// collapse never reorders a primary and, `check()` being per-file, never
+/// crosses files by construction.
+fn collapse_same_root(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    let mut out: Vec<Diagnostic> = Vec::new();
+    let mut primaries: std::collections::HashMap<(String, String), usize> =
+        std::collections::HashMap::new();
+    for d in diags {
+        let root = if COLLAPSE_CODES.contains(&d.code.as_str()) {
+            first_backtick_token(&d.message)
+        } else {
+            None
+        };
+        if let Some(root) = root {
+            let key = (d.code.clone(), root.to_string());
+            if let Some(&idx) = primaries.get(&key) {
+                out[idx].covered.push(d.span);
+                continue;
+            }
+            primaries.insert(key, out.len());
+        }
+        out.push(d);
+    }
+    out
+}
+
+/// The root subject of a C1-eligible diagnostic: the first backtick-quoted
+/// token in its message (generalizing [`undeclared_path`] per D11) — the
+/// undeclared path, ref name, relation name, reserved path, or component
+/// name, whichever the producer names first. `None` when the message carries
+/// no backtick token at all, in which case the diagnostic is left uncollapsed
+/// (never guessed at) rather than merged on an unproven identity.
+fn first_backtick_token(message: &str) -> Option<&str> {
+    message.split('`').nth(1)
 }
 
 /// Re-derive every diagnostic's `line`/`column`/`utf16_range` from its byte

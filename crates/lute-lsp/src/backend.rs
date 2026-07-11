@@ -279,6 +279,7 @@ impl Backend {
                     layer: Layer::Cel,
                     fixits: Vec::new(),
                     provenance: None,
+                    covered: Vec::new(),
                 }),
             }
             let expected = val

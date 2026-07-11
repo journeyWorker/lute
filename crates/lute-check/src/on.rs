@@ -54,5 +54,6 @@ fn diag(code: &str, message: String, on: &On) -> Diagnostic {
         layer: Layer::Logic,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }

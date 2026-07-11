@@ -406,6 +406,7 @@ fn conflict_diag(message: String, span: Span) -> Diagnostic {
         layer: Layer::Staging,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }
 

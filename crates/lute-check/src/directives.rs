@@ -105,6 +105,7 @@ pub fn check_directive(
             layer: Layer::Staging,
             fixits,
             provenance: None,
+            covered: Vec::new(),
         });
         return diags;
     };
@@ -612,6 +613,7 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
         layer: Layer::Staging,
         fixits: Vec::new(),
         provenance: None,
+        covered: Vec::new(),
     }
 }
 

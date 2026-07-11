@@ -121,6 +121,15 @@ pub struct Diagnostic {
     pub fixits: Vec<Fixit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<String>,
+    /// Further document-order occurrences of the SAME root-cause diagnostic
+    /// (dsl 0.4.0 §8.2 C1/C5, D11): populated ONLY by `lute-check`'s
+    /// `collapse_same_root` post-pass, which folds every repeat of a same-
+    /// code/same-root-subject read into the FIRST occurrence's `covered`
+    /// instead of emitting N identical diagnostics. Additive — never removed
+    /// or retyped; empty (and un-serialized) for every diagnostic that is not
+    /// a collapse primary.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub covered: Vec<Span>,
 }
 
 /// Stable node id: assigned once, survives edits (dsl §12 `lineId` principle).
