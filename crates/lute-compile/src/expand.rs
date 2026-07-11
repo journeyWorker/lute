@@ -15,6 +15,11 @@ use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, ClipNode, Document, Node};
 /// Expand every CEL slot in the document in place. Returns diagnostics for
 /// expander failures (`E-COMPILE-EXPAND`: cycle / unknown def / arity — the
 /// latter two gate-proven unreachable, kept total). Never panics.
+///
+/// `pub` for the `lute-trace` consumer (dsl 0.4 §4.4: trace walks the
+/// document exactly as compile expansion binds it — D14), called AFTER
+/// [`crate::normalize::normalize_document`] so the walked tree is fully
+/// `@`/`$`-free by construction.
 pub fn expand_document(doc: &mut Document, defs: &DefTable<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for shot in &mut doc.shots {

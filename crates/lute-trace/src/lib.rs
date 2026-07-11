@@ -40,11 +40,18 @@
 
 pub mod eval;
 pub mod mock;
+pub mod report;
 pub mod value;
+pub mod walk;
 
 pub use eval::{eval, EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use mock::{
     merge, parse_mock_yaml, validate, MockSet, E_TRACE_CHOICE, E_TRACE_MOCK_FACT,
     E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED,
 };
+pub use report::{
+    ComponentBoundary, Coverage, CoverageCount, Decision, Seeds, Step, TraceExit, TraceReport,
+    UnresolvedEntry,
+};
 pub use value::{UnresolvedAtom, Value};
+pub use walk::trace_document;

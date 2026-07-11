@@ -59,7 +59,7 @@ pub struct MockSet {
 /// span"), mirroring the house zero-then-normalize convention
 /// (`lute-check/src/check.rs`'s `zeroed_span`) other ad hoc span producers
 /// use — there is simply no source `TextIndex` to normalize against here.
-fn synthetic_span() -> Span {
+pub(crate) fn synthetic_span() -> Span {
     Span {
         byte_start: 0,
         byte_end: 0,
@@ -316,7 +316,7 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
 /// keeps the value VERBATIM as [`Literal::Str`], so an enum member is judged
 /// by string membership via `type_accepts` itself. `None` means the value
 /// cannot inhabit the target's shape at all (a hard type error).
-fn coerce_state_literal(ty: &Type, raw: &str) -> Option<Literal> {
+pub(crate) fn coerce_state_literal(ty: &Type, raw: &str) -> Option<Literal> {
     match ty {
         Type::Bool => match raw {
             "true" => Some(Literal::Bool(true)),
@@ -411,7 +411,7 @@ fn validate_facts(mocks: &MockSet, folded: &FoldedEnv) -> Vec<Diagnostic> {
 /// The literal string `id` attr of a `<hub>` (mirrors
 /// `lute-check/src/match_check.rs`'s private `attr_str` — not reusable
 /// across the D1 quarantine boundary, so this carries its own copy).
-fn hub_id(h: &Hub) -> Option<String> {
+pub(crate) fn hub_id(h: &Hub) -> Option<String> {
     h.attrs
         .iter()
         .find(|a| a.key == "id")
