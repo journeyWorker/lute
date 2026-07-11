@@ -10,6 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use lute_manifest::snapshot::Domain;
 use lute_manifest::types::Type;
 
 use crate::meta::StateSchema;
@@ -65,6 +66,19 @@ pub struct Env {
     /// shared and never mutated after `fold_env` builds it (Task 9's guard-
     /// taint fill happens on a fresh, non-shared copy before it lands here).
     pub rel_vocab: Arc<RelVocab>,
+    /// The FULL merged domain vocabulary (data-catalog foundation A4):
+    /// `snapshot.domains` (core/plugin baseline) UNION project-authored
+    /// schema-import domains (A3's `merge_domains`) — the SAME value
+    /// `fold_env` computes into `FoldedEnv.domains` and threads to
+    /// `check_assert`/`check_retract`/`build_rel_vocab`'s membership checks
+    /// (0.3.0 T7). Threaded here too (0.3.0 T11 fix) so `check_fact_queries`
+    /// (cel_resolve.rs) validates a query pattern's domain-typed arg
+    /// (`holds`/`count`/`validAt`) against the SAME merged view a seeded
+    /// `facts:`/`::assert`/`::retract` already gets — previously it passed
+    /// `check_atom` an empty map, silently skipping `E-FACT-DOMAIN` for any
+    /// relation arg typed against a plugin/core/project domain (as opposed
+    /// to a RelVocab entity kind or `enums:` name) inside a query.
+    pub domains: BTreeMap<String, Domain>,
 }
 
 /// Checker context threaded through the directive/CEL/state validators.

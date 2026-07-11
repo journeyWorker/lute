@@ -469,6 +469,12 @@ pub fn fold_env(
         def_types,
         def_params,
         rel_vocab: std::sync::Arc::new(vocab),
+        // 0.3.0 T11 fix: the SAME merged domains value moved into
+        // `FoldedEnv.domains` below — cloned (not moved) here so
+        // `check_fact_queries` (cel_resolve.rs) can validate a query
+        // pattern's domain-typed arg via `ctx.env.domains`, matching what
+        // `check_assert`/`check_retract`/`build_rel_vocab` already receive.
+        domains: domains.clone(),
     };
     (
         FoldedEnv {
@@ -1393,6 +1399,10 @@ fn component_env(params: &[(String, Type)]) -> Env {
         def_types,
         def_params,
         rel_vocab: std::sync::Arc::new(crate::rel_schema::RelVocab::default()),
+        // Component bodies get an empty `RelVocab` (above) — no relation is
+        // ever declared/queryable inside one (dsl §13, presentational-scope
+        // only), so the merged domains view is moot; kept empty to match.
+        domains: std::collections::BTreeMap::new(),
     }
 }
 

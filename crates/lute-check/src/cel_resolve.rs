@@ -24,7 +24,6 @@ use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{CelKind, CelSlot};
 use lute_syntax::datalog::{BodyLiteral, FactArg, FactTerm};
-use std::collections::BTreeMap;
 
 use crate::cel_paths::collect_path_uses;
 use crate::ctx::ExpectedType;
@@ -619,18 +618,19 @@ fn check_fact_query_call(
         return;
     };
     let vocab: &RelVocab = &ctx.env.rel_vocab;
-    // `check_atom`'s `domains` parameter (the merged plugin/project catalog
-    // vocabulary, A4) is intentionally NOT threaded in here — `check_cel_slot`
-    // has no `domains` access (T11's surface is `cel_resolve.rs` only; see
-    // the task report). A relation arg declared against an entity kind or an
-    // `enums:` name — the ONLY shapes these fixtures (and realistically any
-    // fact-query pattern) exercise — is unaffected: `check_atom` resolves
-    // those BEFORE ever consulting `domains`. Only an arg declared against a
-    // plugin/project *catalog* domain (rather than a kind/enum) would skip
-    // its membership check here — a scoped, documented gap.
+    // 0.3.0 T11 fix: `check_atom`'s `domains` parameter (the merged
+    // plugin/core/project catalog vocabulary, A4) is threaded here from
+    // `ctx.env.domains` — the SAME merged view `fold_env` computes and
+    // `check_assert`/`check_retract`/`build_rel_vocab` already consult.
+    // Previously this passed an empty map, so a relation arg declared
+    // against a plugin/core/project *domain* (`build_rel_vocab`'s
+    // `domains.contains_key(arg)` acceptance, rel_schema.rs) rather than a
+    // RelVocab entity kind or `enums:` name silently skipped `E-FACT-DOMAIN`
+    // membership checking inside a `holds`/`count`/`validAt` query pattern —
+    // a soundness gap the seed/write paths never had.
     diags.extend(check_atom(
         vocab,
-        &BTreeMap::new(),
+        &ctx.env.domains,
         relation,
         &args,
         /* wildcard_ok */ true,

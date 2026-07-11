@@ -100,3 +100,47 @@ fn quest_lifecycle_guards_admit_fact_queries() {
     let c = codes(&quest);
     assert!(!c.iter().any(|k| k.starts_with("E-")), "§11: {c:?}");
 }
+
+/// 0.3.0 T11 fix (soundness gap, f06c650): a relation arg MAY be typed
+/// against a plugin/core/project merged *domain* — `build_rel_vocab`
+/// (rel_schema.rs) accepts an arg name via `domains.contains_key(arg)`, not
+/// only a RelVocab entity kind or `enums:` name. `check_atom`'s membership
+/// check for such an arg (rel_schema.rs `domains.get(dname)`) is reachable
+/// exactly the same way for a seeded `facts:`, an `::assert`/`::retract`
+/// write, AND a `holds`/`count`/`validAt` query pattern — but
+/// `check_fact_queries` used to hand `check_atom` an EMPTY domains map, so a
+/// bad domain-member value in a query silently passed. `felt`'s sole arg
+/// `emotion` is `lute.core`'s baseline domain (`snap.domains["emotion"]`,
+/// closed, members `[neutral, surprised, delighted, shy, content, angry,
+/// sad]`) — reachable with NO `entities:`/`enums:` declared at all, proving
+/// the arg resolves via the merged `domains` map, not a RelVocab kind/enum.
+const DOMAIN_VOCAB: &str = "relations:\n  felt: { args: [emotion] }\n";
+
+fn scene_when_domain(cond: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{DOMAIN_VOCAB}---\n## Shot 1.\n<branch>\n<choice id=\"a\" label=\"a\" when=\"{cond}\">\n@narrator: hi\n</choice>\n<choice id=\"b\" label=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
+    )
+}
+
+#[test]
+fn query_pattern_domain_typed_arg_is_membership_checked() {
+    // Non-member of the `emotion` domain in a query pattern must be caught —
+    // exactly like a bad member already is for facts:/::assert/::retract.
+    let c = codes(&scene_when_domain("holds(felt(zzz))"));
+    assert!(
+        c.contains(&"E-FACT-DOMAIN".to_string()),
+        "domain-typed relation arg in a query pattern must be membership-checked \
+         against the merged domains map (0.3.0 T11 gap): {c:?}"
+    );
+    let c = codes(&scene_when_domain("count(felt(zzz)) > 0"));
+    assert!(c.contains(&"E-FACT-DOMAIN".to_string()), "count(): {c:?}");
+    let c = codes(&scene_when_domain("validAt(felt(zzz), now())"));
+    assert!(c.contains(&"E-FACT-DOMAIN".to_string()), "validAt(): {c:?}");
+
+    // A genuine domain member checks clean.
+    let c = codes(&scene_when_domain("holds(felt(neutral))"));
+    assert!(
+        !c.iter().any(|k| k.starts_with("E-")),
+        "valid domain member must check clean: {c:?}"
+    );
+}
