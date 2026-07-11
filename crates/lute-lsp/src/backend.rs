@@ -21,10 +21,14 @@
 use std::path::{Path, PathBuf};
 
 use dashmap::DashMap;
-use lute_check::{check, check_cel_slot, parse_meta_kind, resolve_imports, CheckInput, MetaKind, Mode};
+use lute_check::{
+    check, check_cel_slot, parse_meta_kind, resolve_imports, translate_cel_parse, CheckInput,
+    MetaKind, Mode,
+};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
+    CodeActionOrCommand, CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
     CompletionOptions, CompletionParams, CompletionResponse, Diagnostic as LspDiagnostic,
     DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DocumentSymbolParams, DocumentSymbolResponse, FoldingRange,
@@ -37,6 +41,7 @@ use tower_lsp_server::ls_types::{
 };
 use tower_lsp_server::{Client, LanguageServer};
 
+use crate::code_action;
 use crate::convert::to_lsp_diagnostic;
 use crate::features::{completion, folding, hover, nav, semtok, symbols};
 
@@ -57,14 +62,23 @@ pub struct DocumentSnapshot {
 pub struct Backend {
     client: Client,
     docs: DashMap<Uri, DocumentSnapshot>,
+    /// The ORIGINAL `Vec<Diagnostic>` (fixits + `covered` intact) the last
+    /// `analyze`/`analyze_declaration` run produced for each open document —
+    /// kept beside the published LSP `Diagnostic`s (which drop `fixits`
+    /// entirely, `crate::convert`'s doc comment). `textDocument/codeAction`
+    /// (Task 15) has no other way to recover a fixit: the wire-form
+    /// `Diagnostic` the client echoes back in `CodeActionContext` never
+    /// carried one. Cleared on `did_close` alongside `docs`.
+    diagnostics: DashMap<Uri, Vec<Diagnostic>>,
 }
 
 impl Backend {
-    /// Build a backend bound to `client` with an empty document map.
+    /// Build a backend bound to `client` with empty document/diagnostic maps.
     pub fn new(client: Client) -> Self {
         Self {
             client,
             docs: DashMap::new(),
+            diagnostics: DashMap::new(),
         }
     }
 
@@ -108,11 +122,14 @@ impl Backend {
             components,
         };
         let result = check(&input);
+        // Task 15: retain the ORIGINAL diagnostics (fixits/covered intact)
+        // beside the published LSP form for `code_action` to read back later.
+        self.diagnostics.insert(uri.clone(), result.diagnostics.clone());
         let idx = lute_core_span::TextIndex::new(&snapshot.text);
         let mut diags: Vec<LspDiagnostic> = result
             .diagnostics
             .iter()
-            .map(|d| to_lsp_diagnostic(d, &idx))
+            .map(|d| to_lsp_diagnostic(d, &idx, &uri))
             .collect();
         diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
         self.client
@@ -271,16 +288,32 @@ impl Backend {
             );
             match lute_cel::parse_slot(&mut arena, raw, span.byte_start) {
                 Ok(handle) => slot.ast = Some(handle),
-                Err(e) => diags.push(Diagnostic {
-                    code: "E-CEL-PARSE".to_string(),
-                    severity: Severity::Error,
-                    message: e.message,
-                    span: e.span,
-                    layer: Layer::Cel,
-                    fixits: Vec::new(),
-                    provenance: None,
-                    covered: Vec::new(),
-                }),
+                Err(e) => {
+                    // §8.1 (folded from Task 13): route through the SAME
+                    // writer-voiced translation `check.rs`'s main E-CEL-PARSE
+                    // site uses, instead of building the message from `e`'s
+                    // raw backend text — the leak T13 flagged as out-of-scope
+                    // for its own crate (`lute-check` has no declaration-path
+                    // caller). `span` here is `find_key_span`'s DEF-NAME key
+                    // span, NOT the `cel:` value's own span, so a rebased
+                    // fixit edit would land on the wrong bytes (splicing into
+                    // the key, not the CEL text) — fixits are dropped at this
+                    // site for that reason; the message is still correct and
+                    // ANTLR-vocabulary-free, which is the load-bearing §8.1
+                    // requirement. `check.rs`'s own E-CEL-PARSE site (the
+                    // slot's true span) keeps its fixits untouched.
+                    let t = translate_cel_parse(raw, span, &e);
+                    diags.push(Diagnostic {
+                        code: "E-CEL-PARSE".to_string(),
+                        severity: Severity::Error,
+                        message: t.message,
+                        span: t.span.unwrap_or(span),
+                        layer: Layer::Cel,
+                        fixits: Vec::new(),
+                        provenance: None,
+                        covered: Vec::new(),
+                    })
+                }
             }
             let expected = val
                 .get("type")
@@ -290,8 +323,9 @@ impl Backend {
             diags.extend(check_cel_slot(&slot, &arena, &ctx, expected.as_ref()));
         }
 
+        self.diagnostics.insert(uri.clone(), diags.clone());
         let mut lsp_diags: Vec<LspDiagnostic> =
-            diags.iter().map(|d| to_lsp_diagnostic(d, &idx)).collect();
+            diags.iter().map(|d| to_lsp_diagnostic(d, &idx, &uri)).collect();
         lsp_diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
         self.client
             .publish_diagnostics(uri, lsp_diags, Some(snapshot.version))
@@ -427,6 +461,13 @@ impl LanguageServer for Backend {
                         },
                     ),
                 ),
+                // Task 15 (D16): quick fixes over `Diagnostic.fixits` — the
+                // ONLY surface an author can apply a `W-CHOICE-INTO-NO-PERSIST`
+                // remedy or a §8.1 T2 CEL rewrite through (`lute fix` never
+                // reads checker diagnostics, by construction). `Simple(true)`:
+                // this server returns only plain `CodeAction`s, no `Command`s,
+                // so it advertises no `code_action_kinds` allowlist.
+                code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -558,6 +599,33 @@ impl LanguageServer for Backend {
         )))
     }
 
+    /// `textDocument/codeAction` (Task 15, D16): map the cached ORIGINAL
+    /// diagnostics' `fixits` (the published LSP diagnostics dropped them,
+    /// `crate::convert`'s doc comment) that overlap `params.range` to
+    /// `CodeAction`s, through [`code_action::code_actions_for_fixits`]. `None`
+    /// when the document isn't open, has no cached diagnostics yet (never
+    /// analyzed), or none overlap with a fixit — never an empty `Some(vec![])`.
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        let uri = params.text_document.uri;
+        let Some(text) = self.document_text(&uri) else {
+            return Ok(None);
+        };
+        let Some(diags) = self.diagnostics.get(&uri) else {
+            return Ok(None);
+        };
+        let idx = TextIndex::new(&text);
+        let actions = code_action::code_actions_for_fixits(&diags, &uri, params.range, &idx);
+        if actions.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(
+            actions
+                .into_iter()
+                .map(CodeActionOrCommand::CodeAction)
+                .collect(),
+        ))
+    }
+
     async fn initialized(&self, _params: tower_lsp_server::ls_types::InitializedParams) {
         self.client
             .log_message(MessageType::INFO, "lute-lsp initialized")
@@ -595,6 +663,7 @@ impl LanguageServer for Backend {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
         self.docs.remove(&uri);
+        self.diagnostics.remove(&uri);
         // LSP diagnostics are server-owned and persist in the client until the
         // server replaces them. The buffer is gone, so publish an empty set to
         // clear any squiggles the last analyze() left behind (no version stamp:
@@ -1205,6 +1274,87 @@ mod tests {
         assert!(
             diags.is_empty(),
             "a clean declaration .yaml must publish no diagnostics, got {diags:?}"
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// §8.1 leak-fix fold-in (flagged by Task 13 as out-of-scope for
+    /// `lute-check`, closed here): a declaration `.yaml`'s `defs:` `cel:`
+    /// body that fails to parse must publish an `E-CEL-PARSE` message with
+    /// NONE of the embedded backend's own ANTLR vocabulary — the exact
+    /// `no_backend_vocabulary_ever` contract `lute-check/tests/cel_message.rs`
+    /// pins for the main `check()` path, now pinned for this SECOND
+    /// construction site too. `run.act = 1` is T2's own bare-`=` fixture
+    /// (`cel_message.rs` rule 4): a real parse failure `lute_cel::parse_slot`
+    /// rejects, translated through the SAME `translate_cel_parse` (Task 15's
+    /// fold-in of the T13 finding) instead of `e.message`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn analyze_declaration_cel_parse_error_has_no_antlr_vocabulary() {
+        use futures::StreamExt;
+        use std::fs;
+        use tower::{Service, ServiceExt};
+        use tower_lsp_server::jsonrpc::Request as RpcRequest;
+        use tower_lsp_server::LspService;
+
+        let root = std::env::temp_dir().join(format!("lute_lsp_decl_cel_parse_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("schema")).unwrap();
+        fs::write(root.join("lute.project.yaml"), "defaultProfile: default\nprofiles:\n  default: {}\n").unwrap();
+        let decl_path = root.join("schema/state.yaml");
+        // `run.act = 1` is a bare-`=` CEL parse failure (T2 rule 4) — CEL
+        // wants `==`, so this never parses.
+        fs::write(
+            &decl_path,
+            "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.act = 1\" }\n",
+        )
+        .unwrap();
+        let uri_str = format!("file://{}", decl_path.display());
+
+        let (mut service, mut socket) = LspService::new(Backend::new);
+        let init = RpcRequest::build("initialize")
+            .params(serde_json::json!({ "capabilities": {} }))
+            .id(1)
+            .finish();
+        service.ready().await.unwrap().call(init).await.unwrap();
+
+        let open = RpcRequest::build("textDocument/didOpen")
+            .params(serde_json::json!({
+                "textDocument": {
+                    "uri": uri_str, "languageId": "yaml", "version": 1,
+                    "text": fs::read_to_string(&decl_path).unwrap()
+                }
+            }))
+            .finish();
+        service.ready().await.unwrap().call(open).await.unwrap();
+        let opened = socket.next().await.expect("didOpen should publish");
+        let diags = opened
+            .params()
+            .and_then(|p| p.get("diagnostics").cloned())
+            .and_then(|d| d.as_array().cloned())
+            .expect("publish carries a diagnostics array");
+        let cel_parse = diags
+            .iter()
+            .find(|d| d.get("code").and_then(|c| c.as_str()) == Some("E-CEL-PARSE"))
+            .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic, got {diags:?}"));
+        let message = cel_parse
+            .get("message")
+            .and_then(|m| m.as_str())
+            .expect("E-CEL-PARSE carries a message");
+        for tok in [
+            "viable alternative",
+            "token recognition",
+            "mismatched input",
+            "extraneous input",
+            "no viable",
+        ] {
+            assert!(
+                !message.contains(tok),
+                "declaration-path E-CEL-PARSE leaked backend vocabulary {tok:?}: {message}"
+            );
+        }
+        assert!(
+            message.contains("did you mean"),
+            "expected the writer-voiced T2 bare-`=` suggestion, got: {message}"
         );
         fs::remove_dir_all(&root).ok();
     }
