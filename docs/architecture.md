@@ -1,16 +1,21 @@
 # Lute — Architecture (compiler · AST · validation · LSP)
 
-**Status:** draft / forward-looking. Not yet implemented. Captures a design session that
-converged the *next* shape of the inline scenario authoring format, the AST it should parse
-to, and the LSP that AST enables. The current parser lives at
-`packages/lute-core/src/modules/scenario/inline/parser.ts`; the runtime target is the existing
-flat command-record format (`idola_script_commands`).
+**Status:** the language and tooling are **shipped and implemented in Rust** — crates
+[`lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-cli`, `lute-lsp`](../crates)
+plus editor clients under [`editors/`](../editors). The **early sections below** ("Why" through
+the design-session walkthrough) are a **historical, pre-implementation design draft** written
+against an older Bard TypeScript parser (`packages/lute-core/…`, no longer part of this repo),
+retained for design rationale. The **shipped implementation** is documented in the *Relational
+state kernel* section near the end of this file and by the versioned normative specs; the runtime
+target is the flat command-record format the engine consumes.
 
-> This document is the **implementation architecture**. The **language** is specified formally and
-> versioned as a proposal: [`proposals/scenario-dsl/0.0.1.md`](proposals/scenario-dsl/0.0.1.md)
-> (grammar + normative semantics). The **plugin / extensibility system** is specified normatively in
+> This document is the **implementation architecture + design rationale**. The **language** is
+> specified normatively as a versioned proposal stack — base grammar
+> [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the 0.2.0 / 0.2.2 /
+> 0.3.0 deltas, current tip [`proposals/scenario-dsl/0.3.0.md`](proposals/scenario-dsl/0.3.0.md).
+> The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) (human overview:
-> [`plugin-system.md`](plugin-system.md)). Use the two proposals as the SoT and this doc for the
+> [`plugin-system.md`](plugin-system.md)). Use the specs as the SoT and this doc for the
 > AST/compiler/LSP architecture.
 
 ## Why

@@ -14,10 +14,10 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | [`proposals/scenario-dsl/0.1.0.md`](docs/proposals/scenario-dsl/0.1.0.md) — language grammar + semantics | the examples below; [`architecture.md`](docs/architecture.md) *New additions* |
+| **writing `.lute` scenarios** | versioned spec stack — base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) + `0.2.0`/`0.2.2` deltas, current tip [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (grammar + semantics) | the examples below; [`architecture.md`](docs/architecture.md) |
 | **writing a plugin** (directives, state, providers, bridge) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution | [`plugin-system.md`](docs/plugin-system.md) |
 | **building the compiler / checker / LSP** | both proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
-| **reasoning about run / user / app state** | [`proposals/scenario-dsl/0.1.0.md`](docs/proposals/scenario-dsl/0.1.0.md) §9 | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
+| **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
 
 Worked examples:
@@ -63,7 +63,7 @@ luteVersion: "0.1.0"
 profile: date-minigame
 ---
 
-::minigame{kind="rhythm" id="bianca_service_01" resultKey="service01" wait="true"}
+::minigame{kind="rhythm" id="bianca_service_01" resultKey="service01" sync="true"}
 
 <match on="scene.minigame.service01.rank">
   <when test="$ == 'gold'">
@@ -91,5 +91,8 @@ Install the server once (`cargo install --path crates/lute-lsp`), then:
 
 ## Status
 
-Draft / pre-implementation. The documents define the target language and architecture; compiler/LSP
-implementation work is not yet in this repository.
+Implemented. The checker, compiler, provider/plugin resolver, LSP, and CLI ship as Rust crates
+under [`crates/`](crates) (`lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`,
+`lute-cli`, `lute-lsp`), with editor clients under [`editors/`](editors). The language is at
+**0.3.0** (relational facts + Datalog derivation); the normative surface is the versioned spec
+stack (0.1.0 base + 0.2.0 / 0.2.2 / 0.3.0 deltas).
