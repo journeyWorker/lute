@@ -408,6 +408,18 @@ fn resolve_directive(d: &Directive, off: usize) -> Cursor<'_> {
 }
 
 fn resolve_line(l: &Line, off: usize) -> Option<Cursor<'_>> {
+    // dsl 0.4.0 §7.2: the gated-line guard (`Line.when`) is extracted out of
+    // `l.attrs` at parse time — resolve it FIRST (mirrors the canonical
+    // pre-order, `lute_syntax::walk`'s `Node::Line` -> `when` then `attrs`),
+    // the same `choice.when` precedent (`resolve_node`'s `Node::Branch` arm).
+    if let Some(when) = &l.when {
+        if span_contains(when.span, off) {
+            return Some(Cursor::Cel {
+                slot: when,
+                in_match_subject: false,
+            });
+        }
+    }
     // The `@speaker{attrs}` head resolves first (attrs never overlap the text).
     if let Some(c) = resolve_attrs(&l.attrs, None, off) {
         return Some(c);

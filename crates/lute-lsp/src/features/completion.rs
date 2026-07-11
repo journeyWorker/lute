@@ -132,14 +132,18 @@ fn construct_attr_key_items(construct: QuestConstruct) -> Vec<CompletionItem> {
         .collect()
 }
 
-/// Content-line attribute keys (dsl 0.2.2 §7.1, §D7): a `@speaker{…}:` line's
-/// fixed 9-key vocabulary is, like [`construct_attr_key_items`]'s three quest
-/// constructs, NOT capability-schema-driven (it belongs to the content-line
-/// grammar itself, validated by `lute_check::content_line` rather than a
+/// Content-line attribute keys (dsl 0.2.2 §7.1, §D7; `when` added dsl 0.4.0
+/// §7.2): a `@speaker{…}:` line's fixed 10-key vocabulary is, like
+/// [`construct_attr_key_items`]'s three quest constructs, NOT
+/// capability-schema-driven (it belongs to the content-line grammar itself,
+/// validated by `lute_check::content_line`/`Line.when` rather than a
 /// [`snapshot`]-declared `DirectiveDecl`) — always the full set; kind `FIELD`.
 /// `mono`/`os`/`vo` are bare boolean delivery flags (`AttrValue::BoolTrue`,
 /// mutually exclusive — `E-DELIVERY-CONFLICT` on more than one), not
-/// `key="value"` attrs, so they carry no completable value domain.
+/// `key="value"` attrs, so they carry no completable value domain. `when` is
+/// extracted into `Line.when` (a typed `CelSlot`) at parse time — it never
+/// appears in `l.attrs` once authored — but stays in this KEY-completion
+/// vocabulary so it is offered alongside every other content-line key.
 fn content_line_attr_key_items() -> Vec<CompletionItem> {
     const KEYS: &[(&str, &str)] = &[
         ("code", "string"),
@@ -151,6 +155,7 @@ fn content_line_attr_key_items() -> Vec<CompletionItem> {
         ("os", "flag"),
         ("vo", "flag"),
         ("as", "string"),
+        ("when", "condition"),
     ];
     KEYS.iter()
         .map(|(name, ty)| CompletionItem {
@@ -1255,6 +1260,19 @@ mod tests {
         }
         assert!(ls.contains(&"emotion"), "missing emotion: {ls:?}");
         assert!(!ls.contains(&"delivery"), "0.2.1 delivery key retired: {ls:?}");
+    }
+
+    #[test]
+    fn content_line_attr_key_completion_offers_when() {
+        // dsl 0.4.0 §7.2: `when=` joins the content-line attr vocabulary — it
+        // is extracted into `Line.when` at parse time (never left in
+        // `l.attrs`), but the KEY itself still belongs in the completable
+        // set when the cursor sits on a DIFFERENT existing attr's key.
+        let text = "## Shot 1.\n@x{code=\"c1\"}: hi\n";
+        let off = text.find("code").unwrap() + 2; // inside `code`, before `=`
+        let items = complete(text, off);
+        let ls = labels(&items);
+        assert!(ls.contains(&"when"), "missing when: {ls:?}");
     }
 
     #[test]

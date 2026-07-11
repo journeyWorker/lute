@@ -155,8 +155,26 @@ fn walk_reach(nodes: &[Node], defs: &DefTable<'_>, ctx: &DecideCtx<'_>, diags: &
                 diags.extend(check_objective_reach(o, defs, ctx));
                 walk_reach(&o.body, defs, ctx, diags);
             }
-            Node::Line(_)
-            | Node::Directive(_)
+            Node::Line(l) => {
+                // dsl 0.4.0 §7.2: a gated line (`when=`) is a one-arm
+                // construct — the SAME cause-1 rule a `<when test>` arm gets
+                // (§5.2 rule 1): a guard that decides false makes the line
+                // provably dead. No subsumption/`is` pattern applies (a line
+                // guard has none), so only `decide_slot` matters here.
+                if let Some(when) = &l.when {
+                    if !when.raw.trim().is_empty() {
+                        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
+                            diags.push(diag(
+                                E_ARM_DEAD,
+                                Severity::Error,
+                                "this gated line can never be shown: its `when` guard is provably false (dsl 0.4 §7.2, §5.2)".to_string(),
+                                when.span,
+                            ));
+                        }
+                    }
+                }
+            }
+            Node::Directive(_)
             | Node::Set(_)
             | Node::Timeline(_)
             | Node::Assert(_)

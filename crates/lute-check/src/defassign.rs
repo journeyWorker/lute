@@ -117,13 +117,32 @@ fn walk_nodes(
             // `E-MAYBE-UNSET`. `Ref`/`Reserved` interps carry no state path.
             // (`E-UNDECLARED` for the path and `E-UNDECLARED-REF` for the ref are
             // the cel-layer resolver's job, mirroring how guard reads split.)
-            Node::Line(line) => {
-                for interp in &line.interps {
-                    if interp.kind == InterpKind::Path {
-                        check_read(&interp.raw, schema, assigned, interp.span, diags);
+            //
+            // dsl 0.4.0 §7.2: a `when=` guard is a one-arm, NON-DOMINATING
+            // construct — the line may or may not emit, exactly like an
+            // `<on>`/`<hub>` arm (`walk_hub`/`walk_on` above): fork the
+            // incoming set, let `apply_condition` prove reads for THIS
+            // line's interps only, then DISCARD the fork (nothing folds back
+            // past a line that may not show) — so `when="isSet(run.tip)"`
+            // proves `{{run.tip}}`, but the outer set is untouched either way.
+            Node::Line(line) => match &line.when {
+                Some(when) => {
+                    let mut fork = assigned.clone();
+                    apply_condition(when, schema, &mut fork, diags);
+                    for interp in &line.interps {
+                        if interp.kind == InterpKind::Path {
+                            check_read(&interp.raw, schema, &fork, interp.span, diags);
+                        }
                     }
                 }
-            }
+                None => {
+                    for interp in &line.interps {
+                        if interp.kind == InterpKind::Path {
+                            check_read(&interp.raw, schema, assigned, interp.span, diags);
+                        }
+                    }
+                }
+            },
             Node::Directive(_) => {}
             Node::On(on) => walk_on(on, schema, assigned, diags),
             Node::Objective(o) => walk_objective(o, schema, assigned, diags),
