@@ -5,6 +5,13 @@
 //! Pipeline (§5): check gate (D6) -> normalize (D8) -> expand (D4) ->
 //! flatten + CFG-aware stage resolution incl. inline timelines (D9) ->
 //! addressing + identity -> deterministic serialization.
+//!
+//! `normalize::normalize_document` and `expand::expand_document` are `pub`
+//! (dsl 0.4 §4.4, D14): `lute-trace`'s scene walk (Task 19) calls both in
+//! this SAME order so it walks the tree exactly as compile expansion binds
+//! it — component binding, the `when=`/`persist=` desugars, and the §6.4
+//! folds — with zero duplicated logic. Purely a visibility grant; neither
+//! function's behavior changed for THIS crate's own [`compile`] pipeline.
 
 pub mod address;
 pub mod cfg;

@@ -27,6 +27,12 @@ pub const COMPONENT_END: &str = "__component-end";
 
 /// Normalize the tree in place: no `::use` survives; persists are real `Set`s.
 /// Total; failures (gate-proven unreachable) degrade to `E-COMPILE-COMPONENT`.
+///
+/// `pub` for the `lute-trace` consumer (dsl 0.4 §4.4: trace walks the
+/// document exactly as compile expansion binds it — D14). `lute-trace`
+/// calls this BEFORE [`crate::expand::expand_document`] so component
+/// binding (§13.2), the §6.4 folds, and the `when=`/`persist=` desugars are
+/// inherited by construction, with zero duplicated logic.
 pub fn normalize_document(
     doc: &mut Document,
     components: &ComponentSet,

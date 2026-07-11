@@ -173,7 +173,7 @@ pub struct EvalEnv<'a> {
     pub facts: &'a FactStore<'a>,
 }
 
-fn literal_to_value(l: &Literal) -> Value {
+pub(crate) fn literal_to_value(l: &Literal) -> Value {
     match l {
         Literal::Bool(b) => Value::Bool(*b),
         Literal::Num(n) => Value::Num(*n),
@@ -210,7 +210,7 @@ fn to_decided(v: Value) -> Option<Decided> {
 /// (`scene.x.y`), mirroring `lute_check::cel_paths::select_path` — that
 /// helper is `pub(crate)` to `lute-check`, so `lute-trace` (structurally
 /// isolated, D1 rule 4) carries its own copy.
-fn expr_path(expr: &Expr) -> Option<String> {
+pub(crate) fn expr_path(expr: &Expr) -> Option<String> {
     match expr {
         Expr::Ident(name) => Some(name.clone()),
         Expr::Select(sel) => Some(format!("{}.{}", expr_path(&sel.operand.expr)?, sel.field)),
@@ -237,7 +237,7 @@ fn pattern_args(c: &CallExpr) -> Option<Vec<Pat>> {
         .collect()
 }
 
-fn eval_path_read(path: &str, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
+pub(crate) fn eval_path_read(path: &str, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
     match env.state.read(path) {
         Read::Value(v) => {
             if v == Value::Unknown {
