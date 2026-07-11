@@ -645,6 +645,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
         timeline_tables: Vec::new(),
         exhaustive_subject_spans: Vec::new(),
         components: &input.components,
+        src: &input.text,
         param_domains,
     };
     // Kind-dispatched walk (dsl 0.2.0 §3.1): scene walks `doc.shots` (dsl
@@ -857,6 +858,11 @@ struct Walker<'a> {
     exhaustive_subject_spans: Vec<Span>,
     /// Resolved `components:` table (dsl §13): the target of `::use` invocations.
     components: &'a ComponentSet,
+    /// The raw document source (finding 4): `choice_into_no_persist_diag`
+    /// needs to confirm a preceding byte is genuinely whitespace before its
+    /// "remove into=" fixit deletes it, rather than assuming a separator is
+    /// always there.
+    src: &'a str,
     /// dsl 0.4.0 §6.2/§6.3: this document's OWN declared `params:` domains,
     /// non-empty ONLY for a STANDALONE `MetaKind::Component` self-check (the
     /// `Node::Match` arm below dispatches a bare-`@param` subject through
@@ -936,7 +942,7 @@ impl Walker<'_> {
                     self.check_attr_refs(&b.attrs, ctx, None);
                     for choice in &b.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
-                        check_choice_persist(choice, ctx, &mut self.diags);
+                        check_choice_persist(choice, ctx, self.src, &mut self.diags);
                         // §7.6: a `<choice label>` string MAY embed `{{…}}`
                         // interpolations. Labels are String attrs, so their interps
                         // are not in the AST — scan and validate them via the same
@@ -1073,7 +1079,7 @@ impl Walker<'_> {
                     self.check_attr_refs(&h.attrs, ctx, None);
                     for choice in &h.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
-                        check_choice_persist(choice, ctx, &mut self.diags);
+                        check_choice_persist(choice, ctx, self.src, &mut self.diags);
                         // §7.6: hub choice labels carry `{{…}}` interpolations too
                         // (same as branch choices) — validate their referents.
                         check_interps(
@@ -2210,14 +2216,14 @@ const W_CHOICE_INTO_NO_PERSIST: &str = "W-CHOICE-INTO-NO-PERSIST";
 /// recognized here, so they are never reported as unknown/extra. (The persist
 /// target attribute is `into`, renamed from 0.0.1 `as`; `as` survives only on
 /// content lines as the display-label override, §7.1 — untouched here.)
-fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, src: &str, diags: &mut Vec<Diagnostic>) {
     // Only choices carrying a `persist` attr participate.
     let Some(persist) = choice.attrs.iter().find(|a| a.key == "persist") else {
         // §7.3: the into⇒persist sugar was dropped — a bare `into=` with no
         // `persist=` is a silent no-op (it parses and checks clean today but
         // records nothing), so name the trap instead of implying the write.
         if let Some(into_attr) = choice.attrs.iter().find(|a| a.key == "into") {
-            diags.push(choice_into_no_persist_diag(into_attr));
+            diags.push(choice_into_no_persist_diag(into_attr, src));
         }
         return;
     };
@@ -2411,10 +2417,18 @@ fn persist_diag(code: &str, message: String, span: Span) -> Diagnostic {
 /// (fix.rs) doesn't read checker diagnostics at all: (1) insert `persist=
 /// "run" ` immediately before `into=`; (2) delete the dead `into=` attr,
 /// plus its one preceding separator byte (dsl §4.5 attrs are whitespace-
-/// separated) so no stray double space is left behind.
-fn choice_into_no_persist_diag(into_attr: &Attr) -> Diagnostic {
+/// separated) so no stray double space is left behind — but ONLY when that
+/// preceding byte genuinely IS whitespace (finding 4): `into=` MAY be the
+/// tag's first attr, with no whitespace-separated byte before it at all
+/// within the attr list; unconditionally removing "the byte before" would
+/// eat whatever (non-whitespace) byte sits there instead and corrupt the
+/// source. `src` is the raw document text the checker is validating.
+fn choice_into_no_persist_diag(into_attr: &Attr, src: &str) -> Diagnostic {
     let insert_at = into_attr.span.byte_start;
-    let remove_start = insert_at.saturating_sub(1);
+    let remove_start = match insert_at.checked_sub(1).and_then(|i| src.as_bytes().get(i)) {
+        Some(b' ' | b'\t') => insert_at - 1,
+        _ => insert_at,
+    };
     Diagnostic {
         code: W_CHOICE_INTO_NO_PERSIST.to_string(),
         severity: Severity::Warning,
@@ -2905,7 +2919,21 @@ fn collapse_same_root(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
         std::collections::HashMap::new();
     for d in diags {
         let root = if COLLAPSE_CODES.contains(&d.code.as_str()) {
-            first_backtick_token(&d.message)
+            if d.code == "E-UNDECLARED" {
+                // Finding 5: an `E-UNDECLARED` message's first backtick token
+                // IS the root subject for most producers (`cel_resolve.rs`,
+                // `defassign.rs`, the persist-target check) — but `set_op.rs`
+                // quotes the DIRECTIVE first (`` `::set` target `run.x` … ``),
+                // so collapsing on the shared literal "::set" wrongly merged
+                // every DISTINCT undeclared `::set` target into one primary.
+                // `undeclared_path` (the same tier-prefixed-token extractor
+                // `dedup_undeclared` already uses) finds the REAL root path
+                // instead; fall back to the first backtick token only when no
+                // tier-prefixed token is present (never guessed at).
+                undeclared_path(&d.message).or_else(|| first_backtick_token(&d.message))
+            } else {
+                first_backtick_token(&d.message)
+            }
         } else {
             None
         };
@@ -2980,5 +3008,81 @@ fn node_summary(node: &Node) -> String {
         Node::Objective(o) => format!("<objective id=\"{}\">", o.id),
         Node::Assert(a) => format!("::assert{{{}(…)}}", a.pattern.relation),
         Node::Retract(r) => format!("::retract{{{}(…)}}", r.pattern.relation),
+    }
+}
+
+#[cfg(test)]
+mod persist_fixit_tests {
+    use super::*;
+
+    fn mkspan(byte_start: usize, byte_end: usize) -> Span {
+        Span { byte_start, byte_end, line: 0, column: 0, utf16_range: (0, 0) }
+    }
+
+    /// Finding 4: `choice_into_no_persist_diag`'s "remove into=" fixit always
+    /// removed the byte immediately before `into_attr.span.byte_start`,
+    /// assuming it is always the whitespace attr separator (dsl §4.5). That
+    /// assumption is unvalidated — if a caller ever hands it an `into` attr
+    /// whose preceding byte ISN'T whitespace (e.g. a `{` opening delimiter),
+    /// the fixit corrupts the source by eating that byte too. This is a
+    /// white-box unit test (`choice_into_no_persist_diag` is crate-private)
+    /// constructing a synthetic `Attr` to prove the fixit's edit span never
+    /// eats a non-whitespace preceding byte, independent of whether today's
+    /// grammar happens to always separate `<choice>` attrs with whitespace.
+    #[test]
+    fn remove_into_fixit_never_eats_a_non_whitespace_preceding_byte() {
+        let src = "{into=\"run.x\"}";
+        let into_start = src.find("into").unwrap();
+        let into_end = src.rfind('"').unwrap() + 1;
+        let value_start = src.find('"').unwrap() + 1;
+        let value_end = src.rfind('"').unwrap();
+        let into_attr = Attr {
+            key: "into".to_string(),
+            value: AttrValue::Str("run.x".to_string()),
+            value_span: mkspan(value_start, value_end),
+            span: mkspan(into_start, into_end),
+        };
+        let diag = choice_into_no_persist_diag(&into_attr, src);
+        let remove = diag
+            .fixits
+            .iter()
+            .find(|f| f.title == "remove into=")
+            .expect("a \"remove into=\" fixit");
+        let edit = &remove.edit[0];
+        let mut spliced = src.to_string();
+        spliced.replace_range(edit.span.byte_start..edit.span.byte_end, &edit.new_text);
+        assert_eq!(
+            spliced, "{}",
+            "removing into= must preserve the preceding `{{` — it is not a \
+             whitespace separator: got {spliced:?}"
+        );
+    }
+
+    /// The ordinary case (a real whitespace separator, as `<choice>` attrs
+    /// always are today) must still remove exactly that one byte — no
+    /// stray double space left behind.
+    #[test]
+    fn remove_into_fixit_still_removes_a_real_preceding_space() {
+        let src = "<choice id=\"a\" into=\"run.x\">";
+        let into_start = src.find("into").unwrap();
+        let into_end = src.rfind('"').unwrap() + 1;
+        let value_start = src.rfind('"').map(|_| src.find("into").unwrap() + 6).unwrap();
+        let value_end = src.rfind('"').unwrap();
+        let into_attr = Attr {
+            key: "into".to_string(),
+            value: AttrValue::Str("run.x".to_string()),
+            value_span: mkspan(value_start, value_end),
+            span: mkspan(into_start, into_end),
+        };
+        let diag = choice_into_no_persist_diag(&into_attr, src);
+        let remove = diag
+            .fixits
+            .iter()
+            .find(|f| f.title == "remove into=")
+            .expect("a \"remove into=\" fixit");
+        let edit = &remove.edit[0];
+        let mut spliced = src.to_string();
+        spliced.replace_range(edit.span.byte_start..edit.span.byte_end, &edit.new_text);
+        assert_eq!(spliced, "<choice id=\"a\">", "got {spliced:?}");
     }
 }

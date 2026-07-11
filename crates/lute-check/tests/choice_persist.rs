@@ -394,3 +394,45 @@ fn fixits_carry_both_remedies() {
         "remove-into fixit must splice `into=` cleanly away; got:\n{spliced2}"
     );
 }
+
+#[test]
+fn first_attr_into_fixit_splices_to_valid_source() {
+    // Finding 4: when `into=` is the tag's FIRST attribute, the "remove
+    // into=" fixit must never eat a non-whitespace byte before it — the
+    // spliced result must stay valid, re-parseable source (the opening `<`
+    // — or, more generally, whatever precedes the tag — must survive).
+    let t = format!(
+        "{HDR}---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice into=\"run.metHelpfully\" id=\"help\" label=\"Help\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    let res = diagnose(&t);
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "W-CHOICE-INTO-NO-PERSIST")
+        .expect("bare first-attr `into=` must warn");
+    let remove = d
+        .fixits
+        .iter()
+        .find(|f| f.title.contains("remove"))
+        .expect("a `remove into=` fixit");
+    let e = &remove.edit[0];
+    let mut spliced = t.clone();
+    spliced.replace_range(e.span.byte_start..e.span.byte_end, &e.new_text);
+    assert!(
+        spliced.contains("<choice id=\"help\" label=\"Help\">"),
+        "remove-into fixit must splice a first-attr into= cleanly away, \
+         preserving the tag's own `<`; got:\n{spliced}"
+    );
+    // The spliced result must still PARSE clean (no new syntax errors) —
+    // proof the source wasn't corrupted, not just a substring match.
+    let (_doc, parse_diags) = lute_syntax::parse(&spliced);
+    assert!(
+        parse_diags.is_empty(),
+        "spliced source must still parse clean; got {:?}\n{spliced}",
+        parse_diags
+    );
+}
