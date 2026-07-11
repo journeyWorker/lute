@@ -91,3 +91,70 @@ fn guard_reading_undeclared_scalar_is_undeclared() {
     let c = codes(&scene_with(&format!("{VOCAB}rules:\n  - \"ally(A, A) :- faction(A), cel(\\\"run.ghost == 1\\\")\"\n")));
     assert!(c.contains(&"E-UNDECLARED".to_string()), "{c:?}");
 }
+
+fn guard_tainted(text: &str) -> std::collections::BTreeSet<String> {
+    let (mut doc, _) = lute_syntax::parse(text);
+    let mut arena = lute_cel::CelArena::default();
+    lute_cel::fill_document(&mut arena, &mut doc);
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "t".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+    };
+    let (folded, _, _) = lute_check::fold_env(&doc, &input);
+    folded.env.rel_vocab.guard_tainted.clone()
+}
+
+#[test]
+fn positive_recursion_is_legal() {
+    let front = "entities:\n  c: { members: [ana] }\n  loc: { members: [grove, moonrise] }\nrelations:\n  atLocation: { args: [c, loc], key: [0] }\n  connected: { args: [loc, loc], tier: app }\n  canReach: { args: [c, loc], derive: true }\nrules:\n  - \"canReach(C, L) :- atLocation(C, L)\"\n  - \"canReach(C, L2) :- canReach(C, L1), connected(L1, L2)\"\n";
+    let c = codes(&scene_with(front));
+    assert!(!c.contains(&"E-DATALOG-UNSTRATIFIED".to_string()), "§7.2 positive recursion: {c:?}");
+}
+
+#[test]
+fn negation_cycle_is_unstratified() {
+    let front = "entities:\n  f: { members: [a, b] }\nrelations:\n  p: { args: [f], derive: true }\n  q: { args: [f], derive: true }\nrules:\n  - \"p(X) :- f(X), not q(X)\"\n  - \"q(X) :- f(X), not p(X)\"\n";
+    let c = codes(&scene_with(front));
+    assert!(c.contains(&"E-DATALOG-UNSTRATIFIED".to_string()), "{c:?}");
+}
+
+#[test]
+fn negation_cycle_spanning_two_files_is_caught_post_merge() {
+    // §4.1/§7.2: checked on the MERGED rule set
+    fn zero_span() -> lute_core_span::Span {
+        lute_core_span::Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+    }
+    let dir = {
+        let d = std::env::temp_dir().join(format!("lute_strat_{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    };
+    std::fs::write(dir.join("a.yaml"), "entities:\n  f: { members: [a] }\nrelations:\n  p: { args: [f], derive: true }\n  q: { args: [f], derive: true }\nrules:\n  - \"p(X) :- f(X), not q(X)\"\n").unwrap();
+    std::fs::write(dir.join("b.yaml"), "uses: a.yaml\nrules:\n  - \"q(X) :- f(X), not p(X)\"\n").unwrap();
+    let imports = lute_check::resolve_imports(&dir, &["b.yaml".into()], &[], zero_span());
+    let input = lute_check::CheckInput {
+        text: scene_with(""),
+        uri: "t".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: lute_manifest::provider::ProviderSet::default(),
+        mode: lute_check::Mode::Author,
+        imports,
+        components: Default::default(),
+    };
+    let c: Vec<String> = lute_check::check(&input).diagnostics.into_iter().map(|d| d.code).collect();
+    assert!(c.contains(&"E-DATALOG-UNSTRATIFIED".to_string()), "{c:?}");
+}
+
+#[test]
+fn guard_taint_propagates_to_downstream_readers() {
+    let front = "entities:\n  faction: { members: [harpers, absolute] }\nrelations:\n  hostile: { args: [faction, faction] }\n  guarded: { args: [faction], derive: true }\n  downstream: { args: [faction], derive: true }\n  clean: { args: [faction], derive: true }\nstate:\n  run.act: { type: number, default: 1 }\nrules:\n  - \"guarded(A) :- faction(A), cel(\\\"run.act == 1\\\")\"\n  - \"downstream(A) :- guarded(A)\"\n  - \"clean(A) :- faction(A)\"\n";
+    let tainted = guard_tainted(&scene_with(front));
+    assert!(tainted.contains("guarded"), "directly guarded: {tainted:?}");
+    assert!(tainted.contains("downstream"), "downstream reads guarded, so it is tainted too (§6): {tainted:?}");
+    assert!(!tainted.contains("clean"), "clean never reads a guarded relation: {tainted:?}");
+}

@@ -26,7 +26,10 @@ pub use cel_resolve::{check_cel_slot, check_rule_guards, E_CEL_PROFILE, E_DATALO
 pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
-pub use datalog_check::{check_rules, E_DATALOG_UNSAFE, E_DERIVE_UNDECLARED, W_DERIVE_NO_RULES};
+pub use datalog_check::{
+    check_rules, check_stratification, E_DATALOG_UNSAFE, E_DATALOG_UNSTRATIFIED,
+    E_DERIVE_UNDECLARED, W_DERIVE_NO_RULES,
+};
 pub use defassign::{check_definite_assignment, check_quest_guard_defassign};
 pub use directives::E_AT_CONTEXT;
 pub use fix::{fix_document, FixResult};
