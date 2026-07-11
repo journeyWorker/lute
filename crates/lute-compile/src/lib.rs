@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use lute_cel::CelArena;
 use lute_check::meta::StateSchema;
-use lute_check::{check, fold_env, CheckInput, FoldedEnv, StageState};
+use lute_check::{check, fold_env, CheckInput, DefTable, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
@@ -62,7 +62,7 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
     let mut diags = normalize::normalize_document(&mut doc, &input.components, &folded.env.state);
 
     // §5 pass 3 — CEL expansion (D4).
-    let table = expand::DefTable {
+    let table = DefTable {
         bodies: &folded.def_bodies,
         params: &folded.env.def_params,
     };

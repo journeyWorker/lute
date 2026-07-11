@@ -1,5 +1,6 @@
 pub mod admission;
 pub mod cel_paths;
+pub mod cel_expand;
 pub mod cel_resolve;
 pub mod check;
 pub mod component_import;
@@ -24,6 +25,7 @@ pub mod timeline;
 
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_paths::E_PATH_IDENT;
+pub use cel_expand::{expand_cel, DefTable};
 pub use cel_resolve::{
     check_cel_slot, check_rule_guards, E_CEL_PROFILE, E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT,
     E_VALIDAT_DERIVED,
