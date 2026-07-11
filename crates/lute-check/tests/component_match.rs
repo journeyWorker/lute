@@ -382,3 +382,220 @@ defs:\n  currentTier: { type: { enum: [cold, warm, fond] }, cel: \"scene.tier\" 
         "a caller-side state-derived def bound to a component param is legal (§6.2 invocation surface); got {cs:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Task 7 (dsl 0.4.0 §6.3) — exhaustiveness over a param domain + §5
+// reachability inside component bodies. `REACTION` (above) is the §6.5
+// worked example: a `tier`-enum param, three `<when is>` arms covering the
+// whole declared domain, no `<otherwise>`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn enum_param_covered_is_clean() {
+    // The §6.5 worked example: 3 arms cover [cold, warm, fond], no
+    // `<otherwise>` — a param is never `unset` (§6.3), so this must be
+    // fully clean: no `E-NONEXHAUSTIVE` AND no `E-UNSET-UNCOVERED` (the
+    // latter is structurally unreachable for a param domain — this test is
+    // the assertion of that invariant).
+    let dir = unique_dir();
+    write_lute(&dir, "reaction.lute", REACTION);
+    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let cs = codes(&dir, &s);
+    assert!(
+        !cs.iter().any(|c| c.starts_with("E-")),
+        "an enum param match covering its whole domain must be fully clean; got {cs:?}"
+    );
+}
+
+#[test]
+fn missing_member_is_nonexhaustive() {
+    // Drop the `cold` arm from the §6.5 example: `E-NONEXHAUSTIVE` (the same
+    // reused code, §6.3's table).
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "reaction.lute",
+        "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
+## Scene 1.\n\
+<match on=\"@tier\">\n\
+<when is=\"fond\">\n@bianca: hi\n</when>\n\
+<when is=\"warm\">\n@bianca: hey\n</when>\n\
+</match>\n",
+    );
+    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let cs = codes(&dir, &s);
+    assert!(
+        cs.contains(&"E-NONEXHAUSTIVE".to_string()),
+        "dropping the `cold` arm must flag E-NONEXHAUSTIVE; got {cs:?}"
+    );
+}
+
+#[test]
+fn number_param_requires_otherwise() {
+    // `number`/`string` params have an INFINITE domain (§6.3's table):
+    // `is`-arms alone can never prove coverage, so `<otherwise>` is
+    // REQUIRED even though every listed `is` value is itself in-range.
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "gauge.lute",
+        "---\ncomponent: gauge\nparams:\n  budget: number\n---\n\
+## Scene 1.\n\
+<match on=\"@budget\">\n\
+<when is=\"1\">\n@narrator: one\n</when>\n\
+<when is=\"2\">\n@narrator: two\n</when>\n\
+</match>\n",
+    );
+    let s = scene("gauge.lute", "::use{component=\"gauge\" budget=1}");
+    let cs = codes(&dir, &s);
+    assert!(
+        cs.contains(&"E-NONEXHAUSTIVE".to_string()),
+        "a number param `<match>` with only `is` arms and no `<otherwise>` must flag \
+         E-NONEXHAUSTIVE; got {cs:?}"
+    );
+}
+
+#[test]
+fn unset_on_param_is_literal_domain() {
+    // A param is NEVER `unset` (§6.3): `is="unset"` on a param subject is
+    // `E-WHEN-LITERAL-DOMAIN`, not coverage.
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "reaction.lute",
+        "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
+## Scene 1.\n\
+<match on=\"@tier\">\n\
+<when is=\"unset\">\n@narrator: x\n</when>\n\
+<otherwise>\n@narrator: y\n</otherwise>\n\
+</match>\n",
+    );
+    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let cs = codes(&dir, &s);
+    assert!(
+        cs.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
+        "`is=\"unset\"` on a param subject must flag E-WHEN-LITERAL-DOMAIN (a param is never \
+         unset, §6.3); got {cs:?}"
+    );
+}
+
+#[test]
+fn foreign_member_on_param_flags() {
+    // `is="blazing"` is not a member of `tier`'s declared enum
+    // `[cold, warm, fond]` — a foreign literal, `E-WHEN-LITERAL-DOMAIN`.
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "reaction.lute",
+        "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
+## Scene 1.\n\
+<match on=\"@tier\">\n\
+<when is=\"blazing\">\n@narrator: x\n</when>\n\
+<otherwise>\n@narrator: y\n</otherwise>\n\
+</match>\n",
+    );
+    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let cs = codes(&dir, &s);
+    assert!(
+        cs.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
+        "a foreign enum member `is=\"blazing\"` must flag E-WHEN-LITERAL-DOMAIN; got {cs:?}"
+    );
+}
+
+#[test]
+fn subsumed_param_arm_is_dead() {
+    // `is="fond|warm"` already covers `warm`; the later `is="warm"` arm can
+    // never fire (first-match-wins) — `E-ARM-DEAD` (Task 4's reachability
+    // engine, reused inside the component body, §6.3).
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "reaction.lute",
+        "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
+## Scene 1.\n\
+<match on=\"@tier\">\n\
+<when is=\"fond|warm\">\n@narrator: x\n</when>\n\
+<when is=\"warm\">\n@narrator: y\n</when>\n\
+<when is=\"cold\">\n@narrator: z\n</when>\n\
+</match>\n",
+    );
+    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let cs = codes(&dir, &s);
+    assert!(
+        cs.contains(&"E-ARM-DEAD".to_string()),
+        "an `is=\"warm\"` arm subsumed by an earlier unguarded `is=\"fond|warm\"` arm must flag \
+         E-ARM-DEAD inside the component body; got {cs:?}"
+    );
+}
+
+#[test]
+fn dup_otherwise_and_overlap_apply() {
+    // A second `<otherwise>` (`E-MATCH-DUP-OTHERWISE`) plus a `test=`
+    // guard that provably overlaps an earlier unguarded `is` arm's literal
+    // (`W-OVERLAP-ARMS`) — both codes are exhaustiveness-engine output
+    // (`check_param_match`), applying inside a component body exactly as
+    // at scene level (§6.3).
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "reaction.lute",
+        "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
+## Scene 1.\n\
+<match on=\"@tier\">\n\
+<when is=\"warm\">\n@narrator: a\n</when>\n\
+<when test=\"$ == 'warm'\">\n@narrator: b\n</when>\n\
+<otherwise>\n@narrator: c\n</otherwise>\n\
+<otherwise>\n@narrator: d\n</otherwise>\n\
+</match>\n",
+    );
+    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let cs = codes(&dir, &s);
+    assert!(
+        cs.contains(&"E-MATCH-DUP-OTHERWISE".to_string()),
+        "a second `<otherwise>` inside a component body must flag E-MATCH-DUP-OTHERWISE; got {cs:?}"
+    );
+    assert!(
+        cs.contains(&"W-OVERLAP-ARMS".to_string()),
+        "a `test=` guard provably overlapping an earlier unguarded `is` literal inside a \
+         component body must flag W-OVERLAP-ARMS; got {cs:?}"
+    );
+}
+
+#[test]
+fn param_guard_test_decides() {
+    // `test="@budget > 5"` reads an undecided (Infinite-domain) param
+    // value — R3 needs BOTH operands decided, and a bare param ref never
+    // is — so it stays undecided/clean. `test="1 > 2"` is a decided-false
+    // ground guard (§5.1 R3), so `check_match_reach`'s cause 1 flags
+    // `E-ARM-DEAD` even inside a component body.
+    let gauge = |test: &str| {
+        format!(
+            "---\ncomponent: gauge\nparams:\n  budget: number\n---\n\
+## Scene 1.\n\
+<match on=\"@budget\">\n\
+<when test=\"{test}\">\n@narrator: high\n</when>\n\
+<otherwise>\n@narrator: low\n</otherwise>\n\
+</match>\n"
+        )
+    };
+
+    let dir_clean = unique_dir();
+    write_lute(&dir_clean, "gauge.lute", &gauge("@budget > 5"));
+    let s_clean = scene("gauge.lute", "::use{component=\"gauge\" budget=1}");
+    let cs_clean = codes(&dir_clean, &s_clean);
+    assert!(
+        !cs_clean.contains(&"E-ARM-DEAD".to_string()),
+        "`test=\"@budget > 5\"` reads an undecided param value and must NOT flag E-ARM-DEAD; \
+         got {cs_clean:?}"
+    );
+
+    let dir_dead = unique_dir();
+    write_lute(&dir_dead, "gauge.lute", &gauge("1 > 2"));
+    let s_dead = scene("gauge.lute", "::use{component=\"gauge\" budget=1}");
+    let cs_dead = codes(&dir_dead, &s_dead);
+    assert!(
+        cs_dead.contains(&"E-ARM-DEAD".to_string()),
+        "a decided-false ground guard `test=\"1 > 2\"` must flag E-ARM-DEAD inside a component \
+         body; got {cs_dead:?}"
+    );
+}

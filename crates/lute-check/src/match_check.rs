@@ -147,12 +147,26 @@ pub struct HubRecord {
 }
 
 /// Validate a `<match>` for exhaustiveness, unset coverage, the age-gate, and
-/// provably-overlapping arms (dsl §11.2). All diagnostics are [`Layer::Logic`].
+/// provably-overlapping arms (dsl §11.2). Thin wrapper: infers the subject's
+/// domain from `schema` exactly as before, then delegates to
+/// [`check_match_with_domain`] (0.4.0 T7 — the SAME engine [`check_param_match`]
+/// drives over a component param's domain).
 pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
+    let dom = infer_domain(subject_path(m).as_deref(), schema);
+    check_match_with_domain(m, dom, ctx)
+}
+
+/// The shared `<match>` engine (dsl §11.2, 0.4.0 §6.3): exhaustiveness, unset
+/// coverage, the age-gate, and provably-overlapping arms, over an
+/// ALREADY-RESOLVED subject `dom`ain. [`check_match`] infers `dom` from a
+/// scene's `state:` schema; [`check_param_match`] (0.4.0 T7) passes a
+/// component param's [`param_domain`] instead — same rules, same codes,
+/// different domain source (§6.3: "apply inside component bodies exactly as
+/// at scene level").
+pub(crate) fn check_match_with_domain(m: &Match, info: DomainInfo, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
     let _ = ctx; // reserved: subject typing is owned by T4.3; unused here.
     let mut diags = Vec::new();
     let subject = subject_path(m);
-    let info = infer_domain(subject.as_deref(), schema);
     let has_otherwise = m.arms.iter().any(|a| matches!(a, Arm::Otherwise { .. }));
 
     // §11.2: a `<match>` admits AT MOST ONE `<otherwise>`. With more than one,
@@ -284,6 +298,19 @@ pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagno
     }
 
     diags
+}
+
+/// Validate a component-body param-subject `<match>` (dsl 0.4.0 §6.3):
+/// delegates wholesale to [`check_match_with_domain`] over `dom` (the
+/// dispatched param's [`param_domain`]) — `E-NONEXHAUSTIVE`,
+/// `E-MATCH-DUP-OTHERWISE`, `W-OVERLAP-ARMS`, `E-WHEN-LITERAL-DOMAIN`, and
+/// `E-AGE-GATE` all apply exactly as at scene level (§6.3's own text).
+/// `E-UNSET-UNCOVERED` never fires here: `dom.maybe_unset` is always
+/// `false` for a param domain, so the check's own `info.maybe_unset` guard
+/// is structurally unreachable — no special-casing needed, the SAME engine
+/// proves it by construction.
+pub(crate) fn check_param_match(m: &Match, dom: DomainInfo, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
+    check_match_with_domain(m, dom, ctx)
 }
 
 /// Record a `<branch>` (dsl §11.1): flag a duplicate id within the episode
@@ -913,6 +940,34 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
             maybe_unset: false,
             resolved: false,
         },
+    }
+}
+
+/// The domain a component param's declared TYPE induces (dsl 0.4.0 §6.3):
+/// `Bool` -> `Finite[true, false]`; `Enum(members)` -> `Finite(members)`
+/// (declaration order); `Number`/`Str`/anything else -> `Infinite`
+/// (`<otherwise>` REQUIRED, `E-NONEXHAUSTIVE`). ALWAYS `maybe_unset: false,
+/// resolved: true` — every `::use` binds every param (`E-COMPONENT-ARG`
+/// enforces count/type, dsl §13.3), so `unset` is never a member of a
+/// param's domain: `is="unset"` on a param subject is
+/// `E-WHEN-LITERAL-DOMAIN` (rule 3), and `E-UNSET-UNCOVERED` — gated on
+/// `maybe_unset` in [`check_match_with_domain`] — is structurally
+/// unreachable for a param-subject `<match>`.
+pub(crate) fn param_domain(ty: &Type) -> DomainInfo {
+    let domain = match ty {
+        Type::Bool => Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)]),
+        Type::Enum(members) => Domain::Finite(
+            members
+                .iter()
+                .map(|m| DomainValue::Str(m.clone()))
+                .collect(),
+        ),
+        _ => Domain::Infinite,
+    };
+    DomainInfo {
+        domain,
+        maybe_unset: false,
+        resolved: true,
     }
 }
 

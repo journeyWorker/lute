@@ -72,18 +72,21 @@ use lute_syntax::parse;
 /// sites keep resolving without change.
 pub(crate) use lute_syntax::scan_label_interps;
 
+use crate::cel_expand::DefTable;
 use crate::cel_resolve::{check_rule_guards, compatible};
 use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
+use crate::decide::{DecideCtx, DollarBinding};
 use crate::directives::{at_context, check_directive};
 use crate::inject::{lower_node, InjectedCommand, StageState};
-use crate::reachability::check_reachability;
+use crate::match_check::{check_param_match, param_domain};
+use crate::reachability::{check_match_reach, check_reachability};
 use crate::schema_import::{merge_domains, SchemaImports};
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
     check_branch, check_cel_slot, check_definite_assignment, check_hub, check_line_codes,
-    check_match, check_quest, check_quest_guard_defassign, check_set, is_exhaustive,
+    check_match, check_quest, check_quest_guard_defassign, check_set, is_exhaustive, DomainInfo,
 };
 
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
@@ -1411,6 +1414,16 @@ fn validate_components(
             in_match: false,
             match_subject: None,
         };
+        // dsl 0.4.0 §6.3 (T7): the param-domain table this component's
+        // admitted `<match>`es dispatch over, built ONCE from `def.params`
+        // and threaded through every recursive `walk_component_body` call
+        // so a nested arm's `<match>` sees every sibling param, not just
+        // its own enclosing one.
+        let param_domains: std::collections::BTreeMap<String, DomainInfo> = def
+            .params
+            .iter()
+            .map(|(pname, ty)| (pname.clone(), param_domain(ty)))
+            .collect();
         // Fill the component body's OWN CEL slots into a fresh arena (independent
         // of the scene's).
         let mut body = def.body.clone();
@@ -1437,6 +1450,7 @@ fn validate_components(
                 &arena,
                 &ctx,
                 components,
+                &param_domains,
                 &mut body_diags,
             );
         }
@@ -1677,6 +1691,7 @@ fn walk_component_body(
     arena: &CelArena,
     ctx: &Ctx<'_>,
     components: &ComponentSet,
+    param_domains: &std::collections::BTreeMap<String, DomainInfo>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for node in nodes {
@@ -1754,12 +1769,40 @@ fn walk_component_body(
                         // evaluate WITHIN match scope (`$` binds to the
                         // param, mirroring the scene walker) so a nested
                         // `<when test="$ == …">` / nested param `<match>`
-                        // sees it; exhaustiveness lands in Task 7.
+                        // sees it.
                         let arm_ctx = Ctx {
                             env: ctx.env,
                             in_match: true,
                             match_subject: Some(m.subject.raw.clone()),
                         };
+                        // dsl 0.4.0 §6.3 (T7): exhaustiveness over the
+                        // dispatched param's domain — `name` is guaranteed
+                        // present in `param_domains` (built from the SAME
+                        // `def.params` list `ctx.env.defs` was populated
+                        // from, `component_env`).
+                        let dom = param_domains.get(&name).cloned().expect(
+                            "bare_param_ref confirmed `name` is a declared param; \
+                             param_domains is built from the same def.params list",
+                        );
+                        diags.extend(check_param_match(m, dom.clone(), ctx));
+                        // §5 reachability (Task 4/T7) inside the component
+                        // body: `E-ARM-DEAD` (decided-false guard +
+                        // subsumption) / `W-OTHERWISE-DEAD`, over the SAME
+                        // domain — a component has no frontmatter `defs:`
+                        // (`bodies` is always empty; a bodiless `@ref`
+                        // marker resolves via `params` instead, D3).
+                        let empty_bodies: std::collections::BTreeMap<String, String> =
+                            std::collections::BTreeMap::new();
+                        let reach_defs = DefTable {
+                            bodies: &empty_bodies,
+                            params: &ctx.env.def_params,
+                        };
+                        let reach_ctx = DecideCtx {
+                            schema: &ctx.env.state,
+                            dollar: Some(DollarBinding::Domain(&dom)),
+                            params: param_domains,
+                        };
+                        diags.extend(check_match_reach(m, &reach_defs, &reach_ctx));
                         for arm in &m.arms {
                             match arm {
                                 Arm::When { test, body, .. } => {
@@ -1772,12 +1815,12 @@ fn walk_component_body(
                                     component_slot_state_scan(test, arena, diags);
                                     walk_component_body(
                                         body, snapshot, providers, domains, arena, &arm_ctx,
-                                        components, diags,
+                                        components, param_domains, diags,
                                     );
                                 }
                                 Arm::Otherwise { body, .. } => walk_component_body(
                                     body, snapshot, providers, domains, arena, &arm_ctx,
-                                    components, diags,
+                                    components, param_domains, diags,
                                 ),
                             }
                         }
