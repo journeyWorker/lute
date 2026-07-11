@@ -31,6 +31,15 @@ fn single_delivery_flag_ok() {
 }
 
 #[test]
+fn valued_delivery_flag_is_error() {
+    // dsl 0.2.2 §D7: `mono`/`os`/`vo` are BARE flags (`{ident}⇒true`); a
+    // valued form (`mono="yes"`) is malformed, not a second delivery flag.
+    let cs = codes(&format!("{HDR}@x{{mono=\"yes\"}}: hi\n"));
+    assert!(cs.contains(&"E-DELIVERY-FLAG-VALUE".to_string()), "{cs:?}");
+    assert!(!cs.iter().any(|c| c == "E-DELIVERY-CONFLICT"), "{cs:?}");
+}
+
+#[test]
 fn delivery_flag_on_narrator_errors() {
     let cs = codes(&format!("{HDR}@narrator{{mono}}: hi\n"));
     assert!(cs.contains(&"E-DELIVERY-NARRATOR".to_string()), "{cs:?}");

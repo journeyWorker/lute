@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
-use lute_syntax::ast::{Attr, Line};
+use lute_syntax::ast::{Attr, AttrValue, Line};
 
 use crate::directives::check_domain_member;
 
@@ -27,6 +27,7 @@ const DELIVERY_FLAGS: &[&str] = &["mono", "os", "vo"];
 pub const E_UNKNOWN_ATTR: &str = "E-UNKNOWN-ATTR";
 pub const E_DELIVERY_CONFLICT: &str = "E-DELIVERY-CONFLICT";
 pub const E_DELIVERY_NARRATOR: &str = "E-DELIVERY-NARRATOR";
+pub const E_DELIVERY_FLAG_VALUE: &str = "E-DELIVERY-FLAG-VALUE";
 
 fn err(code: &str, message: String, span: Span) -> Diagnostic {
     Diagnostic {
@@ -84,6 +85,21 @@ pub fn check_content_line_attrs(
                         ),
                         attr.span,
                     ));
+                }
+                // dsl 0.2.2 §D7: delivery flags are BARE (`{ident}⇒true`,
+                // `AttrValue::BoolTrue`) — a valued form (`mono="yes"`) is
+                // malformed, NOT a second delivery flag, so it is reported
+                // on its own and excluded from the conflict tally below.
+                if !matches!(attr.value, AttrValue::BoolTrue) {
+                    diags.push(err(
+                        E_DELIVERY_FLAG_VALUE,
+                        format!(
+                            "delivery flag `{}` is bare and takes no value (dsl 0.2.2 §D7)",
+                            attr.key
+                        ),
+                        attr.span,
+                    ));
+                    continue;
                 }
                 delivery_flags.push(attr);
             }
