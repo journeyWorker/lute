@@ -1,0 +1,25 @@
+---
+# Reusable content component (dsl §13). The deduplicated affinity reaction
+# (0.4.0 §6.5): a `<match>` over the component's own `tier` param is admitted
+# (0.4.0 §6.2) because dispatch on a param is a pure read of an invocation
+# argument — no ambient state, no logic block ban (`E-COMPONENT-BODY`). No
+# `<otherwise>`: the three arms cover the declared enum, and a param is never
+# `unset` (§6.3).
+component: reaction
+params:
+  tier: { enum: [cold, warm, fond] }
+---
+
+## Scene 1.
+
+<match on="@tier">
+  <when is="fond">
+    @bianca{emotion="delighted"}: You remembered! You actually remembered.
+  </when>
+  <when is="warm">
+    @bianca{emotion="content"}: Not bad at all, Mr. Fixer.
+  </when>
+  <when is="cold">
+    @bianca{emotion="neutral"}: ...Shall we begin?
+  </when>
+</match>

@@ -1,0 +1,228 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "scene",
+  "lute": "0.3.0",
+  "irVersion": "0.3.0",
+  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "meta": {
+    "character": "demo",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01"
+  },
+  "state": [
+    {
+      "path": "scene.affect.bianca",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "scene.tier",
+      "type": "enum",
+      "domain": [
+        "cold",
+        "warm",
+        "fond"
+      ],
+      "default": "cold"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "match",
+      "addr": "001-0100",
+      "subject": "scene.affect.bianca",
+      "arms": [
+        {
+          "test": "scene.affect.bianca >= 3",
+          "target": "001-0200",
+          "expr": {
+            "op": ">=",
+            "l": {
+              "path": "scene.affect.bianca"
+            },
+            "r": {
+              "lit": 3.0
+            }
+          }
+        },
+        {
+          "test": "scene.affect.bianca >= 1",
+          "target": "001-0400",
+          "expr": {
+            "op": ">=",
+            "l": {
+              "path": "scene.affect.bianca"
+            },
+            "r": {
+              "lit": 1.0
+            }
+          }
+        }
+      ],
+      "otherwise": "001-0600",
+      "converge": "001-0800"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "You remembered! You actually remembered.",
+      "emotion": "delighted",
+      "lineId": "demo.s01ep01.bianca_0010",
+      "voiceKey": "bianca-0010",
+      "source": {
+        "component": "reaction"
+      }
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0300",
+      "target": "001-0800"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0400",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Not bad at all, Mr. Fixer.",
+      "emotion": "content",
+      "lineId": "demo.s01ep01.bianca_0020",
+      "voiceKey": "bianca-0020",
+      "source": {
+        "component": "reaction"
+      }
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0500",
+      "target": "001-0800"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0600",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "...Shall we begin?",
+      "emotion": "neutral",
+      "lineId": "demo.s01ep01.bianca_0030",
+      "voiceKey": "bianca-0030",
+      "source": {
+        "component": "reaction"
+      }
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0700",
+      "target": "001-0800"
+    },
+    {
+      "kind": "match",
+      "addr": "002-0100",
+      "subject": "(scene.tier)",
+      "arms": [
+        {
+          "test": "",
+          "target": "002-0200",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "scene.tier"
+            },
+            "r": {
+              "lit": "fond"
+            }
+          }
+        },
+        {
+          "test": "",
+          "target": "002-0400",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "scene.tier"
+            },
+            "r": {
+              "lit": "warm"
+            }
+          }
+        },
+        {
+          "test": "",
+          "target": "002-0600",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "scene.tier"
+            },
+            "r": {
+              "lit": "cold"
+            }
+          }
+        }
+      ],
+      "converge": "002-0800",
+      "source": {
+        "component": "reaction"
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "002-0200",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "You remembered! You actually remembered.",
+      "emotion": "delighted",
+      "lineId": "demo.s01ep01.bianca_0040",
+      "voiceKey": "bianca-0040",
+      "source": {
+        "component": "reaction"
+      }
+    },
+    {
+      "kind": "jump",
+      "addr": "002-0300",
+      "target": "002-0800"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0400",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "Not bad at all, Mr. Fixer.",
+      "emotion": "content",
+      "lineId": "demo.s01ep01.bianca_0050",
+      "voiceKey": "bianca-0050",
+      "source": {
+        "component": "reaction"
+      }
+    },
+    {
+      "kind": "jump",
+      "addr": "002-0500",
+      "target": "002-0800"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0600",
+      "role": "dialogue",
+      "speaker": "bianca",
+      "text": "...Shall we begin?",
+      "emotion": "neutral",
+      "lineId": "demo.s01ep01.bianca_0060",
+      "voiceKey": "bianca-0060",
+      "source": {
+        "component": "reaction"
+      }
+    },
+    {
+      "kind": "jump",
+      "addr": "002-0700",
+      "target": "002-0800"
+    }
+  ]
+}

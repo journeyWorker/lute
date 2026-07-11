@@ -1,0 +1,46 @@
+---
+# The §6.5 worked example (dsl 0.4.0): the caller side of the deduplicated
+# affinity reaction — pairs with `components/reaction.component.lute`. Each
+# episode maps its own scalar to the shared vocabulary at the call site (the
+# only part that ever differed between the pre-0.4.0 hand-duplicated
+# blocks, dsl §6.1).
+kind: scene
+character: demo
+season: 1
+episode: 1
+components: [components/reaction.component.lute]
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+  scene.tier:           { type: { enum: [cold, warm, fond] }, default: cold }
+defs:
+  # A caller-side def whose CEL reads the caller's OWN declared state (dsl
+  # §6.2's invocation surface): the component itself may never read ambient
+  # state, but the CALLER owns its state and may bind a state-derived value
+  # to the param (§6.5's dynamic-dispatch half of the worked example).
+  currentTier: { type: { enum: [cold, warm, fond] }, cel: "scene.tier" }
+---
+
+## Shot 1.
+
+/* Every `tier` arg here is a literal, so each `::use` expands to exactly one
+   `@bianca` line (§6.4 case 1) — the compiled artifact is indistinguishable
+   from hand-duplicating the block three times. */
+<match on="scene.affect.bianca">
+  <when test="$ >= 3">
+    ::use{component="reaction" tier="fond"}
+  </when>
+  <when test="$ >= 1">
+    ::use{component="reaction" tier="warm"}
+  </when>
+  <otherwise>
+    ::use{component="reaction" tier="cold"}
+  </otherwise>
+</match>
+
+## Shot 2.
+
+/* A non-literal binding like `@currentTier` cannot fold: the component's
+   `<match>` lowers to an ordinary residual match record on the substituted
+   subject (§6.4 case 2) — dynamic dispatch on a caller-supplied value, still
+   with no new IR. */
+::use{component="reaction" tier=@currentTier}

@@ -275,6 +275,22 @@ fn components_scene() {
     );
 }
 
+/// dsl 0.4.0 §6.4/§6.5 (T8): the deduplicated affinity-reaction worked
+/// example — three literal `::use{tier="…"}` sites (§6.4 case 1: fold to
+/// the selected `@bianca` line, zero match records) plus one def-bound
+/// `::use{tier=@currentTier}` site (§6.4 case 2: an ordinary residual
+/// `MatchCmd` on the substituted subject). B2: the caller's OWN
+/// `<match on="scene.affect.bianca">` is a scene-level match — untouched by
+/// this fold either way.
+#[test]
+fn affinity_reaction() {
+    golden(
+        "affinity_reaction",
+        "../../docs/examples/affinity-reaction.lute",
+        None,
+    );
+}
+
 /// The strengthened resolvability check must REJECT a dangling target — proving
 /// it is a genuine graph proof, not an "any 8-char string" shape check.
 #[test]
