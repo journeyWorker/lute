@@ -127,6 +127,10 @@ fn walk_nodes(
             Node::Directive(_) => {}
             Node::On(on) => walk_on(on, schema, assigned, diags),
             Node::Objective(o) => walk_objective(o, schema, assigned, diags),
+            // Fact args are ground (entity ids / bools), never `state:` paths —
+            // no definite-assignment read/write to track (0.3.0 T2; write
+            // policy is Task 10).
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }

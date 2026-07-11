@@ -34,6 +34,8 @@ pub enum Node {
     Hub(Hub),
     Objective(Objective),
     On(On),
+    Assert(Assert),
+    Retract(Retract),
 }
 
 #[derive(Clone, Debug)]
@@ -59,6 +61,27 @@ pub struct Set {
     pub path_span: Span,
     pub op: String,
     pub expr: CelSlot,
+    pub span: Span,
+}
+
+/// `::assert{ rel(a, b) }` (dsl 0.3.0 §5) — a pure leaf; args are compile-time-ground
+/// (no `{{…}}`, no CEL). `pattern.relation.is_empty()` is the parse-failed sentinel (D13).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Assert {
+    pub pattern: crate::datalog::FactPattern,
+    /// Byte offset of the payload interior start; pattern spans are relative to it.
+    pub pattern_base: usize,
+    pub raw: String,
+    pub span: Span,
+}
+
+/// `::retract{ rel(a, _) }` (dsl 0.3.0 §5) — mirrors [`Assert`]; wildcard legality
+/// is checked downstream (Task 10), not here.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Retract {
+    pub pattern: crate::datalog::FactPattern,
+    pub pattern_base: usize,
+    pub raw: String,
     pub span: Span,
 }
 

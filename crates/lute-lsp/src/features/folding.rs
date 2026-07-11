@@ -90,6 +90,7 @@ fn fold_nodes(nodes: &[Node], idx: &TextIndex, out: &mut Vec<FoldingRange>) {
             // Leaf nodes (`:line`, `::directive`, `::set`) are single
             // constructs, not foldable regions.
             Node::Line(_) | Node::Directive(_) | Node::Set(_) => {}
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }

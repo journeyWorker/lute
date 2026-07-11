@@ -50,6 +50,8 @@ pub enum NodeKind {
     Timeline,
     On,
     Objective,
+    Assert,
+    Retract,
 }
 
 /// Classify a [`Node`] by its grammar terminal (exhaustive — see [`NodeKind`]).
@@ -64,6 +66,8 @@ pub fn node_kind(node: &Node) -> NodeKind {
         Node::Timeline(_) => NodeKind::Timeline,
         Node::On(_) => NodeKind::On,
         Node::Objective(_) => NodeKind::Objective,
+        Node::Assert(_) => NodeKind::Assert,
+        Node::Retract(_) => NodeKind::Retract,
     }
 }
 
@@ -103,7 +107,9 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
             | NodeKind::Branch
             | NodeKind::Match
             | NodeKind::Hub
-            | NodeKind::Timeline => true,
+            | NodeKind::Timeline
+            | NodeKind::Assert
+            | NodeKind::Retract => true,
             NodeKind::On | NodeKind::Objective => false,
         },
         GrammarContext::QuestBody => match nk {
@@ -113,13 +119,19 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
             | NodeKind::Branch
             | NodeKind::Match
             | NodeKind::On
-            | NodeKind::Objective => true,
+            | NodeKind::Objective
+            | NodeKind::Assert
+            | NodeKind::Retract => true,
             NodeKind::Hub | NodeKind::Timeline => false,
         },
         GrammarContext::Emittable => match nk {
-            NodeKind::Line | NodeKind::Directive | NodeKind::Set | NodeKind::Branch | NodeKind::Match => {
-                true
-            }
+            NodeKind::Line
+            | NodeKind::Directive
+            | NodeKind::Set
+            | NodeKind::Branch
+            | NodeKind::Match
+            | NodeKind::Assert
+            | NodeKind::Retract => true,
             NodeKind::Hub | NodeKind::Timeline | NodeKind::On | NodeKind::Objective => false,
         },
     }
@@ -253,6 +265,7 @@ fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagn
             // strictly narrower shape than `Node` that cannot carry an
             // inadmissible construct, so there is nothing further to walk.
             Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }
@@ -283,6 +296,8 @@ fn describe(nk: NodeKind) -> &'static str {
         NodeKind::Timeline => "a `<timeline>`",
         NodeKind::On => "an `<on>`",
         NodeKind::Objective => "an `<objective>`",
+        NodeKind::Assert => "an `::assert`",
+        NodeKind::Retract => "a `::retract`",
     }
 }
 
@@ -310,6 +325,8 @@ fn node_span(node: &Node) -> Span {
         Node::Timeline(t) => t.span,
         Node::On(o) => o.span,
         Node::Objective(o) => o.span,
+        Node::Assert(a) => a.span,
+        Node::Retract(r) => r.span,
     }
 }
 
@@ -322,5 +339,22 @@ fn diag(message: String, span: Span) -> Diagnostic {
         layer: Layer::Logic,
         fixits: Vec::new(),
         provenance: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assert_retract_admitted_wherever_set_is() {
+        // scene body: admitted
+        let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## S.\n::assert{ a(b) }\n";
+        let (doc, _) = lute_syntax::parse(scene);
+        assert!(check_admission(&doc, DocKind::Scene).is_empty());
+        // quest body + <on> arm: admitted
+        let quest = "---\nkind: quest\n---\n<quest id=\"q\" title=\"t\" start=\"true\">\n::retract{ a(b) }\n<on event=\"questComplete\">\n::assert{ a(b) }\n</on>\n</quest>\n";
+        let (qdoc, _) = lute_syntax::parse(quest);
+        assert!(check_admission(&qdoc, DocKind::Quest).is_empty());
     }
 }

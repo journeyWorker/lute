@@ -119,6 +119,9 @@ fn expand_nodes(
                 expand_attrs(&mut o.attrs, defs, subject, diags);
                 expand_nodes(&mut o.body, defs, subject, diags);
             }
+            // Fact args are ground (no `@ref`/`@fn`/`$`, no `{{…}}`) — nothing
+            // to expand (0.3.0 T2).
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }

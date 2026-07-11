@@ -223,6 +223,7 @@ fn collect_choices<'a>(nodes: &'a [Node], out: &mut Vec<&'a Choice>) {
             Node::On(o) => collect_choices(&o.body, out),
             Node::Objective(o) => collect_choices(&o.body, out),
             Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }
@@ -257,6 +258,7 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
             Node::On(o) => collect_lines(&o.body, out),
             Node::Objective(o) => collect_lines(&o.body, out),
             Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }

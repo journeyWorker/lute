@@ -330,6 +330,9 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
         }
         Node::On(o) => Some(resolve_on(o, off)),
         Node::Objective(ob) => Some(resolve_objective(ob, off)),
+        // Fact args are ground — no `@ref`/CEL slot/attr to resolve a
+        // hover/definition cursor into (0.3.0 T2).
+        Node::Assert(_) | Node::Retract(_) => None,
     }
 }
 
@@ -484,6 +487,8 @@ fn node_span(node: &Node) -> Span {
         Node::Hub(h) => h.span,
         Node::On(o) => o.span,
         Node::Objective(o) => o.span,
+        Node::Assert(a) => a.span,
+        Node::Retract(r) => r.span,
     }
 }
 
@@ -753,6 +758,8 @@ pub(crate) fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
                 Node::Objective(ob) => {
                     return in_attrs(&ob.attrs, off).or_else(|| scan(&ob.body, off))
                 }
+                // No `Attr`s on a fact leaf (ground args, not key=value).
+                Node::Assert(_) | Node::Retract(_) => return None,
             }
         }
         None

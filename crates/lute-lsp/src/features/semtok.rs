@@ -283,6 +283,9 @@ fn walk_nodes(nodes: &[Node], src: &str, out: &mut Vec<RawTok>) {
                 );
                 walk_nodes(&ob.body, src, out);
             }
+            // Semantic tokens for the payload are a non-goal; TextMate covers
+            // coloring (0.3.0 T2/T3).
+            Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }
