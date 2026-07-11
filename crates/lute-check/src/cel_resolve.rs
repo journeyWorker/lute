@@ -224,6 +224,13 @@ pub fn check_cel_slot(
                     // re-parse as the profile gate above — gated on `slot.ast`
                     // by the same outer `if`, so malformed CEL never cascades.
                     check_fact_queries(&mroot.expr, slot, ctx, &mut diags);
+                    // Narrative-time ordering pass (dsl 0.3.0 §6, T12): a
+                    // third INDEPENDENT pass over the SAME marker re-parse —
+                    // `now()`/an engine-declared narrative-time anchor path
+                    // may appear only as one side of an admitted ordering
+                    // comparison against another narrative-time value, or as
+                    // `validAt`'s second argument (`E-TEMPORAL-ARG`).
+                    crate::temporal::check_temporal(&mroot.expr, slot, ctx, &mut diags);
                 }
             }
         }
@@ -505,7 +512,10 @@ fn is_profile_isset_call(c: &cel_parser::ast::CallExpr) -> bool {
 /// wrong arity, a non-`Call` pattern arg (`holds(scene.x)`), a receiver
 /// (`x.holds(…)`), or an unrecognized name — is NOT admitted here and falls
 /// into the ordinary [`E_CEL_PROFILE`] rejection.
-fn is_profile_fact_query(c: &cel_parser::ast::CallExpr) -> bool {
+/// `pub(crate)`: reused verbatim by `temporal.rs`'s own walk (Task 12) so the
+/// two independent passes agree on exactly which calls exempt their pattern
+/// argument from ordinary CEL-subexpression treatment.
+pub(crate) fn is_profile_fact_query(c: &cel_parser::ast::CallExpr) -> bool {
     if c.target.is_some() {
         return false;
     }
@@ -762,6 +772,7 @@ fn ty_desc(t: &Type) -> String {
         Type::Domain(_) => "a domain ref".to_string(),
         Type::SlotId { .. } => "a slot id".to_string(),
         Type::AssetKind(_) => "an asset kind".to_string(),
+        Type::NarrativeTime => "a narrative-time value".to_string(),
     }
 }
 

@@ -630,6 +630,7 @@ pub(crate) fn type_label(ty: &Type) -> String {
         Type::Domain(name) => format!("domain({name})"),
         Type::SlotId { namespace } => format!("slotId({namespace})"),
         Type::AssetKind(k) => format!("assetKind({k})"),
+        Type::NarrativeTime => "narrativeTime".to_string(),
     }
 }
 

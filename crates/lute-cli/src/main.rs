@@ -725,6 +725,7 @@ fn state_type_str(is_implicit: bool, ty: &Type) -> (String, Option<Vec<String>>)
         Type::ProviderRef(_) | Type::Domain(_) | Type::SlotId { .. } | Type::AssetKind(_) => {
             ("string".to_string(), None)
         }
+        Type::NarrativeTime => ("narrativeTime".to_string(), None),
     }
 }
 
@@ -751,6 +752,7 @@ fn attr_type_str(ty: &Type) -> (String, Option<Vec<String>>) {
         Type::Domain(name) => (format!("domain:{name}"), None),
         Type::SlotId { namespace } => (format!("slotId:{namespace}"), None),
         Type::AssetKind(name) => (format!("assetKind:{name}"), None),
+        Type::NarrativeTime => ("narrativeTime".to_string(), None),
     }
 }
 
