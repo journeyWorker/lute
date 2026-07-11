@@ -93,6 +93,14 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "assert"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "retract"
+        },
+        {
+          "type": "SYMBOL",
           "name": "set"
         },
         {
@@ -166,6 +174,104 @@
           "value": "}"
         }
       ]
+    },
+    "assert": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "::assert{"
+          },
+          "named": false,
+          "value": "::assert{"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "fact_pattern"
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
+    "retract": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "::retract{"
+          },
+          "named": false,
+          "value": "::retract{"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "fact_pattern"
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
+    "fact_pattern": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "ident"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "SYMBOL",
+          "name": "fact_arg"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "STRING",
+                "value": ","
+              },
+              {
+                "type": "SYMBOL",
+                "name": "fact_arg"
+              }
+            ]
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "fact_arg": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "ident"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "wildcard"
+        }
+      ]
+    },
+    "wildcard": {
+      "type": "STRING",
+      "value": "_"
     },
     "directive": {
       "type": "SEQ",

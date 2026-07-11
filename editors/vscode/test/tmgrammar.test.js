@@ -20,3 +20,19 @@ test("line rule does not swallow :: directives", () => {
   expect(begin.test("::auto")).toBe(false);
   expect(begin.test(":narrator:")).toBe(false);
 });
+
+test("directive rule scopes ::assert/::retract as a fact directive before the generic fallthrough (0.3.0 T3)", () => {
+  const patterns = gr.repository.directive.patterns;
+  const factIdx = patterns.findIndex((p) => p.name === "meta.directive.fact.lute");
+  const genericIdx = patterns.findIndex((p) => p.name === "meta.directive.lute");
+  expect(factIdx).toBeGreaterThan(-1);
+  expect(factIdx).toBeLessThan(genericIdx);
+
+  const begin = new RegExp(patterns[factIdx].begin);
+  expect(begin.test("::assert{")).toBe(true);
+  expect(begin.test("::retract{")).toBe(true);
+  expect(begin.test("::camera{")).toBe(false);
+
+  const [, wildcardPattern] = patterns[factIdx].patterns;
+  expect(new RegExp(wildcardPattern.match).test("_")).toBe(true);
+});

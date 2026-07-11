@@ -58,6 +58,8 @@ module.exports = grammar({
     // A body Node (§7). NB: no `title` here — a `# ` inside a shot ends it.
     _node: ($) =>
       choice(
+        $.assert,
+        $.retract,
         $.set,
         $.directive,
         $.line,
@@ -79,6 +81,21 @@ module.exports = grammar({
         optional($.cel_expr),
         "}",
       ),
+
+    // Assert ::= "::assert{" FactPattern "}" (dsl 0.3.0 §5). Leaf; ground args.
+    assert: ($) =>
+      seq(alias("::assert{", "::assert{"), $.fact_pattern, "}"),
+
+    // Retract ::= "::retract{" FactPattern "}" (dsl 0.3.0 §5). `_` retract-only —
+    // grammar admits it in both; the CHECKER owns E-RETRACT-WILDCARD-ASSERT.
+    retract: ($) =>
+      seq(alias("::retract{", "::retract{"), $.fact_pattern, "}"),
+
+    // FactPattern ::= Ident "(" FactArg ("," FactArg)* ")" (dsl 0.3.0 Appendix C).
+    fact_pattern: ($) =>
+      seq($.ident, "(", $.fact_arg, repeat(seq(",", $.fact_arg)), ")"),
+    fact_arg: ($) => choice($.ident, $.wildcard),
+    wildcard: ($) => "_",
 
     // Directive ::= "::" Ident Attrs? (§7.2). Leaf — does NOT nest.
     directive: ($) => seq("::", $.ident, optional($.attrs)),
