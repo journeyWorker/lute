@@ -981,8 +981,12 @@ impl Walker<'_> {
                     self.check_attr_refs(&o.attrs, ctx, None);
                     self.walk(&o.body, ctx);
                 }
-                // validated by fact_write (0.3.0 T10)
-                Node::Assert(_) | Node::Retract(_) => {}
+                Node::Assert(a) => self
+                    .diags
+                    .extend(crate::fact_write::check_assert(a, self.domains, ctx)),
+                Node::Retract(r) => self
+                    .diags
+                    .extend(crate::fact_write::check_retract(r, self.domains, ctx)),
             }
         }
     }

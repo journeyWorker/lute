@@ -8,6 +8,7 @@ pub mod ctx;
 pub mod datalog_check;
 pub mod defassign;
 pub mod directives;
+pub mod fact_write;
 pub mod fix;
 pub mod inject;
 pub mod match_check;
@@ -32,6 +33,7 @@ pub use datalog_check::{
 };
 pub use defassign::{check_definite_assignment, check_quest_guard_defassign};
 pub use directives::E_AT_CONTEXT;
+pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
 pub use fix::{fix_document, FixResult};
 pub use inject::{
     lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,
