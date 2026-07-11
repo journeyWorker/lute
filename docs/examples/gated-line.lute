@@ -1,0 +1,37 @@
+---
+kind: scene
+character: sofia
+season: 1
+episode: 1
+title: The gated line
+state:
+  run.metHelpfully: { type: bool, default: false }
+---
+
+# The gated line (dsl 0.4.0 §7.2)
+
+## Shot 1.
+
+/*
+  The `when=` sugar (§7.2): a content-line `when="G"` attr emits the line
+  iff G holds. Canonically `@s{when="G"}: T` ≡ `<match on="G"><when
+  test="$">@s: T</when><otherwise/></match>` (§7.4) — it MUST lower to
+  that exact one-arm match record, identity-preserving (`code`/`lineId`/
+  `voiceKey` are byte-for-byte unaffected by the wrapping, §7.4).
+*/
+@sofia{when="run.metHelpfully"}: You helped me back then. I've been meaning to thank you.
+
+## Shot 2.
+
+/*
+  The equivalent explicit block (§7.2) — exactly what Shot 1's sugar
+  desugars to at compile time. Kept here as a living twin so the two forms
+  stay visibly interchangeable.
+*/
+<match on="run.metHelpfully">
+  <when test="$">
+    @sofia: You helped me back then. I've been meaning to thank you.
+  </when>
+  <otherwise>
+  </otherwise>
+</match>

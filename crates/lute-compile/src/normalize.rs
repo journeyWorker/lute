@@ -18,7 +18,8 @@ use lute_check::{
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document, Node, Set,
+    Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document, Line, Match,
+    Node, Set,
 };
 
 pub const COMPONENT_BEGIN: &str = "__component-begin";
@@ -64,6 +65,29 @@ fn normalize_nodes(
             let n = spliced.len();
             nodes.splice(i..i, spliced);
             i += n; // bodies were normalized recursively — skip past them
+            continue;
+        }
+        // §7.2/§7.4 (D8): a gated content line desugars to a one-arm
+        // `<match>` BEFORE expand/stage/address — same identity-preserving
+        // idiom as the `is_use` splice above (remove, rebuild, reinsert at
+        // the SAME index so the outer loop's `i += 1` below still lands
+        // past it). Recursion into `Node::Branch`/`Node::Hub`/`Node::Match`/
+        // `Node::On`/`Node::Objective` bodies below already re-enters this
+        // function, so a gated line nested in any of those is caught on
+        // that recursive call — no extra wiring needed here.
+        let is_gated_line = matches!(&nodes[i], Node::Line(l) if l.when.is_some());
+        if is_gated_line {
+            let line = match nodes.remove(i) {
+                Node::Line(l) => l,
+                other => {
+                    // Structurally impossible (guarded above); stay total.
+                    nodes.insert(i, other);
+                    i += 1;
+                    continue;
+                }
+            };
+            nodes.insert(i, synth_when_match(line));
+            i += 1;
             continue;
         }
         match &mut nodes[i] {
@@ -118,6 +142,46 @@ fn normalize_nodes(
         }
         i += 1;
     }
+}
+
+/// §7.2/§7.4 (D8): `Node::Line{when: Some(g), ..}` → `Node::Match{ subject:
+/// g, arms: [When{is: None, test: synthesized "$" Condition slot, body:
+/// [the line, when=None]}, Otherwise{body: []}] }` — the guard `g` is
+/// HOISTED to be the match subject verbatim (not re-typed to
+/// `CelKind::MatchSubject`; downstream lowering (`stage::walk_match`,
+/// `expr::synth_arm_expr`) reads only `.raw`, so the slot's `kind` never
+/// reaches the artifact) and the arm's `test` is the literal text `"$"` —
+/// the arm fires iff the guard itself decides true, exactly
+/// `<match on="G"><when test="$">…</when><otherwise/></match>` (§7.4's
+/// "MUST lower to that same match record", pinned by
+/// `when_sugar::sugared_line_lowers_to_canonical_match_record`). The
+/// `<otherwise>` alternative is the sugar's implicit empty else-case
+/// (§7.2) — already a legal zero-body arm, no new IR shape. `line.when` is
+/// cleared on the nested copy so a re-normalized desugared line can never
+/// re-enter this rewrite (idempotent by construction).
+fn synth_when_match(mut line: Line) -> Node {
+    let guard = line
+        .when
+        .take()
+        .expect("caller guarantees `line.when.is_some()`");
+    let span = line.span;
+    let test = CelSlot::raw(CelKind::Condition, "$".to_string(), span);
+    Node::Match(Match {
+        subject: guard,
+        arms: vec![
+            Arm::When {
+                is: None,
+                test,
+                body: vec![Node::Line(line)],
+                span,
+            },
+            Arm::Otherwise {
+                body: Vec::new(),
+                span,
+            },
+        ],
+        span,
+    })
 }
 
 /// `::use{component="name" <arg>=…}` → `[begin, …bound body…, end]`.
@@ -380,7 +444,19 @@ fn is_literal_matches(lit: &str, decided: &Decided) -> bool {
 fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
     for node in nodes {
         match node {
-            Node::Line(l) => bind_attrs(&mut l.attrs, args, params),
+            Node::Line(l) => {
+                // T11 fix: a component-body gated line's `when=` slot is a
+                // CEL fragment just like any attr — it must see the SAME
+                // `@param` -> arg substitution `l.attrs` gets, or the T11
+                // desugar (and T8's `fold_component_matches`, which runs
+                // right after this on the same bound clone) would fold/
+                // decide against an unbound `@tier`-shaped marker instead
+                // of the caller's actual argument text.
+                if let Some(w) = &mut l.when {
+                    bind_slot_raw(w, args, params);
+                }
+                bind_attrs(&mut l.attrs, args, params);
+            }
             Node::Directive(d) => bind_attrs(&mut d.attrs, args, params),
             Node::Set(s) => bind_slot(&mut s.expr, args, params),
             Node::Branch(b) => {

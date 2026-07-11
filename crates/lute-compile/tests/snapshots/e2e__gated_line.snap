@@ -1,0 +1,96 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "scene",
+  "lute": "0.3.0",
+  "irVersion": "0.3.0",
+  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "meta": {
+    "character": "sofia",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "The gated line"
+  },
+  "state": [
+    {
+      "path": "run.metHelpfully",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "match",
+      "addr": "001-0100",
+      "subject": "run.metHelpfully",
+      "arms": [
+        {
+          "test": "run.metHelpfully",
+          "target": "001-0200",
+          "expr": {
+            "path": "run.metHelpfully"
+          }
+        }
+      ],
+      "otherwise": "001-0400",
+      "converge": "001-0500"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "dialogue",
+      "speaker": "sofia",
+      "text": "You helped me back then. I've been meaning to thank you.",
+      "lineId": "sofia.s01ep01.sofia_0010",
+      "voiceKey": "sofia-0010"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0300",
+      "target": "001-0500"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0400",
+      "target": "001-0500"
+    },
+    {
+      "kind": "match",
+      "addr": "002-0100",
+      "subject": "run.metHelpfully",
+      "arms": [
+        {
+          "test": "run.metHelpfully",
+          "target": "002-0200",
+          "expr": {
+            "path": "run.metHelpfully"
+          }
+        }
+      ],
+      "otherwise": "002-0400",
+      "converge": "002-0500"
+    },
+    {
+      "kind": "line",
+      "addr": "002-0200",
+      "role": "dialogue",
+      "speaker": "sofia",
+      "text": "You helped me back then. I've been meaning to thank you.",
+      "lineId": "sofia.s01ep01.sofia_0020",
+      "voiceKey": "sofia-0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "002-0300",
+      "target": "002-0500"
+    },
+    {
+      "kind": "jump",
+      "addr": "002-0400",
+      "target": "002-0500"
+    }
+  ]
+}
