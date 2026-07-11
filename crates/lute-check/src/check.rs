@@ -77,6 +77,7 @@ use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
 use crate::directives::{at_context, check_directive};
 use crate::inject::{lower_node, InjectedCommand, StageState};
+use crate::reachability::check_reachability;
 use crate::schema_import::{merge_domains, SchemaImports};
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
@@ -709,6 +710,9 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(line_code_diags);
+    // 0.4.0 T4 (§5.2 whole-document reachability pass): E-ARM-DEAD (dead
+    // guard + subsumption) + W-OTHERWISE-DEAD.
+    diags.extend(check_reachability(&doc, &folded));
     diags.extend(inject_diags);
     // Table-driven grammar admission (dsl 0.2.0 §3.3, §6.7): per-kind,
     // per-context construct legality. `E-GRAMMAR-NOT-ADMITTED` is semantic, NOT
@@ -719,6 +723,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // is_exhaustive suppression (carry-forward, T4.6 x T4.4): drop a maybe-unset
     // read whose span is a domain-exhaustive `<match>` subject.
     suppress_exhaustive_subject_reads(&mut diags, &walker.exhaustive_subject_spans);
+    // C4 (dsl 0.4.0 §8.2): a `<when>` arm already flagged E-ARM-DEAD must not
+    // additionally produce the pre-existing W-OVERLAP-ARMS — the dead-arm
+    // error is the root.
+    suppress_dead_arm_overlaps(&mut diags);
 
     // Dedup overlapping `E-UNDECLARED` (carry-forward #4) BEFORE the sort.
     let mut diags = dedup_undeclared(diags);
@@ -2177,6 +2185,23 @@ fn suppress_exhaustive_subject_reads(diags: &mut Vec<Diagnostic>, subject_spans:
             && subject_spans
                 .iter()
                 .any(|s| s.byte_start == d.span.byte_start && s.byte_end == d.span.byte_end))
+    });
+}
+
+/// C4 (dsl 0.4.0 §5.2/§8.2): drop any `W-OVERLAP-ARMS` whose span overlaps
+/// an `E-ARM-DEAD` arm — the dead-arm error is the root; the pre-existing
+/// literal-overlap warning would otherwise pile on the same arm.
+fn suppress_dead_arm_overlaps(diags: &mut Vec<Diagnostic>) {
+    let dead_spans: Vec<Span> = diags
+        .iter()
+        .filter(|d| d.code == crate::reachability::E_ARM_DEAD)
+        .map(|d| d.span)
+        .collect();
+    if dead_spans.is_empty() {
+        return;
+    }
+    diags.retain(|d| {
+        !(d.code == "W-OVERLAP-ARMS" && dead_spans.iter().any(|s| spans_overlap(*s, d.span)))
     });
 }
 
