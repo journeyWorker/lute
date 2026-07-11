@@ -7,7 +7,7 @@ episode: 5
 title: The Service Rhythm
 pov: fixer
 luteVersion: "0.1.0"
-# Illustrative plugin-system demo (see ../proposals/plugin-system/0.0.1.md) — NOT catalog content.
+# Illustrative plugin-system demo (see ../../proposals/plugin-system/0.0.1.md) — NOT catalog content.
 # It selects a capability `profile`, layers scene-local plugin options, runs a bridge
 # `::minigame` directive that writes a declared state slot, and branches on the result.
 profile: date-minigame
@@ -20,8 +20,8 @@ state:
 ---
 
 /*
-  Companion to the plugin system spec (../proposals/plugin-system/0.0.1.md) and the language spec
-  (../proposals/scenario-dsl/0.1.0.md). Everything here still reduces to flat command
+  Companion to the plugin system spec (../../proposals/plugin-system/0.0.1.md) and the language spec
+  (../../proposals/scenario-dsl/0.1.0.md). Everything here still reduces to flat command
   records + CEL strings; the `::minigame` bridge call is data, not an arbitrary tool call.
 */
 

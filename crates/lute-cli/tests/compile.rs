@@ -33,7 +33,7 @@ fn compile_bianca_exits_zero_with_artifact_json() {
 fn compile_error_doc_exits_one_and_emits_no_artifact() {
     // date-minigame needs its project; core-only it checks with errors.
     let out = Command::new(BIN)
-        .args(["compile", "../../docs/examples/date-minigame.lute"])
+        .args(["compile", "../../docs/examples/idola-project/date-minigame.lute"])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));

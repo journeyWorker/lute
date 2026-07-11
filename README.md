@@ -25,7 +25,7 @@ Worked examples:
 - [`docs/examples/bianca-s01ep02.lute`](docs/examples/bianca-s01ep02.lute) — linear episode faithful
   to the real catalog S01EP02; shows comments, `::camera`, a multi-track `<timeline>`, and a
   `<branch>`/`<match>`/state callback.
-- [`docs/examples/date-minigame.lute`](docs/examples/date-minigame.lute) — illustrative plugin-system
+- [`docs/examples/idola-project/date-minigame.lute`](docs/examples/idola-project/date-minigame.lute) — illustrative plugin-system
   demo: a `profile`, scene-local plugin options, a bridge `::minigame`, and a `<match>` on its
   declared result slot.
 
@@ -52,7 +52,7 @@ human-facing companions that explain how it is built and why.
 
 ## Draft syntax sketch
 
-An excerpt of [`docs/examples/date-minigame.lute`](docs/examples/date-minigame.lute):
+An excerpt of [`docs/examples/idola-project/date-minigame.lute`](docs/examples/idola-project/date-minigame.lute):
 
 ```lute
 ---

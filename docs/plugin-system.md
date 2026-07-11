@@ -13,7 +13,7 @@ declares.
 
 **See also:** [`proposals/scenario-dsl/0.0.1.md`](proposals/scenario-dsl/0.0.1.md) (the language),
 [`architecture.md`](architecture.md) (compiler/AST/validation/LSP),
-[`examples/date-minigame.lute`](examples/date-minigame.lute) (a worked plugin scene).
+[`examples/idola-project/date-minigame.lute`](examples/idola-project/date-minigame.lute) (a worked plugin scene).
 
 ## The one rule
 

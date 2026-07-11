@@ -132,7 +132,7 @@ fn normalize_lsp(d: &ls_types::Diagnostic) -> Norm {
 /// normalized projection must be byte-for-byte identical.
 #[test]
 fn headless_and_lsp_diagnostics_match() {
-    let text = std::fs::read_to_string("../../docs/examples/date-minigame.lute").unwrap();
+    let text = std::fs::read_to_string("../../docs/examples/idola-project/date-minigame.lute").unwrap();
     let res = check(&input_for(&text));
 
     // Sanity: a non-empty vector, so the equality below is meaningful, not vacuous.
@@ -206,7 +206,7 @@ fn headless_and_lsp_diagnostics_match_warning_bearing() {
 fn divergence_holds_under_plugin_project() {
     use lute_manifest::project::{load_project, resolve_document_snapshot};
 
-    let text = std::fs::read_to_string("../../docs/examples/date-minigame.lute").unwrap();
+    let text = std::fs::read_to_string("../../docs/examples/idola-project/date-minigame.lute").unwrap();
     let proj = load_project(std::path::Path::new("../../docs/examples/idola-project"))
         .expect("idola-project loads")
         .expect("idola-project has a lute.project.yaml");

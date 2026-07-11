@@ -17,7 +17,7 @@ fn mgart_valid_is_clean() {
     let out = Command::new(lute_bin())
         .args([
             "check",
-            "../../docs/examples/idola-portrait.lute",
+            "../../docs/examples/idola-project/idola-portrait.lute",
             "--project",
             "../../docs/examples/idola-project",
             "--json",

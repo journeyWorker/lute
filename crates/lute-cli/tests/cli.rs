@@ -58,7 +58,7 @@ fn check_json_has_resolved_view_and_diagnostics_array() {
 #[test]
 fn check_file_with_errors_exits_one() {
     let out = Command::new(BIN)
-        .args(["check", "../../docs/examples/date-minigame.lute", "--json"])
+        .args(["check", "../../docs/examples/idola-project/date-minigame.lute", "--json"])
         .output()
         .unwrap();
     assert!(
@@ -73,7 +73,7 @@ fn check_file_with_errors_exits_one() {
 #[test]
 fn check_human_output_lists_diagnostics() {
     let out = Command::new(BIN)
-        .args(["check", "../../docs/examples/date-minigame.lute"])
+        .args(["check", "../../docs/examples/idola-project/date-minigame.lute"])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));

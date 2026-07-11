@@ -137,7 +137,7 @@ fn param_def_example_compiles_with_all_when_otherwise_arm_lines_present() {
 #[test]
 fn plugin_def_example_compiles_with_all_when_otherwise_arm_lines_present() {
     let pairs = compiled_line_pairs(&[
-        "../../docs/examples/plugin-def.lute",
+        "../../docs/examples/plugindef-project/plugin-def.lute",
         "--project",
         "../../docs/examples/plugindef-project",
     ]);
