@@ -264,6 +264,8 @@ pub enum Command {
     Cut(CutCmd),
     Video(VideoCmd),
     Set(SetCmd),
+    Assert(AssertCmd),
+    Retract(RetractCmd),
     Choice(ChoiceCmd),
     Match(MatchCmd),
     Hub(HubCmd),
@@ -479,6 +481,35 @@ pub struct SetCmd {
     pub value: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expr: Option<ExprNode>,
+    #[serde(flatten)]
+    pub stamp: Stamp,
+}
+
+/// One asserted delta (dsl 0.3.0 §5): the engine applies it as a positive
+/// write to the relation's fact set. Emitted as DATA only (D1) — Lute
+/// performs no evaluation, no fact store, no timestamps.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssertCmd {
+    pub addr: String,
+    pub relation: String,
+    /// Ground literals; bools as "true"/"false". Never "_" (checker-enforced
+    /// `E-RETRACT-WILDCARD-ASSERT`).
+    pub args: Vec<String>,
+    #[serde(flatten)]
+    pub stamp: Stamp,
+}
+
+/// One retracted delta (dsl 0.3.0 §5 RetractPattern): the engine applies it
+/// as a negative write. `_` positions are a bulk wildcard the engine
+/// resolves; Lute emits the pattern verbatim, no evaluation (D1).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetractCmd {
+    pub addr: String,
+    pub relation: String,
+    /// Ground literals or "_" wildcards (§5 RetractPattern).
+    pub args: Vec<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -728,6 +759,8 @@ impl Command {
             Command::Cut(c) => &mut c.addr,
             Command::Video(c) => &mut c.addr,
             Command::Set(c) => &mut c.addr,
+            Command::Assert(c) => &mut c.addr,
+            Command::Retract(c) => &mut c.addr,
             Command::Choice(c) => &mut c.addr,
             Command::Match(c) => &mut c.addr,
             Command::Hub(c) => &mut c.addr,
@@ -787,6 +820,8 @@ impl Command {
             | Command::Cut(_)
             | Command::Video(_)
             | Command::Set(_)
+            | Command::Assert(_)
+            | Command::Retract(_)
             | Command::Barrier(_)
             | Command::Other(_) => {}
         }
@@ -805,6 +840,8 @@ impl Command {
             Command::Cut(c) => Some(&mut c.stamp),
             Command::Video(c) => Some(&mut c.stamp),
             Command::Set(c) => Some(&mut c.stamp),
+            Command::Assert(c) => Some(&mut c.stamp),
+            Command::Retract(c) => Some(&mut c.stamp),
             Command::Choice(c) => Some(&mut c.stamp),
             Command::Match(c) => Some(&mut c.stamp),
             Command::Hub(c) => Some(&mut c.stamp),

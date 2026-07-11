@@ -49,6 +49,8 @@ fn kind(cmd: &Command) -> &'static str {
         Command::Cut(_) => "cut",
         Command::Video(_) => "video",
         Command::Set(_) => "set",
+        Command::Assert(_) => "assert",
+        Command::Retract(_) => "retract",
         Command::Choice(_) => "choice",
         Command::Match(_) => "match",
         Command::Hub(_) => "hub",

@@ -44,6 +44,16 @@ fn input_for(path: &str, project_dir: Option<&str>) -> CheckInput {
 /// expanded, `@`/`$`-free CEL in every CEL-bearing field.
 fn assert_artifact_invariants(json: &serde_json::Value) {
     let commands = json["commands"].as_array().expect("commands array");
+    // 0.3.0 T14: every emitted assert/retract delta's relation must resolve
+    // in the artifact's OWN emitted relational schema (§4/§5) — a dangling
+    // relation name would mean the checker's write-policy gate (fact_write.rs)
+    // and the compiler's schema emission (T13) disagree.
+    let relation_names: BTreeSet<&str> = json["relations"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r["name"].as_str())
+        .collect();
     let mut addrs: Vec<&str> = Vec::new();
     for c in commands {
         addrs.push(c["addr"].as_str().expect("every record has addr"));
@@ -127,6 +137,13 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
                     assert_cel_clean("on.when", when);
                 }
                 assert_target(c["body"].as_str().expect("on.body"), &valid);
+            }
+            Some("assert") | Some("retract") => {
+                let rel = c["relation"].as_str().expect("assert/retract has relation");
+                assert!(
+                    relation_names.contains(rel),
+                    "assert/retract relation {rel:?} must resolve in the emitted relations schema"
+                );
             }
             _ => {}
         }
@@ -285,5 +302,26 @@ fn unexpanded_cel_token_fails_the_checker() {
     assert!(
         caught.is_err(),
         "unexpanded `$` in set.value must fail the checker"
+    );
+}
+
+/// 0.3.0 T14: the relation-resolves-in-schema check must REJECT an assert/
+/// retract command whose `relation` is absent from the artifact's own
+/// emitted `relations` schema — proving the check is a genuine schema
+/// cross-reference, not a no-op.
+#[test]
+fn assert_relation_missing_from_schema_fails_the_checker() {
+    let artifact = serde_json::json!({
+        "commands": [
+            { "kind": "assert", "addr": "001-0100", "relation": "ghost", "args": ["ana"] }
+        ],
+        "relations": [
+            { "name": "inParty", "args": ["c"], "derive": false, "reserved": false }
+        ]
+    });
+    let caught = std::panic::catch_unwind(|| assert_artifact_invariants(&artifact));
+    assert!(
+        caught.is_err(),
+        "an assert relation absent from the emitted schema must fail the checker"
     );
 }
