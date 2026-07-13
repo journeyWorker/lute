@@ -211,7 +211,7 @@ Say you type the old-style sigil out of habit — a colon instead of `@` — on 
 
 ```
 $ ./target/debug/lute check my-scene.lute
-my-scene.lute:19:1: error [E-UNCLASSIFIED] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+my-scene.lute:19:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
 ```
 
 **Reading a diagnostic:** `file:line:col: error [CODE] message`. Here it names the exact line

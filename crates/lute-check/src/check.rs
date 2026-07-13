@@ -159,6 +159,9 @@ const STRUCTURAL_CODES: &[&str] = &[
     "E-CONTENT-OUTSIDE-SHOT",
     "E-CONTENT-LINE-BRACKET",
     "E-TAG-NOT-ONE-LINE",
+    // FL1 (dsl 0.5.0 §2.1/§2.2): split off E-UNCLASSIFIED — same drop-the-line
+    // node-stream corruption as its former residual bucket.
+    "E-LEGACY-CONTENT-SIGIL",
 ];
 
 /// The input to one `check()` invocation — the document text plus the resolved
