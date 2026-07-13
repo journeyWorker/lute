@@ -336,6 +336,7 @@ fn choice_diag(span: Span, id: &str, choice_id: &str, reason: &str) -> Diagnosti
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 

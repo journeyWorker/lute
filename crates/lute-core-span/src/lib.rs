@@ -130,6 +130,23 @@ pub struct Diagnostic {
     /// a collapse primary.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub covered: Vec<Span>,
+    /// Sub-diagnostics surfaced from ANOTHER file, attributed to it (dsl
+    /// 0.5.0 §2.2 importer-visible component sub-diagnostics): populated on
+    /// an `E-COMPONENT-PARSE` failure with the failed component's OWN
+    /// parse/frontmatter diagnostics, so an importing document's output
+    /// (human or `--json`) carries what actually failed in the imported file
+    /// without a separate re-`check` of it. Empty for every other diagnostic.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related: Vec<RelatedDiagnostic>,
+}
+
+/// One diagnostic imported from another file (dsl 0.5.0 §2.2), attributed to
+/// it: `file` names the file `diagnostic.span` is relative to (NOT the
+/// document the outer [`Diagnostic`] belongs to).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelatedDiagnostic {
+    pub file: String,
+    pub diagnostic: Diagnostic,
 }
 
 /// Stable node id: assigned once, survives edits (dsl §12 `lineId` principle).

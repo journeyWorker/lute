@@ -154,6 +154,7 @@ fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 

@@ -430,6 +430,7 @@ fn walk_match(
                             fixits: Vec::new(),
                             provenance: None,
                             covered: Vec::new(),
+                            related: Vec::new(),
                         });
                         None
                     }

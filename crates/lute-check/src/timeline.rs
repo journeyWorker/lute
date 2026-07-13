@@ -458,6 +458,7 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 

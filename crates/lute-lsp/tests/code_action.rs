@@ -73,6 +73,7 @@ fn choice_into_diag() -> Diagnostic {
         ],
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 
@@ -160,6 +161,7 @@ fn cel_parse_eq_fixit_becomes_one_action() {
         }],
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     };
     let uri = test_uri();
     let actions = code_actions_for_fixits(&[d], &uri, whole_doc_range(), &idx);
@@ -181,6 +183,7 @@ fn fixit_less_diagnostic_yields_no_action() {
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     };
     let uri = test_uri();
     let actions = code_actions_for_fixits(&[d], &uri, whole_doc_range(), &idx);

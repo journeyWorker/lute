@@ -99,6 +99,7 @@ fn import_diags_are_surfaced() {
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     };
     let imports = SchemaImports {
         diags: vec![d],
