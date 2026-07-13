@@ -233,7 +233,66 @@ fn unknown_match_guard_halts_exit3() {
 }
 
 // ---------------------------------------------------------------------
-// 6. hub_reevaluates_between_picks — re-evaluation + once-drops-out.
+// 6. no_arm_match_reports_and_continues — the §4.4 fourth outcome: every
+//    arm's guard decides `false` (none `unknown`), no `<otherwise>` ->
+//    "no arm" is annotated in the transcript, coverage is 0/total, and
+//    the walk CONTINUES (Complete/exit 0) — contrast with section 5's
+//    `unknown`-guard HALT (Incomplete/exit 3): same "nothing fired"
+//    shape, opposite exit because one is knowledge and the other isn't.
+// ---------------------------------------------------------------------
+
+#[test]
+fn no_arm_match_reports_and_continues() {
+    // `run.flag`'s bool domain ({true, false}) is fully covered by the two
+    // `is=` arms (check-clean: no `E-NONEXHAUSTIVE`/`E-UNSET-UNCOVERED`,
+    // `default: false` means never `unset`). Each arm's `test` guard reads
+    // a non-`derive` relation with zero supplied facts — DEFINITELY
+    // `Bool(false)` (never `unknown`, same idiom as
+    // `forcing_false_guard_is_refused` above), so `decide()` never trips
+    // `E-ARM-DEAD` at check time (state/fact-dependent, not a constant)
+    // yet both arms decide `false` at THIS walk: `is="true"` short-circuits
+    // false against the `false` subject, `is="false" && test` is
+    // `false && false = false`. No arm fires, no `<otherwise>` — the §4.4
+    // fourth outcome.
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+                state:\n  run.flag: { type: bool, default: false }\n\
+                entities:\n  character: { members: [halsin] }\n\
+                relations:\n  claims: { args: [character] }\n\
+                ---\n\
+                ## Shot 1.\n\
+                <match on=\"run.flag\">\n\
+                <when is=\"true\" test=\"holds(claims(halsin))\">\n@narrator: true-gate\n</when>\n\
+                <when is=\"false\" test=\"holds(claims(halsin))\">\n@narrator: false-gate\n</when>\n\
+                </match>\n";
+    let input = input_for(text, "no-arm-match", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+
+    // (a) the no-arm match itself never forces an incomplete/refused exit.
+    assert_complete(&exit);
+    assert_eq!(exit.code(), 0);
+
+    // (b) the transcript/report carries the "no arm" decision, at the
+    // match's own span, for this exact subject.
+    let m = report
+        .decisions
+        .iter()
+        .find(|d| d.construct == "match")
+        .expect("a \"no arm\" match decision must be recorded");
+    assert_eq!(m.id, "run.flag");
+    assert_eq!(m.outcome, "no arm");
+    assert!(
+        report.steps.iter().any(|s| matches!(s, lute_trace::Step::Decision(d) if d.outcome == "no arm")),
+        "the \"no arm\" outcome must also appear inline in the transcript: {:?}",
+        report.steps
+    );
+
+    // (c) coverage: no arm was visited out of the 2 declared.
+    let arms_cov = report.coverage.arms.get("run.flag").expect("match coverage entry");
+    assert_eq!((arms_cov.visited, arms_cov.total), (0, 2));
+}
+
+// ---------------------------------------------------------------------
+// 7. hub_reevaluates_between_picks — re-evaluation + once-drops-out.
 // ---------------------------------------------------------------------
 
 fn hub_fixture() -> String {
@@ -279,7 +338,7 @@ fn hub_reevaluates_between_picks() {
 }
 
 // ---------------------------------------------------------------------
-// 7. writes_are_sequential — §4.6's second paragraph, verbatim.
+// 8. writes_are_sequential — §4.6's second paragraph, verbatim.
 // ---------------------------------------------------------------------
 
 #[test]
@@ -311,7 +370,7 @@ fn writes_are_sequential() {
 }
 
 // ---------------------------------------------------------------------
-// 8. output_is_byte_deterministic — §4.5's own contract.
+// 9. output_is_byte_deterministic — §4.5's own contract.
 // ---------------------------------------------------------------------
 
 #[test]
