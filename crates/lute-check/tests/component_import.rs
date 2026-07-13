@@ -123,6 +123,35 @@ fn malformed_component_is_parse_error() {
 }
 
 #[test]
+fn malformed_component_parse_error_carries_related_sub_diagnostics() {
+    // dsl 0.5.0 §2.2: the component's OWN parse diagnostic (here
+    // E-COMMENT-UNTERMINATED, spans relative to the component file) must be
+    // carried on the importer's E-COMPONENT-PARSE via `.related`.
+    let dir = unique_dir();
+    write_lute(
+        &dir,
+        "bad.lute",
+        "---\ncomponent: bad\n---\n## C.\n/* unterminated",
+    );
+    let res = resolve_components(&dir, &["bad.lute".to_string()], zero_span());
+    let parse_diag = res
+        .diags
+        .iter()
+        .find(|d| d.code == "E-COMPONENT-PARSE" && d.message.contains("issue"))
+        .unwrap_or_else(|| panic!("expected the parse-error E-COMPONENT-PARSE; got {:?}", res.diags));
+    assert!(
+        !parse_diag.related.is_empty(),
+        "must carry the component's own sub-diagnostics: {parse_diag:?}"
+    );
+    let child = &parse_diag.related[0];
+    assert!(
+        child.file.ends_with("bad.lute"),
+        "related.file must name the component file: {child:?}"
+    );
+    assert_eq!(child.diagnostic.code, "E-COMMENT-UNTERMINATED");
+}
+
+#[test]
 fn component_malformed_params_is_parse() {
     // A `params:` entry whose value is not a valid `Type` must NOT be silently
     // dropped (which would let the component be invoked without the param); it

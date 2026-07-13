@@ -24,7 +24,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 
-use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
 use lute_syntax::ast::Document;
@@ -60,6 +60,7 @@ fn comp_diag(code: &str, message: String, at: Span) -> Diagnostic {
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 
@@ -213,14 +214,27 @@ fn read_and_parse(
     );
     let issues = pdiags.len() + mdiags.len();
     if issues > 0 {
-        diags.push(comp_diag(
+        let file = canon.display().to_string();
+        // dsl 0.5.0 §2.2: carry the component's OWN diagnostics (spans
+        // relative to the component file) onto the importer's
+        // `E-COMPONENT-PARSE`, so `--json` — and the human renderer, which
+        // walks `related` — surface what actually failed without a separate
+        // re-`check` of the component file.
+        let mut d = comp_diag(
             "E-COMPONENT-PARSE",
             format!(
                 "component import `{}` has parse/frontmatter errors ({issues} issue(s))",
                 canon.display()
             ),
             at,
-        ));
+        );
+        d.related = pdiags
+            .iter()
+            .chain(mdiags.iter())
+            .cloned()
+            .map(|diagnostic| RelatedDiagnostic { file: file.clone(), diagnostic })
+            .collect();
+        diags.push(d);
     }
     if tm.component.is_none() {
         diags.push(comp_diag(
