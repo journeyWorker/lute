@@ -995,3 +995,21 @@ fn two_sentinel_comparisons_both_flag_and_arm_dead_stays_suppressed() {
          must stay suppressed: {out:?}"
     );
 }
+
+// `<on when>` is a listed guard slot too (dsl 0.2 §4.1 CelString gate; 0.5.2
+// §2.1 "any profile CEL slot") — the lint must fire there just like every
+// other guard slot. No dead-arm derivative to own here (an `<on>` handler
+// has no reachability code of its own), so no suppression accompanies this.
+#[test]
+fn on_when_sentinel_flags_unset_literal() {
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n\
+         <objective id=\"o\" done=\"run.d\"/>\n\
+         <on event=\"questActive\" when=\"quest.foo.state == 'unset'\">\n@x: hi\n</on>\n\
+         </quest>\n",
+    );
+    assert!(
+        cs.contains(&"E-UNSET-LITERAL".to_string()),
+        "an <on when> sentinel comparison must flag E-UNSET-LITERAL: {cs:?}"
+    );
+}
