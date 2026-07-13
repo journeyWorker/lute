@@ -697,9 +697,10 @@ is not a sound impossibility signal (the §5 Closure clause forbids firing an er
 reasoning outside R1–R5). Consequently a genuinely unreachable *relational* objective can
 pass `check` clean, and `lute trace` can be driven to a false "complete" by mocking the very
 fact that was never achievable — `trace` trusts its mocks and never runs the Datalog
-fixpoint (D1, §4.2). **Check-clean (§5) and trace-clean (§4 — no unresolved atoms) are
-therefore necessary, not sufficient, proof that a relationally-gated objective is
-reachable.** `lute trace` only explores the *authored mock scenarios* you supply (a coverage
+fixpoint (D1, §4.2). **Neither a check-clean verdict (§5) nor a trace-clean run (§4 — no
+unresolved atoms) proves — or disproves — the runtime reachability of a relationally-gated
+objective** (a trace under different or under-specified mocks can report "incomplete" for a
+reachable objective and "complete" for an unreachable one). `lute trace` only explores the *authored mock scenarios* you supply (a coverage
 aid, never a proof — §4.2); genuinely proving a derived-fact objective reachable requires
 running the actual engine (Datalog fixpoint + event sequencing) at integration time, outside
 both the static surface (§5) and `trace`.
