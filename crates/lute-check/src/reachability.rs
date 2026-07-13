@@ -491,7 +491,7 @@ fn check_objective_reach(o: &Objective, defs: &DefTable<'_>, ctx: &DecideCtx<'_>
         diags.push(diag(
             E_OBJECTIVE_UNSATISFIABLE,
             Severity::Error,
-            objective_unsat_message(!o.optional),
+            objective_unsat_message(!o.optional, &o.done.raw),
             o.span,
         ));
     }
@@ -534,13 +534,16 @@ fn quest_unreachable_message(dead_start: bool, true_fail: bool) -> String {
 const REQUIRED_QUEST_NOTE: &str =
     "; the objective — and, being required, the quest — can never complete (dsl 0.4 §5.3)";
 
-/// `E-OBJECTIVE-UNSATISFIABLE` message (dsl 0.4.0 §5.3 rule 1): `required`
-/// appends [`REQUIRED_QUEST_NOTE`] verbatim; an `optional` objective's dead
-/// `done` still fires the code (it too can never complete), just without
-/// the quest-level consequence (C4).
-fn objective_unsat_message(required: bool) -> String {
-    let mut msg =
-        "`done` is provably false: the objective can never complete on any run".to_string();
+/// `E-OBJECTIVE-UNSATISFIABLE` message (dsl 0.4.0 §5.3 rule 1): quotes the
+/// `done` predicate's raw text (matching [`dead_guard_message`]'s style).
+/// `required` appends [`REQUIRED_QUEST_NOTE`] verbatim; an `optional`
+/// objective's dead `done` still fires the code (it too can never
+/// complete), just without the quest-level consequence (C4).
+fn objective_unsat_message(required: bool, raw: &str) -> String {
+    let mut msg = format!(
+        "`done` predicate `{}` is provably false: the objective can never complete on any run",
+        raw.trim()
+    );
     if required {
         msg.push_str(REQUIRED_QUEST_NOTE);
     } else {

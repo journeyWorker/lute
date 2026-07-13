@@ -508,6 +508,11 @@ fn foreign_done_is_objective_unsat() {
             panic!("dead done must flag E-OBJECTIVE-UNSATISFIABLE: {:?}", res.diagnostics)
         });
     assert!(
+        hit.message.contains("run.rank == 'platnum'"),
+        "message must quote the `done` expression: {}",
+        hit.message
+    );
+    assert!(
         hit.message.contains("being required, the quest"),
         "a required objective's message must append the quest consequence note: {}",
         hit.message
@@ -531,6 +536,11 @@ fn optional_dead_done_has_no_quest_note() {
         .unwrap_or_else(|| {
             panic!("an optional dead done must still flag the code: {:?}", res.diagnostics)
         });
+    assert!(
+        hit.message.contains("run.rank == 'platnum'"),
+        "message must quote the `done` expression even for optional objectives: {}",
+        hit.message
+    );
     assert!(
         !hit.message.contains("being required"),
         "an optional objective must carry no quest-consequence note: {}",
