@@ -50,7 +50,16 @@ pub struct MockSet {
     /// `--event`/`events:` names, in the order they fire (Task 20's quest
     /// walk consumes this; T18 does not validate event names — no
     /// declaredness surface applies to a lifecycle/capability event kind).
+    /// A lifecycle name (`questActive`/`questComplete`/`questFailed`) here
+    /// is [`E_TRACE_EVENT`] (dsl 0.4.0 §4.3/§4.4): those are engine-derived
+    /// transitions, never user-fired via `--event`.
     pub events: Vec<String>,
+    /// `--accept`/`accept:`/`accepts:` quest ids, in the order supplied —
+    /// simulates the player/engine accepting a `start`-less (accept-driven)
+    /// quest (§4.4). An id absent from the document, or naming a quest that
+    /// carries a `start` predicate (declarative — needs no accept), is
+    /// [`E_TRACE_ACCEPT`].
+    pub accepts: Vec<String>,
 }
 
 /// `--state`/`--mock` literals and `--choose` targets carry no real source
@@ -81,6 +90,17 @@ pub const E_TRACE_MOCK_FACT: &str = "E-TRACE-MOCK-FACT";
 /// re-emits this SAME code for the walk-time "forces a false guard" case
 /// (§4.4) — this module only ever produces the structural half.
 pub const E_TRACE_CHOICE: &str = "E-TRACE-CHOICE";
+/// A `--event`/`events:` entry naming a built-in lifecycle event
+/// (`questActive`/`questComplete`/`questFailed`) — those are engine-derived
+/// transitions the engine fires on the `unset -> active`/completion/failure
+/// transition, never impulses a writer fires directly (§4.3/§4.4): a
+/// `start`-having quest activates declaratively, a `start`-less one via
+/// `--accept`.
+pub const E_TRACE_EVENT: &str = "E-TRACE-EVENT";
+/// A `--accept`/`accept:`/`accepts:` entry naming an unknown quest id, or a
+/// quest that carries a `start` predicate — it activates declaratively and
+/// needs no accept (§4.3/§4.4).
+pub const E_TRACE_ACCEPT: &str = "E-TRACE-ACCEPT";
 
 /// A malformed `--mock` YAML file: bad syntax, or a top-level shape that
 /// does not match §4.3's `state:`/`facts:`/`choose:`/`events:` contract.
@@ -259,13 +279,35 @@ pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
         }
     }
 
+    // `accept:`/`accepts:` — either spelling, a list of quest ids (§4.4).
+    for key in ["accept", "accepts"] {
+        let Some(v) = top.get(key) else { continue };
+        let serde_yaml::Value::Sequence(items) = v else {
+            return Err(diag(
+                E_TRACE_MOCK_PARSE,
+                format!("`{key}:` must be a list of quest ids (dsl 0.4.0 §4.3/§4.4)"),
+                span,
+            ));
+        };
+        for item in items {
+            let Some(s) = item.as_str() else {
+                return Err(diag(
+                    E_TRACE_MOCK_PARSE,
+                    format!("every `{key}:` entry must be a string (dsl 0.4.0 §4.3/§4.4)"),
+                    span,
+                ));
+            };
+            mocks.accepts.push(s.to_string());
+        }
+    }
+
     Ok(mocks)
 }
 
 /// Compose a `--mock <file.yaml>`'s [`MockSet`] with the CLI's own
-/// `--state`/`--fact`/`--choose`/`--event` flags (dsl 0.4.0 §4.3): "CLI
-/// flags compose with the file; on a conflict the flag wins (facts union; a
-/// flag `choose` replaces that id's file entry)".
+/// `--state`/`--fact`/`--choose`/`--event`/`--accept` flags (dsl 0.4.0
+/// §4.3): "CLI flags compose with the file; on a conflict the flag wins
+/// (facts union; a flag `choose` replaces that id's file entry)".
 ///
 /// * `facts` — set UNION: every distinct fact text from either source,
 ///   file-then-flags document order, duplicates collapsed.
@@ -279,6 +321,9 @@ pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
 /// * `events` — compose file-then-flags, in that relative order (§4.3
 ///   specifies no override rule for this surface; events are impulses to
 ///   fire, not declarations to shadow).
+/// * `accepts` — set UNION, same idiom as `facts` (accepting a quest twice,
+///   from the file and a flag, is the same accept — not a shadow to
+///   resolve).
 pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
     let flag_paths: std::collections::BTreeSet<&str> =
         flags.state.iter().map(|(p, _, _)| p.as_str()).collect();
@@ -303,7 +348,15 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
     let mut events = file.events;
     events.extend(flags.events);
 
-    MockSet { state, facts, choose, events }
+    let mut seen_accepts = std::collections::BTreeSet::new();
+    let accepts: Vec<String> = file
+        .accepts
+        .into_iter()
+        .chain(flags.accepts)
+        .filter(|id| seen_accepts.insert(id.clone()))
+        .collect();
+
+    MockSet { state, facts, choose, events, accepts }
 }
 
 /// Coerce a raw `--state`/mock literal into a manifest [`Literal`] *in the
@@ -509,16 +562,76 @@ fn validate_choose(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
     out
 }
 
+/// `--event`/`events:` validation (§4.3/§4.4): a name matching one of the
+/// engine's built-in lifecycle events (`questActive`/`questComplete`/
+/// `questFailed`) is [`E_TRACE_EVENT`] — those transitions are
+/// engine-derived (a `start`-having quest activates declaratively, a
+/// `start`-less one via `--accept`), never a writer-fired impulse.
+fn validate_events(mocks: &MockSet) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    let span = synthetic_span();
+    for name in &mocks.events {
+        if lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS.contains(&name.as_str()) {
+            out.push(diag(
+                E_TRACE_EVENT,
+                format!(
+                    "`--event {name}` names a built-in lifecycle event — `{name}` is \
+                     engine-derived (a `start`-having quest activates declaratively, a \
+                     `start`-less one via `--accept`), never user-fired via `--event` \
+                     (dsl 0.4.0 §4.3/§4.4)"
+                ),
+                span,
+            ));
+        }
+    }
+    out
+}
+
+/// `--accept`/`accept:`/`accepts:` validation (§4.3/§4.4): an id absent
+/// from `doc.quests`, or naming a quest that carries a `start` predicate
+/// (declarative — it activates on its own and needs no accept), is
+/// [`E_TRACE_ACCEPT`].
+fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    let span = synthetic_span();
+    for id in &mocks.accepts {
+        let Some(quest) = doc.quests.iter().find(|q| &q.id == id) else {
+            out.push(diag(
+                E_TRACE_ACCEPT,
+                format!("`--accept {id}` names an unknown quest id `{id}` (dsl 0.4.0 §4.3/§4.4)"),
+                span,
+            ));
+            continue;
+        };
+        if quest.start.is_some() {
+            out.push(diag(
+                E_TRACE_ACCEPT,
+                format!(
+                    "`--accept {id}` names quest `{id}`, which carries a `start` predicate — \
+                     it activates declaratively and needs no accept (dsl 0.4.0 §4.3/§4.4)"
+                ),
+                span,
+            ));
+        }
+    }
+    out
+}
+
 /// STRUCTURAL pre-walk validation (dsl 0.4.0 §4.3): ids/arity/types/
-/// declaredness. Forced-choice GUARDS are deliberately NOT evaluated here —
-/// eligibility is a presentation-point property (§4.4) that depends on
-/// in-flow writes the walk has not applied yet; Task 19 owns it. Runs the
-/// three surfaces independently (a document with a bad state path AND a bad
-/// fact reports both) and returns every diagnostic, unsorted — the caller
-/// (Task 19's pipeline / the CLI's Refused path) owns presentation order.
+/// declaredness, plus the two lifecycle guards (§4.3/§4.4): a lifecycle
+/// name in `--event` ([`validate_events`]) and an unknown/`start`-having
+/// quest id in `--accept` ([`validate_accept`]). Forced-choice GUARDS are
+/// deliberately NOT evaluated here — eligibility is a presentation-point
+/// property (§4.4) that depends on in-flow writes the walk has not applied
+/// yet; Task 19 owns it. Runs every surface independently (a document with
+/// a bad state path AND a bad fact reports both) and returns every
+/// diagnostic, unsorted — the caller (Task 19's pipeline / the CLI's
+/// Refused path) owns presentation order.
 pub fn validate(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Diagnostic> {
     let mut diags = validate_state(mocks, folded);
     diags.extend(validate_facts(mocks, folded));
     diags.extend(validate_choose(mocks, doc));
+    diags.extend(validate_events(mocks));
+    diags.extend(validate_accept(mocks, doc));
     diags
 }

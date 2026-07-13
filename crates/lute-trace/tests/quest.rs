@@ -47,10 +47,13 @@ fn load_input(path: &str) -> CheckInput {
     input_for(&text, path, base)
 }
 
-fn facts_and_event(facts: &[&str]) -> MockSet {
+/// rescueHalsin activates DECLARATIVELY (`start="holds(inParty(shadowheart))"`,
+/// dsl 0.4.0 §4.4) — `questActive` fires automatically from that ONE
+/// transition, so no `--event questActive` is supplied (that lifecycle name
+/// is now `E-TRACE-EVENT`-rejected pre-walk, §4.3).
+fn quest_facts(facts: &[&str]) -> MockSet {
     MockSet {
         facts: facts.iter().map(|f| f.to_string()).collect(),
-        events: vec!["questActive".to_string()],
         ..Default::default()
     }
 }
@@ -69,6 +72,17 @@ fn quest_decision<'a>(decisions: &'a [Decision], outcome: &str) -> Option<&'a De
 
 fn has_step_assert(steps: &[Step], text: &str) -> bool {
     steps.iter().any(|s| matches!(s, Step::Assert { text: t } if t == text))
+}
+
+fn count_step_assert(steps: &[Step], text: &str) -> usize {
+    steps.iter().filter(|s| matches!(s, Step::Assert { text: t } if t == text)).count()
+}
+
+fn count_quest_decisions(decisions: &[Decision], id: &str, outcome: &str) -> usize {
+    decisions
+        .iter()
+        .filter(|d| d.construct == "quest" && d.id == id && d.outcome == outcome)
+        .count()
 }
 
 fn has_step_retract(steps: &[Step], text: &str) -> bool {
@@ -99,20 +113,32 @@ fn objective_unresolved<'a>(unresolved: &'a [UnresolvedEntry], id: &str) -> Opti
 #[test]
 fn quest_activates_and_halts_on_unresolved_derived_objective() {
     let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
-    let mocks = facts_and_event(&["inParty(shadowheart)"]);
+    let mocks = quest_facts(&["inParty(shadowheart)"]);
 
     let (report, exit) = trace_document(&input, mocks);
     assert_incomplete(&exit);
 
-    // `start` decided true -> active.
+    // `start` decided true -> active, recorded EXACTLY once (the
+    // declarative path activates at most one time per quest).
     let active = quest_decision(&report.decisions, "active").expect("quest must record an active decision");
     assert_eq!(active.id, "rescueHalsin");
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "rescueHalsin", "active"),
+        1,
+        "activation must be recorded exactly once: {:?}",
+        report.decisions
+    );
 
     // The `<on event="questActive">` handler fired: its `::assert` landed
-    // in the transcript.
-    assert!(
-        has_step_assert(&report.steps, "heardLocation(player, halsin, grove)"),
-        "questActive handler's assert must be visible: {:?}",
+    // in the transcript — EXACTLY ONCE. Regression guard for the historical
+    // double-fire (declarative auto-activation dispatching `questActive`,
+    // then a `--event questActive` re-dispatching it a second time): that
+    // event name is now `E-TRACE-EVENT`-rejected pre-walk (§4.3), so the
+    // ONE call site in `walk_quest` is the only place it can ever fire.
+    assert_eq!(
+        count_step_assert(&report.steps, "heardLocation(player, halsin, grove)"),
+        1,
+        "questActive handler's assert must fire EXACTLY ONCE (double-fire regression): {:?}",
         report.steps
     );
 
@@ -139,7 +165,7 @@ fn quest_activates_and_halts_on_unresolved_derived_objective() {
 #[test]
 fn supplying_derived_facts_completes_the_quest() {
     let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
-    let mocks = facts_and_event(&[
+    let mocks = quest_facts(&[
         "inParty(shadowheart)",
         "believesLocation(player, halsin, grove)",
         "canReach(player, grove)",
@@ -179,7 +205,7 @@ fn supplying_derived_facts_completes_the_quest() {
 #[test]
 fn fail_takes_precedence_over_derived_completion() {
     let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
-    let mocks = facts_and_event(&[
+    let mocks = quest_facts(&[
         "inParty(shadowheart)",
         "believesLocation(player, halsin, grove)",
         "canReach(player, grove)",
@@ -252,4 +278,68 @@ fn on_guard_reads_pre_event_snapshot_not_a_sibling_arms_write() {
         on_decisions.iter().any(|d| d.outcome == "fires"),
         "at least one on-decision must record a fire: {on_decisions:?}"
     );
+}
+
+// ---------------------------------------------------------------------
+// (e) Two-path activation (dsl 0.4.0 §4.4): a `start`-less quest is
+//     ACCEPT-DRIVEN — it stays inactive ("awaiting accept", exit 0, NOT
+//     unresolved/exit-3) until a matching `--accept <questId>` activates
+//     it, firing `questActive` EXACTLY ONCE.
+// ---------------------------------------------------------------------
+
+fn accept_driven_fixture() -> String {
+    "---\n\
+     kind: quest\n\
+     luteVersion: \"0.4.0\"\n\
+     title: Accept-driven quest\n\
+     ---\n\n\
+     <quest id=\"sideQuest\" title=\"Side Quest\">\n\
+     <on event=\"questActive\">\n\
+     @narrator: accepted!\n\
+     </on>\n\
+     </quest>\n"
+        .to_string()
+}
+
+#[test]
+fn start_less_quest_stays_inactive_without_accept_exit_zero_not_incomplete() {
+    let text = accept_driven_fixture();
+    let input = input_for(&text, "accept_driven.lute", Path::new("."));
+
+    let (report, exit) = trace_document(&input, MockSet::default());
+    // Awaiting accept is NOT an unknown/halt condition — the walk
+    // completes cleanly, exit 0, never exit 3.
+    assert_complete(&exit);
+
+    let awaiting = quest_decision(&report.decisions, "awaiting accept")
+        .expect("a start-less, unaccepted quest must report awaiting-accept");
+    assert_eq!(awaiting.id, "sideQuest");
+    assert!(quest_decision(&report.decisions, "active").is_none(), "must never activate without --accept");
+    assert!(!has_line_containing(&report.steps, "accepted!"), "questActive must never fire without activation");
+}
+
+#[test]
+fn start_less_quest_activates_on_matching_accept_questactive_fires_once() {
+    let text = accept_driven_fixture();
+    let input = input_for(&text, "accept_driven.lute", Path::new("."));
+    let mocks = MockSet { accepts: vec!["sideQuest".to_string()], ..Default::default() };
+
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+
+    // Activated exactly once via the accept-driven path.
+    let active = quest_decision(&report.decisions, "active").expect("`--accept` must activate the quest");
+    assert_eq!(active.id, "sideQuest");
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "sideQuest", "active"),
+        1,
+        "accept-driven activation must be recorded exactly once: {:?}",
+        report.decisions
+    );
+    assert!(quest_decision(&report.decisions, "awaiting accept").is_none());
+
+    // `questActive` fired from the ONE activation, exactly once (double-fire
+    // regression guard for the accept-driven path).
+    let fire_count = report.steps.iter().filter(|s| matches!(s, Step::Line { text, .. } if text.contains("accepted!"))).count();
+    assert_eq!(fire_count, 1, "questActive handler must fire exactly once: {:?}", report.steps);
 }

@@ -113,10 +113,12 @@ fn bad_mock_exits_1() {
     );
 }
 
-// --- §4.6 quest transcript: rescue-halsin activates on the supplied
-// `inParty` fact, `questActive` fires, but `reach`/`learn` read derived
-// relations with no supplying `--fact` -> unresolved -> trace incomplete,
-// exit 3.
+// --- §4.6 quest transcript: rescue-halsin activates DECLARATIVELY on the
+// supplied `inParty` fact (`start="holds(inParty(shadowheart))"`, dsl
+// 0.4.0 §4.4); `questActive` fires automatically from that ONE transition
+// (no `--event questActive` — that lifecycle name is now `E-TRACE-EVENT`-
+// rejected, §4.3); `reach`/`learn` read derived relations with no
+// supplying `--fact` -> unresolved -> trace incomplete, exit 3.
 
 #[test]
 fn incomplete_exits_3() {
@@ -124,8 +126,6 @@ fn incomplete_exits_3() {
         "../../docs/examples/quest-rescue-halsin.lute",
         "--fact",
         "inParty(shadowheart)",
-        "--event",
-        "questActive",
         "--project",
         "../../docs/examples",
     ]);
@@ -135,6 +135,42 @@ fn incomplete_exits_3() {
         "an unresolved objective atom must halt the trace incomplete: {}",
         String::from_utf8_lossy(&out.stdout)
     );
+}
+
+// --- §4.3/§4.4: `--event questActive` (a built-in lifecycle event) is
+// `E-TRACE-EVENT` — engine-derived, never user-fired — exit 1, refused.
+
+#[test]
+fn event_lifecycle_name_exits_1_with_trace_event() {
+    let out = trace(&[
+        "../../docs/examples/quest-rescue-halsin.lute",
+        "--fact",
+        "inParty(shadowheart)",
+        "--event",
+        "questActive",
+        "--project",
+        "../../docs/examples",
+    ]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("E-TRACE-EVENT"), "expected E-TRACE-EVENT in output: {stdout}");
+}
+
+// --- §4.3/§4.4: `--accept` on rescueHalsin (a `start`-having, declarative
+// quest) is `E-TRACE-ACCEPT` — it activates on its own and needs no accept.
+
+#[test]
+fn accept_on_start_having_quest_exits_1_with_trace_accept() {
+    let out = trace(&[
+        "../../docs/examples/quest-rescue-halsin.lute",
+        "--accept",
+        "rescueHalsin",
+        "--project",
+        "../../docs/examples",
+    ]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("E-TRACE-ACCEPT"), "expected E-TRACE-ACCEPT in output: {stdout}");
 }
 
 // --- D15/T17: the positive half of the quarantine test — `lute-cli`'s OWN

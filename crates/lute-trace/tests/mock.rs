@@ -18,8 +18,8 @@ use lute_check::{CheckInput, FoldedEnv, Mode};
 use lute_core_span::Span;
 use lute_syntax::ast::Document;
 use lute_trace::{
-    merge, parse_mock_yaml, validate, MockSet, E_TRACE_CHOICE, E_TRACE_MOCK_FACT, E_TRACE_MOCK_TYPE,
-    E_TRACE_MOCK_UNDECLARED,
+    merge, parse_mock_yaml, validate, MockSet, E_TRACE_ACCEPT, E_TRACE_CHOICE, E_TRACE_EVENT,
+    E_TRACE_MOCK_FACT, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED,
 };
 
 fn zero_span() -> Span {
@@ -136,6 +136,46 @@ fn choose_unknown_branch_id_is_choice_error() {
     assert_eq!(codes(&diags), vec![E_TRACE_CHOICE], "{diags:?}");
 }
 
+/// `--event questActive` names a built-in lifecycle event — engine-derived,
+/// never user-fired via `--event` (§4.3/§4.4) -> `E-TRACE-EVENT`.
+#[test]
+fn appendix_a_event_lifecycle_name_is_event_error() {
+    let (folded, doc) = load("../../docs/examples/quest-rescue-halsin.lute");
+    let mocks = MockSet { events: vec!["questActive".to_string()], ..Default::default() };
+    let diags = validate(&mocks, &folded, &doc);
+    assert_eq!(codes(&diags), vec![E_TRACE_EVENT], "{diags:?}");
+}
+
+/// A non-lifecycle `--event` name (e.g. `npcSpoke`) passes clean — only the
+/// three built-in lifecycle names are rejected.
+#[test]
+fn event_non_lifecycle_name_passes_structural_validation() {
+    let (folded, doc) = load("../../docs/examples/quest-rescue-halsin.lute");
+    let mocks = MockSet { events: vec!["npcSpoke".to_string()], ..Default::default() };
+    let diags = validate(&mocks, &folded, &doc);
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// `--accept rescueHalsin` against a quest that carries a `start` predicate
+/// (declarative — activates on its own, needs no accept) -> `E-TRACE-ACCEPT`.
+#[test]
+fn appendix_a_accept_on_start_having_quest_is_accept_error() {
+    let (folded, doc) = load("../../docs/examples/quest-rescue-halsin.lute");
+    let mocks = MockSet { accepts: vec!["rescueHalsin".to_string()], ..Default::default() };
+    let diags = validate(&mocks, &folded, &doc);
+    assert_eq!(codes(&diags), vec![E_TRACE_ACCEPT], "{diags:?}");
+}
+
+/// `--accept noSuchQuest` names a quest id absent from the document ->
+/// `E-TRACE-ACCEPT`.
+#[test]
+fn accept_unknown_quest_id_is_accept_error() {
+    let (folded, doc) = load("../../docs/examples/quest-rescue-halsin.lute");
+    let mocks = MockSet { accepts: vec!["noSuchQuest".to_string()], ..Default::default() };
+    let diags = validate(&mocks, &folded, &doc);
+    assert_eq!(codes(&diags), vec![E_TRACE_ACCEPT], "{diags:?}");
+}
+
 // ---------------------------------------------------------------------
 // D18: derive:true / reserved:true relation facts are LEGAL mocks.
 // ---------------------------------------------------------------------
@@ -232,6 +272,14 @@ fn parse_mock_yaml_reads_all_four_surfaces() {
 }
 
 #[test]
+fn parse_mock_yaml_reads_accept_and_accepts_keys() {
+    let mocks = parse_mock_yaml("accept:\n  - rescueHalsin\n").expect("valid mock yaml");
+    assert_eq!(mocks.accepts, vec!["rescueHalsin".to_string()]);
+    let mocks = parse_mock_yaml("accepts:\n  - rescueHalsin\n  - anotherQuest\n").expect("valid mock yaml");
+    assert_eq!(mocks.accepts, vec!["rescueHalsin".to_string(), "anotherQuest".to_string()]);
+}
+
+#[test]
 fn parse_mock_yaml_empty_document_is_an_empty_mockset() {
     assert_eq!(parse_mock_yaml("").unwrap(), MockSet::default());
     assert_eq!(parse_mock_yaml("state: {}\n").unwrap(), MockSet::default());
@@ -307,6 +355,14 @@ fn merge_events_compose_file_then_flags_in_order() {
     let flags = MockSet { events: vec!["npcSpoke".to_string()], ..Default::default() };
     let merged = merge(file, flags);
     assert_eq!(merged.events, vec!["questActive".to_string(), "npcSpoke".to_string()]);
+}
+
+#[test]
+fn merge_accepts_union_dedupes_and_preserves_file_then_flag_order() {
+    let file = MockSet { accepts: vec!["a".into(), "b".into()], ..Default::default() };
+    let flags = MockSet { accepts: vec!["b".into(), "c".into()], ..Default::default() };
+    let merged = merge(file, flags);
+    assert_eq!(merged.accepts, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
 }
 
 /// End-to-end: a `--mock` file seeds a typo'd path, a `--state` flag corrects
