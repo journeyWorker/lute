@@ -894,3 +894,104 @@ fn control_quest_state_in_domain_comparison_unchanged() {
         "the raw quest.foo.state read stays independently maybe-unset: {out:?}"
     );
 }
+
+// ---------------------------------------------------------------------
+// dsl 0.5.2 §2.3 causality: `E-ARM-DEAD` suppression is scoped to a guard
+// whose decided-false is CAUSED BY the sentinel comparison — an
+// INDEPENDENTLY dead guard (another decidable clause also makes it false)
+// must still flag `E-ARM-DEAD` even when a sentinel comparison is ALSO
+// present. `E-UNSET-LITERAL` fires regardless either way.
+// ---------------------------------------------------------------------
+
+// A literal `false` alongside the sentinel comparison: the guard is dead
+// independent of the sentinel mistake (`false && anything` is always
+// false), so E-ARM-DEAD must survive.
+#[test]
+fn sentinel_alongside_independently_false_clause_keeps_arm_dead() {
+    let out = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"false && quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
+         </branch>\n",
+    );
+    assert!(
+        out.contains(&"E-UNSET-LITERAL".to_string()),
+        "the sentinel mistake is still present and must still flag E-UNSET-LITERAL: {out:?}"
+    );
+    assert!(
+        out.contains(&"E-ARM-DEAD".to_string()),
+        "an independently-false clause (`false && …`) must keep E-ARM-DEAD even though a \
+         sentinel comparison is also present: {out:?}"
+    );
+}
+
+// A foreign (non-'unset') enum typo alongside the sentinel comparison: also
+// independently decides false (R2, unrelated to the sentinel), so
+// E-ARM-DEAD must survive.
+#[test]
+fn sentinel_alongside_independent_foreign_typo_keeps_arm_dead() {
+    let hdr = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+               run.grade: { type: { enum: [bronze, silver, gold] } }\n---\n## Shot 1.\n";
+    let out = codes(&format!(
+        "{hdr}<branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" \
+         when=\"run.grade == 'legendary' && quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
+         </branch>\n"
+    ));
+    assert!(
+        out.contains(&"E-UNSET-LITERAL".to_string()),
+        "the sentinel mistake is still present and must still flag E-UNSET-LITERAL: {out:?}"
+    );
+    assert!(
+        out.contains(&"E-ARM-DEAD".to_string()),
+        "an independent foreign-typo comparison must keep E-ARM-DEAD even though a sentinel \
+         comparison is also present: {out:?}"
+    );
+}
+
+// The sentinel comparison IS the sole decidable cause: `run.flag` is an
+// UNDECIDED bool read (not a literal), so the ONLY reason the whole `&&`
+// decides false is the sentinel's R2 `false`. E-ARM-DEAD must be suppressed.
+#[test]
+fn sentinel_as_sole_cause_still_suppresses_arm_dead() {
+    let out = codes(&format!(
+        "{HDR}<branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"run.flag && quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
+         </branch>\n"
+    ));
+    assert!(
+        out.contains(&"E-UNSET-LITERAL".to_string()),
+        "{out:?}"
+    );
+    assert!(
+        !out.contains(&"E-ARM-DEAD".to_string()),
+        "the sentinel comparison is the SOLE decidable cause (run.flag is an undecided read) — \
+         E-ARM-DEAD must be suppressed: {out:?}"
+    );
+}
+
+// TWO distinct sentinel comparisons (two foreign quests) in one guard: BOTH
+// must flag their own E-UNSET-LITERAL (§2.1: "scans every comparison
+// sub-expression"), and E-ARM-DEAD stays suppressed (both are load-bearing
+// for the `||`'s false verdict — R4: `false || false` decides false only
+// when BOTH sides decide false).
+#[test]
+fn two_sentinel_comparisons_both_flag_and_arm_dead_stays_suppressed() {
+    let out = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" \
+         when=\"quest.a.state == 'unset' || quest.b.state == 'unset'\">\n@x: a\n</choice>\n\
+         </branch>\n",
+    );
+    assert_eq!(
+        out.iter().filter(|c| c.as_str() == "E-UNSET-LITERAL").count(),
+        2,
+        "two distinct sentinel comparisons must each flag their own E-UNSET-LITERAL: {out:?}"
+    );
+    assert!(
+        !out.contains(&"E-ARM-DEAD".to_string()),
+        "both sentinel comparisons are load-bearing for the ||'s false verdict — E-ARM-DEAD \
+         must stay suppressed: {out:?}"
+    );
+}

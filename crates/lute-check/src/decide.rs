@@ -16,7 +16,7 @@
 
 use std::collections::BTreeMap;
 
-use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr};
+use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr, IdedExpr};
 use cel_parser::reference::Val;
 
 use crate::cel_expand::{expand_cel, DefTable};
@@ -356,10 +356,34 @@ pub fn decide_slot(raw: &str, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Optio
 /// `unset`). `subject` is a best-effort display name for the §2.2 message (a
 /// dotted state path, `$`, or a bound component param's bare name);
 /// `not_equals` distinguishes `S != 'unset'` (decides true, R2) from
-/// `S == 'unset'` (decides false — owns `E-ARM-DEAD`, §2.3).
+/// `S == 'unset'` (decides false — a candidate `E-ARM-DEAD` root, §2.3).
+/// `id` is the comparison `Call` node's own arena id — used ONLY internally
+/// by [`analyze_unset_sentinel_slot`]'s causality substitution, never read
+/// outside this file.
 pub(crate) struct UnsetSentinelHit {
     pub subject: String,
     pub not_equals: bool,
+    id: u64,
+}
+
+/// dsl 0.5.2 §2.1/§2.3: the full analysis of one CEL guard slot.
+pub(crate) struct UnsetSentinelAnalysis {
+    /// EVERY distinct sentinel comparison found (§2.1: "scans every
+    /// comparison sub-expression, not only a top-level guard") — one
+    /// `E-UNSET-LITERAL` per hit.
+    pub hits: Vec<UnsetSentinelHit>,
+    /// §2.3: "that comparison is its root" — `true` iff `hits` is
+    /// non-empty AND substituting an UNDECIDED placeholder for every
+    /// detected comparison (so the guard reasons about it exactly as
+    /// little as an ordinary state-path read) no longer lets the guard
+    /// decide `false`. `false` when the guard is ALSO independently dead
+    /// for another reason (a literal `false`, an unrelated foreign-typo
+    /// comparison, `@never`, …) — that independent deadness must still
+    /// surface as `E-ARM-DEAD`, so the two diagnostics can pile on when
+    /// genuinely warranted. Meaningful only when the ORIGINAL guard itself
+    /// decides `Some(Decided::Bool(false))`; the caller (`reachability.rs`)
+    /// only ever consults this flag inside that branch.
+    pub load_bearing_for_false: bool,
 }
 
 /// Best-effort display name for a resolved-domain subject expr (§2.2's
@@ -386,12 +410,9 @@ fn subject_display(expr: &Expr) -> Option<String> {
 /// [`resolve_domain`] R2 uses — to a `resolved`, maybe-unset, FINITE domain;
 /// and `'unset'` is foreign to it (checked with the SAME [`domain_contains`]
 /// R2 uses, so the lint and R2 can never disagree about domain membership).
-fn unset_sentinel_operand(
-    subject: &Expr,
-    other: &Expr,
-    ctx: &DecideCtx<'_>,
-    not_equals: bool,
-) -> Option<UnsetSentinelHit> {
+/// Returns just the subject's display name — `not_equals`/`id` are attached
+/// by the caller, which already knows the enclosing `Call` node.
+fn unset_sentinel_operand(subject: &Expr, other: &Expr, ctx: &DecideCtx<'_>) -> Option<String> {
     let Expr::Literal(Val::String(s)) = other else {
         return None;
     };
@@ -405,86 +426,176 @@ fn unset_sentinel_operand(
     if domain_contains(&dom, &Constant::Value(Decided::Str(s.clone()))) {
         return None; // in-domain: a legit enum member literally named `unset`
     }
-    Some(UnsetSentinelHit {
-        subject: subject_display(subject).unwrap_or_else(|| "this subject".to_string()),
-        not_equals,
-    })
+    Some(subject_display(subject).unwrap_or_else(|| "this subject".to_string()))
 }
 
-/// dsl 0.5.2 §2.1's independent AST lint: the FIRST unset-sentinel mistake
-/// found by scanning `expr` and EVERY comparison sub-expression it contains —
-/// nested inside `&&`/`||`/`!`/anything else, not only a top-level comparison
-/// ("the lint scans every comparison sub-expression, not only a top-level
-/// guard"). Recurses the whole closed CEL-profile shape (mirrors
-/// `cel_paths::walk`), so a sentinel mistake buried in a list/map/struct/
-/// comprehension sub-expression is still found. `pub(crate)`: shared by
-/// `reachability.rs`'s independent lint walk AND its `E-ARM-DEAD`/
-/// `W-OTHERWISE-DEAD` suppression (§2.3 ownership) — the two can never
-/// disagree about what counts as the sentinel mistake.
-pub(crate) fn find_unset_sentinel_cmp(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<UnsetSentinelHit> {
-    match expr {
+/// dsl 0.5.2 §2.1's independent AST lint: collect EVERY unset-sentinel
+/// mistake in `ided`'s tree — nested inside `&&`/`||`/`!`/anything else,
+/// not only a top-level comparison. Recurses the whole closed CEL-profile
+/// shape (mirrors `cel_paths::walk`) AND into a matched comparison's own
+/// operands (a pathological `S == (T == 'unset' ? a : b)` still finds the
+/// inner mistake), so a sentinel mistake buried anywhere is found.
+fn collect_unset_sentinel_cmp(
+    ided: &IdedExpr,
+    ctx: &DecideCtx<'_>,
+    out: &mut Vec<UnsetSentinelHit>,
+) {
+    match &ided.expr {
         Expr::Call(c) => {
             if (c.func_name == op::EQUALS || c.func_name == op::NOT_EQUALS) && c.args.len() == 2 {
                 let not_equals = c.func_name == op::NOT_EQUALS;
                 let (a, b) = (&c.args[0].expr, &c.args[1].expr);
-                if let Some(hit) = unset_sentinel_operand(a, b, ctx, not_equals)
-                    .or_else(|| unset_sentinel_operand(b, a, ctx, not_equals))
+                if let Some(subject) = unset_sentinel_operand(a, b, ctx)
+                    .or_else(|| unset_sentinel_operand(b, a, ctx))
                 {
-                    return Some(hit);
+                    out.push(UnsetSentinelHit { subject, not_equals, id: ided.id });
                 }
             }
             if let Some(target) = &c.target {
-                if let Some(hit) = find_unset_sentinel_cmp(&target.expr, ctx) {
-                    return Some(hit);
-                }
+                collect_unset_sentinel_cmp(target, ctx, out);
             }
-            c.args.iter().find_map(|a| find_unset_sentinel_cmp(&a.expr, ctx))
+            for a in &c.args {
+                collect_unset_sentinel_cmp(a, ctx, out);
+            }
         }
-        Expr::List(list) => list
-            .elements
-            .iter()
-            .find_map(|el| find_unset_sentinel_cmp(&el.expr, ctx)),
-        Expr::Map(map) => map
-            .entries
-            .iter()
-            .find_map(|e| find_unset_sentinel_cmp_entry(&e.expr, ctx)),
-        Expr::Struct(st) => st
-            .entries
-            .iter()
-            .find_map(|e| find_unset_sentinel_cmp_entry(&e.expr, ctx)),
-        Expr::Comprehension(c) => [&c.iter_range, &c.accu_init, &c.loop_cond, &c.loop_step, &c.result]
-            .into_iter()
-            .find_map(|e| find_unset_sentinel_cmp(&e.expr, ctx)),
-        Expr::Select(sel) => find_unset_sentinel_cmp(&sel.operand.expr, ctx),
-        Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => None,
+        Expr::List(list) => {
+            for el in &list.elements {
+                collect_unset_sentinel_cmp(el, ctx, out);
+            }
+        }
+        Expr::Map(map) => {
+            for e in &map.entries {
+                collect_unset_sentinel_cmp_entry(&e.expr, ctx, out);
+            }
+        }
+        Expr::Struct(st) => {
+            for e in &st.entries {
+                collect_unset_sentinel_cmp_entry(&e.expr, ctx, out);
+            }
+        }
+        Expr::Comprehension(c) => {
+            for e in [&c.iter_range, &c.accu_init, &c.loop_cond, &c.loop_step, &c.result] {
+                collect_unset_sentinel_cmp(e, ctx, out);
+            }
+        }
+        Expr::Select(sel) => collect_unset_sentinel_cmp(&sel.operand, ctx, out),
+        Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => {}
     }
 }
 
-fn find_unset_sentinel_cmp_entry(entry: &EntryExpr, ctx: &DecideCtx<'_>) -> Option<UnsetSentinelHit> {
+fn collect_unset_sentinel_cmp_entry(
+    entry: &EntryExpr,
+    ctx: &DecideCtx<'_>,
+    out: &mut Vec<UnsetSentinelHit>,
+) {
     match entry {
-        EntryExpr::MapEntry(m) => find_unset_sentinel_cmp(&m.key.expr, ctx)
-            .or_else(|| find_unset_sentinel_cmp(&m.value.expr, ctx)),
-        EntryExpr::StructField(f) => find_unset_sentinel_cmp(&f.value.expr, ctx),
+        EntryExpr::MapEntry(m) => {
+            collect_unset_sentinel_cmp(&m.key, ctx, out);
+            collect_unset_sentinel_cmp(&m.value, ctx, out);
+        }
+        EntryExpr::StructField(f) => collect_unset_sentinel_cmp(&f.value, ctx, out),
     }
 }
 
-/// The §2.1 entry point (mirrors [`decide_slot`]'s expand-then-parse
-/// pipeline exactly, so the two can never see different trees for the same
-/// raw text): expand `@def`s, re-parse MARKED, then scan with
-/// [`find_unset_sentinel_cmp`] instead of deciding. `None` on a parse
-/// failure (mirrors `decide_slot`'s `?` chain) — an unparseable guard makes
-/// no claim.
-pub(crate) fn unset_sentinel_in_slot(
+/// §2.3's causality marker: an ordinary, otherwise-unused CEL identifier.
+/// `decide()`'s `Expr::Ident(_) => None` arm treats it — like any other
+/// bare ident — as UNDECIDED, exactly what the substitution needs: "reason
+/// about this node as little as an ordinary state-path read".
+const UNDECIDED_PLACEHOLDER: &str = "__lute_unset_sentinel_undecided__";
+
+/// Clone `ided`'s tree, replacing every node whose id is in `ids` with
+/// [`UNDECIDED_PLACEHOLDER`] (a leaf — its own children are dropped, never
+/// visited). `Expr`/`IdedExpr` and friends are cheap, structural `Clone`s
+/// (no interior parse state), so cloning the whole slot-sized tree is fine.
+fn undecide_ids(ided: &IdedExpr, ids: &[u64]) -> IdedExpr {
+    let mut out = ided.clone();
+    undecide_ids_mut(&mut out, ids);
+    out
+}
+
+fn undecide_ids_mut(ided: &mut IdedExpr, ids: &[u64]) {
+    if ids.contains(&ided.id) {
+        ided.expr = Expr::Ident(UNDECIDED_PLACEHOLDER.to_string());
+        return;
+    }
+    match &mut ided.expr {
+        Expr::Call(c) => {
+            if let Some(target) = &mut c.target {
+                undecide_ids_mut(target, ids);
+            }
+            for a in &mut c.args {
+                undecide_ids_mut(a, ids);
+            }
+        }
+        Expr::List(list) => {
+            for el in &mut list.elements {
+                undecide_ids_mut(el, ids);
+            }
+        }
+        Expr::Map(map) => {
+            for e in &mut map.entries {
+                undecide_ids_mut_entry(&mut e.expr, ids);
+            }
+        }
+        Expr::Struct(st) => {
+            for e in &mut st.entries {
+                undecide_ids_mut_entry(&mut e.expr, ids);
+            }
+        }
+        Expr::Comprehension(c) => {
+            undecide_ids_mut(&mut c.iter_range, ids);
+            undecide_ids_mut(&mut c.accu_init, ids);
+            undecide_ids_mut(&mut c.loop_cond, ids);
+            undecide_ids_mut(&mut c.loop_step, ids);
+            undecide_ids_mut(&mut c.result, ids);
+        }
+        Expr::Select(sel) => undecide_ids_mut(&mut sel.operand, ids),
+        Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => {}
+    }
+}
+
+fn undecide_ids_mut_entry(entry: &mut EntryExpr, ids: &[u64]) {
+    match entry {
+        EntryExpr::MapEntry(m) => {
+            undecide_ids_mut(&mut m.key, ids);
+            undecide_ids_mut(&mut m.value, ids);
+        }
+        EntryExpr::StructField(f) => undecide_ids_mut(&mut f.value, ids),
+    }
+}
+
+/// The §2.1/§2.3 entry point (mirrors [`decide_slot`]'s expand-then-parse
+/// pipeline exactly, so the lint and R2 can never see different trees for
+/// the same raw text): expand `@def`s, re-parse MARKED, collect every
+/// sentinel hit, then (§2.3) re-decide a COPY of the tree with every hit
+/// substituted to an undecided placeholder — `decide()`'s own contract is
+/// untouched, this only ever runs on a cloned, throwaway tree. An empty
+/// analysis (no hits, not load-bearing) on a parse failure — mirrors
+/// `decide_slot`'s `?` chain: an unparseable guard makes no claim.
+pub(crate) fn analyze_unset_sentinel_slot(
     raw: &str,
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
-) -> Option<UnsetSentinelHit> {
+) -> UnsetSentinelAnalysis {
+    let empty = || UnsetSentinelAnalysis { hits: Vec::new(), load_bearing_for_false: false };
     let mut stack = Vec::new();
     let expanded = expand_cel(raw, defs, Some("$"), &mut stack).unwrap_or_else(|_| raw.to_string());
     let mut arena = lute_cel::CelArena::default();
-    let handle = lute_cel::parse_slot_marked_refs(&mut arena, &expanded)?;
-    let ided = arena.get(handle)?;
-    find_unset_sentinel_cmp(&ided.expr, ctx)
+    let Some(handle) = lute_cel::parse_slot_marked_refs(&mut arena, &expanded) else {
+        return empty();
+    };
+    let Some(ided) = arena.get(handle) else {
+        return empty();
+    };
+    let mut hits = Vec::new();
+    collect_unset_sentinel_cmp(ided, ctx, &mut hits);
+    if hits.is_empty() {
+        return empty();
+    }
+    let ids: Vec<u64> = hits.iter().map(|h| h.id).collect();
+    let substituted = undecide_ids(ided, &ids);
+    let load_bearing_for_false = !matches!(decide(&substituted.expr, ctx), Some(Decided::Bool(false)));
+    UnsetSentinelAnalysis { hits, load_bearing_for_false }
 }
 
 #[cfg(test)]
