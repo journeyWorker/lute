@@ -233,7 +233,19 @@ fn walk_reach(nodes: &[Node], defs: &DefTable<'_>, ctx: &DecideCtx<'_>, diags: &
                     walk_reach(&choice.body, defs, ctx, diags);
                 }
             }
-            Node::On(o) => walk_reach(&o.body, defs, ctx, diags),
+            Node::On(o) => {
+                // dsl 0.5.2 §2.1: `<on when>` is a listed guard slot too
+                // (0.2 §4.1 CelString gate, "any profile CEL slot"). No
+                // dead-arm derivative to own here (an `<on>` handler has no
+                // reachability code of its own), so no suppression
+                // accompanies this — mirrors the `<match on>` subject and
+                // quest/objective slots above.
+                if let Some(when) = &o.when {
+                    let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
+                    push_unset_literal_diags(diags, &analysis.hits, when.span);
+                }
+                walk_reach(&o.body, defs, ctx, diags);
+            }
             Node::Objective(o) => {
                 diags.extend(check_objective_reach(o, defs, ctx));
                 walk_reach(&o.body, defs, ctx, diags);
