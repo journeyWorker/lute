@@ -826,11 +826,13 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<D
     }
     // Otherwise the path must be declared in the inline `state:` schema (dsl §9.4).
     if !is_declared(path, ctx) {
-        diags.push(diag(
-            "E-UNDECLARED",
-            format!("state path `{path}` is not declared in `state:` (dsl §9.4)"),
-            slot.span,
-        ));
+        let mut msg = format!("state path `{path}` is not declared in `state:` (dsl §9.4)");
+        // dsl 0.5.0 §2.2 "did you mean": suggest the nearest declared path
+        // within a small edit distance, advisory text only (no new code).
+        if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2) {
+            msg.push_str(&format!(" — did you mean `{sugg}`?"));
+        }
+        diags.push(diag("E-UNDECLARED", msg, slot.span));
     }
 }
 
@@ -882,6 +884,7 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 
@@ -915,6 +918,19 @@ mod tests {
             def_types: std::iter::once((name.to_string(), ty)).collect(),
             ..Env::default()
         }
+    }
+
+    fn env_with_state(path: &str, ty: Type) -> Env {
+        let mut schema = crate::meta::StateSchema::default();
+        schema.decls.insert(
+            path.to_string(),
+            crate::meta::StateDecl {
+                ty,
+                default: None,
+                namespace: crate::meta::Namespace::Scene,
+            },
+        );
+        Env { state: schema, ..Env::default() }
     }
 
     fn mk_ctx(env: &Env) -> Ctx<'_> {
@@ -1280,6 +1296,25 @@ mod tests {
             d.iter().all(|e| e.code != E_CEL_PROFILE),
             "well-formed isSet(run.y) must stay clean, got {:?}",
             d.iter().map(|x| x.code.clone()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn undeclared_read_near_a_declared_path_suggests_it() {
+        // dsl 0.5.0 §2.2 "did you mean": `scene.trsut` is one transposition
+        // away from the declared `scene.trust`.
+        let env = env_with_state("scene.trust", Type::Bool);
+        let ctx = mk_ctx(&env);
+        let slot = cel_slot_condition("scene.trsut");
+        let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
+        let e = d
+            .iter()
+            .find(|e| e.code == "E-UNDECLARED")
+            .unwrap_or_else(|| panic!("{d:?}"));
+        assert!(
+            e.message.contains("did you mean `scene.trust`"),
+            "{}",
+            e.message
         );
     }
 }

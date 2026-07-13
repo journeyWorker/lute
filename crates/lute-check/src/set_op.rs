@@ -127,10 +127,16 @@ pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnos
     // are undeclared and reported — the latter used to be silently accepted (C3).
     let Some(ty) = resolve_type(&set.path, schema) else {
         let msg = if namespace_of(&set.path).is_some() {
-            format!(
+            let mut m = format!(
                 "`::set` target `{}` is not declared in the `state:` schema (dsl §7.3.4)",
                 set.path
-            )
+            );
+            // dsl 0.5.0 §2.2 "did you mean": suggest the nearest declared
+            // path within a small edit distance, advisory text only.
+            if let Some(sugg) = crate::cel_paths::nearest_declared_path(&set.path, schema, 2) {
+                m.push_str(&format!(" — did you mean `{sugg}`?"));
+            }
+            m
         } else {
             format!(
                 "`::set` target `{}` is not a state path: it must begin with a \
@@ -231,6 +237,7 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 
@@ -405,6 +412,23 @@ mod tests {
         assert!(
             errs.iter().any(|e| e.code == "E-UNDECLARED"),
             "non-tier ::set target must be diagnosed, got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn undeclared_target_near_a_declared_path_suggests_it() {
+        // dsl 0.5.0 §2.2 "did you mean": `scene.trsut` is one transposition
+        // away from the declared `scene.trust`.
+        let schema = schema_of("scene.trust", Type::Bool, Namespace::Scene);
+        let errs = check_set(&set("scene.trsut", "=", "true"), &schema, &ctx());
+        let e = errs
+            .iter()
+            .find(|e| e.code == "E-UNDECLARED")
+            .unwrap_or_else(|| panic!("{errs:?}"));
+        assert!(
+            e.message.contains("did you mean `scene.trust`"),
+            "{}",
+            e.message
         );
     }
 }

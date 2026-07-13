@@ -140,6 +140,7 @@ fn cel_parse_diagnostics(doc: &Document, cel_errors: Vec<CelParseError>) -> Vec<
                 fixits: t.fixits,
                 provenance: None,
                 covered: Vec::new(),
+                related: Vec::new(),
             }
         })
         .collect()
@@ -152,6 +153,12 @@ const STRUCTURAL_CODES: &[&str] = &[
     "E-UNCLOSED-TAG",
     "E-COMMENT-UNTERMINATED",
     "E-META-PARSE",
+    // dsl 0.5.0 §2.1: split off E-UNCLASSIFIED / E-UNCLOSED-TAG — each
+    // corrupts the node stream the SAME way its parent code did (a dropped
+    // line, or a tag whose attrs/close never resolve as intended).
+    "E-CONTENT-OUTSIDE-SHOT",
+    "E-CONTENT-LINE-BRACKET",
+    "E-TAG-NOT-ONE-LINE",
 ];
 
 /// The input to one `check()` invocation — the document text plus the resolved
@@ -351,6 +358,7 @@ pub fn fold_env(
                         fixits: Vec::new(),
                         provenance: None,
                         covered: Vec::new(),
+                        related: Vec::new(),
                     });
                 }
                 schema.decls.insert(path.clone(), decl.clone());
@@ -368,6 +376,7 @@ pub fn fold_env(
                     fixits: Vec::new(),
                     provenance: None,
                     covered: Vec::new(),
+                    related: Vec::new(),
                 });
             }
             None => {
@@ -424,6 +433,7 @@ pub fn fold_env(
                     fixits: Vec::new(),
                     provenance: None,
                     covered: Vec::new(),
+                    related: Vec::new(),
                 });
             } else {
                 schema.decls.insert(path, decl);
@@ -1295,6 +1305,7 @@ fn check_interp_referent(
                         fixits: Vec::new(),
                         provenance: None,
                         covered: Vec::new(),
+                        related: Vec::new(),
                     });
                 }
             }
@@ -1331,6 +1342,7 @@ fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 
@@ -1396,6 +1408,7 @@ fn use_diag(code: &str, message: String, span: Span) -> Diagnostic {
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 
@@ -2406,6 +2419,7 @@ fn persist_diag(code: &str, message: String, span: Span) -> Diagnostic {
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 
@@ -2459,6 +2473,7 @@ fn choice_into_no_persist_diag(into_attr: &Attr, src: &str) -> Diagnostic {
         ],
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 

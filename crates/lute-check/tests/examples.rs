@@ -241,3 +241,34 @@ fn hyphen_path_ident_span_is_key_aware() {
         "span must point at the KEY occurrence (byte {key_at}), not the comment (byte {comment_at}): {d:#?}"
     );
 }
+
+#[test]
+fn new_split_codes_are_structural_and_suppress_the_resolved_view() {
+    // dsl 0.5.0 §2.1: E-CONTENT-OUTSIDE-SHOT / E-CONTENT-LINE-BRACKET /
+    // E-TAG-NOT-ONE-LINE all corrupt the node stream the same way their
+    // parent E-UNCLASSIFIED/E-UNCLOSED-TAG did, so `resolved` stays `None`
+    // (the Some-vs-None structural-break policy).
+    for (code, text) in [
+        ("E-CONTENT-OUTSIDE-SHOT", "@narrator: hi before any shot\n"),
+        (
+            "E-CONTENT-LINE-BRACKET",
+            "## Shot 1.\n@mira[emotion=\"x\"]: hi\n",
+        ),
+        (
+            "E-TAG-NOT-ONE-LINE",
+            "## Shot 1.\n<on event=\"x\"\nwhen=\"run.a\">\n</on>\n",
+        ),
+    ] {
+        let res = check(&input_for(text));
+        assert!(
+            res.diagnostics.iter().any(|d| d.code == code),
+            "{code}: expected the diagnostic, got {:#?}",
+            res.diagnostics
+        );
+        assert!(
+            res.resolved.is_none(),
+            "{code}: a structural-break code must suppress the resolved view, got {:#?}",
+            res.resolved
+        );
+    }
+}

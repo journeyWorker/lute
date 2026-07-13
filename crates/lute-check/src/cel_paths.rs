@@ -204,3 +204,43 @@ pub(crate) fn select_path(expr: &Expr) -> Option<String> {
         _ => None,
     }
 }
+
+/// Levenshtein edit distance between two strings (dsl 0.5.0 §2.2 "did you
+/// mean" on `E-UNDECLARED`). Character-wise, not byte-wise — state-path
+/// segments are `CelIdent`s (ASCII) in practice, but this stays correct for
+/// any UTF-8 input.
+pub(crate) fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let (n, m) = (a.len(), b.len());
+    let mut prev: Vec<usize> = (0..=m).collect();
+    let mut cur = vec![0usize; m + 1];
+    for i in 1..=n {
+        cur[0] = i;
+        for j in 1..=m {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            cur[j] = (prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[m]
+}
+
+/// The nearest DECLARED state path to `path` within `max_dist` edits (dsl
+/// 0.5.0 §2.2): `None` when nothing declared is close enough, `path` itself
+/// is already declared (distance 0 is excluded — no self-suggestion), or the
+/// schema declares nothing. Ties broken by `BTreeMap` key order (stable,
+/// deterministic).
+pub(crate) fn nearest_declared_path<'s>(
+    path: &str,
+    schema: &'s crate::meta::StateSchema,
+    max_dist: usize,
+) -> Option<&'s str> {
+    schema
+        .decls
+        .keys()
+        .map(|k| (k.as_str(), levenshtein(path, k)))
+        .filter(|&(_, d)| d > 0 && d <= max_dist)
+        .min_by_key(|&(_, d)| d)
+        .map(|(k, _)| k)
+}

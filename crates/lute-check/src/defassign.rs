@@ -172,11 +172,11 @@ fn walk_set(set: &Set, schema: &StateSchema, assigned: &mut Assigned, diags: &mu
         // The write target itself must be declared (T4.3 covers read sites; the
         // `::set` LHS path is this pass's responsibility).
         if !is_declared(target, schema) {
-            diags.push(diag(
-                "E-UNDECLARED",
-                format!("state path `{target}` is not declared in `state:` (dsl §9.4)"),
-                set.path_span,
-            ));
+            let mut msg = format!("state path `{target}` is not declared in `state:` (dsl §9.4)");
+            if let Some(sugg) = crate::cel_paths::nearest_declared_path(target, schema, 2) {
+                msg.push_str(&format!(" — did you mean `{sugg}`?"));
+            }
+            diags.push(diag("E-UNDECLARED", msg, set.path_span));
         }
         // Assign regardless of declaredness so later reads don't cascade.
         assigned.insert(target.clone());
@@ -506,6 +506,7 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 
