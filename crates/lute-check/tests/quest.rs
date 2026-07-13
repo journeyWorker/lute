@@ -102,6 +102,59 @@ fn quest_state_readable_in_match() {
     assert!(!cs.iter().any(|c| c == "E-UNDECLARED"), "{cs:?}");
 }
 
+// --- D-quest-paths: reserved `quest.<id>.*` reads/decls in a SCENE that has
+// no local `<quest id>` (docs/proposals/scenario-dsl/0.2.0.md:215-245: the
+// reserved sub-namespaces are implicitly declared regardless of which
+// document folds the owning `<quest>`; content MAY read them, MUST NOT
+// author-declare them) -------------------------------------------------------
+
+#[test]
+fn foreign_quest_state_and_objective_done_reads_are_not_undeclared() {
+    // A scene with NO local `<quest foo>` reads quest.foo.state (match
+    // subject, unset-covered by `<otherwise>`, dsl 0.2.0 §5.2/§9.4: no
+    // `default`, so `unset` coverage is what proves it) and
+    // quest.foo.objectives.bar.done (an UNGUARDED `<when test>` arm read) --
+    // neither is a byproduct of folding this document's own `<quest>`.
+    //
+    // `objectives.<oid>.done: bool` carries `default: false` in the SAME
+    // synthetic decl `check_quest` folds for a local quest (dsl
+    // 0.2.0.md:246-247, match_check::check_quest) -- a foreign read must
+    // mirror that default, so it is DEFINITE even unguarded: the whole
+    // match must be fully clean, not merely free of `E-UNDECLARED`.
+    let cs = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <match on=\"quest.foo.state\">\n\
+         <when is=\"active\" test=\"quest.foo.objectives.bar.done\">\n@x: a\n</when>\n\
+         <when is=\"complete | failed\">\n@x: b\n</when>\n\
+         <otherwise>\n@x: c\n</otherwise>\n\
+         </match>\n",
+    );
+    assert!(!cs.iter().any(|c| c == "E-UNDECLARED"), "{cs:?}");
+    assert!(!cs.iter().any(|c| c == "E-MAYBE-UNSET"), "{cs:?}");
+}
+
+#[test]
+fn foreign_quest_state_declared_in_state_block_errors() {
+    // An author `state:` block declaring the reserved `quest.foo.state` path
+    // with NO local `<quest foo>` must still be rejected -- the reserved
+    // shape is implicitly declared project-wide, not merely a fold-order
+    // byproduct of THIS document owning the quest.
+    let cs = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         state:\n  quest.foo.state: { type: string }\n---\n## Shot 1.\n@x: hi\n",
+    );
+    assert!(cs.contains(&"E-QUEST-RESERVED-DECL".to_string()), "{cs:?}");
+}
+
+#[test]
+fn foreign_quest_objective_done_declared_in_state_block_errors() {
+    let cs = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         state:\n  quest.foo.objectives.bar.done: { type: bool }\n---\n## Shot 1.\n@x: hi\n",
+    );
+    assert!(cs.contains(&"E-QUEST-RESERVED-DECL".to_string()), "{cs:?}");
+}
+
 // --- Task 5: table-driven grammar admission ---------------------------------
 
 #[test]
