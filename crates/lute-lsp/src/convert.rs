@@ -148,6 +148,7 @@ mod tests {
             fixits: vec![],
             provenance: None,
             covered: Vec::new(),
+            related: Vec::new(),
         }
     }
 
@@ -170,6 +171,7 @@ mod tests {
             fixits: vec![],
             provenance: None,
             covered: Vec::new(),
+            related: Vec::new(),
         };
         let l = to_lsp_diagnostic(&d, &line_index(), &test_uri());
         assert_eq!(l.range.start.line, 2, "line 3 -> 0-based 2");

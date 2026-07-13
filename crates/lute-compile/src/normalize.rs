@@ -137,6 +137,7 @@ fn normalize_nodes(
                                     fixits: Vec::new(),
                                     provenance: None,
                                     covered: Vec::new(),
+                                    related: Vec::new(),
                                 });
                             }
                         }
@@ -218,6 +219,7 @@ fn expand_use(
             fixits: Vec::new(),
             provenance: None,
             covered: Vec::new(),
+            related: Vec::new(),
         });
         return Vec::new();
     };
@@ -264,6 +266,7 @@ fn expand_use(
             fixits: Vec::new(),
             provenance: None,
             covered: Vec::new(),
+            related: Vec::new(),
         });
         return Vec::new();
     }
