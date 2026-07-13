@@ -70,7 +70,7 @@ use lute_syntax::ast::{
     Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node, Quest,
 };
 
-use crate::cel_paths::E_PATH_IDENT;
+use crate::cel_paths::{is_reserved_quest_objective_done, is_reserved_quest_path, E_PATH_IDENT};
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
 
@@ -935,11 +935,48 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
                 resolved: true,
             }
         }
-        None => DomainInfo {
-            domain: Domain::Infinite,
-            maybe_unset: false,
-            resolved: false,
-        },
+        None => {
+            // RC3 (dsl 0.2.0 §5.2): `quest.<id>.state` /
+            // `quest.<id>.objectives.<oid>.done` reads are admitted
+            // UNCONDITIONALLY (`cel_resolve.rs::is_declared` via
+            // `is_reserved_quest_path`), even for a quest THIS document never
+            // locally folds (foreign/imported). Without a matching schema
+            // decl, falling straight to `Domain::Infinite` here would wrongly
+            // demand an `<otherwise>` on a `<match>` that already fully
+            // covers the reserved shape's real (engine-defined) domain.
+            // Synthesize the SAME domain info `check_quest` folds for a
+            // LOCAL quest, so a foreign one gets identical exhaustiveness
+            // treatment.
+            if is_reserved_quest_objective_done(path) {
+                DomainInfo {
+                    domain: Domain::Finite(vec![
+                        DomainValue::Bool(true),
+                        DomainValue::Bool(false),
+                    ]),
+                    // `check_quest` seeds this decl with `default: Some(false)`.
+                    maybe_unset: false,
+                    resolved: true,
+                }
+            } else if is_reserved_quest_path(path) {
+                DomainInfo {
+                    domain: Domain::Finite(vec![
+                        DomainValue::Str("active".to_string()),
+                        DomainValue::Str("complete".to_string()),
+                        DomainValue::Str("failed".to_string()),
+                    ]),
+                    // `check_quest` seeds this decl with `default: None` in
+                    // `Namespace::Quest`, so a `<match>` must also cover `unset`.
+                    maybe_unset: true,
+                    resolved: true,
+                }
+            } else {
+                DomainInfo {
+                    domain: Domain::Infinite,
+                    maybe_unset: false,
+                    resolved: false,
+                }
+            }
+        }
     }
 }
 
@@ -1583,6 +1620,65 @@ mod tests {
         assert!(
             errs.is_empty(),
             "defaulted full-coverage enum should be clean, got {errs:?}"
+        );
+    }
+
+    // ---- RC3: foreign reserved quest path domain (dsl 0.2.0 §5.2) ----------
+
+    #[test]
+    fn foreign_quest_state_full_coverage_no_otherwise_is_clean() {
+        // `quest.foo` is NOT locally declared/imported (empty schema) — the
+        // reserved-shape fallback in `infer_domain` must still synthesize the
+        // engine's real domain (`active|complete|failed`, maybe-unset) so a
+        // `<match>` that fully covers it needs no `<otherwise>`.
+        let m = match_with(
+            "quest.foo.state",
+            vec![
+                when_arm("$ == 'active'"),
+                when_arm("$ == 'complete'"),
+                when_arm("$ == 'failed'"),
+                when_arm("$ == null"),
+            ],
+        );
+        let errs = check_match(&m, &StateSchema { decls: BTreeMap::new() }, &ctx());
+        assert!(
+            errs.is_empty(),
+            "foreign quest.state fully covered incl. unset should be clean: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn foreign_quest_state_missing_member_is_nonexhaustive() {
+        // Same foreign quest, but the `failed` member is missing — still
+        // E-NONEXHAUSTIVE, proving the fallback's domain is real (not
+        // silently treated as always-covered).
+        let m = match_with(
+            "quest.foo.state",
+            vec![
+                when_arm("$ == 'active'"),
+                when_arm("$ == 'complete'"),
+                when_arm("$ == null"),
+            ],
+        );
+        let errs = check_match(&m, &StateSchema { decls: BTreeMap::new() }, &ctx());
+        assert!(
+            errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
+            "missing `failed` member must still be E-NONEXHAUSTIVE: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn foreign_quest_objective_done_full_coverage_no_otherwise_is_clean() {
+        // `quest.foo.objectives.bar.done` is bool, default false => never
+        // maybe-unset; `true|false` fully covers it without `<otherwise>`.
+        let m = match_with(
+            "quest.foo.objectives.bar.done",
+            vec![when_arm("$"), when_arm("!$")],
+        );
+        let errs = check_match(&m, &StateSchema { decls: BTreeMap::new() }, &ctx());
+        assert!(
+            errs.is_empty(),
+            "foreign objective.done fully covered should be clean: {errs:?}"
         );
     }
 
