@@ -66,6 +66,18 @@ pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
     }
 }
 
+/// `true` specifically for the `quest.<id>.objectives.<oid>.done` reserved
+/// shape (5 segments, segment 2 == `objectives`, segment 4 == `done`) — the
+/// sub-case of [`is_reserved_quest_path`] that `check_quest` (dsl 0.2.0 §6.4,
+/// `crate::match_check`) seeds with a `bool` decl carrying `default: false`.
+/// Distinguished from `quest.<id>.state` (no default — a `<match>` over it
+/// must cover `unset`, dsl 0.2.0 §5.2) so a caller that needs to mirror
+/// `check_quest`'s synthetic decl (definite-assignment defaulting) can treat
+/// the two reserved shapes differently without re-deriving the segment shape.
+pub(crate) fn is_reserved_quest_objective_done(path: &str) -> bool {
+    matches!(path.split('.').collect::<Vec<&str>>().as_slice(), ["quest", _, "objectives", _, "done"])
+}
+
 /// `E-PATH-IDENT`: a `-` in a CEL-facing name — a state-path segment, a `defs`
 /// name, or a def parameter name (dsl §8.4, §4.4 `CelIdent`). CEL parses `-` as
 /// subtraction, so these positions forbid it; `Ident` positions (directive/attr/

@@ -25,7 +25,7 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{CelKind, CelSlot};
 use lute_syntax::datalog::{BodyLiteral, FactArg, FactTerm};
 
-use crate::cel_paths::collect_path_uses;
+use crate::cel_paths::{collect_path_uses, is_reserved_quest_path};
 use crate::ctx::ExpectedType;
 use crate::rel_schema::{check_atom, RelVocab};
 use crate::Ctx;
@@ -835,13 +835,21 @@ fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<D
 }
 
 /// A path is declared when it exactly matches a `state:` key or is a descendant
-/// field of one (`scene.player` declared => `scene.player.hp` reads are ok).
+/// field of one (`scene.player` declared => `scene.player.hp` reads are ok), OR
+/// is a RESERVED `quest.<id>.state`/`quest.<id>.objectives.<oid>.done` path
+/// (dsl 0.2.0 §5.2): those are implicitly declared UNCONDITIONALLY, regardless
+/// of whether THIS document folds the owning `<quest>` (mirrors
+/// `set_op.rs::classify_write`, which shape-checks a reserved write target
+/// before consulting the schema at all) — a scene that merely references
+/// another document's quest instance is not "undeclared".
 fn is_declared(path: &str, ctx: &Ctx<'_>) -> bool {
-    ctx.env
-        .state
-        .decls
-        .keys()
-        .any(|k| path == k || path.starts_with(&format!("{k}.")))
+    is_reserved_quest_path(path)
+        || ctx
+            .env
+            .state
+            .decls
+            .keys()
+            .any(|k| path == k || path.starts_with(&format!("{k}.")))
 }
 
 /// Guard/condition slots (dsl §9.6): a `<match>` subject or any boolean guard.

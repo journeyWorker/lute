@@ -62,7 +62,10 @@ use lute_syntax::ast::{
     Arm, Branch, CelSlot, ClipNode, Hub, InterpKind, Match, Node, Objective, On, Set, Timeline,
 };
 
-use crate::cel_paths::{collect_path_uses, is_state_path, PathRole};
+use crate::cel_paths::{
+    collect_path_uses, is_reserved_quest_objective_done, is_reserved_quest_path, is_state_path,
+    PathRole,
+};
 use crate::meta::StateSchema;
 use crate::Ctx;
 
@@ -397,7 +400,11 @@ fn check_read(
     span: Span,
     diags: &mut Vec<Diagnostic>,
 ) {
-    // `run.choiceLog.*` reads and undeclared paths are T4.3's territory.
+    // `run.choiceLog.*` reads are T4.3's territory; an undeclared (non-reserved)
+    // path is ALSO T4.3's territory (`E-UNDECLARED`) -- but a reserved
+    // `quest.<id>.state`/`quest.<id>.objectives.<oid>.done` read is always
+    // declared (dsl 0.2.0 §5.2, mirrors `is_declared` below), so it falls
+    // through and participates in the maybe-unset proof like any other tier.
     if is_choicelog(path) || !is_declared(path, schema) {
         return;
     }
@@ -440,23 +447,38 @@ fn proven(path: &str, assigned: &Assigned) -> bool {
         .any(|a| path == a || path.starts_with(&format!("{a}.")))
 }
 
-/// A path is declared when it exactly matches a `state:` key or is a descendant
-/// field of one (`run.player` declared => `run.player.hp` reads are ok).
+/// A path is declared when it exactly matches a `state:` key or is a
+/// descendant field of one (`run.player` declared => `run.player.hp` reads are
+/// ok), OR is a RESERVED `quest.<id>.*` path (dsl 0.2.0 §5.2): those are
+/// implicitly declared UNCONDITIONALLY, independent of whether THIS
+/// document's own `<quest>` fold populated the schema (a foreign-quest read
+/// is always legal, never `E-UNDECLARED`) — see `cel_resolve::is_declared`,
+/// which applies the identical rule for T4.3's read-site check.
 fn is_declared(path: &str, schema: &StateSchema) -> bool {
-    schema
-        .decls
-        .keys()
-        .any(|k| path == k || path.starts_with(&format!("{k}.")))
+    is_reserved_quest_path(path)
+        || schema
+            .decls
+            .keys()
+            .any(|k| path == k || path.starts_with(&format!("{k}.")))
 }
 
 /// True when the schema decl that `path` resolves to (exact or nearest ancestor)
-/// carries a `default` — the engine seeds it at scene entry (dsl §9.3).
+/// carries a `default` — the engine seeds it at scene entry (dsl §9.3) — OR
+/// `path` is the reserved `quest.<id>.objectives.<oid>.done` shape (dsl 0.2.0
+/// §5.2/§6.4): `check_quest` always seeds that decl with `default: false`
+/// (`match_check::check_quest`), so a read is DEFINITE even when this
+/// document never locally folds a `<quest>` for that id (a foreign-quest
+/// read must mirror the same synthetic decl the owning document's own fold
+/// would produce). `quest.<id>.state` carries NO default (its `unset`
+/// member is proven only via `<match>` exhaustiveness, dsl 0.2.0 §5.2) so it
+/// is deliberately excluded here.
 fn has_default(path: &str, schema: &StateSchema) -> bool {
-    schema
-        .decls
-        .iter()
-        .filter(|(k, _)| path == k.as_str() || path.starts_with(&format!("{k}.")))
-        .any(|(_, decl)| decl.default.is_some())
+    is_reserved_quest_objective_done(path)
+        || schema
+            .decls
+            .iter()
+            .filter(|(k, _)| path == k.as_str() || path.starts_with(&format!("{k}.")))
+            .any(|(_, decl)| decl.default.is_some())
 }
 
 fn is_choicelog(path: &str) -> bool {

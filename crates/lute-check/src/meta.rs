@@ -6,7 +6,7 @@ use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::Meta;
 
-use crate::cel_paths::{state_path_has_hyphen, E_PATH_IDENT};
+use crate::cel_paths::{is_reserved_quest_path, state_path_has_hyphen, E_PATH_IDENT};
 
 /// State lifetime tier (dsl §9.1), keyed by the declared path's leading segment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -606,6 +606,27 @@ pub fn parse_meta_kind(
                         ));
                         continue;
                     };
+                    // dsl 0.2.0 §5.2/§9.3: `quest.<id>.state` / `quest.<id>.objectives.<oid>.done`
+                    // are RESERVED — implicitly declared and MUST NOT be author-declared,
+                    // regardless of whether THIS document owns a matching `<quest id>` (a
+                    // shape check, not a doc-scope one; mirrors `state_path_has_hyphen`/
+                    // `narrativeTime` below). Skip the decl install entirely so a later read
+                    // of `path` resolves via the reserved-path fallback, never a phantom
+                    // author-typed decl. The `check.rs:410-427` collision guard (an imported/
+                    // sibling-document quest's schema, folded later) still catches the
+                    // fold-order case this shape check cannot see.
+                    if is_reserved_quest_path(path) {
+                        diags.push(err_at(
+                            "E-QUEST-RESERVED-DECL",
+                            format!(
+                                "state path `{path}` collides with an implicitly-declared \
+                                 reserved quest field (dsl 0.2.0 §5.2); it must not be \
+                                 author-declared in `state:`"
+                            ),
+                            meta_key_span(meta, path),
+                        ));
+                        continue;
+                    }
                     // §8.4: each state-path segment after the tier is a
                     // `CelIdent`; a `-` there is E-PATH-IDENT. Still record the
                     // decl below so downstream reads don't cascade to E-UNDECLARED.
