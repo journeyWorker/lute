@@ -386,3 +386,165 @@ fn check_project_empty_dir_exits_zero() {
         String::from_utf8_lossy(&out.stdout)
     );
 }
+
+// --- dsl 0.5.1 §1.4: `W-QUEST-REF-UNKNOWN` -----------------------------------
+
+/// A self-contained `kind: quest` doc declaring `<quest id quest_id>` with
+/// exactly one `<objective id objective_id>` (its own state decl + a `done`
+/// slot that reads it, so no other diagnostic fires).
+fn quest_doc_with(quest_id: &str, objective_id: &str, state_path: &str) -> String {
+    format!(
+        "---\nkind: quest\nstate:\n  {state_path}: {{ type: bool, default: false }}\n---\n\
+         <quest id=\"{quest_id}\">\n<objective id=\"{objective_id}\" done=\"{state_path}\"/>\n</quest>\n"
+    )
+}
+
+/// A `kind: scene` doc exhaustively matching the reserved
+/// `quest.<quest_id>.state` path (dsl 0.2.0 §5.2 domain) -- check-clean on
+/// its own regardless of whether `quest_id` names a real project quest
+/// (single-file `check` never validates cross-document quest existence,
+/// dsl 0.5.1 §1.4).
+fn scene_matching_quest_state(quest_id: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <match on=\"quest.{quest_id}.state\">\n\
+         <when is=\"active\">\n@x: is-active\n</when>\n\
+         <when is=\"complete\">\n@x: is-complete\n</when>\n\
+         <when is=\"failed\">\n@x: is-failed\n</when>\n\
+         <when is=\"unset\">\n@x: is-unset\n</when>\n\
+         </match>\n"
+    )
+}
+
+/// A `kind: scene` doc exhaustively matching the reserved
+/// `quest.<quest_id>.objectives.<objective_id>.done` path.
+fn scene_matching_quest_objective_done(quest_id: &str, objective_id: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <match on=\"quest.{quest_id}.objectives.{objective_id}.done\">\n\
+         <when is=\"true\">\n@x: is-true\n</when>\n\
+         <when is=\"false\">\n@x: is-false\n</when>\n\
+         </match>\n"
+    )
+}
+
+#[test]
+fn check_project_quest_ref_to_a_defined_quest_state_emits_no_warning() {
+    let dir = temp_dir("quest-ref-known-state");
+    write(&dir, "heist.lute", &quest_doc_with("heist", "steal", "run.steal"));
+    write(&dir, "scene.lute", &scene_matching_quest_state("heist"));
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    let project_diags = v["project_diagnostics"].as_array().expect("project_diagnostics array");
+    assert!(
+        !project_diags.iter().any(|d| d["code"] == "W-QUEST-REF-UNKNOWN"),
+        "a reference to a quest the project actually defines must not warn: {v}"
+    );
+}
+
+#[test]
+fn check_project_flags_mistyped_quest_id_reference() {
+    // Project defines `heist`; the scene reads `quest.heits.state` (typo).
+    let dir = temp_dir("quest-ref-typo");
+    write(&dir, "heist.lute", &quest_doc_with("heist", "steal", "run.steal"));
+    write(&dir, "scene.lute", &scene_matching_quest_state("heits"));
+
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a W-QUEST-REF-UNKNOWN warning must never flip the exit verdict to error: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("W-QUEST-REF-UNKNOWN"), "{stdout}");
+    assert!(stdout.contains("scene.lute"), "must name the referencing doc: {stdout}");
+    assert!(stdout.contains("quest.heits.state"), "must name the path: {stdout}");
+
+    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    let project_diags = v["project_diagnostics"].as_array().expect("project_diagnostics array");
+    assert_eq!(project_diags.len(), 1, "{v}");
+    assert_eq!(project_diags[0]["code"], "W-QUEST-REF-UNKNOWN");
+    assert_eq!(project_diags[0]["severity"], "warning");
+    assert!(
+        project_diags[0]["path"].as_str().is_some_and(|p| p.ends_with("scene.lute")),
+        "anchored in the referencing scene: {v}"
+    );
+}
+
+#[test]
+fn check_project_flags_reference_to_an_undefined_objective_under_a_defined_quest() {
+    // Project defines `heist` with objective `steal`; the scene reads
+    // `quest.heist.objectives.bogus.done` -- the quest exists, but that
+    // objective does not.
+    let dir = temp_dir("quest-ref-bad-objective");
+    write(&dir, "heist.lute", &quest_doc_with("heist", "steal", "run.steal"));
+    write(&dir, "scene.lute", &scene_matching_quest_objective_done("heist", "bogus"));
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let project_diags = v["project_diagnostics"].as_array().expect("project_diagnostics array");
+    assert_eq!(project_diags.len(), 1, "{v}");
+    assert_eq!(project_diags[0]["code"], "W-QUEST-REF-UNKNOWN");
+    assert!(
+        project_diags[0]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("bogus") && m.contains("heist")),
+        "{v}"
+    );
+}
+
+#[test]
+fn single_file_check_never_emits_quest_ref_unknown() {
+    // Standalone `lute check` has no cross-document quest graph (dsl 0.5.1
+    // §1.4: "Single-file `lute check` ... does not and cannot emit it").
+    let dir = temp_dir("quest-ref-single-file");
+    let scene = write(&dir, "scene.lute", &scene_matching_quest_state("heits"));
+
+    let out = run(&["check", scene.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("W-QUEST-REF-UNKNOWN"),
+        "single-file check must never emit the project-only warning: {stdout}"
+    );
+
+    let out_json = run(&["check", scene.to_str().unwrap(), "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
+    let diags = v["diagnostics"].as_array().expect("diagnostics array");
+    assert!(
+        !diags.iter().any(|d| d["code"] == "W-QUEST-REF-UNKNOWN"),
+        "{v}"
+    );
+}
+
+#[test]
+fn check_project_clean_project_still_exits_zero_with_quest_refs_present() {
+    // Preserve existing behavior: a project with a valid quest and a scene
+    // that legitimately reads BOTH reserved shapes on it stays exit 0 with
+    // an empty project_diagnostics list.
+    let dir = temp_dir("quest-ref-clean");
+    write(&dir, "heist.lute", &quest_doc_with("heist", "steal", "run.steal"));
+    write(&dir, "state-scene.lute", &scene_matching_quest_state("heist"));
+    write(
+        &dir,
+        "objective-scene.lute",
+        &scene_matching_quest_objective_done("heist", "steal"),
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    assert!(v["project_diagnostics"].as_array().unwrap().is_empty(), "{v}");
+}

@@ -58,7 +58,10 @@ pub use meta::{
     StateSchema, TypedMeta, E_KIND_MISSING, E_UNKNOWN_KIND,
 };
 pub use on::{check_on_event, E_ON_NO_EVENT, E_UNKNOWN_EVENT};
-pub use project_check::{check_project_quest_ids, colliding_occurrences};
+pub use project_check::{
+    check_project_quest_ids, check_project_quest_refs, colliding_occurrences,
+    W_QUEST_REF_UNKNOWN,
+};
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use schema_import::{resolve_imports, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner};

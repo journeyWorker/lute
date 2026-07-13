@@ -27,11 +27,14 @@
 //! silently swallowed just because it also happens to be
 //! project-wide-visible.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::Document;
+use lute_syntax::ast::{Document, Node};
+
+use crate::cel_paths::{collect_path_uses, is_reserved_quest_path};
 
 /// `E-QUEST-ID-DUP`, [`Layer::Logic`] (matching `check_quest`'s own in-document
 /// diagnostic — quest-id identity is a §9/§11-style logic concern regardless of
@@ -148,6 +151,157 @@ pub fn colliding_occurrences(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Span
             continue;
         }
         out.extend(occurrences.into_iter().map(|(p, s)| (p.to_path_buf(), s)));
+    }
+    out
+}
+
+/// dsl 0.5.1 §1.4: a `check-project` reference to a reserved
+/// `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` path whose
+/// `<id>` (or `<oid>`, under a project-defined quest) no quest document in
+/// the walked project defines.
+pub const W_QUEST_REF_UNKNOWN: &str = "W-QUEST-REF-UNKNOWN";
+
+/// [`W_QUEST_REF_UNKNOWN`], [`Layer::Logic`] (matching [`diag`]'s quest-id
+/// concern), [`Severity::Warning`] — the reference is shape-legal, and the
+/// quest may be defined outside the walked project or added later (dsl
+/// 0.5.1 §1.4), so this must never flip a per-file `ok` verdict to error.
+fn ref_diag(message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: W_QUEST_REF_UNKNOWN.to_string(),
+        severity: Severity::Warning,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// DEFINED quest ids and their DEFINED objective ids across every doc in
+/// `docs`. Objectives are found by scanning `quest.body` for
+/// `Node::Objective` — grammar admission guarantees they appear only
+/// directly in a quest body, never nested (mirrors `match_check`'s own
+/// `check_quest` scan). An empty quest/objective id is skipped: that
+/// document's own missing-id problem (`E-QUEST-ID-MISSING`/
+/// `E-OBJECTIVE-ID-MISSING`, reported wherever it is directly `check()`-ed),
+/// not a definition this project-wide pass can meaningfully index.
+fn defined_quests(docs: &[(PathBuf, Document)]) -> BTreeMap<&str, BTreeSet<&str>> {
+    let mut out: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for (_, doc) in docs {
+        for quest in &doc.quests {
+            if quest.id.is_empty() {
+                continue;
+            }
+            let objectives = out.entry(quest.id.as_str()).or_default();
+            for node in &quest.body {
+                if let Node::Objective(o) = node {
+                    if !o.id.is_empty() {
+                        objectives.insert(o.id.as_str());
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Every reserved quest path (`quest.<id>.state` /
+/// `quest.<id>.objectives.<oid>.done`) `doc` REFERENCES, paired with the
+/// [`Span`] of the enclosing [`lute_syntax::ast::CelSlot`] the reference was
+/// found in — post-parse path-level spans are unavailable, so the caller
+/// anchors on the enclosing slot (the same convention `cel_paths`'s other
+/// callers use, e.g. `defassign`). Each slot's raw text is re-parsed fresh
+/// into a scratch [`CelArena`] (mirrors `lute-trace`'s
+/// `quest_refs::collect_referenced_reserved_quest_paths` — the analogous
+/// collector for `trace`'s single-document `--state` admission, dsl 0.5.1
+/// §1.1); a slot that fails to parse contributes nothing (already reported
+/// elsewhere by the normal CEL-parse pass). Deduplicated by path — a path
+/// read twice in one document gets ONE diagnostic, anchored at its FIRST
+/// slot in [`lute_syntax::walk::for_each_cel_slot`]'s canonical pre-order.
+fn referenced_reserved_paths(doc: &Document) -> BTreeMap<String, Span> {
+    let mut out = BTreeMap::new();
+    lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
+        let raw = slot.raw.trim();
+        if raw.is_empty() {
+            return;
+        }
+        let mut arena = CelArena::default();
+        let Ok(handle) = lute_cel::parse_slot(&mut arena, raw, 0) else {
+            return;
+        };
+        let Some(rec) = arena.get(handle) else {
+            return;
+        };
+        for use_ in collect_path_uses(&rec.expr) {
+            if is_reserved_quest_path(&use_.path) {
+                out.entry(use_.path).or_insert(slot.span);
+            }
+        }
+    });
+    out
+}
+
+fn unknown_quest_message(path: &str, id: &str) -> String {
+    format!(
+        "`{path}` references quest `{id}`, which no project quest defines (dsl 0.5.1 §1.4) \
+         — a typo, or a quest defined outside this walked directory"
+    )
+}
+
+fn unknown_objective_message(path: &str, quest_id: &str, oid: &str) -> String {
+    format!(
+        "`{path}` references objective `{oid}` on quest `{quest_id}`, which does not declare \
+         that objective (dsl 0.5.1 §1.4)"
+    )
+}
+
+/// dsl 0.5.1 §1.4: `W-QUEST-REF-UNKNOWN` — verify every reserved
+/// `quest.<id>` (and `quest.<id>.objectives.<oid>`) reference across `docs`
+/// resolves to a quest (and objective) DEFINED by some quest document among
+/// `docs`. A referenced quest `<id>` no project quest defines — or a
+/// referenced objective `<oid>` under a quest `docs` DOES define, but that
+/// quest does not itself declare `<oid>` — is one warning, naming the
+/// referencing document and the exact path (the mistyped-quest-id catch:
+/// `quest.heits.state` when the project defines `heist`). Only ever called
+/// from `check-project` (the whole-project quest graph this pass needs);
+/// single-file `check()` has no such graph and MUST NOT emit this code (dsl
+/// 0.5.1 §1.4).
+pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
+    let defined = defined_quests(docs);
+    let mut out = Vec::new();
+    for (path, doc) in docs {
+        for (ref_path, span) in referenced_reserved_paths(doc) {
+            let segs: Vec<&str> = ref_path.split('.').collect();
+            match segs.as_slice() {
+                ["quest", id, "state"] => {
+                    if !defined.contains_key(id) {
+                        out.push((
+                            path.clone(),
+                            ref_diag(unknown_quest_message(&ref_path, id), span),
+                        ));
+                    }
+                }
+                ["quest", id, "objectives", oid, "done"] => match defined.get(id) {
+                    None => out.push((
+                        path.clone(),
+                        ref_diag(unknown_quest_message(&ref_path, id), span),
+                    )),
+                    Some(objectives) => {
+                        if !objectives.contains(oid) {
+                            out.push((
+                                path.clone(),
+                                ref_diag(unknown_objective_message(&ref_path, id, oid), span),
+                            ));
+                        }
+                    }
+                },
+                _ => unreachable!(
+                    "referenced_reserved_paths only ever yields is_reserved_quest_path shapes"
+                ),
+            }
+        }
     }
     out
 }
@@ -330,5 +484,127 @@ mod tests {
             (PathBuf::from("b.lute"), doc(vec![quest("", 1)])),
         ];
         assert!(colliding_occurrences(&docs).is_empty(), "{docs:?}");
+    }
+
+    // --- `check_project_quest_refs` (dsl 0.5.1 §1.4) ------------------------
+
+    fn parsed(text: &str) -> Document {
+        let (doc, diags) = lute_syntax::parse(text);
+        assert!(diags.is_empty(), "fixture must parse clean: {diags:?}");
+        doc
+    }
+
+    fn quest_doc(quest_id: &str, objective_id: &str) -> Document {
+        parsed(&format!(
+            "---\nkind: quest\n---\n<quest id=\"{quest_id}\">\n\
+             <objective id=\"{objective_id}\" done=\"true\"/>\n</quest>\n"
+        ))
+    }
+
+    fn scene_doc_matching(subject: &str) -> Document {
+        parsed(&format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+             <match on=\"{subject}\">\n<when is=\"true\">\n@x: a\n</when>\n\
+             <otherwise>\n@x: b\n</otherwise>\n</match>\n"
+        ))
+    }
+
+    #[test]
+    fn quest_refs_no_docs_yields_no_diagnostics() {
+        assert!(check_project_quest_refs(&[]).is_empty());
+    }
+
+    #[test]
+    fn quest_refs_known_quest_and_objective_yield_no_warning() {
+        let docs = vec![
+            (PathBuf::from("heist.lute"), quest_doc("heist", "steal")),
+            (
+                PathBuf::from("scene.lute"),
+                scene_doc_matching("quest.heist.state"),
+            ),
+        ];
+        assert!(check_project_quest_refs(&docs).is_empty(), "{docs:?}");
+    }
+
+    #[test]
+    fn quest_refs_known_objective_under_known_quest_yields_no_warning() {
+        let docs = vec![
+            (PathBuf::from("heist.lute"), quest_doc("heist", "steal")),
+            (
+                PathBuf::from("scene.lute"),
+                scene_doc_matching("quest.heist.objectives.steal.done"),
+            ),
+        ];
+        assert!(check_project_quest_refs(&docs).is_empty(), "{docs:?}");
+    }
+
+    #[test]
+    fn quest_refs_flags_typo_d_quest_id() {
+        let docs = vec![
+            (PathBuf::from("heist.lute"), quest_doc("heist", "steal")),
+            (
+                PathBuf::from("scene.lute"),
+                scene_doc_matching("quest.heits.state"),
+            ),
+        ];
+        let out = check_project_quest_refs(&docs);
+        assert_eq!(out.len(), 1, "{out:?}");
+        let (path, d) = &out[0];
+        assert_eq!(path, Path::new("scene.lute"), "names the referencing doc");
+        assert_eq!(d.code, "W-QUEST-REF-UNKNOWN");
+        assert_eq!(d.severity, Severity::Warning);
+        assert!(d.message.contains("quest.heits.state"), "{}", d.message);
+        assert!(d.message.contains("heits"), "{}", d.message);
+    }
+
+    #[test]
+    fn quest_refs_flags_unknown_objective_under_a_known_quest() {
+        let docs = vec![
+            (PathBuf::from("heist.lute"), quest_doc("heist", "steal")),
+            (
+                PathBuf::from("scene.lute"),
+                scene_doc_matching("quest.heist.objectives.bogus.done"),
+            ),
+        ];
+        let out = check_project_quest_refs(&docs);
+        assert_eq!(out.len(), 1, "{out:?}");
+        let (path, d) = &out[0];
+        assert_eq!(path, Path::new("scene.lute"));
+        assert_eq!(d.code, "W-QUEST-REF-UNKNOWN");
+        assert_eq!(d.severity, Severity::Warning);
+        assert!(
+            d.message.contains("quest.heist.objectives.bogus.done"),
+            "{}",
+            d.message
+        );
+        assert!(d.message.contains("bogus"), "{}", d.message);
+    }
+
+    #[test]
+    fn quest_refs_deduplicates_repeated_reads_in_one_document() {
+        let scene = parsed(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+             <match on=\"quest.heits.state\">\n\
+             <when is=\"active\" test=\"quest.heits.state\">\n@x: a\n</when>\n\
+             <otherwise>\n@x: b\n</otherwise>\n</match>\n",
+        );
+        let docs = vec![
+            (PathBuf::from("heist.lute"), quest_doc("heist", "steal")),
+            (PathBuf::from("scene.lute"), scene),
+        ];
+        let out = check_project_quest_refs(&docs);
+        assert_eq!(out.len(), 1, "one path read twice is one warning: {out:?}");
+    }
+
+    #[test]
+    fn quest_refs_ignores_ordinary_declared_paths() {
+        let scene = parsed(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+             state:\n  run.flag: { type: bool, default: false }\n---\n## Shot 1.\n\
+             <match on=\"run.flag\">\n<when is=\"true\">\n@x: a\n</when>\n\
+             <otherwise>\n@x: b\n</otherwise>\n</match>\n",
+        );
+        let docs = vec![(PathBuf::from("scene.lute"), scene)];
+        assert!(check_project_quest_refs(&docs).is_empty(), "{docs:?}");
     }
 }
