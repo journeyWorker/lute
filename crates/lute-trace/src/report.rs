@@ -163,7 +163,9 @@ pub struct Coverage {
 
 /// The §4.5 output contract. Field order (declaration order = serde
 /// serialization order) is NORMATIVE: `file`, `seeds`, `steps`,
-/// `decisions`, `unresolved`, `coverage`.
+/// `decisions`, `unresolved`, `coverage`. `notes` is an ADDITIVE §3.1 key
+/// (0.4 §4.5: "implementations MAY add keys") — informational signage
+/// only, never consulted for the exit-code/fact-set decision.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct TraceReport {
     pub file: String,
@@ -172,6 +174,11 @@ pub struct TraceReport {
     pub decisions: Vec<Decision>,
     pub unresolved: Vec<UnresolvedEntry>,
     pub coverage: Coverage,
+    /// §3.1: an informational (never error, never reachability) note when
+    /// the resolved schema declares seed `facts:` but none were supplied
+    /// as mocks — names at least one declared-but-un-supplied relation.
+    /// Empty on every other run, including a `Refused` (empty) report.
+    pub notes: Vec<String>,
 }
 
 /// Render a decided [`Value`] to display text; `Unknown` has no decided
@@ -222,6 +229,9 @@ impl TraceReport {
             self.seeds.choices,
             if self.seeds.choices == 1 { "" } else { "s" }
         ));
+        for note in &self.notes {
+            out.push_str(&format!("note: {note}\n"));
+        }
         for step in &self.steps {
             render_step(step, &mut out);
         }
@@ -274,8 +284,13 @@ fn render_step(step: &Step, out: &mut String) {
         Step::Assert { text } => out.push_str(&format!("    ::assert  {text}\n")),
         Step::Retract { text } => out.push_str(&format!("    ::retract  {text}\n")),
         Step::Directive { tag, component_boundary } => match component_boundary {
-            Some(ComponentBoundary::Begin) => out.push_str(&format!("    -- component {tag} begin --\n")),
-            Some(ComponentBoundary::End) => out.push_str(&format!("    -- component {tag} end --\n")),
+            // §3.3: `tag` on a boundary step IS the internal
+            // `__component-begin`/`-end` sentinel (`normalize.rs`'s
+            // `COMPONENT_BEGIN`/`COMPONENT_END`) — never interpolated into
+            // the human transcript (it would both leak the sentinel name
+            // and double the marker word, "begin begin"/"end end").
+            Some(ComponentBoundary::Begin) => out.push_str("    -- component begin --\n"),
+            Some(ComponentBoundary::End) => out.push_str("    -- component end --\n"),
             None => out.push_str(&format!("    <{tag}>\n")),
         },
         Step::Decision(d) => {

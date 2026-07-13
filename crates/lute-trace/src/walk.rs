@@ -131,7 +131,18 @@ impl<'a> Walk<'a> {
         self.coverage_arms.insert(id.to_string(), CoverageCount { visited: 1, total });
     }
 
+    /// §3.2 de-duplication: the unresolved set MUST report a byte-identical
+    /// entry (same construct, id, span, expression) once, not once per
+    /// re-evaluation pass (a `<hub>` re-evaluated between picks, or an
+    /// `<objective>` re-checked across multiple quest events, would
+    /// otherwise pile up one entry per pass for the SAME unresolved guard).
     fn record_unresolved(&mut self, construct: &str, id: &str, span: Span, expression: String, atoms: Vec<UnresolvedAtom>) {
+        let dup = self.unresolved.iter().any(|u| {
+            u.construct == construct && u.id == id && u.span == span && u.expression == expression
+        });
+        if dup {
+            return;
+        }
         let rendered = atoms.iter().map(render_atom).collect();
         self.unresolved.push(UnresolvedEntry {
             construct: construct.to_string(),
@@ -931,6 +942,26 @@ fn dispatch_event(quest: &Quest, event_name: &str, w: &mut Walk<'_>) -> Flow {
     Flow::Continue
 }
 
+/// §3.2: once THIS pass transitions `quest` to a terminal state (`Complete`
+/// or `Failed`), its objectives "can no longer affect any outcome" — any
+/// `<objective>` unresolved entry belonging to `quest` (recorded either by
+/// THIS pass's [`reevaluate_objectives`] call above, or piled up from an
+/// earlier non-terminal pass) MUST NOT survive to keep the walk's exit code
+/// at 3. Scoped by the objective node's own span (not bare id — two
+/// different quests could reuse the same objective id) so only THIS
+/// quest's entries are dropped.
+fn purge_terminal_objectives(quest: &Quest, w: &mut Walk<'_>) {
+    let spans: Vec<Span> = quest
+        .body
+        .iter()
+        .filter_map(|n| match n {
+            Node::Objective(o) => Some(o.span),
+            _ => None,
+        })
+        .collect();
+    w.unresolved.retain(|u| !(u.construct == "objective" && spans.contains(&u.span)));
+}
+
 /// After activation and after every event (§4.4): re-evaluate objectives
 /// (monotonic), evaluate `fail` BEFORE derived completion (`0.2 §6.3`
 /// precedence — a quest whose objectives would ALL be done still fails if
@@ -949,6 +980,7 @@ fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow
     if matches!(fail_v, Value::Bool(true)) {
         *state = QuestState::Failed;
         w.state.write(&quest_state_path(&quest.id), Value::Str("failed".to_string()));
+        purge_terminal_objectives(quest, w);
         let guard = render_choice_guard(quest.fail.as_ref());
         w.push_decision("quest", &quest.id, quest.span, "failed".to_string(), guard, false, false, Vec::new());
         return dispatch_event(quest, "questFailed", w);
@@ -957,6 +989,7 @@ fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow
     if quest_complete(quest, w) {
         *state = QuestState::Complete;
         w.state.write(&quest_state_path(&quest.id), Value::Str("complete".to_string()));
+        purge_terminal_objectives(quest, w);
         w.push_decision("quest", &quest.id, quest.span, "complete".to_string(), None, false, false, Vec::new());
         return dispatch_event(quest, "questComplete", w);
     }
@@ -1095,6 +1128,32 @@ fn seeds_summary(mocks: &MockSet) -> Seeds {
     }
 }
 
+/// §3.1: `trace` keeps the explicit-world model UNCHANGED — the effective
+/// fact set is exactly the supplied `--fact`/`--mock` mocks, never the
+/// schema's own seed `facts:` block (that block is never read into the
+/// [`FactStore`] anywhere in this module). This function ONLY decides
+/// whether to render informational signage about that model: when the
+/// resolved schema DECLARES seed facts but NONE were supplied as mocks, a
+/// `start`/`done`/guard reading one of those seeded relations will decide
+/// `unknown` — which reads like a bug unless the author is told why. Names
+/// the FIRST declared fact's relation (deterministic; schema/import order,
+/// `rel_schema::build_rel_vocab`'s own "imports first, then inline" order)
+/// — informational only, never an error and never a reachability claim;
+/// never consulted by the exit-code decision below.
+fn seed_fact_notes(mocks: &MockSet, seed_facts: &[lute_check::meta::FactDecl]) -> Vec<String> {
+    if !mocks.facts.is_empty() {
+        return Vec::new();
+    }
+    let Some(first) = seed_facts.first() else {
+        return Vec::new();
+    };
+    vec![format!(
+        "the schema declares seed facts (e.g. `{}`) but trace does not auto-load them (§3.1, \
+         the explicit-world model) — supply seeded relations explicitly via --fact",
+        first.fact.relation
+    )]
+}
+
 fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
     TraceReport {
         file: uri.to_string(),
@@ -1103,6 +1162,7 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
         decisions: Vec::new(),
         unresolved: Vec::new(),
         coverage: Coverage::default(),
+        notes: Vec::new(),
     }
 }
 
@@ -1168,6 +1228,7 @@ pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, Trace
         flow = walk_quests(&doc, &mocks.events, &mut w);
     }
 
+    let notes = seed_fact_notes(&mocks, &folded.env.rel_vocab.facts);
     let report = TraceReport {
         file: input.uri.clone(),
         seeds: seeds_summary(&mocks),
@@ -1175,6 +1236,7 @@ pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, Trace
         decisions: w.decisions,
         unresolved: w.unresolved,
         coverage: Coverage { choices: w.coverage_choices, arms: w.coverage_arms },
+        notes,
     };
     // An objective/quest-`start` `unknown` (Task 20) records an unresolved
     // atom WITHOUT returning `Flow::Incomplete` (it never halts the walk,
