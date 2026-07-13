@@ -669,3 +669,228 @@ fn scene_reachability_not_polluted_by_param_seeding() {
         "the ordinary state-path domain path must still decide: {out:?}"
     );
 }
+
+// ---------------------------------------------------------------------
+// dsl 0.5.2: `E-UNSET-LITERAL` — a CEL guard slot comparing a maybe-unset
+// finite-domain subject to the FOREIGN string `'unset'` (`S ==/!= 'unset'`,
+// either operand order, possibly nested). An INDEPENDENT AST lint (fires for
+// `==` AND `!=`, regardless of `decide()`'s outcome) that OWNS (suppresses)
+// the derivative `E-ARM-DEAD` it would otherwise cause (§2.3, mirrors D4).
+// `E-MAYBE-UNSET` is NOT a derivative and keeps firing.
+// ---------------------------------------------------------------------
+
+// The base case (spec §1's motivating example, `<choice>` form): a foreign
+// quest's reserved `quest.<id>.state` (finite [active, complete, failed],
+// always maybe-unset) compared to the string `'unset'` decides false (R2) —
+// `E-UNSET-LITERAL` fires and OWNS the would-be `E-ARM-DEAD`; the raw read
+// still independently flags `E-MAYBE-UNSET` (§4, unaffected by this lint).
+#[test]
+fn unset_sentinel_choice_flags_literal_owns_arm_dead_keeps_maybe_unset() {
+    let out = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
+         </branch>\n",
+    );
+    assert!(
+        out.contains(&"E-UNSET-LITERAL".to_string()),
+        "S == 'unset' against a maybe-unset finite domain must flag E-UNSET-LITERAL: {out:?}"
+    );
+    assert!(
+        !out.contains(&"E-ARM-DEAD".to_string()),
+        "E-UNSET-LITERAL owns the dead-arm root (§2.3, D4-style): {out:?}"
+    );
+    assert!(
+        out.contains(&"E-MAYBE-UNSET".to_string()),
+        "the raw quest.foo.state read is still an independent E-MAYBE-UNSET (§4): {out:?}"
+    );
+}
+
+// `!= 'unset'` decides TRUE (R2) and therefore never reaches the dead-arm
+// path at all — yet it is the identical sentinel mistake, so the lint MUST
+// still fire (§2.1's final paragraph: this is why it can't be a swap inside
+// `if decided == false`).
+#[test]
+fn unset_sentinel_not_equals_still_flags_literal() {
+    let out = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"quest.foo.state != 'unset'\">\n@x: a\n</choice>\n\
+         </branch>\n",
+    );
+    assert!(
+        out.contains(&"E-UNSET-LITERAL".to_string()),
+        "S != 'unset' is the identical sentinel mistake and must flag E-UNSET-LITERAL: {out:?}"
+    );
+}
+
+// Both reversed-operand forms (`'unset' == S`, `'unset' != S`) trigger the
+// lint exactly like the canonical `S ==/!= 'unset'` order (§2.1).
+#[test]
+fn unset_sentinel_reversed_operands_flag_literal() {
+    let eq = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"'unset' == quest.foo.state\">\n@x: a\n</choice>\n\
+         </branch>\n",
+    );
+    assert!(
+        eq.contains(&"E-UNSET-LITERAL".to_string()),
+        "'unset' == S must flag E-UNSET-LITERAL: {eq:?}"
+    );
+    let ne = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"'unset' != quest.foo.state\">\n@x: a\n</choice>\n\
+         </branch>\n",
+    );
+    assert!(
+        ne.contains(&"E-UNSET-LITERAL".to_string()),
+        "'unset' != S must flag E-UNSET-LITERAL: {ne:?}"
+    );
+}
+
+// Nested inside a larger boolean expression (§2.1: "the lint scans every
+// comparison sub-expression, not only a top-level guard").
+#[test]
+fn unset_sentinel_nested_in_boolean_expr_flags_literal() {
+    let out = codes(&format!(
+        "{HDR}<branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"run.flag && quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
+         </branch>\n"
+    ));
+    assert!(
+        out.contains(&"E-UNSET-LITERAL".to_string()),
+        "a sentinel comparison nested under && must still flag E-UNSET-LITERAL: {out:?}"
+    );
+}
+
+// A `<match on><when test>` arm form (not just `<choice when>`): `$` bound to
+// the match subject's own domain resolves through the SAME `resolve_domain`
+// R2 uses, so the lint fires there too and owns that arm's `E-ARM-DEAD`.
+#[test]
+fn unset_sentinel_match_arm_dollar_flags_literal_owns_arm_dead() {
+    let out = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <match on=\"quest.foo.state\">\n\
+         <when test=\"$ == 'unset'\">\n@x: a\n</when>\n\
+         <otherwise>\n@x: o\n</otherwise>\n\
+         </match>\n",
+    );
+    assert!(
+        out.contains(&"E-UNSET-LITERAL".to_string()),
+        "$ == 'unset' against the match subject's own domain must flag E-UNSET-LITERAL: {out:?}"
+    );
+    assert!(
+        !out.contains(&"E-ARM-DEAD".to_string()),
+        "E-UNSET-LITERAL owns the dead-arm root here too: {out:?}"
+    );
+}
+
+// -- Controls: prove no over-suppression ----------------------------------
+
+// An UNDEFAULTED enum compared to a foreign literal that is NOT the string
+// `'unset'` must behave exactly as before this revision: still E-ARM-DEAD,
+// never E-UNSET-LITERAL (the detector only ever matches the literal string
+// `'unset'`, dsl 0.5.2 §2.1 condition 3).
+#[test]
+fn control_undefaulted_foreign_enum_not_unset_stays_arm_dead() {
+    let hdr = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+               run.grade: { type: { enum: [bronze, silver, gold] } }\n---\n## Shot 1.\n";
+    let out = codes(&format!(
+        "{hdr}<branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"run.grade == 'legendary'\">\n@x: a\n</choice>\n\
+         </branch>\n"
+    ));
+    assert!(
+        out.contains(&"E-ARM-DEAD".to_string()),
+        "a foreign (non-'unset') literal against an undefaulted enum must still flag \
+         E-ARM-DEAD, unaffected by this revision: {out:?}"
+    );
+    assert!(
+        !out.contains(&"E-UNSET-LITERAL".to_string()),
+        "a foreign literal that is not the string 'unset' must never flag E-UNSET-LITERAL: {out:?}"
+    );
+}
+
+// A DEFAULTED enum (never maybe-unset) compared to an ordinary foreign typo
+// also stays E-ARM-DEAD-only — this revision only ever touches the literal
+// string `'unset'`.
+#[test]
+fn control_defaulted_enum_foreign_typo_stays_arm_dead() {
+    let out = codes(&format!(
+        "{HDR}<branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"run.rank == 'legendary'\">\n@x: a\n</choice>\n\
+         </branch>\n"
+    ));
+    assert!(
+        out.contains(&"E-ARM-DEAD".to_string()),
+        "a defaulted-enum foreign typo must still flag E-ARM-DEAD: {out:?}"
+    );
+    assert!(
+        !out.contains(&"E-UNSET-LITERAL".to_string()),
+        "{out:?}"
+    );
+}
+
+// An `<objective done>` foreign (non-'unset') literal is untouched by this
+// revision: still `E-OBJECTIVE-UNSATISFIABLE`, never `E-UNSET-LITERAL`.
+#[test]
+fn control_objective_foreign_literal_stays_unsatisfiable() {
+    let text = format!(
+        "{QUEST_HDR}<quest id=\"q\">\n\
+         <objective id=\"o\" done=\"run.rank == 'legendary'\"/>\n</quest>\n"
+    );
+    let out = codes(&text);
+    assert!(
+        out.contains(&"E-OBJECTIVE-UNSATISFIABLE".to_string()),
+        "a foreign (non-'unset') objective done literal must still flag \
+         E-OBJECTIVE-UNSATISFIABLE: {out:?}"
+    );
+    assert!(
+        !out.contains(&"E-UNSET-LITERAL".to_string()),
+        "{out:?}"
+    );
+}
+
+// A LEGITIMATE enum member literally named `unset` (in-domain) is a normal
+// comparison — R2 leaves it undecided (a domain member's actual value is
+// still unknown), so no E-ARM-DEAD, and the literal is not FOREIGN so no
+// E-UNSET-LITERAL either (dsl 0.5.2 §2.1 condition 3 / §3 non-goal).
+#[test]
+fn control_legit_unset_enum_member_is_normal_comparison() {
+    let hdr = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+               run.phase: { type: { enum: [unset, active] } }\n---\n## Shot 1.\n";
+    let out = codes(&format!(
+        "{hdr}<branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"run.phase == 'unset'\">\n@x: a\n</choice>\n\
+         </branch>\n"
+    ));
+    assert!(
+        !out.contains(&"E-UNSET-LITERAL".to_string()),
+        "an in-domain enum member literally named `unset` is not foreign: {out:?}"
+    );
+    assert!(
+        !out.contains(&"E-ARM-DEAD".to_string()),
+        "R2 leaves an in-domain literal comparison undecided: {out:?}"
+    );
+}
+
+// `quest.<id>.state == 'active'` (an in-domain member) is unchanged by this
+// revision: no E-ARM-DEAD (R2 undecided), no E-UNSET-LITERAL, and the raw
+// read still independently flags E-MAYBE-UNSET (§4).
+#[test]
+fn control_quest_state_in_domain_comparison_unchanged() {
+    let out = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"C\" when=\"quest.foo.state == 'active'\">\n@x: a\n</choice>\n\
+         </branch>\n",
+    );
+    assert!(!out.contains(&"E-ARM-DEAD".to_string()), "{out:?}");
+    assert!(!out.contains(&"E-UNSET-LITERAL".to_string()), "{out:?}");
+    assert!(
+        out.contains(&"E-MAYBE-UNSET".to_string()),
+        "the raw quest.foo.state read stays independently maybe-unset: {out:?}"
+    );
+}

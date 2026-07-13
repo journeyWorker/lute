@@ -16,7 +16,7 @@
 
 use std::collections::BTreeMap;
 
-use cel_parser::ast::{operators as op, CallExpr, Expr};
+use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr};
 use cel_parser::reference::Val;
 
 use crate::cel_expand::{expand_cel, DefTable};
@@ -348,6 +348,143 @@ pub fn decide_slot(raw: &str, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Optio
     let handle = lute_cel::parse_slot_marked_refs(&mut arena, &expanded)?;
     let ided = arena.get(handle)?;
     decide(&ided.expr, ctx)
+}
+
+/// dsl 0.5.2 §2.1: one detected unset-sentinel misspelling — `S ==/!= 'unset'`
+/// with `S` a maybe-unset finite-domain subject and the string `'unset'`
+/// FOREIGN to `S`'s domain (not a declared enum member literally named
+/// `unset`). `subject` is a best-effort display name for the §2.2 message (a
+/// dotted state path, `$`, or a bound component param's bare name);
+/// `not_equals` distinguishes `S != 'unset'` (decides true, R2) from
+/// `S == 'unset'` (decides false — owns `E-ARM-DEAD`, §2.3).
+pub(crate) struct UnsetSentinelHit {
+    pub subject: String,
+    pub not_equals: bool,
+}
+
+/// Best-effort display name for a resolved-domain subject expr (§2.2's
+/// message names the path): a dotted state path (`cel_paths::select_path`),
+/// the substituted `$` marker, or a bound component param's bare name
+/// (stripped of `lute_cel::REF_MARKER`) — the SAME three subject shapes
+/// [`resolve_domain`] itself resolves.
+fn subject_display(expr: &Expr) -> Option<String> {
+    if let Expr::Ident(name) = expr {
+        if name == "_" {
+            return Some("$".to_string());
+        }
+        if let Some(param) = name.strip_prefix(lute_cel::REF_MARKER) {
+            return Some(param.to_string());
+        }
+    }
+    crate::cel_paths::select_path(expr)
+}
+
+/// One operand order of §2.1's trigger: `subject ==/!= 'unset'`. `None`
+/// unless ALL THREE conditions hold: `other` is literally the STRING
+/// `'unset'` (never CEL's `null` — the real *unset* sentinel, `Constant::Unset`
+/// elsewhere in this file); `subject` resolves — via the SAME
+/// [`resolve_domain`] R2 uses — to a `resolved`, maybe-unset, FINITE domain;
+/// and `'unset'` is foreign to it (checked with the SAME [`domain_contains`]
+/// R2 uses, so the lint and R2 can never disagree about domain membership).
+fn unset_sentinel_operand(
+    subject: &Expr,
+    other: &Expr,
+    ctx: &DecideCtx<'_>,
+    not_equals: bool,
+) -> Option<UnsetSentinelHit> {
+    let Expr::Literal(Val::String(s)) = other else {
+        return None;
+    };
+    if s != "unset" {
+        return None;
+    }
+    let dom = resolve_domain(subject, ctx)?;
+    if !dom.resolved || !dom.maybe_unset || !matches!(dom.domain, Domain::Finite(_)) {
+        return None;
+    }
+    if domain_contains(&dom, &Constant::Value(Decided::Str(s.clone()))) {
+        return None; // in-domain: a legit enum member literally named `unset`
+    }
+    Some(UnsetSentinelHit {
+        subject: subject_display(subject).unwrap_or_else(|| "this subject".to_string()),
+        not_equals,
+    })
+}
+
+/// dsl 0.5.2 §2.1's independent AST lint: the FIRST unset-sentinel mistake
+/// found by scanning `expr` and EVERY comparison sub-expression it contains —
+/// nested inside `&&`/`||`/`!`/anything else, not only a top-level comparison
+/// ("the lint scans every comparison sub-expression, not only a top-level
+/// guard"). Recurses the whole closed CEL-profile shape (mirrors
+/// `cel_paths::walk`), so a sentinel mistake buried in a list/map/struct/
+/// comprehension sub-expression is still found. `pub(crate)`: shared by
+/// `reachability.rs`'s independent lint walk AND its `E-ARM-DEAD`/
+/// `W-OTHERWISE-DEAD` suppression (§2.3 ownership) — the two can never
+/// disagree about what counts as the sentinel mistake.
+pub(crate) fn find_unset_sentinel_cmp(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<UnsetSentinelHit> {
+    match expr {
+        Expr::Call(c) => {
+            if (c.func_name == op::EQUALS || c.func_name == op::NOT_EQUALS) && c.args.len() == 2 {
+                let not_equals = c.func_name == op::NOT_EQUALS;
+                let (a, b) = (&c.args[0].expr, &c.args[1].expr);
+                if let Some(hit) = unset_sentinel_operand(a, b, ctx, not_equals)
+                    .or_else(|| unset_sentinel_operand(b, a, ctx, not_equals))
+                {
+                    return Some(hit);
+                }
+            }
+            if let Some(target) = &c.target {
+                if let Some(hit) = find_unset_sentinel_cmp(&target.expr, ctx) {
+                    return Some(hit);
+                }
+            }
+            c.args.iter().find_map(|a| find_unset_sentinel_cmp(&a.expr, ctx))
+        }
+        Expr::List(list) => list
+            .elements
+            .iter()
+            .find_map(|el| find_unset_sentinel_cmp(&el.expr, ctx)),
+        Expr::Map(map) => map
+            .entries
+            .iter()
+            .find_map(|e| find_unset_sentinel_cmp_entry(&e.expr, ctx)),
+        Expr::Struct(st) => st
+            .entries
+            .iter()
+            .find_map(|e| find_unset_sentinel_cmp_entry(&e.expr, ctx)),
+        Expr::Comprehension(c) => [&c.iter_range, &c.accu_init, &c.loop_cond, &c.loop_step, &c.result]
+            .into_iter()
+            .find_map(|e| find_unset_sentinel_cmp(&e.expr, ctx)),
+        Expr::Select(sel) => find_unset_sentinel_cmp(&sel.operand.expr, ctx),
+        Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => None,
+    }
+}
+
+fn find_unset_sentinel_cmp_entry(entry: &EntryExpr, ctx: &DecideCtx<'_>) -> Option<UnsetSentinelHit> {
+    match entry {
+        EntryExpr::MapEntry(m) => find_unset_sentinel_cmp(&m.key.expr, ctx)
+            .or_else(|| find_unset_sentinel_cmp(&m.value.expr, ctx)),
+        EntryExpr::StructField(f) => find_unset_sentinel_cmp(&f.value.expr, ctx),
+    }
+}
+
+/// The §2.1 entry point (mirrors [`decide_slot`]'s expand-then-parse
+/// pipeline exactly, so the two can never see different trees for the same
+/// raw text): expand `@def`s, re-parse MARKED, then scan with
+/// [`find_unset_sentinel_cmp`] instead of deciding. `None` on a parse
+/// failure (mirrors `decide_slot`'s `?` chain) — an unparseable guard makes
+/// no claim.
+pub(crate) fn unset_sentinel_in_slot(
+    raw: &str,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> Option<UnsetSentinelHit> {
+    let mut stack = Vec::new();
+    let expanded = expand_cel(raw, defs, Some("$"), &mut stack).unwrap_or_else(|_| raw.to_string());
+    let mut arena = lute_cel::CelArena::default();
+    let handle = lute_cel::parse_slot_marked_refs(&mut arena, &expanded)?;
+    let ided = arena.get(handle)?;
+    find_unset_sentinel_cmp(&ided.expr, ctx)
 }
 
 #[cfg(test)]
