@@ -259,6 +259,18 @@ impl Parser<'_> {
                     Layer::Content,
                 );
                 self.cursor += 1;
+            } else if trimmed.starts_with("</") {
+                // RC1 (dsl 0.5.0 §2.1): a top-level stray `</tag>` close is
+                // never content — mirror `parse_shot_body`'s in-shot handling
+                // (an unmatched close is always `E-UNCLOSED-TAG`, not
+                // `E-CONTENT-OUTSIDE-SHOT`).
+                self.emit_line(
+                    E_UNCLOSED_TAG,
+                    "closing tag without a matching open",
+                    self.cursor,
+                    Layer::Logic,
+                );
+                self.cursor += 1;
             } else if is_content_shaped_line(&trimmed) {
                 // dsl 0.5.0 §2.1: a content-shaped line reached here only
                 // because no shot/scene is currently open (this loop never
@@ -869,8 +881,15 @@ fn classify_heading(heading: &str) -> HeadingKind {
 /// `<tag …>` open — regardless of whether it parses cleanly (dsl 0.5.0 §2.1
 /// `E-CONTENT-OUTSIDE-SHOT`). Mirrors the content-line shape test in
 /// `next_node` plus the `::`/`<` shapes; a truly unrecognized line (matching
-/// none of these) stays the residual `E-UNCLASSIFIED` catch-all.
+/// none of these) stays the residual `E-UNCLASSIFIED` catch-all. A `</tag>`
+/// CLOSE is explicitly excluded (RC1): it is never "content", so a stray
+/// top-level close must reach the `E-UNCLOSED-TAG` check in
+/// `parse_document_inner` instead of being misdiagnosed as
+/// `E-CONTENT-OUTSIDE-SHOT`.
 fn is_content_shaped_line(trimmed: &str) -> bool {
+    if trimmed.starts_with("</") {
+        return false;
+    }
     if trimmed.starts_with("::") || trimmed.starts_with('<') {
         return true;
     }
@@ -1061,6 +1080,22 @@ mod tests {
     fn unrecognized_line_is_error() {
         let (_doc, diags) = parse("---\ncharacter: x\n---\n## Shot 1.\ngarbage prose\n");
         assert!(diags.iter().any(|d| d.code == "E-UNCLASSIFIED"));
+    }
+
+    // RC1: a top-level stray `</quest>` is not content, so it must never be
+    // diagnosed as `E-CONTENT-OUTSIDE-SHOT` — it belongs on the same
+    // `E-UNCLOSED-TAG` path as an in-shot stray close.
+    #[test]
+    fn top_level_stray_close_is_unclosed_tag_not_content_outside_shot() {
+        let (_doc, diags) = parse("</quest>\n## Shot 1.\n@narrator: hi.\n");
+        assert!(
+            diags.iter().any(|d| d.code == E_UNCLOSED_TAG),
+            "stray top-level close must be E-UNCLOSED-TAG: {diags:?}"
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == E_CONTENT_OUTSIDE_SHOT),
+            "stray top-level close must NOT be misdiagnosed as E-CONTENT-OUTSIDE-SHOT: {diags:?}"
+        );
     }
 
     #[test]
