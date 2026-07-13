@@ -26,6 +26,19 @@
 //! already rooted by the other code. `literal_is_foreign` (imported from
 //! `match_check`) is the SAME classification `E-WHEN-LITERAL-DOMAIN` itself
 //! uses, so the two diagnostics can never disagree about what's foreign.
+//!
+//! ## dsl 0.5.2 (`E-UNSET-LITERAL`)
+//! A CEL guard slot comparing a maybe-unset finite-domain subject to the
+//! FOREIGN string `'unset'` (`S ==/!= 'unset'`, either operand order,
+//! possibly nested) is the most common misspelling of the DSL's *unset*
+//! sentinel (CEL `null`, `0.1 §11.2`) — `E-UNSET-LITERAL` catches it,
+//! independent of `decide()`'s outcome (fires for `!=`, which decides
+//! TRUE and never reaches the dead-arm path, exactly like `==`). It OWNS
+//! (suppresses) the derivative `E-ARM-DEAD` a `==` form would otherwise
+//! cause — mirrors D4 above via the SAME
+//! [`crate::decide::find_unset_sentinel_cmp`] detector `decide.rs`'s R2
+//! itself resolves through, so the lint and R2 can never disagree.
+//! `E-MAYBE-UNSET` is NOT a derivative — it stays independent (§4).
 
 use std::collections::BTreeMap;
 
@@ -34,7 +47,7 @@ use lute_syntax::ast::{Arm, CelSlot, Document, Match, Node, Objective, Quest};
 
 use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
-use crate::decide::{decide_slot, DecideCtx, Decided, DollarBinding};
+use crate::decide::{decide_slot, unset_sentinel_in_slot, DecideCtx, Decided, DollarBinding};
 use crate::match_check::{
     classify_when_literal, infer_domain, is_pattern_literals, literal_is_foreign, param_domain,
     subject_path, Domain, DomainInfo, DomainValue, WhenLiteral,
@@ -71,6 +84,19 @@ pub(crate) const E_OBJECTIVE_UNSATISFIABLE: &str = "E-OBJECTIVE-UNSATISFIABLE";
 /// prose made checkable). A warning: `done` is evaluated independently of
 /// visibility, so completion may still be reachable.
 pub(crate) const W_OBJECTIVE_HIDDEN: &str = "W-OBJECTIVE-HIDDEN";
+
+/// `E-UNSET-LITERAL` (dsl 0.5.2 §2): a CEL guard slot (`<when test>`,
+/// `<choice when>`, `<match on>` subject, `<objective when/done>`, or
+/// `<quest start/fail>`) comparing a maybe-unset finite-domain subject to
+/// the FOREIGN string `'unset'` — the most common misspelling of the DSL's
+/// *unset* sentinel (CEL `null`, `0.1 §11.2`), not the string `'unset'`. An
+/// INDEPENDENT AST lint (§2.1): fires for BOTH `==` (decides false, R2) and
+/// `!=` (decides true — never reaches the dead-arm path, yet the identical
+/// mistake), regardless of `decide_slot`'s outcome, and possibly nested
+/// inside a larger boolean expression. Owns (suppresses) the derivative
+/// `E-ARM-DEAD`/`W-OTHERWISE-DEAD` it would otherwise produce (§2.3,
+/// mirrors D4 above).
+pub(crate) const E_UNSET_LITERAL: &str = "E-UNSET-LITERAL";
 
 /// §5.2/§5.3 whole-document pass. Walks `doc.shots` + `doc.quests`
 /// recursively (arm/choice/on/objective bodies, mirroring
@@ -145,6 +171,20 @@ fn walk_reach(nodes: &[Node], defs: &DefTable<'_>, ctx: &DecideCtx<'_>, diags: &
                 let dom = crate::check::bare_param_ref(&m.subject.raw)
                     .and_then(|name| ctx.params.get(&name).cloned())
                     .unwrap_or_else(|| infer_domain(subject_path(m).as_deref(), ctx.schema));
+                // dsl 0.5.2 §2.1: the `<match on>` SUBJECT is itself a
+                // listed guard slot — checked against the OUTER `ctx` (the
+                // subject's own comparison, if any, is evaluated BEFORE `$`
+                // is bound to it below). No dead-arm derivative to own here
+                // (a subject has no guarded body of its own), so no
+                // suppression accompanies this one.
+                if let Some(hit) = unset_sentinel_in_slot(&m.subject.raw, defs, ctx) {
+                    diags.push(diag(
+                        E_UNSET_LITERAL,
+                        Severity::Error,
+                        unset_literal_message(&hit.subject, hit.not_equals),
+                        m.subject.span,
+                    ));
+                }
                 let match_ctx = DecideCtx {
                     schema: ctx.schema,
                     dollar: Some(DollarBinding::Domain(&dom)),
@@ -195,13 +235,29 @@ fn walk_reach(nodes: &[Node], defs: &DefTable<'_>, ctx: &DecideCtx<'_>, diags: &
                 // guard has none), so only `decide_slot` matters here.
                 if let Some(when) = &l.when {
                     if !when.raw.trim().is_empty() {
-                        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
+                        // dsl 0.5.2 §2.1: independent lint, regardless of
+                        // `decide_slot`'s outcome.
+                        let sentinel = unset_sentinel_in_slot(&when.raw, defs, ctx);
+                        if let Some(hit) = &sentinel {
                             diags.push(diag(
-                                E_ARM_DEAD,
+                                E_UNSET_LITERAL,
                                 Severity::Error,
-                                "this gated line can never be shown: its `when` guard is provably false (dsl 0.4 §7.2, §5.2)".to_string(),
+                                unset_literal_message(&hit.subject, hit.not_equals),
                                 when.span,
                             ));
+                        }
+                        // §2.3: an unset-sentinel guard already owns
+                        // `E-ARM-DEAD` — mirrors the D4 foreign-literal
+                        // exclusion above.
+                        if sentinel.is_none() {
+                            if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
+                                diags.push(diag(
+                                    E_ARM_DEAD,
+                                    Severity::Error,
+                                    "this gated line can never be shown: its `when` guard is provably false (dsl 0.4 §7.2, §5.2)".to_string(),
+                                    when.span,
+                                ));
+                            }
                         }
                     }
                 }
@@ -316,6 +372,22 @@ pub(crate) fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<
             Arm::When { is, test, span, .. } => {
                 let mut dead = false;
 
+                // dsl 0.5.2 §2.1: independent lint over the arm's `test`,
+                // regardless of `decide_slot`'s outcome.
+                let sentinel = if test.raw.trim().is_empty() {
+                    None
+                } else {
+                    unset_sentinel_in_slot(&test.raw, defs, ctx)
+                };
+                if let Some(hit) = &sentinel {
+                    diags.push(diag(
+                        E_UNSET_LITERAL,
+                        Severity::Error,
+                        unset_literal_message(&hit.subject, hit.not_equals),
+                        *span,
+                    ));
+                }
+
                 // Cause 1: decided-false guard (dsl 0.4.0 §5.2 rule 1). A
                 // guard present AND is-pattern present: the decided-false
                 // guard alone kills the arm — same code, this cause named
@@ -324,9 +396,11 @@ pub(crate) fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<
                 // ALREADY rooted by `E-WHEN-LITERAL-DOMAIN` — that code
                 // OWNS the root, so cause 1 MUST NOT also fire on it, even
                 // when the guard independently decides false (avoids the
-                // `is="platnum" test="1 > 2"` double-report).
+                // `is="platnum" test="1 > 2"` double-report). §2.3: an
+                // unset-sentinel guard (`sentinel.is_some()`) is likewise
+                // already rooted by `E-UNSET-LITERAL` above.
                 let foreign_literal = is.as_ref().is_some_and(|pat| arm_has_foreign_literal(pat, &dom));
-                if !foreign_literal && !test.raw.trim().is_empty() {
+                if !foreign_literal && sentinel.is_none() && !test.raw.trim().is_empty() {
                     if let Some(Decided::Bool(false)) = decide_slot(&test.raw, defs, ctx) {
                         diags.push(diag(
                             E_ARM_DEAD,
@@ -436,13 +510,27 @@ pub(crate) fn check_choices_reach<'a>(
         if slot.raw.trim().is_empty() {
             continue;
         }
-        if let Some(Decided::Bool(false)) = decide_slot(&slot.raw, defs, ctx) {
+        // dsl 0.5.2 §2.1: independent lint, regardless of `decide_slot`'s
+        // outcome.
+        let sentinel = unset_sentinel_in_slot(&slot.raw, defs, ctx);
+        if let Some(hit) = &sentinel {
             diags.push(diag(
-                E_ARM_DEAD,
+                E_UNSET_LITERAL,
                 Severity::Error,
-                dead_guard_message("choice", &slot.raw),
+                unset_literal_message(&hit.subject, hit.not_equals),
                 span,
             ));
+        }
+        // §2.3: an unset-sentinel guard already owns `E-ARM-DEAD`.
+        if sentinel.is_none() {
+            if let Some(Decided::Bool(false)) = decide_slot(&slot.raw, defs, ctx) {
+                diags.push(diag(
+                    E_ARM_DEAD,
+                    Severity::Error,
+                    dead_guard_message("choice", &slot.raw),
+                    span,
+                ));
+            }
         }
     }
     diags
@@ -457,6 +545,21 @@ pub(crate) fn check_choices_reach<'a>(
 /// quest's `start`/`fail` attrs (the base ctx `check_reachability` already
 /// builds).
 fn check_quest_reach(quest: &Quest, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    // dsl 0.5.2 §2.1: `<quest start/fail>` are listed guard slots too — the
+    // lint fires independently of `E-QUEST-UNREACHABLE`, which this spec
+    // revision's §2.3 ownership clause does NOT scope (it names only
+    // `E-ARM-DEAD`/`W-OTHERWISE-DEAD`), so no suppression accompanies this.
+    for slot in [&quest.start, &quest.fail].into_iter().flatten() {
+        if let Some(hit) = unset_sentinel_in_slot(&slot.raw, defs, ctx) {
+            diags.push(diag(
+                E_UNSET_LITERAL,
+                Severity::Error,
+                unset_literal_message(&hit.subject, hit.not_equals),
+                slot.span,
+            ));
+        }
+    }
     let dead_start = quest
         .start
         .as_ref()
@@ -466,14 +569,15 @@ fn check_quest_reach(quest: &Quest, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) ->
         .as_ref()
         .is_some_and(|f| matches!(decide_slot(&f.raw, defs, ctx), Some(Decided::Bool(true))));
     if !dead_start && !true_fail {
-        return Vec::new();
+        return diags;
     }
-    vec![diag(
+    diags.push(diag(
         E_QUEST_UNREACHABLE,
         Severity::Error,
         quest_unreachable_message(dead_start, true_fail),
         quest.span,
-    )]
+    ));
+    diags
 }
 
 /// Per-`<objective>` engine (dsl 0.4.0 §5.3 rules 1 and 3). `done` deciding
@@ -487,6 +591,28 @@ fn check_quest_reach(quest: &Quest, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) ->
 /// in scope at an `<objective>`'s attrs.
 fn check_objective_reach(o: &Objective, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
+    // dsl 0.5.2 §2.1: `<objective when/done>` are listed guard slots too —
+    // independent of `E-OBJECTIVE-UNSATISFIABLE`/`W-OBJECTIVE-HIDDEN`, which
+    // §2.3's ownership clause does NOT scope (it names only
+    // `E-ARM-DEAD`/`W-OTHERWISE-DEAD`), so no suppression accompanies this.
+    if let Some(hit) = unset_sentinel_in_slot(&o.done.raw, defs, ctx) {
+        diags.push(diag(
+            E_UNSET_LITERAL,
+            Severity::Error,
+            unset_literal_message(&hit.subject, hit.not_equals),
+            o.done.span,
+        ));
+    }
+    if let Some(when) = &o.when {
+        if let Some(hit) = unset_sentinel_in_slot(&when.raw, defs, ctx) {
+            diags.push(diag(
+                E_UNSET_LITERAL,
+                Severity::Error,
+                unset_literal_message(&hit.subject, hit.not_equals),
+                when.span,
+            ));
+        }
+    }
     if let Some(Decided::Bool(false)) = decide_slot(&o.done.raw, defs, ctx) {
         diags.push(diag(
             E_OBJECTIVE_UNSATISFIABLE,
@@ -579,6 +705,20 @@ fn subsumption_message(pattern: &str, cov_span: Span, cov_pattern: &str) -> Stri
         "arm can never fire: its pattern `{pattern}` is fully covered by the earlier \
          unguarded arm at {}:{} (`{cov_pattern}`) — first-match-wins (dsl 0.4 §5.2)",
         cov_span.line, cov_span.column
+    )
+}
+
+/// `E-UNSET-LITERAL` message (dsl 0.5.2 §2.2): names the subject and BOTH
+/// supported forms — `!isSet(path)` first, then the `<match on><when
+/// is="unset">` literal arm — so the message doubles as copy-paste-able fix
+/// guidance.
+fn unset_literal_message(subject: &str, not_equals: bool) -> String {
+    let cmp = if not_equals { "!=" } else { "==" };
+    format!(
+        "comparing `{subject}` {cmp} the string `'unset'`, which is never equal to the DSL's \
+         unset sentinel (the CEL `null` literal, dsl 0.1 §11.2). Test for unset with \
+         `!isSet({subject})`, or in a `<match on=\"{subject}\">` use `<when is=\"unset\">` \
+         (dsl 0.2 §5.2)"
     )
 }
 
