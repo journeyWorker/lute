@@ -294,27 +294,28 @@ impl Backend {
                     // site uses, instead of building the message from `e`'s
                     // raw backend text — the leak T13 flagged as out-of-scope
                     // for its own crate (`lute-check` has no declaration-path
-                    // caller). `span` here is `find_key_span`'s DEF-NAME key
-                    // span, NOT the `cel:` value's own span. `translate_cel_parse`
-                    // is used ONLY for its `t.message` (the ANTLR-free win) —
-                    // NEVER for `t.span`: that span is REBASED on whatever
-                    // `slot_span` it was passed (here, `span`, the key span), so
-                    // a rule that finds a local token (e.g. T2 rule 4's bare `=`)
-                    // returns an offset *relative to the key*, landing the
-                    // squiggle PAST the key instead of on the CEL text that
-                    // actually failed (finding 7). The published diagnostic stays
-                    // anchored on the stable key `span` instead. Fixits are
-                    // dropped at this site for the same underlying reason — the
-                    // `cel:` value span isn't recoverable here, so a rebased
-                    // fixit edit would splice into the wrong bytes too.
-                    // `check.rs`'s own E-CEL-PARSE site (the slot's true span)
-                    // keeps both its span and its fixits untouched.
+                    // caller). `translate_cel_parse` is used ONLY for its
+                    // `t.message` (the ANTLR-free win) — NEVER for `t.span`/
+                    // `t.fixits`: both are offsets into the DECODED `raw`,
+                    // which do not map back to source bytes for escaped or
+                    // folded scalars (a decoded->source offset map is out of
+                    // scope). The diagnostic's own span instead comes from
+                    // `find_def_cel_value_span` — a YAML-aware locator that
+                    // resolves the WHOLE `cel:` scalar VALUE span in source
+                    // (finding 7: previously this anchored on `span`, the
+                    // DEF-NAME key span, landing the squiggle on the wrong
+                    // token) — falling back to the honest key `span` when
+                    // the locator can't confidently resolve the value (e.g.
+                    // a `|`/`>` block scalar). Fixits stay empty either way:
+                    // no source-accurate fixit edit is recoverable from a
+                    // decoded-offset translation.
                     let t = translate_cel_parse(raw, span, &e);
+                    let cel_span = find_def_cel_value_span(&snapshot.text, name).unwrap_or(span);
                     diags.push(Diagnostic {
                         code: "E-CEL-PARSE".to_string(),
                         severity: Severity::Error,
                         message: t.message,
-                        span,
+                        span: cel_span,
                         layer: Layer::Cel,
                         fixits: Vec::new(),
                         provenance: None,
@@ -849,6 +850,306 @@ fn find_key_span(text: &str, key: &str) -> Option<Span> {
     None
 }
 
+/// Byte offset where the line containing `byte` begins.
+fn line_start(text: &str, byte: usize) -> usize {
+    text[..byte].rfind('\n').map(|p| p + 1).unwrap_or(0)
+}
+
+/// Byte offset one past the end of the line containing `byte` (i.e. right
+/// after its trailing `\n`, or `text.len()` on the last line).
+fn line_end(text: &str, byte: usize) -> usize {
+    text[byte..].find('\n').map(|p| byte + p + 1).unwrap_or(text.len())
+}
+
+/// End of the indented block that opens right after `start` and is nested
+/// under a parent key at `parent_indent`: the first byte offset, from
+/// `start`, of a non-blank non-comment line whose OWN indent is `<=
+/// parent_indent` (a sibling or dedented line), or `text.len()` if the
+/// block runs to EOF. Blank/comment-only lines never end the block.
+fn find_block_end(text: &str, start: usize, parent_indent: usize) -> usize {
+    let mut pos = start;
+    while pos < text.len() {
+        let le = line_end(text, pos);
+        let line = &text[pos..le];
+        let content = line.trim_start_matches(' ');
+        let indent = line.len() - content.len();
+        let trimmed = content.trim_end();
+        if !trimmed.is_empty() && !trimmed.starts_with('#') && indent <= parent_indent {
+            return pos;
+        }
+        pos = le;
+    }
+    text.len()
+}
+
+/// Scoped, YAML-aware search for a DIRECT child mapping key inside
+/// `[region_start, region_end)` — like [`find_key_span`], but bounded to
+/// one block's own indent level so a same-named key belonging to an
+/// unrelated mapping elsewhere in the file is never visited.
+/// `region_start`/`region_end` MUST bound exactly one mapping's body (e.g.
+/// via [`find_block_end`]). The block's own child indent is established
+/// from its FIRST non-blank/non-comment line; only lines at that exact
+/// indent are considered keys (deeper lines are a previous child's nested
+/// content, skipped). Returns `(key_byte_start, colon_byte_offset,
+/// child_indent)` for the first match.
+fn find_scoped_child_key(
+    text: &str,
+    region_start: usize,
+    region_end: usize,
+    key: &str,
+) -> Option<(usize, usize, usize)> {
+    let mut pos = region_start;
+    let mut child_indent: Option<usize> = None;
+    while pos < region_end {
+        let le = line_end(text, pos).min(region_end);
+        let line = &text[pos..le];
+        let content = line.trim_start_matches(' ');
+        let line_indent = line.len() - content.len();
+        let trimmed = content.trim_end();
+        if !trimmed.is_empty() && !trimmed.starts_with('#') {
+            let target_indent = *child_indent.get_or_insert(line_indent);
+            if line_indent == target_indent {
+                if let Some(rest) = trimmed.strip_prefix(key) {
+                    let rest_trimmed = rest.trim_start();
+                    if rest_trimmed.starts_with(':') {
+                        let key_start = pos + line_indent;
+                        let colon_off = key_start + key.len() + (rest.len() - rest_trimmed.len());
+                        return Some((key_start, colon_off, line_indent));
+                    }
+                }
+            }
+        }
+        pos = le;
+    }
+    None
+}
+
+/// Index right after the double-quoted YAML scalar starting at `text[start]
+/// == '"'`, skipping `\`-escaped characters so an escaped inner quote
+/// (`\"`) never ends the scan early. `None` if unterminated.
+fn skip_double_quoted(text: &str, start: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut i = start + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b'"' => return Some(i + 1),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Index right after the single-quoted YAML scalar starting at `text[start]
+/// == '\''`, treating a doubled `''` as an escaped literal quote (YAML's
+/// single-quote escape — no backslash escapes in this style). `None` if
+/// unterminated.
+fn skip_single_quoted(text: &str, start: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut i = start + 1;
+    while i < bytes.len() {
+        if bytes[i] == b'\'' {
+            if bytes.get(i + 1) == Some(&b'\'') {
+                i += 2;
+                continue;
+            }
+            return Some(i + 1);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Index of the `}` matching the `{` at `text[open_abs]`, skipping quoted
+/// scalar interiors (so a `}`/`{` inside a CEL string literal is never
+/// mistaken for flow-mapping structure) and nested flow mappings. `None` if
+/// unterminated.
+fn find_matching_brace(text: &str, open_abs: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut i = open_abs + 1;
+    let mut depth = 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => i = skip_double_quoted(text, i)?,
+            b'\'' => i = skip_single_quoted(text, i)?,
+            b'{' => {
+                depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// The byte range, bounded by `region_end`, that holds def entry `name`'s
+/// own body — everything belonging to THIS entry, never a sibling's. Flow
+/// form (`name: { ... }`) resolves via brace matching (the returned range
+/// sits strictly inside the braces); block form (`name:\n  cel: ...`)
+/// resolves via indentation (every following line more-indented than
+/// `entry_indent`). `None` when the value right after `name:`'s colon is
+/// neither `{` nor blank/comment (e.g. a bare scalar) — that shape isn't
+/// the `type:`/`cel:` mapping this locator expects, so the caller must fall
+/// back rather than guess.
+fn find_entry_extent(
+    text: &str,
+    colon_abs: usize,
+    key_line_end: usize,
+    entry_indent: usize,
+    region_end: usize,
+) -> Option<(usize, usize)> {
+    let after_colon = colon_abs + 1;
+    let rest_of_line = &text[after_colon..key_line_end];
+    let trimmed = rest_of_line.trim_start_matches(' ');
+    let value_col_start = after_colon + (rest_of_line.len() - trimmed.len());
+    let trimmed_no_nl = trimmed.trim_end();
+    if trimmed_no_nl.starts_with('{') {
+        let close = find_matching_brace(text, value_col_start)?;
+        if close >= region_end {
+            return None;
+        }
+        Some((value_col_start + 1, close))
+    } else if trimmed_no_nl.is_empty() || trimmed_no_nl.starts_with('#') {
+        let mut pos = key_line_end;
+        let mut end = key_line_end;
+        while pos < region_end {
+            let le = line_end(text, pos).min(region_end);
+            let line = &text[pos..le];
+            let content = line.trim_start_matches(' ');
+            let line_indent = line.len() - content.len();
+            if content.trim_end().is_empty() {
+                pos = le;
+                continue;
+            }
+            if line_indent <= entry_indent {
+                break;
+            }
+            end = le;
+            pos = le;
+        }
+        Some((key_line_end, end))
+    } else {
+        None
+    }
+}
+
+fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// Locates `key`'s `:` inside `[region.0, region.1)`, skipping the interior
+/// of any single/double-quoted scalar so CEL text that happens to contain a
+/// `"cel:"`-shaped substring can never be mistaken for the real key.
+/// Requires a whole-word match on both sides (`concel:` never matches
+/// `cel`). Returns the absolute byte offset of the `:` character.
+fn find_unquoted_key_colon(text: &str, region: (usize, usize), key: &str) -> Option<usize> {
+    let (start, end) = region;
+    let bytes = text.as_bytes();
+    let mut i = start;
+    while i < end {
+        match bytes[i] {
+            b'"' => i = skip_double_quoted(text, i)?,
+            b'\'' => i = skip_single_quoted(text, i)?,
+            b if is_word_byte(b) => {
+                let word_start = i;
+                let mut j = i;
+                while j < end && is_word_byte(bytes[j]) {
+                    j += 1;
+                }
+                if &text[word_start..j] == key {
+                    let after = &text[j..end];
+                    let after_trimmed = after.trim_start_matches(' ');
+                    if after_trimmed.starts_with(':') {
+                        return Some(j + (after.len() - after_trimmed.len()));
+                    }
+                }
+                i = j;
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+fn mk_span(byte_start: usize, byte_end: usize) -> Span {
+    Span { byte_start, byte_end, line: 0, column: 0, utf16_range: (0, 0) }
+}
+
+/// The whole scalar VALUE span (quotes included) for a `key:` whose `:`
+/// sits at `colon_abs`, bounded by `region_end`. Handles double-quoted
+/// (`\`-escaped), single-quoted (`''`-escaped), and bare/plain flow scalars
+/// (terminated by `,`, `}`, or end of line). Declines (`None`) on a
+/// literal/folded block scalar (`|`/`>`) — its DECODED content has no
+/// simple byte-for-byte map back to source (dsl §8.1's decoded-vs-source
+/// gap), so callers must fall back rather than guess at an un-mappable
+/// multi-line span.
+fn parse_scalar_value_span(text: &str, colon_abs: usize, region_end: usize) -> Option<Span> {
+    let after = colon_abs + 1;
+    if after > region_end {
+        return None;
+    }
+    let rest = &text[after..region_end];
+    let lead = rest.len() - rest.trim_start_matches(' ').len();
+    let val_start = after + lead;
+    if val_start >= region_end {
+        return None;
+    }
+    let bytes = text.as_bytes();
+    match bytes[val_start] {
+        b'"' => {
+            let end = skip_double_quoted(text, val_start)?;
+            (end <= region_end).then(|| mk_span(val_start, end))
+        }
+        b'\'' => {
+            let end = skip_single_quoted(text, val_start)?;
+            (end <= region_end).then(|| mk_span(val_start, end))
+        }
+        b'|' | b'>' => None,
+        _ => {
+            let sub = &text[val_start..region_end];
+            let end_rel = sub.find([',', '}', '\n']).unwrap_or(sub.len());
+            let trimmed = sub[..end_rel].trim_end();
+            (!trimmed.is_empty()).then(|| mk_span(val_start, val_start + trimmed.len()))
+        }
+    }
+}
+
+/// YAML-aware source-span locator scoped to `defs.<name>.cel` (dsl §8.1 —
+/// closes the finding-7 gap `analyze_declaration`'s doc comment used to
+/// flag): locates the entry for `name` under the top-level `defs:` mapping,
+/// then the `cel:` key within THAT entry, then the whole scalar VALUE span
+/// (quotes included) in source bytes. Handles inline/flow entries (`name: {
+/// ..., cel: "..." }`), block entries (`name:\n  cel: "..."`), single/
+/// double-quoted and `\`-escaped scalars, and a file where the same CEL
+/// text is duplicated elsewhere (the search is scoped to `name`'s own
+/// entry, so a duplicate can never steal the span). Returns `None` — never
+/// a guessed or wrong span — on anything it can't confidently resolve (no
+/// `defs:`, no entry for `name`, no `cel:` key in it, or a `cel:` value
+/// shape it doesn't understand, e.g. a `|`/`>` block scalar): callers MUST
+/// fall back to [`find_key_span`]'s key span in that case.
+fn find_def_cel_value_span(text: &str, name: &str) -> Option<Span> {
+    let defs_key = find_key_span(text, "defs")?;
+    let defs_indent = defs_key.byte_start - line_start(text, defs_key.byte_start);
+    let defs_body_start = line_end(text, defs_key.byte_start);
+    let defs_body_end = find_block_end(text, defs_body_start, defs_indent);
+
+    let (entry_key_start, entry_colon, entry_indent) =
+        find_scoped_child_key(text, defs_body_start, defs_body_end, name)?;
+    let entry_key_line_end = line_end(text, entry_key_start).min(defs_body_end);
+    let (cel_region_start, cel_region_end) =
+        find_entry_extent(text, entry_colon, entry_key_line_end, entry_indent, defs_body_end)?;
+
+    let cel_colon = find_unquoted_key_colon(text, (cel_region_start, cel_region_end), "cel")?;
+    parse_scalar_value_span(text, cel_colon, cel_region_end)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1285,6 +1586,94 @@ mod tests {
         fs::remove_dir_all(&root).ok();
     }
 
+    /// Declaration-path CEL-parse fixture helper (B3 + this locator's own
+    /// tests): opens `text` as a claimed `schema/state.yaml`, returns every
+    /// published `E-CEL-PARSE` diagnostic in PUBLISH order — the SAME order
+    /// `analyze_declaration` pushed them (`typed.defs`'s `BTreeMap` iterates
+    /// by name, ascending — never source-text order).
+    async fn open_cel_parse_fixture(text: &str) -> (Vec<serde_json::Value>, std::path::PathBuf) {
+        use futures::StreamExt;
+        use std::fs;
+        use tower::{Service, ServiceExt};
+        use tower_lsp_server::jsonrpc::Request as RpcRequest;
+        use tower_lsp_server::LspService;
+
+        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let root =
+            std::env::temp_dir().join(format!("lute_lsp_decl_cel_parse_{}_{n}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("schema")).unwrap();
+        fs::write(
+            root.join("lute.project.yaml"),
+            "defaultProfile: default\nprofiles:\n  default: {}\n",
+        )
+        .unwrap();
+        let decl_path = root.join("schema/state.yaml");
+        fs::write(&decl_path, text).unwrap();
+        let uri_str = format!("file://{}", decl_path.display());
+
+        let (mut service, mut socket) = LspService::new(Backend::new);
+        let init = RpcRequest::build("initialize")
+            .params(serde_json::json!({ "capabilities": {} }))
+            .id(1)
+            .finish();
+        service.ready().await.unwrap().call(init).await.unwrap();
+
+        let open = RpcRequest::build("textDocument/didOpen")
+            .params(serde_json::json!({
+                "textDocument": {
+                    "uri": uri_str, "languageId": "yaml", "version": 1,
+                    "text": text
+                }
+            }))
+            .finish();
+        service.ready().await.unwrap().call(open).await.unwrap();
+        let opened = socket.next().await.expect("didOpen should publish");
+        let diags = opened
+            .params()
+            .and_then(|p| p.get("diagnostics").cloned())
+            .and_then(|d| d.as_array().cloned())
+            .expect("publish carries a diagnostics array");
+        let cel_parse: Vec<serde_json::Value> = diags
+            .into_iter()
+            .filter(|d| d.get("code").and_then(|c| c.as_str()) == Some("E-CEL-PARSE"))
+            .collect();
+        (cel_parse, root)
+    }
+
+    /// `(line, character)` start/end pair for byte range `[byte_start,
+    /// byte_end)` of `text`, through the SAME `TextIndex`/`byte_to_position`
+    /// conversion the backend itself uses for every published range.
+    fn range_at(text: &str, byte_start: usize, byte_end: usize) -> ((u64, u64), (u64, u64)) {
+        let idx = TextIndex::new(text);
+        let s = byte_to_position(byte_start, &idx);
+        let e = byte_to_position(byte_end, &idx);
+        ((s.line as u64, s.character as u64), (e.line as u64, e.character as u64))
+    }
+
+    /// [`range_at`] for the FIRST occurrence of `needle` in `text`.
+    fn expect_range(text: &str, needle: &str) -> ((u64, u64), (u64, u64)) {
+        let start = text
+            .find(needle)
+            .unwrap_or_else(|| panic!("fixture must contain {needle:?}: {text}"));
+        range_at(text, start, start + needle.len())
+    }
+
+    fn actual_range(diag: &serde_json::Value) -> ((u64, u64), (u64, u64)) {
+        let range = diag.get("range").expect("diagnostic carries a range");
+        (
+            (
+                range["start"]["line"].as_u64().unwrap(),
+                range["start"]["character"].as_u64().unwrap(),
+            ),
+            (
+                range["end"]["line"].as_u64().unwrap(),
+                range["end"]["character"].as_u64().unwrap(),
+            ),
+        )
+    }
+
     /// §8.1 leak-fix fold-in (flagged by Task 13 as out-of-scope for
     /// `lute-check`, closed here): a declaration `.yaml`'s `defs:` `cel:`
     /// body that fails to parse must publish an `E-CEL-PARSE` message with
@@ -1297,55 +1686,14 @@ mod tests {
     /// fold-in of the T13 finding) instead of `e.message`.
     #[tokio::test(flavor = "current_thread")]
     async fn analyze_declaration_cel_parse_error_has_no_antlr_vocabulary() {
-        use futures::StreamExt;
-        use std::fs;
-        use tower::{Service, ServiceExt};
-        use tower_lsp_server::jsonrpc::Request as RpcRequest;
-        use tower_lsp_server::LspService;
-
-        let root = std::env::temp_dir().join(format!("lute_lsp_decl_cel_parse_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(root.join("schema")).unwrap();
-        fs::write(root.join("lute.project.yaml"), "defaultProfile: default\nprofiles:\n  default: {}\n").unwrap();
-        let decl_path = root.join("schema/state.yaml");
         // `run.act = 1` is a bare-`=` CEL parse failure (T2 rule 4) — CEL
         // wants `==`, so this never parses.
-        fs::write(
-            &decl_path,
-            "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.act = 1\" }\n",
-        )
-        .unwrap();
-        let uri_str = format!("file://{}", decl_path.display());
-
-        let (mut service, mut socket) = LspService::new(Backend::new);
-        let init = RpcRequest::build("initialize")
-            .params(serde_json::json!({ "capabilities": {} }))
-            .id(1)
-            .finish();
-        service.ready().await.unwrap().call(init).await.unwrap();
-
-        let text = fs::read_to_string(&decl_path).unwrap();
-
-        let open = RpcRequest::build("textDocument/didOpen")
-            .params(serde_json::json!({
-                "textDocument": {
-                    "uri": uri_str, "languageId": "yaml", "version": 1,
-                    "text": text.clone()
-                }
-            }))
-            .finish();
-        service.ready().await.unwrap().call(open).await.unwrap();
-        let opened = socket.next().await.expect("didOpen should publish");
-        let diags = opened
-            .params()
-            .and_then(|p| p.get("diagnostics").cloned())
-            .and_then(|d| d.as_array().cloned())
-            .expect("publish carries a diagnostics array");
-        let cel_parse = diags
-            .iter()
-            .find(|d| d.get("code").and_then(|c| c.as_str()) == Some("E-CEL-PARSE"))
-            .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic, got {diags:?}"));
-        let message = cel_parse
+        let text = "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.act = 1\" }\n";
+        let (cel_parse, root) = open_cel_parse_fixture(text).await;
+        let hit = cel_parse
+            .first()
+            .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic"));
+        let message = hit
             .get("message")
             .and_then(|m| m.as_str())
             .expect("E-CEL-PARSE carries a message");
@@ -1365,39 +1713,191 @@ mod tests {
             message.contains("did you mean"),
             "expected the writer-voiced T2 bare-`=` suggestion, got: {message}"
         );
-        // Finding 7: the diagnostic's range must stay anchored on the
-        // `defs:` KEY span (`find_key_span`'s own copy), never
-        // `translate_cel_parse`'s `t.span` — that span is REBASED on the
-        // same key span it was PASSED as `slot_span`, so a rule that finds a
-        // local token (T2 rule 4's bare `=`, here) reports an offset PAST
-        // the key instead of at it. Only the MESSAGE comes from
-        // `translate_cel_parse`; the span must come from the original key
-        // span computed at this call site.
-        let idx = TextIndex::new(&text);
-        let key_span = find_key_span(&text, "x").expect("`x` is a `defs:` key in the fixture");
-        let expected_start = byte_to_position(key_span.byte_start, &idx);
-        let expected_end = byte_to_position(key_span.byte_end, &idx);
-        let range = cel_parse.get("range").expect("E-CEL-PARSE carries a range");
-        let actual_start = (
-            range["start"]["line"].as_u64().unwrap(),
-            range["start"]["character"].as_u64().unwrap(),
+        // Finding 7 (flipped, this locator's own fix): the range now
+        // anchors on the WHOLE `cel:` value scalar span (quotes included),
+        // via `find_def_cel_value_span` — never the `defs:` key span, and
+        // never a `translate_cel_parse`-rebased offset.
+        assert_eq!(
+            actual_range(hit),
+            expect_range(text, "\"run.act = 1\""),
+            "E-CEL-PARSE range must equal the whole `cel:` value scalar span"
         );
-        let actual_end = (
-            range["end"]["line"].as_u64().unwrap(),
-            range["end"]["character"].as_u64().unwrap(),
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Block-style `cel:` (`x:\n  type: ...\n  cel: "..."`, no inline flow
+    /// mapping) must anchor on the same whole-scalar span the inline flow
+    /// form does — the locator is YAML-aware, not tied to one entry shape.
+    #[tokio::test(flavor = "current_thread")]
+    async fn analyze_declaration_cel_parse_error_anchors_block_style_cel_value() {
+        let text = "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  x:\n    type: bool\n    cel: \"run.act = 1\"\n";
+        let (cel_parse, root) = open_cel_parse_fixture(text).await;
+        let hit = cel_parse
+            .first()
+            .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic"));
+        assert_eq!(
+            actual_range(hit),
+            expect_range(text, "\"run.act = 1\""),
+            "block-style `cel:` must anchor on its own scalar value span"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Two defs sharing byte-identical `cel:` text: the locator is scoped to
+    /// EACH def's own `defs.<name>.cel` entry, so it must anchor on the
+    /// occurrence structurally inside `name`'s own entry — never the first
+    /// textual occurrence in the file (a naive substring search would pick
+    /// `b`'s span for BOTH diagnostics). `defs` iterates by name (`a` <
+    /// `b`), so `a`'s diagnostic — even though `a` is defined SECOND in
+    /// source — publishes first.
+    #[tokio::test(flavor = "current_thread")]
+    async fn analyze_declaration_cel_parse_error_picks_right_duplicate_occurrence() {
+        let text = "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  b: { type: bool, cel: \"run.act = 1\" }\n  a: { type: bool, cel: \"run.act = 1\" }\n";
+        let (cel_parse, root) = open_cel_parse_fixture(text).await;
+        assert_eq!(cel_parse.len(), 2, "both `a` and `b` must fail to parse: {cel_parse:?}");
+        let needle = "\"run.act = 1\"";
+        let first_occ = text.find(needle).expect("fixture contains the cel text");
+        let second_occ = text[first_occ + needle.len()..]
+            .find(needle)
+            .map(|p| p + first_occ + needle.len())
+            .expect("fixture contains the cel text twice");
+        assert_ne!(first_occ, second_occ);
+        assert_eq!(
+            actual_range(&cel_parse[0]),
+            range_at(text, second_occ, second_occ + needle.len()),
+            "`a` (defined second in source) must anchor on its own occurrence, not `b`'s"
         );
         assert_eq!(
-            actual_start,
-            (expected_start.line as u64, expected_start.character as u64),
-            "E-CEL-PARSE range.start must equal the `defs:` key span (found {actual_start:?}), \
-             not a translate_cel_parse-rebased offset past it"
+            actual_range(&cel_parse[1]),
+            range_at(text, first_occ, first_occ + needle.len()),
+            "`b` (defined first in source) must anchor on its own occurrence"
         );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// A double-quoted `cel:` scalar containing an escaped inner quote
+    /// (`cel: "run.act = \"x\""`) still fails the SAME bare-`=` rule; the
+    /// locator must skip over the `\"` escapes rather than stopping at the
+    /// first one, so the anchored span covers the WHOLE outer-quoted
+    /// scalar (both escaped inner quotes included), the message stays
+    /// ANTLR-free, and the diagnostic carries no fixit — `E-CEL-PARSE` here
+    /// is message-only from `translate_cel_parse`, per the decoded-vs-source
+    /// offset gap this locator exists to route around (never `t.span`/
+    /// `t.fixits`, both offsets into the DECODED `raw`).
+    #[tokio::test(flavor = "current_thread")]
+    async fn analyze_declaration_cel_parse_error_escaped_scalar_whole_span_no_fixit() {
+        use futures::StreamExt;
+        use std::fs;
+        use tower::{Service, ServiceExt};
+        use tower_lsp_server::jsonrpc::Request as RpcRequest;
+        use tower_lsp_server::LspService;
+
+        let text = "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  x: { type: bool, cel: \"run.act = \\\"x\\\"\" }\n";
+        let needle = "\"run.act = \\\"x\\\"\"";
+        assert!(
+            text.contains(needle),
+            "sanity: fixture must contain the escaped scalar literally: {text}"
+        );
+
+        let root = std::env::temp_dir()
+            .join(format!("lute_lsp_decl_cel_parse_escaped_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("schema")).unwrap();
+        fs::write(
+            root.join("lute.project.yaml"),
+            "defaultProfile: default\nprofiles:\n  default: {}\n",
+        )
+        .unwrap();
+        let decl_path = root.join("schema/state.yaml");
+        fs::write(&decl_path, text).unwrap();
+        let uri_str = format!("file://{}", decl_path.display());
+
+        let (mut service, mut socket) = LspService::new(Backend::new);
+        let init = RpcRequest::build("initialize")
+            .params(serde_json::json!({ "capabilities": {} }))
+            .id(1)
+            .finish();
+        service.ready().await.unwrap().call(init).await.unwrap();
+
+        let open = RpcRequest::build("textDocument/didOpen")
+            .params(serde_json::json!({
+                "textDocument": {
+                    "uri": uri_str, "languageId": "yaml", "version": 1,
+                    "text": text
+                }
+            }))
+            .finish();
+        service.ready().await.unwrap().call(open).await.unwrap();
+        let opened = socket.next().await.expect("didOpen should publish");
+        let diags = opened
+            .params()
+            .and_then(|p| p.get("diagnostics").cloned())
+            .and_then(|d| d.as_array().cloned())
+            .expect("publish carries a diagnostics array");
+        let cel_parse = diags
+            .iter()
+            .find(|d| d.get("code").and_then(|c| c.as_str()) == Some("E-CEL-PARSE"))
+            .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic, got {diags:?}"));
+        let message = cel_parse.get("message").and_then(|m| m.as_str()).expect("carries a message");
+        for tok in [
+            "viable alternative",
+            "token recognition",
+            "mismatched input",
+            "extraneous input",
+            "no viable",
+        ] {
+            assert!(!message.contains(tok), "leaked backend vocabulary {tok:?}: {message}");
+        }
+        assert!(message.contains("did you mean"), "expected the T2 bare-`=` suggestion, got: {message}");
         assert_eq!(
-            actual_end,
-            (expected_end.line as u64, expected_end.character as u64),
-            "E-CEL-PARSE range.end must equal the `defs:` key span (found {actual_end:?}), \
-             not a translate_cel_parse-rebased offset past it"
+            actual_range(cel_parse),
+            expect_range(text, needle),
+            "must anchor on the WHOLE outer-quoted scalar, escapes included"
         );
+
+        // Fixits stay empty: `code_action` maps ONLY cached `fixits` to
+        // `CodeAction`s, so an overlapping request returning nothing proves
+        // this `E-CEL-PARSE` carried none.
+        let range = cel_parse.get("range").cloned().expect("range");
+        let code_action_req = RpcRequest::build("textDocument/codeAction")
+            .params(serde_json::json!({
+                "textDocument": { "uri": uri_str },
+                "range": range,
+                "context": { "diagnostics": [] }
+            }))
+            .id(2)
+            .finish();
+        let resp = service.ready().await.unwrap().call(code_action_req).await.unwrap();
+        let actions = resp.and_then(|r| r.result().cloned());
+        assert!(
+            matches!(actions, None | Some(serde_json::Value::Null))
+                || actions.as_ref().and_then(|a| a.as_array()).map(|a| a.is_empty()).unwrap_or(false),
+            "an E-CEL-PARSE diagnostic must carry no fixit-derived code action: {actions:?}"
+        );
+
         fs::remove_dir_all(&root).ok();
+    }
+
+    /// Rock-solid fallback: a literal block scalar (`cel: |\n  ...`) is
+    /// explicitly out of the locator's scope (dsl §8.1's decoded-vs-source
+    /// offset gap — a multi-line folded/literal scalar's DECODED text has
+    /// no simple byte-for-byte map back to its indented source lines), so
+    /// `find_def_cel_value_span` declines rather than guessing, and the
+    /// diagnostic falls back to the honest `defs:` KEY span exactly like
+    /// the pre-fix behavior.
+    #[tokio::test(flavor = "current_thread")]
+    async fn analyze_declaration_cel_parse_error_falls_back_to_key_span_for_block_scalar() {
+        let text = "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  x:\n    type: bool\n    cel: |\n      run.act = 1\n";
+        let (cel_parse, root) = open_cel_parse_fixture(text).await;
+        let hit = cel_parse
+            .first()
+            .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic"));
+        let key_span = find_key_span(text, "x").expect("`x` is a `defs:` key in the fixture");
+        assert_eq!(
+            actual_range(hit),
+            range_at(text, key_span.byte_start, key_span.byte_end),
+            "a `|` literal block scalar must fall back to the `defs:` key span"
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 }
