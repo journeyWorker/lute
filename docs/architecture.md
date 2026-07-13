@@ -888,10 +888,12 @@ component binding, the `when=` desugar, and the persist desugar are inherited by
 mocks — `E-TRACE-*` render exactly as check diagnostics do), `2` I/O, `3` incomplete (an
 `unknown` guard halted the walk).
 
-**D20 — auto-selection honesty (flagged for spec confirmation).** At a `<branch>`/`<hub>`
+**D20 — auto-selection honesty (confirmed; ratified in spec §4.4).** At a `<branch>`/`<hub>`
 with no `--choose` entry, zero true-eligible choices, and at least one unknown-guarded
 choice, the walk halts incomplete (exit 3) rather than guessing past the unknown eligibility
-— `--choose` remains the documented escape hatch to force past it.
+— `--choose` remains the documented escape hatch. Confirmed by the hub design decision (hub is
+an interactive conversation wheel, `0.1 §7.3.2`): trace cannot simulate the player's weave
+under unknown eligibility, so halting honestly is the correct preview behavior.
 
 ### Diagnostics — the 0.4.0 delta (spec Appendix A has the full authoritative list)
 
@@ -919,9 +921,6 @@ matches), `E-COMPONENT-ARG`/`-UNDECLARED`/`-CYCLE`/`-DUP`/`-PARSE`, `E-UNKNOWN-A
   via trace-write → mock seed → schema default; false on unset), while a *value* read of an
   unset path is `unknown`. This keeps both inside §4.3's "Evaluated" list and lets
   `!isSet(run.x)` decide on a fresh mock world with no seeded state.
-- **D20** — the auto-selection-honesty rule above: an unresolved `<branch>`/`<hub>` with no
-  true-eligible choice and at least one unknown-guarded choice halts incomplete rather than
-  guessing, even absent an explicit `--choose`.
 - **D13** — the version-stamp reading of B2's "byte-identical" (above).
 
 **Worked example:** [`examples/gated-line.lute`](examples/gated-line.lute) (§7.2) and
