@@ -407,3 +407,212 @@ fn output_is_byte_deterministic() {
     let _: serde_json::Value = serde_json::from_str(&json1).expect("render_json must be valid JSON");
     assert!(!matches!(exit1, TraceExit::Refused(_)));
 }
+
+// ---------------------------------------------------------------------
+// dsl 0.5.1 §1: trace preview of reserved quest-path reads.
+// ---------------------------------------------------------------------
+
+/// A scene reading `quest.foo.state` as a `<match>` subject, exhaustive
+/// over the reserved domain (`active|complete|failed|unset`) with one arm
+/// per literal — no `<otherwise>`, so which arm fires pins down exactly
+/// what the subject decided.
+fn quest_state_match_text() -> String {
+    "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+     <match on=\"quest.foo.state\">\n\
+     <when is=\"active\">\n@narrator: is-active\n</when>\n\
+     <when is=\"complete\">\n@narrator: is-complete\n</when>\n\
+     <when is=\"failed\">\n@narrator: is-failed\n</when>\n\
+     <when is=\"unset\">\n@narrator: is-unset\n</when>\n\
+     </match>\n"
+        .to_string()
+}
+
+/// A scene reading `quest.foo.objectives.bar.done` as a `<match>` subject,
+/// exhaustive over its bool domain.
+fn quest_objective_done_match_text() -> String {
+    "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+     <match on=\"quest.foo.objectives.bar.done\">\n\
+     <when is=\"true\">\n@narrator: is-true\n</when>\n\
+     <when is=\"false\">\n@narrator: is-false\n</when>\n\
+     </match>\n"
+        .to_string()
+}
+
+fn match_decision<'a>(report: &'a lute_trace::TraceReport, id: &str) -> &'a lute_trace::Decision {
+    report
+        .decisions
+        .iter()
+        .find(|d| d.construct == "match" && d.id == id)
+        .unwrap_or_else(|| panic!("no match decision for {id}: {:?}", report.decisions))
+}
+
+fn state_mocks(pairs: &[(&str, &str)]) -> MockSet {
+    MockSet {
+        state: pairs.iter().map(|(p, v)| (p.to_string(), v.to_string(), zero_span())).collect(),
+        ..Default::default()
+    }
+}
+
+/// §1.1's own worked example: `--state quest.foo.state=complete` against a
+/// scene that reads `quest.foo.state` is ADMITTED (was
+/// `E-TRACE-MOCK-UNDECLARED` pre-0.5.1) and previews the `complete` arm.
+/// §1.3: the mocked-admission case also gets the existence-unverified
+/// note, WITHOUT a "defaults to" clause (nothing was defaulted).
+#[test]
+fn reserved_quest_state_mock_admitted_and_previews_referenced_arm() {
+    let input = input_for(&quest_state_match_text(), "quest-state-match", Path::new("."));
+    let mocks = state_mocks(&[("quest.foo.state", "complete")]);
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+
+    let d = match_decision(&report, "quest.foo.state");
+    assert_eq!(d.outcome, "arm 2", "{d:?}"); // "complete" is the 2nd `<when>`
+    assert_eq!(d.guard.as_deref(), Some("is=\"complete\""), "{d:?}");
+
+    assert!(
+        report.notes.iter().any(|n| n.contains("quest `foo`") && n.contains("unverified")),
+        "{:?}",
+        report.notes
+    );
+    assert!(
+        !report.notes.iter().any(|n| n.contains("defaults to")),
+        "a purely-mocked read must not claim a default: {:?}",
+        report.notes
+    );
+}
+
+/// §1.1: `--state` on a reserved path the document does NOT reference
+/// stays `E-TRACE-MOCK-UNDECLARED` — Refused, end to end.
+#[test]
+fn reserved_quest_state_mock_on_unreferenced_path_stays_refused() {
+    let input = input_for(&quest_state_match_text(), "quest-state-match", Path::new("."));
+    let mocks = state_mocks(&[("quest.bar.state", "complete")]);
+    let (_, exit) = trace_document(&input, mocks);
+    let diags = assert_refused(&exit);
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(diags[0].code, "E-TRACE-MOCK-UNDECLARED", "{diags:?}");
+}
+
+/// §1.2: an un-mocked, exhaustive `quest.<id>.state` match fires the
+/// `unset` arm (its reserved default) rather than halting/"no arm". §1.3:
+/// the defaulted-read case gets the existence-unverified note WITH a
+/// "defaults to `unset`" clause.
+#[test]
+fn unmocked_quest_state_match_fires_unset_arm_not_no_arm() {
+    let input = input_for(&quest_state_match_text(), "quest-state-match", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    let d = match_decision(&report, "quest.foo.state");
+    assert_eq!(d.outcome, "arm 4", "{d:?}"); // "unset" is the 4th `<when>`
+    assert_eq!(d.guard.as_deref(), Some("is=\"unset\""), "{d:?}");
+
+    let arms_cov = report.coverage.arms.get("quest.foo.state").expect("match coverage entry");
+    assert_eq!((arms_cov.visited, arms_cov.total), (1, 4));
+
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("quest `foo`") && n.contains("unverified") && n.contains("defaults to `unset`")),
+        "{:?}",
+        report.notes
+    );
+}
+
+/// §1.2: an un-mocked, exhaustive `quest.<id>.objectives.<oid>.done` match
+/// fires the `false` arm (its reserved default) — the exact 0.5.0 "no arm"
+/// defect this revision fixes. §1.3: defaulted note names `false`.
+#[test]
+fn unmocked_objective_done_match_fires_false_arm_not_no_arm() {
+    let input = input_for(&quest_objective_done_match_text(), "quest-objective-match", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    let d = match_decision(&report, "quest.foo.objectives.bar.done");
+    assert_eq!(d.outcome, "arm 2", "{d:?}"); // "false" is the 2nd `<when>`
+    assert_eq!(d.guard.as_deref(), Some("is=\"false\""), "{d:?}");
+
+    let arms_cov = report.coverage.arms.get("quest.foo.objectives.bar.done").expect("match coverage entry");
+    assert_eq!((arms_cov.visited, arms_cov.total), (1, 2));
+
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("quest `foo`") && n.contains("unverified") && n.contains("defaults to `false`")),
+        "{:?}",
+        report.notes
+    );
+}
+
+// ---------------------------------------------------------------------
+// dsl 0.5.1 §4: unmatched `--event` note.
+// ---------------------------------------------------------------------
+
+/// A never-completing quest doc (`done` reads a non-derive relation with
+/// zero supplied facts — DEFINITELY `false`, state/fact-dependent, so
+/// `check` never constant-folds it `E-OBJECTIVE-UNSATISFIABLE`, mirroring
+/// `no_arm_match_reports_and_continues`'s idiom) with ONE
+/// `<on event="questActive">` handler.
+fn never_completing_quest_text() -> String {
+    "---\nkind: quest\nrelations:\n  claims: { args: [character] }\n\
+     entities:\n  character: { members: [halsin] }\n---\n\
+     <quest id=\"q\" start=\"true\">\n\
+     <objective id=\"o\" done=\"holds(claims(halsin))\"/>\n\
+     <on event=\"questActive\">\n@narrator: hi\n</on>\n\
+     </quest>\n"
+        .to_string()
+}
+
+/// A quest with ONE `<on event="questActive">` handler; `--event
+/// nonexistentHandler` matches no `<on>` handler anywhere in the document
+/// -> an informational note, exit UNCHANGED (still Complete).
+#[test]
+fn unmatched_event_emits_note_and_leaves_exit_unchanged() {
+    let input = input_for(&never_completing_quest_text(), "unmatched-event", Path::new("."));
+    let mocks = MockSet { events: vec!["nonexistentHandler".to_string()], ..Default::default() };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert!(
+        report.notes.iter().any(|n| n.contains("event `nonexistentHandler` matched no `<on>` handler")),
+        "{:?}",
+        report.notes
+    );
+}
+
+/// A `--event` naming a defined handler (a capability-declared world event,
+/// so it is legal both as an `<on>` name AND a `--event` flag — a
+/// lifecycle name can never be, `E-TRACE-EVENT`) produces NO
+/// unmatched-event note.
+#[test]
+fn matched_event_emits_no_unmatched_note() {
+    let text = "---\nkind: quest\nrelations:\n  claims: { args: [character] }\n\
+                entities:\n  character: { members: [halsin] }\n---\n\
+                <quest id=\"q\" start=\"true\">\n\
+                <objective id=\"o\" done=\"holds(claims(halsin))\"/>\n\
+                <on event=\"questActive\">\n@narrator: hi\n</on>\n\
+                <on event=\"npcSpoke\">\n@narrator: heard\n</on>\n\
+                </quest>\n";
+    let mut input = input_for(text, "matched-event", Path::new("."));
+    input
+        .snapshot
+        .events
+        .insert("npcSpoke".to_string(), lute_manifest::schema::EventDecl { name: "npcSpoke".to_string() });
+    let mocks = MockSet { events: vec!["npcSpoke".to_string()], ..Default::default() };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert!(!report.notes.iter().any(|n| n.contains("matched no")), "{:?}", report.notes);
+}
+
+/// Preserved behavior (§4's own text): a `--event` naming a built-in
+/// lifecycle event is STILL `E-TRACE-EVENT`, Refused, end to end.
+#[test]
+fn builtin_lifecycle_event_still_refused_end_to_end() {
+    let input = input_for(&never_completing_quest_text(), "lifecycle-event", Path::new("."));
+    let mocks = MockSet { events: vec!["questComplete".to_string()], ..Default::default() };
+    let (_, exit) = trace_document(&input, mocks);
+    let diags = assert_refused(&exit);
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(diags[0].code, "E-TRACE-EVENT", "{diags:?}");
+}
