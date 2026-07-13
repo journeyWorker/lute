@@ -26,7 +26,7 @@
 //! `.ast` — [`slot_expr`] is that same house idiom, carried here (D1: the
 //! evaluator lives ONLY in this crate).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cel_parser::ast::Expr;
 use lute_cel::CelArena;
@@ -43,7 +43,8 @@ use lute_syntax::ast::{
 use lute_syntax::datalog::FactTerm;
 
 use crate::eval::{
-    eval, eval_path_read, expr_path, literal_to_value, EffectiveState, EvalEnv, FactStore, Pat, Read,
+    eval, eval_path_read, expr_path, is_reserved_quest_path, literal_to_value, EffectiveState, EvalEnv,
+    FactStore, Pat, Read, ReservedReadKind,
 };
 use crate::mock::{self, MockSet};
 use crate::report::{self, ComponentBoundary, Coverage, CoverageCount, Decision, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry};
@@ -236,15 +237,24 @@ fn literal_matches(lit: &str, v: &Value) -> bool {
 /// state path (mirrors `isSet()`/`has()`, D19): read directly via
 /// [`EffectiveState::read`], never through the atom-recording value path,
 /// so a subject that IS unset never spuriously halts an `is="unset"` arm.
-/// A non-path subject (e.g. a `holds(...)` fact query) has no notion of
-/// "unset"; `unset` never matches it.
+/// dsl 0.5.1 §1.2: an un-mocked RESERVED `quest.<id>.state` never reads
+/// bare [`Read::Unset`] anymore (it defaults to the literal `"unset"`) —
+/// the second arm below treats that defaulted value identically to the
+/// sentinel case, so an exhaustive `is="active|complete|failed|unset"`
+/// match still fires its `unset` arm. A non-path subject (e.g. a
+/// `holds(...)` fact query) has no notion of "unset"; `unset` never
+/// matches it either way.
 fn eval_is_pattern(pat: &IsPattern, subject_raw: &str, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
     let alts: Vec<&str> = pat.raw.split('|').map(str::trim).collect();
     let wants_unset = alts.iter().any(|a| *a == "unset");
     let subject_path = slot_expr(subject_raw).and_then(|e| expr_path(&e));
     if let Some(path) = &subject_path {
-        if matches!(env.state.read(path), Read::Unset) {
-            return Value::Bool(wants_unset);
+        match env.state.read(path) {
+            Read::Unset => return Value::Bool(wants_unset),
+            Read::Value(Value::Str(s)) if s == "unset" && is_reserved_quest_path(path) => {
+                return Value::Bool(wants_unset);
+            }
+            _ => {}
         }
     }
     let literals: Vec<&str> = alts.iter().copied().filter(|a| *a != "unset").collect();
@@ -1105,6 +1115,12 @@ fn walk_quests(doc: &Document, events: &[String], w: &mut Walk<'_>) -> Flow {
     Flow::Continue
 }
 
+/// dsl 0.5.1 §1.1: a RESERVED `quest.<id>.state`/`quest.<id>.objectives.
+/// <oid>.done` mock has NO `schema.decls` entry (reserved paths are
+/// implicitly declared, never author-declared) — `mock::validate` already
+/// proved `raw` inhabits the reserved path's own domain, so it converts
+/// directly here rather than through [`mock::coerce_state_literal`]'s
+/// schema-`Type`-keyed dispatch.
 fn seed_state(mocks: &MockSet, schema: &StateSchema) -> BTreeMap<String, Value> {
     let mut out = BTreeMap::new();
     for (path, raw, _span) in &mocks.state {
@@ -1114,6 +1130,17 @@ fn seed_state(mocks: &MockSet, schema: &StateSchema) -> BTreeMap<String, Value> 
             if let Some(lit) = mock::coerce_state_literal(&decl.ty, raw) {
                 out.insert(path.clone(), literal_to_value(&lit));
             }
+        } else if is_reserved_quest_path(path) {
+            let v = if crate::eval::is_reserved_quest_objective_done_path(path) {
+                match raw.as_str() {
+                    "true" => Value::Bool(true),
+                    "false" => Value::Bool(false),
+                    _ => continue, // unreachable post-`mock::validate`
+                }
+            } else {
+                Value::Str(raw.clone())
+            };
+            out.insert(path.clone(), v);
         }
     }
     out
@@ -1179,6 +1206,123 @@ fn seed_fact_notes(mocks: &MockSet, seed_facts: &[lute_check::meta::FactDecl]) -
          the explicit-world model) — supply seeded relations explicitly via --fact",
         seed_facts[0].fact.relation
     )]
+}
+
+/// dsl 0.5.1 §1.3: one informational note per FOREIGN quest `<id>` — a
+/// quest id NOT defined by an in-document `<quest id="…">` — whose
+/// reserved path was actually READ during the walk (`reserved_reads`,
+/// [`crate::eval::EffectiveState::reserved_reads`]), whether admitted as a
+/// `--state` mock (§1.1) or resolved to its default (§1.2). `trace` has no
+/// cross-document quest catalog, so this fires UNCONDITIONALLY for every
+/// such read — an explicitly-mocked typo is therefore never silent (§1.1's
+/// own text). Grouped by quest id (one note per id, never per path);
+/// informational only, never an error, never a reachability claim, exit
+/// code unchanged.
+fn reserved_quest_notes(reserved_reads: &BTreeMap<String, ReservedReadKind>, doc_quest_ids: &BTreeSet<&str>) -> Vec<String> {
+    let mut by_id: BTreeMap<&str, Vec<(&str, ReservedReadKind)>> = BTreeMap::new();
+    for (path, kind) in reserved_reads {
+        let id = reserved_quest_id(path);
+        if doc_quest_ids.contains(id) {
+            continue; // derived by an in-document `<quest>` — not foreign.
+        }
+        by_id.entry(id).or_default().push((path.as_str(), *kind));
+    }
+    let mut notes = Vec::new();
+    for (id, entries) in by_id {
+        let mut defaults: Vec<String> = entries
+            .iter()
+            .filter(|(_, kind)| matches!(kind, ReservedReadKind::Defaulted))
+            .map(|(path, _)| format!("`{path}` defaults to `{}` (override via --state)", reserved_default_text(path)))
+            .collect();
+        defaults.sort();
+        let mut msg = format!(
+            "quest `{id}`'s existence is unverified by trace (run `check-project` to confirm it is \
+             defined by a project quest, dsl 0.5.1 §1.3/§1.4)"
+        );
+        if !defaults.is_empty() {
+            msg.push_str("; ");
+            msg.push_str(&defaults.join("; "));
+        }
+        notes.push(msg);
+    }
+    notes
+}
+
+/// The `<id>` segment of a reserved `quest.<id>.state`/`quest.<id>.
+/// objectives.<oid>.done` path.
+fn reserved_quest_id(path: &str) -> &str {
+    path.split('.').nth(1).unwrap_or(path)
+}
+
+fn reserved_default_text(path: &str) -> &'static str {
+    if crate::eval::is_reserved_quest_objective_done_path(path) {
+        "false"
+    } else {
+        "unset"
+    }
+}
+
+/// dsl 0.5.1 §4: a `--event <name>` matching no `<on event=…>` handler
+/// ANYWHERE in the traced document (a scene has none at all; a quest
+/// document's own handlers are collected regardless of whether the owning
+/// quest ever activated — purely structural: "does the document define a
+/// handler for this name") gets an informational note instead of a silent
+/// no-op. A built-in lifecycle name is rejected pre-walk (`E-TRACE-EVENT`,
+/// [`mock::validate`]), so it can never reach here. Deduplicated per name,
+/// `events` order.
+fn unmatched_event_notes(doc: &Document, events: &[String]) -> Vec<String> {
+    let mut handled = BTreeSet::new();
+    for quest in &doc.quests {
+        collect_on_events(&quest.body, &mut handled);
+    }
+    let mut seen = BTreeSet::new();
+    let mut notes = Vec::new();
+    for name in events {
+        if handled.contains(name.as_str()) || !seen.insert(name.as_str()) {
+            continue;
+        }
+        notes.push(format!("event `{name}` matched no `<on>` handler"));
+    }
+    notes
+}
+
+/// Every `<on event=…>` name reachable in `nodes`, recursing into nested
+/// constructs (a `<branch>`/`<hub>` choice body, a `<match>` arm body, an
+/// `<objective>`/`<on>` body) — mirrors `mock.rs`'s
+/// `collect_choice_ids_nodes` recursion shape.
+fn collect_on_events<'a>(nodes: &'a [Node], out: &mut BTreeSet<&'a str>) {
+    for node in nodes {
+        match node {
+            Node::Branch(b) => {
+                for choice in &b.choices {
+                    collect_on_events(&choice.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for choice in &h.choices {
+                    collect_on_events(&choice.body, out);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => collect_on_events(body, out),
+                    }
+                }
+            }
+            Node::On(o) => {
+                out.insert(o.event.as_str());
+                collect_on_events(&o.body, out);
+            }
+            Node::Objective(o) => collect_on_events(&o.body, out),
+            Node::Line(_)
+            | Node::Directive(_)
+            | Node::Set(_)
+            | Node::Timeline(_)
+            | Node::Assert(_)
+            | Node::Retract(_) => {}
+        }
+    }
 }
 
 fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
@@ -1255,7 +1399,10 @@ pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, Trace
         flow = walk_quests(&doc, &mocks.events, &mut w);
     }
 
-    let notes = seed_fact_notes(&mocks, &folded.env.rel_vocab.facts);
+    let doc_quest_ids: BTreeSet<&str> = doc.quests.iter().map(|q| q.id.as_str()).collect();
+    let mut notes = seed_fact_notes(&mocks, &folded.env.rel_vocab.facts);
+    notes.extend(reserved_quest_notes(&w.state.reserved_reads(), &doc_quest_ids));
+    notes.extend(unmatched_event_notes(&doc, &mocks.events));
     let report = TraceReport {
         file: input.uri.clone(),
         seeds: seeds_summary(&mocks),
