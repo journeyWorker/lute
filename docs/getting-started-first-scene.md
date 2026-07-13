@@ -293,7 +293,10 @@ $ ./target/debug/lute compile my-scene.lute
 
 (Shown reformatted for space; the real output is one JSON document, unindented choices included
 verbatim.) You will never hand-edit this file — it's the compiled artifact the engine consumes.
-Its existence, and that it compiled without error, is your proof the scene is playable.
+Its existence, and that it compiled without error, is proof the scene is **statically valid** —
+every construct well-formed, every state path declared, every `<match>` exhaustive — and that
+the artifact emitted successfully. It is not proof the scene is playable end to end: that's a
+runtime property, verified at integration time (see below).
 
 Finally, `lute trace` lets you **preview a playthrough** without opening the game — you tell it
 which choice to take at each branch with `--choose <branchId>=<choiceId>`, and it walks the
@@ -311,8 +314,10 @@ trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
 trace complete: 1 decision; choices 1/2 (orderChoice)
 ```
 
-That transcript is real — the same walk the engine would perform. This is how you sanity-check
-a branch reads right before it's ever wired into the game.
+That transcript is a preview of exactly the mock scenario you supplied (the choice you told it
+to take, with no other state/facts seeded) — an authoring aid for sanity-checking a branch reads
+right, never proof of how the scene behaves at runtime. Genuine runtime behavior — the engine's
+actual walk, with its own state and fact resolution — is verified at integration time, not here.
 
 ## Part 5 — Where to go next
 
