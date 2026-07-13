@@ -40,12 +40,13 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use lute_check::{
-    check, check_project_quest_ids, fold_env, parse_meta, CheckInput, Mode, Namespace,
+    check, check_project_quest_ids, fold_env, parse_meta, CheckInput, Mode, Namespace, RelVocab,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::project::{load_project, resolve_document_snapshot};
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
+use lute_manifest::relations::KindShape;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
@@ -730,7 +731,12 @@ fn run_context(
     // state table byte-for-byte (choice ids ∪ `unset`) — no divergence. The set is
     // expansion-invariant, so the raw parsed `doc` yields the same paths.
     let branch_paths = lute_compile::collect_branch_paths(&doc);
-    let surface = authoring_surface(&input, &folded.env.state, &branch_paths);
+    let surface = authoring_surface(
+        &input,
+        &folded.env.state,
+        &folded.env.rel_vocab,
+        &branch_paths,
+    );
 
     if json {
         match serde_json::to_string_pretty(&surface) {
@@ -756,9 +762,14 @@ fn run_context(
 /// declaration order). `enums`/`assetKinds`/`providers` come straight off the
 /// string (see `attr_type_str`/`state_type_str`). `branch_paths` marks the ACTUAL
 /// implicit choice slots so their enum domains gain `unset` (matching compile).
+/// `rel_vocab` is the ALREADY-MERGED relational vocabulary `fold_env` computes
+/// (dsl 0.3.0 §3/§4, spec §5) — entity kinds, relations (+arity/domains/
+/// `derive`), seed facts, rules, and project-level `enums:` — surfaced here
+/// verbatim, no new resolution.
 fn authoring_surface(
     input: &CheckInput,
     state: &lute_check::StateSchema,
+    rel_vocab: &RelVocab,
     branch_paths: &BTreeSet<String>,
 ) -> serde_json::Value {
     use serde_json::{Map, Value};
@@ -851,6 +862,65 @@ fn authoring_surface(
         })
         .collect();
 
+    // Entity kinds (dsl 0.3.0 §3.1): BTreeMap key == name ⇒ name-sorted. A
+    // closed kind (`members: [...]`) carries its member list; an `open: true`
+    // kind carries no member list (any id is legal); `Invalid` (neither/both)
+    // is preserved as data (rel_schema.rs's discipline) rather than hidden.
+    let entities: Vec<Value> = rel_vocab
+        .kinds
+        .iter()
+        .map(|(name, decl)| {
+            let mut o = Map::new();
+            o.insert("name".into(), name.clone().into());
+            match &decl.shape {
+                KindShape::Members(members) => {
+                    o.insert("shape".into(), "members".into());
+                    o.insert("members".into(), members.clone().into());
+                }
+                KindShape::Open => {
+                    o.insert("shape".into(), "open".into());
+                }
+                KindShape::Invalid => {
+                    o.insert("shape".into(), "invalid".into());
+                }
+            }
+            Value::Object(o)
+        })
+        .collect();
+
+    // Relations (dsl 0.3.0 §4): BTreeMap key == name ⇒ name-sorted. `args` is
+    // the ordered argument-domain (entity kind or enum) list; `arity` is its
+    // length, surfaced explicitly so an AI need not count. `derive: true`
+    // marks a Datalog-derived relation (no direct write tier, `tier_of`).
+    let relations: Vec<Value> = rel_vocab
+        .relations
+        .iter()
+        .map(|(name, decl)| {
+            let mut o = Map::new();
+            o.insert("name".into(), name.clone().into());
+            o.insert("arity".into(), decl.args.len().into());
+            o.insert("args".into(), decl.args.clone().into());
+            o.insert("derive".into(), decl.derive.into());
+            Value::Object(o)
+        })
+        .collect();
+
+    // Seed facts (dsl 0.3.0 §4, D12): raw source text, in declaration order
+    // (a `Vec`, not name-keyed — authoring order is meaningful, unlike the
+    // name-sorted maps above).
+    let facts: Vec<Value> = rel_vocab
+        .facts
+        .iter()
+        .map(|f| Value::String(f.raw.clone()))
+        .collect();
+
+    // Rules (dsl 0.3.0 §7.1): raw source text, declaration order.
+    let rules: Vec<Value> = rel_vocab
+        .rules
+        .iter()
+        .map(|r| Value::String(r.raw.clone()))
+        .collect();
+
     let mut root = Map::new();
     root.insert("capabilityVersion".into(), snap.version.clone().into());
     root.insert("directives".into(), directives.into());
@@ -871,6 +941,18 @@ fn authoring_surface(
     );
     root.insert("stateSchema".into(), state_schema.into());
     root.insert("components".into(), components.into());
+    // Relational vocabulary (dsl 0.3.0 §3/§4, spec §5) — `entities`/`relations`/
+    // `facts`/`rules` are new keys; `projectEnums` is the project-level
+    // `enums:` (`rel_vocab.enums`), kept under its OWN key so it never
+    // clobbers the plugin/core `enums` key above (a distinct vocabulary).
+    root.insert("entities".into(), entities.into());
+    root.insert("relations".into(), relations.into());
+    root.insert("facts".into(), facts.into());
+    root.insert("rules".into(), rules.into());
+    root.insert(
+        "projectEnums".into(),
+        serde_json::to_value(&rel_vocab.enums).unwrap_or_else(|_| serde_json::json!({})),
+    );
     Value::Object(root)
 }
 
@@ -963,9 +1045,11 @@ fn literal_json(l: &Literal) -> serde_json::Value {
 }
 
 /// A compact human outline of the authoring surface (non-`--json` mode): the
-/// capabilityVersion, directive names + attr keys, enum names, state paths (with
-/// enum domains), and component names. `--json` is the machine surface; this is a
-/// short at-a-glance view.
+/// capabilityVersion, directive names + attr keys, enum names WITH their
+/// members, state paths (with enum domains), the relational vocabulary
+/// (entity kinds, relations w/ arity+domains+`derive`, seed facts, rules,
+/// project-level enums), and component names. `--json` is the machine
+/// surface; this is a short at-a-glance view.
 fn context_outline(surface: &serde_json::Value) -> String {
     let mut out = String::new();
     let _ = writeln!(
@@ -989,8 +1073,16 @@ fn context_outline(surface: &serde_json::Value) -> String {
         }
     }
     if let Some(enums) = surface["enums"].as_object() {
-        let names: Vec<&str> = enums.keys().map(String::as_str).collect();
-        let _ = writeln!(out, "enums ({}): {}", names.len(), names.join(", "));
+        // Members, not just names (spec §5) — an author choosing an
+        // `emotion="…"` value sees the legal set without `--json`.
+        let _ = writeln!(out, "enums ({}):", enums.len());
+        for (name, members) in enums {
+            let member_strs: Vec<&str> = members
+                .as_array()
+                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                .unwrap_or_default();
+            let _ = writeln!(out, "  {name}: {}", member_strs.join(", "));
+        }
     }
     if let Some(state) = surface["stateSchema"].as_array() {
         let _ = writeln!(out, "stateSchema ({}):", state.len());
@@ -1005,6 +1097,75 @@ fn context_outline(surface: &serde_json::Value) -> String {
                 })
                 .unwrap_or_default();
             let _ = writeln!(out, "  {path}: {ty}{dom}");
+        }
+    }
+    // Relational vocabulary (dsl 0.3.0 §3/§4, spec §5): entity kinds,
+    // relations (name/arity/domains/derive), seed facts, rules, and the
+    // project-level `enums:` — kept separate from the plugin/core `enums`
+    // block above.
+    if let Some(entities) = surface["entities"].as_array() {
+        if !entities.is_empty() {
+            let _ = writeln!(out, "entities ({}):", entities.len());
+            for e in entities {
+                let name = e["name"].as_str().unwrap_or("");
+                let shape = e["shape"].as_str().unwrap_or("");
+                if shape == "members" {
+                    let members: Vec<&str> = e["members"]
+                        .as_array()
+                        .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                        .unwrap_or_default();
+                    let _ = writeln!(out, "  {name}: {}", members.join(", "));
+                } else {
+                    let _ = writeln!(out, "  {name}: {shape}");
+                }
+            }
+        }
+    }
+    if let Some(relations) = surface["relations"].as_array() {
+        if !relations.is_empty() {
+            let _ = writeln!(out, "relations ({}):", relations.len());
+            for r in relations {
+                let name = r["name"].as_str().unwrap_or("");
+                let arity = r["arity"].as_u64().unwrap_or(0);
+                let args: Vec<&str> = r["args"]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                    .unwrap_or_default();
+                let tag = if r["derive"].as_bool().unwrap_or(false) {
+                    " [derive]"
+                } else {
+                    ""
+                };
+                let _ = writeln!(out, "  {name}/{arity}({}){tag}", args.join(", "));
+            }
+        }
+    }
+    if let Some(facts) = surface["facts"].as_array() {
+        if !facts.is_empty() {
+            let _ = writeln!(out, "facts ({}):", facts.len());
+            for f in facts {
+                let _ = writeln!(out, "  {}", f.as_str().unwrap_or(""));
+            }
+        }
+    }
+    if let Some(rules) = surface["rules"].as_array() {
+        if !rules.is_empty() {
+            let _ = writeln!(out, "rules ({}):", rules.len());
+            for r in rules {
+                let _ = writeln!(out, "  {}", r.as_str().unwrap_or(""));
+            }
+        }
+    }
+    if let Some(penums) = surface["projectEnums"].as_object() {
+        if !penums.is_empty() {
+            let _ = writeln!(out, "projectEnums ({}):", penums.len());
+            for (name, members) in penums {
+                let member_strs: Vec<&str> = members
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                    .unwrap_or_default();
+                let _ = writeln!(out, "  {name}: {}", member_strs.join(", "));
+            }
         }
     }
     if let Some(comps) = surface["components"].as_array() {

@@ -500,6 +500,197 @@ fn context_choice_slot_domain_includes_unset() {
     );
 }
 
+#[test]
+fn context_json_surfaces_relational_vocabulary() {
+    // spec §5: `lute context --json` MUST surface the relational vocabulary
+    // `fold_env` already merges (`RelVocab`) — entity kinds, relations (name +
+    // arity + argument domains + `derive`), seed facts, rules, and the
+    // project-level `enums:` (kept under its OWN `projectEnums` key so it
+    // never clobbers the plugin/core `enums` map).
+    let dir = temp_dir("context-rel-vocab");
+    let f = dir.join("scene.lute");
+    std::fs::write(
+        &f,
+        "---\n\
+         character: x\n\
+         season: 1\n\
+         episode: 1\n\
+         enums:\n\
+         \x20 emotion: [neutral, surprised, delighted, worried]\n\
+         entities:\n\
+         \x20 npc: { members: [ana, bo] }\n\
+         relations:\n\
+         \x20 friend: { args: [npc, npc] }\n\
+         \x20 allied: { args: [npc, npc], derive: true }\n\
+         facts:\n\
+         \x20 - \"friend(ana, bo)\"\n\
+         rules:\n\
+         \x20 - \"allied(A, B) :- friend(A, B)\"\n\
+         ---\n\
+         ## Shot 1.\n\
+         Hello there.\n",
+    )
+    .unwrap();
+
+    let out = Command::new(BIN)
+        .args(["context", f.to_str().unwrap(), "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+
+    // Entities: the declared `npc` kind, closed with its two members.
+    let entities = v["entities"].as_array().expect("entities array");
+    assert!(!entities.is_empty(), "entities is non-empty: {v}");
+    let npc = entities
+        .iter()
+        .find(|e| e["name"] == "npc")
+        .unwrap_or_else(|| panic!("npc entity kind present: {v}"));
+    assert_eq!(npc["shape"], "members");
+    let npc_members: Vec<&str> = npc["members"]
+        .as_array()
+        .expect("npc members array")
+        .iter()
+        .filter_map(|x| x.as_str())
+        .collect();
+    assert_eq!(npc_members, vec!["ana", "bo"], "npc member set: {v}");
+
+    // Relations: `friend` (base) + `allied` (derive: true), both arity 2 over
+    // the `npc` domain twice.
+    let relations = v["relations"].as_array().expect("relations array");
+    assert!(!relations.is_empty(), "relations is non-empty: {v}");
+    let friend = relations
+        .iter()
+        .find(|r| r["name"] == "friend")
+        .unwrap_or_else(|| panic!("friend relation present: {v}"));
+    assert_eq!(friend["arity"], 2, "friend arity: {v}");
+    assert_eq!(
+        friend["args"],
+        serde_json::json!(["npc", "npc"]),
+        "friend argument domains: {v}"
+    );
+    assert_eq!(friend["derive"], false, "friend is not derive: {v}");
+    let allied = relations
+        .iter()
+        .find(|r| r["name"] == "allied")
+        .unwrap_or_else(|| panic!("allied relation present: {v}"));
+    assert_eq!(allied["arity"], 2, "allied arity: {v}");
+    assert_eq!(allied["derive"], true, "allied IS derive: {v}");
+
+    // Seed facts + rules: raw source text, non-empty.
+    let facts: Vec<&str> = v["facts"]
+        .as_array()
+        .expect("facts array")
+        .iter()
+        .filter_map(|x| x.as_str())
+        .collect();
+    assert!(
+        facts.contains(&"friend(ana, bo)"),
+        "seed fact is surfaced verbatim: {v}"
+    );
+    let rules: Vec<&str> = v["rules"]
+        .as_array()
+        .expect("rules array")
+        .iter()
+        .filter_map(|x| x.as_str())
+        .collect();
+    assert!(
+        rules.contains(&"allied(A, B) :- friend(A, B)"),
+        "rule is surfaced verbatim: {v}"
+    );
+
+    // Project-level `enums:` land under `projectEnums`, distinct from the
+    // plugin/core `enums` key (which still exists and is untouched).
+    assert!(v["enums"].is_object(), "capability enums key still present: {v}");
+    let project_emotion = v["projectEnums"]["emotion"]
+        .as_array()
+        .unwrap_or_else(|| panic!("projectEnums.emotion array: {v}"))
+        .iter()
+        .filter_map(|x| x.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        project_emotion,
+        vec!["neutral", "surprised", "delighted", "worried"],
+        "project enum members: {v}"
+    );
+}
+
+#[test]
+fn context_human_output_shows_enum_members_and_relational_vocabulary() {
+    // spec §5: the HUMAN (non-`--json`) output MUST list enum MEMBERS (not
+    // just names) and the relational vocabulary (entity kinds, relations with
+    // arity, seed facts, rules) — an author should not need `--json` for
+    // either.
+    let dir = temp_dir("context-rel-vocab-human");
+    let f = dir.join("scene.lute");
+    std::fs::write(
+        &f,
+        "---\n\
+         character: x\n\
+         season: 1\n\
+         episode: 1\n\
+         enums:\n\
+         \x20 emotion: [neutral, surprised, delighted, worried]\n\
+         entities:\n\
+         \x20 npc: { members: [ana, bo] }\n\
+         relations:\n\
+         \x20 friend: { args: [npc, npc] }\n\
+         \x20 allied: { args: [npc, npc], derive: true }\n\
+         facts:\n\
+         \x20 - \"friend(ana, bo)\"\n\
+         rules:\n\
+         \x20 - \"allied(A, B) :- friend(A, B)\"\n\
+         ---\n\
+         ## Shot 1.\n\
+         Hello there.\n",
+    )
+    .unwrap();
+
+    let out = Command::new(BIN)
+        .args(["context", f.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+
+    // Enum MEMBERS, not just the enum name, appear in the human output.
+    assert!(
+        text.contains("neutral") && text.contains("surprised") && text.contains("delighted"),
+        "enum members appear in human output: {text}"
+    );
+
+    // Relational vocabulary sections: entity kinds, relations w/ arity, seed
+    // facts, rules.
+    assert!(
+        text.contains("npc") && text.contains("ana") && text.contains("bo"),
+        "entity kind + members appear: {text}"
+    );
+    assert!(
+        text.contains("friend/2") || text.contains("friend("),
+        "relation with arity appears: {text}"
+    );
+    assert!(
+        text.contains("allied") && text.contains("derive"),
+        "derive:true relation is flagged: {text}"
+    );
+    assert!(
+        text.contains("friend(ana, bo)"),
+        "seed fact appears verbatim: {text}"
+    );
+    assert!(
+        text.contains("allied(A, B) :- friend(A, B)"),
+        "rule appears verbatim: {text}"
+    );
+}
+
 // --- `lute fix`: the pre-0.2.2 migration codemod (Task C3/D5). Rewrites the
 // file in place — `:line[speaker]{…}: text` → `@speaker{…}: text`, any other
 // content line's leading `:` sigil → `@` (phase 1, parser migrate fix-its),
