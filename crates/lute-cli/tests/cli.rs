@@ -691,6 +691,174 @@ fn context_human_output_shows_enum_members_and_relational_vocabulary() {
     );
 }
 
+#[test]
+fn context_json_lists_referenced_reserved_quest_paths() {
+    // dsl 0.5.1 §2: `lute context --json` MUST list the reserved
+    // `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` paths the
+    // document actually REFERENCES (via a CEL slot), alongside the ordinary
+    // `stateSchema`, with their domain — like other stateSchema entries.
+    let dir = temp_dir("context-reserved-quest-refs");
+    let f = dir.join("scene.lute");
+    std::fs::write(
+        &f,
+        "---\n\
+         character: x\n\
+         season: 1\n\
+         episode: 1\n\
+         ---\n\
+         ## Shot 1.\n\
+         <match on=\"quest.foo.state\">\n\
+         <when is=\"active\" test=\"quest.foo.objectives.bar.done\">\n\
+         @x: a\n\
+         </when>\n\
+         <otherwise>\n\
+         @x: b\n\
+         </otherwise>\n\
+         </match>\n",
+    )
+    .unwrap();
+
+    let out = Command::new(BIN)
+        .args(["context", f.to_str().unwrap(), "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let reserved = v["reservedQuestPaths"]
+        .as_array()
+        .expect("reservedQuestPaths array");
+    assert_eq!(reserved.len(), 2, "{v}");
+
+    let state = reserved
+        .iter()
+        .find(|p| p["path"] == "quest.foo.state")
+        .unwrap_or_else(|| panic!("quest.foo.state entry present: {v}"));
+    assert_eq!(state["type"], "enum", "{state}");
+    let state_domain: Vec<&str> = state["domain"]
+        .as_array()
+        .expect("state domain array")
+        .iter()
+        .filter_map(|x| x.as_str())
+        .collect();
+    assert_eq!(
+        state_domain,
+        vec!["active", "complete", "failed", "unset"],
+        "quest.<id>.state domain: {v}"
+    );
+
+    let done = reserved
+        .iter()
+        .find(|p| p["path"] == "quest.foo.objectives.bar.done")
+        .unwrap_or_else(|| panic!("quest.foo.objectives.bar.done entry present: {v}"));
+    assert_eq!(done["type"], "bool", "{done}");
+}
+
+#[test]
+fn context_json_omits_unreferenced_reserved_quest_paths() {
+    // A document that never reads a reserved quest path lists none — the
+    // reserved namespace is unbounded, so absence, not exhaustive listing.
+    let out = Command::new(BIN)
+        .args(["context", "../../docs/examples/bianca-s01ep02.lute", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let reserved = v["reservedQuestPaths"]
+        .as_array()
+        .expect("reservedQuestPaths array");
+    assert!(reserved.is_empty(), "{v}");
+}
+
+#[test]
+fn context_human_shows_referenced_reserved_quest_paths() {
+    let dir = temp_dir("context-reserved-quest-refs-human");
+    let f = dir.join("scene.lute");
+    std::fs::write(
+        &f,
+        "---\n\
+         character: x\n\
+         season: 1\n\
+         episode: 1\n\
+         ---\n\
+         ## Shot 1.\n\
+         <match on=\"quest.foo.state\">\n\
+         <when is=\"active\" test=\"quest.foo.objectives.bar.done\">\n\
+         @x: a\n\
+         </when>\n\
+         <otherwise>\n\
+         @x: b\n\
+         </otherwise>\n\
+         </match>\n",
+    )
+    .unwrap();
+
+    let out = Command::new(BIN)
+        .args(["context", f.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("quest.foo.state") && text.contains("quest.foo.objectives.bar.done"),
+        "human output shows the referenced reserved quest paths: {text}"
+    );
+}
+
+#[test]
+fn context_json_lists_delivery_flags() {
+    // dsl 0.5.1 §3: the fixed `{mono}`/`{os}`/`{vo}` delivery flags are
+    // surfaced in the authoring surface, human + `--json`.
+    let out = Command::new(BIN)
+        .args(["context", "../../docs/examples/bianca-s01ep02.lute", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let flags = v["deliveryFlags"].as_array().expect("deliveryFlags array");
+    let names: Vec<&str> = flags.iter().filter_map(|f| f["flag"].as_str()).collect();
+    assert_eq!(names, vec!["mono", "os", "vo"], "{v}");
+    for f in flags {
+        assert!(
+            f["meaning"].as_str().is_some_and(|m| !m.is_empty()),
+            "delivery flag carries a non-empty meaning: {f}"
+        );
+    }
+}
+
+#[test]
+fn context_human_lists_delivery_flags() {
+    let out = Command::new(BIN)
+        .args(["context", "../../docs/examples/bianca-s01ep02.lute"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("{mono}") && text.contains("{os}") && text.contains("{vo}"),
+        "human output lists all three delivery flags: {text}"
+    );
+}
+
 // --- `lute fix`: the pre-0.2.2 migration codemod (Task C3/D5). Rewrites the
 // file in place — `:line[speaker]{…}: text` → `@speaker{…}: text`, any other
 // content line's leading `:` sigil → `@` (phase 1, parser migrate fix-its),

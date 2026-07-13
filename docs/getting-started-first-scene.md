@@ -125,7 +125,11 @@ Now add an inner-voice line for Mira — her private thought, not spoken aloud:
 
 `{mono}` is a **delivery flag**: a bare word in the braces (no `=value`) that changes how the
 line is delivered. `{mono}` means "this is that character's inner monologue" — it renders as
-thought, not speech, and works for any character, not just the player.
+thought, not speech, and works for any character, not just the player. Two other delivery flags
+exist alongside it: `{os}` marks a line as **off-screen** (the speaker is heard but not currently
+staged/visible), and `{vo}` marks it as **voiceover** (narration-style delivery layered over the
+scene). All three are mutually exclusive — at most one per line — and none is allowed on
+`@narrator`. `lute context` (Part 4) always lists the full set with its meanings.
 
 Check the file again:
 
@@ -323,7 +327,8 @@ actual walk, with its own state and fact resolution — is verified at integrati
 
 **Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
 project accepts — the staging directives, their attributes, the enum values (like `emotion`),
-and the declared state — resolved for the specific file you give it:
+the declared state, and the delivery-flag vocabulary — resolved for the specific file you give
+it:
 
 ```
 $ ./target/debug/lute context my-scene.lute
@@ -347,7 +352,18 @@ enums (6):
 stateSchema (2):
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
+deliveryFlags (3):
+  {mono}: interior monologue / thought (not spoken aloud in-scene)
+  {os}: off-screen: the speaker is heard but not currently staged/visible
+  {vo}: voiceover: narration-style delivery layered over the scene
 ```
+
+`deliveryFlags` is always present — a fixed, project-independent list — so it's the one place you
+can always confirm what `{mono}`/`{os}`/`{vo}` mean without hunting through this tutorial. If
+the scene reads a quest's reserved `quest.<id>.state` or `quest.<id>.objectives.<oid>.done`
+path, `context` also lists exactly those referenced paths under a `reservedQuestPaths` section
+(omitted here since this scene reads no quest state — see `docs/proposals/scenario-dsl/0.2.0.md`
+for quests).
 
 Run it any time you need to double check a directive name, an attribute, or a legal `emotion`
 value instead of guessing.

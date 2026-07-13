@@ -27,7 +27,7 @@ use crate::eval::{expr_path, is_reserved_quest_path};
 /// parse (gate-proven unreachable post-`check()`) contributes nothing; an
 /// empty/whitespace-only `raw` (a structural gap) is skipped without
 /// attempting to parse it.
-pub(crate) fn collect_referenced_reserved_quest_paths(doc: &Document) -> BTreeSet<String> {
+pub fn collect_referenced_reserved_quest_paths(doc: &Document) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
         let raw = slot.raw.trim();

@@ -744,11 +744,18 @@ fn run_context(
     // state table byte-for-byte (choice ids ∪ `unset`) — no divergence. The set is
     // expansion-invariant, so the raw parsed `doc` yields the same paths.
     let branch_paths = lute_compile::collect_branch_paths(&doc);
+    // dsl 0.5.1 §2: the reserved `quest.<id>.state` / `quest.<id>.objectives.<oid>.done`
+    // paths this document actually REFERENCES (any CEL slot) — reuses `lute-trace`'s
+    // own walk ([`lute_trace::collect_referenced_reserved_quest_paths`], §1.1's
+    // "does the document reference this exact path" test) so `context` never
+    // diverges from what `trace --state` admits on a reserved path.
+    let reserved_quest_paths = lute_trace::collect_referenced_reserved_quest_paths(&doc);
     let surface = authoring_surface(
         &input,
         &folded.env.state,
         &folded.env.rel_vocab,
         &branch_paths,
+        &reserved_quest_paths,
     );
 
     if json {
@@ -778,12 +785,19 @@ fn run_context(
 /// `rel_vocab` is the ALREADY-MERGED relational vocabulary `fold_env` computes
 /// (dsl 0.3.0 §3/§4, spec §5) — entity kinds, relations (+arity/domains/
 /// `derive`), seed facts, rules, and project-level `enums:` — surfaced here
-/// verbatim, no new resolution.
+/// verbatim, no new resolution. `reserved_quest_paths` (dsl 0.5.1 §2) is the
+/// set of reserved `quest.<id>.state`/`quest.<id>.objectives.<oid>.done`
+/// paths this document actually REFERENCES (already computed by the
+/// caller via `lute_trace::collect_referenced_reserved_quest_paths`) —
+/// surfaced under its OWN `reservedQuestPaths` key, clearly separate from
+/// the ordinary (author-declared/folded) `stateSchema`: these paths are
+/// never declared by the document, only implicitly readable.
 fn authoring_surface(
     input: &CheckInput,
     state: &lute_check::StateSchema,
     rel_vocab: &RelVocab,
     branch_paths: &BTreeSet<String>,
+    reserved_quest_paths: &BTreeSet<String>,
 ) -> serde_json::Value {
     use serde_json::{Map, Value};
     let snap = &input.snapshot;
@@ -934,6 +948,50 @@ fn authoring_surface(
         .map(|r| Value::String(r.raw.clone()))
         .collect();
 
+    // dsl 0.5.1 §2: the reserved quest paths this document actually
+    // REFERENCES (`reserved_quest_paths`, already a `BTreeSet` ⇒ path-sorted),
+    // each carrying its fixed reserved-namespace domain (§1) the same way an
+    // ordinary `stateSchema` entry carries its `domain` — kept under its OWN
+    // key, never merged into `stateSchema`, since these paths are implicit
+    // (the document never declares them).
+    let reserved_quest_paths_json: Vec<Value> = reserved_quest_paths
+        .iter()
+        .map(|path| {
+            let (ty, domain) = reserved_quest_path_type(path);
+            let mut o = Map::new();
+            o.insert("path".into(), path.clone().into());
+            o.insert("type".into(), ty.into());
+            o.insert("namespace".into(), "quest".into());
+            if let Some(dom) = domain {
+                o.insert("domain".into(), dom.into());
+            }
+            Value::Object(o)
+        })
+        .collect();
+
+    // dsl 0.5.1 §3: the fixed, always-present set of content-line delivery
+    // flags — `{mono}`/`{os}`/`{vo}` — with their normative meanings, in
+    // spec declaration order.
+    let delivery_flags: Vec<Value> = [
+        ("mono", "interior monologue / thought (not spoken aloud in-scene)"),
+        (
+            "os",
+            "off-screen: the speaker is heard but not currently staged/visible",
+        ),
+        (
+            "vo",
+            "voiceover: narration-style delivery layered over the scene",
+        ),
+    ]
+    .into_iter()
+    .map(|(flag, meaning)| {
+        let mut o = Map::new();
+        o.insert("flag".into(), flag.into());
+        o.insert("meaning".into(), meaning.into());
+        Value::Object(o)
+    })
+    .collect();
+
     let mut root = Map::new();
     root.insert("capabilityVersion".into(), snap.version.clone().into());
     root.insert("directives".into(), directives.into());
@@ -966,7 +1024,36 @@ fn authoring_surface(
         "projectEnums".into(),
         serde_json::to_value(&rel_vocab.enums).unwrap_or_else(|_| serde_json::json!({})),
     );
+    // dsl 0.5.1 §2/§3: the referenced reserved quest paths and the fixed
+    // delivery-flag vocabulary — new, always-present authoring-surface keys.
+    root.insert("reservedQuestPaths".into(), reserved_quest_paths_json.into());
+    root.insert("deliveryFlags".into(), delivery_flags.into());
     Value::Object(root)
+}
+
+/// The domain of a reserved quest path (dsl 0.2.0 §5.2 / 0.5.1 §1): a
+/// `quest.<id>.state` path is the fixed lifecycle enum
+/// `active`/`complete`/`failed`/`unset`; a `quest.<id>.objectives.<oid>.done`
+/// path is a plain `bool` (no domain, mirroring `state_type_str`'s scalar
+/// arms). The shape mirrors `lute-trace`'s own reserved-path shape test
+/// (`is_reserved_quest_path`, dsl 0.2.0 §5.2) — this function is only ever
+/// called on a path already known (by construction of
+/// `reserved_quest_paths`) to match one of the two reserved shapes, so no
+/// third arm is needed.
+fn reserved_quest_path_type(path: &str) -> (&'static str, Option<Vec<String>>) {
+    if path.ends_with(".state") {
+        (
+            "enum",
+            Some(vec![
+                "active".to_string(),
+                "complete".to_string(),
+                "failed".to_string(),
+                "unset".to_string(),
+            ]),
+        )
+    } else {
+        ("bool", None)
+    }
 }
 
 /// Render a state-path `Type` for parity with `lute_compile`'s `type_label`
@@ -1059,10 +1146,11 @@ fn literal_json(l: &Literal) -> serde_json::Value {
 
 /// A compact human outline of the authoring surface (non-`--json` mode): the
 /// capabilityVersion, directive names + attr keys, enum names WITH their
-/// members, state paths (with enum domains), the relational vocabulary
-/// (entity kinds, relations w/ arity+domains+`derive`, seed facts, rules,
-/// project-level enums), and component names. `--json` is the machine
-/// surface; this is a short at-a-glance view.
+/// members, state paths (with enum domains), the referenced reserved quest
+/// paths (dsl 0.5.1 §2), the relational vocabulary (entity kinds, relations
+/// w/ arity+domains+`derive`, seed facts, rules, project-level enums), the
+/// fixed delivery-flag vocabulary (dsl 0.5.1 §3), and component names.
+/// `--json` is the machine surface; this is a short at-a-glance view.
 fn context_outline(surface: &serde_json::Value) -> String {
     let mut out = String::new();
     let _ = writeln!(
@@ -1110,6 +1198,38 @@ fn context_outline(surface: &serde_json::Value) -> String {
                 })
                 .unwrap_or_default();
             let _ = writeln!(out, "  {path}: {ty}{dom}");
+        }
+    }
+    // dsl 0.5.1 §2: the reserved quest paths this document REFERENCES —
+    // kept as its own section, clearly separate from the ordinary
+    // (author-declared/folded) `stateSchema` above; omitted entirely when
+    // the document references none (the reserved namespace is unbounded).
+    if let Some(reserved) = surface["reservedQuestPaths"].as_array() {
+        if !reserved.is_empty() {
+            let _ = writeln!(out, "reservedQuestPaths ({}):", reserved.len());
+            for s in reserved {
+                let path = s["path"].as_str().unwrap_or("");
+                let ty = s["type"].as_str().unwrap_or("");
+                let dom = s["domain"]
+                    .as_array()
+                    .map(|d| {
+                        let members: Vec<&str> = d.iter().filter_map(|x| x.as_str()).collect();
+                        format!(" [{}]", members.join(", "))
+                    })
+                    .unwrap_or_default();
+                let _ = writeln!(out, "  {path}: {ty}{dom}");
+            }
+        }
+    }
+    // dsl 0.5.1 §3: the fixed `{mono}`/`{os}`/`{vo}` delivery-flag
+    // vocabulary — always present (a document either uses a flag or
+    // doesn't; the set itself is fixed and never varies per document).
+    if let Some(flags) = surface["deliveryFlags"].as_array() {
+        let _ = writeln!(out, "deliveryFlags ({}):", flags.len());
+        for f in flags {
+            let flag = f["flag"].as_str().unwrap_or("");
+            let meaning = f["meaning"].as_str().unwrap_or("");
+            let _ = writeln!(out, "  {{{flag}}}: {meaning}");
         }
     }
     // Relational vocabulary (dsl 0.3.0 §3/§4, spec §5): entity kinds,
