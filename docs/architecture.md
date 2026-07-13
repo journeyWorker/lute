@@ -900,6 +900,7 @@ under unknown eligibility, so halting honestly is the correct preview behavior.
 | Code | Status | Note |
 |---|---|---|
 | `E-TRACE-MOCK-UNDECLARED`, `E-TRACE-MOCK-TYPE`, `E-TRACE-MOCK-FACT`, `E-TRACE-CHOICE` | New | Trace-only mock validation (§4.3) and forced-choice refusal (§4.4); render exactly as check diagnostics in both output forms. |
+| `E-TRACE-EVENT`, `E-TRACE-ACCEPT` | New | Two-path quest activation (§4.4): `E-TRACE-EVENT` rejects a lifecycle name (`questActive`/`questComplete`/`questFailed`) in `--event`/`events:` — those are engine-derived, never user-fired; `E-TRACE-ACCEPT` rejects `--accept`/`accept:`/`accepts:` naming an unknown quest id or a `start`-having quest (declarative, needs no accept). |
 | `E-ARM-DEAD`, `E-WHEN-LITERAL-DOMAIN`, `W-OTHERWISE-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN` | New | §5 reachability — see the table above. |
 | `W-CHOICE-INTO-NO-PERSIST` | New | §7.3 bare-`into=` trap. |
 | `E-COMPONENT-STATE` | New | §6 component purity — see above. |

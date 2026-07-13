@@ -177,12 +177,21 @@ enum Command {
         /// force a whole ordered visit sequence via one flag's comma list).
         #[arg(long = "choose", value_name = "ID=CHOICEID[,CHOICEID…]", value_parser = parse_choose_flag)]
         choose: Vec<(String, Vec<String>)>,
-        /// Fire a quest capability/lifecycle event, in CLI order (repeatable).
+        /// Fire a quest capability/world event, in CLI order (repeatable).
+        /// A built-in lifecycle event name (`questActive`/`questComplete`/
+        /// `questFailed`) is `E-TRACE-EVENT` — those are engine-derived
+        /// transitions, never user-fired (dsl 0.4.0 §4.3/§4.4).
         #[arg(long = "event", value_name = "NAME")]
         event: Vec<String>,
-        /// A YAML document carrying the same four surfaces (`state:`/
-        /// `facts:`/`choose:`/`events:`, dsl 0.4.0 §4.3); CLI flags compose
-        /// with it, the flag winning on a conflict.
+        /// Simulate accepting a `start`-less (accept-driven) quest, by id
+        /// (repeatable). An unknown quest id, or one that carries a
+        /// `start` predicate (declarative — needs no accept), is
+        /// `E-TRACE-ACCEPT` (dsl 0.4.0 §4.3/§4.4).
+        #[arg(long = "accept", value_name = "QUESTID")]
+        accept: Vec<String>,
+        /// A YAML document carrying the same five surfaces (`state:`/
+        /// `facts:`/`choose:`/`events:`/`accepts:`, dsl 0.4.0 §4.3); CLI
+        /// flags compose with it, the flag winning on a conflict.
         #[arg(long, value_name = "FILE")]
         mock: Option<PathBuf>,
         /// Emit the machine-readable `TraceReport` as JSON instead of the
@@ -282,6 +291,7 @@ fn main() -> ExitCode {
             fact,
             choose,
             event,
+            accept,
             mock,
             json,
             providers,
@@ -292,6 +302,7 @@ fn main() -> ExitCode {
             fact,
             choose,
             event,
+            accept,
             mock.as_deref(),
             json,
             providers.as_deref(),
@@ -1095,9 +1106,9 @@ fn write_stdout(s: &str) -> std::io::Result<()> {
 
 /// Run `trace` over one file (dsl 0.4.0 §4.3/§4.5): resolve the document
 /// IDENTICALLY to `check`/`compile` ([`build_input`]), load + merge the
-/// `--mock` file with the CLI's own `--state`/`--fact`/`--choose`/`--event`
-/// flags into one [`MockSet`] ([`merge`] — "CLI flags compose with the
-/// file; on a conflict the flag wins"), then hand off to
+/// `--mock` file with the CLI's own `--state`/`--fact`/`--choose`/`--event`/
+/// `--accept` flags into one [`MockSet`] ([`merge`] — "CLI flags compose with
+/// the file; on a conflict the flag wins"), then hand off to
 /// [`lute_trace::trace_document`] — the entire §4.3 mock-validation gate,
 /// the §4.4 walk, and the §4.5 report are ITS concern; this function owns
 /// only flag assembly, file I/O, and the exit-code/render mapping.
@@ -1117,6 +1128,7 @@ fn run_trace(
     fact: Vec<String>,
     choose: Vec<(String, Vec<String>)>,
     event: Vec<String>,
+    accept: Vec<String>,
     mock: Option<&Path>,
     json: bool,
     providers: Option<&Path>,
@@ -1167,6 +1179,7 @@ fn run_trace(
         facts: fact,
         choose: choose.into_iter().collect(),
         events: event,
+        accepts: accept,
     };
 
     let mocks = merge(file_mocks, flag_mocks);

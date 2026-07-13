@@ -965,34 +965,63 @@ fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow
     Flow::Continue
 }
 
-/// One `<quest>`'s full lifecycle (§4.4). `start` absent activates
-/// trivially (default `true`, [`eval_choice_guard`]); deciding `false`
-/// never activates — reported via a `"never"` [`Decision`], nothing further
-/// runs; deciding `unknown` leaves the quest (and, by construction, every
-/// objective — nothing below this point ever runs) unresolved. Once
-/// active, `questActive` fires as the quest's OWN first event (§4.4: "the
-/// quest activates (and `questActive` handlers fire)"), settled once, then
+/// One `<quest>`'s full lifecycle (§4.4). **Two distinct paths reach the
+/// same `unset -> active` transition:** a `start`-having quest activates
+/// **declaratively** — evaluate `start`; `true` transitions it, deciding
+/// `false` never activates (reported via a `"never"` [`Decision`]),
+/// `unknown` leaves the quest (and every objective — nothing below this
+/// point ever runs) unresolved. A `start`-less quest is **accept-driven**:
+/// it stays inactive — reported `"awaiting accept"`, the walk CONTINUES
+/// (never unresolved/exit-3) — until `quest.id` appears in
+/// [`MockSet::accepts`] (`--accept`, pre-walk validated E-TRACE-ACCEPT-clean
+/// by [`crate::mock::validate`]: an unknown id or a `start`-having quest
+/// never reaches here). Either path activates AT MOST once, so
+/// `questActive` fires from this ONE call site — never twice (the
+/// historical double-fire: `--event questActive` used to re-dispatch it a
+/// second time through the loop below; lifecycle names are now rejected
+/// pre-walk, E-TRACE-EVENT, so `events` can never carry one). Once active,
+/// `questActive` fires as the quest's OWN first event, settled once, then
 /// every `--event` in CLI order — each re-dispatches and re-settles; a
 /// transition to `Complete`/`Failed` is terminal, stopping further event
 /// processing for THIS quest (the `Active`-only loop guard below).
 fn walk_quest(quest: &Quest, events: &[String], w: &mut Walk<'_>) -> Flow {
-    let mut atoms = Vec::new();
-    let start_v = eval_choice_guard(quest.start.as_ref(), &w.env(), &mut atoms);
-    let start_guard = render_choice_guard(quest.start.as_ref());
-    match start_v {
-        Value::Bool(false) => {
-            w.push_decision("quest", &quest.id, quest.span, "never".to_string(), start_guard, false, false, Vec::new());
-            return Flow::Continue;
+    match quest.start.as_ref() {
+        Some(start_slot) => {
+            // Declarative path: `start` decides the transition.
+            let mut atoms = Vec::new();
+            let start_v = eval_choice_guard(Some(start_slot), &w.env(), &mut atoms);
+            let start_guard = render_choice_guard(Some(start_slot));
+            match start_v {
+                Value::Bool(false) => {
+                    w.push_decision("quest", &quest.id, quest.span, "never".to_string(), start_guard, false, false, Vec::new());
+                    return Flow::Continue;
+                }
+                Value::Unknown | Value::Num(_) | Value::Str(_) => {
+                    w.record_unresolved("quest", &quest.id, quest.span, start_guard.unwrap_or_default(), atoms);
+                    return Flow::Continue;
+                }
+                Value::Bool(true) => {}
+            }
+            w.state.write(&quest_state_path(&quest.id), Value::Str("active".to_string()));
+            w.push_decision("quest", &quest.id, quest.span, "active".to_string(), start_guard, false, false, Vec::new());
         }
-        Value::Unknown | Value::Num(_) | Value::Str(_) => {
-            w.record_unresolved("quest", &quest.id, quest.span, start_guard.unwrap_or_default(), atoms);
-            return Flow::Continue;
+        None => {
+            // Accept-driven path: no `start` predicate — stays inactive
+            // until `--accept <questId>` names this quest (§4.4). NOT an
+            // unknown/halt condition: the walk simply continues past this
+            // quest, exactly like `start` deciding false, except the
+            // report says "awaiting accept" rather than "never" (the quest
+            // MAY still activate later via a different trace invocation
+            // with `--accept`, unlike a `start=false` quest).
+            if !w.mocks.accepts.iter().any(|id| id == &quest.id) {
+                w.push_decision("quest", &quest.id, quest.span, "awaiting accept".to_string(), None, false, false, Vec::new());
+                return Flow::Continue;
+            }
+            w.state.write(&quest_state_path(&quest.id), Value::Str("active".to_string()));
+            w.push_decision("quest", &quest.id, quest.span, "active".to_string(), None, true, false, Vec::new());
         }
-        Value::Bool(true) => {}
     }
 
-    w.state.write(&quest_state_path(&quest.id), Value::Str("active".to_string()));
-    w.push_decision("quest", &quest.id, quest.span, "active".to_string(), start_guard, false, false, Vec::new());
     let mut state = QuestState::Active;
 
     let flow = dispatch_event(quest, "questActive", w);
