@@ -40,7 +40,7 @@
 
 pub mod eval;
 pub mod mock;
-mod quest_refs;
+pub mod quest_refs;
 pub mod report;
 pub mod value;
 pub mod walk;
@@ -50,6 +50,7 @@ pub use mock::{
     merge, parse_mock_yaml, validate, MockSet, E_TRACE_ACCEPT, E_TRACE_CHOICE, E_TRACE_EVENT,
     E_TRACE_MOCK_FACT, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED,
 };
+pub use quest_refs::collect_referenced_reserved_quest_paths;
 pub use report::{
     ComponentBoundary, Coverage, CoverageCount, Decision, Seeds, Step, TraceExit, TraceReport,
     UnresolvedEntry,
