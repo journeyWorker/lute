@@ -1630,6 +1630,47 @@ mod tests {
         );
     }
 
+    // RC2: a quoted attribute value containing an embedded PHYSICAL newline
+    // must not let `scan_attrs` read across the line looking for the closing
+    // quote + `>` on a LATER line — that silently satisfies the "found `>`"
+    // check and desyncs the cursor (the later line's bytes get consumed
+    // twice: once mis-scanned into the attribute, once re-parsed as the next
+    // node).
+    #[test]
+    fn newline_inside_quoted_attr_value_is_tag_not_one_line() {
+        let (doc, diags) = parse(
+            "## Shot 1.\n\
+             <on event=\"a\n\
+             b\" when=\"run.x\">\n\
+             </on>\n",
+        );
+        assert!(
+            diags.iter().any(|d| d.code == "E-TAG-NOT-ONE-LINE"),
+            "embedded newline inside a quoted value must still be E-TAG-NOT-ONE-LINE: {diags:?}"
+        );
+        // No desync: the mis-scanned `>` on the LATER physical line must not
+        // be accepted as this tag's terminator, so the real `</on>` is still
+        // seen as the block's (only) close — never a spurious unclosed-tag.
+        assert!(
+            !diags.iter().any(|d| d.code == "E-UNCLOSED-TAG"),
+            "the real </on> close must still be found (no cursor desync): {diags:?}"
+        );
+        // No bytes reparsed: the shot body holds exactly the one `On` node —
+        // a desync would either drop it or fabricate extra nodes from the
+        // wrongly-consumed/re-consumed line.
+        assert_eq!(
+            doc.shots[0].body.len(),
+            1,
+            "exactly one On node, no duplicate/dropped nodes from a desync: {:?}",
+            doc.shots[0].body
+        );
+        assert!(
+            matches!(doc.shots[0].body[0], Node::On(_)),
+            "expected an On node: {:?}",
+            doc.shots[0].body
+        );
+    }
+
     #[test]
     fn unclassified_after_content_line_gets_continuation_hint() {
         let (_, diags) = parse("## Shot 1.\n@mira: hello\ngarbage next\n");

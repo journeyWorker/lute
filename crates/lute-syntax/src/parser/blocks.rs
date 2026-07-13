@@ -44,14 +44,19 @@ impl Parser<'_> {
         // `\n` (it never reads past a physical line, so a wrapped attribute
         // never gets misparsed as this line's content), so the terminator was
         // reached on THIS line iff the last byte it consumed is the
-        // terminator itself — true for both a plain `>` close and a
-        // self-closing `/>` (scan_attrs skips the lone `/` as an unparseable
-        // token, then finds `>` right after). When that fails, the opener's
-        // `>`/`/>` was not reached on its own physical line — name it instead
-        // of leaving a misleading `E-UNCLOSED-TAG`/`E-UNCLASSIFIED` to fire
-        // from wherever the parser resyncs. Do NOT attempt to consume the
-        // wrap — the one-physical-line model (§2.3) is retained, not relaxed.
-        if self.body.as_bytes().get(after.wrapping_sub(1)) != Some(&b'>') {
+        // terminator itself AND that offset did not cross past this line's end
+        // (RC2: the `after <= e` guard) — true for both a plain `>` close and
+        // a self-closing `/>` (scan_attrs skips the lone `/` as an unparseable
+        // token, then finds `>` right after). The `after <= e` half matters
+        // even with the scanners stopping at `\n` (belt-and-suspenders): it
+        // guards against a terminator byte that happens to sit right past a
+        // multi-byte line boundary being misread as "on this line". When
+        // either check fails, the opener's `>`/`/>` was not reached on its
+        // own physical line — name it instead of leaving a misleading
+        // `E-UNCLOSED-TAG`/`E-UNCLASSIFIED` to fire from wherever the parser
+        // resyncs. Do NOT attempt to consume the wrap — the one-physical-line
+        // model (§2.3) is retained, not relaxed.
+        if after > e || self.body.as_bytes().get(after.wrapping_sub(1)) != Some(&b'>') {
             self.emit_o(
                 E_TAG_NOT_ONE_LINE,
                 "a tag and all its attributes must be on one physical line; wrapping is not \

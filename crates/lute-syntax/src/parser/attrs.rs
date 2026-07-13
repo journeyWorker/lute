@@ -74,12 +74,20 @@ impl Parser<'_> {
                             }
                         } else if c == b'"' {
                             break;
+                        } else if c == b'\n' {
+                            // RC2 (dsl §2.3): a physical newline INSIDE a quoted
+                            // value is never part of the value — the one-line
+                            // model forbids a tag/attribute list from wrapping.
+                            // Stop here (unterminated on this line) rather than
+                            // scanning into the next physical line looking for
+                            // the closing quote.
+                            break;
                         }
                         j += 1;
                     }
                     let inner_end = j;
-                    if j < n {
-                        j += 1; // past closing quote
+                    if j < n && b[j] == b'"' {
+                        j += 1; // past closing quote (only when actually found)
                     }
                     let value = self.body[inner_start..inner_end].to_string();
                     let vspan = self.span(inner_start, inner_end);
@@ -103,6 +111,12 @@ impl Parser<'_> {
                         let mut e2 = false;
                         while j < n && depth > 0 {
                             let c = b[j];
+                            if c == b'\n' {
+                                // RC2 (dsl §2.3): stop at the physical line
+                                // end — an `@ref(...)` arg list (quoted or
+                                // not) never wraps to a later line.
+                                break;
+                            }
                             match q {
                                 Some(qc) => {
                                     if e2 {
