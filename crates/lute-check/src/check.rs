@@ -55,6 +55,8 @@
 //! errors (unknown directive, undeclared state, non-exhaustive match, …) still
 //! yield a resolved view. A clean document is always `Some`.
 
+use std::path::PathBuf;
+
 use lute_cel::{fill_document, parse_slot, scan_refs, CelArena, CelParseError};
 use lute_core_span::{Diagnostic, Fixit, Layer, Severity, Span, TextEdit, TextIndex};
 use lute_manifest::provider::ProviderSet;
@@ -774,18 +776,30 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // is constructed above.
     diags.extend(check_rule_guards(&env.rel_vocab, &base_ctx));
     diags.extend(input.imports.diags.clone());
-    // Component-import resolution diagnostics (dsl §13) + the per-component body
-    // validation and `::use` expansion-cycle diagnostics, both reported at the
-    // scene frontmatter span (a component file's own spans cannot be represented
-    // in this document's diagnostic surface).
-    diags.extend(input.components.diags.clone());
-    diags.extend(validate_components(
+    // Component-import resolution diagnostics (dsl §13) + the per-component
+    // body validation and `::use` expansion-cycle diagnostics, reported at
+    // the scene frontmatter span (a component file's own spans cannot be
+    // represented in this document's diagnostic surface). dsl 0.5.1 §4: a
+    // component body diagnostic (e.g. `E-COMPONENT-STATE`) whose file
+    // already has its own `E-COMPONENT-PARSE` import failure ALSO gets
+    // folded (as a copy) into that diagnostic's `related` list, with its
+    // "(N issue(s))" count updated to match — additive, never a relocation:
+    // every body diagnostic still lands in the flat top-level list exactly
+    // as before, so an existing consumer scanning it for e.g.
+    // `E-COMPONENT-STATE` keeps finding it there regardless of whether the
+    // SAME component also failed to parse.
+    let mut component_diags = input.components.diags.clone();
+    let component_body_diags = validate_components(
         &input.components,
         &input.snapshot,
         &input.providers,
         domains,
         doc.meta.span,
-    ));
+    );
+    let component_body_diags =
+        crate::component_import::merge_component_body_diags(&mut component_diags, component_body_diags);
+    diags.extend(component_diags);
+    diags.extend(component_body_diags);
     diags.extend(state_merge_diags);
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
@@ -1547,7 +1561,7 @@ fn validate_components(
     providers: &ProviderSet,
     domains: &std::collections::BTreeMap<String, Domain>,
     at: Span,
-) -> Vec<Diagnostic> {
+) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for (name, def) in &components.table {
         let env = component_env(&def.params);
@@ -1608,10 +1622,17 @@ fn validate_components(
             // `at` above), so it is dropped rather than shipped pointing at
             // the wrong document.
             d.fixits.clear();
-            out.push(d);
+            out.push((def.src.clone(), d));
         }
     }
-    detect_use_cycles(components, at, &mut out);
+    // `detect_use_cycles`' output names no single component file (a cycle
+    // spans several) — paired with an empty `PathBuf` so
+    // `merge_component_body_diags` (dsl 0.5.1 §4) can never mistake it for a
+    // real component's own `E-COMPONENT-PARSE` (whose `related[].file` is
+    // always a real canonical path).
+    let mut cycle_diags = Vec::new();
+    detect_use_cycles(components, at, &mut cycle_diags);
+    out.extend(cycle_diags.into_iter().map(|d| (PathBuf::new(), d)));
     out
 }
 
