@@ -363,6 +363,15 @@ fn fmt_fact(rel: &str, args: &[String]) -> String {
     format!("{rel}({})", args.join(", "))
 }
 
+/// Canonical `rel(a, b)` key for a fact/mock pattern (§3.1) — shared by
+/// the schema's own seed `facts:` entries and the CLI's `--fact` mocks so
+/// their declared/supplied tuples compare STRUCTURALLY, never by raw
+/// source text (whitespace, quoting).
+fn fact_pattern_key(pat: &lute_syntax::datalog::FactPattern) -> String {
+    let args: Vec<String> = pat.args.iter().map(|a| fact_term_text(&a.term)).collect();
+    fmt_fact(&pat.relation, &args)
+}
+
 fn resolve_interp(interp: &Interp, w: &Walk<'_>) -> Option<String> {
     match interp.kind {
         // No mock surface (e.g. `userName`) — always kept verbatim.
@@ -1133,24 +1142,42 @@ fn seeds_summary(mocks: &MockSet) -> Seeds {
 /// schema's own seed `facts:` block (that block is never read into the
 /// [`FactStore`] anywhere in this module). This function ONLY decides
 /// whether to render informational signage about that model: when the
-/// resolved schema DECLARES seed facts but NONE were supplied as mocks, a
-/// `start`/`done`/guard reading one of those seeded relations will decide
-/// `unknown` — which reads like a bug unless the author is told why. Names
-/// the FIRST declared fact's relation (deterministic; schema/import order,
-/// `rel_schema::build_rel_vocab`'s own "imports first, then inline" order)
-/// — informational only, never an error and never a reachability claim;
-/// never consulted by the exit-code decision below.
+/// resolved schema DECLARES seed facts and NONE of THEM (specifically —
+/// not merely "the mock list happens to be empty") were supplied as
+/// mocks, a `start`/`done`/guard reading one of those seeded relations
+/// will decide `unknown`/`false` off an empty explicit set — which reads
+/// like a bug unless the author is told why. Compares each declared seed
+/// against every supplied `--fact` STRUCTURALLY (relation + args, via
+/// [`fact_pattern_key`]) rather than by "is the mock list empty", so an
+/// unrelated `--fact` (naming a real relation the schema just never
+/// seeded) still triggers the note — only a supplied mock that matches a
+/// DECLARED SEED tuple counts as "supplied". Names the first declared
+/// seed with no matching supplied mock (deterministic; schema/import
+/// order, `rel_schema::build_rel_vocab`'s own "imports first, then
+/// inline" order) — informational only, never an error and never a
+/// reachability claim; never consulted by the exit-code decision below.
 fn seed_fact_notes(mocks: &MockSet, seed_facts: &[lute_check::meta::FactDecl]) -> Vec<String> {
-    if !mocks.facts.is_empty() {
+    if seed_facts.is_empty() {
         return Vec::new();
     }
-    let Some(first) = seed_facts.first() else {
+    let supplied: std::collections::HashSet<String> = mocks
+        .facts
+        .iter()
+        .filter_map(|raw| lute_syntax::datalog::parse_fact(raw).ok())
+        .map(|pat| fact_pattern_key(&pat))
+        .collect();
+    // "None were supplied" (§3.1) holds iff the intersection of declared
+    // seed tuples and supplied mock tuples is empty — ANY one supplied
+    // seed silences the note, even if other declared seeds remain
+    // un-supplied (that gap is exactly what `--fact`/`--state` mocks are
+    // for; this is signage about the MODEL, not a per-relation checklist).
+    if seed_facts.iter().any(|fd| supplied.contains(&fact_pattern_key(&fd.fact))) {
         return Vec::new();
-    };
+    }
     vec![format!(
         "the schema declares seed facts (e.g. `{}`) but trace does not auto-load them (§3.1, \
          the explicit-world model) — supply seeded relations explicitly via --fact",
-        first.fact.relation
+        seed_facts[0].fact.relation
     )]
 }
 

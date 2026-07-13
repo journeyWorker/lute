@@ -453,3 +453,32 @@ fn declares_seed_facts_with_no_mocks_emits_not_auto_loaded_note() {
     let never = quest_decision(&report.decisions, "never").expect("start decides false off the empty explicit set");
     assert_eq!(never.id, "rescueHalsin");
 }
+
+// ---------------------------------------------------------------------
+// (i) §3.1 regression: an UNRELATED `--fact` (a real, declared relation
+//     the schema just never seeded) must NOT silence the note — "none
+//     were supplied" means none of the DECLARED SEED tuples, not merely
+//     "the mock list happens to be non-empty". `heardLocation` is a
+//     declared `act1.schema.yaml` relation but is NOT among its seeded
+//     `facts:` (only `inParty`/`captive`/`atLocation`/`connected`×2 are).
+// ---------------------------------------------------------------------
+
+#[test]
+fn unrelated_supplied_fact_does_not_silence_the_note() {
+    let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
+    let mocks = quest_facts(&["heardLocation(player, halsin, grove)"]);
+
+    let (report, _exit) = trace_document(&input, mocks);
+
+    assert_eq!(
+        report.notes.len(),
+        1,
+        "an unrelated supplied fact must not silence the §3.1 note (zero DECLARED SEEDS were supplied): {:?}",
+        report.notes
+    );
+    let note = &report.notes[0];
+    assert!(
+        ["inParty", "captive", "atLocation", "connected"].iter().any(|r| note.contains(r)),
+        "note must name a declared-but-unsupplied seed relation, not the unrelated one: {note}"
+    );
+}
