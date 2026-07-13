@@ -475,15 +475,12 @@ fn walk_retract(r: &Retract, w: &mut Walk<'_>) {
 }
 
 /// Match: arms top-to-bottom (§4.4); a `true` arm fires, `false` skips, an
-/// `unknown` arm HALTS the trace at THIS match. `E-NONEXHAUSTIVE`/
-/// `E-UNSET-UNCOVERED` gate STATIC domain coverage (`is`-pattern union or
-/// `<otherwise>`), but a fully-covered `is` arm's `test` guard can still
-/// decide `false` at a PARTICULAR mock world with no `<otherwise>` present
-/// — every arm decides `false`, none `unknown`. §4.4 names only fire/skip/
-/// halt; this is a genuine spec gap, not one of those three. Trace never
-/// guesses here either: nothing fires, coverage records `0/total`, the
-/// walk continues (this is knowledge, not absence of it — every arm was
-/// DEFINITELY ruled out, so there is nothing to halt on).
+/// `unknown` arm HALTS the trace at THIS match. A fourth outcome (§4.4):
+/// every arm decides `false` (none `unknown`) and there is no
+/// `<otherwise>` — every arm was DEFINITELY ruled out, so there is nothing
+/// to halt on. Trace never guesses here either: nothing fires, coverage
+/// records `0/total`, the match is annotated `"no arm"` in the transcript,
+/// and the walk continues (this is knowledge, not absence of it).
 fn walk_match(m: &Match, w: &mut Walk<'_>) -> Flow {
     let subject_raw = m.subject.raw.clone();
     let total_arms = m.arms.len();
@@ -518,6 +515,7 @@ fn walk_match(m: &Match, w: &mut Walk<'_>) -> Flow {
             }
         }
     }
+    w.push_decision("match", &subject_raw, m.span, "no arm".to_string(), None, false, false, Vec::new());
     w.coverage_arms
         .entry(subject_raw)
         .or_insert(CoverageCount { visited: 0, total: total_arms });
