@@ -909,14 +909,14 @@ under unknown eligibility, so halting honestly is the correct preview behavior.
 | `E-UNDECLARED`, `E-UNDECLARED-REF`, `E-RELATION-UNKNOWN`, `E-CHOICELOG-READ`, `E-COMPONENT-UNDECLARED` | **Collapse (C1/C5)** | Same-root occurrences fold into one primary + `covered`. |
 | `E-USES-NOT-FOUND`, `E-USES-PARSE`, `E-USES-CYCLE`, `E-COMPONENT-PARSE` | **Suppression (C3)** | Now suppress dependent absence diagnostics in the affected namespace. |
 | `W-OVERLAP-ARMS` | **Suppressed on `E-ARM-DEAD`** | C4 — the dead-arm error is the root. |
-| *(version consts)* | **D13** | `LUTE_LANG_VERSION`/`LUTE_IR_VERSION` (`lute-compile/src/lib.rs`) bumped to `"0.4.0"` with the 5 insta goldens + envelope tests updated in the same commit (T22). Spec B2's "byte-identical" is read as modulo the version stamp (the 0.3.0 D15 precedent); `luteVersion` in frontmatter is a universal key only, never validated against the consts. Flagged for spec confirmation. |
+| *(version consts)* | **D13** | `LUTE_LANG_VERSION`/`LUTE_IR_VERSION` (`lute-compile/src/lib.rs`) bumped to `"0.4.0"` with the 5 insta goldens + envelope tests updated in the same commit (T22). Spec B2's "byte-identical" is read as modulo the version stamp (the 0.3.0 D15 precedent); `luteVersion` in frontmatter is a universal key only, never validated against the consts. **Designer-confirmed (0.4.0).** |
 
 **Reused unchanged, exercised in new fixtures:** `E-NONEXHAUSTIVE`/`E-UNSET-UNCOVERED` (param
 matches), `E-COMPONENT-ARG`/`-UNDECLARED`/`-CYCLE`/`-DUP`/`-PARSE`, `E-UNKNOWN-ATTR`,
 `E-HUB-NO-EXIT`/`E-BRANCH-ALL-GUARDED` (purely structural, untouched), `E-DUP-LINE-CODE`
 (identity), `E-DOLLAR-OUTSIDE-MATCH` (D9).
 
-**Interpretations flagged for spec confirmation (not yet ratified in the normative text):**
+**Designer-ratified interpretations (confirmed for 0.4.0; normative):**
 
 - **D19** — `isSet()`/`has()` in `trace` are **definite** (true iff an effective value exists
   via trace-write → mock seed → schema default; false on unset), while a *value* read of an
