@@ -304,9 +304,12 @@ impl Backend {
                     // resolves the WHOLE `cel:` scalar VALUE span in source
                     // (finding 7: previously this anchored on `span`, the
                     // DEF-NAME key span, landing the squiggle on the wrong
-                    // token) — falling back to the honest key `span` when
-                    // the locator can't confidently resolve the value (e.g.
-                    // a `|`/`>` block scalar). Fixits stay empty either way:
+                    // token) — falling back to the honest key `span` only
+                    // when the locator genuinely can't resolve the value
+                    // (e.g. a quoted def-name key, or an anchor/alias in
+                    // the entry's own value; `|`/`>` block scalars DO
+                    // resolve — to their content-lines span, indicators
+                    // aside). Fixits stay empty either way:
                     // no source-accurate fixit edit is recoverable from a
                     // decoded-offset translation.
                     let t = translate_cel_parse(raw, span, &e);
@@ -1082,14 +1085,55 @@ fn mk_span(byte_start: usize, byte_end: usize) -> Span {
     Span { byte_start, byte_end, line: 0, column: 0, utf16_range: (0, 0) }
 }
 
-/// The whole scalar VALUE span (quotes included) for a `key:` whose `:`
-/// sits at `colon_abs`, bounded by `region_end`. Handles double-quoted
-/// (`\`-escaped), single-quoted (`''`-escaped), and bare/plain flow scalars
-/// (terminated by `,`, `}`, or end of line). Declines (`None`) on a
-/// literal/folded block scalar (`|`/`>`) — its DECODED content has no
-/// simple byte-for-byte map back to source (dsl §8.1's decoded-vs-source
-/// gap), so callers must fall back rather than guess at an un-mappable
-/// multi-line span.
+/// Source span of a `|`/`>` block scalar's CONTENT lines: every line after
+/// `key_line_end` with indent strictly greater than `key_indent` (the
+/// `key:` line's own indent), bounded by `region_end`. The block scalar's
+/// chomping/indent indicators (`|-`, `>+`, `|2`, ...) only ever change how
+/// the DECODED text is built from those lines — never WHERE the lines
+/// themselves sit in source — so they play no part in locating this span;
+/// the caller never even inspects them. Interior blank lines are included
+/// (they're part of the content run); trailing blank lines / the final
+/// newline are trimmed off the end. `None` for an empty block scalar (no
+/// more-indented line follows the key at all).
+fn block_scalar_content_span(
+    text: &str,
+    key_line_end: usize,
+    key_indent: usize,
+    region_end: usize,
+) -> Option<Span> {
+    let mut pos = key_line_end;
+    let mut content_start: Option<usize> = None;
+    let mut content_end = key_line_end;
+    while pos < region_end {
+        let le = line_end(text, pos).min(region_end);
+        let line = &text[pos..le];
+        let content = line.trim_start_matches(' ');
+        let line_indent = line.len() - content.len();
+        if content.trim_end().is_empty() {
+            pos = le;
+            continue;
+        }
+        if line_indent <= key_indent {
+            break;
+        }
+        content_start.get_or_insert(pos);
+        content_end = le;
+        pos = le;
+    }
+    let start = content_start?;
+    let end = start + text[start..content_end].trim_end().len();
+    Some(mk_span(start, end))
+}
+
+/// The whole scalar VALUE span for a `key:` whose `:` sits at `colon_abs`,
+/// bounded by `region_end`. Handles double-quoted (`\`-escaped),
+/// single-quoted (`''`-escaped), and bare/plain flow scalars (terminated by
+/// `,`, `}`, or end of line) — quotes included in the returned span. A `|`/
+/// `>` literal/folded block scalar resolves to its CONTENT-lines span via
+/// [`block_scalar_content_span`] (indicators are irrelevant to locating
+/// source lines, only to decoding them — see that function's doc comment).
+/// `None` when the block scalar has no content, or a quoted scalar is
+/// unterminated.
 fn parse_scalar_value_span(text: &str, colon_abs: usize, region_end: usize) -> Option<Span> {
     let after = colon_abs + 1;
     if after > region_end {
@@ -1111,7 +1155,13 @@ fn parse_scalar_value_span(text: &str, colon_abs: usize, region_end: usize) -> O
             let end = skip_single_quoted(text, val_start)?;
             (end <= region_end).then(|| mk_span(val_start, end))
         }
-        b'|' | b'>' => None,
+        b'|' | b'>' => {
+            let key_line_start = line_start(text, colon_abs);
+            let key_line_end = line_end(text, colon_abs);
+            let key_line = &text[key_line_start..key_line_end];
+            let key_indent = key_line.len() - key_line.trim_start_matches(' ').len();
+            block_scalar_content_span(text, key_line_end, key_indent, region_end)
+        }
         _ => {
             let sub = &text[val_start..region_end];
             let end_rel = sub.find([',', '}', '\n']).unwrap_or(sub.len());
@@ -1125,15 +1175,20 @@ fn parse_scalar_value_span(text: &str, colon_abs: usize, region_end: usize) -> O
 /// closes the finding-7 gap `analyze_declaration`'s doc comment used to
 /// flag): locates the entry for `name` under the top-level `defs:` mapping,
 /// then the `cel:` key within THAT entry, then the whole scalar VALUE span
-/// (quotes included) in source bytes. Handles inline/flow entries (`name: {
-/// ..., cel: "..." }`), block entries (`name:\n  cel: "..."`), single/
-/// double-quoted and `\`-escaped scalars, and a file where the same CEL
-/// text is duplicated elsewhere (the search is scoped to `name`'s own
-/// entry, so a duplicate can never steal the span). Returns `None` — never
-/// a guessed or wrong span — on anything it can't confidently resolve (no
-/// `defs:`, no entry for `name`, no `cel:` key in it, or a `cel:` value
-/// shape it doesn't understand, e.g. a `|`/`>` block scalar): callers MUST
-/// fall back to [`find_key_span`]'s key span in that case.
+/// in source bytes. Handles inline/flow entries (`name: { ..., cel: "..."
+/// }`), block entries (`name:\n  cel: "..."`), single/double-quoted and
+/// `\`-escaped scalars (quotes included in the span), `|`/`>` literal/
+/// folded block scalars (resolved to their CONTENT-lines span — chomping/
+/// indent indicators only affect decoding, never where the source lines
+/// sit, so they're irrelevant here), and a file where the same CEL text is
+/// duplicated elsewhere (the search is scoped to `name`'s own entry, so a
+/// duplicate can never steal the span). Returns `None` — never a guessed or
+/// wrong span — on anything it genuinely can't resolve: no `defs:`, no
+/// entry for `name` (e.g. a quoted key `"name":` the byte-level scanner
+/// doesn't unquote), no `cel:` key in it, an entry value shape it doesn't
+/// understand (e.g. an anchor tag `&name` before `{`, or an alias `*name`),
+/// or an empty/unterminated scalar: callers MUST fall back to
+/// [`find_key_span`]'s key span in that case.
 fn find_def_cel_value_span(text: &str, name: &str) -> Option<Span> {
     let defs_key = find_key_span(text, "defs")?;
     let defs_indent = defs_key.byte_start - line_start(text, defs_key.byte_start);
@@ -1878,16 +1933,61 @@ mod tests {
         fs::remove_dir_all(&root).ok();
     }
 
-    /// Rock-solid fallback: a literal block scalar (`cel: |\n  ...`) is
-    /// explicitly out of the locator's scope (dsl §8.1's decoded-vs-source
-    /// offset gap — a multi-line folded/literal scalar's DECODED text has
-    /// no simple byte-for-byte map back to its indented source lines), so
-    /// `find_def_cel_value_span` declines rather than guessing, and the
-    /// diagnostic falls back to the honest `defs:` KEY span exactly like
-    /// the pre-fix behavior.
+    /// A `cel: |` literal block scalar resolves to its OWN content-lines
+    /// span (not the `defs:` key span): the chomping indicator plays no
+    /// part in locating source lines, only in decoding them, so the
+    /// anchored range is simply every line more-indented than `cel:`
+    /// itself.
     #[tokio::test(flavor = "current_thread")]
-    async fn analyze_declaration_cel_parse_error_falls_back_to_key_span_for_block_scalar() {
+    async fn analyze_declaration_cel_parse_error_anchors_literal_block_scalar_content() {
         let text = "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  x:\n    type: bool\n    cel: |\n      run.act = 1\n";
+        let (cel_parse, root) = open_cel_parse_fixture(text).await;
+        let hit = cel_parse
+            .first()
+            .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic"));
+        let content_idx = text.find("run.act = 1").expect("fixture contains the block content");
+        let line_start = text[..content_idx].rfind('\n').map(|p| p + 1).unwrap_or(0);
+        let line_end = text[content_idx..].find('\n').map(|p| content_idx + p).unwrap_or(text.len());
+        assert_eq!(
+            actual_range(hit),
+            range_at(text, line_start, line_end),
+            "a `|` block scalar must anchor on its own content-lines span"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Same as the literal (`|`) case, for the FOLDED (`>`) indicator —
+    /// proving the locator isn't special-cased to one of the two block
+    /// scalar styles.
+    #[tokio::test(flavor = "current_thread")]
+    async fn analyze_declaration_cel_parse_error_anchors_folded_block_scalar_content() {
+        let text = "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  x:\n    type: bool\n    cel: >\n      run.act = 1\n";
+        let (cel_parse, root) = open_cel_parse_fixture(text).await;
+        let hit = cel_parse
+            .first()
+            .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic"));
+        let content_idx = text.find("run.act = 1").expect("fixture contains the block content");
+        let line_start = text[..content_idx].rfind('\n').map(|p| p + 1).unwrap_or(0);
+        let line_end = text[content_idx..].find('\n').map(|p| content_idx + p).unwrap_or(text.len());
+        assert_eq!(
+            actual_range(hit),
+            range_at(text, line_start, line_end),
+            "a `>` folded block scalar must anchor on its own content-lines span"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Rock-solid fallback for a GENUINELY unresolvable entry: an anchor
+    /// tag (`&x_anchor`) sits between `x:`'s colon and its flow mapping's
+    /// `{`, a shape [`find_entry_extent`] doesn't recognize (its `{}`
+    /// detection expects the flow mapping to start immediately). The
+    /// locator declines rather than guess, and the diagnostic falls back to
+    /// the honest `defs:` KEY span exactly like the pre-locator behavior —
+    /// `find_key_span` itself is untouched by the anchor tag, since it only
+    /// looks for `x` immediately followed by `:`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn analyze_declaration_cel_parse_error_falls_back_to_key_span_for_unresolvable_entry() {
+        let text = "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  x: &x_anchor { type: bool, cel: \"run.act = 1\" }\n";
         let (cel_parse, root) = open_cel_parse_fixture(text).await;
         let hit = cel_parse
             .first()
@@ -1896,7 +1996,7 @@ mod tests {
         assert_eq!(
             actual_range(hit),
             range_at(text, key_span.byte_start, key_span.byte_end),
-            "a `|` literal block scalar must fall back to the `defs:` key span"
+            "an anchor-tagged entry value must fall back to the `defs:` key span"
         );
         std::fs::remove_dir_all(&root).ok();
     }
