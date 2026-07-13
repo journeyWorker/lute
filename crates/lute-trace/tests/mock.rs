@@ -468,3 +468,54 @@ fn reserved_quest_objective_done_mock_outside_domain_is_type_error() {
     let diags = validate(&mocks, &folded, &doc);
     assert_eq!(codes(&diags), vec![E_TRACE_MOCK_TYPE], "{diags:?}");
 }
+
+// ---------------------------------------------------------------------
+// P1 regression: a document that DEFINES `<quest id>` synthesizes a
+// `folded.env.state.decls` entry for that quest's OWN reserved paths too
+// (`check_quest`) — the reference gate + reserved-domain check must apply
+// to THOSE paths identically to a foreign quest's, never falling through
+// to the synthesized decl's ordinary schema-type check.
+// ---------------------------------------------------------------------
+
+/// A quest doc DEFINES `q` but references `quest.q.state` NOWHERE (no
+/// `<on>`/guard/interpolation reads it) — `--state quest.q.state=complete`
+/// must still be `E-TRACE-MOCK-UNDECLARED`, exactly as for a foreign
+/// quest the document never mentions at all. Before the fix this was
+/// wrongly admitted via the synthesized schema decl, bypassing §1.1's
+/// "document references it" gate entirely.
+#[test]
+fn local_quest_state_mock_rejected_when_document_does_not_reference_it() {
+    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\">\n\
+                <objective id=\"o\" done=\"true\"/>\n\
+                </quest>\n";
+    let (folded, doc) = folded_and_doc(text, "local-quest-unreferenced", Path::new("."));
+    let mocks = MockSet {
+        state: vec![("quest.q.state".to_string(), "complete".to_string(), zero_span())],
+        ..Default::default()
+    };
+    let diags = validate(&mocks, &folded, &doc);
+    assert_eq!(codes(&diags), vec![E_TRACE_MOCK_UNDECLARED], "{diags:?}");
+}
+
+/// A quest doc DEFINES `q` and references `quest.q.state` (a `<match>`
+/// inside an `<on>` handler) — `--state quest.q.state=unset` must be
+/// ADMITTED, even though the synthesized schema enum for a LOCAL quest's
+/// `state` is `[active, complete, failed]` (no `unset` member, no
+/// `default:` — `type_accepts` against it would reject `unset`). §1.1
+/// explicitly admits `unset` as a reserved-domain member regardless of
+/// the synthesized schema shape.
+#[test]
+fn local_quest_state_mock_unset_admitted_when_document_references_it() {
+    let text = "---\nkind: quest\nstate:\n  run.d: { type: bool, default: false }\n---\n\
+                <quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
+                <on event=\"questComplete\">\n<match on=\"quest.q.state\">\n\
+                <when is=\"complete\">\n@x: done\n</when>\n<otherwise>\n@x: -\n</otherwise>\n\
+                </match>\n</on>\n</quest>\n";
+    let (folded, doc) = folded_and_doc(text, "local-quest-referenced", Path::new("."));
+    let mocks = MockSet {
+        state: vec![("quest.q.state".to_string(), "unset".to_string(), zero_span())],
+        ..Default::default()
+    };
+    let diags = validate(&mocks, &folded, &doc);
+    assert!(diags.is_empty(), "{diags:?}");
+}

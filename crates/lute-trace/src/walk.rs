@@ -1116,21 +1116,17 @@ fn walk_quests(doc: &Document, events: &[String], w: &mut Walk<'_>) -> Flow {
 }
 
 /// dsl 0.5.1 §1.1: a RESERVED `quest.<id>.state`/`quest.<id>.objectives.
-/// <oid>.done` mock has NO `schema.decls` entry (reserved paths are
-/// implicitly declared, never author-declared) — `mock::validate` already
-/// proved `raw` inhabits the reserved path's own domain, so it converts
-/// directly here rather than through [`mock::coerce_state_literal`]'s
-/// schema-`Type`-keyed dispatch.
+/// <oid>.done` mock is converted DIRECTLY here, checked FIRST — never
+/// through [`mock::coerce_state_literal`]'s schema-`Type`-keyed dispatch,
+/// even when the traced document DEFINES the owning `<quest>` (whose
+/// `check_quest`-synthesized `schema.decls` entry exists too, mirrors
+/// `mock::validate_state`'s identical ordering fix — see its doc comment).
+/// `mock::validate` already proved `raw` inhabits the reserved path's own
+/// domain, so this never needs to fall back to the schema `Type`.
 fn seed_state(mocks: &MockSet, schema: &StateSchema) -> BTreeMap<String, Value> {
     let mut out = BTreeMap::new();
     for (path, raw, _span) in &mocks.state {
-        // Already schema-validated by `mock::validate` (run before this);
-        // a miss here is defensive-total, never a silent wrong value.
-        if let Some(decl) = schema.decls.get(path) {
-            if let Some(lit) = mock::coerce_state_literal(&decl.ty, raw) {
-                out.insert(path.clone(), literal_to_value(&lit));
-            }
-        } else if is_reserved_quest_path(path) {
+        if is_reserved_quest_path(path) {
             let v = if crate::eval::is_reserved_quest_objective_done_path(path) {
                 match raw.as_str() {
                     "true" => Value::Bool(true),
@@ -1141,6 +1137,14 @@ fn seed_state(mocks: &MockSet, schema: &StateSchema) -> BTreeMap<String, Value> 
                 Value::Str(raw.clone())
             };
             out.insert(path.clone(), v);
+            continue;
+        }
+        // Already schema-validated by `mock::validate` (run before this);
+        // a miss here is defensive-total, never a silent wrong value.
+        if let Some(decl) = schema.decls.get(path) {
+            if let Some(lit) = mock::coerce_state_literal(&decl.ty, raw) {
+                out.insert(path.clone(), literal_to_value(&lit));
+            }
         }
     }
     out

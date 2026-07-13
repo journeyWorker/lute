@@ -382,37 +382,32 @@ pub(crate) fn coerce_state_literal(ty: &Type, raw: &str) -> Option<Literal> {
     }
 }
 
-/// §1.1 (dsl 0.5.1): a `--state` on a reserved `quest.<id>.state`/
-/// `quest.<id>.objectives.<oid>.done` path has NO `folded.env.state.decls`
-/// entry (reserved paths are implicitly declared, never author-declared —
-/// `E-QUEST-RESERVED-DECL` rejects an attempt to declare one, `lute-check`).
-/// Such a path is admitted — narrowing `E-TRACE-MOCK-UNDECLARED` — iff the
-/// traced document REFERENCES that exact path
-/// ([`crate::quest_refs::collect_referenced_reserved_quest_paths`]); an
-/// admitted value is then checked against the reserved path's OWN domain
-/// (`active|complete|failed|unset` for `.state`, `true|false` for
-/// `.objectives.*.done`) rather than [`type_accepts`] (there is no
-/// [`Type`] to check against). A reserved path the document does NOT
-/// reference, or an ordinary undeclared path, is unchanged:
-/// `E-TRACE-MOCK-UNDECLARED`, identity and message untouched (Appendix A).
+/// §1.1 (dsl 0.5.1): a RESERVED `quest.<id>.state`/`quest.<id>.
+/// objectives.<oid>.done` `--state` NEVER takes the ordinary schema-decl
+/// branch below — checked FIRST, unconditionally — even when the traced
+/// document itself DEFINES `<quest id>`: `check_quest`
+/// (`lute-check/src/match_check.rs`) synthesizes a `folded.env.state.decls`
+/// entry for a LOCAL quest's OWN reserved paths too (the engine's real
+/// `state` enum `[active, complete, failed]`, no `default:`, no `unset`
+/// member — `unset` is the pre-activation ABSENCE of a value, never an
+/// enum member). Falling through to that decl would (a) admit the mock
+/// unconditionally via ordinary schema-declaredness, bypassing §1.1's
+/// "document REFERENCES it" gate entirely, and (b) reject a genuinely
+/// referenced `--state quest.<id>.state=unset` via `type_accepts` against
+/// an enum that has no `unset` member — both wrong. Local and foreign
+/// quests are therefore unified into ONE admission rule: does the
+/// document reference this exact path
+/// ([`crate::quest_refs::collect_referenced_reserved_quest_paths`]),
+/// checked against the reserved path's OWN domain (`active|complete|
+/// failed|unset` for `.state`, `true|false` for `.objectives.*.done`)
+/// rather than the synthesized schema `Type`. A reserved path the
+/// document does NOT reference, or an ordinary undeclared path, is
+/// unchanged: `E-TRACE-MOCK-UNDECLARED`, identity and message untouched
+/// (Appendix A).
 fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let mut referenced_reserved: Option<BTreeSet<String>> = None;
     for (path, literal, span) in &mocks.state {
-        if let Some(decl) = folded.env.state.decls.get(path) {
-            let ok = coerce_state_literal(&decl.ty, literal).is_some_and(|lit| type_accepts(&decl.ty, &lit));
-            if !ok {
-                out.push(diag(
-                    E_TRACE_MOCK_TYPE,
-                    format!(
-                        "`--state {path}={literal}` is not compatible with `{path}`'s declared type \
-                         (dsl 0.4.0 §4.3)"
-                    ),
-                    *span,
-                ));
-            }
-            continue;
-        }
         if crate::eval::is_reserved_quest_path(path) {
             let referenced = referenced_reserved
                 .get_or_insert_with(|| crate::quest_refs::collect_referenced_reserved_quest_paths(doc));
@@ -430,18 +425,42 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                 }
                 continue;
             }
+            out.push(undeclared_diag(path, *span));
+            continue;
         }
-        out.push(diag(
-            E_TRACE_MOCK_UNDECLARED,
-            format!(
-                "`--state {path}=…` names a state path not declared in the resolved schema \
-                 (state-by-typo MUST fail in mocks exactly as in documents, dsl 0.4.0 §4.3, \
-                 0.1 §11.1.1)"
-            ),
-            *span,
-        ));
+        if let Some(decl) = folded.env.state.decls.get(path) {
+            let ok = coerce_state_literal(&decl.ty, literal).is_some_and(|lit| type_accepts(&decl.ty, &lit));
+            if !ok {
+                out.push(diag(
+                    E_TRACE_MOCK_TYPE,
+                    format!(
+                        "`--state {path}={literal}` is not compatible with `{path}`'s declared type \
+                         (dsl 0.4.0 §4.3)"
+                    ),
+                    *span,
+                ));
+            }
+            continue;
+        }
+        out.push(undeclared_diag(path, *span));
     }
     out
+}
+
+/// `E-TRACE-MOCK-UNDECLARED` for `path` (dsl 0.4.0 §4.3, 0.1 §11.1.1) —
+/// shared by [`validate_state`]'s two "no admissible schema/reserved
+/// entry" exits (ordinary undeclared path; reserved path the document
+/// does not reference) so the message stays byte-identical either way.
+fn undeclared_diag(path: &str, span: Span) -> Diagnostic {
+    diag(
+        E_TRACE_MOCK_UNDECLARED,
+        format!(
+            "`--state {path}=…` names a state path not declared in the resolved schema \
+             (state-by-typo MUST fail in mocks exactly as in documents, dsl 0.4.0 §4.3, \
+             0.1 §11.1.1)"
+        ),
+        span,
+    )
 }
 
 /// `true` iff `literal` inhabits the reserved path's own domain (§1.1):
