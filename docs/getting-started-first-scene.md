@@ -78,7 +78,7 @@ Check again:
 
 ```
 $ ./target/debug/lute check my-scene.lute
-my-scene.lute:10:1: error [E-UNCLASSIFIED] unrecognized line
+my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot/scene; add a `## Shot N.` heading above it (dsl 0.1 §6)
 ```
 
 This is the rule to remember: **all content lives under a heading.** A Lute document is a
@@ -211,7 +211,7 @@ Say you type the old-style sigil out of habit — a colon instead of `@` — on 
 
 ```
 $ ./target/debug/lute check my-scene.lute
-my-scene.lute:19:1: error [E-UNCLASSIFIED] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1)
+my-scene.lute:19:1: error [E-UNCLASSIFIED] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
 ```
 
 **Reading a diagnostic:** `file:line:col: error [CODE] message`. Here it names the exact line
@@ -238,8 +238,8 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.4.0",
-  "irVersion": "0.4.0",
+  "lute": "0.5.0",
+  "irVersion": "0.5.0",
   "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
   "meta": {
     "character": "mira",
@@ -332,7 +332,13 @@ directives (8):
   sfx: sound, assetId, name
   vfx: type, label, transition
   video: assetId, action, wait
-enums (6): anchor, emotion, mood, musicAction, vfxType, volume
+enums (6):
+  anchor: left, center, right
+  emotion: neutral, surprised, delighted, shy, content, angry, sad
+  mood: peaceful, tense, romantic, sad, upbeat
+  musicAction: start, change, stop, resume, fade-out
+  vfxType: whiteOut, blackOut, rain, snow, leaves, petals, raindrop
+  volume: silent, down, normal, up, full
 stateSchema (2):
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
