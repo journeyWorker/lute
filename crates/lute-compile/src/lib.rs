@@ -37,12 +37,12 @@ use lute_syntax::ast::{Arm, Document, Node};
 
 /// Language-version pin stamped into the artifact envelope's `lute` field (DSL
 /// 0.2.0). Distinct from [`LUTE_IR_VERSION`], the IR schema version.
-pub const LUTE_LANG_VERSION: &str = "0.4.0";
+pub const LUTE_LANG_VERSION: &str = "0.5.0";
 
 /// IR schema version stamped into the envelope's `irVersion` field (spec §4.1,
 /// A9). Bumped for the 0.3.0 relational schema/seed-facts/rules emission
 /// (D15); engines gate parsing on it.
-pub const LUTE_IR_VERSION: &str = "0.4.0";
+pub const LUTE_IR_VERSION: &str = "0.5.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -575,8 +575,8 @@ mod tests {
 
     #[test]
     fn ir_version_matches_language_version() {
-        assert_eq!(super::LUTE_IR_VERSION, "0.4.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.4.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.5.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.5.0");
     }
 
     #[test]
@@ -585,8 +585,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.4.0");
-        assert_eq!(v["irVersion"], "0.4.0");
+        assert_eq!(v["lute"], "0.5.0");
+        assert_eq!(v["irVersion"], "0.5.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");
