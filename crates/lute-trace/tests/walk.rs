@@ -481,6 +481,43 @@ fn reserved_quest_state_mock_admitted_and_previews_referenced_arm() {
     );
 }
 
+/// §1.3 regression: an ADMITTED `--state` mock on a reserved path the
+/// document references only inside a `<match>` arm the walk does NOT
+/// reach (the first arm short-circuits, so the second arm's `test=`,
+/// which reads `quest.foo.objectives.bar.done`, is NEVER evaluated) still
+/// gets the existence-unverified note — an explicitly-mocked typo must
+/// never be silent (§1.1's own text), regardless of whether the walk ever
+/// reads the mocked path. (`objectives.*.done`, not `.state`, so the
+/// reference needs no `unset`-covering guard of its own: its
+/// definite-assignment default is `false`, dsl 0.2.0 §5.2 — `.state` would
+/// trip `E-MAYBE-UNSET` at this unguarded position and never reach the
+/// walk this test wants to exercise.)
+#[test]
+fn reserved_quest_mock_note_fires_even_when_the_referencing_arm_is_never_reached() {
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+                state:\n  run.flag: { type: bool, default: true }\n---\n## Shot 1.\n\
+                <match on=\"run.flag\">\n\
+                <when is=\"true\">\n@narrator: a\n</when>\n\
+                <when is=\"false\" test=\"quest.foo.objectives.bar.done\">\n@narrator: b\n</when>\n\
+                </match>\n";
+    let input = input_for(text, "unread-mocked-arm", Path::new("."));
+    let mocks = state_mocks(&[("quest.foo.objectives.bar.done", "true")]);
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+
+    // The FIRST arm fires (short-circuits the match) -- the second arm's
+    // `test=` referencing `quest.foo.objectives.bar.done` is never
+    // evaluated.
+    let d = match_decision(&report, "run.flag");
+    assert_eq!(d.outcome, "arm 1", "{d:?}");
+
+    assert!(
+        report.notes.iter().any(|n| n.contains("quest `foo`") && n.contains("unverified")),
+        "an admitted mock on an unread reserved path must still be noted: {:?}",
+        report.notes
+    );
+}
+
 /// §1.1: `--state` on a reserved path the document does NOT reference
 /// stays `E-TRACE-MOCK-UNDECLARED` — Refused, end to end.
 #[test]
