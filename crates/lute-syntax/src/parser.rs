@@ -58,6 +58,22 @@ pub const E_DATALOG_PARSE: &str = "E-DATALOG-PARSE";
 /// Diagnostic code: an `::assert`/`::retract` payload contains a compound/
 /// function term (dsl 0.3.0 §7.1).
 pub const E_DATALOG_FUNCTION: &str = "E-DATALOG-FUNCTION";
+/// Diagnostic code (dsl 0.5.0 §2.1): a content-shaped line (`@speaker…`,
+/// `::directive`, `<tag>`) appears before the first `## Shot`/`## Scene`
+/// heading — content belongs inside a shot/scene body (`0.1 §6`). Split off
+/// the [`E_UNCLASSIFIED`] catch-all so the message names the real problem.
+pub const E_CONTENT_OUTSIDE_SHOT: &str = "E-CONTENT-OUTSIDE-SHOT";
+/// Diagnostic code (dsl 0.5.0 §2.1): a content line uses `[…]` where
+/// attribute braces `{…}` are expected (e.g. `@mira[emotion="x"]: …`,
+/// `0.1 §7.1`). Split off the missing-second-colon path so the message names
+/// the bracket-vs-brace mistake instead of a generic "needs a second `:`".
+pub const E_CONTENT_LINE_BRACKET: &str = "E-CONTENT-LINE-BRACKET";
+/// Diagnostic code (dsl 0.5.0 §2.1, §2.3): a `<tag …>` opener's `>`/`/>` was
+/// not reached on the tag's own physical line (its attributes ran past the
+/// newline). Lute's one-physical-line model (§2.3) is retained, not relaxed —
+/// this NAMES the violation instead of a misleading [`E_UNCLOSED_TAG`] /
+/// [`E_UNCLASSIFIED`] for the same root cause.
+pub const E_TAG_NOT_ONE_LINE: &str = "E-TAG-NOT-ONE-LINE";
 
 /// Parse a `.lute` document into its AST and parse diagnostics.
 ///
@@ -86,6 +102,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
                 fixits: Vec::new(),
                 provenance: None,
                 covered: Vec::new(),
+                related: Vec::new(),
             });
             body_slice.to_string()
         }
@@ -177,6 +194,7 @@ impl Parser<'_> {
             fixits: Vec::new(),
             provenance: None,
             covered: Vec::new(),
+            related: Vec::new(),
         });
     }
 
@@ -185,6 +203,24 @@ impl Parser<'_> {
         let a = self.orig(self.line_content_start(i));
         let b = self.orig(self.line_content_end(i));
         self.emit_o(code, msg.to_string(), a, b, layer);
+    }
+
+    /// Emit the residual [`E_UNCLASSIFIED`] "unrecognized line" catch-all
+    /// (dsl 0.5.0 §2.1). When the immediately preceding physical line looked
+    /// like a content line or `<tag>` opener, appends the §2.3 continuation
+    /// hint — the likely cause is a construct that wrapped across physical
+    /// lines, which Lute's line-oriented parser does not support.
+    fn emit_unclassified(&mut self, i: usize, layer: Layer) {
+        if i > 0 && looks_like_content_or_tag_line(&self.trimmed(i - 1)) {
+            self.emit_line(
+                E_UNCLASSIFIED,
+                "unrecognized line (note: a content line / tag cannot span multiple physical lines, dsl §2.3)",
+                i,
+                layer,
+            );
+        } else {
+            self.emit_line(E_UNCLASSIFIED, "unrecognized line", i, layer);
+        }
     }
 
     // -- top-level document ----------------------------------------------------
@@ -223,13 +259,20 @@ impl Parser<'_> {
                     Layer::Content,
                 );
                 self.cursor += 1;
-            } else {
+            } else if is_content_shaped_line(&trimmed) {
+                // dsl 0.5.0 §2.1: a content-shaped line reached here only
+                // because no shot/scene is currently open (this loop never
+                // sees a line consumed by `parse_shot_body`) — it belongs
+                // inside a shot/scene body, not at document top level.
                 self.emit_line(
-                    E_UNCLASSIFIED,
-                    "unrecognized line",
+                    E_CONTENT_OUTSIDE_SHOT,
+                    "content lives inside a shot/scene; add a `## Shot N.` heading above it (dsl 0.1 §6)",
                     self.cursor,
                     Layer::Content,
                 );
+                self.cursor += 1;
+            } else {
+                self.emit_unclassified(self.cursor, Layer::Content);
                 self.cursor += 1;
             }
         }
@@ -371,12 +414,7 @@ impl Parser<'_> {
             self.cursor += 1;
             return None;
         }
-        self.emit_line(
-            E_UNCLASSIFIED,
-            "unrecognized line",
-            self.cursor,
-            Layer::Content,
-        );
+        self.emit_unclassified(self.cursor, Layer::Content);
         self.cursor += 1;
         None
     }
@@ -600,7 +638,7 @@ impl Parser<'_> {
             let sigil_span = self.span(cstart, cstart + 1);
             self.emit_line(
                 E_UNCLASSIFIED,
-                "content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1)",
+                "content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically",
                 i,
                 Layer::Content,
             );
@@ -615,6 +653,21 @@ impl Parser<'_> {
                     confidence: 100,
                 });
             }
+            self.cursor += 1;
+            return None;
+        }
+        // dsl 0.5.0 §2.1 `E-CONTENT-LINE-BRACKET`: content-line attributes are
+        // `{…}` (mirrors `::directive{…}`), never `[…]`. Only `@`-sigil lines
+        // reach here (the `:line[` and generic `:`-sigil cases above already
+        // returned), so `[` here is always the bracket-vs-brace mistake, not
+        // the removed `:line[speaker]` form.
+        if j < e && b[j] == b'[' {
+            self.emit_line(
+                E_CONTENT_LINE_BRACKET,
+                "content-line attributes use `{…}`, not `[…]` (dsl 0.1 §7.1)",
+                i,
+                Layer::Content,
+            );
             self.cursor += 1;
             return None;
         }
@@ -810,6 +863,36 @@ fn classify_heading(heading: &str) -> HeadingKind {
     }
     HeadingKind::Invalid
 }
+
+/// True when `trimmed` has the SHAPE of a content-shaped body construct —
+/// `@speaker…`, a legacy `:speaker…`/`:line[…]` sigil, an `::directive`, or a
+/// `<tag …>` open — regardless of whether it parses cleanly (dsl 0.5.0 §2.1
+/// `E-CONTENT-OUTSIDE-SHOT`). Mirrors the content-line shape test in
+/// `next_node` plus the `::`/`<` shapes; a truly unrecognized line (matching
+/// none of these) stays the residual `E-UNCLASSIFIED` catch-all.
+fn is_content_shaped_line(trimmed: &str) -> bool {
+    if trimmed.starts_with("::") || trimmed.starts_with('<') {
+        return true;
+    }
+    let b = trimmed.as_bytes();
+    (b.first() == Some(&b'@') || b.first() == Some(&b':'))
+        && b.get(1).is_some_and(|c| c.is_ascii_alphabetic())
+}
+
+/// True when `trimmed` looks like a content line (`@speaker…`/legacy
+/// `:speaker…`) or a `<tag …>` opener (not a `</tag>` close) — the two §2.3
+/// construct shapes that MUST fit on one physical line. Used only for the
+/// `E-UNCLASSIFIED` continuation hint (dsl 0.5.0 §2.1): NOT `::directive`,
+/// which the hint's wording does not name.
+fn looks_like_content_or_tag_line(trimmed: &str) -> bool {
+    if trimmed.starts_with('<') && !trimmed.starts_with("</") {
+        return true;
+    }
+    let b = trimmed.as_bytes();
+    (b.first() == Some(&b'@') || b.first() == Some(&b':'))
+        && b.get(1).is_some_and(|c| c.is_ascii_alphabetic())
+}
+
 
 /// Tag name of an open tag line (`<branch …>` → `Some("branch")`).
 pub(crate) fn open_tag_name(trimmed: &str) -> Option<String> {
@@ -1433,5 +1516,110 @@ mod tests {
         // <quest> is top-level only; nested it must fall through to the error path.
         let (_, diags) = parse("<quest id=\"q\">\n<quest id=\"inner\"></quest>\n</quest>\n");
         assert!(diags.iter().any(|d| d.code == "E-UNCLASSIFIED"), "{diags:?}");
+    }
+
+    // -- dsl 0.5.0 §2.1: E-UNCLASSIFIED split into named causes --
+
+    #[test]
+    fn content_before_first_heading_is_content_outside_shot() {
+        let (_, diags) = parse("@narrator: hello before any shot\n");
+        assert!(
+            diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SHOT"),
+            "{diags:?}"
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == "E-UNCLASSIFIED"),
+            "must not fall through to the residual E-UNCLASSIFIED: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn directive_and_tag_before_first_heading_are_also_content_outside_shot() {
+        for src in ["::set{scene.a = 1}\n", "<branch id=\"b\"><choice id=\"c\" label=\"x\"/></branch>\n"] {
+            let (_, diags) = parse(src);
+            assert!(
+                diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SHOT"),
+                "{src}: {diags:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn genuinely_unrecognized_line_outside_shot_stays_unclassified() {
+        // No sigil/tag shape at all -> the residual catch-all, not the new split code.
+        let (_, diags) = parse("1234 not a valid construct\n");
+        assert!(diags.iter().any(|d| d.code == "E-UNCLASSIFIED"), "{diags:?}");
+        assert!(
+            !diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SHOT"),
+            "{diags:?}"
+        );
+    }
+
+    #[test]
+    fn content_line_bracket_form_is_named() {
+        // §7.1: content-line attributes are `{…}`, not `[…]`.
+        let (_, diags) = parse("## Shot 1.\n@mira[emotion=\"x\"]: hi\n");
+        assert!(
+            diags.iter().any(|d| d.code == "E-CONTENT-LINE-BRACKET"),
+            "{diags:?}"
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == "E-UNCLASSIFIED"),
+            "must not fall through to the missing-second-colon E-UNCLASSIFIED: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn wrapped_tag_attribute_is_tag_not_one_line() {
+        // §2.3: a <tag>'s attributes must all be on the tag's own physical
+        // line; wrapping is E-TAG-NOT-ONE-LINE, naming the one-line rule,
+        // not a misleading E-UNCLOSED-TAG/E-UNCLASSIFIED.
+        let (_, diags) = parse(
+            "## Shot 1.\n\
+             <on event=\"x\"\n\
+             when=\"run.a\">\n\
+             </on>\n",
+        );
+        let d = diags
+            .iter()
+            .find(|d| d.code == "E-TAG-NOT-ONE-LINE")
+            .unwrap_or_else(|| panic!("expected E-TAG-NOT-ONE-LINE: {diags:?}"));
+        assert!(
+            d.message.contains("one physical line"),
+            "message must name the one-physical-line rule: {}",
+            d.message
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == "E-UNCLOSED-TAG"),
+            "the properly-closed </on> must not ALSO trip a misleading unclosed-tag error: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn unclassified_after_content_line_gets_continuation_hint() {
+        let (_, diags) = parse("## Shot 1.\n@mira: hello\ngarbage next\n");
+        let d = diags
+            .iter()
+            .find(|d| d.code == "E-UNCLASSIFIED")
+            .unwrap_or_else(|| panic!("garbage line must still error: {diags:?}"));
+        assert!(
+            d.message.contains("cannot span multiple physical lines"),
+            "{}",
+            d.message
+        );
+    }
+
+    #[test]
+    fn legacy_sigil_diagnostic_mentions_lute_fix() {
+        let (_, diags) = parse("## Shot 1.\n:mira: hi\n");
+        let d = diags
+            .iter()
+            .find(|d| d.code == "E-UNCLASSIFIED" && d.message.contains("sigil"))
+            .unwrap_or_else(|| panic!("expected legacy sigil diagnostic: {diags:?}"));
+        assert!(
+            d.message.contains("lute fix"),
+            "must mention `lute fix` applies the migration automatically: {}",
+            d.message
+        );
     }
 }
