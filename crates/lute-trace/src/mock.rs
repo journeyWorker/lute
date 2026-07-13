@@ -20,7 +20,7 @@
 //! true` relation) is exactly why such a relation is a LEGAL mock fact — a
 //! mock is a *supplied answer*, never a content write (§4.3).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_check::{check_atom, FoldedEnv};
@@ -382,34 +382,85 @@ pub(crate) fn coerce_state_literal(ty: &Type, raw: &str) -> Option<Literal> {
     }
 }
 
-fn validate_state(mocks: &MockSet, folded: &FoldedEnv) -> Vec<Diagnostic> {
+/// §1.1 (dsl 0.5.1): a `--state` on a reserved `quest.<id>.state`/
+/// `quest.<id>.objectives.<oid>.done` path has NO `folded.env.state.decls`
+/// entry (reserved paths are implicitly declared, never author-declared —
+/// `E-QUEST-RESERVED-DECL` rejects an attempt to declare one, `lute-check`).
+/// Such a path is admitted — narrowing `E-TRACE-MOCK-UNDECLARED` — iff the
+/// traced document REFERENCES that exact path
+/// ([`crate::quest_refs::collect_referenced_reserved_quest_paths`]); an
+/// admitted value is then checked against the reserved path's OWN domain
+/// (`active|complete|failed|unset` for `.state`, `true|false` for
+/// `.objectives.*.done`) rather than [`type_accepts`] (there is no
+/// [`Type`] to check against). A reserved path the document does NOT
+/// reference, or an ordinary undeclared path, is unchanged:
+/// `E-TRACE-MOCK-UNDECLARED`, identity and message untouched (Appendix A).
+fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Diagnostic> {
     let mut out = Vec::new();
+    let mut referenced_reserved: Option<BTreeSet<String>> = None;
     for (path, literal, span) in &mocks.state {
-        let Some(decl) = folded.env.state.decls.get(path) else {
-            out.push(diag(
-                E_TRACE_MOCK_UNDECLARED,
-                format!(
-                    "`--state {path}=…` names a state path not declared in the resolved schema \
-                     (state-by-typo MUST fail in mocks exactly as in documents, dsl 0.4.0 §4.3, \
-                     0.1 §11.1.1)"
-                ),
-                *span,
-            ));
+        if let Some(decl) = folded.env.state.decls.get(path) {
+            let ok = coerce_state_literal(&decl.ty, literal).is_some_and(|lit| type_accepts(&decl.ty, &lit));
+            if !ok {
+                out.push(diag(
+                    E_TRACE_MOCK_TYPE,
+                    format!(
+                        "`--state {path}={literal}` is not compatible with `{path}`'s declared type \
+                         (dsl 0.4.0 §4.3)"
+                    ),
+                    *span,
+                ));
+            }
             continue;
-        };
-        let ok = coerce_state_literal(&decl.ty, literal).is_some_and(|lit| type_accepts(&decl.ty, &lit));
-        if !ok {
-            out.push(diag(
-                E_TRACE_MOCK_TYPE,
-                format!(
-                    "`--state {path}={literal}` is not compatible with `{path}`'s declared type \
-                     (dsl 0.4.0 §4.3)"
-                ),
-                *span,
-            ));
         }
+        if crate::eval::is_reserved_quest_path(path) {
+            let referenced = referenced_reserved
+                .get_or_insert_with(|| crate::quest_refs::collect_referenced_reserved_quest_paths(doc));
+            if referenced.contains(path) {
+                if !reserved_quest_literal_valid(path, literal) {
+                    out.push(diag(
+                        E_TRACE_MOCK_TYPE,
+                        format!(
+                            "`--state {path}={literal}` is not compatible with `{path}`'s reserved \
+                             domain ({}) (dsl 0.5.1 §1.1)",
+                            reserved_quest_domain_text(path)
+                        ),
+                        *span,
+                    ));
+                }
+                continue;
+            }
+        }
+        out.push(diag(
+            E_TRACE_MOCK_UNDECLARED,
+            format!(
+                "`--state {path}=…` names a state path not declared in the resolved schema \
+                 (state-by-typo MUST fail in mocks exactly as in documents, dsl 0.4.0 §4.3, \
+                 0.1 §11.1.1)"
+            ),
+            *span,
+        ));
     }
     out
+}
+
+/// `true` iff `literal` inhabits the reserved path's own domain (§1.1):
+/// `active|complete|failed|unset` for `quest.<id>.state`, `true|false` for
+/// `quest.<id>.objectives.<oid>.done`.
+fn reserved_quest_literal_valid(path: &str, literal: &str) -> bool {
+    if crate::eval::is_reserved_quest_objective_done_path(path) {
+        matches!(literal, "true" | "false")
+    } else {
+        matches!(literal, "active" | "complete" | "failed" | "unset")
+    }
+}
+
+fn reserved_quest_domain_text(path: &str) -> &'static str {
+    if crate::eval::is_reserved_quest_objective_done_path(path) {
+        "true, false"
+    } else {
+        "active, complete, failed, unset"
+    }
 }
 
 fn describe_datalog_error(e: &DatalogError) -> String {
@@ -629,7 +680,7 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
 /// diagnostic, unsorted — the caller (Task 19's pipeline / the CLI's
 /// Refused path) owns presentation order.
 pub fn validate(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Diagnostic> {
-    let mut diags = validate_state(mocks, folded);
+    let mut diags = validate_state(mocks, folded, doc);
     diags.extend(validate_facts(mocks, folded));
     diags.extend(validate_choose(mocks, doc));
     diags.extend(validate_events(mocks));
