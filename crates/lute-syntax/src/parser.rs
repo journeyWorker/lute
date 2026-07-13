@@ -74,6 +74,14 @@ pub const E_CONTENT_LINE_BRACKET: &str = "E-CONTENT-LINE-BRACKET";
 /// this NAMES the violation instead of a misleading [`E_UNCLOSED_TAG`] /
 /// [`E_UNCLASSIFIED`] for the same root cause.
 pub const E_TAG_NOT_ONE_LINE: &str = "E-TAG-NOT-ONE-LINE";
+/// Diagnostic code (dsl 0.5.0 §2.1/§2.2): a body line uses the pre-0.2.2
+/// leading-`:` content-line speaker sigil (`:speaker: text`, replaced by
+/// `@speaker{…}: text` in 0.2.2, dsl §7.1). This is a precisely-recognized
+/// deprecated shape with its own migration `Fixit` (`lute fix` applies it
+/// automatically) — split off the [`E_UNCLASSIFIED`] catch-all so the code
+/// itself names the (fixable) deprecation instead of the residual
+/// "unrecognized line" bucket.
+pub const E_LEGACY_CONTENT_SIGIL: &str = "E-LEGACY-CONTENT-SIGIL";
 
 /// Parse a `.lute` document into its AST and parse diagnostics.
 ///
@@ -649,7 +657,7 @@ impl Parser<'_> {
         if b[cstart] == b':' {
             let sigil_span = self.span(cstart, cstart + 1);
             self.emit_line(
-                E_UNCLASSIFIED,
+                E_LEGACY_CONTENT_SIGIL,
                 "content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically",
                 i,
                 Layer::Content,
@@ -1690,12 +1698,19 @@ mod tests {
         let (_, diags) = parse("## Shot 1.\n:mira: hi\n");
         let d = diags
             .iter()
-            .find(|d| d.code == "E-UNCLASSIFIED" && d.message.contains("sigil"))
+            .find(|d| d.code == "E-LEGACY-CONTENT-SIGIL" && d.message.contains("sigil"))
             .unwrap_or_else(|| panic!("expected legacy sigil diagnostic: {diags:?}"));
         assert!(
             d.message.contains("lute fix"),
             "must mention `lute fix` applies the migration automatically: {}",
             d.message
+        );
+        // FL1 (dsl 0.5.0 §2.1): the legacy `:` sigil is a precisely-recognized
+        // deprecated shape — it must never fall through to the residual
+        // E-UNCLASSIFIED catch-all.
+        assert!(
+            !diags.iter().any(|d| d.code == "E-UNCLASSIFIED"),
+            "legacy sigil must not ALSO/instead report E-UNCLASSIFIED: {diags:?}"
         );
     }
 }
