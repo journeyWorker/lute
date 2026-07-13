@@ -1328,6 +1328,23 @@ fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic]) {
             d.code,
             d.message,
         );
+        // dsl 0.5.0 §2.2: an `E-COMPONENT-PARSE` (or any diagnostic) carrying
+        // `related` sub-diagnostics from ANOTHER file (e.g. a failed
+        // component import's own parse errors) — print each indented under
+        // the parent line, `related.file` in place of the importer's path,
+        // so the author sees what actually failed without a separate
+        // `check` of the component.
+        for r in &d.related {
+            println!(
+                "    {}:{}:{}: {} [{}] {}",
+                r.file,
+                r.diagnostic.span.line,
+                r.diagnostic.span.column,
+                severity_str(r.diagnostic.severity),
+                r.diagnostic.code,
+                r.diagnostic.message,
+            );
+        }
     }
 }
 
