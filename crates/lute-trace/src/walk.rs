@@ -1209,30 +1209,54 @@ fn seed_fact_notes(mocks: &MockSet, seed_facts: &[lute_check::meta::FactDecl]) -
 }
 
 /// dsl 0.5.1 §1.3: one informational note per FOREIGN quest `<id>` — a
-/// quest id NOT defined by an in-document `<quest id="…">` — whose
-/// reserved path was actually READ during the walk (`reserved_reads`,
-/// [`crate::eval::EffectiveState::reserved_reads`]), whether admitted as a
-/// `--state` mock (§1.1) or resolved to its default (§1.2). `trace` has no
-/// cross-document quest catalog, so this fires UNCONDITIONALLY for every
-/// such read — an explicitly-mocked typo is therefore never silent (§1.1's
-/// own text). Grouped by quest id (one note per id, never per path);
+/// quest id NOT defined by an in-document `<quest id="…">` — that either
+/// (a) has an ADMITTED `--state` mock on one of its reserved paths (§1.1)
+/// — sourced from `mocks.state` DIRECTLY (post `mock::validate`, every
+/// reserved entry there is already proven admitted/domain-valid), so this
+/// fires regardless of whether the walk ever actually reaches a read of
+/// it: "an explicitly-mocked typo is therefore never silent" (§1.1's own
+/// text) holds even when the mocked path sits inside a branch/event arm
+/// the walk never takes — or (b) had a reserved path actually resolve to
+/// its DEFAULT during the walk (§1.2, sourced from `reserved_reads`,
+/// [`crate::eval::EffectiveState::reserved_reads`] — a default is
+/// necessarily read-time, there is no "admitted but unread" analog for
+/// it). Grouped by quest id (one note per id, never per path);
 /// informational only, never an error, never a reachability claim, exit
 /// code unchanged.
-fn reserved_quest_notes(reserved_reads: &BTreeMap<String, ReservedReadKind>, doc_quest_ids: &BTreeSet<&str>) -> Vec<String> {
-    let mut by_id: BTreeMap<&str, Vec<(&str, ReservedReadKind)>> = BTreeMap::new();
+fn reserved_quest_notes(
+    mocks: &MockSet,
+    reserved_reads: &BTreeMap<String, ReservedReadKind>,
+    doc_quest_ids: &BTreeSet<&str>,
+) -> Vec<String> {
+    let mut defaulted_by_id: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for (path, kind) in reserved_reads {
+        if !matches!(kind, ReservedReadKind::Defaulted) {
+            continue; // a `Mocked` read-log entry is redundant with `mocks.state` below.
+        }
         let id = reserved_quest_id(path);
         if doc_quest_ids.contains(id) {
             continue; // derived by an in-document `<quest>` — not foreign.
         }
-        by_id.entry(id).or_default().push((path.as_str(), *kind));
+        defaulted_by_id.entry(id).or_default().push(path.as_str());
+    }
+    let mut ids: BTreeSet<&str> = defaulted_by_id.keys().copied().collect();
+    for (path, _, _) in &mocks.state {
+        if !is_reserved_quest_path(path) {
+            continue;
+        }
+        let id = reserved_quest_id(path);
+        if doc_quest_ids.contains(id) {
+            continue;
+        }
+        ids.insert(id);
     }
     let mut notes = Vec::new();
-    for (id, entries) in by_id {
-        let mut defaults: Vec<String> = entries
-            .iter()
-            .filter(|(_, kind)| matches!(kind, ReservedReadKind::Defaulted))
-            .map(|(path, _)| format!("`{path}` defaults to `{}` (override via --state)", reserved_default_text(path)))
+    for id in ids {
+        let mut defaults: Vec<String> = defaulted_by_id
+            .get(id)
+            .into_iter()
+            .flatten()
+            .map(|path| format!("`{path}` defaults to `{}` (override via --state)", reserved_default_text(path)))
             .collect();
         defaults.sort();
         let mut msg = format!(
@@ -1401,7 +1425,7 @@ pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, Trace
 
     let doc_quest_ids: BTreeSet<&str> = doc.quests.iter().map(|q| q.id.as_str()).collect();
     let mut notes = seed_fact_notes(&mocks, &folded.env.rel_vocab.facts);
-    notes.extend(reserved_quest_notes(&w.state.reserved_reads(), &doc_quest_ids));
+    notes.extend(reserved_quest_notes(&mocks, &w.state.reserved_reads(), &doc_quest_ids));
     notes.extend(unmatched_event_notes(&doc, &mocks.events));
     let report = TraceReport {
         file: input.uri.clone(),
