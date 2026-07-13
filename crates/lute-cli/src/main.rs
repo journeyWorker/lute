@@ -20,11 +20,17 @@
 //!   different subprojects declaring the same id is not a collision), for
 //!   quest docs `check`'s own import-graph-scoped `E-QUEST-ID-DUP` (0.2.0
 //!   F4) cannot see: two quest docs sharing an id with no `uses:`/`extends:`
-//!   edge between them. Exit `0` clean, `1` when any file has an `Error` or
-//!   any resolved root's quest-id pass finds a collision, `2` on an I/O
-//!   failure. `--json` prints a structured report (per-file `CheckResult`s +
-//!   the project-wide diagnostics); otherwise per-file human lines plus a
-//!   project-wide section.
+//!   edge between them. ALSO, PER RESOLVED PROJECT ROOT, `W-QUEST-REF-UNKNOWN`
+//!   (dsl 0.5.1 §1.4): every referenced reserved `quest.<id>.state` /
+//!   `quest.<id>.objectives.<oid>.done` path across the root's docs must
+//!   resolve to a quest (and objective) some quest doc in the root DEFINES —
+//!   a WARNING (never flips the exit verdict) naming the referencing
+//!   document and the unresolved path; single-file `lute check` has no
+//!   project graph and never emits it. Exit `0` clean, `1` when any file has
+//!   an `Error` or any resolved root's quest-id pass finds a collision, `2`
+//!   on an I/O failure. `--json` prints a structured report (per-file
+//!   `CheckResult`s + the project-wide diagnostics); otherwise per-file
+//!   human lines plus a project-wide section.
 //! - `lute catalog refresh <dir>` — re-stamp every pinned provider snapshot in
 //!   `<dir>` against the current `capabilityVersion` and clear its `stale` flag,
 //!   rewriting each file in the flat on-disk format `ProviderSet::load` reads
@@ -40,7 +46,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use lute_check::{
-    check, check_project_quest_ids, fold_env, parse_meta, CheckInput, Mode, Namespace, RelVocab,
+    check, check_project_quest_ids, check_project_quest_refs, fold_env, parse_meta, CheckInput,
+    Mode, Namespace, RelVocab,
 };
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::core::load_core_snapshot;
@@ -598,6 +605,7 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
     let mut covered = Vec::new();
     for group in by_root.values() {
         project_diags.extend(check_project_quest_ids(group));
+        project_diags.extend(check_project_quest_refs(group));
         covered.extend(lute_check::colliding_occurrences(group));
     }
     for (path, result) in &mut file_results {
@@ -663,7 +671,7 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
             print_human(path, result);
         }
         if !project_diags.is_empty() {
-            println!("project-wide quest-id collisions:");
+            println!("project-wide diagnostics:");
             for (path, d) in &project_diags {
                 println!(
                     "{}:{}:{}: {} [{}] {}",
@@ -676,18 +684,23 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
                 );
             }
         }
+        let project_error_count =
+            project_diags.iter().filter(|(_, d)| d.severity == Severity::Error).count();
+        let project_warning_count = project_diags.len() - project_error_count;
         if ok {
             println!(
-                "ok: {} ({} file(s), 0 project-wide collision(s))",
+                "ok: {} ({} file(s), {} project-wide warning(s))",
                 dir.display(),
-                file_results.len()
+                file_results.len(),
+                project_warning_count
             );
         } else {
             println!(
-                "failed: {} ({} file(s), {} project-wide collision(s))",
+                "failed: {} ({} file(s), {} project-wide error(s), {} project-wide warning(s))",
                 dir.display(),
                 file_results.len(),
-                project_diags.len()
+                project_error_count,
+                project_warning_count
             );
         }
     }
