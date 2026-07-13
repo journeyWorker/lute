@@ -186,3 +186,57 @@ fn quarantine_edge_is_cli_only() {
         "lute-cli/Cargo.toml must name lute-trace (D15, the ONE reverse edge): {manifest}"
     );
 }
+
+// --- §3.1: the resolved schema (`act1.schema.yaml`, imported via `uses:`)
+// declares seed `facts:` but NO `--fact` is supplied at all -> trace prints
+// an informational note naming a declared seed relation and saying schema
+// facts are not auto-loaded, supplied via `--fact`. Never an error: exit
+// stays whatever the (unaffected) walk decides on the empty explicit set.
+
+#[test]
+fn declares_seed_facts_with_no_mocks_prints_not_auto_loaded_note() {
+    let out = trace(&[
+        "../../docs/examples/quest-rescue-halsin.lute",
+        "--project",
+        "../../docs/examples",
+    ]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.code() == Some(0) || out.status.code() == Some(3),
+        "an informational note must never change the exit code: {}\n{stdout}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let lower = stdout.to_lowercase();
+    assert!(
+        lower.contains("note:") && lower.contains("not auto-load"),
+        "missing §3.1 not-auto-loaded note: {stdout}"
+    );
+    assert!(stdout.contains("--fact"), "note must point authors at --fact: {stdout}");
+    // The banner still reports the seeded (mock) counts unaffected by the note.
+    assert!(stdout.contains("0 facts"), "seeds banner must still report the (unaffected) mock count: {stdout}");
+}
+
+// --- §3.3: a component-expanding trace's human transcript must not leak
+// the internal `__component-begin`/`__component-end` sentinels, nor any
+// doubled marker word ("begin begin" / "end end").
+
+#[test]
+fn component_expansion_transcript_has_no_sentinel_leak() {
+    let out = trace(&["../../docs/examples/components/scene.lute"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "stderr: {}\nstdout: {stdout}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        !stdout.contains("__component-begin") && !stdout.contains("__component-end"),
+        "the internal component sentinel must never leak into the human transcript: {stdout}"
+    );
+    assert!(
+        !stdout.contains("begin begin") && !stdout.contains("end end"),
+        "a doubled marker word must never appear: {stdout}"
+    );
+    // The boundary is still visible in some clean form (a trace reader can
+    // still tell inlined component content apart from the document's own).
+    assert!(
+        stdout.contains("component begin") && stdout.contains("component end"),
+        "the component boundary itself should still be signposted, just cleanly: {stdout}"
+    );
+}

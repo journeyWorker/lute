@@ -174,6 +174,11 @@ fn supplying_derived_facts_completes_the_quest() {
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
     assert!(report.unresolved.is_empty(), "a complete trace has nothing left unresolved: {:?}", report.unresolved);
+    assert!(
+        report.notes.is_empty(),
+        "§3.1 note must not fire once `--fact` mocks are supplied: {:?}",
+        report.notes
+    );
 
     let complete = quest_decision(&report.decisions, "complete").expect("quest must record a complete decision");
     assert_eq!(complete.id, "rescueHalsin");
@@ -342,4 +347,109 @@ fn start_less_quest_activates_on_matching_accept_questactive_fires_once() {
     // regression guard for the accept-driven path).
     let fire_count = report.steps.iter().filter(|s| matches!(s, Step::Line { text, .. } if text.contains("accepted!"))).count();
     assert_eq!(fire_count, 1, "questActive handler must fire exactly once: {:?}", report.steps);
+}
+
+// ---------------------------------------------------------------------
+// (f) §3.2 terminal quests: a quest driven to FAILED (fail-precedence)
+//     with objectives whose `done` stays UNKNOWN this same pass (recorded
+//     by `reevaluate_objectives` BEFORE `fail` is checked, `0.2 §6.3`
+//     ordering) must not keep the walk unresolved — once terminal, an
+//     objective "can no longer affect any outcome" (§3.2).
+// ---------------------------------------------------------------------
+
+#[test]
+fn terminal_failed_quest_purges_unresolved_objectives() {
+    let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
+    // `atLocation(halsin, moonrise)` seeds `fail` true; neither `canReach`
+    // nor `believesLocation` is supplied, so BOTH objectives' `done` guards
+    // go unknown on this same settle pass, before `fail` decides.
+    let mocks = quest_facts(&["inParty(shadowheart)", "atLocation(halsin, moonrise)"]);
+
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit); // terminal (failed) -> NOT incomplete/exit 3
+
+    let failed = quest_decision(&report.decisions, "failed").expect("quest must record a failed decision");
+    assert_eq!(failed.id, "rescueHalsin");
+
+    assert!(
+        report.unresolved.is_empty(),
+        "a terminally-failed quest's unresolved objectives must not survive: {:?}",
+        report.unresolved
+    );
+    assert!(objective_unresolved(&report.unresolved, "reach").is_none());
+    assert!(objective_unresolved(&report.unresolved, "learn").is_none());
+}
+
+// ---------------------------------------------------------------------
+// (g) §3.2 de-duplication: an objective whose `done` stays unknown across
+//     MULTIPLE settle passes on a quest that never reaches a terminal
+//     state is reported unresolved exactly ONCE, not once per pass.
+// ---------------------------------------------------------------------
+
+#[test]
+fn nonterminal_quest_dedupes_unresolved_objective_across_passes() {
+    let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
+    // No `atLocation` fact -> `fail` stays unknown, never true -> the quest
+    // stays Active across both custom (non-lifecycle) events, re-running
+    // `settle_quest`/`reevaluate_objectives` on `reach`/`learn` each time.
+    let mocks = MockSet {
+        facts: vec!["inParty(shadowheart)".to_string()],
+        events: vec!["poke1".to_string(), "poke2".to_string()],
+        ..Default::default()
+    };
+
+    let (report, exit) = trace_document(&input, mocks);
+    assert_incomplete(&exit); // still genuinely unresolved (not terminal) -> exit 3 preserved
+
+    assert!(quest_decision(&report.decisions, "failed").is_none());
+    assert!(quest_decision(&report.decisions, "complete").is_none());
+
+    let reach_count = report.unresolved.iter().filter(|u| u.construct == "objective" && u.id == "reach").count();
+    let learn_count = report.unresolved.iter().filter(|u| u.construct == "objective" && u.id == "learn").count();
+    assert_eq!(reach_count, 1, "`reach` must be reported unresolved exactly once, not once per pass: {:?}", report.unresolved);
+    assert_eq!(learn_count, 1, "`learn` must be reported unresolved exactly once, not once per pass: {:?}", report.unresolved);
+}
+
+// ---------------------------------------------------------------------
+// (h) §3.1: the schema declares seed `facts:` (`act1.schema.yaml`, imported
+//     via `uses:`) but NO `--fact` mock is supplied at all — trace signals
+//     the explicit-world model with an informational note naming a
+//     declared-but-un-supplied seeded relation. Nothing about the walk
+//     itself changes: a non-`derive:true` relation with zero asserted
+//     facts DECIDES `false` (`FactStore::holds`, closed-world over the
+//     explicit set), so `start` (reading the unsupplied `inParty` seed)
+//     decides `false` -> the quest never activates -> exit 0, EXACTLY as
+//     it did before this note existed — the note is purely informational
+//     signage explaining why a schema-seeded relation reads empty here.
+// ---------------------------------------------------------------------
+
+#[test]
+fn declares_seed_facts_with_no_mocks_emits_not_auto_loaded_note() {
+    let input = load_input("../../docs/examples/quest-rescue-halsin.lute");
+    let mocks = MockSet::default();
+
+    let (report, exit) = trace_document(&input, mocks);
+
+    assert_eq!(report.notes.len(), 1, "expected exactly one §3.1 note: {:?}", report.notes);
+    let note = &report.notes[0];
+    assert!(
+        note.to_lowercase().contains("not auto-load"),
+        "note must state schema seed facts are not auto-loaded: {note}"
+    );
+    assert!(note.contains("--fact"), "note must say --fact supplies them: {note}");
+    assert!(
+        ["inParty", "captive", "atLocation", "connected"].iter().any(|r| note.contains(r)),
+        "note must name a declared seed relation: {note}"
+    );
+
+    // Fact set / exit code are UNCHANGED vs before this note existed:
+    // nothing was auto-loaded (0 seeded facts, same banner as always), so
+    // `start` decides `false` off the genuinely-empty explicit set and the
+    // quest never activates — informational only, never a reachability
+    // claim, never touching the exit-code decision.
+    assert_eq!(report.seeds.facts, 0, "the seeded-count banner reflects supplied mocks only, unaffected by the note");
+    assert_complete(&exit);
+    assert!(report.unresolved.is_empty(), "the note must never manufacture an unresolved atom: {:?}", report.unresolved);
+    let never = quest_decision(&report.decisions, "never").expect("start decides false off the empty explicit set");
+    assert_eq!(never.id, "rescueHalsin");
 }
