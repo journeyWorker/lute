@@ -9,7 +9,8 @@
 
 use super::attrs::{take_bool, take_cel, take_str, take_str_spanned};
 use super::{
-    close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
+    close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TAG_NOT_ONE_LINE,
+    E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
 };
 use crate::ast::*;
 use lute_core_span::Layer;
@@ -39,6 +40,28 @@ impl Parser<'_> {
         let (attrs, after) = self.scan_attrs(j, b'>');
         let start_o = self.orig(cstart);
         let end_o = self.orig(after);
+        // dsl 0.5.0 §2.1/§2.3 `E-TAG-NOT-ONE-LINE`: `scan_attrs` hard-stops on
+        // `\n` (it never reads past a physical line, so a wrapped attribute
+        // never gets misparsed as this line's content), so the terminator was
+        // reached on THIS line iff the last byte it consumed is the
+        // terminator itself — true for both a plain `>` close and a
+        // self-closing `/>` (scan_attrs skips the lone `/` as an unparseable
+        // token, then finds `>` right after). When that fails, the opener's
+        // `>`/`/>` was not reached on its own physical line — name it instead
+        // of leaving a misleading `E-UNCLOSED-TAG`/`E-UNCLASSIFIED` to fire
+        // from wherever the parser resyncs. Do NOT attempt to consume the
+        // wrap — the one-physical-line model (§2.3) is retained, not relaxed.
+        if self.body.as_bytes().get(after.wrapping_sub(1)) != Some(&b'>') {
+            self.emit_o(
+                E_TAG_NOT_ONE_LINE,
+                "a tag and all its attributes must be on one physical line; wrapping is not \
+                 supported (dsl §2.3)"
+                    .to_string(),
+                start_o,
+                self.orig(e),
+                Layer::Logic,
+            );
+        }
         // dsl 0.2.0 §6.4 self-closing `<tag/>`: the `>` was preceded by `/`. The
         // attr scanner tolerates the lone `/` (skips it as an unparseable token),
         // so detect it from the raw byte just before the consumed terminator.
