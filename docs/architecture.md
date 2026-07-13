@@ -687,6 +687,23 @@ reasoning (spec §9 non-goals).
 | `E-QUEST-UNREACHABLE` | error | a `<quest>` that can never complete: `start` decides false (never activates), or `fail` decides true (precedence over completion). One diagnostic per quest, naming whichever standalone cause(s) hold (D21) — a dead `start` *and* a dead objective's `done` yield both `E-QUEST-UNREACHABLE` and `E-OBJECTIVE-UNSATISFIABLE` (distinct roots). |
 | `W-OBJECTIVE-HIDDEN` | warning | a **required** objective whose visibility `when` decides false — the `0.2 §6.3` softlock prose, now checkable. A warning because `done` is independent of visibility, so completion may still be reachable. |
 
+**Limitation — reachability is *not* proven for fact-query-gated objectives.** §5's
+provable-only guarantee covers *decided* guards only; per R5 a `holds`/`count`/`validAt`
+query is always **undecided**, so `E-OBJECTIVE-UNSATISFIABLE`/`E-QUEST-UNREACHABLE` can
+never fire on an objective whose `done` is gated by a relational fact query — even one that
+no authored rule, seed `facts:`, or `::assert` can ever produce. Such a relation may still
+be legitimately engine-populated (`reserved: true`, `0.3 §4`), so "no author-side producer"
+is not a sound impossibility signal (the §5 Closure clause forbids firing an error on
+reasoning outside R1–R5). Consequently a genuinely unreachable *relational* objective can
+pass `check` clean, and `lute trace` can be driven to a false "complete" by mocking the very
+fact that was never achievable — `trace` trusts its mocks and never runs the Datalog
+fixpoint (D1, §4.2). **Check-clean (§5) and trace-clean (§4 — no unresolved atoms) are
+therefore necessary, not sufficient, proof that a relationally-gated objective is
+reachable.** `lute trace` only explores the *authored mock scenarios* you supply (a coverage
+aid, never a proof — §4.2); genuinely proving a derived-fact objective reachable requires
+running the actual engine (Datalog fixpoint + event sequencing) at integration time, outside
+both the static surface (§5) and `trace`.
+
 Interaction with the pre-existing checker: an `E-ARM-DEAD` arm suppresses the pre-existing
 `W-OVERLAP-ARMS` on the same span (a new post-pass suppressor, modeled on
 `suppress_exhaustive_subject_reads`) — the dead-arm error is the root (C4); `E-HUB-NO-EXIT`
