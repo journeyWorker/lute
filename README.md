@@ -8,6 +8,10 @@ The language is a draft: intentionally small, line-oriented, and data-reducible.
 scenario files compile to flat engine command records plus CEL condition strings. The language is
 **total**, not Turing-complete.
 
+**New to Lute and just want to write a scene?** Skip the spec stack for now — start with
+[**Write your first Lute scene**](docs/getting-started-first-scene.md), a linear, hands-on
+tutorial that builds one small scene from an empty file.
+
 ## Documents by role
 
 Each document owns one role; read the one that matches what you are doing.
