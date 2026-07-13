@@ -40,6 +40,7 @@
 
 pub mod eval;
 pub mod mock;
+mod quest_refs;
 pub mod report;
 pub mod value;
 pub mod walk;

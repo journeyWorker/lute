@@ -382,3 +382,89 @@ fn end_to_end_yaml_file_plus_flag_state_win_validates_clean() {
     let (folded, doc) = load("../../docs/examples/choice-persist.lute");
     assert!(validate(&merged, &folded, &doc).is_empty());
 }
+
+// ---------------------------------------------------------------------
+// dsl 0.5.1 §1.1: reserved quest paths are seedable when the document
+// references them.
+// ---------------------------------------------------------------------
+
+fn quest_state_reader_text() -> &'static str {
+    "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+     <match on=\"quest.foo.state\">\n\
+     <when is=\"active\" test=\"quest.foo.objectives.bar.done\">\n@x: a\n</when>\n\
+     <when is=\"complete | failed\">\n@x: b\n</when>\n\
+     <otherwise>\n@x: c\n</otherwise>\n\
+     </match>\n"
+}
+
+/// `--state quest.foo.state=complete` against a scene that reads
+/// `quest.foo.state` (the match subject) validates clean — the document
+/// REFERENCES the exact path (§1.1).
+#[test]
+fn reserved_quest_state_mock_admitted_when_document_references_it() {
+    let (folded, doc) = folded_and_doc(quest_state_reader_text(), "quest-state-reader", Path::new("."));
+    let mocks = MockSet {
+        state: vec![("quest.foo.state".to_string(), "complete".to_string(), zero_span())],
+        ..Default::default()
+    };
+    let diags = validate(&mocks, &folded, &doc);
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// `--state quest.foo.objectives.bar.done=true` against the SAME document
+/// (referenced via the `<when test=…>` guard, not just the match subject)
+/// also validates clean.
+#[test]
+fn reserved_quest_objective_done_mock_admitted_when_document_references_it() {
+    let (folded, doc) = folded_and_doc(quest_state_reader_text(), "quest-state-reader", Path::new("."));
+    let mocks = MockSet {
+        state: vec![("quest.foo.objectives.bar.done".to_string(), "true".to_string(), zero_span())],
+        ..Default::default()
+    };
+    let diags = validate(&mocks, &folded, &doc);
+    assert!(diags.is_empty(), "{diags:?}");
+}
+
+/// `--state quest.bar.state=complete` names a reserved path the document
+/// does NOT reference (the document only reads `quest.foo.*`) -> STILL
+/// `E-TRACE-MOCK-UNDECLARED` (§1.1: "you can only preview a read the
+/// document actually makes").
+#[test]
+fn reserved_quest_path_mock_rejected_when_document_does_not_reference_it() {
+    let (folded, doc) = folded_and_doc(quest_state_reader_text(), "quest-state-reader", Path::new("."));
+    let mocks = MockSet {
+        state: vec![("quest.bar.state".to_string(), "complete".to_string(), zero_span())],
+        ..Default::default()
+    };
+    let diags = validate(&mocks, &folded, &doc);
+    assert_eq!(codes(&diags), vec![E_TRACE_MOCK_UNDECLARED], "{diags:?}");
+}
+
+/// `--state quest.foo.state=paused` — a value outside the reserved
+/// domain (`active|complete|failed|unset`) on a REFERENCED reserved path
+/// -> a typed `E-TRACE-MOCK-TYPE`, never silently admitted (§1.1's own
+/// text: "a malformed value ... is `E-TRACE-MOCK-*` as for any typed
+/// mock").
+#[test]
+fn reserved_quest_state_mock_outside_domain_is_type_error() {
+    let (folded, doc) = folded_and_doc(quest_state_reader_text(), "quest-state-reader", Path::new("."));
+    let mocks = MockSet {
+        state: vec![("quest.foo.state".to_string(), "paused".to_string(), zero_span())],
+        ..Default::default()
+    };
+    let diags = validate(&mocks, &folded, &doc);
+    assert_eq!(codes(&diags), vec![E_TRACE_MOCK_TYPE], "{diags:?}");
+}
+
+/// Same domain check for the objective `done` shape: only `true`/`false`
+/// are legal, even on a referenced path.
+#[test]
+fn reserved_quest_objective_done_mock_outside_domain_is_type_error() {
+    let (folded, doc) = folded_and_doc(quest_state_reader_text(), "quest-state-reader", Path::new("."));
+    let mocks = MockSet {
+        state: vec![("quest.foo.objectives.bar.done".to_string(), "yes".to_string(), zero_span())],
+        ..Default::default()
+    };
+    let diags = validate(&mocks, &folded, &doc);
+    assert_eq!(codes(&diags), vec![E_TRACE_MOCK_TYPE], "{diags:?}");
+}
