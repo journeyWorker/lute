@@ -575,3 +575,38 @@ fn scenario_bare_nodeid_matching_both_scene_key_and_quest_id_is_rejected_as_ambi
     assert!(err.contains("scene:dup.s01ep01"), "{err}");
     assert!(err.contains("quest:dup.s01ep01"), "{err}");
 }
+
+/// Defect B propagation: `lute scenario reach` must ALSO report a quest
+/// with a dead REQUIRED objective as `Unreachable` (both directly, and
+/// transitively through a scene's `completed(Q)` gate) -- the exact
+/// surface `check-project`'s own `E-CONN-UNREACHABLE` shares its
+/// `reach`/`unreachable_quests` data with.
+#[test]
+fn scenario_reach_reports_unreachable_for_dead_required_objective_quest() {
+    let dir = temp_dir("scenario-reach-dead-required-objective");
+    write(
+        &dir,
+        "deadquest.lute",
+        "---\nkind: quest\n---\n<quest id=\"deadQuest\" start=\"true\">\n\
+         <objective id=\"o\" done=\"false\"/>\n</quest>\n",
+    );
+    write(
+        &dir,
+        "gated.lute",
+        "---\nkind: scene\ncharacter: repro\nseason: 1\nepisode: 1\n\
+         after: 'completed(\"deadQuest\")'\n---\n## Shot 1.\n@narrator: hi\n",
+    );
+
+    let out_quest = run(&["scenario", dir.to_str().unwrap(), "reach", "quest:deadQuest"]);
+    let text_quest = stdout(&out_quest);
+    assert!(text_quest.contains("Unreachable"), "{text_quest}");
+    assert!(text_quest.contains("E-OBJECTIVE-UNSATISFIABLE"), "{text_quest}");
+
+    let out_scene = run(&["scenario", dir.to_str().unwrap(), "reach", "scene:repro.s01ep01"]);
+    let text_scene = stdout(&out_scene);
+    assert!(text_scene.contains("Unreachable"), "{text_scene}");
+    assert!(
+        text_scene.contains("E-CONN-UNREACHABLE"),
+        "the gated scene's own verdict must be E-CONN-UNREACHABLE: {text_scene}"
+    );
+}

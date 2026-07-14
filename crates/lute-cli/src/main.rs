@@ -49,7 +49,7 @@ use lute_check::{
     check, check_definite_assignment, check_project_quest_ids, check_project_quest_refs,
     defassign, envelope, fold_env, parse_meta, CheckInput, Mode, Namespace, RelVocab,
 };
-use lute_core_span::{Diagnostic, Severity, Span};
+use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::project::{load_project, resolve_document_snapshot};
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
@@ -612,6 +612,160 @@ fn collect_project_docs(
     Ok((file_results, by_root))
 }
 
+/// Re-derive `span`'s `line`/`column`/`utf16_range` from its byte offsets
+/// against `text`, mirroring `lute_check::check`'s own (private)
+/// `normalize_spans`/`fix_up` treatment for per-file diagnostics exactly
+/// (clamp to text length, snap to char boundaries so `Span::from_bytes`
+/// never slices mid-code-point, then recompute via [`TextIndex`]) --
+/// project-wide diagnostics (`connectivity.rs`'s `meta_key_span`-anchored
+/// `E-CONN-*` family) are assembled OUTSIDE `check()`'s own pipeline, so
+/// they never otherwise receive this normalization and print a ZEROED
+/// `0:0` line/column despite carrying a correct byte range. Idempotent on
+/// an already-normalized span (a quest's parser-produced `id_span`/
+/// `after_span`) since it recomputes from the exact same byte offsets
+/// against the same source text -- never a regression for those.
+fn normalize_span_from_text(text: &str, span: Span) -> Span {
+    let len = text.len();
+    let mut start = span.byte_start.min(len);
+    let mut end = span.byte_end.min(len).max(start);
+    while start > 0 && !text.is_char_boundary(start) {
+        start -= 1;
+    }
+    while end < len && !text.is_char_boundary(end) {
+        end += 1;
+    }
+    let idx = TextIndex::new(text);
+    Span::from_bytes(&idx, start, end)
+}
+
+/// The converged result of [`compute_conn_fixpoint`]'s monotone iteration
+/// (dsl 0.4.0 §4.2's relational-objective-liveness CLOSURE, connectivity
+/// design spec §4.2 -- reviewer finding: a single round misses a
+/// multi-hop chain, e.g. a dead required objective -> a scene gated on
+/// `completed()` that scene becomes unreachable -> its own `::assert`
+/// producer drops -> a relation elsewhere goes non-producible -> ANOTHER
+/// quest's required objective dies -> repeat).
+struct ConnFixpoint {
+    reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
+    reach_diags: Vec<(PathBuf, Diagnostic)>,
+    live_asserts: BTreeSet<String>,
+    dead_required_objective_quests: BTreeSet<String>,
+    unreachable_quests: BTreeSet<String>,
+}
+
+/// Iterate `reach -> live_asserts -> producible -> dead_required_objective_quests
+/// -> grow unreachable_quests` to a FINITE FIXPOINT (dsl 0.4.0 §8.2 rule C4 +
+/// design spec §4.2's closure), shared by [`run_check_project`] and
+/// [`assemble_root_scenario`].
+///
+/// **Fix 1 (reviewer, soundness/false-positive):** `live_assert_relations`'s
+/// per-quest host-liveness check is seeded ONLY from
+/// `lifecycle_unreachable_quests` (`start=false`/`fail=true` -- 0.4 §5.3:
+/// `fail` "precedes completion... fails at the first evaluation instant",
+/// i.e. the body genuinely NEVER executes), never from the GROWING combined
+/// set. A quest with a dead REQUIRED objective can still ACTIVATE and run
+/// its OTHER body nodes (an optional objective's own `::assert`, a
+/// top-level assert, …) -- "can never COMPLETE" is not "never ACTIVATES".
+/// Conflating the two would wrongly drop a still-live producer and cascade
+/// a FALSE `E-OBJECTIVE-UNSATISFIABLE` onto an unrelated, genuinely-alive
+/// objective. `reach` (scene-node liveness) is NOT similarly restricted --
+/// a scene whose ONLY declared route runs through a now-unreachable
+/// `completed(Q)` gate really is never entered, so ITS assert sites really
+/// do drop; that is the intended closure, not a false positive.
+///
+/// **Fix 2 (advisory, completeness): finite fixpoint, not one round.** Each
+/// iteration recomputes `reach` from the CURRENT `unreachable_quests`, then
+/// `live_asserts`/`producible()`/`dead_required_objective_quests` from that
+/// `reach`, then grows `unreachable_quests` by the union. The composition is
+/// MONOTONE over the finite quest-id domain:
+/// - `eval_reach`'s `And`/`Or` lattice is monotone in `unreachable_quests`
+///   (more unreachable input never turns a node MORE reachable) -> `reach`
+///   only ever loses `Reachable`/`Unknown` entries to `Unreachable` as the
+///   set grows, never the reverse.
+/// - `live_assert_relations`'s scene branch reads `reach` directly -> the
+///   live-assert-relation set can only SHRINK (or stay the same) as `reach`
+///   tightens.
+/// - `producible()` is a monotone least-fixpoint over its own base-case
+///   assert-site seeds -> fewer live asserts can only shrink the
+///   producible-`true` set, never grow it.
+/// - `dead_guard`/`decide_slot`'s dead-relation substitution only SUBSTITUTES
+///   MORE fact-query calls as the non-producible set grows, and CEL boolean
+///   composition (`&&`/`||`, R1-R5) is monotone in "more constants known"
+///   for deciding `false` -- so `dead_required_objective_quests` only grows.
+///
+/// So `unreachable_quests` is monotone NON-DECREASING, bounded above by the
+/// full finite `quest_ids` set (every id `dead_required_objective_quests`
+/// can ever contain is itself one of this root's declared quests) --
+/// the loop terminates in AT MOST `quest_ids.len() + 1` rounds (it either
+/// adds >=1 new id, or stabilizes and returns). Every id ever added is
+/// PROVABLY dead/unreachable at the round it was added (same provable-only
+/// signal as the single-round version) -- monotone growth of a
+/// provable-only set can never introduce a false positive.
+fn compute_conn_fixpoint(
+    group: &[(PathBuf, lute_syntax::ast::Document)],
+    group_full: &DocGroup,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    conn_graph: &lute_check::connectivity::ConnGraph,
+    quest_ids: &BTreeSet<String>,
+    ambiguous_quests: &BTreeSet<String>,
+) -> ConnFixpoint {
+    let lifecycle_unreachable_quests =
+        lute_check::connectivity::unreachable_quest_ids(group, file_results);
+    let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
+    let mut unreachable_quests = lifecycle_unreachable_quests.clone();
+    loop {
+        let (reach, reach_diags) = lute_check::connectivity::check_reachability(
+            conn_graph,
+            quest_ids,
+            ambiguous_quests,
+            &unreachable_quests,
+        );
+        let live_asserts = lute_check::connectivity::live_assert_relations(
+            group,
+            &reach,
+            ambiguous_quests,
+            &lifecycle_unreachable_quests,
+        );
+        let mut newly_dead: BTreeSet<String> = BTreeSet::new();
+        for (_path, doc, folded) in group_full {
+            let producible_map =
+                lute_check::producible::producible(&folded.env.rel_vocab, &live_asserts);
+            let defs = lute_check::DefTable {
+                bodies: &folded.def_bodies,
+                params: &folded.env.def_params,
+            };
+            let ctx = lute_check::DecideCtx {
+                schema: &folded.env.state,
+                dollar: None,
+                params: &no_params,
+            };
+            newly_dead.extend(lute_check::producible::dead_required_objective_quests(
+                doc,
+                &producible_map,
+                ambiguous_quests,
+                &defs,
+                &ctx,
+            ));
+        }
+        let grown: BTreeSet<String> =
+            lifecycle_unreachable_quests.iter().cloned().chain(newly_dead).collect();
+        if grown == unreachable_quests {
+            let dead_required_objective_quests: BTreeSet<String> = unreachable_quests
+                .difference(&lifecycle_unreachable_quests)
+                .cloned()
+                .collect();
+            return ConnFixpoint {
+                reach,
+                reach_diags,
+                live_asserts,
+                dead_required_objective_quests,
+                unreachable_quests,
+            };
+        }
+        unreachable_quests = grown;
+    }
+}
+
 /// Run `check` over every `*.lute` file recursively found under `dir`
 /// (sorted, deterministic, symlink-deduped — [`find_lute_files`]), but
 /// resolving EACH file's project independently rather than reusing `dir` as
@@ -707,48 +861,18 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
         let (conn_graph, cycle_diags) =
             lute_check::connectivity::assemble_graph(group, &key_set, &quest_ids);
         project_diags.extend(cycle_diags);
-        // T7/T14 wiring note: `unreachable_quest_ids` extracts the REAL
-        // per-root unreachable-quest set from this same `file_results`
-        // pass (span-matched against `E-QUEST-UNREACHABLE`, verified
-        // exact -- both `group` and `file_results` parse the SAME source
-        // text deterministically, so spans always agree). No empty-set
-        // stub remains: `E-CONN-UNREACHABLE` fires for real here.
-        let unreachable_quests =
-            lute_check::connectivity::unreachable_quest_ids(group, &file_results);
-        // T6 review + review-2: `completed(Q)` must consult the FULL
-        // per-root declared quest-id set (`quest_ids`, same collection T4
-        // already computed above) and treat any id with more than one
-        // declaration as ambiguous (`ambiguous_quest_ids`) -- never a
-        // false `Reachable`/`Unreachable` guess for it.
+        // T7/T14/Fix2 wiring: `compute_conn_fixpoint` iterates the
+        // reach/live_asserts/producible/dead-required-objective composition
+        // to a finite fixpoint (see its own doc comment for the
+        // termination + soundness argument) -- `no_params`/`ambiguous_quests`
+        // are shared with the envelope wiring below.
         let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(group);
-        let (reach, reach_diags) = lute_check::connectivity::check_reachability(
-            &conn_graph,
-            &quest_ids,
-            &ambiguous_quests,
-            &unreachable_quests,
-        );
-        project_diags.extend(reach_diags);
-        // T7: `producible()` rule-dependency walk + relational-objective-
-        // liveness (dsl §4.2/§B). `live_assert_relations` is the
-        // reachability-GATED assert-site base case: every relation with an
-        // `::assert{R(…)}` site in a node this root's `reach` map did NOT
-        // prove `Unreachable` (`Reachable` OR `Unknown` both seed
-        // producibility -- provable-only, excluding `Unknown` would risk a
-        // false-dead claim on a node this pass simply cannot resolve).
-        // Each doc's OWN `folded` (from `fold_env`, above) drives its OWN
-        // `producible()` map AND the liveness scan's `decide()` context --
-        // a doc can only gate an objective on a relation/def ITS OWN fold
-        // declares.
-        let live_asserts = lute_check::connectivity::live_assert_relations(
-            group,
-            &reach,
-            &ambiguous_quests,
-            &unreachable_quests,
-        );
         let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
+        let fp = compute_conn_fixpoint(group, group_full, &file_results, &conn_graph, &quest_ids, &ambiguous_quests);
+        project_diags.extend(fp.reach_diags);
         for (path, doc, folded) in group_full {
             let producible =
-                lute_check::producible::producible(&folded.env.rel_vocab, &live_asserts);
+                lute_check::producible::producible(&folded.env.rel_vocab, &fp.live_asserts);
             let defs = lute_check::DefTable {
                 bodies: &folded.def_bodies,
                 params: &folded.env.def_params,
@@ -914,6 +1038,27 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
             .iter()
             .any(|d| d.severity == Severity::Error);
     }
+    // Defect fix (persona review, connectivity T-final): every project-wide
+    // diagnostic anchored via `lute_check::meta::meta_key_span` (the
+    // `E-CONN-EPISODE-ID-DUP`/`E-CONN-UNKNOWN-NODE`/`E-CONN-CYCLE`/
+    // `E-CONN-UNREACHABLE` scene anchors) carries a CORRECT byte range but
+    // a ZEROED `line`/`column` -- that helper's own documented contract:
+    // "`crate::check`'s `normalize_spans` recomputes them from the byte
+    // offsets." Per-file diagnostics get that treatment inside `check()`
+    // itself; these are assembled here, project-wide, and never pass
+    // through it, so they printed `0:0` verbatim. Mirror the SAME
+    // normalization here, per diagnostic's own file text -- a `Span` that
+    // already carries a real line/col (a quest's parser-produced
+    // `id_span`/`after_span`, or `E-STATE-MAYBE-UNAVAILABLE`'s read-site
+    // span) recomputes identically from the SAME byte offsets against the
+    // SAME source text, so this is a no-op for those, never a regression.
+    let mut project_diag_text_cache: BTreeMap<PathBuf, String> = BTreeMap::new();
+    for (path, d) in &mut project_diags {
+        let text = project_diag_text_cache
+            .entry(path.clone())
+            .or_insert_with(|| std::fs::read_to_string(path.as_path()).unwrap_or_default());
+        d.span = normalize_span_from_text(text, d.span);
+    }
 
     let project_ok = !project_diags
         .iter()
@@ -1068,6 +1213,14 @@ struct RootScenario {
     quest_ids: BTreeSet<String>,
     ambiguous_quests: BTreeSet<String>,
     unreachable_quests: BTreeSet<String>,
+    /// The subset of `unreachable_quests` that is unreachable via a
+    /// PROVABLY dead REQUIRED objective (dsl 0.4.0 §8.2 rule C4 -- the
+    /// cause C4 deliberately does NOT surface as a standalone
+    /// `E-QUEST-UNREACHABLE`) -- kept SEPARATE from the lifecycle cause
+    /// (`start=false`/`fail=true`) so [`reach_verdict_text`] can name the
+    /// correct diagnostic code for each cause, never misattributing a C4
+    /// note to the suppressed standalone code.
+    dead_required_objective_quests: BTreeSet<String>,
     /// `D` (dsl §4.3 spec lines 442-448): the project-resolved `run.*`/
     /// `user.*` schema-defaulted set, unioned across every doc's own
     /// resolved schema in this root — [`envelope::quest_envelope`]'s own
@@ -1093,14 +1246,15 @@ fn assemble_root_scenario(
     let quest_ids = lute_check::connectivity::quest_id_set(&docs);
     let (graph, _cycle_diags) =
         lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
-    let unreachable_quests = lute_check::connectivity::unreachable_quest_ids(&docs, file_results);
+    // T7/T14/Fix2 wiring: shares `compute_conn_fixpoint`'s finite-fixpoint
+    // iteration with `run_check_project` (see that fn's own doc comment
+    // for the termination + soundness argument) -- never re-derived
+    // independently.
     let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&docs);
-    let (reach, _reach_diags) = lute_check::connectivity::check_reachability(
-        &graph,
-        &quest_ids,
-        &ambiguous_quests,
-        &unreachable_quests,
-    );
+    let fp = compute_conn_fixpoint(&docs, group_full, file_results, &graph, &quest_ids, &ambiguous_quests);
+    let reach = fp.reach;
+    let unreachable_quests = fp.unreachable_quests;
+    let dead_required_objective_quests = fp.dead_required_objective_quests;
 
     let mut per_doc = envelope::PerDocEffects::default();
     let mut envelope_d: BTreeSet<String> = BTreeSet::new();
@@ -1158,6 +1312,7 @@ fn assemble_root_scenario(
         quest_ids,
         ambiguous_quests,
         unreachable_quests,
+        dead_required_objective_quests,
         envelope_d,
         docs,
     }
@@ -1252,6 +1407,12 @@ fn reach_verdict_text(scenario: &RootScenario, node: &lute_check::connectivity::
         NodeId::Quest(id) if scenario.ambiguous_quests.contains(id) => {
             "Unknown — ambiguous quest id (more than one declaration) under your declared \
              routes."
+                .to_string()
+        }
+        NodeId::Quest(id) if scenario.dead_required_objective_quests.contains(id) => {
+            "Unreachable — this quest has a provably dead REQUIRED objective, so it can never \
+             complete (E-OBJECTIVE-UNSATISFIABLE, dsl 0.4 §5.3/§8.2 rule C4), under your \
+             declared routes."
                 .to_string()
         }
         NodeId::Quest(id) if scenario.unreachable_quests.contains(id) => {

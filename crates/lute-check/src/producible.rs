@@ -33,11 +33,11 @@ use std::collections::BTreeSet;
 use cel_parser::ast::{CallExpr, Expr, IdedExpr, ListExpr, SelectExpr};
 use cel_parser::reference::Val;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, Document, Node};
+use lute_syntax::ast::{Arm, Document, Node, Objective};
 use lute_syntax::datalog::BodyLiteral;
 
 use crate::cel_expand::{expand_cel, DefTable};
-use crate::decide::{decide, DecideCtx, Decided};
+use crate::decide::{decide, decide_slot, DecideCtx, Decided};
 use crate::rel_schema::RelVocab;
 
 /// Boolean least-fixpoint over the declared rule DAG (spec §4.2): iterating
@@ -184,6 +184,126 @@ pub fn scan_objective_liveness(
         walk_objectives(&quest.body, producible, defs, ctx, &mut out);
     }
     out
+}
+
+/// Every `<quest id>` in `doc` with at least one PROVABLY dead REQUIRED
+/// (`!optional`) `<objective>` — dsl 0.4.0 §5.3/§4.2's `E-OBJECTIVE-
+/// UNSATISFIABLE` firing condition (the scalar `done`-literal cause,
+/// identical to [`crate::reachability::check_objective_reach`]'s own
+/// `decide_slot` check, OR the relational never-producible-relation cause,
+/// this module's [`dead_guard`]) computed as STRUCTURED boolean data —
+/// never derived by re-inspecting either cause's own emitted diagnostic
+/// code or message text.
+///
+/// dsl 0.4.0 §8.2 rule C4 deliberately suppresses a standalone
+/// `E-QUEST-UNREACHABLE` for this cause (it rides as a note on
+/// `E-OBJECTIVE-UNSATISFIABLE` instead,
+/// [`crate::reachability::REQUIRED_QUEST_NOTE`]) —
+/// [`crate::connectivity::check_reachability`]'s `completed(Q)` needs the
+/// boolean FACT itself, decoupled from that (intentionally suppressed)
+/// diagnostic, so it consumes this set directly: connectivity design spec
+/// §4.2's "relational-objective-liveness gap ... subsumed as a
+/// second-order consequence" is closed for the SCALAR cause too, the exact
+/// gap C4's suppression opened. This function emits NO diagnostic itself
+/// and never causes C4's standalone `E-QUEST-UNREACHABLE` to fire — it is
+/// pure data, consumed by a DIFFERENT engine (connectivity graph
+/// reachability) than the one that emits `E-OBJECTIVE-UNSATISFIABLE`.
+///
+/// An OPTIONAL dead objective never marks its quest — C4's quest-level
+/// consequence is REQUIRED-only; the quest can still complete via its
+/// other objectives. Provable-only discipline: an UNDECIDED `done` (or one
+/// this pass cannot resolve either way) never marks the quest — only a
+/// PROVEN-dead required objective does.
+///
+/// `ambiguous_quest_ids` (Task 6 review-2's set, same convention
+/// [`crate::connectivity::unreachable_quest_ids`] follows) is skipped
+/// here too: an ambiguous id might carry one dead declaration and one
+/// alive one, and [`crate::connectivity::check_reachability`]'s own
+/// precedence already resolves an ambiguous `completed(Q)` to `Unknown`
+/// before ever consulting the unreachable set — but skipping it here too
+/// keeps this function's OWN returned set meaning exactly what its name
+/// says, never silently including an id whose OTHER declaration is alive.
+///
+/// An empty quest id is skipped (that quest's own `E-QUEST-ID-MISSING`
+/// problem, not this pass's).
+pub fn dead_required_objective_quests(
+    doc: &Document,
+    producible: &BTreeMap<String, bool>,
+    ambiguous_quest_ids: &BTreeSet<String>,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for quest in &doc.quests {
+        if quest.id.is_empty() || ambiguous_quest_ids.contains(&quest.id) {
+            continue;
+        }
+        if has_dead_required_objective(&quest.body, producible, defs, ctx) {
+            out.insert(quest.id.clone());
+        }
+    }
+    out
+}
+
+/// Recurse a quest body for a REQUIRED `<objective>` whose `done` is
+/// provably dead — mirrors [`walk_objectives`]'s traversal shape exactly
+/// (same node kinds recursed, same leaf kinds skipped) so this structural
+/// signal and the diagnostic-emitting walk can never disagree about which
+/// objectives exist in a quest.
+fn has_dead_required_objective(
+    nodes: &[Node],
+    producible: &BTreeMap<String, bool>,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> bool {
+    nodes.iter().any(|node| match node {
+        Node::Objective(o) => {
+            (!o.optional && objective_is_dead(o, producible, defs, ctx))
+                || has_dead_required_objective(&o.body, producible, defs, ctx)
+        }
+        Node::Match(m) => m.arms.iter().any(|arm| {
+            let body = match arm {
+                Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
+            };
+            has_dead_required_objective(body, producible, defs, ctx)
+        }),
+        Node::Branch(b) => b
+            .choices
+            .iter()
+            .any(|c| has_dead_required_objective(&c.body, producible, defs, ctx)),
+        Node::Hub(h) => h
+            .choices
+            .iter()
+            .any(|c| has_dead_required_objective(&c.body, producible, defs, ctx)),
+        Node::On(o) => has_dead_required_objective(&o.body, producible, defs, ctx),
+        Node::Line(_)
+        | Node::Directive(_)
+        | Node::Set(_)
+        | Node::Timeline(_)
+        | Node::Assert(_)
+        | Node::Retract(_) => false,
+    })
+}
+
+/// `true` iff `o.done` is provably dead under EITHER named cause dsl
+/// 0.4.0 §5.3/§4.2 recognizes: the scalar `done`-literal cause
+/// (`decide_slot` deciding false directly, identical to
+/// [`crate::reachability::check_objective_reach`]'s own check) OR the
+/// relational never-producible-relation cause ([`dead_guard`], whose own
+/// gate (b) already excludes the scalar case) — the two causes are
+/// disjoint by construction (§4.2/C4's own "whichever standalone cause
+/// holds" precedent), so this is a plain OR, never double-counted.
+fn objective_is_dead(
+    o: &Objective,
+    producible: &BTreeMap<String, bool>,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> bool {
+    if matches!(decide_slot(&o.done.raw, defs, ctx), Some(Decided::Bool(false))) {
+        return true;
+    }
+    let mut dead_relations = BTreeSet::new();
+    dead_guard(&o.done.raw, producible, defs, ctx, &mut dead_relations)
 }
 
 fn walk_objectives(
@@ -562,5 +682,177 @@ mod tests {
         vocab.rules.push(rule("path(X, Y) :- path(X, Z), edge(Z, Y)"));
         let result = producible(&vocab, &BTreeSet::new());
         assert_eq!(result.get("path"), Some(&true));
+    }
+
+    // --- `dead_required_objective_quests` (Defect B: structured
+    // dead-required-objective liveness, decoupled from any diagnostic
+    // code/message -- consumed directly by
+    // `crate::connectivity::check_reachability`'s `completed(Q)`) -------
+
+    fn cel(raw: &str) -> lute_syntax::ast::CelSlot {
+        lute_syntax::ast::CelSlot::raw(lute_syntax::ast::CelKind::Condition, raw.to_string(), dummy_span())
+    }
+
+    fn objective_node(id: &str, done: &str, optional: bool) -> Node {
+        Node::Objective(Objective {
+            id: id.to_string(),
+            id_span: dummy_span(),
+            done: cel(done),
+            when: None,
+            title: None,
+            optional,
+            attrs: Vec::new(),
+            body: Vec::new(),
+            span: dummy_span(),
+        })
+    }
+
+    fn quest_doc(quest_id: &str, body: Vec<Node>) -> Document {
+        Document {
+            meta: lute_syntax::ast::Meta { raw_yaml: String::new(), span: dummy_span() },
+            title: None,
+            shots: Vec::new(),
+            quests: vec![lute_syntax::ast::Quest {
+                id: quest_id.to_string(),
+                id_span: dummy_span(),
+                title: None,
+                start: None,
+                fail: None,
+                after: None,
+                after_span: dummy_span(),
+                attrs: Vec::new(),
+                body,
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        }
+    }
+
+    #[test]
+    fn scalar_dead_required_objective_marks_quest() {
+        let doc = quest_doc("deadQuest", vec![objective_node("o", "false", false)]);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
+        assert!(out.contains("deadQuest"), "scalar-dead REQUIRED objective must mark the quest");
+    }
+
+    /// C4: an OPTIONAL dead objective never marks its quest -- the quest
+    /// can still complete via its other objectives.
+    #[test]
+    fn scalar_dead_optional_objective_never_marks_quest() {
+        let doc = quest_doc("q", vec![objective_node("o", "false", true)]);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
+        assert!(out.is_empty(), "an OPTIONAL dead objective must never mark its quest");
+    }
+
+    /// The relational never-producible-relation flavor (spec §4.2): a
+    /// REQUIRED objective gated on `holds(R(...))` where `producible(R)`
+    /// is proven `false` must mark the quest too -- the SAME signal that
+    /// fires `E-OBJECTIVE-UNSATISFIABLE`'s relational cause
+    /// ([`dead_guard`]), consumed here as data instead of a diagnostic.
+    #[test]
+    fn relational_dead_required_objective_marks_quest() {
+        let doc = quest_doc(
+            "deadQuest",
+            vec![objective_node("o", "holds(deadRel(\"x\"))", false)],
+        );
+        let mut producible_map = BTreeMap::new();
+        producible_map.insert("deadRel".to_string(), false);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let out = dead_required_objective_quests(&doc, &producible_map, &BTreeSet::new(), &defs, &ctx);
+        assert!(
+            out.contains("deadQuest"),
+            "a REQUIRED objective gated on a never-producible relation must mark the quest"
+        );
+    }
+
+    /// A live objective (or one gated on a producible/undeclared relation)
+    /// never marks its quest -- provable-only discipline, never a guess.
+    #[test]
+    fn live_objective_never_marks_quest() {
+        let doc = quest_doc("q", vec![objective_node("o", "true", false)]);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
+        assert!(out.is_empty());
+    }
+
+    /// Provable-only discipline: an objective gated on a relation this
+    /// pass has NO entry for at all (never resolved either way) must stay
+    /// `Unknown`, never guessed dead.
+    #[test]
+    fn undecided_relational_objective_never_marks_quest() {
+        let doc = quest_doc(
+            "q",
+            vec![objective_node("o", "holds(unknownRel(\"x\"))", false)],
+        );
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
+        assert!(out.is_empty());
+    }
+
+    /// A dead required objective nested inside a `<branch>` choice must
+    /// still be found -- the traversal mirrors [`walk_objectives`]'s own
+    /// recursion shape exactly, so the two can never disagree.
+    #[test]
+    fn dead_objective_nested_in_branch_choice_is_found() {
+        let branch = Node::Branch(lute_syntax::ast::Branch {
+            id: "b".to_string(),
+            attrs: Vec::new(),
+            choices: vec![lute_syntax::ast::Choice {
+                id: "c".to_string(),
+                label: "c".to_string(),
+                when: None,
+                attrs: Vec::new(),
+                body: vec![objective_node("o", "false", false)],
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        });
+        let doc = quest_doc("deadQuest", vec![branch]);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
+        assert!(out.contains("deadQuest"));
+    }
+
+    /// Task 6 review-2 provable-only precedent, mirrored here: an
+    /// ambiguous quest id (2+ declarations) is never marked, even when
+    /// THIS declaration's own objective is provably dead -- a DIFFERENT
+    /// declaration of the same id might be alive.
+    #[test]
+    fn ambiguous_quest_id_never_marked() {
+        let doc = quest_doc("q", vec![objective_node("o", "false", false)]);
+        let ambiguous: BTreeSet<String> = ["q".to_string()].into_iter().collect();
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &ambiguous, &defs, &ctx);
+        assert!(out.is_empty());
     }
 }
