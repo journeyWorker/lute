@@ -52,3 +52,16 @@ fn quest_after_malformed_raises_profile_error() {
     let res = check(&input_for(text));
     assert!(res.diagnostics.iter().any(|d| d.code == "E-CONN-PROFILE"));
 }
+
+#[test]
+fn quest_frontmatter_after_key_is_not_a_prereq_surface() {
+    // §2.1: frontmatter `after:` is a SCENE-ONLY prerequisite surface. A
+    // quest pack declares its prerequisite via the per-`<quest>` `after`
+    // attribute instead — a malformed `after:` in a quest doc's FRONTMATTER
+    // must NOT be fed to `prereq::parse_prereq` (it may still raise the
+    // ordinary unknown-meta-key diagnostic; we assert only on the absence
+    // of the spurious E-CONN-PROFILE).
+    let text = "---\nkind: quest\nafter: '!visited(\"x\")'\n---\n<quest id=\"q\" start=\"true\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let res = check(&input_for(text));
+    assert!(!res.diagnostics.iter().any(|d| d.code == "E-CONN-PROFILE"));
+}
