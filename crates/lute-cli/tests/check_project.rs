@@ -420,7 +420,7 @@ fn scene_matching_quest_state(quest_id: &str) -> String {
 /// `quest.<quest_id>.objectives.<objective_id>.done` path.
 fn scene_matching_quest_objective_done(quest_id: &str, objective_id: &str) -> String {
     format!(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 2\n---\n## Shot 1.\n\
          <match on=\"quest.{quest_id}.objectives.{objective_id}.done\">\n\
          <when is=\"true\">\n@x: is-true\n</when>\n\
          <when is=\"false\">\n@x: is-false\n</when>\n\
