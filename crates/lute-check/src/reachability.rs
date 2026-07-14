@@ -655,8 +655,11 @@ fn quest_unreachable_message(dead_start: bool, true_fail: bool) -> String {
 
 /// The §5.3/C4 quest-consequence note (Task 5 rules, quoted verbatim):
 /// appended to [`objective_unsat_message`]'s output when the objective is
-/// required (`!optional`).
-const REQUIRED_QUEST_NOTE: &str =
+/// required (`!optional`). `pub(crate)`: Task 7's `producible.rs` reuses it
+/// verbatim for its own THIRD `E-OBJECTIVE-UNSATISFIABLE` cause (a
+/// non-producible gated relation) so the required-quest consequence reads
+/// identically regardless of which cause triggered the diagnostic.
+pub(crate) const REQUIRED_QUEST_NOTE: &str =
     "; the objective — and, being required, the quest — can never complete (dsl 0.4 §5.3)";
 
 /// `E-OBJECTIVE-UNSATISFIABLE` message (dsl 0.4.0 §5.3 rule 1): quotes the

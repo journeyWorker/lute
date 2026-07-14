@@ -893,3 +893,346 @@ fn duplicate_quest_id_graph_dead_completed_is_unknown() {
         "only dupQ's own opted-in node may earn E-CONN-UNREACHABLE, never the scene: {r_diags:?}"
     );
 }
+
+// ---------------------------------------------------------------------
+// T7: `producible()` rule-dependency walk + relational-objective-liveness
+// (dsl 0.4.0 §4.2/§B) -- wired into the SAME by_root pipeline
+// `lute-cli::run_check_project` runs (reachability -> `live_assert_relations`
+// -> per-doc `producible()` -> `scan_objective_liveness`), reproduced here
+// so the connectivity layer's own test suite covers the full project-wide
+// wiring without depending on the `lute-cli` binary.
+// ---------------------------------------------------------------------
+
+use lute_check::producible::{producible, scan_objective_liveness};
+use lute_check::{fold_env, resolve_components, resolve_imports, CheckResult};
+use lute_core_span::Diagnostic;
+use lute_manifest::project::{load_project, project_providers, resolve_document_snapshot};
+use lute_manifest::snapshot::CapabilitySnapshot;
+use std::collections::BTreeMap;
+
+/// Build a `CheckInput` for a REAL file on disk, resolving `uses:`/
+/// `extends:`/`components:` against its own directory and (optionally) a
+/// project root -- mirrors `lute-cli`'s `build_input` exactly (project +
+/// provider + import resolution), the ONLY way to exercise a genuine
+/// schema-imported `RelVocab` (a plain in-memory `docs_for` never resolves
+/// `uses:`).
+fn build_project_input(file: &PathBuf, project_dir: Option<&std::path::Path>) -> CheckInput {
+    let text = std::fs::read_to_string(file)
+        .unwrap_or_else(|e| panic!("read {}: {e}", file.display()));
+    let project = project_dir.and_then(|d| load_project(d).ok().flatten());
+    let providers = project_providers(project.as_ref());
+    let (doc, _) = lute_syntax::parse(&text);
+    let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
+    let (snapshot, _rdiags) =
+        resolve_document_snapshot(project.as_ref(), meta0.profile.as_deref(), &meta0.plugins);
+    let base = file.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let imports = resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
+    let components = resolve_components(base, &meta0.components, doc.meta.span);
+    CheckInput {
+        text,
+        uri: file.display().to_string(),
+        snapshot,
+        providers,
+        mode: Mode::Ci,
+        imports,
+        components,
+    }
+}
+
+fn parse_meta(
+    meta: &lute_syntax::ast::Meta,
+    snapshot: &CapabilitySnapshot,
+) -> (lute_check::TypedMeta, Vec<Diagnostic>) {
+    lute_check::parse_meta(meta, snapshot)
+}
+
+/// Reproduce `run_check_project`'s by_root T3-T7 pipeline over an explicit
+/// `(path, CheckInput)` list (all ONE resolved root) and return the
+/// project-wide diagnostics `producible()`/`scan_objective_liveness`
+/// contribute.
+fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, Diagnostic)> {
+    let mut docs: Vec<(PathBuf, lute_syntax::ast::Document)> = Vec::new();
+    let mut foldeds: Vec<lute_check::FoldedEnv> = Vec::new();
+    let mut file_results: Vec<(PathBuf, CheckResult)> = Vec::new();
+    for (path, input) in &files {
+        let (doc, _) = lute_syntax::parse(&input.text);
+        let (folded, _, _) = fold_env(&doc, input);
+        foldeds.push(folded);
+        let result = check(input);
+        file_results.push((path.clone(), result));
+        docs.push((path.clone(), doc));
+    }
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (conn_graph, _cycle_diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let unreachable_quests = unreachable_quest_ids(&docs, &file_results);
+    let ambiguous_quests = ambiguous_quest_ids(&docs);
+    let (reach, _reach_diags) =
+        check_reachability(&conn_graph, &quest_ids, &ambiguous_quests, &unreachable_quests);
+    let live_asserts = lute_check::connectivity::live_assert_relations(
+        &docs,
+        &reach,
+        &ambiguous_quests,
+        &unreachable_quests,
+    );
+    let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
+    let mut out = Vec::new();
+    for (idx, (path, doc)) in docs.iter().enumerate() {
+        let folded = &foldeds[idx];
+        let prod = producible(&folded.env.rel_vocab, &live_asserts);
+        let defs = lute_check::DefTable {
+            bodies: &folded.def_bodies,
+            params: &folded.env.def_params,
+        };
+        let ctx = lute_check::DecideCtx {
+            schema: &folded.env.state,
+            dollar: None,
+            params: &no_params,
+        };
+        for d in scan_objective_liveness(doc, &prod, &defs, &ctx) {
+            out.push((path.clone(), d));
+        }
+    }
+    out
+}
+
+/// Real files on disk under `project_dir` (real `uses:` resolution).
+fn check_project_on_corpus(paths: &[&str], project_dir: &str) -> Vec<(PathBuf, Diagnostic)> {
+    let project_dir = std::path::Path::new(project_dir);
+    let files = paths
+        .iter()
+        .map(|p| {
+            let path = PathBuf::from(*p);
+            let input = build_project_input(&path, Some(project_dir));
+            (path, input)
+        })
+        .collect();
+    run_producible_pipeline(files)
+}
+
+/// In-memory fixture text, no project/`uses:` resolution (inline
+/// `entities:`/`relations:`/`facts:`/`rules:` only) -- mirrors this file's
+/// top-of-file `input_for` helper.
+fn check_project_fixture(texts: &[(&str, &str)]) -> Vec<(PathBuf, Diagnostic)> {
+    let files = texts
+        .iter()
+        .map(|(path, text)| (PathBuf::from(*path), input_for(text)))
+        .collect();
+    run_producible_pipeline(files)
+}
+
+// Canonical false-positive guard (spec §4.2's own worked counterexample):
+// `docs/examples/quest-rescue-halsin.lute:31` gates
+// `done="holds(canReach(player, grove))"`; `canReach` is `derive: true`
+// (`act1.schema.yaml:14`), derived from `atLocation`/`connected`, BOTH
+// unconditionally `facts:`-seeded -- producible from load, independent of
+// any episode. A naive `::assert`-site-only search would falsely kill this
+// shipped, correct example (spec §4.2's own stated failure mode); the
+// rule-dependency walk must not.
+#[test]
+fn derived_relation_seeded_via_facts_is_producible_no_false_positive() {
+    let diags = check_project_on_corpus(
+        &["../../docs/examples/quest-rescue-halsin.lute"],
+        "../../docs/examples",
+    );
+    assert!(
+        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "canReach is structurally producible (facts-seeded atLocation/connected feed its rule \
+         closure) -- the halsin corpus objective must NEVER be flagged dead: {diags:?}"
+    );
+}
+
+// The synthetic positive: a derived relation whose ONLY rule body needs a
+// base relation with no `facts:` seed, not `reserved`, and no `::assert`
+// site anywhere in the project -- structurally never producible, so an
+// objective gated on it IS flagged.
+#[test]
+fn objective_on_never_producible_relation_is_dead() {
+    let text = "---\nkind: quest\nentities:\n  c: { members: [ana] }\nrelations:\n  \
+                neverSeeded: { args: [c], tier: run }\n  dead: { args: [c], derive: true }\n\
+                rules:\n  - \"dead(X) :- neverSeeded(X)\"\n---\n\
+                <quest id=\"q\" start=\"true\">\n\
+                <objective id=\"o\" done=\"holds(dead(ana))\"/>\n</quest>\n";
+    let diags = check_project_fixture(&[("dead.lute", text)]);
+    let hit = diags.iter().find(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE");
+    assert!(
+        hit.is_some(),
+        "an objective gated on a relation with no facts seed/reserved tier/assert site \
+         anywhere in the project must be flagged provably dead: {diags:?}"
+    );
+    assert!(
+        hit.unwrap().1.message.contains("under your declared routes"),
+        "a §4.2 diagnostic message MUST carry the verbatim declared-routes hedge (§2.6): {}",
+        hit.unwrap().1.message
+    );
+}
+
+// A relation with a `facts:` seed IS producible even with zero rules using
+// it (base case (a), unconditional) -- an objective gated on it must NOT be
+// flagged.
+#[test]
+fn objective_on_facts_seeded_base_relation_is_not_dead() {
+    let text = "---\nkind: quest\nentities:\n  c: { members: [ana] }\nrelations:\n  \
+                seeded: { args: [c], tier: run }\n\
+                facts:\n  - \"seeded(ana)\"\n---\n\
+                <quest id=\"q\" start=\"true\">\n\
+                <objective id=\"o\" done=\"holds(seeded(ana))\"/>\n</quest>\n";
+    let diags = check_project_fixture(&[("seeded.lute", text)]);
+    assert!(
+        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "a facts:-seeded base relation is unconditionally producible: {diags:?}"
+    );
+}
+
+// Reachability-gated assert-site base case (c): an `::assert{R(…)}` inside a
+// node this root's own T6 pass PROVES `Unreachable` must NOT seed
+// producibility -- that assert can never fire.
+#[test]
+fn assert_in_provably_unreachable_node_does_not_seed_producibility() {
+    let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\
+                ## Shot 1.\n::assert{ seen(a) }\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text)]);
+    let mut reach = BTreeMap::new();
+    reach.insert(NodeId::Scene("a.s01ep01".to_string()), Reachability::Unreachable);
+    let live = lute_check::connectivity::live_assert_relations(
+        &docs,
+        &reach,
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+    );
+    assert!(
+        !live.contains("seen"),
+        "an assert inside a PROVABLY Unreachable node must never seed producibility: {live:?}"
+    );
+}
+
+// The critical corollary: an `Unknown` node (this pass cannot prove EITHER
+// way) MUST still seed -- provable-only means only a PROVEN `Unreachable`
+// excludes; excluding `Unknown` would risk a false-dead claim on a node
+// that may well be reachable at runtime.
+#[test]
+fn assert_in_unknown_node_still_seeds_producibility() {
+    let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\
+                ## Shot 1.\n::assert{ seen(a) }\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text)]);
+    let mut reach = BTreeMap::new();
+    reach.insert(NodeId::Scene("a.s01ep01".to_string()), Reachability::Unknown);
+    let live = lute_check::connectivity::live_assert_relations(
+        &docs,
+        &reach,
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+    );
+    assert!(
+        live.contains("seen"),
+        "an assert inside an Unknown node must still seed producibility (provable-only, never a \
+         false-dead claim): {live:?}"
+    );
+}
+
+// A quest-body `::assert` mirrors the same reachability gate through the
+// quest-lifecycle `unreachable_quests` set, not the graph `reach` map.
+#[test]
+fn assert_in_lifecycle_unreachable_quest_does_not_seed_producibility() {
+    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\">\n\
+                <on event=\"questActive\">\n::assert{ seen(a) }\n</on>\n\
+                <objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[("q.lute", text)]);
+    let unreachable: BTreeSet<String> = ["q".to_string()].into_iter().collect();
+    let live = lute_check::connectivity::live_assert_relations(
+        &docs,
+        &BTreeMap::new(),
+        &BTreeSet::new(),
+        &unreachable,
+    );
+    assert!(
+        !live.contains("seen"),
+        "an assert inside a quest-lifecycle-dead (E-QUEST-UNREACHABLE) quest must never seed \
+         producibility: {live:?}"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Sound partial evaluator (substitute dead fact-query -> false/0, then run
+// the EXISTING decide() R1-R5) -- NOT a top-level-only or naive nested-scan
+// match. Each case below is a worked example from the algorithm's own
+// contract.
+// ---------------------------------------------------------------------
+
+fn dead_relation_fixture(done: &str) -> String {
+    format!(
+        "---\nkind: quest\nentities:\n  c: {{ members: [ana] }}\nrelations:\n  \
+         neverSeeded: {{ args: [c], tier: run }}\n  live: {{ args: [c], tier: run }}\n\
+         facts:\n  - \"live(ana)\"\n---\n\
+         <quest id=\"q\" start=\"true\">\n\
+         <objective id=\"o\" done=\"{done}\"/>\n</quest>\n"
+    )
+}
+
+// `count(deadR) > 0` -- substituted to `0 > 0` -- decides false -- DEAD.
+// A top-level-only match would MISS this (the top-level node is `_>_`, not
+// a bare fact-query call).
+#[test]
+fn count_comparison_greater_than_zero_over_dead_relation_is_dead() {
+    let text = dead_relation_fixture("count(neverSeeded(ana)) > 0");
+    let diags = check_project_fixture(&[("count_gt.lute", text.as_str())]);
+    assert!(
+        diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "count(deadR) > 0 substitutes to 0 > 0 -- provably false -- must be flagged: {diags:?}"
+    );
+}
+
+// `count(deadR) >= 0` -- substituted to `0 >= 0` -- decides TRUE -- the
+// SAME dead relation, a DIFFERENT comparison, is fine: never flagged. This
+// is exactly why constant substitution (not a nested "any dead call" scan)
+// is required for soundness.
+#[test]
+fn count_comparison_greater_equal_zero_over_dead_relation_is_not_dead() {
+    let text = dead_relation_fixture("count(neverSeeded(ana)) >= 0");
+    let diags = check_project_fixture(&[("count_gte.lute", text.as_str())]);
+    assert!(
+        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "count(deadR) >= 0 substitutes to 0 >= 0 -- provably TRUE, not dead: {diags:?}"
+    );
+}
+
+// `holds(deadR) && x` -- AND short-circuits to false regardless of `x` --
+// DEAD.
+#[test]
+fn and_with_dead_relation_short_circuits_dead() {
+    let text = dead_relation_fixture("holds(neverSeeded(ana)) && holds(live(ana))");
+    let diags = check_project_fixture(&[("and_dead.lute", text.as_str())]);
+    assert!(
+        diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "holds(deadR) && holds(liveR) substitutes to false && Undecided -- AND short-circuits \
+         to false -- must be flagged: {diags:?}"
+    );
+}
+
+// `holds(deadR) || holds(liveR)` -- OR never proves false from one dead
+// arm -- NOT dead. The naive "any nested dead call" scan would wrongly
+// flag this.
+#[test]
+fn or_with_one_live_relation_is_not_dead() {
+    let text = dead_relation_fixture("holds(neverSeeded(ana)) || holds(live(ana))");
+    let diags = check_project_fixture(&[("or_live.lute", text.as_str())]);
+    assert!(
+        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "holds(deadR) || holds(liveR) substitutes to false || Undecided -- OR never proves \
+         false from one dead arm -- must NOT be flagged: {diags:?}"
+    );
+}
+
+// `holds(deadR) || holds(unknownR)` -- `unknownR` is UNDECLARED (never
+// substituted, stays Undecided per R5) -- OR still can't prove false -- NOT
+// dead.
+#[test]
+fn or_with_one_undeclared_relation_is_not_dead() {
+    let text = dead_relation_fixture("holds(neverSeeded(ana)) || holds(unknownR(ana))");
+    let diags = check_project_fixture(&[("or_unknown.lute", text.as_str())]);
+    assert!(
+        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "holds(deadR) || holds(unknownR) -- unknownR stays Undecided -- OR can't prove false: \
+         {diags:?}"
+    );
+}

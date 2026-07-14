@@ -14,7 +14,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::Document;
+use lute_syntax::ast::{Arm, Document, Node};
 
 use crate::check::CheckResult;
 use crate::meta::{canonical_episode_key, meta_key_span, resolve_doc_kind, DocKind};
@@ -955,6 +955,123 @@ pub fn unreachable_quest_ids(
         }
     }
     out
+}
+
+/// dsl 0.4.0 §4.2/§B: every relation name with at least one `::assert{R(…)}`
+/// site inside a node this root's [`check_reachability`] pass did NOT prove
+/// [`Reachability::Unreachable`] — the reachability-GATED refinement of
+/// `producible()`'s base case (c) (spec §4.2's "a node that is
+/// `E-CONN-UNREACHABLE`-clean"). `Reachable` AND `Unknown` both seed
+/// producibility: provable-only discipline demands `producible(R) == false`
+/// be a PROVEN fact before an objective gated on `R` is flagged dead, so a
+/// node this pass cannot resolve either way (`Unknown`, OR one this graph
+/// has no entry for at all — e.g. inside an `E-CONN-CYCLE`, or a scene whose
+/// identity triad this pass could not even compute) must never be treated
+/// as dead by omission; only a node PROVABLY `Unreachable` excludes its
+/// assert sites.
+///
+/// A scene assert site's hosting `NodeId::Scene` is its own
+/// [`canonical_episode_key`] (every scene is always a `ConnGraph` node —
+/// `Absent` `after` included, so `reach` always has an entry UNLESS the
+/// graph itself had a cycle). A quest-body assert site's hosting
+/// `NodeId::Quest` mirrors [`check_reachability`]'s own `completed(Q)`
+/// precedence (T6): ambiguous (2+ declarations) reads `Unknown`; a
+/// caller-supplied `E-QUEST-UNREACHABLE` id reads `Unreachable`; an
+/// `after`-declaring quest already has a memoized `reach` entry; a plain
+/// (no-`after`) quest not otherwise dead defaults `Reachable`.
+///
+/// Callers MUST pre-scope `docs`/`reach`/`ambiguous_quest_ids`/
+/// `unreachable_quests` to ONE resolved project root (`lute-cli`'s `by_root`
+/// grouping) — an assert site in one root can never seed a relation in a
+/// sibling root's `producible()` walk.
+pub fn live_assert_relations(
+    docs: &[(PathBuf, Document)],
+    reach: &BTreeMap<NodeId, Reachability>,
+    ambiguous_quest_ids: &BTreeSet<String>,
+    unreachable_quests: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for (_, doc) in docs {
+        if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
+            let node_reach = scene_identity(doc).and_then(|(character, season, episode, episode_id)| {
+                let key = canonical_episode_key(&character, season, episode, episode_id.as_deref());
+                reach.get(&NodeId::Scene(key)).copied()
+            });
+            if assert_site_is_live(node_reach) {
+                for shot in &doc.shots {
+                    collect_assert_relations(&shot.body, &mut out);
+                }
+            }
+        }
+        for quest in &doc.quests {
+            let node_reach = if ambiguous_quest_ids.contains(&quest.id) {
+                Some(Reachability::Unknown)
+            } else if unreachable_quests.contains(&quest.id) {
+                Some(Reachability::Unreachable)
+            } else {
+                Some(
+                    reach
+                        .get(&NodeId::Quest(quest.id.clone()))
+                        .copied()
+                        .unwrap_or(Reachability::Reachable),
+                )
+            };
+            if assert_site_is_live(node_reach) {
+                collect_assert_relations(&quest.body, &mut out);
+            }
+        }
+    }
+    out
+}
+
+/// See [`live_assert_relations`]: `None` (identity/graph unresolvable — a
+/// malformed scene triad, or a node absent from a cyclic graph's `reach`
+/// map) counts as live, exactly like `Some(Reachability::Unknown)` — only a
+/// PROVEN [`Reachability::Unreachable`] excludes.
+fn assert_site_is_live(r: Option<Reachability>) -> bool {
+    !matches!(r, Some(Reachability::Unreachable))
+}
+
+/// Recursively collect every `::assert{R(…)}` site's relation name from a
+/// node stream — mirrors `reachability.rs`'s `walk_reach` recursion shape
+/// (match-arm / branch-choice / hub-choice / on / objective bodies). A
+/// parse-failed assert (`pattern.relation.is_empty()`, D13) contributes
+/// nothing — never fabricates a relation name out of malformed input.
+fn collect_assert_relations(nodes: &[Node], out: &mut BTreeSet<String>) {
+    for node in nodes {
+        match node {
+            Node::Assert(a) => {
+                if !a.pattern.relation.is_empty() {
+                    out.insert(a.pattern.relation.clone());
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let body = match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
+                    };
+                    collect_assert_relations(body, out);
+                }
+            }
+            Node::Branch(b) => {
+                for choice in &b.choices {
+                    collect_assert_relations(&choice.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for choice in &h.choices {
+                    collect_assert_relations(&choice.body, out);
+                }
+            }
+            Node::On(o) => collect_assert_relations(&o.body, out),
+            Node::Objective(o) => collect_assert_relations(&o.body, out),
+            Node::Line(_)
+            | Node::Directive(_)
+            | Node::Set(_)
+            | Node::Timeline(_)
+            | Node::Retract(_) => {}
+        }
+    }
 }
 
 #[cfg(test)]

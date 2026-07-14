@@ -20,6 +20,7 @@ pub mod meta;
 pub mod on;
 pub mod prereq;
 pub mod project_check;
+pub mod producible;
 pub mod reachability;
 pub mod rel_schema;
 pub mod schema_import;
