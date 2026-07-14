@@ -17,6 +17,7 @@ pub mod inject;
 pub mod match_check;
 pub mod meta;
 pub mod on;
+pub mod prereq;
 pub mod project_check;
 pub mod reachability;
 pub mod rel_schema;
@@ -62,6 +63,7 @@ pub use project_check::{
     check_project_quest_ids, check_project_quest_refs, colliding_occurrences,
     W_QUEST_REF_UNKNOWN,
 };
+pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use schema_import::{resolve_imports, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner};
