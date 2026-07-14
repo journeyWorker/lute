@@ -249,6 +249,28 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
     }
 }
 
+/// Canonical scene identity key (dsl §2.3, connectivity layer T3):
+/// `{character}.{episodeId}`. `episode_id` is the raw authored `episodeId:`
+/// frontmatter value (if any); a non-empty authored value is used verbatim,
+/// otherwise the lowercase default `s{season:02}ep{episode:02}` (dsl §4.1/
+/// A4/A9) is derived from `season`/`episode`. This is the SAME string
+/// `lute-compile`'s `artifact_meta`/address-pass lineId prefix join computes
+/// (`{character}.{episode_id}`, `lute-compile/src/lib.rs`) — kept as one
+/// shared implementation so both crates (and this crate's
+/// [`crate::connectivity::scene_key_set`] project-wide grouping key) agree
+/// byte-for-byte.
+pub fn canonical_episode_key(
+    character: &str,
+    season: i64,
+    episode: i64,
+    episode_id: Option<&str>,
+) -> String {
+    match episode_id.filter(|s| !s.is_empty()) {
+        Some(id) => format!("{character}.{id}"),
+        None => format!("{character}.s{season:02}ep{episode:02}"),
+    }
+}
+
 /// Parse the peeled YAML frontmatter (dsl §6.1) into typed form plus the inline
 /// `state:` schema (dsl §9.3). Never panics on malformed YAML: a parse failure
 /// surfaces `E-META-PARSE` and yields a best-effort (empty) `TypedMeta`.
