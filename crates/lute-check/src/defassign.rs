@@ -70,18 +70,24 @@ use crate::meta::StateSchema;
 use crate::Ctx;
 
 /// Set of provably-assigned state paths on the current execution path.
-type Assigned = BTreeSet<String>;
+pub(crate) type Assigned = BTreeSet<String>;
 
 /// Run the §9.4 definite-assignment analysis over a shot's node stream.
+///
+/// Returns the diagnostics AND the final end-of-document `Assigned` set — the
+/// must-write join (`intersect_all`) of every execution path, i.e. every path
+/// provably assigned on ALL paths through `nodes`. The envelope layer
+/// (`crate::envelope::guaranteed`, connectivity T8/§4.3) reuses this same set
+/// as its guaranteed-write set `G`; nothing here computes a second lattice.
 pub fn check_definite_assignment(
     nodes: &[Node],
     schema: &StateSchema,
     _ctx: &Ctx<'_>,
-) -> Vec<Diagnostic> {
+) -> (Vec<Diagnostic>, Assigned) {
     let mut diags = Vec::new();
     let mut assigned = Assigned::new();
     walk_nodes(nodes, schema, &mut assigned, &mut diags);
-    diags
+    (diags, assigned)
 }
 
 /// Definite-assignment for a quest's `start`/`fail` CEL guard (dsl 0.2.0 §6.3,
@@ -547,12 +553,23 @@ mod tests {
     }
 
     #[test]
+    fn definite_assignment_returns_final_assigned_set() {
+        // The end-of-document `Assigned` set is now returned alongside diags —
+        // the envelope layer's `guaranteed()` (T8/§4.3) reuses this exact set.
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n";
+        let (nodes, schema) = fixture(src);
+        let (errs, assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
+        assert!(assigned.contains("run.x"));
+    }
+
+    #[test]
     fn run_path_no_default_read_is_maybe_unset() {
         // `run.metHelpfully` declared without a default; read in a guarded arm's
         // body with no prior `::set` and no guard on THIS path.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.metHelpfully: { type: bool }\n  run.gate: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"run.gate\">\n<when test=\"run.gate\">\n::set{run.gate = run.metHelpfully}\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
-        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "expected E-MAYBE-UNSET, got {errs:?}"
@@ -564,7 +581,7 @@ mod tests {
         // `::set{run.x = 1}` dominates the later read `run.x` in the `<when>` test.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n@narrator: hi\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
-        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "dominating write should prove the path, got {errs:?}"
@@ -577,7 +594,7 @@ mod tests {
         // prior write -> the old-value read is maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x += 1}\n";
         let (nodes, schema) = fixture(src);
-        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "compound += reads old value, expected E-MAYBE-UNSET, got {errs:?}"
@@ -593,7 +610,7 @@ mod tests {
         // block. A later read of `run.x` is therefore maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n@narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "subject isSet-guard must not prove run.x past a non-exhaustive match, got {errs:?}"
@@ -607,7 +624,7 @@ mod tests {
         // A later read of `run.x` is maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "subject has-guard must not survive intersect_all, got {errs:?}"
@@ -622,7 +639,7 @@ mod tests {
         // path-sensitive analysis (§9.4) -> maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
-        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "non-defaulted scene.s read before write should flag, got {errs:?}"
@@ -634,7 +651,7 @@ mod tests {
         // A schema-defaulted `scene.d` read is seeded at scene entry -> no error.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.d: { type: number, default: 0 }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.d}\n";
         let (nodes, schema) = fixture(src);
-        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "defaulted scene.d read should be safe, got {errs:?}"
@@ -646,7 +663,7 @@ mod tests {
         // A dominating `::set{scene.s = 1}` proves the later read -> no error.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.s = 1}\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
-        let errs = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "dominating scene write should prove the path, got {errs:?}"
