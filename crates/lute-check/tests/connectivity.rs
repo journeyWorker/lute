@@ -1026,6 +1026,22 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
             doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
         let (_diags, assigned, reads) =
             lute_check::check_definite_assignment(&all_nodes, &folded.env.state);
+        // T4.4/T4.6 carry-forward parity (dsl §7 soundness invariant), same
+        // fix as `lute-cli::run_check_project`'s T11 wiring: a read whose
+        // span is a domain-exhaustive `<match>` subject never earns a
+        // per-file `E-MAYBE-UNSET` standalone (`check.rs`'s
+        // `suppress_exhaustive_subject_reads`), so it must never be
+        // reclassified as entry-dependent here either.
+        let exhaustive_spans =
+            lute_check::defassign::exhaustive_match_subject_spans(&all_nodes, &folded.env.state);
+        let reads: Vec<(String, Span)> = reads
+            .into_iter()
+            .filter(|(_, span)| {
+                !exhaustive_spans
+                    .iter()
+                    .any(|s| s.byte_start == span.byte_start && s.byte_end == span.byte_end)
+            })
+            .collect();
         per_doc.scene.insert(
             key.clone(),
             (
@@ -1531,5 +1547,213 @@ fn possible_not_guaranteed_is_warning_grade_and_worded() {
         d.message.contains("under your declared routes"),
         "warning-grade message must carry the qualifier verbatim too, got: {}",
         d.message
+    );
+}
+
+// ---------------------------------------------------------------------
+// Connectivity T15 (dsl §7): soundness-invariant regression for the
+// T4.4/T4.6 "domain-exhaustive `<match>` subject" exemption -- the exact
+// real bug this task's corpus grounding surfaced and fixed
+// (`docs/examples/showcase/episode01.lute`'s `run.sofaOutcome` read).
+// `defassign::exhaustive_match_subject_spans` is now the SINGLE traversal
+// BOTH `check.rs`'s `suppress_exhaustive_subject_reads` (standalone
+// `check()`) AND connectivity T11/T14's project-envelope wiring
+// (`lute-cli::main.rs::run_check_project`/`assemble_root_scenario`, and
+// this file's own `run_producible_pipeline` above) consume -- one
+// `is_exhaustive` determination, never two parallel Walker traversals
+// that could drift.
+// ---------------------------------------------------------------------
+
+fn parsed_scene(text: &str) -> (Vec<lute_syntax::ast::Node>, lute_check::FoldedEnv) {
+    let input = input_for(text);
+    let (doc, _) = lute_syntax::parse(&input.text);
+    let (folded, _, _) = fold_env(&doc, &input);
+    let nodes: Vec<lute_syntax::ast::Node> =
+        doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
+    (nodes, folded)
+}
+
+fn parsed_quest(text: &str) -> (Vec<lute_syntax::ast::Node>, lute_check::FoldedEnv) {
+    let input = input_for(text);
+    let (doc, _) = lute_syntax::parse(&input.text);
+    let (folded, _, _) = fold_env(&doc, &input);
+    let nodes: Vec<lute_syntax::ast::Node> =
+        doc.quests.iter().flat_map(|q| q.body.iter().cloned()).collect();
+    (nodes, folded)
+}
+
+#[test]
+fn exhaustive_match_subject_spans_recurses_into_nested_constructs() {
+    // Each fixture plants exactly ONE domain-exhaustive `<match on="run.x">`
+    // (finite enum + `<otherwise>`) at increasing nesting depth -- proving
+    // the span-collector recurses through every construct `check.rs`'s own
+    // (former) `Walker::walk` traversal did, never a shallower one that
+    // would silently reintroduce the soundness bug for a nested case.
+    let m = "<match on=\"run.x\">\n<when test=\"$ == 'a'\">\n@narrator: a\n</when>\n\
+             <otherwise>\n@narrator: b\n</otherwise>\n</match>";
+
+    let scene_of = |body: String| -> String {
+        format!(
+            "---\nkind: scene\ncharacter: nest\nseason: 1\nepisode: 1\nstate:\n  \
+             run.x: {{ type: {{ enum: [a, b] }} }}\n---\n## Shot 1.\n{body}\n"
+        )
+    };
+    let quest_of = |body: String| -> String {
+        format!(
+            "---\nkind: quest\nstate:\n  run.x: {{ type: {{ enum: [a, b] }} }}\n---\n\
+             <quest id=\"q\">\n{body}\n</quest>\n"
+        )
+    };
+
+    let top_level = scene_of(m.to_string());
+    let in_branch = scene_of(format!(
+        "<branch id=\"br\">\n<choice id=\"c\" label=\"go\">\n{m}\n</choice>\n</branch>"
+    ));
+    let in_hub =
+        scene_of(format!("<hub id=\"h\">\n<choice id=\"c\" label=\"go\">\n{m}\n</choice>\n</hub>"));
+    let in_on = quest_of(format!("<on event=\"questComplete\">\n{m}\n</on>"));
+    let in_objective = quest_of(format!("<objective id=\"o\" done=\"true\">\n{m}\n</objective>"));
+
+    for (label, nodes, folded) in [
+        ("top-level", parsed_scene(&top_level).0, parsed_scene(&top_level).1),
+        ("branch", parsed_scene(&in_branch).0, parsed_scene(&in_branch).1),
+        ("hub", parsed_scene(&in_hub).0, parsed_scene(&in_hub).1),
+        ("on", parsed_quest(&in_on).0, parsed_quest(&in_on).1),
+        ("objective", parsed_quest(&in_objective).0, parsed_quest(&in_objective).1),
+    ] {
+        let spans =
+            lute_check::defassign::exhaustive_match_subject_spans(&nodes, &folded.env.state);
+        assert_eq!(
+            spans.len(),
+            1,
+            "{label}: expected exactly one exhaustive match subject span, got {spans:?}"
+        );
+    }
+}
+
+#[test]
+fn envelope_soundness_exhaustive_match_subject_after_choice_persist_stays_clean() {
+    // The EXACT bug shape this task's corpus grounding found and fixed
+    // (`showcase/episode01.lute`'s `run.sofaOutcome`), distinct from
+    // `standalone_clean_file_not_newly_errored` above (which covers an
+    // UNCONDITIONAL local `::set` before the read -- proven by
+    // `intersect_all` directly, never touching the exhaustive-match
+    // exemption at all): `x6` writes `run.pick` on ONLY ONE of two
+    // unconditional `<branch>` choices via `persist="run" into="run.pick"`
+    // (so `intersect_all` does NOT prove it guaranteed -- the OTHER choice
+    // never writes it), then reads it as the subject of a
+    // domain-exhaustive `<match on="run.pick">` with `<otherwise>`
+    // covering the unset case. `run.pick` has no schema default and is not
+    // locally proven -- yet `check()`'s own T4.4/T4.6 exemption
+    // (`suppress_exhaustive_subject_reads`, now sourced from
+    // `exhaustive_match_subject_spans`) proves the match-consumed read
+    // safe, so single-file `check` MUST be clean, and `check-project` MUST
+    // NOT newly error it either (dsl §7 soundness invariant).
+    let x6 = "---\nkind: scene\ncharacter: x6\nseason: 1\nepisode: 1\nstate:\n  \
+              run.pick: { type: { enum: [warm, cold] } }\n---\n## Shot 1.\n\
+              <branch id=\"br\">\n\
+              <choice id=\"a\" label=\"warm\" persist=\"run\" into=\"run.pick\" value=\"warm\">\n\
+              @narrator: chose warm\n\
+              </choice>\n\
+              <choice id=\"b\" label=\"skip\">\n\
+              @narrator: skipped\n\
+              </choice>\n\
+              </branch>\n\
+              <match on=\"run.pick\">\n\
+              <when test=\"$ == 'warm'\">\n\
+              @narrator: warm result\n\
+              </when>\n\
+              <otherwise>\n\
+              @narrator: no pick\n\
+              </otherwise>\n\
+              </match>\n";
+
+    let single = check(&input_for(x6));
+    assert!(
+        single.diagnostics.iter().all(|d| d.severity != Severity::Error),
+        "x6 must check clean standalone (T4.4/T4.6 exhaustive-match-subject exemption): {:?}",
+        single.diagnostics
+    );
+
+    let proj = check_project_fixture(&[("x6.lute", x6)]);
+    assert!(
+        !proj.iter().any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
+        "a `<choice persist>`-written path consumed by an exhaustive `<match>` subject must \
+         never be reclassified against the project envelope: {proj:?}"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Connectivity T15: wording lint (dsl §2.6:254-262). The verbatim "under
+// your declared routes" qualifier is REQUIRED on §4.2/§4.3 route-class
+// diagnostics -- `E-STATE-MAYBE-UNAVAILABLE` (§4.3, both severity grades)
+// and the relational-liveness cause on `E-OBJECTIVE-UNSATISFIABLE` (§4.2)
+// -- and is the SOLE named EXCEPTION for `E-CONN-UNREACHABLE` (§4.1,
+// §2.6:260-262): a pure fact about the authored graph's own
+// self-consistency, never a runtime claim, so it must carry NO hedge.
+// ---------------------------------------------------------------------
+
+#[test]
+fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachable() {
+    // (1) E-STATE-MAYBE-UNAVAILABLE, error grade: `run.z` never set on the
+    // only declared route.
+    let y = "---\nkind: scene\ncharacter: wy\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let x = "---\nkind: scene\ncharacter: wx\nseason: 1\nepisode: 1\nafter: 'visited(\"wy.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let state_unavailable = check_project_fixture(&[("wy.lute", y), ("wx.lute", x)]);
+    let state_diag = state_unavailable
+        .iter()
+        .find(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE)
+        .unwrap_or_else(|| panic!("expected E-STATE-MAYBE-UNAVAILABLE, got {state_unavailable:?}"));
+
+    // (2) the relational-liveness cause on E-OBJECTIVE-UNSATISFIABLE: a
+    // `holds(deadR)` guard whose dead-relation substitution is load-bearing
+    // (reused from `pure_dead_relation_guard_is_load_bearing_and_emits`'s
+    // fixture shape).
+    let relational_text = dead_relation_fixture("holds(neverSeeded(ana))");
+    let relational = check_project_fixture(&[("wrel.lute", relational_text.as_str())]);
+    let relational_diag = relational
+        .iter()
+        .find(|(_p, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE")
+        .unwrap_or_else(|| panic!("expected relational E-OBJECTIVE-UNSATISFIABLE, got {relational:?}"));
+
+    // (3) E-CONN-UNREACHABLE: a node gated on a provably-dead quest --
+    // §4.1, the SOLE hedge exception.
+    let text_a =
+        "---\nkind: scene\ncharacter: wa\nseason: 1\nepisode: 1\nafter: 'completed(\"deadQ\")'\n---\n## Shot 1.\n@narrator: hi\n";
+    let docs = docs_for(&[("wa.lute", text_a)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
+    let (g, cycle_diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(cycle_diags.is_empty(), "unexpected diags: {cycle_diags:?}");
+    let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
+    let (_reach, unreachable_diags) =
+        check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
+    let unreachable_diag = unreachable_diags
+        .iter()
+        .find(|(_, d)| d.code == "E-CONN-UNREACHABLE")
+        .unwrap_or_else(|| panic!("expected E-CONN-UNREACHABLE, got {unreachable_diags:?}"));
+
+    for (code, msg) in [
+        (state_diag.1.code.as_str(), state_diag.1.message.as_str()),
+        (relational_diag.1.code.as_str(), relational_diag.1.message.as_str()),
+    ] {
+        assert!(
+            msg.contains("under your declared routes"),
+            "{code} is a §4.2/§4.3 route-class diagnostic and MUST carry the verbatim \
+             qualifier (dsl §2.6): {msg}"
+        );
+    }
+    assert!(
+        !unreachable_diag.1.message.contains("under your declared routes"),
+        "E-CONN-UNREACHABLE is the SOLE named §2.6 exception -- it must NOT carry the hedge: {}",
+        unreachable_diag.1.message
+    );
+    // Negative check (Part B, task brief): its wording must also never
+    // read as an unconditional runtime claim -- it names only the
+    // AUTHORED graph's own self-consistency.
+    assert!(
+        !unreachable_diag.1.message.to_lowercase().contains("at runtime"),
+        "E-CONN-UNREACHABLE must never phrase itself as a runtime claim: {}",
+        unreachable_diag.1.message
     );
 }

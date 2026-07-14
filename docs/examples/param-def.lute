@@ -2,7 +2,7 @@
 kind: scene
 character: demo
 season: 1
-episode: 1
+episode: 3
 state:
   scene.score: { type: number, default: 0 }
   scene.flag: { type: bool, default: false }

@@ -8,7 +8,7 @@
 //! confirming the full §6 diagnostics table is wired (`E-CONN-UNKNOWN-NODE`
 //! exits non-zero) — connectivity T14's "Also confirm" step.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
@@ -134,6 +134,44 @@ fn scenario_envelope_quest_without_after_shows_defaults_note() {
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(out_text.contains("declaring `after`"), "{out_text}");
+}
+
+#[test]
+fn connectivity_t15_corpus_example_envelope_shows_guaranteed_cross_scene_read() {
+    // Connectivity T15 grounding: docs/examples/connected-outro.lute
+    // declares `after: visited("kestrel.s01ep01")` (connected-intro.lute's
+    // canonical key) and reads `run.sawOverlook` -- a run-tier path with NO
+    // schema default, guaranteed ONLY because the sole declared route
+    // unconditionally `::set`s it. `lute scenario envelope` must report it
+    // under the Guaranteed table, carrying the §2.6 declared-routes
+    // qualifier.
+    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples");
+    let out = run(&["scenario", examples.to_str().unwrap(), "envelope", "kestrel.s01ep02"]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "{out_text}");
+    assert!(out_text.contains("under your declared routes"), "{out_text}");
+    // Pin the path to the GUARANTEED section specifically -- the printer
+    // always emits a "Guaranteed" heading and `run.sawOverlook` ALSO
+    // appears in the (superset) "Possible" section regardless of whether
+    // it is guaranteed, so a bare substring check on the whole output
+    // would stay green even if the path dropped OUT of Guaranteed into
+    // Possible-only. Slice the block between the "Guaranteed" heading and
+    // the next ("Possible") heading and require the path inside THAT
+    // slice.
+    let after_heading = out_text
+        .split_once("Guaranteed")
+        .unwrap_or_else(|| panic!("no Guaranteed heading: {out_text}"))
+        .1;
+    let guaranteed_block = after_heading
+        .split_once("Possible")
+        .unwrap_or_else(|| panic!("no Possible heading after Guaranteed: {out_text}"))
+        .0;
+    assert!(
+        guaranteed_block.contains("run.sawOverlook"),
+        "run.sawOverlook must be listed WITHIN the Guaranteed section specifically \
+         (cross-scene proof, not merely Possible), got Guaranteed block:\n{guaranteed_block}\n\
+         full output:\n{out_text}"
+    );
 }
 
 // --- additional T14 contract coverage ------------------------------------

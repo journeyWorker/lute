@@ -1,0 +1,71 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "quest",
+  "lute": "0.5.2",
+  "irVersion": "0.5.3",
+  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "meta": {},
+  "state": [
+    {
+      "path": "quest.overlookReturn.objectives.returned.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:overlookReturn"
+    },
+    {
+      "path": "quest.overlookReturn.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:overlookReturn"
+    },
+    {
+      "path": "run.returnedToOverlook",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "overlookReturn",
+      "title": "Return to the Overlook",
+      "titleLineId": "overlookReturn.title",
+      "start": {
+        "raw": "true",
+        "expr": {
+          "lit": true
+        }
+      },
+      "objectives": [
+        {
+          "id": "returned",
+          "title": "Return to the overlook",
+          "titleLineId": "overlookReturn.returned",
+          "done": {
+            "raw": "run.returnedToOverlook",
+            "expr": {
+              "path": "run.returnedToOverlook"
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ]
+    }
+  ],
+  "prereqEdges": [
+    {
+      "node": "overlookReturn",
+      "after": "visited('kestrel.s01ep01')"
+    }
+  ]
+}

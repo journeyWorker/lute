@@ -1,0 +1,24 @@
+---
+kind: scene
+# Connectivity worked example (dsl connectivity spec §2/§4): a genuine
+# two-scene `after`-declaring sequence, paired with connected-outro.lute.
+character: kestrel
+season: 1
+episode: 1
+title: Arrival at the Overlook
+state:
+  run.sawOverlook: { type: bool }
+---
+
+/*
+  This entry scene has NO `after` (an unconditional graph root) and
+  unconditionally `::set`s `run.sawOverlook` -- the write connected-outro
+  routes through to make its own read GUARANTEED, project-wide, without a
+  schema `default:` doing the work trivially.
+*/
+
+## Shot 1.
+
+@narrator: The wind carries salt from the harbor below.
+::set{run.sawOverlook = true}
+@kestrel: I could get used to this view.

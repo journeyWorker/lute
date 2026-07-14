@@ -130,6 +130,72 @@ pub fn check_definite_assignment(
     (diags, flow.writes, reads)
 }
 
+/// Recursively collect the subject `Span` of every domain-exhaustive
+/// `<match>` reachable from `nodes` (arms recursed through exactly like
+/// [`walk_nodes`]/[`walk_match`] above — `Branch`/`Hub` choice bodies,
+/// `On`/`Objective` bodies, nested `Match` arm bodies; a `Timeline` clip can
+/// only be a `Set`/`Directive`, never a nested `Match`, matching
+/// `walk_timeline`'s own shape).
+///
+/// Mirrors `check.rs`'s own `Walker::walk` traversal, which collects this
+/// SAME span set (`exhaustive_subject_spans`) to drive
+/// `suppress_exhaustive_subject_reads` (T4.4/T4.6 carry-forward): a `<match
+/// on>` subject that reads maybe-unset is nonetheless SAFE when the match is
+/// exhaustive (every case, including "unset", is handled by an arm) — the
+/// read can never escape unhandled, so standalone `check()` never reports
+/// `E-MAYBE-UNSET` for it.
+///
+/// Exposed so any OTHER consumer that independently re-derives
+/// `check_definite_assignment`'s raw `reads`/diagnostics (connectivity T11's
+/// project-envelope reconciliation, `lute-cli::run_check_project`) can apply
+/// the IDENTICAL exemption before treating a read as "entry-dependent" —
+/// otherwise a subject read `check()` proves safe would wrongly re-enter the
+/// project-wide read set and risk a false `E-STATE-MAYBE-UNAVAILABLE`,
+/// violating the dsl §7 soundness invariant (a project run must never newly
+/// error a file single-file `check` reports clean).
+pub fn exhaustive_match_subject_spans(nodes: &[Node], schema: &StateSchema) -> Vec<Span> {
+    let mut spans = Vec::new();
+    collect_exhaustive_spans(nodes, schema, &mut spans);
+    spans
+}
+
+fn collect_exhaustive_spans(nodes: &[Node], schema: &StateSchema, spans: &mut Vec<Span>) {
+    for node in nodes {
+        match node {
+            Node::Branch(b) => {
+                for choice in &b.choices {
+                    collect_exhaustive_spans(&choice.body, schema, spans);
+                }
+            }
+            Node::Hub(h) => {
+                for choice in &h.choices {
+                    collect_exhaustive_spans(&choice.body, schema, spans);
+                }
+            }
+            Node::On(o) => collect_exhaustive_spans(&o.body, schema, spans),
+            Node::Objective(o) => collect_exhaustive_spans(&o.body, schema, spans),
+            Node::Match(m) => {
+                if crate::match_check::is_exhaustive(m, schema) {
+                    spans.push(m.subject.span);
+                }
+                for arm in &m.arms {
+                    match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                            collect_exhaustive_spans(body, schema, spans);
+                        }
+                    }
+                }
+            }
+            Node::Line(_)
+            | Node::Set(_)
+            | Node::Directive(_)
+            | Node::Timeline(_)
+            | Node::Assert(_)
+            | Node::Retract(_) => {}
+        }
+    }
+}
+
 /// Definite-assignment for a quest's `start`/`fail` CEL guard (dsl 0.2.0 §6.3,
 /// §9.4). These are evaluated at QUEST ENTRY — nothing dominates them (they are
 /// the first thing the engine evaluates for the quest), so the assigned set
