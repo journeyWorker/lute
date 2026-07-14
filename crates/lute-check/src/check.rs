@@ -804,6 +804,24 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(line_code_diags);
+    // 6c. Connectivity layer (T2, dsl connectivity spec §2.1/§5): a scene's
+    // `after:` frontmatter and each quest's `after` attribute share the SAME
+    // restricted `visited()`/`completed()` formula grammar T1's `prereq`
+    // module defines. `check()` (single-file) validates ONLY that local
+    // grammar here — it has no project graph to resolve `visited`/`completed`
+    // targets against, so node existence is deferred to `check-project`
+    // (Task 3+).
+    if let Some(after) = &folded.typed.after {
+        let after_span = crate::meta::meta_key_span(&doc.meta, "after");
+        let (_, after_diags) = crate::prereq::parse_prereq(after, after_span);
+        diags.extend(after_diags);
+    }
+    for quest in &doc.quests {
+        if let Some(after) = &quest.after {
+            let (_, after_diags) = crate::prereq::parse_prereq(after, quest.after_span);
+            diags.extend(after_diags);
+        }
+    }
     // 0.4.0 T4 (§5.2 whole-document reachability pass): E-ARM-DEAD (dead
     // guard + subsumption) + W-OTHERWISE-DEAD.
     diags.extend(check_reachability(&doc, &folded));
