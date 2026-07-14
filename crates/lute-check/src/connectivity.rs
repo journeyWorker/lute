@@ -308,18 +308,37 @@ impl fmt::Display for NodeId {
 }
 
 /// One [`ConnGraph`] node: its identity, the file it was declared in, its
-/// parsed `after` formula (`None` for a scene with no `after:` key, or one
-/// whose CEL text is out-of-profile — [`crate::prereq::E_CONN_PROFILE`]
-/// already reports that once, from T2's per-file `check()`; a formula-less
-/// node here simply contributes no outgoing edges), and the span this node
-/// is anchored at for diagnostics (a scene's `character:` key span — the
-/// SAME span [`scene_key_set`] stores; a quest's `id_span`).
+/// parsed `after` prerequisite state ([`PrereqState`] — `Absent` for a
+/// scene/quest with no `after:` key at all, `Valid` for one whose CEL text
+/// parsed, `Invalid` for one present-but-malformed —
+/// [`crate::prereq::E_CONN_PROFILE`] already reports the malformed case once,
+/// from T2's per-file `check()`; only `Absent`/`Invalid` nodes here
+/// contribute no outgoing edges), and the span this node is anchored at for
+/// diagnostics (a scene's `character:` key span — the SAME span
+/// [`scene_key_set`] stores; a quest's `id_span`).
 #[derive(Clone, Debug)]
 pub struct NodeInfo {
     pub id: NodeId,
     pub path: PathBuf,
-    pub formula: Option<PrereqFormula>,
+    pub prereq: PrereqState,
     pub span: Span,
+}
+
+/// The resolved state of a node's `after` prerequisite (Task 5 review fix):
+/// `Option<PrereqFormula>` conflated an ABSENT `after` (a valid entry node)
+/// with a PRESENT-but-malformed one (`parse_prereq` returning `None`) — both
+/// collapsed to `None`, so downstream reachability/envelope passes (Task
+/// 6/10) could not tell "no prerequisite" from "unparseable prerequisite"
+/// and would silently treat a malformed doc as a clean entry node.
+#[derive(Clone, Debug)]
+pub enum PrereqState {
+    /// No `after` key/attribute declared at all — a valid entry node.
+    Absent,
+    /// `after` present and [`parse_prereq`] resolved it.
+    Valid(PrereqFormula),
+    /// `after` present but [`parse_prereq`] returned `None` (malformed CEL,
+    /// already reported once as `E-CONN-PROFILE` by T2's per-file `check()`).
+    Invalid,
 }
 
 /// The project-wide topological-precedence DAG (dsl §2.4 graph 1): every
@@ -371,16 +390,24 @@ fn cycle_diag(message: String, span: Span) -> Diagnostic {
 ///   quest is a LEAF dependency (Task 6's quest-lifecycle signal, never a
 ///   DAG edge here).
 ///
-/// `key_set` (T3 [`scene_key_set`]) and `quest_ids` (T4 [`quest_id_set`])
-/// are supplied by the caller — computed once per resolved project root
-/// (`lute-cli`'s `by_root` grouping), same convention as [`resolve_nodes`].
+/// `key_set` (T3 [`scene_key_set`]) is supplied by the caller — computed
+/// once per resolved project root (`lute-cli`'s `by_root` grouping), same
+/// convention as [`resolve_nodes`]. `quest_ids` (T4 [`quest_id_set`]) is
+/// accepted for call-site symmetry with [`resolve_nodes`] but is NOT
+/// consulted here (Task 5 review fix): quest-node ADMISSION is decided
+/// solely by "this quest declares a nonempty `after`" — gating it on the
+/// (potentially stale/filtered) `quest_ids` set could silently drop a
+/// quest, and its edges/cycles, from the graph. A `completed(Q)` EDGE
+/// target resolves via plain `nodes` membership (only an `after`-declaring
+/// quest is ever a [`NodeId::Quest`] node — see the edge model above), never
+/// `quest_ids` either.
 /// An unknown atom target (neither a scene key nor a declared quest id at
 /// all) is [`E_CONN_UNKNOWN_NODE`]'s problem (T4's [`resolve_nodes`]), not
 /// this pass's — it simply contributes no edge here.
 pub fn assemble_graph(
     docs: &[(PathBuf, Document)],
     key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
-    quest_ids: &BTreeSet<String>,
+    _quest_ids: &BTreeSet<String>,
 ) -> (ConnGraph, Vec<(PathBuf, Diagnostic)>) {
     let by_path: BTreeMap<&Path, &Document> = docs.iter().map(|(p, d)| (p.as_path(), d)).collect();
 
@@ -393,39 +420,50 @@ pub fn assemble_graph(
         let Some((path, span)) = occurrences.first() else {
             continue;
         };
-        let formula = by_path.get(path.as_path()).copied().and_then(|doc| {
-            let after = scene_after(doc)?;
-            let after_span = meta_key_span(&doc.meta, "after");
-            parse_prereq(&after, after_span).0
+        let prereq = by_path.get(path.as_path()).map_or(PrereqState::Absent, |doc| {
+            match scene_after(doc) {
+                None => PrereqState::Absent,
+                Some(after) => {
+                    let after_span = meta_key_span(&doc.meta, "after");
+                    match parse_prereq(&after, after_span).0 {
+                        Some(f) => PrereqState::Valid(f),
+                        None => PrereqState::Invalid,
+                    }
+                }
+            }
         });
         nodes.insert(
             NodeId::Scene(key.clone()),
             NodeInfo {
                 id: NodeId::Scene(key.clone()),
                 path: path.clone(),
-                formula,
+                prereq,
                 span: *span,
             },
         );
     }
 
-    // Quest nodes: ONLY `after`-declaring quests (dsl §2.1's second `after`
-    // surface). `quest_ids` (T4) gates identity the same way `key_set`
-    // gates scene identity above -- trust the caller-supplied set rather
-    // than recomputing it.
+    // Quest nodes: EVERY nonempty-`after`-declaring quest (dsl §2.1's second
+    // `after` surface) is admitted as a node, full stop -- regardless of the
+    // caller-supplied `_quest_ids` set (Task 5 review fix: that set may be
+    // stale/filtered relative to `docs`; gating SOURCE node admission on it
+    // could silently drop a quest -- and its edges/cycles -- from the graph).
     for (path, doc) in docs {
         for quest in &doc.quests {
             let Some(after) = &quest.after else { continue };
-            if quest.id.is_empty() || !quest_ids.contains(&quest.id) {
+            if quest.id.is_empty() {
                 continue;
             }
-            let (formula, _) = parse_prereq(after, quest.after_span);
+            let prereq = match parse_prereq(after, quest.after_span).0 {
+                Some(f) => PrereqState::Valid(f),
+                None => PrereqState::Invalid,
+            };
             nodes.insert(
                 NodeId::Quest(quest.id.clone()),
                 NodeInfo {
                     id: NodeId::Quest(quest.id.clone()),
                     path: path.clone(),
-                    formula,
+                    prereq,
                     span: quest.id_span,
                 },
             );
@@ -438,7 +476,10 @@ pub fn assemble_graph(
     // question here).
     let mut edges: BTreeMap<NodeId, BTreeSet<NodeId>> = BTreeMap::new();
     for info in nodes.values() {
-        let Some(formula) = &info.formula else { continue };
+        let formula = match &info.prereq {
+            PrereqState::Valid(f) => f,
+            PrereqState::Absent | PrereqState::Invalid => continue,
+        };
         for atom in atoms(formula) {
             let target = match atom {
                 Atom::Visited(key) => NodeId::Scene(key),

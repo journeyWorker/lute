@@ -159,7 +159,7 @@ fn unknown_completed_quest_attribute_is_flagged_and_anchored_on_quest_after() {
 
 // --- Task 5: topological-precedence DAG + `E-CONN-CYCLE` (typed `NodeId`) ---
 
-use lute_check::connectivity::{assemble_graph, NodeId};
+use lute_check::connectivity::{assemble_graph, NodeId, PrereqState};
 
 #[test]
 fn two_node_cycle_is_flagged() {
@@ -293,4 +293,72 @@ fn completed_on_a_plain_after_less_quest_is_a_leaf_not_an_edge() {
         "dependent must have no incoming edge -- its only atom target isn't a graph node"
     );
     assert_eq!(g.topo_order, vec![dependent_node], "only the node-worthy quest appears in topo_order");
+}
+
+#[test]
+fn absent_after_scene_prereq_is_absent() {
+    // No `after:` key at all -- a valid entry node, `PrereqState::Absent`.
+    let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let node = NodeId::Scene("a.s01ep01".to_string());
+    let info = g.nodes.get(&node).expect("scene node must exist");
+    assert!(
+        matches!(info.prereq, PrereqState::Absent),
+        "an absent `after` must resolve to PrereqState::Absent, got {:?}",
+        info.prereq
+    );
+}
+
+#[test]
+fn malformed_after_scene_prereq_is_invalid_not_absent() {
+    // `after:` present but out-of-profile (negation is unsupported) --
+    // `parse_prereq` returns `None`. This MUST resolve to
+    // `PrereqState::Invalid`, distinct from an absent `after` -- T6/T10
+    // reachability/envelope passes rely on telling the two apart, never
+    // treating a malformed doc as a clean entry node.
+    let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: '!visited(\"x\")'\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let node = NodeId::Scene("a.s01ep01".to_string());
+    let info = g.nodes.get(&node).expect("malformed-after scene must still be a node");
+    assert!(
+        matches!(info.prereq, PrereqState::Invalid),
+        "a malformed `after` must resolve to PrereqState::Invalid, got {:?}",
+        info.prereq
+    );
+    assert!(
+        g.edges.values().all(|targets| !targets.contains(&node)),
+        "an Invalid prereq must contribute no outgoing edge: {:?}",
+        g.edges
+    );
+}
+
+#[test]
+fn quest_admitted_regardless_of_stale_quest_ids_set() {
+    // Review fix (RevT5): a nonempty-`after`-declaring quest MUST become a
+    // graph node even when the caller-supplied `quest_ids` set does not
+    // contain it (stale/filtered relative to `docs`) -- admission depends
+    // ONLY on the quest itself declaring a nonempty `after`.
+    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" after=\"completed('other')\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"other\" start=\"true\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[("quests.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let stale_quest_ids: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let (g, diags) = assemble_graph(&docs, &key_set, &stale_quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let q_node = NodeId::Quest("q".to_string());
+    assert!(
+        g.nodes.contains_key(&q_node),
+        "an after-declaring quest must be admitted even when absent from `quest_ids`: {:?}",
+        g.nodes.keys().collect::<Vec<_>>()
+    );
 }
