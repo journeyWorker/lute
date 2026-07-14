@@ -621,8 +621,18 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
         // stub remains: `E-CONN-UNREACHABLE` fires for real here.
         let unreachable_quests =
             lute_check::connectivity::unreachable_quest_ids(group, &file_results);
-        let (_reach, reach_diags) =
-            lute_check::connectivity::check_reachability(&conn_graph, &unreachable_quests);
+        // T6 review + review-2: `completed(Q)` must consult the FULL
+        // per-root declared quest-id set (`quest_ids`, same collection T4
+        // already computed above) and treat any id with more than one
+        // declaration as ambiguous (`ambiguous_quest_ids`) -- never a
+        // false `Reachable`/`Unreachable` guess for it.
+        let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(group);
+        let (_reach, reach_diags) = lute_check::connectivity::check_reachability(
+            &conn_graph,
+            &quest_ids,
+            &ambiguous_quests,
+            &unreachable_quests,
+        );
         project_diags.extend(reach_diags);
         covered.extend(lute_check::colliding_occurrences(group));
     }
