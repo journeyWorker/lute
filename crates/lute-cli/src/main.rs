@@ -606,6 +606,7 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
     for group in by_root.values() {
         project_diags.extend(check_project_quest_ids(group));
         project_diags.extend(check_project_quest_refs(group));
+        project_diags.extend(lute_check::connectivity::check_conn_episode_dup(group));
         covered.extend(lute_check::colliding_occurrences(group));
     }
     for (path, result) in &mut file_results {
