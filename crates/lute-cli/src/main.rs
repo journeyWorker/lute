@@ -607,6 +607,9 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
         project_diags.extend(check_project_quest_ids(group));
         project_diags.extend(check_project_quest_refs(group));
         project_diags.extend(lute_check::connectivity::check_conn_episode_dup(group));
+        let key_set = lute_check::connectivity::scene_key_set(group);
+        let quest_ids = lute_check::connectivity::quest_id_set(group);
+        project_diags.extend(lute_check::connectivity::resolve_nodes(group, &key_set, &quest_ids));
         covered.extend(lute_check::colliding_occurrences(group));
     }
     for (path, result) in &mut file_results {
