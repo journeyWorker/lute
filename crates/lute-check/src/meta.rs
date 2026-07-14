@@ -249,12 +249,26 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
     }
 }
 
-/// Canonical scene identity key (dsl §2.3, connectivity layer T3):
-/// `{character}.{episodeId}`. `episode_id` is the raw authored `episodeId:`
+/// The `episodeId` component of the canonical scene identity key (dsl §2.3,
+/// connectivity layer T3): `episode_id` is the raw authored `episodeId:`
 /// frontmatter value (if any); a non-empty authored value is used verbatim,
 /// otherwise the lowercase default `s{season:02}ep{episode:02}` (dsl §4.1/
-/// A4/A9) is derived from `season`/`episode`. This is the SAME string
+/// A4/A9) is derived from `season`/`episode`. This is the SAME component
+/// [`canonical_episode_key`] joins onto `character`, and the same string
 /// `lute-compile`'s `artifact_meta`/address-pass lineId prefix join computes
+/// (`lute-compile/src/lib.rs`) — kept as one shared implementation so both
+/// crates agree byte-for-byte.
+pub fn canonical_episode_id(season: i64, episode: i64, episode_id: Option<&str>) -> String {
+    match episode_id.filter(|s| !s.is_empty()) {
+        Some(id) => id.to_string(),
+        None => format!("s{season:02}ep{episode:02}"),
+    }
+}
+
+/// Canonical scene identity key (dsl §2.3, connectivity layer T3):
+/// `{character}.{episodeId}`, where the `episodeId` component is
+/// [`canonical_episode_id`]. This is the SAME string `lute-compile`'s
+/// `artifact_meta`/address-pass lineId prefix join computes
 /// (`{character}.{episode_id}`, `lute-compile/src/lib.rs`) — kept as one
 /// shared implementation so both crates (and this crate's
 /// [`crate::connectivity::scene_key_set`] project-wide grouping key) agree
@@ -265,10 +279,7 @@ pub fn canonical_episode_key(
     episode: i64,
     episode_id: Option<&str>,
 ) -> String {
-    match episode_id.filter(|s| !s.is_empty()) {
-        Some(id) => format!("{character}.{id}"),
-        None => format!("{character}.s{season:02}ep{episode:02}"),
-    }
+    format!("{character}.{}", canonical_episode_id(season, episode, episode_id))
 }
 
 /// Parse the peeled YAML frontmatter (dsl §6.1) into typed form plus the inline
@@ -1021,6 +1032,21 @@ mod tests {
             },
         };
         parse_meta(&meta, &CapabilitySnapshot::default())
+    }
+
+    #[test]
+    fn canonical_episode_id_uses_authored_value_verbatim() {
+        assert_eq!(canonical_episode_id(1, 2, Some("custom-ep")), "custom-ep");
+    }
+
+    #[test]
+    fn canonical_episode_id_empty_string_falls_back_to_default() {
+        assert_eq!(canonical_episode_id(1, 2, Some("")), "s01ep02");
+    }
+
+    #[test]
+    fn canonical_episode_id_absent_falls_back_to_default() {
+        assert_eq!(canonical_episode_id(1, 2, None), "s01ep02");
     }
 
     #[test]
