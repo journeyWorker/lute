@@ -50,8 +50,24 @@ pub enum Atom {
 /// entirely to the admitted grammar; returns `(None, diags)` — with at least
 /// one [`E_CONN_PROFILE`] diagnostic — otherwise. `span` is used verbatim for
 /// every diagnostic (the caller owns mapping it to a real source location).
+///
+/// A blank/whitespace-only `raw` is rejected BEFORE reaching
+/// `cel_parser::Parser::parse` (connectivity T5 review-2 crash fix):
+/// `cel-parser` 0.10.1 panics ("entered unreachable code") on empty or
+/// whitespace-only input instead of returning a parse error — a real
+/// dependency bug, not a profile violation this walk can otherwise catch.
+/// Callers that need to treat an EXACT empty string as "no prerequisite"
+/// (spec §4.1) MUST check that themselves before calling `parse_prereq`;
+/// this guard only prevents the crash for whatever reaches here.
 pub fn parse_prereq(raw: &str, span: Span) -> (Option<PrereqFormula>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
+    if raw.trim().is_empty() {
+        diags.push(diag(
+            "`after` value is empty or blank — not a valid prerequisite formula".to_string(),
+            span,
+        ));
+        return (None, diags);
+    }
     let expr = match cel_parser::Parser::new().parse(raw) {
         Ok(ided) => ided.expr,
         Err(errs) => {
@@ -217,6 +233,21 @@ mod tests {
     #[test]
     fn unknown_call_rejected() {
         let (_f, codes) = parse(r#"holds(a) && visited("x")"#);
+        assert!(codes.contains(&E_CONN_PROFILE.to_string()));
+    }
+
+    #[test]
+    fn blank_input_rejected_without_panic() {
+        // cel-parser 0.10.1 panics on empty/whitespace-only input instead of
+        // returning a parse error (connectivity T5 review-2 crash fix); the
+        // early guard in `parse_prereq` MUST reject it as E-CONN-PROFILE
+        // before ever reaching `cel_parser::Parser::parse`.
+        let (f, codes) = parse("   ");
+        assert!(f.is_none());
+        assert!(codes.contains(&E_CONN_PROFILE.to_string()));
+
+        let (f, codes) = parse("");
+        assert!(f.is_none());
         assert!(codes.contains(&E_CONN_PROFILE.to_string()));
     }
 }
