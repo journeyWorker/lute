@@ -95,7 +95,24 @@ pub fn producible(
                 continue; // already producible; no clause can un-prove it.
             }
             let clause_satisfiable = rule_decl.rule.body.iter().all(|lit| match lit {
-                BodyLiteral::Pos(atom) => result.get(&atom.relation).copied().unwrap_or(false),
+                BodyLiteral::Pos(atom) => {
+                    if vocab.relations.contains_key(&atom.relation) {
+                        result.get(&atom.relation).copied().unwrap_or(false)
+                    } else {
+                        // An entity-kind atom (`K(X)`) or an atom naming an
+                        // undeclared relation — `predicate_edges` (spec §7.2,
+                        // `datalog_check.rs`) deliberately excludes both from
+                        // the rule-dependency graph. A kind may have runtime
+                        // members with no author-side "producer" signal, and
+                        // an undeclared predicate is already diagnosed
+                        // elsewhere (`E-DERIVE-UNDECLARED` et al.) — neither
+                        // is a sound impossibility signal here. Conservatively
+                        // satisfiable, same discipline as `Neg`/`Guard`/`Cmp`
+                        // below: never make a clause LESS satisfiable, never
+                        // a false-positive "unreachable" claim.
+                        true
+                    }
+                }
                 BodyLiteral::Neg(_) | BodyLiteral::Guard { .. } | BodyLiteral::Cmp { .. } => true,
             });
             if clause_satisfiable {
@@ -222,8 +239,21 @@ fn walk_objectives(
 /// `decide_slot`'s own pipeline) and every `producible() == false`
 /// fact-query call constant-folded ([`substitute_dead_fact_queries`]) —
 /// decides `Some(Decided::Bool(false))` under the UNMODIFIED `decide()`
-/// (R1–R5). Malformed CEL (already reported elsewhere) yields `false`
-/// (never a guess). `dead_relations` collects every relation the
+/// (R1–R5), AND that dead-relation substitution is LOAD-BEARING for the
+/// false result (dsl 0.4.0 §5.3/§4.2: the relational cause rides as a
+/// THIRD named cause, one diagnostic per objective, naming whichever
+/// standalone cause holds — never a duplicate of a non-relational cause
+/// the ordinary reachability pass already owns). Two gates, both required:
+/// (a) at least one dead-relation substitution actually happened
+/// (`!dead_relations.is_empty()` post-substitution) — `done="false"` or
+/// `done="0 > 1"` have NO fact-query at all, substitute nothing, and must
+/// never contribute a bogus relational diagnostic naming an empty relation
+/// set; (b) the ORIGINAL (pre-substitution) guard is not ALREADY `false`
+/// under `decide()` — `done="false && holds(deadR)"` is dead because of
+/// the literal `false`, not because `deadR` is dead (mirrors 0.5.2's
+/// `E-UNSET-LITERAL` causality-ownership discipline: only the load-bearing
+/// cause gets named). Malformed CEL (already reported elsewhere) yields
+/// `false` (never a guess). `dead_relations` collects every relation the
 /// substitution actually folded, for the diagnostic message; left empty on
 /// a `false` return.
 fn dead_guard(
@@ -240,7 +270,19 @@ fn dead_guard(
         return false;
     };
     let Some(ided) = arena.get(handle) else { return false };
+    // Gate (b): decide the ORIGINAL guard first, WITHOUT substitution. If
+    // it is already provably false on its own, that non-relational cause
+    // is load-bearing and owned by the ordinary reachability pass — the
+    // relational cause must not also fire (no duplicate diagnostic).
+    if matches!(decide(&ided.expr, ctx), Some(Decided::Bool(false))) {
+        return false;
+    }
     let substituted = substitute_dead_fact_queries(&ided.expr, producible, dead_relations);
+    // Gate (a): a dead-relation substitution must have actually happened —
+    // otherwise there is nothing relational to name.
+    if dead_relations.is_empty() {
+        return false;
+    }
     if matches!(decide(&substituted, ctx), Some(Decided::Bool(false))) {
         true
     } else {

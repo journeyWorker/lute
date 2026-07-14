@@ -1236,3 +1236,139 @@ fn or_with_one_undeclared_relation_is_not_dead() {
          {diags:?}"
     );
 }
+
+// ---------------------------------------------------------------------
+// Relational-cause emission gating (connectivity T7 review, RevT7 P2):
+// `scan_objective_liveness` must emit its relational
+// `E-OBJECTIVE-UNSATISFIABLE` ONLY when (a) at least one dead-relation
+// fact-query was actually substituted AND (b) that substitution is
+// LOAD-BEARING for the false result -- the pre-substitution guard was not
+// ALREADY false on its own. Otherwise a non-relational cause (or nothing at
+// all) owns the objective and the relational cause must stay silent (dsl
+// 0.4.0 §5.3/§4.2: one diagnostic per objective, naming whichever
+// standalone cause holds -- never a duplicate).
+// ---------------------------------------------------------------------
+
+// `done="false"` has NO fact-query anywhere in it -- `dead_relations` stays
+// empty after substitution (there is nothing to substitute). Gate (a) must
+// suppress: the liveness scan must never contribute its own bogus
+// relational diagnostic naming an empty relation set (the ordinary
+// per-file reachability pass already owns dead-literal `done`, out of
+// scope for `check_project_fixture`, which only collects liveness-scan
+// output).
+#[test]
+fn literal_false_done_has_no_dead_relation_liveness_scan_stays_silent() {
+    let text = dead_relation_fixture("false");
+    let diags = check_project_fixture(&[("literal_false.lute", text.as_str())]);
+    assert!(
+        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "done=\"false\" substitutes NO fact-query -- dead_relations is empty -- the liveness \
+         scan must not emit a relational cause naming an empty relation set (gate a): {diags:?}"
+    );
+}
+
+// `done="0 > 1"` -- same shape as above with a numeric comparison instead
+// of a bare literal: still no fact-query anywhere, still gate (a).
+#[test]
+fn numeric_literal_comparison_done_has_no_dead_relation_liveness_scan_stays_silent() {
+    let text = dead_relation_fixture("0 > 1");
+    let diags = check_project_fixture(&[("numeric_false.lute", text.as_str())]);
+    assert!(
+        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "done=\"0 > 1\" substitutes NO fact-query -- dead_relations is empty -- the liveness \
+         scan must not emit a relational cause naming an empty relation set (gate a): {diags:?}"
+    );
+}
+
+// `done="holds(deadR)"` alone -- pre-substitution `decide()` is `Undecided`
+// (R5's fact-query firewall never reads the fact store on its own);
+// post-substitution it decides false. The dead-relation substitution is
+// the ONLY reason the guard flips to false -- load-bearing -- gate (b)
+// passes, and the scan must emit.
+#[test]
+fn pure_dead_relation_guard_is_load_bearing_and_emits() {
+    let text = dead_relation_fixture("holds(neverSeeded(ana))");
+    let diags = check_project_fixture(&[("pure_dead.lute", text.as_str())]);
+    assert!(
+        diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "holds(deadR) alone -- pre-substitution decide() is Undecided, post-substitution decides \
+         false -- the dead-relation substitution is load-bearing (gate b passes) -- must be \
+         flagged: {diags:?}"
+    );
+}
+
+// `done="false && holds(deadR)"` -- the literal `false` alone already
+// decides the ORIGINAL (pre-substitution) guard false via AND
+// short-circuit (`decide()`'s R4, independent of the Undecided
+// `holds(deadR)` on the other side) -- the dead relation is NOT
+// load-bearing. Gate (b) must suppress the relational cause; the ordinary
+// per-file reachability pass (`check_objective_reach`, `decide_slot` on the
+// raw guard) already independently proves the SAME objective dead for the
+// non-relational reason. Exactly ONE unsatisfiable-family diagnostic must
+// land on this objective total -- never a relational duplicate.
+#[test]
+fn false_and_dead_relation_relational_cause_suppressed_non_relational_owns_it() {
+    let text = dead_relation_fixture("false && holds(neverSeeded(ana))");
+    let ordinary = check(&input_for(&text)).diagnostics;
+    let liveness = check_project_fixture(&[("false_and_dead.lute", text.as_str())]);
+    let ordinary_unsat = ordinary.iter().filter(|d| d.code == "E-OBJECTIVE-UNSATISFIABLE").count();
+    let liveness_unsat =
+        liveness.iter().filter(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE").count();
+    assert_eq!(
+        ordinary_unsat, 1,
+        "the ordinary per-file reachability pass must independently prove `false && holds(deadR)` \
+         dead via decide_slot's AND short-circuit on the raw guard, no producible-substitution \
+         needed: {ordinary:?}"
+    );
+    assert_eq!(
+        liveness_unsat, 0,
+        "the relational liveness scan must SUPPRESS its own cause here -- decide() on the \
+         ORIGINAL (pre-substitution) guard already decides false via the `false` literal, so the \
+         dead-relation substitution is NOT load-bearing (gate b fails) -- the non-relational \
+         cause already owns this objective, no relational duplicate: {liveness:?}"
+    );
+    assert_eq!(
+        ordinary_unsat + liveness_unsat, 1,
+        "exactly ONE unsatisfiable-family diagnostic total on this objective -- never a \
+         relational duplicate of the non-relational cause: {ordinary:?} / {liveness:?}"
+    );
+}
+
+// ---------------------------------------------------------------------
+// `producible()` positive-atom soundness (RevT7-missed false positive): a
+// derived rule's body atom naming an ENTITY KIND (not a declared relation)
+// must be treated as conservatively SATISFIABLE, same discipline as
+// `Neg`/`Guard`/`Cmp`. `datalog_check::predicate_edges` deliberately
+// excludes entity-kind (and undeclared) body predicates from the
+// dependency graph (spec §7.2) -- `producible()` must mirror that
+// exclusion, never silently treat an absent-from-`result` kind atom as
+// `false`.
+// ---------------------------------------------------------------------
+
+fn kind_bodied_rule_fixture(done: &str) -> String {
+    format!(
+        "---\nkind: quest\nentities:\n  c: {{ members: [ana] }}\nrelations:\n  \
+         viaKind: {{ args: [c], derive: true }}\nrules:\n  - \"viaKind(X) :- c(X)\"\n---\n\
+         <quest id=\"q\" start=\"true\">\n\
+         <objective id=\"o\" done=\"{done}\"/>\n</quest>\n"
+    )
+}
+
+// `viaKind(X) :- c(X)` -- `c` is an ENTITY KIND, never a declared relation,
+// so it is never seeded into `producible()`'s fixpoint `result` map. Before
+// the fix, `result.get("c").unwrap_or(false)` silently defaulted to
+// `false`, making the clause unsatisfiable and `viaKind` permanently
+// non-producible -- a real false positive (a kind can have runtime
+// members with no author-side "producer" signal at all). An
+// `<objective done="holds(viaKind(ana))">` must NOT be flagged dead.
+#[test]
+fn entity_kind_bodied_rule_relation_is_producible_no_false_positive() {
+    let text = kind_bodied_rule_fixture("holds(viaKind(ana))");
+    let diags = check_project_fixture(&[("kind_rule.lute", text.as_str())]);
+    assert!(
+        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        "viaKind(X) :- c(X) with `c` an entity KIND (not a relation) must not be treated as a \
+         dead body atom -- producible() must default an undeclared-as-relation positive atom \
+         (kind or unknown) to conservatively-satisfiable, never false: {diags:?}"
+    );
+}
