@@ -5,7 +5,7 @@ expression: json
 {
   "kind": "scene",
   "lute": "0.5.2",
-  "irVersion": "0.5.2",
+  "irVersion": "0.5.3",
   "capabilityVersion": "3236d059a0e6d6cc34cadcf2542f1a4a0fecda4c2d3769ec63cf186c55ae5275",
   "meta": {
     "character": "bianca",

@@ -47,6 +47,33 @@ pub struct Artifact {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<RuleEntry>,
     pub commands: Vec<Command>,
+    /// Advisory connectivity graph (connectivity spec §2.6, A-hybrid, T13):
+    /// this document's OWN raw declared `after` prerequisite formula(s) —
+    /// unresolved, unvalidated, single-document-scoped (`compile` has no
+    /// project root to resolve `visited`/`completed` targets against or to
+    /// assemble a project-wide graph). Never a project-assembled graph,
+    /// flattened/validated edge set, or cycle/reachability/envelope data —
+    /// those stay entirely in `check-project`/`lute scenario`. An engine
+    /// reconstructs the whole graph by unioning `prereqEdges` across every
+    /// document's artifact, exactly as it already unions `relations`/`rules`.
+    /// Name-sorted by `node` (determinism). APPENDED LAST — after `commands`,
+    /// the prior last field — so this is a true append-only change; nothing
+    /// above moved (byte-stability contract, file header).
+    #[serde(rename = "prereqEdges", skip_serializing_if = "Vec::is_empty")]
+    pub prereq_edges: Vec<PrereqEdgeEntry>,
+}
+
+/// One advisory prerequisite edge (connectivity spec §2.6, T13): a single
+/// node's raw declared `after` formula text, verbatim and unvalidated.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrereqEdgeEntry {
+    /// The contributing node's canonical key: a scene's own
+    /// `{character}.{episodeId}` ([`lute_check::meta::canonical_episode_key`])
+    /// or a quest's `<quest id>`.
+    pub node: String,
+    /// The RAW declared `after` formula text — unresolved, unvalidated CEL.
+    pub after: String,
 }
 
 /// One merged entity kind (dsl 0.3.0 §3.1).
