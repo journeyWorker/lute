@@ -704,6 +704,23 @@ fn too_complex_diag(message: String, span: Span) -> Diagnostic {
 /// entry set, one memoized pass over [`ConnGraph::topo_order`] — linear in
 /// total formula size, no route enumeration (design spec §2.4).
 ///
+/// `quest_ids` is the FULL declared `<quest id>` set for this resolved
+/// project root (T4 [`quest_id_set`]) — spec-required so `completed(Q)`
+/// consults every declared quest, not merely the `after`-opted-in subset
+/// [`ConnGraph::nodes`] admits (Task 6 review): a declared PLAIN (no-`after`)
+/// quest that is alive still reads `Reachable`, never a false `Unknown`.
+///
+/// `ambiguous_quest_ids` is every quest id with MORE THAN ONE declaration in
+/// this root (Task 6 review-2) — a duplicate id might carry one dead and one
+/// alive declaration (locally via [`unreachable_quest_ids`] OR structurally
+/// via this very graph's own node reachability), and neither source can
+/// pick the "right" one. Provable-only discipline demands `Unknown` for it,
+/// checked BEFORE both the lifecycle and graph-reach checks below — so an
+/// ambiguous id's OWN graph node (if one of its declarations opted into
+/// `after`) still gets its own real memoized reachability in the returned
+/// map, but every OTHER formula's `completed(Q)` reference to it reads
+/// `Unknown` regardless.
+///
 /// `unreachable_quests` is the caller-supplied set of quest ids that are
 /// THEMSELVES provably unable to complete (dsl 0.4.0 §5.3's
 /// `E-QUEST-UNREACHABLE`/`E-OBJECTIVE-UNSATISFIABLE` signal) — a
@@ -725,14 +742,14 @@ fn too_complex_diag(message: String, span: Span) -> Diagnostic {
 ///     reachability; not a known node ⇒ `Unknown` (that miss is
 ///     `E-CONN-UNKNOWN-NODE`'s problem, T4 — it must never CASCADE into a
 ///     false `E-CONN-UNREACHABLE`).
-///   - `completed(Q)`: `Q ∈ unreachable_quests` ⇒ `Unreachable`
-///     (regardless of graph membership — quest lifecycle is tracked
-///     OUTSIDE this graph); else `Q` a known [`NodeId::Quest`] node (an
-///     `after`-declaring quest already memoized above) ⇒ `Reachable`;
-///     else (`Q` unresolvable from this graph alone — e.g. a plain,
-///     no-`after` quest [`assemble_graph`] never admits as a node) ⇒
-///     `Unknown`, the same conservative "can't prove it" fallback as an
-///     unknown `visited` target.
+///   - `completed(Q)`, by precedence:
+///     1. `Q ∉ quest_ids` (undeclared) ⇒ `Unknown`.
+///     2. `Q ∈ ambiguous_quest_ids` (>1 declaration) ⇒ `Unknown`.
+///     3. `Q ∈ unreachable_quests` ⇒ `Unreachable` (quest lifecycle,
+///        tracked OUTSIDE this graph).
+///     4. `NodeId::Quest(Q) ∈ nodes` (an `after`-declaring quest already
+///        memoized above) ⇒ its memoized reachability (TRANSITIVE).
+///     5. else (a declared PLAIN quest, not unreachable) ⇒ `Reachable`.
 ///   - `And`: `Unreachable` iff EITHER arm is `Unreachable` (checked
 ///     first — it dominates); else `Reachable` iff BOTH `Reachable`; else
 ///     `Unknown`.
@@ -751,6 +768,8 @@ fn too_complex_diag(message: String, span: Span) -> Diagnostic {
 /// and no diagnostic here.
 pub fn check_reachability(
     g: &ConnGraph,
+    quest_ids: &BTreeSet<String>,
+    ambiguous_quest_ids: &BTreeSet<String>,
     unreachable_quests: &BTreeSet<String>,
 ) -> (BTreeMap<NodeId, Reachability>, Vec<(PathBuf, Diagnostic)>) {
     let mut reach: BTreeMap<NodeId, Reachability> = BTreeMap::new();
@@ -776,7 +795,7 @@ pub fn check_reachability(
                     ));
                     Reachability::Unknown
                 } else {
-                    eval_reach(f, g, &reach, unreachable_quests)
+                    eval_reach(f, g, &reach, quest_ids, ambiguous_quest_ids, unreachable_quests)
                 }
             }
         };
@@ -803,6 +822,8 @@ fn eval_reach(
     f: &PrereqFormula,
     g: &ConnGraph,
     reach: &BTreeMap<NodeId, Reachability>,
+    quest_ids: &BTreeSet<String>,
+    ambiguous_quest_ids: &BTreeSet<String>,
     unreachable_quests: &BTreeSet<String>,
 ) -> Reachability {
     match f {
@@ -815,21 +836,28 @@ fn eval_reach(
             }
         }
         PrereqFormula::Completed(id) => {
-            if unreachable_quests.contains(id) {
+            if !quest_ids.contains(id) {
+                Reachability::Unknown
+            } else if ambiguous_quest_ids.contains(id) {
+                Reachability::Unknown
+            } else if unreachable_quests.contains(id) {
                 Reachability::Unreachable
             } else if g.nodes.contains_key(&NodeId::Quest(id.clone())) {
-                Reachability::Reachable
+                reach
+                    .get(&NodeId::Quest(id.clone()))
+                    .copied()
+                    .unwrap_or(Reachability::Unknown)
             } else {
-                Reachability::Unknown
+                Reachability::Reachable
             }
         }
         PrereqFormula::And(l, r) => and_reach(
-            eval_reach(l, g, reach, unreachable_quests),
-            eval_reach(r, g, reach, unreachable_quests),
+            eval_reach(l, g, reach, quest_ids, ambiguous_quest_ids, unreachable_quests),
+            eval_reach(r, g, reach, quest_ids, ambiguous_quest_ids, unreachable_quests),
         ),
         PrereqFormula::Or(l, r) => or_reach(
-            eval_reach(l, g, reach, unreachable_quests),
-            eval_reach(r, g, reach, unreachable_quests),
+            eval_reach(l, g, reach, quest_ids, ambiguous_quest_ids, unreachable_quests),
+            eval_reach(r, g, reach, quest_ids, ambiguous_quest_ids, unreachable_quests),
         ),
     }
 }
@@ -854,6 +882,29 @@ fn or_reach(a: Reachability, b: Reachability) -> Reachability {
     }
 }
 
+/// Every declared `<quest id>` occurring in MORE THAN ONE `<quest>`
+/// declaration across `docs` (Task 6 review-2): a shared id already earns
+/// its own `E-QUEST-ID-DUP` elsewhere, but [`check_reachability`]'s
+/// `completed(Q)` needs this set SEPARATELY — an ambiguous id might carry
+/// one dead declaration and one alive one (either locally, via
+/// [`unreachable_quest_ids`], or structurally, via one declaration's own
+/// opted-in graph-node reachability), and neither signal alone can pick
+/// the "right" declaration. Provable-only discipline: `completed(Q)` for
+/// an ambiguous `Q` is always `Unknown`, never guessed either way. An
+/// empty id is skipped (that document's own `E-QUEST-ID-MISSING` problem).
+pub fn ambiguous_quest_ids(docs: &[(PathBuf, Document)]) -> BTreeSet<String> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for (_, document) in docs {
+        for quest in &document.quests {
+            if quest.id.is_empty() {
+                continue;
+            }
+            *counts.entry(quest.id.clone()).or_insert(0) += 1;
+        }
+    }
+    counts.into_iter().filter(|(_, count)| *count > 1).map(|(id, _)| id).collect()
+}
+
 /// T6/T7 wiring: every `<quest>` in `docs` whose declaration was flagged
 /// [`crate::reachability::E_QUEST_UNREACHABLE`] (dsl 0.4.0 §5.3) by the
 /// per-file `check()` pass on that SAME file — the exact set
@@ -868,6 +919,14 @@ fn or_reach(a: Reachability, b: Reachability) -> Reachability {
 /// parsing the SAME source text — a deterministic parse yields identical
 /// byte spans every time.
 ///
+/// A quest id with MORE THAN ONE declaration in `docs` ([`ambiguous_quest_ids`],
+/// Task 6 review-2) is OMITTED here entirely, even when the SPECIFIC
+/// matched declaration is itself flagged `E-QUEST-UNREACHABLE`: collapsing
+/// per-declaration spans down to the shared string id would otherwise
+/// wrongly mark a quest id "provably unreachable" when a DIFFERENT
+/// declaration of that same id is alive — provable-only means an ambiguous
+/// id's lifecycle is `Unknown`, never `Unreachable`, here.
+///
 /// `file_results` is the caller's own per-file `check()` output; a path in
 /// `docs` this pass has no matching entry for (or a quest whose id is
 /// empty — that quest's own `E-QUEST-ID-MISSING` problem) contributes
@@ -876,13 +935,14 @@ pub fn unreachable_quest_ids(
     docs: &[(PathBuf, Document)],
     file_results: &[(PathBuf, CheckResult)],
 ) -> BTreeSet<String> {
+    let ambiguous = ambiguous_quest_ids(docs);
     let mut out = BTreeSet::new();
     for (path, document) in docs {
         let Some((_, result)) = file_results.iter().find(|(p, _)| p == path) else {
             continue;
         };
         for quest in &document.quests {
-            if quest.id.is_empty() {
+            if quest.id.is_empty() || ambiguous.contains(&quest.id) {
                 continue;
             }
             let flagged = result
