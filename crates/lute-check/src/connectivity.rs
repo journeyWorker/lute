@@ -9,13 +9,14 @@
 //! two unrelated subprojects reusing the same `character`/`episodeId` is not
 //! a collision.
 
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::Document;
 
 use crate::meta::{canonical_episode_key, meta_key_span, resolve_doc_kind, DocKind};
+use crate::prereq::{atoms, parse_prereq, Atom, PrereqFormula};
 
 /// dsl §2.3/§4.1 (§A dup): two scene documents resolve the SAME canonical
 /// `{character}.{episodeId}` identity key.
@@ -118,6 +119,163 @@ pub fn check_conn_episode_dup(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Dia
                 )
             };
             out.push((file.clone(), diag(message, *span)));
+        }
+    }
+    out
+}
+
+/// `E-CONN-UNKNOWN-NODE` (dsl §2.3/§4.1 §A): an `after` prerequisite
+/// formula's `visited(K)`/`completed(Q)` atom names a node that does not
+/// exist anywhere in the project — `K` is not a key in [`scene_key_set`], or
+/// `Q` is not a declared `<quest id>`. Exact-string lookup ONLY (never
+/// decomposed back into `character`/`episodeId` parts, mirroring
+/// [`scene_key_set`]'s own key identity) — Task 5 (DAG/cycle) builds its
+/// graph on these resolved nodes, so a fuzzy or partial match here would
+/// silently paper over a real typo.
+pub const E_CONN_UNKNOWN_NODE: &str = "E-CONN-UNKNOWN-NODE";
+
+fn unknown_node_diag(message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: E_CONN_UNKNOWN_NODE.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// The `after:` frontmatter value straight from a scene doc's raw YAML
+/// mapping — the SAME ad-hoc lookup [`scene_identity`] uses (not `TypedMeta`;
+/// see its own doc comment on why this project-wide pass never builds one).
+/// `None` on unparsable/non-mapping YAML or an absent/non-string `after` key.
+fn scene_after(doc: &Document) -> Option<String> {
+    let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
+    let map = match value {
+        serde_yaml::Value::Mapping(m) => m,
+        _ => return None,
+    };
+    map.get(serde_yaml::Value::String("after".to_string()))?
+        .as_str()
+        .map(String::from)
+}
+
+/// Every declared `<quest id>` across `docs` (parallel to
+/// `project_check`'s own `group_by_id` traversal, flattened to a plain
+/// existence set — [`resolve_nodes`] only ever needs membership, never an
+/// occurrence list). An empty id is skipped (that document's own
+/// `E-QUEST-ID-MISSING` problem, not a node this pass can meaningfully
+/// index). Callers MUST pre-scope `docs` to one resolved project root, same
+/// as [`scene_key_set`].
+pub fn quest_id_set(docs: &[(PathBuf, Document)]) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    for (_, doc) in docs {
+        for quest in &doc.quests {
+            if !quest.id.is_empty() {
+                ids.insert(quest.id.clone());
+            }
+        }
+    }
+    ids
+}
+
+/// The nearest candidate to `needle` within `max_dist` edits (dsl 0.5.0 §2.2
+/// "did you mean" convention — [`crate::cel_paths::nearest_declared_path`]'s
+/// same shape but over a plain string set rather than a `StateSchema`).
+/// `None` when nothing is close enough; an exact match (distance 0) never
+/// reaches this helper — callers only compute a suggestion after a lookup
+/// miss.
+fn nearest_match<'a>(
+    needle: &str,
+    candidates: impl Iterator<Item = &'a str>,
+    max_dist: usize,
+) -> Option<&'a str> {
+    candidates
+        .map(|k| (k, crate::cel_paths::levenshtein(needle, k)))
+        .filter(|&(_, d)| d > 0 && d <= max_dist)
+        .min_by_key(|&(_, d)| d)
+        .map(|(k, _)| k)
+}
+
+/// Exact-lookup every atom flattened out of `formula` (T1 [`atoms`]) against
+/// `key_set` (`Atom::Visited`) / `quest_ids` (`Atom::Completed`); a miss
+/// pushes one [`E_CONN_UNKNOWN_NODE`] anchored at `span` — the SOURCE
+/// formula's span (the scene's `after:` key span, or the quest's
+/// `after_span`), never a synthetic per-atom location (`PrereqFormula`
+/// carries none).
+fn check_formula_atoms(
+    formula: &PrereqFormula,
+    span: Span,
+    path: &Path,
+    key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
+    quest_ids: &BTreeSet<String>,
+    out: &mut Vec<(PathBuf, Diagnostic)>,
+) {
+    for atom in atoms(formula) {
+        match atom {
+            Atom::Visited(key) => {
+                if !key_set.contains_key(&key) {
+                    let mut message = format!(
+                        "unknown node: no scene resolves to key `{key}` (`visited`, dsl §2.3/§4.1)"
+                    );
+                    if let Some(sugg) = nearest_match(&key, key_set.keys().map(String::as_str), 2) {
+                        message.push_str(&format!(" — did you mean `{sugg}`?"));
+                    }
+                    out.push((path.to_path_buf(), unknown_node_diag(message, span)));
+                }
+            }
+            Atom::Completed(id) => {
+                if !quest_ids.contains(&id) {
+                    let mut message = format!(
+                        "unknown node: no quest declares id `{id}` (`completed`, dsl §2.3/§4.1)"
+                    );
+                    if let Some(sugg) = nearest_match(&id, quest_ids.iter().map(String::as_str), 2) {
+                        message.push_str(&format!(" — did you mean `{sugg}`?"));
+                    }
+                    out.push((path.to_path_buf(), unknown_node_diag(message, span)));
+                }
+            }
+        }
+    }
+}
+
+/// Resolve every `after` prerequisite formula in `docs` — BOTH surfaces
+/// (dsl §2.1): a scene document's frontmatter `after:` key, AND every
+/// `<quest after="…">` attribute (a quest pack declares its prerequisite
+/// there instead) — against the known project node sets. `key_set` (T3
+/// [`scene_key_set`]) and `quest_ids` ([`quest_id_set`]) are supplied by the
+/// caller so both are computed exactly once per resolved project root
+/// (`lute-cli`'s `by_root` grouping), never recomputed per-doc here.
+///
+/// Grammar-invalid `after` text already earns `E-CONN-PROFILE` from the
+/// per-file `check()` pass (T2) — [`crate::prereq::parse_prereq`] returning
+/// `None` here is silently skipped, never double-reported.
+pub fn resolve_nodes(
+    docs: &[(PathBuf, Document)],
+    key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
+    quest_ids: &BTreeSet<String>,
+) -> Vec<(PathBuf, Diagnostic)> {
+    let mut out = Vec::new();
+    for (path, doc) in docs {
+        if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
+            if let Some(after) = scene_after(doc) {
+                let after_span = meta_key_span(&doc.meta, "after");
+                let (formula, _) = parse_prereq(&after, after_span);
+                if let Some(formula) = formula {
+                    check_formula_atoms(&formula, after_span, path, key_set, quest_ids, &mut out);
+                }
+            }
+        }
+        for quest in &doc.quests {
+            if let Some(after) = &quest.after {
+                let (formula, _) = parse_prereq(after, quest.after_span);
+                if let Some(formula) = formula {
+                    check_formula_atoms(&formula, quest.after_span, path, key_set, quest_ids, &mut out);
+                }
+            }
         }
     }
     out
