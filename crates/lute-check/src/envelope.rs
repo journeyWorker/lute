@@ -426,6 +426,90 @@ pub fn schema_defaults(schema: &StateSchema) -> BTreeSet<String> {
         .collect()
 }
 
+/// A quest's [`Env`] plus whether it is a defaults-only placeholder (dsl
+/// §4.4 "§D", spec lines 508-521): the return type of [`quest_envelope`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct QuestEnv {
+    pub env: Env,
+    /// `true` when `env` is the conservative `guaranteed = possible = D`
+    /// defaults-only answer (no `after` declared, or an `after`-declaring
+    /// quest whose node [`propagate`] never populated — see below) — the
+    /// caller (T14 `lute scenario envelope quest:<id>`) prints the
+    /// one-line "declaring `after` would enrich this table" note exactly
+    /// when this is `true`.
+    pub enrichment_note: bool,
+}
+
+/// The quest-time availability INVENTORY (dsl §4.4 "§D", spec lines
+/// 508-521): "what can I rely on here, before I write anything?" — a
+/// read-only lookup for T14's `lute scenario envelope quest:<id>`, NEVER a
+/// diagnostic (that is [`crate::defassign::check_quest_guard_defassign`]'s
+/// unchanged, separate, reactive job — see spec lines 494-506).
+///
+/// - `q.after.is_some()` (the quest declares an `after` attribute, even an
+///   empty one — mirrors [`crate::connectivity::assemble_graph`]'s own
+///   `Some(_)` node-admission test, so this lookup and that registration
+///   never disagree) → reuse the FULL scene-style table: `envs` already
+///   holds this quest's memoized [`Env`] under its
+///   [`NodeId::Quest`]`(q.id)` key, computed by [`propagate`] exactly like
+///   any scene node (T5 registers every `after`-declaring quest as a graph
+///   node unconditionally, so no recomputation happens here).
+///   `enrichment_note = false`.
+/// - No `after` (`q.after.is_none()`) → the conservative entry-base answer,
+///   `Env { guaranteed: d.clone(), possible: d.clone() }` (dsl §4.3's `D`
+///   case) — never empty, never an error, exactly like every other node's
+///   schema-defaulted floor. `enrichment_note = true`.
+///
+/// ## Tainted after-quests are NOT specially handled here
+/// A quest whose graph node [`propagate`] marked TAINTED already has a
+/// `D`/`D` placeholder [`Env`] sitting in `envs` (see [`propagate`]'s own
+/// doc comment: `D` is unioned into a tainted node's envelope exactly like
+/// any other node's). Since this is an INVENTORY, not a diagnostic, that
+/// placeholder is exactly the sound, non-empty, non-error answer this
+/// function must return for it anyway — reusing it here needs no separate
+/// tainted-set parameter or special case. `enrichment_note` stays `false`
+/// in this case (the quest DID declare `after`; the "declaring after would
+/// enrich" note would be misleading when it already has), even though the
+/// table it prints is defaults-only in practice.
+///
+/// ## `envs` missing the node entirely
+/// [`propagate`] only populates `envs` over `g.topo_order`, which is empty
+/// when [`crate::connectivity::assemble_graph`] reported a graph cycle
+/// ([`crate::connectivity::E_CONN_CYCLE`]) — an `after`-declaring quest
+/// then has no `envs` entry at all despite being a registered node. Rather
+/// than panic or fabricate a route-derived set, this falls back to the
+/// same conservative `D`/`D` answer as the no-`after` case (still never
+/// empty, never an error) with `enrichment_note = false` (the quest DID
+/// declare `after`; the caller's separate `E-CONN-CYCLE` diagnostic already
+/// explains why no richer table is available).
+pub fn quest_envelope(
+    q: &Quest,
+    _g: &ConnGraph,
+    envs: &BTreeMap<NodeId, Env>,
+    d: &BTreeSet<String>,
+) -> QuestEnv {
+    let defaults_only = || Env {
+        guaranteed: d.clone(),
+        possible: d.clone(),
+    };
+    match &q.after {
+        None => QuestEnv {
+            env: defaults_only(),
+            enrichment_note: true,
+        },
+        Some(_) => match envs.get(&NodeId::Quest(q.id.clone())) {
+            Some(env) => QuestEnv {
+                env: env.clone(),
+                enrichment_note: false,
+            },
+            None => QuestEnv {
+                env: defaults_only(),
+                enrichment_note: false,
+            },
+        },
+    }
+}
+
 /// dsl §2.3/§4.3: the `E-STATE-MAYBE-UNAVAILABLE` envelope diagnostic
 /// (error grade, `check_envelope`'s error branch, ships in `check-project`
 /// BY DEFAULT). See [`check_envelope`].
@@ -1239,5 +1323,125 @@ mod tests {
             assert_eq!(env.guaranteed, expected_g, "seed {seed}: formula {f:?}");
             assert_eq!(env.possible, expected_p, "seed {seed}: formula {f:?}");
         }
+    }
+
+    #[test]
+    fn quest_without_after_gets_defaults_only_non_empty() {
+        let (q, _schema) = quest_fixture("---\nkind: quest\n---\n<quest id=\"q\">\n</quest>\n");
+        assert!(q.after.is_none(), "fixture must declare no after attribute");
+
+        let g = ConnGraph::default();
+        let envs: BTreeMap<NodeId, Env> = BTreeMap::new();
+        let d = BTreeSet::from(["run.def".to_string()]);
+        let qe = quest_envelope(&q, &g, &envs, &d);
+
+        assert_eq!(qe.env.guaranteed, qe.env.possible);
+        assert!(qe.env.guaranteed.contains("run.def"), "got {:?}", qe.env.guaranteed);
+        assert!(qe.enrichment_note, "no-after quest must carry the enrichment note");
+    }
+
+    #[test]
+    fn quest_with_after_gets_full_tables() {
+        let (q, _schema) = quest_fixture(
+            "---\nkind: quest\n---\n<quest id=\"q\" after=\"visited(a)\">\n</quest>\n",
+        );
+        assert_eq!(q.after.as_deref(), Some("visited(a)"));
+
+        let a = NodeId::Scene("a".to_string());
+        let quest_node = NodeId::Quest("q".to_string());
+        let f = PrereqFormula::Visited("a".to_string());
+        let g = graph(
+            vec![
+                node(a.clone(), PrereqState::Absent),
+                node(quest_node.clone(), PrereqState::Valid(f)),
+            ],
+            vec![a.clone(), quest_node.clone()],
+        );
+        let mut per_doc = PerDocEffects::default();
+        per_doc.scene.insert(
+            "a".to_string(),
+            (BTreeSet::from(["run.a".to_string()]), BTreeSet::from(["run.a".to_string()])),
+        );
+        let d = BTreeSet::new();
+        let (envs, tainted) = propagate(&g, &per_doc, &d);
+        assert!(!tainted.contains(&quest_node));
+
+        let qe = quest_envelope(&q, &g, &envs, &d);
+        assert!(qe.env.guaranteed.contains("run.a"), "got {:?}", qe.env.guaranteed);
+        assert!(!qe.enrichment_note, "after-opted quest must not carry the enrichment note");
+    }
+
+    #[test]
+    fn quest_with_empty_after_attribute_still_counts_as_declared() {
+        // `after=""` is `Some("")`, not `None` (`assemble_graph` still
+        // admits it as an opted-in node, `PrereqState::Absent`) — the
+        // WITH/WITHOUT split is attribute PRESENCE, never text/formula
+        // emptiness, so this must resolve through the graph-lookup arm and
+        // carry NO enrichment note even though its table ends up D/D.
+        let (q, _schema) =
+            quest_fixture("---\nkind: quest\n---\n<quest id=\"q\" after=\"\">\n</quest>\n");
+        assert_eq!(q.after.as_deref(), Some(""));
+
+        let quest_node = NodeId::Quest("q".to_string());
+        let g = graph(
+            vec![node(quest_node.clone(), PrereqState::Absent)],
+            vec![quest_node.clone()],
+        );
+        let per_doc = PerDocEffects::default();
+        let d = BTreeSet::from(["run.def".to_string()]);
+        let (envs, _tainted) = propagate(&g, &per_doc, &d);
+
+        let qe = quest_envelope(&q, &g, &envs, &d);
+        assert!(qe.env.guaranteed.contains("run.def"));
+        assert!(!qe.enrichment_note, "attribute was declared (even empty) -> no enrichment note");
+    }
+
+    #[test]
+    fn tainted_after_quest_returns_placeholder_without_erroring() {
+        // `after="completed(ghost)"` with `ghost` unresolved -> `propagate`
+        // taints the node and stores a `D`/`D` placeholder `Env`. As an
+        // INVENTORY (not a diagnostic), reusing that placeholder verbatim
+        // is the sound, non-empty, non-error answer.
+        let (q, _schema) = quest_fixture(
+            "---\nkind: quest\n---\n<quest id=\"q\" after=\"completed(ghost)\">\n</quest>\n",
+        );
+        let quest_node = NodeId::Quest("q".to_string());
+        let f = PrereqFormula::Completed("ghost".to_string());
+        let g = graph(
+            vec![node(quest_node.clone(), PrereqState::Valid(f))],
+            vec![quest_node.clone()],
+        );
+        let per_doc = PerDocEffects::default(); // "ghost" has no entry -> unresolvable
+        let d = BTreeSet::from(["run.def".to_string()]);
+        let (envs, tainted) = propagate(&g, &per_doc, &d);
+        assert!(tainted.contains(&quest_node));
+
+        let qe = quest_envelope(&q, &g, &envs, &d);
+        assert_eq!(qe.env.guaranteed, qe.env.possible);
+        assert!(
+            qe.env.guaranteed.contains("run.def"),
+            "tainted quest must still surface a non-empty D placeholder, got {:?}",
+            qe.env.guaranteed
+        );
+        assert!(!qe.enrichment_note, "quest DID declare after; no misleading enrichment note");
+    }
+
+    #[test]
+    fn quest_with_after_missing_from_envs_falls_back_to_defaults_without_note() {
+        // A cycle-affected graph never populates `envs` for ANY node
+        // (`propagate` only walks `g.topo_order`, empty on `E-CONN-CYCLE`)
+        // -- even an `after`-declaring quest can hit this. Must still
+        // return a real, non-empty, non-error answer.
+        let (q, _schema) = quest_fixture(
+            "---\nkind: quest\n---\n<quest id=\"q\" after=\"visited(a)\">\n</quest>\n",
+        );
+        let g = ConnGraph::default();
+        let envs: BTreeMap<NodeId, Env> = BTreeMap::new();
+        let d = BTreeSet::from(["run.def".to_string()]);
+
+        let qe = quest_envelope(&q, &g, &envs, &d);
+        assert_eq!(qe.env.guaranteed, qe.env.possible);
+        assert!(qe.env.guaranteed.contains("run.def"), "got {:?}", qe.env.guaranteed);
+        assert!(!qe.enrichment_note, "quest DID declare after; no misleading enrichment note");
     }
 }
