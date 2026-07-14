@@ -404,6 +404,7 @@ fn envelope_serializes_with_state_entries() {
         seed_facts: Vec::new(),
         rules: Vec::new(),
         commands: Vec::new(),
+        prereq_edges: Vec::new(),
     };
     assert_eq!(
         serde_json::to_string(&a).unwrap(),
