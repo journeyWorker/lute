@@ -276,4 +276,49 @@ mod tests {
         );
         assert!(p.is_superset(&g), "P must be a superset of G, P={p:?} G={g:?}");
     }
+
+    #[test]
+    fn guaranteed_excludes_arm_guard_proof_with_no_matching_write() {
+        // RevT8 P1: both arms of an exhaustive bool match guard-prove
+        // `run.x` (`test="isSet(run.x)"`, arm-level, dominating) but NEITHER
+        // writes it. Before the fix `defassign`'s mixed `Assigned` exported
+        // this guard-proof into `G`, while `possible_writes` (writes only)
+        // never saw it -> `G ⊄ P`. `run.x` must now be ABSENT from `G`, and
+        // `P` must remain a superset (both empty for this path here).
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n</match>\n::set{run.out = run.x}\n";
+        let (nodes, schema) = fixture(src);
+        let (errs, assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        assert!(
+            errs.is_empty(),
+            "guard-proven read should not flag E-MAYBE-UNSET, got {errs:?}"
+        );
+
+        let g = guaranteed(&assigned);
+        let p = possible_writes(&nodes);
+        assert!(
+            !g.contains("run.x"),
+            "a guard-proof with no write must NOT enter G, got {g:?}"
+        );
+        assert!(p.is_superset(&g), "P must be a superset of G, P={p:?} G={g:?}");
+    }
+
+    #[test]
+    fn guaranteed_includes_persist_target_written_on_every_arm() {
+        // RevT8 P1 Fix 2: `<choice persist>` is an arm-flow WRITE — an
+        // exhaustive per-arm persist of `run.x` must join `G`, exactly like
+        // an exhaustive `::set`, and `P` (which already counted persist
+        // sugar) must stay a superset.
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" persist=\"run\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" persist=\"run\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
+        let (nodes, schema) = fixture(src);
+        let (errs, assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
+
+        let g = guaranteed(&assigned);
+        let p = possible_writes(&nodes);
+        assert!(
+            g.contains("run.x"),
+            "an exhaustive per-arm persist should join G, got {g:?}"
+        );
+        assert!(p.is_superset(&g), "P must be a superset of G, P={p:?} G={g:?}");
+    }
 }
