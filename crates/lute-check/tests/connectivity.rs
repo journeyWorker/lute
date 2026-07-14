@@ -54,6 +54,48 @@ fn quest_after_malformed_raises_profile_error() {
 }
 
 #[test]
+fn scene_after_exact_empty_raises_no_profile_error() {
+    // Spec §4.1: an EXACT empty `after` is a graph entry point, same as an
+    // absent key -- `check()` must never feed it to `parse_prereq` (which
+    // would previously panic on blank CEL text) and must never raise
+    // E-CONN-PROFILE for it.
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nafter: ''\n---\n## Shot 1.\n@a: hi\n";
+    let res = check(&input_for(text));
+    assert!(
+        !res.diagnostics.iter().any(|d| d.code == "E-CONN-PROFILE"),
+        "exact-empty `after` must be accepted as an entry node: {:?}",
+        res.diagnostics
+    );
+}
+
+#[test]
+fn scene_after_whitespace_only_raises_profile_error_without_panic() {
+    // A whitespace-only `after` is PRESENT and non-empty -- it reaches
+    // `parse_prereq`, which must reject it (not panic) as E-CONN-PROFILE.
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nafter: '   '\n---\n## Shot 1.\n@a: hi\n";
+    let res = check(&input_for(text));
+    assert!(res.diagnostics.iter().any(|d| d.code == "E-CONN-PROFILE"));
+}
+
+#[test]
+fn quest_after_exact_empty_raises_no_profile_error() {
+    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" after=\"\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let res = check(&input_for(text));
+    assert!(
+        !res.diagnostics.iter().any(|d| d.code == "E-CONN-PROFILE"),
+        "exact-empty quest `after` must be accepted as an entry node: {:?}",
+        res.diagnostics
+    );
+}
+
+#[test]
+fn quest_after_whitespace_only_raises_profile_error_without_panic() {
+    let text = "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\" after=\"   \">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let res = check(&input_for(text));
+    assert!(res.diagnostics.iter().any(|d| d.code == "E-CONN-PROFILE"));
+}
+
+#[test]
 fn quest_frontmatter_after_key_is_not_a_prereq_surface() {
     // §2.1: frontmatter `after:` is a SCENE-ONLY prerequisite surface. A
     // quest pack declares its prerequisite via the per-`<quest>` `after`
@@ -339,6 +381,78 @@ fn malformed_after_scene_prereq_is_invalid_not_absent() {
         g.edges.values().all(|targets| !targets.contains(&node)),
         "an Invalid prereq must contribute no outgoing edge: {:?}",
         g.edges
+    );
+}
+
+#[test]
+fn nonstring_after_scene_prereq_is_invalid_not_absent() {
+    // `after:` present but its YAML value is NOT a string (`42`, not
+    // `'42'`) -- `.as_str()`-based extraction used to collapse this with an
+    // absent key into `None`, wrongly classifying a malformed doc as a
+    // clean entry node (review-2). MUST resolve to `PrereqState::Invalid`
+    // and contribute no outgoing edge.
+    let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 42\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let node = NodeId::Scene("a.s01ep01".to_string());
+    let info = g.nodes.get(&node).expect("non-string-after scene must still be a node");
+    assert!(
+        matches!(info.prereq, PrereqState::Invalid),
+        "a present non-string `after` must resolve to PrereqState::Invalid, got {:?}",
+        info.prereq
+    );
+    assert!(
+        g.edges.values().all(|targets| !targets.contains(&node)),
+        "an Invalid prereq must contribute no outgoing edge: {:?}",
+        g.edges
+    );
+}
+
+#[test]
+fn empty_string_after_scene_prereq_is_absent() {
+    // `after: ''` -- present, a string, but empty. Spec §4.1: absent OR
+    // empty `after` is a graph entry point, so this is `Absent`, NOT
+    // `Invalid` (empty CEL text fails to parse but is not malformed here).
+    let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: ''\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let node = NodeId::Scene("a.s01ep01".to_string());
+    let info = g.nodes.get(&node).expect("empty-after scene must still be a node");
+    assert!(
+        matches!(info.prereq, PrereqState::Absent),
+        "an empty-string `after` must resolve to PrereqState::Absent, got {:?}",
+        info.prereq
+    );
+}
+
+#[test]
+fn whitespace_only_after_scene_prereq_is_invalid_not_absent() {
+    // `after: '   '` -- present, a string, non-empty (whitespace only).
+    // NOT the Absent entry case (that is reserved for the EXACT empty
+    // string); a whitespace-only value is a present, malformed CEL string
+    // that `parse_prereq` rejects, so it MUST resolve to
+    // `PrereqState::Invalid`.
+    let text = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: '   '\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let node = NodeId::Scene("a.s01ep01".to_string());
+    let info = g.nodes.get(&node).expect("whitespace-only-after scene must still be a node");
+    assert!(
+        matches!(info.prereq, PrereqState::Invalid),
+        "a whitespace-only `after` must resolve to PrereqState::Invalid, got {:?}",
+        info.prereq
     );
 }
 

@@ -149,19 +149,36 @@ fn unknown_node_diag(message: String, span: Span) -> Diagnostic {
     }
 }
 
-/// The `after:` frontmatter value straight from a scene doc's raw YAML
+/// The raw `after:` frontmatter shape read straight off a scene doc's YAML
 /// mapping — the SAME ad-hoc lookup [`scene_identity`] uses (not `TypedMeta`;
 /// see its own doc comment on why this project-wide pass never builds one).
-/// `None` on unparsable/non-mapping YAML or an absent/non-string `after` key.
-fn scene_after(doc: &Document) -> Option<String> {
-    let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
-    let map = match value {
-        serde_yaml::Value::Mapping(m) => m,
-        _ => return None,
+/// Distinguishes an ABSENT key from a PRESENT-but-non-string one (Task 5
+/// review-2 fix): `.as_str()` alone collapsed both into `None`, so a
+/// malformed `after: 42` was silently classified the same as no `after` at
+/// all — see [`SceneAfter`].
+enum SceneAfter {
+    /// No `after:` key at all (or the frontmatter itself failed to parse /
+    /// wasn't a mapping) — a valid entry node.
+    Absent,
+    /// `after:` present and its YAML value IS a string (possibly empty).
+    String(String),
+    /// `after:` present but its YAML value is NOT a string (int/bool/seq/
+    /// map/null) — malformed, must classify as `PrereqState::Invalid`.
+    NonString,
+}
+
+fn scene_after(doc: &Document) -> SceneAfter {
+    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml) else {
+        return SceneAfter::Absent;
     };
-    map.get(serde_yaml::Value::String("after".to_string()))?
-        .as_str()
-        .map(String::from)
+    let serde_yaml::Value::Mapping(map) = value else {
+        return SceneAfter::Absent;
+    };
+    match map.get(serde_yaml::Value::String("after".to_string())) {
+        None => SceneAfter::Absent,
+        Some(serde_yaml::Value::String(s)) => SceneAfter::String(s.clone()),
+        Some(_) => SceneAfter::NonString,
+    }
 }
 
 /// Every declared `<quest id>` across `docs` (parallel to
@@ -262,7 +279,7 @@ pub fn resolve_nodes(
     let mut out = Vec::new();
     for (path, doc) in docs {
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
-            if let Some(after) = scene_after(doc) {
+            if let SceneAfter::String(after) = scene_after(doc) {
                 let after_span = meta_key_span(&doc.meta, "after");
                 let (formula, _) = parse_prereq(&after, after_span);
                 if let Some(formula) = formula {
@@ -422,8 +439,10 @@ pub fn assemble_graph(
         };
         let prereq = by_path.get(path.as_path()).map_or(PrereqState::Absent, |doc| {
             match scene_after(doc) {
-                None => PrereqState::Absent,
-                Some(after) => {
+                SceneAfter::Absent => PrereqState::Absent,
+                SceneAfter::NonString => PrereqState::Invalid,
+                SceneAfter::String(after) if after.is_empty() => PrereqState::Absent,
+                SceneAfter::String(after) => {
                     let after_span = meta_key_span(&doc.meta, "after");
                     match parse_prereq(&after, after_span).0 {
                         Some(f) => PrereqState::Valid(f),
@@ -454,9 +473,13 @@ pub fn assemble_graph(
             if quest.id.is_empty() {
                 continue;
             }
-            let prereq = match parse_prereq(after, quest.after_span).0 {
-                Some(f) => PrereqState::Valid(f),
-                None => PrereqState::Invalid,
+            let prereq = if after.is_empty() {
+                PrereqState::Absent
+            } else {
+                match parse_prereq(after, quest.after_span).0 {
+                    Some(f) => PrereqState::Valid(f),
+                    None => PrereqState::Invalid,
+                }
             };
             nodes.insert(
                 NodeId::Quest(quest.id.clone()),

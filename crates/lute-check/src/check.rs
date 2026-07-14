@@ -821,15 +821,19 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // so it is never fed a surface the spec doesn't define as a prerequisite.
     if folded.doc_kind == crate::meta::DocKind::Scene {
         if let Some(after) = &folded.typed.after {
-            let after_span = crate::meta::meta_key_span(&doc.meta, "after");
-            let (_, after_diags) = crate::prereq::parse_prereq(after, after_span);
-            diags.extend(after_diags);
+            if !after.is_empty() {
+                let after_span = crate::meta::meta_key_span(&doc.meta, "after");
+                let (_, after_diags) = crate::prereq::parse_prereq(after, after_span);
+                diags.extend(after_diags);
+            }
         }
     }
     for quest in &doc.quests {
         if let Some(after) = &quest.after {
-            let (_, after_diags) = crate::prereq::parse_prereq(after, quest.after_span);
-            diags.extend(after_diags);
+            if !after.is_empty() {
+                let (_, after_diags) = crate::prereq::parse_prereq(after, quest.after_span);
+                diags.extend(after_diags);
+            }
         }
     }
     // 0.4.0 T4 (§5.2 whole-document reachability pass): E-ARM-DEAD (dead
