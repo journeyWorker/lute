@@ -156,3 +156,141 @@ fn unknown_completed_quest_attribute_is_flagged_and_anchored_on_quest_after() {
         "unknown-node diagnostic for a quest-sourced formula must anchor on that quest's after_span"
     );
 }
+
+// --- Task 5: topological-precedence DAG + `E-CONN-CYCLE` (typed `NodeId`) ---
+
+use lute_check::connectivity::{assemble_graph, NodeId};
+
+#[test]
+fn two_node_cycle_is_flagged() {
+    // A after visited(B's key); B after visited(A's key).
+    let text_a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'visited(\"b.s01ep01\")'\n---\n## Shot 1.\n@a: hi\n";
+    let text_b = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\")'\n---\n## Shot 1.\n@b: hi\n";
+    let docs = docs_for(&[("a.lute", text_a), ("b.lute", text_b)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (_g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(
+        diags.iter().any(|(_p, d)| d.code == "E-CONN-CYCLE"),
+        "expected E-CONN-CYCLE, got {diags:?}"
+    );
+}
+
+#[test]
+fn three_node_cycle_is_flagged() {
+    // X after visited(Y); Y after visited(Z); Z after visited(X).
+    let text_x = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nafter: 'visited(\"y.s01ep01\")'\n---\n## Shot 1.\n@x: hi\n";
+    let text_y = "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\nafter: 'visited(\"z.s01ep01\")'\n---\n## Shot 1.\n@y: hi\n";
+    let text_z = "---\nkind: scene\ncharacter: z\nseason: 1\nepisode: 1\nafter: 'visited(\"x.s01ep01\")'\n---\n## Shot 1.\n@z: hi\n";
+    let docs = docs_for(&[("x.lute", text_x), ("y.lute", text_y), ("z.lute", text_z)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (_g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(
+        diags.iter().any(|(_p, d)| d.code == "E-CONN-CYCLE"),
+        "expected E-CONN-CYCLE for a 3-node cycle, got {diags:?}"
+    );
+}
+
+#[test]
+fn acyclic_graph_has_no_cycle_and_topo_order() {
+    // A is an entry (no `after`); B after A; C after B.
+    let text_a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a: hi\n";
+    let text_b = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\")'\n---\n## Shot 1.\n@b: hi\n";
+    let text_c = "---\nkind: scene\ncharacter: c\nseason: 1\nepisode: 1\nafter: 'visited(\"b.s01ep01\")'\n---\n## Shot 1.\n@c: hi\n";
+    let docs = docs_for(&[("a.lute", text_a), ("b.lute", text_b), ("c.lute", text_c)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+    assert_eq!(g.topo_order.len(), 3, "topo_order: {:?}", g.topo_order);
+    assert_eq!(
+        g.topo_order,
+        vec![
+            NodeId::Scene("a.s01ep01".to_string()),
+            NodeId::Scene("b.s01ep01".to_string()),
+            NodeId::Scene("c.s01ep01".to_string()),
+        ],
+        "prerequisite must precede dependent in topo_order"
+    );
+}
+
+#[test]
+fn scene_and_quest_sharing_a_string_are_distinct_nodes() {
+    // Scene canonical key "shared.key" (character=shared, episodeId=key) and
+    // quest id "shared.key" are the SAME string but SEPARATE namespaces --
+    // both must exist as distinct graph nodes, and each incoming reference
+    // must resolve to the correctly-typed node.
+    let text_shared = "---\nkind: scene\ncharacter: shared\nseason: 1\nepisode: 1\nepisodeId: key\n---\n## Shot 1.\n@a: hi\n";
+    let text_referencer = "---\nkind: scene\ncharacter: referencer\nseason: 1\nepisode: 1\nafter: 'visited(\"shared.key\")'\n---\n## Shot 1.\n@a: hi\n";
+    let text_quests = "---\nkind: quest\n---\n<quest id=\"shared.key\" start=\"true\" after=\"completed('placeholder')\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"consumer\" start=\"true\" after=\"completed('shared.key')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[
+        ("shared.lute", text_shared),
+        ("referencer.lute", text_referencer),
+        ("quests.lute", text_quests),
+    ]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let scene_node = NodeId::Scene("shared.key".to_string());
+    let quest_node = NodeId::Quest("shared.key".to_string());
+    assert!(g.nodes.contains_key(&scene_node), "scene node missing: {:?}", g.nodes.keys().collect::<Vec<_>>());
+    assert!(g.nodes.contains_key(&quest_node), "quest node missing: {:?}", g.nodes.keys().collect::<Vec<_>>());
+
+    let referencer_node = NodeId::Scene("referencer.s01ep01".to_string());
+    let consumer_node = NodeId::Quest("consumer".to_string());
+
+    let scene_edges = g.edges.get(&scene_node).cloned().unwrap_or_default();
+    assert!(
+        scene_edges.contains(&referencer_node),
+        "visited(\"shared.key\") must edge to the SCENE node: {scene_edges:?}"
+    );
+    assert!(
+        !scene_edges.contains(&consumer_node),
+        "the scene node must never edge to a quest-namespace node: {scene_edges:?}"
+    );
+
+    let quest_edges = g.edges.get(&quest_node).cloned().unwrap_or_default();
+    assert!(
+        quest_edges.contains(&consumer_node),
+        "completed(\"shared.key\") must edge to the QUEST node: {quest_edges:?}"
+    );
+    assert!(
+        !quest_edges.contains(&referencer_node),
+        "the quest node must never edge to a scene-namespace node: {quest_edges:?}"
+    );
+}
+
+#[test]
+fn completed_on_a_plain_after_less_quest_is_a_leaf_not_an_edge() {
+    // `plain` declares no `after` -- it is NEVER a graph node. `dependent`'s
+    // `completed('plain')` must therefore contribute NO edge at all (a leaf
+    // dependency, resolved by Task 6's quest-lifecycle signal, not the DAG).
+    let text = "---\nkind: quest\n---\n<quest id=\"plain\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"dependent\" start=\"true\" after=\"completed('plain')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[("quests.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let plain_node = NodeId::Quest("plain".to_string());
+    let dependent_node = NodeId::Quest("dependent".to_string());
+    assert!(
+        !g.nodes.contains_key(&plain_node),
+        "a no-`after` quest must never be a graph node: {:?}",
+        g.nodes.keys().collect::<Vec<_>>()
+    );
+    assert!(g.nodes.contains_key(&dependent_node), "the after-declaring quest must be a node");
+    assert!(
+        !g.edges.contains_key(&plain_node),
+        "no edge may originate from a non-node target: {:?}",
+        g.edges
+    );
+    assert!(
+        g.edges.values().all(|targets| !targets.contains(&dependent_node)),
+        "dependent must have no incoming edge -- its only atom target isn't a graph node"
+    );
+    assert_eq!(g.topo_order, vec![dependent_node], "only the node-worthy quest appears in topo_order");
+}

@@ -10,6 +10,7 @@
 //! a collision.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
@@ -279,6 +280,293 @@ pub fn resolve_nodes(
         }
     }
     out
+}
+
+/// A graph node identity (connectivity layer, Task 5): a scene's canonical
+/// [`scene_key_set`] identity key and a quest's `<quest id>` are SEPARATE
+/// namespaces — dsl §2.3 imposes no cross-kind uniqueness, so the SAME
+/// string can legitimately name both a scene and a quest at once.
+/// [`ConnGraph`] keys on this typed identity rather than a bare `String`,
+/// which would silently collide the two into one node.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum NodeId {
+    /// `visited(K)` target: `K` is a [`scene_key_set`] canonical key.
+    Scene(String),
+    /// `completed(Q)` target: `Q` is an `after`-declaring `<quest id>` (a
+    /// plain, no-`after` quest is never a [`ConnGraph`] node — see
+    /// [`assemble_graph`]).
+    Quest(String),
+}
+
+impl fmt::Display for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NodeId::Scene(key) => write!(f, "scene({key})"),
+            NodeId::Quest(id) => write!(f, "quest({id})"),
+        }
+    }
+}
+
+/// One [`ConnGraph`] node: its identity, the file it was declared in, its
+/// parsed `after` formula (`None` for a scene with no `after:` key, or one
+/// whose CEL text is out-of-profile — [`crate::prereq::E_CONN_PROFILE`]
+/// already reports that once, from T2's per-file `check()`; a formula-less
+/// node here simply contributes no outgoing edges), and the span this node
+/// is anchored at for diagnostics (a scene's `character:` key span — the
+/// SAME span [`scene_key_set`] stores; a quest's `id_span`).
+#[derive(Clone, Debug)]
+pub struct NodeInfo {
+    pub id: NodeId,
+    pub path: PathBuf,
+    pub formula: Option<PrereqFormula>,
+    pub span: Span,
+}
+
+/// The project-wide topological-precedence DAG (dsl §2.4 graph 1): every
+/// scene plus every `after`-declaring quest as a node, a flattened
+/// `prerequisite -> dependent` edge per formula atom that targets another
+/// graph node, and — ONLY when the graph is acyclic — `topo_order`, a
+/// deterministic ordering (Kahn's algorithm, ties broken by [`NodeId`]'s own
+/// `Ord`). `topo_order` is empty when [`assemble_graph`] reported
+/// [`E_CONN_CYCLE`]; downstream tasks MUST gate on the returned diagnostics
+/// being empty before trusting it.
+#[derive(Clone, Debug, Default)]
+pub struct ConnGraph {
+    pub nodes: BTreeMap<NodeId, NodeInfo>,
+    pub edges: BTreeMap<NodeId, BTreeSet<NodeId>>,
+    pub topo_order: Vec<NodeId>,
+}
+
+/// dsl §2.4 (graph 1) / §4.1 (§A cycle): the topological-precedence DAG over
+/// scenes + `after`-declaring quests contains a directed cycle — no
+/// evaluation order can satisfy every `after` clause simultaneously.
+pub const E_CONN_CYCLE: &str = "E-CONN-CYCLE";
+
+fn cycle_diag(message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: E_CONN_CYCLE.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// Assemble the project-wide [`ConnGraph`] (dsl §2.4 graph 1) and detect any
+/// `after`-precedence cycle (`E-CONN-CYCLE`, §4.1 §A).
+///
+/// Node/edge model (Task 5 spec):
+/// - **Nodes**: every scene ([`scene_key_set`]'s `key_set`, as
+///   `NodeId::Scene`) PLUS every quest that declares an `after` attribute
+///   (`NodeId::Quest`) — a quest with no `after` is NEVER a node.
+/// - **Edges**: flattened, over-approximating (ignoring `&&`/`||` position)
+///   — for each atom `p` in node `n`'s formula, add `p -> n` IFF `p` is
+///   itself a node in this graph. `visited(K)` targets `NodeId::Scene(K)`;
+///   `completed(Q)` targets `NodeId::Quest(Q)` ONLY when `Q` is itself an
+///   `after`-declaring quest node — `completed` on a plain (no-`after`)
+///   quest is a LEAF dependency (Task 6's quest-lifecycle signal, never a
+///   DAG edge here).
+///
+/// `key_set` (T3 [`scene_key_set`]) and `quest_ids` (T4 [`quest_id_set`])
+/// are supplied by the caller — computed once per resolved project root
+/// (`lute-cli`'s `by_root` grouping), same convention as [`resolve_nodes`].
+/// An unknown atom target (neither a scene key nor a declared quest id at
+/// all) is [`E_CONN_UNKNOWN_NODE`]'s problem (T4's [`resolve_nodes`]), not
+/// this pass's — it simply contributes no edge here.
+pub fn assemble_graph(
+    docs: &[(PathBuf, Document)],
+    key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
+    quest_ids: &BTreeSet<String>,
+) -> (ConnGraph, Vec<(PathBuf, Diagnostic)>) {
+    let by_path: BTreeMap<&Path, &Document> = docs.iter().map(|(p, d)| (p.as_path(), d)).collect();
+
+    let mut nodes: BTreeMap<NodeId, NodeInfo> = BTreeMap::new();
+
+    // Scene nodes: every canonical key T3 resolved, anchored at its FIRST
+    // occurrence (a same-key repeat past that is E-CONN-EPISODE-ID-DUP's own
+    // problem, T3 -- never this pass's).
+    for (key, occurrences) in key_set {
+        let Some((path, span)) = occurrences.first() else {
+            continue;
+        };
+        let formula = by_path.get(path.as_path()).copied().and_then(|doc| {
+            let after = scene_after(doc)?;
+            let after_span = meta_key_span(&doc.meta, "after");
+            parse_prereq(&after, after_span).0
+        });
+        nodes.insert(
+            NodeId::Scene(key.clone()),
+            NodeInfo {
+                id: NodeId::Scene(key.clone()),
+                path: path.clone(),
+                formula,
+                span: *span,
+            },
+        );
+    }
+
+    // Quest nodes: ONLY `after`-declaring quests (dsl §2.1's second `after`
+    // surface). `quest_ids` (T4) gates identity the same way `key_set`
+    // gates scene identity above -- trust the caller-supplied set rather
+    // than recomputing it.
+    for (path, doc) in docs {
+        for quest in &doc.quests {
+            let Some(after) = &quest.after else { continue };
+            if quest.id.is_empty() || !quest_ids.contains(&quest.id) {
+                continue;
+            }
+            let (formula, _) = parse_prereq(after, quest.after_span);
+            nodes.insert(
+                NodeId::Quest(quest.id.clone()),
+                NodeInfo {
+                    id: NodeId::Quest(quest.id.clone()),
+                    path: path.clone(),
+                    formula,
+                    span: quest.id_span,
+                },
+            );
+        }
+    }
+
+    // Edges: flattened union of atoms per formula -- `atom_target -> n` iff
+    // `atom_target` is itself a node above (never a bare-string cross-check
+    // against key_set/quest_ids -- membership in `nodes`, typed, is the only
+    // question here).
+    let mut edges: BTreeMap<NodeId, BTreeSet<NodeId>> = BTreeMap::new();
+    for info in nodes.values() {
+        let Some(formula) = &info.formula else { continue };
+        for atom in atoms(formula) {
+            let target = match atom {
+                Atom::Visited(key) => NodeId::Scene(key),
+                Atom::Completed(id) => NodeId::Quest(id),
+            };
+            if nodes.contains_key(&target) {
+                edges.entry(target).or_default().insert(info.id.clone());
+            }
+        }
+    }
+
+    let mut diags = Vec::new();
+    detect_conn_cycles(&nodes, &edges, &mut diags);
+
+    let topo_order = if diags.is_empty() {
+        topo_sort(&nodes, &edges)
+    } else {
+        Vec::new()
+    };
+
+    (
+        ConnGraph {
+            nodes,
+            edges,
+            topo_order,
+        },
+        diags,
+    )
+}
+
+/// Detect any directed cycle in `edges` and report it as [`E_CONN_CYCLE`].
+/// Standard DFS 3-coloring, cloned from `schema_import::detect_cycles` /
+/// `dfs_cycle` (`schema_import.rs:784-833`) over [`NodeId`] rather than
+/// `PathBuf`. Nodes are visited in [`NodeId`]'s own sorted (`BTreeMap`) order
+/// for a deterministic, order-independent result; `edges`' `BTreeSet`
+/// targets are already sorted, so (unlike the `Vec`-adjacency precedent)
+/// there is no separate neighbor sort step.
+fn detect_conn_cycles(
+    nodes: &BTreeMap<NodeId, NodeInfo>,
+    edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
+    diags: &mut Vec<(PathBuf, Diagnostic)>,
+) {
+    let mut on_stack: BTreeSet<NodeId> = BTreeSet::new();
+    let mut done: BTreeSet<NodeId> = BTreeSet::new();
+    let mut stack: Vec<NodeId> = Vec::new();
+    for start in nodes.keys() {
+        if !done.contains(start) && !on_stack.contains(start) {
+            dfs_conn_cycle(start, nodes, edges, &mut on_stack, &mut done, &mut stack, diags);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn dfs_conn_cycle(
+    node: &NodeId,
+    nodes: &BTreeMap<NodeId, NodeInfo>,
+    edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
+    on_stack: &mut BTreeSet<NodeId>,
+    done: &mut BTreeSet<NodeId>,
+    stack: &mut Vec<NodeId>,
+    diags: &mut Vec<(PathBuf, Diagnostic)>,
+) {
+    on_stack.insert(node.clone());
+    stack.push(node.clone());
+    if let Some(targets) = edges.get(node) {
+        for nbr in targets {
+            if on_stack.contains(nbr) {
+                // Back edge -> cycle: report the chain from `nbr` around to `node`.
+                let start_idx = stack.iter().position(|n| n == nbr).unwrap_or(0);
+                let chain = stack[start_idx..]
+                    .iter()
+                    .chain(std::iter::once(nbr))
+                    .map(NodeId::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
+                let info = nodes
+                    .get(nbr)
+                    .expect("cycle target must be a graph node -- edges only ever target nodes");
+                diags.push((
+                    info.path.clone(),
+                    cycle_diag(
+                        format!("prerequisite cycle: {chain} (dsl §2.4/§4.1 §A)"),
+                        info.span,
+                    ),
+                ));
+            } else if !done.contains(nbr) {
+                dfs_conn_cycle(nbr, nodes, edges, on_stack, done, stack, diags);
+            }
+        }
+    }
+    stack.pop();
+    on_stack.remove(node);
+    done.insert(node.clone());
+}
+
+/// Deterministic Kahn's-algorithm topological sort over an ALREADY-acyclic
+/// `edges` adjacency (callers MUST gate on [`detect_conn_cycles`] finding no
+/// cycle first). Ties (multiple zero-in-degree nodes ready at once) break on
+/// [`NodeId`]'s own `Ord` via a `BTreeSet` ready queue — independent of
+/// `nodes`/`edges`' own insertion order.
+fn topo_sort(nodes: &BTreeMap<NodeId, NodeInfo>, edges: &BTreeMap<NodeId, BTreeSet<NodeId>>) -> Vec<NodeId> {
+    let mut in_degree: BTreeMap<NodeId, usize> = nodes.keys().map(|id| (id.clone(), 0)).collect();
+    for targets in edges.values() {
+        for target in targets {
+            *in_degree.entry(target.clone()).or_insert(0) += 1;
+        }
+    }
+    let mut ready: BTreeSet<NodeId> = in_degree
+        .iter()
+        .filter(|&(_, degree)| *degree == 0)
+        .map(|(id, _)| id.clone())
+        .collect();
+    let mut order = Vec::with_capacity(nodes.len());
+    while let Some(next) = ready.iter().next().cloned() {
+        ready.remove(&next);
+        if let Some(targets) = edges.get(&next) {
+            for target in targets {
+                if let Some(degree) = in_degree.get_mut(target) {
+                    *degree -= 1;
+                    if *degree == 0 {
+                        ready.insert(target.clone());
+                    }
+                }
+            }
+        }
+        order.push(next);
+    }
+    order
 }
 
 #[cfg(test)]
