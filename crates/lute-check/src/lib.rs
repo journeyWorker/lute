@@ -12,6 +12,7 @@ pub mod datalog_check;
 pub mod decide;
 pub mod defassign;
 pub mod directives;
+pub mod envelope;
 pub mod fact_write;
 pub mod fix;
 pub mod inject;

@@ -705,6 +705,12 @@ pub fn check(input: &CheckInput) -> CheckResult {
     //    runs PER `quest.body` — quest instances share no dominance relation
     //    with one another, so each quest's def-assignment is its own scope,
     //    never folded across quests.
+    // Captures the scene document's final `Assigned` set — defassign's own
+    // must-write join (`intersect_all`) — for the envelope layer's
+    // guaranteed-write set `G` (`crate::envelope::guaranteed`, connectivity
+    // T8/§4.3). T9/T10 wire this into the per-node envelope; quest bodies are
+    // out of envelope scope (no whole-document dominance relation, see above).
+    let mut _scene_assigned: crate::defassign::Assigned = crate::defassign::Assigned::new();
     let defassign_diags: Vec<Diagnostic> = match folded.doc_kind {
         crate::meta::DocKind::Scene => {
             let all_nodes: Vec<Node> = doc
@@ -712,7 +718,9 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 .iter()
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();
-            check_definite_assignment(&all_nodes, &env.state, &base_ctx)
+            let (diags, assigned) = check_definite_assignment(&all_nodes, &env.state, &base_ctx);
+            _scene_assigned = assigned;
+            diags
         }
         crate::meta::DocKind::Quest => doc
             .quests
@@ -730,7 +738,8 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 if let Some(fail) = &q.fail {
                     ds.extend(check_quest_guard_defassign(fail, &env.state));
                 }
-                ds.extend(check_definite_assignment(&q.body, &env.state, &base_ctx));
+                let (diags, _) = check_definite_assignment(&q.body, &env.state, &base_ctx);
+                ds.extend(diags);
                 ds
             })
             .collect(),
