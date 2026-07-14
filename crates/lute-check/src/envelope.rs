@@ -20,16 +20,18 @@
 //! not a scalar `state:` path — `Node::Assert`/`Node::Retract` carry no
 //! `state:` path at all, so they never contribute to either set here.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 
 use lute_syntax::ast::{
     Arm, AttrValue, Branch, Choice, ClipNode, Hub, Match, Node, Objective, On, Quest, Timeline,
 };
 
-use crate::ctx::Env;
+use crate::connectivity::{ConnGraph, NodeId, PrereqState};
+use crate::ctx::Env as CtxEnv;
 use crate::defassign::{check_definite_assignment, Assigned};
 use crate::meta::{Namespace, StateSchema};
+use crate::prereq::PrereqFormula;
 use crate::Ctx;
 
 /// `true` when `path` resolves to the `run.*`/`user.*` tier — the two
@@ -157,7 +159,7 @@ fn scan_choice_persist(choice: &Choice, out: &mut BTreeSet<String>) {
 /// default `Env` is sufficient — this never observes the real project's
 /// `defs`/`rel_vocab`/etc., nor needs to.
 fn body_ctx() -> Ctx<'static> {
-    static ENV: LazyLock<Env> = LazyLock::new(Env::default);
+    static ENV: LazyLock<CtxEnv> = LazyLock::new(CtxEnv::default);
     Ctx { env: &ENV, in_match: false, match_subject: None }
 }
 
@@ -213,11 +215,177 @@ pub fn writes_on_complete(q: &Quest, schema: &StateSchema) -> BTreeSet<String> {
     out
 }
 
+/// One graph node's computed envelope (dsl §4.3 propagation table, spec
+/// lines 415-419): `guaranteed` — every `run.*`/`user.*` path proven set on
+/// EVERY route reaching this node under its declared `after` graph;
+/// `possible` — every path set on AT LEAST ONE such route. `guaranteed ⊆
+/// possible` always holds by construction (§4.3 lines 458-463:
+/// `guaranteed` licenses "no diagnostic", `possible` gates
+/// `E-STATE-MAYBE-UNAVAILABLE`).
+///
+/// `D` (the project's schema-default `run.*`/`user.*` set, spec lines
+/// 442-447) is UNIONED into BOTH sides of every node's envelope by
+/// [`propagate`], AFTER the table computation below — including a
+/// `completed(Q)`-only formula, whose own table entry (`G = P =
+/// writesOnComplete(Q)`, spec line 416) does not mention `D` on its face —
+/// because a schema-defaulted path is seeded at scene entry regardless of
+/// which route reached this node (spec lines 445-447): `D ⊆ guaranteed(n)`
+/// must hold at EVERY node, not just ones whose formula happens to route
+/// through a `visited()` atom.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Env {
+    pub guaranteed: BTreeSet<String>,
+    pub possible: BTreeSet<String>,
+}
+
+/// Per-document effect data [`propagate`] needs to resolve `visited(Y)`/
+/// `completed(Q)` atoms — pure data the caller (T11/T14 project wiring)
+/// threads in from T8/T9's own passes; never recomputed here.
+#[derive(Clone, Debug, Default)]
+pub struct PerDocEffects {
+    /// T8's `(guaranteed, possible_writes)` pair for a SCENE's own
+    /// document, keyed by the same canonical key its
+    /// [`crate::connectivity::NodeId::Scene`] carries.
+    pub scene: BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>,
+    /// T9's [`writes_on_complete`], keyed by quest id — the same id a
+    /// `PrereqFormula::Completed`/[`crate::connectivity::NodeId::Quest`]
+    /// carries. Present for every quest the caller resolved, whether or
+    /// not it declares `after` (`writesOnComplete` needs no `after`).
+    pub quest_writes_on_complete: BTreeMap<String, BTreeSet<String>>,
+}
+
+/// Compute every graph node's [`Env`] by memoized structural recursion over
+/// its `after` formula, one linear pass over `g.topo_order` (dsl §4.3 spec
+/// lines 411-419): `visited(Y)`/`completed(Q)` atoms, `&&`/`||`
+/// composition, and the `Absent` entry base case `G = P = D`. Returns the
+/// per-node envelope map alongside a TAINTED node set (envelope-specific —
+/// see below, deliberately NOT [`crate::connectivity::check_reachability`]'s
+/// `Unknown` classification).
+///
+/// ## Tainted nodes (soundness for `PrereqState::Invalid`)
+/// A node with a malformed `after` ([`PrereqState::Invalid`], already
+/// reported once as `E-CONN-PROFILE`) has no well-defined envelope — its
+/// `possible` set cannot be trusted to be complete. Rather than invent an
+/// unbounded/"all paths possible" sentinel, this marks the node TAINTED and
+/// gives it a placeholder `D`/`D` envelope (never trusted downstream); a
+/// node whose formula references a tainted node — via ANY `visited`/
+/// `completed` atom, on EITHER side of `&&` OR `||` — is tainted too, and
+/// also gets a placeholder envelope rather than running the table math on
+/// an unreliable input. Callers (T11) MUST skip emitting
+/// `E-STATE-MAYBE-UNAVAILABLE` for any node in the returned tainted set.
+///
+/// This is DELIBERATELY stricter than reachability's tri-state lattice:
+/// `check_reachability`'s `Or` recovers a clean `Reachable` arm even when
+/// the other is `Unknown` (dominance — ANY reachable route makes the node
+/// reachable). The envelope's `||` UNIONS `possible` across BOTH arms
+/// (spec line 418) — `visited(InvalidY) || visited(LiveZ)`'s `possible`
+/// necessarily folds in `InvalidY`'s unreliable contribution, so the WHOLE
+/// node must be tainted even though `check_reachability` would call it
+/// `Reachable`. Taint propagation here must NOT reuse `check_reachability`'s
+/// `Unknown` set.
+///
+/// Memoized: each node's `Env` is computed once, reusing already-computed
+/// predecessor envelopes from `envs` — sound because every `visited`/
+/// `completed` target that is itself a graph node precedes `n` in
+/// `topo_order` ([`crate::connectivity::assemble_graph`]'s own edge
+/// invariant). An atom whose target is not a graph node at all (unknown
+/// `visited`/`completed` reference — [`crate::connectivity`]'s own
+/// `E_CONN_UNKNOWN_NODE`'s concern, orthogonal to this pass) contributes
+/// nothing beyond `D`, and is never itself tainted (there is no node for
+/// it to be tainted AS). Linear in total formula size across the graph.
+pub fn propagate(
+    g: &ConnGraph,
+    per_doc: &PerDocEffects,
+    d: &BTreeSet<String>,
+) -> (BTreeMap<NodeId, Env>, BTreeSet<NodeId>) {
+    let mut envs: BTreeMap<NodeId, Env> = BTreeMap::new();
+    let mut tainted: BTreeSet<NodeId> = BTreeSet::new();
+
+    for id in &g.topo_order {
+        let Some(info) = g.nodes.get(id) else { continue };
+        let (mut env, is_tainted) = match &info.prereq {
+            PrereqState::Absent => (Env::default(), false),
+            PrereqState::Invalid => (Env::default(), true),
+            PrereqState::Valid(f) => {
+                if formula_tainted(f, &tainted) {
+                    (Env::default(), true)
+                } else {
+                    (eval_formula(f, per_doc, &envs), false)
+                }
+            }
+        };
+        env.guaranteed.extend(d.iter().cloned());
+        env.possible.extend(d.iter().cloned());
+        if is_tainted {
+            tainted.insert(id.clone());
+        }
+        envs.insert(id.clone(), env);
+    }
+
+    (envs, tainted)
+}
+
+/// `true` iff `f` references (via any `visited`/`completed` atom, through
+/// ANY `&&`/`||` nesting) a node already in `tainted`. See [`propagate`]'s
+/// doc comment for why this must NOT reuse `check_reachability`'s
+/// `Or`-recovers-a-clean-arm logic — taint propagates through both
+/// operators identically here.
+fn formula_tainted(f: &PrereqFormula, tainted: &BTreeSet<NodeId>) -> bool {
+    match f {
+        PrereqFormula::Visited(key) => tainted.contains(&NodeId::Scene(key.clone())),
+        PrereqFormula::Completed(id) => tainted.contains(&NodeId::Quest(id.clone())),
+        PrereqFormula::And(l, r) | PrereqFormula::Or(l, r) => {
+            formula_tainted(l, tainted) || formula_tainted(r, tainted)
+        }
+    }
+}
+
+/// The table computation itself (dsl §4.3 spec lines 415-418), assuming `f`
+/// references no tainted node ([`propagate`] checks that first):
+/// `visited(Y)` unions `Y`'s own memoized envelope with its document's T8
+/// write sets; `completed(Q)` is `writesOnComplete(Q)` (T9) on both sides;
+/// `&&` unions both sides; `||` intersects `guaranteed` but UNIONS
+/// `possible` (a route through either arm still makes a write possible).
+fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<NodeId, Env>) -> Env {
+    match f {
+        PrereqFormula::Visited(key) => {
+            let target = NodeId::Scene(key.clone());
+            let mut env = envs.get(&target).cloned().unwrap_or_default();
+            if let Some((doc_g, doc_p)) = per_doc.scene.get(key) {
+                env.guaranteed.extend(doc_g.iter().cloned());
+                env.possible.extend(doc_p.iter().cloned());
+            }
+            env
+        }
+        PrereqFormula::Completed(id) => {
+            let writes = per_doc.quest_writes_on_complete.get(id).cloned().unwrap_or_default();
+            Env { guaranteed: writes.clone(), possible: writes }
+        }
+        PrereqFormula::And(l, r) => {
+            let el = eval_formula(l, per_doc, envs);
+            let er = eval_formula(r, per_doc, envs);
+            Env {
+                guaranteed: el.guaranteed.union(&er.guaranteed).cloned().collect(),
+                possible: el.possible.union(&er.possible).cloned().collect(),
+            }
+        }
+        PrereqFormula::Or(l, r) => {
+            let el = eval_formula(l, per_doc, envs);
+            let er = eval_formula(r, per_doc, envs);
+            Env {
+                guaranteed: el.guaranteed.intersection(&er.guaranteed).cloned().collect(),
+                possible: el.possible.union(&er.possible).cloned().collect(),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use lute_cel::{fill_document, CelArena};
     use lute_syntax::parse;
+    use crate::connectivity::NodeInfo;
 
     fn shot_nodes(src: &str) -> Vec<Node> {
         let (mut doc, _pd) = parse(src);
@@ -275,7 +443,7 @@ mod tests {
     }
 
     fn ctx() -> Ctx<'static> {
-        static ENV: LazyLock<Env> = LazyLock::new(Env::default);
+        static ENV: LazyLock<CtxEnv> = LazyLock::new(CtxEnv::default);
         Ctx {
             env: &ENV,
             in_match: false,
@@ -462,5 +630,376 @@ mod tests {
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
         assert!(w.contains("run.g"), "unconditional questComplete write must be guaranteed, got {w:?}");
+    }
+
+    // ---- T10: propagate (Env{guaranteed, possible}) ------------------
+
+    fn dummy_span() -> lute_core_span::Span {
+        lute_core_span::Span {
+            byte_start: 0,
+            byte_end: 1,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        }
+    }
+
+    fn node(id: NodeId, prereq: PrereqState) -> NodeInfo {
+        NodeInfo {
+            id: id.clone(),
+            path: std::path::PathBuf::from(format!("{id}.lute")),
+            prereq,
+            span: dummy_span(),
+        }
+    }
+
+    /// `edges` is deliberately left empty — [`propagate`] only ever reads
+    /// `g.nodes`/`g.topo_order` (mirrors `check_reachability`'s own usage);
+    /// tests supply `topo_order` directly since fixtures are small enough
+    /// to hand-order by construction.
+    fn graph(infos: Vec<NodeInfo>, topo_order: Vec<NodeId>) -> ConnGraph {
+        ConnGraph {
+            nodes: infos.into_iter().map(|n| (n.id.clone(), n)).collect(),
+            edges: BTreeMap::new(),
+            topo_order,
+        }
+    }
+
+    #[test]
+    fn invalid_node_is_tainted_with_placeholder_d_env() {
+        let d = BTreeSet::from(["run.def".to_string()]);
+        let bad = NodeId::Scene("bad".into());
+        let g = graph(vec![node(bad.clone(), PrereqState::Invalid)], vec![bad.clone()]);
+        let (envs, tainted) = propagate(&g, &PerDocEffects::default(), &d);
+        assert!(tainted.contains(&bad));
+        assert_eq!(envs[&bad].guaranteed, d);
+        assert_eq!(envs[&bad].possible, d);
+    }
+
+    #[test]
+    fn visited_of_invalid_node_is_tainted() {
+        let bad = NodeId::Scene("bad".into());
+        let n = NodeId::Scene("n".into());
+        let g = graph(
+            vec![
+                node(bad.clone(), PrereqState::Invalid),
+                node(n.clone(), PrereqState::Valid(PrereqFormula::Visited("bad".into()))),
+            ],
+            vec![bad.clone(), n.clone()],
+        );
+        let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
+        assert!(tainted.contains(&bad));
+        assert!(tainted.contains(&n), "a formula referencing a tainted node must itself be tainted");
+    }
+
+    #[test]
+    fn or_with_one_invalid_arm_taints_the_whole_node() {
+        // KEY divergence from `check_reachability`: `Or`'s dominance lets a
+        // clean arm recover `Reachable` there, but the envelope's `||`
+        // UNIONS `possible` across BOTH arms (spec line 418), so
+        // `InvalidY`'s unreliable contribution always leaks into the whole
+        // node's `possible` — it must be tainted even though `live`'s own
+        // arm is untainted.
+        let bad = NodeId::Scene("bad".into());
+        let live = NodeId::Scene("live".into());
+        let n = NodeId::Scene("n".into());
+        let f = PrereqFormula::Or(
+            Box::new(PrereqFormula::Visited("bad".into())),
+            Box::new(PrereqFormula::Visited("live".into())),
+        );
+        let g = graph(
+            vec![
+                node(bad.clone(), PrereqState::Invalid),
+                node(live.clone(), PrereqState::Absent),
+                node(n.clone(), PrereqState::Valid(f)),
+            ],
+            vec![bad.clone(), live.clone(), n.clone()],
+        );
+        let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
+        assert!(!tainted.contains(&live), "live's own arm must stay untainted");
+        assert!(tainted.contains(&n), "|| with an invalid arm must taint the whole node");
+    }
+
+    #[test]
+    fn and_with_one_invalid_arm_taints_the_whole_node() {
+        let bad = NodeId::Scene("bad".into());
+        let live = NodeId::Scene("live".into());
+        let n = NodeId::Scene("n".into());
+        let f = PrereqFormula::And(
+            Box::new(PrereqFormula::Visited("bad".into())),
+            Box::new(PrereqFormula::Visited("live".into())),
+        );
+        let g = graph(
+            vec![
+                node(bad.clone(), PrereqState::Invalid),
+                node(live.clone(), PrereqState::Absent),
+                node(n.clone(), PrereqState::Valid(f)),
+            ],
+            vec![bad.clone(), live.clone(), n.clone()],
+        );
+        let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
+        assert!(tainted.contains(&n), "&& with an invalid arm must taint the whole node");
+    }
+
+    #[test]
+    fn completed_only_node_still_carries_d() {
+        let d = BTreeSet::from(["run.def".to_string()]);
+        let n = NodeId::Scene("n".into());
+        let g = graph(
+            vec![node(n.clone(), PrereqState::Valid(PrereqFormula::Completed("q".into())))],
+            vec![n.clone()],
+        );
+        let mut per_doc = PerDocEffects::default();
+        per_doc
+            .quest_writes_on_complete
+            .insert("q".to_string(), BTreeSet::from(["run.done".to_string()]));
+        let (envs, tainted) = propagate(&g, &per_doc, &d);
+        assert!(!tainted.contains(&n));
+        let env = &envs[&n];
+        assert!(env.guaranteed.contains("run.def"), "D must survive a completed(Q)-only node, got {:?}", env.guaranteed);
+        assert!(env.guaranteed.contains("run.done"));
+        assert_eq!(env.guaranteed, env.possible, "completed(Q): G=P=writesOnComplete(Q), D unioned into both");
+    }
+
+    #[test]
+    fn or_intersects_guaranteed_union_possible() {
+        let a = NodeId::Scene("a".into());
+        let b = NodeId::Scene("b".into());
+        let n = NodeId::Scene("n".into());
+        let f = PrereqFormula::Or(
+            Box::new(PrereqFormula::Visited("a".into())),
+            Box::new(PrereqFormula::Visited("b".into())),
+        );
+        let g = graph(
+            vec![
+                node(a.clone(), PrereqState::Absent),
+                node(b.clone(), PrereqState::Absent),
+                node(n.clone(), PrereqState::Valid(f)),
+            ],
+            vec![a.clone(), b.clone(), n.clone()],
+        );
+        let mut per_doc = PerDocEffects::default();
+        per_doc.scene.insert(
+            "a".to_string(),
+            (
+                BTreeSet::from(["run.a".to_string(), "run.x".to_string()]),
+                BTreeSet::from(["run.a".to_string(), "run.x".to_string()]),
+            ),
+        );
+        per_doc.scene.insert(
+            "b".to_string(),
+            (
+                BTreeSet::from(["run.b".to_string(), "run.x".to_string()]),
+                BTreeSet::from(["run.b".to_string(), "run.x".to_string()]),
+            ),
+        );
+        let (envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+        assert!(!tainted.contains(&n));
+        let env = &envs[&n];
+        assert!(env.guaranteed.contains("run.x"), "in both arms");
+        assert!(!env.guaranteed.contains("run.a"), "only one arm");
+        assert!(!env.guaranteed.contains("run.b"), "only one arm");
+        assert!(env.possible.contains("run.a") && env.possible.contains("run.b") && env.possible.contains("run.x"));
+    }
+
+    #[test]
+    fn and_unions_guaranteed_and_possible() {
+        let a = NodeId::Scene("a".into());
+        let b = NodeId::Scene("b".into());
+        let n = NodeId::Scene("n".into());
+        let f = PrereqFormula::And(
+            Box::new(PrereqFormula::Visited("a".into())),
+            Box::new(PrereqFormula::Visited("b".into())),
+        );
+        let g = graph(
+            vec![
+                node(a.clone(), PrereqState::Absent),
+                node(b.clone(), PrereqState::Absent),
+                node(n.clone(), PrereqState::Valid(f)),
+            ],
+            vec![a.clone(), b.clone(), n.clone()],
+        );
+        let mut per_doc = PerDocEffects::default();
+        per_doc.scene.insert(
+            "a".to_string(),
+            (BTreeSet::from(["run.a".to_string()]), BTreeSet::from(["run.a".to_string()])),
+        );
+        per_doc.scene.insert(
+            "b".to_string(),
+            (BTreeSet::from(["run.b".to_string()]), BTreeSet::from(["run.b".to_string()])),
+        );
+        let (envs, _tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+        let env = &envs[&n];
+        assert!(env.guaranteed.contains("run.a") && env.guaranteed.contains("run.b"));
+        assert!(env.possible.contains("run.a") && env.possible.contains("run.b"));
+    }
+
+    #[test]
+    fn default_set_survives_every_node() {
+        let d = BTreeSet::from(["run.def".to_string()]);
+        let a = NodeId::Scene("a".into());
+        let n = NodeId::Scene("n".into());
+        let g = graph(
+            vec![
+                node(a.clone(), PrereqState::Absent),
+                node(n.clone(), PrereqState::Valid(PrereqFormula::Visited("a".into()))),
+            ],
+            vec![a.clone(), n.clone()],
+        );
+        let (envs, _tainted) = propagate(&g, &PerDocEffects::default(), &d);
+        assert!(envs.values().all(|e| e.guaranteed.contains("run.def")));
+        assert!(envs.values().all(|e| e.possible.contains("run.def")));
+    }
+
+    // ---- algebraic identity (spec lines 432-440), property-based -----
+
+    /// Minimal deterministic PRNG (splitmix64) — this workspace has no
+    /// `rand`/`proptest` dependency; good enough for a bounded, reproducible
+    /// sweep over small formula ASTs.
+    struct Rng(u64);
+    impl Rng {
+        fn next_u64(&mut self) -> u64 {
+            self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut z = self.0;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        }
+        fn next_range(&mut self, n: usize) -> usize {
+            (self.next_u64() % (n as u64)) as usize
+        }
+        fn next_bool(&mut self) -> bool {
+            self.next_u64() & 1 == 0
+        }
+    }
+
+    fn random_formula(rng: &mut Rng, atom_names: &[&str], depth: usize) -> PrereqFormula {
+        if depth == 0 || rng.next_range(3) == 0 {
+            let name = atom_names[rng.next_range(atom_names.len())];
+            return PrereqFormula::Visited(name.to_string());
+        }
+        let l = random_formula(rng, atom_names, depth - 1);
+        let r = random_formula(rng, atom_names, depth - 1);
+        if rng.next_bool() {
+            PrereqFormula::And(Box::new(l), Box::new(r))
+        } else {
+            PrereqFormula::Or(Box::new(l), Box::new(r))
+        }
+    }
+
+    fn random_atom_envs(
+        rng: &mut Rng,
+        atom_names: &[&str],
+        universe: &[&str],
+    ) -> BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)> {
+        let mut out = BTreeMap::new();
+        for name in atom_names {
+            let mut p = BTreeSet::new();
+            for path in universe {
+                if rng.next_bool() {
+                    p.insert((*path).to_string());
+                }
+            }
+            let mut g = BTreeSet::new();
+            for path in &p {
+                if rng.next_bool() {
+                    g.insert(path.clone());
+                }
+            }
+            out.insert((*name).to_string(), (g, p));
+        }
+        out
+    }
+
+    /// Brute-force per-route reference (spec lines 432-440): an atom's own
+    /// route family is exactly its two extremes `{G_atom, P_atom}` — every
+    /// concrete route through it writes AT LEAST `G_atom` and AT MOST
+    /// `P_atom`, so intersecting `{G_atom, P_atom}` recovers `G_atom` and
+    /// unioning recovers `P_atom`. `X && Y`'s routes are the cross product
+    /// `{aᵢ ∪ bⱼ}` (both fire unconditionally); `X || Y`'s are the plain
+    /// union `routes(X) ∪ routes(Y)` (exactly one arm fires).
+    fn bruteforce_routes(
+        f: &PrereqFormula,
+        atoms: &BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>,
+    ) -> Vec<BTreeSet<String>> {
+        match f {
+            PrereqFormula::Visited(key) | PrereqFormula::Completed(key) => {
+                let (g_atom, p_atom) = atoms.get(key).cloned().unwrap_or_default();
+                vec![g_atom, p_atom]
+            }
+            PrereqFormula::And(l, r) => {
+                let rl = bruteforce_routes(l, atoms);
+                let rr = bruteforce_routes(r, atoms);
+                let mut out = Vec::with_capacity(rl.len() * rr.len());
+                for a in &rl {
+                    for b in &rr {
+                        out.push(a.union(b).cloned().collect());
+                    }
+                }
+                out
+            }
+            PrereqFormula::Or(l, r) => {
+                let mut out = bruteforce_routes(l, atoms);
+                out.extend(bruteforce_routes(r, atoms));
+                out
+            }
+        }
+    }
+
+    /// Guaranteed = intersect ALL routes; Possible = union ALL routes.
+    fn bruteforce_env(
+        f: &PrereqFormula,
+        atoms: &BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>,
+    ) -> (BTreeSet<String>, BTreeSet<String>) {
+        let routes = bruteforce_routes(f, atoms);
+        let mut guaranteed: Option<BTreeSet<String>> = None;
+        let mut possible: BTreeSet<String> = BTreeSet::new();
+        for r in &routes {
+            possible.extend(r.iter().cloned());
+            guaranteed = Some(match guaranteed {
+                None => r.clone(),
+                Some(acc) => acc.intersection(r).cloned().collect(),
+            });
+        }
+        (guaranteed.unwrap_or_default(), possible)
+    }
+
+    fn graph_for_formula(atom_names: &[&str], f: PrereqFormula) -> (ConnGraph, NodeId) {
+        let mut infos = Vec::new();
+        let mut topo = Vec::new();
+        for name in atom_names {
+            let id = NodeId::Scene((*name).to_string());
+            infos.push(node(id.clone(), PrereqState::Absent));
+            topo.push(id);
+        }
+        let n = NodeId::Scene("n_test".to_string());
+        infos.push(node(n.clone(), PrereqState::Valid(f)));
+        topo.push(n.clone());
+        (graph(infos, topo), n)
+    }
+
+    #[test]
+    fn structural_recursion_equals_bruteforce_per_route() {
+        let atom_names = ["x0", "x1", "x2"];
+        let universe = ["run.p0", "run.p1", "run.p2", "run.p3"];
+        let d = BTreeSet::new();
+        for seed in 0..500u64 {
+            let mut rng = Rng(seed.wrapping_mul(0x2545_F491_4F6C_DD1D).wrapping_add(1));
+            let atom_envs = random_atom_envs(&mut rng, &atom_names, &universe);
+            let f = random_formula(&mut rng, &atom_names, 3);
+
+            let (expected_g, expected_p) = bruteforce_env(&f, &atom_envs);
+
+            let mut per_doc = PerDocEffects::default();
+            for (name, (g, p)) in &atom_envs {
+                per_doc.scene.insert(name.clone(), (g.clone(), p.clone()));
+            }
+            let (graph, n) = graph_for_formula(&atom_names, f.clone());
+            let (envs, tainted) = propagate(&graph, &per_doc, &d);
+            assert!(!tainted.contains(&n), "seed {seed}: an all-`Absent`/`Valid` fixture must never taint");
+            let env = &envs[&n];
+            assert_eq!(env.guaranteed, expected_g, "seed {seed}: formula {f:?}");
+            assert_eq!(env.possible, expected_p, "seed {seed}: formula {f:?}");
+        }
     }
 }
