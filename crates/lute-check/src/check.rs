@@ -718,7 +718,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 .iter()
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();
-            let (diags, assigned) = check_definite_assignment(&all_nodes, &env.state, &base_ctx);
+            let (diags, assigned, _reads) = check_definite_assignment(&all_nodes, &env.state);
             _scene_assigned = assigned;
             diags
         }
@@ -738,7 +738,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 if let Some(fail) = &q.fail {
                     ds.extend(check_quest_guard_defassign(fail, &env.state));
                 }
-                let (diags, _) = check_definite_assignment(&q.body, &env.state, &base_ctx);
+                let (diags, _, _reads) = check_definite_assignment(&q.body, &env.state);
                 ds.extend(diags);
                 ds
             })

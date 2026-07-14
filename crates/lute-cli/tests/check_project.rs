@@ -548,3 +548,299 @@ fn check_project_clean_project_still_exits_zero_with_quest_refs_present() {
     assert_eq!(v["ok"], true, "{v}");
     assert!(v["project_diagnostics"].as_array().unwrap().is_empty(), "{v}");
 }
+
+// ---------------------------------------------------------------------
+// Connectivity T11: `E-STATE-MAYBE-UNAVAILABLE` envelope diagnostic MUST
+// RECONCILE with the per-file `E-MAYBE-UNSET` `check()` already emits for
+// the SAME entry-dependent read -- never coexist alongside it (mirrors the
+// `E-QUEST-ID-DUP` retain-pass precedent). A read that falls back to entry
+// state earns `E-MAYBE-UNSET` from every per-file `check()` call; at
+// project scope that diagnostic must be REPLACED by the envelope's own
+// verdict: dropped silently when `Guaranteed`, dropped-and-suppressed when
+// `Possible\Guaranteed` (warning grade, never surfaced by default), or
+// dropped-and-replaced by `E-STATE-MAYBE-UNAVAILABLE` when `∉ Possible`.
+// ---------------------------------------------------------------------
+
+/// A scene doc declaring `after: visited(<after_key>)` (or no `after` at
+/// all when `after_key` is empty) that reads `run.z` (declared, no
+/// default) via a plain `::set` RHS -- the entry-dependent read shape
+/// every reconciliation test below needs.
+fn scene_reading_run_z(character: &str, after_expr: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n{after_expr}\
+         state:\n  run.z: {{ type: number }}\n  run.out: {{ type: number }}\n---\n\
+         ## Shot 1.\n::set{{run.out = run.z}}\n"
+    )
+}
+
+#[test]
+fn envelope_guaranteed_read_drops_the_reconciled_maybe_unset_and_exits_zero() {
+    // `y` is the ONLY predecessor route and unconditionally sets `run.z` --
+    // `run.z ∈ Guaranteed(x)`. Per-file `check()` on `x` alone flags
+    // `E-MAYBE-UNSET` (it can't see the project); at project scope that
+    // diagnostic MUST be reconciled away with no replacement.
+    let dir = temp_dir("envelope-guaranteed");
+    let y = "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
+    write(&dir, "y.lute", y);
+    write(&dir, "x.lute", &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"));
+
+    let out_x = run(&["check", dir.join("x.lute").to_str().unwrap()]);
+    assert!(
+        !out_x.status.success(),
+        "x.lute alone must flag E-MAYBE-UNSET standalone (can't see the project): {}",
+        String::from_utf8_lossy(&out_x.stdout)
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    assert!(v["project_diagnostics"].as_array().unwrap().is_empty(), "{v}");
+    for f in v["files"].as_array().unwrap() {
+        let diags = f["diagnostics"].as_array().unwrap();
+        assert!(
+            !diags.iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+            "the reconciled read must not keep its per-file E-MAYBE-UNSET: {v}"
+        );
+        assert!(diags.iter().all(|d| d["code"] != "E-STATE-MAYBE-UNAVAILABLE"));
+    }
+}
+
+#[test]
+fn envelope_possible_not_guaranteed_read_is_fully_suppressed_by_default() {
+    // `after: visited(a) || visited(b)`; `a` unconditionally sets `run.z`,
+    // `b` never does -- `run.z ∈ Possible(x) \ Guaranteed(x)`, warning
+    // grade, default-suppressed. Project scope MUST exit 0 with NEITHER
+    // the per-file E-MAYBE-UNSET NOR any E-STATE-MAYBE-UNAVAILABLE
+    // (error or otherwise) anywhere in the default (human or --json)
+    // output -- and no `envelope_warnings` key at all (T14 territory).
+    let dir = temp_dir("envelope-possible-not-guaranteed");
+    let a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
+    let b = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    write(&dir, "a.lute", a);
+    write(&dir, "b.lute", b);
+    write(
+        &dir,
+        "x.lute",
+        &scene_reading_run_z("x", "after: 'visited(\"a.s01ep01\") || visited(\"b.s01ep01\")'\n"),
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    assert!(v["project_diagnostics"].as_array().unwrap().is_empty(), "{v}");
+    assert!(
+        v.get("envelope_warnings").is_none(),
+        "the warning grade must not be surfaced anywhere in default check-project output: {v}"
+    );
+    for f in v["files"].as_array().unwrap() {
+        let diags = f["diagnostics"].as_array().unwrap();
+        assert!(
+            diags.iter().all(|d| d["code"] != "E-MAYBE-UNSET" && d["code"] != "E-STATE-MAYBE-UNAVAILABLE"),
+            "no diagnostic at all for a Possible-but-not-Guaranteed read by default: {v}"
+        );
+    }
+
+    let out_human = run(&["check-project", dir.to_str().unwrap()]);
+    assert_eq!(out_human.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&out_human.stdout);
+    assert!(!stdout.contains("E-MAYBE-UNSET"), "{stdout}");
+    assert!(!stdout.contains("E-STATE-MAYBE-UNAVAILABLE"), "{stdout}");
+}
+
+#[test]
+fn envelope_never_possible_read_replaces_maybe_unset_with_state_unavailable_error() {
+    // `y` is the ONLY predecessor route and NEVER sets `run.z` -- `run.z ∉
+    // Possible(x)`. Project scope MUST replace the per-file `E-MAYBE-UNSET`
+    // with a project-wide error-grade `E-STATE-MAYBE-UNAVAILABLE` (never
+    // both at once), and the wording must carry the declared-routes
+    // qualifier verbatim.
+    let dir = temp_dir("envelope-never-possible");
+    let y = "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    write(&dir, "y.lute", y);
+    write(&dir, "x.lute", &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"));
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], false, "{v}");
+    let project_diags = v["project_diagnostics"].as_array().unwrap();
+    assert_eq!(project_diags.len(), 1, "{v}");
+    assert_eq!(project_diags[0]["code"], "E-STATE-MAYBE-UNAVAILABLE");
+    assert_eq!(project_diags[0]["severity"], "error");
+    assert!(
+        project_diags[0]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("under your declared routes")),
+        "{v}"
+    );
+    for f in v["files"].as_array().unwrap() {
+        let diags = f["diagnostics"].as_array().unwrap();
+        assert!(
+            !diags.iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+            "the reconciled read must not keep its per-file E-MAYBE-UNSET: {v}"
+        );
+    }
+}
+
+#[test]
+fn envelope_tainted_node_leaves_maybe_unset_untouched() {
+    // `after` references an UNRESOLVABLE `visited()` target -- the node is
+    // tainted (`propagate`'s own unreliable D/D placeholder). The
+    // reconciliation pass must NOT touch this node's reads at all: the
+    // per-file `E-MAYBE-UNSET` stays exactly as `check()` reported it, and
+    // no `E-STATE-MAYBE-UNAVAILABLE` is ever added for it.
+    let dir = temp_dir("envelope-tainted");
+    write(
+        &dir,
+        "x.lute",
+        &scene_reading_run_z("x", "after: 'visited(\"ghost.s01ep01\")'\n"),
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(
+        !v["project_diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-STATE-MAYBE-UNAVAILABLE"),
+        "a tainted node's Env is untrustworthy -- must never seed E-STATE-MAYBE-UNAVAILABLE: {v}"
+    );
+    let files = v["files"].as_array().unwrap();
+    let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
+    assert!(
+        x["diagnostics"].as_array().unwrap().iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+        "a tainted node's per-file E-MAYBE-UNSET must be left untouched: {v}"
+    );
+}
+
+#[test]
+fn envelope_out_of_scope_scene_maybe_unset_survives_check_project() {
+    // `scene.local` is entry-dependent (declared, no default, never
+    // locally proven) but SCENE-tier -- out of the envelope's `run.*`/
+    // `user.*` scope (dsl §4.3 §386-393). Reconciliation must NEVER touch
+    // it: the per-file `E-MAYBE-UNSET` survives check-project untouched,
+    // no `E-STATE-MAYBE-UNAVAILABLE` is ever produced for it.
+    let dir = temp_dir("envelope-out-of-scope-scene");
+    write(
+        &dir,
+        "x.lute",
+        "---\nkind: scene\ncharacter: x6\nseason: 1\nepisode: 1\nstate:\n  scene.local: { type: number }\n---\n## Shot 1.\n@narrator: value {{scene.local}}\n",
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], false, "{v}");
+    assert!(
+        !v["project_diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-STATE-MAYBE-UNAVAILABLE"),
+        "scene.* is never envelope-classified: {v}"
+    );
+    let files = v["files"].as_array().unwrap();
+    let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
+    assert!(
+        x["diagnostics"].as_array().unwrap().iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+        "an out-of-scope scene.* read's E-MAYBE-UNSET must survive reconciliation: {v}"
+    );
+}
+
+#[test]
+fn envelope_out_of_scope_quest_maybe_unset_survives_check_project() {
+    // `quest.foo.state` is a reserved, always-declared, never-defaulted
+    // read (dsl 0.2.0 §5.2) -- entry-dependent by defassign's rules, but
+    // QUEST-tier -- out of the envelope's `run.*`/`user.*` scope entirely
+    // (dsl §4.3 §386-393: quest lifecycle is read via `completed()`, never
+    // this lattice). Its per-file `E-MAYBE-UNSET` must survive untouched.
+    let dir = temp_dir("envelope-out-of-scope-quest");
+    write(
+        &dir,
+        "x.lute",
+        "---\nkind: scene\ncharacter: x7\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: value {{quest.foo.state}}\n",
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(
+        !v["project_diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-STATE-MAYBE-UNAVAILABLE"),
+        "quest.* is never envelope-classified: {v}"
+    );
+    let files = v["files"].as_array().unwrap();
+    let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
+    assert!(
+        x["diagnostics"].as_array().unwrap().iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+        "an out-of-scope quest.* read's E-MAYBE-UNSET must survive reconciliation: {v}"
+    );
+}
+
+#[test]
+fn envelope_mixed_slot_span_collision_only_reconciles_the_in_scope_path() {
+    // `run.out = run.upstream && scene.local` -- BOTH reads sit in the
+    // SAME CEL slot, so `check_read` fires each with the IDENTICAL `Span`
+    // (defassign.rs has no per-path span within one slot). `run.upstream`
+    // is Guaranteed at `x` (its only predecessor route, `y8`, sets it
+    // unconditionally) -- reconciled away. `scene.local` is scene-tier,
+    // out of scope, and genuinely never set -- its E-MAYBE-UNSET at that
+    // SAME span must survive. A span-only match would wrongly drop BOTH.
+    let dir = temp_dir("envelope-mixed-slot-collision");
+    let y = "---\nkind: scene\ncharacter: y8\nseason: 1\nepisode: 1\nstate:\n  run.upstream: { type: bool }\n---\n## Shot 1.\n::set{run.upstream = true}\n";
+    write(&dir, "y.lute", y);
+    write(
+        &dir,
+        "x.lute",
+        "---\nkind: scene\ncharacter: x8\nseason: 1\nepisode: 1\nafter: 'visited(\"y8.s01ep01\")'\nstate:\n  run.upstream: { type: bool }\n  scene.local: { type: bool }\n  run.out: { type: bool }\n---\n## Shot 1.\n::set{run.out = run.upstream && scene.local}\n",
+    );
+
+    // Standalone red proof: BOTH reads flag E-MAYBE-UNSET at the same span.
+    let out_x = run(&["check", dir.join("x.lute").to_str().unwrap(), "--json"]);
+    let vx: serde_json::Value = serde_json::from_slice(&out_x.stdout).unwrap();
+    let unset: Vec<&serde_json::Value> = vx["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "E-MAYBE-UNSET")
+        .collect();
+    assert_eq!(unset.len(), 2, "expected both reads to flag standalone: {vx}");
+    assert_eq!(unset[0]["span"], unset[1]["span"], "both reads must share the same slot span: {vx}");
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], false, "{v}");
+    assert!(
+        !v["project_diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-STATE-MAYBE-UNAVAILABLE"),
+        "run.upstream is Guaranteed -> no envelope diagnostic at all: {v}"
+    );
+    let files = v["files"].as_array().unwrap();
+    let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
+    let remaining: Vec<&serde_json::Value> = x["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "E-MAYBE-UNSET")
+        .collect();
+    assert_eq!(
+        remaining.len(),
+        1,
+        "exactly the scene.local site must survive reconciliation, run.upstream's must not: {v}"
+    );
+    assert!(
+        remaining[0]["message"].as_str().unwrap().contains("scene.local"),
+        "the surviving E-MAYBE-UNSET must be scene.local's, not run.upstream's: {v}"
+    );
+}
