@@ -47,7 +47,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use lute_check::{
     check, check_definite_assignment, check_project_quest_ids, check_project_quest_refs,
-    envelope, fold_env, parse_meta, CheckInput, Mode, Namespace, RelVocab,
+    defassign, envelope, fold_env, parse_meta, CheckInput, Mode, Namespace, RelVocab,
 };
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::core::load_core_snapshot;
@@ -813,6 +813,22 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
                 doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
             let (local_diags, assigned, reads) =
                 check_definite_assignment(&all_nodes, &folded.env.state);
+            // T4.4/T4.6 carry-forward parity (dsl §7 soundness invariant): the
+            // real `check()` pipeline (`check.rs::suppress_exhaustive_subject_reads`)
+            // drops any `E-MAYBE-UNSET` whose span is a domain-exhaustive
+            // `<match>` subject BEFORE `file_results` is ever populated -- a
+            // read like that never earns a per-file `E-MAYBE-UNSET` standalone,
+            // so it must never be treated as "entry-dependent" here either, or
+            // this project-level recomputation (which calls
+            // `check_definite_assignment` raw, unaware of that later
+            // suppression) would newly error a file `check()` reports clean.
+            let exhaustive_spans =
+                defassign::exhaustive_match_subject_spans(&all_nodes, &folded.env.state);
+            let is_exhaustive_subject = |span: &Span| {
+                exhaustive_spans
+                    .iter()
+                    .any(|s| s.byte_start == span.byte_start && s.byte_end == span.byte_end)
+            };
             per_doc.scene.insert(
                 key.clone(),
                 (envelope::guaranteed(&assigned), envelope::possible_writes(&all_nodes)),
@@ -828,11 +844,19 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
                 "check_definite_assignment must push exactly one E-MAYBE-UNSET per \
                  entry-dependent read, in the same order"
             );
-            let sites: Vec<(Span, String)> = reads
+            let paired: Vec<((String, Span), &str)> =
+                reads.into_iter().zip(maybe_unset_messages).collect();
+            let sites: Vec<(Span, String)> = paired
                 .iter()
-                .zip(maybe_unset_messages.iter())
-                .filter(|((path, _), _)| envelope::in_envelope_scope(path))
+                .filter(|((path, span), _)| {
+                    envelope::in_envelope_scope(path) && !is_exhaustive_subject(span)
+                })
                 .map(|((_, span), msg)| (*span, (*msg).to_string()))
+                .collect();
+            let reads: Vec<(String, Span)> = paired
+                .into_iter()
+                .filter(|((_, span), _)| !is_exhaustive_subject(span))
+                .map(|(r, _)| r)
                 .collect();
             sites_per_scene.insert(key.clone(), sites);
             reads_per_scene.insert(key.clone(), reads);
@@ -1080,6 +1104,20 @@ fn assemble_root_scenario(
             doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
         let (_local_diags, assigned, reads) =
             check_definite_assignment(&all_nodes, &folded.env.state);
+        // Same T4.4/T4.6 carry-forward parity fix as `run_check_project`'s
+        // T11 wiring above (dsl §7 soundness invariant) -- `lute scenario
+        // envelope`/`reach` must not classify a domain-exhaustive `<match>`
+        // subject read as entry-dependent either.
+        let exhaustive_spans =
+            defassign::exhaustive_match_subject_spans(&all_nodes, &folded.env.state);
+        let reads: Vec<(String, Span)> = reads
+            .into_iter()
+            .filter(|(_, span)| {
+                !exhaustive_spans
+                    .iter()
+                    .any(|s| s.byte_start == span.byte_start && s.byte_end == span.byte_end)
+            })
+            .collect();
         per_doc.scene.insert(
             key.clone(),
             (envelope::guaranteed(&assigned), envelope::possible_writes(&all_nodes)),

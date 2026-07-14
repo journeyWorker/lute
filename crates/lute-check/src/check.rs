@@ -90,7 +90,7 @@ use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
     check_branch, check_cel_slot, check_definite_assignment, check_hub, check_line_codes,
-    check_match, check_quest, check_quest_guard_defassign, check_set, is_exhaustive, DomainInfo,
+    check_match, check_quest, check_quest_guard_defassign, check_set, DomainInfo,
 };
 
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
@@ -658,7 +658,6 @@ pub fn check(input: &CheckInput) -> CheckResult {
         arena: &arena,
         diags: Vec::new(),
         timeline_tables: Vec::new(),
-        exhaustive_subject_spans: Vec::new(),
         components: &input.components,
         src: &input.text,
         param_domains,
@@ -711,6 +710,17 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // T8/§4.3). T9/T10 wire this into the per-node envelope; quest bodies are
     // out of envelope scope (no whole-document dominance relation, see above).
     let mut _scene_assigned: crate::defassign::Assigned = crate::defassign::Assigned::new();
+    // Single source of truth for the T4.4/T4.6 "domain-exhaustive `<match>`
+    // subject" exemption (dsl §7 soundness invariant): computed HERE, off
+    // the SAME node lists `check_definite_assignment` walks, and consumed
+    // BOTH by `suppress_exhaustive_subject_reads` below AND by connectivity
+    // T11's project-envelope wiring (`lute-cli::run_check_project`,
+    // `assemble_root_scenario`), which calls
+    // `crate::defassign::exhaustive_match_subject_spans` directly on its own
+    // re-derived node list — so a future change to exhaustiveness rules can
+    // never drift between the standalone-check suppression and the
+    // project-level reconciliation (see that function's own doc comment).
+    let mut exhaustive_subject_spans: Vec<Span> = Vec::new();
     let defassign_diags: Vec<Diagnostic> = match folded.doc_kind {
         crate::meta::DocKind::Scene => {
             let all_nodes: Vec<Node> = doc
@@ -719,6 +729,8 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();
             let (diags, assigned, _reads) = check_definite_assignment(&all_nodes, &env.state);
+            exhaustive_subject_spans =
+                crate::defassign::exhaustive_match_subject_spans(&all_nodes, &env.state);
             _scene_assigned = assigned;
             diags
         }
@@ -739,6 +751,8 @@ pub fn check(input: &CheckInput) -> CheckResult {
                     ds.extend(check_quest_guard_defassign(fail, &env.state));
                 }
                 let (diags, _, _reads) = check_definite_assignment(&q.body, &env.state);
+                exhaustive_subject_spans
+                    .extend(crate::defassign::exhaustive_match_subject_spans(&q.body, &env.state));
                 ds.extend(diags);
                 ds
             })
@@ -857,7 +871,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
 
     // is_exhaustive suppression (carry-forward, T4.6 x T4.4): drop a maybe-unset
     // read whose span is a domain-exhaustive `<match>` subject.
-    suppress_exhaustive_subject_reads(&mut diags, &walker.exhaustive_subject_spans);
+    suppress_exhaustive_subject_reads(&mut diags, &exhaustive_subject_spans);
     // C4 (dsl 0.4.0 §8.2): a `<when>` arm already flagged E-ARM-DEAD must not
     // additionally produce the pre-existing W-OVERLAP-ARMS — the dead-arm
     // error is the root.
@@ -922,8 +936,6 @@ struct Walker<'a> {
     arena: &'a CelArena,
     diags: Vec<Diagnostic>,
     timeline_tables: Vec<ResolvedTimeline>,
-    /// Subject spans of domain-exhaustive `<match>`es, for the T4.4 suppression.
-    exhaustive_subject_spans: Vec<Span>,
     /// Resolved `components:` table (dsl §13): the target of `::use` invocations.
     components: &'a ComponentSet,
     /// The raw document source (finding 4): `choice_into_no_persist_diag`
@@ -1069,9 +1081,6 @@ impl Walker<'_> {
                         }
                         None => {
                             self.diags.extend(check_match(m, &ctx.env.state, ctx));
-                            if is_exhaustive(m, &ctx.env.state) {
-                                self.exhaustive_subject_spans.push(m.subject.span);
-                            }
                         }
                     }
                     // Arms (tests + bodies) evaluate WITHIN match scope: `$` binds

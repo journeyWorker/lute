@@ -1,0 +1,13 @@
+---
+kind: quest
+# Connectivity worked example (dsl connectivity spec §2.2/§4.4): a quest
+# opting into the SAME `after` surface a scene's `after:` frontmatter uses
+# (§2.2's shared grammar), routed through connected-intro.lute's canonical
+# key -- cheap quest-side grounding alongside the scene-pair above.
+state:
+  run.returnedToOverlook: { type: bool, default: false }
+---
+
+<quest id="overlookReturn" title="Return to the Overlook" after="visited('kestrel.s01ep01')" start="true">
+<objective id="returned" title="Return to the overlook" done="run.returnedToOverlook"/>
+</quest>
