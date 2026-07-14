@@ -21,13 +21,17 @@
 //! `state:` path at all, so they never contribute to either set here.
 
 use std::collections::BTreeSet;
+use std::sync::LazyLock;
 
 use lute_syntax::ast::{
-    Arm, AttrValue, Branch, Choice, ClipNode, Hub, Match, Node, Objective, On, Timeline,
+    Arm, AttrValue, Branch, CelSlot, Choice, ClipNode, Hub, Match, Node, Objective, On, Quest,
+    Timeline,
 };
 
-use crate::defassign::Assigned;
-use crate::meta::Namespace;
+use crate::ctx::Env;
+use crate::defassign::{check_definite_assignment, Assigned};
+use crate::meta::{Namespace, StateSchema};
+use crate::Ctx;
 
 /// `true` when `path` resolves to the `run.*`/`user.*` tier — the two
 /// monotonic namespaces the envelope lattice tracks (dsl §4.3). Every other
@@ -148,16 +152,83 @@ fn scan_choice_persist(choice: &Choice, out: &mut BTreeSet<String>) {
     }
 }
 
+/// A throwaway [`Ctx`] for [`body_guaranteed`]'s inner
+/// [`check_definite_assignment`] call: that pass reads `schema` as an
+/// explicit argument and never reads its own `_ctx` parameter, so a fresh
+/// default `Env` is sufficient — this never observes the real project's
+/// `defs`/`rel_vocab`/etc., nor needs to.
+fn body_ctx() -> Ctx<'static> {
+    static ENV: LazyLock<Env> = LazyLock::new(Env::default);
+    Ctx { env: &ENV, in_match: false, match_subject: None }
+}
+
+/// `true` when an `<on>` handler is guaranteed to fire whenever its event
+/// occurs (dsl §4.3, connectivity T9): no `when` guard at all, or a `when`
+/// that is a literal CEL `true` constant. Any other `when` MAY evaluate
+/// false at runtime — the handler simply does not run that time — so its
+/// body's writes are may-only, never a sound member of
+/// [`writes_on_complete`]'s guaranteed union.
+fn is_unconditional(when: &Option<CelSlot>) -> bool {
+    match when {
+        None => true,
+        Some(slot) => slot.raw.trim() == "true",
+    }
+}
+
+/// The guaranteed-write must-set for ONE body's node stream taken ALONE (dsl
+/// §4.3): reruns T8's write-only definite-assignment pass
+/// (`check_definite_assignment`) as if `nodes` were a whole document on its
+/// own — so a `<branch>`/`<match>` nested in the body still intersects its
+/// own arms exactly as `guaranteed`/`G` does for a whole document — then
+/// applies the same `run.*`/`user.*` tier filter. Diagnostics are
+/// discarded: the body was already validated by the real
+/// `check_definite_assignment` pass over the whole quest document; this is
+/// a read-only re-derivation of its guaranteed-write set, not a second
+/// source of diagnostics.
+fn body_guaranteed(nodes: &[Node], schema: &StateSchema) -> BTreeSet<String> {
+    let (_diags, writes) = check_definite_assignment(nodes, schema, &body_ctx());
+    guaranteed(&writes)
+}
+
+/// `writesOnComplete(Q)` (dsl §4.3): the write set a quest `q` GUARANTEES
+/// once it completes. Union, across each REQUIRED objective's body plus an
+/// UNCONDITIONAL `questComplete` `<on>` handler's body, of each body's own
+/// guaranteed-write must-set (`body_guaranteed` — INTERSECT within a body,
+/// since a body may itself contain a `<branch>`/`<match>`, dsl §6.7).
+/// OPTIONAL objectives (`Objective::optional`) are skipped before their
+/// body is ever walked — they need not fire for completion (dsl 0.2.0
+/// §6.4), so crediting their writes would be unsound. A `questComplete`
+/// handler guarded by a `when` that isn't provably `true`
+/// (`is_unconditional`) is skipped the same way: its guard MAY be false
+/// exactly when the quest completes, so its writes are may-only, not
+/// guaranteed. The bodies that DO qualify each fire independently and
+/// unconditionally-once on completion (dsl §6.3/§6.4), so nothing narrows
+/// between them — UNION across them. Filtered to `run.*`/`user.*` (same
+/// tier scope as `guaranteed`/`possible_writes`; `body_guaranteed` already
+/// applies it per body, so the union stays in scope for free). `Objective`/
+/// `On` nodes only ever appear directly in a quest's own body, never nested
+/// (grammar admission, dsl 0.2.0 §6.7 — mirrors `match_check::check_quest`'s
+/// and `project_check`'s own top-level-only objective scans), so a single
+/// top-level pass over `q.body` is exhaustive.
+pub fn writes_on_complete(q: &Quest, schema: &StateSchema) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for node in &q.body {
+        match node {
+            Node::Objective(o) if !o.optional => out.extend(body_guaranteed(&o.body, schema)),
+            Node::On(on) if on.event == "questComplete" && is_unconditional(&on.when) => {
+                out.extend(body_guaranteed(&on.body, schema));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ctx::Env;
-    use crate::defassign::check_definite_assignment;
-    use crate::meta::StateSchema;
-    use crate::Ctx;
     use lute_cel::{fill_document, CelArena};
     use lute_syntax::parse;
-    use std::sync::LazyLock;
 
     fn shot_nodes(src: &str) -> Vec<Node> {
         let (mut doc, _pd) = parse(src);
@@ -191,6 +262,27 @@ mod tests {
             .map(|s| s.body)
             .unwrap_or_default();
         (nodes, meta.state)
+    }
+
+    /// Like `fixture`, but returns the first `<quest>` declaration itself
+    /// (not just its flattened node stream) plus the doc's `state:` schema —
+    /// `writes_on_complete` needs the `Quest` struct to read
+    /// `Objective::optional`/`On::event`/`On::when`, which the flat node
+    /// list `quest_nodes` returns loses.
+    fn quest_fixture(src: &str) -> (Quest, StateSchema) {
+        let (mut doc, _pd) = parse(src);
+        let mut arena = CelArena::default();
+        let _ = fill_document(&mut arena, &mut doc);
+        let (meta, _md) = crate::parse_meta(
+            &doc.meta,
+            &lute_manifest::snapshot::CapabilitySnapshot::default(),
+        );
+        let quest = doc
+            .quests
+            .into_iter()
+            .next()
+            .expect("quest_fixture src must declare a <quest>");
+        (quest, meta.state)
     }
 
     fn ctx() -> Ctx<'static> {
@@ -320,5 +412,65 @@ mod tests {
             "an exhaustive per-arm persist should join G, got {g:?}"
         );
         assert!(p.is_superset(&g), "P must be a superset of G, P={p:?} G={g:?}");
+    }
+
+    #[test]
+    fn writes_on_complete_intersects_within_body_and_unions_across_bodies() {
+        // `run.done` is written on BOTH `<branch>` arms of the required
+        // objective's body — `body_guaranteed`'s own `intersect_all` walk
+        // must keep it. `run.b` is written on only ONE arm (`c1`) — it must
+        // NOT survive that same intersect. The unconditional `questComplete`
+        // `<on>` body's `run.flag` write is a SEPARATE body — union, not
+        // intersect, brings it into the result alongside `run.done`.
+        let src = "---\nkind: quest\nstate:\n  run.done: { type: number }\n  run.b: { type: number }\n  run.flag: { type: number }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.done\">\n<branch id=\"br\">\n<choice id=\"c1\" label=\"L1\">\n::set{run.done = 1}\n::set{run.b = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n::set{run.done = 1}\n</choice>\n</branch>\n</objective>\n<on event=\"questComplete\">\n::set{run.flag = 1}\n</on>\n</quest>\n";
+        let (q, schema) = quest_fixture(src);
+        let w = writes_on_complete(&q, &schema);
+        assert!(w.contains("run.done"), "both-arm write must be guaranteed, got {w:?}");
+        assert!(w.contains("run.flag"), "unconditional questComplete body must union in, got {w:?}");
+        assert!(!w.contains("run.b"), "one-arm-only write must NOT survive intersect, got {w:?}");
+    }
+
+    #[test]
+    fn writes_on_complete_excludes_optional_objective() {
+        // `o2` is OPTIONAL — its unconditional `run.opt` write must be
+        // excluded from the union entirely; `o1` is required and still
+        // contributes `run.req`.
+        let src = "---\nkind: quest\nstate:\n  run.req: { type: number }\n  run.opt: { type: number }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.req\">\n::set{run.req = 1}\n</objective>\n<objective id=\"o2\" done=\"run.opt\" optional>\n::set{run.opt = 1}\n</objective>\n</quest>\n";
+        let (q, schema) = quest_fixture(src);
+        let w = writes_on_complete(&q, &schema);
+        assert!(w.contains("run.req"), "required objective write must be present, got {w:?}");
+        assert!(!w.contains("run.opt"), "optional objective write must be excluded, got {w:?}");
+    }
+
+    #[test]
+    fn writes_on_complete_filters_to_run_user_tier() {
+        // `quest.q.scratch` (required objective body) and `scene.bar`
+        // (questComplete body) are both unconditional writes, but neither
+        // tier is in envelope scope (dsl §4.3) — only `run.keep` may survive.
+        let src = "---\nkind: quest\nstate:\n  run.keep: { type: number }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.keep\">\n::set{run.keep = 1}\n::set{quest.q.scratch = 1}\n</objective>\n<on event=\"questComplete\">\n::set{scene.bar = 1}\n</on>\n</quest>\n";
+        let (q, schema) = quest_fixture(src);
+        let w = writes_on_complete(&q, &schema);
+        assert_eq!(w, BTreeSet::from(["run.keep".to_string()]));
+    }
+
+    #[test]
+    fn writes_on_complete_excludes_guarded_quest_complete_handler() {
+        // `<on event="questComplete" when="run.flag">` MAY not fire (the
+        // guard could be false right when the quest completes) — its
+        // `run.g` write is may-only, never guaranteed.
+        let src = "---\nkind: quest\nstate:\n  run.flag: { type: number }\n  run.g: { type: number }\n---\n<quest id=\"q\">\n<on event=\"questComplete\" when=\"run.flag\">\n::set{run.g = 1}\n</on>\n</quest>\n";
+        let (q, schema) = quest_fixture(src);
+        let w = writes_on_complete(&q, &schema);
+        assert!(!w.contains("run.g"), "guarded questComplete write must NOT be guaranteed, got {w:?}");
+    }
+
+    #[test]
+    fn writes_on_complete_includes_unconditional_quest_complete_handler() {
+        // No `when` at all — the handler always fires on `questComplete`, so
+        // its write IS guaranteed.
+        let src = "---\nkind: quest\nstate:\n  run.g: { type: number }\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n::set{run.g = 1}\n</on>\n</quest>\n";
+        let (q, schema) = quest_fixture(src);
+        let w = writes_on_complete(&q, &schema);
+        assert!(w.contains("run.g"), "unconditional questComplete write must be guaranteed, got {w:?}");
     }
 }
