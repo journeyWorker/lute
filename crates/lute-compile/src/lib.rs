@@ -28,7 +28,7 @@ pub use ir::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_cel::CelArena;
-use lute_check::meta::{canonical_episode_key, StateSchema};
+use lute_check::meta::{canonical_episode_id, canonical_episode_key, StateSchema};
 use lute_check::{check, fold_env, CheckInput, DefTable, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::relations::KindShape;
@@ -331,17 +331,13 @@ fn artifact_meta(doc: &Document, folded: &FoldedEnv) -> SceneMeta {
     };
     let title = lookup("title");
     // A4/A9: derive the resolved `episodeId` component via the shared
-    // `canonical_episode_key` helper (DRY with `lute-check::connectivity`'s
+    // `canonical_episode_id` helper (DRY with `lute-check::connectivity`'s
     // project-wide key set) — an authored, non-empty `episodeId` is used
-    // VERBATIM, otherwise the lowercase default `s{season:02}ep{episode:02}`.
-    // Calling with an EMPTY `character` always yields `.{episodeId}` (the join
-    // is unconditional), so stripping the leading `.` recovers the standalone
-    // component this envelope serializes — the byte-for-byte derivation input
+    // VERBATIM, otherwise the lowercase default `s{season:02}ep{episode:02}`
+    // is derived from `season`/`episode`. This is the same component
+    // [`canonical_episode_key`] joins onto `character` for the identity key
     // the address pass reuses for every lineId episode segment.
-    let episode_id = canonical_episode_key("", season, episode, lookup("episodeId").as_deref())
-        .strip_prefix('.')
-        .expect("canonical_episode_key always joins with '.'")
-        .to_string();
+    let episode_id = canonical_episode_id(season, episode, lookup("episodeId").as_deref());
     SceneMeta {
         character,
         season,
