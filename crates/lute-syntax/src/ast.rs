@@ -137,6 +137,13 @@ pub struct Quest {
     pub title: Option<String>,
     pub start: Option<CelSlot>,
     pub fail: Option<CelSlot>,
+    /// The prerequisite `after` attribute (connectivity layer, T2): raw CEL
+    /// text validated under the restricted `prereq::parse_prereq` grammar
+    /// (never the general CEL pipeline — mirrors `<when is="…">`'s
+    /// `take_str_spanned` treatment). `after_span` is meaningful only when
+    /// `after` is `Some`; it defaults to the quest's open-tag span otherwise.
+    pub after: Option<String>,
+    pub after_span: Span,
     /// Residual (post-extraction) attrs, mirroring [`Branch`]; normally empty.
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,

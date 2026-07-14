@@ -61,6 +61,12 @@ pub struct TypedMeta {
     pub season: Option<i64>,
     pub episode: Option<i64>,
     pub pov: Option<String>,
+    /// The scene-level prerequisite `after:` frontmatter key (connectivity
+    /// layer, T2): raw CEL text, lifted straight from the raw YAML mapping
+    /// the same way `character`/`season`/`episode`/`pov` are — validated
+    /// separately (grammar only, `crate::prereq::parse_prereq`) by `check()`,
+    /// never here.
+    pub after: Option<String>,
     pub profile: Option<String>,
     pub plugins: BTreeMap<String, serde_yaml::Value>,
     pub uses: Vec<String>,
@@ -141,7 +147,7 @@ const UNIVERSAL_KEYS: &[&str] = &[
 /// Frontmatter keys valid ONLY in a `MetaKind::Scene` document (dsl 0.1.0 §6.1,
 /// dsl 0.2.0 §3.1/§6.1): the scene identity triad plus the scene-only extras.
 /// A Quest document declaring any of these is `E-META-UNKNOWN-KEY`.
-const SCENE_KEYS: &[&str] = &["character", "season", "episode", "episodeId", "pov"];
+const SCENE_KEYS: &[&str] = &["character", "season", "episode", "episodeId", "pov", "after"];
 
 /// Frontmatter keys that are valid ONLY in a component file (dsl §13): the
 /// component's own name (`component:`) and its parameter signature (`params:`).
@@ -376,6 +382,7 @@ pub fn parse_meta_kind(
     typed.season = get_i64(map, "season");
     typed.episode = get_i64(map, "episode");
     typed.pov = get_str(map, "pov");
+    typed.after = get_str(map, "after");
     typed.profile = get_str(map, "profile");
     typed.uses = get_ref_list(map, "uses");
     typed.extends = get_ref_list(map, "extends");

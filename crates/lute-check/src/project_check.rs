@@ -328,6 +328,8 @@ mod tests {
             title: None,
             start: None,
             fail: None,
+            after: None,
+            after_span: span(id_line),
             attrs: Vec::new(),
             body: Vec::new(),
             span: span(id_line),
