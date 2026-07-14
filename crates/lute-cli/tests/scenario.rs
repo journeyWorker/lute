@@ -137,6 +137,40 @@ fn scenario_envelope_quest_without_after_shows_defaults_note() {
 }
 
 #[test]
+fn scenario_envelope_scene_falls_back_to_dd_floor_when_graph_cycle_empties_envs() {
+    // p <-> q form a prerequisite cycle -- `assemble_graph` empties the
+    // WHOLE root's `topo_order`, so `envelope::propagate` never inserts
+    // an `Env` for `p` (or `q`) into `envs` at all. `scenario envelope
+    // p.s01ep01` must fall back to the D/D schema-default floor (mirrors
+    // T12's quest fallback), never empty tables.
+    let dir = temp_dir("scenario-envelope-cycle-floor");
+    let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
+             after: 'visited(\"q.s01ep01\")'\nstate:\n  run.known: { type: number, default: 0 }\n\
+             ---\n## Shot 1.\n@narrator: hi\n";
+    let q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\n\
+             after: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
+    write(&dir, "p.lute", p);
+    write(&dir, "q.lute", q);
+
+    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "p.s01ep01"]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "{out_text}");
+    let after_heading = out_text
+        .split_once("Guaranteed")
+        .unwrap_or_else(|| panic!("no Guaranteed heading: {out_text}"))
+        .1;
+    let guaranteed_block = after_heading
+        .split_once("Possible")
+        .unwrap_or_else(|| panic!("no Possible heading after Guaranteed: {out_text}"))
+        .0;
+    assert!(
+        guaranteed_block.contains("run.known"),
+        "a cycle-emptied envs entry must fall back to the D/D schema-default floor, not empty \
+         tables, got Guaranteed block:\n{guaranteed_block}\nfull output:\n{out_text}"
+    );
+}
+
+#[test]
 fn connectivity_t15_corpus_example_envelope_shows_guaranteed_cross_scene_read() {
     // Connectivity T15 grounding: docs/examples/connected-outro.lute
     // declares `after: visited("kestrel.s01ep01")` (connected-intro.lute's
@@ -473,4 +507,71 @@ fn scenario_reach_formula_rendering_escapes_embedded_quote_and_backslash() {
         out_text.contains(r#"visited("has\"quote\\slash")"#),
         "must render the atom id properly escaped, not raw: {out_text}"
     );
+}
+
+// --- whole-branch review fix: `quest:` prefix / scene-key collision -------
+
+#[test]
+fn scene_key_beginning_with_quest_prefix_is_selectable_via_explicit_scene_prefix() {
+    // A scene's canonical key (`{character}.{episodeId}`) is an
+    // unvalidated, author-controlled string -- `character` accepts any
+    // YAML scalar, no charset restriction -- so it CAN literally begin
+    // with `quest:` (colliding with the CLI's OWN `quest:<id>` selector
+    // syntax). `quest:<id>` stays authoritative for an explicit quest
+    // lookup (never silently re-tried as a scene), so such a scene must
+    // be reachable via the symmetric explicit `scene:<key>` prefix
+    // instead -- never permanently unselectable.
+    let dir = temp_dir("scenario-quest-prefix-scene-key");
+    write(
+        &dir,
+        "x.lute",
+        "---\nkind: scene\ncharacter: \"quest:zzz\"\nseason: 1\nepisode: 1\n\
+         state:\n  run.known: { type: bool, default: true }\n---\n\
+         ## Shot 1.\n@narrator: hi\n",
+    );
+
+    let reach_out =
+        run(&["scenario", dir.to_str().unwrap(), "reach", "scene:quest:zzz.s01ep01"]);
+    let reach_text = stdout(&reach_out);
+    assert!(reach_out.status.success(), "{reach_text}");
+    assert!(reach_text.contains("scene(quest:zzz.s01ep01)"), "{reach_text}");
+    assert!(reach_text.contains("Reachable"), "{reach_text}");
+
+    let env_out =
+        run(&["scenario", dir.to_str().unwrap(), "envelope", "scene:quest:zzz.s01ep01"]);
+    let env_text = stdout(&env_out);
+    assert!(env_out.status.success(), "{env_text}");
+    assert!(env_text.contains("scene(quest:zzz.s01ep01)"), "{env_text}");
+    assert!(env_text.contains("run.known"), "{env_text}");
+
+    // Without the explicit `scene:` prefix, the SAME text is treated as
+    // an authoritative (never-guessed) quest lookup -- and since no quest
+    // `zzz.s01ep01` is declared, it must fail as unknown, NOT silently
+    // fall through to the colliding scene.
+    let bare_out = run(&["scenario", dir.to_str().unwrap(), "reach", "quest:zzz.s01ep01"]);
+    assert!(!bare_out.status.success(), "{}", stdout(&bare_out));
+    assert!(stderr(&bare_out).contains("unknown node"), "{}", stderr(&bare_out));
+}
+
+#[test]
+fn scenario_bare_nodeid_matching_both_scene_key_and_quest_id_is_rejected_as_ambiguous() {
+    // A BARE (unprefixed) nodeId that matches BOTH a declared scene key
+    // and a declared quest id in the same root is genuinely ambiguous --
+    // neither kind is silently preferred; the user must disambiguate with
+    // an explicit `scene:`/`quest:` prefix.
+    let dir = temp_dir("scenario-bare-both-match");
+    write(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: dup\nseason: 1\nepisode: 1\n---\n\
+         ## Shot 1.\n@narrator: hi\n",
+    );
+    write(&dir, "q.lute", &quest_no_after("dup.s01ep01"));
+
+    let out = run(&["scenario", dir.to_str().unwrap(), "reach", "dup.s01ep01"]);
+    assert!(!out.status.success(), "{}", stdout(&out));
+    let err = stderr(&out);
+    assert!(err.contains("ambiguous"), "{err}");
+    assert!(err.contains("scene:dup.s01ep01"), "{err}");
+    assert!(err.contains("quest:dup.s01ep01"), "{err}");
 }
