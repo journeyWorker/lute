@@ -241,16 +241,38 @@ pub struct Env {
 /// Per-document effect data [`propagate`] needs to resolve `visited(Y)`/
 /// `completed(Q)` atoms — pure data the caller (T11/T14 project wiring)
 /// threads in from T8/T9's own passes; never recomputed here.
+///
+/// ## Contract: map KEY presence IS the resolvability signal
+/// [`propagate`]'s taint check (see its doc comment) treats a MISSING key
+/// as "this atom's effect source could not be resolved" — NOT as "resolved
+/// to the empty set". The caller MUST insert an entry (even an empty pair/
+/// empty set) for every scene/quest it successfully resolved, and MUST
+/// OMIT the entry entirely for anything it could not resolve — an unknown
+/// `visited`/`completed` target ([`crate::connectivity`]'s own
+/// `E_CONN_UNKNOWN_NODE` concern) or an AMBIGUOUS quest id (2+
+/// declarations, T6's `ambiguous_quest_ids`). Populating a key with a
+/// guessed/partial write set for something unresolved would silently
+/// under-approximate `possible` downstream.
 #[derive(Clone, Debug, Default)]
 pub struct PerDocEffects {
     /// T8's `(guaranteed, possible_writes)` pair for a SCENE's own
     /// document, keyed by the same canonical key its
-    /// [`crate::connectivity::NodeId::Scene`] carries.
+    /// [`crate::connectivity::NodeId::Scene`] carries. A `visited(Y)` atom
+    /// is tainted (see [`propagate`]) when `Y` has no entry here —
+    /// INDEPENDENT of `g.nodes`/`g.edges`, since a resolved scene is
+    /// always a graph node anyway (`assemble_graph` makes every scene a
+    /// node unconditionally).
     pub scene: BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>,
     /// T9's [`writes_on_complete`], keyed by quest id — the same id a
     /// `PrereqFormula::Completed`/[`crate::connectivity::NodeId::Quest`]
-    /// carries. Present for every quest the caller resolved, whether or
-    /// not it declares `after` (`writesOnComplete` needs no `after`).
+    /// carries. Present for every quest the caller resolved UNAMBIGUOUSLY,
+    /// whether or not it declares `after` (`writesOnComplete` needs no
+    /// `after` — deliberately NOT gated on `g.nodes`, since a plain quest
+    /// with no `after` is a valid leaf dependency that is intentionally
+    /// never a graph node, dsl §4.1/connectivity.rs `assemble_graph`'s own
+    /// edge model). A `completed(Q)` atom is tainted when `Q` has no entry
+    /// here — including an AMBIGUOUS quest id, which the caller MUST omit
+    /// rather than pick one of its declarations' write sets arbitrarily.
     pub quest_writes_on_complete: BTreeMap<String, BTreeSet<String>>,
 }
 
@@ -262,16 +284,23 @@ pub struct PerDocEffects {
 /// see below, deliberately NOT [`crate::connectivity::check_reachability`]'s
 /// `Unknown` classification).
 ///
-/// ## Tainted nodes (soundness for `PrereqState::Invalid`)
+/// ## Tainted nodes (soundness for `PrereqState::Invalid` + unresolvable atoms)
 /// A node with a malformed `after` ([`PrereqState::Invalid`], already
 /// reported once as `E-CONN-PROFILE`) has no well-defined envelope — its
 /// `possible` set cannot be trusted to be complete. Rather than invent an
 /// unbounded/"all paths possible" sentinel, this marks the node TAINTED and
-/// gives it a placeholder `D`/`D` envelope (never trusted downstream); a
-/// node whose formula references a tainted node — via ANY `visited`/
-/// `completed` atom, on EITHER side of `&&` OR `||` — is tainted too, and
-/// also gets a placeholder envelope rather than running the table math on
-/// an unreliable input. Callers (T11) MUST skip emitting
+/// gives it a placeholder `D`/`D` envelope (never trusted downstream). A
+/// node is ALSO tainted when its formula contains an atom whose effect
+/// source `per_doc` cannot resolve at all — `visited(Y)` with `Y` absent
+/// from `per_doc.scene`, or `completed(Q)` with `Q` absent from
+/// `per_doc.quest_writes_on_complete` (an unknown target, or a quest id
+/// the caller deliberately omitted as ambiguous — see [`PerDocEffects`]'s
+/// contract) — silently contributing nothing for such an atom would
+/// UNDER-APPROXIMATE `possible`. And a node whose formula references an
+/// ALREADY-tainted node — via ANY `visited`/`completed` atom, on EITHER
+/// side of `&&` OR `||` — is tainted too. Every tainted node gets a
+/// placeholder envelope rather than running the table math on an
+/// unreliable/incomplete input. Callers (T11) MUST skip emitting
 /// `E-STATE-MAYBE-UNAVAILABLE` for any node in the returned tainted set.
 ///
 /// This is DELIBERATELY stricter than reachability's tri-state lattice:
@@ -288,11 +317,7 @@ pub struct PerDocEffects {
 /// predecessor envelopes from `envs` — sound because every `visited`/
 /// `completed` target that is itself a graph node precedes `n` in
 /// `topo_order` ([`crate::connectivity::assemble_graph`]'s own edge
-/// invariant). An atom whose target is not a graph node at all (unknown
-/// `visited`/`completed` reference — [`crate::connectivity`]'s own
-/// `E_CONN_UNKNOWN_NODE`'s concern, orthogonal to this pass) contributes
-/// nothing beyond `D`, and is never itself tainted (there is no node for
-/// it to be tainted AS). Linear in total formula size across the graph.
+/// invariant). Linear in total formula size across the graph.
 pub fn propagate(
     g: &ConnGraph,
     per_doc: &PerDocEffects,
@@ -307,7 +332,7 @@ pub fn propagate(
             PrereqState::Absent => (Env::default(), false),
             PrereqState::Invalid => (Env::default(), true),
             PrereqState::Valid(f) => {
-                if formula_tainted(f, &tainted) {
+                if formula_tainted(f, per_doc, &tainted) {
                     (Env::default(), true)
                 } else {
                     (eval_formula(f, per_doc, &envs), false)
@@ -325,17 +350,27 @@ pub fn propagate(
     (envs, tainted)
 }
 
-/// `true` iff `f` references (via any `visited`/`completed` atom, through
-/// ANY `&&`/`||` nesting) a node already in `tainted`. See [`propagate`]'s
-/// doc comment for why this must NOT reuse `check_reachability`'s
+/// `true` iff `f` contains an atom that is itself unresolvable — a
+/// `visited(Y)` with `Y` absent from `per_doc.scene`, or a `completed(Q)`
+/// with `Q` absent from `per_doc.quest_writes_on_complete` (see
+/// [`PerDocEffects`]'s contract: key ABSENCE is the resolvability signal,
+/// deliberately never gated on `g.nodes` — a plain no-`after` quest is a
+/// valid resolvable leaf that is intentionally never a graph node) — OR
+/// references (via any `visited`/`completed` atom, through ANY `&&`/`||`
+/// nesting) a node already in `tainted`. See [`propagate`]'s doc comment
+/// for why this must NOT reuse `check_reachability`'s
 /// `Or`-recovers-a-clean-arm logic — taint propagates through both
 /// operators identically here.
-fn formula_tainted(f: &PrereqFormula, tainted: &BTreeSet<NodeId>) -> bool {
+fn formula_tainted(f: &PrereqFormula, per_doc: &PerDocEffects, tainted: &BTreeSet<NodeId>) -> bool {
     match f {
-        PrereqFormula::Visited(key) => tainted.contains(&NodeId::Scene(key.clone())),
-        PrereqFormula::Completed(id) => tainted.contains(&NodeId::Quest(id.clone())),
+        PrereqFormula::Visited(key) => {
+            !per_doc.scene.contains_key(key) || tainted.contains(&NodeId::Scene(key.clone()))
+        }
+        PrereqFormula::Completed(id) => {
+            !per_doc.quest_writes_on_complete.contains_key(id) || tainted.contains(&NodeId::Quest(id.clone()))
+        }
         PrereqFormula::And(l, r) | PrereqFormula::Or(l, r) => {
-            formula_tainted(l, tainted) || formula_tainted(r, tainted)
+            formula_tainted(l, per_doc, tainted) || formula_tainted(r, per_doc, tainted)
         }
     }
 }
@@ -687,9 +722,72 @@ mod tests {
             ],
             vec![bad.clone(), n.clone()],
         );
-        let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
+        // `bad` has a real `per_doc.scene` entry (resolvable) — the ONLY
+        // reason `n` must end up tainted here is that `bad` is ITSELF
+        // tainted (its `PrereqState::Invalid`), isolating that rule from
+        // the separate "unresolvable atom" rule tested below.
+        let mut per_doc = PerDocEffects::default();
+        per_doc.scene.insert("bad".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
         assert!(tainted.contains(&bad));
         assert!(tainted.contains(&n), "a formula referencing a tainted node must itself be tainted");
+    }
+
+    #[test]
+    fn visited_of_unresolvable_key_is_tainted() {
+        // `n`'s formula references `visited("ghost")`, but `ghost` has NO
+        // `per_doc.scene` entry at all (unknown/unresolved target,
+        // E-CONN-UNKNOWN-NODE's own separate concern) — contributing
+        // nothing for it would silently under-approximate `possible`, so
+        // `n` must be tainted even though NO node's `PrereqState` is
+        // `Invalid` anywhere in this graph.
+        let n = NodeId::Scene("n".into());
+        let g = graph(
+            vec![node(n.clone(), PrereqState::Valid(PrereqFormula::Visited("ghost".into())))],
+            vec![n.clone()],
+        );
+        let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
+        assert!(tainted.contains(&n), "visited() of an unresolvable key must taint the node");
+    }
+
+    #[test]
+    fn completed_of_unresolvable_quest_is_tainted() {
+        // `n`'s formula references `completed("ghost_quest")`, but
+        // `ghost_quest` has NO `quest_writes_on_complete` entry (unknown or
+        // ambiguous quest id — [`PerDocEffects`]'s contract requires the
+        // caller to omit it, never guess) — must taint, same rule as a
+        // missing `visited` target.
+        let n = NodeId::Scene("n".into());
+        let g = graph(
+            vec![node(n.clone(), PrereqState::Valid(PrereqFormula::Completed("ghost_quest".into())))],
+            vec![n.clone()],
+        );
+        let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
+        assert!(tainted.contains(&n), "completed() of an unresolvable quest id must taint the node");
+    }
+
+    #[test]
+    fn or_with_unresolvable_arm_taints_even_with_a_clean_arm() {
+        // Same shape as `or_with_one_invalid_arm_taints_the_whole_node`,
+        // but the "bad" arm is unresolvable (missing `per_doc.scene` entry)
+        // rather than `PrereqState::Invalid` — `||`'s UNION-both-arms
+        // `possible` rule means a clean `live` arm must NOT let the node
+        // recover; `live` itself stays untainted.
+        let live = NodeId::Scene("live".into());
+        let n = NodeId::Scene("n".into());
+        let f = PrereqFormula::Or(
+            Box::new(PrereqFormula::Visited("ghost".into())),
+            Box::new(PrereqFormula::Visited("live".into())),
+        );
+        let g = graph(
+            vec![node(live.clone(), PrereqState::Absent), node(n.clone(), PrereqState::Valid(f))],
+            vec![live.clone(), n.clone()],
+        );
+        let mut per_doc = PerDocEffects::default();
+        per_doc.scene.insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+        assert!(!tainted.contains(&live), "live's own node must stay untainted");
+        assert!(tainted.contains(&n), "|| with an unresolvable arm must taint the whole node, even with a clean arm");
     }
 
     #[test]
@@ -715,7 +813,15 @@ mod tests {
             ],
             vec![bad.clone(), live.clone(), n.clone()],
         );
-        let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
+        // Both `bad` and `live` have real `per_doc.scene` entries — the
+        // ONLY reason `n` must end up tainted here is `bad`'s OWN
+        // `PrereqState::Invalid`, isolating this rule from the separate
+        // "unresolvable atom" rule (`or_with_unresolvable_arm_taints_even_
+        // with_a_clean_arm`, above).
+        let mut per_doc = PerDocEffects::default();
+        per_doc.scene.insert("bad".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        per_doc.scene.insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
         assert!(!tainted.contains(&live), "live's own arm must stay untainted");
         assert!(tainted.contains(&n), "|| with an invalid arm must taint the whole node");
     }
@@ -737,9 +843,13 @@ mod tests {
             ],
             vec![bad.clone(), live.clone(), n.clone()],
         );
-        let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
+        let mut per_doc = PerDocEffects::default();
+        per_doc.scene.insert("bad".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        per_doc.scene.insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
         assert!(tainted.contains(&n), "&& with an invalid arm must taint the whole node");
     }
+
 
     #[test]
     fn completed_only_node_still_carries_d() {
@@ -846,7 +956,10 @@ mod tests {
             ],
             vec![a.clone(), n.clone()],
         );
-        let (envs, _tainted) = propagate(&g, &PerDocEffects::default(), &d);
+        let mut per_doc = PerDocEffects::default();
+        per_doc.scene.insert("a".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        let (envs, tainted) = propagate(&g, &per_doc, &d);
+        assert!(tainted.is_empty(), "a fully-resolved graph must never taint");
         assert!(envs.values().all(|e| e.guaranteed.contains("run.def")));
         assert!(envs.values().all(|e| e.possible.contains("run.def")));
     }
