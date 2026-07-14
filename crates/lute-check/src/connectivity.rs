@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::Document;
 
+use crate::check::CheckResult;
 use crate::meta::{canonical_episode_key, meta_key_span, resolve_doc_kind, DocKind};
 use crate::prereq::{atoms, parse_prereq, Atom, PrereqFormula};
 
@@ -631,6 +632,269 @@ fn topo_sort(nodes: &BTreeMap<NodeId, NodeInfo>, edges: &BTreeMap<NodeId, BTreeS
         order.push(next);
     }
     order
+}
+
+/// Task 6 (dsl §4.1): a graph node's PROVABLE reachability from the
+/// project's entry set, computed by memoized structural recursion over
+/// each `Valid` `after` formula in [`ConnGraph::topo_order`]. Tri-state,
+/// never binary — `Unknown` covers every case this pass cannot PROVE
+/// either way (a malformed formula, an atom this pass cannot resolve): the
+/// "provable-only, never guess" discipline (design spec §2.4, mirrored
+/// from `E-QUEST-UNREACHABLE`) means `Unknown` NEVER collapses to
+/// `Reachable`/`Unreachable`, and only `Unreachable` ever earns
+/// [`E_CONN_UNREACHABLE`] — a false positive here is strictly worse than a
+/// missed one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reachability {
+    Reachable,
+    Unreachable,
+    Unknown,
+}
+
+/// dsl §4.1: a graph node has no satisfiable route from the project's
+/// entry set — every path to it is provably blocked. UNLIKE
+/// §4.2/§4.3/§4.4's envelope diagnostics, this one carries NO "under your
+/// declared routes" hedge (design spec §2.6's one named exception): it is
+/// a pure fact about the AUTHORED graph's own self-consistency (no route
+/// exists in what you declared), never a claim about runtime engine
+/// behavior — so the hedge would misrepresent it, not merely soften it.
+pub const E_CONN_UNREACHABLE: &str = "E-CONN-UNREACHABLE";
+
+/// dsl §4.1: a defensive cap on one node's `after` formula atom count — a
+/// pragmatic guard against a pathological/degenerate formula, not the
+/// primary soundness mechanism (the structural recursion itself is
+/// already linear in formula size, design spec §2.4). [`MAX_FORMULA_ATOMS`]
+/// (256) is generous for any realistic hand-authored `after` clause;
+/// crossing it is itself a strong signal something degenerate (e.g.
+/// machine-generated) reached the parser.
+pub const E_CONN_FORMULA_TOO_COMPLEX: &str = "E-CONN-FORMULA-TOO-COMPLEX";
+
+/// See [`E_CONN_FORMULA_TOO_COMPLEX`].
+const MAX_FORMULA_ATOMS: usize = 256;
+
+fn unreachable_diag(message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: E_CONN_UNREACHABLE.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+fn too_complex_diag(message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: E_CONN_FORMULA_TOO_COMPLEX.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// Task 6 (dsl §4.1): PROVABLE per-node reachability from the project's
+/// entry set, one memoized pass over [`ConnGraph::topo_order`] — linear in
+/// total formula size, no route enumeration (design spec §2.4).
+///
+/// `unreachable_quests` is the caller-supplied set of quest ids that are
+/// THEMSELVES provably unable to complete (dsl 0.4.0 §5.3's
+/// `E-QUEST-UNREACHABLE`/`E-OBJECTIVE-UNSATISFIABLE` signal) — a
+/// `completed(Q)` atom reads `Q`'s own quest-lifecycle reachability, a
+/// DIFFERENT engine from this graph's, so it is threaded in rather than
+/// recomputed here (see [`unreachable_quest_ids`] for the real
+/// project-wide extraction `lute-cli` wires in).
+///
+/// Recursion over each `Valid` formula (design spec §4.1, widened to
+/// three-valued per the provable-only discipline):
+/// - [`PrereqState::Absent`] ⇒ [`Reachability::Reachable`] — an absent
+///   `after` is a graph ENTRY point, trivially reachable.
+/// - [`PrereqState::Invalid`] ⇒ [`Reachability::Unknown`] — a malformed
+///   formula already earns `E-CONN-PROFILE` once (T1); this pass must
+///   never additionally GUESS reachable or unreachable for it.
+/// - [`PrereqState::Valid`]`(f)`, recursing over `f`:
+///   - `visited(Y)`: `Y` a known [`NodeId::Scene`] ⇒ its own (already
+///     memoized, since it always precedes this node in `topo_order`)
+///     reachability; not a known node ⇒ `Unknown` (that miss is
+///     `E-CONN-UNKNOWN-NODE`'s problem, T4 — it must never CASCADE into a
+///     false `E-CONN-UNREACHABLE`).
+///   - `completed(Q)`: `Q ∈ unreachable_quests` ⇒ `Unreachable`
+///     (regardless of graph membership — quest lifecycle is tracked
+///     OUTSIDE this graph); else `Q` a known [`NodeId::Quest`] node (an
+///     `after`-declaring quest already memoized above) ⇒ `Reachable`;
+///     else (`Q` unresolvable from this graph alone — e.g. a plain,
+///     no-`after` quest [`assemble_graph`] never admits as a node) ⇒
+///     `Unknown`, the same conservative "can't prove it" fallback as an
+///     unknown `visited` target.
+///   - `And`: `Unreachable` iff EITHER arm is `Unreachable` (checked
+///     first — it dominates); else `Reachable` iff BOTH `Reachable`; else
+///     `Unknown`.
+///   - `Or`: `Reachable` iff EITHER arm is `Reachable` (checked first —
+///     it dominates, even against an `Unreachable` other arm); else
+///     `Unreachable` iff BOTH `Unreachable`; else `Unknown`.
+///
+/// A node whose formula's flattened atom count exceeds
+/// [`MAX_FORMULA_ATOMS`] earns [`E_CONN_FORMULA_TOO_COMPLEX`] instead of
+/// being evaluated at all (its own reachability is `Unknown`).
+///
+/// [`E_CONN_UNREACHABLE`] fires ONLY for a node this pass computes
+/// `Unreachable` — never for `Unknown` (provable-only, never a false
+/// positive). A node missing from `topo_order` (graph has a cycle,
+/// [`E_CONN_CYCLE`] already reported by T5) gets no reachability entry
+/// and no diagnostic here.
+pub fn check_reachability(
+    g: &ConnGraph,
+    unreachable_quests: &BTreeSet<String>,
+) -> (BTreeMap<NodeId, Reachability>, Vec<(PathBuf, Diagnostic)>) {
+    let mut reach: BTreeMap<NodeId, Reachability> = BTreeMap::new();
+    let mut diags = Vec::new();
+
+    for id in &g.topo_order {
+        let Some(info) = g.nodes.get(id) else { continue };
+        let r = match &info.prereq {
+            PrereqState::Absent => Reachability::Reachable,
+            PrereqState::Invalid => Reachability::Unknown,
+            PrereqState::Valid(f) => {
+                let count = atoms(f).len();
+                if count > MAX_FORMULA_ATOMS {
+                    diags.push((
+                        info.path.clone(),
+                        too_complex_diag(
+                            format!(
+                                "{id}'s `after` formula has {count} atoms, over the \
+                                 {MAX_FORMULA_ATOMS}-atom complexity cap"
+                            ),
+                            info.span,
+                        ),
+                    ));
+                    Reachability::Unknown
+                } else {
+                    eval_reach(f, g, &reach, unreachable_quests)
+                }
+            }
+        };
+        if r == Reachability::Unreachable {
+            diags.push((
+                info.path.clone(),
+                unreachable_diag(
+                    format!("{id} has no satisfiable route from the project's entry set"),
+                    info.span,
+                ),
+            ));
+        }
+        reach.insert(id.clone(), r);
+    }
+
+    (reach, diags)
+}
+
+/// Recurse [`check_reachability`]'s tri-state lattice directly over `f`'s
+/// AST shape (never route enumeration — see [`check_reachability`]'s doc
+/// comment for the full per-case rules). `reach` holds every node already
+/// memoized earlier in `topo_order`.
+fn eval_reach(
+    f: &PrereqFormula,
+    g: &ConnGraph,
+    reach: &BTreeMap<NodeId, Reachability>,
+    unreachable_quests: &BTreeSet<String>,
+) -> Reachability {
+    match f {
+        PrereqFormula::Visited(key) => {
+            let target = NodeId::Scene(key.clone());
+            if g.nodes.contains_key(&target) {
+                reach.get(&target).copied().unwrap_or(Reachability::Unknown)
+            } else {
+                Reachability::Unknown
+            }
+        }
+        PrereqFormula::Completed(id) => {
+            if unreachable_quests.contains(id) {
+                Reachability::Unreachable
+            } else if g.nodes.contains_key(&NodeId::Quest(id.clone())) {
+                Reachability::Reachable
+            } else {
+                Reachability::Unknown
+            }
+        }
+        PrereqFormula::And(l, r) => and_reach(
+            eval_reach(l, g, reach, unreachable_quests),
+            eval_reach(r, g, reach, unreachable_quests),
+        ),
+        PrereqFormula::Or(l, r) => or_reach(
+            eval_reach(l, g, reach, unreachable_quests),
+            eval_reach(r, g, reach, unreachable_quests),
+        ),
+    }
+}
+
+fn and_reach(a: Reachability, b: Reachability) -> Reachability {
+    if a == Reachability::Unreachable || b == Reachability::Unreachable {
+        Reachability::Unreachable
+    } else if a == Reachability::Reachable && b == Reachability::Reachable {
+        Reachability::Reachable
+    } else {
+        Reachability::Unknown
+    }
+}
+
+fn or_reach(a: Reachability, b: Reachability) -> Reachability {
+    if a == Reachability::Reachable || b == Reachability::Reachable {
+        Reachability::Reachable
+    } else if a == Reachability::Unreachable && b == Reachability::Unreachable {
+        Reachability::Unreachable
+    } else {
+        Reachability::Unknown
+    }
+}
+
+/// T6/T7 wiring: every `<quest>` in `docs` whose declaration was flagged
+/// [`crate::reachability::E_QUEST_UNREACHABLE`] (dsl 0.4.0 §5.3) by the
+/// per-file `check()` pass on that SAME file — the exact set
+/// [`check_reachability`] expects as its `unreachable_quests` parameter.
+///
+/// Matched by `Quest.span` (the diagnostic's own anchor —
+/// `reachability.rs`'s `check_quest_reach` pushes `E-QUEST-UNREACHABLE` at
+/// `quest.span` verbatim) rather than id text alone: two DIFFERENT quests
+/// sharing an id (a separate `E-QUEST-ID-DUP` problem) must never be
+/// conflated by this lookup. This span correspondence is exact (not a
+/// heuristic) because `docs` and `file_results` are both derived from
+/// parsing the SAME source text — a deterministic parse yields identical
+/// byte spans every time.
+///
+/// `file_results` is the caller's own per-file `check()` output; a path in
+/// `docs` this pass has no matching entry for (or a quest whose id is
+/// empty — that quest's own `E-QUEST-ID-MISSING` problem) contributes
+/// nothing, never a panic.
+pub fn unreachable_quest_ids(
+    docs: &[(PathBuf, Document)],
+    file_results: &[(PathBuf, CheckResult)],
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for (path, document) in docs {
+        let Some((_, result)) = file_results.iter().find(|(p, _)| p == path) else {
+            continue;
+        };
+        for quest in &document.quests {
+            if quest.id.is_empty() {
+                continue;
+            }
+            let flagged = result
+                .diagnostics
+                .iter()
+                .any(|d| d.code == crate::reachability::E_QUEST_UNREACHABLE && d.span == quest.span);
+            if flagged {
+                out.insert(quest.id.clone());
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]

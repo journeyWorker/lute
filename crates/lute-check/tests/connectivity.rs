@@ -476,3 +476,224 @@ fn quest_admitted_regardless_of_stale_quest_ids_set() {
         g.nodes.keys().collect::<Vec<_>>()
     );
 }
+
+// --- Task 6: `E-CONN-UNREACHABLE` structural reachability + `E-CONN-FORMULA-TOO-COMPLEX` ---
+
+use lute_check::connectivity::{check_reachability, unreachable_quest_ids, Reachability};
+use std::collections::BTreeSet;
+
+#[test]
+fn entry_scene_is_reachable() {
+    let text_a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text_a)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let (reach, r_diags) = check_reachability(&g, &BTreeSet::new());
+    let node = NodeId::Scene("a.s01ep01".to_string());
+    assert_eq!(reach.get(&node), Some(&Reachability::Reachable));
+    assert!(r_diags.is_empty(), "an entry node must never earn a reachability diagnostic: {r_diags:?}");
+}
+
+#[test]
+fn node_behind_unreachable_completed_quest_is_unreachable() {
+    // `a` gates on `completed("deadQ")`; `deadQ` is injected into the
+    // synthetic `unreachable_quests` set (T6's own reviewable core -- the
+    // real project-wide extraction is `unreachable_quest_ids` below).
+    let text_a =
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'completed(\"deadQ\")'\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text_a)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
+    let (reach, r_diags) = check_reachability(&g, &unreachable_quests);
+    let node = NodeId::Scene("a.s01ep01".to_string());
+    assert_eq!(reach.get(&node), Some(&Reachability::Unreachable));
+    let hit = r_diags
+        .iter()
+        .find(|(_, d)| d.code == "E-CONN-UNREACHABLE")
+        .unwrap_or_else(|| panic!("expected E-CONN-UNREACHABLE, got {r_diags:?}"));
+    assert!(
+        !hit.1.message.contains("declared routes"),
+        "E-CONN-UNREACHABLE is exempt from the declared-routes hedge (design spec §2.6): {}",
+        hit.1.message
+    );
+}
+
+#[test]
+fn transitive_unreachability_propagates() {
+    // `a` gates on the dead quest; `b` gates on `visited(a)`. Both must
+    // resolve Unreachable -- the taint propagates one memoized hop.
+    let text_a =
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'completed(\"deadQ\")'\n---\n## Shot 1.\n@a: hi\n";
+    let text_b =
+        "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\")'\n---\n## Shot 1.\n@b: hi\n";
+    let docs = docs_for(&[("a.lute", text_a), ("b.lute", text_b)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
+    let (reach, r_diags) = check_reachability(&g, &unreachable_quests);
+    assert_eq!(reach.get(&NodeId::Scene("a.s01ep01".to_string())), Some(&Reachability::Unreachable));
+    assert_eq!(reach.get(&NodeId::Scene("b.s01ep01".to_string())), Some(&Reachability::Unreachable));
+    assert_eq!(
+        r_diags.iter().filter(|(_, d)| d.code == "E-CONN-UNREACHABLE").count(),
+        2,
+        "both a and b must each earn their own E-CONN-UNREACHABLE: {r_diags:?}"
+    );
+}
+
+#[test]
+fn or_arm_still_reachable_keeps_node_reachable() {
+    // `gated` gates on `completed(deadQ) || visited(alive)` -- one live arm
+    // is enough (Or's dominance rule): the dead quest must NOT poison it.
+    let text_alive = "---\nkind: scene\ncharacter: alive\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@alive: hi\n";
+    let text_gated = "---\nkind: scene\ncharacter: gated\nseason: 1\nepisode: 1\nafter: 'completed(\"deadQ\") || visited(\"alive.s01ep01\")'\n---\n## Shot 1.\n@gated: hi\n";
+    let docs = docs_for(&[("alive.lute", text_alive), ("gated.lute", text_gated)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
+    let (reach, r_diags) = check_reachability(&g, &unreachable_quests);
+    let node = NodeId::Scene("gated.s01ep01".to_string());
+    assert_eq!(reach.get(&node), Some(&Reachability::Reachable));
+    assert!(
+        !r_diags.iter().any(|(_, d)| d.code == "E-CONN-UNREACHABLE"),
+        "a node with one live Or arm must never be flagged: {r_diags:?}"
+    );
+}
+
+#[test]
+fn invalid_formula_is_unknown_not_flagged() {
+    // Out-of-profile `after` (negation) resolves to PrereqState::Invalid --
+    // must be Unknown, never guessed reachable/unreachable.
+    let text_a =
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: '!visited(\"x\")'\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text_a)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let (reach, r_diags) = check_reachability(&g, &BTreeSet::new());
+    let node = NodeId::Scene("a.s01ep01".to_string());
+    assert_eq!(reach.get(&node), Some(&Reachability::Unknown));
+    assert!(
+        !r_diags.iter().any(|(_, d)| d.code == "E-CONN-UNREACHABLE"),
+        "an Invalid formula must never earn E-CONN-UNREACHABLE (provable-only): {r_diags:?}"
+    );
+}
+
+#[test]
+fn unknown_visited_ref_does_not_cascade_to_false() {
+    // `a` references a nonexistent scene key -- E-CONN-UNKNOWN-NODE (T4)
+    // fires separately, but reachability must stay Unknown, never cascade
+    // into a false E-CONN-UNREACHABLE.
+    let text_a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'visited(\"nonexistent.s99ep99\")'\n---\n## Shot 1.\n@a: hi\n";
+    let docs = docs_for(&[("a.lute", text_a)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+
+    let unknown_diags = resolve_nodes(&docs, &key_set, &quest_ids);
+    assert!(
+        unknown_diags.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
+        "fixture must trigger E-CONN-UNKNOWN-NODE (T4): {unknown_diags:?}"
+    );
+
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let (reach, r_diags) = check_reachability(&g, &BTreeSet::new());
+    let node = NodeId::Scene("a.s01ep01".to_string());
+    assert_eq!(reach.get(&node), Some(&Reachability::Unknown));
+    assert!(
+        !r_diags.iter().any(|(_, d)| d.code == "E-CONN-UNREACHABLE"),
+        "an unresolved atom must never cascade to a false E-CONN-UNREACHABLE: {r_diags:?}"
+    );
+}
+
+#[test]
+fn completed_on_known_quest_node_defaults_reachable() {
+    // `q1` declares a present-but-empty `after` (admitted as a node,
+    // PrereqState::Absent); `q2` gates on `completed('q1')`. `q1` is a
+    // known graph node and NOT in `unreachable_quests` -> Reachable.
+    let text = "---\nkind: quest\n---\n<quest id=\"q1\" start=\"true\" after=\"\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"q2\" start=\"true\" after=\"completed('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[("quests.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let (reach, r_diags) = check_reachability(&g, &BTreeSet::new());
+    assert_eq!(reach.get(&NodeId::Quest("q1".to_string())), Some(&Reachability::Reachable));
+    assert_eq!(reach.get(&NodeId::Quest("q2".to_string())), Some(&Reachability::Reachable));
+    assert!(r_diags.is_empty(), "unexpected diags: {r_diags:?}");
+}
+
+#[test]
+fn oversized_formula_is_capped() {
+    // 300 Or-chained atoms, over the 256-atom cap.
+    let clauses: Vec<String> = (0..300).map(|i| format!("visited(\"k{i}.s01ep01\")")).collect();
+    let formula = clauses.join(" || ");
+    let text_a = format!(
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: '{formula}'\n---\n## Shot 1.\n@a: hi\n"
+    );
+    let docs = docs_for(&[("a.lute", &text_a)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+
+    let (reach, r_diags) = check_reachability(&g, &BTreeSet::new());
+    assert!(
+        r_diags.iter().any(|(_, d)| d.code == "E-CONN-FORMULA-TOO-COMPLEX"),
+        "expected E-CONN-FORMULA-TOO-COMPLEX for a 300-atom formula: {r_diags:?}"
+    );
+    let node = NodeId::Scene("a.s01ep01".to_string());
+    assert_eq!(
+        reach.get(&node),
+        Some(&Reachability::Unknown),
+        "an over-cap formula must not be evaluated"
+    );
+}
+
+#[test]
+fn unreachable_quest_ids_extracts_by_span_match() {
+    // `deadQ`'s dead `start` earns E-QUEST-UNREACHABLE from the per-file
+    // `check()` pass; `aliveQ` is clean. The helper must extract exactly
+    // `deadQ`, matched by `Quest.span`, never by id text alone.
+    let text = "---\nkind: quest\n---\n<quest id=\"deadQ\" start=\"1 > 2\">\n\
+         <objective id=\"o\" done=\"true\"/>\n</quest>\n\
+         <quest id=\"aliveQ\" start=\"true\">\n\
+         <objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[("quests.lute", text)]);
+    let result = check(&input_for(text));
+    assert!(
+        result.diagnostics.iter().any(|d| d.code == "E-QUEST-UNREACHABLE"),
+        "fixture must trigger E-QUEST-UNREACHABLE: {:?}",
+        result.diagnostics
+    );
+    let file_results = vec![(PathBuf::from("quests.lute"), result)];
+    let ids = unreachable_quest_ids(&docs, &file_results);
+    assert_eq!(ids, ["deadQ".to_string()].into_iter().collect::<BTreeSet<_>>());
+}
+
+#[test]
+fn unreachable_quest_ids_ignores_paths_with_no_matching_result() {
+    // A doc with no corresponding entry in `file_results` contributes
+    // nothing -- never a panic.
+    let text = "---\nkind: quest\n---\n<quest id=\"deadQ\" start=\"1 > 2\">\n\
+         <objective id=\"o\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[("quests.lute", text)]);
+    let ids = unreachable_quest_ids(&docs, &[]);
+    assert!(ids.is_empty());
+}

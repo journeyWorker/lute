@@ -610,6 +610,20 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
         let key_set = lute_check::connectivity::scene_key_set(group);
         let quest_ids = lute_check::connectivity::quest_id_set(group);
         project_diags.extend(lute_check::connectivity::resolve_nodes(group, &key_set, &quest_ids));
+        let (conn_graph, cycle_diags) =
+            lute_check::connectivity::assemble_graph(group, &key_set, &quest_ids);
+        project_diags.extend(cycle_diags);
+        // T7/T14 wiring note: `unreachable_quest_ids` extracts the REAL
+        // per-root unreachable-quest set from this same `file_results`
+        // pass (span-matched against `E-QUEST-UNREACHABLE`, verified
+        // exact -- both `group` and `file_results` parse the SAME source
+        // text deterministically, so spans always agree). No empty-set
+        // stub remains: `E-CONN-UNREACHABLE` fires for real here.
+        let unreachable_quests =
+            lute_check::connectivity::unreachable_quest_ids(group, &file_results);
+        let (_reach, reach_diags) =
+            lute_check::connectivity::check_reachability(&conn_graph, &unreachable_quests);
+        project_diags.extend(reach_diags);
         covered.extend(lute_check::colliding_occurrences(group));
     }
     for (path, result) in &mut file_results {
