@@ -718,6 +718,52 @@ fn envelope_tainted_node_leaves_maybe_unset_untouched() {
 }
 
 #[test]
+fn envelope_reconciliation_survives_when_graph_wide_cycle_empties_envs() {
+    // A prerequisite cycle ANYWHERE in a root (p <-> q) empties the WHOLE
+    // root's `topo_order` (`assemble_graph`'s own contract -- cycle
+    // detection aborts `topo_sort` entirely, never just for the cyclic
+    // nodes), so `envelope::propagate` never inserts an `Env` into `envs`
+    // for ANY node in that root -- including `x`, an UNRELATED entry
+    // scene with a genuine, always-unprovable `run.z` read. `tainted`
+    // stays empty too (`propagate`'s loop over `topo_order` never runs).
+    // Before the fix, the reconciliation pass only skipped `tainted`
+    // nodes and treated "absent from `envs`" the same as "safely
+    // reconciled", silently DROPPING x's real E-MAYBE-UNSET with no
+    // replacement (`check_envelope` also skips an envs-missing node, so
+    // no E-STATE-MAYBE-UNAVAILABLE fires either -- x would go clean). It
+    // must instead survive untouched, and E-CONN-CYCLE must still fire.
+    let dir = temp_dir("envelope-cycle-wipeout");
+    let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\nafter: 'visited(\"q.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
+    let q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\nafter: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
+    write(&dir, "p.lute", p);
+    write(&dir, "q.lute", q);
+    write(&dir, "x.lute", &scene_reading_run_z("x", ""));
+
+    let out_x = run(&["check", dir.join("x.lute").to_str().unwrap()]);
+    assert!(
+        !out_x.status.success(),
+        "x.lute alone must flag E-MAYBE-UNSET standalone (can't see the project): {}",
+        String::from_utf8_lossy(&out_x.stdout)
+    );
+
+    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let project_diags = v["project_diagnostics"].as_array().unwrap();
+    assert!(
+        project_diags.iter().any(|d| d["code"] == "E-CONN-CYCLE"),
+        "the p<->q cycle must still be reported: {v}"
+    );
+    let files = v["files"].as_array().unwrap();
+    let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
+    assert!(
+        x["diagnostics"].as_array().unwrap().iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+        "x's genuine per-file E-MAYBE-UNSET must survive a graph-wide cycle wipeout, not be \
+         silently dropped with no replacement: {v}"
+    );
+}
+
+#[test]
 fn envelope_out_of_scope_scene_maybe_unset_survives_check_project() {
     // `scene.local` is entry-dependent (declared, no default, never
     // locally proven) but SCENE-tier -- out of the envelope's `run.*`/

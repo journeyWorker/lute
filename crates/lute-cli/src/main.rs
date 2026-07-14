@@ -877,7 +877,18 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
             }
         }
         for (key, occurrences) in &key_set {
-            if tainted.contains(&lute_check::connectivity::NodeId::Scene(key.clone())) {
+            let node_id = lute_check::connectivity::NodeId::Scene(key.clone());
+            // Only reconcile (drop) a read's per-file `E-MAYBE-UNSET` when
+            // its node has a REAL envelope to reclassify against: present
+            // in `envs` AND not `tainted`. A node absent from `envs`
+            // (e.g. a graph-wide `E-CONN-CYCLE` empties `topo_order`, so
+            // `propagate` never inserts an entry for ANY node in that
+            // root -- not just the cyclic ones) is exactly as untrustworthy
+            // as a tainted one: `check_envelope` above already skips it
+            // (no replacement diagnostic emitted for it either), so
+            // dropping its per-file diagnostic here would silently lose a
+            // genuine local maybe-unset error with nothing to replace it.
+            if tainted.contains(&node_id) || !envs.contains_key(&node_id) {
                 continue;
             }
             let Some((scene_path, _)) = occurrences.first() else { continue };
@@ -1008,19 +1019,30 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
 // the omission of diagnostics, differ).
 // ===========================================================================
 
-/// A bare scene-key or `quest:<id>` node reference, parsed from a
-/// `scenario reach`/`scenario envelope` CLI argument (dsl §4.4's
-/// `envelope quest:<id>` syntax).
+/// A bare scene-key, `quest:<id>`, or `scene:<key>` node reference, parsed
+/// from a `scenario reach`/`scenario envelope` CLI argument (dsl §4.4's
+/// `envelope quest:<id>` syntax; `scene:<key>` is this branch's symmetric
+/// counterpart -- see [`resolve_node_ref`]'s doc comment for why both
+/// explicit prefixes exist).
 enum NodeRef {
     Scene(String),
     Quest(String),
 }
 
-fn parse_node_ref(raw: &str) -> NodeRef {
-    match raw.strip_prefix("quest:") {
-        Some(id) => NodeRef::Quest(id.to_string()),
-        None => NodeRef::Scene(raw.to_string()),
+/// Parse an EXPLICIT `quest:<id>` / `scene:<key>` prefix only -- `None` for
+/// a bare (unprefixed) string, which [`resolve_node_ref`] resolves against
+/// actual project candidates instead of guessing. An explicit prefix is
+/// always authoritative: `quest:foo` is ALWAYS a quest lookup and
+/// `scene:foo` is ALWAYS a scene lookup, never re-tried as the other kind
+/// (that would silently paper over a genuine "no such quest" typo).
+fn parse_node_ref_prefix(raw: &str) -> Option<NodeRef> {
+    if let Some(id) = raw.strip_prefix("quest:") {
+        return Some(NodeRef::Quest(id.to_string()));
     }
+    if let Some(key) = raw.strip_prefix("scene:") {
+        return Some(NodeRef::Scene(key.to_string()));
+    }
+    None
 }
 
 fn node_ref_to_id(node: &NodeRef) -> lute_check::connectivity::NodeId {
@@ -1304,20 +1326,18 @@ fn print_prereq_structure(scenario: &RootScenario, node: &lute_check::connectivi
     }
 }
 
-/// Resolve `node_ref` to exactly ONE matching root's [`RootScenario`], or
-/// `Err(ExitCode::from(2))` with a clear stderr message when it is declared
-/// in ZERO roots (unknown node) or 2+ roots (ambiguous — Main review: a
-/// scene/quest id is only unique WITHIN one resolved root, dsl §2.3/§6.3;
-/// the SAME id may legitimately exist in independent sibling roots, so
-/// this NEVER silently picks the lexicographically-first one).
-fn resolve_unique_root<'a>(
+/// Reduce an already-computed [`find_matching_roots`] result to exactly
+/// ONE matching root, or `Err(ExitCode::from(2))` with a clear stderr
+/// message when it is declared in ZERO roots (unknown node) or 2+ roots
+/// (ambiguous — Main review: a scene/quest id is only unique WITHIN one
+/// resolved root, dsl §2.3/§6.3; the SAME id may legitimately exist in
+/// independent sibling roots, so this NEVER silently picks the
+/// lexicographically-first one).
+fn pick_unique_root<'a>(
+    mut matches: Vec<(&'a PathBuf, RootScenario)>,
     dir: &Path,
-    by_root: &'a ByRoot,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
-    node_ref: &NodeRef,
     node_id_raw: &str,
 ) -> Result<(&'a PathBuf, RootScenario), ExitCode> {
-    let mut matches = find_matching_roots(by_root, file_results, node_ref);
     match matches.len() {
         0 => {
             eprintln!("lute: unknown node `{node_id_raw}` under {}", dir.display());
@@ -1334,6 +1354,76 @@ fn resolve_unique_root<'a>(
                  {}",
                 dir.display(),
                 roots.join(", ")
+            );
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
+/// Resolve `node_ref` to exactly ONE matching root's [`RootScenario`] --
+/// thin wrapper: [`find_matching_roots`] then [`pick_unique_root`].
+fn resolve_unique_root<'a>(
+    dir: &Path,
+    by_root: &'a ByRoot,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    node_ref: &NodeRef,
+    node_id_raw: &str,
+) -> Result<(&'a PathBuf, RootScenario), ExitCode> {
+    let matches = find_matching_roots(by_root, file_results, node_ref);
+    pick_unique_root(matches, dir, node_id_raw)
+}
+
+/// Resolve a RAW `scenario reach`/`scenario envelope` CLI argument to its
+/// [`NodeRef`] plus the single matching root's [`RootScenario`].
+///
+/// ## Why bare strings are never guessed
+/// A scene's canonical key (`{character}.{episodeId}`,
+/// `meta::canonical_episode_key`) is an UNVALIDATED, author-controlled
+/// string — `character`/`episodeId` accept arbitrary YAML scalars, no
+/// charset restriction — so a scene key CAN literally begin with
+/// `quest:` (e.g. `character: "quest:foo"`). Unconditionally reserving
+/// that prefix for quest lookups (the original design) would make such a
+/// scene permanently unselectable. The fix:
+/// - An EXPLICIT `quest:<id>` / `scene:<key>` prefix ([`parse_node_ref_prefix`])
+///   is always authoritative — never re-tried as the other kind.
+/// - A BARE (unprefixed) string is resolved against ACTUAL project
+///   candidates: if it matches a declared scene key in some root, and/or
+///   a declared quest id in some root. Exactly one kind matching → use
+///   it (the overwhelmingly common case — no prefix needed at all).
+///   BOTH kinds matching (some root has a scene key AND some root/the
+///   same root has a quest id, both equal to the raw string) is
+///   genuinely ambiguous — neither is silently preferred; the user is
+///   told to disambiguate with an explicit prefix (mirrors
+///   [`primary_node_ambiguity_note`]'s honesty pattern: never silently
+///   pick one candidate over another equally-valid one).
+fn resolve_node_ref<'a>(
+    dir: &Path,
+    by_root: &'a ByRoot,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    node_id_raw: &str,
+) -> Result<(NodeRef, &'a PathBuf, RootScenario), ExitCode> {
+    if let Some(explicit) = parse_node_ref_prefix(node_id_raw) {
+        return resolve_unique_root(dir, by_root, file_results, &explicit, node_id_raw)
+            .map(|(root, scenario)| (explicit, root, scenario));
+    }
+    let scene_ref = NodeRef::Scene(node_id_raw.to_string());
+    let quest_ref = NodeRef::Quest(node_id_raw.to_string());
+    let scene_matches = find_matching_roots(by_root, file_results, &scene_ref);
+    let quest_matches = find_matching_roots(by_root, file_results, &quest_ref);
+    match (scene_matches.is_empty(), quest_matches.is_empty()) {
+        (false, true) => pick_unique_root(scene_matches, dir, node_id_raw)
+            .map(|(root, scenario)| (scene_ref, root, scenario)),
+        (true, false) => pick_unique_root(quest_matches, dir, node_id_raw)
+            .map(|(root, scenario)| (quest_ref, root, scenario)),
+        (true, true) => {
+            eprintln!("lute: unknown node `{node_id_raw}` under {}", dir.display());
+            Err(ExitCode::from(2))
+        }
+        (false, false) => {
+            eprintln!(
+                "lute: node `{node_id_raw}` matches BOTH a scene key and a quest id in this \
+                 project -- ambiguous (neither is silently preferred); disambiguate with an \
+                 explicit `scene:{node_id_raw}` or `quest:{node_id_raw}` prefix",
             );
             Err(ExitCode::from(2))
         }
@@ -1382,9 +1472,8 @@ fn run_scenario_reach(
     file_results: &[(PathBuf, lute_check::CheckResult)],
     node_id_raw: &str,
 ) -> ExitCode {
-    let node_ref = parse_node_ref(node_id_raw);
-    let (root, scenario) =
-        match resolve_unique_root(dir, by_root, file_results, &node_ref, node_id_raw) {
+    let (node_ref, root, scenario) =
+        match resolve_node_ref(dir, by_root, file_results, node_id_raw) {
             Ok(v) => v,
             Err(code) => return code,
         };
@@ -1428,7 +1517,10 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str) {
              E-CONN-UNKNOWN-NODE)."
         );
     }
-    let env = scenario.envs.get(&node_id).cloned().unwrap_or_default();
+    let env = scenario.envs.get(&node_id).cloned().unwrap_or_else(|| envelope::Env {
+        guaranteed: scenario.envelope_d.clone(),
+        possible: scenario.envelope_d.clone(),
+    });
     println!("  Guaranteed (safe to read under your declared routes):");
     print_path_set(&env.guaranteed);
     println!("  Possible (set on at least one declared route reaching this node):");
@@ -1498,9 +1590,8 @@ fn run_scenario_envelope(
     file_results: &[(PathBuf, lute_check::CheckResult)],
     node_id_raw: &str,
 ) -> ExitCode {
-    let node_ref = parse_node_ref(node_id_raw);
-    let (root, scenario) =
-        match resolve_unique_root(dir, by_root, file_results, &node_ref, node_id_raw) {
+    let (node_ref, root, scenario) =
+        match resolve_node_ref(dir, by_root, file_results, node_id_raw) {
             Ok(v) => v,
             Err(code) => return code,
         };
