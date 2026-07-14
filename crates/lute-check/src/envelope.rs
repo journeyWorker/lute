@@ -21,24 +21,26 @@
 //! `state:` path at all, so they never contribute to either set here.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::LazyLock;
+use std::path::PathBuf;
 
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{
     Arm, AttrValue, Branch, Choice, ClipNode, Hub, Match, Node, Objective, On, Quest, Timeline,
 };
 
 use crate::connectivity::{ConnGraph, NodeId, PrereqState};
-use crate::ctx::Env as CtxEnv;
 use crate::defassign::{check_definite_assignment, Assigned};
 use crate::meta::{Namespace, StateSchema};
 use crate::prereq::PrereqFormula;
-use crate::Ctx;
 
 /// `true` when `path` resolves to the `run.*`/`user.*` tier — the two
 /// monotonic namespaces the envelope lattice tracks (dsl §4.3). Every other
 /// tier (`scene.*`/`app.*`/`quest.*`) and any non-state-path string returns
-/// `false`.
-fn in_envelope_scope(path: &str) -> bool {
+/// `false`. `pub`: connectivity T11's `lute-cli` reconciliation pass reuses
+/// this exact filter (never a re-derived tier check) when deciding which
+/// per-file `E-MAYBE-UNSET` diagnostics are even eligible for envelope
+/// reclassification — an out-of-scope read must never be touched.
+pub fn in_envelope_scope(path: &str) -> bool {
     matches!(
         crate::meta::namespace_of(path),
         Some(Namespace::Run) | Some(Namespace::User)
@@ -153,28 +155,18 @@ fn scan_choice_persist(choice: &Choice, out: &mut BTreeSet<String>) {
     }
 }
 
-/// A throwaway [`Ctx`] for [`body_guaranteed`]'s inner
-/// [`check_definite_assignment`] call: that pass reads `schema` as an
-/// explicit argument and never reads its own `_ctx` parameter, so a fresh
-/// default `Env` is sufficient — this never observes the real project's
-/// `defs`/`rel_vocab`/etc., nor needs to.
-fn body_ctx() -> Ctx<'static> {
-    static ENV: LazyLock<CtxEnv> = LazyLock::new(CtxEnv::default);
-    Ctx { env: &ENV, in_match: false, match_subject: None }
-}
-
 /// The guaranteed-write must-set for ONE body's node stream taken ALONE (dsl
 /// §4.3): reruns T8's write-only definite-assignment pass
 /// (`check_definite_assignment`) as if `nodes` were a whole document on its
 /// own — so a `<branch>`/`<match>` nested in the body still intersects its
 /// own arms exactly as `guaranteed`/`G` does for a whole document — then
-/// applies the same `run.*`/`user.*` tier filter. Diagnostics are
-/// discarded: the body was already validated by the real
-/// `check_definite_assignment` pass over the whole quest document; this is
-/// a read-only re-derivation of its guaranteed-write set, not a second
-/// source of diagnostics.
+/// applies the same `run.*`/`user.*` tier filter. Diagnostics (and the
+/// fall-back-to-entry-state read set, connectivity T11) are discarded: the
+/// body was already validated by the real `check_definite_assignment` pass
+/// over the whole quest document; this is a read-only re-derivation of its
+/// guaranteed-write set, not a second source of diagnostics.
 fn body_guaranteed(nodes: &[Node], schema: &StateSchema) -> BTreeSet<String> {
-    let (_diags, writes) = check_definite_assignment(nodes, schema, &body_ctx());
+    let (_diags, writes, _reads) = check_definite_assignment(nodes, schema);
     guaranteed(&writes)
 }
 
@@ -415,6 +407,147 @@ fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<Node
     }
 }
 
+/// The entry base case `D` (dsl §4.3 spec lines 442-448): every `run.*`/
+/// `user.*` path in `schema` carrying a schema `default`. Reused verbatim
+/// from the schema import/merge layer's own resolved [`StateSchema`] — a
+/// caller (T11's `lute-cli` `check-project` wiring) unions this across
+/// every document's own resolved schema in one resolved project root to
+/// get the PROJECT-RESOLVED `D` [`propagate`] expects: "a `run.*`/`user.*`
+/// path with a schema default is already seeded/assigned at scene entry by
+/// `defassign`'s own existing rule (`has_default` in `defassign.rs`)" —
+/// cross-schema default conflicts are already that layer's own job, so
+/// this never re-derives or re-resolves anything, only filters+extracts.
+pub fn schema_defaults(schema: &StateSchema) -> BTreeSet<String> {
+    schema
+        .decls
+        .iter()
+        .filter(|(path, decl)| decl.default.is_some() && in_envelope_scope(path))
+        .map(|(path, _)| path.clone())
+        .collect()
+}
+
+/// dsl §2.3/§4.3: the `E-STATE-MAYBE-UNAVAILABLE` envelope diagnostic
+/// (error grade, `check_envelope`'s error branch, ships in `check-project`
+/// BY DEFAULT). See [`check_envelope`].
+pub const E_STATE_MAYBE_UNAVAILABLE: &str = "E-STATE-MAYBE-UNAVAILABLE";
+
+fn maybe_unavailable_error(path: &str, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: E_STATE_MAYBE_UNAVAILABLE.to_string(),
+        severity: Severity::Error,
+        message: format!(
+            "state path `{path}` may be unavailable under your declared routes — no \
+             declared `after` route sets it before this read (dsl §4.3)"
+        ),
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: E_STATE_MAYBE_UNAVAILABLE.to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "state path `{path}` is set under your declared routes on SOME routes \
+             reaching this node, but not every one — not yet guaranteed (dsl §4.3)"
+        ),
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// dsl §4.3:458-467 — the envelope diagnostic. Classifies every SCENE-node
+/// read [`check_definite_assignment`] could not prove LOCALLY (its third
+/// return value — a read that fell back to entry state, see that
+/// function's own doc comment) against that node's project-wide [`Env`]
+/// (from [`propagate`]):
+///
+/// - `P ∈ Guaranteed(X)` → no diagnostic — safe under EVERY declared route.
+/// - `P ∉ Possible(X)` → [`E_STATE_MAYBE_UNAVAILABLE`], ERROR grade, ships
+///   in `check-project` BY DEFAULT — no declared route ever sets `P`
+///   before `X`.
+/// - `P ∈ Possible(X) \ Guaranteed(X)` → [`E_STATE_MAYBE_UNAVAILABLE`],
+///   WARNING grade, default-suppressed — set on SOME but not every
+///   declared route reaching `X`. Callers (T11's `check-project` wiring)
+///   MUST filter this out of the default project diagnostics themselves
+///   (`Severity::Warning` vs `Severity::Error`) and route it to `lute
+///   scenario envelope` (T14) instead — this function does not suppress
+///   it, both grades are returned together so a caller never has to
+///   re-derive the classification to recover the warning set.
+///
+/// ## Soundness invariant (dsl §7): why `reads_per_scene` must be T3's
+/// "falls back to entry state" set, never every read
+/// A path locally `::set`/guard-proven BEFORE the read within the SAME
+/// document is [`check_definite_assignment`]'s own concern (`E-MAYBE-UNSET`
+/// standalone), never this pass's — a scene `check()` reports clean
+/// standalone for it regardless of the project's envelope, so classifying
+/// it here too could newly error a file `check()` proved clean. A
+/// schema-defaulted read is `∈ D ⊆ Guaranteed(X)` at every node (`D` is
+/// unioned into both sides of every [`Env`] by [`propagate`]) — clean
+/// either way, so it is harmless whether or not a caller includes it (T3's
+/// own `check_read` excludes it as a matter of course). A read that DOES
+/// fall back to entry state and ISN'T defaulted is EXACTLY what
+/// `check_definite_assignment` flags `E-MAYBE-UNSET` standalone — so
+/// erroring it here does NOT violate the invariant (single-file `check`
+/// was never clean for it); reclassifying it as `∈ Guaranteed(X)` (via an
+/// upstream project-proven route) only ever SUPPRESSES relative to
+/// standalone, the same suppress-only direction the design spec's
+/// `E-QUEST-ID-DUP` precedent already establishes (§5).
+///
+/// ## Tainted nodes skipped entirely
+/// A node in `tainted` ([`propagate`]'s own taint set) has an unreliable
+/// `D`/`D` placeholder [`Env`], never a real bound (see [`propagate`]'s doc
+/// comment) — this function emits NO diagnostic for a tainted node's
+/// reads, provable-only, exactly mirroring [`propagate`]'s own doc comment
+/// instruction to callers.
+///
+/// ## Scene-only (Main clarification, connectivity T11)
+/// `reads_per_scene` is keyed by [`NodeId::Scene`] canonical key ONLY —
+/// quest reads stay [`crate::defassign::check_quest_guard_defassign`]'s
+/// existing territory, unchanged; a quest's own `Env` (even an
+/// `after`-opted-in one, dsl §4.4) is `lute scenario envelope`'s (T14)
+/// INVENTORY surface, never a `check-project` diagnostic here (design spec
+/// lines 37-45, 540-546). This function never looks at [`NodeId::Quest`]
+/// at all.
+pub fn check_envelope(
+    g: &ConnGraph,
+    envs: &BTreeMap<NodeId, Env>,
+    tainted: &BTreeSet<NodeId>,
+    reads_per_scene: &BTreeMap<String, Vec<(String, Span)>>,
+) -> Vec<(PathBuf, Diagnostic)> {
+    let mut out = Vec::new();
+    for (key, reads) in reads_per_scene {
+        let id = NodeId::Scene(key.clone());
+        if tainted.contains(&id) {
+            continue;
+        }
+        let (Some(env), Some(info)) = (envs.get(&id), g.nodes.get(&id)) else {
+            continue;
+        };
+        for (path, span) in reads {
+            if !in_envelope_scope(path) || env.guaranteed.contains(path) {
+                continue;
+            }
+            let diag = if env.possible.contains(path) {
+                maybe_unavailable_warning(path, *span)
+            } else {
+                maybe_unavailable_error(path, *span)
+            };
+            out.push((info.path.clone(), diag));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,14 +610,6 @@ mod tests {
         (quest, meta.state)
     }
 
-    fn ctx() -> Ctx<'static> {
-        static ENV: LazyLock<CtxEnv> = LazyLock::new(CtxEnv::default);
-        Ctx {
-            env: &ENV,
-            in_match: false,
-            match_subject: None,
-        }
-    }
 
     #[test]
     fn possible_writes_collects_across_branch_hub_match_run_user_only() {
@@ -545,7 +670,7 @@ mod tests {
         // proving `P` captures may-only writes `G` deliberately discards.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.a: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\">\n::set{run.a = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n@narrator: skip\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
 
         let g = guaranteed(&assigned);
@@ -571,7 +696,7 @@ mod tests {
         // `P` must remain a superset (both empty for this path here).
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             errs.is_empty(),
             "guard-proven read should not flag E-MAYBE-UNSET, got {errs:?}"
@@ -594,7 +719,7 @@ mod tests {
         // sugar) must stay a superset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" persist=\"run\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" persist=\"run\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
 
         let g = guaranteed(&assigned);

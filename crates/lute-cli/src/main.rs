@@ -46,10 +46,10 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use lute_check::{
-    check, check_project_quest_ids, check_project_quest_refs, fold_env, parse_meta, CheckInput,
-    Mode, Namespace, RelVocab,
+    check, check_definite_assignment, check_project_quest_ids, check_project_quest_refs,
+    envelope, fold_env, parse_meta, CheckInput, Mode, Namespace, RelVocab,
 };
-use lute_core_span::{Diagnostic, Severity};
+use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::project::{load_project, resolve_document_snapshot};
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
@@ -615,6 +615,29 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
     }
 
     let mut project_diags = Vec::new();
+    // T11: every ENTRY-DEPENDENT, RUN/USER-TIER read at a NON-TAINTED scene
+    // node that per-file `check()` already flagged `E-MAYBE-UNSET` gets
+    // RECLASSIFIED against the project envelope below (mirrors the
+    // `E-QUEST-ID-DUP` retain-pass precedent, §5). Matched by (path, span,
+    // exact message) -- NOT (path, span) alone: `check_reads`/
+    // `apply_condition` give every path in ONE CEL slot the SAME `Span`
+    // (defassign.rs has no per-path span), so a mixed expression like
+    // `run.upstream && scene.local` has BOTH reads at an IDENTICAL span --
+    // only the message (which embeds the exact path text verbatim,
+    // uniquely) tells them apart. `envelope::in_envelope_scope` is applied
+    // BEFORE a site ever enters this list, so an out-of-scope `scene.*`/
+    // `quest.*`/`app.*` `E-MAYBE-UNSET` is NEVER reconciled (T11 only ever
+    // classifies `run.*`/`user.*`). Every reconciled site's per-file
+    // `E-MAYBE-UNSET` is dropped in the retain pass further down,
+    // REGARDLESS of the reclassification's outcome (`Guaranteed` → dropped
+    // with no replacement; `Possible\Guaranteed` → dropped, warning-grade
+    // `E-STATE-MAYBE-UNAVAILABLE` computed-and-discarded, default-
+    // suppressed per dsl §4.3/§5 until T14's `lute scenario envelope`
+    // exists; `∉ Possible` → dropped, replaced by an error-grade
+    // `E-STATE-MAYBE-UNAVAILABLE` in `project_diags`). A TAINTED node's
+    // reads are never added here -- its `Env` is untrustworthy, so its
+    // per-file `E-MAYBE-UNSET` stays exactly as `check()` reported it.
+    let mut reconciled_reads: Vec<(PathBuf, Span, String)> = Vec::new();
     // Every occurrence within its own resolved root already covers (see the
     // fn doc comment above) — used below to suppress ONLY the per-file
     // `E-QUEST-ID-DUP`s that pass demonstrably re-reports, never the ones it
@@ -695,12 +718,111 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
                 project_diags.push((path.clone(), d));
             }
         }
+        // T10/T11: connectivity envelope (dsl §4.3). `PerDocEffects`
+        // populated from T8 (per-scene `guaranteed`/`possible_writes`,
+        // recomputed here from this root's own docs+resolved schema, keyed
+        // by the SAME canonical key as `NodeId::Scene` -- the key's FIRST
+        // `key_set` occurrence, mirroring `assemble_graph`'s own node
+        // anchor) and T9 (`writes_on_complete` per quest id, EVERY resolved
+        // quest present as a key incl. empty-write; an empty or AMBIGUOUS
+        // id is omitted -- absence is `propagate`'s resolvability signal).
+        // `d` = project-resolved `run.*`/`user.*` schema-default set (dsl
+        // §4.3 spec lines 442-448), unioned across every doc's own resolved
+        // schema in this root.
+        let mut per_doc = envelope::PerDocEffects::default();
+        let mut envelope_d: BTreeSet<String> = BTreeSet::new();
+        let mut reads_per_scene: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
+        // Per non-tainted, in-scope, entry-dependent read site: the exact
+        // per-file `E-MAYBE-UNSET` diagnostic it would earn, keyed by
+        // canonical scene key. Built HERE (not after `propagate`) because
+        // it needs `local_diags`, discarded everywhere else -- `reads[i]`
+        // and the i-th `E-MAYBE-UNSET` in `local_diags` are pushed
+        // TOGETHER, unconditionally, at the SAME `check_read` call site
+        // (defassign.rs), so zipping them by position is exact, not a
+        // heuristic.
+        let mut sites_per_scene: BTreeMap<String, Vec<(Span, String)>> = BTreeMap::new();
+        for (_path, doc, folded) in group_full {
+            envelope_d.extend(envelope::schema_defaults(&folded.env.state));
+            for quest in &doc.quests {
+                if quest.id.is_empty() || ambiguous_quests.contains(&quest.id) {
+                    continue;
+                }
+                per_doc.quest_writes_on_complete.insert(
+                    quest.id.clone(),
+                    envelope::writes_on_complete(quest, &folded.env.state),
+                );
+            }
+        }
+        for (key, occurrences) in &key_set {
+            let Some((scene_path, _)) = occurrences.first() else { continue };
+            let Some((_, doc, folded)) = group_full.iter().find(|(p, _, _)| p == scene_path)
+            else {
+                continue;
+            };
+            let all_nodes: Vec<lute_syntax::ast::Node> =
+                doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
+            let (local_diags, assigned, reads) =
+                check_definite_assignment(&all_nodes, &folded.env.state);
+            per_doc.scene.insert(
+                key.clone(),
+                (envelope::guaranteed(&assigned), envelope::possible_writes(&all_nodes)),
+            );
+            let maybe_unset_messages: Vec<&str> = local_diags
+                .iter()
+                .filter(|d| d.code == "E-MAYBE-UNSET")
+                .map(|d| d.message.as_str())
+                .collect();
+            debug_assert_eq!(
+                reads.len(),
+                maybe_unset_messages.len(),
+                "check_definite_assignment must push exactly one E-MAYBE-UNSET per \
+                 entry-dependent read, in the same order"
+            );
+            let sites: Vec<(Span, String)> = reads
+                .iter()
+                .zip(maybe_unset_messages.iter())
+                .filter(|((path, _), _)| envelope::in_envelope_scope(path))
+                .map(|((_, span), msg)| (*span, (*msg).to_string()))
+                .collect();
+            sites_per_scene.insert(key.clone(), sites);
+            reads_per_scene.insert(key.clone(), reads);
+        }
+        let (envs, tainted) = envelope::propagate(&conn_graph, &per_doc, &envelope_d);
+        // `check_envelope` returns BOTH grades together (see its own doc
+        // comment); only the error grade joins `project_diags` -- the
+        // warning grade is intentionally computed-and-discarded here (dsl
+        // §4.3/§5: default-suppressed until T14's `lute scenario envelope`
+        // exists to surface it). EVERY entry-dependent, in-scope,
+        // non-tainted read is reconciled below regardless of its own
+        // classification outcome.
+        for (path, d) in
+            envelope::check_envelope(&conn_graph, &envs, &tainted, &reads_per_scene)
+        {
+            if d.severity == Severity::Error {
+                project_diags.push((path, d));
+            }
+        }
+        for (key, occurrences) in &key_set {
+            if tainted.contains(&lute_check::connectivity::NodeId::Scene(key.clone())) {
+                continue;
+            }
+            let Some((scene_path, _)) = occurrences.first() else { continue };
+            let Some(sites) = sites_per_scene.get(key) else { continue };
+            for (span, message) in sites {
+                reconciled_reads.push((scene_path.clone(), *span, message.clone()));
+            }
+        }
         covered.extend(lute_check::colliding_occurrences(group));
     }
     for (path, result) in &mut file_results {
         result.diagnostics.retain(|d| {
-            d.code != "E-QUEST-ID-DUP"
-                || !covered.iter().any(|(p, s)| p == path && *s == d.span)
+            let quest_dup_covered =
+                d.code == "E-QUEST-ID-DUP" && covered.iter().any(|(p, s)| p == path && *s == d.span);
+            let envelope_reconciled = d.code == "E-MAYBE-UNSET"
+                && reconciled_reads
+                    .iter()
+                    .any(|(p, s, m)| p == path && *s == d.span && *m == d.message);
+            !quest_dup_covered && !envelope_reconciled
         });
         result.ok = !result
             .diagnostics

@@ -905,7 +905,7 @@ fn duplicate_quest_id_graph_dead_completed_is_unknown() {
 
 use lute_check::producible::{producible, scan_objective_liveness};
 use lute_check::{fold_env, resolve_components, resolve_imports, CheckResult};
-use lute_core_span::Diagnostic;
+use lute_core_span::{Diagnostic, Span};
 use lute_manifest::project::{load_project, project_providers, resolve_document_snapshot};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use std::collections::BTreeMap;
@@ -993,6 +993,55 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
             out.push((path.clone(), d));
         }
     }
+
+    // T8-T11: connectivity envelope (dsl §4.3), wired the SAME way T11
+    // wires it into `lute-cli::run_check_project`'s by_root loop --
+    // `PerDocEffects` populated from T8 (per-scene guaranteed/
+    // possible_writes, recomputed here from THIS root's own docs+resolved
+    // schema) and T9 (per-quest writes_on_complete, EVERY resolved quest
+    // incl. empty-write, ambiguous ids omitted); `d` = project-resolved
+    // `run.*`/`user.*` schema-default set; `propagate` -> `check_envelope`.
+    let mut per_doc = lute_check::envelope::PerDocEffects::default();
+    let mut d: BTreeSet<String> = BTreeSet::new();
+    let mut reads_per_scene: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
+    for (idx, (_path, doc)) in docs.iter().enumerate() {
+        let folded = &foldeds[idx];
+        d.extend(lute_check::envelope::schema_defaults(&folded.env.state));
+        for quest in &doc.quests {
+            if quest.id.is_empty() || ambiguous_quests.contains(&quest.id) {
+                continue;
+            }
+            per_doc.quest_writes_on_complete.insert(
+                quest.id.clone(),
+                lute_check::envelope::writes_on_complete(quest, &folded.env.state),
+            );
+        }
+    }
+    for (key, occurrences) in &key_set {
+        let Some((scene_path, _)) = occurrences.first() else { continue };
+        let Some(idx) = docs.iter().position(|(p, _)| p == scene_path) else { continue };
+        let (_, doc) = &docs[idx];
+        let folded = &foldeds[idx];
+        let all_nodes: Vec<lute_syntax::ast::Node> =
+            doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
+        let (_diags, assigned, reads) =
+            lute_check::check_definite_assignment(&all_nodes, &folded.env.state);
+        per_doc.scene.insert(
+            key.clone(),
+            (
+                lute_check::envelope::guaranteed(&assigned),
+                lute_check::envelope::possible_writes(&all_nodes),
+            ),
+        );
+        reads_per_scene.insert(key.clone(), reads);
+    }
+    let (envs, tainted) = lute_check::envelope::propagate(&conn_graph, &per_doc, &d);
+    for (path, diag) in
+        lute_check::envelope::check_envelope(&conn_graph, &envs, &tainted, &reads_per_scene)
+    {
+        out.push((path, diag));
+    }
+
     out
 }
 
@@ -1370,5 +1419,117 @@ fn entity_kind_bodied_rule_relation_is_producible_no_false_positive() {
         "viaKind(X) :- c(X) with `c` an entity KIND (not a relation) must not be treated as a \
          dead body atom -- producible() must default an undeclared-as-relation positive atom \
          (kind or unknown) to conservatively-satisfiable, never false: {diags:?}"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Connectivity T11: `E-STATE-MAYBE-UNAVAILABLE` envelope diagnostic (dsl
+// §4.3) -- wired into the SAME `run_producible_pipeline` T8-T11 block
+// above (PerDocEffects from T8/T9, `propagate`, `check_envelope`).
+// ---------------------------------------------------------------------
+
+use lute_check::envelope::E_STATE_MAYBE_UNAVAILABLE;
+use lute_core_span::Severity;
+
+#[test]
+fn read_never_set_on_any_route_errors() {
+    // `x` declares `after: visited("y.s01ep01")`; `y` (the ONLY predecessor
+    // route) never sets `run.z` anywhere, and `run.z` carries no schema
+    // default -- no declared route ever sets it before `x`, so the read
+    // must earn `E-STATE-MAYBE-UNAVAILABLE` at ERROR grade, by default.
+    let y = "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let x = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nafter: 'visited(\"y.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let res = check_project_fixture(&[("y.lute", y), ("x.lute", x)]);
+    let (_p, d) = res
+        .iter()
+        .find(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE)
+        .unwrap_or_else(|| panic!("expected E-STATE-MAYBE-UNAVAILABLE, got {res:?}"));
+    assert_eq!(d.severity, Severity::Error);
+    assert!(
+        d.message.contains("under your declared routes"),
+        "message must carry the qualifier verbatim, got: {}",
+        d.message
+    );
+}
+
+#[test]
+fn read_set_on_all_routes_is_clean() {
+    // Same shape as above, but `y` (the ONLY predecessor route)
+    // unconditionally sets `run.z` -- `run.z` is guaranteed at `x`, so the
+    // read must be clean.
+    let y = "---\nkind: scene\ncharacter: y2\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
+    let x = "---\nkind: scene\ncharacter: x2\nseason: 1\nepisode: 1\nafter: 'visited(\"y2.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let res = check_project_fixture(&[("y2.lute", y), ("x2.lute", x)]);
+    assert!(
+        !res.iter().any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
+        "run.z is guaranteed on the only declared route, must not flag: {res:?}"
+    );
+}
+
+#[test]
+fn standalone_clean_file_not_newly_errored() {
+    // Soundness invariant (dsl §7): `x3` LOCALLY writes `run.q` before
+    // reading it -- `check_definite_assignment` proves it assigned, so
+    // single-file `check()` is clean. The declared `after` route (`y3`,
+    // which never sets `run.q`) would make `run.q` unavailable from the
+    // PROJECT's entry-state perspective -- but that read is satisfied
+    // LOCALLY, so it must never be reclassified against `x3`'s `Env` at
+    // project scope. `check-project` must NOT newly error a file
+    // single-file `check` reports clean.
+    let y3 = "---\nkind: scene\ncharacter: y3\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let x3_text = "---\nkind: scene\ncharacter: x3\nseason: 1\nepisode: 1\nafter: 'visited(\"y3.s01ep01\")'\nstate:\n  run.q: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.q = 5}\n::set{run.out = run.q}\n";
+
+    let single = check(&input_for(x3_text));
+    assert!(
+        single.diagnostics.iter().all(|d| d.severity != Severity::Error),
+        "x3 must check clean standalone: {:?}",
+        single.diagnostics
+    );
+
+    let proj = check_project_fixture(&[("y3.lute", y3), ("x3.lute", x3_text)]);
+    assert!(
+        !proj.iter().any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
+        "a locally-proven read must never be reclassified against the project envelope: {proj:?}"
+    );
+}
+
+#[test]
+fn tainted_node_via_unresolvable_visited_target_skips_envelope_diagnostic() {
+    // `x4`'s `after` references `visited("ghost.s01ep01")` -- no such scene
+    // exists anywhere in the project, so `x4` is TAINTED (`propagate`'s own
+    // taint set: an unresolvable atom target). `run.z` is never set
+    // anywhere and carries no default -- a clear "unavailable" read if
+    // `x4` had a trustworthy `Env` -- but a tainted node's `Env` is a
+    // `D`/`D` placeholder, never a real bound: `check_envelope` MUST emit
+    // NO diagnostic for reads at a tainted node, provable-only.
+    let x4 = "---\nkind: scene\ncharacter: x4\nseason: 1\nepisode: 1\nafter: 'visited(\"ghost.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let res = check_project_fixture(&[("x4.lute", x4)]);
+    assert!(
+        !res.iter().any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
+        "a tainted node's unreliable Env must never seed E-STATE-MAYBE-UNAVAILABLE: {res:?}"
+    );
+}
+
+#[test]
+fn possible_not_guaranteed_is_warning_grade_and_worded() {
+    // `x5`'s `after` is `visited("a.s01ep01") || visited("b.s01ep01")`: `a`
+    // unconditionally sets `run.z`, `b` never does -- `run.z` is POSSIBLE
+    // (set on some declared route) but NOT GUARANTEED (not on every route)
+    // at `x5`. Warning grade, still carries the wording qualifier verbatim
+    // (dsl §2.6/§7) even though it is default-suppressed from the errors
+    // surface.
+    let a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
+    let b = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let x5 = "---\nkind: scene\ncharacter: x5\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\") || visited(\"b.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
+    let res = check_project_fixture(&[("a.lute", a), ("b.lute", b), ("x5.lute", x5)]);
+    let (_p, d) = res
+        .iter()
+        .find(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE)
+        .unwrap_or_else(|| panic!("expected a warning-grade E-STATE-MAYBE-UNAVAILABLE, got {res:?}"));
+    assert_eq!(d.severity, Severity::Warning, "set on some but not all routes must be warning grade");
+    assert!(
+        d.message.contains("under your declared routes"),
+        "warning-grade message must carry the qualifier verbatim too, got: {}",
+        d.message
     );
 }

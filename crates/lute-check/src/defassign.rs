@@ -79,7 +79,9 @@ use crate::cel_paths::{
     PathRole,
 };
 use crate::meta::StateSchema;
-use crate::Ctx;
+// (no `Ctx` import — `check_definite_assignment`'s `_ctx` param was always
+// dead; connectivity T11 dropped it so `lute-cli`'s project-wide envelope
+// wiring needs no throwaway `Ctx`/`Env` construction at all.)
 
 /// Set of provably-assigned state paths on the current execution path.
 pub(crate) type Assigned = BTreeSet<String>;
@@ -102,23 +104,30 @@ struct Flow {
 
 /// Run the §9.4 definite-assignment analysis over a shot's node stream.
 ///
-/// Returns the diagnostics AND the final end-of-document WRITE-ONLY
-/// `Assigned` set — the must-write join (`intersect_flows`) of every
-/// execution path's `::set`/persist-sugar writes, i.e. every path provably
-/// WRITTEN on ALL paths through `nodes`. Guard-proofs (`isSet`/`has`) still
-/// drive `E-MAYBE-UNSET` internally (the `available` lattice, unchanged) but
-/// are NOT part of the returned set. The envelope layer (`crate::envelope::
-/// guaranteed`, connectivity T8/§4.3) reuses this write-only set directly as
-/// its guaranteed-write set `G`.
+/// Returns the diagnostics, the final end-of-document WRITE-ONLY `Assigned`
+/// set — the must-write join (`intersect_flows`) of every execution path's
+/// `::set`/persist-sugar writes, i.e. every path provably WRITTEN on ALL
+/// paths through `nodes` (guard-proofs, `isSet`/`has`, still drive
+/// `E-MAYBE-UNSET` internally via the `available` lattice but are NOT part
+/// of this set; the envelope layer's `crate::envelope::guaranteed`,
+/// connectivity T8/§4.3, reuses it directly as its guaranteed-write set
+/// `G`) — AND every value READ that fell back to entry state: declared,
+/// non-`run.choiceLog.*`, with no schema `default` and no dominating LOCAL
+/// write/guard at the read point — exactly the read set that earns
+/// `E-MAYBE-UNSET` here, mirrored by path (connectivity T11/§4.3's
+/// `crate::envelope::check_envelope` reclassifies exactly these reads
+/// against a node's project-wide `Env` instead of re-deriving its own
+/// read-collection walk — see [`check_read`]'s doc comment for why a
+/// schema-defaulted read is safely excluded here too).
 pub fn check_definite_assignment(
     nodes: &[Node],
     schema: &StateSchema,
-    _ctx: &Ctx<'_>,
-) -> (Vec<Diagnostic>, Assigned) {
+) -> (Vec<Diagnostic>, Assigned, Vec<(String, Span)>) {
     let mut diags = Vec::new();
+    let mut reads = Vec::new();
     let mut flow = Flow::default();
-    walk_nodes(nodes, schema, &mut flow, &mut diags);
-    (diags, flow.writes)
+    walk_nodes(nodes, schema, &mut flow, &mut diags, &mut reads);
+    (diags, flow.writes, reads)
 }
 
 /// Definite-assignment for a quest's `start`/`fail` CEL guard (dsl 0.2.0 §6.3,
@@ -128,23 +137,35 @@ pub fn check_definite_assignment(
 /// get the SAME read-role treatment a `<match on>` SUBJECT gets ([`walk_match`]
 /// via [`check_reads`]): a value-read check only — `has(p)`/`isSet(p)` here
 /// proves nothing (there is no guarded body for a quest-entry predicate to
-/// prove into), so [`check_reads`], not [`apply_condition`], is reused.
+/// prove into), so [`check_reads`], not [`apply_condition`], is reused. Quest
+/// guards stay OUTSIDE the envelope's read-collection (connectivity T11, dsl
+/// §4.4): only the diagnostics are returned — a quest guard's fall-back-to-
+/// entry-state read set is never an envelope concern (Main clarification:
+/// `E-STATE-MAYBE-UNAVAILABLE` classifies SCENE-node reads only; quest reads
+/// stay this function's existing territory, unchanged).
 pub fn check_quest_guard_defassign(slot: &CelSlot, schema: &StateSchema) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let assigned = Assigned::new();
-    check_reads(slot, schema, &assigned, &mut diags);
+    let mut reads = Vec::new();
+    check_reads(slot, schema, &assigned, &mut diags, &mut reads);
     diags
 }
 
 /// Forward-walk a node sequence, threading the assigned set through in order.
-fn walk_nodes(nodes: &[Node], schema: &StateSchema, flow: &mut Flow, diags: &mut Vec<Diagnostic>) {
+fn walk_nodes(
+    nodes: &[Node],
+    schema: &StateSchema,
+    flow: &mut Flow,
+    diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
+) {
     for node in nodes {
         match node {
-            Node::Set(set) => walk_set(set, schema, flow, diags),
-            Node::Branch(branch) => walk_branch(branch, schema, flow, diags),
-            Node::Match(m) => walk_match(m, schema, flow, diags),
-            Node::Timeline(tl) => walk_timeline(tl, schema, flow, diags),
-            Node::Hub(hub) => walk_hub(hub, schema, flow, diags),
+            Node::Set(set) => walk_set(set, schema, flow, diags, reads),
+            Node::Branch(branch) => walk_branch(branch, schema, flow, diags, reads),
+            Node::Match(m) => walk_match(m, schema, flow, diags, reads),
+            Node::Timeline(tl) => walk_timeline(tl, schema, flow, diags, reads),
+            Node::Hub(hub) => walk_hub(hub, schema, flow, diags, reads),
             // A `{{path}}` interpolation on a content line is a state READ at the
             // line's position (dsl §7.6, §9.4): give it the SAME definite-
             // assignment treatment as a guard / `::set` read — a maybe-unset path
@@ -163,24 +184,24 @@ fn walk_nodes(nodes: &[Node], schema: &StateSchema, flow: &mut Flow, diags: &mut
             Node::Line(line) => match &line.when {
                 Some(when) => {
                     let mut fork = flow.available.clone();
-                    apply_condition(when, schema, &mut fork, diags);
+                    apply_condition(when, schema, &mut fork, diags, reads);
                     for interp in &line.interps {
                         if interp.kind == InterpKind::Path {
-                            check_read(&interp.raw, schema, &fork, interp.span, diags);
+                            check_read(&interp.raw, schema, &fork, interp.span, diags, reads);
                         }
                     }
                 }
                 None => {
                     for interp in &line.interps {
                         if interp.kind == InterpKind::Path {
-                            check_read(&interp.raw, schema, &flow.available, interp.span, diags);
+                            check_read(&interp.raw, schema, &flow.available, interp.span, diags, reads);
                         }
                     }
                 }
             },
             Node::Directive(_) => {}
-            Node::On(on) => walk_on(on, schema, flow, diags),
-            Node::Objective(o) => walk_objective(o, schema, flow, diags),
+            Node::On(on) => walk_on(on, schema, flow, diags, reads),
+            Node::Objective(o) => walk_objective(o, schema, flow, diags, reads),
             // Fact args are ground (entity ids / bools), never `state:` paths —
             // no definite-assignment read/write to track (0.3.0 T2; write
             // policy is Task 10).
@@ -193,15 +214,21 @@ fn walk_nodes(nodes: &[Node], schema: &StateSchema, flow: &mut Flow, diags: &mut
 /// op additionally reads the OLD target value; then the target is assigned —
 /// into BOTH `flow.available` (read-satisfaction) and `flow.writes` (the
 /// envelope guaranteed-write must-set): a `::set` is unconditionally a WRITE.
-fn walk_set(set: &Set, schema: &StateSchema, flow: &mut Flow, diags: &mut Vec<Diagnostic>) {
+fn walk_set(
+    set: &Set,
+    schema: &StateSchema,
+    flow: &mut Flow,
+    diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
+) {
     // RHS value reads (guards here don't gate the arm; only their unset-safety).
-    check_reads(&set.expr, schema, &flow.available, diags);
+    check_reads(&set.expr, schema, &flow.available, diags, reads);
 
     let target = &set.path;
     if is_state_path(target) {
         // Compound assignment reads the old value first (dsl §9.4).
         if set.op != "=" {
-            check_read(target, schema, &flow.available, set.span, diags);
+            check_read(target, schema, &flow.available, set.span, diags, reads);
         }
         // The write target itself must be declared (T4.3 covers read sites; the
         // `::set` LHS path is this pass's responsibility).
@@ -248,20 +275,26 @@ fn apply_choice_persist(choice: &Choice, flow: &mut Flow) {
 
 /// A `<branch>`: each `<choice>` forks the incoming set; join = intersection when
 /// some choice is unconditional (one arm always runs), else the pre-block set.
-fn walk_branch(branch: &Branch, schema: &StateSchema, flow: &mut Flow, diags: &mut Vec<Diagnostic>) {
+fn walk_branch(
+    branch: &Branch,
+    schema: &StateSchema,
+    flow: &mut Flow,
+    diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
+) {
     let mut arm_finals: Vec<Flow> = Vec::new();
     let mut has_unconditional = false;
     for choice in &branch.choices {
         let mut arm = flow.clone();
         match &choice.when {
-            Some(cond) => apply_condition(cond, schema, &mut arm.available, diags),
+            Some(cond) => apply_condition(cond, schema, &mut arm.available, diags, reads),
             None => has_unconditional = true,
         }
         // §7.6: a `{{path}}` in the choice LABEL is a READ at the point the choice
         // is OFFERED — after its own `when` guard proves (a guarded choice's label
         // shows only when the guard holds), so check against the post-guard arm.
-        check_label_reads(&choice.label, schema, &arm.available, choice.span, diags);
-        walk_nodes(&choice.body, schema, &mut arm, diags);
+        check_label_reads(&choice.label, schema, &arm.available, choice.span, diags, reads);
+        walk_nodes(&choice.body, schema, &mut arm, diags, reads);
         apply_choice_persist(choice, &mut arm);
         arm_finals.push(arm);
     }
@@ -278,19 +311,25 @@ fn walk_branch(branch: &Branch, schema: &StateSchema, flow: &mut Flow, diags: &m
 /// on its own discarded fork (mirroring `walk_branch`: the guard's value reads are
 /// still flagged), but nothing is folded back into the surviving set (a hub never
 /// proves a path assigned past the block) — for EITHER lattice.
-fn walk_hub(hub: &Hub, schema: &StateSchema, flow: &mut Flow, diags: &mut Vec<Diagnostic>) {
+fn walk_hub(
+    hub: &Hub,
+    schema: &StateSchema,
+    flow: &mut Flow,
+    diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
+) {
     for choice in &hub.choices {
         let mut arm = flow.clone();
         // Same guard-read check as `walk_branch` — a maybe-unset read inside a
         // choice `when` must not escape defassign. The arm is discarded, so a
         // guard-proven path never survives past the block (conservative).
         if let Some(cond) = &choice.when {
-            apply_condition(cond, schema, &mut arm.available, diags);
+            apply_condition(cond, schema, &mut arm.available, diags, reads);
         }
         // Label reads (§7.6): checked against the post-guard arm, then discarded
         // with the rest of the fork.
-        check_label_reads(&choice.label, schema, &arm.available, choice.span, diags);
-        walk_nodes(&choice.body, schema, &mut arm, diags);
+        check_label_reads(&choice.label, schema, &arm.available, choice.span, diags, reads);
+        walk_nodes(&choice.body, schema, &mut arm, diags, reads);
         apply_choice_persist(choice, &mut arm);
         // arm (and any persist write) discarded — a hub never folds back.
     }
@@ -303,12 +342,18 @@ fn walk_hub(hub: &Hub, schema: &StateSchema, flow: &mut Flow, diags: &mut Vec<Di
 /// walks on a forked, DISCARDED set — nothing folds back into the surviving
 /// set (a path first written only inside `<on>` arms stays maybe-unset unless
 /// every arm writes it or it carries a schema `default`).
-fn walk_on(on: &On, schema: &StateSchema, flow: &Flow, diags: &mut Vec<Diagnostic>) {
+fn walk_on(
+    on: &On,
+    schema: &StateSchema,
+    flow: &Flow,
+    diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
+) {
     let mut arm = flow.clone();
     if let Some(cond) = &on.when {
-        apply_condition(cond, schema, &mut arm.available, diags);
+        apply_condition(cond, schema, &mut arm.available, diags, reads);
     }
-    walk_nodes(&on.body, schema, &mut arm, diags);
+    walk_nodes(&on.body, schema, &mut arm, diags, reads);
 }
 
 /// An `<objective>` (dsl 0.2.0 §6.4): the body emits ONCE, when `done` first
@@ -318,13 +363,19 @@ fn walk_on(on: &On, schema: &StateSchema, flow: &Flow, diags: &mut Vec<Diagnosti
 /// the body, so it is checked via [`check_reads`], not [`apply_condition`].
 /// `when` DOES gate visibility (mirrors a hub/branch choice guard) and proves
 /// paths for this arm only.
-fn walk_objective(o: &Objective, schema: &StateSchema, flow: &Flow, diags: &mut Vec<Diagnostic>) {
+fn walk_objective(
+    o: &Objective,
+    schema: &StateSchema,
+    flow: &Flow,
+    diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
+) {
     let mut arm = flow.clone();
-    check_reads(&o.done, schema, &arm.available, diags);
+    check_reads(&o.done, schema, &arm.available, diags, reads);
     if let Some(cond) = &o.when {
-        apply_condition(cond, schema, &mut arm.available, diags);
+        apply_condition(cond, schema, &mut arm.available, diags, reads);
     }
-    walk_nodes(&o.body, schema, &mut arm, diags);
+    walk_nodes(&o.body, schema, &mut arm, diags, reads);
 }
 
 /// Definite-assignment for a `<choice label>`'s `{{path}}` interpolations (dsl
@@ -340,10 +391,11 @@ fn check_label_reads(
     assigned: &Assigned,
     span: Span,
     diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
 ) {
     for interp in crate::check::scan_label_interps(label, span) {
         if interp.kind == InterpKind::Path {
-            check_read(&interp.raw, schema, assigned, interp.span, diags);
+            check_read(&interp.raw, schema, assigned, interp.span, diags, reads);
         }
     }
 }
@@ -355,20 +407,26 @@ fn check_label_reads(
 /// survive `intersect_all` on exhaustive matches). Each `<when>`/`<otherwise>`
 /// still forks; join = intersection only when an `<otherwise>` makes the match
 /// exhaustive. Arm-level `<when test>` guards keep proving (see `apply_condition`).
-fn walk_match(m: &Match, schema: &StateSchema, flow: &mut Flow, diags: &mut Vec<Diagnostic>) {
+fn walk_match(
+    m: &Match,
+    schema: &StateSchema,
+    flow: &mut Flow,
+    diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
+) {
     // Subject is a value-read check only; subject-position guards do NOT prove.
-    check_reads(&m.subject, schema, &flow.available, diags);
+    check_reads(&m.subject, schema, &flow.available, diags, reads);
 
     let mut arm_finals: Vec<Flow> = Vec::new();
     for arm in &m.arms {
         let mut branch = flow.clone();
         match arm {
             Arm::When { test, body, .. } => {
-                apply_condition(test, schema, &mut branch.available, diags);
-                walk_nodes(body, schema, &mut branch, diags);
+                apply_condition(test, schema, &mut branch.available, diags, reads);
+                walk_nodes(body, schema, &mut branch, diags, reads);
             }
             Arm::Otherwise { body, .. } => {
-                walk_nodes(body, schema, &mut branch, diags);
+                walk_nodes(body, schema, &mut branch, diags, reads);
             }
         }
         arm_finals.push(branch);
@@ -386,14 +444,20 @@ fn walk_match(m: &Match, schema: &StateSchema, flow: &mut Flow, diags: &mut Vec<
 /// A `<timeline>`: tracks nominally run in parallel; treat clip `::set`s as
 /// writes and duration/set reads as reads, folded in stream order (conservative
 /// for "was it ever set").
-fn walk_timeline(tl: &Timeline, schema: &StateSchema, flow: &mut Flow, diags: &mut Vec<Diagnostic>) {
+fn walk_timeline(
+    tl: &Timeline,
+    schema: &StateSchema,
+    flow: &mut Flow,
+    diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
+) {
     if let Some(dur) = &tl.duration {
-        check_reads(dur, schema, &flow.available, diags);
+        check_reads(dur, schema, &flow.available, diags, reads);
     }
     for track in &tl.tracks {
         for clip in &track.clips {
             if let ClipNode::Set(set) = &clip.node {
-                walk_set(set, schema, flow, diags);
+                walk_set(set, schema, flow, diags, reads);
             }
         }
     }
@@ -408,10 +472,11 @@ fn apply_condition(
     schema: &StateSchema,
     assigned: &mut Assigned,
     diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
 ) {
     for use_ in slot_uses(slot) {
         match use_.role {
-            PathRole::Read => check_read(&use_.path, schema, assigned, slot.span, diags),
+            PathRole::Read => check_read(&use_.path, schema, assigned, slot.span, diags, reads),
             PathRole::Guard => {
                 // A guard on an undeclared path is a read-site concern (T4.3).
                 if is_declared(&use_.path, schema) && !is_choicelog(&use_.path) {
@@ -430,21 +495,36 @@ fn check_reads(
     schema: &StateSchema,
     assigned: &Assigned,
     diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
 ) {
     for use_ in slot_uses(slot) {
         if use_.role == PathRole::Read {
-            check_read(&use_.path, schema, assigned, slot.span, diags);
+            check_read(&use_.path, schema, assigned, slot.span, diags, reads);
         }
     }
 }
 
-/// Classify one value read; emit `E-MAYBE-UNSET` for an unproven read.
+/// Classify one value read; emit `E-MAYBE-UNSET` for an unproven read. ALSO
+/// records the read into `reads` (path + span) in the SAME branch — i.e.
+/// exactly when a read falls back to entry state, is undefaulted, and would
+/// earn `E-MAYBE-UNSET`. This is the read set connectivity T11's
+/// `crate::envelope::check_envelope` reclassifies against a node's
+/// PROJECT-WIDE `Env` (dsl §4.3) instead of re-deriving its own walk: a
+/// path locally proven (write/guard, the `proven` check below) is THIS
+/// pass's own concern, never the envelope's (soundness invariant, dsl §7 —
+/// a path locally `::set` before the read stays defassign's problem). A
+/// schema-defaulted path (`has_default`) is excluded from `reads` for the
+/// same reason it never earns `E-MAYBE-UNSET`: `D ⊆ Guaranteed(X)` at
+/// EVERY node (dsl §4.3 spec lines 442-457), so a defaulted read would
+/// classify clean regardless — omitting it here changes no downstream
+/// diagnostic, only avoids a redundant lookup.
 fn check_read(
     path: &str,
     schema: &StateSchema,
     assigned: &Assigned,
     span: Span,
     diags: &mut Vec<Diagnostic>,
+    reads: &mut Vec<(String, Span)>,
 ) {
     // `run.choiceLog.*` reads are T4.3's territory; an undeclared (non-reserved)
     // path is ALSO T4.3's territory (`E-UNDECLARED`) -- but a reserved
@@ -457,6 +537,7 @@ fn check_read(
     if has_default(path, schema) || proven(path, assigned) {
         return;
     }
+    reads.push((path.to_string(), span));
     diags.push(diag(
         "E-MAYBE-UNSET",
         format!(
@@ -572,10 +653,8 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ctx::Env;
     use lute_cel::fill_document;
     use lute_syntax::parse;
-    use std::sync::LazyLock;
 
     /// Build `(nodes, schema)` from a `.lute` snippet: parse the DSL, fill every
     /// CEL slot's AST, and lift the inline `state:` schema from frontmatter.
@@ -596,14 +675,6 @@ mod tests {
         (nodes, meta.state)
     }
 
-    fn ctx() -> Ctx<'static> {
-        static ENV: LazyLock<Env> = LazyLock::new(Env::default);
-        Ctx {
-            env: &ENV,
-            in_match: false,
-            match_subject: None,
-        }
-    }
 
     #[test]
     fn definite_assignment_returns_final_assigned_set() {
@@ -611,7 +682,7 @@ mod tests {
         // the envelope layer's `guaranteed()` (T8/§4.3) reuses this exact set.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
         assert!(assigned.contains("run.x"));
     }
@@ -622,7 +693,7 @@ mod tests {
         // body with no prior `::set` and no guard on THIS path.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.metHelpfully: { type: bool }\n  run.gate: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"run.gate\">\n<when test=\"run.gate\">\n::set{run.gate = run.metHelpfully}\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "expected E-MAYBE-UNSET, got {errs:?}"
@@ -634,7 +705,7 @@ mod tests {
         // `::set{run.x = 1}` dominates the later read `run.x` in the `<when>` test.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n@narrator: hi\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "dominating write should prove the path, got {errs:?}"
@@ -647,7 +718,7 @@ mod tests {
         // prior write -> the old-value read is maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n---\n## Shot 1.\n::set{run.x += 1}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "compound += reads old value, expected E-MAYBE-UNSET, got {errs:?}"
@@ -663,7 +734,7 @@ mod tests {
         // block. A later read of `run.x` is therefore maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n@narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "subject isSet-guard must not prove run.x past a non-exhaustive match, got {errs:?}"
@@ -677,7 +748,7 @@ mod tests {
         // A later read of `run.x` is maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "subject has-guard must not survive intersect_all, got {errs:?}"
@@ -692,7 +763,7 @@ mod tests {
         // path-sensitive analysis (§9.4) -> maybe-unset.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "non-defaulted scene.s read before write should flag, got {errs:?}"
@@ -704,7 +775,7 @@ mod tests {
         // A schema-defaulted `scene.d` read is seeded at scene entry -> no error.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.d: { type: number, default: 0 }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.out = scene.d}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "defaulted scene.d read should be safe, got {errs:?}"
@@ -716,7 +787,7 @@ mod tests {
         // A dominating `::set{scene.s = 1}` proves the later read -> no error.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.s: { type: number }\n  scene.out: { type: number }\n---\n## Shot 1.\n::set{scene.s = 1}\n::set{scene.out = scene.s}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "dominating scene write should prove the path, got {errs:?}"
@@ -736,7 +807,7 @@ mod tests {
         // guaranteed WRITTEN when nothing ever wrote it (RevT8 P1).
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "exhaustive arm-level isSet guard should still prove the later read, got {errs:?}"
@@ -758,7 +829,7 @@ mod tests {
         // returned guaranteed WRITE set.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" persist=\"run\" into=\"run.x\" value=\"1\">\n@narrator: pick\n</choice>\n</branch>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "unconditional persist should satisfy the later read (no false positive), got {errs:?}"
@@ -776,7 +847,7 @@ mod tests {
         // satisfy a read of the same path INSIDE that same body.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" persist=\"run\" into=\"run.x\" value=\"1\">\n::set{run.out = run.x}\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, _assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
             "a read inside the persisting choice's own body must still flag, got {errs:?}"
@@ -790,7 +861,7 @@ mod tests {
         // returned guaranteed WRITE set, exactly like an exhaustive `::set`.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" persist=\"run\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" persist=\"run\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
-        let (errs, assigned) = check_definite_assignment(&nodes, &schema, &ctx());
+        let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
         assert!(
             assigned.contains("run.x"),
