@@ -811,10 +811,20 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // grammar here — it has no project graph to resolve `visited`/`completed`
     // targets against, so node existence is deferred to `check-project`
     // (Task 3+).
-    if let Some(after) = &folded.typed.after {
-        let after_span = crate::meta::meta_key_span(&doc.meta, "after");
-        let (_, after_diags) = crate::prereq::parse_prereq(after, after_span);
-        diags.extend(after_diags);
+    //
+    // §2.1: frontmatter `after:` is a SCENE-ONLY prerequisite surface — a
+    // quest pack declares its prerequisite via the per-`<quest>` `after`
+    // attribute instead (handled separately below). `TypedMeta.after` is
+    // still lifted uniformly for every `MetaKind` (meta.rs) so a non-scene
+    // doc's `after:` key still reaches the ordinary unknown-meta-key check;
+    // only the prereq-grammar validation is gated to `DocKind::Scene` here,
+    // so it is never fed a surface the spec doesn't define as a prerequisite.
+    if folded.doc_kind == crate::meta::DocKind::Scene {
+        if let Some(after) = &folded.typed.after {
+            let after_span = crate::meta::meta_key_span(&doc.meta, "after");
+            let (_, after_diags) = crate::prereq::parse_prereq(after, after_span);
+            diags.extend(after_diags);
+        }
     }
     for quest in &doc.quests {
         if let Some(after) = &quest.after {
