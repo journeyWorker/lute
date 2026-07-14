@@ -565,6 +565,17 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
     let mut file_results: Vec<(PathBuf, lute_check::CheckResult)> =
         Vec::with_capacity(files.len());
     let mut docs: Vec<(PathBuf, lute_syntax::ast::Document)> = Vec::with_capacity(files.len());
+    // T7 (connectivity): each doc's OWN folded analysis env (`fold_env`'s
+    // `FoldedEnv` — the merged `RelVocab`, folded `StateSchema`, and def
+    // bodies/params) — `producible()`/`scan_objective_liveness` can only
+    // reason about relations/defs THIS document's own fold actually
+    // declares (anything else is already `E-RELATION-UNKNOWN`/
+    // `E-UNDECLARED-REF`'d by the per-file `check()` above), and the
+    // liveness scan's sound partial evaluator reuses `decide()` R1–R5
+    // verbatim (same `DefTable`/`DecideCtx` shape `check_objective_reach`
+    // itself builds) — so it is threaded alongside each doc rather than
+    // merged/re-derived here. Same index order as `docs`/`roots`.
+    let mut foldeds: Vec<lute_check::FoldedEnv> = Vec::with_capacity(files.len());
     // The resolved project root for `files[i]`/`docs[i]` (same index order)
     // — [`project_root_for`]'s nearest-ancestor `lute.project.yaml` lookup,
     // bounded below by the walk root `dir` itself.
@@ -576,6 +587,8 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
             return ExitCode::from(2);
         };
         let (doc, _) = lute_syntax::parse(&input.text);
+        let (folded, _, _) = fold_env(&doc, &input);
+        foldeds.push(folded);
         docs.push((file.clone(), doc));
 
         let result = check(&input);
@@ -586,14 +599,19 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
     // Scope project-wide <quest id> uniqueness (dsl 0.2.0 §6.3) PER RESOLVED
     // PROJECT ROOT rather than pooling across the whole walked tree: two
     // different subprojects each declaring the same id is not a collision,
-    // only a repeat WITHIN one resolved root is. Group `docs` by `roots[i]`
-    // (same index order), preserving each group's relative file order, then
-    // run both quest-id passes independently per group and union the
-    // results below.
-    let mut by_root: BTreeMap<PathBuf, Vec<(PathBuf, lute_syntax::ast::Document)>> =
-        BTreeMap::new();
+    // only a repeat WITHIN one resolved root is. Group `docs` (+ its vocab)
+    // by `roots[i]` (same index order), preserving each group's relative
+    // file order, then run both quest-id passes independently per group and
+    // union the results below.
+    let mut by_root: BTreeMap<
+        PathBuf,
+        Vec<(PathBuf, lute_syntax::ast::Document, lute_check::FoldedEnv)>,
+    > = BTreeMap::new();
     for (idx, entry) in docs.iter().enumerate() {
-        by_root.entry(roots[idx].clone()).or_default().push(entry.clone());
+        by_root
+            .entry(roots[idx].clone())
+            .or_default()
+            .push((entry.0.clone(), entry.1.clone(), foldeds[idx].clone()));
     }
 
     let mut project_diags = Vec::new();
@@ -603,7 +621,10 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
     // structurally cannot see (an import-graph collision reaching outside
     // `dir`, or a same-id declare in a SIBLING project root).
     let mut covered = Vec::new();
-    for group in by_root.values() {
+    for group_full in by_root.values() {
+        let plain_group: Vec<(PathBuf, lute_syntax::ast::Document)> =
+            group_full.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+        let group = &plain_group;
         project_diags.extend(check_project_quest_ids(group));
         project_diags.extend(check_project_quest_refs(group));
         project_diags.extend(lute_check::connectivity::check_conn_episode_dup(group));
@@ -627,13 +648,53 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
         // declaration as ambiguous (`ambiguous_quest_ids`) -- never a
         // false `Reachable`/`Unreachable` guess for it.
         let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(group);
-        let (_reach, reach_diags) = lute_check::connectivity::check_reachability(
+        let (reach, reach_diags) = lute_check::connectivity::check_reachability(
             &conn_graph,
             &quest_ids,
             &ambiguous_quests,
             &unreachable_quests,
         );
         project_diags.extend(reach_diags);
+        // T7: `producible()` rule-dependency walk + relational-objective-
+        // liveness (dsl §4.2/§B). `live_assert_relations` is the
+        // reachability-GATED assert-site base case: every relation with an
+        // `::assert{R(…)}` site in a node this root's `reach` map did NOT
+        // prove `Unreachable` (`Reachable` OR `Unknown` both seed
+        // producibility -- provable-only, excluding `Unknown` would risk a
+        // false-dead claim on a node this pass simply cannot resolve).
+        // Each doc's OWN `folded` (from `fold_env`, above) drives its OWN
+        // `producible()` map AND the liveness scan's `decide()` context --
+        // a doc can only gate an objective on a relation/def ITS OWN fold
+        // declares.
+        let live_asserts = lute_check::connectivity::live_assert_relations(
+            group,
+            &reach,
+            &ambiguous_quests,
+            &unreachable_quests,
+        );
+        let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
+        for (path, doc, folded) in group_full {
+            let producible =
+                lute_check::producible::producible(&folded.env.rel_vocab, &live_asserts);
+            let defs = lute_check::DefTable {
+                bodies: &folded.def_bodies,
+                params: &folded.env.def_params,
+            };
+            // `<objective>` attrs never have `$` in scope (mirrors
+            // `check_objective_reach`'s own `base_ctx`); component params
+            // are empty here (an objective is never authored inside a
+            // standalone component-file self-check).
+            let ctx = lute_check::DecideCtx {
+                schema: &folded.env.state,
+                dollar: None,
+                params: &no_params,
+            };
+            for d in
+                lute_check::producible::scan_objective_liveness(doc, &producible, &defs, &ctx)
+            {
+                project_diags.push((path.clone(), d));
+            }
+        }
         covered.extend(lute_check::colliding_occurrences(group));
     }
     for (path, result) in &mut file_results {
