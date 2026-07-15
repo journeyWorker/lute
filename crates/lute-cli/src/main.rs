@@ -46,10 +46,10 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use lute_check::{
-    check, check_project_quest_ids, check_project_quest_refs, fold_env, parse_meta, CheckInput,
-    Mode, Namespace, RelVocab,
+    check, check_definite_assignment, check_project_quest_ids, check_project_quest_refs,
+    defassign, envelope, fold_env, parse_meta, CheckInput, Mode, Namespace, RelVocab,
 };
-use lute_core_span::{Diagnostic, Severity};
+use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::project::{load_project, resolve_document_snapshot};
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
@@ -218,6 +218,50 @@ enum Command {
     /// Provider-catalog maintenance.
     #[command(subcommand)]
     Catalog(CatalogCommand),
+    /// Project-wide, read-only reporting surface over everything the
+    /// connectivity layer computes (dsl §5:571-584): the assembled node/edge
+    /// graph, per-node reachability plus its declared `after` structure, and
+    /// the Guaranteed/Possible envelope tables — including the
+    /// `Possible \ Guaranteed` warning-grade reads `check-project` computes
+    /// and drops by default (dsl §6). Evaluates no CEL, runs no Datalog,
+    /// takes no mocks — pure graph math over declared structure, reusing the
+    /// SAME per-root project-doc collection `check-project` builds (never a
+    /// second file-walk/parse). Exit `0` on success, `2` on an I/O failure or
+    /// an unresolvable node id.
+    Scenario {
+        /// Directory to walk recursively for `*.lute` files; also the
+        /// project root passed to `load_project`, matching `check-project`'s
+        /// own `dir` semantics.
+        dir: PathBuf,
+        /// Directory of pinned provider snapshots to resolve ids against.
+        #[arg(long, value_name = "DIR")]
+        providers: Option<PathBuf>,
+        /// `reach`/`envelope` sub-view; omitted -> prints the assembled
+        /// topological graph (dsl §5:574).
+        #[command(subcommand)]
+        command: Option<ScenarioCommand>,
+    },
+}
+
+/// See [`Command::Scenario`].
+#[derive(Subcommand)]
+enum ScenarioCommand {
+    /// Report a node's reachability verdict (Reachable/Unreachable/Unknown,
+    /// T6) plus its declared `after` prerequisite structure (dsl §5:575).
+    Reach {
+        /// A scene's canonical key (e.g. `bianca.s01ep02`), or `quest:<id>`
+        /// for a quest (dsl §4.4's `envelope quest:<id>` syntax).
+        node_id: String,
+    },
+    /// Report the Guaranteed/Possible envelope tables for a node (T10) —
+    /// full tables for a scene or an `after`-opted-in quest; defaults-only
+    /// `D` plus an enrichment note for a bare quest (T12, dsl §4.4). Also
+    /// prints the `Possible \ Guaranteed` warning-grade reads for the node
+    /// (dsl §6) — suppressed by default in `check-project`, surfaced here.
+    Envelope {
+        /// A scene's canonical key, or `quest:<id>` for a quest.
+        node_id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -321,6 +365,11 @@ fn main() -> ExitCode {
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
             run_refresh(&dir, project.as_deref())
         }
+        Command::Scenario {
+            dir,
+            providers,
+            command,
+        } => run_scenario(&dir, providers.as_deref(), command),
     }
 }
 
@@ -507,75 +556,54 @@ fn project_root_for(file: &Path, walk_root: &Path) -> PathBuf {
     }
 }
 
-/// Run `check` over every `*.lute` file recursively found under `dir`
-/// (sorted, deterministic, symlink-deduped — [`find_lute_files`]), but
-/// resolving EACH file's project independently rather than reusing `dir` as
-/// one flat project for every file: [`project_root_for`] walks from the
-/// file's own directory upward for the NEAREST ancestor containing a
-/// `lute.project.yaml`, bounded below by `dir` itself (falls back to `dir`
-/// when no ancestor up to and including it has one — identical to the old
-/// flat-project behavior). `build_input` is called with THAT resolved root,
-/// so a file under a nested subproject (its own `lute.project.yaml` +
-/// `plugins/` + `catalog/`) resolves against ITS OWN capability snapshot and
-/// pinned catalog, matching `lute check <file> --project <that subproject>`
-/// exactly — never the walk root's, when a nearer root exists.
+/// One resolved project root's docs, each paired with its parsed
+/// `Document` and `fold_env`'s `FoldedEnv` — the per-root unit
+/// `check-project` and `lute scenario` (T14) both group by.
+type DocGroup = Vec<(PathBuf, lute_syntax::ast::Document, lute_check::FoldedEnv)>;
+type ByRoot = BTreeMap<PathBuf, DocGroup>;
+
+/// Walk `dir` for `.lute` files ([`find_lute_files`]), `check()` +
+/// `fold_env` each one, and group the parsed docs by resolved project root
+/// — the shared file-collection step `check-project`, `lute scenario`
+/// (T14), and the compile/trace project-aware gate (connectivity spec §5)
+/// all build on top of, so they can never observe a DIFFERENT project
+/// structure for the same `dir` (never a second file-walk/parse).
 ///
-/// THEN additionally cross-validates `<quest id>` uniqueness (dsl 0.2.0
-/// §6.3, [`lute_check::check_project_quest_ids`]) — the residual `check()`'s
-/// own `E-QUEST-ID-DUP` (0.2.0 F4, scoped to one document's OWN
-/// `uses:`/`extends:` import graph) cannot see: two quest docs sharing an id
-/// with no import edge between them at all. This pass is scoped PER
-/// RESOLVED PROJECT ROOT, not pooled across the whole walked tree: the
-/// walked docs are grouped by their resolved root (preserving each group's
-/// relative file order) and both quest-id passes run independently within
-/// each group, so the same id declared in two DIFFERENT subprojects is never
-/// flagged as a collision — only a repeat WITHIN one resolved root is.
+/// `single_root` picks the root-resolution rule (connectivity spec §5's
+/// single-root vs nested distinction): `false` resolves EACH file's OWN
+/// nearest ancestor root ([`project_root_for`], `check-project`/`lute
+/// scenario`'s nested-subproject behavior); `true` treats `dir` itself as
+/// THE single root for every file (capabilities AND connectivity resolve
+/// against exactly `dir`, no nested nearest-root search — the compile/trace
+/// `--project <dir>` gate).
 ///
-/// Neither surface is the sole authority: `check_project_quest_ids` only
-/// ever sees the files THIS walk found within the SAME resolved-root group,
-/// so it cannot re-derive an import-graph collision `check()` catches whose
-/// OTHER party lives outside `dir` (0.2.1 review F1 — blanket-stripping
-/// every per-file `E-QUEST-ID-DUP` and trusting the project pass alone
-/// silently swallowed that case). So every per-file diagnostic is KEPT by
-/// default; only a per-file `E-QUEST-ID-DUP` whose exact `(file, span)` is a
-/// MEMBER of a colliding group WITHIN ITS OWN resolved root
-/// ([`lute_check::colliding_occurrences`], run per group — every occurrence
-/// of an id declared 2+ times among that group's docs, not just the ones
-/// `check_project_quest_ids` itself emits a diagnostic for) is suppressed,
-/// since that whole group is already covered by exactly one
-/// `check_project_quest_ids` diagnostic. Membership, not anchor equality, is
-/// the right test: the SAME real collision can anchor its per-file
-/// diagnostic (fired wherever `check()`'s import resolution detected the
-/// redeclare) on a different file than the one `check_project_quest_ids`
-/// picks (it always skips the group's path-sorted-first occurrence) — see
-/// [`lute_check::colliding_occurrences`]'s own doc comment.
-///
-/// Exit `0` clean, `1` when any file has a (post-suppression) `Error`
-/// diagnostic or any resolved root's quest-id pass finds a collision, `2` on
-/// an I/O failure walking `dir` or reading a file.
-fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCode {
-    let files = match find_lute_files(dir) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("lute: cannot walk {}: {e}", dir.display());
-            return ExitCode::from(2);
-        }
-    };
+/// `Err(ExitCode::from(2))` on the same I/O failures `run_check_project`
+/// always had: the walk itself failing, or `build_input` unable to read a
+/// file.
+fn collect_project_docs(
+    dir: &Path,
+    providers: Option<&Path>,
+    single_root: bool,
+) -> Result<(Vec<(PathBuf, lute_check::CheckResult)>, ByRoot), ExitCode> {
+    let files = find_lute_files(dir).map_err(|e| {
+        eprintln!("lute: cannot walk {}: {e}", dir.display());
+        ExitCode::from(2)
+    })?;
 
     let mut file_results: Vec<(PathBuf, lute_check::CheckResult)> =
         Vec::with_capacity(files.len());
     let mut docs: Vec<(PathBuf, lute_syntax::ast::Document)> = Vec::with_capacity(files.len());
-    // The resolved project root for `files[i]`/`docs[i]` (same index order)
-    // — [`project_root_for`]'s nearest-ancestor `lute.project.yaml` lookup,
-    // bounded below by the walk root `dir` itself.
+    let mut foldeds: Vec<lute_check::FoldedEnv> = Vec::with_capacity(files.len());
     let mut roots: Vec<PathBuf> = Vec::with_capacity(files.len());
 
     for file in &files {
-        let root = project_root_for(file, dir);
+        let root = if single_root { dir.to_path_buf() } else { project_root_for(file, dir) };
         let Some(input) = build_input(file, providers, Some(&root)) else {
-            return ExitCode::from(2);
+            return Err(ExitCode::from(2));
         };
         let (doc, _) = lute_syntax::parse(&input.text);
+        let (folded, _, _) = fold_env(&doc, &input);
+        foldeds.push(folded);
         docs.push((file.clone(), doc));
 
         let result = check(&input);
@@ -583,41 +611,477 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
         roots.push(root);
     }
 
-    // Scope project-wide <quest id> uniqueness (dsl 0.2.0 §6.3) PER RESOLVED
-    // PROJECT ROOT rather than pooling across the whole walked tree: two
-    // different subprojects each declaring the same id is not a collision,
-    // only a repeat WITHIN one resolved root is. Group `docs` by `roots[i]`
-    // (same index order), preserving each group's relative file order, then
-    // run both quest-id passes independently per group and union the
-    // results below.
-    let mut by_root: BTreeMap<PathBuf, Vec<(PathBuf, lute_syntax::ast::Document)>> =
-        BTreeMap::new();
+    let mut by_root: ByRoot = BTreeMap::new();
     for (idx, entry) in docs.iter().enumerate() {
-        by_root.entry(roots[idx].clone()).or_default().push(entry.clone());
+        by_root
+            .entry(roots[idx].clone())
+            .or_default()
+            .push((entry.0.clone(), entry.1.clone(), foldeds[idx].clone()));
     }
 
+    Ok((file_results, by_root))
+}
+
+/// Re-derive `span`'s `line`/`column`/`utf16_range` from its byte offsets
+/// against `text`, mirroring `lute_check::check`'s own (private)
+/// `normalize_spans`/`fix_up` treatment for per-file diagnostics exactly
+/// (clamp to text length, snap to char boundaries so `Span::from_bytes`
+/// never slices mid-code-point, then recompute via [`TextIndex`]) --
+/// project-wide diagnostics (`connectivity.rs`'s `meta_key_span`-anchored
+/// `E-CONN-*` family) are assembled OUTSIDE `check()`'s own pipeline, so
+/// they never otherwise receive this normalization and print a ZEROED
+/// `0:0` line/column despite carrying a correct byte range. Idempotent on
+/// an already-normalized span (a quest's parser-produced `id_span`/
+/// `after_span`) since it recomputes from the exact same byte offsets
+/// against the same source text -- never a regression for those.
+fn normalize_span_from_text(text: &str, span: Span) -> Span {
+    let len = text.len();
+    let mut start = span.byte_start.min(len);
+    let mut end = span.byte_end.min(len).max(start);
+    while start > 0 && !text.is_char_boundary(start) {
+        start -= 1;
+    }
+    while end < len && !text.is_char_boundary(end) {
+        end += 1;
+    }
+    let idx = TextIndex::new(text);
+    Span::from_bytes(&idx, start, end)
+}
+
+/// The converged result of [`compute_conn_fixpoint`]'s monotone iteration
+/// (dsl 0.4.0 §4.2's relational-objective-liveness CLOSURE, connectivity
+/// design spec §4.2 -- reviewer finding: a single round misses a
+/// multi-hop chain, e.g. a dead required objective -> a scene gated on
+/// `completed()` that scene becomes unreachable -> its own `::assert`
+/// producer drops -> a relation elsewhere goes non-producible -> ANOTHER
+/// quest's required objective dies -> repeat).
+struct ConnFixpoint {
+    reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
+    reach_diags: Vec<(PathBuf, Diagnostic)>,
+    live_asserts: BTreeSet<String>,
+    dead_required_objective_quests: BTreeSet<String>,
+    unreachable_quests: BTreeSet<String>,
+}
+
+/// Iterate `reach -> live_asserts -> producible -> dead_required_objective_quests
+/// -> grow unreachable_quests` to a FINITE FIXPOINT (dsl 0.4.0 §8.2 rule C4 +
+/// design spec §4.2's closure), shared by [`run_check_project`] and
+/// [`assemble_root_scenario`].
+///
+/// **Fix 1 (reviewer, soundness/false-positive):** `live_assert_relations`'s
+/// per-quest host-liveness check is seeded ONLY from
+/// `lifecycle_unreachable_quests` (`start=false`/`fail=true` -- 0.4 §5.3:
+/// `fail` "precedes completion... fails at the first evaluation instant",
+/// i.e. the body genuinely NEVER executes), never from the GROWING combined
+/// set. A quest with a dead REQUIRED objective can still ACTIVATE and run
+/// its OTHER body nodes (an optional objective's own `::assert`, a
+/// top-level assert, …) -- "can never COMPLETE" is not "never ACTIVATES".
+/// Conflating the two would wrongly drop a still-live producer and cascade
+/// a FALSE `E-OBJECTIVE-UNSATISFIABLE` onto an unrelated, genuinely-alive
+/// objective. `reach` (scene-node liveness) is NOT similarly restricted --
+/// a scene whose ONLY declared route runs through a now-unreachable
+/// `completed(Q)` gate really is never entered, so ITS assert sites really
+/// do drop; that is the intended closure, not a false positive.
+///
+/// **Fix 2 (advisory, completeness): finite fixpoint, not one round.** Each
+/// iteration recomputes `reach` from the CURRENT `unreachable_quests`, then
+/// `live_asserts`/`producible()`/`dead_required_objective_quests` from that
+/// `reach`, then grows `unreachable_quests` by the union. The composition is
+/// MONOTONE over the finite quest-id domain:
+/// - `eval_reach`'s `And`/`Or` lattice is monotone in `unreachable_quests`
+///   (more unreachable input never turns a node MORE reachable) -> `reach`
+///   only ever loses `Reachable`/`Unknown` entries to `Unreachable` as the
+///   set grows, never the reverse.
+/// - `live_assert_relations`'s scene branch reads `reach` directly -> the
+///   live-assert-relation set can only SHRINK (or stay the same) as `reach`
+///   tightens.
+/// - `producible()` is a monotone least-fixpoint over its own base-case
+///   assert-site seeds -> fewer live asserts can only shrink the
+///   producible-`true` set, never grow it.
+/// - `dead_guard`/`decide_slot`'s dead-relation substitution only SUBSTITUTES
+///   MORE fact-query calls as the non-producible set grows, and CEL boolean
+///   composition (`&&`/`||`, R1-R5) is monotone in "more constants known"
+///   for deciding `false` -- so `dead_required_objective_quests` only grows.
+///
+/// So `unreachable_quests` is monotone NON-DECREASING, bounded above by the
+/// full finite `quest_ids` set (every id `dead_required_objective_quests`
+/// can ever contain is itself one of this root's declared quests) --
+/// the loop terminates in AT MOST `quest_ids.len() + 1` rounds (it either
+/// adds >=1 new id, or stabilizes and returns). Every id ever added is
+/// PROVABLY dead/unreachable at the round it was added (same provable-only
+/// signal as the single-round version) -- monotone growth of a
+/// provable-only set can never introduce a false positive.
+fn compute_conn_fixpoint(
+    group: &[(PathBuf, lute_syntax::ast::Document)],
+    group_full: &DocGroup,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    conn_graph: &lute_check::connectivity::ConnGraph,
+    quest_ids: &BTreeSet<String>,
+    ambiguous_quests: &BTreeSet<String>,
+) -> ConnFixpoint {
+    let lifecycle_unreachable_quests =
+        lute_check::connectivity::unreachable_quest_ids(group, file_results);
+    let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
+    let mut unreachable_quests = lifecycle_unreachable_quests.clone();
+    loop {
+        let (reach, reach_diags) = lute_check::connectivity::check_reachability(
+            conn_graph,
+            quest_ids,
+            ambiguous_quests,
+            &unreachable_quests,
+        );
+        let live_asserts = lute_check::connectivity::live_assert_relations(
+            group,
+            &reach,
+            ambiguous_quests,
+            &lifecycle_unreachable_quests,
+        );
+        let mut newly_dead: BTreeSet<String> = BTreeSet::new();
+        for (_path, doc, folded) in group_full {
+            let producible_map =
+                lute_check::producible::producible(&folded.env.rel_vocab, &live_asserts);
+            let defs = lute_check::DefTable {
+                bodies: &folded.def_bodies,
+                params: &folded.env.def_params,
+            };
+            let ctx = lute_check::DecideCtx {
+                schema: &folded.env.state,
+                dollar: None,
+                params: &no_params,
+            };
+            newly_dead.extend(lute_check::producible::dead_required_objective_quests(
+                doc,
+                &producible_map,
+                ambiguous_quests,
+                &defs,
+                &ctx,
+            ));
+        }
+        let grown: BTreeSet<String> =
+            lifecycle_unreachable_quests.iter().cloned().chain(newly_dead).collect();
+        if grown == unreachable_quests {
+            let dead_required_objective_quests: BTreeSet<String> = unreachable_quests
+                .difference(&lifecycle_unreachable_quests)
+                .cloned()
+                .collect();
+            return ConnFixpoint {
+                reach,
+                reach_diags,
+                live_asserts,
+                dead_required_objective_quests,
+                unreachable_quests,
+            };
+        }
+        unreachable_quests = grown;
+    }
+}
+
+/// Reconcile the per-root project analysis over ALREADY-COLLECTED docs
+/// ([`collect_project_docs`]): run each resolved root's `<quest id>`
+/// uniqueness pass (dsl 0.2.0 §6.3, [`lute_check::check_project_quest_ids`]),
+/// quest-ref pass (dsl 0.5.1 §1.4), and the T5–T11 connectivity graph /
+/// reachability / envelope analyses, then RECONCILE the per-file diagnostics
+/// against the project-wide proof: suppress a per-file `E-QUEST-ID-DUP` the
+/// project pass already covers (only within its OWN resolved root — never one
+/// reaching outside the walk root or a sibling root, [`lute_check::colliding_occurrences`]),
+/// and reclassify every entry-dependent, in-scope, non-tainted `E-MAYBE-UNSET`
+/// against the connectivity envelope (dropped when `Guaranteed`,
+/// dropped-and-suppressed when `Possible\Guaranteed`, replaced by error-grade
+/// `E-STATE-MAYBE-UNAVAILABLE` when `∉ Possible`). Returns the reconciled
+/// per-file results (each `ok` recomputed) plus the project-wide diagnostics
+/// (spans normalized against each file's own text — [`normalize_span_from_text`]).
+///
+/// The connectivity fixpoint ([`compute_conn_fixpoint`]) and this
+/// reconciliation live HERE, in `lute-cli`, never in `lute-check` (which stays
+/// FS-free and format-free). Shared by [`run_check_project`] (grouping +
+/// human/JSON output) and [`reconciled_project_results`] (the compile/trace
+/// project-aware §5 gate).
+fn reconcile_collected(
+    mut file_results: Vec<(PathBuf, lute_check::CheckResult)>,
+    by_root: &ByRoot,
+) -> (
+    Vec<(PathBuf, lute_check::CheckResult)>,
+    Vec<(PathBuf, Diagnostic)>,
+    BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
+) {
     let mut project_diags = Vec::new();
+    // T11: every ENTRY-DEPENDENT, RUN/USER-TIER read at a NON-TAINTED scene
+    // node that per-file `check()` already flagged `E-MAYBE-UNSET` gets
+    // RECLASSIFIED against the project envelope below (mirrors the
+    // `E-QUEST-ID-DUP` retain-pass precedent, §5). Matched by (path, span,
+    // exact message) -- NOT (path, span) alone: `check_reads`/
+    // `apply_condition` give every path in ONE CEL slot the SAME `Span`
+    // (defassign.rs has no per-path span), so a mixed expression like
+    // `run.upstream && scene.local` has BOTH reads at an IDENTICAL span --
+    // only the message (which embeds the exact path text verbatim,
+    // uniquely) tells them apart. `envelope::in_envelope_scope` is applied
+    // BEFORE a site ever enters this list, so an out-of-scope `scene.*`/
+    // `quest.*`/`app.*` `E-MAYBE-UNSET` is NEVER reconciled (T11 only ever
+    // classifies `run.*`/`user.*`). Every reconciled site's per-file
+    // `E-MAYBE-UNSET` is dropped in the retain pass further down,
+    // REGARDLESS of the reclassification's outcome (`Guaranteed` → dropped
+    // with no replacement; `Possible\Guaranteed` → dropped, warning-grade
+    // `E-STATE-MAYBE-UNAVAILABLE` computed-and-discarded, default-
+    // suppressed per dsl §4.3/§5 until T14's `lute scenario envelope`
+    // exists; `∉ Possible` → dropped, replaced by an error-grade
+    // `E-STATE-MAYBE-UNAVAILABLE` in `project_diags`). A TAINTED node's
+    // reads are never added here -- its `Env` is untrustworthy, so its
+    // per-file `E-MAYBE-UNSET` stays exactly as `check()` reported it.
+    let mut reconciled_reads: Vec<(PathBuf, Span, String)> = Vec::new();
     // Every occurrence within its own resolved root already covers (see the
     // fn doc comment above) — used below to suppress ONLY the per-file
     // `E-QUEST-ID-DUP`s that pass demonstrably re-reports, never the ones it
     // structurally cannot see (an import-graph collision reaching outside
     // `dir`, or a same-id declare in a SIBLING project root).
     let mut covered = Vec::new();
-    for group in by_root.values() {
+    // Spec §5 project gate side channel (additive; NEVER affects
+    // `project_diags`, so `check-project`'s output is byte-identical).
+    // Accumulated across every resolved root so the single-root gate
+    // (`reconciled_project_results`) can map its target document to the
+    // NodeId(s) it hosts; the on/downstream-of-cycle test itself is decided
+    // by topological-order exclusion in `reconciled_project_results`.
+    let mut nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>> =
+        BTreeMap::new();
+    for group_full in by_root.values() {
+        let plain_group: Vec<(PathBuf, lute_syntax::ast::Document)> =
+            group_full.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+        let group = &plain_group;
         project_diags.extend(check_project_quest_ids(group));
         project_diags.extend(check_project_quest_refs(group));
+        project_diags.extend(lute_check::connectivity::check_conn_episode_dup(group));
+        let key_set = lute_check::connectivity::scene_key_set(group);
+        let quest_ids = lute_check::connectivity::quest_id_set(group);
+        project_diags.extend(lute_check::connectivity::resolve_nodes(group, &key_set, &quest_ids));
+        let (conn_graph, cycle_diags) =
+            lute_check::connectivity::assemble_graph(group, &key_set, &quest_ids);
+        project_diags.extend(cycle_diags);
+        // Spec §5 gate side channel (additive, no diagnostic effect): record
+        // every node's (id, span) keyed by its declaring file, so the gate can
+        // anchor a TARGET-owned `E-CONN-CYCLE` even when the emitted cycle
+        // diagnostic landed on a different node's file.
+        for info in conn_graph.nodes.values() {
+            nodes_by_path
+                .entry(info.path.clone())
+                .or_default()
+                .push((info.id.clone(), info.span));
+        }
+        // T7/T14/Fix2 wiring: `compute_conn_fixpoint` iterates the
+        // reach/live_asserts/producible/dead-required-objective composition
+        // to a finite fixpoint (see its own doc comment for the
+        // termination + soundness argument) -- `no_params`/`ambiguous_quests`
+        // are shared with the envelope wiring below.
+        let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(group);
+        let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
+        let fp = compute_conn_fixpoint(group, group_full, &file_results, &conn_graph, &quest_ids, &ambiguous_quests);
+        project_diags.extend(fp.reach_diags);
+        for (path, doc, folded) in group_full {
+            let producible =
+                lute_check::producible::producible(&folded.env.rel_vocab, &fp.live_asserts);
+            let defs = lute_check::DefTable {
+                bodies: &folded.def_bodies,
+                params: &folded.env.def_params,
+            };
+            // `<objective>` attrs never have `$` in scope (mirrors
+            // `check_objective_reach`'s own `base_ctx`); component params
+            // are empty here (an objective is never authored inside a
+            // standalone component-file self-check).
+            let ctx = lute_check::DecideCtx {
+                schema: &folded.env.state,
+                dollar: None,
+                params: &no_params,
+            };
+            for d in
+                lute_check::producible::scan_objective_liveness(doc, &producible, &defs, &ctx)
+            {
+                project_diags.push((path.clone(), d));
+            }
+        }
+        // T10/T11: connectivity envelope (dsl §4.3). `PerDocEffects`
+        // populated from T8 (per-scene `guaranteed`/`possible_writes`,
+        // recomputed here from this root's own docs+resolved schema, keyed
+        // by the SAME canonical key as `NodeId::Scene` -- the key's FIRST
+        // `key_set` occurrence, mirroring `assemble_graph`'s own node
+        // anchor) and T9 (`writes_on_complete` per quest id, EVERY resolved
+        // quest present as a key incl. empty-write; an empty or AMBIGUOUS
+        // id is omitted -- absence is `propagate`'s resolvability signal).
+        // `d` = project-resolved `run.*`/`user.*` schema-default set (dsl
+        // §4.3 spec lines 442-448), unioned across every doc's own resolved
+        // schema in this root.
+        let mut per_doc = envelope::PerDocEffects::default();
+        let mut envelope_d: BTreeSet<String> = BTreeSet::new();
+        let mut reads_per_scene: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
+        // Per non-tainted, in-scope, entry-dependent read site: the exact
+        // per-file `E-MAYBE-UNSET` diagnostic it would earn, keyed by
+        // canonical scene key. Built HERE (not after `propagate`) because
+        // it needs `local_diags`, discarded everywhere else -- `reads[i]`
+        // and the i-th `E-MAYBE-UNSET` in `local_diags` are pushed
+        // TOGETHER, unconditionally, at the SAME `check_read` call site
+        // (defassign.rs), so zipping them by position is exact, not a
+        // heuristic.
+        let mut sites_per_scene: BTreeMap<String, Vec<(Span, String)>> = BTreeMap::new();
+        for (_path, doc, folded) in group_full {
+            envelope_d.extend(envelope::schema_defaults(&folded.env.state));
+            for quest in &doc.quests {
+                if quest.id.is_empty() || ambiguous_quests.contains(&quest.id) {
+                    continue;
+                }
+                per_doc.quest_writes_on_complete.insert(
+                    quest.id.clone(),
+                    envelope::writes_on_complete(quest, &folded.env.state),
+                );
+            }
+        }
+        for (key, occurrences) in &key_set {
+            let Some((scene_path, _)) = occurrences.first() else { continue };
+            let Some((_, doc, folded)) = group_full.iter().find(|(p, _, _)| p == scene_path)
+            else {
+                continue;
+            };
+            let all_nodes: Vec<lute_syntax::ast::Node> =
+                doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
+            let (local_diags, assigned, reads) =
+                check_definite_assignment(&all_nodes, &folded.env.state);
+            // T4.4/T4.6 carry-forward parity (dsl §7 soundness invariant): the
+            // real `check()` pipeline (`check.rs::suppress_exhaustive_subject_reads`)
+            // drops any `E-MAYBE-UNSET` whose span is a domain-exhaustive
+            // `<match>` subject BEFORE `file_results` is ever populated -- a
+            // read like that never earns a per-file `E-MAYBE-UNSET` standalone,
+            // so it must never be treated as "entry-dependent" here either, or
+            // this project-level recomputation (which calls
+            // `check_definite_assignment` raw, unaware of that later
+            // suppression) would newly error a file `check()` reports clean.
+            let exhaustive_spans =
+                defassign::exhaustive_match_subject_spans(&all_nodes, &folded.env.state);
+            let is_exhaustive_subject = |span: &Span| {
+                exhaustive_spans
+                    .iter()
+                    .any(|s| s.byte_start == span.byte_start && s.byte_end == span.byte_end)
+            };
+            per_doc.scene.insert(
+                key.clone(),
+                (envelope::guaranteed(&assigned), envelope::possible_writes(&all_nodes)),
+            );
+            let maybe_unset_messages: Vec<&str> = local_diags
+                .iter()
+                .filter(|d| d.code == "E-MAYBE-UNSET")
+                .map(|d| d.message.as_str())
+                .collect();
+            debug_assert_eq!(
+                reads.len(),
+                maybe_unset_messages.len(),
+                "check_definite_assignment must push exactly one E-MAYBE-UNSET per \
+                 entry-dependent read, in the same order"
+            );
+            let paired: Vec<((String, Span), &str)> =
+                reads.into_iter().zip(maybe_unset_messages).collect();
+            let sites: Vec<(Span, String)> = paired
+                .iter()
+                .filter(|((path, span), _)| {
+                    envelope::in_envelope_scope(path) && !is_exhaustive_subject(span)
+                })
+                .map(|((_, span), msg)| (*span, (*msg).to_string()))
+                .collect();
+            let reads: Vec<(String, Span)> = paired
+                .into_iter()
+                .filter(|((_, span), _)| !is_exhaustive_subject(span))
+                .map(|(r, _)| r)
+                .collect();
+            sites_per_scene.insert(key.clone(), sites);
+            reads_per_scene.insert(key.clone(), reads);
+        }
+        let (envs, tainted) = envelope::propagate(&conn_graph, &per_doc, &envelope_d);
+        // `check_envelope` returns BOTH grades together (see its own doc
+        // comment); only the error grade joins `project_diags` -- the
+        // warning grade is intentionally computed-and-discarded here (dsl
+        // §4.3/§5: default-suppressed until T14's `lute scenario envelope`
+        // exists to surface it). EVERY entry-dependent, in-scope,
+        // non-tainted read is reconciled below regardless of its own
+        // classification outcome.
+        for (path, d) in
+            envelope::check_envelope(&conn_graph, &envs, &tainted, &reads_per_scene)
+        {
+            if d.severity == Severity::Error {
+                project_diags.push((path, d));
+            }
+        }
+        for (key, occurrences) in &key_set {
+            let node_id = lute_check::connectivity::NodeId::Scene(key.clone());
+            // Only reconcile (drop) a read's per-file `E-MAYBE-UNSET` when
+            // its node has a REAL envelope to reclassify against: present
+            // in `envs` AND not `tainted`. Per-node cycle recovery (spec
+            // §4.1): a node ON or DOWNSTREAM of an `E-CONN-CYCLE` is the
+            // ONLY kind `propagate` omits from `envs` (a cycle-independent
+            // node keeps a real entry and IS reconciled here) — such a node
+            // is exactly as untrustworthy as a tainted one: `check_envelope`
+            // above already skips it (no replacement diagnostic emitted for
+            // it either), so dropping its per-file diagnostic here would
+            // silently lose a genuine local maybe-unset error with nothing
+            // to replace it.
+            if tainted.contains(&node_id) || !envs.contains_key(&node_id) {
+                continue;
+            }
+            let Some((scene_path, _)) = occurrences.first() else { continue };
+            let Some(sites) = sites_per_scene.get(key) else { continue };
+            for (span, message) in sites {
+                reconciled_reads.push((scene_path.clone(), *span, message.clone()));
+            }
+        }
         covered.extend(lute_check::colliding_occurrences(group));
     }
     for (path, result) in &mut file_results {
         result.diagnostics.retain(|d| {
-            d.code != "E-QUEST-ID-DUP"
-                || !covered.iter().any(|(p, s)| p == path && *s == d.span)
+            let quest_dup_covered =
+                d.code == "E-QUEST-ID-DUP" && covered.iter().any(|(p, s)| p == path && *s == d.span);
+            let envelope_reconciled = d.code == "E-MAYBE-UNSET"
+                && reconciled_reads
+                    .iter()
+                    .any(|(p, s, m)| p == path && *s == d.span && *m == d.message);
+            !quest_dup_covered && !envelope_reconciled
         });
         result.ok = !result
             .diagnostics
             .iter()
             .any(|d| d.severity == Severity::Error);
     }
+    // Defect fix (persona review, connectivity T-final): every project-wide
+    // diagnostic anchored via `lute_check::meta::meta_key_span` (the
+    // `E-CONN-EPISODE-ID-DUP`/`E-CONN-UNKNOWN-NODE`/`E-CONN-CYCLE`/
+    // `E-CONN-UNREACHABLE` scene anchors) carries a CORRECT byte range but
+    // a ZEROED `line`/`column` -- that helper's own documented contract:
+    // "`crate::check`'s `normalize_spans` recomputes them from the byte
+    // offsets." Per-file diagnostics get that treatment inside `check()`
+    // itself; these are assembled here, project-wide, and never pass
+    // through it, so they printed `0:0` verbatim. Mirror the SAME
+    // normalization here, per diagnostic's own file text -- a `Span` that
+    // already carries a real line/col (a quest's parser-produced
+    // `id_span`/`after_span`, or `E-STATE-MAYBE-UNAVAILABLE`'s read-site
+    // span) recomputes identically from the SAME byte offsets against the
+    // SAME source text, so this is a no-op for those, never a regression.
+    let mut project_diag_text_cache: BTreeMap<PathBuf, String> = BTreeMap::new();
+    for (path, d) in &mut project_diags {
+        let text = project_diag_text_cache
+            .entry(path.clone())
+            .or_insert_with(|| std::fs::read_to_string(path.as_path()).unwrap_or_default());
+        d.span = normalize_span_from_text(text, d.span);
+    }
+    (file_results, project_diags, nodes_by_path)
+}
+
+/// Recursively `check` every `*.lute` under `dir` ([`collect_project_docs`],
+/// nested per-file root resolution — each file resolves against its OWN
+/// nearest ancestor `lute.project.yaml`, bounded below by `dir`), reconcile
+/// the per-root project analysis ([`reconcile_collected`]), then print the
+/// per-file + project-wide report (human or `--json`) and map the verdict to
+/// an exit code: `0` clean, `1` when any file has a (post-suppression)
+/// `Error` or any resolved root's quest-id/connectivity pass finds one, `2`
+/// on an I/O failure walking `dir` or reading a file.
+fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCode {
+    let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let (file_results, project_diags, _nodes_by_path) =
+        reconcile_collected(file_results, &by_root);
 
     let project_ok = !project_diags
         .iter()
@@ -664,7 +1128,7 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
             }
         }
     } else {
-        if files.is_empty() {
+        if file_results.is_empty() {
             println!("lute: no .lute files found under {}", dir.display());
         }
         for (path, result) in &file_results {
@@ -709,6 +1173,969 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
+    }
+}
+
+/// The reconciled project analysis for the compile/trace project-aware gate
+/// (connectivity design spec §5): per-document reconciled `CheckResult`s
+/// (keyed by display path, [`BTreeMap`]-sorted for determinism) plus the
+/// project-wide diagnostics. Produced by [`reconciled_project_results`] over a
+/// SINGLE-ROOT collection (the whole `--project <dir>` is ONE root — §5's
+/// single-root rule), reusing the SAME [`reconcile_collected`] analysis
+struct ReconciledProject {
+    per_doc: BTreeMap<PathBuf, lute_check::CheckResult>,
+    project_diagnostics: Vec<(PathBuf, Diagnostic)>,
+    /// Spec §5 gate signal: every node that is ON or DOWNSTREAM of a
+    /// prerequisite cycle — absent from the sound topological order while its
+    /// root has a cycle (`node_cycle_degraded`). A target hosting any of these
+    /// blocks, even when the emitted `E-CONN-CYCLE` was anchored to a DIFFERENT
+    /// node's file (see [`project_gate_result`]). Complete by Kahn's
+    /// construction — no under-approximation of overlapping cycles.
+    cycle_degraded: BTreeSet<lute_check::connectivity::NodeId>,
+    /// Every graph node's `(id, span)` keyed by its declaring document — the
+    /// gate's target-path -> hosted-nodes lookup.
+    nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
+}
+
+/// Collect + reconcile every `.lute` under `dir`, treating `dir` itself as THE
+/// single project root for every file (connectivity spec §5: `--project <dir>`
+/// resolves BOTH capabilities and connectivity against exactly that `<dir>`,
+/// `load_project(dir)`, no nested nearest-root search — that directory-walk
+/// discovery is `check-project`'s alone). The reusable seam the compile/trace
+/// gate pulls the target document's reconciled `CheckResult` from.
+/// `Err(ExitCode::from(2))` on the same I/O failures [`collect_project_docs`]
+/// surfaces.
+fn reconciled_project_results(
+    dir: &Path,
+    providers: Option<&Path>,
+) -> Result<ReconciledProject, ExitCode> {
+    let (file_results, by_root) = collect_project_docs(dir, providers, true)?;
+    // Spec §5 gate: a target blocks when a node it hosts is ON or DOWNSTREAM
+    // of a prerequisite cycle — i.e. absent from the sound topological order
+    // while its root has a cycle. Decided by `node_cycle_degraded` over the
+    // SAME `assemble_root_scenario` analysis `lute scenario` reports from, so a
+    // target's gate verdict never disagrees with its `scenario reach` view.
+    // This topological-order exclusion is COMPLETE (Kahn frees exactly the
+    // cycle-INDEPENDENT nodes), where a DFS back-edge stack slice
+    // under-approximates overlapping cycles. Built BEFORE `reconcile_collected`
+    // consumes `file_results`.
+    let mut cycle_degraded: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
+    for group_full in by_root.values() {
+        let scenario = assemble_root_scenario(group_full, &file_results);
+        for node in scenario.graph.nodes.keys() {
+            if node_cycle_degraded(&scenario, node) {
+                cycle_degraded.insert(node.clone());
+            }
+        }
+    }
+    let (file_results, project_diagnostics, nodes_by_path) =
+        reconcile_collected(file_results, &by_root);
+    Ok(ReconciledProject {
+        per_doc: file_results.into_iter().collect(),
+        project_diagnostics,
+        cycle_degraded,
+        nodes_by_path,
+    })
+}
+
+/// The project-aware gate verdict for one `file` compiled/traced under
+/// `--project <dir>` (connectivity design spec §5). Runs the SINGLE-ROOT
+/// project reconciliation ([`reconciled_project_results`]) and returns the
+/// TARGET document's own reconciled `CheckResult` MERGED with every
+/// project-wide diagnostic anchored on that same file — so an
+/// `E-STATE-MAYBE-UNAVAILABLE`/`E-CONN-*` fault on the target's OWN
+/// `after`/reads blocks it, while a SIBLING document's project-only fault does
+/// NOT (§5). Its `ok` is recomputed over the merged set.
+///
+/// **Out-of-tree (normative, §5):** if the canonicalized `file` is NOT within
+/// `dir`'s recursively-collected `.lute` set, this errors EXPLICITLY
+/// (`ExitCode::from(2)`) rather than silently falling back to a standalone
+/// `check` — a silent fallback would mask a mistyped path or wrong `--project`.
+fn project_gate_result(
+    file: &Path,
+    dir: &Path,
+    providers: Option<&Path>,
+) -> Result<lute_check::CheckResult, ExitCode> {
+    let reconciled = reconciled_project_results(dir, providers)?;
+    let target_canon = match std::fs::canonicalize(file) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("lute: cannot read {}: {e}", file.display());
+            return Err(ExitCode::from(2));
+        }
+    };
+    // Match the target within the project by CANONICAL identity (the collected
+    // display path may differ in form from the CLI-supplied `file`, and
+    // `find_lute_files` already dedupes symlink aliases by canonical identity).
+    let matched = reconciled.per_doc.iter().find(|(path, _)| {
+        std::fs::canonicalize(path).map(|c| c == target_canon).unwrap_or(false)
+    });
+    let Some((matched_key, base)) = matched else {
+        eprintln!(
+            "lute: {} is not within --project {} (the connectivity gate requires the target to be part of the project)",
+            file.display(),
+            dir.display()
+        );
+        return Err(ExitCode::from(2));
+    };
+    let mut result = base.clone();
+    // §5: block on the TARGET's own reconciled diagnostics only — merge in
+    // every project-wide diagnostic anchored on this same file (its own
+    // `E-STATE-MAYBE-UNAVAILABLE`/`E-CONN-*`), never a sibling's.
+    for (path, d) in &reconciled.project_diagnostics {
+        if path == matched_key {
+            result.diagnostics.push(d.clone());
+        }
+    }
+    // Spec §5 (topological-order exclusion): a target that HOSTS a node ON or
+    // DOWNSTREAM of an `after`-precedence cycle must block even when the ONE
+    // emitted `E-CONN-CYCLE` was anchored to a DIFFERENT node's file — the
+    // target may be a non-anchored cyclic/downstream node with no own read
+    // fault, which the merge above would let through. Synthesize a
+    // TARGET-anchored `E-CONN-CYCLE` (reusing `lute_check`'s own
+    // constructor/code) so `ok` recomputes false. Guarded on `E_CONN_CYCLE` NOT
+    // already present so an already-anchored node (or one already carrying a
+    // retained `E-MAYBE-UNSET`) never double-reports the cycle. Membership is
+    // `cycle_degraded` — absence from the sound topological order given a cycle
+    // (`node_cycle_degraded`), COMPLETE (no under-approximation of overlapping
+    // cycles) and, per spec §5, covering BOTH on-cycle and strictly-downstream
+    // targets.
+    let already_cyclic = result
+        .diagnostics
+        .iter()
+        .any(|d| d.code == lute_check::connectivity::E_CONN_CYCLE);
+    if !already_cyclic {
+        if let Some((id, span)) = reconciled
+            .nodes_by_path
+            .get(matched_key)
+            .and_then(|hosted| hosted.iter().find(|(id, _)| reconciled.cycle_degraded.contains(id)))
+        {
+            // Normalize line/col from the target's own text (mirrors
+            // `reconcile_collected`'s project-diag normalization) — the raw
+            // `character:`-key node span carries zeroed line/col otherwise.
+            let text = std::fs::read_to_string(matched_key).unwrap_or_default();
+            let span = normalize_span_from_text(&text, *span);
+            result.diagnostics.push(lute_check::connectivity::cycle_diag(
+                format!(
+                    "prerequisite cycle: this document hosts `{id}`, which is on or downstream \
+                     of an `after`-precedence cycle (E-CONN-CYCLE); no evaluation order can \
+                     satisfy every `after` (dsl §2.4/§4.1 §A)"
+                ),
+                span,
+            ));
+        }
+    }
+    result.ok = !result.diagnostics.iter().any(|d| d.severity == Severity::Error);
+    Ok(result)
+}
+
+// ===========================================================================
+// `lute scenario` (connectivity T14, dsl §5:571-584) — project-wide,
+// read-only reporting surface over everything §4 computes. Evaluates no
+// CEL, runs no Datalog, takes no mocks: pure graph math over declared
+// structure, reusing [`collect_project_docs`]'s SAME per-root doc grouping
+// `check-project` builds (never a second file-walk/parse) plus the SAME
+// `lute_check::connectivity`/`envelope` analyses `check-project`'s own
+// per-root pass calls (never duplicated math — only the presentation, and
+// the omission of diagnostics, differ).
+// ===========================================================================
+
+/// A bare scene-key, `quest:<id>`, or `scene:<key>` node reference, parsed
+/// from a `scenario reach`/`scenario envelope` CLI argument (dsl §4.4's
+/// `envelope quest:<id>` syntax; `scene:<key>` is this branch's symmetric
+/// counterpart -- see [`resolve_node_ref`]'s doc comment for why both
+/// explicit prefixes exist).
+enum NodeRef {
+    Scene(String),
+    Quest(String),
+}
+
+/// Parse an EXPLICIT `quest:<id>` / `scene:<key>` prefix only -- `None` for
+/// a bare (unprefixed) string, which [`resolve_node_ref`] resolves against
+/// actual project candidates instead of guessing. An explicit prefix is
+/// always authoritative: `quest:foo` is ALWAYS a quest lookup and
+/// `scene:foo` is ALWAYS a scene lookup, never re-tried as the other kind
+/// (that would silently paper over a genuine "no such quest" typo).
+fn parse_node_ref_prefix(raw: &str) -> Option<NodeRef> {
+    if let Some(id) = raw.strip_prefix("quest:") {
+        return Some(NodeRef::Quest(id.to_string()));
+    }
+    if let Some(key) = raw.strip_prefix("scene:") {
+        return Some(NodeRef::Scene(key.to_string()));
+    }
+    None
+}
+
+fn node_ref_to_id(node: &NodeRef) -> lute_check::connectivity::NodeId {
+    match node {
+        NodeRef::Scene(key) => lute_check::connectivity::NodeId::Scene(key.clone()),
+        NodeRef::Quest(id) => lute_check::connectivity::NodeId::Quest(id.clone()),
+    }
+}
+
+/// Everything `lute scenario` needs for ONE resolved project root, built
+/// from the SAME `lute_check::connectivity`/`envelope` analyses
+/// `run_check_project`'s own per-root pass calls (T5/T6/T8/T9/T10) — never
+/// re-derived independently. Unlike `check-project`, this never scans for
+/// project diagnostics (`E-CONN-*`/`E-STATE-MAYBE-UNAVAILABLE`): a
+/// read-only reporting surface, not a pass/fail gate (dsl §5:571-584).
+struct RootScenario {
+    graph: lute_check::connectivity::ConnGraph,
+    reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
+    envs: BTreeMap<lute_check::connectivity::NodeId, envelope::Env>,
+    tainted: BTreeSet<lute_check::connectivity::NodeId>,
+    reads_per_scene: BTreeMap<String, Vec<(String, Span)>>,
+    key_set: BTreeMap<String, Vec<(PathBuf, Span)>>,
+    quest_ids: BTreeSet<String>,
+    ambiguous_quests: BTreeSet<String>,
+    unreachable_quests: BTreeSet<String>,
+    /// The subset of `unreachable_quests` that is unreachable via a
+    /// PROVABLY dead REQUIRED objective (dsl 0.4.0 §8.2 rule C4 -- the
+    /// cause C4 deliberately does NOT surface as a standalone
+    /// `E-QUEST-UNREACHABLE`) -- kept SEPARATE from the lifecycle cause
+    /// (`start=false`/`fail=true`) so [`reach_verdict_text`] can name the
+    /// correct diagnostic code for each cause, never misattributing a C4
+    /// note to the suppressed standalone code.
+    dead_required_objective_quests: BTreeSet<String>,
+    /// `D` (dsl §4.3 spec lines 442-448): the project-resolved `run.*`/
+    /// `user.*` schema-defaulted set, unioned across every doc's own
+    /// resolved schema in this root — [`envelope::quest_envelope`]'s own
+    /// defaults-only floor.
+    envelope_d: BTreeSet<String>,
+    /// This root's plain (doc-stripped-of-`FoldedEnv`) docs — quest
+    /// envelope printing needs the `&Quest` struct itself
+    /// ([`envelope::quest_envelope`]'s signature), never re-parsed here.
+    docs: Vec<(PathBuf, lute_syntax::ast::Document)>,
+}
+
+/// Assemble [`RootScenario`] for one resolved root's docs — mirrors
+/// `run_check_project`'s own per-root block (T5 `assemble_graph`, T6
+/// `check_reachability`, T8/T9 `PerDocEffects`, T10 `propagate`) verbatim,
+/// minus the diagnostic emission (`lute scenario` reports, never gates).
+fn assemble_root_scenario(
+    group_full: &DocGroup,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+) -> RootScenario {
+    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> =
+        group_full.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+    let key_set = lute_check::connectivity::scene_key_set(&docs);
+    let quest_ids = lute_check::connectivity::quest_id_set(&docs);
+    let (graph, _cycle_diags) =
+        lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
+    // T7/T14/Fix2 wiring: shares `compute_conn_fixpoint`'s finite-fixpoint
+    // iteration with `run_check_project` (see that fn's own doc comment
+    // for the termination + soundness argument) -- never re-derived
+    // independently.
+    let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&docs);
+    let fp = compute_conn_fixpoint(&docs, group_full, file_results, &graph, &quest_ids, &ambiguous_quests);
+    let reach = fp.reach;
+    let unreachable_quests = fp.unreachable_quests;
+    let dead_required_objective_quests = fp.dead_required_objective_quests;
+
+    let mut per_doc = envelope::PerDocEffects::default();
+    let mut envelope_d: BTreeSet<String> = BTreeSet::new();
+    let mut reads_per_scene: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
+    for (_path, doc, folded) in group_full {
+        envelope_d.extend(envelope::schema_defaults(&folded.env.state));
+        for quest in &doc.quests {
+            if quest.id.is_empty() || ambiguous_quests.contains(&quest.id) {
+                continue;
+            }
+            per_doc.quest_writes_on_complete.insert(
+                quest.id.clone(),
+                envelope::writes_on_complete(quest, &folded.env.state),
+            );
+        }
+    }
+    for (key, occurrences) in &key_set {
+        let Some((scene_path, _)) = occurrences.first() else { continue };
+        let Some((_, doc, folded)) = group_full.iter().find(|(p, _, _)| p == scene_path) else {
+            continue;
+        };
+        let all_nodes: Vec<lute_syntax::ast::Node> =
+            doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
+        let (_local_diags, assigned, reads) =
+            check_definite_assignment(&all_nodes, &folded.env.state);
+        // Same T4.4/T4.6 carry-forward parity fix as `run_check_project`'s
+        // T11 wiring above (dsl §7 soundness invariant) -- `lute scenario
+        // envelope`/`reach` must not classify a domain-exhaustive `<match>`
+        // subject read as entry-dependent either.
+        let exhaustive_spans =
+            defassign::exhaustive_match_subject_spans(&all_nodes, &folded.env.state);
+        let reads: Vec<(String, Span)> = reads
+            .into_iter()
+            .filter(|(_, span)| {
+                !exhaustive_spans
+                    .iter()
+                    .any(|s| s.byte_start == span.byte_start && s.byte_end == span.byte_end)
+            })
+            .collect();
+        per_doc.scene.insert(
+            key.clone(),
+            (envelope::guaranteed(&assigned), envelope::possible_writes(&all_nodes)),
+        );
+        reads_per_scene.insert(key.clone(), reads);
+    }
+    let (envs, tainted) = envelope::propagate(&graph, &per_doc, &envelope_d);
+
+    RootScenario {
+        graph,
+        reach,
+        envs,
+        tainted,
+        reads_per_scene,
+        key_set,
+        quest_ids,
+        ambiguous_quests,
+        unreachable_quests,
+        dead_required_objective_quests,
+        envelope_d,
+        docs,
+    }
+}
+
+/// Find EVERY resolved root (sorted, deterministic — [`ByRoot`] is a
+/// `BTreeMap`) whose docs declare `node` (a scene key in `scene_key_set` or
+/// a declared `<quest id>`), returning each match's root path alongside its
+/// assembled [`RootScenario`]. A scene/quest id is only unique WITHIN one
+/// resolved project root (dsl §2.3/§6.3) — the SAME id may legitimately
+/// exist in two independently resolved sibling roots (the bare `lute
+/// scenario` graph view already shows both). Callers MUST treat 2+ matches
+/// as an ambiguous lookup (Main review: never silently pick the
+/// lexicographically-first root), never collapse to one.
+fn find_matching_roots<'a>(
+    by_root: &'a ByRoot,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    node: &NodeRef,
+) -> Vec<(&'a PathBuf, RootScenario)> {
+    let mut out = Vec::new();
+    for (root, group_full) in by_root {
+        let scenario = assemble_root_scenario(group_full, file_results);
+        let present = match node {
+            NodeRef::Scene(key) => scenario.key_set.contains_key(key),
+            NodeRef::Quest(id) => scenario.quest_ids.contains(id),
+        };
+        if present {
+            out.push((root, scenario));
+        }
+    }
+    out
+}
+
+/// Render a [`lute_check::PrereqFormula`] back to CEL-like text, fully
+/// parenthesized so the `&&`/`||` nesting is always visible — a
+/// `visited(A) || visited(B)` node is reachable via A OR B, never rendered
+/// as a flat list that could blur that into "requires A and B" (Main
+/// review: routes must never be flattened away).
+fn format_prereq(f: &lute_check::PrereqFormula) -> String {
+    match f {
+        lute_check::PrereqFormula::Visited(key) => format!("visited({})", quote_cel_string(key)),
+        lute_check::PrereqFormula::Completed(id) => {
+            format!("completed({})", quote_cel_string(id))
+        }
+        lute_check::PrereqFormula::And(l, r) => {
+            format!("({} && {})", format_prereq(l), format_prereq(r))
+        }
+        lute_check::PrereqFormula::Or(l, r) => {
+            format!("({} || {})", format_prereq(l), format_prereq(r))
+        }
+    }
+}
+
+/// Quote+escape a `visited`/`completed` atom id for CEL-like rendering.
+/// JSON string-literal escaping (`serde_json::to_string`) is a safe,
+/// well-tested superset of what a CEL string literal needs
+/// (backslash/quote/control-char escaping) — a raw `format!("\"{id}\"")`
+/// interpolation (Main review) would render an id containing an embedded
+/// `"`, `\`, or control character verbatim, breaking the printed
+/// structure's own quoting. `String` -> JSON serialization is infallible
+/// (a Rust `String` is always valid UTF-8, which `serde_json` always
+/// accepts), so the `Result` is unwrapped unconditionally.
+fn quote_cel_string(s: &str) -> String {
+    serde_json::to_string(s).expect("String -> JSON serialization is infallible")
+}
+
+/// The reachability CLAIM for `node` (dsl §2.6: worded "under your declared
+/// routes", never an unconditional runtime claim — Main review: the hedge
+/// belongs on the claim itself). Falls back to the quest-lifecycle rules
+/// ([`lute_check::connectivity::check_reachability`]'s own `Completed`
+/// precedence, mirrored here as a standalone top-level query) when `node`
+/// has no `reach` entry — a plain (no-`after`) quest is never a graph node at
+/// all, and a graph node absent from `reach` is ON or DOWNSTREAM of a
+/// prerequisite cycle (`E-CONN-CYCLE`): per-node cycle recovery (spec §4.1)
+/// means `assemble_graph` omits exactly those nodes from `topo_order`/`reach`
+/// while cycle-independent nodes keep their real verdicts.
+fn reach_verdict_text(scenario: &RootScenario, node: &lute_check::connectivity::NodeId) -> String {
+    use lute_check::connectivity::{NodeId, Reachability};
+    if let Some(r) = scenario.reach.get(node) {
+        return match r {
+            Reachability::Reachable => {
+                "Reachable — a satisfiable route exists under your declared routes.".to_string()
+            }
+            Reachability::Unreachable => "Unreachable — no satisfiable route exists under your \
+                 declared routes (E-CONN-UNREACHABLE, dsl §4.1)."
+                .to_string(),
+            Reachability::Unknown => "Unknown — this analysis cannot prove reachability either \
+                 way under your declared routes."
+                .to_string(),
+        };
+    }
+    match node {
+        NodeId::Quest(id) if scenario.ambiguous_quests.contains(id) => {
+            "Unknown — ambiguous quest id (more than one declaration) under your declared \
+             routes."
+                .to_string()
+        }
+        NodeId::Quest(id) if scenario.dead_required_objective_quests.contains(id) => {
+            "Unreachable — this quest has a provably dead REQUIRED objective, so it can never \
+             complete (E-OBJECTIVE-UNSATISFIABLE, dsl 0.4 §5.3/§8.2 rule C4), under your \
+             declared routes."
+                .to_string()
+        }
+        NodeId::Quest(id) if scenario.unreachable_quests.contains(id) => {
+            "Unreachable — quest lifecycle proves this quest can never complete \
+             (E-QUEST-UNREACHABLE), under your declared routes."
+                .to_string()
+        }
+        // Main review fix: an id referenced by a formula but never declared
+        // anywhere in this root (E-CONN-UNKNOWN-NODE's own concern) must
+        // read Unknown -- checked BEFORE the "plain quest, no `after`"
+        // fallback below, since an undeclared id is trivially also absent
+        // from `graph.nodes` and would otherwise be misreported Reachable.
+        NodeId::Quest(id) if !scenario.quest_ids.contains(id) => {
+            "Unknown — this quest id is not declared anywhere in this project root \
+             (E-CONN-UNKNOWN-NODE), under your declared routes."
+                .to_string()
+        }
+        NodeId::Quest(id) if !scenario.graph.nodes.contains_key(&NodeId::Quest(id.clone())) => {
+            "Reachable — a plain quest with no declared `after` prerequisite, reachable by \
+             default quest lifecycle under your declared routes."
+                .to_string()
+        }
+        // Same fix for a `visited(Y)` atom targeting an undeclared scene
+        // key -- every DECLARED scene is unconditionally a graph node
+        // (`assemble_graph`), so only an undeclared key reaches here
+        // without also being mid-cycle; checked before the cycle fallback.
+        NodeId::Scene(key) if !scenario.key_set.contains_key(key) => {
+            "Unknown — this scene key is not declared anywhere in this project root \
+             (E-CONN-UNKNOWN-NODE), under your declared routes."
+                .to_string()
+        }
+        _ => "Unknown — this node is on or downstream of a prerequisite cycle (E-CONN-CYCLE); \
+              its reachability is unavailable under your declared routes."
+            .to_string(),
+    }
+}
+
+/// Print `node`'s declared `after` STRUCTURE (dsl §5:575) — the raw formula
+/// shape, `&&`/`||` intact (Main review: never flattened into a
+/// predecessor list that could misrepresent a disjunction as a joint
+/// requirement), plus each directly-referenced node's own reachability as
+/// supplementary context (explicitly labeled "referenced", never "route" —
+/// the formula above IS the route structure).
+fn print_prereq_structure(scenario: &RootScenario, node: &lute_check::connectivity::NodeId) {
+    use lute_check::connectivity::PrereqState;
+    match scenario.graph.nodes.get(node).map(|info| &info.prereq) {
+        None | Some(PrereqState::Absent) => {
+            println!("  after: (none declared) — this node is an entry point.");
+        }
+        Some(PrereqState::Invalid) => {
+            println!("  after: (malformed — E-CONN-PROFILE; structure unavailable)");
+        }
+        Some(PrereqState::Valid(f)) => {
+            println!("  after: {}", format_prereq(f));
+            let mut targets: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
+            for atom in lute_check::atoms(f) {
+                targets.insert(match atom {
+                    lute_check::Atom::Visited(key) => lute_check::connectivity::NodeId::Scene(key),
+                    lute_check::Atom::Completed(id) => lute_check::connectivity::NodeId::Quest(id),
+                });
+            }
+            if !targets.is_empty() {
+                println!(
+                    "  referenced node(s) (see `after` above for the && / || structure — this \
+                     is NOT a flat requirement list):"
+                );
+                for target in &targets {
+                    println!("    - {target}: {}", reach_verdict_text(scenario, target));
+                }
+            }
+        }
+    }
+}
+
+/// Reduce an already-computed [`find_matching_roots`] result to exactly
+/// ONE matching root, or `Err(ExitCode::from(2))` with a clear stderr
+/// message when it is declared in ZERO roots (unknown node) or 2+ roots
+/// (ambiguous — Main review: a scene/quest id is only unique WITHIN one
+/// resolved root, dsl §2.3/§6.3; the SAME id may legitimately exist in
+/// independent sibling roots, so this NEVER silently picks the
+/// lexicographically-first one).
+fn pick_unique_root<'a>(
+    mut matches: Vec<(&'a PathBuf, RootScenario)>,
+    dir: &Path,
+    node_id_raw: &str,
+) -> Result<(&'a PathBuf, RootScenario), ExitCode> {
+    match matches.len() {
+        0 => {
+            eprintln!("lute: unknown node `{node_id_raw}` under {}", dir.display());
+            Err(ExitCode::from(2))
+        }
+        1 => Ok(matches.pop().expect("len == 1")),
+        n => {
+            let roots: Vec<String> =
+                matches.iter().map(|(r, _)| r.display().to_string()).collect();
+            eprintln!(
+                "lute: node `{node_id_raw}` is declared in {n} different project roots under \
+                 {} -- ambiguous (a scene/quest id is only unique WITHIN one resolved project \
+                 root, dsl §2.3/§6.3); narrow the directory argument to a single project root: \
+                 {}",
+                dir.display(),
+                roots.join(", ")
+            );
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
+/// Resolve `node_ref` to exactly ONE matching root's [`RootScenario`] --
+/// thin wrapper: [`find_matching_roots`] then [`pick_unique_root`].
+fn resolve_unique_root<'a>(
+    dir: &Path,
+    by_root: &'a ByRoot,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    node_ref: &NodeRef,
+    node_id_raw: &str,
+) -> Result<(&'a PathBuf, RootScenario), ExitCode> {
+    let matches = find_matching_roots(by_root, file_results, node_ref);
+    pick_unique_root(matches, dir, node_id_raw)
+}
+
+/// Resolve a RAW `scenario reach`/`scenario envelope` CLI argument to its
+/// [`NodeRef`] plus the single matching root's [`RootScenario`].
+///
+/// ## Why bare strings are never guessed
+/// A scene's canonical key (`{character}.{episodeId}`,
+/// `meta::canonical_episode_key`) is an UNVALIDATED, author-controlled
+/// string — `character`/`episodeId` accept arbitrary YAML scalars, no
+/// charset restriction — so a scene key CAN literally begin with
+/// `quest:` (e.g. `character: "quest:foo"`). Unconditionally reserving
+/// that prefix for quest lookups (the original design) would make such a
+/// scene permanently unselectable. The fix:
+/// - An EXPLICIT `quest:<id>` / `scene:<key>` prefix ([`parse_node_ref_prefix`])
+///   is always authoritative — never re-tried as the other kind.
+/// - A BARE (unprefixed) string is resolved against ACTUAL project
+///   candidates: if it matches a declared scene key in some root, and/or
+///   a declared quest id in some root. Exactly one kind matching → use
+///   it (the overwhelmingly common case — no prefix needed at all).
+///   BOTH kinds matching (some root has a scene key AND some root/the
+///   same root has a quest id, both equal to the raw string) is
+///   genuinely ambiguous — neither is silently preferred; the user is
+///   told to disambiguate with an explicit prefix (mirrors
+///   [`primary_node_ambiguity_note`]'s honesty pattern: never silently
+///   pick one candidate over another equally-valid one).
+fn resolve_node_ref<'a>(
+    dir: &Path,
+    by_root: &'a ByRoot,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    node_id_raw: &str,
+) -> Result<(NodeRef, &'a PathBuf, RootScenario), ExitCode> {
+    if let Some(explicit) = parse_node_ref_prefix(node_id_raw) {
+        return resolve_unique_root(dir, by_root, file_results, &explicit, node_id_raw)
+            .map(|(root, scenario)| (explicit, root, scenario));
+    }
+    let scene_ref = NodeRef::Scene(node_id_raw.to_string());
+    let quest_ref = NodeRef::Quest(node_id_raw.to_string());
+    let scene_matches = find_matching_roots(by_root, file_results, &scene_ref);
+    let quest_matches = find_matching_roots(by_root, file_results, &quest_ref);
+    match (scene_matches.is_empty(), quest_matches.is_empty()) {
+        (false, true) => pick_unique_root(scene_matches, dir, node_id_raw)
+            .map(|(root, scenario)| (scene_ref, root, scenario)),
+        (true, false) => pick_unique_root(quest_matches, dir, node_id_raw)
+            .map(|(root, scenario)| (quest_ref, root, scenario)),
+        (true, true) => {
+            eprintln!("lute: unknown node `{node_id_raw}` under {}", dir.display());
+            Err(ExitCode::from(2))
+        }
+        (false, false) => {
+            eprintln!(
+                "lute: node `{node_id_raw}` matches BOTH a scene key and a quest id in this \
+                 project -- ambiguous (neither is silently preferred); disambiguate with an \
+                 explicit `scene:{node_id_raw}` or `quest:{node_id_raw}` prefix",
+            );
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
+/// `Some(message)` when the PRIMARY requested node itself is ambiguous
+/// WITHIN its resolved root — a duplicated scene key
+/// (`E-CONN-EPISODE-ID-DUP`, T3: 2+ scene documents computing the same
+/// canonical key) or a duplicated quest id (`E-QUEST-ID-DUP`) — in which
+/// case neither `reach` nor `envelope` has a single well-defined
+/// declaration to report on. Callers MUST check this BEFORE any deeper
+/// analysis so neither command ever silently displays one
+/// arbitrarily-chosen declaration's data as if it were authoritative
+/// (Main review: symmetric honesty treatment for scenes and quests —
+/// `assemble_root_scenario`'s own `key_set[key].first()` / graph
+/// admission both already pick an arbitrary declaration internally,
+/// mirroring `assemble_graph`'s own "anchored at first occurrence"
+/// precedent, which is fine for the underlying graph math but must never
+/// be surfaced to the user as if it were an unambiguous answer).
+fn primary_node_ambiguity_note(scenario: &RootScenario, node_ref: &NodeRef) -> Option<String> {
+    match node_ref {
+        NodeRef::Scene(key) => {
+            let occurrences = scenario.key_set.get(key)?;
+            (occurrences.len() > 1).then(|| {
+                format!(
+                    "ambiguous scene key (E-CONN-EPISODE-ID-DUP): `{key}` is computed by {} \
+                     different scene documents in this project root, so a single \
+                     reach/envelope report cannot be given.",
+                    occurrences.len()
+                )
+            })
+        }
+        NodeRef::Quest(id) => scenario.ambiguous_quests.contains(id).then(|| {
+            format!(
+                "ambiguous quest id (E-QUEST-ID-DUP): `{id}` has more than one declaration in \
+                 this project root, so a single reach/envelope report cannot be given."
+            )
+        }),
+    }
+}
+
+fn run_scenario_reach(
+    dir: &Path,
+    by_root: &ByRoot,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    node_id_raw: &str,
+) -> ExitCode {
+    let (node_ref, root, scenario) =
+        match resolve_node_ref(dir, by_root, file_results, node_id_raw) {
+            Ok(v) => v,
+            Err(code) => return code,
+        };
+    let node_id = node_ref_to_id(&node_ref);
+    println!("project root: {}", root.display());
+    if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
+        println!("reach {node_id}: unavailable -- {note}");
+        return ExitCode::SUCCESS;
+    }
+    println!("reach {node_id}:");
+    println!("  verdict: {}", reach_verdict_text(&scenario, &node_id));
+    print_prereq_structure(&scenario, &node_id);
+    ExitCode::SUCCESS
+}
+
+fn print_path_set(set: &BTreeSet<String>) {
+    if set.is_empty() {
+        println!("    (none)");
+    } else {
+        for p in set {
+            println!("    - {p}");
+        }
+    }
+}
+
+/// True when the project's prerequisite graph contains a cycle (`E-CONN-CYCLE`,
+/// dsl §2.4/§4.1 §A). Kahn's algorithm in `assemble_graph` emits every node
+/// EXCEPT the cycle members and everything transitively downstream of one, so
+/// a graph is cyclic iff `topo_order` is shorter than the node set — a
+/// self-contained signal that needs no diagnostic replay.
+fn graph_has_cycle(scenario: &RootScenario) -> bool {
+    scenario.graph.topo_order.len() < scenario.graph.nodes.len()
+}
+
+/// True when `node` is ON or DOWNSTREAM of a prerequisite cycle
+/// (`E-CONN-CYCLE`, dsl §2.4/§4.1 §A) — per-node cycle degradation (spec
+/// §4.1). `assemble_graph` excludes exactly those nodes from `topo_order`, so
+/// [`lute_check::connectivity::check_reachability`] AND [`envelope::propagate`]
+/// (each iterating `topo_order`) populate NEITHER `reach` NOR `envs` for them;
+/// a cycle-INDEPENDENT node keeps its real verdict and is never degraded. The
+/// test is a node absent from `reach` in a root that does contain a cycle —
+/// the same absence [`reach_verdict_text`]'s cycle arm keys off, reused
+/// verbatim so a node's reach verdict and its envelope note never disagree.
+fn node_cycle_degraded(
+    scenario: &RootScenario,
+    node: &lute_check::connectivity::NodeId,
+) -> bool {
+    !scenario.reach.contains_key(node) && graph_has_cycle(scenario)
+}
+
+/// Print the explicit per-node `E-CONN-CYCLE` degradation note (C-honesty,
+/// persona review), mirroring [`reach_verdict_text`]'s cycle wording so a
+/// cyclic-degraded node's envelope is never silently indistinguishable from a
+/// genuinely-empty one. Printed ONLY for a node on or downstream of the cycle
+/// (see [`node_cycle_degraded`]); a cycle-independent node prints its real
+/// tables with no note. Prepended before the tables (which fall back to the
+/// schema-default D/D floor when this node's `envs` entry is absent).
+fn print_cycle_envelope_note() {
+    println!(
+        "  note: envelope unavailable — this node is on or downstream of a prerequisite cycle \
+         (E-CONN-CYCLE); the Guaranteed/Possible tables below cannot be computed under your \
+         declared routes and fall back to the schema-default floor."
+    );
+}
+
+/// Print a scene node's Guaranteed/Possible envelope tables (T10) plus its
+/// `Possible \ Guaranteed` warning-grade READS (contract #2): T11's
+/// [`envelope::check_envelope`] already computes BOTH grades together and
+/// returns them — `check-project` filters to `Severity::Error` only and
+/// drops the warning grade; this RE-derives the SAME call, singleton-scoped
+/// to `key` so every returned diagnostic necessarily belongs to this node,
+/// and keeps the warning grade instead. Never a second classification pass
+/// — `check_envelope` is reused verbatim, never re-implemented.
+fn print_scene_envelope(scenario: &RootScenario, key: &str) {
+    let node_id = lute_check::connectivity::NodeId::Scene(key.to_string());
+    println!(
+        "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
+         before its own writes):"
+    );
+    if node_cycle_degraded(scenario, &node_id) {
+        print_cycle_envelope_note();
+    }
+    if scenario.tainted.contains(&node_id) {
+        println!(
+            "  note: this node's envelope is a defaults-only placeholder -- its `after` \
+             formula is malformed or references an unresolved node (E-CONN-PROFILE/\
+             E-CONN-UNKNOWN-NODE)."
+        );
+    }
+    let env = scenario.envs.get(&node_id).cloned().unwrap_or_else(|| envelope::Env {
+        guaranteed: scenario.envelope_d.clone(),
+        possible: scenario.envelope_d.clone(),
+    });
+    println!("  Guaranteed (safe to read under your declared routes):");
+    print_path_set(&env.guaranteed);
+    println!("  Possible (set on at least one declared route reaching this node):");
+    print_path_set(&env.possible);
+
+    let mut single: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
+    if let Some(reads) = scenario.reads_per_scene.get(key) {
+        single.insert(key.to_string(), reads.clone());
+    }
+    let diags =
+        envelope::check_envelope(&scenario.graph, &scenario.envs, &scenario.tainted, &single);
+    println!(
+        "  Possible \\ Guaranteed -- warning-grade reads (set on SOME but not every declared \
+         route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):"
+    );
+    let mut any = false;
+    for (path, d) in &diags {
+        if d.severity != Severity::Warning {
+            continue;
+        }
+        any = true;
+        println!("    - {}:{}:{}: {}", path.display(), d.span.line, d.span.column, d.message);
+    }
+    if !any {
+        println!("    (none)");
+    }
+}
+
+/// Print a quest node's envelope (T12 [`envelope::quest_envelope`]) — full
+/// tables for an `after`-opted-in quest, defaults-only `D` plus the
+/// enrichment note for a bare quest (dsl §4.4) — plus its `Possible \
+/// Guaranteed` SET as plain inventory. [`envelope::check_envelope`] is
+/// SCENE-ONLY by design (its own doc comment: quest reads stay
+/// `check_quest_guard_defassign`'s territory), so this is NEVER labeled
+/// as the T11 warning-grade read-site class (Main review) — there is no
+/// read-SITE list for a quest at all, only the plain set difference.
+fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::ast::Quest) {
+    let node_id = lute_check::connectivity::NodeId::Quest(id.to_string());
+    println!(
+        "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
+         before its own writes):"
+    );
+    // The E-CONN-CYCLE degradation note applies ONLY to a graph-positioned
+    // quest (`after.is_some()`) that is itself cyclic/downstream:
+    // `quest_envelope` returns the defaults-only D/D floor for an after-less
+    // quest REGARDLESS of graph topology, so such a quest's tables did NOT
+    // degrade due to the cycle -- and `node_cycle_degraded` would misfire on
+    // it (a no-`after` quest is never a graph node, so it is trivially absent
+    // from `reach`), so the `after.is_some()` guard is REQUIRED. A cycle-
+    // independent `after` quest keeps its real tables with no note (per-node
+    // recovery, spec §4.1); only a cyclic/downstream one prints the note.
+    if quest.after.is_some() && node_cycle_degraded(scenario, &node_id) {
+        print_cycle_envelope_note();
+    }
+    let qe =
+        envelope::quest_envelope(quest, &scenario.graph, &scenario.envs, &scenario.envelope_d);
+    println!("  Guaranteed (safe to read under your declared routes):");
+    print_path_set(&qe.env.guaranteed);
+    println!("  Possible (set on at least one declared route reaching this node):");
+    print_path_set(&qe.env.possible);
+    let warn: BTreeSet<String> =
+        qe.env.possible.difference(&qe.env.guaranteed).cloned().collect();
+    println!(
+        "  Possible \\ Guaranteed -- inventory only (paths set on SOME but not every declared \
+         route reaching this quest, dsl §4.4). This is NOT the T11 warning-grade read-site \
+         class -- quest read diagnostics are `check_quest_guard_defassign`'s separate \
+         territory (that class is scene-only, see the scene envelope's own section):"
+    );
+    print_path_set(&warn);
+    if qe.enrichment_note {
+        println!(
+            "  note: this quest declares no `after` attribute, so this is the defaults-only \
+             `D` table (dsl §4.4); declaring `after` on quest:{id} would enrich this table \
+             with the full project-resolved envelope."
+        );
+    }
+}
+
+fn run_scenario_envelope(
+    dir: &Path,
+    by_root: &ByRoot,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    node_id_raw: &str,
+) -> ExitCode {
+    let (node_ref, root, scenario) =
+        match resolve_node_ref(dir, by_root, file_results, node_id_raw) {
+            Ok(v) => v,
+            Err(code) => return code,
+        };
+    println!("project root: {}", root.display());
+    if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
+        let node_id = node_ref_to_id(&node_ref);
+        println!("envelope for {node_id}: unavailable -- {note}");
+        return ExitCode::SUCCESS;
+    }
+    match &node_ref {
+        NodeRef::Scene(key) => print_scene_envelope(&scenario, key),
+        NodeRef::Quest(id) => {
+            let Some(quest) =
+                scenario.docs.iter().flat_map(|(_, d)| d.quests.iter()).find(|q| &q.id == id)
+            else {
+                eprintln!("lute: internal error: quest `{id}` resolved but no declaration found");
+                return ExitCode::from(2);
+            };
+            print_quest_envelope(&scenario, id, quest);
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+/// Group `g`'s nodes into deterministic topological WAVES (Kahn's
+/// algorithm, but collecting every currently-zero-in-degree node as ONE
+/// layer at a time rather than draining a ready-queue one node at a time
+/// like [`lute_check::connectivity::assemble_graph`]'s own internal
+/// `topo_sort`) — a presentation concern specific to `lute scenario`'s
+/// graph view, layered here rather than in `lute-check` (which only needs
+/// the flat order). A node stuck in a prerequisite cycle never becomes
+/// ready and is simply absent from every layer (already `E-CONN-CYCLE`'s
+/// problem, reported by `check-project`, not this read-only view's).
+fn topo_layers(
+    g: &lute_check::connectivity::ConnGraph,
+) -> Vec<Vec<lute_check::connectivity::NodeId>> {
+    let mut in_degree: BTreeMap<lute_check::connectivity::NodeId, usize> =
+        g.nodes.keys().map(|id| (id.clone(), 0)).collect();
+    for targets in g.edges.values() {
+        for target in targets {
+            *in_degree.entry(target.clone()).or_insert(0) += 1;
+        }
+    }
+    let mut layers = Vec::new();
+    loop {
+        let mut ready: Vec<lute_check::connectivity::NodeId> = in_degree
+            .iter()
+            .filter(|&(_, &d)| d == 0)
+            .map(|(id, _)| id.clone())
+            .collect();
+        if ready.is_empty() {
+            break;
+        }
+        ready.sort();
+        for id in &ready {
+            in_degree.remove(id);
+            if let Some(targets) = g.edges.get(id) {
+                for target in targets {
+                    if let Some(d) = in_degree.get_mut(target) {
+                        *d -= 1;
+                    }
+                }
+            }
+        }
+        layers.push(ready);
+    }
+    layers
+}
+
+fn print_graph_for_root(root: &Path, graph: &lute_check::connectivity::ConnGraph) {
+    println!("project root: {}", root.display());
+    if graph.nodes.is_empty() {
+        println!("  (no scene/quest nodes)");
+        return;
+    }
+    let layers = topo_layers(graph);
+    println!("  topological layers:");
+    for (i, layer) in layers.iter().enumerate() {
+        let names: Vec<String> = layer.iter().map(|n| n.to_string()).collect();
+        println!("    layer {i}: {}", names.join(", "));
+    }
+    let layered: BTreeSet<lute_check::connectivity::NodeId> =
+        layers.iter().flatten().cloned().collect();
+    if layered.len() < graph.nodes.len() {
+        let stuck: Vec<String> = graph
+            .nodes
+            .keys()
+            .filter(|id| !layered.contains(id))
+            .map(|n| n.to_string())
+            .collect();
+        println!(
+            "    (unlayered -- part of a prerequisite cycle, E-CONN-CYCLE): {}",
+            stuck.join(", ")
+        );
+    }
+    println!("  edges (prerequisite -> dependent):");
+    let mut printed_any = false;
+    for (from, targets) in &graph.edges {
+        for to in targets {
+            println!("    {from} -> {to}");
+            printed_any = true;
+        }
+    }
+    if !printed_any {
+        println!("    (none)");
+    }
+}
+
+fn run_scenario_graph(by_root: &ByRoot) -> ExitCode {
+    if by_root.is_empty() {
+        println!("lute: no .lute files found");
+        return ExitCode::SUCCESS;
+    }
+    for (root, group_full) in by_root {
+        let docs: Vec<(PathBuf, lute_syntax::ast::Document)> =
+            group_full.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+        let key_set = lute_check::connectivity::scene_key_set(&docs);
+        let quest_ids = lute_check::connectivity::quest_id_set(&docs);
+        let (graph, _cycle_diags) =
+            lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
+        print_graph_for_root(root, &graph);
+    }
+    ExitCode::SUCCESS
+}
+
+/// `lute scenario` dispatch (dsl §5:571-584): reuses [`collect_project_docs`]
+/// — the SAME per-root doc collection `check-project` builds — then routes
+/// to the bare graph view, `reach`, or `envelope`.
+fn run_scenario(
+    dir: &Path,
+    providers: Option<&Path>,
+    command: Option<ScenarioCommand>,
+) -> ExitCode {
+    let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    match command {
+        None => run_scenario_graph(&by_root),
+        Some(ScenarioCommand::Reach { node_id }) => {
+            run_scenario_reach(dir, &by_root, &file_results, &node_id)
+        }
+        Some(ScenarioCommand::Envelope { node_id }) => {
+            run_scenario_envelope(dir, &by_root, &file_results, &node_id)
+        }
     }
 }
 
@@ -1323,7 +2750,19 @@ fn run_compile(
     let Some(input) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
-    match lute_compile::compile(&input) {
+    // Project-aware gate (connectivity spec §5): WITH `--project <dir>` the
+    // target compiles against its RECONCILED `check-project` verdict (an
+    // envelope-Guaranteed `run.*`/`user.*` read no longer blocks; a read no
+    // route guarantees blocks with `E-STATE-MAYBE-UNAVAILABLE`). WITHOUT it,
+    // the standalone single-file `check` gate, unchanged.
+    let compiled = match project {
+        Some(dir) => match project_gate_result(file, dir, providers) {
+            Ok(gate) => lute_compile::compile_with_check(&input, gate),
+            Err(code) => return code,
+        },
+        None => lute_compile::compile(&input),
+    };
+    match compiled {
         Ok(artifact) => {
             let mut s = match serde_json::to_string_pretty(&artifact) {
                 Ok(s) => s,
@@ -1477,7 +2916,18 @@ fn run_trace(
     };
 
     let mocks = merge(file_mocks, flag_mocks);
-    let (report, exit) = lute_trace::trace_document(&input, mocks);
+    // Project-aware gate (connectivity spec §5, mirrors `run_compile`): WITH
+    // `--project <dir>` trace gates on the target's RECONCILED `check-project`
+    // verdict; WITHOUT it, the standalone single-file `check` gate, unchanged.
+    // The D1 quarantine holds — reconciliation is pure graph math, never
+    // CEL/Datalog evaluation.
+    let (report, exit) = match project {
+        Some(dir) => match project_gate_result(file, dir, providers) {
+            Ok(gate) => lute_trace::trace_with_check(&input, gate, mocks),
+            Err(code) => return code,
+        },
+        None => lute_trace::trace_document(&input, mocks),
+    };
 
     match exit {
         TraceExit::Complete => {

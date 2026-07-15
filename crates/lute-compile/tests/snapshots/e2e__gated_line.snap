@@ -5,13 +5,13 @@ expression: json
 {
   "kind": "scene",
   "lute": "0.5.2",
-  "irVersion": "0.5.2",
+  "irVersion": "0.5.3",
   "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
   "meta": {
     "character": "sofia",
     "season": 1,
-    "episode": 1,
-    "episodeId": "s01ep01",
+    "episode": 5,
+    "episodeId": "s01ep05",
     "title": "The gated line"
   },
   "state": [
@@ -44,7 +44,7 @@ expression: json
       "role": "dialogue",
       "speaker": "sofia",
       "text": "You helped me back then. I've been meaning to thank you.",
-      "lineId": "sofia.s01ep01.sofia_0010",
+      "lineId": "sofia.s01ep05.sofia_0010",
       "voiceKey": "sofia-0010"
     },
     {
@@ -79,7 +79,7 @@ expression: json
       "role": "dialogue",
       "speaker": "sofia",
       "text": "You helped me back then. I've been meaning to thank you.",
-      "lineId": "sofia.s01ep01.sofia_0020",
+      "lineId": "sofia.s01ep05.sofia_0020",
       "voiceKey": "sofia-0020"
     },
     {

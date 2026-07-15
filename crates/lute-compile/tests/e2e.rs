@@ -301,6 +301,22 @@ fn gated_line() {
     golden("gated_line", "../../docs/examples/gated-line.lute", None);
 }
 
+/// Connectivity T15 grounding: the FIRST corpus example declaring `after`
+/// (dsl connectivity spec §2.2/§4.4/§7) -- `<quest after="visited('kestrel.s01ep01')">`
+/// routes through connected-intro.lute's canonical key. Proves T13's
+/// `prereqEdges` IR emission end-to-end against a REAL, otherwise-ordinary
+/// worked example (not just the synthetic unit fixtures in
+/// `lute-compile/src/lib.rs`'s own test module) -- the golden's
+/// `prereqEdges` entry carries the raw `after` text verbatim.
+#[test]
+fn connected_quest() {
+    golden(
+        "connected_quest",
+        "../../docs/examples/connected-quest.lute",
+        None,
+    );
+}
+
 /// The strengthened resolvability check must REJECT a dangling target — proving
 /// it is a genuine graph proof, not an "any 8-char string" shape check.
 #[test]

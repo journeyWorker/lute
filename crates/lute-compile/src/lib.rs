@@ -28,8 +28,8 @@ pub use ir::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_cel::CelArena;
-use lute_check::meta::StateSchema;
-use lute_check::{check, fold_env, CheckInput, DefTable, FoldedEnv, StageState};
+use lute_check::meta::{canonical_episode_id, canonical_episode_key, StateSchema};
+use lute_check::{check, fold_env, CheckInput, CheckResult, DefTable, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
@@ -40,18 +40,34 @@ use lute_syntax::ast::{Arm, Document, Node};
 pub const LUTE_LANG_VERSION: &str = "0.5.2";
 
 /// IR schema version stamped into the envelope's `irVersion` field (spec §4.1,
-/// A9). Bumped for the 0.3.0 relational schema/seed-facts/rules emission
-/// (D15); engines gate parsing on it.
-pub const LUTE_IR_VERSION: &str = "0.5.2";
+/// A9). Independent of [`LUTE_LANG_VERSION`] — bumped on its own for a pure
+/// IR-shape addition with no language-grammar change (connectivity T13:
+/// advisory `prereqEdges` emission); engines gate parsing on it.
+pub const LUTE_IR_VERSION: &str = "0.5.3";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
 /// compile-stage errors (`E-COMPILE-*`). Never panics.
 pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
+    compile_with_check(input, check(input))
+}
+
+/// Like [`compile`] but gated on a CALLER-SUPPLIED [`CheckResult`] instead of
+/// running `check(input)` itself — the seam the project-aware CLI gate
+/// (connectivity design spec §5) uses to feed the target document's RECONCILED
+/// `check-project` verdict: a `run.*`/`user.*` read the connectivity envelope
+/// proves Guaranteed no longer blocks with a standalone `E-MAYBE-UNSET`, and a
+/// read no route guarantees blocks with the project's error-grade
+/// `E-STATE-MAYBE-UNAVAILABLE`. [`compile`] itself is the thin wrapper
+/// `compile_with_check(input, check(input))`, so every existing caller is
+/// byte-identical. Never panics.
+pub fn compile_with_check(
+    input: &CheckInput,
+    result: CheckResult,
+) -> Result<Artifact, Vec<Diagnostic>> {
     // D6 gate: codegen runs only on a clean check, so every pass below may
     // RELY on checker-proven invariants (declared paths, exhaustiveness,
     // acyclic components, @ref arity, unique choice ids via E-CHOICE-DUP).
-    let result = check(input);
     if !result.ok {
         return Err(result.diagnostics);
     }
@@ -95,7 +111,12 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
             // (byte-identical to 0.1.0's single continuous back-fill
             // counter).
             let meta = artifact_meta(&doc, &folded);
-            let prefix = format!("{}.{}", meta.character, meta.episode_id);
+            // Shared with `lute-check::connectivity::scene_key_set` (T3, DRY):
+            // `meta.episode_id` is already resolved (authored or defaulted), so
+            // this call always takes the `Some` branch — byte-identical to the
+            // former inline `format!("{}.{}", meta.character, meta.episode_id)`.
+            let prefix =
+                canonical_episode_key(&meta.character, meta.season, meta.episode, Some(&meta.episode_id));
             let mut shots = Vec::new();
             let mut prev_shot = 0i64;
             for (i, shot) in doc.shots.iter().enumerate() {
@@ -164,6 +185,7 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
         seed_facts,
         rules,
         commands,
+        prereq_edges: prereq_edge_entries(&doc, &folded),
     })
 }
 
@@ -325,12 +347,14 @@ fn artifact_meta(doc: &Document, folded: &FoldedEnv) -> SceneMeta {
             .map(String::from)
     };
     let title = lookup("title");
-    // A4/A9: an authored, non-empty `episodeId` is used VERBATIM; otherwise the
-    // lowercase default `s{season:02}ep{episode:02}` — the byte-for-byte
-    // derivation input the address pass reuses for every lineId episode segment.
-    let episode_id = lookup("episodeId")
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| format!("s{season:02}ep{episode:02}"));
+    // A4/A9: derive the resolved `episodeId` component via the shared
+    // `canonical_episode_id` helper (DRY with `lute-check::connectivity`'s
+    // project-wide key set) — an authored, non-empty `episodeId` is used
+    // VERBATIM, otherwise the lowercase default `s{season:02}ep{episode:02}`
+    // is derived from `season`/`episode`. This is the same component
+    // [`canonical_episode_key`] joins onto `character` for the identity key
+    // the address pass reuses for every lineId episode segment.
+    let episode_id = canonical_episode_id(season, episode, lookup("episodeId").as_deref());
     SceneMeta {
         character,
         season,
@@ -338,6 +362,66 @@ fn artifact_meta(doc: &Document, folded: &FoldedEnv) -> SceneMeta {
         episode_id,
         title,
     }
+}
+
+/// Advisory connectivity IR (connectivity spec §2.6, A-hybrid, T13): this
+/// document's OWN raw declared `after` prerequisite formula(s), parallel to
+/// [`rel_entries`]'s DATA-only lowering (D1 — declarations only, no
+/// resolution/evaluation/interpretation). `compile` is single-document with
+/// no resolved project root, so this NEVER validates a `visited`/
+/// `completed` target, resolves it against any other document, or
+/// assembles a project-wide graph — those stay entirely in
+/// `check-project`/`lute scenario` (T3–T14).
+///
+/// **Raw means raw**: an entry is emitted whenever the `after` slot is
+/// AUTHORED (`Some(_)`), including an authored-but-empty `after: ""` /
+/// `after=""` — that entry's `after` field is then the empty string,
+/// verbatim. Deciding an empty string "isn't a declared prerequisite"
+/// (`PrereqState::Absent`, `check()`'s §6c gate) is itself an
+/// interpretation step, not a raw-declaration fact — it stays entirely on
+/// the checker/scenario side (T5/T12 already register attribute PRESENCE,
+/// `Some("")` included, as their own node-existence signal). This lowering
+/// mirrors ONLY presence, never emptiness-as-absence.
+///
+/// A scene doc contributes AT MOST ONE entry: its own frontmatter `after:`,
+/// keyed by its own canonical episode key ([`canonical_episode_key`]). A
+/// quest-pack doc contributes ONE entry per `<quest>` that carries an
+/// `after` attribute (attribute present, any text), keyed by that quest's
+/// id. Sorted by `node` (byte-stable determinism).
+fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntry> {
+    let mut out = Vec::new();
+    match folded.doc_kind {
+        lute_check::DocKind::Scene => {
+            if let Some(after) = folded.typed.after.as_deref() {
+                let character = folded.typed.character.clone().unwrap_or_default();
+                let season = folded.typed.season.unwrap_or(0);
+                let episode = folded.typed.episode.unwrap_or(0);
+                let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
+                let episode_id = raw
+                    .as_ref()
+                    .and_then(|m| m.get(serde_yaml::Value::String("episodeId".to_string())))
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let node = canonical_episode_key(&character, season, episode, episode_id.as_deref());
+                out.push(PrereqEdgeEntry {
+                    node,
+                    after: after.to_string(),
+                });
+            }
+        }
+        lute_check::DocKind::Quest => {
+            for quest in &doc.quests {
+                if let Some(after) = quest.after.as_deref() {
+                    out.push(PrereqEdgeEntry {
+                        node: quest.id.clone(),
+                        after: after.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| a.node.cmp(&b.node));
+    out
 }
 
 /// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1): `title`/
@@ -574,8 +658,11 @@ mod tests {
     }
 
     #[test]
-    fn ir_version_matches_language_version() {
-        assert_eq!(super::LUTE_IR_VERSION, "0.5.2");
+    fn lang_and_ir_version_stamps() {
+        // §T13: `LUTE_IR_VERSION` is bumped independently of
+        // `LUTE_LANG_VERSION` for a pure IR-shape addition — the two are no
+        // longer required to match.
+        assert_eq!(super::LUTE_IR_VERSION, "0.5.3");
         assert_eq!(super::LUTE_LANG_VERSION, "0.5.2");
     }
 
@@ -586,7 +673,7 @@ mod tests {
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
         assert_eq!(v["lute"], "0.5.2");
-        assert_eq!(v["irVersion"], "0.5.2");
+        assert_eq!(v["irVersion"], "0.5.3");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");
@@ -611,5 +698,88 @@ mod tests {
                 "{k} must be skipped when empty (spec §2)"
             );
         }
+    }
+
+    /// Scene text with `character: x, season: 1, episode: 1` (canonical key
+    /// `x.s01ep01`, no `episodeId` authored) plus `after_line` appended
+    /// verbatim to the frontmatter (e.g. `after: 'visited("y.s01ep01")'`).
+    fn raw_scene_with(after_line: &str) -> lute_check::CheckInput {
+        test_input(&format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{after_line}\n---\n## Shot 1.\n@narrator: hi\n"
+        ))
+    }
+
+    fn raw_scene_no_after() -> lute_check::CheckInput {
+        test_input("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n")
+    }
+
+    /// A quest-pack doc with two `<quest>` declarations, only the first
+    /// (`hasAfter`) carrying an `after` attribute.
+    fn raw_quest_pack_with_one_after() -> lute_check::CheckInput {
+        test_input(
+            "---\nkind: quest\n---\n\n\
+             <quest id=\"hasAfter\" after=\"visited('y.s01ep01')\">\n\
+             <objective id=\"o1\" done=\"true\"/>\n\
+             </quest>\n\n\
+             <quest id=\"noAfter\">\n\
+             <objective id=\"o1\" done=\"true\"/>\n\
+             </quest>\n",
+        )
+    }
+
+    #[test]
+    fn artifact_emits_prereq_edges_when_after_declared() {
+        let input = raw_scene_with("after: 'visited(\"y.s01ep01\")'"); // this scene's key = x.s01ep01
+        let art = super::compile(&input).unwrap();
+        let v = serde_json::to_value(&art).unwrap();
+        assert_eq!(v["prereqEdges"][0]["node"], serde_json::json!("x.s01ep01"));
+        assert_eq!(
+            v["prereqEdges"][0]["after"],
+            serde_json::json!("visited(\"y.s01ep01\")")
+        );
+    }
+
+    #[test]
+    fn quest_pack_emits_one_edge_per_after_quest() {
+        let art = super::compile(&raw_quest_pack_with_one_after()).unwrap();
+        let v = serde_json::to_value(&art).unwrap();
+        assert_eq!(v["prereqEdges"].as_array().unwrap().len(), 1);
+        assert_eq!(v["prereqEdges"][0]["node"], serde_json::json!("hasAfter"));
+        assert_eq!(
+            v["prereqEdges"][0]["after"],
+            serde_json::json!("visited('y.s01ep01')")
+        );
+    }
+
+    #[test]
+    fn artifact_emits_prereq_edge_with_empty_after_verbatim_when_authored() {
+        // An authored-but-empty `after: ''` is a PRESENT declaration — the
+        // IR emits it verbatim (raw means raw); only `check()`'s own
+        // Absent-vs-declared interpretation treats it as no prerequisite,
+        // and that interpretation never crosses into this raw IR layer.
+        let art = super::compile(&raw_scene_with("after: ''")).unwrap();
+        let v = serde_json::to_value(&art).unwrap();
+        assert_eq!(v["prereqEdges"].as_array().unwrap().len(), 1);
+        assert_eq!(v["prereqEdges"][0]["node"], serde_json::json!("x.s01ep01"));
+        assert_eq!(v["prereqEdges"][0]["after"], serde_json::json!(""));
+    }
+
+    #[test]
+    fn quest_pack_emits_edge_for_empty_after_attribute_present() {
+        let art = super::compile(&test_input(
+            "---\nkind: quest\n---\n\n<quest id=\"q\" after=\"\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n",
+        ))
+        .unwrap();
+        let v = serde_json::to_value(&art).unwrap();
+        assert_eq!(v["prereqEdges"].as_array().unwrap().len(), 1);
+        assert_eq!(v["prereqEdges"][0]["node"], serde_json::json!("q"));
+        assert_eq!(v["prereqEdges"][0]["after"], serde_json::json!(""));
+    }
+
+    #[test]
+    fn artifact_omits_prereq_edges_when_absent() {
+        let art = super::compile(&raw_scene_no_after()).unwrap();
+        let v = serde_json::to_value(&art).unwrap();
+        assert!(v.get("prereqEdges").is_none()); // skip_serializing_if = Vec::is_empty
     }
 }

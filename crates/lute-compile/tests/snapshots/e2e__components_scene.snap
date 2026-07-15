@@ -5,13 +5,13 @@ expression: json
 {
   "kind": "scene",
   "lute": "0.5.2",
-  "irVersion": "0.5.2",
+  "irVersion": "0.5.3",
   "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
   "meta": {
     "character": "demo",
     "season": 1,
-    "episode": 1,
-    "episodeId": "s01ep01"
+    "episode": 2,
+    "episodeId": "s01ep02"
   },
   "state": [],
   "commands": [
@@ -44,7 +44,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "A familiar face steps into the light.",
-      "lineId": "demo.s01ep01.narrator_0010",
+      "lineId": "demo.s01ep02.narrator_0010",
       "source": {
         "component": "greet"
       }
@@ -55,7 +55,7 @@ expression: json
       "role": "narration",
       "speaker": "narrator",
       "text": "And the scene carries on.",
-      "lineId": "demo.s01ep01.narrator_0020"
+      "lineId": "demo.s01ep02.narrator_0020"
     }
   ]
 }

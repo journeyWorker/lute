@@ -1,0 +1,34 @@
+---
+kind: scene
+character: kestrel
+season: 1
+episode: 2
+title: Back at the Overlook
+after: 'visited("kestrel.s01ep01")'
+state:
+  run.sawOverlook: { type: bool }
+---
+
+/*
+  Connectivity worked example (dsl connectivity spec §2.3/§4.3): declares
+  `after` against connected-intro.lute's canonical key, then READS
+  `run.sawOverlook` -- a run-tier path with NO schema default -- as a
+  content-line `when=` guard. `kestrel.s01ep01` is the ONLY declared route
+  reaching this scene and it unconditionally sets `run.sawOverlook`, so the
+  read is Guaranteed under the project envelope (T8-T11): `lute
+  check-project` proves this clean end to end (T5 graph assembly, T6
+  reachability, the T8-T11 cross-scene guarantee), and `lute scenario
+  envelope kestrel.s01ep02` prints `run.sawOverlook` under its Guaranteed
+  table. NOTE: standalone `lute check`/`lute compile` on THIS file alone
+  cannot see that project-wide guarantee (single-file `check()` has no
+  project graph) -- they correctly report the read as maybe-unset in
+  isolation, so this scene is NOT itself a compile golden. T13's raw IR
+  `prereqEdges` emission (this scene's own `after` text, verbatim) is
+  demonstrated instead by the sibling `connected-quest.lute`, which IS
+  standalone-clean and compiles.
+*/
+
+## Shot 1.
+
+@kestrel{when="run.sawOverlook"}: The overlook again -- funny how a place can pull you back.
+@narrator: The tide has turned since this morning.

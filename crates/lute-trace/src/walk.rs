@@ -33,7 +33,7 @@ use lute_cel::CelArena;
 use lute_check::cel_expand::{expand_cel, DefTable};
 use lute_check::ctx::Env as CheckEnv;
 use lute_check::meta::StateSchema;
-use lute_check::{CheckInput, Ctx};
+use lute_check::{CheckInput, CheckResult, Ctx};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
@@ -1370,8 +1370,25 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
 /// report + exit code. Never panics — every degrade path returns a
 /// (possibly empty) report alongside the appropriate [`TraceExit`].
 pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, TraceExit) {
+    trace_with_check(input, lute_check::check(input), mocks)
+}
+
+/// Like [`trace_document`] but gated on a CALLER-SUPPLIED [`CheckResult`]
+/// instead of running `lute_check::check(input)` itself — the seam the
+/// project-aware CLI gate (connectivity design spec §5) uses to feed the
+/// target document's RECONCILED `check-project` verdict, mirroring
+/// `lute_compile::compile_with_check`. The D1 quarantine is intact: the
+/// reconciliation is pure graph math the CLI performs, never CEL/Datalog
+/// evaluation, and `trace`'s evaluated subset is unchanged.
+/// [`trace_document`] is the thin wrapper
+/// `trace_with_check(input, lute_check::check(input), mocks)`, so every
+/// existing caller is byte-identical.
+pub fn trace_with_check(
+    input: &CheckInput,
+    result: CheckResult,
+    mocks: MockSet,
+) -> (TraceReport, TraceExit) {
     // 1. `check` gate (§4.3): any Error -> Refused, run check first.
-    let result = lute_check::check(input);
     if !result.ok {
         return (empty_report(&input.uri, &mocks), TraceExit::Refused(result.diagnostics));
     }
