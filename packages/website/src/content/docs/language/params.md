@@ -43,7 +43,7 @@ defs:
   chose:   { type: bool, params: { q: choiceRef, opt: choiceId }, cel: "scene.choices[q] == opt" }
 ```
 
-*(From [`docs/examples/showcase/schema/base.schema.yaml`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/schema/base.schema.yaml).)*
+*(From [`docs/examples/showcase/schema/base.schema.yaml`](https://github.com/KantoRegion/lute/blob/main/docs/examples/showcase/schema/base.schema.yaml).)*
 
 ```lute
 <match on="scene.affect.bianca">
@@ -52,7 +52,7 @@ defs:
 </match>
 ```
 
-*(Call site from [`docs/examples/showcase/episode01.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/episode01.lute); a minimal parameterized def is in [`docs/examples/param-def.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/param-def.lute).)*
+*(Call site from [`docs/examples/showcase/episode01.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/showcase/episode01.lute); a minimal parameterized def is in [`docs/examples/param-def.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/param-def.lute).)*
 
 ## Where defs live
 

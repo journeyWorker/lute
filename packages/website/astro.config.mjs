@@ -18,7 +18,7 @@ export default defineConfig({
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/journeyWorker/lute",
+          href: "https://github.com/KantoRegion/lute",
         },
       ],
       customCss: ["./src/styles/theme.css"],

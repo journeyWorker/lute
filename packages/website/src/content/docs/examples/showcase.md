@@ -3,7 +3,7 @@ title: Full-spec showcase
 description: A walkthrough of the self-contained showcase project — a full-feature episode plus hub and when-is companions that exercise every implemented Lute feature and check clean.
 ---
 
-The [`docs/examples/showcase/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) project is one self-contained scenario that exercises **every implemented Lute feature** end-to-end and checks clean:
+The [`docs/examples/showcase/`](https://github.com/KantoRegion/lute/tree/main/docs/examples/showcase) project is one self-contained scenario that exercises **every implemented Lute feature** end-to-end and checks clean:
 
 ```sh
 lute check docs/examples/showcase/episode01.lute --project docs/examples/showcase   # exit 0, 0 warnings
@@ -64,4 +64,4 @@ The companion to hub-demo: the same `<when is="…">` literal-pattern arms, but 
 </match>
 ```
 
-For the complete project — the plugin manifests, schemas, component, catalog, and the full feature→line map — see the [showcase directory and its README](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) in the repository.
+For the complete project — the plugin manifests, schemas, component, catalog, and the full feature→line map — see the [showcase directory and its README](https://github.com/KantoRegion/lute/tree/main/docs/examples/showcase) in the repository.

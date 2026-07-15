@@ -25,7 +25,7 @@ There is no separate monologue or prose node — role is derived from the speake
 @fixer{code="0010"}: I did.
 ```
 
-*(From [`docs/examples/showcase/episode01.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/episode01.lute).)*
+*(From [`docs/examples/showcase/episode01.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/showcase/episode01.lute).)*
 
 ## Line attributes
 
@@ -74,7 +74,7 @@ render time:
 @bianca{code="0010" emotion="delighted" variant="1"}: You came back! Warmth so far: {{run.affection}}.
 ```
 
-*(From [`docs/examples/showcase/hub-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/hub-demo.lute).)*
+*(From [`docs/examples/showcase/hub-demo.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/showcase/hub-demo.lute).)*
 
 `{{userName}}` is the always-available reserved token. Any other interpolation must name a
 **declared** state path; an interpolation is a *read* for definite-assignment analysis, so a

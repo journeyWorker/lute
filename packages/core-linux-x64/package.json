@@ -14,7 +14,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/journeyWorker/lute.git",
+    "url": "git+https://github.com/KantoRegion/lute.git",
     "directory": "packages/core-linux-x64"
   }
 }

@@ -27,7 +27,7 @@ params:
 @narrator: A familiar face steps into the light.
 ```
 
-*(From [`docs/examples/components/greet.component.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/components/greet.component.lute).)*
+*(From [`docs/examples/components/greet.component.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/components/greet.component.lute).)*
 
 A parameter is referenced as `@<param>` in ref and attribute positions, and inside content text via
 `{{@param}}` interpolation. `@who` binds to the invocation argument at expansion time — it is legal
@@ -52,7 +52,7 @@ components: [greet.component.lute]
 @narrator: And the scene carries on.
 ```
 
-*(From [`docs/examples/components/scene.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/components/scene.lute).)*
+*(From [`docs/examples/components/scene.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/components/scene.lute).)*
 
 `::use` expands the named component's body inline, binding each `@param` to the matching named arg;
 argument count and type are checked (`E-COMPONENT-ARG`), and naming a component from no imported
@@ -82,7 +82,7 @@ params:
 </match>
 ```
 
-*(From [`docs/examples/components/reaction.component.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/components/reaction.component.lute).)* The three arms cover the declared
+*(From [`docs/examples/components/reaction.component.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/components/reaction.component.lute).)* The three arms cover the declared
 enum and a param is never `unset`, so no `<otherwise>` is needed.
 
 ## Schema `extends:`
@@ -105,7 +105,7 @@ state:
   run.blessed: { type: bool, default: true }   # overrides the base default
 ```
 
-*(From [`docs/examples/child.schema.yaml`](https://github.com/journeyWorker/lute/blob/main/docs/examples/child.schema.yaml) and [`base.schema.yaml`](https://github.com/journeyWorker/lute/blob/main/docs/examples/base.schema.yaml).)*
+*(From [`docs/examples/child.schema.yaml`](https://github.com/KantoRegion/lute/blob/main/docs/examples/child.schema.yaml) and [`base.schema.yaml`](https://github.com/KantoRegion/lute/blob/main/docs/examples/base.schema.yaml).)*
 
 Precedence, low → high: a document's `extends` bases (recursively) < its `uses` peers < its own
 inline `state:`/`defs:`. When the extending layer redeclares a base name, it **overrides** it — no

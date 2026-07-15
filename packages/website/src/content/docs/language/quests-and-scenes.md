@@ -48,7 +48,7 @@ one or more `<quest>` declarations — quests forbid `<hub>`, `<timeline>`, and 
 </quest>
 ```
 
-*(From [`docs/examples/quest-grove.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-grove.lute).)*
+*(From [`docs/examples/quest-grove.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/quest-grove.lute).)*
 
 ### `<quest>`
 
@@ -86,4 +86,4 @@ Content elsewhere can also gate on quest lifecycle by reading the reserved `ques
 
 Quests can gate on relational facts too — `start="holds(inParty(shadowheart))"` — see
 [Facts & Datalog](/state/facts-and-datalog/) for the fact surface, worked in full by
-[`docs/examples/quest-rescue-halsin.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-rescue-halsin.lute).
+[`docs/examples/quest-rescue-halsin.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/quest-rescue-halsin.lute).
