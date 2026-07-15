@@ -614,6 +614,12 @@ unchanged. It does not deliver an envelope for quest activation inferred from `s
     `E-CONN-UNKNOWN-NODE`) does not block compiling this one — that stays `check-project`'s
     surface — but a fault on the target's own `after`/reads (unknown node, cycle membership, an
     unavailable read) does.
+    **Out-of-tree target (normative).** If `--project <dir>` is given but the canonicalized
+    target document is NOT within `<dir>`'s recursively-collected `.lute` set, the command
+    errors EXPLICITLY (the connectivity gate needs the target to be part of the project) rather
+    than silently falling back to a standalone `check` — a silent fallback would mask a
+    mistyped path or wrong `--project`. (Capability-only resolution of an out-of-tree document
+    is not combined with the project-aware connectivity gate.)
 - **New command — `lute scenario`, subcommands `reach` and `envelope`.** A proactive
   availability inventory, not merely a reactive diagnostic — this is the tool that answers
   "what can I rely on here," where `check-project`'s surface is error-only. Project-wide,
