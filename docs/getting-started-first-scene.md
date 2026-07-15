@@ -511,8 +511,10 @@ list. Each is a helpful catch, not a nuisance:
   `mira.s01ep01`?"*.
 - **`E-CONN-CYCLE`** — an unsatisfiable ordering among the scenes/quests in the offending chain
   (e.g. A `after` B `after` A, or quests waiting on each other): nothing in that chain can be
-  sequenced. It prints the offending chain. (Scenes/quests in *other*, acyclic parts of the
-  project are unaffected.)
+  sequenced. It prints the offending chain, and the bare `lute scenario` graph still isolates
+  exactly which nodes form the cycle. But until you break it, `reach`/`envelope` can't be
+  computed for *any* node in that project root — they need a complete ordering — which is why
+  `envelope` now reports the cycle instead of a silent empty table.
 - **`E-CONN-UNREACHABLE`** — a scene no declared route ever reaches; it can't be played as
   authored.
 - **`E-CONN-FORMULA-TOO-COMPLEX`** — an `after` formula with too many terms for the checker to
