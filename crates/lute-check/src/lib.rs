@@ -30,6 +30,15 @@ pub mod tag;
 pub mod temporal;
 pub mod timeline;
 
+/// The canonical Lute language-version string (dsl 0.6.1 §3, Appendix B).
+/// `lute-compile` stamps it into the artifact envelope's `lute` field (and
+/// re-exports it as `LUTE_LANG_VERSION`); `check()` compares it against a
+/// document's frontmatter `luteVersion` stamp for the `W-LUTE-VERSION-STALE`
+/// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
+/// checker can read it WITHOUT depending on the compiler — the crate
+/// dependency runs the other way (`lute-compile` → `lute-check`).
+pub const LUTE_LANG_VERSION: &str = "0.6.1";
+
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_paths::E_PATH_IDENT;
 pub use cel_message::{translate_cel_parse, Translation};
@@ -39,7 +48,7 @@ pub use cel_resolve::{
     check_cel_slot, check_rule_guards, E_CEL_PROFILE, E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT,
     E_VALIDAT_DERIVED,
 };
-pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved};
+pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved, W_LUTE_VERSION_STALE};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use datalog_check::{
@@ -67,6 +76,7 @@ pub use project_check::{
     W_QUEST_REF_UNKNOWN,
 };
 pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
+pub use producible::W_UNPROVEN_RELATIONAL;
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use schema_import::{resolve_imports, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner};

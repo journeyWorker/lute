@@ -9,7 +9,7 @@ params:
   cue: string
 ---
 
-## Scene 1.
+## The Stinger Beat
 
 /* `@cue` is legal in these attr positions because `mood`/`label` are
    `string`-typed core attrs (dsl Appendix A); a component body carries no state

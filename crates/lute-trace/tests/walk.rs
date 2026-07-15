@@ -81,7 +81,7 @@ fn auto_pick_and_forced_pick() {
 
     // No --choose: `help` auto-picked (first choice, doc order — none of
     // the 3 choices carry a `when=` guard, so all are trivially eligible);
-    // Shot 2's match fires arm 1 since the persist sugar wrote
+    // Shot 2's match fires arm 1 since the into sugar wrote
     // `run.metHelpfully = true`.
     let (report, exit) = trace_document(&input, MockSet::default());
     assert_complete(&exit);
@@ -352,12 +352,12 @@ fn writes_are_sequential() {
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
 
-    // The seeded `true` survives (`tip`'s persist writes run.tip, never
+    // The seeded `true` survives (`tip`'s into sugar writes run.tip, never
     // run.metHelpfully) — Shot 2 still takes arm 1.
     let m = report.decisions.iter().find(|d| d.construct == "match").expect("match decision");
     assert_eq!(m.outcome, "arm 1");
 
-    // AND the `tip` arm's own persist ::set (`run.tip = 5`) is visible in
+    // AND the `tip` arm's own into ::set (`run.tip = 5`) is visible in
     // the transcript — both effects hold at once (sequential in-flow
     // visibility never overwrites the earlier seed).
     let tip_set = report.steps.iter().find_map(|s| match s {
@@ -366,7 +366,7 @@ fn writes_are_sequential() {
     });
     let (value, sugar) = tip_set.expect("run.tip ::set must appear in the transcript");
     assert_eq!(value, "5");
-    assert!(sugar, "the tip persist write must be annotated as sugar");
+    assert!(sugar, "the tip into write must be annotated as sugar");
 }
 
 // ---------------------------------------------------------------------
@@ -652,4 +652,102 @@ fn builtin_lifecycle_event_still_refused_end_to_end() {
     let diags = assert_refused(&exit);
     assert_eq!(diags.len(), 1, "{diags:?}");
     assert_eq!(diags[0].code, "E-TRACE-EVENT", "{diags:?}");
+}
+
+// ---------------------------------------------------------------------
+// spec §4 (0.6.1): `W-TRACE-MOCK-UNPRODUCIBLE` — a mock fact over a
+// relation `producible()` judges NOT producible warns (never refuses); a
+// seeded/reserved relation stays silent. Warning rides the §3.1 `notes`
+// surface, so the exit code is per the walk outcome, unchanged.
+// ---------------------------------------------------------------------
+
+/// `orphan` has no `facts:` seed, no `::assert` site, and is not `reserved`
+/// — `producible(orphan) == false`, so a supplied mock over it can never
+/// arise from authored producers. A warning note fires; the walk still
+/// completes (exit 0), since no guard reads `orphan`.
+#[test]
+fn mock_fact_over_unproducible_relation_warns() {
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+                entities:\n  character: { members: [halsin] }\n\
+                relations:\n  orphan: { args: [character] }\n\
+                ---\n\
+                ## Shot 1.\n\
+                @narrator: hi\n";
+    let input = input_for(text, "unproducible", Path::new("."));
+    let mocks = MockSet { facts: vec!["orphan(halsin)".to_string()], ..Default::default() };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("W-TRACE-MOCK-UNPRODUCIBLE") && n.contains("`orphan`")),
+        "expected an unproducible warning naming `orphan`: {:?}",
+        report.notes
+    );
+}
+
+/// A relation with a schema `facts:` seed is producible (base case (a)) —
+/// a mock over it is a legitimate reachable answer, no warning.
+#[test]
+fn mock_fact_over_seeded_relation_is_silent() {
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+                entities:\n  character: { members: [halsin] }\n\
+                relations:\n  seeded: { args: [character] }\n\
+                facts:\n  - \"seeded(halsin)\"\n\
+                ---\n\
+                ## Shot 1.\n\
+                @narrator: hi\n";
+    let input = input_for(text, "seeded", Path::new("."));
+    let mocks = MockSet { facts: vec!["seeded(halsin)".to_string()], ..Default::default() };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert!(
+        !report.notes.iter().any(|n| n.contains("W-TRACE-MOCK-UNPRODUCIBLE")),
+        "a seeded relation is producible and must not warn: {:?}",
+        report.notes
+    );
+}
+
+/// A `reserved: true` relation is producible by definition (base case (b),
+/// engine-populated out-of-band) — a mock over it never warns.
+#[test]
+fn mock_fact_over_reserved_relation_is_silent() {
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+                entities:\n  character: { members: [halsin] }\n\
+                relations:\n  flagged: { args: [character], reserved: true }\n\
+                ---\n\
+                ## Shot 1.\n\
+                @narrator: hi\n";
+    let input = input_for(text, "reserved", Path::new("."));
+    let mocks = MockSet { facts: vec!["flagged(halsin)".to_string()], ..Default::default() };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert!(
+        !report.notes.iter().any(|n| n.contains("W-TRACE-MOCK-UNPRODUCIBLE")),
+        "a reserved relation is producible by definition and must not warn: {:?}",
+        report.notes
+    );
+}
+
+/// A mock fact over a relation with a reachable `::assert` site is
+/// producible (base case (c), conservative all-sites) — no warning, proving
+/// the assert-site collection feeds `producible()`.
+#[test]
+fn mock_fact_over_asserted_relation_is_silent() {
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+                entities:\n  character: { members: [halsin] }\n\
+                relations:\n  seen: { args: [character] }\n\
+                ---\n\
+                ## Shot 1.\n\
+                ::assert{seen(halsin)}\n";
+    let input = input_for(text, "asserted", Path::new("."));
+    let mocks = MockSet { facts: vec!["seen(halsin)".to_string()], ..Default::default() };
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+    assert!(
+        !report.notes.iter().any(|n| n.contains("W-TRACE-MOCK-UNPRODUCIBLE")),
+        "a relation with a live `::assert` site is producible and must not warn: {:?}",
+        report.notes
+    );
 }

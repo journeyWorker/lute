@@ -1698,14 +1698,14 @@ fn exhaustive_match_subject_spans_recurses_into_nested_constructs() {
 }
 
 #[test]
-fn envelope_soundness_exhaustive_match_subject_after_choice_persist_stays_clean() {
+fn envelope_soundness_exhaustive_match_subject_after_choice_record_stays_clean() {
     // The EXACT bug shape this task's corpus grounding found and fixed
     // (`showcase/episode01.lute`'s `run.sofaOutcome`), distinct from
     // `standalone_clean_file_not_newly_errored` above (which covers an
     // UNCONDITIONAL local `::set` before the read -- proven by
     // `intersect_all` directly, never touching the exhaustive-match
     // exemption at all): `x6` writes `run.pick` on ONLY ONE of two
-    // unconditional `<branch>` choices via `persist="run" into="run.pick"`
+    // unconditional `<branch>` choices via `into="run.pick"` (0.6.0 §2 record sugar)
     // (so `intersect_all` does NOT prove it guaranteed -- the OTHER choice
     // never writes it), then reads it as the subject of a
     // domain-exhaustive `<match on="run.pick">` with `<otherwise>`
@@ -1718,7 +1718,7 @@ fn envelope_soundness_exhaustive_match_subject_after_choice_persist_stays_clean(
     let x6 = "---\nkind: scene\ncharacter: x6\nseason: 1\nepisode: 1\nstate:\n  \
               run.pick: { type: { enum: [warm, cold] } }\n---\n## Shot 1.\n\
               <branch id=\"br\">\n\
-              <choice id=\"a\" label=\"warm\" persist=\"run\" into=\"run.pick\" value=\"warm\">\n\
+              <choice id=\"a\" label=\"warm\" into=\"run.pick\" value=\"warm\">\n\
               @narrator: chose warm\n\
               </choice>\n\
               <choice id=\"b\" label=\"skip\">\n\
@@ -1744,7 +1744,7 @@ fn envelope_soundness_exhaustive_match_subject_after_choice_persist_stays_clean(
     let proj = check_project_fixture(&[("x6.lute", x6)]);
     assert!(
         !proj.iter().any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
-        "a `<choice persist>`-written path consumed by an exhaustive `<match>` subject must \
+        "a `<choice into>`-written path consumed by an exhaustive `<match>` subject must \
          never be reclassified against the project envelope: {proj:?}"
     );
 }

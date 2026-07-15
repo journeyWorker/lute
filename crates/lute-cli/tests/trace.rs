@@ -15,7 +15,7 @@ fn trace(args: &[&str]) -> std::process::Output {
 
 // --- §4.6 worked example: `docs/examples/choice-persist.lute`
 // `--choose sofaHelp=help` -> exit 0; the transcript names the branch
-// decision, the persist-sugar `::set`, the arm-1 match decision, and the
+// decision, the into-sugar `::set`, the arm-1 match decision, and the
 // trailing coverage summary ("choices 1/3", "arms 1/2").
 
 #[test]
@@ -33,8 +33,8 @@ fn choice_persist_worked_example() {
         "missing branch decision line: {stdout}"
     );
     assert!(
-        stdout.contains("::set  run.metHelpfully = true  (persist sugar)"),
-        "missing persist-sugar ::set: {stdout}"
+        stdout.contains("::set  run.metHelpfully = true  (into sugar)"),
+        "missing into-sugar ::set: {stdout}"
     );
     assert!(
         stdout.contains("<match run.metHelpfully>") && stdout.contains("-> arm 1"),

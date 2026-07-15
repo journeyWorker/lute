@@ -28,13 +28,11 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
     };
     let mut state = StageState::default();
     let mut shots = Vec::new();
-    let mut prev = 0i64;
     for (i, shot) in doc.shots.iter().enumerate() {
         let mut em = Emitter::default();
         state = walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut Vec::new());
-        let authored = shot.number.unwrap_or(i as i64 + 1);
-        let shot_no = authored.max(prev + 1);
-        prev = shot_no;
+        // dsl 0.6.0 §3.2: positional 1-based shot number.
+        let shot_no = i as i64 + 1;
         let (recs, trailing) = em.finish();
         shots.push(ShotRecords {
             shot: shot_no,
@@ -83,11 +81,12 @@ fn addrs_are_dense_per_shot_and_labels_resolve() {
             c.addr_mut().clone()
         })
         .collect();
-    // Shot 1: two lines. Shot 4 (authored number): line, line, choice header,
-    // arm records + jumps.
+    // Shot 1: two lines. The second shot's `## Shot 4.` heading is now opaque
+    // (dsl 0.6.0 §3.2): the "4" is ignored, its number is its position (2) —
+    // line, line, choice header, arm records + jumps.
     assert_eq!(addrs[0], "001-0100");
     assert_eq!(addrs[1], "001-0200");
-    assert_eq!(addrs[2], "004-0100");
+    assert_eq!(addrs[2], "002-0100");
     // +100 gaps, strictly increasing within each shot.
     for w in addrs.windows(2) {
         assert!(w[0] < w[1], "addr order: {w:?}");
@@ -100,7 +99,7 @@ fn addrs_are_dense_per_shot_and_labels_resolve() {
             assert_eq!(t.len(), 8, "addr shape: {t}");
         });
     }
-    // The branch is the LAST node of shot 4: its converge resolved to the
+    // The branch is the LAST node of the second shot (positional shot 2): its
     // one-past-end addr (plan spec-gap note 2).
     let Some(Command::Choice(choice)) = cmds.iter().find(|c| matches!(c, Command::Choice(_)))
     else {
@@ -110,13 +109,13 @@ fn addrs_are_dense_per_shot_and_labels_resolve() {
         let mut last = cmds.last().unwrap().clone();
         last.addr_mut().clone()
     };
-    let expected_past_end = format!("004-{:04}", last_addr[4..].parse::<i64>().unwrap() + 100);
+    let expected_past_end = format!("002-{:04}", last_addr[4..].parse::<i64>().unwrap() + 100);
     assert_eq!(choice.converge, expected_past_end);
     // Option targets point at the arms' first records.
     let Command::Line(blunt_line) = &cmds[5] else {
         panic!("{:#?}", cmds)
     };
-    assert_eq!(choice.options[0].target, "004-0400");
+    assert_eq!(choice.options[0].target, "002-0400");
     assert_eq!(blunt_line.text, "Oh!");
 }
 

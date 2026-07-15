@@ -9,7 +9,7 @@ episode: 2
 components: [greet.component.lute]
 ---
 
-## Shot 1.
+## Greeting by Component
 
 /* `::use` expands the named component's body inline, binding each `@param` to
    the matching named arg (count + type checked, §13.3). */

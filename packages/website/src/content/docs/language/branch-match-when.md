@@ -28,7 +28,7 @@ into the reserved path `scene.choices.<branchId>`, which a later `<match>` can r
 
 A branch id must be unique within the episode, and a branch must contain at least one **unguarded**
 choice so the menu is never provably empty (`E-BRANCH-ALL-GUARDED`). Choice mechanics — `when`
-guards, the `persist` sugar, and revisit `<hub>`s — are covered in
+guards, the `into=` run-record sugar, and revisit `<hub>`s — are covered in
 [Choices & hubs](/language/choices-and-hubs/).
 
 ## `<match>` — state dispatch

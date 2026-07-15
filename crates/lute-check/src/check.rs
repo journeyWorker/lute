@@ -859,6 +859,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
             }
         }
     }
+    // dsl 0.6.1 §3: frontmatter `luteVersion` freshness signal (a stale copied
+    // stamp), independent of every other meta check — D13 keeps `luteVersion`
+    // capability-unvalidated, so this warning is its ONLY treatment.
+    diags.extend(check_lute_version_stale(&folded.typed, &doc.meta));
     // 0.4.0 T4 (§5.2 whole-document reachability pass): E-ARM-DEAD (dead
     // guard + subsumption) + W-OTHERWISE-DEAD.
     diags.extend(check_reachability(&doc, &folded));
@@ -921,6 +925,44 @@ pub fn check(input: &CheckInput) -> CheckResult {
     }
 }
 
+/// dsl 0.6.1 §3: a document's frontmatter `luteVersion` stamp is present but
+/// differs from the toolchain's [`crate::LUTE_LANG_VERSION`].
+pub const W_LUTE_VERSION_STALE: &str = "W-LUTE-VERSION-STALE";
+
+/// dsl 0.6.1 §3: the freshness signal. Fires `W-LUTE-VERSION-STALE` when the
+/// frontmatter `luteVersion` stamp is PRESENT and differs from the toolchain's
+/// [`crate::LUTE_LANG_VERSION`] — a warning-grade catch for a model
+/// reproducing a stale stamp copied from an older example. D13 stands:
+/// `luteVersion` is never validated against capabilities, so this is the ONLY
+/// treatment it gets. An ABSENT key is clean (no stamp to be stale); a
+/// CURRENT stamp is clean. `Layer::Content` (a frontmatter-key concern, same
+/// layer `parse_meta_kind`'s own meta diagnostics use). The span points at the
+/// `luteVersion:` key ([`crate::meta::meta_key_span`]).
+fn check_lute_version_stale(
+    typed: &crate::meta::TypedMeta,
+    meta: &lute_syntax::ast::Meta,
+) -> Option<Diagnostic> {
+    let stamped = typed.lute_version.as_deref()?;
+    if stamped == crate::LUTE_LANG_VERSION {
+        return None;
+    }
+    Some(Diagnostic {
+        code: W_LUTE_VERSION_STALE.to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "frontmatter `luteVersion: \"{stamped}\"` is stale — this toolchain is Lute \
+             {current}; update the stamp to `luteVersion: \"{current}\"` (dsl 0.6.1 §3)",
+            current = crate::LUTE_LANG_VERSION
+        ),
+        span: crate::meta::meta_key_span(meta, "luteVersion"),
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    })
+}
+
 /// The per-node validator walk. Holds the read-only capability surface and the
 /// mutable diagnostic/table/suppression accumulators; `Ctx` is passed per level
 /// so `in_match`/`match_subject` can be toggled for `<match>` arms without
@@ -938,10 +980,9 @@ struct Walker<'a> {
     timeline_tables: Vec<ResolvedTimeline>,
     /// Resolved `components:` table (dsl §13): the target of `::use` invocations.
     components: &'a ComponentSet,
-    /// The raw document source (finding 4): `choice_into_no_persist_diag`
-    /// needs to confirm a preceding byte is genuinely whitespace before its
-    /// "remove into=" fixit deletes it, rather than assuming a separator is
-    /// always there.
+    /// The raw document source: `persist_removed_diag` reads it to widen the
+    /// `E-PERSIST-REMOVED` deletion fixit onto one adjacent whitespace
+    /// separator (dsl §4.5), so no stray double space is left behind.
     src: &'a str,
     /// dsl 0.4.0 §6.2/§6.3: this document's OWN declared `params:` domains,
     /// non-empty ONLY for a STANDALONE `MetaKind::Component` self-check (the
@@ -1022,7 +1063,7 @@ impl Walker<'_> {
                     self.check_attr_refs(&b.attrs, ctx, None);
                     for choice in &b.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
-                        check_choice_persist(choice, ctx, self.src, &mut self.diags);
+                        check_choice_record(choice, ctx, self.src, &mut self.diags);
                         // §7.6: a `<choice label>` string MAY embed `{{…}}`
                         // interpolations. Labels are String attrs, so their interps
                         // are not in the AST — scan and validate them via the same
@@ -1151,12 +1192,12 @@ impl Walker<'_> {
                     // implicit `scene.choices.*` + `scene.visited.*` decl folding
                     // happened in the pre-pass (`fold_branches`); here we only
                     // validate the hub's own attrs and recurse into each choice
-                    // (attrs, persist sugar, `when` guard, body) so the B1–B5
+                    // (attrs, record sugar, `when` guard, body) so the B1–B5
                     // node checks apply inside hub arms too (dsl §7.3.2).
                     self.check_attr_refs(&h.attrs, ctx, None);
                     for choice in &h.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
-                        check_choice_persist(choice, ctx, self.src, &mut self.diags);
+                        check_choice_record(choice, ctx, self.src, &mut self.diags);
                         // §7.6: hub choice labels carry `{{…}}` interpolations too
                         // (same as branch choices) — validate their referents.
                         check_interps(
@@ -1585,7 +1626,7 @@ fn use_arg_ok(ty: &Type, value: &AttrValue, ctx: &Ctx<'_>) -> bool {
             None => true, // unresolvable ref — conservative, never flag
         },
         _ if matches!(ty, Type::ProviderRef(_)) => matches!(value, AttrValue::Str(_)),
-        _ => persist_literal(ty, value).is_some_and(|lit| type_accepts(ty, &lit)),
+        _ => into_literal(ty, value).is_some_and(|lit| type_accepts(ty, &lit)),
     }
 }
 
@@ -2280,129 +2321,111 @@ fn dfs_use_cycle(
     done.insert(node.to_string());
 }
 
-/// Diagnostic codes for the `<choice … persist="run">` run-fact sugar (dsl §11.1.1).
-const E_PERSIST_TARGET: &str = "E-PERSIST-TARGET";
-const E_PERSIST_MISSING_INTO: &str = "E-PERSIST-MISSING-INTO";
-const E_PERSIST_VALUE: &str = "E-PERSIST-VALUE";
-const E_PERSIST_CONFLICT: &str = "E-PERSIST-CONFLICT";
+/// Diagnostic codes for the `<choice … into="run.<path>">` run-record sugar
+/// (dsl 0.6.0 §2). `into=` alone records; the `persist=` attribute was REMOVED
+/// in 0.6.0 (`E-PERSIST-REMOVED`, §2.2), carrying a machine-applicable deletion.
+const E_PERSIST_REMOVED: &str = "E-PERSIST-REMOVED";
+const E_INTO_TARGET: &str = "E-INTO-TARGET";
+const E_INTO_UNDECLARED: &str = "E-INTO-UNDECLARED";
+const E_INTO_VALUE: &str = "E-INTO-VALUE";
+const W_INTO_SET_DUP: &str = "W-INTO-SET-DUP";
 
-/// `W-CHOICE-INTO-NO-PERSIST` (dsl 0.4 §7.3): the into⇒persist sugar was
-/// deliberately DROPPED (0.4.0 §7.3, §3 B1–B3) — a `<choice>` carrying `into=`
-/// with no `persist=` PARSES and checks clean today but records nothing at
-/// runtime, a silent no-op trap. `Severity::Warning` (B4: never flips
-/// `res.ok`) so it never blocks a document; `lute fix` MUST NOT auto-migrate
-/// either remedy (D16) since both change the author's meaning.
-const W_CHOICE_INTO_NO_PERSIST: &str = "W-CHOICE-INTO-NO-PERSIST";
-
-/// Validate a `<choice>`'s run-fact promotion sugar (dsl §11.1.1):
-/// `persist="run" into="run.<path>" [value="<lit>"]` records a NAMED, declared
-/// `run.*` fact when the choice is selected. The sugar is EXACTLY a
-/// `::set{run.<path> = <value>}` appended to the arm — the engine materializes
-/// the write, so the checker only validates well-formedness. A `<choice>` with
-/// no `persist` attr is untouched. The `persist`/`into`/`value` attrs are
-/// recognized here, so they are never reported as unknown/extra. (The persist
-/// target attribute is `into`, renamed from 0.0.1 `as`; `as` survives only on
-/// content lines as the display-label override, §7.1 — untouched here.)
-fn check_choice_persist(choice: &Choice, ctx: &Ctx<'_>, src: &str, diags: &mut Vec<Diagnostic>) {
-    // Only choices carrying a `persist` attr participate.
-    let Some(persist) = choice.attrs.iter().find(|a| a.key == "persist") else {
-        // §7.3: the into⇒persist sugar was dropped — a bare `into=` with no
-        // `persist=` is a silent no-op (it parses and checks clean today but
-        // records nothing), so name the trap instead of implying the write.
-        if let Some(into_attr) = choice.attrs.iter().find(|a| a.key == "into") {
-            diags.push(choice_into_no_persist_diag(into_attr, src));
-        }
-        return;
-    };
-    // Rule 1 (§11.1.1): cross-episode facts live in `run.*`, so `persist` MUST
-    // be `"run"`.
-    if str_attr(persist) != Some("run") {
-        diags.push(persist_diag(
-            E_PERSIST_TARGET,
-            "`persist` must be `\"run\"`: cross-episode facts live in the `run.*` \
-             namespace (dsl §11.1.1)"
-                .to_string(),
-            choice.span,
-        ));
-        return;
+/// Validate a `<choice>`'s run-record sugar (dsl 0.6.0 §2): `into="run.<path>"
+/// [value="<lit>"]` records a NAMED, declared `run.*` fact when the choice is
+/// selected. The sugar is EXACTLY a `::set{run.<path> = <value>}` appended to
+/// the arm — the engine materializes the write, so the checker only validates
+/// well-formedness. `into=` ALONE drives the record now: the two-attribute
+/// `persist="run" into=…` idiom of ≤0.5.2 is gone, so a `<choice>` carrying any
+/// `persist=` attr is `E-PERSIST-REMOVED` (§2.2), migrated by deleting it. A
+/// `<choice>` with no `into=` records nothing and is untouched. The
+/// `persist`/`into`/`value` attrs are recognized here, so they are never
+/// reported as unknown/extra. (The record target attribute is `into`, renamed
+/// from 0.0.1 `as`; `as` survives only on content lines as the display-label
+/// override, §7.1 — untouched here.)
+fn check_choice_record(choice: &Choice, ctx: &Ctx<'_>, src: &str, diags: &mut Vec<Diagnostic>) {
+    // §2.2: `persist=` was REMOVED in 0.6.0 — any `persist=` attr (whatever its
+    // value) is an error carrying a machine-applicable deletion fixit; `into=`
+    // alone now records. Recognizing it here (rather than falling through to an
+    // unknown-attr report) keeps `E-PERSIST-REMOVED` the sole report for it.
+    if let Some(persist) = choice.attrs.iter().find(|a| a.key == "persist") {
+        diags.push(persist_removed_diag(persist, src));
     }
-    // Rule 2: `into` is REQUIRED and MUST name a `run.*` path.
+    // The record sugar is driven by `into=` alone (§2.1). A `<choice>` with no
+    // `into=` records nothing and is untouched.
     let Some(into_attr) = choice.attrs.iter().find(|a| a.key == "into") else {
-        diags.push(persist_diag(
-            E_PERSIST_MISSING_INTO,
-            "`persist=\"run\"` requires `into=\"run.<path>\"` naming the run fact to record \
-             (dsl §11.1.1)"
-                .to_string(),
-            choice.span,
-        ));
         return;
     };
     let Some(into_path) = str_attr(into_attr) else {
-        diags.push(persist_diag(
-            E_PERSIST_TARGET,
-            "`into` must be a `run.<path>` string literal (dsl §11.1.1)".to_string(),
+        diags.push(into_diag(
+            E_INTO_TARGET,
+            "`into` must be a `run.<path>` string literal (dsl 0.6.0 §2.2)".to_string(),
             choice.span,
+            Severity::Error,
         ));
         return;
     };
+    // §2.2: cross-episode records live in the `run.*` namespace.
     if into_path
         .strip_prefix("run.")
         .filter(|rest| !rest.is_empty())
         .is_none()
     {
-        diags.push(persist_diag(
-            E_PERSIST_TARGET,
+        diags.push(into_diag(
+            E_INTO_TARGET,
             format!(
                 "`into=\"{into_path}\"` must name a `run.<path>` fact (a bare `run` or a \
-                 non-`run.*` path is not a valid run target) (dsl §11.1.1)"
+                 non-`run.*` path is not a valid run target) (dsl 0.6.0 §2.2)"
             ),
             choice.span,
+            Severity::Error,
         ));
         return;
     }
-    // Rule 3 (§9.2/§11.1.1): the `into` path MUST already be declared in the
-    // merged schema — a typo'd/undeclared `into` cannot silently create a field.
+    // §2.2: the `into` path MUST already be declared in the run schema — a
+    // typo'd/undeclared `into` cannot silently create a field.
     let Some(ty) = resolve_type(into_path, &ctx.env.state) else {
-        diags.push(persist_diag(
-            "E-UNDECLARED",
+        diags.push(into_diag(
+            E_INTO_UNDECLARED,
             format!(
-                "persist target `{into_path}` is not declared in the run schema (dsl §11.1.1); \
+                "`into=\"{into_path}\"` is not declared in the run schema (dsl 0.6.0 §2.2); \
                  an undeclared/typo'd `into` cannot create a field"
             ),
             choice.span,
+            Severity::Error,
         ));
         return;
     };
-    // Rule 4 (§11.1.1): the `value` policy depends on the declared type.
-    check_persist_value(
+    // §2.2 rule 4: the `value` policy depends on the declared type.
+    check_into_value(
         ty,
         choice.attrs.iter().find(|a| a.key == "value"),
         into_path,
         choice.span,
         diags,
     );
-    // Rule 5: the arm must not already `::set` the same path — the persist write
+    // §2.2: the arm must not already `::set` the same path — the record write
     // would duplicate it.
     if choice
         .body
         .iter()
         .any(|n| matches!(n, Node::Set(s) if s.path == into_path))
     {
-        diags.push(persist_diag(
-            E_PERSIST_CONFLICT,
+        diags.push(into_diag(
+            W_INTO_SET_DUP,
             format!(
-                "the choice arm already `::set`s `{into_path}`, which `persist=\"run\" \
-                 into=\"{into_path}\"` also writes (dsl §11.1.1)"
+                "the choice arm already `::set`s `{into_path}`, which `into=\"{into_path}\"` \
+                 also records (dsl 0.6.0 §2.2)"
             ),
             choice.span,
+            Severity::Warning,
         ));
     }
 }
 
-/// Rule 4 of the persist sugar (§11.1.1): a `bool` path's `value` is OPTIONAL
-/// (defaults to `true`) and, when present, MUST be a bool literal; every other
-/// path (`number`/`enum`/…) REQUIRES a type-compatible literal.
-fn check_persist_value(
+/// Rule 4 of the record sugar (dsl 0.6.0 §2.2): a `bool` path's `value` is
+/// OPTIONAL (defaults to `true`) and, when present, MUST be a bool literal;
+/// every other path (`number`/`enum`/…) REQUIRES a type-compatible literal.
+fn check_into_value(
     ty: &Type,
     value: Option<&Attr>,
     into_path: &str,
@@ -2410,38 +2433,41 @@ fn check_persist_value(
     diags: &mut Vec<Diagnostic>,
 ) {
     let accepted =
-        |v: &Attr| persist_literal(ty, &v.value).is_some_and(|lit| type_accepts(ty, &lit));
+        |v: &Attr| into_literal(ty, &v.value).is_some_and(|lit| type_accepts(ty, &lit));
     match ty {
         Type::Bool => {
             if let Some(v) = value {
                 if !accepted(v) {
-                    diags.push(persist_diag(
-                        E_PERSIST_VALUE,
+                    diags.push(into_diag(
+                        E_INTO_VALUE,
                         format!(
                             "`value` for the bool path `{into_path}` must be a bool literal \
-                             (`true`/`false`) (dsl §11.1.1)"
+                             (`true`/`false`) (dsl 0.6.0 §2.2)"
                         ),
                         span,
+                        Severity::Error,
                     ));
                 }
             }
         }
         _ => match value {
-            None => diags.push(persist_diag(
-                E_PERSIST_VALUE,
+            None => diags.push(into_diag(
+                E_INTO_VALUE,
                 format!(
                     "`value` is required for `{into_path}` (only a `bool` path defaults to \
-                     `true`) (dsl §11.1.1)"
+                     `true`) (dsl 0.6.0 §2.2)"
                 ),
                 span,
+                Severity::Error,
             )),
-            Some(v) if !accepted(v) => diags.push(persist_diag(
-                E_PERSIST_VALUE,
+            Some(v) if !accepted(v) => diags.push(into_diag(
+                E_INTO_VALUE,
                 format!(
                     "`value` is not compatible with the declared type of `{into_path}` \
-                     (dsl §11.1.1)"
+                     (dsl 0.6.0 §2.2)"
                 ),
                 span,
+                Severity::Error,
             )),
             Some(_) => {}
         },
@@ -2457,16 +2483,16 @@ fn str_attr(attr: &Attr) -> Option<&str> {
     }
 }
 
-/// Coerce a persist `value` attr into a manifest [`Literal`] *in the resolved
-/// target type's domain* so [`type_accepts`] can judge it — mirroring the
-/// directive attr coercion (`directives::literal_of`). A `number` target parses
-/// the string as `f64`; a `bool` target accepts the bare `value` ident or the
-/// strings `"true"`/`"false"`; every other target (`enum`/`str`/…) keeps the
-/// value VERBATIM as [`Literal::Str`], so an enum member spelled like a bool or
-/// number (`"true"`, `"3"`) still resolves by string membership. Returns `None`
-/// when the value cannot inhabit the target's shape (a hard type error) or is a
-/// `@ref`.
-fn persist_literal(ty: &Type, v: &AttrValue) -> Option<Literal> {
+/// Coerce an `into` record `value` attr into a manifest [`Literal`] *in the
+/// resolved target type's domain* so [`type_accepts`] can judge it — mirroring
+/// the directive attr coercion (`directives::literal_of`). A `number` target
+/// parses the string as `f64`; a `bool` target accepts the bare `value` ident
+/// or the strings `"true"`/`"false"`; every other target (`enum`/`str`/…) keeps
+/// the value VERBATIM as [`Literal::Str`], so an enum member spelled like a bool
+/// or number (`"true"`, `"3"`) still resolves by string membership. Returns
+/// `None` when the value cannot inhabit the target's shape (a hard type error)
+/// or is a `@ref`.
+fn into_literal(ty: &Type, v: &AttrValue) -> Option<Literal> {
     match (ty, v) {
         (Type::Number, AttrValue::Str(s)) => s.parse::<f64>().ok().map(Literal::Num),
         (Type::Bool, AttrValue::BoolTrue) => Some(Literal::Bool(true)),
@@ -2482,11 +2508,13 @@ fn persist_literal(ty: &Type, v: &AttrValue) -> Option<Literal> {
     }
 }
 
-/// Build a `Layer::Logic` diagnostic for the persist sugar (a §11 branch check).
-fn persist_diag(code: &str, message: String, span: Span) -> Diagnostic {
+/// Build a `Layer::Logic` diagnostic for the choice record sugar (a dsl 0.6.0
+/// §2 branch check); `severity` is `Error` for the `E-INTO-*` gates and
+/// `Warning` for `W-INTO-SET-DUP`.
+fn into_diag(code: &str, message: String, span: Span, severity: Severity) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
-        severity: Severity::Error,
+        severity,
         message,
         span,
         layer: Layer::Logic,
@@ -2497,58 +2525,64 @@ fn persist_diag(code: &str, message: String, span: Span) -> Diagnostic {
     }
 }
 
-/// Build the `W-CHOICE-INTO-NO-PERSIST` diagnostic (dsl 0.4 §7.3) for a
-/// `<choice>` carrying `into_attr` with no sibling `persist=`. `Severity::
-/// Warning` (B4: never flips `res.ok`). Two `"refactor"` fixits (D16) name
-/// BOTH remedies so an author picks one via an LSP code action (Task 15) —
-/// `lute fix` can never apply either by construction, since `fix_document`
-/// (fix.rs) doesn't read checker diagnostics at all: (1) insert `persist=
-/// "run" ` immediately before `into=`; (2) delete the dead `into=` attr,
-/// plus its one preceding separator byte (dsl §4.5 attrs are whitespace-
-/// separated) so no stray double space is left behind — but ONLY when that
-/// preceding byte genuinely IS whitespace (finding 4): `into=` MAY be the
-/// tag's first attr, with no whitespace-separated byte before it at all
-/// within the attr list; unconditionally removing "the byte before" would
-/// eat whatever (non-whitespace) byte sits there instead and corrupt the
-/// source. `src` is the raw document text the checker is validating.
-fn choice_into_no_persist_diag(into_attr: &Attr, src: &str) -> Diagnostic {
-    let insert_at = into_attr.span.byte_start;
-    let remove_start = match insert_at.checked_sub(1).and_then(|i| src.as_bytes().get(i)) {
-        Some(b' ' | b'\t') => insert_at - 1,
-        _ => insert_at,
-    };
+/// Build the `E-PERSIST-REMOVED` diagnostic (dsl 0.6.0 §2.2) for a `<choice>`
+/// carrying a `persist=` attr — the attribute was REMOVED in 0.6.0; `into=`
+/// alone records now. ONE `"migrate"` fixit deletes the whole attr plus one
+/// adjacent separating space (dsl §4.5 attrs are whitespace-separated, so no
+/// stray double space is left behind), `confidence` 100. `kind: "migrate"` so
+/// `lute fix` applies it unprompted in the shape it can prove (§2.3 — the
+/// deletion is meaning-preserving in BOTH directions for a `persist="run"` +
+/// `into=` pair). Mirrors `fix.rs`'s `widen_removed_attr` (trailing separator
+/// preferred) so the LSP fixit and `lute fix` yield byte-identical output.
+/// `src` is the raw document text the checker is validating.
+fn persist_removed_diag(persist_attr: &Attr, src: &str) -> Diagnostic {
+    let (start, end) = widen_attr_delete(
+        src.as_bytes(),
+        persist_attr.span.byte_start,
+        persist_attr.span.byte_end,
+    );
     Diagnostic {
-        code: W_CHOICE_INTO_NO_PERSIST.to_string(),
-        severity: Severity::Warning,
-        message: "`into=` without `persist=` records nothing — add `persist=\"run\"` to persist \
-                   the fact, or remove the dead `into=` (dsl 0.4 §7.3)"
+        code: E_PERSIST_REMOVED.to_string(),
+        severity: Severity::Error,
+        message: "the `persist` attribute was removed in 0.6.0 — `into=` alone now records \
+                  the run fact (dsl 0.6.0 §2.2)"
             .to_string(),
-        span: into_attr.span,
+        span: persist_attr.span,
         layer: Layer::Logic,
-        fixits: vec![
-            Fixit {
-                title: "add persist=\"run\"".to_string(),
-                kind: "refactor".to_string(),
-                edit: vec![TextEdit {
-                    span: zeroed_span(insert_at, insert_at),
-                    new_text: "persist=\"run\" ".to_string(),
-                }],
-                confidence: 100,
-            },
-            Fixit {
-                title: "remove into=".to_string(),
-                kind: "refactor".to_string(),
-                edit: vec![TextEdit {
-                    span: zeroed_span(remove_start, into_attr.span.byte_end),
-                    new_text: String::new(),
-                }],
-                confidence: 100,
-            },
-        ],
+        fixits: vec![Fixit {
+            title: "remove persist=".to_string(),
+            kind: "migrate".to_string(),
+            edit: vec![TextEdit {
+                span: zeroed_span(start, end),
+                new_text: String::new(),
+            }],
+            confidence: 100,
+        }],
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
     }
+}
+
+/// Widen a to-be-deleted attr's `[start, end)` byte span to also swallow ONE
+/// adjacent whitespace separator (dsl §4.5): deleting a first/middle attr among
+/// siblings leaves no stray double space, and deleting the last leaves no stray
+/// space before `>`/`}`. Prefers the TRAILING separator, falling back to the
+/// LEADING one — identical to `fix.rs`'s `widen_removed_attr` so the LSP fixit
+/// and `lute fix` agree byte-for-byte.
+fn widen_attr_delete(bytes: &[u8], start: usize, end: usize) -> (usize, usize) {
+    let mut new_end = end;
+    while new_end < bytes.len() && matches!(bytes[new_end], b' ' | b'\t') {
+        new_end += 1;
+    }
+    if new_end > end {
+        return (start, new_end);
+    }
+    let mut new_start = start;
+    while new_start > 0 && matches!(bytes[new_start - 1], b' ' | b'\t') {
+        new_start -= 1;
+    }
+    (new_start, end)
 }
 
 /// A byte-range `Span` with `line`/`column`/`utf16_range` left zeroed — the
@@ -3052,8 +3086,8 @@ fn first_backtick_token(message: &str) -> Option<&str> {
 /// Re-derive every diagnostic's `line`/`column`/`utf16_range` from its byte
 /// offsets through one shared [`TextIndex`], so both the CLI and the LSP report
 /// identical positions (the divergence golden). Every fixit `TextEdit` span
-/// gets the same treatment — a fixit-carrying diagnostic (`W-CHOICE-INTO-
-/// NO-PERSIST`, Task 12) can leave its edit spans zeroed exactly like the
+/// gets the same treatment — a fixit-carrying diagnostic (`E-PERSIST-REMOVED`,
+/// dsl 0.6.0 §2.2) can leave its edit spans zeroed exactly like the
 /// house zero-then-normalize convention for `d.span` itself. Offsets are
 /// clamped to the text length defensively; they are within bounds by
 /// construction.
@@ -3108,70 +3142,96 @@ mod persist_fixit_tests {
         Span { byte_start, byte_end, line: 0, column: 0, utf16_range: (0, 0) }
     }
 
-    /// Finding 4: `choice_into_no_persist_diag`'s "remove into=" fixit always
-    /// removed the byte immediately before `into_attr.span.byte_start`,
-    /// assuming it is always the whitespace attr separator (dsl §4.5). That
-    /// assumption is unvalidated — if a caller ever hands it an `into` attr
-    /// whose preceding byte ISN'T whitespace (e.g. a `{` opening delimiter),
-    /// the fixit corrupts the source by eating that byte too. This is a
-    /// white-box unit test (`choice_into_no_persist_diag` is crate-private)
-    /// constructing a synthetic `Attr` to prove the fixit's edit span never
-    /// eats a non-whitespace preceding byte, independent of whether today's
-    /// grammar happens to always separate `<choice>` attrs with whitespace.
-    #[test]
-    fn remove_into_fixit_never_eats_a_non_whitespace_preceding_byte() {
-        let src = "{into=\"run.x\"}";
-        let into_start = src.find("into").unwrap();
-        let into_end = src.rfind('"').unwrap() + 1;
-        let value_start = src.find('"').unwrap() + 1;
-        let value_end = src.rfind('"').unwrap();
-        let into_attr = Attr {
-            key: "into".to_string(),
-            value: AttrValue::Str("run.x".to_string()),
-            value_span: mkspan(value_start, value_end),
-            span: mkspan(into_start, into_end),
-        };
-        let diag = choice_into_no_persist_diag(&into_attr, src);
-        let remove = diag
-            .fixits
-            .iter()
-            .find(|f| f.title == "remove into=")
-            .expect("a \"remove into=\" fixit");
-        let edit = &remove.edit[0];
-        let mut spliced = src.to_string();
-        spliced.replace_range(edit.span.byte_start..edit.span.byte_end, &edit.new_text);
-        assert_eq!(
-            spliced, "{}",
-            "removing into= must preserve the preceding `{{` — it is not a \
-             whitespace separator: got {spliced:?}"
-        );
+    fn persist_attr(src: &str) -> Attr {
+        let p_start = src.find("persist").unwrap();
+        let p_end = p_start + "persist=\"run\"".len();
+        Attr {
+            key: "persist".to_string(),
+            value: AttrValue::Str("run".to_string()),
+            value_span: mkspan(p_start + 9, p_end - 1),
+            span: mkspan(p_start, p_end),
+        }
     }
 
-    /// The ordinary case (a real whitespace separator, as `<choice>` attrs
-    /// always are today) must still remove exactly that one byte — no
-    /// stray double space left behind.
+    /// `E-PERSIST-REMOVED`'s `"migrate"` fixit deletes the whole `persist=` attr
+    /// plus its ONE trailing whitespace separator (dsl §4.5) when the attr sits
+    /// among siblings — no stray double space left behind, and the code/kind/
+    /// confidence match the §2.3 auto-apply contract.
     #[test]
-    fn remove_into_fixit_still_removes_a_real_preceding_space() {
-        let src = "<choice id=\"a\" into=\"run.x\">";
-        let into_start = src.find("into").unwrap();
-        let into_end = src.rfind('"').unwrap() + 1;
-        let value_start = src.rfind('"').map(|_| src.find("into").unwrap() + 6).unwrap();
-        let value_end = src.rfind('"').unwrap();
-        let into_attr = Attr {
-            key: "into".to_string(),
-            value: AttrValue::Str("run.x".to_string()),
-            value_span: mkspan(value_start, value_end),
-            span: mkspan(into_start, into_end),
-        };
-        let diag = choice_into_no_persist_diag(&into_attr, src);
-        let remove = diag
-            .fixits
-            .iter()
-            .find(|f| f.title == "remove into=")
-            .expect("a \"remove into=\" fixit");
-        let edit = &remove.edit[0];
+    fn persist_removed_fixit_deletes_attr_and_trailing_space() {
+        let src = "<choice id=\"a\" persist=\"run\" into=\"run.x\">";
+        let diag = persist_removed_diag(&persist_attr(src), src);
+        assert_eq!(diag.code, E_PERSIST_REMOVED);
+        assert_eq!(diag.severity, Severity::Error);
+        let fx = &diag.fixits[0];
+        assert_eq!(fx.kind, "migrate", "lute fix auto-applies only `migrate` fixits");
+        assert_eq!(fx.confidence, 100);
+        let edit = &fx.edit[0];
+        let mut spliced = src.to_string();
+        spliced.replace_range(edit.span.byte_start..edit.span.byte_end, &edit.new_text);
+        assert_eq!(spliced, "<choice id=\"a\" into=\"run.x\">", "got {spliced:?}");
+    }
+
+    /// When `persist=` is the LAST attr (no trailing whitespace to take), the
+    /// fixit falls back to the LEADING separator so no stray space is left
+    /// before `>`.
+    #[test]
+    fn persist_removed_fixit_falls_back_to_leading_space_when_last() {
+        let src = "<choice id=\"a\" persist=\"run\">";
+        let diag = persist_removed_diag(&persist_attr(src), src);
+        let edit = &diag.fixits[0].edit[0];
         let mut spliced = src.to_string();
         spliced.replace_range(edit.span.byte_start..edit.span.byte_end, &edit.new_text);
         assert_eq!(spliced, "<choice id=\"a\">", "got {spliced:?}");
+    }
+}
+
+#[cfg(test)]
+mod lute_version_tests {
+    use super::*;
+
+    fn meta(raw: &str) -> lute_syntax::ast::Meta {
+        lute_syntax::ast::Meta {
+            raw_yaml: raw.to_string(),
+            span: Span { byte_start: 0, byte_end: raw.len(), line: 1, column: 1, utf16_range: (0, 0) },
+        }
+    }
+
+    /// dsl 0.6.1 §3: a PRESENT `luteVersion` stamp differing from the
+    /// toolchain version warns, naming both the stale stamp and the current
+    /// version (the fix).
+    #[test]
+    fn stale_stamp_warns() {
+        let typed = crate::meta::TypedMeta {
+            lute_version: Some("0.5.0".to_string()),
+            ..Default::default()
+        };
+        let d = check_lute_version_stale(&typed, &meta("luteVersion: \"0.5.0\"\n"))
+            .expect("a stale stamp must warn");
+        assert_eq!(d.code, W_LUTE_VERSION_STALE);
+        assert_eq!(d.severity, Severity::Warning);
+        assert!(d.message.contains("0.5.0"), "names the stale stamp: {}", d.message);
+        assert!(
+            d.message.contains(crate::LUTE_LANG_VERSION),
+            "names the current version: {}",
+            d.message
+        );
+    }
+
+    /// A stamp matching the toolchain version is clean (nothing stale).
+    #[test]
+    fn current_stamp_clean() {
+        let typed = crate::meta::TypedMeta {
+            lute_version: Some(crate::LUTE_LANG_VERSION.to_string()),
+            ..Default::default()
+        };
+        assert!(check_lute_version_stale(&typed, &meta("")).is_none());
+    }
+
+    /// An ABSENT `luteVersion` key is clean — no stamp to be stale (D13).
+    #[test]
+    fn absent_stamp_clean() {
+        let typed = crate::meta::TypedMeta::default();
+        assert!(check_lute_version_stale(&typed, &meta("")).is_none());
     }
 }

@@ -102,6 +102,17 @@ pub const E_TRACE_EVENT: &str = "E-TRACE-EVENT";
 /// needs no accept (§4.3/§4.4).
 pub const E_TRACE_ACCEPT: &str = "E-TRACE-ACCEPT";
 
+/// spec §4 (0.6.1): a WARNING — not a refusal — for a supplied `--fact`/mock-
+/// YAML fact whose relation `lute_check::producible::producible()` judges NOT
+/// producible. The mocked answer can never arise from authored producers, so a
+/// "complete" walk seeded with it proves nothing about reachable play. A
+/// `reserved: true` / `open: engine`-argument relation is producible by
+/// definition (0.4.0 §4.2, already encoded in `producible()`) and never warns.
+/// Surfaced through the §3.1 additive `notes` key (report.rs), NEVER a
+/// `Diagnostic` on the Refused path — the exit code is unchanged (D1: the mock
+/// is a hypothesis; the checker's `producible()` computes, trace only displays).
+pub const W_TRACE_MOCK_UNPRODUCIBLE: &str = "W-TRACE-MOCK-UNPRODUCIBLE";
+
 /// A malformed `--mock` YAML file: bad syntax, or a top-level shape that
 /// does not match §4.3's `state:`/`facts:`/`choose:`/`events:` contract.
 /// Not an Appendix A code (no worked-example fixture cites it) — the CLI

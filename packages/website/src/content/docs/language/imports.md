@@ -16,7 +16,7 @@ episode: 3
 uses: state.schema.yaml
 ---
 
-## Shot 1.
+## Carrying the Choice Forward
 
 @narrator: Previously, a choice was made.
 

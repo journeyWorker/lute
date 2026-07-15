@@ -97,7 +97,7 @@ struct Flow {
     /// writes ∪ `apply_condition` guard-proofs — unchanged read-satisfaction
     /// lattice; drives `E-MAYBE-UNSET` exactly as before this change.
     available: Assigned,
-    /// `::set` / `<choice persist>` WRITES only — the envelope guaranteed-
+    /// `::set` / `<choice into>` record WRITES only — the envelope guaranteed-
     /// write must-set (`crate::envelope::guaranteed`).
     writes: Assigned,
 }
@@ -106,7 +106,7 @@ struct Flow {
 ///
 /// Returns the diagnostics, the final end-of-document WRITE-ONLY `Assigned`
 /// set — the must-write join (`intersect_flows`) of every execution path's
-/// `::set`/persist-sugar writes, i.e. every path provably WRITTEN on ALL
+/// `::set`/record-sugar writes, i.e. every path provably WRITTEN on ALL
 /// paths through `nodes` (guard-proofs, `isSet`/`has`, still drive
 /// `E-MAYBE-UNSET` internally via the `available` lattice but are NOT part
 /// of this set; the envelope layer's `crate::envelope::guaranteed`,
@@ -311,29 +311,27 @@ fn walk_set(
     }
 }
 
-/// `<choice persist="run" into="run.<path>">` (dsl §11.1.1) is EXACTLY a
-/// `::set{into = value}` appended to the arm WHEN the choice is selected
-/// (`envelope::scan_choice_persist` mirrors this same sugar for `P`).
-/// Well-formedness (persist=="run", declared `into`, …) is `check_choice_
-/// persist`'s job (check.rs) — this only recovers the target path when both
-/// attrs are present. Applied AFTER the arm body walk (by every caller) so it
-/// cannot retroactively satisfy a read of the same path INSIDE the body; it
-/// enters both `available` and `writes` exactly like a `::set`.
-fn choice_persist_target(choice: &Choice) -> Option<&str> {
-    let persists = choice.attrs.iter().any(|a| a.key == "persist");
-    if !persists {
-        return None;
-    }
+/// `<choice into="run.<path>">` (dsl 0.6.0 §2) is EXACTLY a `::set{into =
+/// value}` appended to the arm WHEN the choice is selected
+/// (`envelope::scan_choice_record` mirrors this same sugar for `P`).
+/// Well-formedness (declared `run.*` `into`, value policy, …) is
+/// `check_choice_record`'s job (check.rs) — this only recovers the target path
+/// when `into=` is a plain string. `into=` ALONE drives the record now (the
+/// `persist=` attr was removed in 0.6.0). Applied AFTER the arm body walk (by
+/// every caller) so it cannot retroactively satisfy a read of the same path
+/// INSIDE the body; it enters both `available` and `writes` exactly like a
+/// `::set`.
+fn choice_record_target(choice: &Choice) -> Option<&str> {
     choice.attrs.iter().find(|a| a.key == "into").and_then(|into| match &into.value {
         AttrValue::Str(path) => Some(path.as_str()),
         _ => None,
     })
 }
 
-/// Apply a choice's persist-sugar write (if any) to `flow`, AFTER its body has
-/// already been walked by the caller — see [`choice_persist_target`].
-fn apply_choice_persist(choice: &Choice, flow: &mut Flow) {
-    if let Some(target) = choice_persist_target(choice) {
+/// Apply a choice's record-sugar write (if any) to `flow`, AFTER its body has
+/// already been walked by the caller — see [`choice_record_target`].
+fn apply_choice_record(choice: &Choice, flow: &mut Flow) {
+    if let Some(target) = choice_record_target(choice) {
         flow.available.insert(target.to_string());
         flow.writes.insert(target.to_string());
     }
@@ -361,7 +359,7 @@ fn walk_branch(
         // shows only when the guard holds), so check against the post-guard arm.
         check_label_reads(&choice.label, schema, &arm.available, choice.span, diags, reads);
         walk_nodes(&choice.body, schema, &mut arm, diags, reads);
-        apply_choice_persist(choice, &mut arm);
+        apply_choice_record(choice, &mut arm);
         arm_finals.push(arm);
     }
     if has_unconditional && !arm_finals.is_empty() {
@@ -396,8 +394,8 @@ fn walk_hub(
         // with the rest of the fork.
         check_label_reads(&choice.label, schema, &arm.available, choice.span, diags, reads);
         walk_nodes(&choice.body, schema, &mut arm, diags, reads);
-        apply_choice_persist(choice, &mut arm);
-        // arm (and any persist write) discarded — a hub never folds back.
+        apply_choice_record(choice, &mut arm);
+        // arm (and any record write) discarded — a hub never folds back.
     }
 }
 
@@ -884,54 +882,54 @@ mod tests {
         );
     }
 
-    // ---- RevT8 P1 Fix 2: `<choice persist>` sugar is an arm-flow write -----
+    // ---- RevT8 P1 Fix 2: `<choice into>` record sugar is an arm-flow write --
 
     #[test]
-    fn persist_sugar_write_satisfies_a_later_read() {
-        // `<choice persist="run" into="run.x">` (dsl §11.1.1) is sugar for an
-        // appended `::set{run.x = …}` on selection. A sole/unconditional
-        // choice always runs, so its persist write must satisfy a read AFTER
-        // the branch exactly like an ordinary `::set` would — and land in the
-        // returned guaranteed WRITE set.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" persist=\"run\" into=\"run.x\" value=\"1\">\n@narrator: pick\n</choice>\n</branch>\n::set{run.out = run.x}\n";
+    fn record_sugar_write_satisfies_a_later_read() {
+        // `<choice into="run.x">` (dsl 0.6.0 §2) is sugar for an appended
+        // `::set{run.x = …}` on selection. A sole/unconditional choice always
+        // runs, so its record write must satisfy a read AFTER the branch
+        // exactly like an ordinary `::set` would — and land in the returned
+        // guaranteed WRITE set. `into=` alone drives the record now.
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" into=\"run.x\" value=\"1\">\n@narrator: pick\n</choice>\n</branch>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
-            "unconditional persist should satisfy the later read (no false positive), got {errs:?}"
+            "unconditional record should satisfy the later read (no false positive), got {errs:?}"
         );
         assert!(
             assigned.contains("run.x"),
-            "persist target should join the guaranteed WRITE set, got {assigned:?}"
+            "record target should join the guaranteed WRITE set, got {assigned:?}"
         );
     }
 
     #[test]
-    fn persist_sugar_does_not_satisfy_a_read_inside_its_own_body() {
-        // The persist write is applied AFTER the choice body (mirrors the
+    fn record_sugar_does_not_satisfy_a_read_inside_its_own_body() {
+        // The record write is applied AFTER the choice body (mirrors the
         // engine appending the write on selection) — it must NOT retroactively
         // satisfy a read of the same path INSIDE that same body.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" persist=\"run\" into=\"run.x\" value=\"1\">\n::set{run.out = run.x}\n</choice>\n</branch>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" into=\"run.x\" value=\"1\">\n::set{run.out = run.x}\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
         let (errs, _assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(
             errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
-            "a read inside the persisting choice's own body must still flag, got {errs:?}"
+            "a read inside the recording choice's own body must still flag, got {errs:?}"
         );
     }
 
     #[test]
-    fn exhaustive_persist_on_every_branch_arm_enters_guaranteed_writes() {
-        // Every `<branch>` arm persists `run.x` (one guarded, one
-        // unconditional so the branch is exhaustive) -> `run.x` must join the
-        // returned guaranteed WRITE set, exactly like an exhaustive `::set`.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" persist=\"run\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" persist=\"run\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
+    fn exhaustive_record_on_every_branch_arm_enters_guaranteed_writes() {
+        // Every `<branch>` arm records `run.x` (one guarded, one unconditional
+        // so the branch is exhaustive) -> `run.x` must join the returned
+        // guaranteed WRITE set, exactly like an exhaustive `::set`.
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
         assert!(
             assigned.contains("run.x"),
-            "an exhaustive per-arm persist should join the guaranteed WRITE set, got {assigned:?}"
+            "an exhaustive per-arm record should join the guaranteed WRITE set, got {assigned:?}"
         );
     }
 }

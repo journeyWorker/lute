@@ -37,13 +37,16 @@ use lute_syntax::ast::{Arm, Document, Node};
 
 /// Language-version pin stamped into the artifact envelope's `lute` field (DSL
 /// 0.2.0). Distinct from [`LUTE_IR_VERSION`], the IR schema version.
-pub const LUTE_LANG_VERSION: &str = "0.5.2";
+/// Re-exported from `lute-check` (its canonical [`lute_check::LUTE_LANG_VERSION`]),
+/// which owns the string so the checker can read it for `W-LUTE-VERSION-STALE`
+/// without a dependency on this crate (the dependency runs the other way).
+pub use lute_check::LUTE_LANG_VERSION;
 
 /// IR schema version stamped into the envelope's `irVersion` field (spec §4.1,
 /// A9). Independent of [`LUTE_LANG_VERSION`] — bumped on its own for a pure
 /// IR-shape addition with no language-grammar change (connectivity T13:
 /// advisory `prereqEdges` emission); engines gate parsing on it.
-pub const LUTE_IR_VERSION: &str = "0.5.3";
+pub const LUTE_IR_VERSION: &str = "0.6.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -118,16 +121,14 @@ pub fn compile_with_check(
             let prefix =
                 canonical_episode_key(&meta.character, meta.season, meta.episode, Some(&meta.episode_id));
             let mut shots = Vec::new();
-            let mut prev_shot = 0i64;
             for (i, shot) in doc.shots.iter().enumerate() {
                 let mut em = cfg::Emitter::default();
                 // Top-level per-shot walk: no CFG continuation past the shot end.
                 state = stage::walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut diags);
-                // Authored shot number when present; strictly increasing guard
-                // keeps addrs unique if headings repeat or regress.
-                let authored = shot.number.unwrap_or(i as i64 + 1);
-                let shot_no = authored.max(prev_shot + 1);
-                prev_shot = shot_no;
+                // dsl 0.6.0 §3.2: a shot's number is its 1-based document
+                // position. Authored numbers and the monotone guard are removed
+                // (the quest path was already positional).
+                let shot_no = i as i64 + 1;
                 let (recs, trailing) = em.finish();
                 shots.push(address::ShotRecords {
                     shot: shot_no,
@@ -659,11 +660,12 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // §T13: `LUTE_IR_VERSION` is bumped independently of
-        // `LUTE_LANG_VERSION` for a pure IR-shape addition — the two are no
-        // longer required to match.
-        assert_eq!(super::LUTE_IR_VERSION, "0.5.3");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.5.2");
+        // dsl 0.6.1 Appendix B: both stamps advance to 0.6.1 for this
+        // compatible refinement (verification-coverage signals + warning
+        // promotion). They are still tracked as independent pins (T13) even
+        // though they coincide here.
+        assert_eq!(super::LUTE_IR_VERSION, "0.6.1");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.6.1");
     }
 
     #[test]
@@ -672,8 +674,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.5.2");
-        assert_eq!(v["irVersion"], "0.5.3");
+        assert_eq!(v["lute"], "0.6.1");
+        assert_eq!(v["irVersion"], "0.6.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

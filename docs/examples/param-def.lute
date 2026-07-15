@@ -10,7 +10,7 @@ defs:
   atLeast: { type: bool, params: { n: number }, cel: "scene.score >= 1" }
 ---
 
-## Shot 1.
+## The Parameterized Guard
 
 <match on="scene.flag">
   <when test="@atLeast(3)">

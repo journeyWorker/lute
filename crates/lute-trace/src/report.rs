@@ -78,9 +78,9 @@ pub enum Step {
     Set {
         path: String,
         value: String,
-        /// `true` for a `<choice persist="run" into="...">`-synthesized
-        /// write (D8's `synth_persist`) — rendered `(persist sugar)` in the
-        /// human form (D14's "`(persist sugar)`" precedent, §4.6).
+        /// `true` for a `<choice into="...">`-synthesized write (D8's
+        /// `synth_into`) — rendered `(into sugar)` in the human form (D14's
+        /// "`(persist sugar)`" precedent, §4.6, relabeled by 0.6.0 §2.1).
         sugar: bool,
     },
     Assert {
@@ -278,7 +278,7 @@ fn render_step(step: &Step, out: &mut String) {
         Step::Shot { number } => out.push_str(&format!("  ## Shot {number}.\n")),
         Step::Line { speaker, text } => out.push_str(&format!("    @{speaker}  {text}\n")),
         Step::Set { path, value, sugar } => {
-            let annot = if *sugar { "  (persist sugar)" } else { "" };
+            let annot = if *sugar { "  (into sugar)" } else { "" };
             out.push_str(&format!("    ::set  {path} = {value}{annot}\n"));
         }
         Step::Assert { text } => out.push_str(&format!("    ::assert  {text}\n")),

@@ -9,7 +9,7 @@ params:
   who: string
 ---
 
-## Scene 1.
+## A Familiar Face
 
 /* `@who` is the param, bound to the `::use` arg at expansion time; it is legal
    here only because `character` is a `string`-typed attr (dsl Appendix A). */

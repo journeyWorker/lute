@@ -244,11 +244,11 @@ mod tests {
         let idx = TextIndex::new(MARINA);
         let all = folds(MARINA);
         for marker in [
-            "## Shot 1.",
-            "## Shot 2.",
-            "## Shot 3.",
-            "## Shot 4.",
-            "## Shot 5.",
+            "## Arrival at Venny's",
+            "## The Hostess with a Name",
+            "## The Vanishing Mouse",
+            "## Trading Numbers",
+            "## Filed as a Mishap",
         ] {
             let head = idx.position(MARINA.find(marker).unwrap()).line - 1;
             assert!(

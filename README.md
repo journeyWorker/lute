@@ -32,7 +32,7 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | versioned spec stack — base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) + `0.2.0`/`0.2.2`/`0.3.0`/`0.4.0` deltas, current tip [`0.5.2`](docs/proposals/scenario-dsl/0.5.2.md) (grammar + semantics) | the examples below; [`architecture.md`](docs/architecture.md) |
+| **writing `.lute` scenarios** | versioned spec stack — base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) + `0.2.0`/`0.2.2`/`0.3.0`/`0.4.0`/`0.5.0`–`0.5.2` deltas, current tip [`0.6.0`](docs/proposals/scenario-dsl/0.6.0.md) (grammar + semantics) | the examples below; [`architecture.md`](docs/architecture.md) |
 | **writing a plugin** (directives, state, providers, bridge) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution | [`plugin-system.md`](docs/plugin-system.md) |
 | **building the compiler / checker / LSP** | both proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
 | **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
@@ -113,5 +113,5 @@ Implemented. The checker, compiler, provider/plugin resolver, LSP, and CLI ship 
 under [`crates/`](crates) (`lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`,
 `lute-cli`, `lute-lsp`), with editor clients under [`editors/`](editors) and npm distribution
 under [`packages/`](packages) (`lutecli` + platform binary packages). The language is at
-**0.5.2**; the normative surface is the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 /
-0.3.0 / 0.4.0 / 0.5.0–0.5.2 deltas).
+**0.6.0**; the normative surface is the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 /
+0.3.0 / 0.4.0 / 0.5.0–0.5.2 / 0.6.0 deltas).

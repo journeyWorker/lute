@@ -204,7 +204,7 @@ fn rebase(slot_span: Span, local_start: usize, local_end: usize) -> Span {
 /// `kind: "refactor"`, never `"migrate"` — `lute fix` cannot apply these by
 /// construction, fix.rs never reads checker diagnostics). Every T2 rewrite
 /// here is an unambiguous, deterministic token substitution, so `confidence`
-/// is the same 100 the house `W-CHOICE-INTO-NO-PERSIST` fixits use.
+/// is the same 100 the house record-sugar fixits use.
 fn splice_fixit(
     title: String,
     slot_span: Span,

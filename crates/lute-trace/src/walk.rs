@@ -33,7 +33,7 @@ use lute_cel::CelArena;
 use lute_check::cel_expand::{expand_cel, DefTable};
 use lute_check::ctx::Env as CheckEnv;
 use lute_check::meta::StateSchema;
-use lute_check::{CheckInput, CheckResult, Ctx};
+use lute_check::{CheckInput, CheckResult, Ctx, FoldedEnv};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
@@ -46,7 +46,7 @@ use crate::eval::{
     eval, eval_path_read, expr_path, is_reserved_quest_path, literal_to_value, EffectiveState, EvalEnv,
     FactStore, Pat, Read, ReservedReadKind,
 };
-use crate::mock::{self, MockSet};
+use crate::mock::{self, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
 use crate::report::{self, ComponentBoundary, Coverage, CoverageCount, Decision, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry};
 use crate::value::{UnresolvedAtom, Value};
 
@@ -313,21 +313,14 @@ fn render_guard_text(is: Option<&IsPattern>, test_raw: &str) -> Option<String> {
     }
 }
 
-/// A `<choice persist="run" into="run.<path>" [value=...]>`-synthesized
-/// `::set` (D8's `synth_persist`, normalize.rs) carries NO sentinel — it is
-/// structurally identical to a hand-authored `::set`. It IS identifiable:
-/// `synth_persist` stamps the appended `Set`'s span from the `into` attr's
-/// span (falling back to the choice's own span only when `into` is
-/// missing — gate-proven unreachable). Recomputing that exact match is the
-/// only reliable "is this the sugar write" test.
-fn is_persist_sugar_set(choice: &Choice, set: &Set) -> bool {
-    let persists = choice
-        .attrs
-        .iter()
-        .any(|a| a.key == "persist" && matches!(&a.value, AttrValue::Str(s) if s == "run"));
-    if !persists {
-        return false;
-    }
+/// A `<choice into="run.<path>" [value=...]>`-synthesized `::set` (D8's
+/// `synth_into`, normalize.rs) carries NO sentinel — it is structurally
+/// identical to a hand-authored `::set`. It IS identifiable: `synth_into`
+/// stamps the appended `Set`'s span from the `into` attr's span (falling
+/// back to the choice's own span only when `into` is missing — gate-proven
+/// unreachable). Recomputing that exact match is the only reliable "is this
+/// the sugar write" test.
+fn is_into_sugar_set(choice: &Choice, set: &Set) -> bool {
     choice.attrs.iter().any(|a| {
         a.key == "into" && matches!(&a.value, AttrValue::Str(p) if p == &set.path) && a.span == set.span
     })
@@ -478,7 +471,7 @@ fn walk_set(s: &Set, w: &mut Walk<'_>, sugar_ctx: Option<&Choice>) {
     };
     let new_val = apply_set_op(&s.op, &s.path, &w.state, rhs);
     w.state.write(&s.path, new_val.clone());
-    let sugar = sugar_ctx.is_some_and(|c| is_persist_sugar_set(c, s));
+    let sugar = sugar_ctx.is_some_and(|c| is_into_sugar_set(c, s));
     let value = report::value_text(&new_val).unwrap_or_else(|| "unknown".to_string());
     w.steps.push(Step::Set { path: s.path.clone(), value, sugar });
 }
@@ -795,12 +788,10 @@ fn walk_nodes(nodes: &[Node], w: &mut Walk<'_>, sugar_ctx: Option<&Choice>) -> F
 }
 
 fn walk_document(doc: &Document, w: &mut Walk<'_>) -> Flow {
-    let mut prev_shot = 0i64;
     for (i, shot) in doc.shots.iter().enumerate() {
-        let authored = shot.number.unwrap_or(i as i64 + 1);
-        let shot_no = authored.max(prev_shot + 1);
-        prev_shot = shot_no;
-        w.steps.push(Step::Shot { number: shot_no });
+        // 0.6.0 §3.2: a shot's number is its 1-based document position;
+        // authored numbers and the monotone guard are removed.
+        w.steps.push(Step::Shot { number: i as i64 + 1 });
         let flow = walk_nodes(&shot.body, w, None);
         if !matches!(flow, Flow::Continue) {
             return flow;
@@ -1314,6 +1305,108 @@ fn unmatched_event_notes(doc: &Document, events: &[String]) -> Vec<String> {
     notes
 }
 
+/// spec §4 (0.6.1): one [`crate::mock::W_TRACE_MOCK_UNPRODUCIBLE`] note per
+/// supplied `--fact`/mock-YAML fact whose relation the CHECKER's
+/// [`lute_check::producible::producible`] judges NOT producible — the mocked
+/// answer can never arise from authored producers, so a "complete" walk seeded
+/// with it proves nothing about reachable play. WARNING only: rides the §3.1
+/// additive `notes` surface (report.rs), which is never consulted for the
+/// exit-code decision — a mock is a hypothesis and the walk verdict stands
+/// (D1: the checker's `producible()` computes at build-input time from the SAME
+/// `FoldedEnv` vocab check uses, and trace only DISPLAYS the result — it runs
+/// no Datalog itself). A `reserved: true`/`open: engine`-argument relation is
+/// producible by definition and never warns (already encoded in `producible()`).
+///
+/// `live_assert_relations` is passed CONSERVATIVELY: [`collect_assert_relations`]
+/// gathers EVERY `::assert{R(…)}` site in the normalized (component-inlined)
+/// document with NO reachability gating — trace has no T6 reachability pass,
+/// unlike `check-project`'s [`lute_check::connectivity::live_assert_relations`].
+/// A larger live set makes MORE relations producible, so a conservative
+/// all-sites set only ever UNDER-warns (a relation `check` would prove dead via
+/// reachability may still read producible here) — never a false positive.
+/// Component-inlined asserts land in the post-normalize `doc`, so collecting
+/// there (not pre-normalize) is what keeps a `::use`d producer from false-
+/// warning its relation. An undeclared mock relation was already
+/// `E-TRACE-MOCK-FACT`-refused upstream ([`crate::mock::validate`]), so every
+/// relation reaching here has a `producible` entry; `Some(false)` alone warns.
+/// Deduplicated per relation (deterministic `BTreeSet` order).
+fn mock_unproducible_notes(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<String> {
+    if mocks.facts.is_empty() {
+        return Vec::new();
+    }
+    let mut live_assert: BTreeSet<String> = BTreeSet::new();
+    for shot in &doc.shots {
+        collect_assert_relations(&shot.body, &mut live_assert);
+    }
+    for quest in &doc.quests {
+        collect_assert_relations(&quest.body, &mut live_assert);
+    }
+    let producible = lute_check::producible::producible(&folded.env.rel_vocab, &live_assert);
+    let mut unproducible: BTreeSet<String> = BTreeSet::new();
+    for raw in &mocks.facts {
+        let Ok(pat) = lute_syntax::datalog::parse_fact(raw) else { continue };
+        if producible.get(&pat.relation) == Some(&false) {
+            unproducible.insert(pat.relation.clone());
+        }
+    }
+    unproducible
+        .into_iter()
+        .map(|rel| {
+            format!(
+                "{W_TRACE_MOCK_UNPRODUCIBLE} — mock fact over relation `{rel}` is not \
+                 producible (no `facts:` seed, no reachable `::assert`, not `reserved`) — the \
+                 supplied answer can never arise from authored producers, so a complete walk \
+                 seeded with it proves nothing about reachable play (§4)"
+            )
+        })
+        .collect()
+}
+
+/// Conservative all-sites collection of every `::assert{R(…)}` relation name in
+/// a node stream (spec §4, [`mock_unproducible_notes`]) — mirrors
+/// [`lute_check::connectivity::live_assert_relations`]'s own
+/// `collect_assert_relations` traversal shape, but WITHOUT its reachability
+/// gate (trace has none). A parse-failed assert (`relation.is_empty()`, D13)
+/// contributes nothing. The `match` is exhaustive (no `_` arm) so a new
+/// [`Node`] variant that can host an assert forces a compile error here rather
+/// than silently under-collecting into a false-positive warning.
+fn collect_assert_relations(nodes: &[Node], out: &mut BTreeSet<String>) {
+    for node in nodes {
+        match node {
+            Node::Assert(a) => {
+                if !a.pattern.relation.is_empty() {
+                    out.insert(a.pattern.relation.clone());
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let body = match arm {
+                        Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
+                    };
+                    collect_assert_relations(body, out);
+                }
+            }
+            Node::Branch(b) => {
+                for choice in &b.choices {
+                    collect_assert_relations(&choice.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for choice in &h.choices {
+                    collect_assert_relations(&choice.body, out);
+                }
+            }
+            Node::On(o) => collect_assert_relations(&o.body, out),
+            Node::Objective(o) => collect_assert_relations(&o.body, out),
+            Node::Line(_)
+            | Node::Directive(_)
+            | Node::Set(_)
+            | Node::Timeline(_)
+            | Node::Retract(_) => {}
+        }
+    }
+}
+
 /// Every `<on event=…>` name reachable in `nodes`, recursing into nested
 /// constructs (a `<branch>`/`<hub>` choice body, a `<match>` arm body, an
 /// `<objective>`/`<on>` body) — mirrors `mock.rs`'s
@@ -1407,7 +1500,7 @@ pub fn trace_with_check(
         return (empty_report(&input.uri, &mocks), TraceExit::Refused(mock_diags));
     }
 
-    // 4. D14: normalize (components bound, §6.4 folds, when=/persist=
+    // 4. D14: normalize (components bound, §6.4 folds, when=/into=
     //    desugared) then expand (@/$-free) — the SAME lute-compile passes,
     //    in the SAME order, `compile` itself runs.
     let mut diags = lute_compile::normalize::normalize_document(&mut doc, &input.components, &folded.env.state);
@@ -1448,6 +1541,7 @@ pub fn trace_with_check(
     let mut notes = seed_fact_notes(&mocks, &folded.env.rel_vocab.facts);
     notes.extend(reserved_quest_notes(&mocks, &w.state.reserved_reads(), &doc_quest_ids));
     notes.extend(unmatched_event_notes(&doc, &mocks.events));
+    notes.extend(mock_unproducible_notes(&mocks, &folded, &doc));
     let report = TraceReport {
         file: input.uri.clone(),
         seeds: seeds_summary(&mocks),

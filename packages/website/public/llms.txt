@@ -1,0 +1,46 @@
+# Lute
+
+> Lute is a total language for visual-novel scenarios: `.lute` documents compile to flat JSON command records plus CEL. Author dialogue, branches, timelines, and relational state; statically check reachability and simulate before you ship. Language version 0.6.1.
+
+Lute is deliberately non-Turing: every document is a finite, terminating artifact, so the checker can prove reachability, definite-assignment, and envelope properties instead of guessing. The CLI (`lute`) is a headless checker, compiler, and preview tool; `lute context --json` emits the project-resolved authoring surface an AI or human needs to write valid Lute, and `lute check --json` gives a machine-readable diagnostic loop. Below, each link points to a single documentation page on <https://lute-lang.vercel.app>.
+
+## Docs
+
+- [Installation](https://lute-lang.vercel.app/getting-started/installation/): Install the `lute` CLI with bunx, a global bun install, or from Rust source, then verify the toolchain.
+- [Write your first scene](https://lute-lang.vercel.app/getting-started/first-scene/): Build one small, real Lute scene from an empty file step by step, running `lute` at every step.
+- [Frontmatter & profiles](https://lute-lang.vercel.app/language/frontmatter-and-profiles/): The YAML frontmatter block that opens every `.lute` document, plus the profile/plugins capability selectors.
+- [Dialogue & cast](https://lute-lang.vercel.app/language/dialogue-and-cast/): Content lines — the `@speaker` syntax — plus delivery flags, line attributes, interpolation, and the cast/display-name model.
+- [Staging directives](https://lute-lang.vercel.app/language/directives/): Single-line staging leaves — `::bg`, `::music`, `::sfx`, `::camera`, and more — their attributes, timing keys, and the wait model.
+- [Branch, match & when](https://lute-lang.vercel.app/language/branch-match-when/): The logic layer — player-driven `<branch>` menus and state-driven `<match>`/`<when>`/`<otherwise>` arms.
+- [Choices & hubs](https://lute-lang.vercel.app/language/choices-and-hubs/): Choice mechanics — `when` guards and the `into=` run-record sugar — plus revisit `<hub>` conversations and the no-dead-end guarantee.
+- [Timeline & property tracks](https://lute-lang.vercel.app/language/timeline-and-property-tracks/): The `<timeline>` multi-track choreography block — a local clock, subject/channel/property tracks, and the one-writer-per-track rule.
+- [Components & extends](https://lute-lang.vercel.app/language/components-and-extends/): Reusable content components invoked with `::use`, and `extends` schema composition with base-layer override precedence.
+- [Definitions & params](https://lute-lang.vercel.app/language/params/): Named typed CEL macros declared in `defs`, referenced as `@name`, and parameterized as `@name(args)`.
+- [Quests & scenes](https://lute-lang.vercel.app/language/quests-and-scenes/): The two document kinds — scenes sequenced with `after:`, and quests with objectives, derived completion, and lifecycle-event reactions.
+- [Imports (uses:)](https://lute-lang.vercel.app/language/imports/): How a scene imports its shared state schema with `uses:`, the plain-YAML `.schema.yaml` files, and the DAG discipline shared by `uses`/`extends`/components.
+- [The state model](https://lute-lang.vercel.app/state/state-model/): Lute's tiered scalar state — the run, user, app, and scene lifetime namespaces and the path-sensitive definite-assignment rules.
+- [Facts and Datalog](https://lute-lang.vercel.app/state/facts-and-datalog/): The relational fact layer — declared entities and relations, ground facts asserted and retracted as deltas, and a total Datalog derivation layer.
+- [CEL expressions](https://lute-lang.vercel.app/state/cel/): The restricted Lute-CEL profile behind every condition and assignment, the fact-query surface it admits, and how it compiles.
+- [State schemas](https://lute-lang.vercel.app/state/schemas/): The shared, imported source of truth for run/user/app state and defs — the schema document shape, `uses`, and `extends`.
+- [The scene graph and after:](https://lute-lang.vercel.app/connectivity/scene-graph/): How Lute assembles a project-wide prerequisite graph from each document's `after` declaration and the restricted formula grammar.
+- [Reachability](https://lute-lang.vercel.app/connectivity/reachability/): How Lute proves whether a node has a satisfiable route under the `after` graph — the Reachable/Unreachable/Unknown verdicts.
+- [Guaranteed / Possible envelopes](https://lute-lang.vercel.app/connectivity/envelopes/): The per-node available-state analysis — the Guaranteed and Possible tables over run/user state and the Possible-minus-Guaranteed warning.
+- [CLI reference](https://lute-lang.vercel.app/tooling/cli/): Every `lute` subcommand — check, check-project, compile, trace, scenario, context, tag, fix, catalog refresh — with flags and exit codes.
+- [Tracing guide](https://lute-lang.vercel.app/tooling/tracing/): Preview a scene before shipping — seeding state, facts, choices, events, and accepts via flags or a mock YAML file, and the `E-TRACE-*` refusals.
+- [Providers and catalog](https://lute-lang.vercel.app/tooling/providers-and-catalog/): Snapshot-first provider resolution, the `--providers` flag, `catalog refresh` re-stamping, and `capabilityVersion`.
+- [Editors and LSP](https://lute-lang.vercel.app/tooling/editors/): Installing `lute-lsp`, wiring the VS Code, Neovim, and Oh My Pi clients, and the language features the server provides.
+- [AI harness guide](https://lute-lang.vercel.app/tooling/ai-harness/): Wiring `lute context`, `lute check --json`, `--deny`, exit codes, and fixits into an AI authoring pipeline.
+- [Plugin concepts](https://lute-lang.vercel.app/plugins/concepts/): How Lute plugins extend vocabulary and capability surfaces without ever touching the fixed grammar or compiler behavior.
+- [Manifests & resolution](https://lute-lang.vercel.app/plugins/manifests/): The `lute.project.yaml` profile graph, the `plugin.yaml` manifest, and how installed plugins resolve into one capability snapshot.
+- [Typed bridge directives](https://lute-lang.vercel.app/plugins/bridge/): How a plugin declares a typed runtime bridge, the directive that invokes it, and the declared result state it writes.
+- [Profiles & activation](https://lute-lang.vercel.app/plugins/profiles/): Selecting a capability profile in scene frontmatter, the reserved global profile and `extends` inheritance, and scene-local plugin options.
+
+## Specification
+
+- [Specification index](https://lute-lang.vercel.app/spec/): The versioned Lute spec stack — every scenario-DSL revision plus the plugin-system and character-cast proposals, linking the normative repository sources.
+- [Normative proposals](https://github.com/journeyWorker/lute/tree/main/docs/proposals): The repository proposal files are the normative source of truth; the website is the readable companion.
+
+## Optional
+
+- [GitHub repository](https://github.com/journeyWorker/lute): Source, issues, and the full history of the Lute language and toolchain.
+- [Full-spec showcase](https://lute-lang.vercel.app/examples/showcase/): A walkthrough of the self-contained showcase project exercising every implemented Lute feature end-to-end.

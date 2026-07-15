@@ -464,7 +464,6 @@ mod tests {
             title: None,
             shots: vec![Shot {
                 heading: "Shot 1.".to_string(),
-                number: Some(1),
                 body,
                 span: span(),
             }],

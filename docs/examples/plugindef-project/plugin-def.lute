@@ -7,7 +7,7 @@ state:
   scene.flag: { type: bool, default: false }
 ---
 
-## Shot 1.
+## The Warm Path
 
 <match on="scene.flag">
   <when test="@warm">
