@@ -1,0 +1,177 @@
+---
+title: Lute
+description: >-
+  비주얼노벨 시나리오를 위한 total 언어 — 플랫 JSON 명령 레코드와 CEL로 컴파일됩니다.
+  대사, 분기, 타임라인, 상태를 작성하고, bunx lutecli 하나로 배포 전에 도달 가능성을
+  검사하고 시뮬레이션하세요.
+template: splash
+hero:
+  title: Lute
+  tagline: 비주얼노벨 시나리오를 위한 total 언어.
+  image:
+    file: ../../../assets/hero-lute.png
+  actions:
+    - text: 시작하기
+      link: /ko/getting-started/installation/
+      icon: right-arrow
+    - text: GitHub
+      link: https://github.com/journeyWorker/lute
+      icon: external
+      variant: minimal
+head:
+  - tag: meta
+    attrs:
+      property: "og:image"
+      content: "/og.png"
+  - tag: meta
+    attrs:
+      property: "og:type"
+      content: "website"
+  - tag: meta
+    attrs:
+      name: "twitter:card"
+      content: "summary_large_image"
+  - tag: meta
+    attrs:
+      name: "twitter:image"
+      content: "/og.png"
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+<span class="lute-kicker">어떤 저장소에서든, 명령 하나로</span>
+
+```bash
+# 시나리오를 작성하고, 검사하고, 시뮬레이션합니다 — 하나의 Rust 코어를 npm으로 배포
+bunx lutecli check scene.lute
+```
+
+<p class="lute-lead">
+  Lute는 <strong>total</strong> 저작 언어입니다: 모든 시나리오는 반드시 종료되며
+  모든 경로가 분석 가능합니다. 장면을 작성하면 Lute가 이를 플랫 JSON 명령 레코드와
+  <code>CEL</code>로 컴파일하고, 단 한 줄이 배포되기 전에 무엇이 도달 가능한지
+  증명합니다.
+</p>
+
+<span class="lute-kicker">언어</span>
+
+## 대본처럼 읽히는 장면
+
+대사, 플레이어 선택, 상태 기반 콜백 — 아래 분기는 언제나 번호를 얻지만, 부드럽게
+물으면 그녀의 마음이 조금 누그러집니다. `<match>`는 첫 일치가 우선이며 `<otherwise>`가
+필수라서, 모든 분기는 total합니다.
+
+```lute
+## Shot 2.
+::camera{focus="bianca" zoom="1.1" duration="0.5"}
+
+@bianca{emotion="surprised"}: Oh!
+@bianca{emotion="delighted"}: Mr. Fixer!
+@bianca{emotion="delighted"}: From the ramen counter — you eat at Mechageki too, isn't it wonderful?
+
+/* a choice of TONE — both paths get the number; the gentle ask warms her */
+<branch id="number">
+  <choice id="blunt" label="Just ask, flatly">
+    @fixer: Bianca. Your number.
+  </choice>
+  <choice id="soft" label="Ask gently">
+    @fixer: Bianca — would you mind terribly if I had your number?
+    ::set{scene.affect.bianca += 1}
+  </choice>
+</branch>
+
+/* state-driven callback — first-match-wins; <otherwise> is mandatory */
+<match on="scene.choices.number">
+  <when test="@fond">
+    @fixer{mono}: I asked nicely, which I am electing not to examine.
+  </when>
+  <otherwise>
+    @fixer{mono}: I am, apparently, taking that woman somewhere this evening.
+  </otherwise>
+</match>
+```
+
+정교하게 안무된 하나의 순간, 여러 개의 동시 트랙 — 하나의 대상을 속성별 트랙
+(`pos`, `opacity`)으로 나누고, 독립적인 카메라 트랙과 나란히 배치합니다:
+
+```lute
+<timeline duration="1.2">
+  <track subject="bianca" property="pos">
+    ::auto{character="bianca" anchor="left" action="slide-in-left"}
+  </track>
+  <track subject="bianca" property="opacity">
+    ::auto{character="bianca" action="fade-in-up"}
+  </track>
+  <track subject="camera">
+    ::camera{focus="bianca" zoom="1.2" duration="0.6"}
+    ::camera{shake="0.4" duration="0.3" at="0.7"}
+  </track>
+</timeline>
+```
+
+<span class="lute-kicker">Lute를 선택하는 이유</span>
+
+## 믿을 수 있는 시나리오를 위해
+
+<CardGrid stagger>
+  <Card title="튜링 완전이 아닌, total" icon="approve-check">
+    모든 시나리오는 반드시 종료되고 모든 경로가 분석 가능하다는 것이 증명됩니다 —
+    무한 루프도, 무한 재귀도, 도달 불가능한 뜻밖의 상황도 없습니다.
+  </Card>
+  <Card title="타입이 지정된 플러그인 기능" icon="puzzle">
+    디렉티브와 프로바이더는 타입이 지정된 매니페스트로 선언되므로, 체커는 각
+    플러그인이 무엇을 방출하고 소비할 수 있는지 정확히 알고 있습니다.
+  </Card>
+  <Card title="CEL + Datalog 팩트" icon="list-format">
+    가드는 평범한 <code>CEL</code> 표현식입니다. Datalog 팩트 계층을 통해 더 높은
+    차원의 진리를 도출하고 장면 전체에서 질의할 수 있습니다.
+  </Card>
+  <Card title="배포 전에 시뮬레이션" icon="rocket">
+    <code>lute trace</code>는 모의 YAML — 상태, 팩트, 선택, 이벤트 — 을 상대로
+    시나리오를 실행하므로, 누군가 플레이하기 전에 그 흐름을 직접 지켜볼 수 있습니다.
+  </Card>
+  <Card title="그래프로 검증된 연결성" icon="random">
+    도달 가능성 분석과 Guaranteed / Possible 엔벨로프가, 어떤 장면·선택·상태에
+    실제로 도달할 수 있는지를 증명합니다.
+  </Card>
+  <Card title="AI에 준비된 저작 환경" icon="comment">
+    <code>lute context</code>는 에이전트를 위해 설계된 프로젝트의 구조화된 뷰를
+    방출합니다 — 이 언어는 모델을 거스르지 않고, 모델과 함께 작성되도록 설계되었습니다.
+  </Card>
+  <Card title="LSP + 에디터" icon="laptop">
+    언어 서버가 진단, 호버, 자동완성을 에디터로 전달하므로, 실수는 런타임이 아니라
+    입력하는 순간에 드러납니다.
+  </Card>
+  <Card title="JSON으로 컴파일" icon="document">
+    출력은 플랫 JSON 명령 레코드와 CEL입니다 — Lute 런타임 없이도 어떤 언어의 어떤
+    엔진에든 손쉽게 불러올 수 있습니다.
+  </Card>
+</CardGrid>
+
+<span class="lute-kicker">실제로 재생해 보기</span>
+
+## 하나의 장면, 렌더링된 모습
+
+위와 동일한 소스를 실제로 재생한 모습입니다 — 대사 상자는 런타임이 Lute의 명령
+레코드를 장면으로 바꾸는 방식입니다.
+
+<div class="vn-scene" role="group" aria-label="Sample visual-novel scene">
+  <div class="vn-dialogue narrator">
+    <span class="speaker">Narrator</span>
+    <p class="line">호스티스가 메뉴판을 가슴에 꼭 안은 채 다가왔다. 그녀의 얼굴이 환해졌다.</p>
+  </div>
+  <div class="vn-dialogue">
+    <span class="speaker">Bianca</span>
+    <p class="line">어머! Fixer 씨! 라멘 카운터에서 뵀죠 — Mechageki에서도 드시는군요, 정말 멋지지 않나요?</p>
+  </div>
+  <div class="vn-dialogue">
+    <span class="speaker">Fixer</span>
+    <p class="line">Bianca — 혹시 번호를 좀 알려주실 수 있을까요?</p>
+  </div>
+  <div class="vn-dialogue">
+    <span class="speaker">Bianca</span>
+    <p class="line">그럼요! 바로 알려드릴게요, Fixer 씨.</p>
+  </div>
+</div>
+
+직접 하나 써보실 준비가 되셨나요? [`bunx lutecli`로 시작하기 →](/ko/getting-started/installation/)

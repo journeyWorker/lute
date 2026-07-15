@@ -1,0 +1,7 @@
+{
+  "name": "lute-workspace",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
+}

@@ -1,0 +1,199 @@
+/* ============================================================
+   Lute — site theme
+   Hybrid instrument identity: warm amber/gold on midnight navy.
+   Display type: Fraunces (serif). Body: system sans. Code: JetBrains Mono.
+   Accent motif: subtle violet glow reserved for VN dialogue demos.
+   ============================================================ */
+
+@import "@fontsource-variable/fraunces";
+@import "@fontsource-variable/jetbrains-mono";
+
+:root {
+  /* Dark theme (default): midnight navy + amber/gold */
+  --sl-color-accent-low: #402c0d;
+  --sl-color-accent: #e0a94a;
+  --sl-color-accent-high: #f6dca0;
+  --sl-color-white: #f4f1ea;
+  --sl-color-gray-1: #e0e2ec;
+  --sl-color-gray-2: #b7bccd;
+  --sl-color-gray-3: #838aa4;
+  --sl-color-gray-4: #565d77;
+  --sl-color-gray-5: #333b54;
+  --sl-color-gray-6: #171d31;
+  --sl-color-black: #0e1322;
+
+  --sl-color-bg-nav: #10162a;
+  --sl-color-bg-sidebar: #0c1120;
+  --sl-color-hairline: #232b45;
+  --sl-color-hairline-light: #1b2138;
+
+  --sl-font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular",
+    Menlo, monospace;
+  --lute-serif: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman",
+    serif;
+
+  /* Violet glow — reserved for VN dialogue demo boxes */
+  --lute-violet: #8b7ce8;
+}
+
+/* Light theme: warm parchment */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #f4e4bf;
+  --sl-color-accent: #9a6f1c;
+  --sl-color-accent-high: #4e3808;
+  --sl-color-white: #1c1a24;
+  --sl-color-gray-1: #2b2933;
+  --sl-color-gray-2: #45424f;
+  --sl-color-gray-3: #6b6776;
+  --sl-color-gray-4: #948fa0;
+  --sl-color-gray-5: #cbc6d2;
+  --sl-color-gray-6: #efebf1;
+  --sl-color-gray-7: #f6f3f0;
+  --sl-color-black: #fbf8f4;
+
+  --sl-color-bg-nav: #f6f3f0;
+  --sl-color-bg-sidebar: #f6f3f0;
+  --sl-color-hairline: #e4dcd0;
+  --sl-color-hairline-light: #eee7dc;
+
+  --lute-violet: #6b5cd0;
+}
+
+/* ---------- Typography: serif display voice ---------- */
+
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4,
+h1[data-page-title],
+.hero h1,
+.hero .tagline strong {
+  font-family: var(--lute-serif);
+  font-weight: 520;
+  letter-spacing: -0.015em;
+}
+
+.site-title {
+  font-family: var(--lute-serif);
+  font-weight: 560;
+  font-size: var(--sl-text-xl);
+  letter-spacing: -0.02em;
+}
+
+/* Inline code gets a whisper of brass */
+.sl-markdown-content code:not(pre code) {
+  color: var(--sl-color-accent-high);
+  background: var(--sl-color-accent-low);
+  border-radius: 0.25rem;
+}
+:root[data-theme="light"] .sl-markdown-content code:not(pre code) {
+  color: var(--sl-color-accent-high);
+}
+
+/* ---------- Splash / hero ---------- */
+
+[data-has-hero] .hero {
+  padding-block: 3rem;
+}
+
+[data-has-hero] .hero h1 {
+  font-family: var(--lute-serif);
+  font-weight: 480;
+  font-size: clamp(2.75rem, 6vw, 4.5rem);
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  background: linear-gradient(
+    92deg,
+    var(--sl-color-accent-high),
+    var(--sl-color-accent)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+[data-has-hero] .hero .tagline {
+  color: var(--sl-color-gray-2);
+  max-width: 44ch;
+  font-size: var(--sl-text-lg);
+}
+
+/* Faint amber wash + fret-line motif behind the splash page */
+[data-has-hero] .main-frame {
+  background:
+    radial-gradient(
+      60% 55% at 82% 8%,
+      color-mix(in srgb, var(--sl-color-accent) 12%, transparent),
+      transparent 70%
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 71px,
+      color-mix(in srgb, var(--sl-color-hairline) 55%, transparent) 71px,
+      color-mix(in srgb, var(--sl-color-hairline) 55%, transparent) 72px
+    );
+}
+
+/* ---------- Landing sections ---------- */
+
+.lute-kicker {
+  font-family: var(--sl-font-mono);
+  font-size: var(--sl-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--sl-color-accent);
+}
+
+.lute-lead {
+  font-family: var(--lute-serif);
+  font-size: var(--sl-text-lg);
+  color: var(--sl-color-gray-1);
+  max-width: 60ch;
+}
+
+/* ---------- VN dialogue demo boxes (violet glow) ---------- */
+
+.vn-scene {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-block: 1.5rem;
+}
+
+.vn-dialogue {
+  background: color-mix(in srgb, var(--lute-violet) 8%, var(--sl-color-black));
+  border: 1px solid color-mix(in srgb, var(--lute-violet) 55%, transparent);
+  border-radius: 0.85rem;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--lute-violet) 14%, transparent),
+    0 10px 34px -14px color-mix(in srgb, var(--lute-violet) 65%, transparent);
+  padding: 0.85rem 1.15rem;
+}
+
+.vn-dialogue.narrator {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--lute-violet) 32%, transparent);
+  box-shadow: none;
+  background: color-mix(in srgb, var(--sl-color-gray-6) 60%, transparent);
+}
+
+.vn-dialogue .speaker {
+  display: block;
+  font-variant: small-caps;
+  letter-spacing: 0.07em;
+  color: var(--sl-color-accent-high);
+  font-weight: 650;
+  font-size: var(--sl-text-sm);
+  margin-bottom: 0.15rem;
+}
+
+.vn-dialogue.narrator .speaker {
+  color: var(--sl-color-gray-3);
+}
+
+.vn-dialogue .line {
+  color: var(--sl-color-gray-1);
+  margin: 0;
+  line-height: 1.5;
+}

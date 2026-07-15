@@ -12,13 +12,27 @@ scenario files compile to flat engine command records plus CEL condition strings
 [**Write your first Lute scene**](docs/getting-started-first-scene.md), a linear, hands-on
 tutorial that builds one small scene from an empty file.
 
+## Install
+
+The CLI ships on npm as [`lutecli`](https://www.npmjs.com/package/lutecli) (installed bin: `lute`),
+a launcher that resolves a prebuilt native binary for your platform (darwin-arm64, linux-x64):
+
+```sh
+bunx lutecli check scene.lute   # or: npx lutecli / bun add -g lutecli
+```
+
+Building from source instead: `cargo install --path crates/lute-cli`.
+
+The website — landing, guides, language reference, CLI docs (en + 한국어) — lives in
+[`packages/website`](packages/website) (Astro Starlight, deployed via Vercel).
+
 ## Documents by role
 
 Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | versioned spec stack — base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) + `0.2.0`/`0.2.2` deltas, current tip [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (grammar + semantics) | the examples below; [`architecture.md`](docs/architecture.md) |
+| **writing `.lute` scenarios** | versioned spec stack — base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) + `0.2.0`/`0.2.2`/`0.3.0`/`0.4.0` deltas, current tip [`0.5.2`](docs/proposals/scenario-dsl/0.5.2.md) (grammar + semantics) | the examples below; [`architecture.md`](docs/architecture.md) |
 | **writing a plugin** (directives, state, providers, bridge) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution | [`plugin-system.md`](docs/plugin-system.md) |
 | **building the compiler / checker / LSP** | both proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
 | **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
@@ -97,6 +111,7 @@ Install the server once (`cargo install --path crates/lute-lsp`), then:
 
 Implemented. The checker, compiler, provider/plugin resolver, LSP, and CLI ship as Rust crates
 under [`crates/`](crates) (`lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`,
-`lute-cli`, `lute-lsp`), with editor clients under [`editors/`](editors). The language is at
-**0.3.0** (relational facts + Datalog derivation); the normative surface is the versioned spec
-stack (0.1.0 base + 0.2.0 / 0.2.2 / 0.3.0 deltas).
+`lute-cli`, `lute-lsp`), with editor clients under [`editors/`](editors) and npm distribution
+under [`packages/`](packages) (`lutecli` + platform binary packages). The language is at
+**0.5.2**; the normative surface is the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 /
+0.3.0 / 0.4.0 / 0.5.0–0.5.2 deltas).

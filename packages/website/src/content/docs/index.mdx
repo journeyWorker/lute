@@ -1,0 +1,177 @@
+---
+title: Lute
+description: >-
+  A total language for visual-novel scenarios — compiles to flat JSON command
+  records plus CEL. Author dialogue, branches, timelines, and state; check
+  reachability and simulate before you ship, all from bunx lutecli.
+template: splash
+hero:
+  title: Lute
+  tagline: A total language for visual-novel scenarios.
+  image:
+    file: ../../assets/hero-lute.png
+  actions:
+    - text: Get started
+      link: /getting-started/installation/
+      icon: right-arrow
+    - text: GitHub
+      link: https://github.com/journeyWorker/lute
+      icon: external
+      variant: minimal
+head:
+  - tag: meta
+    attrs:
+      property: "og:image"
+      content: "/og.png"
+  - tag: meta
+    attrs:
+      property: "og:type"
+      content: "website"
+  - tag: meta
+    attrs:
+      name: "twitter:card"
+      content: "summary_large_image"
+  - tag: meta
+    attrs:
+      name: "twitter:image"
+      content: "/og.png"
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+<span class="lute-kicker">One command, from any repo</span>
+
+```bash
+# author, check, and simulate scenarios — one Rust core, distributed via npm
+bunx lutecli check scene.lute
+```
+
+<p class="lute-lead">
+  Lute is a <strong>total</strong> authoring language: every scenario is
+  guaranteed to terminate and every path is analyzable. You write scenes;
+  Lute compiles them to flat JSON command records plus <code>CEL</code>, and
+  proves what's reachable before a single line ships.
+</p>
+
+<span class="lute-kicker">The language</span>
+
+## Scenes that read like scripts
+
+Dialogue, player choice, and state-driven callbacks — the branch below always
+gets the number; asking gently just warms her. `<match>` is first-match-wins
+with a mandatory `<otherwise>`, so every branch is total.
+
+```lute
+## Shot 2.
+::camera{focus="bianca" zoom="1.1" duration="0.5"}
+
+@bianca{emotion="surprised"}: Oh!
+@bianca{emotion="delighted"}: Mr. Fixer!
+@bianca{emotion="delighted"}: From the ramen counter — you eat at Mechageki too, isn't it wonderful?
+
+/* a choice of TONE — both paths get the number; the gentle ask warms her */
+<branch id="number">
+  <choice id="blunt" label="Just ask, flatly">
+    @fixer: Bianca. Your number.
+  </choice>
+  <choice id="soft" label="Ask gently">
+    @fixer: Bianca — would you mind terribly if I had your number?
+    ::set{scene.affect.bianca += 1}
+  </choice>
+</branch>
+
+/* state-driven callback — first-match-wins; <otherwise> is mandatory */
+<match on="scene.choices.number">
+  <when test="@fond">
+    @fixer{mono}: I asked nicely, which I am electing not to examine.
+  </when>
+  <otherwise>
+    @fixer{mono}: I am, apparently, taking that woman somewhere this evening.
+  </otherwise>
+</match>
+```
+
+One choreographed beat, many concurrent tracks — split a single subject across
+property-scoped tracks (`pos`, `opacity`) alongside an independent camera track:
+
+```lute
+<timeline duration="1.2">
+  <track subject="bianca" property="pos">
+    ::auto{character="bianca" anchor="left" action="slide-in-left"}
+  </track>
+  <track subject="bianca" property="opacity">
+    ::auto{character="bianca" action="fade-in-up"}
+  </track>
+  <track subject="camera">
+    ::camera{focus="bianca" zoom="1.2" duration="0.6"}
+    ::camera{shake="0.4" duration="0.3" at="0.7"}
+  </track>
+</timeline>
+```
+
+<span class="lute-kicker">Why Lute</span>
+
+## Built for scenarios you can trust
+
+<CardGrid stagger>
+  <Card title="Total, not Turing-complete" icon="approve-check">
+    Every scenario provably terminates and every path is analyzable — no
+    infinite loops, no unbounded recursion, no unreachable surprises.
+  </Card>
+  <Card title="Typed plugin capabilities" icon="puzzle">
+    Directives and providers are declared with typed manifests, so the
+    checker knows exactly what each plugin can emit and consume.
+  </Card>
+  <Card title="CEL + Datalog facts" icon="list-format">
+    Guards are plain <code>CEL</code> expressions; a Datalog fact layer lets
+    you derive higher-order truths and query them across a scene.
+  </Card>
+  <Card title="Simulate before you ship" icon="rocket">
+    <code>lute trace</code> runs a scenario against mock YAML — state, facts,
+    choices, events — so you watch it play out before anyone plays it.
+  </Card>
+  <Card title="Graph-checked connectivity" icon="random">
+    Reachability analysis plus Guaranteed / Possible envelopes prove which
+    scenes, choices, and states can ever actually be reached.
+  </Card>
+  <Card title="AI-ready authoring surface" icon="comment">
+    <code>lute context</code> emits a structured view of a project built for
+    agents — the language was designed to be written with a model, not despite one.
+  </Card>
+  <Card title="LSP + editors" icon="laptop">
+    A language server ships diagnostics, hovers, and completions to your
+    editor, so mistakes surface as you type, not at runtime.
+  </Card>
+  <Card title="Compiles to JSON" icon="document">
+    Output is flat JSON command records plus CEL — trivial to load into any
+    engine, in any language, with zero Lute runtime.
+  </Card>
+</CardGrid>
+
+<span class="lute-kicker">See it play</span>
+
+## A scene, rendered
+
+The same source above, played out — dialogue boxes are how a runtime turns
+Lute's command records into a scene.
+
+<div class="vn-scene" role="group" aria-label="Sample visual-novel scene">
+  <div class="vn-dialogue narrator">
+    <span class="speaker">Narrator</span>
+    <p class="line">A hostess walked over with a menu pressed to her chest. Her face caught.</p>
+  </div>
+  <div class="vn-dialogue">
+    <span class="speaker">Bianca</span>
+    <p class="line">Oh! Mr. Fixer! From the ramen counter — you eat at Mechageki too, isn't it wonderful?</p>
+  </div>
+  <div class="vn-dialogue">
+    <span class="speaker">Fixer</span>
+    <p class="line">Bianca — would you mind terribly if I had your number?</p>
+  </div>
+  <div class="vn-dialogue">
+    <span class="speaker">Bianca</span>
+    <p class="line">Of course! Right away, Mr. Fixer.</p>
+  </div>
+</div>
+
+Ready to write one? [Get started with `bunx lutecli` →](/getting-started/installation/)
