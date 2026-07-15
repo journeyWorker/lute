@@ -1,3 +1,9 @@
 /target
 **/*.rs.bk
 /.superpowers/
+node_modules/
+packages/website/dist/
+packages/website/.astro/
+packages/*/dist/
+packages/core-*/bin/
+.DS_Store

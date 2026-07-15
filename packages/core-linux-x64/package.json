@@ -1,0 +1,20 @@
+{
+  "name": "lutecli-core-linux-x64",
+  "version": "0.1.0",
+  "description": "lute CLI binary for linux x64 (glibc)",
+  "license": "MIT",
+  "type": "module",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "main": "bin/lute",
+  "files": ["bin"],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journeyWorker/lute.git",
+    "directory": "packages/core-linux-x64"
+  }
+}

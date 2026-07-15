@@ -1,0 +1,46 @@
+{
+  "name": "lutecli",
+  "version": "0.1.0",
+  "description": "lute — checker/compiler/tracer for .lute visual-novel scenarios. JS launcher: platform detection + native binary resolution.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "lute": "./bin.js"
+  },
+  "files": [
+    "bin.js",
+    "dist/**/*"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journeyWorker/lute.git",
+    "directory": "packages/cli"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target node --format esm",
+    "dev": "bun src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {},
+  "optionalDependencies": {
+    "lutecli-core-darwin-arm64": "workspace:*",
+    "lutecli-core-linux-x64": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "lute",
+    "visual-novel",
+    "scenario",
+    "dsl",
+    "compiler",
+    "cli"
+  ]
+}

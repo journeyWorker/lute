@@ -1,0 +1,286 @@
+name: Publish
+run-name: "release ${{ github.ref_name }}"
+
+# Simplified to lute's two-level package chain and to S0's two-row
+# platform matrix (macOS arm64 + Linux x64 gnu). Naming: the launcher
+# publishes as the UNSCOPED `lutecli` shipping `bin: { lute: "./bin.js" }`,
+# so `bunx lutecli` is the friendly invocation while the installed bin
+# stays `lute`; platform binaries are `lutecli-core-<platform>`.
+#
+# Version source of truth: the root Cargo.toml's [workspace.package]
+# version — this workflow reads it, never bumps it. A release is cut by
+# bumping Cargo.toml's version in a normal PR, merging, then pushing a
+# matching `vX.Y.Z` tag; that tag is this workflow's trigger and is
+# verified against Cargo.toml before anything publishes.
+#
+# Fail-closed ("Missing platform binary fails the workflow, not the
+# consumer"): `publish` only runs if `build`'s entire matrix succeeded —
+# GitHub Actions does not start a job that `needs` a matrix job until every
+# row of that matrix has passed — so a single failed target row blocks
+# every publish step, never just its own platform package.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      recovery:
+        description: "Resume a partially-published release: skip packages already on npm at this version instead of failing the fresh-release gate."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  read-version:
+    name: Read workspace version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Cross-workflow drift guard — the FIRST thing a release does, so a
+      # matrix/env/manifest drift blocks the publish before any build.
+      - name: Check release workflow safety
+        run: python3 scripts/check-release-workflow-safety.py
+
+      - name: Read [workspace.package] version from Cargo.toml
+        id: read
+        run: |
+          VERSION=$(python3 - <<'PY'
+          import pathlib, re
+          content = pathlib.Path("Cargo.toml").read_text()
+          match = re.search(r'\[workspace\.package\](?:(?!^\[).|\n)*?^version = "([^"]+)"', content, re.MULTILINE)
+          if not match:
+              raise SystemExit("Failed to read [workspace.package] version from Cargo.toml")
+          print(match.group(1))
+          PY
+          )
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Workspace version: $VERSION"
+
+      - name: Verify tag matches workspace version (tag-triggered runs only)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${{ github.ref_name }}"
+          EXPECTED="v${{ steps.read.outputs.version }}"
+          if [ "$TAG" != "$EXPECTED" ]; then
+            echo "Tag $TAG does not match Cargo.toml workspace version $EXPECTED" >&2
+            exit 1
+          fi
+
+  build:
+    name: Build - ${{ matrix.settings.target }}
+    needs: read-version
+    runs-on: ${{ matrix.settings.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: macos-14
+            target: aarch64-apple-darwin
+            package_dir: core-darwin-arm64
+            package_name: "lutecli-core-darwin-arm64"
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            package_dir: core-linux-x64
+            package_name: "lutecli-core-linux-x64"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: lute-cli-${{ matrix.settings.target }}-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build lute-cli binary
+        run: cargo build --release -p lute-cli --target ${{ matrix.settings.target }}
+
+      - name: Strip binary
+        run: strip "target/${{ matrix.settings.target }}/release/lute"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: lute-binary-${{ matrix.settings.target }}
+          path: target/${{ matrix.settings.target }}/release/lute
+          if-no-files-found: error
+
+  publish:
+    name: Publish npm packages
+    needs: [read-version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # Trusted Publishing (OIDC) needs npm >= 11.5.1; ubuntu's bundled
+      # npm lags. No NODE_AUTH_TOKEN anywhere — the publish steps below
+      # mint a short-lived OIDC token from `id-token: write` and npm
+      # exchanges it against each package's configured trusted publisher
+      # (owner journeyWorker / repo lute / workflow publish.yml).
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Download darwin-arm64 binary artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: lute-binary-aarch64-apple-darwin
+          path: packages/core-darwin-arm64/bin
+
+      - name: Download linux-x64 binary artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: lute-binary-x86_64-unknown-linux-gnu
+          path: packages/core-linux-x64/bin
+
+      - name: Stage binaries executable
+        run: |
+          chmod +x packages/core-darwin-arm64/bin/lute
+          chmod +x packages/core-linux-x64/bin/lute
+
+      - name: Apply the workspace version to every package.json
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          for pkg in packages/cli packages/core-darwin-arm64 packages/core-linux-x64; do
+            jq --arg v "$VERSION" '.version = $v' "$pkg/package.json" > "$pkg/package.json.tmp"
+            mv "$pkg/package.json.tmp" "$pkg/package.json"
+          done
+          # Rewrite the workspace:* optionalDependency ranges to the literal
+          # release version — npm has no workspace: protocol, unlike bun's
+          # local dev resolution.
+          jq --arg v "$VERSION" \
+            '.optionalDependencies = (.optionalDependencies | with_entries(.value = $v))' \
+            packages/cli/package.json > packages/cli/package.json.tmp
+          mv packages/cli/package.json.tmp packages/cli/package.json
+          echo "Publishing all packages at $VERSION"
+
+      - name: Build lutecli
+        working-directory: packages/cli
+        run: bun run build
+
+      # The `lutecli-core-<platform>` fan-out is non-atomic across packages
+      # on npm, so a runner death mid-publish leaves a partial release.
+      # This gate + the per-package idempotent skips below make the whole
+      # publish re-runnable: a fresh release must have NONE of its
+      # packages already on npm at $VERSION; `recovery=true` allows a
+      # partial prior publish and resumes it.
+      - name: Pre-flight npm release state (fresh-release gate + recovery)
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+          RECOVERY: ${{ github.event.inputs.recovery }}
+        run: |
+          set -euo pipefail
+          # A published-version probe that FAILS CLOSED: only an explicit
+          # npm E404 (the package has never been published) counts as
+          # "absent". Any OTHER npm failure (auth / network / registry
+          # outage) aborts the release rather than being silently read as
+          # "not published" — otherwise a partial-publish collision could
+          # slip past this gate on a transient error.
+          is_published() {
+            local pkg="$1" out
+            if out=$(npm view "$pkg" versions --json 2>&1); then
+              printf '%s' "$out" | jq -e --arg v "$VERSION" 'if type == "array" then any(.[]; . == $v) else . == $v end' >/dev/null
+              return
+            fi
+            if printf '%s' "$out" | grep -q 'E404'; then
+              return 1
+            fi
+            echo "::error::npm view $pkg failed (not a 404 — registry/auth/network), aborting release:" >&2
+            printf '%s\n' "$out" >&2
+            exit 1
+          }
+          ALREADY=""
+          for pkg_dir in core-darwin-arm64 core-linux-x64 cli; do
+            PKG=$(jq -r .name "packages/$pkg_dir/package.json")
+            if is_published "$PKG"; then
+              ALREADY="$ALREADY $PKG"
+            fi
+          done
+          if [ -n "$ALREADY" ]; then
+            if [ "${RECOVERY:-false}" = "true" ]; then
+              echo "recovery: already published at $VERSION, will be skipped:$ALREADY"
+            else
+              echo "::error::$VERSION is already partially published:$ALREADY" >&2
+              echo "Re-run this workflow with recovery=true to resume, or bump the version." >&2
+              exit 1
+            fi
+          else
+            echo "fresh release: no package is published at $VERSION yet."
+          fi
+
+      # Platform packages first, then the lutecli wrapper LAST (its
+      # optionalDependencies point at the platform packages, which must
+      # already resolve on npm). Each step is idempotent: a re-run / a
+      # recovery pass skips whatever already shipped at $VERSION.
+      - name: Publish lutecli-core-darwin-arm64 (idempotent)
+        working-directory: packages/core-darwin-arm64
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          PKG=$(jq -r .name package.json)
+          if npm view "$PKG@$VERSION" version >/dev/null 2>&1; then
+            echo "$PKG@$VERSION already on npm — skipping (idempotent)."
+          else
+            npm publish --provenance --access public
+          fi
+
+      - name: Publish lutecli-core-linux-x64 (idempotent)
+        working-directory: packages/core-linux-x64
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          PKG=$(jq -r .name package.json)
+          if npm view "$PKG@$VERSION" version >/dev/null 2>&1; then
+            echo "$PKG@$VERSION already on npm — skipping (idempotent)."
+          else
+            npm publish --provenance --access public
+          fi
+
+      - name: Publish lutecli (idempotent)
+        working-directory: packages/cli
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          PKG=$(jq -r .name package.json)
+          if npm view "$PKG@$VERSION" version >/dev/null 2>&1; then
+            echo "$PKG@$VERSION already on npm — skipping (idempotent)."
+          else
+            npm publish --provenance --access public
+          fi
