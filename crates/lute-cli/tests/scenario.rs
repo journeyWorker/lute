@@ -207,6 +207,42 @@ fn scenario_envelope_cyclic_project_announces_e_conn_cycle_degraded() {
 }
 
 #[test]
+fn scenario_envelope_plain_quest_on_cyclic_root_no_cycle_note() {
+    // False-positive fix (cross-model review): a plain (after-less) quest's
+    // envelope is the defaults-only D/D floor `quest_envelope` returns when
+    // `q.after.is_none()` REGARDLESS of graph topology -- so that quest's
+    // tables did NOT degrade because of the root's cycle. Printing the
+    // E-CONN-CYCLE degradation note for it is factually wrong. The quest
+    // cycle note must therefore be gated on the quest being graph-positioned
+    // (`after.is_some()`); the cyclic SCENE case still announces the note
+    // (sibling test `scenario_envelope_cyclic_project_announces_e_conn_cycle_degraded`).
+    let dir = temp_dir("scenario-envelope-plain-quest-cyclic-root");
+    // p <-> q form a prerequisite cycle in this same resolved root.
+    let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
+             after: 'visited(\"q.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
+    let q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\n\
+             after: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
+    write(&dir, "p.lute", p);
+    write(&dir, "q.lute", q);
+    // A plain, after-less quest sharing this same resolved root.
+    write(&dir, "quest.lute", &quest_no_after("plainQuest"));
+
+    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "quest:plainQuest"]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "{out_text}");
+    // No cycle-degradation note for an after-less quest: its floor is
+    // topology-independent, so the note would misattribute a non-degradation.
+    assert!(
+        !out_text.contains("E-CONN-CYCLE"),
+        "a plain (after-less) quest's D/D floor does not degrade due to the root cycle, so no \
+         cycle note must be printed: {out_text}"
+    );
+    // Its normal defaults-only tables still print (the enrichment note fires).
+    assert!(out_text.contains("Guaranteed (safe to read"), "{out_text}");
+    assert!(out_text.contains("declaring `after`"), "{out_text}");
+}
+
+#[test]
 fn scenario_envelope_header_carries_pre_entry_label() {
     // Persona review comprehension nit: the Guaranteed/Possible tables report
     // state available when control REACHES the node, BEFORE the node's own
