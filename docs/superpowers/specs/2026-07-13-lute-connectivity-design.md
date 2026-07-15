@@ -591,10 +591,16 @@ unchanged. It does not deliver an envelope for quest activation inferred from `s
   commands gate emission on a `check` verdict of the target document. When the document is
   resolved against a project (via `--project <dir>`, see the selection rule below), that gate is the document's
   **`check-project` verdict**: a `run.*`/`user.*` read the connectivity envelope proves
-  Guaranteed no longer blocks with a standalone `E-MAYBE-UNSET`, and a read no route guarantees
-  is blocked with the project's error-grade `E-STATE-MAYBE-UNAVAILABLE`. This makes a
-  connectivity-dependent scene compilable/traceable exactly when the project accepts it,
-  closing the gap where a project-valid scene could not preview. The reconciliation is **pure
+  `Guaranteed` no longer blocks with a standalone `E-MAYBE-UNSET`, and a read absent from
+  `Possible` (no declared route sets it) is blocked with the project's error-grade
+  `E-STATE-MAYBE-UNAVAILABLE`; a `Possible \ Guaranteed` read (set on some but not all routes)
+  stays a default-suppressed warning and does NOT block. This makes a
+  connectivity-dependent scene compilable/traceable exactly when the project soundly accepts
+  it, closing the gap where a project-valid scene could not preview. The gate is the target's
+  reconciled per-document verdict PLUS one graph refusal that can be stricter than a bare
+  clean per-document result: a target absent from the sound topological order (on or downstream
+  of a cycle, §4.1) is refused even if it declares no read of its own, because its prerequisite
+  ordering is unresolvable. The reconciliation is **pure
   graph math over declared structure** — it evaluates no CEL and runs no Datalog,
   `visited()`/`completed()` never enter `trace`'s evaluated subset, and `trace` still takes its
   `--fact`/`--state` mocks unchanged — so the **D1 fact-quarantine is preserved**: graph
@@ -612,8 +618,12 @@ unchanged. It does not deliver an envelope for quest activation inferred from `s
     keeps its current behaviour. The gate blocks on the TARGET document's reconciled
     diagnostics only: a project-only fault in a SIBLING document (e.g. another scene's
     `E-CONN-UNKNOWN-NODE`) does not block compiling this one — that stays `check-project`'s
-    surface — but a fault on the target's own `after`/reads (unknown node, cycle membership, an
-    unavailable read) does.
+    surface — but a fault on the target's own `after`/reads does: an unknown node, an
+    unavailable read, OR the target being absent from the sound topological order because it is
+    **on or downstream of a cycle** (§4.1). This last case is decided by topological-order
+    membership, not by which single file the `E-CONN-CYCLE` diagnostic happens to anchor to, so
+    every cycle-involved target is refused (a scene whose prerequisite chain transitively hits a
+    cycle has no sound envelope to compile against).
     **Out-of-tree target (normative).** If `--project <dir>` is given but the canonicalized
     target document is NOT within `<dir>`'s recursively-collected `.lute` set, the command
     errors EXPLICITLY (the connectivity gate needs the target to be part of the project) rather
