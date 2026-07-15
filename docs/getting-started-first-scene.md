@@ -174,7 +174,7 @@ state:
 ```
 
 (`scene.knowsMira` is a true/false switch, scoped to this scene, starting `false`. State is its
-own topic — Part 5 points you to where it's covered properly. For now, just: declare it, then
+own topic — Part 6 points you to where it's covered properly. For now, just: declare it, then
 guard with it.)
 
 Now the branch:
@@ -323,7 +323,200 @@ to take, with no other state/facts seeded) — an authoring aid for sanity-check
 right, never proof of how the scene behaves at runtime. Genuine runtime behavior — the engine's
 actual walk, with its own state and fact resolution — is verified at integration time, not here.
 
-## Part 5 — Where to go next
+## Part 5 — Sequencing scenes with `after:`
+
+So far you have written one scene in isolation. A real episode is a *sequence* — this
+scene plays only after the player has seen that one, or finished some quest. You declare
+that ordering with one frontmatter key: **`after:`**.
+
+`after:` states the **prerequisite that must hold before this scene is reachable** in the
+story graph. It doesn't move the player anywhere and it isn't a jump — it's a claim about
+*when* this scene becomes available, so the tool can check your episodes fit together into
+one coherent, playable graph.
+
+### What you can write in `after:`
+
+`after:` is deliberately tiny — not arbitrary code. You get exactly two building blocks:
+
+- `visited("<sceneKey>")` — true once the player has seen that scene.
+- `completed("<questId>")` — true once that quest is finished. The `<questId>` is the
+  `id` on a `<quest>` (the *other* document kind, from Part 6's pointers).
+
+You combine them with `&&` (both) and `||` (either):
+
+```yaml
+after: 'visited("mira.s01ep01")'
+after: 'visited("mira.s01ep01") && completed("theCoffeeDebt")'
+after: 'visited("mira.s01ep01") || visited("mira.s01ep02")'
+```
+
+That is the **whole** vocabulary. There is no `!` (you cannot say "*not* visited"), no
+arithmetic, and no reading state (`run.*`, `scene.*`) — those are intentionally left out.
+If you type `!visited(...)` or a state path in here, the checker rejects it. Ordering is all
+`after:` expresses; anything conditional on runtime state stays in your `when=` guards.
+
+### The scene key: how to name a scene in `visited(...)`
+
+`visited("…")` needs a scene's **canonical key**, and this is the part worth memorizing,
+because you can write it *without* compiling anything to look it up. The key is simply:
+
+```
+{character}.{episodeId}
+```
+
+- `{character}` is the `character:` from that scene's frontmatter.
+- `{episodeId}` is its `episodeId:` frontmatter key — **or**, when you don't declare one
+  (as in this tutorial), it's derived from `season`/`episode` as `s{season}ep{episode}`,
+  zero-padded to two digits each.
+
+Our tutorial scene declares `character: mira`, `season: 1`, `episode: 1` and no explicit
+`episodeId:`, so its canonical key is **`mira.s01ep01`** — season 1, episode 1. That's the
+exact same `mira.s01ep01` you already saw threaded through every `lineId` in the Part 4
+compile output (`"lineId": "mira.s01ep01.narrator_0010"`); the key is that prefix. You never
+have to reverse-engineer it from compiler output — read it straight off the frontmatter.
+
+### Worked example: a second scene that follows the diner
+
+Let's give Mira a follow-up. A scene that plays *after* the diner should be able to lean on
+something the diner established — but remember from Part 3 that `scene.*` state is scoped to
+one scene and clears at episode end. To carry a fact across episodes you need the **`run.`**
+tier, which persists. So first, teach the diner scene to remember the meeting: declare a
+`run.metMira` switch and set it. Add to the diner's frontmatter:
+
+```yaml
+state:
+  run.metMira: { type: bool, default: false }
+```
+
+and one line at the end of Shot 1:
+
+```
+::set{run.metMira = true}
+```
+
+(`::set` writes declared state — the flip side of the `when=` reads from Part 3.)
+
+Now the follow-up. Because `after:` and cross-scene reads only make sense across *several*
+files, put both scenes in a folder — an **episodes project**. Alongside them drop a one-line
+`lute.project.yaml` so the tool knows the folder is a project root:
+
+```
+episodes/
+  lute.project.yaml
+  diner.lute        ← the scene from Parts 1–4 (now with run.metMira)
+  booth.lute        ← the new follow-up, below
+```
+
+```yaml
+# episodes/lute.project.yaml
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+```
+
+```lute
+---
+kind: scene
+title: The Usual Booth
+character: mira
+season: 1
+episode: 2
+pov: fixer
+after: 'visited("mira.s01ep01")'
+state:
+  run.metMira: { type: bool, default: false }
+---
+
+## Shot 1.
+
+@mira{emotion="content" variant="0" when="run.metMira"}: Back again. You know where you sit.
+
+@narrator: The coffee is already poured.
+```
+
+`booth.lute` is `mira.s01ep02`. It declares `after: 'visited("mira.s01ep01")'` — it becomes
+reachable only once the diner has been seen — and its guarded line reads `run.metMira`, the
+switch the diner sets.
+
+Single-file `lute check` can't judge any of this — a `.lute` file on its own has no idea what
+other episodes exist. The **project** checker can. Point it at the folder:
+
+```
+$ ./target/debug/lute check-project episodes
+ok: episodes/booth.lute (0 warning(s))
+ok: episodes/diner.lute (0 warning(s))
+ok: episodes (2 file(s), 0 project-wide warning(s))
+```
+
+Clean — the key resolved, the ordering is acyclic, and the cross-scene read is safe. Now
+inspect the graph you just described. `lute scenario` is the read-only design surface for
+everything `after:` implies. Bare, it prints the whole graph in play order:
+
+```
+$ ./target/debug/lute scenario episodes
+project root: episodes
+  topological layers:
+    layer 0: scene(mira.s01ep01)
+    layer 1: scene(mira.s01ep02)
+  edges (prerequisite -> dependent):
+    scene(mira.s01ep01) -> scene(mira.s01ep02)
+```
+
+`reach <key>` answers "can the player ever get here, and by what route?":
+
+```
+$ ./target/debug/lute scenario episodes reach mira.s01ep02
+project root: episodes
+reach scene(mira.s01ep02):
+  verdict: Reachable — a satisfiable route exists under your declared routes.
+  after: visited("mira.s01ep01")
+  referenced node(s) (see `after` above for the && / || structure — this is NOT a flat requirement list):
+    - scene(mira.s01ep01): Reachable — a satisfiable route exists under your declared routes.
+```
+
+And `envelope <key>` answers the question you most want before writing a `when=` guard:
+*what state is safe to read here?* — i.e. what every route into this scene guarantees is
+already set:
+
+```
+$ ./target/debug/lute scenario episodes envelope mira.s01ep02
+project root: episodes
+envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
+  Guaranteed (safe to read under your declared routes):
+    - run.metMira
+  Possible (set on at least one declared route reaching this node):
+    - run.metMira
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
+    (none)
+```
+
+`run.metMira` is **Guaranteed** because the only declared route into the booth runs through
+the diner, which always sets it — so the booth's `when="run.metMira"` read is provably safe.
+(These verdicts describe your *declared* `after` routes; they're what holds if play follows
+the graph you wrote.)
+
+### What the project checker catches for you
+
+These are all `check-project` diagnostics (cross-file) — single-file `check` structurally
+can't see them. Each is a helpful catch, not a nuisance:
+
+- **`E-CONN-UNKNOWN-NODE`** — a `visited("…")`/`completed("…")` key that no scene/quest in the
+  project matches (usually a typo). It suggests the nearest real key: *"did you mean
+  `mira.s01ep01`?"*.
+- **`E-CONN-CYCLE`** — two or more scenes waiting on each other (A `after` B `after` A), so no
+  route can ever start. It prints the offending chain.
+- **`E-CONN-UNREACHABLE`** — a scene no declared route ever reaches; it can't be played as
+  authored.
+- **`E-CONN-EPISODE-ID-DUP`** — two scenes computing the *same* canonical key, so `visited("…")`
+  would be ambiguous. Give one a distinct `episode`/`episodeId`.
+- **`E-STATE-MAYBE-UNAVAILABLE`** — a `when=`/read of a `run.*`/`user.*` path that no route into
+  this scene guarantees is set — the very thing the `envelope` above screens for.
+
+Reach for `lute scenario` whenever you want to *see* the shape of your story — the layers, the
+routes, the guaranteed state at each node — instead of guessing.
+
+## Part 6 — Where to go next
 
 **Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
 project accepts — the staging directives, their attributes, the enum values (like `emotion`),
