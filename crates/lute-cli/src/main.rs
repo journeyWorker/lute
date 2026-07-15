@@ -1756,7 +1756,13 @@ fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
          before its own writes):"
     );
-    if graph_cycle_degraded(scenario) {
+    // The E-CONN-CYCLE degradation note applies ONLY to a graph-positioned
+    // quest (`after.is_some()`): `quest_envelope` returns the defaults-only
+    // D/D floor for an after-less quest REGARDLESS of graph topology, so
+    // such a quest's tables did NOT degrade due to the cycle -- printing the
+    // note for it is a false positive (cross-model review). A quest with no
+    // `after` keeps its normal D/D tables even on a cyclic root, no note.
+    if quest.after.is_some() && graph_cycle_degraded(scenario) {
         print_cycle_envelope_note();
     }
     let qe =

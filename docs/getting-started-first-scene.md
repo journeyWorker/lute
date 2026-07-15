@@ -325,14 +325,16 @@ actual walk, with its own state and fact resolution — is verified at integrati
 
 ## Part 5 — Sequencing scenes with `after:`
 
-So far you have written one scene in isolation. A real episode is a *sequence* — this
-scene plays only after the player has seen that one, or finished some quest. You declare
-that ordering with one frontmatter key: **`after:`**.
+So far you have written one scene in isolation. A real episode is a *sequence* — one
+scene is meant to come after the player has seen another, or finished some quest. You
+declare that intended ordering with one frontmatter key: **`after:`**.
 
-`after:` states the **prerequisite that must hold before this scene is reachable** in the
-story graph. It doesn't move the player anywhere and it isn't a jump — it's a claim about
-*when* this scene becomes available, so the tool can check your episodes fit together into
-one coherent, playable graph.
+`after:` **declares the routes that Lute's checker and `lute scenario` analyses assume
+reach this scene** — the prerequisites those analyses treat as holding by the time control
+arrives here. It doesn't move the player anywhere and it isn't a jump. It's *advisory*: the
+tool uses it to verify your episodes fit together into one coherent, analysable graph, but
+whether a game engine actually *enforces* this ordering at runtime is engine-dependent —
+`after:` is not a Lute-guaranteed lock on when the scene may play.
 
 ### What you can write in `after:`
 
@@ -385,7 +387,7 @@ tier, which persists. So first, teach the diner scene to remember the meeting: d
 
 ```yaml
 state:
-  run.metMira: { type: bool, default: false }
+  run.metMira: { type: bool }
 ```
 
 and one line at the end of Shot 1:
@@ -425,7 +427,7 @@ episode: 2
 pov: fixer
 after: 'visited("mira.s01ep01")'
 state:
-  run.metMira: { type: bool, default: false }
+  run.metMira: { type: bool }
 ---
 
 ## Shot 1.
@@ -491,23 +493,31 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
     (none)
 ```
 
-`run.metMira` is **Guaranteed** because the only declared route into the booth runs through
-the diner, which always sets it — so the booth's `when="run.metMira"` read is provably safe.
-(These verdicts describe your *declared* `after` routes; they're what holds if play follows
-the graph you wrote.)
+`run.metMira` is **Guaranteed** *because of the route, not a default*: it's declared with no
+`default:`, so it starts unset — the only thing that makes it safe to read here is that every
+declared route into the booth passes through the diner, which always `::set`s it. That's a
+genuine cross-scene guarantee: the diner's write propagates forward into the booth's pre-entry
+envelope, so the booth's `when="run.metMira"` read is provably safe. (These verdicts describe
+your *declared* `after` routes; they're what holds if play follows the graph you wrote.)
 
 ### What the project checker catches for you
 
-These are all `check-project` diagnostics (cross-file) — single-file `check` structurally
-can't see them. Each is a helpful catch, not a nuisance:
+These are the connectivity diagnostics `check-project` adds on top of single-file `check`
+(which structurally can't see across files) — the ones you'll meet most, not an exhaustive
+list. Each is a helpful catch, not a nuisance:
 
 - **`E-CONN-UNKNOWN-NODE`** — a `visited("…")`/`completed("…")` key that no scene/quest in the
   project matches (usually a typo). It suggests the nearest real key: *"did you mean
   `mira.s01ep01`?"*.
-- **`E-CONN-CYCLE`** — two or more scenes waiting on each other (A `after` B `after` A), so no
-  route can ever start. It prints the offending chain.
+- **`E-CONN-CYCLE`** — an unsatisfiable ordering among the scenes/quests in the offending chain
+  (e.g. A `after` B `after` A, or quests waiting on each other): nothing in that chain can be
+  sequenced. It prints the offending chain. (Scenes/quests in *other*, acyclic parts of the
+  project are unaffected.)
 - **`E-CONN-UNREACHABLE`** — a scene no declared route ever reaches; it can't be played as
   authored.
+- **`E-CONN-FORMULA-TOO-COMPLEX`** — an `after` formula with too many terms for the checker to
+  analyse (past its complexity cap); usually a sign the clause was machine-generated rather
+  than hand-written. Simplify it into something a reader — and the checker — can follow.
 - **`E-CONN-EPISODE-ID-DUP`** — two scenes computing the *same* canonical key, so `visited("…")`
   would be ambiguous. Give one a distinct `episode`/`episodeId`.
 - **`E-STATE-MAYBE-UNAVAILABLE`** — a `when=`/read of a `run.*`/`user.*` path that no route into
