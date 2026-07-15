@@ -378,6 +378,17 @@ pub struct ConnGraph {
     pub nodes: BTreeMap<NodeId, NodeInfo>,
     pub edges: BTreeMap<NodeId, BTreeSet<NodeId>>,
     pub topo_order: Vec<NodeId>,
+    /// The genuine `after`-precedence cycle MEMBERS (the nodes ON a cycle,
+    /// NOT the nodes merely downstream of one — those are absent from
+    /// `topo_order` but not here). Collected additively by
+    /// [`detect_conn_cycles`] as a side channel of the SAME DFS that emits
+    /// `E_CONN_CYCLE`; the emitted diagnostics are byte-identical whether or
+    /// not a consumer reads this field. The project gate (`lute-cli`'s
+    /// `project_gate_result`) needs it because the cycle diagnostic is
+    /// anchored to only ONE member's file, so a target that IS a member but
+    /// is not the anchored file has no target-anchored diagnostic to gate on
+    /// (spec §5: "cycle membership" blocks, dsl §2.4/§4.1 §A).
+    pub cycle_members: BTreeSet<NodeId>,
 }
 
 /// dsl §2.4 (graph 1) / §4.1 (§A cycle): the topological-precedence DAG over
@@ -385,7 +396,11 @@ pub struct ConnGraph {
 /// evaluation order can satisfy every `after` clause simultaneously.
 pub const E_CONN_CYCLE: &str = "E-CONN-CYCLE";
 
-fn cycle_diag(message: String, span: Span) -> Diagnostic {
+/// Construct an [`E_CONN_CYCLE`] diagnostic. Public so the CLI project gate
+/// (`lute-cli`'s `project_gate_result`) can reuse the SAME constructor/code to
+/// synthesize a TARGET-anchored cycle diagnostic for a non-anchored cycle
+/// member (spec §5) — see [`ConnGraph::cycle_members`].
+pub fn cycle_diag(message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: E_CONN_CYCLE.to_string(),
         severity: Severity::Error,
@@ -522,7 +537,8 @@ pub fn assemble_graph(
     }
 
     let mut diags = Vec::new();
-    detect_conn_cycles(&nodes, &edges, &mut diags);
+    let mut cycle_members: BTreeSet<NodeId> = BTreeSet::new();
+    detect_conn_cycles(&nodes, &edges, &mut diags, &mut cycle_members);
 
     // Per-node cycle recovery (spec §4.1): build the order UNCONDITIONALLY.
     // Kahn's algorithm below never frees a cycle member (its in-degree never
@@ -537,12 +553,17 @@ pub fn assemble_graph(
             nodes,
             edges,
             topo_order,
+            cycle_members,
         },
         diags,
     )
 }
 
-/// Detect any directed cycle in `edges` and report it as [`E_CONN_CYCLE`].
+/// Detect any directed cycle in `edges`, report each as [`E_CONN_CYCLE`] into
+/// `diags`, AND collect every genuine cycle-MEMBER [`NodeId`] into `members`
+/// (spec §5 `ConnGraph::cycle_members`). `members` is a pure side channel: it
+/// never influences which diagnostics are pushed or their spans/messages, so
+/// the emitted `diags` are byte-identical whether or not a caller inspects it.
 /// Standard DFS 3-coloring, cloned from `schema_import::detect_cycles` /
 /// `dfs_cycle` (`schema_import.rs:784-833`) over [`NodeId`] rather than
 /// `PathBuf`. Nodes are visited in [`NodeId`]'s own sorted (`BTreeMap`) order
@@ -553,13 +574,14 @@ fn detect_conn_cycles(
     nodes: &BTreeMap<NodeId, NodeInfo>,
     edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
     diags: &mut Vec<(PathBuf, Diagnostic)>,
+    members: &mut BTreeSet<NodeId>,
 ) {
     let mut on_stack: BTreeSet<NodeId> = BTreeSet::new();
     let mut done: BTreeSet<NodeId> = BTreeSet::new();
     let mut stack: Vec<NodeId> = Vec::new();
     for start in nodes.keys() {
         if !done.contains(start) && !on_stack.contains(start) {
-            dfs_conn_cycle(start, nodes, edges, &mut on_stack, &mut done, &mut stack, diags);
+            dfs_conn_cycle(start, nodes, edges, &mut on_stack, &mut done, &mut stack, diags, members);
         }
     }
 }
@@ -573,6 +595,7 @@ fn dfs_conn_cycle(
     done: &mut BTreeSet<NodeId>,
     stack: &mut Vec<NodeId>,
     diags: &mut Vec<(PathBuf, Diagnostic)>,
+    members: &mut BTreeSet<NodeId>,
 ) {
     on_stack.insert(node.clone());
     stack.push(node.clone());
@@ -587,6 +610,12 @@ fn dfs_conn_cycle(
                     .map(NodeId::to_string)
                     .collect::<Vec<_>>()
                     .join(" -> ");
+                // Side channel (spec §5): the chain `stack[start_idx..]` is
+                // EXACTLY the nodes on this cycle (from `nbr` around to
+                // `node`). Collect them as members — this does NOT touch the
+                // diagnostic pushed below, so `check-project` output is
+                // unchanged. Downstream-of-cycle nodes are NOT collected here.
+                members.extend(stack[start_idx..].iter().cloned());
                 let info = nodes
                     .get(nbr)
                     .expect("cycle target must be a graph node -- edges only ever target nodes");
@@ -598,7 +627,7 @@ fn dfs_conn_cycle(
                     ),
                 ));
             } else if !done.contains(nbr) {
-                dfs_conn_cycle(nbr, nodes, edges, on_stack, done, stack, diags);
+                dfs_conn_cycle(nbr, nodes, edges, on_stack, done, stack, diags, members);
             }
         }
     }

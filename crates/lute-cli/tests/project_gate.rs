@@ -65,6 +65,27 @@ fn scene_silent(character: &str) -> String {
     )
 }
 
+/// A scene declaring ONLY `after: visited(<after_key>)` with no `run.*` read —
+/// a cycle member with NO own read fault, so ONLY cycle membership can block
+/// it (the non-anchor-cycle-member regression fixture).
+fn scene_after_only(character: &str, after_key: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n\
+         after: 'visited(\"{after_key}\")'\n---\n## Shot 1.\n@narrator: hi\n"
+    )
+}
+
+/// A pass-through scene: declares `after` and `run.z` in schema but neither
+/// reads nor writes it — carries an upstream-Guaranteed `run.z` through
+/// untouched (the MIDDLE hop of the multi-hop guaranteed-chain test).
+fn scene_passthrough_after(character: &str, after_key: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n\
+         after: 'visited(\"{after_key}\")'\nstate:\n  run.z: {{ type: number }}\n---\n\
+         ## Shot 1.\n@narrator: hi\n"
+    )
+}
+
 // --- (a) compile: an envelope-Guaranteed read compiles ONLY under --project -
 
 #[test]
@@ -116,6 +137,12 @@ fn trace_gate_guaranteed_read_refused_standalone_runs_under_project() {
         standalone.status.code(),
         Some(1),
         "standalone trace must refuse on the check error: {}",
+        String::from_utf8_lossy(&standalone.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&standalone.stdout).contains("E-MAYBE-UNSET"),
+        "the standalone refusal must be the entry-dependent read fault (E-MAYBE-UNSET), \
+         not an unrelated error: {}",
         String::from_utf8_lossy(&standalone.stdout)
     );
 
@@ -245,6 +272,11 @@ fn compile_gate_sibling_project_fault_does_not_block_target() {
         "the sibling fault must fail check-project: {}",
         String::from_utf8_lossy(&cp.stdout)
     );
+    assert!(
+        String::from_utf8_lossy(&cp.stdout).contains("E-CONN-UNKNOWN-NODE"),
+        "the sibling's project-only fault must be E-CONN-UNKNOWN-NODE: {}",
+        String::from_utf8_lossy(&cp.stdout)
+    );
 
     // …but compiling the TARGET under the same --project SUCCEEDS: the gate
     // blocks on the target's OWN reconciled diagnostics only (spec §5).
@@ -256,6 +288,113 @@ fn compile_gate_sibling_project_fault_does_not_block_target() {
         String::from_utf8_lossy(&gated.stdout),
         String::from_utf8_lossy(&gated.stderr)
     );
+    // Pin that NONE of the sibling's fault codes leaked onto the target's own
+    // gated verdict (spec §5: only the target's OWN diagnostics gate).
+    let gated_out = String::from_utf8_lossy(&gated.stdout);
+    assert!(
+        !gated_out.contains("E-CONN-UNKNOWN-NODE")
+            && !gated_out.contains("E-STATE-MAYBE-UNAVAILABLE")
+            && !gated_out.contains("E-MAYBE-UNSET"),
+        "no sibling/project fault code may appear on the target's gated output: {gated_out}"
+    );
     let v: serde_json::Value = serde_json::from_slice(&gated.stdout).unwrap();
     assert_eq!(v["kind"], "scene", "{v}");
+}
+
+// --- (f) a NON-ANCHOR cycle MEMBER blocks (spec §5 "cycle membership") -------
+
+/// A 2-node `after` cycle `p <-> q`: `assemble_graph`'s DFS visits `p` first
+/// (lexically), so the SINGLE emitted `E-CONN-CYCLE` anchors to `p.lute`. The
+/// target `q` is the OTHER member — a genuine cycle member whose file carries
+/// NO anchored diagnostic and NO own read fault. Before the gate fix it
+/// compiled/traced clean (the target-anchored merge saw nothing on `q.lute`);
+/// the fix synthesizes a TARGET-anchored `E-CONN-CYCLE` from the graph's
+/// `cycle_members` side channel. (Verified RED pre-fix: with the
+/// `project_gate_result` cycle-member block removed, `q` compiled at exit 0.)
+#[test]
+fn compile_gate_non_anchor_cycle_member_blocks() {
+    let dir = temp_dir("gate-cycle-nonanchor-compile");
+    write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
+    let q = write(&dir, "q.lute", &scene_after_only("q", "p.s01ep01"));
+
+    // Sanity: the ONE cycle diagnostic anchors to p.lute, NOT q.lute — so q is
+    // provably the non-anchored member.
+    let cp = run(&["check-project", dir.to_str().unwrap()]);
+    let cp_out = String::from_utf8_lossy(&cp.stdout);
+    let cycle_line = cp_out.lines().find(|l| l.contains("E-CONN-CYCLE")).unwrap_or("");
+    assert!(cycle_line.contains("p.lute"), "cycle diag must anchor to p.lute: {cp_out}");
+    assert!(
+        !cycle_line.contains("q.lute"),
+        "cycle diag must NOT anchor to q.lute (q is the non-anchored member): {cp_out}"
+    );
+
+    let gated = run(&["compile", q.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&gated.stdout);
+    assert_eq!(
+        gated.status.code(),
+        Some(1),
+        "a non-anchored cycle member must block compilation: {stdout}"
+    );
+    assert!(stdout.contains("E-CONN-CYCLE"), "the block must cite the cycle: {stdout}");
+    assert!(!stdout.starts_with('{'), "no artifact on a blocked gate: {stdout}");
+}
+
+#[test]
+fn trace_gate_non_anchor_cycle_member_blocks() {
+    let dir = temp_dir("gate-cycle-nonanchor-trace");
+    write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
+    let q = write(&dir, "q.lute", &scene_after_only("q", "p.s01ep01"));
+
+    let gated = run(&["trace", q.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&gated.stdout);
+    assert_eq!(
+        gated.status.code(),
+        Some(1),
+        "a non-anchored cycle member must refuse the trace: {stdout}"
+    );
+    assert!(stdout.contains("E-CONN-CYCLE"), "the refusal must cite the cycle: {stdout}");
+}
+
+// --- (g) a Guaranteed write reconciles ACROSS multiple `after` hops ----------
+
+/// `up` (entry) ALWAYS sets `run.z`; `mid` (`after: up`) passes it through
+/// untouched; `term` (`after: mid`) reads `run.z` — Guaranteed TWO hops
+/// upstream. Pins that the §4.3 envelope propagates transitively, not just one
+/// hop: `term` blocks standalone (E-MAYBE-UNSET) but compiles under --project.
+#[test]
+fn compile_gate_multi_hop_guaranteed_read_compiles_under_project() {
+    let dir = temp_dir("gate-multi-hop");
+    write(&dir, "up.lute", &scene_setting_run_z("up"));
+    write(&dir, "mid.lute", &scene_passthrough_after("mid", "up.s01ep01"));
+    let term = write(
+        &dir,
+        "term.lute",
+        &scene_reading_run_z("term", "after: 'visited(\"mid.s01ep01\")'\n"),
+    );
+
+    // Standalone: the terminal read blocks (no project view) — E-MAYBE-UNSET.
+    let standalone = run(&["compile", term.to_str().unwrap()]);
+    assert_eq!(
+        standalone.status.code(),
+        Some(1),
+        "standalone compile must block: {}",
+        String::from_utf8_lossy(&standalone.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&standalone.stdout).contains("E-MAYBE-UNSET"),
+        "standalone diagnostics: {}",
+        String::from_utf8_lossy(&standalone.stdout)
+    );
+
+    // Project-aware: `run.z ∈ Guaranteed(term)` via up -> mid -> term (2 hops).
+    let gated = run(&["compile", term.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    assert_eq!(
+        gated.status.code(),
+        Some(0),
+        "a guaranteed write must reconcile transitively across hops: stdout={} stderr={}",
+        String::from_utf8_lossy(&gated.stdout),
+        String::from_utf8_lossy(&gated.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&gated.stdout).unwrap();
+    assert_eq!(v["kind"], "scene", "an artifact must be emitted: {v}");
 }
