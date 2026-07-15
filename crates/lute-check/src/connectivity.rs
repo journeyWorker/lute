@@ -362,11 +362,17 @@ pub enum PrereqState {
 /// The project-wide topological-precedence DAG (dsl §2.4 graph 1): every
 /// scene plus every `after`-declaring quest as a node, a flattened
 /// `prerequisite -> dependent` edge per formula atom that targets another
-/// graph node, and — ONLY when the graph is acyclic — `topo_order`, a
-/// deterministic ordering (Kahn's algorithm, ties broken by [`NodeId`]'s own
-/// `Ord`). `topo_order` is empty when [`assemble_graph`] reported
-/// [`E_CONN_CYCLE`]; downstream tasks MUST gate on the returned diagnostics
-/// being empty before trusting it.
+/// graph node, and `topo_order`, a deterministic Kahn's-algorithm ordering
+/// (ties broken by [`NodeId`]'s own `Ord`). Per-node cycle recovery (spec
+/// §4.1): `topo_order` contains every node that is NOT on or downstream of a
+/// prerequisite cycle — a cycle member never reaches in-degree 0 and is
+/// omitted, as is anything transitively downstream of one. The exclusion is
+/// PER-NODE, not per-root: cycle-independent nodes keep their slots and their
+/// sound verdicts even when [`assemble_graph`] also reported
+/// [`E_CONN_CYCLE`]. A node's ABSENCE from `topo_order` (equivalently, from
+/// the `reach`/`envs` maps built over it) is the per-node cyclic/downstream
+/// signal; downstream consumers degrade conservatively on it, never trust a
+/// verdict they cannot derive.
 #[derive(Clone, Debug, Default)]
 pub struct ConnGraph {
     pub nodes: BTreeMap<NodeId, NodeInfo>,
@@ -518,11 +524,13 @@ pub fn assemble_graph(
     let mut diags = Vec::new();
     detect_conn_cycles(&nodes, &edges, &mut diags);
 
-    let topo_order = if diags.is_empty() {
-        topo_sort(&nodes, &edges)
-    } else {
-        Vec::new()
-    };
+    // Per-node cycle recovery (spec §4.1): build the order UNCONDITIONALLY.
+    // Kahn's algorithm below never frees a cycle member (its in-degree never
+    // reaches 0) nor anything transitively downstream of one, so those nodes
+    // are simply omitted — every cycle-INDEPENDENT node keeps its slot and a
+    // sound verdict. `detect_conn_cycles` above still emits `E-CONN-CYCLE`;
+    // we only stop blanking the whole root's order.
+    let topo_order = topo_sort(&nodes, &edges);
 
     (
         ConnGraph {
@@ -599,11 +607,15 @@ fn dfs_conn_cycle(
     done.insert(node.clone());
 }
 
-/// Deterministic Kahn's-algorithm topological sort over an ALREADY-acyclic
-/// `edges` adjacency (callers MUST gate on [`detect_conn_cycles`] finding no
-/// cycle first). Ties (multiple zero-in-degree nodes ready at once) break on
-/// [`NodeId`]'s own `Ord` via a `BTreeSet` ready queue — independent of
-/// `nodes`/`edges`' own insertion order.
+/// Deterministic Kahn's-algorithm topological sort over `edges`. Runs
+/// UNCONDITIONALLY even on a cyclic graph (spec §4.1 per-node cycle
+/// recovery): any node that never reaches in-degree 0 — every cycle member
+/// and everything transitively downstream of one — is simply omitted from
+/// the returned order, never panicked on; every cycle-independent node is
+/// still emitted with its prerequisites before it. Ties (multiple
+/// zero-in-degree nodes ready at once) break on [`NodeId`]'s own `Ord` via a
+/// `BTreeSet` ready queue — independent of `nodes`/`edges`' own insertion
+/// order.
 fn topo_sort(nodes: &BTreeMap<NodeId, NodeInfo>, edges: &BTreeMap<NodeId, BTreeSet<NodeId>>) -> Vec<NodeId> {
     let mut in_degree: BTreeMap<NodeId, usize> = nodes.keys().map(|id| (id.clone(), 0)).collect();
     for targets in edges.values() {

@@ -718,33 +718,42 @@ fn envelope_tainted_node_leaves_maybe_unset_untouched() {
 }
 
 #[test]
-fn envelope_reconciliation_survives_when_graph_wide_cycle_empties_envs() {
-    // A prerequisite cycle ANYWHERE in a root (p <-> q) empties the WHOLE
-    // root's `topo_order` (`assemble_graph`'s own contract -- cycle
-    // detection aborts `topo_sort` entirely, never just for the cyclic
-    // nodes), so `envelope::propagate` never inserts an `Env` into `envs`
-    // for ANY node in that root -- including `x`, an UNRELATED entry
-    // scene with a genuine, always-unprovable `run.z` read. `tainted`
-    // stays empty too (`propagate`'s loop over `topo_order` never runs).
-    // Before the fix, the reconciliation pass only skipped `tainted`
-    // nodes and treated "absent from `envs`" the same as "safely
-    // reconciled", silently DROPPING x's real E-MAYBE-UNSET with no
-    // replacement (`check_envelope` also skips an envs-missing node, so
-    // no E-STATE-MAYBE-UNAVAILABLE fires either -- x would go clean). It
-    // must instead survive untouched, and E-CONN-CYCLE must still fire.
-    let dir = temp_dir("envelope-cycle-wipeout");
+fn envelope_reconciliation_is_per_node_across_a_cycle() {
+    // Per-node cycle recovery (spec §4.1): a p <-> q prerequisite cycle
+    // excludes ONLY its own members (and anything downstream) from
+    // `topo_order`, so `propagate` still builds a REAL `envs` entry for every
+    // cycle-INDEPENDENT node. Two contrasting non-cyclic scenes both read
+    // `run.z` (declared, never set on any route -> E-MAYBE-UNSET standalone):
+    //   * `x` is a cycle-INDEPENDENT entry -> it HAS a real `envs` entry, so
+    //     reconciliation runs: its per-file E-MAYBE-UNSET is REPLACED by the
+    //     project-wide error-grade E-STATE-MAYBE-UNAVAILABLE (never both).
+    //   * `d` is DOWNSTREAM of the cycle (`after: visited(p)`), so it is
+    //     excluded from `topo_order`/`envs` -> `check_envelope` skips it and
+    //     reconciliation leaves its genuine E-MAYBE-UNSET untouched (nothing
+    //     trustworthy to reclassify against). This keeps coverage of the
+    //     still-excluded/untrusted path the old whole-root wipeout exercised.
+    // E-CONN-CYCLE still fires. Before per-node recovery the WHOLE root's
+    // envs was emptied, so BOTH x and d kept their raw E-MAYBE-UNSET and x
+    // never earned its project-wide envelope verdict -- that was the bug this
+    // test used to encode.
+    let dir = temp_dir("envelope-cycle-per-node");
     let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\nafter: 'visited(\"q.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
     let q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\nafter: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
     write(&dir, "p.lute", p);
     write(&dir, "q.lute", q);
     write(&dir, "x.lute", &scene_reading_run_z("x", ""));
+    write(&dir, "d.lute", &scene_reading_run_z("d", "after: 'visited(\"p.s01ep01\")'\n"));
 
-    let out_x = run(&["check", dir.join("x.lute").to_str().unwrap()]);
-    assert!(
-        !out_x.status.success(),
-        "x.lute alone must flag E-MAYBE-UNSET standalone (can't see the project): {}",
-        String::from_utf8_lossy(&out_x.stdout)
-    );
+    // Red proof: both cycle-independent `x` and downstream `d` flag
+    // E-MAYBE-UNSET standalone (neither can see the project).
+    for f in ["x.lute", "d.lute"] {
+        let out_f = run(&["check", dir.join(f).to_str().unwrap()]);
+        assert!(
+            !out_f.status.success(),
+            "{f} alone must flag E-MAYBE-UNSET standalone: {}",
+            String::from_utf8_lossy(&out_f.stdout)
+        );
+    }
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
@@ -754,12 +763,35 @@ fn envelope_reconciliation_survives_when_graph_wide_cycle_empties_envs() {
         project_diags.iter().any(|d| d["code"] == "E-CONN-CYCLE"),
         "the p<->q cycle must still be reported: {v}"
     );
+
+    // Cycle-INDEPENDENT `x`: reconciled -> per-file E-MAYBE-UNSET GONE, and an
+    // error-grade E-STATE-MAYBE-UNAVAILABLE now stands in for it project-wide.
+    assert!(
+        project_diags.iter().any(|d| d["code"] == "E-STATE-MAYBE-UNAVAILABLE"
+            && d["severity"] == "error"
+            && d["path"].as_str().is_some_and(|p| p.ends_with("x.lute"))),
+        "cycle-independent x must earn its project-wide E-STATE-MAYBE-UNAVAILABLE error: {v}"
+    );
     let files = v["files"].as_array().unwrap();
     let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
     assert!(
-        x["diagnostics"].as_array().unwrap().iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
-        "x's genuine per-file E-MAYBE-UNSET must survive a graph-wide cycle wipeout, not be \
-         silently dropped with no replacement: {v}"
+        !x["diagnostics"].as_array().unwrap().iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+        "cycle-independent x's per-file E-MAYBE-UNSET must be reconciled away, not kept alongside \
+         its project envelope verdict: {v}"
+    );
+
+    // DOWNSTREAM-of-cycle `d`: genuinely absent from envs -> its E-MAYBE-UNSET
+    // survives untouched, and it earns NO E-STATE-MAYBE-UNAVAILABLE.
+    let d = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("d.lute")).unwrap();
+    assert!(
+        d["diagnostics"].as_array().unwrap().iter().any(|dg| dg["code"] == "E-MAYBE-UNSET"),
+        "downstream-of-cycle d's genuine E-MAYBE-UNSET must survive (no trustworthy envelope to \
+         reclassify against): {v}"
+    );
+    assert!(
+        !project_diags.iter().any(|dg| dg["code"] == "E-STATE-MAYBE-UNAVAILABLE"
+            && dg["path"].as_str().is_some_and(|p| p.ends_with("d.lute"))),
+        "downstream-of-cycle d must NOT earn a project envelope verdict: {v}"
     );
 }
 

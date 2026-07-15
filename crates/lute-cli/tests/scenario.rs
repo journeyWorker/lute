@@ -138,11 +138,12 @@ fn scenario_envelope_quest_without_after_shows_defaults_note() {
 
 #[test]
 fn scenario_envelope_scene_falls_back_to_dd_floor_when_graph_cycle_empties_envs() {
-    // p <-> q form a prerequisite cycle -- `assemble_graph` empties the
-    // WHOLE root's `topo_order`, so `envelope::propagate` never inserts
-    // an `Env` for `p` (or `q`) into `envs` at all. `scenario envelope
-    // p.s01ep01` must fall back to the D/D schema-default floor (mirrors
-    // T12's quest fallback), never empty tables.
+    // p <-> q form a prerequisite cycle -- both are cycle MEMBERS, so
+    // `assemble_graph` excludes each from `topo_order` (per-node cycle
+    // recovery, spec §4.1) and `envelope::propagate` never inserts an `Env`
+    // for `p` (or `q`) into `envs`. `scenario envelope p.s01ep01` must fall
+    // back to the D/D schema-default floor (mirrors T12's quest fallback),
+    // never empty tables.
     let dir = temp_dir("scenario-envelope-cycle-floor");
     let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
              after: 'visited(\"q.s01ep01\")'\nstate:\n  run.known: { type: number, default: 0 }\n\
@@ -240,6 +241,79 @@ fn scenario_envelope_plain_quest_on_cyclic_root_no_cycle_note() {
     // Its normal defaults-only tables still print (the enrichment note fires).
     assert!(out_text.contains("Guaranteed (safe to read"), "{out_text}");
     assert!(out_text.contains("declaring `after`"), "{out_text}");
+}
+
+#[test]
+fn scenario_cycle_independent_scene_keeps_real_reach_and_envelope() {
+    // Per-node cycle recovery (spec §4.1): a root containing a p <-> q
+    // prerequisite cycle ALSO contains a cycle-INDEPENDENT entry scene `ind`.
+    // The cycle degrades ONLY its own members -- `ind` reports its real
+    // Reachable verdict and a real envelope with NO cycle note, while a cycle
+    // MEMBER (p) still shows the Unknown / E-CONN-CYCLE per-node degradation.
+    // This is the observable contract the whole-root blanking used to break:
+    // before the fix, `ind` went dark (Unknown, cycle note) purely because a
+    // SIBLING pair was cyclic.
+    let dir = temp_dir("scenario-cycle-independent");
+    let ind = "---\nkind: scene\ncharacter: ind\nseason: 1\nepisode: 1\n\
+               state:\n  run.known: { type: number, default: 0 }\n---\n## Shot 1.\n@narrator: hi\n";
+    let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
+             after: 'visited(\"q.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
+    let q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\n\
+             after: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
+    write(&dir, "ind.lute", ind);
+    write(&dir, "p.lute", p);
+    write(&dir, "q.lute", q);
+
+    // Independent node: real Reachable verdict, NO cycle wording.
+    let reach_ind = stdout(&run(&["scenario", dir.to_str().unwrap(), "reach", "ind.s01ep01"]));
+    assert!(
+        reach_ind.contains("Reachable"),
+        "cycle-independent scene must report its real Reachable verdict, not the cycle-Unknown \
+         fallback: {reach_ind}"
+    );
+    assert!(
+        !reach_ind.contains("E-CONN-CYCLE"),
+        "cycle-independent scene's reach must not mention the sibling cycle: {reach_ind}"
+    );
+
+    // Independent node: real envelope, NO cycle note.
+    let env_ind = run(&["scenario", dir.to_str().unwrap(), "envelope", "ind.s01ep01"]);
+    let env_ind_text = stdout(&env_ind);
+    assert!(env_ind.status.success(), "{env_ind_text}");
+    assert!(
+        !env_ind_text.contains("E-CONN-CYCLE"),
+        "cycle-independent scene's envelope must have no cycle note: {env_ind_text}"
+    );
+    assert!(
+        env_ind_text.contains("Guaranteed (safe to read"),
+        "cycle-independent scene must still print its real envelope tables: {env_ind_text}"
+    );
+    // Its own schema-default `run.known` is genuinely guaranteed (entry node).
+    let guaranteed_block = env_ind_text
+        .split_once("Guaranteed (safe to read")
+        .unwrap_or_else(|| panic!("no Guaranteed heading: {env_ind_text}"))
+        .1
+        .split_once("Possible (set on")
+        .unwrap_or_else(|| panic!("no Possible heading: {env_ind_text}"))
+        .0;
+    assert!(guaranteed_block.contains("run.known"), "{env_ind_text}");
+
+    // Contrast: a cycle MEMBER still degrades with the per-node cycle note in
+    // BOTH views, and both still exit 0 (read-only surface, no NEW failure).
+    let reach_p = run(&["scenario", dir.to_str().unwrap(), "reach", "p.s01ep01"]);
+    assert!(reach_p.status.success(), "{}", stdout(&reach_p));
+    assert!(
+        stdout(&reach_p).contains("E-CONN-CYCLE"),
+        "cycle-member reach must still show the per-node cycle degradation: {}",
+        stdout(&reach_p)
+    );
+    let env_p = run(&["scenario", dir.to_str().unwrap(), "envelope", "p.s01ep01"]);
+    assert!(env_p.status.success(), "{}", stdout(&env_p));
+    assert!(
+        stdout(&env_p).contains("E-CONN-CYCLE"),
+        "cycle-member envelope must still show the per-node cycle note: {}",
+        stdout(&env_p)
+    );
 }
 
 #[test]

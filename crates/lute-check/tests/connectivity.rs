@@ -258,6 +258,72 @@ fn acyclic_graph_has_no_cycle_and_topo_order() {
 }
 
 #[test]
+fn independent_chain_survives_cycle() {
+    // Per-node cycle recovery (spec §4.1): an independent acyclic chain
+    // A (entry) -> B coexists with a SEPARATE 2-node cycle p <-> q. The cycle
+    // is still diagnosed, but ONLY its own members degrade -- A and B keep
+    // their topo_order slots; p and q (never reaching in-degree 0 in Kahn's)
+    // are the only nodes excluded.
+    let text_a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a: hi\n";
+    let text_b = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\")'\n---\n## Shot 1.\n@b: hi\n";
+    let text_p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\nafter: 'visited(\"q.s01ep01\")'\n---\n## Shot 1.\n@p: hi\n";
+    let text_q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\nafter: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@q: hi\n";
+    let docs = docs_for(&[
+        ("a.lute", text_a),
+        ("b.lute", text_b),
+        ("p.lute", text_p),
+        ("q.lute", text_q),
+    ]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(
+        diags.iter().any(|(_p, d)| d.code == "E-CONN-CYCLE"),
+        "cycle must still be diagnosed, got {diags:?}"
+    );
+    let a = NodeId::Scene("a.s01ep01".to_string());
+    let b = NodeId::Scene("b.s01ep01".to_string());
+    let p = NodeId::Scene("p.s01ep01".to_string());
+    let q = NodeId::Scene("q.s01ep01".to_string());
+    assert!(g.topo_order.contains(&a), "independent entry A must survive the cycle: {:?}", g.topo_order);
+    assert!(g.topo_order.contains(&b), "independent dependent B must survive the cycle: {:?}", g.topo_order);
+    assert!(!g.topo_order.contains(&p), "cycle member p must be excluded: {:?}", g.topo_order);
+    assert!(!g.topo_order.contains(&q), "cycle member q must be excluded: {:?}", g.topo_order);
+}
+
+#[test]
+fn downstream_of_cycle_excluded() {
+    // D declares `after: visited(p)` where p is inside a p <-> q cycle. Kahn's
+    // never frees p, so D's own in-degree from p never decrements: D is
+    // transitively DOWNSTREAM of the cycle and must be excluded from
+    // topo_order too, even though D is not itself a cycle member. An
+    // INDEPENDENT entry E survives alongside.
+    let text_e = "---\nkind: scene\ncharacter: e\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@e: hi\n";
+    let text_p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\nafter: 'visited(\"q.s01ep01\")'\n---\n## Shot 1.\n@p: hi\n";
+    let text_q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\nafter: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@q: hi\n";
+    let text_d = "---\nkind: scene\ncharacter: d\nseason: 1\nepisode: 1\nafter: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@d: hi\n";
+    let docs = docs_for(&[
+        ("e.lute", text_e),
+        ("p.lute", text_p),
+        ("q.lute", text_q),
+        ("d.lute", text_d),
+    ]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(
+        diags.iter().any(|(_p, d)| d.code == "E-CONN-CYCLE"),
+        "cycle must still be diagnosed, got {diags:?}"
+    );
+    let e = NodeId::Scene("e.s01ep01".to_string());
+    let d = NodeId::Scene("d.s01ep01".to_string());
+    let p = NodeId::Scene("p.s01ep01".to_string());
+    assert!(g.topo_order.contains(&e), "independent entry E must survive the cycle: {:?}", g.topo_order);
+    assert!(!g.topo_order.contains(&p), "cycle member p must be excluded: {:?}", g.topo_order);
+    assert!(!g.topo_order.contains(&d), "downstream-of-cycle D must be excluded: {:?}", g.topo_order);
+}
+
+#[test]
 fn scene_and_quest_sharing_a_string_are_distinct_nodes() {
     // Scene canonical key "shared.key" (character=shared, episodeId=key) and
     // quest id "shared.key" are the SAME string but SEPARATE namespaces --
