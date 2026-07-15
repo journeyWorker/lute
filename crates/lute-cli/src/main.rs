@@ -802,7 +802,6 @@ fn reconcile_collected(
 ) -> (
     Vec<(PathBuf, lute_check::CheckResult)>,
     Vec<(PathBuf, Diagnostic)>,
-    BTreeSet<lute_check::connectivity::NodeId>,
     BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
 ) {
     let mut project_diags = Vec::new();
@@ -835,12 +834,12 @@ fn reconcile_collected(
     // structurally cannot see (an import-graph collision reaching outside
     // `dir`, or a same-id declare in a SIBLING project root).
     let mut covered = Vec::new();
-    // Spec §5 project gate side channels (additive; NEVER affect
-    // `project_diags`, so `check-project`'s output is byte-identical). Both
-    // are accumulated across every resolved root so the single-root gate
+    // Spec §5 project gate side channel (additive; NEVER affects
+    // `project_diags`, so `check-project`'s output is byte-identical).
+    // Accumulated across every resolved root so the single-root gate
     // (`reconciled_project_results`) can map its target document to the
-    // NodeId(s) it hosts and test cycle membership.
-    let mut cycle_members: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
+    // NodeId(s) it hosts; the on/downstream-of-cycle test itself is decided
+    // by topological-order exclusion in `reconciled_project_results`.
     let mut nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>> =
         BTreeMap::new();
     for group_full in by_root.values() {
@@ -856,12 +855,10 @@ fn reconcile_collected(
         let (conn_graph, cycle_diags) =
             lute_check::connectivity::assemble_graph(group, &key_set, &quest_ids);
         project_diags.extend(cycle_diags);
-        // Spec §5 gate side channels (additive, no diagnostic effect): record
-        // this root's genuine cycle members and every node's (id, span) keyed
-        // by its declaring file, so the gate can anchor a TARGET-owned
-        // `E-CONN-CYCLE` even when the emitted cycle diagnostic landed on a
-        // different member's file.
-        cycle_members.extend(conn_graph.cycle_members.iter().cloned());
+        // Spec §5 gate side channel (additive, no diagnostic effect): record
+        // every node's (id, span) keyed by its declaring file, so the gate can
+        // anchor a TARGET-owned `E-CONN-CYCLE` even when the emitted cycle
+        // diagnostic landed on a different node's file.
         for info in conn_graph.nodes.values() {
             nodes_by_path
                 .entry(info.path.clone())
@@ -1067,7 +1064,7 @@ fn reconcile_collected(
             .or_insert_with(|| std::fs::read_to_string(path.as_path()).unwrap_or_default());
         d.span = normalize_span_from_text(text, d.span);
     }
-    (file_results, project_diags, cycle_members, nodes_by_path)
+    (file_results, project_diags, nodes_by_path)
 }
 
 /// Recursively `check` every `*.lute` under `dir` ([`collect_project_docs`],
@@ -1083,7 +1080,7 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
         Ok(v) => v,
         Err(code) => return code,
     };
-    let (file_results, project_diags, _cycle_members, _nodes_by_path) =
+    let (file_results, project_diags, _nodes_by_path) =
         reconcile_collected(file_results, &by_root);
 
     let project_ok = !project_diags
@@ -1188,11 +1185,13 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
 struct ReconciledProject {
     per_doc: BTreeMap<PathBuf, lute_check::CheckResult>,
     project_diagnostics: Vec<(PathBuf, Diagnostic)>,
-    /// Spec §5 gate side channel: the genuine `after`-precedence cycle
-    /// MEMBERS across the single root. A target hosting any of these blocks,
-    /// even when the emitted `E-CONN-CYCLE` was anchored to a DIFFERENT
-    /// member's file (see [`project_gate_result`]).
-    cycle_members: BTreeSet<lute_check::connectivity::NodeId>,
+    /// Spec §5 gate signal: every node that is ON or DOWNSTREAM of a
+    /// prerequisite cycle — absent from the sound topological order while its
+    /// root has a cycle (`node_cycle_degraded`). A target hosting any of these
+    /// blocks, even when the emitted `E-CONN-CYCLE` was anchored to a DIFFERENT
+    /// node's file (see [`project_gate_result`]). Complete by Kahn's
+    /// construction — no under-approximation of overlapping cycles.
+    cycle_degraded: BTreeSet<lute_check::connectivity::NodeId>,
     /// Every graph node's `(id, span)` keyed by its declaring document — the
     /// gate's target-path -> hosted-nodes lookup.
     nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
@@ -1211,12 +1210,30 @@ fn reconciled_project_results(
     providers: Option<&Path>,
 ) -> Result<ReconciledProject, ExitCode> {
     let (file_results, by_root) = collect_project_docs(dir, providers, true)?;
-    let (file_results, project_diagnostics, cycle_members, nodes_by_path) =
+    // Spec §5 gate: a target blocks when a node it hosts is ON or DOWNSTREAM
+    // of a prerequisite cycle — i.e. absent from the sound topological order
+    // while its root has a cycle. Decided by `node_cycle_degraded` over the
+    // SAME `assemble_root_scenario` analysis `lute scenario` reports from, so a
+    // target's gate verdict never disagrees with its `scenario reach` view.
+    // This topological-order exclusion is COMPLETE (Kahn frees exactly the
+    // cycle-INDEPENDENT nodes), where a DFS back-edge stack slice
+    // under-approximates overlapping cycles. Built BEFORE `reconcile_collected`
+    // consumes `file_results`.
+    let mut cycle_degraded: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
+    for group_full in by_root.values() {
+        let scenario = assemble_root_scenario(group_full, &file_results);
+        for node in scenario.graph.nodes.keys() {
+            if node_cycle_degraded(&scenario, node) {
+                cycle_degraded.insert(node.clone());
+            }
+        }
+    }
+    let (file_results, project_diagnostics, nodes_by_path) =
         reconcile_collected(file_results, &by_root);
     Ok(ReconciledProject {
         per_doc: file_results.into_iter().collect(),
         project_diagnostics,
-        cycle_members,
+        cycle_degraded,
         nodes_by_path,
     })
 }
@@ -1270,17 +1287,19 @@ fn project_gate_result(
             result.diagnostics.push(d.clone());
         }
     }
-    // Spec §5 ("cycle membership" blocks): a target that HOSTS a genuine
-    // `after`-precedence cycle member must block even when the ONE emitted
-    // `E-CONN-CYCLE` was anchored to a DIFFERENT member's file — the target
-    // may be a non-anchored member with no own read fault, which the merge
-    // above would let through. Synthesize a TARGET-anchored `E-CONN-CYCLE`
-    // (reusing `lute_check`'s own constructor/code) so `ok` recomputes false.
-    // Guarded on `E_CONN_CYCLE` NOT already present so an already-anchored
-    // member (or a member already carrying a retained `E-MAYBE-UNSET`) never
-    // double-reports the cycle. Only genuine MEMBERS live in `cycle_members`;
-    // a node merely DOWNSTREAM of a cycle is absent and blocks solely via its
-    // own read faults (spec lists membership, not downstream position).
+    // Spec §5 (topological-order exclusion): a target that HOSTS a node ON or
+    // DOWNSTREAM of an `after`-precedence cycle must block even when the ONE
+    // emitted `E-CONN-CYCLE` was anchored to a DIFFERENT node's file — the
+    // target may be a non-anchored cyclic/downstream node with no own read
+    // fault, which the merge above would let through. Synthesize a
+    // TARGET-anchored `E-CONN-CYCLE` (reusing `lute_check`'s own
+    // constructor/code) so `ok` recomputes false. Guarded on `E_CONN_CYCLE` NOT
+    // already present so an already-anchored node (or one already carrying a
+    // retained `E-MAYBE-UNSET`) never double-reports the cycle. Membership is
+    // `cycle_degraded` — absence from the sound topological order given a cycle
+    // (`node_cycle_degraded`), COMPLETE (no under-approximation of overlapping
+    // cycles) and, per spec §5, covering BOTH on-cycle and strictly-downstream
+    // targets.
     let already_cyclic = result
         .diagnostics
         .iter()
@@ -1289,7 +1308,7 @@ fn project_gate_result(
         if let Some((id, span)) = reconciled
             .nodes_by_path
             .get(matched_key)
-            .and_then(|hosted| hosted.iter().find(|(id, _)| reconciled.cycle_members.contains(id)))
+            .and_then(|hosted| hosted.iter().find(|(id, _)| reconciled.cycle_degraded.contains(id)))
         {
             // Normalize line/col from the target's own text (mirrors
             // `reconcile_collected`'s project-diag normalization) — the raw
@@ -1298,9 +1317,9 @@ fn project_gate_result(
             let span = normalize_span_from_text(&text, *span);
             result.diagnostics.push(lute_check::connectivity::cycle_diag(
                 format!(
-                    "prerequisite cycle: this document hosts `{id}`, a member of an \
-                     `after`-precedence cycle (E-CONN-CYCLE); no evaluation order can satisfy \
-                     every `after` (dsl §2.4/§4.1 §A)"
+                    "prerequisite cycle: this document hosts `{id}`, which is on or downstream \
+                     of an `after`-precedence cycle (E-CONN-CYCLE); no evaluation order can \
+                     satisfy every `after` (dsl §2.4/§4.1 §A)"
                 ),
                 span,
             ));

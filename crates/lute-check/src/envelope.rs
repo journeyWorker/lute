@@ -909,7 +909,6 @@ mod tests {
             nodes: infos.into_iter().map(|n| (n.id.clone(), n)).collect(),
             edges: BTreeMap::new(),
             topo_order,
-            cycle_members: BTreeSet::new(),
         }
     }
 
