@@ -37,7 +37,7 @@ The core staging directives and their canonical attributes:
 ::camera{focus="bianca" zoom="1.1" duration="0.5"}
 ```
 
-*(From [`docs/examples/bianca-s01ep02.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/bianca-s01ep02.lute).)*
+*(From [`docs/examples/bianca-s01ep02.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/bianca-s01ep02.lute).)*
 
 Character staging lives on `::auto` with an action id (there is no `::sprite`/`::char`); music
 fade-out is `::music{action="fade-out"}`; a character exit is

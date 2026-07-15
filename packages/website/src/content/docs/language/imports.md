@@ -26,7 +26,7 @@ uses: state.schema.yaml
 </match>
 ```
 
-*(From [`docs/examples/carry-ep.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/carry-ep.lute).)* The scene reads `run.choseHelp`, which is declared in the imported
+*(From [`docs/examples/carry-ep.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/carry-ep.lute).)* The scene reads `run.choseHelp`, which is declared in the imported
 `state.schema.yaml` — not inline.
 
 ## Declaration files
@@ -74,7 +74,7 @@ uses: child.schema.yaml
 ---
 ```
 
-*(From [`docs/examples/extends-demo.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/extends-demo.lute), whose `child.schema.yaml` itself `extends:` a base — the DAG runs several files deep.)*
+*(From [`docs/examples/extends-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/extends-demo.lute), whose `child.schema.yaml` itself `extends:` a base — the DAG runs several files deep.)*
 
 Missing files, cycles, and parse errors on any imported file — schema or component — surface through
 the shared `E-USES-{NOT-FOUND,CYCLE,PARSE}` diagnostics.

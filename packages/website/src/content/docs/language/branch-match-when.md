@@ -24,7 +24,7 @@ into the reserved path `scene.choices.<branchId>`, which a later `<match>` can r
 </branch>
 ```
 
-*(From [`docs/examples/bianca-s01ep02.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/bianca-s01ep02.lute).)*
+*(From [`docs/examples/bianca-s01ep02.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/bianca-s01ep02.lute).)*
 
 A branch id must be unique within the episode, and a branch must contain at least one **unguarded**
 choice so the menu is never provably empty (`E-BRANCH-ALL-GUARDED`). Choice mechanics — `when`
@@ -73,7 +73,7 @@ A `<when>` arm matches on a literal pattern (`is`), a CEL guard (`test`), or bot
 </match>
 ```
 
-*(From [`docs/examples/showcase/when-is-demo.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/showcase/when-is-demo.lute).)*
+*(From [`docs/examples/showcase/when-is-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/when-is-demo.lute).)*
 
 ### Exhaustiveness
 
@@ -95,7 +95,7 @@ A single content line may carry a `when="G"` guard directly: the line is emitted
 @sofia{when="run.metHelpfully"}: You helped me back then. I've been meaning to thank you.
 ```
 
-*(From [`docs/examples/gated-line.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/gated-line.lute).)*
+*(From [`docs/examples/gated-line.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/gated-line.lute).)*
 
 This is exact sugar for a one-arm match — `<match on="G"><when test="$">…</when><otherwise/></match>`
 — and lowers to that record identically, leaving the line's `code`/`lineId`/`voiceKey` unchanged.

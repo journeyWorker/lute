@@ -42,7 +42,7 @@ the `persist` sugar:
 </branch>
 ```
 
-*(From [`docs/examples/choice-persist.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/choice-persist.lute).)*
+*(From [`docs/examples/choice-persist.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/choice-persist.lute).)*
 
 `persist="run"` appends `::set{run.<path> = <value>}` to that arm. The target path is named by
 **`into`** and must be declared in your schema. **`value`** defaults to `true` for a `bool` path;
@@ -81,7 +81,7 @@ order. Hub choices carry two extra boolean flags — **`once`** and **`exit`**:
 </hub>
 ```
 
-*(From [`docs/examples/showcase/hub-demo.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/showcase/hub-demo.lute).)*
+*(From [`docs/examples/showcase/hub-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/hub-demo.lute).)*
 
 - **Eligibility.** A choice is eligible when its `when` guard (if any) holds and — if flagged
   `once` — it has not yet been taken in this scene.

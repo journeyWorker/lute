@@ -24,7 +24,7 @@ defs:
 ---
 ```
 
-*(Frontmatter excerpt from [`docs/examples/showcase/episode01.lute`](https://github.com/KantoRegion/lute/blob/main/docs/examples/showcase/episode01.lute).)*
+*(Frontmatter excerpt from [`docs/examples/showcase/episode01.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/episode01.lute).)*
 
 ## Required keys
 
