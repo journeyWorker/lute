@@ -29,7 +29,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use lute_cel::CelArena;
 use lute_check::meta::{canonical_episode_id, canonical_episode_key, StateSchema};
-use lute_check::{check, fold_env, CheckInput, DefTable, FoldedEnv, StageState};
+use lute_check::{check, fold_env, CheckInput, CheckResult, DefTable, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
@@ -49,10 +49,25 @@ pub const LUTE_IR_VERSION: &str = "0.5.3";
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
 /// compile-stage errors (`E-COMPILE-*`). Never panics.
 pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
+    compile_with_check(input, check(input))
+}
+
+/// Like [`compile`] but gated on a CALLER-SUPPLIED [`CheckResult`] instead of
+/// running `check(input)` itself — the seam the project-aware CLI gate
+/// (connectivity design spec §5) uses to feed the target document's RECONCILED
+/// `check-project` verdict: a `run.*`/`user.*` read the connectivity envelope
+/// proves Guaranteed no longer blocks with a standalone `E-MAYBE-UNSET`, and a
+/// read no route guarantees blocks with the project's error-grade
+/// `E-STATE-MAYBE-UNAVAILABLE`. [`compile`] itself is the thin wrapper
+/// `compile_with_check(input, check(input))`, so every existing caller is
+/// byte-identical. Never panics.
+pub fn compile_with_check(
+    input: &CheckInput,
+    result: CheckResult,
+) -> Result<Artifact, Vec<Diagnostic>> {
     // D6 gate: codegen runs only on a clean check, so every pass below may
     // RELY on checker-proven invariants (declared paths, exhaustiveness,
     // acyclic components, @ref arity, unique choice ids via E-CHOICE-DUP).
-    let result = check(input);
     if !result.ok {
         return Err(result.diagnostics);
     }

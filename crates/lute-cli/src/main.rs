@@ -563,17 +563,27 @@ type DocGroup = Vec<(PathBuf, lute_syntax::ast::Document, lute_check::FoldedEnv)
 type ByRoot = BTreeMap<PathBuf, DocGroup>;
 
 /// Walk `dir` for `.lute` files ([`find_lute_files`]), `check()` +
-/// `fold_env` each one against its OWN resolved project root
-/// ([`project_root_for`]), and group the parsed docs by that root — the
-/// shared file-collection step `check-project` and `lute scenario` (T14)
-/// both build on top of, so the two commands can never observe a DIFFERENT
-/// project structure for the same `dir` (never a second file-walk/parse).
+/// `fold_env` each one, and group the parsed docs by resolved project root
+/// — the shared file-collection step `check-project`, `lute scenario`
+/// (T14), and the compile/trace project-aware gate (connectivity spec §5)
+/// all build on top of, so they can never observe a DIFFERENT project
+/// structure for the same `dir` (never a second file-walk/parse).
+///
+/// `single_root` picks the root-resolution rule (connectivity spec §5's
+/// single-root vs nested distinction): `false` resolves EACH file's OWN
+/// nearest ancestor root ([`project_root_for`], `check-project`/`lute
+/// scenario`'s nested-subproject behavior); `true` treats `dir` itself as
+/// THE single root for every file (capabilities AND connectivity resolve
+/// against exactly `dir`, no nested nearest-root search — the compile/trace
+/// `--project <dir>` gate).
+///
 /// `Err(ExitCode::from(2))` on the same I/O failures `run_check_project`
 /// always had: the walk itself failing, or `build_input` unable to read a
 /// file.
 fn collect_project_docs(
     dir: &Path,
     providers: Option<&Path>,
+    single_root: bool,
 ) -> Result<(Vec<(PathBuf, lute_check::CheckResult)>, ByRoot), ExitCode> {
     let files = find_lute_files(dir).map_err(|e| {
         eprintln!("lute: cannot walk {}: {e}", dir.display());
@@ -587,7 +597,7 @@ fn collect_project_docs(
     let mut roots: Vec<PathBuf> = Vec::with_capacity(files.len());
 
     for file in &files {
-        let root = project_root_for(file, dir);
+        let root = if single_root { dir.to_path_buf() } else { project_root_for(file, dir) };
         let Some(input) = build_input(file, providers, Some(&root)) else {
             return Err(ExitCode::from(2));
         };
@@ -766,58 +776,30 @@ fn compute_conn_fixpoint(
     }
 }
 
-/// Run `check` over every `*.lute` file recursively found under `dir`
-/// (sorted, deterministic, symlink-deduped — [`find_lute_files`]), but
-/// resolving EACH file's project independently rather than reusing `dir` as
-/// one flat project for every file: [`project_root_for`] walks from the
-/// file's own directory upward for the NEAREST ancestor containing a
-/// `lute.project.yaml`, bounded below by `dir` itself (falls back to `dir`
-/// when no ancestor up to and including it has one — identical to the old
-/// flat-project behavior). `build_input` is called with THAT resolved root,
-/// so a file under a nested subproject (its own `lute.project.yaml` +
-/// `plugins/` + `catalog/`) resolves against ITS OWN capability snapshot and
-/// pinned catalog, matching `lute check <file> --project <that subproject>`
-/// exactly — never the walk root's, when a nearer root exists.
+/// Reconcile the per-root project analysis over ALREADY-COLLECTED docs
+/// ([`collect_project_docs`]): run each resolved root's `<quest id>`
+/// uniqueness pass (dsl 0.2.0 §6.3, [`lute_check::check_project_quest_ids`]),
+/// quest-ref pass (dsl 0.5.1 §1.4), and the T5–T11 connectivity graph /
+/// reachability / envelope analyses, then RECONCILE the per-file diagnostics
+/// against the project-wide proof: suppress a per-file `E-QUEST-ID-DUP` the
+/// project pass already covers (only within its OWN resolved root — never one
+/// reaching outside the walk root or a sibling root, [`lute_check::colliding_occurrences`]),
+/// and reclassify every entry-dependent, in-scope, non-tainted `E-MAYBE-UNSET`
+/// against the connectivity envelope (dropped when `Guaranteed`,
+/// dropped-and-suppressed when `Possible\Guaranteed`, replaced by error-grade
+/// `E-STATE-MAYBE-UNAVAILABLE` when `∉ Possible`). Returns the reconciled
+/// per-file results (each `ok` recomputed) plus the project-wide diagnostics
+/// (spans normalized against each file's own text — [`normalize_span_from_text`]).
 ///
-/// THEN additionally cross-validates `<quest id>` uniqueness (dsl 0.2.0
-/// §6.3, [`lute_check::check_project_quest_ids`]) — the residual `check()`'s
-/// own `E-QUEST-ID-DUP` (0.2.0 F4, scoped to one document's OWN
-/// `uses:`/`extends:` import graph) cannot see: two quest docs sharing an id
-/// with no import edge between them at all. This pass is scoped PER
-/// RESOLVED PROJECT ROOT, not pooled across the whole walked tree: the
-/// walked docs are grouped by their resolved root (preserving each group's
-/// relative file order) and both quest-id passes run independently within
-/// each group, so the same id declared in two DIFFERENT subprojects is never
-/// flagged as a collision — only a repeat WITHIN one resolved root is.
-///
-/// Neither surface is the sole authority: `check_project_quest_ids` only
-/// ever sees the files THIS walk found within the SAME resolved-root group,
-/// so it cannot re-derive an import-graph collision `check()` catches whose
-/// OTHER party lives outside `dir` (0.2.1 review F1 — blanket-stripping
-/// every per-file `E-QUEST-ID-DUP` and trusting the project pass alone
-/// silently swallowed that case). So every per-file diagnostic is KEPT by
-/// default; only a per-file `E-QUEST-ID-DUP` whose exact `(file, span)` is a
-/// MEMBER of a colliding group WITHIN ITS OWN resolved root
-/// ([`lute_check::colliding_occurrences`], run per group — every occurrence
-/// of an id declared 2+ times among that group's docs, not just the ones
-/// `check_project_quest_ids` itself emits a diagnostic for) is suppressed,
-/// since that whole group is already covered by exactly one
-/// `check_project_quest_ids` diagnostic. Membership, not anchor equality, is
-/// the right test: the SAME real collision can anchor its per-file
-/// diagnostic (fired wherever `check()`'s import resolution detected the
-/// redeclare) on a different file than the one `check_project_quest_ids`
-/// picks (it always skips the group's path-sorted-first occurrence) — see
-/// [`lute_check::colliding_occurrences`]'s own doc comment.
-///
-/// Exit `0` clean, `1` when any file has a (post-suppression) `Error`
-/// diagnostic or any resolved root's quest-id pass finds a collision, `2` on
-/// an I/O failure walking `dir` or reading a file.
-fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCode {
-    let (mut file_results, by_root) = match collect_project_docs(dir, providers) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
-
+/// The connectivity fixpoint ([`compute_conn_fixpoint`]) and this
+/// reconciliation live HERE, in `lute-cli`, never in `lute-check` (which stays
+/// FS-free and format-free). Shared by [`run_check_project`] (grouping +
+/// human/JSON output) and [`reconciled_project_results`] (the compile/trace
+/// project-aware §5 gate).
+fn reconcile_collected(
+    mut file_results: Vec<(PathBuf, lute_check::CheckResult)>,
+    by_root: &ByRoot,
+) -> (Vec<(PathBuf, lute_check::CheckResult)>, Vec<(PathBuf, Diagnostic)>) {
     let mut project_diags = Vec::new();
     // T11: every ENTRY-DEPENDENT, RUN/USER-TIER read at a NON-TAINTED scene
     // node that per-file `check()` already flagged `E-MAYBE-UNSET` gets
@@ -1060,6 +1042,23 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
             .or_insert_with(|| std::fs::read_to_string(path.as_path()).unwrap_or_default());
         d.span = normalize_span_from_text(text, d.span);
     }
+    (file_results, project_diags)
+}
+
+/// Recursively `check` every `*.lute` under `dir` ([`collect_project_docs`],
+/// nested per-file root resolution — each file resolves against its OWN
+/// nearest ancestor `lute.project.yaml`, bounded below by `dir`), reconcile
+/// the per-root project analysis ([`reconcile_collected`]), then print the
+/// per-file + project-wide report (human or `--json`) and map the verdict to
+/// an exit code: `0` clean, `1` when any file has a (post-suppression)
+/// `Error` or any resolved root's quest-id/connectivity pass finds one, `2`
+/// on an I/O failure walking `dir` or reading a file.
+fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCode {
+    let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let (file_results, project_diags) = reconcile_collected(file_results, &by_root);
 
     let project_ok = !project_diags
         .iter()
@@ -1152,6 +1151,91 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// The reconciled project analysis for the compile/trace project-aware gate
+/// (connectivity design spec §5): per-document reconciled `CheckResult`s
+/// (keyed by display path, [`BTreeMap`]-sorted for determinism) plus the
+/// project-wide diagnostics. Produced by [`reconciled_project_results`] over a
+/// SINGLE-ROOT collection (the whole `--project <dir>` is ONE root — §5's
+/// single-root rule), reusing the SAME [`reconcile_collected`] analysis
+/// `check-project` runs.
+struct ReconciledProject {
+    per_doc: BTreeMap<PathBuf, lute_check::CheckResult>,
+    project_diagnostics: Vec<(PathBuf, Diagnostic)>,
+}
+
+/// Collect + reconcile every `.lute` under `dir`, treating `dir` itself as THE
+/// single project root for every file (connectivity spec §5: `--project <dir>`
+/// resolves BOTH capabilities and connectivity against exactly that `<dir>`,
+/// `load_project(dir)`, no nested nearest-root search — that directory-walk
+/// discovery is `check-project`'s alone). The reusable seam the compile/trace
+/// gate pulls the target document's reconciled `CheckResult` from.
+/// `Err(ExitCode::from(2))` on the same I/O failures [`collect_project_docs`]
+/// surfaces.
+fn reconciled_project_results(
+    dir: &Path,
+    providers: Option<&Path>,
+) -> Result<ReconciledProject, ExitCode> {
+    let (file_results, by_root) = collect_project_docs(dir, providers, true)?;
+    let (file_results, project_diagnostics) = reconcile_collected(file_results, &by_root);
+    Ok(ReconciledProject {
+        per_doc: file_results.into_iter().collect(),
+        project_diagnostics,
+    })
+}
+
+/// The project-aware gate verdict for one `file` compiled/traced under
+/// `--project <dir>` (connectivity design spec §5). Runs the SINGLE-ROOT
+/// project reconciliation ([`reconciled_project_results`]) and returns the
+/// TARGET document's own reconciled `CheckResult` MERGED with every
+/// project-wide diagnostic anchored on that same file — so an
+/// `E-STATE-MAYBE-UNAVAILABLE`/`E-CONN-*` fault on the target's OWN
+/// `after`/reads blocks it, while a SIBLING document's project-only fault does
+/// NOT (§5). Its `ok` is recomputed over the merged set.
+///
+/// **Out-of-tree (normative, §5):** if the canonicalized `file` is NOT within
+/// `dir`'s recursively-collected `.lute` set, this errors EXPLICITLY
+/// (`ExitCode::from(2)`) rather than silently falling back to a standalone
+/// `check` — a silent fallback would mask a mistyped path or wrong `--project`.
+fn project_gate_result(
+    file: &Path,
+    dir: &Path,
+    providers: Option<&Path>,
+) -> Result<lute_check::CheckResult, ExitCode> {
+    let reconciled = reconciled_project_results(dir, providers)?;
+    let target_canon = match std::fs::canonicalize(file) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("lute: cannot read {}: {e}", file.display());
+            return Err(ExitCode::from(2));
+        }
+    };
+    // Match the target within the project by CANONICAL identity (the collected
+    // display path may differ in form from the CLI-supplied `file`, and
+    // `find_lute_files` already dedupes symlink aliases by canonical identity).
+    let matched = reconciled.per_doc.iter().find(|(path, _)| {
+        std::fs::canonicalize(path).map(|c| c == target_canon).unwrap_or(false)
+    });
+    let Some((matched_key, base)) = matched else {
+        eprintln!(
+            "lute: {} is not within --project {} (the connectivity gate requires the target to be part of the project)",
+            file.display(),
+            dir.display()
+        );
+        return Err(ExitCode::from(2));
+    };
+    let mut result = base.clone();
+    // §5: block on the TARGET's own reconciled diagnostics only — merge in
+    // every project-wide diagnostic anchored on this same file (its own
+    // `E-STATE-MAYBE-UNAVAILABLE`/`E-CONN-*`), never a sibling's.
+    for (path, d) in &reconciled.project_diagnostics {
+        if path == matched_key {
+            result.diagnostics.push(d.clone());
+        }
+    }
+    result.ok = !result.diagnostics.iter().any(|d| d.severity == Severity::Error);
+    Ok(result)
 }
 
 // ===========================================================================
@@ -1949,7 +2033,7 @@ fn run_scenario(
     providers: Option<&Path>,
     command: Option<ScenarioCommand>,
 ) -> ExitCode {
-    let (file_results, by_root) = match collect_project_docs(dir, providers) {
+    let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -2575,7 +2659,19 @@ fn run_compile(
     let Some(input) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
-    match lute_compile::compile(&input) {
+    // Project-aware gate (connectivity spec §5): WITH `--project <dir>` the
+    // target compiles against its RECONCILED `check-project` verdict (an
+    // envelope-Guaranteed `run.*`/`user.*` read no longer blocks; a read no
+    // route guarantees blocks with `E-STATE-MAYBE-UNAVAILABLE`). WITHOUT it,
+    // the standalone single-file `check` gate, unchanged.
+    let compiled = match project {
+        Some(dir) => match project_gate_result(file, dir, providers) {
+            Ok(gate) => lute_compile::compile_with_check(&input, gate),
+            Err(code) => return code,
+        },
+        None => lute_compile::compile(&input),
+    };
+    match compiled {
         Ok(artifact) => {
             let mut s = match serde_json::to_string_pretty(&artifact) {
                 Ok(s) => s,
@@ -2729,7 +2825,18 @@ fn run_trace(
     };
 
     let mocks = merge(file_mocks, flag_mocks);
-    let (report, exit) = lute_trace::trace_document(&input, mocks);
+    // Project-aware gate (connectivity spec §5, mirrors `run_compile`): WITH
+    // `--project <dir>` trace gates on the target's RECONCILED `check-project`
+    // verdict; WITHOUT it, the standalone single-file `check` gate, unchanged.
+    // The D1 quarantine holds — reconciliation is pure graph math, never
+    // CEL/Datalog evaluation.
+    let (report, exit) = match project {
+        Some(dir) => match project_gate_result(file, dir, providers) {
+            Ok(gate) => lute_trace::trace_with_check(&input, gate, mocks),
+            Err(code) => return code,
+        },
+        None => lute_trace::trace_document(&input, mocks),
+    };
 
     match exit {
         TraceExit::Complete => {
