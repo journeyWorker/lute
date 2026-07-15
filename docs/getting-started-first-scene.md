@@ -512,9 +512,10 @@ list. Each is a helpful catch, not a nuisance:
 - **`E-CONN-CYCLE`** — an unsatisfiable ordering among the scenes/quests in the offending chain
   (e.g. A `after` B `after` A, or quests waiting on each other): nothing in that chain can be
   sequenced. It prints the offending chain, and the bare `lute scenario` graph still isolates
-  exactly which nodes form the cycle. But until you break it, `reach`/`envelope` can't be
-  computed for *any* node in that project root — they need a complete ordering — which is why
-  `envelope` now reports the cycle instead of a silent empty table.
+  exactly which nodes form the cycle. Scenes on or downstream of the cycle can't have their
+  `reach`/`envelope` computed (their ordering is unresolvable), and `envelope` reports the cycle
+  instead of a silent empty table — but scenes *independent* of the cycle still get their real
+  `reach`/`envelope`, so one tangled corner doesn't blind the rest of the project.
 - **`E-CONN-UNREACHABLE`** — a scene no declared route ever reaches; it can't be played as
   authored.
 - **`E-CONN-FORMULA-TOO-COMPLEX`** — an `after` formula with too many terms for the checker to
@@ -522,8 +523,9 @@ list. Each is a helpful catch, not a nuisance:
   than hand-written. Simplify it into something a reader — and the checker — can follow.
 - **`E-CONN-EPISODE-ID-DUP`** — two scenes computing the *same* canonical key, so `visited("…")`
   would be ambiguous. Give one a distinct `episode`/`episodeId`.
-- **`E-STATE-MAYBE-UNAVAILABLE`** — a `when=`/read of a `run.*`/`user.*` path that no route into
-  this scene guarantees is set — the very thing the `envelope` above screens for.
+- **`E-STATE-MAYBE-UNAVAILABLE`** — a `when=`/read of a `run.*`/`user.*` path that NO declared
+  route into this scene sets at all — the very thing the `envelope` above screens for. (A path
+  set on *some* but not all routes is only a suppressed warning, not this error.)
 
 Reach for `lute scenario` whenever you want to *see* the shape of your story — the layers, the
 routes, the guaranteed state at each node — instead of guessing.
