@@ -27,7 +27,7 @@ as the playhead advances, and the whole block blocks the following content until
 </timeline>
 ```
 
-*(From [`docs/examples/marina-s01ep02.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/marina-s01ep02.lute) — the "finger-beam performance" as one four-track beat.)*
+*(From [`docs/examples/marina-s01ep02.lute`](https://github.com/org/lute/blob/main/docs/examples/marina-s01ep02.lute) — the "finger-beam performance" as one four-track beat.)*
 
 ## Tracks and keys
 
@@ -62,7 +62,7 @@ her position and her opacity simultaneously, alongside an independent camera tra
 </timeline>
 ```
 
-*(From [`docs/examples/property-tracks.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/property-tracks.lute).)*
+*(From [`docs/examples/property-tracks.lute`](https://github.com/org/lute/blob/main/docs/examples/property-tracks.lute).)*
 
 The keys `marina.pos`, `marina.opacity`, and `camera` are all distinct, so the checker accepts them.
 
