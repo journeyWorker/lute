@@ -155,18 +155,74 @@ fn scenario_envelope_scene_falls_back_to_dd_floor_when_graph_cycle_empties_envs(
     let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "p.s01ep01"]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
+    // Anchor on the actual table HEADINGS ("Guaranteed (safe to read" /
+    // "Possible (set on"), not bare "Guaranteed"/"Possible" -- the prepended
+    // E-CONN-CYCLE note now also contains the words "Guaranteed/Possible".
     let after_heading = out_text
-        .split_once("Guaranteed")
+        .split_once("Guaranteed (safe to read")
         .unwrap_or_else(|| panic!("no Guaranteed heading: {out_text}"))
         .1;
     let guaranteed_block = after_heading
-        .split_once("Possible")
+        .split_once("Possible (set on")
         .unwrap_or_else(|| panic!("no Possible heading after Guaranteed: {out_text}"))
         .0;
     assert!(
         guaranteed_block.contains("run.known"),
         "a cycle-emptied envs entry must fall back to the D/D schema-default floor, not empty \
          tables, got Guaranteed block:\n{guaranteed_block}\nfull output:\n{out_text}"
+    );
+}
+
+#[test]
+fn scenario_envelope_cyclic_project_announces_e_conn_cycle_degraded() {
+    // C-honesty (persona review): on a project WITH a prerequisite cycle,
+    // `reach` already prints an explicit `E-CONN-CYCLE` verdict, but
+    // `envelope` used to print only the D/D floor tables with NO indication
+    // the emptiness/floor was CYCLE-caused -- silently indistinguishable
+    // from a genuinely-empty envelope. `envelope` must now announce the
+    // cycle-degraded state explicitly, mirroring `reach`'s wording, and
+    // (like `reach`'s cyclic case) still exit 0.
+    let dir = temp_dir("scenario-envelope-cycle-announce");
+    let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
+             after: 'visited(\"q.s01ep01\")'\nstate:\n  run.known: { type: number, default: 0 }\n\
+             ---\n## Shot 1.\n@narrator: hi\n";
+    let q = "---\nkind: scene\ncharacter: q\nseason: 1\nepisode: 1\n\
+             after: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
+    write(&dir, "p.lute", p);
+    write(&dir, "q.lute", q);
+
+    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "p.s01ep01"]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "cyclic envelope must exit 0 like reach: {out_text}");
+    // The explicit cycle note, mirroring `reach`'s E-CONN-CYCLE wording.
+    assert!(out_text.contains("E-CONN-CYCLE"), "envelope must name the cycle code: {out_text}");
+    assert!(
+        out_text.contains("cycle"),
+        "envelope must explain the emptiness is cycle-caused, not silently empty: {out_text}"
+    );
+    // Cross-check the same project's `reach` DOES announce the cycle, so the
+    // two views are now consistent rather than reach-only.
+    let reach_out = run(&["scenario", dir.to_str().unwrap(), "reach", "p.s01ep01"]);
+    assert!(stdout(&reach_out).contains("E-CONN-CYCLE"), "{}", stdout(&reach_out));
+}
+
+#[test]
+fn scenario_envelope_header_carries_pre_entry_label() {
+    // Persona review comprehension nit: the Guaranteed/Possible tables report
+    // state available when control REACHES the node, BEFORE the node's own
+    // writes -- both personas misread it as the node's own effects. The
+    // header must carry an explicit pre-entry label.
+    let dir = temp_dir("scenario-envelope-pre-entry");
+    write(&dir, "a.lute", &scene_sets_run_a("a"));
+    write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
+
+    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "{out_text}");
+    assert!(out_text.contains("pre-entry"), "header must carry the pre-entry label: {out_text}");
+    assert!(
+        out_text.contains("before its own writes"),
+        "header must clarify the tables are before the node's own writes: {out_text}"
     );
 }
 

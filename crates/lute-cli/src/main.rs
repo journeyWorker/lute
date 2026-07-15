@@ -1660,6 +1660,32 @@ fn print_path_set(set: &BTreeSet<String>) {
     }
 }
 
+/// True when the project's prerequisite graph has a cycle (`E-CONN-CYCLE`,
+/// dsl §2.4/§4.1 §A): `assemble_graph` leaves `topo_order` empty in that
+/// case, so BOTH [`lute_check::connectivity::check_reachability`] AND
+/// [`envelope::propagate`] (each iterates `topo_order`) populate NEITHER
+/// `reach` NOR `envs` for ANY node in this root — not just the cyclic ones.
+/// This is the SAME signal [`reach_verdict_text`]'s cycle arm keys off of
+/// (an empty `reach` map for a root that does have graph nodes); the
+/// envelope's honesty note reuses it verbatim rather than recomputing a
+/// cycle differently.
+fn graph_cycle_degraded(scenario: &RootScenario) -> bool {
+    scenario.reach.is_empty() && !scenario.graph.nodes.is_empty()
+}
+
+/// Print the explicit `E-CONN-CYCLE` degradation note (C-honesty, persona
+/// review), mirroring [`reach_verdict_text`]'s cycle wording so a
+/// cyclic-project envelope is never silently indistinguishable from a
+/// genuinely-empty one. Prepended before the tables (which fall back to the
+/// schema-default D/D floor when `envs` is cycle-emptied).
+fn print_cycle_envelope_note() {
+    println!(
+        "  note: envelope unavailable — the project's prerequisite graph has a cycle \
+         (E-CONN-CYCLE); the Guaranteed/Possible tables below cannot be computed under your \
+         declared routes and fall back to the schema-default floor."
+    );
+}
+
 /// Print a scene node's Guaranteed/Possible envelope tables (T10) plus its
 /// `Possible \ Guaranteed` warning-grade READS (contract #2): T11's
 /// [`envelope::check_envelope`] already computes BOTH grades together and
@@ -1670,7 +1696,13 @@ fn print_path_set(set: &BTreeSet<String>) {
 /// — `check_envelope` is reused verbatim, never re-implemented.
 fn print_scene_envelope(scenario: &RootScenario, key: &str) {
     let node_id = lute_check::connectivity::NodeId::Scene(key.to_string());
-    println!("envelope for {node_id}:");
+    println!(
+        "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
+         before its own writes):"
+    );
+    if graph_cycle_degraded(scenario) {
+        print_cycle_envelope_note();
+    }
     if scenario.tainted.contains(&node_id) {
         println!(
             "  note: this node's envelope is a defaults-only placeholder -- its `after` \
@@ -1720,7 +1752,13 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str) {
 /// read-SITE list for a quest at all, only the plain set difference.
 fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::ast::Quest) {
     let node_id = lute_check::connectivity::NodeId::Quest(id.to_string());
-    println!("envelope for {node_id}:");
+    println!(
+        "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
+         before its own writes):"
+    );
+    if graph_cycle_degraded(scenario) {
+        print_cycle_envelope_note();
+    }
     let qe =
         envelope::quest_envelope(quest, &scenario.graph, &scenario.envs, &scenario.envelope_d);
     println!("  Guaranteed (safe to read under your declared routes):");
