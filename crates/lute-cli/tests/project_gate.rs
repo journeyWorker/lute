@@ -398,3 +398,86 @@ fn compile_gate_multi_hop_guaranteed_read_compiles_under_project() {
     let v: serde_json::Value = serde_json::from_slice(&gated.stdout).unwrap();
     assert_eq!(v["kind"], "scene", "an artifact must be emitted: {v}");
 }
+
+// --- (h) topological-order exclusion: overlapping-cycle + downstream ---------
+
+/// A scene declaring `after: visited(k1) && visited(k2)` and reading no state
+/// — a two-prerequisite cycle node whose only possible block is its graph
+/// position (used to wire the overlapping-cycle counterexample).
+fn scene_after_two(character: &str, k1: &str, k2: &str) -> String {
+    format!(
+        "---\nkind: scene\ncharacter: {character}\nseason: 1\nepisode: 1\n\
+         after: 'visited(\"{k1}\") && visited(\"{k2}\")'\n---\n## Shot 1.\n@narrator: hi\n"
+    )
+}
+
+/// The cross-model re-review counterexample. Edges (prereq -> dependent):
+/// `p->q, p->r, q->p, r->q` — encoded as `p after q`, `q after p && r`,
+/// `r after p`. This has TWO overlapping directed cycles: the 2-cycle `p<->q`
+/// and the 3-cycle `p->r->q->p`. `assemble_graph`'s DFS starts at `p`, finds
+/// the back edge `q->p` (stack slice `[p, q]`), then reaches `r` only AFTER
+/// `q` is already finished, so its `r->q` edge is NOT a back edge and `r` is
+/// NEVER added to the old DFS `cycle_members` set — yet `r` genuinely sits on
+/// the 3-cycle. Kahn's topological sort frees NONE of `p`/`q`/`r` (every
+/// in-degree stays >= 1), so `r` is absent from `topo_order`; the fix blocks
+/// on that absence (`node_cycle_degraded`), which is COMPLETE. (Verified RED:
+/// against the pre-fix `cycle_members` gate, `lute compile r --project` exits
+/// 0 because `r` is missing from `cycle_members`.)
+#[test]
+fn compile_gate_overlapping_cycle_member_blocks() {
+    let dir = temp_dir("gate-overlap-cycle-compile");
+    write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
+    write(&dir, "q.lute", &scene_after_two("q", "p.s01ep01", "r.s01ep01"));
+    let r = write(&dir, "r.lute", &scene_after_only("r", "p.s01ep01"));
+
+    let gated = run(&["compile", r.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&gated.stdout);
+    assert_eq!(
+        gated.status.code(),
+        Some(1),
+        "r is on the overlapping 3-cycle -> must block compilation: {stdout}"
+    );
+    assert!(stdout.contains("E-CONN-CYCLE"), "the block must cite the cycle: {stdout}");
+    assert!(!stdout.starts_with('{'), "no artifact on a blocked gate: {stdout}");
+}
+
+#[test]
+fn trace_gate_overlapping_cycle_member_blocks() {
+    let dir = temp_dir("gate-overlap-cycle-trace");
+    write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
+    write(&dir, "q.lute", &scene_after_two("q", "p.s01ep01", "r.s01ep01"));
+    let r = write(&dir, "r.lute", &scene_after_only("r", "p.s01ep01"));
+
+    let gated = run(&["trace", r.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&gated.stdout);
+    assert_eq!(
+        gated.status.code(),
+        Some(1),
+        "r is on the overlapping 3-cycle -> must refuse the trace: {stdout}"
+    );
+    assert!(stdout.contains("E-CONN-CYCLE"), "the refusal must cite the cycle: {stdout}");
+}
+
+/// A node DOWNSTREAM of a cycle (spec §5): `a<->b` is a 2-node `after` cycle;
+/// `d` (`after: visited(a)`) reads NO state of its own and is on no cycle
+/// itself — but Kahn's sort can never free `a`, so `d` never reaches in-degree
+/// 0 and is absent from `topo_order`. Per spec §5 the gate refuses any target
+/// absent from the sound topological order, so `d` must block even though it
+/// is not a cycle MEMBER (the old membership-only gate let it through).
+#[test]
+fn compile_gate_downstream_of_cycle_blocks() {
+    let dir = temp_dir("gate-downstream-cycle");
+    write(&dir, "a.lute", &scene_after_only("a", "b.s01ep01"));
+    write(&dir, "b.lute", &scene_after_only("b", "a.s01ep01"));
+    let d = write(&dir, "d.lute", &scene_after_only("d", "a.s01ep01"));
+
+    let gated = run(&["compile", d.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let stdout = String::from_utf8_lossy(&gated.stdout);
+    assert_eq!(
+        gated.status.code(),
+        Some(1),
+        "a node downstream of a cycle is absent from topo_order -> must block: {stdout}"
+    );
+    assert!(stdout.contains("E-CONN-CYCLE"), "the block must cite the cycle: {stdout}");
+    assert!(!stdout.starts_with('{'), "no artifact on a blocked gate: {stdout}");
+}
