@@ -221,7 +221,13 @@ mod tests {
         let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(
             names,
-            ["Shot 1.", "Shot 2.", "Shot 3.", "Shot 4.", "Shot 5."]
+            [
+                "Arrival at Venny's",
+                "The Hostess with a Name",
+                "The Vanishing Mouse",
+                "Trading Numbers",
+                "Filed as a Mishap"
+            ]
         );
     }
 
@@ -230,8 +236,8 @@ mod tests {
     #[test]
     fn branch_is_a_nested_child_symbol() {
         let syms = symbols(BIANCA);
-        let shot4 = &syms[3]; // "Shot 4." holds the `<branch id="number">`.
-        assert_eq!(shot4.name, "Shot 4.");
+        let shot4 = &syms[3]; // "Trading Numbers" holds the `<branch id="number">`.
+        assert_eq!(shot4.name, "Trading Numbers");
         let kids = shot4.children.as_ref().expect("shot 4 has children");
         let branch = kids
             .iter()
@@ -249,7 +255,7 @@ mod tests {
     fn match_is_a_nested_child_symbol() {
         let syms = symbols(BIANCA);
         let shot5 = &syms[4];
-        assert_eq!(shot5.name, "Shot 5.");
+        assert_eq!(shot5.name, "Filed as a Mishap");
         let kids = shot5.children.as_ref().expect("shot 5 has children");
         let m = kids
             .iter()

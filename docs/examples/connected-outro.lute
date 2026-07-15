@@ -28,7 +28,7 @@ state:
   standalone-clean and compiles.
 */
 
-## Shot 1.
+## The Overlook Again
 
 @kestrel{when="run.sawOverlook"}: The overlook again -- funny how a place can pull you back.
 @narrator: The tide has turned since this morning.

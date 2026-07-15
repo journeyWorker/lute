@@ -6,7 +6,7 @@ season: 1
 episode: 3
 title: The Mood Reading
 pov: fixer
-luteVersion: "0.1.0"
+luteVersion: "0.6.1"
 # Root capability profile (project lute.project.yaml). No plugin directives are
 # used here, so no scene-local `plugins:` narrowing is needed.
 profile: showcase
@@ -33,11 +33,11 @@ state:
 
 # S01EP03 — The Mood Reading
 
-## Shot 1.
+## Reading the Room
 
 @narrator: Bianca watches you from across the counter, reading the room.
 
-## Shot 2.
+## The Mood Match
 
 /*
   `<when is="…">` literal-pattern arms (§7.3.1) over the plain scene enum

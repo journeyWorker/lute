@@ -3,7 +3,7 @@
 //! end-of-document `Assigned` set — the must-write join (`intersect_all`) it
 //! already computes to drive `E-MAYBE-UNSET` — filtered to the two monotonic
 //! tiers the envelope lattice tracks. `P` is an INDEPENDENT flat,
-//! path-insensitive scan of every `::set`/persist-sugar target reachable
+//! path-insensitive scan of every `::set`/record-sugar target reachable
 //! ANYWHERE in the node stream: every `<branch>`/`<match>`/`<hub>`/`<on>`/
 //! `<objective>` arm counts, including the non-dominating (may-only) writes
 //! `defassign`'s `intersect_all` deliberately drops from `G` — so `P` is a
@@ -63,7 +63,7 @@ pub fn guaranteed(assigned: &Assigned) -> BTreeSet<String> {
 }
 
 /// The possible-write set `P` for a document (dsl §4.3): every `::set` /
-/// `<choice persist>` target reachable ANYWHERE in `nodes`, path-insensitively
+/// `<choice into>` record target reachable ANYWHERE in `nodes`, path-insensitively
 /// (every branch/match/hub/on/objective arm counts, regardless of whether it
 /// dominates), filtered to `run.*`/`user.*`. Independent of
 /// `check_definite_assignment` — a write that occurs in only ONE arm of a
@@ -106,7 +106,7 @@ fn scan_hub(hub: &Hub, out: &mut BTreeSet<String>) {
 }
 
 fn scan_choice(choice: &Choice, out: &mut BTreeSet<String>) {
-    scan_choice_persist(choice, out);
+    scan_choice_record(choice, out);
     scan_nodes(&choice.body, out);
 }
 
@@ -136,18 +136,14 @@ fn scan_timeline(tl: &Timeline, out: &mut BTreeSet<String>) {
     }
 }
 
-/// A `<choice persist="run" into="run.<path>" [value=…]>` (dsl §11.1.1) is
-/// EXACTLY a `::set{run.<path> = value}` appended to the arm when the choice
-/// is selected — the engine materializes the write (`check_choice_persist`,
-/// check.rs owns validating the sugar's well-formedness; this only extracts
-/// the target for `P`). `persist` is REQUIRED to be `"run"` (Rule 1,
-/// §11.1.1), so `into` is always `run.*` when present — the tier filter is
-/// applied anyway for a malformed/unvalidated document.
-fn scan_choice_persist(choice: &Choice, out: &mut BTreeSet<String>) {
-    let persists = choice.attrs.iter().any(|a| a.key == "persist");
-    if !persists {
-        return;
-    }
+/// A `<choice into="run.<path>" [value=…]>` (dsl 0.6.0 §2) is EXACTLY a
+/// `::set{run.<path> = value}` appended to the arm when the choice is selected
+/// — the engine materializes the write (`check_choice_record`, check.rs owns
+/// validating the sugar's well-formedness; this only extracts the target for
+/// `P`). `into=` ALONE drives the record now (the `persist=` attr was removed
+/// in 0.6.0); the tier filter is applied anyway for a malformed/unvalidated
+/// document.
+fn scan_choice_record(choice: &Choice, out: &mut BTreeSet<String>) {
     if let Some(into) = choice.attrs.iter().find(|a| a.key == "into") {
         if let AttrValue::Str(path) = &into.value {
             insert_in_scope(out, path);
@@ -713,10 +709,10 @@ mod tests {
     }
 
     #[test]
-    fn possible_writes_excludes_assert_and_includes_persist_sugar() {
-        // `<choice persist="run" into="run.p">` is sugar for a `::set` — counts.
+    fn possible_writes_excludes_assert_and_includes_record_sugar() {
+        // `<choice into="run.p">` is sugar for a `::set` — counts.
         // `::assert{…}` targets a relational fact, not a state path — excluded.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" persist=\"run\" into=\"run.p\">\n::assert{ seen(x) }\n</choice>\n</branch>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" into=\"run.p\">\n::assert{ seen(x) }\n</choice>\n</branch>\n";
         let nodes = shot_nodes(src);
         let p = possible_writes(&nodes);
         assert_eq!(p, BTreeSet::from(["run.p".to_string()]));
@@ -799,12 +795,12 @@ mod tests {
     }
 
     #[test]
-    fn guaranteed_includes_persist_target_written_on_every_arm() {
-        // RevT8 P1 Fix 2: `<choice persist>` is an arm-flow WRITE — an
-        // exhaustive per-arm persist of `run.x` must join `G`, exactly like
-        // an exhaustive `::set`, and `P` (which already counted persist
-        // sugar) must stay a superset.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" persist=\"run\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" persist=\"run\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
+    fn guaranteed_includes_record_target_written_on_every_arm() {
+        // RevT8 P1 Fix 2: `<choice into>` is an arm-flow WRITE — an exhaustive
+        // per-arm record of `run.x` must join `G`, exactly like an exhaustive
+        // `::set`, and `P` (which already counted record sugar) must stay a
+        // superset. `into=` alone drives the record now.
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: number }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) = check_definite_assignment(&nodes, &schema);
         assert!(errs.is_empty(), "unexpected diagnostics: {errs:?}");
@@ -813,7 +809,7 @@ mod tests {
         let p = possible_writes(&nodes);
         assert!(
             g.contains("run.x"),
-            "an exhaustive per-arm persist should join G, got {g:?}"
+            "an exhaustive per-arm record should join G, got {g:?}"
         );
         assert!(p.is_superset(&g), "P must be a superset of G, P={p:?} G={g:?}");
     }

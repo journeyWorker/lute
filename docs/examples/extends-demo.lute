@@ -6,7 +6,7 @@ episode: 4
 uses: child.schema.yaml
 ---
 
-## Shot 1.
+## Blessed with Fortune
 
 <match on="run.blessed">
   <when test="@wealthy">

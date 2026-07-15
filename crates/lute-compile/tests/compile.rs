@@ -198,8 +198,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.5.2");
-    assert_eq!(artifact.ir_version, "0.5.3");
+    assert_eq!(artifact.lute, "0.6.1");
+    assert_eq!(artifact.ir_version, "0.6.1");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
@@ -871,13 +871,13 @@ episode: 1
 }
 
 #[test]
-fn hub_choice_persist_synthesizes_trailing_set_record() {
-    // Companion regression: `persist="run" into="run.metGreeted"` sugar on a
-    // <hub> choice must synthesize a trailing ::set, exactly like a <branch>
-    // choice (dsl §11.1.1; check.rs's `check_choice_persist` is already shared
-    // verbatim between Branch and Hub choices, so the grammar admits it — the
-    // gap was purely in `lute-compile`'s normalize pass never visiting Hub).
-    const HUB_PERSIST: &str = r#"---
+fn hub_choice_into_synthesizes_trailing_set_record() {
+    // Companion regression: an `into="run.metGreeted"` record sugar on a <hub>
+    // choice must synthesize a trailing ::set, exactly like a <branch> choice
+    // (dsl 0.6.0 §2.1; the record trigger is `into=` alone — `persist=` was
+    // removed from the language). The gap was purely in `lute-compile`'s
+    // normalize pass never visiting Hub.
+    const HUB_INTO: &str = r#"---
 kind: scene
 character: b
 season: 1
@@ -892,28 +892,28 @@ state:
   <choice id="ask" label="Ask" once>
     @narrator: Hi.
   </choice>
-  <choice id="thank" label="Thank her" exit persist="run" into="run.metGreeted">
+  <choice id="thank" label="Thank her" exit into="run.metGreeted">
     @narrator: Thanks.
   </choice>
 </hub>
 "#;
-    let inp = input(HUB_PERSIST);
+    let inp = input(HUB_INTO);
     let check_result = lute_check::check(&inp);
     assert!(
         check_result.ok,
-        "persist sugar on a <hub> choice must check clean: {:#?}",
+        "into sugar on a <hub> choice must check clean: {:#?}",
         check_result.diagnostics
     );
 
-    let artifact = compile(&inp).expect("hub persist doc compiles");
+    let artifact = compile(&inp).expect("hub into doc compiles");
     let set = artifact.commands.iter().find_map(|c| match c {
         Command::Set(s) if s.path == "run.metGreeted" => Some(s),
         _ => None,
     });
     assert!(
         set.is_some(),
-        "persist=\"run\" into=\"run.metGreeted\" on a hub choice must synthesize \
-         a ::set (before the fix, synth_persist is never called for Hub): {:#?}",
+        "into=\"run.metGreeted\" on a hub choice must synthesize a ::set \
+         (before the fix, synth is never called for Hub): {:#?}",
         artifact.commands
     );
     let set = set.unwrap();

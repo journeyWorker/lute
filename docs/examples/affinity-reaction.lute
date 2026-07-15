@@ -20,7 +20,7 @@ defs:
   currentTier: { type: { enum: [cold, warm, fond] }, cel: "scene.tier" }
 ---
 
-## Shot 1.
+## Literal Tier Dispatch
 
 /* Every `tier` arg here is a literal, so each `::use` expands to exactly one
    `@bianca` line (§6.4 case 1) — the compiled artifact is indistinguishable
@@ -37,7 +37,7 @@ defs:
   </otherwise>
 </match>
 
-## Shot 2.
+## Dynamic Tier Dispatch
 
 /* A non-literal binding like `@currentTier` cannot fold: the component's
    `<match>` lowers to an ordinary residual match record on the substituted

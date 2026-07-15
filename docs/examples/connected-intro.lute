@@ -17,7 +17,7 @@ state:
   schema `default:` doing the work trivially.
 */
 
-## Shot 1.
+## Salt from the Harbor
 
 @narrator: The wind carries salt from the harbor below.
 ::set{run.sawOverlook = true}

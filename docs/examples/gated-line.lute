@@ -10,7 +10,7 @@ state:
 
 # The gated line (dsl 0.4.0 §7.2)
 
-## Shot 1.
+## The Sugar Form
 
 /*
   The `when=` sugar (§7.2): a content-line `when="G"` attr emits the line
@@ -21,7 +21,7 @@ state:
 */
 @sofia{when="run.metHelpfully"}: You helped me back then. I've been meaning to thank you.
 
-## Shot 2.
+## The Explicit Twin
 
 /*
   The equivalent explicit block (§7.2) — exactly what Shot 1's sugar

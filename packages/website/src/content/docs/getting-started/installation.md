@@ -4,7 +4,7 @@ description: Install the Lute CLI with bunx, a global bun install, or from Rust 
 ---
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.5.2**.
+compiles, traces, and inspects them. The current language version is **0.6.0**.
 
 ## Quick start with `bunx`
 

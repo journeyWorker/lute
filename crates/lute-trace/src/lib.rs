@@ -48,7 +48,7 @@ pub mod walk;
 pub use eval::{eval, EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use mock::{
     merge, parse_mock_yaml, validate, MockSet, E_TRACE_ACCEPT, E_TRACE_CHOICE, E_TRACE_EVENT,
-    E_TRACE_MOCK_FACT, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED,
+    E_TRACE_MOCK_FACT, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED, W_TRACE_MOCK_UNPRODUCIBLE,
 };
 pub use quest_refs::collect_referenced_reserved_quest_paths;
 pub use report::{

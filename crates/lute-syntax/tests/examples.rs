@@ -31,10 +31,9 @@ fn bianca_block_assembly_is_correct() {
         doc.title.as_ref().map(|(t, _)| t.as_str()),
         Some("S01EP02 — Behold the Performance of All-Purpose Bianca"),
     );
-    assert_eq!(
-        doc.shots.iter().map(|s| s.number).collect::<Vec<_>>(),
-        [Some(1), Some(2), Some(3), Some(4), Some(5)]
-    );
+    // Five shots assembled in document order (0.6.0 §3.2: a shot's number is
+    // its 1-based position; the `Shot.number` field is gone).
+    assert_eq!(doc.shots.len(), 5);
 
     // Shot 3: <timeline duration="1.4"> with 4 tracks; the beam clip lands at 0.5.
     let timeline = doc.shots[2]

@@ -18,7 +18,6 @@ pub struct Meta {
 #[derive(Clone, Debug)]
 pub struct Shot {
     pub heading: String,
-    pub number: Option<i64>,
     pub body: Vec<Node>,
     pub span: Span,
 }

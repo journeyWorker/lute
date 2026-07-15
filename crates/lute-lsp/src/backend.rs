@@ -474,9 +474,9 @@ impl LanguageServer for Backend {
                     ),
                 ),
                 // Task 15 (D16): quick fixes over `Diagnostic.fixits` — the
-                // ONLY surface an author can apply a `W-CHOICE-INTO-NO-PERSIST`
-                // remedy or a §8.1 T2 CEL rewrite through (`lute fix` never
-                // reads checker diagnostics, by construction). `Simple(true)`:
+                // author surface for an `E-PERSIST-REMOVED` migrate remedy or
+                // a §8.1 T2 CEL rewrite (`lute fix` applies the former too,
+                // but this LSP surface stands independently). `Simple(true)`:
                 // this server returns only plain `CodeAction`s, no `Command`s,
                 // so it advertises no `code_action_kinds` allowlist.
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),

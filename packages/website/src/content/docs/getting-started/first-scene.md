@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.5.2**.
+**0.6.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -64,7 +64,7 @@ Check again:
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot/scene; add a `## Shot N.` heading above it
+my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it
 ```
 
 The rule to remember: **all content lives under a heading.** A Lute document is a sequence of
@@ -72,13 +72,14 @@ The rule to remember: **all content lives under a heading.** A Lute document is 
 Add a heading before the line:
 
 ```lute
-## Shot 1.
+## The Counter
 
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 ```
 
-(`## Shot 1.`, `## Shot 2.`, … — or `## Scene 1.` if you prefer that word. The number and the
-trailing period are both required.)
+(The heading is free text after `## ` — `## The Counter`, `## Scene 1. The diner`, `## Prologue` are all
+valid. `The Counter`, `The Regular`, … stays a fine convention, but the number is not grammar: shots are
+numbered by their document order.)
 
 ```
 $ lute check my-scene.lute
@@ -127,7 +128,7 @@ episode: 1
 pov: fixer
 ---
 
-## Shot 1.
+## The Counter
 
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 
@@ -201,7 +202,7 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.5.2",
+  "lute": "0.6.0",
   "meta": { "character": "mira", "season": 1, "episode": 1, "episodeId": "s01ep01", "title": "A Quiet Table" },
   "state": [ … ],
   "commands": [
@@ -226,7 +227,7 @@ would show on screen:
 ```
 $ lute trace my-scene.lute --choose orderChoice=black
 trace: my-scene.lute
-  ## Shot 1.
+  ## The Counter
     @narrator  The diner is empty at this hour, and Mira likes it that way.
     @mira  {{userName}}, you made it.
     @mira  I should not be this pleased about a coffee order.
@@ -303,7 +304,7 @@ state:
   run.metMira: { type: bool }
 ---
 
-## Shot 1.
+## The Counter
 
 @mira{emotion="content" variant="0" when="run.metMira"}: Back again. You know where you sit.
 

@@ -41,10 +41,10 @@ The human form is an indented, ordered transcript: emitted content lines (interp
 ```console
 $ lute trace docs/examples/choice-persist.lute --choose sofaHelp=help
 trace: choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
-  ## Shot 1.
+  ## Recording the Choice
   <branch sofaHelp>   eligible: help, warmly, tip   → help (--choose)
-    ::set     run.metHelpfully = true          (persist sugar)
-  ## Shot 2.
+    ::set     run.metHelpfully = true          (into sugar)
+  ## Reading It Back
   <match run.metHelpfully>   = true → arm 1 ($ == true)
 trace complete: 2 decisions; choices 1/3, arms 1/2
 ```
@@ -54,3 +54,5 @@ An `unknown` guard halts the walk at that construct (exit 3) and reports the unr
 ## The `E-TRACE-*` refusals
 
 Before walking, trace resolves the document exactly as `check` does and **refuses** (exit 1) a document with check errors or invalid mocks — run `check` first. The mock refusals: `E-TRACE-MOCK-UNDECLARED` (undeclared `--state` path), `E-TRACE-MOCK-TYPE` (wrong literal type), `E-TRACE-MOCK-FACT` (unknown relation/arity/foreign arg), `E-TRACE-CHOICE` (unknown or ineligible forced choice), `E-TRACE-EVENT` (a built-in lifecycle event `questActive`/`questComplete`/`questFailed` — engine-derived, never fired by hand), and `E-TRACE-ACCEPT` (an unknown quest id, or one that carries a `start` predicate and needs no accept). An unmatched `--event` is an informational note, not a refusal.
+
+Since 0.6.1, trace also emits a warning (not a refusal) — `W-TRACE-MOCK-UNPRODUCIBLE` — for a `--fact`/mock-YAML fact whose relation no authored producer can ever assert (`producible()` judges it not producible): the supplied answer can never arise in reachable play, so a "complete" walk seeded with it proves nothing. A `reserved: true` or `open: engine`-argument relation is producible by definition and never warns.

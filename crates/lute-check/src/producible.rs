@@ -40,6 +40,13 @@ use crate::cel_expand::{expand_cel, DefTable};
 use crate::decide::{decide, decide_slot, DecideCtx, Decided};
 use crate::rel_schema::RelVocab;
 
+/// dsl 0.6.1 §2: a coverage signal — an `<objective done>` / `<quest
+/// start|fail>` predicate is gated by a fact query over a PRODUCIBLE relation,
+/// which `decide()`'s R5 firewall leaves `Undecided`, so static reachability
+/// neither proves nor refutes the objective. Marks the region as review-covered
+/// rather than proof-covered (promotable via `--deny`, §5).
+pub const W_UNPROVEN_RELATIONAL: &str = "W-UNPROVEN-RELATIONAL";
+
 /// Boolean least-fixpoint over the declared rule DAG (spec §4.2): iterating
 /// to a fixed point over `vocab.rules`/`vocab.relations`/`vocab.facts` —
 /// finite and terminating by the same finite-Herbrand-base argument the real
@@ -168,6 +175,13 @@ pub fn producible(
 /// `after`/assert graph, never an unconditional "can never happen in play"
 /// claim (posture A-hybrid — the engine is not bound to honor the graph).
 ///
+/// ALSO emits the dsl 0.6.1 §2 coverage warning [`W_UNPROVEN_RELATIONAL`] in
+/// the SAME traversal: for an objective `done` NOT flagged dead above, and for
+/// each `<quest start|fail>` predicate, [`unproven_relations`] reports the
+/// PRODUCIBLE relations a fact query gates it on — a region static reachability
+/// can neither prove nor refute (never double-reported with the relational
+/// `E-OBJECTIVE-UNSATISFIABLE` cause, which owns the never-producible half).
+///
 /// `defs`/`ctx` mirror `reachability.rs`'s `check_objective_reach` exactly
 /// (same `DefTable`/`DecideCtx` shape, `ctx.dollar` MUST be `None` — no `$`
 /// is in scope at an `<objective>`'s attrs) so `@def`-wrapped guards and
@@ -181,6 +195,21 @@ pub fn scan_objective_liveness(
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for quest in &doc.quests {
+        // dsl 0.6.1 §2: W-UNPROVEN-RELATIONAL also fires on a `<quest
+        // start|fail>` predicate gated by a producible fact query — scanned
+        // here (the quest's own attrs, no deep walk) rather than in a second
+        // traversal shape.
+        for (label, slot) in [("start", &quest.start), ("fail", &quest.fail)] {
+            let Some(slot) = slot else { continue };
+            let relations = unproven_relations(&slot.raw, producible, defs, ctx);
+            if !relations.is_empty() {
+                out.push(warn_diag(
+                    W_UNPROVEN_RELATIONAL,
+                    unproven_relation_message(label, &slot.raw, &relations),
+                    slot.span,
+                ));
+            }
+        }
         walk_objectives(&quest.body, producible, defs, ctx, &mut out);
     }
     out
@@ -323,6 +352,18 @@ fn walk_objectives(
                         dead_relation_message(!o.optional, &o.done.raw, &dead_relations),
                         o.span,
                     ));
+                } else {
+                    // dsl 0.6.1 §2: not relationally dead — a producible
+                    // fact-query gate is a review region (never double-reported
+                    // with the E-OBJECTIVE-UNSATISFIABLE branch above).
+                    let relations = unproven_relations(&o.done.raw, producible, defs, ctx);
+                    if !relations.is_empty() {
+                        out.push(warn_diag(
+                            W_UNPROVEN_RELATIONAL,
+                            unproven_relation_message("done", &o.done.raw, &relations),
+                            o.span,
+                        ));
+                    }
                 }
                 walk_objectives(&o.body, producible, defs, ctx, out);
             }
@@ -532,6 +573,133 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
         severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// dsl 0.6.1 §2: the PRODUCIBLE relations a fact query gates `raw` on — a
+/// NON-EMPTY result means [`W_UNPROVEN_RELATIONAL`] should fire, EMPTY means it
+/// must not. `raw` is expanded ([`expand_cel`]) and parsed exactly like
+/// [`dead_guard`]/`decide_slot`, then gated so W marks ONLY a genuine review
+/// region (spec §2: "static reachability analysis neither proves nor refutes
+/// it"):
+/// 1. `decide()` on the ORIGINAL guard returns `Some(_)` → reachability
+///    already RESOLVES the predicate (proves it true or refutes it false) → not
+///    a review region → empty. This excludes both a scalar-false gate
+///    (`false && holds(liveR)`, which the ordinary reachability pass owns as
+///    the scalar `E-OBJECTIVE-UNSATISFIABLE` cause) and an always-true gate
+///    (`count(liveR) >= 0` decides `true` only if `decide` can fold it; a bare
+///    `holds(liveR)` stays `Undecided` per the R5 firewall and passes).
+/// 2. the guard is RELATIONALLY DEAD ([`substitute_dead_fact_queries`] folds a
+///    never-producible fact query load-bearingly to `false`) → that is
+///    `E-OBJECTIVE-UNSATISFIABLE`'s relational cause ([`dead_guard`]) → never
+///    double-reported (spec §2) → empty.
+/// 3. otherwise collect every relation a well-shaped fact query names that
+///    `producible()` judges producible
+///    ([`collect_producible_fact_query_relations`]). An UNDECLARED relation
+///    (no `producible` entry — `E-RELATION-UNKNOWN`'s problem) or a scalar-only
+///    gate contributes nothing, leaving the set empty.
+fn unproven_relations(
+    raw: &str,
+    producible: &BTreeMap<String, bool>,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let mut stack = Vec::new();
+    let expanded = expand_cel(raw, defs, Some("$"), &mut stack).unwrap_or_else(|_| raw.to_string());
+    let mut arena = lute_cel::CelArena::default();
+    let Some(handle) = lute_cel::parse_slot_marked_refs(&mut arena, &expanded) else {
+        return out;
+    };
+    let Some(ided) = arena.get(handle) else { return out };
+    // (1) already proved or refuted by static reachability — not a review region.
+    if decide(&ided.expr, ctx).is_some() {
+        return out;
+    }
+    // (2) relationally dead — E-OBJECTIVE-UNSATISFIABLE owns it, never doubled.
+    let mut dead = BTreeSet::new();
+    let substituted = substitute_dead_fact_queries(&ided.expr, producible, &mut dead);
+    if !dead.is_empty() && matches!(decide(&substituted, ctx), Some(Decided::Bool(false))) {
+        return out;
+    }
+    // (3) the producible fact-query relations gating it — the review region.
+    collect_producible_fact_query_relations(&ided.expr, producible, &mut out);
+    out
+}
+
+/// Collect every relation a well-shaped fact-query call
+/// ([`crate::cel_resolve::is_profile_fact_query`]) names that `producible()`
+/// judges PRODUCIBLE (`producible[R] == true`). Mirrors
+/// [`substitute_dead_fact_queries`]'s recursion shape exactly (own recursion
+/// into a non-fact-query `Call`'s target/args, `List` elements, `Select`
+/// operand; a fact query's own pattern arg is read here, never recursed into)
+/// so a producible fact query nested inside an operator, list, or select is
+/// found. A `now()` (no pattern), an UNDECLARED relation (no `producible`
+/// entry — `E-RELATION-UNKNOWN`'s problem), or a NON-producible relation
+/// ([`dead_guard`]'s job) is skipped.
+fn collect_producible_fact_query_relations(
+    expr: &Expr,
+    producible: &BTreeMap<String, bool>,
+    out: &mut BTreeSet<String>,
+) {
+    match expr {
+        Expr::Call(c) => {
+            if crate::cel_resolve::is_profile_fact_query(c) {
+                if let Some(relation) = pattern_relation(c) {
+                    if producible.get(&relation) == Some(&true) {
+                        out.insert(relation);
+                    }
+                }
+                return; // now(), unresolved, or a dead/undeclared relation.
+            }
+            if let Some(t) = &c.target {
+                collect_producible_fact_query_relations(&t.expr, producible, out);
+            }
+            for a in &c.args {
+                collect_producible_fact_query_relations(&a.expr, producible, out);
+            }
+        }
+        Expr::List(list) => {
+            for el in &list.elements {
+                collect_producible_fact_query_relations(&el.expr, producible, out);
+            }
+        }
+        Expr::Select(sel) => {
+            collect_producible_fact_query_relations(&sel.operand.expr, producible, out)
+        }
+        _ => {}
+    }
+}
+
+/// dsl 0.6.1 §2: the [`W_UNPROVEN_RELATIONAL`] message. Quotes the raw
+/// predicate (`{label}="{raw}"` — `label` is `done`/`start`/`fail`), names the
+/// producible queried relation(s) in deterministic `BTreeSet` order, and states
+/// the boundary + remedy (`lute trace` seeds or human review).
+fn unproven_relation_message(label: &str, raw: &str, relations: &BTreeSet<String>) -> String {
+    let relations: Vec<&str> = relations.iter().map(String::as_str).collect();
+    format!(
+        "`{label}=\"{}\"` is gated by a relational fact query over producible relation(s) \
+         `{}`; static reachability analysis (dsl 0.6.1 §2) neither proves nor refutes it. \
+         Verify with `lute trace` seeds or human review",
+        raw.trim(),
+        relations.join("`, `")
+    )
+}
+
+/// Build a `Layer::Logic` WARNING diagnostic — spec §2: a COVERAGE signal, not
+/// a defect. Same layer as this module's `E-OBJECTIVE-UNSATISFIABLE` emission
+/// ([`diag`]), but `Severity::Warning`.
+fn warn_diag(code: &str, message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Warning,
         message,
         span,
         layer: Layer::Logic,
@@ -854,5 +1022,122 @@ mod tests {
         let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
         let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &ambiguous, &defs, &ctx);
         assert!(out.is_empty());
+    }
+
+    // --- `W-UNPROVEN-RELATIONAL` (dsl 0.6.1 §2): a coverage signal for a
+    // predicate gated by a fact query over a PRODUCIBLE relation, emitted in
+    // `scan_objective_liveness`'s traversal alongside the relational
+    // `E-OBJECTIVE-UNSATISFIABLE` cause (never both for one predicate) --------
+
+    fn quest_doc_lifecycle(quest_id: &str, start: Option<&str>, fail: Option<&str>) -> Document {
+        Document {
+            meta: lute_syntax::ast::Meta { raw_yaml: String::new(), span: dummy_span() },
+            title: None,
+            shots: Vec::new(),
+            quests: vec![lute_syntax::ast::Quest {
+                id: quest_id.to_string(),
+                id_span: dummy_span(),
+                title: None,
+                start: start.map(cel),
+                fail: fail.map(cel),
+                after: None,
+                after_span: dummy_span(),
+                attrs: Vec::new(),
+                body: Vec::new(),
+                span: dummy_span(),
+            }],
+            span: dummy_span(),
+        }
+    }
+
+    /// An objective gated by a fact query over a PRODUCIBLE relation warns
+    /// exactly ONCE (spec §2), naming the relation, with NO
+    /// `E-OBJECTIVE-UNSATISFIABLE` (the objective is not dead).
+    #[test]
+    fn producible_fact_gated_objective_warns_once() {
+        let doc = quest_doc("q", vec![objective_node("o", "holds(liveRel(\"x\"))", false)]);
+        let mut producible_map = BTreeMap::new();
+        producible_map.insert("liveRel".to_string(), true);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
+        let w: Vec<&Diagnostic> =
+            diags.iter().filter(|d| d.code == W_UNPROVEN_RELATIONAL).collect();
+        assert_eq!(w.len(), 1, "exactly one W-UNPROVEN-RELATIONAL");
+        assert_eq!(w[0].severity, Severity::Warning);
+        assert_eq!(w[0].layer, Layer::Logic);
+        assert!(w[0].message.contains("liveRel"), "names the relation: {}", w[0].message);
+        assert!(
+            w[0].message.contains("done=\"holds(liveRel(\"x\"))\""),
+            "quotes the raw predicate: {}",
+            w[0].message
+        );
+        assert!(
+            diags.iter().all(|d| d.code != crate::reachability::E_OBJECTIVE_UNSATISFIABLE),
+            "a producible-gated objective is not dead"
+        );
+    }
+
+    /// A NEVER-producible gate stays `E-OBJECTIVE-UNSATISFIABLE` (the relational
+    /// dead cause) and never ALSO warns (spec §2: never double-reported).
+    #[test]
+    fn never_producible_objective_only_unsat_no_warning() {
+        let doc = quest_doc("q", vec![objective_node("o", "holds(deadRel(\"x\"))", false)]);
+        let mut producible_map = BTreeMap::new();
+        producible_map.insert("deadRel".to_string(), false);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
+        assert!(
+            diags.iter().any(|d| d.code == crate::reachability::E_OBJECTIVE_UNSATISFIABLE),
+            "never-producible gate is the relational unsatisfiable cause"
+        );
+        assert!(
+            diags.iter().all(|d| d.code != W_UNPROVEN_RELATIONAL),
+            "the relational dead cause is never double-reported as W"
+        );
+    }
+
+    /// A SCALAR-only gate (no fact query) fires neither signal (spec §2).
+    #[test]
+    fn scalar_only_gate_emits_nothing() {
+        let doc = quest_doc("q", vec![objective_node("o", "scene.mood == 1", false)]);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let diags = scan_objective_liveness(&doc, &BTreeMap::new(), &defs, &ctx);
+        assert!(diags.is_empty(), "scalar-only gate: no W, no E; got {diags:?}");
+    }
+
+    /// A `<quest start>` AND a `<quest fail>` predicate each gated by a
+    /// producible fact query both warn, labeled by their slot (spec §2).
+    #[test]
+    fn quest_start_and_fail_producible_gates_warn() {
+        let doc = quest_doc_lifecycle(
+            "q",
+            Some("holds(liveRel(\"x\"))"),
+            Some("count(liveRel(\"y\")) > 5"),
+        );
+        let mut producible_map = BTreeMap::new();
+        producible_map.insert("liveRel".to_string(), true);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
+        let w: Vec<&Diagnostic> =
+            diags.iter().filter(|d| d.code == W_UNPROVEN_RELATIONAL).collect();
+        assert_eq!(w.len(), 2, "one W for start, one for fail");
+        assert!(w.iter().any(|d| d.message.contains("start=\"")), "labels start");
+        assert!(w.iter().any(|d| d.message.contains("fail=\"")), "labels fail");
     }
 }

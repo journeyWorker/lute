@@ -1,11 +1,11 @@
 ---
 title: Choices & hubs
-description: Choice mechanics — when guards and the persist run-fact sugar — plus revisit <hub> conversations with once/exit flags and the no-dead-end guarantee.
+description: Choice mechanics — when guards and the into= run-record sugar — plus revisit <hub> conversations with once/exit flags and the no-dead-end guarantee.
 ---
 
 A `<choice>` is one option inside a [`<branch>`](/language/branch-match-when/) or a `<hub>`. Every
 choice requires an **`id`** (the recorded key) and a **`label`** (the button text, which may
-interpolate). Beyond that it carries guards and persistence sugar.
+interpolate). Beyond that it carries guards and run-record sugar.
 
 ## Guards
 
@@ -25,18 +25,18 @@ Selecting a choice records its id into the reserved path `scene.choices.<branchI
 branch's choice ids ∪ `unset`). That path clears at episode end, so it drives **intra-episode**
 reactions only — a later shot's `<match on="scene.choices.…">`.
 
-To make a choice affect a **later episode** of the same run, persist a **named** `run.*` fact with
-the `persist` sugar:
+To make a choice affect a **later episode** of the same run, record a **named** `run.*` fact with
+the `into=` sugar:
 
 ```lute
 <branch id="sofaHelp">
-  <choice id="help" label="Help her up" persist="run" into="run.metHelpfully">
+  <choice id="help" label="Help her up" into="run.metHelpfully">
     @sofia: Thank you. I won't forget this.
   </choice>
-  <choice id="warmly" label="Help, and stay a while" persist="run" into="run.sofaHelpOutcome" value="warm">
+  <choice id="warmly" label="Help, and stay a while" into="run.sofaHelpOutcome" value="warm">
     @sofia: You're very kind — really.
   </choice>
-  <choice id="tip" label="Leave a little something" persist="run" into="run.tip" value="5">
+  <choice id="tip" label="Leave a little something" into="run.tip" value="5">
     @sofia: Oh — you didn't have to.
   </choice>
 </branch>
@@ -44,10 +44,12 @@ the `persist` sugar:
 
 *(From [`docs/examples/choice-persist.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/choice-persist.lute).)*
 
-`persist="run"` appends `::set{run.<path> = <value>}` to that arm. The target path is named by
-**`into`** and must be declared in your schema. **`value`** defaults to `true` for a `bool` path;
-an `enum` or `number` path requires an explicit `value`. A later episode reacts by reading the
-named fact — never the raw choice key, which has already cleared:
+`into="run.<path>"` alone appends `::set{run.<path> = <value>}` to that arm. The target path is
+named by **`into`** and must be declared in your schema. **`value`** defaults to `true` for a
+`bool` path; an `enum` or `number` path requires an explicit `value`. (0.6.0 removed the old
+`persist="run"` attribute; a stray `persist=` is now `E-PERSIST-REMOVED`, and `lute fix` deletes it
+automatically.) A later episode reacts by reading the named fact — never the raw choice key, which
+has already cleared:
 
 ```lute
 <match on="run.metHelpfully">

@@ -11,7 +11,7 @@ state:
 ---
 
 /*
-  Worked example of the `<choice … persist="run">` run-fact sugar (dsl §11.1.1).
+  Worked example of the `<choice … into="run.*">` run-fact sugar (dsl §11.1.1).
   A choice records a NAMED, declared `run.*` fact when selected — the sugar is
   exactly `::set{run.<path> = <value>}` appended to that arm. `value` defaults to
   `true` for a `bool` path; an `enum`/`number` path requires it. A later episode
@@ -20,23 +20,23 @@ state:
 
 # Choice persist — cross-episode carry
 
-## Shot 1.
+## Recording the Choice
 
 @narrator: Sofia had slipped on the wet step. You could help — or walk on.
 
 <branch id="sofaHelp">
-  <choice id="help" label="Help her up" persist="run" into="run.metHelpfully">
+  <choice id="help" label="Help her up" into="run.metHelpfully">
     @sofia: Thank you. I won't forget this.
   </choice>
-  <choice id="warmly" label="Help, and stay a while" persist="run" into="run.sofaHelpOutcome" value="warm">
+  <choice id="warmly" label="Help, and stay a while" into="run.sofaHelpOutcome" value="warm">
     @sofia: You're very kind — really.
   </choice>
-  <choice id="tip" label="Leave a little something" persist="run" into="run.tip" value="5">
+  <choice id="tip" label="Leave a little something" into="run.tip" value="5">
     @sofia: Oh — you didn't have to.
   </choice>
 </branch>
 
-## Shot 2.
+## Reading It Back
 
 /*
   A later reaction reads the NAMED run fact (§11.1.1), not `scene.choices.*`

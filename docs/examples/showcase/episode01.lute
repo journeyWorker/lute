@@ -6,7 +6,7 @@ season: 1
 episode: 1
 title: The Full Showcase
 pov: fixer
-luteVersion: "0.0.1"
+luteVersion: "0.6.1"
 # Root capability profile (project lute.project.yaml) — activates showcase.pack.
 profile: showcase
 # Scene-local plugin activation/options layered on top of the profile (§6.1.1):
@@ -38,7 +38,7 @@ defs:
 
 # S01EP01 — The Full Showcase
 
-## Shot 1.
+## Venny's Again
 
 /* Core staging directives with attrs (Appendix A vocabulary). */
 ::bg{location="family_restaurant" time="evening" assetId="BG.space.family_restaurant.interior.evening"}
@@ -50,7 +50,7 @@ defs:
 @bianca{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
 @fixer{code="0010"}: I did.
 
-## Shot 2.
+## The Rehearsed Entrance
 
 /*
   Timeline (§11.4): one choreographed beat on a 1.4s local clock across four
@@ -79,7 +79,7 @@ defs:
 
 @fixer{mono}: A rehearsed entrance. She has been practising.
 
-## Shot 3.
+## The Service Bridge
 
 /*
   Plugin bridge directive (::serve). ONE directive whose attrs use BOTH a
@@ -109,12 +109,12 @@ defs:
   </otherwise>
 </match>
 
-## Shot 4.
+## The Approach
 
 @fixer{mono}: I should ask for her number before the shift swallows her.
 
 /*
-  <branch> + <choice> with `when` guards AND the persist="run" sugar (§11.1.1):
+  <branch> + <choice> with `when` guards AND the `into=` run-record sugar (§11.1.1):
   - `soft` records a bool run fact (value defaults to true);
   - `linger` records an enum run fact (value required);
   guards use an inline @ref, a plugin-exported @ref, and a parameterized def call.
@@ -123,11 +123,11 @@ defs:
   <choice id="blunt" label="Just ask, flatly">
     @fixer{code="0050"}: Bianca. Your number.
   </choice>
-  <choice id="soft" label="Ask gently" when="@showcaseReady" persist="run" into="run.metHelpfully">
+  <choice id="soft" label="Ask gently" when="@showcaseReady" into="run.metHelpfully">
     @fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
     ::set{scene.affect.bianca += 1}
   </choice>
-  <choice id="linger" label="Ask, and linger a while" when="@atLeast(1)" persist="run" into="run.sofaOutcome" value="warm">
+  <choice id="linger" label="Ask, and linger a while" when="@atLeast(1)" into="run.sofaOutcome" value="warm">
     @fixer{code="0054"}: And perhaps I'll stay through your break.
     ::set{run.affection += 1}
   </choice>
@@ -136,7 +136,7 @@ defs:
 @bianca{code="0060" emotion="delighted" variant="0"}: Of course! Right away, Mr. Fixer.
 ::sfx{sound="phone_chime" assetId="sound-sfx-common-phone-0.mp3"}
 
-## Shot 5.
+## What Was Recorded
 
 /*
   Intra-episode reaction reads the recorded choice key (scene.choices.approach,
@@ -179,7 +179,7 @@ defs:
   </otherwise>
 </match>
 
-## Shot 6.
+## Content Gates
 
 /*
   app.* is read-only content gating (§9.5). An age-gated <match on="app.rating">

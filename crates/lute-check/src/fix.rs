@@ -27,6 +27,28 @@
 //!      `:`-led line, so phase 2's re-parse never sees one — rather than
 //!      deleted, since it costs nothing and guards against a future gap in
 //!      the parser's fix-it coverage.
+//!   4. **`<choice>`/`<hub>`-choice `persist="run"` → deleted** (dsl 0.6.0
+//!      §2.3) when the choice ALSO carries `into=`. Under 0.6.0 `into=` alone
+//!      records the run fact, so deleting a `persist="run"` from an
+//!      `into=`-carrying choice is meaning-preserving in BOTH directions (the
+//!      pair recorded before; the bare `into=` records now) — clearing the D16
+//!      bar for an automatic, unprompted `"migrate"` codemod, unlike 0.4.0's
+//!      retired `"refactor"` remedies. A `persist=` with any other value, or
+//!      without `into=`, was already an error and stays MANUAL (the checker's
+//!      `E-PERSIST-REMOVED` still offers the deletion; `lute fix` applies it
+//!      only in this provable shape). Runs in phase 2's AST walk beside the
+//!      `as`→`into` rule; comment-preserving and idempotent (the deletion
+//!      removes the only `persist=` key, so a re-run never re-fires).
+//!   5. **shot-heading `## Shot N.`/`## Scene N.` prefix strip** (dsl 0.6.0
+//!      §3.4) — the pre-0.6.0 `## Shot|Scene <int>.` heading grammar is gone
+//!      (§3.1: a heading is free text now), so a legacy `## Shot 3. The Alley`
+//!      would otherwise leak the grammar prefix into the free-text title. When
+//!      a title FOLLOWS the `Shot|Scene <int>.` prefix, strip the prefix (and
+//!      its separating whitespace) → `## The Alley`. A BARE `## Shot 3.` /
+//!      `## Scene 3.` (no trailing title) is LEFT UNTOUCHED — stripping would
+//!      leave an empty heading, and the bare form is itself a valid free
+//!      title. Byte-exact, comment-preserving, idempotent (a stripped title no
+//!      longer matches the prefix shape).
 //!
 //! Mirrors `tag.rs`'s splice discipline: collect target `(start, end,
 //! replacement)` spans, then splice back-to-front (descending `byte_start`) so
@@ -124,6 +146,45 @@ pub fn fix_document(text: &str) -> FixResult {
         let start = l.span.byte_start;
         if bytes1.get(start) == Some(&b':') {
             edits2.push((start, start + 1, "@".to_string()));
+        }
+    }
+
+    // -- `<choice>`/`<hub>`-choice `persist="run"` → deleted (dsl 0.6.0 §2.3),
+    // when the choice ALSO carries `into=`. Under 0.6.0 `into=` alone records,
+    // so deleting a `persist="run"` from an `into=`-carrying choice is
+    // meaning-preserving in BOTH directions — it clears the D16 bar for an
+    // automatic `"migrate"` codemod (unlike 0.4.0's retired `"refactor"`
+    // remedies). A `persist=` with any other value, or without `into=`, was
+    // already an error and stays MANUAL (E-PERSIST-REMOVED offers the deletion;
+    // `lute fix` applies it only in this provable shape). Reuses
+    // `widen_removed_attr` so the LSP fixit and `lute fix` agree byte-for-byte.
+    // Idempotent: the deletion removes the only `persist=` key, so a re-run
+    // never re-fires.
+    for c in &choices {
+        if !c.attrs.iter().any(|a| a.key == "into") {
+            continue;
+        }
+        if let Some(p) = c.attrs.iter().find(|a| a.key == "persist") {
+            if matches!(&p.value, AttrValue::Str(s) if s == "run") {
+                let (start, end) =
+                    widen_removed_attr(bytes1, p.span.byte_start, p.span.byte_end);
+                edits2.push((start, end, String::new()));
+            }
+        }
+    }
+
+    // -- shot-heading `Shot N.`/`Scene N.` prefix strip (dsl 0.6.0 §3.4): the
+    // pre-0.6.0 `## Shot|Scene <int>.` grammar is gone (§3.1 — a heading is
+    // free text now), so a legacy `## Shot 3. The Alley` leaks the grammar
+    // prefix into the free-text title. Strip `Shot|Scene <int>. ` when a title
+    // FOLLOWS it, leaving `## The Alley`; a BARE `## Shot 3.`/`## Scene 3.` (no
+    // trailing title) is LEFT UNTOUCHED — stripping would empty the heading,
+    // and the bare form is a valid free title. `Shot.span.byte_start` is the
+    // heading line's leading `#`. Byte-exact, comment-preserving, idempotent
+    // (a stripped title no longer matches the prefix shape).
+    for shot in &doc2.shots {
+        if let Some((start, end)) = shot_prefix_delete(bytes1, shot.span.byte_start) {
+            edits2.push((start, end, String::new()));
         }
     }
 
@@ -331,6 +392,73 @@ fn widen_removed_attr(bytes: &[u8], start: usize, end: usize) -> (usize, usize) 
     (new_start, end)
 }
 
+/// dsl 0.6.0 §3.4: the byte range of a legacy `Shot|Scene <int>. ` grammar
+/// prefix to DELETE from a free-text shot heading, when a title FOLLOWS it —
+/// `## Shot 3. The Alley` → `## The Alley`. `line_start` is the heading line's
+/// first byte (the leading `#`, i.e. `Shot.span.byte_start`). Returns `None`
+/// for a BARE `## Shot 3.`/`## Scene 3.` (no trailing title: stripping would
+/// empty the heading, and the bare form is a valid free title now) and for any
+/// heading that isn't the legacy `Shot|Scene <int>.` shape. The deleted range
+/// runs from the keyword's first byte through the whitespace separating the
+/// period from the title, so the surviving title keeps its exact bytes.
+fn shot_prefix_delete(bytes: &[u8], line_start: usize) -> Option<(usize, usize)> {
+    if bytes.get(line_start..line_start + 3) != Some(b"## ".as_slice()) {
+        return None;
+    }
+    let byte = |k: usize| bytes.get(k).copied();
+    // Skip any extra whitespace between `## ` and the keyword.
+    let mut i = line_start + 3;
+    while matches!(byte(i), Some(b' ' | b'\t')) {
+        i += 1;
+    }
+    let kw_start = i;
+    let kw_len = if bytes.get(kw_start..kw_start + 4) == Some(b"Shot".as_slice()) {
+        4
+    } else if bytes.get(kw_start..kw_start + 5) == Some(b"Scene".as_slice()) {
+        5
+    } else {
+        return None;
+    };
+    i = kw_start + kw_len;
+    // One or more spaces, then a 1+ digit integer, then a literal `.`.
+    let ws0 = i;
+    while matches!(byte(i), Some(b' ' | b'\t')) {
+        i += 1;
+    }
+    if i == ws0 {
+        return None;
+    }
+    let dig0 = i;
+    while matches!(byte(i), Some(b'0'..=b'9')) {
+        i += 1;
+    }
+    if i == dig0 || byte(i) != Some(b'.') {
+        return None;
+    }
+    i += 1; // consume `.`
+    // Separating whitespace, then a non-empty title up to end of line.
+    let ws1 = i;
+    while matches!(byte(i), Some(b' ' | b'\t')) {
+        i += 1;
+    }
+    if i == ws1 {
+        return None; // bare `## Shot 3.` (no space+title after the period)
+    }
+    let rest_start = i;
+    let mut j = rest_start;
+    while !matches!(byte(j), None | Some(b'\n' | b'\r')) {
+        j += 1;
+    }
+    let mut end = j;
+    while end > rest_start && matches!(byte(end - 1), Some(b' ' | b'\t')) {
+        end -= 1;
+    }
+    if end == rest_start {
+        return None; // only trailing whitespace after the period
+    }
+    Some((kw_start, rest_start))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,12 +531,11 @@ mod tests {
 
     #[test]
     fn lute_fix_never_touches_bare_into() {
-        // D16: `fix_document` never reads checker diagnostics — a `<choice
-        // into=…>` with no `persist=` (W-CHOICE-INTO-NO-PERSIST, check.rs)
-        // is a checker-only warning with two author-chosen fixits; `lute
-        // fix` must leave it byte-identical (changed == 0). Neither existing
-        // rule touches it: there is no `as` attr to rewrite to `into`, and
-        // the content line already uses the current `@` sigil.
+        // D16 / 0.6.0 §2.3: `lute fix`'s persist-removal rule fires ONLY on a
+        // `persist="run"` + `into=` pair. A bare `into=` (no `persist=`) records
+        // on its own under 0.6.0 — nothing to migrate, and no `as` attr to
+        // rewrite either, so `lute fix` leaves it byte-identical (changed == 0).
+        // The content line already uses the current `@` sigil.
         let src = wrap(
             "<branch id=\"b\">\n<choice id=\"help\" label=\"Help\" into=\"run.metHelpfully\">\n@bianca: hi\n</choice>\n</branch>\n",
         );
@@ -569,6 +696,121 @@ mod tests {
         let src = "## Shot 1.\n@x{mono}: a\n@y{vo}: b\n@z: c\n";
         let out = fix_document(src);
         assert_eq!(out.changed, 0, "already-bare flags must not be touched: {}", out.text);
+        assert_eq!(out.text, src);
+    }
+
+    #[test]
+    fn migrates_choice_persist_run_with_into_deletes_persist() {
+        // dsl 0.6.0 §2.3: a `persist="run"` on an `into=`-carrying choice is
+        // meaning-preserving to delete (the pair recorded before; `into=`
+        // records now) — `lute fix` applies the `"migrate"` deletion.
+        let out = fix_document(&wrap(
+            "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" persist=\"run\" into=\"run.x\">\n@bianca: hi\n</choice>\n</branch>\n",
+        ));
+        assert_eq!(out.changed, 1, "only the persist attr is deleted; got:\n{}", out.text);
+        assert!(
+            out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
+            "persist= must splice away leaving one clean space, got:\n{}",
+            out.text
+        );
+        assert!(!out.text.contains("persist="), "got:\n{}", out.text);
+        // still parses clean, and re-running is a no-op (idempotent).
+        let (_doc, diags) = parse(&out.text);
+        assert!(!diags.iter().any(|d| d.severity == Severity::Error), "{diags:?}");
+        let again = fix_document(&out.text);
+        assert_eq!(again.changed, 0, "second pass is a no-op");
+        assert_eq!(again.text, out.text);
+    }
+
+    #[test]
+    fn migrates_hub_choice_persist_run_with_into_deletes_persist() {
+        let out = fix_document(&wrap(
+            "<hub id=\"h\">\n<choice id=\"c\" label=\"L\" persist=\"run\" into=\"run.x\" exit>\n@bianca: hi\n</choice>\n</hub>\n",
+        ));
+        assert_eq!(out.changed, 1, "got:\n{}", out.text);
+        assert!(
+            out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.x\" exit>"),
+            "got:\n{}",
+            out.text
+        );
+        assert!(!out.text.contains("persist="), "got:\n{}", out.text);
+    }
+
+    #[test]
+    fn lute_fix_leaves_persist_without_into_manual() {
+        // dsl 0.6.0 §2.3: a `persist=` with NO `into=` was already an error and
+        // stays MANUAL — `lute fix` can't prove the deletion is meaning-
+        // preserving, so the doc is byte-identical (the checker's
+        // E-PERSIST-REMOVED still offers the fixit for a human to apply).
+        let src = wrap(
+            "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" persist=\"run\">\n@bianca: hi\n</choice>\n</branch>\n",
+        );
+        let out = fix_document(&src);
+        assert_eq!(out.changed, 0, "got:\n{}", out.text);
+        assert_eq!(out.text, src, "persist without into must stay manual");
+    }
+
+    #[test]
+    fn lute_fix_leaves_persist_non_run_value_manual() {
+        // Only the provable `persist="run"` shape is auto-migrated; a `persist=`
+        // with any other value stays MANUAL even alongside `into=`.
+        let src = wrap(
+            "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" persist=\"scene\" into=\"run.x\">\n@bianca: hi\n</choice>\n</branch>\n",
+        );
+        let out = fix_document(&src);
+        assert_eq!(out.changed, 0, "got:\n{}", out.text);
+        assert_eq!(out.text, src, "non-run persist value must stay manual");
+    }
+
+    #[test]
+    fn strips_shot_heading_prefix_when_title_follows() {
+        // dsl 0.6.0 §3.4: `## Shot 3. The Alley` → `## The Alley` — the legacy
+        // grammar prefix is stripped, the free-text title survives byte-exact.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 3. The Alley\n@bianca: hi\n";
+        let out = fix_document(src);
+        assert_eq!(out.changed, 1, "only the heading prefix is stripped; got:\n{}", out.text);
+        assert!(out.text.contains("## The Alley\n"), "got:\n{}", out.text);
+        assert!(!out.text.contains("Shot 3."), "grammar prefix must be gone; got:\n{}", out.text);
+        // idempotent: the stripped title no longer matches the prefix shape.
+        let again = fix_document(&out.text);
+        assert_eq!(again.changed, 0, "second pass is a no-op; got:\n{}", again.text);
+        assert_eq!(again.text, out.text);
+    }
+
+    #[test]
+    fn strips_scene_heading_prefix_when_title_follows() {
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Scene 2. Rooftop at dusk\n@bianca: hi\n";
+        let out = fix_document(src);
+        assert_eq!(out.changed, 1, "got:\n{}", out.text);
+        assert!(out.text.contains("## Rooftop at dusk\n"), "got:\n{}", out.text);
+        assert!(!out.text.contains("Scene 2."), "got:\n{}", out.text);
+    }
+
+    #[test]
+    fn leaves_bare_shot_heading_untouched() {
+        // A BARE `## Shot 3.` (no trailing title) is a valid free title now —
+        // stripping would leave an empty heading, so `lute fix` leaves it be.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 3.\n@bianca: hi\n";
+        let out = fix_document(src);
+        assert_eq!(out.changed, 0, "bare `## Shot 3.` must be untouched; got:\n{}", out.text);
+        assert_eq!(out.text, src);
+    }
+
+    #[test]
+    fn leaves_bare_scene_heading_untouched() {
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Scene 2.\n@bianca: hi\n";
+        let out = fix_document(src);
+        assert_eq!(out.changed, 0, "bare `## Scene 2.` must be untouched; got:\n{}", out.text);
+        assert_eq!(out.text, src);
+    }
+
+    #[test]
+    fn leaves_free_shot_heading_untouched() {
+        // A heading that isn't the legacy `Shot|Scene <int>.` shape is a plain
+        // free title — never touched.
+        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## The Alley\n@bianca: hi\n";
+        let out = fix_document(src);
+        assert_eq!(out.changed, 0, "a non-grammar free heading is untouched; got:\n{}", out.text);
         assert_eq!(out.text, src);
     }
 }

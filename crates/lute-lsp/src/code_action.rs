@@ -1,8 +1,9 @@
 //! `Diagnostic.fixits` -> LSP `CodeAction` mapping (Task 15, D16).
 //!
 //! lute-lsp's first code-action surface. `check()`'s `Diagnostic` already
-//! carries machine-applicable `fixits` — the two `W-CHOICE-INTO-NO-PERSIST`
-//! remedies (Task 12) and the §8.1 `E-CEL-PARSE` T2 rewrites (Task 13) — but
+//! carries machine-applicable `fixits` — the `E-PERSIST-REMOVED` migrate
+//! remedy (0.6.0 §2.2/§2.3) and the §8.1 `E-CEL-PARSE` T2 rewrites (Task 13) —
+//! but
 //! `lute fix` can never apply them by construction (`fix_document` never reads
 //! checker diagnostics, D16): the ONLY surface an author reaches them through
 //! is a `textDocument/codeAction` quick fix. This module is the pure mapping
@@ -12,8 +13,9 @@
 //! form has no `fixits` field) across requests.
 //!
 //! ## Shape: one `CodeAction` per fixit, not per diagnostic
-//! A diagnostic with N fixits (e.g. `W-CHOICE-INTO-NO-PERSIST`'s two author-
-//! chosen remedies) yields N separate `CodeAction`s — one per remedy — each
+//! A diagnostic with N fixits (a §8.1 `E-CEL-PARSE` T2 rewrite carries one,
+//! but the mapping is per-fixit not per-diagnostic) yields N separate
+//! `CodeAction`s — one per remedy — each
 //! naming its own [`Fixit::title`] and applying only that fixit's edits. An
 //! author facing two mutually exclusive fixes must be offered two choices, not
 //! one action that tries to apply both.

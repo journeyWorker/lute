@@ -10,7 +10,7 @@ params:
   tier: { enum: [cold, warm, fond] }
 ---
 
-## Scene 1.
+## The Tiered Greeting
 
 <match on="@tier">
   <when is="fond">

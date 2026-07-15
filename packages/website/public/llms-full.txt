@@ -1,0 +1,2313 @@
+# Lute
+
+One command, from any repo
+
+```bash
+# author, check, and simulate scenarios — one Rust core, distributed via npm
+bunx lutecli check scene.lute
+```
+
+  Lute is a total authoring language: every scenario is
+  guaranteed to terminate and every path is analyzable. You write scenes;
+  Lute compiles them to flat JSON command records plus CEL, and
+  proves what's reachable before a single line ships.
+
+The language
+
+## Scenes that read like scripts
+
+Dialogue, player choice, and state-driven callbacks — the branch below always
+gets the number; asking gently just warms her. `<match>` is first-match-wins
+with a mandatory `<otherwise>`, so every branch is total.
+
+```lute
+## The Hostess with a Name
+::camera{focus="bianca" zoom="1.1" duration="0.5"}
+
+@bianca{emotion="surprised"}: Oh!
+@bianca{emotion="delighted"}: Mr. Fixer!
+@bianca{emotion="delighted"}: From the ramen counter — you eat at Mechageki too, isn't it wonderful?
+
+/* a choice of TONE — both paths get the number; the gentle ask warms her */
+<branch id="number">
+  <choice id="blunt" label="Just ask, flatly">
+    @fixer: Bianca. Your number.
+  </choice>
+  <choice id="soft" label="Ask gently">
+    @fixer: Bianca — would you mind terribly if I had your number?
+    ::set{scene.affect.bianca += 1}
+  </choice>
+</branch>
+
+/* state-driven callback — first-match-wins; <otherwise> is mandatory */
+<match on="scene.choices.number">
+  <when test="@fond">
+    @fixer{mono}: I asked nicely, which I am electing not to examine.
+  </when>
+  <otherwise>
+    @fixer{mono}: I am, apparently, taking that woman somewhere this evening.
+  </otherwise>
+</match>
+```
+
+One choreographed beat, many concurrent tracks — split a single subject across
+property-scoped tracks (`pos`, `opacity`) alongside an independent camera track:
+
+```lute
+<timeline duration="1.2">
+  <track subject="bianca" property="pos">
+    ::auto{character="bianca" anchor="left" action="slide-in-left"}
+  </track>
+  <track subject="bianca" property="opacity">
+    ::auto{character="bianca" action="fade-in-up"}
+  </track>
+  <track subject="camera">
+    ::camera{focus="bianca" zoom="1.2" duration="0.6"}
+    ::camera{shake="0.4" duration="0.3" at="0.7"}
+  </track>
+</timeline>
+```
+
+Why Lute
+
+## Built for scenarios you can trust
+
+    Every scenario provably terminates and every path is analyzable — no
+    infinite loops, no unbounded recursion, no unreachable surprises.
+    Directives and providers are declared with typed manifests, so the
+    checker knows exactly what each plugin can emit and consume.
+    Guards are plain CEL expressions; a Datalog fact layer lets
+    you derive higher-order truths and query them across a scene.
+    lute trace runs a scenario against mock YAML — state, facts,
+    choices, events — so you watch it play out before anyone plays it.
+    Reachability analysis plus Guaranteed / Possible envelopes prove which
+    scenes, choices, and states can ever actually be reached.
+    lute context emits a structured view of a project built for
+    agents — the language was designed to be written with a model, not despite one.
+    A language server ships diagnostics, hovers, and completions to your
+    editor, so mistakes surface as you type, not at runtime.
+    Output is flat JSON command records plus CEL — trivial to load into any
+    engine, in any language, with zero Lute runtime.
+
+See it play
+
+## A scene, rendered
+
+The same source above, played out — dialogue boxes are how a runtime turns
+Lute's command records into a scene.
+
+    Narrator
+    A hostess walked over with a menu pressed to her chest. Her face caught.
+    Bianca
+    Oh! Mr. Fixer! From the ramen counter — you eat at Mechageki too, isn't it wonderful?
+    Fixer
+    Bianca — would you mind terribly if I had your number?
+    Bianca
+    Of course! Right away, Mr. Fixer.
+
+Ready to write one? [Get started with `bunx lutecli` →](/getting-started/installation/)
+
+---
+
+# Installation
+
+Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
+compiles, traces, and inspects them. The current language version is **0.6.0**.
+
+## Quick start with `bunx`
+
+The fastest way to run Lute without installing anything permanently is `bunx`, which fetches the
+published npm package and runs its bundled native binary:
+
+```sh
+bunx lutecli check scene.lute
+```
+
+The npm package is named `lutecli`; the command it installs is `lute`. `bunx lutecli <args>` and a
+globally installed `lute <args>` are the same program.
+
+## Global install
+
+To keep `lute` on your `PATH` for everyday use, install the package globally with bun:
+
+```sh
+bun add -g lutecli
+lute check scene.lute
+```
+
+`lutecli` is a thin launcher: it detects your platform and dispatches to a prebuilt native binary
+shipped as a platform-specific optional dependency (`lutecli-core-darwin-arm64` or
+`lutecli-core-linux-x64`). The correct one is selected automatically at install time.
+
+## Platform support
+
+| Platform | npm core package | Status |
+|---|---|---|
+| macOS (Apple silicon) | `lutecli-core-darwin-arm64` | Supported |
+| Linux (x86-64) | `lutecli-core-linux-x64` | Supported |
+
+On an unsupported platform the launcher exits with an actionable error naming the supported
+matrix. Windows and musl-based Linux are not yet packaged — build from source instead.
+
+## Building from source
+
+Lute's compiler, checker, and CLI are written in Rust. If you have a Rust toolchain, install the
+CLI directly from a checkout of the repository:
+
+```sh
+cargo install --path crates/lute-cli
+```
+
+This builds the `lute` binary (the crate declares `[[bin]] name = "lute"`) and places it in your
+Cargo bin directory. For a throwaway local build during development, `cargo build -p lute-cli`
+produces `./target/debug/lute`.
+
+## Verify
+
+Whichever route you took, confirm the tool is on your `PATH`:
+
+```sh
+lute --version
+```
+
+## Next
+
+Head to [Write your first scene](/getting-started/first-scene/) to build a real `.lute` file from
+an empty file, running `lute` at every step.
+
+---
+
+# Write your first scene
+
+This is the "start here" for a scenario writer who has never touched Lute — no compiler background
+required. It builds **one small real scene** from an empty file, step by step, running the actual
+`lute` tool at every step so you can see exactly what it says. It targets language version
+**0.6.0**.
+
+You need a plain-text editor, a terminal, and the `lute` command
+([install it first](/getting-started/installation/)). Everything you write here is **core Lute
+only** — no plugins, no project configuration. Just the language itself.
+
+## Part 1 — The minimal skeleton
+
+Create an empty file, `my-scene.lute`, and run the checker on it — the checker tells you whether a
+`.lute` file is valid:
+
+```
+$ lute check my-scene.lute
+my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest`
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing
+```
+
+That's the whole idea of `lute check`: it reads your file and tells you, line by line, exactly
+what is wrong and why — never a silent failure. Every `.lute` file starts with a YAML
+**frontmatter block** (between two `---` lines) that answers "what is this document, and whose
+scene is it?". Add one:
+
+```yaml
+---
+kind: scene
+title: A Quiet Table
+character: mira
+season: 1
+episode: 1
+pov: fixer
+---
+```
+
+- `kind: scene` — this file is a scene (the other kind, `quest`, is for quest-logic files).
+- `character` — whose episode this is (the point-of-view character's storyline).
+- `season` / `episode` — which episode this scene belongs to.
+- `pov` — the id of the player character (the protagonist the player controls).
+
+Save that and re-check:
+
+```
+$ lute check my-scene.lute
+ok: my-scene.lute (0 warning(s))
+```
+
+Clean — but the file has no content yet. Try adding a line of narration directly under the
+frontmatter:
+
+```
+@narrator: The diner is empty at this hour, and Mira likes it that way.
+```
+
+Check again:
+
+```
+$ lute check my-scene.lute
+my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it
+```
+
+The rule to remember: **all content lives under a heading.** A Lute document is a sequence of
+"shots" — beats of the scene — and every line of dialogue, narration, or staging sits inside one.
+Add a heading before the line:
+
+```lute
+## The Counter
+
+@narrator: The diner is empty at this hour, and Mira likes it that way.
+```
+
+(The heading is free text after `## ` — `## The Counter`, `## Scene 1. The diner`, `## Prologue` are all
+valid. `The Counter`, `The Regular`, … stays a fine convention, but the number is not grammar: shots are
+numbered by their document order.)
+
+```
+$ lute check my-scene.lute
+ok: my-scene.lute (0 warning(s))
+```
+
+That's the whole skeleton: frontmatter, a heading, one line under it.
+
+## Part 2 — Speaking, narrating, feeling
+
+A content line always has the same shape: `@who{attributes}: what they say`. Narration uses the
+reserved speaker `@narrator`. Add a line where Mira speaks:
+
+```lute
+@mira{emotion="content" variant="0"}: {{userName}}, you made it.
+```
+
+- `@mira` is the speaker. `emotion="content"` and `variant="0"` pick which portrait/pose to show —
+  these are catalog vocabulary, not something you invent; `lute context` (Part 4) lists the legal
+  values for your project.
+- `{{userName}}` is an **interpolation** — text wrapped in double braces gets filled in at runtime.
+  `{{userName}}` is the one that's always available: the player's own name.
+
+Now add an inner-voice line for Mira — her private thought, not spoken aloud:
+
+```lute
+@mira{mono}: I should not be this pleased about a coffee order.
+```
+
+`{mono}` is a **delivery flag**: a bare word in the braces (no `=value`) that changes how the line
+is delivered. `{mono}` means interior monologue — it renders as thought, not speech, and works for
+any character. Two other delivery flags exist: `{os}` marks a line as **off-screen** (the speaker
+is heard but not staged), and `{vo}` marks it as **voiceover** (narration-style delivery layered
+over the scene). All three are mutually exclusive — at most one per line — and none is allowed on
+`@narrator`.
+
+The file so far:
+
+```lute
+---
+kind: scene
+title: A Quiet Table
+character: mira
+season: 1
+episode: 1
+pov: fixer
+---
+
+## The Counter
+
+@narrator: The diner is empty at this hour, and Mira likes it that way.
+
+@mira{emotion="content" variant="0"}: {{userName}}, you made it.
+
+@mira{mono}: I should not be this pleased about a coffee order.
+```
+
+## Part 3 — Giving the player a choice
+
+A `<branch>` presents the player with a menu; each `<choice>` inside it is one option, with its own
+`id`, a `label` (the button text), and the lines that play if the player picks it.
+
+Sometimes a choice should only appear under certain conditions — say, only if the player has met
+Mira before. That's a **guard**: `when="<condition>"`. Guards read declared **state** — a small
+named value the engine tracks — so first declare one in the frontmatter, inside a `state:` block:
+
+```yaml
+state:
+  scene.knowsMira: { type: bool, default: false }
+```
+
+Now the branch:
+
+```lute
+<branch id="orderChoice">
+  <choice id="black" label="Order it black">
+    @mira{emotion="content" variant="0"}: Good. No nonsense in a cup.
+  </choice>
+  <choice id="familiar" label="Say hi like an old friend" when="scene.knowsMira">
+    @mira{emotion="surprised" variant="0"}: You remembered. That's new.
+  </choice>
+</branch>
+```
+
+The first choice, `black`, has no `when` — it's always offered. The second, `familiar`, only shows
+up once `scene.knowsMira` is true. A branch always needs at least one unguarded choice — otherwise
+the player could be shown an empty menu, which the checker catches for you.
+
+## Part 4 — The loop: check → read → fix → compile → trace
+
+This is the day-to-day rhythm of writing Lute. `lute check` is your spellchecker — you'll run it
+constantly, and often it catches something small enough that `lute fix` can repair it for you
+automatically.
+
+Say you type an old-style sigil out of habit — a colon instead of `@` — on the mono line:
+
+```
+:mira{mono}: I should not be this pleased about a coffee order.
+```
+
+```
+$ lute check my-scene.lute
+my-scene.lute:19:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` — write `@speaker{…}: text`; `lute fix` applies this migration automatically
+```
+
+**Reading a diagnostic:** `file:line:col: error [CODE] message`. It names the exact line, the exact
+problem, and exactly what to write instead. For this mechanical class of fix, run:
+
+```
+$ lute fix my-scene.lute
+lute: migrated 1 edit(s)
+```
+
+`lute fix` rewrites the file in place (only what needs to change) and re-check comes back clean.
+
+Once a file checks clean, `lute compile` turns it into the flat JSON command list the game engine
+plays — one entry per line, choice, and jump, in order:
+
+```
+$ lute compile my-scene.lute
+{
+  "kind": "scene",
+  "lute": "0.6.0",
+  "meta": { "character": "mira", "season": 1, "episode": 1, "episodeId": "s01ep01", "title": "A Quiet Table" },
+  "state": [ … ],
+  "commands": [
+    { "kind": "line", "role": "narration", "speaker": "narrator",
+      "text": "The diner is empty at this hour, and Mira likes it that way." },
+    { "kind": "line", "role": "dialogue", "speaker": "mira",
+      "text": "{{userName}}, you made it.", "emotion": "content", "variant": 0 },
+    …
+  ]
+}
+```
+
+(Shown reformatted for space.) You never hand-edit this file — it's the compiled artifact the
+engine consumes. That it compiled without error is proof the scene is **statically valid**: every
+construct well-formed, every state path declared, every `<match>` exhaustive. It is not proof the
+scene is playable end to end — that's a runtime property, verified at integration time.
+
+Finally, `lute trace` previews a playthrough without opening the game — you tell it which choice to
+take at each branch with `--choose <branchId>=<choiceId>`, and it walks the scene and prints what
+would show on screen:
+
+```
+$ lute trace my-scene.lute --choose orderChoice=black
+trace: my-scene.lute
+  ## The Counter
+    @narrator  The diner is empty at this hour, and Mira likes it that way.
+    @mira  {{userName}}, you made it.
+    @mira  I should not be this pleased about a coffee order.
+  <branch orderChoice>   eligible: black   -> black
+    @mira  Good. No nonsense in a cup.
+trace complete: 1 decision; choices 1/2 (orderChoice)
+```
+
+That transcript previews exactly the mock scenario you supplied — an authoring aid for
+sanity-checking that a branch reads right, never proof of runtime behavior.
+
+## Part 5 — Sequencing scenes with `after:`
+
+A real episode is a *sequence* — one scene is meant to come after the player has seen another. You
+declare that intended ordering with one frontmatter key: **`after:`**.
+
+`after:` declares the routes Lute's checker and `lute scenario` analyses assume reach this scene. It
+doesn't move the player anywhere and it isn't a jump — it's *advisory*: the tool uses it to verify
+your episodes fit together into one coherent, analysable graph.
+
+`after:` is deliberately tiny. You get exactly two building blocks:
+
+- `visited("<sceneKey>")` — true once the player has seen that scene.
+- `completed("<questId>")` — true once that quest is finished.
+
+Combine them with `&&` (both) and `||` (either):
+
+```yaml
+after: 'visited("mira.s01ep01")'
+after: 'visited("mira.s01ep01") && completed("theCoffeeDebt")'
+after: 'visited("mira.s01ep01") || visited("mira.s01ep02")'
+```
+
+That is the whole vocabulary. There is no `!`, no arithmetic, and no reading state — those are
+intentionally left out. Anything conditional on runtime state stays in your `when=` guards.
+
+A scene's **canonical key** is `{character}.{episodeId}`, where `episodeId` defaults to
+`s{season}ep{episode}` (zero-padded). Our tutorial scene (`character: mira`, `season: 1`,
+`episode: 1`) has key **`mira.s01ep01`**.
+
+To carry a fact across episodes, use the persistent **`run.`** tier. Teach the diner to remember
+the meeting — declare `run.metMira` and set it:
+
+```yaml
+state:
+  run.metMira: { type: bool }
+```
+
+```lute
+::set{run.metMira = true}
+```
+
+`after:` and cross-scene reads only make sense across several files, so put both scenes in a folder
+with a one-line `lute.project.yaml` marking it a project root:
+
+```yaml
+# episodes/lute.project.yaml
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+```
+
+```lute
+---
+kind: scene
+title: The Usual Booth
+character: mira
+season: 1
+episode: 2
+pov: fixer
+after: 'visited("mira.s01ep01")'
+state:
+  run.metMira: { type: bool }
+---
+
+## The Counter
+
+@mira{emotion="content" variant="0" when="run.metMira"}: Back again. You know where you sit.
+
+@narrator: The coffee is already poured.
+```
+
+Single-file `lute check` can't judge cross-file relationships — a `.lute` file on its own has no
+idea what other episodes exist. The **project** checker can:
+
+```
+$ lute check-project episodes
+ok: episodes/booth.lute (0 warning(s))
+ok: episodes/diner.lute (0 warning(s))
+ok: episodes (2 file(s), 0 project-wide warning(s))
+```
+
+Now inspect the graph. `lute scenario` is the read-only design surface for everything `after:`
+implies. Bare, it prints the whole graph in play order:
+
+```
+$ lute scenario episodes
+project root: episodes
+  topological layers:
+    layer 0: scene(mira.s01ep01)
+    layer 1: scene(mira.s01ep02)
+  edges (prerequisite -> dependent):
+    scene(mira.s01ep01) -> scene(mira.s01ep02)
+```
+
+`reach <key>` answers "can the player ever get here, and by what route?"; `envelope <key>` answers
+the question you most want before writing a `when=` guard — *what state is safe to read here?*:
+
+```
+$ lute scenario episodes envelope mira.s01ep02
+envelope for scene(mira.s01ep02) (pre-entry):
+  Guaranteed (safe to read under your declared routes):
+    - run.metMira
+```
+
+`run.metMira` is **Guaranteed** because of the route: every declared route into the booth passes
+through the diner, which always `::set`s it. That's a genuine cross-scene guarantee — the booth's
+`when="run.metMira"` read is provably safe.
+
+## Part 6 — Where to go next
+
+**Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
+project accepts — the staging directives, their attributes, the enum values (like `emotion`), the
+declared state, and the delivery-flag vocabulary — resolved for the specific file you give it:
+
+```
+$ lute context my-scene.lute
+directives (8):
+  auto: character, anchor, action
+  bg: location, time, assetId
+  camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
+  cut: assetId, action, full
+  music: action, mood, volume, assetId, track
+  sfx: sound, assetId, name
+  vfx: type, label, transition
+  video: assetId, action, wait
+enums (6):
+  emotion: neutral, surprised, delighted, shy, content, angry, sad
+  mood: peaceful, tense, romantic, sad, upbeat
+  …
+deliveryFlags (3):
+  {mono}: interior monologue / thought (not spoken aloud in-scene)
+  {os}: off-screen: the speaker is heard but not currently staged/visible
+  {vo}: voiceover: narration-style delivery layered over the scene
+```
+
+Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value
+instead of guessing. From here, follow the **Language** section for each construct in depth, or read
+the [full-spec showcase](/examples/showcase/) for a feature-by-feature tour of a real project.
+
+---
+
+# Frontmatter & profiles
+
+Every `.lute` document opens with a **YAML frontmatter block** delimited by two `---` lines. It
+must be the document's first construct, before any body content. It answers "what is this document,
+and what capabilities does it use?".
+
+```yaml
+---
+kind: scene
+title: The Full Showcase
+character: bianca
+season: 1
+episode: 1
+pov: fixer
+profile: showcase
+uses: schema/game.schema.yaml
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+defs:
+  fond: { type: bool, cel: "scene.affect.bianca >= 1" }
+---
+```
+
+*(Frontmatter excerpt from [`docs/examples/showcase/episode01.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/episode01.lute).)*
+
+## Required keys
+
+A root document must declare its **`kind`** — either `scene` or `quest` — and, for a scene, the
+identity triple **`character`**, **`season`**, and **`episode`**. Omitting any of these is a static
+error (`E-KIND-MISSING`, `E-META-MISSING`).
+
+## Optional keys
+
+- **`episodeId`** — a stable opaque episode id, the prefix input to every derived `lineId`. When
+  omitted it defaults to `s{season:02}ep{episode:02}` (e.g. `season: 1, episode: 2` → `s01ep02`).
+  Pinning it explicitly lets you renumber `season`/`episode` without breaking translation or voice
+  keys.
+- **`title`** — an optional human title (localizable).
+- **`pov`** — the id of the player/protagonist speaker. The content-line speaker whose id equals
+  `pov` renders as the reserved **player** kind (see [Dialogue & cast](/language/dialogue-and-cast/)).
+- **`luteVersion`** — the language-version pin; distinct from `app.lang` game state.
+- **`contentLang`** — the source authoring language (a BCP 47 code such as `en-US` or `ko-KR`).
+- **`mode`** — the authoring mode; `inline` is the only defined form.
+- **`after`** — the scene's connectivity prerequisites (see
+  [Quests & scenes](/language/quests-and-scenes/)).
+- **`uses` / `components` / `extends`** — import the shared state schema and reusable content
+  components (see [Imports](/language/imports/) and
+  [Components & extends](/language/components-and-extends/)).
+- inline **`state`** and **`defs`** blocks (see [State model](/state/state-model/) and
+  [Params](/language/params/)).
+
+A top-level key that is neither a core key nor owned by an active plugin is a static error.
+Plugins may contribute additional frontmatter keys through their manifest (for example, `cast:` is
+owned by the character/cast capability).
+
+## Profiles & plugins
+
+Lute's authoring vocabulary — which directives, attributes, enums, and events are legal — is
+resolved from a **capability profile**.
+
+- **`profile`** is a root-level capability selector. It names one of the profiles declared in the
+  project's `lute.project.yaml`. If absent, the project's `defaultProfile` applies. The reserved
+  profile name `global` is inherited by every other profile.
+- **`plugins`** adds scene-local plugin activations and options *on top of* the selected profile.
+  It maps a plugin id to a typed option object; the presence of the id activates that plugin for
+  this scene. An empty object means "active with defaults", and the shorthand `true` normalizes to
+  the same. A value that is neither a map nor `true` is a static error (`E-PROFILE-PLUGIN-VALUE`).
+
+```yaml
+profile: showcase
+plugins:
+  showcase.pack:
+    resultScope: scene
+    allowedKinds: [rhythm]
+```
+
+Effective capabilities resolve deterministically: `lute.core` → `global` → the selected profile's
+`extends` chain (parent first) → the selected profile → scene-local `plugins` → dependency closure.
+Activation is purely additive. The checker, LSP, and compiler all validate the document against the
+same resolved capability snapshot, so what checks clean is exactly what compiles.
+
+---
+
+# Dialogue & cast
+
+Content is the spoken and narrated text of a scene. Every content line has the same shape:
+
+```
+@speaker{attributes}: the text they say
+```
+
+The **speaker** selects the line's kind:
+
+- a **registered character** id → **dialogue**;
+- the reserved **`narrator`** → **narration** (speakerless);
+- the speaker whose id equals frontmatter `pov` → the reserved **player** (protagonist), which
+  renders the runtime `{{userName}}` and carries no sprite.
+
+There is no separate monologue or prose node — role is derived from the speaker plus its delivery
+(below).
+
+```lute
+@narrator: Venny's again. The chain restaurant that has never offended anyone.
+@bianca{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
+@fixer{code="0010"}: I did.
+```
+
+*(From [`docs/examples/showcase/episode01.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/episode01.lute).)*
+
+## Line attributes
+
+Attributes in `{…}` are content metadata: `code` (a stable per-line id), `emotion`, `variant`,
+`action`, `dialogMotion`, and `as` (a one-off speaker-label override). Their *domains* are project
+vocabulary, not grammar — run `lute context <file>` to list the legal `emotion`/`variant` values
+for your project. None is required; a missing `code` is back-filled deterministically at compile
+time and can be persisted with `lute tag`.
+
+```lute
+@bianca{as="???"}: ...who's there?
+```
+
+`as` overrides only the shown label for that one line. When absent, the label is resolved by the
+active display-name capability (the character/cast plugin), which adds registry validation,
+costumes, and name-reveal. With no such capability active, a line still renders its speaker id as
+the label.
+
+## Delivery flags
+
+A **delivery flag** is a bare word in the braces (no `=value`) that changes how a line is
+delivered:
+
+- **`{mono}`** — interior monologue / thought (not spoken aloud in-scene).
+- **`{os}`** — off-screen: the speaker is heard but not currently staged or visible.
+- **`{vo}`** — voiceover: narration-style delivery layered over the scene.
+
+```lute
+@fixer{mono}: An android, then. Which would, on reflection, explain the ramen.
+```
+
+The three are **mutually exclusive** — at most one per line (`E-DELIVERY-CONFLICT` on two) — and
+none is allowed on `@narrator` (`E-DELIVERY-NARRATOR`). `{mono}` works for *any* character, not
+just the player: a non-player `{mono}` line is that character's inner voice.
+
+Roles derive from speaker + delivery: `narrator` → narration; any character with `{mono}` →
+monologue; any character with `{vo}` → voiceover; any character otherwise → dialogue.
+
+## Interpolation
+
+Content `Text` (and a `<choice>` label) may embed **`{{…}}`** interpolations that read game state at
+render time:
+
+```lute
+@narrator: Good to see you, {{userName}}.
+@bianca{code="0010" emotion="delighted" variant="1"}: You came back! Warmth so far: {{run.affection}}.
+```
+
+*(From [`docs/examples/showcase/hub-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/hub-demo.lute).)*
+
+`{{userName}}` is the always-available reserved token. Any other interpolation must name a
+**declared** state path; an interpolation is a *read* for definite-assignment analysis, so a
+maybe-unset path interpolated without a guard is `E-MAYBE-UNSET`. The text after the second colon
+is otherwise opaque to end of line — parentheses, `<`, `//`, and anything else are literal, never
+parsed.
+
+---
+
+# Staging directives
+
+A **staging directive** is a single-line leaf that stages the scene: background, music, sound,
+character entrance, camera, cut-ins, and effects. Its shape is:
+
+```
+::name{attributes}
+```
+
+Directives never nest — anything with children is a logic block instead (`<branch>`, `<timeline>`,
+…). Directive names and attribute meanings are **vocabulary**, extensible by plugins without any
+grammar change; run `lute context <file>` to list the directives and attributes your project
+accepts.
+
+## Core vocabulary
+
+The core staging directives and their canonical attributes:
+
+| Directive | Attributes |
+|---|---|
+| `::bg` | `location`, `time`, `assetId` |
+| `::music` | `action` (`start`\|`change`\|`stop`\|`resume`\|`fade-out`), `mood`, `volume` (`silent`\|`down`\|`normal`\|`up`\|`full`), `assetId`, `track` |
+| `::sfx` | `sound` (description), `assetId`, `name` |
+| `::auto` | `character`, `anchor` (`left`\|`center`\|`right`), `action` (a named action id such as `fade-in-up` / `pose-*`) — character entrance/exit/pose |
+| `::camera` | `focus`, `zoom`, `move-x`, `move-y`, `shake`, `reset`, `duration`, `easing`, `delay`, `wait` |
+| `::cut` | `assetId` (`CUT.*`), `action` (`show`\|`hide`), `full` |
+| `::vfx` | `type` (e.g. `whiteOut`, `petals`), `label`, `transition` |
+| `::video` | `assetId` (`VID.*`), `action` (`show`\|`hide`), `wait` |
+
+```lute
+::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
+::music{action="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="down"}
+::auto{character="bianca" anchor="center" action="fade-in-up"}
+::camera{focus="bianca" zoom="1.1" duration="0.5"}
+```
+
+*(From [`docs/examples/bianca-s01ep02.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/bianca-s01ep02.lute).)*
+
+Character staging lives on `::auto` with an action id (there is no `::sprite`/`::char`); music
+fade-out is `::music{action="fade-out"}`; a character exit is
+`::auto{action="fade-out-down"}`. All attribute values are strings, or a bare `@ref` to a
+[def](/language/params/) (`::camera{zoom="@closeUp"}`); there are no inline code expressions, which
+keeps staging non-Turing-complete.
+
+## Timing & the `wait` model
+
+`duration`, `delay`, and `wait` are reserved **staging** timing keys that may appear on any
+directive:
+
+- **`duration`** — the transform length (e.g. `duration="0.6"`).
+- **`delay`** — an offset from the directive's own slot start.
+- **`wait`** — blocking control.
+
+`wait="true"` holds the script until that effect completes; an absent or `false` `wait` is
+non-blocking, so the next line proceeds concurrently. The default is **per-directive**, not global
+— for example `::video` and background default to `wait="true"`, while most effects default
+non-blocking. Concurrency is therefore just consecutive non-`wait` directives; there is no
+`<parallel>` wrapper.
+
+```lute
+::camera{shake="0.3" duration="0.2"}                    /* no wait -> next line runs concurrently */
+::camera{focus="sofia" zoom="1.4" duration="0.5" wait="true"}  /* holds -> the following line waits for the pan */
+```
+
+The `at` key is *not* a staging timing attribute; it is a timeline-position key valid only on
+clips inside a [`<timeline>`](/language/timeline-and-property-tracks/).
+
+## Reserved directives
+
+Two `::`-directives are built-in rather than staging vocabulary: `::set` writes declared state (see
+[State model](/state/state-model/)) and `::use` expands a reusable content component (see
+[Components & extends](/language/components-and-extends/)). Quest documents additionally use
+`::assert` / `::retract` to mutate facts (see [Facts & Datalog](/state/facts-and-datalog/)).
+
+---
+
+# Branch, match & when
+
+Lute's logic layer is a small set of nesting blocks that select which content plays. Two kinds
+branch the flow: **`<branch>`** takes *player* input, and **`<match>`** dispatches on *state* with
+no input. Both reduce to finite command records at compile time — the language stays total.
+
+## `<branch>` — player choice
+
+A `<branch id>` presents a menu; each `<choice>` is one option. The selected choice id is recorded
+into the reserved path `scene.choices.<branchId>`, which a later `<match>` can read.
+
+```lute
+<branch id="number">
+  <choice id="blunt" label="Just ask, flatly">
+    @fixer{code="0050"}: Bianca. Your number.
+  </choice>
+  <choice id="soft" label="Ask gently">
+    @fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
+    ::set{scene.affect.bianca += 1}
+  </choice>
+</branch>
+```
+
+*(From [`docs/examples/bianca-s01ep02.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/bianca-s01ep02.lute).)*
+
+A branch id must be unique within the episode, and a branch must contain at least one **unguarded**
+choice so the menu is never provably empty (`E-BRANCH-ALL-GUARDED`). Choice mechanics — `when`
+guards, the `into=` run-record sugar, and revisit `<hub>`s — are covered in
+[Choices & hubs](/language/choices-and-hubs/).
+
+## `<match>` — state dispatch
+
+A `<match on="S">` evaluates the subject expression `S` and runs the first matching `<when>` arm,
+falling through to `<otherwise>` if none match. No player input is involved — this is how a scene
+reacts to a choice made earlier, a fact, or a plugin result.
+
+```lute
+<match on="scene.choices.number">
+  <when test="@fond">
+    @fixer{mono}: I asked nicely, which I am electing not to examine.
+  </when>
+  <when test="$ == 'blunt'">
+    @fixer{mono}: Straight to the point.
+  </when>
+  <otherwise>
+    @fixer{mono}: Whatever it was, it is done.
+  </otherwise>
+</match>
+```
+
+Arms are evaluated **top to bottom; first match wins.**
+
+### `<when>` patterns and guards
+
+A `<when>` arm matches on a literal pattern (`is`), a CEL guard (`test`), or both:
+
+- **`is`** is a literal pattern: one literal, or a `|`-alternation of literals. Legal literals are
+  enum member ids, `true`/`false`, decimal numbers, and the keyword `unset`. Matching is equality
+  on the subject. `<when is="joyful|playful">`, `<when is="unset">`, `<when is="1 | 2 | 3">`.
+- **`test`** is a CEL guard, with the `$` subject in scope (`$` is the value of `on`). `$` may only
+  appear inside a `<match>`.
+- **`is` + `test`** together means pattern AND guard.
+- A `<when>` with neither is `E-WHEN-PATTERN`.
+
+```lute
+<match on="scene.mood">
+  <when is="calm">          @fixer{mono}: Steady breathing. </when>
+  <when is="tense">         @fixer{mono}: Shoulders drawn tight. </when>
+  <when is="joyful|playful">@fixer{mono}: Light in the eyes. </when>
+</match>
+```
+
+*(From [`docs/examples/showcase/when-is-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/when-is-demo.lute).)*
+
+### Exhaustiveness
+
+A `<match>` must be exhaustive. Exhaustiveness is computed from the union of `is` literals (plus
+any `unset` arm): for a **finite domain** — an enum, a bool, or a branch's choice ids — full `is`
+coverage is exhaustive with **no `<otherwise>`** needed. The four-member enum above needs no
+`<otherwise>`; a bool covered by `is="true"`/`is="false"` needs none either.
+
+Otherwise, `<otherwise>` is **mandatory**: whenever the subject is maybe-unset (a `run.*`/`app.*`
+path with no default — its `unset` case must be covered), the domain is not finite, or an arm uses
+a `test` guard the checker cannot prove covers the domain. A `<match>` reading `app.rating` in a
+release build is a hard content gate that must cover `teen` or carry `<otherwise>`.
+
+## The `when=` content-line sugar
+
+A single content line may carry a `when="G"` guard directly: the line is emitted only if `G` holds.
+
+```lute
+@sofia{when="run.metHelpfully"}: You helped me back then. I've been meaning to thank you.
+```
+
+*(From [`docs/examples/gated-line.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/gated-line.lute).)*
+
+This is exact sugar for a one-arm match — `<match on="G"><when test="$">…</when><otherwise/></match>`
+— and lowers to that record identically, leaving the line's `code`/`lineId`/`voiceKey` unchanged.
+
+---
+
+# Choices & hubs
+
+A `<choice>` is one option inside a [`<branch>`](/language/branch-match-when/) or a `<hub>`. Every
+choice requires an **`id`** (the recorded key) and a **`label`** (the button text, which may
+interpolate). Beyond that it carries guards and run-record sugar.
+
+## Guards
+
+A choice may carry a **`when`** CEL guard; the choice is offered only when the guard holds. A
+branch must still contain at least one unguarded choice (`E-BRANCH-ALL-GUARDED`) so the menu is
+never provably empty.
+
+```lute
+<choice id="soft" label="Ask gently" when="@showcaseReady">
+  @fixer{code="0052"}: Bianca — would you mind terribly if I had your number?
+</choice>
+```
+
+## Recording a choice
+
+Selecting a choice records its id into the reserved path `scene.choices.<branchId>` (domain: the
+branch's choice ids ∪ `unset`). That path clears at episode end, so it drives **intra-episode**
+reactions only — a later shot's `<match on="scene.choices.…">`.
+
+To make a choice affect a **later episode** of the same run, record a **named** `run.*` fact with
+the `into=` sugar:
+
+```lute
+<branch id="sofaHelp">
+  <choice id="help" label="Help her up" into="run.metHelpfully">
+    @sofia: Thank you. I won't forget this.
+  </choice>
+  <choice id="warmly" label="Help, and stay a while" into="run.sofaHelpOutcome" value="warm">
+    @sofia: You're very kind — really.
+  </choice>
+  <choice id="tip" label="Leave a little something" into="run.tip" value="5">
+    @sofia: Oh — you didn't have to.
+  </choice>
+</branch>
+```
+
+*(From [`docs/examples/choice-persist.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/choice-persist.lute).)*
+
+`into="run.<path>"` alone appends `::set{run.<path> = <value>}` to that arm. The target path is
+named by **`into`** and must be declared in your schema. **`value`** defaults to `true` for a
+`bool` path; an `enum` or `number` path requires an explicit `value`. (0.6.0 removed the old
+`persist="run"` attribute; a stray `persist=` is now `E-PERSIST-REMOVED`, and `lute fix` deletes it
+automatically.) A later episode reacts by reading the named fact — never the raw choice key, which
+has already cleared:
+
+```lute
+<match on="run.metHelpfully">
+  <when test="$ == true">
+    @sofia: You helped me back then. I've been meaning to thank you again.
+  </when>
+  <otherwise>
+    @sofia: ...Have we met before?
+  </otherwise>
+</match>
+```
+
+## Revisit hubs
+
+A `<hub id>` is a revisit conversation: on entry, and after each non-`exit` arm completes, it
+**re-presents** every currently eligible choice, letting the player weave through them in any
+order. Hub choices carry two extra boolean flags — **`once`** and **`exit`**:
+
+```lute
+<hub id="chatWithBianca">
+  <choice id="askCoffee" label="Ask about the coffee" once>
+    @bianca{code="0020" emotion="content" variant="0"}: House blend. Bold, like the clientele.
+  </choice>
+  <choice id="compliment" label="Say she was kind earlier" when="@helped">
+    @fixer{code="0030"}: You were gentle about it before. It stuck with me.
+    ::set{scene.affect.bianca += 1}
+  </choice>
+  <choice id="leave" label="Head out" exit>
+    @fixer{code="0040"}: I'd better get moving.
+  </choice>
+</hub>
+```
+
+*(From [`docs/examples/showcase/hub-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/hub-demo.lute).)*
+
+- **Eligibility.** A choice is eligible when its `when` guard (if any) holds and — if flagged
+  `once` — it has not yet been taken in this scene.
+- **`once`** removes a choice from the eligible set after its first take. A choice without `once`
+  stays selectable and may be re-taken.
+- **Recording.** *Every* selection sets `scene.visited.<hub>.<choice> = true` (default `false`),
+  regardless of `once`, so the engine can grey out an already-seen topic. The hub also folds
+  `scene.choices.<hubId>` (the last-selected enum) — both are readable in a `<match>`.
+- **Exit.** Taking an `exit` choice runs its arm and leaves the hub. If no choice is eligible at a
+  presentation point, the hub auto-exits.
+
+### No dead ends
+
+A hub must guarantee it can end: it needs at least one **unguarded `exit`** choice, **or** all of
+its choices must be `once` (so the eligible set provably empties and auto-exit fires). A hub that
+satisfies neither is `E-HUB-NO-EXIT`. Because a hub reduces at build time to one finite option
+table plus its arms, its runtime re-presentation adds no unbounded computation — totality is
+preserved.
+
+---
+
+# Timeline & property tracks
+
+A `<timeline>` is a bounded, non-interactive **choreography unit** with its own local clock. Where
+consecutive non-`wait` directives give you loose concurrency, a timeline gives you *temporal
+scoping*: several **tracks** each hold time-positioned staging clips, all tracks play concurrently
+as the playhead advances, and the whole block blocks the following content until it completes.
+
+```lute
+<timeline duration="1.4">
+  <track subject="camera">
+    ::camera{focus="bianca" zoom="1.35" duration="0.4"}
+    ::camera{shake="0.6" duration="0.3" at="0.5"}
+  </track>
+  <track channel="fg">
+    ::cut{assetId="CUT.scenarios.bianca.s01ep02.01" at="0.5"}
+    ::cut{assetId="CUT.scenarios.bianca.s01ep02.01" action="hide" at="1.1"}
+  </track>
+  <track channel="vfx">
+    ::vfx{type="whiteOut" transition="flash" at="0.5"}
+  </track>
+  <track channel="sfx">
+    ::sfx{sound="finger_beam_flash" assetId="PLACEHOLDER_finger_beam_flash" at="0.5"}
+  </track>
+</timeline>
+```
+
+*(From [`docs/examples/bianca-s01ep02.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/bianca-s01ep02.lute) — the "finger-beam performance" as one four-track beat.)*
+
+## Tracks and keys
+
+A `<track>` is identified by its key, given one of three ways:
+
+- **`subject="camera"`** — a subject track (a whole staged entity, e.g. the camera or a character).
+- **`channel="fg"`** — a channel track (a staging channel such as foreground cut-ins, vfx, sfx,
+  music).
+- **`subject="bianca" property="pos"`** — a **property track**: split one subject across
+  property-scoped concurrent tracks.
+
+Each track key must be **distinct** — one writer per key. Two `subject="camera"` tracks would
+silently fight and are rejected; a track with no usable key is `E-TRACK-KEY`.
+
+### Property tracks
+
+Property tracks let one subject animate on several properties at once. Here `bianca` is driven on
+her position and her opacity simultaneously, alongside an independent camera track:
+
+```lute
+<timeline duration="1.2">
+  <track subject="bianca" property="pos">
+    ::auto{character="bianca" anchor="left" action="slide-in-left"}
+  </track>
+  <track subject="bianca" property="opacity">
+    ::auto{character="bianca" action="fade-in-up"}
+  </track>
+  <track subject="camera">
+    ::camera{focus="bianca" zoom="1.2" duration="0.6"}
+    ::camera{shake="0.4" duration="0.3" at="0.7"}
+  </track>
+</timeline>
+```
+
+*(From [`docs/examples/property-tracks.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/property-tracks.lute).)*
+
+The keys `bianca.pos`, `bianca.opacity`, and `camera` are all distinct, so the checker accepts them.
+
+## The time model
+
+Within a `<timeline>` the local clock starts at `0`. For each track:
+
+- a clip's **`at`** is an **absolute** time on that clock — never a relative nudge;
+- an **omitted** `at` starts the clip after the previous clip in that track (the first clip starts
+  at `0.0`);
+- clips lower to the same flat command records, sorted by resolved time, with a final barrier at
+  `duration` (or the maximum resolved end).
+
+## Constraints
+
+Tracks are **staging-only and non-interactive**: they hold `::` staging leaves (plus `::set` for
+state marks). No dialogue, prose, `<choice>`, `<branch>`, or `<match>` may appear inside — those
+would make the beat reader-paced rather than clock-paced. Timelines do not nest, and are not
+admitted in quest documents. The checker warns when a timeline grows unwieldy (past roughly 8
+tracks, 12 clips per track, or 40 clips total).
+
+---
+
+# Components & extends
+
+Lute has three reuse mechanisms, each for a different thing: `defs` reuse typed CEL *values*,
+`uses`/`extends` reuse *schema*, and **components** reuse *content*. This page covers content
+components and schema `extends:` composition.
+
+## Reusable content components
+
+A **component** is a named, parameterized block of lines and staging that is expanded inline
+wherever it is invoked. It lives in its own **component file** — a `.lute` document whose
+frontmatter declares `component: <name>` and, optionally, `params:` (typed exactly like a
+[def param](/language/params/)). The body is a **presentational template**.
+
+```lute
+---
+component: greet
+params:
+  who: string
+---
+
+## A Familiar Face
+
+::auto{character=@who action="fade-in-up"}
+@narrator: A familiar face steps into the light.
+```
+
+*(From [`docs/examples/components/greet.component.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/components/greet.component.lute).)*
+
+A parameter is referenced as `@<param>` in ref and attribute positions, and inside content text via
+`{{@param}}` interpolation. `@who` binds to the invocation argument at expansion time — it is legal
+in the `character` position only because that attribute is `string`-typed.
+
+A scene imports components via a `components:` frontmatter key (canonicalized, cycle-checked, and
+diamond-deduped like `uses:` — see [Imports](/language/imports/)), then invokes one with the
+reserved built-in directive **`::use`**:
+
+```lute
+---
+kind: scene
+character: demo
+season: 1
+episode: 2
+components: [greet.component.lute]
+---
+
+## Greeting by Component
+
+::use{component="greet" who="bianca"}
+@narrator: And the scene carries on.
+```
+
+*(From [`docs/examples/components/scene.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/components/scene.lute).)*
+
+`::use` expands the named component's body inline, binding each `@param` to the matching named arg;
+argument count and type are checked (`E-COMPONENT-ARG`), and naming a component from no imported
+file is `E-COMPONENT-UNDECLARED`.
+
+### Component body rules
+
+A component body is **presentational**: lines, staging directives, and `@param` refs only. It may
+**not** read or write scene/run state and may **not** contain logic blocks (`E-COMPONENT-BODY`) —
+pass values in through params instead. One notable exception: a `<match>` that dispatches on the
+component's own param is admitted, because dispatch on a param is a pure read of an invocation
+argument, not of ambient state:
+
+```lute
+---
+component: reaction
+params:
+  tier: { enum: [cold, warm, fond] }
+---
+
+## The Tiered Greeting
+
+<match on="@tier">
+  <when is="fond"> @bianca{emotion="delighted"}: You remembered! </when>
+  <when is="warm"> @bianca{emotion="content"}: Not bad at all, Mr. Fixer. </when>
+  <when is="cold"> @bianca{emotion="neutral"}: ...Shall we begin? </when>
+</match>
+```
+
+*(From [`docs/examples/components/reaction.component.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/components/reaction.component.lute).)* The three arms cover the declared
+enum and a param is never `unset`, so no `<otherwise>` is needed.
+
+## Schema `extends:`
+
+Where `uses:` unions **peer** schemas (a name declared by two peers is an error), **`extends:`**
+names one or more **base** schemas that a document *refines*. A base is a lower-precedence layer.
+
+```yaml
+# base.schema.yaml
+state:
+  run.blessed: { type: bool, default: false }
+defs:
+  wealthy: { type: bool, cel: "run.blessed" }
+```
+
+```yaml
+# child.schema.yaml
+extends: base.schema.yaml
+state:
+  run.blessed: { type: bool, default: true }   # overrides the base default
+```
+
+*(From [`docs/examples/child.schema.yaml`](https://github.com/journeyWorker/lute/blob/main/docs/examples/child.schema.yaml) and [`base.schema.yaml`](https://github.com/journeyWorker/lute/blob/main/docs/examples/base.schema.yaml).)*
+
+Precedence, low → high: a document's `extends` bases (recursively) < its `uses` peers < its own
+inline `state:`/`defs:`. When the extending layer redeclares a base name, it **overrides** it — no
+duplicate error. A `defs` entry is replaced wholesale. A `state` entry is overridden too, but
+because persisted state must keep a stable type, an override that changes the declared **type** is
+`E-EXTENDS-STATE-TYPE`; a `default`-only refinement (same type) is allowed silently. `extends` edges
+share the same DAG discipline as `uses:` — cycles, missing files, and parse errors reuse the
+`E-USES-*` diagnostics.
+
+---
+
+# Definitions & params
+
+All conditions and `::set` right-hand sides in Lute are [CEL](https://cel.dev) expressions. Rather
+than repeat a condition everywhere it is needed, you name it once as a **def** and reference it as
+`@name`. Defs are the language's reusable-*value* layer (distinct from schema reuse via
+[imports](/language/imports/) and content reuse via [components](/language/components-and-extends/)).
+
+## Declaring a def
+
+`defs` declares named, typed CEL values, either inline in a scene's frontmatter or in an imported
+schema. Each entry has a `type`, an optional `params` block, and a `cel` body:
+
+```yaml
+defs:
+  warm:    { type: bool,   cel: "scene.affect.sofia >= 2" }
+  closeUp: { type: number, cel: "scene.affect.sofia >= 5 ? 1.35 : 1.15" }
+  fond:    { type: bool,   cel: "scene.affect.bianca >= 1" }
+```
+
+A def is referenced with `@name`. Because `@` is a **compile-time macro**, the reference is expanded
+to its inline CEL before evaluation — a def is not a runtime function call, just a named piece of
+CEL. A bool def reads as a guard; a number def reads as a staging value:
+
+```lute
+<when test="@fond"> @fixer{mono}: I asked nicely. </when>
+::camera{zoom="@closeUp"}
+```
+
+A `@ref` must appear in a position whose required type matches the def's declared `type`, and its
+name must be declared in `defs`. Def names and param names are CEL identifiers (no `-`).
+
+## Parameterized defs
+
+A def may declare typed **`params`**, turning it into a parameterized macro invoked as
+`@name(args)`. The arguments are bound to the params at expansion time:
+
+```yaml
+defs:
+  atLeast: { type: bool, params: { n: number }, cel: "user.level >= n" }
+  chose:   { type: bool, params: { q: choiceRef, opt: choiceId }, cel: "scene.choices[q] == opt" }
+```
+
+*(From [`docs/examples/showcase/schema/base.schema.yaml`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/schema/base.schema.yaml).)*
+
+```lute
+<match on="scene.affect.bianca">
+  <when test="@atLeast(3)"> @fixer{mono}: A veteran's welcome. </when>
+  <otherwise>              @fixer{mono}: Early days yet. </otherwise>
+</match>
+```
+
+*(Call site from [`docs/examples/showcase/episode01.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/episode01.lute); a minimal parameterized def is in [`docs/examples/param-def.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/param-def.lute).)*
+
+## Where defs live
+
+A def whose CEL reads `run`/`user`/`app` state belongs in the shared schema document, so it can be
+imported by every scene that needs it (and refined via [`extends:`](/language/components-and-extends/)).
+A def that reads only `scene.*` can live inline in the scene. Duplicate def names across imports are
+a static error — no silent shadowing.
+
+## What the checker verifies
+
+The static checker owns four `@ref` checks, each conservative (only provably-wrong cases flag):
+
+- the name is declared in `defs` — else `E-UNDECLARED-REF`;
+- the call arity matches the declared `params` — else `E-REF-ARITY`;
+- each statically-resolvable argument matches its param's type — else `E-REF-ARG-TYPE`;
+- a whole-slot `@ref` produces the position's required type — else `E-REF-TYPE`.
+
+The `min`/`max`/`values` def fields from earlier drafts are removed: a def is fully described by its
+`type`, optional `params`, and `cel`.
+
+---
+
+# Quests & scenes
+
+Every `.lute` document declares a **`kind`**: `scene` or `quest`. The kind selects the required
+frontmatter keys, the admitted grammar, and the identity model. Scenes are the playable episodes
+you author line by line; quests are the run-to-completion goal machines that gate and reward them.
+
+## Scenes and `after:`
+
+A scene is one episode — the frontmatter identity triple (`character`/`season`/`episode`) plus its
+shots. Scenes are *sequenced* with the frontmatter key **`after:`**, which declares the routes the
+checker and `lute scenario` assume reach this scene. It is advisory ordering metadata, not a jump.
+Its vocabulary is exactly two predicates combined with `&&` / `||`:
+
+- `visited("<sceneKey>")` — true once the player has seen that scene (key = `{character}.{episodeId}`);
+- `completed("<questId>")` — true once that quest is finished.
+
+```yaml
+after: 'visited("mira.s01ep01") && completed("theCoffeeDebt")'
+```
+
+There is no negation, arithmetic, or state read in `after:`. See
+[Scene graph & after:](/connectivity/scene-graph/) for how these declarations form the reachability
+graph.
+
+## The quest kind
+
+A quest document declares `kind: quest` and carries `uses:` for the schema it gates on. Its body is
+one or more `<quest>` declarations — quests forbid `<hub>`, `<timeline>`, and `#`/`##` headings.
+
+```lute
+<quest id="rescueHalsinGrove" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
+  <objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
+  <objective id="freeHalsin" title="Free Halsin from the cage" done="run.npc.halsin.freed"/>
+
+  <on event="questComplete">
+    ::set{user.xp += 300}
+    ::set{run.metHalsin = true}
+    @narrator: Halsin rolled his shoulders and looked north. "Moonrise, then."
+  </on>
+
+  <on event="questFailed">
+    ::set{run.groveOutcome = "halsinDead"}
+    @narrator: The cage held only silence now.
+  </on>
+</quest>
+```
+
+*(From [`docs/examples/quest-grove.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-grove.lute).)*
+
+### `<quest>`
+
+A `<quest id>` needs a project-unique CEL-safe `id` (it keys the `quest.<id>.*` state tier). Its
+optional predicates are CEL strings: **`start`** transitions the quest `unset` → `active` when it
+holds; **`fail`** transitions `active` → `failed`. `fail` takes precedence over completion — if
+both hold in the same state, the quest fails (a deterministic tie-break).
+
+### `<objective>`
+
+An `<objective id done>` requires a `done` completion predicate over declared state. `when` gates
+only the objective's visibility/tracking, not the completion obligation; `optional` excludes it from
+completion. An empty-body objective should be written self-closing (`<objective …/>`); a body — a
+log line, a per-objective `::set` reward — emits **once**, when the objective first becomes `done`.
+
+**Completion is derived**, never author-written: a quest becomes `complete` when every non-`optional`
+objective is `done`. Objective completion is monotonic — once `done`, it stays recorded.
+
+### Lifecycle reactions with `<on>`
+
+`<on event>` is the language's event-condition-action rule: when its event fires and its optional
+`when` guard holds, the arm's nodes are emitted. Three built-in **lifecycle events** are quest-scoped
+— **`questActive`**, **`questComplete`**, **`questFailed`** — each firing only for its own enclosing
+quest. World events (e.g. `combatEnd`) are capability-provided by plugins.
+
+Content elsewhere can also gate on quest lifecycle by reading the reserved `quest.<id>.state` path:
+
+```lute
+<match on="quest.rescueHalsin.state">
+  <when is="complete"> @shadowheart: You did well back there. </when>
+  <when is="failed">   @shadowheart: We were too late. </when>
+  <otherwise>          @shadowheart: We should keep moving. </otherwise>
+</match>
+```
+
+Quests can gate on relational facts too — `start="holds(inParty(shadowheart))"` — see
+[Facts & Datalog](/state/facts-and-datalog/) for the fact surface, worked in full by
+[`docs/examples/quest-rescue-halsin.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-rescue-halsin.lute).
+
+---
+
+# Imports (uses:)
+
+The `run`/`user`/`app` state schema is **game/season-global** — one persisted value cannot have a
+different type per scene — so it lives in a single source-of-truth schema document that each scene
+imports, rather than being redeclared everywhere. That import is the **`uses:`** frontmatter key.
+
+```lute
+---
+kind: scene
+character: sofia
+season: 1
+episode: 3
+uses: state.schema.yaml
+---
+
+## Carrying the Choice Forward
+
+@narrator: Previously, a choice was made.
+
+<match on="run.choseHelp">
+  <when test="$ == true"> @sofia: Thanks for helping me back then. </when>
+  <otherwise>             @sofia: ... </otherwise>
+</match>
+```
+
+*(From [`docs/examples/carry-ep.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/carry-ep.lute).)* The scene reads `run.choseHelp`, which is declared in the imported
+`state.schema.yaml` — not inline.
+
+## Declaration files
+
+A `.schema.yaml` file is a **plain YAML declaration map** — no `---` envelope, no body, just
+`state:` / `defs:` (and, for the relational layer, `entities:` / `relations:` / `facts:` / `rules:`).
+It carries no `character`/`season`/`episode`, because it is imported and validated in import mode,
+never run as a scene.
+
+```yaml
+state:
+  run.choseHelp: { type: bool, default: false }
+```
+
+Import paths are resolved **relative to the importing scene file**, so a scene and its schema must
+travel together (copying a scene to `/tmp` without its schema reports `E-USES-NOT-FOUND`).
+
+Only genuinely scene-local `scene.*` declarations may appear inline in a scene's `state:` block. A
+scene must **not** redeclare or override an imported `run`/`user`/`app` path.
+
+## The import DAG
+
+`uses:`, [`extends:`](/language/components-and-extends/), and
+[`components:`](/language/components-and-extends/) all share one import discipline — they form a
+**directed acyclic graph**:
+
+- **Cycles are a static error** — the diagnostic prints the offending chain (`E-USES-CYCLE`).
+- Imported schemas are **loaded and checked before** any scene.
+- **Duplicate `defs` names** across imports are an error — no silent shadowing.
+- Import refs are **canonicalized**, so two paths to the same file are one schema identity, and a
+  file reached by two routes (a diamond) is **deduped**, not double-declared.
+
+`uses:` **unions peers**: a name declared by two peer schemas is a conflict. To *refine* rather than
+union — overriding a base's declaration with your own — use `extends:` instead, whose
+lower-precedence base layering and override rules are covered in
+[Components & extends](/language/components-and-extends/).
+
+```lute
+---
+kind: scene
+character: sofia
+season: 1
+episode: 4
+uses: child.schema.yaml
+---
+```
+
+*(From [`docs/examples/extends-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/extends-demo.lute), whose `child.schema.yaml` itself `extends:` a base — the DAG runs several files deep.)*
+
+Missing files, cycles, and parse errors on any imported file — schema or component — surface through
+the shared `E-USES-{NOT-FOUND,CYCLE,PARSE}` diagnostics.
+
+---
+
+# The state model
+
+Lute scalar state is a set of typed paths (`number`, `bool`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
+
+| Namespace | Reset boundary | Typical use |
+|---|---|---|
+| `scene.*` | episode end (one `.lute` document; survives across its shots) | on-stage state, `scene.choices.*`, `scene.visited.*` |
+| `run.*` | new run — one attempt, a sequence of episodes | per-attempt flags, affect, cross-episode carry within an attempt |
+| `user.*` | profile/account wipe — survives runs | level, unlocks, meta-progression |
+| `app.*` | app uninstall — identity-independent | language, age rating, settings |
+
+The engine **owns and fires every reset**; the language never triggers one. The three persistent tiers — `run` / `user` / `app` — are game/season-global, so they live in a single shared schema document that scenes import with `uses:` (see [State schemas](/state/schemas/)). Only genuinely episode-local `scene.*` declarations may appear inline in a scene, and a scene MUST NOT redeclare or override an imported tier.
+
+## Declaration
+
+Every path read *or written* MUST be declared with a `type` and an optional `default`. There are no bare, un-namespaced state names.
+
+```yaml
+state:
+  scene.affect.sofia: { type: number, default: 0 }
+  run.choseHelp:      { type: bool,   default: false }
+  user.level:         { type: number, default: 1 }
+  app.rating:         { type: enum, values: [teen, adult], default: teen }
+```
+
+## Reads and writes
+
+`::set{path <op> celExpr}` writes one path per directive (`=`, `+=`, `-=`, `*=`). Writes target `scene.*` / `run.*` / `user.*`; `app.*` is **content-read-only** (the settings layer owns it — `::set{app.*}` is a static error).
+
+Definite assignment is **path-sensitive**. Reading an undeclared path is `E-UNDECLARED`. A `scene.*` read follows ordinary flow analysis. A `run`/`user`/`app` path is **maybe-unset at scene entry** unless it carries a schema `default`; after entry, a dominating `::set{p = …}` write or a guard (`has(p)` / `isSet(p)`) proves it — otherwise the read is `E-MAYBE-UNSET`. A compound assignment (`+=`/`-=`/`*=`) reads the old value first, so only `=` may be a path's first write. A defaulted path is always assigned; the checker and engine share the one schema snapshot, so they can never disagree.
+
+---
+
+# Facts and Datalog
+
+Scalar tiers hold magnitudes; they cannot express *relationships between entities* — "Shadowheart is in the party," "the player told Halsin about the grove." Lute adds a **relational fact kernel** beside the scalar tiers: a closed, n-ary fact database over a declared finite vocabulary. A document opts in simply by declaring relations; a document with none behaves exactly as before.
+
+## Entities, relations, ground facts
+
+Entity **kinds** enumerate their members (`members:`) or are engine-open (`open: engine`). A **relation** is a declared predicate with fixed arity and a typed argument signature; each argument ranges over an entity kind, a named enum, or `bool`. A **fact** is a relation applied to matching entities — it is *symbolic* (it holds or it does not; no numeric value slot). Every fact carries a valid-time interval, so retraction is a tombstone, never a deletion.
+
+```yaml
+entities:
+  character: { members: [shadowheart, halsin, player] }
+  location:  { members: [camp, grove, moonrise] }
+relations:
+  inParty:    { args: [character], tier: run }
+  atLocation: { args: [character, location], tier: run, key: [0] }
+  canReach:   { args: [character, location], derive: true }
+facts:
+  - "inParty(shadowheart)"
+  - "atLocation(player, camp)"
+```
+
+Content writes **deltas** with the leaf directives `::assert` and `::retract`; the engine maintains the cumulative, time-scoped view. A functional `key:` auto-invalidates the superseded fact. Wildcards (`_`) are admitted only in `::retract`.
+
+```lute
+::assert{ atLocation(shadowheart, grove) }
+::retract{ atLocation(shadowheart, _) }
+```
+
+## Datalog derivation
+
+A relation marked `derive: true` is computed by `rules:` — Horn clauses, function-free, with stratified negation. Multiple rules for one head union.
+
+```yaml
+rules:
+  - "canReach(C, L)  :- atLocation(C, L)"
+  - "canReach(C, L2) :- canReach(C, L1), connected(L1, L2)"
+```
+
+Because there are no function symbols, the Herbrand base is finite: bottom-up evaluation reaches a least fixpoint in finitely many steps, so **every derivation terminates** — this is Datalog, not Prolog. Safety requires every head/negated/guard variable to appear in a positive body atom; violations are `E-DATALOG-UNSAFE`, a negation cycle is `E-DATALOG-UNSTRATIFIED`, a would-be function term is `E-DATALOG-FUNCTION`. A rule body may carry a scalar CEL guard (`cel("run.act == 1")`) but never a fact query — that firewall (`E-DATALOG-GUARD-FACT`) keeps every dependency visible to the analysis. Derived and `reserved:` relations are read-only to content. The whole layer reduces to data the engine evaluates deterministically; nothing is author-iterated.
+
+---
+
+# CEL expressions
+
+Every condition and every `::set` right-hand side in Lute is [CEL](https://cel.dev) — terminating and side-effect-free — interpreted under the **Lute-CEL profile**, a maximally restricted subset. CEL is what keeps the language *total, not Turing-complete*: there is no host-language (JS, Lua, …) evaluation anywhere.
+
+## Where CEL appears
+
+CEL text sits in every guard and value slot:
+
+- `<match on="S">` subject, `<when test="…">` guards, `<choice when="…">` and `when=` content-line gates
+- `::set{path = celExpr}` right-hand sides
+- quest `<quest start="…" fail="…">` and `<objective done="…" when="…">` predicates, `<on when="…">` handlers
+
+```lute
+<match on="scene.affect.sofia">
+  <when test="$ >= 3"> ... </when>
+  <when test="@chose('couch', 'ignore')"> ... </when>
+  <otherwise> ... </otherwise>
+</match>
+```
+
+Inside a `<match>`, the token `$` resolves to the subject expression `S` and MUST NOT appear elsewhere. A `@ref` / `@fn(args)` is a **compile-time macro** expanded to inline CEL before evaluation, with params bound from the call arguments — parenthesized and AST-safe.
+
+## The closed environment
+
+The Lute-CEL environment provides exactly: CEL operators, literals, list literals, the ternary `?:`, the `in` membership operator, the `has()` macro, and the single extension `isSet(<path>)` (true iff a state path is assigned). **No other functions** exist — a comprehension (`map`/`filter`/`exists`/`all`), `size`, or `matches` is a static error (`E-CEL-PROFILE`). State-path segments, `defs` names, and param names are CEL-facing identifiers and forbid `-` (`E-PATH-IDENT`).
+
+When the relational layer is in play, conditions may also read the fact database through a bounded predicate surface: `holds(rel(args|_))` (valid-now membership, any slot may be `_`), `count(rel(args|_)) OP n` (distinct valid tuples), and `validAt(rel(args|_), T)` (historical form over base relations). Joins under aggregation are expressed as [derived relations](/state/facts-and-datalog/), never multi-relation `count`. A `<match on>` subject must stay a scalar/enum path; fact queries live in guards only.
+
+## Compile target
+
+`@ref` macros expand at **compile time**; the resulting inline CEL string is carried in the flat command-record artifact and evaluated at **runtime** by the engine. Everything desugars to flat records plus CEL strings — the compiler↔engine contract. The unset sentinel is CEL `null` (tested with `!isSet(path)` or a `<when is="unset">` arm), never the string `'unset'` — comparing to that string is `E-UNSET-LITERAL`.
+
+---
+
+# State schemas
+
+The `run` / `user` / `app` tiers are game/season-global: one persisted value cannot carry per-scene types. So they live in a single **schema document**, the source of truth every scene imports with `uses:`. Scenes then declare only their own `scene.*` locals. Since 0.2.2 a declaration file is plain `.yaml` (no `---`/Lute envelope) — a pure declaration, not a scene.
+
+## Schema shape
+
+A schema declares `state:` (scalar tiers), `defs:` (named typed-CEL macros), and — when the relational layer is used — `entities:` / `enums:` / `relations:` / `facts:` / `rules:`.
+
+```yaml
+state:
+  run.choseHelp: { type: bool, default: false }
+  user.level:    { type: number, default: 1 }
+defs:
+  helped: { type: bool, cel: "run.choseHelp" }
+```
+
+Each `<path>` segment is a CEL-facing identifier (no `-`). A `default` is materialized into the tier's initial state at schema load **and** re-materialized whenever the engine fires that tier's reset — so a defaulted path is always assigned, and the checker and engine read the one snapshot.
+
+## Composition: `uses` and `extends`
+
+Imports form a **DAG**: cycles are a static error (the diagnostic prints the chain), schemas are loaded and checked before any scene, duplicate `defs` names across imports are an error (no silent shadow), and two paths to one file resolve to one identity.
+
+`uses:` unions **peer** schemas — a name declared by two peers is a conflict. `extends:` names one or more **base** schemas this document refines: a base is a lower-precedence layer, so if the extending document (or its peers) redeclares a base name, the extending declaration **overrides** it — no duplicate error.
+
+```yaml
+# base.schema.yaml
+state:
+  run.blessed: { type: bool, default: false }
+```
+
+```yaml
+# child.schema.yaml — refines the base
+extends: base.schema.yaml
+state:
+  run.blessed: { type: bool, default: true }   # default-only override
+```
+
+Precedence runs low → high: a document's `extends` bases (recursively) < its `uses` peers < its own inline `state:`/`defs:`. Because persisted state must keep a stable type, an override that changes a path's declared `type` is `E-EXTENDS-STATE-TYPE`; a `default`-only refinement of the same type is allowed silently. `extends` edges reuse the same cycle / missing-file / parse diagnostics (`E-USES-{CYCLE,NOT-FOUND,PARSE}`) as `uses:`.
+
+The state schema is *game content* — separate from the engine **capability manifest** (engine vocabulary), which has its own owner and change cadence.
+
+---
+
+# The scene graph and `after:`
+
+Scenes and quests declare their **prerequisites** — what must have happened before this node is available — and `check-project` assembles them into a project-wide graph. This closes the one asymmetry in the language: quests already had a declarative activation predicate (`<quest start>`), but scenes had no prerequisite surface at all. `after:` gives episodes what quests already had.
+
+## Declaring `after`
+
+A scene declares its prerequisites via a frontmatter key `after:`; a quest declares them via an `after` attribute on its `<quest>` element, sibling to `start` / `fail`. The placement differs because a scene document is exactly one node while a quest document packs one or more `<quest>` declarations — but both share the **same formula grammar**.
+
+```yaml
+# scene frontmatter
+after: 'visited("sofia.ep02") && (completed("sideQuestA") || completed("sideQuestB"))'
+```
+
+```lute
+<quest id="riverDebt" after="visited('sofia.ep02')" start="…" fail="…">
+```
+
+The value is CEL under a maximally-restricted profile admitting exactly conjunction and disjunction over two opaque predicates — **no negation, no arithmetic, no state reads**:
+
+```
+Formula ::= "visited(" StringLit ")" | "completed(" StringLit ")"
+          | "(" Formula ")" | Formula "&&" Formula | Formula "||" Formula
+```
+
+`visited(K)`'s string is the project's canonical `{character}.{episodeId}` episode key — the same join the compiler computes for `lineId`. `completed(Q)` names a `<quest id>`. These predicates are scoped to this one slot; writing `visited(...)` in any ordinary CEL guard is just an unknown-function error.
+
+## Node assembly and edges
+
+At `check-project` time the tooling walks every document's frontmatter, computes each episode's canonical key into a project-wide **set**, and resolves each `visited(K)` / `completed(K)` by exact string equality — never by decomposing the key. From each formula it derives a **topological-precedence DAG**: an edge `p → n` for every node `p` referenced anywhere in `n`'s formula, regardless of `&&`/`||` position. This over-approximating edge set is used for cycle detection and as the traversal order for the reachability and envelope passes.
+
+The checker's claims are entirely **graph-structural** — is the edge set acyclic, do referenced ids exist, is there a satisfiable route, what does the graph guarantee. The formula's truth at a play session is a runtime question the engine evaluates, exactly as it evaluates `<quest start>`; Lute never runs it.
+
+## Viewing the graph
+
+`lute scenario <dir>` prints the assembled node/edge graph as deterministic topological waves, per resolved project root — the whole-graph view, without any centralized edge-manifest file to keep in sync with frontmatter.
+
+---
+
+# Reachability
+
+Once the [scene graph](/connectivity/scene-graph/) is assembled, `check-project` asks whether each node has at least one **satisfiable route from the project's entry set** — computed by a memoized structural recursion over the formula AST, never by enumerating routes:
+
+```
+reachable(visited(Y)) = ¬unreachable(Y)
+reachable(completed(Q)) = ¬E-QUEST-UNREACHABLE(Q)
+reachable(X && Y) = reachable(X) ∧ reachable(Y)
+reachable(X || Y) = reachable(X) ∨ reachable(Y)
+```
+
+Any node with an absent or empty `after` is a graph entry point (`reachable = true` trivially) — no separate "declare the start" convention is needed. Because the grammar excludes negation, every formula is monotone, so each node's verdict is computed once and memoized over the topological order: linear, no blowup. A node with no satisfiable route is `E-CONN-UNREACHABLE` — the one connectivity error that needs no hedge, because it is a pure fact about the *authored* graph's self-consistency.
+
+## Verdicts
+
+`lute scenario reach <nodeId>` reports one of three verdicts plus the node's declared `after` prerequisite structure:
+
+- **Reachable** — a satisfiable route exists under the declared `after` graph.
+- **Unreachable** — no declared route reaches the node (`E-CONN-UNREACHABLE`).
+- **Unknown** — the node is on or downstream of a cycle, so its prerequisite ordering is unresolvable (see below).
+
+`<nodeId>` is a scene's canonical key (e.g. `bianca.s01ep02`) or `quest:<id>` for a quest.
+
+```console
+$ lute scenario reach kestrel.s01ep02
+reach kestrel.s01ep02:
+  verdict: Reachable
+  after: visited("kestrel.s01ep01")
+```
+
+## Cycle degradation is per-node
+
+`E-CONN-CYCLE` marks a malformed ordering but does **not** blank the whole project root. Reachability is computed over the graph's natural topological order: a node enters that order once every prerequisite edge resolves, which recursively fails only for cycle members and nodes structurally downstream of them. So a node topologically independent of a cycle still receives its full, sound verdict; only nodes on or downstream of a cycle degrade to `Unknown`.
+
+One accepted conservative gap: because the edge model over-approximates `||` position, a node reachable *only* via a disjunct that passes through a cyclic node is conservatively reported degraded even though its independent disjunct could prove it reachable. This is sound — **a false `Unknown` is always safe; a false `Reachable` never is** — and recovering it needs SCC-condensation-aware analysis (future work).
+
+Under the locked A-hybrid enforcement posture the graph is advisory data the engine *may* honor, so every reachability message is worded "under your declared `after` routes," never as an unconditional runtime claim.
+
+---
+
+# Guaranteed / Possible envelopes
+
+The **envelope** answers a proactive question: *by the time control reaches node X, what state is actually set?* This is distinct from what's legal to read (governed by schema import). The envelope tracks two sets per node, scoped to **`run.*` / `user.*` only** — the tiers whose writes are monotonic ("once set, stays set," so union/intersect over predecessors is sound). Quest scratch fields (`quest.<id>.*`) are excluded; "was it reachable at X" is answered directly by `completed(Q)` in the route structure.
+
+- **Guaranteed(X)** — set on *every* declared route to X.
+- **Possible(X)** — set on *some* declared route to X.
+
+Both are a graph-lift of `defassign`'s own lattice: each node's guaranteed-write set is computed by the definite-assignment walk, then propagated by structural recursion over the formula AST:
+
+```
+visited(Y):   G = Guaranteed(Y) ∪ G(Y)      P = Possible(Y) ∪ P(Y)
+completed(Q): G = P = writesOnComplete(Q)
+X && Y:       G = G(X) ∪ G(Y)               P = P(X) ∪ P(Y)
+X || Y:       G = G(X) ∩ G(Y)               P = P(X) ∪ P(Y)
+entry node:   G = P = D
+```
+
+`D`, the entry base case, is the set of `run.*`/`user.*` paths carrying a schema `default` — reused verbatim from the import layer. `D ⊆ Guaranteed(n)` at *every* node, matching definite-assignment's "a defaulted path is always assigned" invariant lifted to the whole graph. This structural recursion is provably identical to a per-route ∩/∪ computation, never materializing the exponential route set.
+
+## Reading the tables
+
+`lute scenario envelope <nodeId>` prints both tables. The diagnostic reads for a state path `P` at node X:
+
+- `P ∈ Guaranteed(X)` → safe under your declared routes; no diagnostic.
+- `P ∉ Possible(X)` → no declared route ever sets `P` before X — **error grade**, `E-STATE-MAYBE-UNAVAILABLE`, shipped by default in `check-project`.
+- `P ∈ Possible(X) \ Guaranteed(X)` → set on some but not all routes — **warning grade**, default-suppressed to this command's output only. This is the `Possible \ Guaranteed` read `check-project` computes and drops by default.
+
+Every message carries the verbatim "under your declared routes" qualifier (A-hybrid posture).
+
+## Quest addressing
+
+`lute scenario envelope quest:<id>` prints a real table for **every** quest:
+
+- A quest **with** an `after` attribute → the full `Guaranteed`/`Possible` tables, computed exactly like a scene's.
+- A quest **without** `after` → the defaults-only `D` table (never empty, never an error), plus a one-line note that declaring `after` would enrich it beyond defaults-only.
+
+A quest is reactive — `<quest start>` may fire at the earliest possible instant, so nothing beyond schema defaults can be soundly guaranteed at quest entry unless the author opts into a graph position with `after`. The reactive diagnostic side ("is this specific guard's read safe?") is already handled by `defassign` on the quest's own guards.
+
+---
+
+# CLI reference
+
+`lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot (omit for a core-only `lute.core` check).
+
+## check
+
+```console
+$ lute check <file> [--json] [--providers <DIR>] [--project <DIR>]
+              [--deny <CODE>]… [--deny-warnings]
+```
+
+Statically validate one `.lute` document. Exit **0** clean, **1** when any `Error`-severity diagnostic is present, **2** on an I/O failure. `--json` prints the serialized `CheckResult`; otherwise a human line per diagnostic. `--deny <CODE>` (repeatable, rustc/clippy `-D` precedent, 0.6.1 §5) promotes every diagnostic with exactly that code to an error for the verdict and exit code, and `--deny-warnings` promotes every warning — a pipeline denies `W-UNPROVEN-RELATIONAL` to force human review of relational fact gates, `W-LUTE-VERSION-STALE` to reject a stale `luteVersion` stamp. A promoted diagnostic reports severity `error` with a `"denied": true` marker in `--json`; an unknown code in `--deny` is a usage error (exit **2**), and errors are never demotable.
+
+## check-project
+
+```console
+$ lute check-project <dir> [--json] [--providers <DIR>] [--deny <CODE>]… [--deny-warnings]
+```
+
+Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted order, each against its own nearest-ancestor `lute.project.yaml` root, **plus** project-wide `<quest id>` uniqueness and the connectivity passes (`E-CONN-*`, `W-QUEST-REF-UNKNOWN`, `E-STATE-MAYBE-UNAVAILABLE`). Exit **0** clean, **1** when any file has an error or a project-wide collision, **2** on I/O. The same `--deny <CODE>`/`--deny-warnings` promotion (see `check`) applies project-wide.
+
+## compile
+
+```console
+$ lute compile <file> [--json] [--providers <DIR>] [--project <DIR>] [-o <FILE>]
+```
+
+Compile a document to its JSON command-record artifact (gated on a clean check). Exit **0** on success, **1** on a failed gate, **2** on I/O or serialization failure. The artifact is always JSON; `-o`/`--out` writes it to a file instead of stdout. With `--project`, the gate is the target's reconciled `check-project` verdict.
+
+## trace
+
+```console
+$ lute trace <file> [--state P=L]… [--fact "R(A…)"]… [--choose ID=C[,C]]…
+              [--event N]… [--accept Q]… [--mock <FILE>] [--json]
+              [--providers <DIR>] [--project <DIR>]
+```
+
+Preview a document against author-supplied mocks (see the [tracing guide](/tooling/tracing/)). Exit **0** complete, **1** refused (check errors or invalid mocks — the `E-TRACE-*` codes render like check diagnostics), **2** I/O, **3** incomplete (an `unknown` guard halted the walk).
+
+## scenario
+
+```console
+$ lute scenario <dir> [--providers <DIR>] [reach <nodeId> | envelope <nodeId>]
+```
+
+Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach <nodeId>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope <nodeId>` (or `envelope quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/). `<nodeId>` is a scene's canonical key or `quest:<id>`. Exit **0** on success, **2** on I/O or an unresolvable node id.
+
+## context
+
+```console
+$ lute context <file> [--json] [--providers <DIR>] [--project <DIR>]
+```
+
+Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, delivery flags, referenced reserved quest paths, and `capabilityVersion`. A capability query, not validation — it emits regardless of document diagnostics. Exit **0** on success, **2** on I/O.
+
+## tag
+
+```console
+$ lute tag <file>
+```
+
+Back-fill a stable `code` into every untagged `:line`, rewriting the file in place. Exit **0** on success, **2** on I/O.
+
+## fix
+
+```console
+$ lute fix <file>
+```
+
+Migrate a pre-0.2.2 document to 0.2.2 in place — `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, and choice `as="…"` → `into="…"`. Byte-exact and comment-preserving; writes back only when something changed. Exit **0** on success, **2** on I/O.
+
+## catalog refresh
+
+```console
+$ lute catalog refresh <dir> [--project <DIR>]
+```
+
+Re-stamp every pinned provider snapshot in `<dir>` against the current `capabilityVersion` and clear its `stale` flag (see [providers & catalog](/tooling/providers-and-catalog/)). Exit **0** on success, **2** on I/O.
+
+---
+
+# Tracing guide
+
+`lute trace` walks a document once, deterministically, against **author-supplied mocks**, reporting every decision and why. It is an authoring preview, not a guarantee: it never runs the Datalog fixpoint, never feeds `check`/`compile`, and is never a static reachability proof. It explores only the mock scenarios you supply — a coverage aid, never a proof.
+
+## Seeding the world
+
+Trace operates on an **explicit** world — the effective set is exactly what you supply, never the schema's own seed block. Five surfaces feed the walk, as repeatable flags:
+
+```console
+$ lute trace scene.lute \
+    --state run.metMira=true \
+    --fact "inParty(shadowheart)" \
+    --choose sofaHelp=help \
+    --event npcSpoke \
+    --accept sideQuest
+```
+
+- `--state <path>=<literal>` — a scalar seed on a declared path.
+- `--fact "<rel>(<arg>…)"` — a ground fact, valid-now, over the declared vocabulary (a *supplied answer*, so it may name a `derive:`/`reserved:` relation).
+- `--choose <id>=<choiceId>[,<choiceId>…]` — a menu selection at a `<branch>`/`<hub>` id; a hub may force a whole ordered visit sequence via one flag's comma list.
+- `--event <name>` — fire a capability/world event, in CLI order.
+- `--accept <questId>` — simulate accepting a `start`-less (accept-driven) quest.
+
+The same five surfaces live in a `--mock <file.yaml>` document; CLI flags compose with it, the flag winning on a conflict.
+
+```yaml
+state:  { run.metMira: true }
+facts:  ["inParty(shadowheart)"]
+choose: { sofaHelp: help }
+events: [npcSpoke]
+accepts: [sideQuest]
+```
+
+## Reading the transcript
+
+The human form is an indented, ordered transcript: emitted content lines (interpolations substituted where decided, kept verbatim `{{…}}` where unknown), staging directives, state writes, and one line per **decision** — the construct, the winning arm/choice, and the guard with its read values. A trailing summary reports decisions taken, arm/choice coverage, and any unresolved atoms.
+
+```console
+$ lute trace docs/examples/choice-persist.lute --choose sofaHelp=help
+trace: choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
+  ## Recording the Choice
+  <branch sofaHelp>   eligible: help, warmly, tip   → help (--choose)
+    ::set     run.metHelpfully = true          (into sugar)
+  ## Reading It Back
+  <match run.metHelpfully>   = true → arm 1 ($ == true)
+trace complete: 2 decisions; choices 1/3, arms 1/2
+```
+
+An `unknown` guard halts the walk at that construct (exit 3) and reports the unresolved atoms — which paths or facts a mock would need. Trace never guesses past unknown eligibility; forcing past an unknown guard via `--choose` is the documented escape hatch. Reserved quest reads (`quest.<id>.state`, `…objectives.<oid>.done`) resolve to their defaults (`unset` / `false`) unless mocked, each carrying an "existence unverified" note (only `check-project` validates a foreign quest id).
+
+## The `E-TRACE-*` refusals
+
+Before walking, trace resolves the document exactly as `check` does and **refuses** (exit 1) a document with check errors or invalid mocks — run `check` first. The mock refusals: `E-TRACE-MOCK-UNDECLARED` (undeclared `--state` path), `E-TRACE-MOCK-TYPE` (wrong literal type), `E-TRACE-MOCK-FACT` (unknown relation/arity/foreign arg), `E-TRACE-CHOICE` (unknown or ineligible forced choice), `E-TRACE-EVENT` (a built-in lifecycle event `questActive`/`questComplete`/`questFailed` — engine-derived, never fired by hand), and `E-TRACE-ACCEPT` (an unknown quest id, or one that carries a `start` predicate and needs no accept). An unmatched `--event` is an informational note, not a refusal.
+
+Since 0.6.1, trace also emits a warning (not a refusal) — `W-TRACE-MOCK-UNPRODUCIBLE` — for a `--fact`/mock-YAML fact whose relation no authored producer can ever assert (`producible()` judges it not producible): the supplied answer can never arise in reachable play, so a "complete" walk seeded with it proves nothing. A `reserved: true` or `open: engine`-argument relation is producible by definition and never warns.
+
+---
+
+# Providers and catalog
+
+Plugins add **providers** — id registries that supply the concrete ids a directive's attrs resolve against (background locations, music tracks, character ids, asset ids). Compiler and checker correctness must **never depend on a live or remote catalog**, so providers resolve against a pinned **snapshot artifact** on disk. The parser never calls providers; only the checker does.
+
+## Snapshot-first resolution
+
+Because resolution is against pinned snapshots, the compiler fails cleanly if required data is missing rather than blocking on the network, and the LSP keeps a stale snapshot and emits a *catalog-stale* diagnostic when offline — never false *unknown-id* errors. This keeps a build reproducible: the same pinned inputs always resolve the same ids.
+
+## `--providers`
+
+`check`, `check-project`, `compile`, `context`, `trace`, and `scenario` all accept `--providers <DIR>`, a directory of pinned snapshot files whose ids the document is resolved against.
+
+```console
+$ lute check scene.lute --providers ./catalog
+```
+
+Precedence: an explicit `--providers <DIR>` wins; otherwise, under `--project`, the project's own pinned catalog is auto-discovered through the same shared helper the LSP uses, so the two surfaces resolve the same ids for the same project; with neither, the provider set is empty.
+
+## `catalog refresh` and `capabilityVersion`
+
+Activation resolves a project's installed plugins plus its selected profile into one immutable **capability snapshot**, stamped with a `capabilityVersion`. Provider snapshots are pinned against that version. When the resolved capability version moves, the pinned snapshots need re-stamping:
+
+```console
+$ lute catalog refresh ./catalog --project ./my-game
+```
+
+`catalog refresh <dir>` re-stamps every pinned snapshot in `<dir>` against the current `capabilityVersion` and clears its `stale` flag, rewriting each file in the flat on-disk format the loader reads. Under `--project`, it stamps the resolved multi-plugin `capabilityVersion`; omit it for the core baseline. Correctness never depends on a live catalog — refresh only canonicalizes and re-stamps artifacts already pinned, so `refresh` then `load` round-trips exactly. An explicit `catalog refresh` precedes a build. Exit **0** on success, **2** on I/O.
+
+---
+
+# Editors and LSP
+
+All editor clients associate `.lute` with the `lute` language and drive the same `lute-lsp` stdio language server, so you get identical language intelligence everywhere. A project root is located by the markers `lute.project.yaml`, then `.git`.
+
+## Install `lute-lsp`
+
+Every client launches the `lute-lsp` binary from your `PATH`. Install it once:
+
+```console
+$ cargo install --path crates/lute-lsp     # -> ~/.cargo/bin/lute-lsp
+$ cargo install --path crates/lute-cli     # optional: the `lute` CLI checker
+```
+
+For a dev checkout, `cargo build -p lute-lsp` and add `target/debug` to your `PATH`. Confirm it resolves:
+
+```console
+$ command -v lute-lsp
+```
+
+## Clients
+
+| Editor | Setup | Static highlighting |
+|---|---|---|
+| **VS Code** | `editors/vscode/` — `npm install`, then F5, or `vsce package` + `code --install-extension`. | TextMate grammar + LSP semantic tokens |
+| **Neovim** | `editors/nvim/` — drop `plugin/lute.lua` on `runtimepath`, or use the nvim-lspconfig snippet. | tree-sitter grammar (`tree-sitter-lute/`) + LSP semantic tokens |
+| **Oh My Pi** | `.omp/lsp.json` — auto-detects `lute-lsp` for `.lute` when the binary is on `PATH` and a root marker is present. Zero extra setup. | LSP semantic tokens |
+
+## Language features
+
+Once the server is running you get:
+
+- **Diagnostics** — the full checker (project / plugin / `uses` / `extends` / components-aware), pushed as you type.
+- **Hover** — types and docs for directives, refs, state paths, and attributes.
+- **Completion** — directives, attributes, `@ref`s, state paths, choice ids.
+- **Go-to-definition / references** — defs, components, schema declarations.
+- **Folding & document symbols** — shots, timelines, branches, matches.
+- **Semantic tokens** — layer-aware highlighting (content / staging / logic).
+
+## Highlighting model
+
+Highlighting is two layers that combine. A **static grammar** per editor gives an instant baseline — a TextMate grammar in VS Code, the tree-sitter grammar in Neovim. **LSP semantic tokens** from `lute-lsp` then refine it with project / plugin / schema knowledge the static grammar cannot see. The tree-sitter grammar parses `@speaker{attrs}: text` content lines, `//` comments, `{{…}}` interpolation, `<hub>` blocks, `<when is>` patterns, `<quest>`/`<objective>`/`<on>` nesting, and the `::assert`/`::retract` relational leaves; `lute-lsp`'s semantic tokens stay authoritative for the project-aware refinement.
+
+---
+
+# AI harness guide
+
+Lute is built to be driven by a model, not just a person. An AI harness reads exit codes and JSON, never prose, so the whole authoring surface and every verification gap is exposed on the tool surface. A working loop is: **context in → generate → check → promote → tag**.
+
+## Prompt context: `lute context --json`
+
+Seed the model from the project's *authoring surface*, never from guesswork:
+
+```sh
+lute context scene.lute --json --project .
+```
+
+It emits the project-resolved directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, imported components, and a `capabilityVersion`. It is a capability **query**, not validation: it emits regardless of the document's own diagnostics (exit `0`), and — the key property — **works on an empty file**, because the surface comes from the resolved project and plugins, not the document body. Use `capabilityVersion` as a prompt-cache key: the vocabulary only changes when it does.
+
+## Feedback loop: `lute check --json`
+
+After each generation, check and feed the serialized diagnostics back:
+
+```sh
+lute check scene.lute --json --project .
+```
+
+A pipeline judges by exit code. To make a warning block the loop, promote it with the rustc/clippy-style flags (0.6.1 §5), also on `check-project`:
+
+```sh
+lute check scene.lute --json --deny W-UNPROVEN-RELATIONAL --deny-warnings
+```
+
+`--deny <CODE>` (repeatable) treats exactly that code as an error for the verdict and exit code; `--deny-warnings` promotes every warning. A promoted diagnostic reports severity `error` and carries `"denied": true` in JSON, distinguishing it from a native error. An unknown code is a usage error (exit `2`). Errors are never demotable.
+
+## Exit-code contract
+
+| Command | 0 | 1 | 2 | 3 |
+|---|---|---|---|---|
+| `check` / `check-project` | clean | error present | I/O | — |
+| `compile` | success | failed gate | I/O / serialization | — |
+| `trace` | complete | refused | I/O | incomplete |
+
+For `trace`, distinguish the two failure modes: **1 = refused** (check errors or invalid mocks — fix the document, then retry) versus **3 = incomplete** (an `unknown` guard halted the walk — supply more mock seeds, then retry). They demand different retry strategies.
+
+## Fixits
+
+Diagnostics carry fixits with a `kind`. `kind: "migrate"` is machine-applicable — apply it unprompted (this is what `lute fix` does). `kind: "refactor"` is an author choice — surface it as an LSP code action, never auto-apply.
+
+## The verification boundary
+
+`check` is sound but deliberately incomplete over the relational layer, so know which regions are proof-covered and which are review-covered:
+
+- **Scalar gates are proof-covered** — reachability and Guaranteed/Possible envelopes (§5) statically decide them.
+- **Relational fact gates are review-covered** — a fact query over a producible relation is always `Undecided`. `W-UNPROVEN-RELATIONAL` marks each such `<objective done>`/`<quest start|fail>` predicate; deny it to force human routing of those regions.
+- `W-TRACE-MOCK-UNPRODUCIBLE` warns when a `lute trace` mock seeds a fact over a relation no authored producer can ever assert — the walk proves nothing about reachable play.
+- `W-LUTE-VERSION-STALE` catches a model reproducing a stale `luteVersion` stamp copied from an old example.
+
+## Close with `lute tag`
+
+Run `lute tag scene.lute` at the pipeline end to back-fill a stable `code` into every untagged line. Never let the model hand-write `code=` values — line identity is the tool's job, not the model's.
+
+---
+
+# Plugin concepts
+
+Lute has a **fixed grammar** and a **total, non-Turing** core. A plugin never changes either. It adds only *vocabulary and capability surfaces* that the grammar already refers to — directive names, attributes, enum domains, state shapes, providers, bridge signatures, definitions, frontmatter keys, asset kinds, and diagnostics. Everything a plugin declares is **data**, validated against the manifest schemas and resolved, together with a selected profile, into a single deterministic **capability snapshot** that the checker, LSP, and compiler all consume.
+
+## The one rule
+
+Plugins add vocabulary; the core owns grammar and behavior. Control flow, lowering algorithms, exhaustiveness, and auto-injection all live in the compiler — never in a manifest.
+
+## What a plugin MAY add
+
+- **Directive vocabulary** — new `::name` staging or bridge directives, with typed `attrs`, `semantics` flags, and declared state effects (see [Manifests](/plugins/manifests/)).
+- **State shapes** — reusable typed records and structured path templates that open typed slots.
+- **Providers** — snapshot-first id registries (character ids, asset ids, minigame ids) resolved against a pinned catalog, never a live network call.
+- **Bridge signatures** — typed runtime calls whose declared result fields are the only values a directive may write back into story state (see [Bridge](/plugins/bridge/)).
+- **Enums, defs, frontmatter keys, asset kinds, and world events** — closed value sets, shared typed-CEL `@refs`, plugin-owned `---` meta keys, structured asset-id templates, and `<on event>` triggers.
+- **Diagnostics** — per-attribute messages, deprecations, aliases, and fix-its.
+
+## What a plugin MUST NOT add
+
+Grammar productions, new bracket forms, new block kinds, new control flow, or any behavior. A capability is registrable as plugin data **only if** all hold: fixed syntax; validation local to its attrs plus catalog lookup; lowering is a finite attrs→records mapping; no new control flow; no cross-sibling or global reasoning beyond declared resource conflicts; no AST-shape change; no ordering-sensitive interpretation beyond the existing timeline/`wait` model. If any condition fails, the capability is **code** — a compiler-core change — and does not belong in a plugin.
+
+The trap to name: authors most want things that *feel* like vocabulary but are compiler behavior — "have her leave naturally", "keep the same pose unless mood changes", "hit this SFX exactly as the line appears". Those are served, if at all, by a **named builtin lowering hook** added to the core, gated by a golden test per directive. **If a directive can't get a clean golden test, it isn't just data — it's code.**
+
+The [character/cast](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/0.0.1.md) capability is the canonical example: it adds the `cast:` frontmatter key, a `character` provider, `scene.cast.<id>.*` state, the `CH` asset kind, and the `::seal` / `::reveal` / `::wear` directives — all pure desugaring to `::set`, no new semantics.
+
+---
+
+# Manifests & resolution
+
+A plugin is a directory whose entry is a single `plugin.yaml`. Its `exports` map names which sub-directories the loader reads; any directory not listed is ignored. Everything is declarative YAML behind one plugin id — consumers reference the id only.
+
+## `plugin.yaml` (manifest entry)
+
+```yaml
+id: idola.minigame          # REQUIRED — reverse-dotted, globally unique id
+version: 0.1.0              # REQUIRED — the plugin's own semver
+kind: capability           # REQUIRED — only "capability" is defined in 0.0.1
+depends:                   # OPTIONAL — { id, range } against other plugins
+  - { id: lute.core, range: "^0.0.1" }
+exports:                   # REQUIRED — which sub-directories the loader reads
+  directives: directives/
+  state: state/
+  providers: providers/
+  bridge: bridge/
+  assetkinds: assetkinds/
+  defs: defs/
+options:                   # OPTIONAL — typed activation options
+  - { name: resultScope,  type: { enum: [scene, run] }, default: scene }
+  - { name: allowedKinds, type: { list: { enum: [rhythm, puzzle, timing] } }, default: [rhythm, puzzle, timing] }
+```
+
+`depends[].range` is pinned to two forms only — caret (`^x.y.z`, pre-1.0 semantics) or an exact three-component version. Any other spelling is unsatisfiable by definition.
+
+## Export files
+
+Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `number` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, and shape refs). State paths use **structured segments**, never `$name` interpolation.
+
+- `directives/*.yaml` — `::name` directive declarations (see [Bridge](/plugins/bridge/)).
+- `state/shapes.yaml` — reusable typed record shapes; `state/templates.yaml` — structured path templates.
+- `providers/*.yaml` — id registries resolved against a pinned snapshot.
+- `bridge/*.yaml` — typed runtime bridge capabilities.
+- `defs/*.yaml` — shared typed-CEL `@refs`.
+- `assetkinds/*.yaml` — asset-id segment templates (compose / query modes) with ordered `fallback` hooks.
+- `enums/*.yaml`, `frontmatter/*.yaml`, `events/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, world events, and hover docs.
+
+## Installation & the profile graph
+
+A project's `lute.project.yaml` declares `pluginsDir`, a `defaultProfile`, and a profile graph. A profile is a root-level capability selector; the reserved `global` profile is inherited by every other, and profiles compose via `extends`:
+
+```yaml
+pluginsDir: plugins/
+defaultProfile: date-minigame
+profiles:
+  global:       { plugins: { lute.core: true } }
+  story:        { plugins: { idola.minigame: true } }
+  date:         { extends: story }
+  date-minigame:
+    extends: date
+    plugins:
+      idola.minigame: { resultScope: scene, allowedKinds: [rhythm, timing] }
+```
+
+`plugins` is a **map** from plugin id to a typed option object (or `true`, normalizing to defaults). Presence of a legal key **activates** the plugin — there is no `plugins.use` list. See [Profiles](/plugins/profiles/) for selection and merge rules.
+
+## Resolution & the capability snapshot
+
+Given the same installed plugins, selected profile, and scene frontmatter, resolution produces a **byte-identical** capability snapshot. It applies, in exact order: `lute.core` → `profiles.global` → the selected profile's `extends` chain (parent first) → the selected profile → scene-local `plugins:` → the dependency closure. Scalar options override, maps deep-merge, lists replace.
+
+The snapshot is one immutable artifact carrying `plugins`, `enums`, `providers`, `stateShapes`, `stateTemplates`, `assetKinds`, `directives`, `bridgeCapabilities`, `frontmatter`, `events`, `diagnostics`, and more. Its `capabilityVersion` is a content hash over the resolved plugin ids+versions, their options, the active profile, and the bound provider snapshot versions. Every generated artifact is stamped with the `capabilityVersion` it targets, and a consumer refuses mismatched stamps. Providers are **snapshot-first**: the compiler fails if required catalog data is missing but never blocks on the network, and the LSP keeps a stale snapshot with a *catalog-stale* diagnostic rather than false *unknown-id* errors.
+
+---
+
+# Typed bridge directives
+
+A **bridge** is a typed runtime call the engine owns — a minigame, a service, an external beat. The DSL emits only data; the engine executes the bridge; and story control-flow observes **only the declared state** a directive writes, never raw bridge output. This is what keeps the language total: a bridge call is data, not an arbitrary tool call.
+
+## Declaring the bridge capability
+
+A `bridge/*.yaml` file names the service and its typed result fields. Those result fields are the *only* values a directive may write back into scene state.
+
+```yaml
+bridgeCapabilities:
+  - service: minigame
+    operation: play
+    replay: recorded          # recorded | deterministic | none
+    result:
+      - { name: score,   type: number }
+      - { name: rank,    type: { enum: [fail, bronze, silver, gold] } }
+      - { name: cleared, type: bool }
+```
+
+## The directive that invokes it
+
+A directive binds to the capability via `bridge: { service, operation }`, opens a typed result slot with a `slotId` attr, and declares the state it `writes` — each write bound with `fromBridgeResult` (or a `{ op: increment }`):
+
+```yaml
+directives:
+  - name: minigame
+    layer: bridge
+    attrs:
+      - { name: kind,      required: true, type: { enumFromOption: allowedKinds } }
+      - { name: id,        required: true, type: { providerRef: minigameId } }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.minigame } } }
+      - { name: sync,      type: bool, default: true }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [minigame, { fromAttr: { name: resultKey, slotType: localId } }], shape: minigameResult }
+    effects:
+      writes:
+        - { scope: scene, path: [minigame, { fromAttr: { name: resultKey } }, rank],     value: { fromBridgeResult: rank } }
+        - { scope: scene, path: [minigame, { fromAttr: { name: resultKey } }, cleared],  value: { fromBridgeResult: cleared } }
+        - { scope: scene, path: [minigame, { fromAttr: { name: resultKey } }, attempts], value: { op: increment, by: 1 } }
+    bridge: { service: minigame, operation: play }
+    lower:  { kind: builtin, name: bridgeMinigame }
+```
+
+Every written path MUST be declared by the slot's shape. A blocking bridge uses a plugin-owned `sync` attribute — **not** the reserved dsl timing key `wait`, which (with `at` / `duration` / `delay`) is reserved across all directives and MUST NOT be redefined by a plugin.
+
+## Worked example: `::minigame` and the match on its result slot
+
+The scene writes nothing by hand. It runs the bridge, then reads the declared slot:
+
+```lute
+::minigame{kind="rhythm" id="bianca_service_01" resultKey="service01" sync="true"}
+
+<match on="scene.minigame.service01.rank">
+  <when test="$ == 'gold'">
+    @bianca{code="0030" emotion="delighted"}: Wonderful! A perfect service!
+    ::set{scene.affect.bianca += 2}
+  </when>
+  <when test="$ in ['silver', 'bronze']">
+    @bianca{code="0040" emotion="content"}: Not bad at all, Mr. Fixer.
+    ::set{scene.affect.bianca += 1}
+  </when>
+  <otherwise>
+    @bianca{code="0050" emotion="shy"}: Shall we try once more? The rhythm takes practice.
+  </otherwise>
+</match>
+```
+
+`rank` is a finite enum `[fail, bronze, silver, gold]`, so the `<match>` is first-match-wins with `<otherwise>` covering `fail`.
+
+## Sync semantics & the stale-default trap
+
+With `sync="true"` (the default for a blocking bridge) the writes **dominate** the immediately following read — the `<match>` sees the produced outcome. With `sync="false"` the writes do *not* dominate: because result slots are typically shape-defaulted (e.g. `rank: fail`), a following read is **not** `E-MAYBE-UNSET` — it silently reads the **default**, not the outcome. The checker reports this as a distinct *result-read-before-produced* (stale-default) diagnostic. Prefer a blocking bridge whenever story logic branches on the result.
+
+---
+
+# Profiles & activation
+
+A **profile** is a root-level capability selector: it decides which plugins — and therefore which vocabulary — are active for a scene. The project declares a profile graph and a `defaultProfile` in `lute.project.yaml`; a scene picks one with frontmatter `profile:` and MAY layer scene-local `plugins:` on top.
+
+## The profile graph
+
+```yaml
+profiles:
+  global:                       # reserved name; inherited by every profile
+    plugins: { lute.core: true }
+    lint: { unknownDirective: error }
+  story:
+    plugins: { idola.vn: true }
+  date:
+    extends: story
+    plugins: { idola.date: { phoneSurface: enabled } }
+  date-minigame:
+    extends: date
+    plugins:
+      idola.minigame: { resultScope: scene, allowedKinds: [rhythm, timing] }
+
+defaultProfile: story
+```
+
+- **`global` is reserved** and is applied before any other profile — every profile inherits it, which is where `lute.core` and the base language domains come from.
+- **`extends`** names a single parent profile; the chain MUST be acyclic. Parents apply before children.
+- **`plugins`** is a map from plugin id to a typed option object, or `true` (which normalizes to defaults). Presence of a legal key **activates** that plugin. There is no `plugins.use` list, and 0.0.1 has no scene-local *deactivation* — a `false` value is a static error (`E-PROFILE-PLUGIN-VALUE`), never an off switch. To exclude a plugin, do not inherit a profile that activates it.
+
+## Selecting a profile in a scene
+
+A scene names its profile in frontmatter (absent ⇒ `defaultProfile`) and MAY add scene-local `plugins:` — additive only. Here the scene narrows `allowedKinds` so `rhythm` is the only legal minigame kind:
+
+```lute
+---
+kind: scene
+character: bianca
+season: 1
+episode: 5
+pov: fixer
+profile: date-minigame
+plugins:
+  idola.minigame:
+    resultScope: scene
+    allowedKinds: [rhythm]
+---
+```
+
+## Resolution & merge
+
+Activation resolves deterministically in this exact order: `lute.core` → `global` → the selected profile's `extends` chain (parent first) → the selected profile → scene-local `plugins:` → the dependency closure. When the same plugin's options are set at multiple layers, later layers win: **scalar** values override, **map** values deep-merge, and **list** values replace by default. The result is exactly one option object per active plugin and exactly one [capability snapshot](/plugins/manifests/).
+
+A reference to a directive, attribute, or id from an installed-but-**inactive** plugin is a diagnostic with fix-its ("change profile" / "activate plugin") — never silently accepted syntax.
+
+---
+
+# Full-spec showcase
+
+The [`docs/examples/showcase/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) project is one self-contained scenario that exercises **every implemented Lute feature** end-to-end and checks clean:
+
+```sh
+lute check docs/examples/showcase/episode01.lute --project docs/examples/showcase   # exit 0, 0 warnings
+```
+
+It ships a complete plugin (`showcase.pack`) exporting all six kinds — `directives/`, `state/` (shapes + templates), `providers/`, `bridge/`, `assetkinds/`, `defs/` — plus a base/child schema pair, a reusable content component, and a pinned `castId` catalog. Three scene files drive it.
+
+## `episode01.lute` — the full feature map
+
+The episode wires everything together: root `profile` selection with scene-local plugin options, `uses:` schema import with `extends:` composition, all four state tiers, `<branch>`/`<choice>` with `when` guards and the `into=` run-record sugar, `<match>`/`<when>`/`<otherwise>`, a four-track `<timeline>`, and a plugin bridge directive `::serve` whose attrs combine a `providerRef` id with an `assetKind` id.
+
+```lute
+::serve{kind="rhythm" performer="bianca_star" poster="PT.bianca_star.0" resultKey="debut" sync="true"}
+
+<match on="scene.serve.debut.rank">
+  <when test="$ == 'gold'">
+    @bianca{code="0020" emotion="delighted" variant="1"}: A perfect service!
+    ::set{scene.affect.bianca += 1}
+  </when>
+  <when test="$ in ['silver', 'bronze']">
+    @bianca{code="0030" emotion="content" variant="0"}: Not bad at all, Mr. Fixer.
+    ::set{run.affection += 1}
+  </when>
+  <otherwise>
+    @bianca{code="0040" emotion="shy" variant="0"}: Shall we try once more?
+  </otherwise>
+</match>
+```
+
+## `hub-demo.lute` — revisit hub, `<when is>`, and interpolation
+
+A non-episode companion that both checks clean and *compiles*. It demonstrates a revisit `<hub>` (with `once`, `when`-guarded, and `exit` choices satisfying the no-dead-end obligation), `<when is="…">` literal-pattern arms over the hub's implicit recording enums, and `{{…}}` content interpolation.
+
+```lute
+<hub id="chatWithBianca">
+  <choice id="askCoffee" label="Ask about the coffee" once>
+    @bianca{code="0020" emotion="content" variant="0"}: House blend. Bold, like the clientele.
+  </choice>
+  <choice id="compliment" label="Say she was kind earlier" when="@helped">
+    @fixer{code="0030"}: You were gentle about it before. It stuck with me.
+    ::set{scene.affect.bianca += 1}
+  </choice>
+  <choice id="leave" label="Head out" exit>
+    @fixer{code="0040"}: I'd better get moving.
+  </choice>
+</hub>
+```
+
+## `when-is-demo.lute` — `<when is>` over a plain enum
+
+The companion to hub-demo: the same `<when is="…">` literal-pattern arms, but over a plain scene-local finite enum, **including an alternation arm**. A default-valued enum is definitely assigned, so full `is` coverage is exhaustive with no `<otherwise>`:
+
+```lute
+<match on="scene.mood">
+  <when is="calm">          @fixer{mono}: Steady breathing. Nothing to prove tonight. </when>
+  <when is="tense">         @fixer{mono}: Shoulders drawn tight — I should tread carefully. </when>
+  <when is="joyful|playful"> @fixer{mono}: Light in the eyes, whichever way it tilts. </when>
+</match>
+```
+
+For the complete project — the plugin manifests, schemas, component, catalog, and the full feature→line map — see the [showcase directory and its README](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) in the repository.
+
+---
+
+# Specification index
+
+Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
+
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.6.1**.
+
+## Scenario DSL (the language)
+
+| Version | Scope | Source |
+|---|---|---|
+| 0.0.1 | First pre-implementation draft of the authoring language — lexical structure, grammar, and semantics of a `.lute` scenario. | [0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.0.1.md) |
+| 0.1.0 | The language proper — scene kind + shared kernel: logic layer, Lute-CEL, scalar state model, totality, identity/i18n, and reusable content components. | [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
+| 0.2.0 | Document-kind system (making `.lute` polymorphic), the `<on>` ECA trigger, the `quest.*` state tier, and the quest kind in full. | [0.2.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md) |
+| 0.3.0 | Relational fact layer — a closed SVO/n-ary fact database with valid-time intervals, delta assertion/retraction, and a total Datalog derivation layer. | [0.3.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md) |
+| 0.4.0 | Writer-experience layer — `lute trace` preview, provable softlock/dead-content diagnostics, param-scoped component `<match>` dispatch, ceremony sugar, and diagnostic presentation. | [0.4.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md) |
+| 0.5.0 | Authoring-feedback hardening — diagnostic specificity, trace honesty, the reachability boundary, and `lute context` completeness. | [0.5.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.0.md) |
+| 0.5.1 | `trace` preview of quest-gated reads plus authoring-surface honesty items (delivery flags, `lute context` reserved paths, event/component diagnostics). | [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
+| 0.5.2 | A single new `E-UNSET-LITERAL` diagnostic catching the most common misspelling of the *unset* sentinel in a CEL guard. | [0.5.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.2.md) |
+| 0.6.0 | `into=` records without `persist=`; free shot headings — **breaking**. | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
+| **0.6.1** | Current tip — three verification-coverage warnings (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`) and `--deny`/`--deny-warnings` warning promotion; a compatible refinement of 0.6.0. | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
+| — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
+
+## Capability proposals
+
+| Proposal | Scope | Source |
+|---|---|---|
+| Plugin system 0.0.1 | Normative formats and semantics of the capability/plugin system — plugin packages, YAML manifest schemas, resolution, the capability snapshot, and the data↔code boundary. | [plugin-system/0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.1.md) |
+| Character & cast 0.0.1 | The language contract for character identity, display label, costume, name-reveal, and voice-join — as a capability plugin (registry, `cast:` frontmatter, `scene.cast.*` state, resolution, `seal`/`reveal`/`wear`). | [character-cast/0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/0.0.1.md) |
+
+The plugin system also carries a human-facing overview at [`docs/plugin-system.md`](https://github.com/journeyWorker/lute/blob/main/docs/plugin-system.md), and the character/cast capability its design rationale at [`character-cast/design.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/design.md).

@@ -6,7 +6,7 @@ season: 1
 episode: 2
 title: The Revisit Hub
 pov: fixer
-luteVersion: "0.1.0"
+luteVersion: "0.6.1"
 # Root capability profile (project lute.project.yaml). No plugin directives are
 # used here, so no scene-local `plugins:` narrowing is needed.
 profile: showcase
@@ -31,7 +31,7 @@ state:
 
 # S01EP02 — The Revisit
 
-## Shot 1.
+## Closing Up
 
 /*
   Content-line interpolation (§7.6): `{{userName}}` is the always-renderable
@@ -41,7 +41,7 @@ state:
 @narrator: Venny's again, and Bianca is closing up. Good to see you, {{userName}}.
 @bianca{code="0010" emotion="delighted" variant="1"}: You came back! Warmth so far: {{run.affection}}.
 
-## Shot 2.
+## The Revisit Menu
 
 /*
   <hub> (§7.3.2, §11.1.3): a revisit menu. The no-dead-end obligation
@@ -65,7 +65,7 @@ state:
   </choice>
 </hub>
 
-## Shot 3.
+## Reading the Visit
 
 /*
   `<when is="…">` literal-pattern arms (§7.3.1) over the hub's implicit

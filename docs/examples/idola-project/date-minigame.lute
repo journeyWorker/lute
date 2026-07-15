@@ -6,7 +6,7 @@ season: 1
 episode: 5
 title: The Service Rhythm
 pov: fixer
-luteVersion: "0.1.0"
+luteVersion: "0.6.1"
 # Illustrative plugin-system demo (see ../../proposals/plugin-system/0.0.1.md) — NOT catalog content.
 # It selects a capability `profile`, layers scene-local plugin options, runs a bridge
 # `::minigame` directive that writes a declared state slot, and branches on the result.
@@ -27,7 +27,7 @@ state:
 
 # S01EP05 — The Service Rhythm
 
-## Shot 1.
+## Watch the Rhythm
 
 ::bg{location="family_restaurant" time="evening" assetId="BG.space.family_restaurant.interior.evening"}
 ::music{action="start" mood="bright" assetId="sound-bgm-common-vn-mood-bright-0.mp3" volume="normal"}
@@ -44,7 +44,7 @@ state:
 */
 ::minigame{kind="rhythm" id="bianca_service_01" resultKey="service01" sync="true"}
 
-## Shot 2.
+## Reading the Result
 
 /*
   Story logic observes only the declared state the bridge wrote — never raw tool output.
@@ -64,7 +64,7 @@ state:
   </otherwise>
 </match>
 
-## Shot 3.
+## The Verdict
 
 <match on="scene.affect.bianca">
   <when test="$ >= 2">

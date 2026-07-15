@@ -13,7 +13,7 @@ It ships a complete plugin (`showcase.pack`) exporting all six kinds — `direct
 
 ## `episode01.lute` — the full feature map
 
-The episode wires everything together: root `profile` selection with scene-local plugin options, `uses:` schema import with `extends:` composition, all four state tiers, `<branch>`/`<choice>` with `when` guards and `persist="run"` sugar, `<match>`/`<when>`/`<otherwise>`, a four-track `<timeline>`, and a plugin bridge directive `::serve` whose attrs combine a `providerRef` id with an `assetKind` id.
+The episode wires everything together: root `profile` selection with scene-local plugin options, `uses:` schema import with `extends:` composition, all four state tiers, `<branch>`/`<choice>` with `when` guards and the `into=` run-record sugar, `<match>`/`<when>`/`<otherwise>`, a four-track `<timeline>`, and a plugin bridge directive `::serve` whose attrs combine a `providerRef` id with an `assetKind` id.
 
 ```lute
 ::serve{kind="rhythm" performer="bianca_star" poster="PT.bianca_star.0" resultKey="debut" sync="true"}

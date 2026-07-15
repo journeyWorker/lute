@@ -46,31 +46,25 @@ fn text_edit(byte_start: usize, byte_end: usize, new_text: &str) -> TextEdit {
     }
 }
 
-/// Mirrors `lute-check/src/check.rs::choice_into_no_persist_diag`'s two-fixit
-/// shape: a `W-CHOICE-INTO-NO-PERSIST` warning over `into="run.x"` (bytes
-/// 10..22 in the fixture text below) with two author-chosen remedies —
-/// insert `persist="run" ` before it, or delete it outright.
-fn choice_into_diag() -> Diagnostic {
+/// Mirrors `lute-check`'s `E-PERSIST-REMOVED` migrate diagnostic (0.6.0
+/// §2.2/§2.3): a `<choice>` carrying `persist="run"` (bytes 8..21 in the
+/// fixture text below) is an error, with ONE machine-applicable `"migrate"`
+/// fixit — delete the attr plus its one trailing separator space (bytes
+/// 8..22), leaving the bare `into=` that records on its own.
+fn persist_removed_diag() -> Diagnostic {
     Diagnostic {
-        code: "W-CHOICE-INTO-NO-PERSIST".to_string(),
-        severity: Severity::Warning,
-        message: "`into=` without `persist=` records nothing".to_string(),
-        span: span(10, 22),
+        code: "E-PERSIST-REMOVED".to_string(),
+        severity: Severity::Error,
+        message: "`persist=` was removed from the language; delete it (dsl 0.6.0 §2.2)"
+            .to_string(),
+        span: span(8, 21),
         layer: Layer::Logic,
-        fixits: vec![
-            Fixit {
-                title: "add persist=\"run\"".to_string(),
-                kind: "refactor".to_string(),
-                edit: vec![text_edit(10, 10, "persist=\"run\" ")],
-                confidence: 100,
-            },
-            Fixit {
-                title: "remove into=".to_string(),
-                kind: "refactor".to_string(),
-                edit: vec![text_edit(9, 22, "")],
-                confidence: 100,
-            },
-        ],
+        fixits: vec![Fixit {
+            title: "remove persist=".to_string(),
+            kind: "migrate".to_string(),
+            edit: vec![text_edit(8, 22, "")],
+            confidence: 100,
+        }],
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
@@ -102,38 +96,33 @@ fn byte_of(text: &str, idx: &TextIndex, pos: lsp_types::Position) -> usize {
     panic!("no byte offset for {pos:?}");
 }
 
-/// A `W-CHOICE-INTO-NO-PERSIST` diagnostic with 2 fixits -> 2 actions, each
-/// splicing the source to its own expected result (dsl 0.4 §7.3, D16).
+/// An `E-PERSIST-REMOVED` diagnostic with its 1 migrate fixit -> 1 action
+/// splicing the source to the persist-deleted result, carrying its own
+/// diagnostic (dsl 0.6.0 §2.2/§2.3, D16). Pins the fixit-count → action-count
+/// mapping and splice correctness on a real 0.6.0 diagnostic shape.
 #[test]
-fn two_fixits_become_two_actions_with_expected_splices() {
-    let text = "0123456789into=\"run.x\"9999";
-    // bytes 10..22 == `into="run.x"`
-    assert_eq!(&text[10..22], "into=\"run.x\"");
+fn migrate_fixit_becomes_one_action_with_expected_splice() {
+    let text = "<choice persist=\"run\" into=\"run.x\">";
+    // bytes 8..21 == `persist="run"`; 8..22 also eats the trailing space.
+    assert_eq!(&text[8..21], "persist=\"run\"");
     let idx = TextIndex::new(text);
-    let d = choice_into_diag();
+    let d = persist_removed_diag();
     let uri = test_uri();
     let actions = code_actions_for_fixits(&[d], &uri, whole_doc_range(), &idx);
-    assert_eq!(actions.len(), 2, "2 fixits must yield 2 actions");
+    assert_eq!(actions.len(), 1, "1 fixit must yield exactly 1 action");
 
-    assert_eq!(actions[0].title, "add persist=\"run\"");
+    assert_eq!(actions[0].title, "remove persist=");
     assert_eq!(actions[0].kind, Some(lsp_types::CodeActionKind::QUICKFIX));
     let edit0 = &actions[0].edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri];
     assert_eq!(edit0.len(), 1);
-    assert_eq!(
-        splice(text, &edit0[0], &idx),
-        "0123456789persist=\"run\" into=\"run.x\"9999"
-    );
+    assert_eq!(splice(text, &edit0[0], &idx), "<choice into=\"run.x\">");
 
-    assert_eq!(actions[1].title, "remove into=");
-    let edit1 = &actions[1].edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri];
-    assert_eq!(splice(text, &edit1[0], &idx), "0123456789999");
-
-    // Each action carries only its OWN diagnostic, not a shared list.
+    // The action carries only its OWN diagnostic, not a shared list.
     assert_eq!(actions[0].diagnostics.as_ref().unwrap().len(), 1);
     assert_eq!(
         actions[0].diagnostics.as_ref().unwrap()[0].code,
         Some(lsp_types::NumberOrString::String(
-            "W-CHOICE-INTO-NO-PERSIST".to_string()
+            "E-PERSIST-REMOVED".to_string()
         ))
     );
 }
@@ -195,11 +184,11 @@ fn fixit_less_diagnostic_yields_no_action() {
 /// is not a no-op.
 #[test]
 fn out_of_range_diagnostic_with_fixits_yields_no_action() {
-    let text = "0123456789into=\"run.x\"9999";
+    let text = "<choice persist=\"run\" into=\"run.x\">";
     let idx = TextIndex::new(text);
-    let d = choice_into_diag();
+    let d = persist_removed_diag();
     let uri = test_uri();
-    // A range confined to line 0 char 0..1, nowhere near byte 10..22
+    // A range confined to line 0 char 0..1, nowhere near byte 8..21
     // (single-line text, so this is a genuinely disjoint sub-range).
     let narrow = lsp_types::Range {
         start: lsp_types::Position {

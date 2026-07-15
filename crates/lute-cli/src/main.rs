@@ -86,6 +86,16 @@ enum Command {
         /// §4/§11). Omit for a core-only (`lute.core`) check.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
+        /// Promote every diagnostic with EXACTLY this code to an error for the
+        /// verdict and exit code (repeatable) — rustc/clippy `-D` precedent
+        /// (spec §5). An unknown code is a usage error (exit 2). Errors are
+        /// never demotable (spec §6).
+        #[arg(long = "deny", value_name = "CODE", value_parser = parse_deny_code)]
+        deny: Vec<String>,
+        /// Promote EVERY warning to an error for the verdict and exit code
+        /// (spec §5).
+        #[arg(long = "deny-warnings")]
+        deny_warnings: bool,
     },
     /// Statically validate EVERY `.lute` document under a directory
     /// (recursively, deterministic sorted order), like `check` on each file,
@@ -104,6 +114,16 @@ enum Command {
         /// Directory of pinned provider snapshots to resolve ids against.
         #[arg(long, value_name = "DIR")]
         providers: Option<PathBuf>,
+        /// Promote every diagnostic with EXACTLY this code to an error for the
+        /// verdict and exit code (repeatable) — applies to per-file AND
+        /// project-wide diagnostics (spec §5). An unknown code is a usage error
+        /// (exit 2). Errors are never demotable (spec §6).
+        #[arg(long = "deny", value_name = "CODE", value_parser = parse_deny_code)]
+        deny: Vec<String>,
+        /// Promote EVERY warning to an error for the verdict and exit code
+        /// (spec §5).
+        #[arg(long = "deny-warnings")]
+        deny_warnings: bool,
     },
     /// Compile a checked `.lute` document to its JSON command-record artifact.
     Compile {
@@ -305,6 +325,126 @@ fn parse_choose_flag(raw: &str) -> Result<(String, Vec<String>), String> {
     Ok((id.to_string(), choices))
 }
 
+/// The universe of diagnostic codes `--deny <CODE>` may name (spec §5). A
+/// promotion targeting a code OUTSIDE this set is a clap usage error (exit 2) —
+/// "a typo'd promotion MUST NOT silently protect nothing". No canonical runtime
+/// registry of codes exists (they are `pub const`s and inline literals
+/// scattered across the checker crates), so this curated list IS that registry,
+/// kept in ONE place. Assembled by grepping every `"[EW]-…"` code literal in the
+/// crates whose diagnostics `check`/`check-project` surface (`lute-check`,
+/// `lute-syntax`, `lute-cel`, `lute-manifest`, `lute-core-span`); the
+/// `every_check_emitted_code_is_deniable` test (tests/deny.rs) rescans those
+/// crates and fails if any emitted code is missing here, so a newly-added code
+/// cannot silently fall outside the deny universe. A SUPERSET is harmless
+/// (denying a code `check` never emits merely protects nothing); a MISSING code
+/// is the only defect, and that test guards exactly it. Sorted for readability.
+const DENIABLE_CODES: &[&str] = &[
+    "E-AGE-GATE", "E-APP-READONLY", "E-ARM-DEAD", "E-ASSET-DECOMPOSE",
+    "E-ASSET-SEGMENT", "E-ASSET-UNKNOWN-ID", "E-AT-CONTEXT", "E-ATTR-TYPE",
+    "E-BAD-ENUM", "E-BRANCH-ALL-GUARDED", "E-BRANCH-EMPTY", "E-CEL-PARSE",
+    "E-CEL-PROFILE", "E-CHOICE-DUP", "E-CHOICE-ID-RESERVED", "E-CHOICELOG-READ",
+    "E-CLIP-OVERLAP", "E-CLIP-TIMING", "E-COMMENT-UNTERMINATED", "E-COMPONENT-ARG",
+    "E-COMPONENT-BODY", "E-COMPONENT-CYCLE", "E-COMPONENT-DUP", "E-COMPONENT-PARSE",
+    "E-COMPONENT-STATE", "E-COMPONENT-UNDECLARED", "E-CONN-CYCLE", "E-CONN-EPISODE-ID-DUP",
+    "E-CONN-FORMULA-TOO-COMPLEX", "E-CONN-PROFILE", "E-CONN-UNKNOWN-NODE", "E-CONN-UNREACHABLE",
+    "E-CONTENT-LINE-BRACKET", "E-CONTENT-OUTSIDE-SHOT", "E-DATALOG-FUNCTION", "E-DATALOG-GUARD-FACT",
+    "E-DATALOG-PARSE", "E-DATALOG-UNSAFE", "E-DATALOG-UNSTRATIFIED", "E-DELIVERY-CONFLICT",
+    "E-DELIVERY-FLAG-VALUE", "E-DELIVERY-NARRATOR", "E-DEPENDS-CYCLE", "E-DEPENDS-UNRESOLVED",
+    "E-DEPENDS-VERSION", "E-DERIVE-TIER", "E-DERIVE-UNDECLARED", "E-DERIVED-WRITE",
+    "E-DOLLAR-OUTSIDE-MATCH", "E-DOMAIN-DUP", "E-DOMAIN-UNKNOWN", "E-DUP-BRANCH",
+    "E-DUP-LINE-CODE", "E-DUP-TRACK", "E-ENTITY-KIND-CLASH", "E-ENTITY-KIND-SHAPE",
+    "E-EXTENDS-RELATION-SIG", "E-EXTENDS-STATE-TYPE", "E-FACT-DOMAIN", "E-FACT-TIER-WRITE",
+    "E-GRAMMAR-NOT-ADMITTED", "E-HUB-NO-EXIT", "E-INTERP-UNTERMINATED", "E-INTO-TARGET",
+    "E-INTO-UNDECLARED", "E-INTO-VALUE", "E-KIND-MISSING", "E-KIND-NAME-CLASH",
+    "E-LEGACY-CONTENT-SIGIL", "E-LOGIC-CONTENT", "E-MATCH-DUP-OTHERWISE", "E-MATCH-RELATION-SUBJECT",
+    "E-MAYBE-UNSET", "E-META-MISSING", "E-META-PARSE", "E-META-UNKNOWN-KEY",
+    "E-MISSING-ATTR", "E-NONEXHAUSTIVE", "E-OBJECTIVE-ID-DUP", "E-OBJECTIVE-ID-MISSING",
+    "E-OBJECTIVE-MISSING-DONE", "E-OBJECTIVE-UNSATISFIABLE", "E-ON-NO-EVENT", "E-PATH-IDENT",
+    "E-PERSIST-REMOVED", "E-PLUGIN-DUP-ACROSS", "E-PLUGIN-DUP-ID", "E-PLUGIN-INVALID-DIRECTIVE",
+    "E-PLUGIN-IO", "E-PLUGIN-MANIFEST", "E-PLUGIN-MISSING-ACTIVE", "E-PLUGIN-MISSING-EXPORT",
+    "E-PLUGIN-PARSE", "E-PLUGIN-RESERVED-NAME", "E-PLUGIN-UNKNOWN-ASSETKIND", "E-PLUGIN-UNKNOWN-EXPORT",
+    "E-PROFILE-EXTENDS-CYCLE", "E-PROFILE-UNKNOWN", "E-QUEST-ID-DUP", "E-QUEST-ID-MISSING",
+    "E-QUEST-RESERVED-DECL", "E-QUEST-RESERVED-WRITE", "E-QUEST-UNREACHABLE", "E-REF-ARG-TYPE",
+    "E-REF-ARITY", "E-REF-TYPE", "E-RELATION-ARITY", "E-RELATION-DOMAIN",
+    "E-RELATION-DUP", "E-RELATION-EMPTY", "E-RELATION-RESERVED-WRITE", "E-RELATION-UNKNOWN",
+    "E-RETRACT-WILDCARD-ASSERT", "E-SET-OP-TYPE", "E-STATE-DECL", "E-STATE-MAYBE-UNAVAILABLE",
+    "E-STATE-NAMESPACE", "E-STATE-REDECLARE", "E-STATE-SHAPE-CYCLE", "E-STRING-ESCAPE",
+    "E-TAG-NOT-ONE-LINE", "E-TEMPORAL-ARG", "E-TIMELINE-CONTENT", "E-TIMELINE-DURATION",
+    "E-TITLE-PLACEMENT", "E-TRACK-KEY", "E-UNCLASSIFIED", "E-UNCLOSED-TAG",
+    "E-UNDECLARED", "E-UNDECLARED-REF", "E-UNKNOWN-ATTR", "E-UNKNOWN-DIRECTIVE",
+    "E-UNKNOWN-EVENT", "E-UNKNOWN-ID", "E-UNKNOWN-KIND", "E-UNSET-LITERAL",
+    "E-UNSET-UNCOVERED", "E-USES-CYCLE", "E-USES-DUP-DEF", "E-USES-DUP-RELATION",
+    "E-USES-DUP-STATE", "E-USES-NOT-FOUND", "E-USES-PARSE", "E-VALIDAT-DERIVED",
+    "E-WHEN-LITERAL-DOMAIN", "E-WHEN-PATTERN", "E-WRITE-CONFLICT", "W-ASSET-PLACEHOLDER",
+    "W-CATALOG-STALE", "W-DERIVE-NO-RULES", "W-INJECT-CONFLICT", "W-INTO-SET-DUP",
+    "W-LUTE-VERSION-STALE", "W-OBJECTIVE-HIDDEN", "W-OTHERWISE-DEAD", "W-OVERLAP-ARMS",
+    "W-QUEST-REF-UNKNOWN", "W-TIMELINE-CLIPS", "W-TIMELINE-TOTAL", "W-TIMELINE-TRACKS",
+    "W-UNPROVEN-RELATIONAL",
+];
+
+/// clap `value_parser` for `--deny <CODE>`: accept only a code in the known
+/// universe ([`DENIABLE_CODES`]); a typo, a compile/trace-only code, or a
+/// made-up string is a clap usage error (exit 2), never a silent no-op
+/// (spec §5). Returning `Err` here is how clap produces the exit-2 usage error.
+fn parse_deny_code(raw: &str) -> Result<String, String> {
+    if DENIABLE_CODES.contains(&raw) {
+        Ok(raw.to_string())
+    } else {
+        Err(format!(
+            "unknown diagnostic code `{raw}` (not a known `lute check` code); a typo'd \
+             `--deny` must not silently protect nothing (spec §5)"
+        ))
+    }
+}
+
+/// The `--deny <CODE>` / `--deny-warnings` promotion policy (spec §5). Errors are
+/// never demotable (spec §6), so promotion only ever turns a NON-error into an
+/// error for the verdict, exit code, and reported severity.
+#[derive(Default)]
+struct DenyPolicy {
+    codes: BTreeSet<String>,
+    warnings: bool,
+}
+
+impl DenyPolicy {
+    fn new(deny: &[String], deny_warnings: bool) -> Self {
+        DenyPolicy { codes: deny.iter().cloned().collect(), warnings: deny_warnings }
+    }
+
+    /// `true` iff `d` is PROMOTED to an error by this policy: it is not ALREADY
+    /// an error (errors are never demotable, and re-marking a native error
+    /// `denied` would misrepresent it as a promotion) AND its code is named by
+    /// `--deny` OR it is a warning under `--deny-warnings`. The JSON
+    /// `denied: true` marker and the human `[denied]` marker fire iff this is
+    /// `true`, so a promotion is always distinguishable from a native error
+    /// (spec §5).
+    fn denied(&self, d: &Diagnostic) -> bool {
+        d.severity != Severity::Error
+            && (self.codes.contains(&d.code)
+                || (self.warnings && d.severity == Severity::Warning))
+    }
+
+    /// `true` iff any diagnostic in `diags` is promoted — the signal that flips
+    /// an otherwise-clean verdict to failure (exit 1).
+    fn any_denied(&self, diags: &[Diagnostic]) -> bool {
+        diags.iter().any(|d| self.denied(d))
+    }
+}
+
+/// Apply the §5 deny promotion to one diagnostic's already-serialized JSON
+/// object: when `policy.denied(d)`, override `severity` to `"error"` and add the
+/// additive `"denied": true` marker. lute-check's `Diagnostic` struct is
+/// UNTOUCHED — the CLI owns `--json` serialization and wraps the promotion at
+/// this layer (spec §5). No-op when the diagnostic is not promoted.
+fn apply_deny_json(d: &Diagnostic, policy: &DenyPolicy, value: &mut serde_json::Value) {
+    if policy.denied(d) {
+        if let serde_json::Value::Object(map) = value {
+            map.insert("severity".into(), serde_json::json!("error"));
+            map.insert("denied".into(), serde_json::json!(true));
+        }
+    }
+}
+
 fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Check {
@@ -312,12 +452,27 @@ fn main() -> ExitCode {
             json,
             providers,
             project,
-        } => run_check(&file, json, providers.as_deref(), project.as_deref()),
+            deny,
+            deny_warnings,
+        } => run_check(
+            &file,
+            json,
+            providers.as_deref(),
+            project.as_deref(),
+            &DenyPolicy::new(&deny, deny_warnings),
+        ),
         Command::CheckProject {
             dir,
             json,
             providers,
-        } => run_check_project(&dir, json, providers.as_deref()),
+            deny,
+            deny_warnings,
+        } => run_check_project(
+            &dir,
+            json,
+            providers.as_deref(),
+            &DenyPolicy::new(&deny, deny_warnings),
+        ),
         Command::Compile {
             file,
             json,
@@ -448,21 +603,42 @@ fn build_input(
 }
 
 /// Run `check` over one file and print its result. Exit `0` clean / `1` on an
-/// error diagnostic / `2` on an I/O failure.
+/// error diagnostic (native OR `--deny`-promoted, spec §5) / `2` on an I/O
+/// failure.
 fn run_check(
     file: &Path,
     json: bool,
     providers: Option<&Path>,
     project: Option<&Path>,
+    policy: &DenyPolicy,
 ) -> ExitCode {
     let Some(input) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
     let result = check(&input);
+    // §5 verdict: a promoted (denied) diagnostic fails an otherwise-clean run.
+    let ok = result.ok && !policy.any_denied(&result.diagnostics);
 
     if json {
-        // Serialization is infallible for this concrete, primitive-only shape.
-        match serde_json::to_string_pretty(&result) {
+        // Wrap the promotion at the CLI layer (spec §5): serialize lute-check's
+        // own `CheckResult` shape, then overlay `severity: "error"` +
+        // `denied: true` on each promoted diagnostic and the promoted `ok`.
+        let mut value = match serde_json::to_value(&result) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("lute: failed to serialize result: {e}");
+                return ExitCode::from(2);
+            }
+        };
+        if let Some(arr) = value.get_mut("diagnostics").and_then(|v| v.as_array_mut()) {
+            for (d, jd) in result.diagnostics.iter().zip(arr.iter_mut()) {
+                apply_deny_json(d, policy, jd);
+            }
+        }
+        if let serde_json::Value::Object(map) = &mut value {
+            map.insert("ok".into(), serde_json::json!(ok));
+        }
+        match serde_json::to_string_pretty(&value) {
             Ok(s) => println!("{s}"),
             Err(e) => {
                 eprintln!("lute: failed to serialize result: {e}");
@@ -470,10 +646,10 @@ fn run_check(
             }
         }
     } else {
-        print_human(file, &result);
+        print_human(file, &result, policy);
     }
 
-    if result.ok {
+    if ok {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
@@ -1075,7 +1251,12 @@ fn reconcile_collected(
 /// an exit code: `0` clean, `1` when any file has a (post-suppression)
 /// `Error` or any resolved root's quest-id/connectivity pass finds one, `2`
 /// on an I/O failure walking `dir` or reading a file.
-fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCode {
+fn run_check_project(
+    dir: &Path,
+    json: bool,
+    providers: Option<&Path>,
+    policy: &DenyPolicy,
+) -> ExitCode {
     let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
         Ok(v) => v,
         Err(code) => return code,
@@ -1083,23 +1264,34 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
     let (file_results, project_diags, _nodes_by_path) =
         reconcile_collected(file_results, &by_root);
 
+    // §5 verdict: a promoted (denied) diagnostic — in a per-file result OR the
+    // project-wide set — fails an otherwise-clean project.
     let project_ok = !project_diags
         .iter()
-        .any(|(_, d)| d.severity == Severity::Error);
-    let ok = project_ok && file_results.iter().all(|(_, r)| r.ok);
+        .any(|(_, d)| d.severity == Severity::Error || policy.denied(d));
+    let file_ok = |r: &lute_check::CheckResult| r.ok && !policy.any_denied(&r.diagnostics);
+    let ok = project_ok && file_results.iter().all(|(_, r)| file_ok(r));
 
     if json {
         // Reuse each type's own `Serialize` impl (`CheckResult`/`Diagnostic`,
         // both defined — and derived — in lute-check/lute-core-span) and
         // merge in the file path as a sibling key, rather than declaring a
         // new wrapper type (would need `serde`'s derive macro as a direct
-        // dependency this crate doesn't otherwise need).
+        // dependency this crate doesn't otherwise need). The §5 deny promotion
+        // is overlaid at this CLI layer (`apply_deny_json` + a promoted `ok`),
+        // never in lute-check's shape.
         let files_json: Vec<serde_json::Value> = file_results
             .iter()
             .map(|(path, result)| {
                 let mut v =
                     serde_json::to_value(result).unwrap_or_else(|_| serde_json::json!({}));
+                if let Some(arr) = v.get_mut("diagnostics").and_then(|x| x.as_array_mut()) {
+                    for (d, jd) in result.diagnostics.iter().zip(arr.iter_mut()) {
+                        apply_deny_json(d, policy, jd);
+                    }
+                }
                 if let serde_json::Value::Object(map) = &mut v {
+                    map.insert("ok".into(), serde_json::json!(file_ok(result)));
                     map.insert("path".into(), path.display().to_string().into());
                 }
                 v
@@ -1109,6 +1301,7 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
             .iter()
             .map(|(path, d)| {
                 let mut v = serde_json::to_value(d).unwrap_or_else(|_| serde_json::json!({}));
+                apply_deny_json(d, policy, &mut v);
                 if let serde_json::Value::Object(map) = &mut v {
                     map.insert("path".into(), path.display().to_string().into());
                 }
@@ -1132,24 +1325,28 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
             println!("lute: no .lute files found under {}", dir.display());
         }
         for (path, result) in &file_results {
-            print_human(path, result);
+            print_human(path, result, policy);
         }
         if !project_diags.is_empty() {
             println!("project-wide diagnostics:");
             for (path, d) in &project_diags {
+                let denied = policy.denied(d);
+                let marker = if denied { " [denied]" } else { "" };
                 println!(
-                    "{}:{}:{}: {} [{}] {}",
+                    "{}:{}:{}: {} [{}]{marker} {}",
                     path.display(),
                     d.span.line,
                     d.span.column,
-                    severity_str(d.severity),
+                    if denied { "error" } else { severity_str(d.severity) },
                     d.code,
                     d.message,
                 );
             }
         }
-        let project_error_count =
-            project_diags.iter().filter(|(_, d)| d.severity == Severity::Error).count();
+        let project_error_count = project_diags
+            .iter()
+            .filter(|(_, d)| d.severity == Severity::Error || policy.denied(d))
+            .count();
         let project_warning_count = project_diags.len() - project_error_count;
         if ok {
             println!(
@@ -2948,7 +3145,7 @@ fn run_trace(
                     }
                 }
             } else {
-                print_diagnostics(file, &diags);
+                print_diagnostics(file, &diags, &DenyPolicy::default());
                 // Every `E-TRACE-*` code is mock/choice validation (D1
                 // quarantine: `lute-check` cannot know that vocabulary, so
                 // its OWN diagnostics never carry it) — a refusal carrying
@@ -3051,7 +3248,7 @@ fn run_fix(file: &Path) -> ExitCode {
 /// and `run_trace`'s Refused rendering (dsl 0.4.0 §4.5: "the `E-TRACE-*`
 /// codes render exactly as check diagnostics do") — ONE line format, never a
 /// second convention.
-fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic]) {
+fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic], policy: &DenyPolicy) {
     let path = file.display();
     for d in diagnostics {
         let more = if d.covered.is_empty() {
@@ -3064,11 +3261,15 @@ fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic]) {
                 .collect();
             format!(" (+{} more: {})", locs.len(), locs.join(", "))
         };
+        // §5 promotion: a denied diagnostic prints `error` with a `[denied]`
+        // marker so it is distinguishable from a native error.
+        let denied = policy.denied(d);
+        let marker = if denied { " [denied]" } else { "" };
         println!(
-            "{path}:{}:{}: {} [{}] {}{more}",
+            "{path}:{}:{}: {} [{}]{marker} {}{more}",
             d.span.line,
             d.span.column,
-            severity_str(d.severity),
+            if denied { "error" } else { severity_str(d.severity) },
             d.code,
             d.message,
         );
@@ -3095,23 +3296,25 @@ fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic]) {
 /// A summary line per diagnostic (via [`print_diagnostics`]), then a
 /// pass/fail count summary. Mirrors the sorted order `check()` already
 /// applied.
-fn print_human(file: &Path, result: &lute_check::CheckResult) {
+fn print_human(file: &Path, result: &lute_check::CheckResult, policy: &DenyPolicy) {
     let path = file.display();
-    print_diagnostics(file, &result.diagnostics);
+    print_diagnostics(file, &result.diagnostics, policy);
     // §8.3: counting is by primaries — collapse (0.4.0 T14) already reduced
     // `result.diagnostics` to one entry per root cause, so a plain count needs
-    // no change here. Five reads of one typo are ONE error.
+    // no change here. Five reads of one typo are ONE error. A `--deny`-promoted
+    // warning counts as an error (spec §5), never also as a warning.
     let errors = result
         .diagnostics
         .iter()
-        .filter(|d| d.severity == Severity::Error)
+        .filter(|d| d.severity == Severity::Error || policy.denied(d))
         .count();
     let warnings = result
         .diagnostics
         .iter()
-        .filter(|d| d.severity == Severity::Warning)
+        .filter(|d| d.severity == Severity::Warning && !policy.denied(d))
         .count();
-    if result.ok {
+    let ok = result.ok && !policy.any_denied(&result.diagnostics);
+    if ok {
         println!("ok: {path} ({warnings} warning(s))");
     } else {
         println!("failed: {path} ({errors} error(s), {warnings} warning(s))");
@@ -3222,4 +3425,86 @@ fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
         dir.display()
     );
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// [`DENIABLE_CODES`] is the sole `--deny` universe: it MUST be sorted +
+    /// deduped (so `contains` is meaningful and the list is auditable) and every
+    /// entry MUST match the diagnostic-code shape (spec §5).
+    #[test]
+    fn deniable_codes_wellformed() {
+        let re_ok = |c: &str| {
+            let mut parts = c.splitn(2, '-');
+            let head = parts.next().unwrap_or("");
+            let rest = parts.next().unwrap_or("");
+            matches!(head, "E" | "W")
+                && !rest.is_empty()
+                && rest.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '-')
+        };
+        for c in DENIABLE_CODES {
+            assert!(re_ok(c), "malformed code in DENIABLE_CODES: {c}");
+        }
+        let mut sorted = DENIABLE_CODES.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.as_slice(), DENIABLE_CODES, "DENIABLE_CODES must be sorted and deduped");
+    }
+
+    /// Drift guard (spec §5): every `"[EW]-…"` diagnostic-code literal in the
+    /// crates whose diagnostics `check`/`check-project` surface MUST be in
+    /// [`DENIABLE_CODES`], so a newly-added code cannot silently fall outside the
+    /// deny universe. A code in the list but not emitted is harmless (protects
+    /// nothing); a code emitted but NOT listed is the defect this catches. Paths
+    /// are relative to this crate's dir (the house `../<crate>` idiom).
+    #[test]
+    fn every_check_emitted_code_is_deniable() {
+        use std::collections::BTreeSet;
+        let known: BTreeSet<&str> = DENIABLE_CODES.iter().copied().collect();
+        let crates = [
+            "../lute-check/src",
+            "../lute-syntax/src",
+            "../lute-cel/src",
+            "../lute-manifest/src",
+            "../lute-core-span/src",
+        ];
+        let is_code = |c: &str| {
+            let mut parts = c.splitn(2, '-');
+            matches!(parts.next(), Some("E") | Some("W"))
+                && parts.next().is_some_and(|rest| {
+                    !rest.is_empty()
+                        && rest
+                            .chars()
+                            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '-')
+                })
+        };
+        let mut missing: BTreeSet<String> = BTreeSet::new();
+        for dir in crates {
+            let mut stack = vec![PathBuf::from(dir)];
+            while let Some(p) = stack.pop() {
+                let Ok(rd) = std::fs::read_dir(&p) else { continue };
+                for entry in rd.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        stack.push(path);
+                    } else if path.extension().and_then(|x| x.to_str()) == Some("rs") {
+                        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+                        // Scan every double-quoted literal for a diagnostic code.
+                        for chunk in text.split('"').skip(1).step_by(2) {
+                            if is_code(chunk) && !known.contains(chunk) {
+                                missing.insert(chunk.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "diagnostic code(s) emitted by check crates but absent from DENIABLE_CODES \
+             (add them so `--deny <code>` accepts them): {missing:?}"
+        );
+    }
 }

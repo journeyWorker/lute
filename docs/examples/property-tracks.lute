@@ -14,7 +14,7 @@ episode: 1
   flagged E-TRACK-KEY.
 */
 
-## Shot 1.
+## The Split Performance
 
 ::bg{location="rooftop" time="evening" assetId="BG.space.rooftop.exterior.evening"}
 ::auto{character="bianca" action="idle"}

@@ -78,7 +78,7 @@ Check again:
 
 ```
 $ ./target/debug/lute check my-scene.lute
-my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot/scene; add a `## Shot N.` heading above it (dsl 0.1 §6)
+my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6 §3.3)
 ```
 
 This is the rule to remember: **all content lives under a heading.** A Lute document is a
@@ -86,13 +86,14 @@ sequence of "shots" — beats of the scene — and every line of dialogue, narra
 to sit inside one. Add a heading before the line:
 
 ```
-## Shot 1.
+## The Counter
 
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 ```
 
-(`## Shot 1.`, `## Shot 2.`, … — or `## Scene 1.` if you prefer that word. The number and the
-trailing period are both required.)
+(The heading is free text after `## ` — `## The Counter`, `## Scene 1. The diner`, `## Prologue` are all
+valid. `The Counter`, `The Regular`, … stays a fine convention, but the number is not grammar: shots are
+numbered by their document order.)
 
 ```
 $ ./target/debug/lute check my-scene.lute
@@ -150,7 +151,7 @@ episode: 1
 pov: fixer
 ---
 
-## Shot 1.
+## The Counter
 
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 
@@ -242,8 +243,8 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.5.0",
-  "irVersion": "0.5.0",
+  "lute": "0.6.0",
+  "irVersion": "0.6.0",
   "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
   "meta": {
     "character": "mira",
@@ -309,7 +310,7 @@ scene and prints exactly what would show on screen:
 ```
 $ ./target/debug/lute trace my-scene.lute --choose orderChoice=black
 trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
-  ## Shot 1.
+  ## The Counter
     @narrator  The diner is empty at this hour, and Mira likes it that way.
     @mira  {{userName}}, you made it.
     @mira  I should not be this pleased about a coffee order.
@@ -390,7 +391,7 @@ state:
   run.metMira: { type: bool }
 ```
 
-and one line at the end of Shot 1:
+and one line at the end of The Counter:
 
 ```
 ::set{run.metMira = true}
@@ -430,7 +431,7 @@ state:
   run.metMira: { type: bool }
 ---
 
-## Shot 1.
+## The Counter
 
 @mira{emotion="content" variant="0" when="run.metMira"}: Back again. You know where you sit.
 
@@ -580,7 +581,7 @@ snippets):
 
 - [`docs/examples/bianca-s01ep02.lute`](examples/bianca-s01ep02.lute) — a complete linear
   episode with staging (`::bg`, `::music`, `::camera`), a multi-track `<timeline>` beat, a
-  `<branch>` with `persist`, and a `<match>` reacting to the choice afterward.
+  `<branch>` with an `into=` run-record choice, and a `<match>` reacting to the choice afterward.
 - [`docs/examples/showcase/episode01.lute`](examples/showcase/episode01.lute) and its
   [README](examples/showcase/README.md) — a feature-by-feature tour with a line-number index.
 - [`docs/examples/quest-grove.lute`](examples/quest-grove.lute) — an example of the *other*

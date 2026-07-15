@@ -21,7 +21,7 @@ params:
   who: string
 ---
 
-## Scene 1.
+## A Familiar Face
 
 ::auto{character=@who action="fade-in-up"}
 @narrator: A familiar face steps into the light.
@@ -46,7 +46,7 @@ episode: 2
 components: [greet.component.lute]
 ---
 
-## Shot 1.
+## Greeting by Component
 
 ::use{component="greet" who="bianca"}
 @narrator: And the scene carries on.
@@ -73,7 +73,7 @@ params:
   tier: { enum: [cold, warm, fond] }
 ---
 
-## Scene 1.
+## The Tiered Greeting
 
 <match on="@tier">
   <when is="fond"> @bianca{emotion="delighted"}: You remembered! </when>

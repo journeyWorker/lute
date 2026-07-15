@@ -3,7 +3,7 @@ kind: scene
 character: bianca
 season: 1
 episode: 6
-luteVersion: "0.0.1"
+luteVersion: "0.6.1"
 profile: date-minigame
 plugins:
   idola.minigame:
@@ -13,6 +13,6 @@ plugins:
 
 # Portrait asset demo
 
-## Shot 1.
+## The Portrait
 
 ::mgart{art="MG.bianca_service_01.0"}

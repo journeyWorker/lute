@@ -1,8 +1,8 @@
 //! D8: AST normalization BEFORE lowering — (a) `::use` → the component body
 //! inlined as real `Node`s with each `@param` bound (recursive; acyclic per
-//! the checker's E-COMPONENT-CYCLE); (b) `<choice persist="run" …>` → a
-//! synthesized trailing `::set` node (dsl §11.1.1: the sugar IS exactly a
-//! `::set{run.<path> = <value>}` appended to the arm).
+//! the checker's E-COMPONENT-CYCLE); (b) `<choice into="run.<path>" …>` → a
+//! synthesized trailing `::set` node (dsl 0.6.0 §2.1: the record sugar IS
+//! exactly a `::set{run.<path> = <value>}` appended to the arm).
 //!
 //! Component-sourced regions are wrapped in `__component-begin`/`-end`
 //! sentinel directives (reserved `__` prefix — the parser can never produce
@@ -31,7 +31,7 @@ pub const COMPONENT_END: &str = "__component-end";
 /// `pub` for the `lute-trace` consumer (dsl 0.4 §4.4: trace walks the
 /// document exactly as compile expansion binds it — D14). `lute-trace`
 /// calls this BEFORE [`crate::expand::expand_document`] so component
-/// binding (§13.2), the §6.4 folds, and the `when=`/`persist=` desugars are
+/// binding (§13.2), the §6.4 folds, and the `when=`/`into=` desugars are
 /// inherited by construction, with zero duplicated logic.
 pub fn normalize_document(
     doc: &mut Document,
@@ -99,13 +99,13 @@ fn normalize_nodes(
         match &mut nodes[i] {
             Node::Branch(b) => {
                 for c in &mut b.choices {
-                    synth_persist(c, schema);
+                    synth_into(c, schema);
                     normalize_nodes(&mut c.body, components, schema, diags);
                 }
             }
             Node::Hub(h) => {
                 for c in &mut h.choices {
-                    synth_persist(c, schema);
+                    synth_into(c, schema);
                     normalize_nodes(&mut c.body, components, schema, diags);
                 }
             }
@@ -584,31 +584,28 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
     }
 }
 
-/// `<choice … persist="run" into="run.<path>" [value="<lit>"]>` → append
-/// `Node::Set(run.<path> = <value>)` (dsl §11.1.1). Well-formedness is
-/// gate-proven (E-PERSIST-*); anything unresolvable here is skipped, total.
-fn synth_persist(choice: &mut Choice, schema: &StateSchema) {
+/// `<choice … into="run.<path>" [value="<lit>"]>` → append
+/// `Node::Set(run.<path> = <value>)` (dsl 0.6.0 §2.1). The record sugar is
+/// now triggered by the presence of a well-formed `into=` alone — `persist=`
+/// was removed from the language (a `persist=`-carrying doc is gated out by
+/// E-PERSIST-REMOVED before compile ever runs). Well-formedness is
+/// gate-proven (0.6.0 §2.2: `E-INTO-*`); anything unresolvable here is
+/// skipped, total.
+fn synth_into(choice: &mut Choice, schema: &StateSchema) {
     let find = |k: &str| choice.attrs.iter().find(|a| a.key == k);
-    let persists = matches!(
-        find("persist").map(|a| &a.value),
-        Some(AttrValue::Str(s)) if s == "run"
-    );
-    if !persists {
-        return;
-    }
     let Some(AttrValue::Str(into_path)) = find("into").map(|a| &a.value) else {
-        return; // gate: E-PERSIST-MISSING-INTO
+        return; // no `into=` → not the record sugar
     };
     let into_path = into_path.clone();
     let Some(decl) = schema.decls.get(into_path.as_str()) else {
-        return; // gate: E-PERSIST-TARGET
+        return; // gate: E-INTO-TARGET / E-INTO-UNDECLARED
     };
     let value = find("value").and_then(|a| match &a.value {
         AttrValue::Str(s) => Some(s.clone()),
         AttrValue::BoolTrue => Some("true".to_string()),
-        AttrValue::Ref(_) => None, // gate: E-PERSIST-VALUE
+        AttrValue::Ref(_) => None, // gate: E-INTO-VALUE
     });
-    let cel = persist_value_cel(&decl.ty, value.as_deref());
+    let cel = into_value_cel(&decl.ty, value.as_deref());
     let span = find("into").map(|a| a.span).unwrap_or(choice.span);
     push_set(choice, into_path, cel, span);
 }
@@ -625,7 +622,7 @@ fn push_set(choice: &mut Choice, path: String, cel: String, span: Span) {
 
 /// dsl §11.1.1 rule 4: bool target's value is optional (defaults `true`);
 /// number stays bare; everything else (enum/str) is a CEL string literal.
-fn persist_value_cel(ty: &Type, value: Option<&str>) -> String {
+fn into_value_cel(ty: &Type, value: Option<&str>) -> String {
     match ty {
         Type::Bool => value.unwrap_or("true").to_string(),
         Type::Number => value.unwrap_or("0").to_string(),
@@ -795,7 +792,7 @@ components: [greet.component.lute]
     }
 
     #[test]
-    fn persist_synthesizes_trailing_set_nodes() {
+    fn into_synthesizes_trailing_set_nodes() {
         let src = r#"---
 kind: scene
 character: sofia
@@ -806,13 +803,13 @@ episode: 1
 ## Shot 1.
 
 <branch id="sofaHelp">
-  <choice id="help" label="Help her up" persist="run" into="run.metHelpfully">
+  <choice id="help" label="Help her up" into="run.metHelpfully">
     @sofia: Thank you.
   </choice>
-  <choice id="warmly" label="Stay a while" persist="run" into="run.outcome" value="warm">
+  <choice id="warmly" label="Stay a while" into="run.outcome" value="warm">
     @sofia: Kind.
   </choice>
-  <choice id="tip" label="Leave a tip" persist="run" into="run.tip" value="5">
+  <choice id="tip" label="Leave a tip" into="run.tip" value="5">
     @sofia: Oh.
   </choice>
 </branch>

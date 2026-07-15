@@ -6,7 +6,7 @@ season: 1
 episode: 2
 title: Behold the Performance of All-Purpose Bianca
 pov: fixer
-luteVersion: "0.0.1"
+luteVersion: "0.6.1"
 
 state:
   scene.affect.bianca:  { type: number, default: 0 }
@@ -29,7 +29,7 @@ defs:
 
 # S01EP02 — Behold the Performance of All-Purpose Bianca
 
-## Shot 1.
+## Arrival at Venny's
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
 ::music{action="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="down"}
@@ -41,7 +41,7 @@ defs:
 
 @fixer{code="0010"}: ...
 
-## Shot 2.
+## The Hostess with a Name
 
 ::auto{character="bianca" anchor="center" action="fade-in-up"}
 ::camera{focus="bianca" zoom="1.1" duration="0.5"} /* NEW: settle on her as she turns. */
@@ -63,7 +63,7 @@ defs:
 
 @narrator: So the woman from the ramen counter had a name and a job, and the job came with a menu pressed to her chest. I followed.
 
-## Shot 3.
+## The Vanishing Mouse
 
 @narrator: Halfway down the aisle, between two empty booths, her steps stopped. Her gaze dropped to the corner of the skirting board. A small grey shadow was paused there.
 
@@ -108,7 +108,7 @@ defs:
 
 @fixer{mono}: An android, then. Which would, on reflection, explain the ramen.
 
-## Shot 4.
+## Trading Numbers
 
 @fixer{mono}: If I do not handle this android properly, something is going to go very badly wrong.
 
@@ -141,7 +141,7 @@ defs:
 @bianca{code="0160" emotion="delighted" variant="1"}: Five-thirty, Mr. Fixer!
 @bianca{code="0170" emotion="delighted" variant="1"}: I'll meet you at the entrance.
 
-## Shot 5.
+## Filed as a Mishap
 
 ::music{action="fade-out"}
 

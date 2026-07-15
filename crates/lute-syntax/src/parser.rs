@@ -37,9 +37,6 @@ pub const E_TIMELINE_CONTENT: &str = "E-TIMELINE-CONTENT";
 pub const E_LOGIC_CONTENT: &str = "E-LOGIC-CONTENT";
 /// Diagnostic code: a `/* … */` block comment ran to EOF (§4.2).
 pub const E_COMMENT_UNTERMINATED: &str = "E-COMMENT-UNTERMINATED";
-/// Diagnostic code: a `## ` heading was neither `Shot|Scene <int>.` nor a
-/// bookend keyword (`Prologue|Epilogue|프롤로그|에필로그`) (§6.3).
-pub const E_SHOT_HEADING: &str = "E-SHOT-HEADING";
 /// Diagnostic code: a backslash escape in a quoted `String` value was not one
 /// of the four defined escapes `\"` `\\` `\n` `\t` (§4.4). `\'` is exempted
 /// because a `CelString` value (indistinguishable at the parser layer) may
@@ -59,9 +56,9 @@ pub const E_DATALOG_PARSE: &str = "E-DATALOG-PARSE";
 /// function term (dsl 0.3.0 §7.1).
 pub const E_DATALOG_FUNCTION: &str = "E-DATALOG-FUNCTION";
 /// Diagnostic code (dsl 0.5.0 §2.1): a content-shaped line (`@speaker…`,
-/// `::directive`, `<tag>`) appears before the first `## Shot`/`## Scene`
-/// heading — content belongs inside a shot/scene body (`0.1 §6`). Split off
-/// the [`E_UNCLASSIFIED`] catch-all so the message names the real problem.
+/// `::directive`, `<tag>`) appears before the first `## ` shot heading —
+/// content belongs inside a shot body (`0.6.0 §3.3`). Split off the
+/// [`E_UNCLASSIFIED`] catch-all so the message names the real problem.
 pub const E_CONTENT_OUTSIDE_SHOT: &str = "E-CONTENT-OUTSIDE-SHOT";
 /// Diagnostic code (dsl 0.5.0 §2.1): a content line uses `[…]` where
 /// attribute braces `{…}` are expected (e.g. `@mira[emotion="x"]: …`,
@@ -286,7 +283,7 @@ impl Parser<'_> {
                 // inside a shot/scene body, not at document top level.
                 self.emit_line(
                     E_CONTENT_OUTSIDE_SHOT,
-                    "content lives inside a shot/scene; add a `## Shot N.` heading above it (dsl 0.1 §6)",
+                    "content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)",
                     self.cursor,
                     Layer::Content,
                 );
@@ -310,27 +307,22 @@ impl Parser<'_> {
         (text, self.span(cstart, cend))
     }
 
-    /// `ShotBlock ::= ShotHeading Node*` (§6.3). Consumes the heading line then
-    /// every body node up to the next `## ` heading or EOF.
+    /// `ShotBlock ::= ShotHeading Node*`. Consumes the heading line then every
+    /// body node up to the next `## ` heading or EOF.
+    ///
+    /// dsl 0.6.0 §3.1: `ShotHeading ::= "## " Text` (Text non-empty after
+    /// trimming). The heading is an opaque title — the `Shot|Scene <int>.`/
+    /// bookend grammar, `HeadingKind` classification, authored numbers, and
+    /// `E-SHOT-HEADING` are all removed (shots are numbered by document order,
+    /// §3.2). The non-empty guarantee is structural, not enforced here: the
+    /// `## ` detector runs on the trimmed line (which carries no trailing
+    /// whitespace), so a bare `## ` never matches and no empty-title shot forms.
     fn parse_shot(&mut self) -> Shot {
         let i = self.cursor;
         let cstart = self.line_content_start(i);
         let head_end = self.line_content_end(i);
         let full = self.trimmed(i);
-        let heading = full.strip_prefix("## ").unwrap_or(&full).to_string();
-        let number = match classify_heading(&heading) {
-            HeadingKind::Numbered(n) => Some(n),
-            HeadingKind::Bookend => None,
-            HeadingKind::Invalid => {
-                self.emit_line(
-                    E_SHOT_HEADING,
-                    "shot heading must be `Shot N.`/`Scene N.` or Prologue/Epilogue (dsl §6.3)",
-                    i,
-                    Layer::Content,
-                );
-                None
-            }
-        };
+        let heading = full.strip_prefix("## ").unwrap_or(&full).trim().to_string();
         let start_o = self.orig(cstart);
         let head_end_o = self.orig(head_end);
         self.cursor += 1;
@@ -338,7 +330,6 @@ impl Parser<'_> {
         let end_o = body.last().map(node_end).unwrap_or(head_end_o);
         Shot {
             heading,
-            number,
             body,
             span: self.span_o(start_o, end_o),
         }
@@ -835,55 +826,6 @@ fn split_lines(body: &str) -> Vec<(usize, usize)> {
     v
 }
 
-enum HeadingKind {
-    Numbered(i64),
-    Bookend, // Prologue / Epilogue / 프롤로그 / 에필로그
-    Invalid,
-}
-
-/// Enforce `ShotHeading` (dsl §6.3, [`E_SHOT_HEADING`]): `Shot|Scene <int>.` or
-/// a bookend keyword (`Prologue|Epilogue|프롤로그|에필로그`), each + optional
-/// trailing Text. `strip_prefix` on `&str` is byte-safe for the multi-byte
-/// Korean keywords.
-fn classify_heading(heading: &str) -> HeadingKind {
-    for kw in ["Shot", "Scene"] {
-        if let Some(rest) = heading.strip_prefix(kw) {
-            // §6.3 requires whitespace between the keyword and the Integer, so
-            // `Shot1.` is invalid: reject a keyword not followed by WS.
-            if !rest.starts_with(char::is_whitespace) {
-                return HeadingKind::Invalid;
-            }
-            let rest = rest.trim_start();
-            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-            let after = &rest[digits.len()..];
-            if !digits.is_empty() && after.starts_with('.') {
-                // §6.3 `Integer "." (WS Text)?`: after the period the remainder
-                // must be empty or start with whitespace, so `Shot 1.Title` is
-                // invalid.
-                let after_dot = &after[1..]; // '.' is one ASCII byte
-                if after_dot.is_empty() || after_dot.starts_with(char::is_whitespace) {
-                    // A shot number that overflows i64 degrades to E-SHOT-HEADING
-                    // rather than panicking (parse() preserves the crate's no-panic
-                    // guarantee); best-effort AST keeps `number: None`.
-                    return match digits.parse::<i64>() {
-                        Ok(n) => HeadingKind::Numbered(n),
-                        Err(_) => HeadingKind::Invalid,
-                    };
-                }
-            }
-            return HeadingKind::Invalid;
-        }
-    }
-    for kw in ["Prologue", "Epilogue", "프롤로그", "에필로그"] {
-        if let Some(rest) = heading.strip_prefix(kw) {
-            if rest.is_empty() || rest.starts_with(' ') {
-                return HeadingKind::Bookend;
-            }
-        }
-    }
-    HeadingKind::Invalid
-}
-
 /// True when `trimmed` has the SHAPE of a content-shaped body construct —
 /// `@speaker…`, a legacy `:speaker…`/`:line[…]` sigil, an `::directive`, or a
 /// `<tag …>` open — regardless of whether it parses cleanly (dsl 0.5.0 §2.1
@@ -1107,8 +1049,11 @@ mod tests {
     }
 
     #[test]
-    fn bad_shot_heading_is_diagnosed() {
-        for bad in [
+    fn free_shot_headings_parse_clean() {
+        // dsl 0.6.0 §3.1: the `Shot|Scene <int>.`/bookend grammar is gone — any
+        // non-empty `## ` text is a valid opaque title. Every input that was an
+        // E-SHOT-HEADING error pre-0.6.0 now parses clean as a titled shot.
+        for good in [
             "## Chapter 1.",
             "## Shot .",
             "## Shot 3",
@@ -1117,8 +1062,14 @@ mod tests {
             "## Shot 99999999999999999999.",
             "## Shot 1.Title",
         ] {
-            let (_, diags) = parse(&format!("{bad}\n@narrator: hi.\n"));
-            assert!(diags.iter().any(|d| d.code == "E-SHOT-HEADING"), "{bad}");
+            let (doc, diags) = parse(&format!("{good}\n@narrator: hi.\n"));
+            assert!(diags.is_empty(), "{good}: {diags:?}");
+            assert_eq!(doc.shots.len(), 1, "{good}: one shot");
+            assert_eq!(
+                doc.shots[0].heading,
+                good.strip_prefix("## ").unwrap(),
+                "heading kept opaque: {good}"
+            );
         }
     }
 
@@ -1166,18 +1117,26 @@ mod tests {
     }
 
     #[test]
-    fn all_four_heading_keywords_parse() {
+    fn free_form_headings_parse() {
+        // dsl 0.6.0 §3.1: a shot heading is opaque free text. The old keyword
+        // forms still parse (they are just ordinary titles now), alongside
+        // arbitrary prose — including non-Latin scripts.
         for good in [
             "## Shot 1.",
             "## Scene 2. Title",
-            "## Shot 1. Title",
             "## Prologue",
-            "## Epilogue tail",
+            "## The Interrogation",
+            "## 골목길에서",
             "## 프롤로그",
-            "## 에필로그",
+            "## 1",
         ] {
-            let (_, diags) = parse(&format!("{good}\n@narrator: hi.\n"));
+            let (doc, diags) = parse(&format!("{good}\n@narrator: hi.\n"));
             assert!(diags.is_empty(), "{good}: {diags:?}");
+            assert_eq!(
+                doc.shots[0].heading,
+                good.strip_prefix("## ").unwrap(),
+                "heading kept opaque: {good}"
+            );
         }
     }
 

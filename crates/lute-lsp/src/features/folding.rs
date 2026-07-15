@@ -244,11 +244,11 @@ mod tests {
         let idx = TextIndex::new(BIANCA);
         let all = folds(BIANCA);
         for marker in [
-            "## Shot 1.",
-            "## Shot 2.",
-            "## Shot 3.",
-            "## Shot 4.",
-            "## Shot 5.",
+            "## Arrival at Venny's",
+            "## The Hostess with a Name",
+            "## The Vanishing Mouse",
+            "## Trading Numbers",
+            "## Filed as a Mishap",
         ] {
             let head = idx.position(BIANCA.find(marker).unwrap()).line - 1;
             assert!(

@@ -61,6 +61,12 @@ pub struct TypedMeta {
     pub season: Option<i64>,
     pub episode: Option<i64>,
     pub pov: Option<String>,
+    /// The frontmatter `luteVersion:` stamp (dsl §6.1), lifted straight from
+    /// the raw YAML mapping like `character`/`pov`. D13 stands: it is NEVER
+    /// validated against capabilities — `check()` only compares it against
+    /// the toolchain's [`crate::LUTE_LANG_VERSION`] for the warning-grade
+    /// `W-LUTE-VERSION-STALE` freshness signal (dsl 0.6.1 §3).
+    pub lute_version: Option<String>,
     /// The scene-level prerequisite `after:` frontmatter key (connectivity
     /// layer, T2): raw CEL text, lifted straight from the raw YAML mapping
     /// the same way `character`/`season`/`episode`/`pov` are — validated
@@ -415,6 +421,7 @@ pub fn parse_meta_kind(
     typed.season = get_i64(map, "season");
     typed.episode = get_i64(map, "episode");
     typed.pov = get_str(map, "pov");
+    typed.lute_version = get_str(map, "luteVersion");
     typed.after = get_str(map, "after");
     typed.profile = get_str(map, "profile");
     typed.uses = get_ref_list(map, "uses");

@@ -2130,7 +2130,6 @@ mod tests {
             title: None,
             shots: vec![Shot {
                 heading: "Shot 1".into(),
-                number: Some(1),
                 body,
                 span: span(),
             }],

@@ -75,6 +75,11 @@ export default defineConfig({
             { slug: "tooling/tracing" },
             { slug: "tooling/providers-and-catalog" },
             { slug: "tooling/editors" },
+            {
+              slug: "tooling/ai-harness",
+              label: "AI harness guide",
+              translations: { ko: "AI 하니스 가이드" },
+            },
           ],
         },
         {
