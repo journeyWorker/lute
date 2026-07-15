@@ -90,7 +90,7 @@ use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
     check_branch, check_cel_slot, check_definite_assignment, check_hub, check_line_codes,
-    check_match, check_quest, check_quest_guard_defassign, check_set, is_exhaustive, DomainInfo,
+    check_match, check_quest, check_quest_guard_defassign, check_set, DomainInfo,
 };
 
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
@@ -658,7 +658,6 @@ pub fn check(input: &CheckInput) -> CheckResult {
         arena: &arena,
         diags: Vec::new(),
         timeline_tables: Vec::new(),
-        exhaustive_subject_spans: Vec::new(),
         components: &input.components,
         src: &input.text,
         param_domains,
@@ -705,6 +704,23 @@ pub fn check(input: &CheckInput) -> CheckResult {
     //    runs PER `quest.body` — quest instances share no dominance relation
     //    with one another, so each quest's def-assignment is its own scope,
     //    never folded across quests.
+    // Captures the scene document's final `Assigned` set — defassign's own
+    // must-write join (`intersect_all`) — for the envelope layer's
+    // guaranteed-write set `G` (`crate::envelope::guaranteed`, connectivity
+    // T8/§4.3). T9/T10 wire this into the per-node envelope; quest bodies are
+    // out of envelope scope (no whole-document dominance relation, see above).
+    let mut _scene_assigned: crate::defassign::Assigned = crate::defassign::Assigned::new();
+    // Single source of truth for the T4.4/T4.6 "domain-exhaustive `<match>`
+    // subject" exemption (dsl §7 soundness invariant): computed HERE, off
+    // the SAME node lists `check_definite_assignment` walks, and consumed
+    // BOTH by `suppress_exhaustive_subject_reads` below AND by connectivity
+    // T11's project-envelope wiring (`lute-cli::run_check_project`,
+    // `assemble_root_scenario`), which calls
+    // `crate::defassign::exhaustive_match_subject_spans` directly on its own
+    // re-derived node list — so a future change to exhaustiveness rules can
+    // never drift between the standalone-check suppression and the
+    // project-level reconciliation (see that function's own doc comment).
+    let mut exhaustive_subject_spans: Vec<Span> = Vec::new();
     let defassign_diags: Vec<Diagnostic> = match folded.doc_kind {
         crate::meta::DocKind::Scene => {
             let all_nodes: Vec<Node> = doc
@@ -712,7 +728,11 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 .iter()
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();
-            check_definite_assignment(&all_nodes, &env.state, &base_ctx)
+            let (diags, assigned, _reads) = check_definite_assignment(&all_nodes, &env.state);
+            exhaustive_subject_spans =
+                crate::defassign::exhaustive_match_subject_spans(&all_nodes, &env.state);
+            _scene_assigned = assigned;
+            diags
         }
         crate::meta::DocKind::Quest => doc
             .quests
@@ -730,7 +750,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 if let Some(fail) = &q.fail {
                     ds.extend(check_quest_guard_defassign(fail, &env.state));
                 }
-                ds.extend(check_definite_assignment(&q.body, &env.state, &base_ctx));
+                let (diags, _, _reads) = check_definite_assignment(&q.body, &env.state);
+                exhaustive_subject_spans
+                    .extend(crate::defassign::exhaustive_match_subject_spans(&q.body, &env.state));
+                ds.extend(diags);
                 ds
             })
             .collect(),
@@ -804,6 +827,38 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(line_code_diags);
+    // 6c. Connectivity layer (T2, dsl connectivity spec §2.1/§5): a scene's
+    // `after:` frontmatter and each quest's `after` attribute share the SAME
+    // restricted `visited()`/`completed()` formula grammar T1's `prereq`
+    // module defines. `check()` (single-file) validates ONLY that local
+    // grammar here — it has no project graph to resolve `visited`/`completed`
+    // targets against, so node existence is deferred to `check-project`
+    // (Task 3+).
+    //
+    // §2.1: frontmatter `after:` is a SCENE-ONLY prerequisite surface — a
+    // quest pack declares its prerequisite via the per-`<quest>` `after`
+    // attribute instead (handled separately below). `TypedMeta.after` is
+    // still lifted uniformly for every `MetaKind` (meta.rs) so a non-scene
+    // doc's `after:` key still reaches the ordinary unknown-meta-key check;
+    // only the prereq-grammar validation is gated to `DocKind::Scene` here,
+    // so it is never fed a surface the spec doesn't define as a prerequisite.
+    if folded.doc_kind == crate::meta::DocKind::Scene {
+        if let Some(after) = &folded.typed.after {
+            if !after.is_empty() {
+                let after_span = crate::meta::meta_key_span(&doc.meta, "after");
+                let (_, after_diags) = crate::prereq::parse_prereq(after, after_span);
+                diags.extend(after_diags);
+            }
+        }
+    }
+    for quest in &doc.quests {
+        if let Some(after) = &quest.after {
+            if !after.is_empty() {
+                let (_, after_diags) = crate::prereq::parse_prereq(after, quest.after_span);
+                diags.extend(after_diags);
+            }
+        }
+    }
     // 0.4.0 T4 (§5.2 whole-document reachability pass): E-ARM-DEAD (dead
     // guard + subsumption) + W-OTHERWISE-DEAD.
     diags.extend(check_reachability(&doc, &folded));
@@ -816,7 +871,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
 
     // is_exhaustive suppression (carry-forward, T4.6 x T4.4): drop a maybe-unset
     // read whose span is a domain-exhaustive `<match>` subject.
-    suppress_exhaustive_subject_reads(&mut diags, &walker.exhaustive_subject_spans);
+    suppress_exhaustive_subject_reads(&mut diags, &exhaustive_subject_spans);
     // C4 (dsl 0.4.0 §8.2): a `<when>` arm already flagged E-ARM-DEAD must not
     // additionally produce the pre-existing W-OVERLAP-ARMS — the dead-arm
     // error is the root.
@@ -881,8 +936,6 @@ struct Walker<'a> {
     arena: &'a CelArena,
     diags: Vec<Diagnostic>,
     timeline_tables: Vec<ResolvedTimeline>,
-    /// Subject spans of domain-exhaustive `<match>`es, for the T4.4 suppression.
-    exhaustive_subject_spans: Vec<Span>,
     /// Resolved `components:` table (dsl §13): the target of `::use` invocations.
     components: &'a ComponentSet,
     /// The raw document source (finding 4): `choice_into_no_persist_diag`
@@ -1028,9 +1081,6 @@ impl Walker<'_> {
                         }
                         None => {
                             self.diags.extend(check_match(m, &ctx.env.state, ctx));
-                            if is_exhaustive(m, &ctx.env.state) {
-                                self.exhaustive_subject_spans.push(m.subject.span);
-                            }
                         }
                     }
                     // Arms (tests + bodies) evaluate WITHIN match scope: `$` binds

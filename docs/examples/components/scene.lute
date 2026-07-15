@@ -5,7 +5,7 @@ kind: scene
 # invokes one with the reserved built-in directive `::use`.
 character: demo
 season: 1
-episode: 1
+episode: 2
 components: [greet.component.lute]
 ---
 

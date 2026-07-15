@@ -2406,6 +2406,8 @@ mod tests {
             title: None,
             start: None,
             fail: None,
+            after: None,
+            after_span: span(),
             attrs: Vec::new(),
             body,
             span: span(),

@@ -175,6 +175,12 @@ impl Parser<'_> {
         let title = take_str(&mut attrs, "title");
         let start = take_cel(&mut attrs, "start", CelKind::Condition);
         let fail = take_cel(&mut attrs, "fail", CelKind::Condition);
+        // `after` (connectivity layer, T2): kept as raw text + span, NEVER
+        // routed through `take_cel` — it is validated under the restricted
+        // `prereq::parse_prereq` grammar (checker layer), not general CEL.
+        let (after, after_span) = take_str_spanned(&mut attrs, "after")
+            .map(|(s, sp)| (Some(s), sp))
+            .unwrap_or_else(|| (None, self.span_o(open.start_o, open.end_o)));
         let (body, end_o) = self.parse_block_body("quest", &open);
         Quest {
             id,
@@ -182,6 +188,8 @@ impl Parser<'_> {
             title,
             start,
             fail,
+            after,
+            after_span,
             attrs,
             body,
             span: self.span_o(open.start_o, end_o),

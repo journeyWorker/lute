@@ -199,7 +199,7 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
     assert_eq!(artifact.lute, "0.5.2");
-    assert_eq!(artifact.ir_version, "0.5.2");
+    assert_eq!(artifact.ir_version, "0.5.3");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
