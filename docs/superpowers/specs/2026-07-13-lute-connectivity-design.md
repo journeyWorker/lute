@@ -8,6 +8,12 @@
 - **Relationship to existing specs:** an extension over `scenario-dsl/0.1.0.md` (scene kind,
   shared kernel, state model) and `0.2.0.md` (quest kind, `<quest start/fail>`). Cites section
   numbers from those documents throughout.
+- **Revision (2026-07-13, post-implementation amendment):** cycle degradation is now specified
+  as **per-node partial recovery** (§4.1) — a cycle no longer blanks reach/envelope for the
+  whole project root, only for nodes on or downstream of it — and `compile`/`trace` are now
+  **project-aware** (§5), gating on the target document's `check-project` verdict while
+  preserving the D1 fact-quarantine. Supersedes the earlier "`trace` — unaffected, no new
+  surface" statement.
 
 ## 1. Problem
 
@@ -324,6 +330,24 @@ Project-wide pass, `check-project`-scoped (new module, modeled on the `uses:` DA
   pathological input exceeds it. A pragmatic guard, not the primary soundness mechanism — the
   structural recursion above is what actually prevents blowup.
 
+**Cycle degradation is per-node (partial recovery).** `E-CONN-CYCLE` marks a malformed
+ordering, but it does NOT blank the reach/envelope analyses for the whole project root.
+Reachability and the envelope are computed over the graph's natural topological order (above):
+a node enters that order once every prerequisite edge is resolved, which recursively fails for
+exactly the cycle members and every node structurally downstream of them. So a node that is
+topologically INDEPENDENT of the cycle still receives its full, sound `reach`/`envelope`
+verdict; only nodes ON or DOWNSTREAM of a cycle are excluded and reported degraded (`reach` →
+`Unknown`; `envelope` → the defaults-only `D` floor plus an explicit cycle note). `lute
+scenario`, `reach`, `envelope`, and the `check-project` reconciliation all scope this exclusion
+per-node, never per-root.
+
+**Accepted conservative gap.** The `&&`/`||` edge model over-approximates position, so a node
+reachable ONLY via an `||` branch that passes through a cyclic node (e.g. `visited(Independent)
+|| visited(Cyclic)`) is conservatively reported degraded even though its independent disjunct
+could prove reachability. Recovering that requires SCC-condensation-aware, per-disjunct
+analysis (§8); until then the checker stays provable-only — a false `Unknown` is always sound,
+a false `Reachable`/`Guaranteed` never is.
+
 ### 4.2 §B. Prereq satisfiability / node reachability
 
 `E-CONN-UNREACHABLE` (§4.1) is graph-reachability. The relational-objective-liveness gap named
@@ -563,11 +587,33 @@ unchanged. It does not deliver an envelope for quest activation inferred from `s
   (`E-STATE-MAYBE-UNAVAILABLE`): suppress-only direction, never newly error a file that checks
   clean standalone. The §4.1/§4.2 project-only errors are a distinct class — they detect
   cross-document faults invisible to single-file `check` and are meant to fire there (§7).
-- **`trace` — unaffected, no new surface.** `visited()`/`completed()` are opaque, not ordinary
-  CEL, so they never enter `trace`'s evaluated subset. Any runtime reactivity an author layers
-  on top (a named `run.*` fact) is already covered by `trace`'s existing `--fact`/`--state`
-  mocks with zero grammar change to `trace` itself. This design does not leak into the
-  D1-quarantined tool.
+- **`compile` and `trace` — project-aware gate (revises the prior `trace` position).** Both
+  commands gate emission on a `check` verdict of the target document. When the document is
+  resolved against a project (via `--project <dir>`, see the selection rule below), that gate is the document's
+  **`check-project` verdict**: a `run.*`/`user.*` read the connectivity envelope proves
+  Guaranteed no longer blocks with a standalone `E-MAYBE-UNSET`, and a read no route guarantees
+  is blocked with the project's error-grade `E-STATE-MAYBE-UNAVAILABLE`. This makes a
+  connectivity-dependent scene compilable/traceable exactly when the project accepts it,
+  closing the gap where a project-valid scene could not preview. The reconciliation is **pure
+  graph math over declared structure** — it evaluates no CEL and runs no Datalog,
+  `visited()`/`completed()` never enter `trace`'s evaluated subset, and `trace` still takes its
+  `--fact`/`--state` mocks unchanged — so the **D1 fact-quarantine is preserved**: graph
+  reconciliation is admitted, fact evaluation is not. (This deliberately revises §5's earlier
+  "`trace` — unaffected, no new surface" statement: the graph gate is new; the quarantine is
+  intact.)
+  - **Project-context selection (normative, single-root).** The connectivity root is the SAME
+    project that resolves the document's capability snapshot — there is never a second,
+    independently discovered root, so one invocation can never interpret the document under two
+    different projects. WITH `--project <dir>` the document is project-aware: capabilities AND
+    connectivity both resolve against exactly that `<dir>` (`load_project(dir)`, no nested
+    nearest-root search — that directory-walk discovery is `check-project`'s alone). WITHOUT
+    `--project` the document resolves standalone — core-only capabilities and single-file
+    `check`, unchanged from today; there is no separate auto-discovery, so the no-flag path
+    keeps its current behaviour. The gate blocks on the TARGET document's reconciled
+    diagnostics only: a project-only fault in a SIBLING document (e.g. another scene's
+    `E-CONN-UNKNOWN-NODE`) does not block compiling this one — that stays `check-project`'s
+    surface — but a fault on the target's own `after`/reads (unknown node, cycle membership, an
+    unavailable read) does.
 - **New command — `lute scenario`, subcommands `reach` and `envelope`.** A proactive
   availability inventory, not merely a reactive diagnostic — this is the tool that answers
   "what can I rely on here," where `check-project`'s surface is error-only. Project-wide,
@@ -650,3 +696,9 @@ unchanged. It does not deliver an envelope for quest activation inferred from `s
 - **Warning-grade envelope diagnostic promotion (§4.3).** Revisit promoting
   `Possible \ Guaranteed` from a default-suppressed `lute scenario envelope` warning to a
   default `check-project` warning once real corpus signal exists.
+- **SCC-condensation-aware reachability through cyclic disjuncts (§4.1).** The per-node cycle
+  recovery conservatively excludes any node reachable only via an `||` branch that passes
+  through a cyclic node, even when an independent disjunct could prove it reachable. A
+  per-disjunct, SCC-condensation analysis would recover these; deferred as an accepted
+  conservative gap — a false `Unknown` is sound, so the current under-approximation ships
+  safely.
