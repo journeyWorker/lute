@@ -473,15 +473,18 @@ pub struct QuestEnv {
 /// table it prints is defaults-only in practice.
 ///
 /// ## `envs` missing the node entirely
-/// [`propagate`] only populates `envs` over `g.topo_order`, which is empty
-/// when [`crate::connectivity::assemble_graph`] reported a graph cycle
-/// ([`crate::connectivity::E_CONN_CYCLE`]) — an `after`-declaring quest
-/// then has no `envs` entry at all despite being a registered node. Rather
-/// than panic or fabricate a route-derived set, this falls back to the
-/// same conservative `D`/`D` answer as the no-`after` case (still never
-/// empty, never an error) with `enrichment_note = false` (the quest DID
-/// declare `after`; the caller's separate `E-CONN-CYCLE` diagnostic already
-/// explains why no richer table is available).
+/// [`propagate`] only populates `envs` over `g.topo_order`, which (spec §4.1
+/// per-node cycle recovery) excludes exactly the nodes ON or DOWNSTREAM of a
+/// prerequisite cycle ([`crate::connectivity::E_CONN_CYCLE`]) — a
+/// cycle-independent quest keeps a real `envs` entry, but an `after`-declaring
+/// quest that is itself a cycle member (or transitively downstream of one)
+/// has no `envs` entry despite being a registered node. The exclusion is
+/// PER-NODE, not per-root. Rather than panic or fabricate a route-derived
+/// set, this falls back to the same conservative `D`/`D` answer as the
+/// no-`after` case (still never empty, never an error) with
+/// `enrichment_note = false` (the quest DID declare `after`; the caller's
+/// separate `E-CONN-CYCLE` diagnostic already explains why no richer table
+/// is available).
 pub fn quest_envelope(
     q: &Quest,
     _g: &ConnGraph,

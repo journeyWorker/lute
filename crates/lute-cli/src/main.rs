@@ -1004,14 +1004,15 @@ fn run_check_project(dir: &Path, json: bool, providers: Option<&Path>) -> ExitCo
             let node_id = lute_check::connectivity::NodeId::Scene(key.clone());
             // Only reconcile (drop) a read's per-file `E-MAYBE-UNSET` when
             // its node has a REAL envelope to reclassify against: present
-            // in `envs` AND not `tainted`. A node absent from `envs`
-            // (e.g. a graph-wide `E-CONN-CYCLE` empties `topo_order`, so
-            // `propagate` never inserts an entry for ANY node in that
-            // root -- not just the cyclic ones) is exactly as untrustworthy
-            // as a tainted one: `check_envelope` above already skips it
-            // (no replacement diagnostic emitted for it either), so
-            // dropping its per-file diagnostic here would silently lose a
-            // genuine local maybe-unset error with nothing to replace it.
+            // in `envs` AND not `tainted`. Per-node cycle recovery (spec
+            // §4.1): a node ON or DOWNSTREAM of an `E-CONN-CYCLE` is the
+            // ONLY kind `propagate` omits from `envs` (a cycle-independent
+            // node keeps a real entry and IS reconciled here) — such a node
+            // is exactly as untrustworthy as a tainted one: `check_envelope`
+            // above already skips it (no replacement diagnostic emitted for
+            // it either), so dropping its per-file diagnostic here would
+            // silently lose a genuine local maybe-unset error with nothing
+            // to replace it.
             if tainted.contains(&node_id) || !envs.contains_key(&node_id) {
                 continue;
             }
@@ -1384,10 +1385,11 @@ fn quote_cel_string(s: &str) -> String {
 /// belongs on the claim itself). Falls back to the quest-lifecycle rules
 /// ([`lute_check::connectivity::check_reachability`]'s own `Completed`
 /// precedence, mirrored here as a standalone top-level query) when `node`
-/// has no `reach` entry — a plain (no-`after`) quest is never a graph node
-/// at all, and an empty `reach` map means the project's prerequisite graph
-/// has a cycle (`E-CONN-CYCLE`; `assemble_graph` leaves `topo_order`/
-/// `reach` empty in that case).
+/// has no `reach` entry — a plain (no-`after`) quest is never a graph node at
+/// all, and a graph node absent from `reach` is ON or DOWNSTREAM of a
+/// prerequisite cycle (`E-CONN-CYCLE`): per-node cycle recovery (spec §4.1)
+/// means `assemble_graph` omits exactly those nodes from `topo_order`/`reach`
+/// while cycle-independent nodes keep their real verdicts.
 fn reach_verdict_text(scenario: &RootScenario, node: &lute_check::connectivity::NodeId) -> String {
     use lute_check::connectivity::{NodeId, Reachability};
     if let Some(r) = scenario.reach.get(node) {
@@ -1444,8 +1446,8 @@ fn reach_verdict_text(scenario: &RootScenario, node: &lute_check::connectivity::
              (E-CONN-UNKNOWN-NODE), under your declared routes."
                 .to_string()
         }
-        _ => "Unknown — the project's prerequisite graph has a cycle (E-CONN-CYCLE); \
-              reachability is unavailable under your declared routes."
+        _ => "Unknown — this node is on or downstream of a prerequisite cycle (E-CONN-CYCLE); \
+              its reachability is unavailable under your declared routes."
             .to_string(),
     }
 }
@@ -1660,27 +1662,41 @@ fn print_path_set(set: &BTreeSet<String>) {
     }
 }
 
-/// True when the project's prerequisite graph has a cycle (`E-CONN-CYCLE`,
-/// dsl §2.4/§4.1 §A): `assemble_graph` leaves `topo_order` empty in that
-/// case, so BOTH [`lute_check::connectivity::check_reachability`] AND
-/// [`envelope::propagate`] (each iterates `topo_order`) populate NEITHER
-/// `reach` NOR `envs` for ANY node in this root — not just the cyclic ones.
-/// This is the SAME signal [`reach_verdict_text`]'s cycle arm keys off of
-/// (an empty `reach` map for a root that does have graph nodes); the
-/// envelope's honesty note reuses it verbatim rather than recomputing a
-/// cycle differently.
-fn graph_cycle_degraded(scenario: &RootScenario) -> bool {
-    scenario.reach.is_empty() && !scenario.graph.nodes.is_empty()
+/// True when the project's prerequisite graph contains a cycle (`E-CONN-CYCLE`,
+/// dsl §2.4/§4.1 §A). Kahn's algorithm in `assemble_graph` emits every node
+/// EXCEPT the cycle members and everything transitively downstream of one, so
+/// a graph is cyclic iff `topo_order` is shorter than the node set — a
+/// self-contained signal that needs no diagnostic replay.
+fn graph_has_cycle(scenario: &RootScenario) -> bool {
+    scenario.graph.topo_order.len() < scenario.graph.nodes.len()
 }
 
-/// Print the explicit `E-CONN-CYCLE` degradation note (C-honesty, persona
-/// review), mirroring [`reach_verdict_text`]'s cycle wording so a
-/// cyclic-project envelope is never silently indistinguishable from a
-/// genuinely-empty one. Prepended before the tables (which fall back to the
-/// schema-default D/D floor when `envs` is cycle-emptied).
+/// True when `node` is ON or DOWNSTREAM of a prerequisite cycle
+/// (`E-CONN-CYCLE`, dsl §2.4/§4.1 §A) — per-node cycle degradation (spec
+/// §4.1). `assemble_graph` excludes exactly those nodes from `topo_order`, so
+/// [`lute_check::connectivity::check_reachability`] AND [`envelope::propagate`]
+/// (each iterating `topo_order`) populate NEITHER `reach` NOR `envs` for them;
+/// a cycle-INDEPENDENT node keeps its real verdict and is never degraded. The
+/// test is a node absent from `reach` in a root that does contain a cycle —
+/// the same absence [`reach_verdict_text`]'s cycle arm keys off, reused
+/// verbatim so a node's reach verdict and its envelope note never disagree.
+fn node_cycle_degraded(
+    scenario: &RootScenario,
+    node: &lute_check::connectivity::NodeId,
+) -> bool {
+    !scenario.reach.contains_key(node) && graph_has_cycle(scenario)
+}
+
+/// Print the explicit per-node `E-CONN-CYCLE` degradation note (C-honesty,
+/// persona review), mirroring [`reach_verdict_text`]'s cycle wording so a
+/// cyclic-degraded node's envelope is never silently indistinguishable from a
+/// genuinely-empty one. Printed ONLY for a node on or downstream of the cycle
+/// (see [`node_cycle_degraded`]); a cycle-independent node prints its real
+/// tables with no note. Prepended before the tables (which fall back to the
+/// schema-default D/D floor when this node's `envs` entry is absent).
 fn print_cycle_envelope_note() {
     println!(
-        "  note: envelope unavailable — the project's prerequisite graph has a cycle \
+        "  note: envelope unavailable — this node is on or downstream of a prerequisite cycle \
          (E-CONN-CYCLE); the Guaranteed/Possible tables below cannot be computed under your \
          declared routes and fall back to the schema-default floor."
     );
@@ -1700,7 +1716,7 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str) {
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
          before its own writes):"
     );
-    if graph_cycle_degraded(scenario) {
+    if node_cycle_degraded(scenario, &node_id) {
         print_cycle_envelope_note();
     }
     if scenario.tainted.contains(&node_id) {
@@ -1757,12 +1773,15 @@ fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::
          before its own writes):"
     );
     // The E-CONN-CYCLE degradation note applies ONLY to a graph-positioned
-    // quest (`after.is_some()`): `quest_envelope` returns the defaults-only
-    // D/D floor for an after-less quest REGARDLESS of graph topology, so
-    // such a quest's tables did NOT degrade due to the cycle -- printing the
-    // note for it is a false positive (cross-model review). A quest with no
-    // `after` keeps its normal D/D tables even on a cyclic root, no note.
-    if quest.after.is_some() && graph_cycle_degraded(scenario) {
+    // quest (`after.is_some()`) that is itself cyclic/downstream:
+    // `quest_envelope` returns the defaults-only D/D floor for an after-less
+    // quest REGARDLESS of graph topology, so such a quest's tables did NOT
+    // degrade due to the cycle -- and `node_cycle_degraded` would misfire on
+    // it (a no-`after` quest is never a graph node, so it is trivially absent
+    // from `reach`), so the `after.is_some()` guard is REQUIRED. A cycle-
+    // independent `after` quest keeps its real tables with no note (per-node
+    // recovery, spec §4.1); only a cyclic/downstream one prints the note.
+    if quest.after.is_some() && node_cycle_degraded(scenario, &node_id) {
         print_cycle_envelope_note();
     }
     let qe =
