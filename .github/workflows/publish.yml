@@ -3,9 +3,9 @@ run-name: "release ${{ github.ref_name }}"
 
 # Simplified to lute's two-level package chain and to S0's two-row
 # platform matrix (macOS arm64 + Linux x64 gnu). Naming: the launcher
-# publishes as the UNSCOPED `lutecli` shipping `bin: { lute: "./bin.js" }`,
-# so `bunx lutecli` is the friendly invocation while the installed bin
-# stays `lute`; platform binaries are `lutecli-core-<platform>`.
+# publishes as the SCOPED `@lute-lang/lute` shipping `bin: { lute: "./bin.js" }`,
+# so `bunx @lute-lang/lute` is the friendly invocation while the installed
+# bin stays `lute`; platform binaries are `@lute-lang/lute-core-<platform>`.
 #
 # Version source of truth: the root Cargo.toml's [workspace.package]
 # version — this workflow reads it, never bumps it. A release is cut by
@@ -87,11 +87,11 @@ jobs:
           - host: macos-14
             target: aarch64-apple-darwin
             package_dir: core-darwin-arm64
-            package_name: "lutecli-core-darwin-arm64"
+            package_name: "@lute-lang/lute-core-darwin-arm64"
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             package_dir: core-linux-x64
-            package_name: "lutecli-core-linux-x64"
+            package_name: "@lute-lang/lute-core-linux-x64"
 
     steps:
       - uses: actions/checkout@v7
@@ -146,10 +146,15 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       # Trusted Publishing (OIDC) needs npm >= 11.5.1; ubuntu's bundled
-      # npm lags. No NODE_AUTH_TOKEN anywhere — the publish steps below
-      # mint a short-lived OIDC token from `id-token: write` and npm
-      # exchanges it against each package's configured trusted publisher
-      # (owner journeyWorker / repo lute / workflow publish.yml).
+      # npm lags. npm tries OIDC FIRST (mints a short-lived token from
+      # `id-token: write` against each package's configured trusted publisher
+      # — owner journeyWorker / repo lute / workflow publish.yml) and only
+      # falls back to NODE_AUTH_TOKEN if OIDC is unavailable. The token is
+      # the BOOTSTRAP path: a brand-new package has no settings page yet, so
+      # a trusted publisher cannot be configured until it exists. Set the
+      # NPM_TOKEN repo secret for the first release; once trusted publishing
+      # is configured on all three package pages, OIDC is used and the token
+      # (and this secret) can be removed.
       - name: Upgrade npm for OIDC trusted publishing
         run: npm install -g npm@latest
 
@@ -188,11 +193,11 @@ jobs:
           mv packages/cli/package.json.tmp packages/cli/package.json
           echo "Publishing all packages at $VERSION"
 
-      - name: Build lutecli
+      - name: Build @lute-lang/lute launcher
         working-directory: packages/cli
         run: bun run build
 
-      # The `lutecli-core-<platform>` fan-out is non-atomic across packages
+      # The `@lute-lang/lute-core-<platform>` fan-out is non-atomic across
       # on npm, so a runner death mid-publish leaves a partial release.
       # This gate + the per-package idempotent skips below make the whole
       # publish re-runnable: a fresh release must have NONE of its
@@ -242,14 +247,15 @@ jobs:
             echo "fresh release: no package is published at $VERSION yet."
           fi
 
-      # Platform packages first, then the lutecli wrapper LAST (its
+      # Platform packages first, then the @lute-lang/lute wrapper LAST (its
       # optionalDependencies point at the platform packages, which must
       # already resolve on npm). Each step is idempotent: a re-run / a
       # recovery pass skips whatever already shipped at $VERSION.
-      - name: Publish lutecli-core-darwin-arm64 (idempotent)
+      - name: Publish @lute-lang/lute-core-darwin-arm64 (idempotent)
         working-directory: packages/core-darwin-arm64
         env:
           VERSION: ${{ needs.read-version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           PKG=$(jq -r .name package.json)
@@ -259,10 +265,11 @@ jobs:
             npm publish --provenance --access public
           fi
 
-      - name: Publish lutecli-core-linux-x64 (idempotent)
+      - name: Publish @lute-lang/lute-core-linux-x64 (idempotent)
         working-directory: packages/core-linux-x64
         env:
           VERSION: ${{ needs.read-version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           PKG=$(jq -r .name package.json)
@@ -272,10 +279,11 @@ jobs:
             npm publish --provenance --access public
           fi
 
-      - name: Publish lutecli (idempotent)
+      - name: Publish @lute-lang/lute (idempotent)
         working-directory: packages/cli
         env:
           VERSION: ${{ needs.read-version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           PKG=$(jq -r .name package.json)

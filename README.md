@@ -14,11 +14,11 @@ tutorial that builds one small scene from an empty file.
 
 ## Install
 
-The CLI ships on npm as [`lutecli`](https://www.npmjs.com/package/lutecli) (installed bin: `lute`),
+The CLI ships on npm as [`@lute-lang/lute`](https://www.npmjs.com/package/@lute-lang/lute) (installed bin: `lute`),
 a launcher that resolves a prebuilt native binary for your platform (darwin-arm64, linux-x64):
 
 ```sh
-bunx lutecli check scene.lute   # or: npx lutecli / bun add -g lutecli
+bunx @lute-lang/lute check scene.lute   # or: npx @lute-lang/lute / bun add -g @lute-lang/lute
 ```
 
 Building from source instead: `cargo install --path crates/lute-cli`.
@@ -112,6 +112,6 @@ Install the server once (`cargo install --path crates/lute-lsp`), then:
 Implemented. The checker, compiler, provider/plugin resolver, LSP, and CLI ship as Rust crates
 under [`crates/`](crates) (`lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`,
 `lute-cli`, `lute-lsp`), with editor clients under [`editors/`](editors) and npm distribution
-under [`packages/`](packages) (`lutecli` + platform binary packages). The language is at
+under [`packages/`](packages) (`@lute-lang/lute` + platform binary packages). The language is at
 **0.6.1**; the normative surface is the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 /
 0.3.0 / 0.4.0 / 0.5.0–0.5.2 / 0.6.0 / 0.6.1 deltas).

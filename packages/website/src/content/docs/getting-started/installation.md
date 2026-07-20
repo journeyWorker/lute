@@ -12,10 +12,10 @@ The fastest way to run Lute without installing anything permanently is `bunx`, w
 published npm package and runs its bundled native binary:
 
 ```sh
-bunx lutecli check scene.lute
+bunx @lute-lang/lute check scene.lute
 ```
 
-The npm package is named `lutecli`; the command it installs is `lute`. `bunx lutecli <args>` and a
+The npm package is named `@lute-lang/lute`; the command it installs is `lute`. `bunx @lute-lang/lute <args>` and a
 globally installed `lute <args>` are the same program.
 
 ## Global install
@@ -23,20 +23,20 @@ globally installed `lute <args>` are the same program.
 To keep `lute` on your `PATH` for everyday use, install the package globally with bun:
 
 ```sh
-bun add -g lutecli
+bun add -g @lute-lang/lute
 lute check scene.lute
 ```
 
-`lutecli` is a thin launcher: it detects your platform and dispatches to a prebuilt native binary
-shipped as a platform-specific optional dependency (`lutecli-core-darwin-arm64` or
-`lutecli-core-linux-x64`). The correct one is selected automatically at install time.
+`@lute-lang/lute` is a thin launcher: it detects your platform and dispatches to a prebuilt native binary
+shipped as a platform-specific optional dependency (`@lute-lang/lute-core-darwin-arm64` or
+`@lute-lang/lute-core-linux-x64`). The correct one is selected automatically at install time.
 
 ## Platform support
 
 | Platform | npm core package | Status |
 |---|---|---|
-| macOS (Apple silicon) | `lutecli-core-darwin-arm64` | Supported |
-| Linux (x86-64) | `lutecli-core-linux-x64` | Supported |
+| macOS (Apple silicon) | `@lute-lang/lute-core-darwin-arm64` | Supported |
+| Linux (x86-64) | `@lute-lang/lute-core-linux-x64` | Supported |
 
 On an unsupported platform the launcher exits with an actionable error naming the supported
 matrix. Windows and musl-based Linux are not yet packaged — build from source instead.

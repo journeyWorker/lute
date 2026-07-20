@@ -1,5 +1,5 @@
 {
-  "name": "lutecli",
+  "name": "@lute-lang/lute",
   "version": "0.1.0",
   "description": "lute — checker/compiler/tracer for .lute visual-novel scenarios. JS launcher: platform detection + native binary resolution.",
   "license": "MIT",
@@ -28,8 +28,8 @@
   },
   "dependencies": {},
   "optionalDependencies": {
-    "lutecli-core-darwin-arm64": "workspace:*",
-    "lutecli-core-linux-x64": "workspace:*"
+    "@lute-lang/lute-core-darwin-arm64": "workspace:*",
+    "@lute-lang/lute-core-linux-x64": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

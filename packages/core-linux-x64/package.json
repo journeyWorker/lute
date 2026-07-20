@@ -1,5 +1,5 @@
 {
-  "name": "lutecli-core-linux-x64",
+  "name": "@lute-lang/lute-core-linux-x64",
   "version": "0.1.0",
   "description": "lute CLI binary for linux x64 (glibc)",
   "license": "MIT",

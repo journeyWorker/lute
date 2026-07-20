@@ -2,6 +2,7 @@
 
 Date: 2026-07-15
 Status: approved (user, this session)
+Superseded (2026-07-16): the npm package name was changed from the unscoped `lutecli` to the scoped `@lute-lang/lute` (platform packages `@lute-lang/lute-core-<platform>`). The installed bin stays `lute`. This document records the original naming decision; live manifests/workflows/docs reflect the scoped name.
 Reference sibling: `~/Workspace/canon` (bun-wrapped npm distribution + Astro Starlight website)
 
 ## Goal
