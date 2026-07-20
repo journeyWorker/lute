@@ -1,0 +1,2088 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.6.schema.json",
+  "title": "Lute compiled IR artifact (irVersion 0.6.x)",
+  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `Artifact`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec \u00a74.1, A9): an engine gates on `irVersion` by MAJOR.MINOR \u2014 it MUST accept any artifact whose `irVersion` major.minor it implements and MUST refuse one from a newer major.minor (the PATCH component is an advisory, backward-compatible refinement and never gates). `lute` (the language version) is informational for the runtime and does not gate parsing. Forward compatibility: an engine MUST IGNORE unknown OBJECT FIELDS (new optional fields are added append-only within a minor line) so a newer PATCH artifact still loads on an older engine of the same major.minor; an engine MUST treat an unknown command `kind` as an ERROR (a new command kind is a real capability the engine cannot fake). Field declaration order in an artifact is a byte-stability contract of the compiler but carries no semantics for a consumer.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "kind",
+    "lute",
+    "irVersion",
+    "capabilityVersion",
+    "meta",
+    "state",
+    "commands"
+  ],
+  "properties": {
+    "kind": {
+      "enum": [
+        "scene",
+        "quest"
+      ],
+      "description": "document kind discriminator (dsl 0.2.0 \u00a72/\u00a73.1); read first \u2014 it selects `meta`'s shape."
+    },
+    "lute": {
+      "type": "string",
+      "description": "language-version pin (informational for the runtime), e.g. \"0.6.1\"."
+    },
+    "irVersion": {
+      "type": "string",
+      "description": "IR schema version the engine gates on (major.minor), e.g. \"0.6.1\"."
+    },
+    "capabilityVersion": {
+      "type": "string",
+      "description": "plugin-system \u00a713 capability snapshot stamp (a content hash); a consumer may refuse a mismatched snapshot."
+    },
+    "meta": {
+      "$ref": "#/$defs/artifactMeta"
+    },
+    "state": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/stateEntry"
+      },
+      "description": "the folded init/type table (\u00a74.1); may be empty but is always present."
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entityKindEntry"
+      },
+      "description": "merged relational entity kinds; omitted entirely when empty."
+    },
+    "enums": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/enumEntry"
+      },
+      "description": "merged relational enums; omitted when empty."
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relationEntry"
+      },
+      "description": "merged relation declarations; omitted when empty."
+    },
+    "seedFacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/seedFactEntry"
+      },
+      "description": "merged seed facts (vocabulary order); omitted when empty."
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ruleEntry"
+      },
+      "description": "merged Datalog rules as DATA (vocabulary order); omitted when empty. Lute runs no fixpoint (D1)."
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/command"
+      },
+      "description": "the flat command-record stream (\u00a74.4)."
+    },
+    "prereqEdges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/prereqEdgeEntry"
+      },
+      "description": "advisory raw `after` prerequisite edges (connectivity T13); omitted when empty."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "scene"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "meta": {
+            "$ref": "#/$defs/sceneMeta"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "quest"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "meta": {
+            "$ref": "#/$defs/questMeta"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "injected": {
+          "type": "boolean",
+          "description": "true when the compiler inserted this command; false marks an author command a rule would have injected (a conflict)."
+        },
+        "by": {
+          "type": "string",
+          "description": "the named injection rule responsible, e.g. \"auto-anchor-on-show\"."
+        },
+        "reason": {
+          "type": "string",
+          "description": "human-readable justification."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "injected",
+        "by",
+        "reason"
+      ],
+      "description": "\u00a74.3 injection provenance (lute_check::inject::Provenance): why an implicit command exists."
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "component"
+      ],
+      "description": "\u00a74.3 component source stamp on component-expanded records (D8)."
+    },
+    "exprNode": {
+      "description": "Portable CEL expression AST (IR A7, expr.rs). Serialized as an UNTAGGED serde enum \u2014 each variant is a bare object distinguished by its keys. A plain JSON walker evaluates it; the parallel `raw`/string field carries the source CEL for debug. Absent whenever the CEL slot was empty or fell outside the closed Lute-CEL profile (dsl \u00a78.4).",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "lit": {
+              "type": [
+                "number",
+                "boolean",
+                "string"
+              ],
+              "description": "scalar literal; every numeric CEL literal collapses to a double."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "lit"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "static state/subject path a.b.c."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "path"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "!",
+                "-"
+              ]
+            },
+            "l": {
+              "$ref": "#/$defs/exprNode"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "l"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "enum": [
+                "&&",
+                "||",
+                "==",
+                "!=",
+                "<",
+                "<=",
+                ">",
+                ">=",
+                "+",
+                "-",
+                "*",
+                "/",
+                "in"
+              ]
+            },
+            "l": {
+              "$ref": "#/$defs/exprNode"
+            },
+            "r": {
+              "$ref": "#/$defs/exprNode"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "l",
+            "r"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "cond": {
+              "$ref": "#/$defs/exprNode"
+            },
+            "then": {
+              "$ref": "#/$defs/exprNode"
+            },
+            "else": {
+              "$ref": "#/$defs/exprNode"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "cond",
+            "then",
+            "else"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "list": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/exprNode"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "list"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "isSet": {
+              "type": "string",
+              "description": "isSet(path) extension."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "isSet"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "has": {
+              "type": "string",
+              "description": "has(path) macro."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "has"
+          ]
+        }
+      ]
+    },
+    "celPair": {
+      "type": "object",
+      "properties": {
+        "raw": {
+          "type": "string",
+          "description": "verbatim source CEL text."
+        },
+        "expr": {
+          "$ref": "#/$defs/exprNode"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "raw"
+      ],
+      "description": "A CEL slot's raw text plus its optional portable lowered `expr` (IR A7). `expr` is absent for empty/out-of-profile CEL."
+    },
+    "placeholder": {
+      "description": "One {{\u2026}} interpolation placeholder (IR A3), internally tagged on `kind` (lowercase). The runtime substitutes it against live state; the enclosing text/label keeps the verbatim {{\u2026}} marker.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "path"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "path"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "ref"
+            },
+            "ref": {
+              "type": "string",
+              "description": "@def / @fn(args) reference, including the leading @."
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "ref"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "reserved"
+            },
+            "token": {
+              "type": "string",
+              "description": "reserved token (only userName in 0.1)."
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "token"
+          ]
+        }
+      ]
+    },
+    "role": {
+      "enum": [
+        "dialogue",
+        "narration",
+        "monologue",
+        "voiceover",
+        "offscreen"
+      ],
+      "description": ":line role (\u00a74.4). Voiced roles (dialogue/voiceover/offscreen) carry a voiceKey; monologue/narration do not."
+    },
+    "entityKindEntry": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "closed member set; ABSENT for `open: engine` kinds (the engine mints members)."
+        },
+        "open": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "open"
+      ],
+      "description": "One merged relational entity kind (dsl 0.3.0 \u00a73.1)."
+    },
+    "enumEntry": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "members"
+      ],
+      "description": "One merged relational `enums:` entry (dsl 0.3.0 \u00a73)."
+    },
+    "relationEntry": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ordered arg entity-kind/enum names."
+        },
+        "tier": {
+          "type": "string",
+          "description": "effective write tier for base relations (default `run`); ABSENT for `derive: true` (a derived relation has no write tier)."
+        },
+        "derive": {
+          "type": "boolean"
+        },
+        "reserved": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "0-based functional-key arg indices (\u00a74); absent when undeclared."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "args",
+        "derive",
+        "reserved"
+      ],
+      "description": "One merged relation declaration (dsl 0.3.0 \u00a74)."
+    },
+    "seedFactEntry": {
+      "type": "object",
+      "properties": {
+        "relation": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ground literals as strings; bools as \"true\"/\"false\". Never \"_\"."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "relation",
+        "args"
+      ],
+      "description": "One seed `facts:` ground tuple (dsl 0.3.0 \u00a74)."
+    },
+    "termEntry": {
+      "description": "One rule term (dsl 0.3.0 \u00a77.1), tagged on `kind`. Bools lower to a Const with value \"true\"/\"false\".",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "var"
+            },
+            "name": {
+              "type": "string",
+              "description": "leading-uppercase variable ident."
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "name"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "const"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "atomEntry": {
+      "type": "object",
+      "properties": {
+        "relation": {
+          "type": "string"
+        },
+        "terms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/termEntry"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "relation",
+        "terms"
+      ],
+      "description": "One rule atom: a relation applied to terms (dsl 0.3.0 \u00a77.1)."
+    },
+    "bodyEntry": {
+      "description": "One rule body literal (dsl 0.3.0 \u00a77.1), tagged on `kind`: a positive/negated atom, a CEL guard, or a term comparison.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "atom"
+            },
+            "atom": {
+              "$ref": "#/$defs/atomEntry"
+            },
+            "negated": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "atom",
+            "negated"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "guard"
+            },
+            "cel": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "cel"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "cmp"
+            },
+            "lhs": {
+              "$ref": "#/$defs/termEntry"
+            },
+            "rhs": {
+              "$ref": "#/$defs/termEntry"
+            },
+            "negated": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true,
+          "required": [
+            "kind",
+            "lhs",
+            "rhs",
+            "negated"
+          ]
+        }
+      ]
+    },
+    "ruleEntry": {
+      "type": "object",
+      "properties": {
+        "head": {
+          "$ref": "#/$defs/atomEntry"
+        },
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bodyEntry"
+          }
+        },
+        "raw": {
+          "type": "string",
+          "description": "the rule's original source text, for engine diagnostics."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "head",
+        "body",
+        "raw"
+      ],
+      "description": "One Datalog rule (dsl 0.3.0 \u00a77.1), emitted as STRUCTURED data. Lute performs NO evaluation (D1); the engine runs the least-fixpoint over this rule set."
+    },
+    "prereqEdgeEntry": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "type": "string",
+          "description": "the contributing node's canonical key: a scene's {character}.{episodeId} or a quest's <quest id>."
+        },
+        "after": {
+          "type": "string",
+          "description": "the RAW declared `after` formula text \u2014 unresolved, unvalidated CEL."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "node",
+        "after"
+      ],
+      "description": "One advisory prerequisite edge (connectivity spec \u00a72.6, T13): a single node's raw declared `after`, verbatim."
+    },
+    "sceneMeta": {
+      "type": "object",
+      "properties": {
+        "character": {
+          "type": "string"
+        },
+        "season": {
+          "type": "integer"
+        },
+        "episode": {
+          "type": "integer"
+        },
+        "episodeId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "character",
+        "season",
+        "episode",
+        "episodeId"
+      ],
+      "description": "Scene-kind envelope meta (\u00a74.1). Present when `kind` == \"scene\"."
+    },
+    "questMeta": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "contentLang": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Quest-kind envelope meta (dsl 0.2.0 \u00a76.1). MAY serialize as {} when neither key is authored. Present when `kind` == \"quest\"."
+    },
+    "stateEntry": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "description": "value-level type label (bool/number/string/enum/list<\u2026>/map<\u2026>/record)."
+        },
+        "domain": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "enum member domain; an implicit branch/quest-state slot appends \"unset\"."
+        },
+        "default": {
+          "description": "initial value (any JSON scalar/array/object), integral-collapsed. Absent when the slot has no default (maybe-unset)."
+        },
+        "provenance": {
+          "type": "string",
+          "description": "\"branch:<id>\" for an implicit choice slot, \"quest:<id>\" for a reserved quest slot; absent for an author-declared slot."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "path",
+        "type"
+      ],
+      "description": "One folded state slot (\u00a74.1): the engine's init/type table entry."
+    },
+    "effectSource": {
+      "description": "The origin of an Effect's value (IR A12, untagged).",
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "bridgeResult": {
+              "type": "string",
+              "description": "read the named key off the bridge call's returned result object."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "bridgeResult"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "description": "a state mutation op, e.g. \"increment\"."
+            },
+            "by": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "by"
+          ]
+        },
+        {
+          "type": [
+            "boolean",
+            "number",
+            "string"
+          ],
+          "description": "a bare literal value (manifest scalar), integral-collapsed."
+        }
+      ]
+    },
+    "effect": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "fully-resolved dotted state path (scope + segments, fromAttr already substituted at compile time)."
+        },
+        "from": {
+          "$ref": "#/$defs/effectSource"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "path",
+        "from"
+      ],
+      "description": "A resolved plugin state-write binding (IR A12): where a bridge result / increment / literal lands. The runtime applies it after the bridge call \u2014 no manifest lookup, no per-plugin knowledge."
+    },
+    "choiceOption": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "lineId": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string",
+          "description": "raw guard CEL; present only when the option is guarded."
+        },
+        "expr": {
+          "$ref": "#/$defs/exprNode"
+        },
+        "target": {
+          "type": "string"
+        },
+        "placeholders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/placeholder"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "label",
+        "lineId",
+        "target"
+      ],
+      "description": "One <choice> option."
+    },
+    "hubOption": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "lineId": {
+          "type": "string"
+        },
+        "once": {
+          "type": "boolean",
+          "description": "consume-once revisit flag."
+        },
+        "exit": {
+          "type": "boolean",
+          "description": "leaves the hub loop when taken."
+        },
+        "when": {
+          "type": "string"
+        },
+        "expr": {
+          "$ref": "#/$defs/exprNode"
+        },
+        "target": {
+          "type": "string"
+        },
+        "placeholders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/placeholder"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "label",
+        "lineId",
+        "once",
+        "exit",
+        "target"
+      ],
+      "description": "One <hub> option: a choice option plus always-present once/exit revisit flags."
+    },
+    "matchArm": {
+      "type": "object",
+      "properties": {
+        "test": {
+          "type": "string",
+          "description": "raw arm guard CEL (debug); the executable form is `expr`."
+        },
+        "target": {
+          "type": "string"
+        },
+        "expr": {
+          "$ref": "#/$defs/exprNode"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "test",
+        "target"
+      ],
+      "description": "One <match> arm."
+    },
+    "objectiveEntry": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "titleLineId": {
+          "type": "string"
+        },
+        "done": {
+          "$ref": "#/$defs/celPair"
+        },
+        "when": {
+          "$ref": "#/$defs/celPair"
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "addr of the objective's completion-body segment; ALWAYS present, `null` when the body is empty."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "done",
+        "optional",
+        "body"
+      ],
+      "description": "One objective inlined in QuestCmd.objectives (dsl 0.2.0 \u00a76.4). Declaration data only; the engine derives completion (all non-optional objectives done \u21d2 quest complete)."
+    },
+    "cmdLine": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "line"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "speaker": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "emotion": {
+          "type": "string"
+        },
+        "variant": {
+          "type": "integer"
+        },
+        "action": {
+          "type": "string"
+        },
+        "dialogMotion": {
+          "type": "string"
+        },
+        "as": {
+          "type": "string"
+        },
+        "lineId": {
+          "type": "string"
+        },
+        "voiceKey": {
+          "type": "string",
+          "description": "present only for voiced roles (\u00a74.2)."
+        },
+        "placeholders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/placeholder"
+          }
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "role",
+        "speaker",
+        "text",
+        "lineId"
+      ],
+      "description": "A spoken/narrated content line (\u00a74.4)."
+    },
+    "cmdBackground": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "background"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "location": {
+          "type": "string"
+        },
+        "time": {
+          "type": "string"
+        },
+        "assetId": {
+          "type": "string"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr"
+      ]
+    },
+    "cmdMusic": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "music"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "action": {
+          "type": "string"
+        },
+        "mood": {
+          "type": "string"
+        },
+        "volume": {
+          "type": "string"
+        },
+        "assetId": {
+          "type": "string"
+        },
+        "track": {
+          "type": "string"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "action"
+      ]
+    },
+    "cmdSfx": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "sfx"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "sound": {
+          "type": "string"
+        },
+        "assetId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr"
+      ]
+    },
+    "cmdVfx": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "vfx"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "vfxType": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "transition": {
+          "type": "string"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "vfxType"
+      ]
+    },
+    "cmdSprite": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "sprite"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "character": {
+          "type": "string"
+        },
+        "anchor": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "exit": {
+          "type": "boolean"
+        },
+        "posReset": {
+          "type": "boolean"
+        },
+        "preload": {
+          "type": "boolean"
+        },
+        "emotion": {
+          "type": "string"
+        },
+        "costume": {
+          "type": "string",
+          "description": "A1 schema-only: resolved costume id; never emitted until the cast plugin ships."
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "character"
+      ],
+      "description": "An authored ::auto or an injected sprite command (\u00a77.4); injected records carry `provenance` in the stamp."
+    },
+    "cmdCamera": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "camera"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "focus": {
+          "type": "string"
+        },
+        "zoom": {
+          "type": "number"
+        },
+        "moveX": {
+          "type": "number"
+        },
+        "moveY": {
+          "type": "number"
+        },
+        "shake": {
+          "type": "number"
+        },
+        "reset": {
+          "type": "boolean"
+        },
+        "easing": {
+          "type": "string"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr"
+      ]
+    },
+    "cmdCut": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "cut"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "assetId": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "full": {
+          "type": "boolean"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "assetId"
+      ]
+    },
+    "cmdVideo": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "video"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "assetId": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "assetId"
+      ]
+    },
+    "cmdSet": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "set"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "path": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "description": "assignment op, e.g. \"=\", \"+=\"."
+        },
+        "value": {
+          "type": "string",
+          "description": "raw RHS text; the executable form is `expr`."
+        },
+        "expr": {
+          "$ref": "#/$defs/exprNode"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "path",
+        "op",
+        "value"
+      ],
+      "description": "A state write (\u00a74.4)."
+    },
+    "cmdAssert": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "assert"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "relation": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ground literals; bools as \"true\"/\"false\". Never \"_\"."
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "relation",
+        "args"
+      ],
+      "description": "One asserted fact delta (dsl 0.3.0 \u00a75). DATA only \u2014 the engine applies it as a positive write to the relation's fact set."
+    },
+    "cmdRetract": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "retract"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "relation": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ground literals or \"_\" wildcards (\u00a75 RetractPattern)."
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "relation",
+        "args"
+      ],
+      "description": "One retracted fact delta (dsl 0.3.0 \u00a75). The engine applies it as a negative write; \"_\" positions are a bulk wildcard the engine resolves."
+    },
+    "cmdChoice": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "choice"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "branchId": {
+          "type": "string"
+        },
+        "recordKey": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/choiceOption"
+          }
+        },
+        "converge": {
+          "type": "string"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "branchId",
+        "recordKey",
+        "options",
+        "converge"
+      ]
+    },
+    "cmdMatch": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "match"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "subject": {
+          "type": "string"
+        },
+        "arms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/matchArm"
+          }
+        },
+        "otherwise": {
+          "type": "string"
+        },
+        "converge": {
+          "type": "string"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "subject",
+        "arms",
+        "converge"
+      ]
+    },
+    "cmdHub": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "hub"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "id": {
+          "type": "string"
+        },
+        "recordKey": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hubOption"
+          }
+        },
+        "converge": {
+          "type": "string"
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "id",
+        "recordKey",
+        "options",
+        "converge"
+      ],
+      "description": "<hub> (\u00a77.3.2): a choice plus revisit semantics; re-presentation is a runtime property of the hub kind (no backward jump emitted)."
+    },
+    "cmdJump": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "jump"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "target"
+      ],
+      "description": "Unconditional control-flow jump. Carries no stamp."
+    },
+    "cmdBarrier": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "barrier"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0-based timeline ordinal this barrier joins."
+        },
+        "at": {
+          "type": "number",
+          "description": "the barrier time (authored duration, else max resolved clip end)."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "timeline",
+        "at"
+      ],
+      "description": "A timeline join point (\u00a711.4). Carries no stamp."
+    },
+    "cmdQuest": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "quest"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "titleLineId": {
+          "type": "string"
+        },
+        "start": {
+          "$ref": "#/$defs/celPair"
+        },
+        "fail": {
+          "$ref": "#/$defs/celPair"
+        },
+        "objectives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/objectiveEntry"
+          }
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "id",
+        "objectives"
+      ],
+      "description": "<quest> declaration head (dsl 0.2.0 \u00a76.3). A declaration head: objective completion bodies and <on> arms follow as their own addressed records."
+    },
+    "cmdOn": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "on"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "event": {
+          "type": "string"
+        },
+        "when": {
+          "$ref": "#/$defs/celPair"
+        },
+        "body": {
+          "type": "string",
+          "description": "addr of the action body segment."
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "event",
+        "body"
+      ],
+      "description": "<on> event-condition-action record (dsl 0.2.0 \u00a74, \u00a76.6): an independent event rule."
+    },
+    "cmdPlugin": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "plugin"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "tag": {
+          "type": "string",
+          "description": "the authored plugin directive tag."
+        },
+        "fields": {
+          "type": "object",
+          "description": "resolved directive attrs, typed via the manifest AttrDecls."
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          },
+          "description": "resolved plugin state-write bindings (IR A12); absent when the directive declares none."
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr",
+        "tag",
+        "fields"
+      ],
+      "description": "Plugin-directive passthrough (Command::Other), serialized as kind \"plugin\"."
+    },
+    "command": {
+      "description": "One command record (\u00a74.4), internally tagged on `kind`. An engine MUST error on an unknown `kind` (version-negotiation policy, top-level description); it MUST ignore unknown FIELDS within a known record.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/cmdLine"
+        },
+        {
+          "$ref": "#/$defs/cmdBackground"
+        },
+        {
+          "$ref": "#/$defs/cmdMusic"
+        },
+        {
+          "$ref": "#/$defs/cmdSfx"
+        },
+        {
+          "$ref": "#/$defs/cmdVfx"
+        },
+        {
+          "$ref": "#/$defs/cmdSprite"
+        },
+        {
+          "$ref": "#/$defs/cmdCamera"
+        },
+        {
+          "$ref": "#/$defs/cmdCut"
+        },
+        {
+          "$ref": "#/$defs/cmdVideo"
+        },
+        {
+          "$ref": "#/$defs/cmdSet"
+        },
+        {
+          "$ref": "#/$defs/cmdAssert"
+        },
+        {
+          "$ref": "#/$defs/cmdRetract"
+        },
+        {
+          "$ref": "#/$defs/cmdChoice"
+        },
+        {
+          "$ref": "#/$defs/cmdMatch"
+        },
+        {
+          "$ref": "#/$defs/cmdHub"
+        },
+        {
+          "$ref": "#/$defs/cmdJump"
+        },
+        {
+          "$ref": "#/$defs/cmdBarrier"
+        },
+        {
+          "$ref": "#/$defs/cmdQuest"
+        },
+        {
+          "$ref": "#/$defs/cmdOn"
+        },
+        {
+          "$ref": "#/$defs/cmdPlugin"
+        }
+      ]
+    },
+    "artifactMeta": {
+      "description": "Kind-polymorphic envelope meta (untagged): SceneMeta when kind==scene, QuestMeta when kind==quest. The top-level allOf pins which by `kind`.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/sceneMeta"
+        },
+        {
+          "$ref": "#/$defs/questMeta"
+        }
+      ]
+    }
+  }
+}

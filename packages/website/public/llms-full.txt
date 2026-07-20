@@ -7,10 +7,18 @@ One command, from any repo
 bunx @lute-lang/lute check scene.lute
 ```
 
-  Lute is a total authoring language: every scenario is
-  guaranteed to terminate and every path is analyzable. You write scenes;
-  Lute compiles them to flat JSON command records plus CEL, and
-  proves what's reachable before a single line ships.
+  Write dialogue, quests, cinematic beats, and relational world state in one
+  .lute source. Lute checks reachability, simulates outcomes, and compiles
+  everything to a versioned JSON IR plus CEL — so what ships is what you analyzed.
+
+Visual novels · Story-driven RPGs · Branching cinematic games
+
+Lute is the author-time half: a grammar, a checker, and a compiler. It never
+runs your game — everything it knows becomes a versioned JSON IR plus CEL that
+your engine loads through a documented runtime contract
+(https://lute-lang.vercel.app/tooling/runtime-contract/). Lute is total, not
+Turing-complete: every scenario provably terminates, which is what lets the
+checker analyze paths at all.
 
 The language
 
@@ -112,7 +120,7 @@ Ready to write one? [Get started with `bunx @lute-lang/lute` →](/getting-start
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.6.0**.
+compiles, traces, and inspects them. The current language version is **0.6.1**.
 
 ## Quick start with `bunx`
 
@@ -182,7 +190,7 @@ an empty file, running `lute` at every step.
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.6.0**.
+**0.6.1**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -378,7 +386,7 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.6.0",
+  "lute": "0.6.1",
   "meta": { "character": "mira", "season": 1, "episode": 1, "episodeId": "s01ep01", "title": "A Quiet Table" },
   "state": [ … ],
   "commands": [

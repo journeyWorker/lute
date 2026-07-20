@@ -1,13 +1,13 @@
 ---
 title: Lute
 description: >-
-  A total language for visual-novel scenarios — compiles to flat JSON command
-  records plus CEL. Author dialogue, branches, timelines, and state; check
-  reachability and simulate before you ship, all from bunx @lute-lang/lute.
+  A statically analyzable narrative language for branching games — write
+  dialogue, quests, cinematic beats, and relational world state, then check
+  reachability, simulate outcomes, and compile to a versioned JSON IR plus CEL.
 template: splash
 hero:
   title: Lute
-  tagline: A total language for visual-novel scenarios.
+  tagline: A statically analyzable narrative language for branching games.
   image:
     file: ../../assets/hero-lute.png
   actions:
@@ -47,11 +47,50 @@ bunx @lute-lang/lute check scene.lute
 ```
 
 <p class="lute-lead">
-  Lute is a <strong>total</strong> authoring language: every scenario is
-  guaranteed to terminate and every path is analyzable. You write scenes;
-  Lute compiles them to flat JSON command records plus <code>CEL</code>, and
-  proves what's reachable before a single line ships.
+  Write dialogue, quests, cinematic beats, and relational world state in one
+  <code>.lute</code> source. Lute checks reachability, simulates outcomes, and
+  compiles everything to a versioned JSON <abbr title="intermediate representation">IR</abbr>
+  plus <code>CEL</code> — so what ships is what you analyzed.
 </p>
+
+<p class="lute-genre"><em>Visual novels · Story-driven RPGs · Branching cinematic games</em></p>
+
+<span class="lute-kicker">The contract</span>
+
+## What Lute does, what your engine does
+
+Lute is the author-time half: a grammar, a checker, and a compiler. It never
+runs your game. Everything it knows becomes a versioned JSON IR plus CEL that
+your engine loads through a documented [runtime contract](/tooling/runtime-contract/) —
+engines never embed the Lute parser or compiler.
+
+```text
+writer
+  │  writes
+  ▼
+.lute source ──▶ Lute [ parse · check · analyze · trace · compile · LSP ]
+                   │  emits
+                   ▼
+        versioned JSON IR + CEL
+                   │  loaded by
+                   ▼
+   engine adapter [ command loop · CEL eval · facts · quest lifecycle · bridges ]
+                   │  drives
+                   ▼
+        UI · animation · save · gameplay
+```
+
+| Lute (author + toolchain) | Your engine (runtime) |
+| --- | --- |
+| Grammar + type checking | Rendering + input |
+| Choice / `<match>` control data | Command execution |
+| Quest declarations | Quest ticking |
+| Facts + Datalog rules as data | Fact store + rule evaluation |
+| Timeline data | Animation playback |
+| Bridge signature checking | Minigame / QTE execution |
+| Connectivity analysis | Scene entry + saves |
+
+Read the full split on the [runtime contract](/tooling/runtime-contract/) page.
 
 <span class="lute-kicker">The language</span>
 
@@ -109,14 +148,65 @@ property-scoped tracks (`pos`, `opacity`) alongside an independent camera track:
 </timeline>
 ```
 
+<span class="lute-kicker">More than dialogue</span>
+
+## Investigation, checked
+
+Story-driven RPGs run on world state, not just lines. A `<hub>` re-presents its
+choices until you leave; a choice is offered only when its `when` guard holds; a
+clue is a relational fact you `::assert`; and a closing `<match>` reacts to how
+far the case has moved. The checker validates every relation signature, guard,
+and match arm before a player ever sees it.
+
+```lute
+## The Study
+
+@narrator: The lamp still burned. The ledger had already given you one name.
+
+<hub id="investigate">
+  <choice id="desk" label="Search the writing desk" once>
+    @detective: A cufflink, wedged behind the drawer.
+    ::assert{ found(cufflink) }
+  </choice>
+  <choice id="confront" label="Confront Mireille with the ledger" when="holds(found(ledger))">
+    @mireille: ...You've read it, then. Fine.
+    ::assert{ accused(mireille) }
+    ::set{run.caseProgress += 1}
+  </choice>
+  <choice id="leave" label="Step back into the hall" exit>
+    @detective: Enough for now.
+  </choice>
+</hub>
+
+<match on="run.caseProgress">
+  <when test="$ >= 1">
+    @detective{mono}: A name, a motive. The case has a spine now.
+  </when>
+  <otherwise>
+    @detective{mono}: Still only shadows. Keep looking.
+  </otherwise>
+</match>
+```
+
+<div class="rpg-outcome" role="group" aria-label="Investigation outcome">
+
+**Clue discovered** — `found(cufflink)` lands in the run fact store; the `confront`
+choice unlocks because `holds(found(ledger))` already holds.
+
+**Quest updated** — `run.caseProgress` advances, and the closing `<match>` flips to
+*"A name, a motive. The case has a spine now."*
+
+</div>
+
 <span class="lute-kicker">Why Lute</span>
 
 ## Built for scenarios you can trust
 
 <CardGrid stagger>
   <Card title="Total, not Turing-complete" icon="approve-check">
-    Every scenario provably terminates and every path is analyzable — no
-    infinite loops, no unbounded recursion, no unreachable surprises.
+    Every scenario provably terminates — no infinite loops, no unbounded
+    recursion. That decidability is the reason the checker can analyze paths
+    at all instead of guessing.
   </Card>
   <Card title="Typed plugin capabilities" icon="puzzle">
     Directives and providers are declared with typed manifests, so the
@@ -127,12 +217,14 @@ property-scoped tracks (`pos`, `opacity`) alongside an independent camera track:
     you derive higher-order truths and query them across a scene.
   </Card>
   <Card title="Simulate before you ship" icon="rocket">
-    <code>lute trace</code> runs a scenario against mock YAML — state, facts,
-    choices, events — so you watch it play out before anyone plays it.
+    <code>lute trace</code> runs one deterministic, mock-driven path — state,
+    facts, choices, events — so you watch a scenario play out before anyone
+    does. It walks that path, not every path.
   </Card>
   <Card title="Graph-checked connectivity" icon="random">
-    Reachability analysis plus Guaranteed / Possible envelopes prove which
-    scenes, choices, and states can ever actually be reached.
+    Reachability runs over your declared <code>after:</code> routes and returns
+    Reachable / Unreachable / Unknown — relational gates surface as human-review
+    boundaries, never false certainty.
   </Card>
   <Card title="AI-ready authoring surface" icon="comment">
     <code>lute context</code> emits a structured view of a project built for
@@ -142,9 +234,10 @@ property-scoped tracks (`pos`, `opacity`) alongside an independent camera track:
     A language server ships diagnostics, hovers, and completions to your
     editor, so mistakes surface as you type, not at runtime.
   </Card>
-  <Card title="Compiles to JSON" icon="document">
-    Output is flat JSON command records plus CEL — trivial to load into any
-    engine, in any language, with zero Lute runtime.
+  <Card title="Compiles to a versioned JSON IR" icon="document">
+    Engines don't embed the Lute parser or compiler; they implement the
+    documented <a href="/tooling/runtime-contract/">runtime contract</a> against
+    a versioned JSON IR plus CEL — any engine, any language.
   </Card>
 </CardGrid>
 

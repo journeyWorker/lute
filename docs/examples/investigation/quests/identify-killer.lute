@@ -1,0 +1,32 @@
+---
+kind: quest
+luteVersion: "0.6.1"
+uses: ../world.schema.yaml
+title: Identify the Killer
+---
+
+/*
+  The goal machine gating the case. `start="true"` activates it immediately;
+  completion is DERIVED — the quest completes once every non-`optional`
+  objective is `done`.
+
+  - `gatherEvidence` / `nameSuspect` gate on scalar run state the scenes write
+    (`run.cluesLogged`, `run.accused`), so both are statically satisfiable.
+  - `clinchMotive` is `optional` and gates on a relational fact QUERY over the
+    producible relation `implicates` (seeded in the schema). Static reachability
+    can prove the relation is producible but NOT that this exact ground query
+    holds, so the checker emits `W-UNPROVEN-RELATIONAL` — an honest analysis
+    boundary, not a defect: it points you at `lute trace` (seed the fact) or
+    human review rather than silently claiming proof. See the README.
+*/
+
+<quest id="identifyKiller" title="Identify the Killer" start="true">
+  <objective id="gatherEvidence" title="Log at least two clues" done="run.cluesLogged >= 2"/>
+  <objective id="nameSuspect" title="Name a suspect at the confrontation" done="run.accused != 'none'"/>
+  <objective id="clinchMotive" title="Tie a clue to the accused" done="holds(implicates(ledger, blake))" optional/>
+
+  <on event="questComplete">
+    ::set{ user.solved += 1 }
+    @narrator: The case file closes with a name on the cover.
+  </on>
+</quest>

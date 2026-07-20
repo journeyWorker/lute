@@ -1,0 +1,10 @@
+# docs/examples/investigation/lute.project.yaml
+# A small investigation-RPG worked example: a three-scene case (crime scene ->
+# interview -> confrontation) gated by one quest, over a relational fact world.
+# Core-only capabilities — no plugins — so every document resolves against the
+# built-in `lute.core` snapshot. Its OWN manifest shadows the parent
+# docs/examples/lute.project.yaml, so `check-project` resolves each file here.
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}

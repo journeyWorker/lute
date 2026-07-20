@@ -116,8 +116,8 @@ function loaderPresent(prefix: string): boolean {
   return false;
 }
 
-// Only the two S0 acceptance-bar platforms (design D3: macOS arm64, Linux
-// x64 gnu) resolve to a real `@lute-lang/lute-core-<platform>` package
+// The three shipped platforms (macOS arm64, Linux x64 gnu, Windows x64
+// msvc) resolve to a real `@lute-lang/lute-core-<platform>` package.
 // Every other platform/arch/libc combination returns null and hits the
 // "Unsupported platform fails with an actionable error" scenario — adding
 // a target later is a new `packages/core-<platform>/` + a CI matrix row,
@@ -133,6 +133,11 @@ function resolveTargetPackageName(): string | null {
   if (process.platform === "linux") {
     const libc = detectLibcKind();
     if (arch === "x64" && libc === "gnu") return "core-linux-x64";
+    return null;
+  }
+
+  if (process.platform === "win32") {
+    if (arch === "x64") return "core-win32-x64";
     return null;
   }
 

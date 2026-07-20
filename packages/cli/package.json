@@ -1,7 +1,7 @@
 {
   "name": "@lute-lang/lute",
-  "version": "0.1.0",
-  "description": "lute — checker/compiler/tracer for .lute visual-novel scenarios. JS launcher: platform detection + native binary resolution.",
+  "version": "0.2.0",
+  "description": "lute — checker/compiler/tracer for .lute branching game narratives. JS launcher: platform detection + native binary resolution.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -28,8 +28,9 @@
   },
   "dependencies": {},
   "optionalDependencies": {
-    "@lute-lang/lute-core-darwin-arm64": "workspace:*",
-    "@lute-lang/lute-core-linux-x64": "workspace:*"
+    "@lute-lang/lute-core-darwin-arm64": "0.2.0",
+    "@lute-lang/lute-core-linux-x64": "0.2.0",
+    "@lute-lang/lute-core-win32-x64": "0.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

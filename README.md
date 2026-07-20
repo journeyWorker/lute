@@ -109,9 +109,24 @@ Install the server once (`cargo install --path crates/lute-lsp`), then:
 
 ## Status
 
-Implemented. The checker, compiler, provider/plugin resolver, LSP, and CLI ship as Rust crates
-under [`crates/`](crates) (`lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`,
-`lute-cli`, `lute-lsp`), with editor clients under [`editors/`](editors) and npm distribution
-under [`packages/`](packages) (`@lute-lang/lute` + platform binary packages). The language is at
-**0.6.1**; the normative surface is the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 /
-0.3.0 / 0.4.0 / 0.5.0–0.5.2 / 0.6.0 / 0.6.1 deltas).
+Lute's status splits along three independent axes (see
+[`docs/versioning.md`](docs/versioning.md) for the full policy):
+
+- **Language: draft.** The grammar is at **0.6.1** — the normative surface is
+  the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 / 0.3.0 / 0.4.0 /
+  0.5.0–0.5.2 / 0.6.0 / 0.6.1 deltas). Being draft means the grammar may still
+  break before 1.0; each breaking change ships a `lute fix` migration where
+  the rewrite is mechanical.
+- **Implementation: shipped.** The checker, compiler, provider/plugin resolver,
+  LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
+  (`lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-cli`,
+  `lute-lsp`), with editor clients under [`editors/`](editors) and npm
+  distribution under [`packages/`](packages) (`@lute-lang/lute` + platform
+  binary packages). Run `lute version` to print the toolchain, language, and
+  IR versions.
+- **Production stability: not yet guaranteed.** Because the grammar and the
+  compiled artifact schema may still move before 1.0, pin the toolchain
+  version and validate artifacts against the `irVersion` you target.
+
+The toolchain is MIT-licensed ([`LICENSE`](LICENSE)); releases are tracked in
+[`CHANGELOG.md`](CHANGELOG.md).
