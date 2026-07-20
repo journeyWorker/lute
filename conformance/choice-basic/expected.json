@@ -1,0 +1,43 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "The road splits."
+    },
+    {
+      "addr": "001-0200",
+      "branch": "path",
+      "chose": "left",
+      "kind": "choice"
+    },
+    {
+      "addr": "001-0300",
+      "kind": "line",
+      "speaker": "hero",
+      "text": "Left it is."
+    },
+    {
+      "addr": "001-0400",
+      "kind": "set",
+      "path": "run.dir",
+      "value": "left"
+    },
+    {
+      "addr": "001-0900",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "The journey continues."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.7",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "run.dir": "left",
+    "scene.choices.path": "left"
+  }
+}

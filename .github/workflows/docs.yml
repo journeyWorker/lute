@@ -1,0 +1,89 @@
+name: Docs
+
+# Documentation-surface gate. Runs on PRs that touch the website, docs,
+# schemas, or the two crate files that own the canonical version strings.
+# Three jobs:
+#   consistency — stdlib-python single-source version/domain drift guard.
+#   examples    — build lute-cli and `check-project` the example roots so a
+#                 doc example that stops checking cleanly fails the PR.
+#   website     — build the Astro/Starlight site under Bun so a broken page
+#                 or link is caught before merge.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "packages/website/**"
+      - "docs/**"
+      - "schemas/**"
+      - "crates/lute-check/src/lib.rs"
+      - "crates/lute-compile/src/lib.rs"
+      - "scripts/check-docs-consistency.py"
+
+# One in-flight run per ref; a new push cancels the previous run.
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  consistency:
+    name: Docs consistency check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Single-source drift guard: fails if the website's version claims
+      # drift from the crate consts, an IR schema is missing, or a stale
+      # canonical domain leaks in. Dependency-free (stdlib python3).
+      - name: Check docs consistency
+        run: python3 scripts/check-docs-consistency.py
+
+  examples:
+    name: Check example projects
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: lute-docs-examples-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build lute-cli
+        run: cargo build -q -p lute-cli
+
+      # docs/examples checks cleanly end-to-end (warnings only, exit 0). The
+      # bundled example roots are authored to pass `check-project`; a
+      # regression that turns any of them into an Error-severity failure
+      # (exit 1) fails this job.
+      - name: check-project docs/examples
+        run: cargo run -q -p lute-cli -- check-project docs/examples
+
+  website:
+    name: Build website
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build website
+        run: bun run build
+        working-directory: packages/website

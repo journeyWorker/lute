@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.6.schema.json",
-  "title": "Lute compiled IR artifact (irVersion 0.6.x)",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.7.schema.json",
+  "title": "Lute compiled IR artifact (irVersion 0.7.x)",
   "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `Artifact`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec \u00a74.1, A9): an engine gates on `irVersion` by MAJOR.MINOR \u2014 it MUST accept any artifact whose `irVersion` major.minor it implements and MUST refuse one from a newer major.minor (the PATCH component is an advisory, backward-compatible refinement and never gates). `lute` (the language version) is informational for the runtime and does not gate parsing. Forward compatibility: an engine MUST IGNORE unknown OBJECT FIELDS (new optional fields are added append-only within a minor line) so a newer PATCH artifact still loads on an older engine of the same major.minor; an engine MUST treat an unknown command `kind` as an ERROR (a new command kind is a real capability the engine cannot fake). Field declaration order in an artifact is a byte-stability contract of the compiler but carries no semantics for a consumer.",
   "type": "object",
   "additionalProperties": true,
@@ -24,11 +24,11 @@
     },
     "lute": {
       "type": "string",
-      "description": "language-version pin (informational for the runtime), e.g. \"0.6.1\"."
+      "description": "language-version pin (informational for the runtime), e.g. \"0.7.0\"."
     },
     "irVersion": {
       "type": "string",
-      "description": "IR schema version the engine gates on (major.minor), e.g. \"0.6.1\"."
+      "description": "IR schema version the engine gates on (major.minor), e.g. \"0.7.0\"."
     },
     "capabilityVersion": {
       "type": "string",

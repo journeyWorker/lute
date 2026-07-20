@@ -1,0 +1,98 @@
+{
+  "kind": "quest",
+  "lute": "0.7.0",
+  "irVersion": "0.7.0",
+  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "meta": {
+    "title": "Quest Complete"
+  },
+  "state": [
+    {
+      "path": "quest.reachGoal.objectives.arrive.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:reachGoal"
+    },
+    {
+      "path": "quest.reachGoal.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:reachGoal"
+    },
+    {
+      "path": "run.atGoal",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.done",
+      "type": "number",
+      "default": 0
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "reachGoal",
+      "title": "Reach the Goal",
+      "titleLineId": "reachGoal.title",
+      "start": {
+        "raw": "true",
+        "expr": {
+          "lit": true
+        }
+      },
+      "objectives": [
+        {
+          "id": "arrive",
+          "title": "Arrive at the goal",
+          "titleLineId": "reachGoal.arrive",
+          "done": {
+            "raw": "run.atGoal == true",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "run.atGoal"
+              },
+              "r": {
+                "lit": true
+              }
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ]
+    },
+    {
+      "kind": "on",
+      "addr": "001-0200",
+      "event": "questComplete",
+      "body": "001-0300"
+    },
+    {
+      "kind": "set",
+      "addr": "001-0300",
+      "path": "run.done",
+      "op": "+=",
+      "value": "1",
+      "expr": {
+        "lit": 1.0
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "001-0400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The goal is reached.",
+      "lineId": "reachGoal.narrator_0010"
+    }
+  ]
+}

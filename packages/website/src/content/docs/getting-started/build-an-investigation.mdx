@@ -1,0 +1,308 @@
+---
+title: Build an investigation
+description: A first-project tutorial that walks the worked investigation example end to end — project manifest, schema, facts and Datalog, a fact-guarded hub, a quest, after-sequencing, check-project, scenario reach, two trace mocks, and compile.
+---
+
+[Write your first scene](/getting-started/first-scene/) built one file. This
+tutorial builds a **whole small project**: a three-scene whodunit gated by a
+quest, over a relational fact world. It is the shape of a real Lute game in
+miniature — and it deliberately surfaces one of Lute's honest-analysis
+boundaries so you can see exactly what the checker will and will not claim.
+
+Everything here mirrors the worked example in the repository:
+[`docs/examples/investigation/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/investigation).
+Every command below is copy-paste runnable from the **repository root**, and
+every snippet is taken verbatim from that directory, so what you read stays
+checkable.
+
+## 1. The project manifest
+
+A project is any directory with a `lute.project.yaml` at its root. This one is
+**core-only** — no plugins — so every document resolves against the built-in
+`lute.core` capability snapshot:
+
+```yaml
+# docs/examples/investigation/lute.project.yaml
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+```
+
+The manifest is what turns a folder of `.lute` files into something
+`lute check-project` can resolve as one unit.
+
+## 2. The shared schema
+
+Every scene and the quest import one schema with `uses: ../world.schema.yaml`.
+It declares the scalar state tiers **and** the relational vocabulary — a pure
+declaration map, no `---`/body:
+
+```yaml
+# --- Scalar state (run/user tiers) ---------------------------------------
+state:
+  run.cluesLogged:  { type: number, default: 0 }
+  run.leadStrength: { type: number, default: 0 }
+  run.suspectFocus: { type: { enum: [blake, cass, dana] }, default: blake }
+  run.accused:      { type: { enum: [none, blake, cass, dana] }, default: none }
+  run.trueKiller:   { type: { enum: [blake, cass, dana] }, default: blake }
+  user.solved:      { type: number, default: 0 }
+```
+
+Every path carries a `default:`, so each read is definitely assigned even in a
+standalone single-file `check`. (See [state schemas](/state/schemas/) and the
+[state model](/state/state-model/) for the tier rules.)
+
+## 3. Facts, relations, and one Datalog rule
+
+The same schema declares the **relational world** — entities, relations, seed
+facts, and a derivation rule:
+
+```yaml
+# --- Relational fact world (0.3.0 §3) ------------------------------------
+entities:
+  suspect: { members: [blake, cass, dana] }
+  clue:    { members: [ledger, letter, knife] }
+
+relations:
+  # `foundClue` is asserted by the crime scene as the detective logs evidence.
+  foundClue:  { args: [clue], tier: run }
+  # `implicates` is the static case map — which clue points at which suspect.
+  implicates: { args: [clue, suspect], tier: run, key: [0] }
+  # `points` is DERIVED: a suspect the found clues implicate (see `rules:`).
+  points:     { args: [suspect], derive: true }
+
+# Seed facts (0.3.0 §4): the fixed evidence-to-suspect map, loaded from start.
+facts:
+  - "implicates(ledger, blake)"
+  - "implicates(letter, blake)"
+  - "implicates(knife, cass)"
+
+# Datalog derivation (0.3.0 §7): a suspect is `points`-ed at once a clue that
+# implicates them has been found. Function-free, terminating by construction.
+rules:
+  - "points(S) :- foundClue(C), implicates(C, S)"
+```
+
+`points` is not stored — it is *derived*: a suspect is pointed at once a found
+clue implicates them. See [facts and Datalog](/state/facts-and-datalog/) for the
+full model.
+
+## 4. The entry scene — logging clues
+
+`scenes/crime-scene.lute` has **no `after:`**, so it is the graph root. It writes
+relational-fact deltas with `::assert{ foundClue(...) }` and bumps a scalar
+counter the quest gates on:
+
+```lute
+## The Study
+
+@narrator: The victim's study, untouched since the coroner left.
+@detective{mono}: Two things in here don't belong. Log them.
+
+::assert{ foundClue(ledger) }
+::set{ run.cluesLogged += 1 }
+@detective: A ledger — the balances scratched out in red ink.
+
+::assert{ foundClue(letter) }
+::set{ run.cluesLogged += 1 }
+@detective: And a letter, signed once and then unsigned.
+```
+
+The last line reads the **derived** relation in a `when=` guard — it emits only
+once a found clue implicates Blake:
+
+```lute
+@detective{mono when="holds(points(blake))"}: Both threads pull toward one name.
+```
+
+## 5. The interrogation hub
+
+`scenes/interview.lute` is sequenced `after:` the crime scene and uses a revisit
+`<hub>` whose choices are **fact-guarded** — a choice is eligible only once its
+matching clue has been found:
+
+```lute
+<hub id="interrogate">
+  <choice id="pressLedger" label="Press them on the ledger" when="holds(foundClue(ledger))">
+    @detective: These numbers were bled dry. Explain them.
+    ::set{ run.suspectFocus = "blake" }
+    ::set{ run.leadStrength += 1 }
+  </choice>
+  <choice id="pressLetter" label="Press them on the letter" when="holds(foundClue(letter))">
+    @detective: You signed this, then you tried to unsign it.
+    ::set{ run.suspectFocus = "blake" }
+    ::set{ run.leadStrength += 1 }
+  </choice>
+  <choice id="askAlibi" label="Ask for an alibi" once>
+    @detective: Walk me through last night. Slowly.
+  </choice>
+  <choice id="leave" label="End the interview" exit>
+    @detective: We're done here. For now.
+  </choice>
+</hub>
+```
+
+`leave` is the unguarded `exit` that satisfies the no-dead-end guarantee — every
+hub must offer a way out. See [choices & hubs](/language/choices-and-hubs/).
+
+## 6. The quest — the goal machine
+
+`quests/identify-killer.lute` gates the case. Completion is derived: the quest
+completes once every non-`optional` objective is `done`.
+
+```lute
+<quest id="identifyKiller" title="Identify the Killer" start="true">
+  <objective id="gatherEvidence" title="Log at least two clues" done="run.cluesLogged >= 2"/>
+  <objective id="nameSuspect" title="Name a suspect at the confrontation" done="run.accused != 'none'"/>
+  <objective id="clinchMotive" title="Tie a clue to the accused" done="holds(implicates(ledger, blake))" optional/>
+
+  <on event="questComplete">
+    ::set{ user.solved += 1 }
+    @narrator: The case file closes with a name on the cover.
+  </on>
+</quest>
+```
+
+`gatherEvidence` and `nameSuspect` gate on scalar run state the scenes write, so
+both are statically satisfiable. `clinchMotive` is where the honesty boundary
+lives — hold that thought for step 9.
+
+## 7. Sequencing with `after:`
+
+The three scenes form a chain. `interview.lute` declares:
+
+```yaml
+after: 'visited("detective.s01ep01")'
+```
+
+and `confrontation.lute` declares:
+
+```yaml
+after: 'visited("detective.s01ep02")'
+```
+
+That is the whole prerequisite graph: crime-scene → interview → confrontation.
+`confrontation.lute` closes it with a `<branch>` accusation that records the
+pick with the `into=`/`value=` record sugar, then branches the verdict on
+whether the accusation matched the truth:
+
+```lute
+<branch id="accuse">
+  <choice id="accuseBlake" label="Accuse Blake" into="run.accused" value="blake">
+    @detective: Blake. The ledger and the letter were both yours.
+  </choice>
+  <choice id="accuseCass" label="Accuse Cass" into="run.accused" value="cass">
+    @detective: Cass. You balanced these books in blood.
+  </choice>
+  <choice id="accuseDana" label="Accuse Dana" into="run.accused" value="dana">
+    @detective: Dana. You were never as far away as you claimed.
+  </choice>
+</branch>
+```
+
+## 8. Check the whole project
+
+```sh
+cargo run -q -p lute-cli -- check-project docs/examples/investigation
+```
+
+Exit `0`. Every file checks clean except for **one project-wide warning** on the
+quest:
+
+```
+docs/examples/investigation/quests/identify-killer.lute:
+  26:3: warning [W-UNPROVEN-RELATIONAL] `done="holds(implicates(ledger, blake))"` is gated by a
+  relational fact query over producible relation(s) `implicates`; static reachability analysis
+  (dsl 0.6.1 §2) neither proves nor refutes it. Verify with `lute trace` seeds or human review
+ok: docs/examples/investigation (4 file(s), 1 project-wide warning(s))
+```
+
+**This warning is a feature, not a defect.** The `clinchMotive` objective gates
+on a relational fact *query*. The checker can prove the `implicates` relation is
+*producible* (it is seeded in the schema), but it will **not** claim the specific
+ground query is true — that is a runtime question. Rather than silently assert
+proof it does not have, Lute names the exact boundary and points you at
+`lute trace` seeds or human review. `W-UNPROVEN-RELATIONAL` never flips the exit
+code; promote it with `--deny W-UNPROVEN-RELATIONAL` if your project wants it to
+block. This is Lute being honest about the edge of its analysis rather than
+guessing.
+
+## 9. Reachability & the scene graph
+
+`lute scenario` reports pure graph structure over the declared `after:` routes —
+no CEL, no Datalog:
+
+```sh
+cargo run -q -p lute-cli -- scenario docs/examples/investigation reach detective.s01ep03
+```
+
+```
+  verdict: Reachable — a satisfiable route exists under your declared routes.
+  after: visited("detective.s01ep02")
+```
+
+Note the hedge — *"under your declared routes."* Reachability reasons about the
+`after:` graph you declared, not about whether any given playthrough walks it.
+See [reachability](/connectivity/reachability/).
+
+## 10. Trace both endings
+
+`lute trace` walks **one** document along **one** deterministic, mock-driven
+path — a preview, not a proof of all paths. Both mocks drive the confrontation
+scene: they seed the truth and force the `accuse` branch to a different choice.
+
+The two mocks are tiny:
+
+```yaml
+# mocks/accuse-correctly.yaml
+state:
+  run.trueKiller: blake
+choose:
+  accuse: accuseBlake
+```
+
+```yaml
+# mocks/accuse-wrongly.yaml
+state:
+  run.trueKiller: blake
+choose:
+  accuse: accuseCass
+```
+
+Accuse the **right** suspect → the success ending:
+
+```sh
+cargo run -q -p lute-cli -- trace docs/examples/investigation/scenes/confrontation.lute \
+  --mock docs/examples/investigation/mocks/accuse-correctly.yaml
+```
+
+Accuse the **wrong** suspect → the failure ending:
+
+```sh
+cargo run -q -p lute-cli -- trace docs/examples/investigation/scenes/confrontation.lute \
+  --mock docs/examples/investigation/mocks/accuse-wrongly.yaml
+```
+
+Both traces exit `0` (a complete walk) and reach visibly **different** endings —
+the same document, two forced choices. See the [tracing guide](/tooling/tracing/)
+for every mock surface.
+
+## 11. Compile
+
+Once a document checks clean it compiles to its JSON command-record artifact:
+
+```sh
+cargo run -q -p lute-cli -- compile docs/examples/investigation/scenes/crime-scene.lute \
+  --project docs/examples/investigation -o /tmp/crime-scene.json
+```
+
+Exit `0`; the artifact is stamped `"lute": "0.7.0"` / `"irVersion": "0.7.0"`.
+Every document in the project compiles. That artifact — not the source — is what
+an engine plays through the [runtime contract](/tooling/runtime-contract/).
+
+## Where to go next
+
+- Automate this whole loop with [scenario tests](/tooling/cli/) (`*.test.yaml`) so both endings stay pinned as your project grows.
+- Trace the machine-driven version of check → fix in the [AI harness guide](/tooling/ai-harness/).
+- Pick a role-first reading order from the [learning paths](/getting-started/learning-paths/).

@@ -1,0 +1,60 @@
+name: VS Code Extension
+
+# Packages the editors/vscode extension into a .vsix and uploads it as a build
+# artifact. Runs on demand (workflow_dispatch) and on `vscode-v*` tags — a
+# separate tag namespace from the `v*` tags that drive the npm Publish workflow,
+# so cutting an editor release never triggers a language-toolchain release and
+# vice-versa. There is NO marketplace publish step: no VSCE_PAT is configured;
+# the publish step is left commented out below.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "vscode-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package .vsix
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Package extension
+        run: bunx @vscode/vsce package
+
+      - name: Upload .vsix artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: lute-vscode-extension
+          path: editors/vscode/*.vsix
+          if-no-files-found: error
+
+      # Marketplace publish is intentionally disabled: no VSCE_PAT secret is
+      # configured. To enable, add a `VSCE_PAT` repo secret (a Visual Studio
+      # Marketplace personal access token for the `lute-lang` publisher) and
+      # uncomment the step below.
+      #
+      # - name: Publish to VS Code Marketplace
+      #   run: bunx @vscode/vsce publish
+      #   env:
+      #     VSCE_PAT: ${{ secrets.VSCE_PAT }}

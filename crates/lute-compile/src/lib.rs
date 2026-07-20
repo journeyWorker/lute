@@ -36,7 +36,7 @@ use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{Arm, Document, Node};
 
 /// Language-version pin stamped into the artifact envelope's `lute` field (DSL
-/// 0.2.0). Distinct from [`LUTE_IR_VERSION`], the IR schema version.
+/// 0.7.0). Distinct from [`LUTE_IR_VERSION`], the IR schema version.
 /// Re-exported from `lute-check` (its canonical [`lute_check::LUTE_LANG_VERSION`]),
 /// which owns the string so the checker can read it for `W-LUTE-VERSION-STALE`
 /// without a dependency on this crate (the dependency runs the other way).
@@ -46,7 +46,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// A9). Independent of [`LUTE_LANG_VERSION`] — bumped on its own for a pure
 /// IR-shape addition with no language-grammar change (connectivity T13:
 /// advisory `prereqEdges` emission); engines gate parsing on it.
-pub const LUTE_IR_VERSION: &str = "0.6.1";
+pub const LUTE_IR_VERSION: &str = "0.7.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -664,8 +664,8 @@ mod tests {
         // compatible refinement (verification-coverage signals + warning
         // promotion). They are still tracked as independent pins (T13) even
         // though they coincide here.
-        assert_eq!(super::LUTE_IR_VERSION, "0.6.1");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.6.1");
+        assert_eq!(super::LUTE_IR_VERSION, "0.7.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.7.0");
     }
 
     #[test]
@@ -674,8 +674,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.6.1");
-        assert_eq!(v["irVersion"], "0.6.1");
+        assert_eq!(v["lute"], "0.7.0");
+        assert_eq!(v["irVersion"], "0.7.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

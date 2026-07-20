@@ -1,0 +1,123 @@
+{
+  "kind": "scene",
+  "lute": "0.7.0",
+  "irVersion": "0.7.0",
+  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "meta": {
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Choice Basic"
+  },
+  "state": [
+    {
+      "path": "run.dir",
+      "type": "enum",
+      "domain": [
+        "none",
+        "left",
+        "right"
+      ],
+      "default": "none"
+    },
+    {
+      "path": "scene.choices.path",
+      "type": "enum",
+      "domain": [
+        "left",
+        "right",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:path"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The road splits.",
+      "lineId": "hero.s01ep01.narrator_0010"
+    },
+    {
+      "kind": "choice",
+      "addr": "001-0200",
+      "branchId": "path",
+      "recordKey": "scene.choices.path",
+      "options": [
+        {
+          "id": "left",
+          "label": "Go left",
+          "lineId": "hero.s01ep01.path.left",
+          "target": "001-0300"
+        },
+        {
+          "id": "right",
+          "label": "Go right",
+          "lineId": "hero.s01ep01.path.right",
+          "target": "001-0600"
+        }
+      ],
+      "converge": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Left it is.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero-0010"
+    },
+    {
+      "kind": "set",
+      "addr": "001-0400",
+      "path": "run.dir",
+      "op": "=",
+      "value": "'left'",
+      "expr": {
+        "lit": "left"
+      }
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0500",
+      "target": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0600",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Right it is.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero-0020"
+    },
+    {
+      "kind": "set",
+      "addr": "001-0700",
+      "path": "run.dir",
+      "op": "=",
+      "value": "'right'",
+      "expr": {
+        "lit": "right"
+      }
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0800",
+      "target": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0900",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The journey continues.",
+      "lineId": "hero.s01ep01.narrator_0020"
+    }
+  ]
+}

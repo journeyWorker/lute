@@ -1,0 +1,23 @@
+---
+kind: scene
+luteVersion: "0.7.0"
+character: hero
+season: 1
+episode: 1
+title: Hub Once Exit
+uses: ./schema.yaml
+---
+
+## The Interrogation
+
+<hub id="talk">
+  <choice id="probe" label="Probe once" once>
+    @hero: Tell me more.
+    ::set{ run.probes += 1 }
+  </choice>
+  <choice id="leave" label="End it" exit>
+    @hero: We're done here.
+  </choice>
+</hub>
+
+@narrator: The interview is over.

@@ -1,0 +1,45 @@
+{
+  "commands": [
+    {
+      "kind": "quest",
+      "quest": "reachGoal",
+      "state": "active"
+    },
+    {
+      "done": true,
+      "kind": "objective",
+      "objective": "arrive",
+      "quest": "reachGoal"
+    },
+    {
+      "kind": "quest",
+      "quest": "reachGoal",
+      "state": "complete"
+    },
+    {
+      "addr": "001-0300",
+      "kind": "set",
+      "path": "run.done",
+      "value": 1
+    },
+    {
+      "addr": "001-0400",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "The goal is reached."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.7",
+  "kind": "quest",
+  "quests": {
+    "reachGoal": "complete"
+  },
+  "state": {
+    "quest.reachGoal.objectives.arrive.done": true,
+    "quest.reachGoal.state": "complete",
+    "run.atGoal": true,
+    "run.done": 1
+  }
+}

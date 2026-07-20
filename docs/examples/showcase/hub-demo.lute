@@ -6,7 +6,7 @@ season: 1
 episode: 2
 title: The Revisit Hub
 pov: fixer
-luteVersion: "0.6.1"
+luteVersion: "0.7.0"
 # Root capability profile (project lute.project.yaml). No plugin directives are
 # used here, so no scene-local `plugins:` narrowing is needed.
 profile: showcase

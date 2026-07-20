@@ -1,0 +1,109 @@
+{
+  "kind": "scene",
+  "lute": "0.7.0",
+  "irVersion": "0.7.0",
+  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "meta": {
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Hub Once Exit"
+  },
+  "state": [
+    {
+      "path": "run.probes",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "scene.choices.talk",
+      "type": "enum",
+      "domain": [
+        "probe",
+        "leave",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:talk"
+    },
+    {
+      "path": "scene.visited.talk.leave",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.talk.probe",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "hub",
+      "addr": "001-0100",
+      "id": "talk",
+      "recordKey": "scene.choices.talk",
+      "options": [
+        {
+          "id": "probe",
+          "label": "Probe once",
+          "lineId": "hero.s01ep01.talk.probe",
+          "once": true,
+          "exit": false,
+          "target": "001-0200"
+        },
+        {
+          "id": "leave",
+          "label": "End it",
+          "lineId": "hero.s01ep01.talk.leave",
+          "once": false,
+          "exit": true,
+          "target": "001-0400"
+        }
+      ],
+      "converge": "001-0600"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Tell me more.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero-0010"
+    },
+    {
+      "kind": "set",
+      "addr": "001-0300",
+      "path": "run.probes",
+      "op": "+=",
+      "value": "1",
+      "expr": {
+        "lit": 1.0
+      }
+    },
+    {
+      "kind": "line",
+      "addr": "001-0400",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "We're done here.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero-0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0500",
+      "target": "001-0600"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0600",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The interview is over.",
+      "lineId": "hero.s01ep01.narrator_0010"
+    }
+  ]
+}

@@ -243,8 +243,8 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.6.1",
-  "irVersion": "0.6.1",
+  "lute": "0.7.0",
+  "irVersion": "0.7.0",
   "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
   "meta": {
     "character": "mira",

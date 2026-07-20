@@ -1,6 +1,6 @@
 {
   "name": "@lute-lang/lute",
-  "version": "0.2.0",
+  "version": "0.7.0",
   "description": "lute — checker/compiler/tracer for .lute branching game narratives. JS launcher: platform detection + native binary resolution.",
   "license": "MIT",
   "type": "module",
@@ -28,9 +28,9 @@
   },
   "dependencies": {},
   "optionalDependencies": {
-    "@lute-lang/lute-core-darwin-arm64": "0.2.0",
-    "@lute-lang/lute-core-linux-x64": "0.2.0",
-    "@lute-lang/lute-core-win32-x64": "0.2.0"
+    "@lute-lang/lute-core-darwin-arm64": "0.7.0",
+    "@lute-lang/lute-core-linux-x64": "0.7.0",
+    "@lute-lang/lute-core-win32-x64": "0.7.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

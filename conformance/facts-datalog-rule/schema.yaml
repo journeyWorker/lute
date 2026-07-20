@@ -1,0 +1,18 @@
+# Relational world for the facts-datalog-rule conformance fixture.
+# A single derived relation `suspected` closes over a base `sawClue` delta and
+# a seeded `links` map — the engine must run the least-fixpoint to answer the
+# `holds(suspected(...))` guard.
+entities:
+  who:  { members: [mira, jon] }
+  item: { members: [map, key] }
+
+relations:
+  sawClue:   { args: [item], tier: run }
+  links:     { args: [item, who], tier: run }
+  suspected: { args: [who], derive: true }
+
+facts:
+  - "links(map, mira)"
+
+rules:
+  - "suspected(W) :- sawClue(I), links(I, W)"

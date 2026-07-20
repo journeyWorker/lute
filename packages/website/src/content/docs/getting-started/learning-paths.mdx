@@ -1,0 +1,73 @@
+---
+title: Learning paths
+description: Role-first routes through the Lute docs — pick the reading order that matches what you are here to do, whether you write scenarios, program narrative logic, integrate an engine, author a plugin, or build AI tooling.
+---
+
+Lute's docs are organized by subject, but you probably arrived with a **role** in
+mind. Pick the path that matches what you are trying to do; each is a short,
+ordered reading list through pages that already exist. You can always branch off
+into the sidebar once a page raises a question.
+
+## Scenario writer
+
+You write the story — dialogue, choices, quests — and want the tool to catch your
+mistakes before a player does. Start here and stay in prose; the logic layer can
+wait.
+
+1. [Installation](/getting-started/installation/) — get the `lute` command on your `PATH`.
+2. [Write your first scene](/getting-started/first-scene/) — build one real scene from an empty file, running `lute` at every step.
+3. [Build an investigation](/getting-started/build-an-investigation/) — a full worked project: facts, a quest, an interrogation hub, and two traced endings.
+4. [Dialogue & cast](/language/dialogue-and-cast/) — the `@speaker` line, delivery flags, and interpolation.
+5. [Branch, match & when](/language/branch-match-when/) — player menus and state-driven callbacks.
+6. [Choices & hubs](/language/choices-and-hubs/) — choice guards, the `into=` record sugar, and revisit hubs.
+7. [Quests & scenes](/language/quests-and-scenes/) — objectives, `after:` sequencing, and lifecycle events.
+8. [Tracing guide](/tooling/tracing/) — preview a scene along a chosen path before shipping.
+
+## Narrative programmer
+
+You think about state, guards, and reachability. This path leads with the logic
+and analysis layers — the parts of Lute a compiler engineer will recognize.
+
+1. [Frontmatter & profiles](/language/frontmatter-and-profiles/) — the capability-selecting header every document opens with.
+2. [The state model](/state/state-model/) — the tiered scalar namespaces and definite-assignment rules.
+3. [CEL expressions](/state/cel/) — the restricted expression profile behind every condition and assignment.
+4. [Facts and Datalog](/state/facts-and-datalog/) — the relational fact layer and its total derivation rules.
+5. [Timeline & property tracks](/language/timeline-and-property-tracks/) — concurrent choreography with the one-writer-per-track rule.
+6. [The scene graph and after:](/connectivity/scene-graph/) — the project-wide prerequisite graph.
+7. [Reachability](/connectivity/reachability/) — the Reachable / Unreachable / Unknown verdicts and their honesty boundary.
+8. [Guaranteed / Possible envelopes](/connectivity/envelopes/) — per-node available-state analysis.
+
+## Engine integrator
+
+You are wiring a game engine to play what Lute compiles. Lute never runs your
+game — it hands you a versioned JSON IR plus CEL, and you implement the runtime
+contract. This path is contract-first.
+
+1. [Runtime contract](/tooling/runtime-contract/) — what Lute emits and what an adapter must implement: the command loop, CEL, facts, quests, and typed bridges.
+2. [`docs/runtime/` on GitHub](https://github.com/journeyWorker/lute/tree/main/docs/runtime) — the normative runtime specification: [execution model](https://github.com/journeyWorker/lute/blob/main/docs/runtime/execution-model.md), [state lifecycle](https://github.com/journeyWorker/lute/blob/main/docs/runtime/state-lifecycle.md), [CEL & facts](https://github.com/journeyWorker/lute/blob/main/docs/runtime/cel-and-facts.md), [quest lifecycle](https://github.com/journeyWorker/lute/blob/main/docs/runtime/quest-lifecycle.md), [timeline semantics](https://github.com/journeyWorker/lute/blob/main/docs/runtime/timeline-semantics.md), and the [bridge protocol](https://github.com/journeyWorker/lute/blob/main/docs/runtime/bridge-protocol.md).
+3. [`conformance/` on GitHub](https://github.com/journeyWorker/lute/tree/main/conformance) — the artifact-and-expectation fixtures your adapter should replay to prove it plays Lute correctly.
+4. [CLI reference → `run`](/tooling/cli/) — `lute run` is the reference consumer: it executes a compiled artifact against a mock playthrough, so its transcript is the behavior your adapter must match.
+5. [CEL expressions](/state/cel/) — the exact expression semantics your evaluator has to reproduce.
+
+## Plugin author
+
+You extend Lute's vocabulary — new directives, capability surfaces, typed
+bridges — without touching the fixed grammar or compiler. This path walks the
+capability model end to end.
+
+1. [Plugin concepts](/plugins/concepts/) — how plugins add vocabulary and capability without changing the grammar.
+2. [Manifests & resolution](/plugins/manifests/) — the `lute.project.yaml` profile graph and the `plugin.yaml` manifest.
+3. [Profiles & activation](/plugins/profiles/) — selecting a capability profile and scene-local plugin options.
+4. [Typed bridge directives](/plugins/bridge/) — declaring a typed runtime bridge and the state it writes.
+5. [Providers and catalog](/tooling/providers-and-catalog/) — snapshot-first provider resolution and `capabilityVersion`.
+
+## AI tooling developer
+
+You are building an authoring pipeline where a model writes Lute and the checker
+keeps it honest. This path centers the machine-readable surfaces.
+
+1. [AI harness guide](/tooling/ai-harness/) — wiring `lute context`, `lute check --json`, `--deny`, exit codes, and fixits into a loop.
+2. [CLI reference](/tooling/cli/) — the full subcommand surface, `--json` shapes, and the exit-code contract every step keys off.
+3. [Current specification](/spec/current/) — the consolidated index of what the language actually enforces today.
+4. [State schemas](/state/schemas/) — the shared, imported source of truth a generator must target.
+5. [Build an investigation](/getting-started/build-an-investigation/) — see the check → trace → compile loop the harness automates, on a real project (including the deliberate `W-UNPROVEN-RELATIONAL` boundary).

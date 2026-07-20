@@ -1,0 +1,16 @@
+# Scenario test (`lute test`) — accuse the RIGHT suspect.
+# Drives scenes/confrontation.lute with the same mock semantics as
+# mocks/accuse-correctly.yaml (seed the truth, force the accusation), then
+# asserts the success ending fires and the pick was recorded.
+file: ../scenes/confrontation.lute
+state:
+  run.trueKiller: blake
+choose:
+  accuse: accuseBlake
+expect:
+  exit: complete
+  transcriptContains:
+    - "The cuffs close on the right wrists. Case closed."
+    - "Booked. The file can finally rest."
+  state:
+    run.accused: blake

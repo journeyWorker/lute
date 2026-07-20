@@ -6,7 +6,7 @@ season: 1
 episode: 5
 title: The Service Rhythm
 pov: fixer
-luteVersion: "0.6.1"
+luteVersion: "0.7.0"
 # Illustrative plugin-system demo (see ../../proposals/plugin-system/0.0.1.md) — NOT catalog content.
 # It selects a capability `profile`, layers scene-local plugin options, runs a bridge
 # `::minigame` directive that writes a declared state slot, and branches on the result.

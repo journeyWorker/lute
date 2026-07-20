@@ -1,6 +1,6 @@
 {
   "name": "tree-sitter-lute",
-  "version": "0.0.1",
+  "version": "0.7.0",
   "description": "Tree-sitter grammar for the Lute Scenario DSL (editor-side: highlighting/folding host, not the authoritative AST)",
   "metadata": {
     "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d"

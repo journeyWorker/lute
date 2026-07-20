@@ -1,0 +1,29 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "Reading the room."
+    },
+    {
+      "addr": "001-0200",
+      "kind": "match",
+      "result": "otherwise"
+    },
+    {
+      "addr": "001-0700",
+      "kind": "line",
+      "speaker": "hero",
+      "text": "I feel nothing in particular."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.7",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "run.mood": "neutral"
+  }
+}

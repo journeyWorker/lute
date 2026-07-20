@@ -6,7 +6,7 @@ season: 1
 episode: 2
 title: Behold the Performance of All-Purpose Bianca
 pov: fixer
-luteVersion: "0.6.1"
+luteVersion: "0.7.0"
 
 state:
   scene.affect.bianca:  { type: number, default: 0 }

@@ -120,7 +120,7 @@ Ready to write one? [Get started with `bunx @lute-lang/lute` →](/getting-start
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.6.1**.
+compiles, traces, and inspects them. The current language version is **0.7.0**.
 
 ## Quick start with `bunx`
 
@@ -190,7 +190,7 @@ an empty file, running `lute` at every step.
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.6.1**.
+**0.7.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -386,7 +386,7 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.6.1",
+  "lute": "0.7.0",
   "meta": { "character": "mira", "season": 1, "episode": 1, "episodeId": "s01ep01", "title": "A Quiet Table" },
   "state": [ … ],
   "commands": [
@@ -562,6 +562,38 @@ deliveryFlags (3):
 Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value
 instead of guessing. From here, follow the **Language** section for each construct in depth, or read
 the [full-spec showcase](/examples/showcase/) for a feature-by-feature tour of a real project.
+
+---
+
+# Learning paths
+
+Role-first routes through the docs — pick the reading order that matches what you are here to do. Each is a short ordered list of existing pages.
+
+- **Scenario writer:** installation → first scene → build an investigation → dialogue & cast → branch/match/when → choices & hubs → quests & scenes → tracing.
+- **Narrative programmer:** frontmatter → state model → CEL → facts & Datalog → timeline → scene graph & after: → reachability → envelopes.
+- **Engine integrator:** runtime contract → the normative [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime) specs → the [`conformance/`](https://github.com/journeyWorker/lute/tree/main/conformance) fixtures → `lute run` (the reference consumer) → CEL semantics.
+- **Plugin author:** plugin concepts → manifests & resolution → profiles & activation → typed bridges → providers & catalog.
+- **AI tooling developer:** AI harness guide → CLI reference (`--json` + exit codes) → current specification → state schemas → the check → trace → compile loop in build an investigation.
+
+---
+
+# Build an investigation
+
+A first-project tutorial that builds a whole small project — a three-scene whodunit gated by a quest over a relational fact world — mirroring [`docs/examples/investigation/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/investigation). Every command runs from the repository root; every snippet is verbatim from that directory.
+
+The walk: (1) the core-only `lute.project.yaml` manifest; (2) the shared `world.schema.yaml` scalar tiers; (3) its relational entities, seed `facts:`, and one Datalog `rules:` clause deriving `points`; (4) the entry scene logging clues with `::assert{ foundClue(...) }`; (5) a fact-guarded `<hub>` interrogation; (6) the quest whose objectives the scenes satisfy; (7) `after:` sequencing crime-scene → interview → confrontation with an `into=`/`value=` `<branch>` accusation; (8) `check-project`; (9) `scenario reach`; (10) two trace mocks reaching different endings; (11) `compile`.
+
+`check-project` exits `0` with **one project-wide warning**, `W-UNPROVEN-RELATIONAL`, on the quest's `clinchMotive` objective: it gates on a relational fact *query* the checker can prove *producible* but cannot prove *true* — a runtime question. The warning is deliberate honesty about the analysis boundary, never a defect; it never flips the exit code, and `--deny W-UNPROVEN-RELATIONAL` promotes it if a project wants it to block.
+
+---
+
+# Is Lute right for you?
+
+Honest selection guidance. Lute is the author-time half of a narrative game — a grammar, checker, and compiler emitting a versioned JSON IR plus CEL — not a general-purpose engine.
+
+**Good fit:** branchy, state-heavy games where you fear softlocks and dead content; quest-and-dialogue RPGs; teams collaborating through Git on plain-text `.lute`; AI-authoring pipelines with the checker as ground truth (`lute context` + `lute check --json` + `--deny`); one narrative source feeding multiple engines through the runtime contract.
+
+**Not yet:** teams that author only in a visual node editor; install-and-play Unity/Godot products (playing Lute means implementing the runtime contract); general-purpose scripting (Lute is total, not Turing-complete, by design); tiny strictly-linear projects that gain little from reachability analysis; teams with no capacity to build or maintain a runtime adapter. Frame it as selection, not apology: Lute trades general flexibility for provable guarantees about branching narrative.
 
 ---
 
@@ -1768,10 +1800,11 @@ Preview a document against author-supplied mocks (see the [tracing guide](/tooli
 ## scenario
 
 ```console
-$ lute scenario <dir> [--providers <DIR>] [reach <nodeId> | envelope <nodeId>]
+$ lute scenario <dir> [--providers <DIR>] [--format text|json|dot]
+              [reach <nodeId> | envelope <nodeId>]
 ```
 
-Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach <nodeId>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope <nodeId>` (or `envelope quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/). `<nodeId>` is a scene's canonical key or `quest:<id>`. Exit **0** on success, **2** on I/O or an unresolvable node id.
+Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach <nodeId>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope <nodeId>` (or `envelope quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/). `<nodeId>` is a scene's canonical key or `quest:<id>`. `--format` selects the bare graph view's shape: `text` (default), `json` (a stable-keyed `{"roots":[{"root":…,"nodes":[…],"edges":[…],"reach":{…}}]}` document), or `dot` (one Graphviz `digraph` per root). Exit **0** on success, **2** on I/O or an unresolvable node id.
 
 ## context
 
@@ -1804,6 +1837,70 @@ $ lute catalog refresh <dir> [--project <DIR>]
 ```
 
 Re-stamp every pinned provider snapshot in `<dir>` against the current `capabilityVersion` and clear its `stale` flag (see [providers & catalog](/tooling/providers-and-catalog/)). Exit **0** on success, **2** on I/O.
+
+## init
+
+```console
+$ lute init <dir> [--template minimal|investigation]
+```
+
+Scaffold a new Lute project directory — `lute.project.yaml`, a state schema, a starter scene, and a trace mock, ready for `lute check-project`. `<dir>` must not already contain a `lute.project.yaml`. `--template` is `minimal` (default) or `investigation`. Exit **0** on success, **2** on I/O or a refused overwrite.
+
+## new
+
+```console
+$ lute new <scene|quest|schema> <name> [--dir <DIR>]
+```
+
+Scaffold one new document (`scene`, `quest`, or `schema`) into an existing project; `<name>` is the file stem and id, `--dir` the project directory (default: current). Exit **0** on success, **2** on I/O or an invalid kind.
+
+## doctor
+
+```console
+$ lute doctor [<dir>] [--json]
+```
+
+Diagnose the local toolchain and project setup: version axes, project manifest, provider snapshots, editor-integration hints. `--json` emits JSON. Exit **0** when every check passes, **1** on a reported problem, **2** on I/O.
+
+## run
+
+```console
+$ lute run <artifact> [--mock <FILE>] [--json]
+```
+
+Execute a compiled artifact headlessly against a mock playthrough — the reference consumer of the [runtime contract](/tooling/runtime-contract/): command dispatch, CEL guards, the facts + Datalog fixpoint, hubs, and quest lifecycle. Distinct from `lute trace`, which previews *source*. `--mock` is a YAML playthrough (same surfaces as `lute trace --mock`); `--json` emits the transcript. Exit **0** complete, **1** refused, **2** I/O, **3** incomplete.
+
+## test
+
+```console
+$ lute test [<dir>] [--json] [--providers <DIR>] [--coverage]
+```
+
+Run the project's scenario tests: every `*.test.yaml` under `<dir>` traces its scene against declared mocks and asserts declared expectations. `--json` emits the report; `--providers` pins snapshots; `--coverage` adds branch/arm coverage. Exit **0** all pass, **1** on a failure, **2** I/O. A `*.test.yaml` declares a required `file:` (path to the `.lute`, relative to the test file), optional mock surfaces (`state:`/`facts:`/`choose:`/`events:`/`accepts:` — identical to `lute trace --mock`), and an `expect:` block with optional `transcriptContains: [substrings]`, `state: {path: literal}`, and `exit: complete|incomplete`.
+
+## loc export
+
+```console
+$ lute loc export <dir> [--format json|csv] [-o <FILE>]
+```
+
+Extract every translatable content line (stable `code`, speaker, text, choice labels) across a project to a localization export. `--format` is `json` (default) or `csv`; `-o`/`--out` writes to a file. Exit **0** on success, **2** on I/O.
+
+## loc report
+
+```console
+$ lute loc report <dir> [--json]
+```
+
+Word-count and line-count report per document and per speaker. `--json` emits JSON. Exit **0** on success, **2** on I/O.
+
+## version
+
+```console
+$ lute version [--json]
+```
+
+Print the three independent version axes ([versioning](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)): the toolchain version, the language version, and the IR schema version. Distinct from clap's built-in `--version` (toolchain only). `--json` prints `{"toolchain":…,"language":…,"ir":…}`. Always exits **0**.
 
 ---
 
@@ -2289,11 +2386,32 @@ For the complete project — the plugin manifests, schemas, component, catalog, 
 
 ---
 
+# Current specification
+
+The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.7.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
+
+| Language area | Introduced | Last changed | Normative source |
+|---|---|---|---|
+| Frontmatter & profiles | 0.1.0 | 0.2.0 (document-kind system) | [0.2.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md) |
+| Content lines (`@speaker`) | 0.1.0 | 0.5.1 (delivery-flag honesty) | [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
+| Branch / match / when / hub | 0.1.0 | 0.4.0 (param-scoped component `<match>`) | [0.4.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md) |
+| `into=` records | 0.1.0 (as `persist=`/`into=`) | 0.6.0 (**breaking** — `persist=` removed) | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
+| State tiers | 0.1.0 | 0.2.0 (added `quest.*` tier) | [0.2.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md) |
+| Facts & Datalog | 0.3.0 | 0.3.0 | [0.3.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md) |
+| Quests (`<quest>`, `<on>`) | 0.2.0 | 0.2.0 | [0.2.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md) |
+| Timeline & property tracks | 0.1.0 | 0.1.0 | [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
+| Connectivity & `after:` | 0.2.0 (`after:`) | 0.5.0 (reachability boundary) | [0.5.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.0.md) |
+| Coverage warnings | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
+| Deny promotion (`--deny`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.7.0 (version unification — language/IR/toolchain aligned; byte-for-byte `0.6.1` semantics) | [0.7.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.7.0.md) |
+
+---
+
 # Specification index
 
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.6.1**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.7.0**.
 
 ## Scenario DSL (the language)
 
@@ -2308,7 +2426,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.5.1 | `trace` preview of quest-gated reads plus authoring-surface honesty items (delivery flags, `lute context` reserved paths, event/component diagnostics). | [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
 | 0.5.2 | A single new `E-UNSET-LITERAL` diagnostic catching the most common misspelling of the *unset* sentinel in a CEL guard. | [0.5.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.2.md) |
 | 0.6.0 | `into=` records without `persist=`; free shot headings — **breaking**. | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
-| **0.6.1** | Current tip — three verification-coverage warnings (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`) and `--deny`/`--deny-warnings` warning promotion; a compatible refinement of 0.6.0. | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
+| 0.6.1 | Three verification-coverage warnings (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`) and `--deny`/`--deny-warnings` warning promotion; a compatible refinement of 0.6.0. | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
+| **0.7.0** | Current tip — version unification: language, IR, and toolchain aligned at `0.7.0`; **no grammar, semantic, or IR shape change** (byte-for-byte `0.6.1` semantics). | [0.7.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.7.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals

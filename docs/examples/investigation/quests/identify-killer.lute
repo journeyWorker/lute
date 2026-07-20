@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.6.1"
+luteVersion: "0.7.0"
 uses: ../world.schema.yaml
 title: Identify the Killer
 ---

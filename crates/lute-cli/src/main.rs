@@ -58,11 +58,18 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
 
+mod doctor;
+mod loc;
+mod runner;
+mod scaffold;
+mod scenario_fmt;
+mod testcmd;
+
 #[derive(Parser)]
 #[command(
     name = "lute",
     version,
-    about = "Checker and compiler for .lute visual-novel scenarios"
+    about = "Checker, compiler, and toolchain for .lute branching game narratives"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -238,6 +245,71 @@ enum Command {
     /// Provider-catalog maintenance.
     #[command(subcommand)]
     Catalog(CatalogCommand),
+    /// Scaffold a new Lute project directory: `lute.project.yaml`, a state
+    /// schema, a starter scene, and a trace mock — ready for `lute check-project`.
+    Init {
+        /// Directory to create (must not already contain a `lute.project.yaml`).
+        dir: PathBuf,
+        /// Project template: `minimal` (default) or `investigation`.
+        #[arg(long, value_name = "NAME")]
+        template: Option<String>,
+    },
+    /// Scaffold one new document into an existing project: `lute new scene
+    /// <name>` / `lute new quest <name>` / `lute new schema <name>`.
+    New {
+        /// Document kind: `scene`, `quest`, or `schema`.
+        kind: String,
+        /// The new document's name (file stem / id).
+        name: String,
+        /// Project directory to scaffold into (default: current directory).
+        #[arg(long, value_name = "DIR", default_value = ".")]
+        dir: PathBuf,
+    },
+    /// Diagnose the local toolchain + project setup: versions, project
+    /// manifest, provider snapshots, and editor integration hints.
+    Doctor {
+        /// Project directory to inspect (default: current directory).
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Emit the report as JSON instead of human checklist lines.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Execute a COMPILED artifact (`lute compile` output) headlessly against
+    /// a mock playthrough — the reference consumer of the runtime contract
+    /// (docs/runtime/): command dispatch, CEL guards, facts + Datalog
+    /// fixpoint, hubs, and quest lifecycle. Distinct from `lute trace`, which
+    /// previews SOURCE; `run` consumes the artifact an engine would.
+    Run {
+        /// Path to the compiled artifact JSON.
+        artifact: PathBuf,
+        /// A YAML mock playthrough (same surfaces as `lute trace --mock`).
+        #[arg(long, value_name = "FILE")]
+        mock: Option<PathBuf>,
+        /// Emit the machine-readable transcript as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run the project's scenario tests: every `*.test.yaml` under `dir`
+    /// traces its scene against the declared mocks and asserts the declared
+    /// expectations (transcript, state, quest status).
+    Test {
+        /// Directory to walk for `*.test.yaml` scenario tests (default: `.`).
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Emit the machine-readable report as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Directory of pinned provider snapshots to resolve ids against.
+        #[arg(long, value_name = "DIR")]
+        providers: Option<PathBuf>,
+        /// Also report branch/arm coverage across the tested documents.
+        #[arg(long)]
+        coverage: bool,
+    },
+    /// Localization & production reporting over a project's content lines.
+    #[command(subcommand)]
+    Loc(LocCommand),
     /// Project-wide, read-only reporting surface over everything the
     /// connectivity layer computes (dsl §5:571-584): the assembled node/edge
     /// graph, per-node reachability plus its declared `after` structure, and
@@ -256,6 +328,9 @@ enum Command {
         /// Directory of pinned provider snapshots to resolve ids against.
         #[arg(long, value_name = "DIR")]
         providers: Option<PathBuf>,
+        /// Output format: `text` (default), `json`, or `dot` (Graphviz).
+        #[arg(long, value_name = "FORMAT")]
+        format: Option<String>,
         /// `reach`/`envelope` sub-view; omitted -> prints the assembled
         /// topological graph (dsl §5:574).
         #[command(subcommand)]
@@ -293,6 +368,31 @@ enum ScenarioCommand {
     Envelope {
         /// A scene's canonical key, or `quest:<id>` for a quest.
         node_id: String,
+    },
+}
+
+/// See [`Command::Loc`].
+#[derive(Subcommand)]
+enum LocCommand {
+    /// Extract every translatable content line (stable `code`, speaker,
+    /// text, choice labels) across a project to a localization export.
+    Export {
+        /// Directory to walk recursively for `*.lute` files.
+        dir: PathBuf,
+        /// Output format: `json` (default) or `csv`.
+        #[arg(long, value_name = "FORMAT")]
+        format: Option<String>,
+        /// Write the export here instead of stdout.
+        #[arg(short = 'o', long = "out", value_name = "FILE")]
+        out: Option<PathBuf>,
+    },
+    /// Word-count and line-count report per document and per speaker.
+    Report {
+        /// Directory to walk recursively for `*.lute` files.
+        dir: PathBuf,
+        /// Emit the report as JSON instead of human table lines.
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -532,11 +632,33 @@ fn main() -> ExitCode {
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
             run_refresh(&dir, project.as_deref())
         }
+        Command::Init { dir, template } => scaffold::run_init(&dir, template.as_deref()),
+        Command::New { kind, name, dir } => scaffold::run_new(&kind, &name, &dir),
+        Command::Doctor { dir, json } => doctor::run_doctor(&dir, json),
+        Command::Run {
+            artifact,
+            mock,
+            json,
+        } => runner::run_artifact(&artifact, mock.as_deref(), json),
+        Command::Test {
+            dir,
+            json,
+            providers,
+            coverage,
+        } => testcmd::run_test(&dir, json, providers.as_deref(), coverage),
+        Command::Loc(LocCommand::Export { dir, format, out }) => {
+            loc::run_export(&dir, format.as_deref().unwrap_or("json"), out.as_deref())
+        }
+        Command::Loc(LocCommand::Report { dir, json }) => loc::run_report(&dir, json),
         Command::Scenario {
             dir,
             providers,
+            format,
             command,
-        } => run_scenario(&dir, providers.as_deref(), command),
+        } => match format.as_deref() {
+            None | Some("text") => run_scenario(&dir, providers.as_deref(), command),
+            Some(fmt) => scenario_fmt::run(&dir, providers.as_deref(), command, fmt),
+        },
         Command::Version { json } => run_version(json),
     }
 }

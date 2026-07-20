@@ -31,6 +31,9 @@ export default defineConfig({
           items: [
             { slug: "getting-started/installation" },
             { slug: "getting-started/first-scene" },
+            { slug: "getting-started/learning-paths" },
+            { slug: "getting-started/build-an-investigation" },
+            { slug: "getting-started/when-to-use" },
           ],
         },
         {
@@ -102,7 +105,7 @@ export default defineConfig({
         {
           label: "Specification",
           translations: { ko: "스펙" },
-          items: [{ slug: "spec" }],
+          items: [{ slug: "spec/current" }, { slug: "spec" }],
         },
       ],
     }),

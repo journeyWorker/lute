@@ -1,0 +1,196 @@
+{
+  "kind": "scene",
+  "lute": "0.7.0",
+  "irVersion": "0.7.0",
+  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "meta": {
+    "character": "detective",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Datalog Rule"
+  },
+  "state": [],
+  "entities": [
+    {
+      "name": "item",
+      "members": [
+        "map",
+        "key"
+      ],
+      "open": false
+    },
+    {
+      "name": "who",
+      "members": [
+        "mira",
+        "jon"
+      ],
+      "open": false
+    }
+  ],
+  "relations": [
+    {
+      "name": "links",
+      "args": [
+        "item",
+        "who"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false
+    },
+    {
+      "name": "sawClue",
+      "args": [
+        "item"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false
+    },
+    {
+      "name": "suspected",
+      "args": [
+        "who"
+      ],
+      "derive": true,
+      "reserved": false
+    }
+  ],
+  "seedFacts": [
+    {
+      "relation": "links",
+      "args": [
+        "map",
+        "mira"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "head": {
+        "relation": "suspected",
+        "terms": [
+          {
+            "kind": "var",
+            "name": "W"
+          }
+        ]
+      },
+      "body": [
+        {
+          "kind": "atom",
+          "atom": {
+            "relation": "sawClue",
+            "terms": [
+              {
+                "kind": "var",
+                "name": "I"
+              }
+            ]
+          },
+          "negated": false
+        },
+        {
+          "kind": "atom",
+          "atom": {
+            "relation": "links",
+            "terms": [
+              {
+                "kind": "var",
+                "name": "I"
+              },
+              {
+                "kind": "var",
+                "name": "W"
+              }
+            ]
+          },
+          "negated": false
+        }
+      ],
+      "raw": "suspected(W) :- sawClue(I), links(I, W)"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "One clue on the table.",
+      "lineId": "detective.s01ep01.narrator_0010"
+    },
+    {
+      "kind": "assert",
+      "addr": "001-0200",
+      "relation": "sawClue",
+      "args": [
+        "map"
+      ]
+    },
+    {
+      "kind": "match",
+      "addr": "001-0300",
+      "subject": "holds(suspected(mira))",
+      "arms": [
+        {
+          "test": "(holds(suspected(mira)))",
+          "target": "001-0400"
+        }
+      ],
+      "otherwise": "001-0600",
+      "converge": "001-0700"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0400",
+      "role": "monologue",
+      "speaker": "detective",
+      "text": "The map points at Mira.",
+      "lineId": "detective.s01ep01.detective_0010"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0500",
+      "target": "001-0700"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0600",
+      "target": "001-0700"
+    },
+    {
+      "kind": "match",
+      "addr": "001-0700",
+      "subject": "!holds(suspected(mira))",
+      "arms": [
+        {
+          "test": "(!holds(suspected(mira)))",
+          "target": "001-0800"
+        }
+      ],
+      "otherwise": "001-1000",
+      "converge": "001-1100"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0800",
+      "role": "monologue",
+      "speaker": "detective",
+      "text": "No one is implicated yet.",
+      "lineId": "detective.s01ep01.detective_0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0900",
+      "target": "001-1100"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1000",
+      "target": "001-1100"
+    }
+  ]
+}

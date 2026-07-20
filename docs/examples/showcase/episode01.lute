@@ -6,7 +6,7 @@ season: 1
 episode: 1
 title: The Full Showcase
 pov: fixer
-luteVersion: "0.6.1"
+luteVersion: "0.7.0"
 # Root capability profile (project lute.project.yaml) — activates showcase.pack.
 profile: showcase
 # Scene-local plugin activation/options layered on top of the profile (§6.1.1):
