@@ -1,0 +1,1004 @@
+---
+// Try Lute — a fully client-side playground.
+//
+// The Rust core is compiled to WebAssembly (wasm-pack --target web) and
+// committed at public/playground/pkg/. This page loads it at RUNTIME via a
+// dynamic import of an absolute URL, so the Vercel/bun website build never
+// needs a Rust toolchain. Everything below runs in the browser.
+//
+// Scope (v1): ONE self-contained document · core profile (lute.core) ·
+// no `uses:` imports · no plugins/providers. See the note rendered on-page.
+import "../styles/theme.css";
+
+const description =
+  "Write Lute in your browser — live diagnostics, compiled JSON IR, and a mock-driven trace, all client-side against the Lute core compiled to WebAssembly.";
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Try Lute — Playground</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href="/favicon.png" />
+    <meta property="og:title" content="Try Lute — Playground" />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="/og.png" />
+  </head>
+  <body>
+    <header class="pg-header">
+      <div class="pg-header-left">
+        <a class="pg-home" href="/">← Lute</a>
+        <h1>Try&nbsp;Lute</h1>
+        <span id="version-badge" class="pg-badge" title="Reported by the WebAssembly build's version()">wasm…</span>
+      </div>
+      <nav class="pg-header-right">
+        <a href="/getting-started/installation/">Install the full toolchain →</a>
+      </nav>
+    </header>
+
+    <p class="pg-scope">
+      <strong>Playground scope:</strong> a single self-contained document ·
+      core profile (<code>lute.core</code>) · no <code>uses:</code> imports ·
+      no plugins or providers. For multi-file projects, imports, plugins, and
+      the LSP, <a href="/getting-started/installation/">install the toolchain</a>.
+    </p>
+
+    <main class="pg-grid">
+      <!-- (a) Editor -->
+      <section class="pg-pane pg-editor-pane">
+        <div class="pg-pane-bar">
+          <label class="pg-field">
+            <span>Example</span>
+            <select id="example-select">
+              <option value="dialogue">Dialogue &amp; branch (Bianca)</option>
+              <option value="investigation">Investigation (hub · facts · match)</option>
+              <option value="quest">Quest (objectives &amp; lifecycle)</option>
+            </select>
+          </label>
+          <span class="pg-status" id="check-status"></span>
+        </div>
+        <div class="pg-editor" id="editor-wrap">
+          <div class="pg-gutter" id="gutter" aria-hidden="true">1</div>
+          <textarea
+            id="editor"
+            spellcheck="false"
+            autocomplete="off"
+            autocapitalize="off"
+            wrap="off"
+            aria-label="Lute source editor"></textarea>
+        </div>
+      </section>
+
+      <!-- (b) Tabs -->
+      <section class="pg-pane pg-tabs-pane">
+        <div class="pg-tabbar" role="tablist">
+          <button class="pg-tab" role="tab" data-tab="diagnostics" aria-selected="true">
+            Diagnostics <span id="diag-count" class="pg-pill">0</span>
+          </button>
+          <button class="pg-tab" role="tab" data-tab="ir" aria-selected="false">Compiled IR</button>
+          <button class="pg-tab" role="tab" data-tab="trace" aria-selected="false">Trace</button>
+        </div>
+
+        <div class="pg-tabpanels">
+          <div class="pg-panel" data-panel="diagnostics" role="tabpanel">
+            <ul id="diagnostics" class="pg-diag-list"></ul>
+          </div>
+
+          <div class="pg-panel" data-panel="ir" role="tabpanel" hidden>
+            <div class="pg-panel-bar">
+              <button id="compile-btn" class="pg-btn">Compile ▶</button>
+              <span class="pg-status" id="compile-status"></span>
+            </div>
+            <pre id="ir-out" class="pg-code"><span class="pg-muted">Press Compile to build the JSON IR artifact.</span></pre>
+            <button id="ir-expand" class="pg-btn pg-btn-ghost" hidden>Show all lines</button>
+          </div>
+
+          <div class="pg-panel" data-panel="trace" role="tabpanel" hidden>
+            <div class="pg-panel-bar pg-trace-bar">
+              <label class="pg-field pg-field-block">
+                <span>Mock (YAML) — drives one deterministic path</span>
+                <textarea id="mock" spellcheck="false" autocomplete="off" wrap="off"
+                  aria-label="Trace mock YAML"></textarea>
+              </label>
+              <div>
+                <button id="trace-btn" class="pg-btn">Run trace ▶</button>
+                <span class="pg-status" id="trace-status"></span>
+              </div>
+            </div>
+            <div id="trace-out" class="pg-trace-out">
+              <span class="pg-muted">Run a trace to preview one mock-driven playthrough.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="load-error" class="pg-load-error" hidden></div>
+
+    <script>
+      // ---- Embedded examples (each verified `lute check`-clean, core profile,
+      //      self-contained: no `uses:`) with a matching default trace mock. ----
+      type Example = { source: string; mock: string };
+
+      const EXAMPLES: Record<string, Example> = {
+        dialogue: {
+          source: `---
+kind: scene
+character: bianca
+season: 1
+episode: 2
+title: The Hostess with a Name
+pov: fixer
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+defs:
+  fond: { type: bool, cel: "scene.affect.bianca >= 1" }
+---
+
+# The Hostess with a Name
+
+## Closing Up
+
+@narrator: A hostess walked over with a menu pressed to her chest. Her face caught.
+@bianca{emotion="surprised"}: Oh!
+@bianca{emotion="delighted"}: Mr. Fixer! From the ramen counter — you eat at Mechageki too, isn't it wonderful?
+
+/* a choice of TONE — both paths get the number; the gentle ask warms her */
+<branch id="number">
+  <choice id="blunt" label="Just ask, flatly">
+    @fixer: Bianca. Your number.
+  </choice>
+  <choice id="soft" label="Ask gently">
+    @fixer: Bianca — would you mind terribly if I had your number?
+    ::set{scene.affect.bianca += 1}
+  </choice>
+</branch>
+
+@bianca{emotion="delighted"}: Of course! Right away, Mr. Fixer.
+
+/* state-driven callback — first-match-wins; <otherwise> is mandatory */
+<match on="scene.choices.number">
+  <when test="@fond">
+    @fixer{mono}: I asked nicely, which I am electing not to examine.
+  </when>
+  <otherwise>
+    @fixer{mono}: I am, apparently, taking that woman somewhere this evening.
+  </otherwise>
+</match>
+`,
+          mock: `# Force the tone choice. Try "blunt" to flip the closing match arm.
+choose:
+  number: soft
+`,
+        },
+        investigation: {
+          source: `---
+kind: scene
+character: detective
+season: 1
+episode: 1
+title: The Study
+pov: detective
+state:
+  run.caseProgress: { type: number, default: 0 }
+entities:
+  clue: { members: [ledger, cufflink] }
+relations:
+  found: { args: [clue], tier: run }
+---
+
+# The Study
+
+## Search the Room
+
+@narrator: The lamp still burned. The ledger had already given you one name.
+::assert{ found(ledger) }
+
+/* A <hub> re-presents its choices until an \`exit\` choice is taken. A choice is
+   offered only when its \`when\` guard holds; \`once\` drops after one pick. */
+<hub id="investigate">
+  <choice id="desk" label="Search the writing desk" once>
+    @detective: A cufflink, wedged behind the drawer.
+    ::assert{ found(cufflink) }
+  </choice>
+  <choice id="confront" label="Confront Mireille with the ledger" when="holds(found(ledger))">
+    @mireille: ...You've read it, then. Fine.
+    ::set{run.caseProgress += 1}
+  </choice>
+  <choice id="leave" label="Step back into the hall" exit>
+    @detective: Enough for now.
+  </choice>
+</hub>
+
+<match on="run.caseProgress">
+  <when test="$ >= 1">
+    @detective{mono}: A name, a motive. The case has a spine now.
+  </when>
+  <otherwise>
+    @detective{mono}: Still only shadows. Keep looking.
+  </otherwise>
+</match>
+`,
+          mock: `# Visit the hub: search the desk, confront, then leave.
+choose:
+  investigate: [desk, confront, leave]
+`,
+        },
+        quest: {
+          source: `---
+kind: quest
+title: Rescue the First Druid
+state:
+  run.act:              { type: number, default: 0 }
+  run.region:           { type: string, default: "" }
+  run.npc.halsin.freed: { type: bool,   default: false }
+  run.npc.halsin.dead:  { type: bool,   default: false }
+  user.xp:              { type: number, default: 0 }
+---
+
+/* A self-contained quest: objectives are done-guards over declared state;
+   the quest starts, completes, or fails as its guards flip. */
+<quest id="rescueHalsin" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
+<objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
+<objective id="freeHalsin" title="Free Halsin from the cage" done="run.npc.halsin.freed"/>
+
+<on event="questComplete">
+::set{user.xp += 300}
+@narrator: Halsin rolled his shoulders and looked north. "Moonrise, then."
+</on>
+
+<on event="questFailed">
+@narrator: The cage held only silence now.
+</on>
+</quest>
+`,
+          mock: `# Seed the state that satisfies start + both objectives → questComplete.
+state:
+  run.act: 1
+  run.region: grove
+  run.npc.halsin.freed: true
+`,
+        },
+      };
+
+      // ---- WASM contract types (see the JS-API contract) ----
+      type Span = { line: number; column: number; byte_start?: number; byte_end?: number };
+      type Diagnostic = { severity: string; code: string; message: string; span: Span };
+      type CheckResult = { ok: boolean; diagnostics: Diagnostic[] };
+      type CompileResult =
+        | { ok: true; artifact: unknown }
+        | { ok: false; diagnostics: Diagnostic[] };
+      type TraceResult = { exit: string; report: any };
+      type WasmModule = {
+        default: () => Promise<unknown>;
+        check_source: (src: string) => string;
+        compile_source: (src: string) => string;
+        trace_source: (src: string, mock: string) => string;
+        version: () => string;
+      };
+
+      const WASM_URL = "/playground/pkg/lute_wasm.js";
+
+      // ---- Element handles ----
+      const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+      const editor = $<HTMLTextAreaElement>("editor");
+      const gutter = $<HTMLDivElement>("gutter");
+      const mockEl = $<HTMLTextAreaElement>("mock");
+      const exampleSel = $<HTMLSelectElement>("example-select");
+      const diagList = $<HTMLUListElement>("diagnostics");
+      const diagCount = $<HTMLSpanElement>("diag-count");
+      const checkStatus = $<HTMLSpanElement>("check-status");
+      const versionBadge = $<HTMLSpanElement>("version-badge");
+      const irOut = $<HTMLPreElement>("ir-out");
+      const irExpand = $<HTMLButtonElement>("ir-expand");
+      const compileBtn = $<HTMLButtonElement>("compile-btn");
+      const compileStatus = $<HTMLSpanElement>("compile-status");
+      const traceBtn = $<HTMLButtonElement>("trace-btn");
+      const traceStatus = $<HTMLSpanElement>("trace-status");
+      const traceOut = $<HTMLDivElement>("trace-out");
+      const loadError = $<HTMLDivElement>("load-error");
+
+      let wasm: WasmModule | null = null;
+
+      // ---- Editor: line-number gutter + scroll sync ----
+      function syncGutter() {
+        const lines = editor.value.split("\n").length;
+        let s = "";
+        for (let i = 1; i <= lines; i++) s += i + "\n";
+        gutter.textContent = s;
+        gutter.scrollTop = editor.scrollTop;
+      }
+      editor.addEventListener("scroll", () => {
+        gutter.scrollTop = editor.scrollTop;
+      });
+
+      // ---- Seek the editor to a 1-based line ----
+      function seekLine(line: number) {
+        const parts = editor.value.split("\n");
+        let offset = 0;
+        for (let i = 0; i < line - 1 && i < parts.length; i++) offset += parts[i].length + 1;
+        editor.focus();
+        editor.setSelectionRange(offset, offset);
+        // Approximate scroll so the target line is visible.
+        const lh = parseFloat(getComputedStyle(editor).lineHeight) || 18;
+        editor.scrollTop = Math.max(0, (line - 3) * lh);
+        syncGutter();
+      }
+
+      // ---- Diagnostics rendering ----
+      function sevIcon(sev: string): string {
+        if (sev === "error") return "●";
+        if (sev === "warning") return "▲";
+        return "◆";
+      }
+      function renderDiagnostics(diags: Diagnostic[]) {
+        diagList.innerHTML = "";
+        diagCount.textContent = String(diags.length);
+        if (diags.length === 0) {
+          const li = document.createElement("li");
+          li.className = "pg-diag-ok";
+          li.textContent = "✓ No diagnostics — the document checks clean.";
+          diagList.appendChild(li);
+          return;
+        }
+        for (const d of diags) {
+          const li = document.createElement("li");
+          li.className = "pg-diag pg-diag-" + d.severity;
+          li.tabIndex = 0;
+          const loc = d.span ? `${d.span.line}:${d.span.column}` : "";
+          li.innerHTML =
+            `<span class="pg-diag-icon">${sevIcon(d.severity)}</span>` +
+            `<span class="pg-diag-loc">${loc}</span>` +
+            `<span class="pg-diag-code">${escapeHtml(d.code)}</span>` +
+            `<span class="pg-diag-msg">${escapeHtml(d.message)}</span>`;
+          const go = () => d.span && seekLine(d.span.line);
+          li.addEventListener("click", go);
+          li.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              go();
+            }
+          });
+          diagList.appendChild(li);
+        }
+      }
+
+      function escapeHtml(s: string): string {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      // ---- check (debounced) ----
+      let checkTimer: number | undefined;
+      function scheduleCheck() {
+        syncGutter();
+        window.clearTimeout(checkTimer);
+        checkTimer = window.setTimeout(runCheck, 300);
+      }
+      function runCheck() {
+        if (!wasm) return;
+        checkStatus.textContent = "checking…";
+        try {
+          const res = JSON.parse(wasm.check_source(editor.value)) as CheckResult;
+          renderDiagnostics(res.diagnostics || []);
+          const errs = (res.diagnostics || []).filter((d) => d.severity === "error").length;
+          checkStatus.textContent = res.ok
+            ? "ok"
+            : `${errs} error${errs === 1 ? "" : "s"}`;
+          checkStatus.className = "pg-status " + (res.ok ? "pg-ok" : "pg-err");
+        } catch (e) {
+          checkStatus.textContent = "check failed";
+          console.error(e);
+        }
+      }
+
+      // ---- Compile (Compiled IR tab) ----
+      const IR_COLLAPSE = 200;
+      let irFull = "";
+      let irExpanded = false;
+
+      function renderIr() {
+        const lines = irFull.split("\n");
+        if (!irExpanded && lines.length > IR_COLLAPSE) {
+          irOut.textContent = lines.slice(0, IR_COLLAPSE).join("\n");
+          irExpand.hidden = false;
+          irExpand.textContent = `Show all ${lines.length} lines`;
+        } else {
+          irOut.textContent = irFull;
+          irExpand.hidden = lines.length <= IR_COLLAPSE;
+          irExpand.textContent = "Collapse";
+        }
+      }
+      irExpand.addEventListener("click", () => {
+        irExpanded = !irExpanded;
+        renderIr();
+      });
+
+      function runCompile() {
+        if (!wasm) return;
+        compileStatus.textContent = "compiling…";
+        compileStatus.className = "pg-status";
+        try {
+          const res = JSON.parse(wasm.compile_source(editor.value)) as CompileResult;
+          if (res.ok) {
+            irFull = JSON.stringify(res.artifact, null, 2);
+            irExpanded = false;
+            renderIr();
+            compileStatus.textContent = "compiled ✓";
+            compileStatus.className = "pg-status pg-ok";
+          } else {
+            const diags = res.diagnostics || [];
+            irFull = "";
+            irExpand.hidden = true;
+            irOut.innerHTML =
+              `<span class="pg-muted">Cannot compile — fix these first:</span>\n\n` +
+              diags
+                .map(
+                  (d) =>
+                    `${escapeHtml(sevIcon(d.severity))} ${d.span ? d.span.line + ":" + d.span.column : ""} ` +
+                    `${escapeHtml(d.code)}  ${escapeHtml(d.message)}`,
+                )
+                .join("\n");
+            compileStatus.textContent = `${diags.length} error${diags.length === 1 ? "" : "s"}`;
+            compileStatus.className = "pg-status pg-err";
+          }
+        } catch (e) {
+          compileStatus.textContent = "compile failed";
+          console.error(e);
+        }
+      }
+      compileBtn.addEventListener("click", runCompile);
+
+      // ---- Trace (Trace tab) ----
+      function transcriptRow(cls: string, cells: string[]): HTMLDivElement {
+        const row = document.createElement("div");
+        row.className = "pg-tr " + cls;
+        for (const c of cells) {
+          const span = document.createElement("span");
+          span.innerHTML = c;
+          row.appendChild(span);
+        }
+        return row;
+      }
+
+      function renderStep(step: any): HTMLDivElement {
+        switch (step.kind) {
+          case "shot":
+            return transcriptRow("pg-tr-shot", [`— shot ${escapeHtml(String(step.number ?? ""))} —`]);
+          case "line":
+            return transcriptRow("pg-tr-line", [
+              `<b class="pg-tr-speaker">${escapeHtml(step.speaker ?? "")}</b>`,
+              escapeHtml(step.text ?? ""),
+            ]);
+          case "set":
+            return transcriptRow("pg-tr-set", [
+              `<span class="pg-tr-kind">set</span>`,
+              `<code>${escapeHtml(step.path ?? "")} = ${escapeHtml(String(step.value ?? ""))}</code>`,
+            ]);
+          case "assert":
+            return transcriptRow("pg-tr-assert", [
+              `<span class="pg-tr-kind">assert</span>`,
+              `<code>${escapeHtml(step.text ?? "")}</code>`,
+            ]);
+          case "decision":
+            return transcriptRow("pg-tr-decision", [
+              `<span class="pg-tr-kind">${escapeHtml(step.construct ?? "decision")}</span>`,
+              `<code>${escapeHtml(step.id ?? "")}</code>`,
+              `→ <b>${escapeHtml(String(step.outcome ?? ""))}</b>` +
+                (step.guard ? ` <span class="pg-muted">[${escapeHtml(String(step.guard))}]</span>` : ""),
+            ]);
+          default:
+            // Unknown step kind: render honestly as a raw JSON row.
+            return transcriptRow("pg-tr-raw", [
+              `<span class="pg-tr-kind">${escapeHtml(step.kind ?? "?")}</span>`,
+              `<code>${escapeHtml(JSON.stringify(step))}</code>`,
+            ]);
+        }
+      }
+
+      function runTrace() {
+        if (!wasm) return;
+        traceStatus.textContent = "tracing…";
+        traceStatus.className = "pg-status";
+        try {
+          const res = JSON.parse(wasm.trace_source(editor.value, mockEl.value)) as TraceResult;
+          traceOut.innerHTML = "";
+          const head = document.createElement("div");
+          head.className = "pg-trace-exit pg-trace-exit-" + res.exit;
+          head.textContent = `exit: ${res.exit}`;
+          traceOut.appendChild(head);
+
+          const report = res.report || {};
+          const steps: any[] = Array.isArray(report.steps) ? report.steps : [];
+          if (res.exit === "refused") {
+            // Refusal: the report carries the diagnostics the CLI would print.
+            const diags: Diagnostic[] = report.diagnostics || [];
+            const note = document.createElement("div");
+            note.className = "pg-muted";
+            note.textContent =
+              diags.length > 0
+                ? "Refused — resolve these before tracing:"
+                : "Refused (check the document first).";
+            traceOut.appendChild(note);
+            for (const d of diags) {
+              traceOut.appendChild(
+                transcriptRow("pg-tr-raw", [
+                  `<span class="pg-tr-kind">${escapeHtml(d.severity)}</span>`,
+                  `<code>${d.span ? d.span.line + ":" + d.span.column + " " : ""}${escapeHtml(d.code)}</code>`,
+                  escapeHtml(d.message),
+                ]),
+              );
+            }
+          } else {
+            for (const step of steps) traceOut.appendChild(renderStep(step));
+            if (steps.length === 0) {
+              const note = document.createElement("div");
+              note.className = "pg-muted";
+              note.textContent = "No steps in the report.";
+              traceOut.appendChild(note);
+            }
+          }
+          traceStatus.textContent = res.exit;
+          traceStatus.className =
+            "pg-status " + (res.exit === "complete" ? "pg-ok" : res.exit === "refused" ? "pg-err" : "");
+        } catch (e) {
+          traceStatus.textContent = "trace failed";
+          console.error(e);
+        }
+      }
+      traceBtn.addEventListener("click", runTrace);
+
+      // ---- Tabs ----
+      const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".pg-tab"));
+      const panels = Array.from(document.querySelectorAll<HTMLDivElement>(".pg-panel"));
+      for (const tab of tabs) {
+        tab.addEventListener("click", () => {
+          const name = tab.dataset.tab;
+          for (const t of tabs) t.setAttribute("aria-selected", String(t === tab));
+          for (const p of panels) p.hidden = p.dataset.panel !== name;
+        });
+      }
+
+      // ---- Example loader ----
+      function loadExample(key: string) {
+        const ex = EXAMPLES[key] || EXAMPLES.dialogue;
+        editor.value = ex.source;
+        mockEl.value = ex.mock;
+        syncGutter();
+        // Reset derived views.
+        irFull = "";
+        irOut.innerHTML = '<span class="pg-muted">Press Compile to build the JSON IR artifact.</span>';
+        irExpand.hidden = true;
+        compileStatus.textContent = "";
+        traceOut.innerHTML = '<span class="pg-muted">Run a trace to preview one mock-driven playthrough.</span>';
+        traceStatus.textContent = "";
+        runCheck();
+      }
+      exampleSel.addEventListener("change", () => loadExample(exampleSel.value));
+      editor.addEventListener("input", scheduleCheck);
+
+      // ---- Boot: load the committed wasm pkg, then wire everything ----
+      function showLoadError(e: unknown) {
+        loadError.hidden = false;
+        loadError.innerHTML =
+          `<strong>Couldn’t load the Lute WebAssembly module.</strong> ` +
+          `This can happen on an older browser (WebAssembly + ES modules are required) ` +
+          `or if the playground build hasn’t been deployed yet. ` +
+          `You can still <a href="/getting-started/installation/">install the toolchain</a> and run <code>lute</code> locally.`;
+        versionBadge.textContent = "unavailable";
+        versionBadge.className = "pg-badge pg-badge-err";
+        checkStatus.textContent = "wasm unavailable";
+        console.error("wasm load failed", e);
+      }
+
+      async function boot() {
+        // Seed the editor immediately so the page is usable while wasm loads.
+        loadExample("dialogue");
+        checkStatus.textContent = "loading wasm…";
+        try {
+          const mod = (await import(/* @vite-ignore */ WASM_URL)) as WasmModule;
+          await mod.default(); // init()
+          wasm = mod;
+          try {
+            const v = JSON.parse(wasm.version());
+            versionBadge.textContent = `toolchain ${v.toolchain} · IR ${v.ir}`;
+            versionBadge.className = "pg-badge pg-badge-ok";
+          } catch {
+            versionBadge.textContent = "ready";
+          }
+          runCheck();
+        } catch (e) {
+          showLoadError(e);
+        }
+      }
+      boot();
+    </script>
+
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      body {
+        background: var(--sl-color-black);
+        color: var(--sl-color-gray-1);
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+      a {
+        color: var(--sl-color-accent-high);
+      }
+      code {
+        font-family: var(--sl-font-mono);
+        font-size: 0.85em;
+      }
+
+      .pg-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem 1rem;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1.25rem;
+        background: var(--sl-color-bg-nav);
+        border-bottom: 1px solid var(--sl-color-hairline);
+      }
+      .pg-header-left {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+      }
+      .pg-header h1 {
+        font-family: var(--lute-serif);
+        font-size: 1.35rem;
+        margin: 0;
+        color: var(--sl-color-white);
+      }
+      .pg-home {
+        text-decoration: none;
+        color: var(--sl-color-gray-2);
+        font-weight: 600;
+      }
+      .pg-badge {
+        font-family: var(--sl-font-mono);
+        font-size: 0.72rem;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid var(--sl-color-hairline);
+        color: var(--sl-color-gray-2);
+        background: var(--sl-color-gray-6);
+      }
+      .pg-badge-ok {
+        color: var(--sl-color-accent-high);
+        border-color: var(--sl-color-accent-low);
+        background: var(--sl-color-accent-low);
+      }
+      .pg-badge-err {
+        color: #ffb4a2;
+        border-color: #5a2a2a;
+        background: #2a1414;
+      }
+      .pg-header-right a {
+        font-size: 0.85rem;
+        text-decoration: none;
+      }
+
+      .pg-scope {
+        margin: 0;
+        padding: 0.5rem 1.25rem;
+        font-size: 0.82rem;
+        color: var(--sl-color-gray-3);
+        background: var(--sl-color-gray-6);
+        border-bottom: 1px solid var(--sl-color-hairline-light);
+      }
+      .pg-scope code {
+        color: var(--sl-color-accent-high);
+      }
+
+      .pg-grid {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background: var(--sl-color-hairline);
+        min-height: 0;
+      }
+      @media (max-width: 850px) {
+        .pg-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .pg-pane {
+        background: var(--sl-color-black);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+      }
+      .pg-pane-bar,
+      .pg-panel-bar {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--sl-color-hairline-light);
+        background: var(--sl-color-bg-sidebar);
+      }
+      .pg-field {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.78rem;
+        color: var(--sl-color-gray-3);
+      }
+      .pg-field-block {
+        display: block;
+        flex: 1;
+      }
+      .pg-field-block span {
+        display: block;
+        margin-bottom: 0.3rem;
+      }
+      select,
+      .pg-btn {
+        font: inherit;
+        font-size: 0.8rem;
+        background: var(--sl-color-gray-6);
+        color: var(--sl-color-gray-1);
+        border: 1px solid var(--sl-color-hairline);
+        border-radius: 6px;
+        padding: 0.25rem 0.6rem;
+        cursor: pointer;
+      }
+      .pg-btn:hover {
+        border-color: var(--sl-color-accent);
+      }
+      .pg-btn-ghost {
+        background: transparent;
+        margin: 0.5rem 0.75rem;
+      }
+      .pg-status {
+        font-family: var(--sl-font-mono);
+        font-size: 0.72rem;
+        color: var(--sl-color-gray-3);
+      }
+      .pg-ok {
+        color: #8fd694;
+      }
+      .pg-err {
+        color: #ffb4a2;
+      }
+
+      /* Editor with line-number gutter */
+      .pg-editor {
+        flex: 1;
+        display: flex;
+        min-height: 320px;
+        overflow: hidden;
+        font-family: var(--sl-font-mono);
+        font-size: 0.82rem;
+        line-height: 1.55;
+      }
+      .pg-gutter {
+        padding: 0.75rem 0.5rem 0.75rem 0.75rem;
+        text-align: right;
+        color: var(--sl-color-gray-4);
+        background: var(--sl-color-bg-sidebar);
+        border-right: 1px solid var(--sl-color-hairline-light);
+        white-space: pre;
+        overflow: hidden;
+        user-select: none;
+        min-width: 2.75rem;
+      }
+      #editor {
+        flex: 1;
+        border: 0;
+        outline: none;
+        resize: none;
+        padding: 0.75rem;
+        background: var(--sl-color-black);
+        color: var(--sl-color-gray-1);
+        font-family: inherit;
+        font-size: inherit;
+        line-height: inherit;
+        white-space: pre;
+        overflow: auto;
+        tab-size: 2;
+      }
+
+      .pg-tabbar {
+        display: flex;
+        border-bottom: 1px solid var(--sl-color-hairline);
+        background: var(--sl-color-bg-sidebar);
+      }
+      .pg-tab {
+        font: inherit;
+        font-size: 0.82rem;
+        background: transparent;
+        color: var(--sl-color-gray-3);
+        border: 0;
+        border-bottom: 2px solid transparent;
+        padding: 0.6rem 1rem;
+        cursor: pointer;
+      }
+      .pg-tab[aria-selected="true"] {
+        color: var(--sl-color-white);
+        border-bottom-color: var(--sl-color-accent);
+      }
+      .pg-pill {
+        font-family: var(--sl-font-mono);
+        font-size: 0.68rem;
+        padding: 0.05rem 0.4rem;
+        border-radius: 999px;
+        background: var(--sl-color-gray-5);
+        color: var(--sl-color-gray-1);
+      }
+      .pg-tabpanels {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .pg-panel {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Diagnostics */
+      .pg-diag-list {
+        list-style: none;
+        margin: 0;
+        padding: 0.4rem;
+      }
+      .pg-diag {
+        display: grid;
+        grid-template-columns: 1.2rem 3.2rem auto 1fr;
+        gap: 0.5rem;
+        align-items: baseline;
+        padding: 0.35rem 0.5rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+      .pg-diag:hover,
+      .pg-diag:focus {
+        background: var(--sl-color-gray-6);
+        outline: none;
+      }
+      .pg-diag-error .pg-diag-icon {
+        color: #ff6b6b;
+      }
+      .pg-diag-warning .pg-diag-icon {
+        color: var(--sl-color-accent);
+      }
+      .pg-diag-loc {
+        font-family: var(--sl-font-mono);
+        color: var(--sl-color-gray-3);
+      }
+      .pg-diag-code {
+        font-family: var(--sl-font-mono);
+        color: var(--sl-color-accent-high);
+      }
+      .pg-diag-msg {
+        color: var(--sl-color-gray-1);
+      }
+      .pg-diag-ok {
+        padding: 0.6rem;
+        color: #8fd694;
+        font-size: 0.82rem;
+      }
+
+      /* Compiled IR */
+      .pg-code {
+        flex: 1;
+        margin: 0;
+        padding: 0.75rem;
+        font-family: var(--sl-font-mono);
+        font-size: 0.76rem;
+        line-height: 1.5;
+        color: var(--sl-color-gray-1);
+        white-space: pre;
+        overflow: auto;
+      }
+      .pg-muted {
+        color: var(--sl-color-gray-4);
+      }
+
+      /* Trace */
+      .pg-trace-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+      }
+      #mock {
+        width: 100%;
+        min-height: 84px;
+        resize: vertical;
+        border: 1px solid var(--sl-color-hairline);
+        border-radius: 6px;
+        background: var(--sl-color-black);
+        color: var(--sl-color-gray-1);
+        font-family: var(--sl-font-mono);
+        font-size: 0.78rem;
+        padding: 0.5rem;
+        white-space: pre;
+      }
+      .pg-trace-out {
+        flex: 1;
+        overflow: auto;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8rem;
+      }
+      .pg-trace-exit {
+        font-family: var(--sl-font-mono);
+        font-size: 0.74rem;
+        margin-bottom: 0.5rem;
+        color: var(--sl-color-gray-3);
+      }
+      .pg-trace-exit-complete {
+        color: #8fd694;
+      }
+      .pg-trace-exit-refused {
+        color: #ffb4a2;
+      }
+      .pg-tr {
+        display: flex;
+        gap: 0.6rem;
+        padding: 0.2rem 0.25rem;
+        border-bottom: 1px solid var(--sl-color-hairline-light);
+      }
+      .pg-tr-shot {
+        color: var(--sl-color-gray-4);
+        font-family: var(--sl-font-mono);
+        font-size: 0.72rem;
+        justify-content: center;
+        border-bottom: none;
+        margin-top: 0.35rem;
+      }
+      .pg-tr-speaker {
+        color: var(--lute-violet);
+        min-width: 5rem;
+        display: inline-block;
+      }
+      .pg-tr-kind {
+        font-family: var(--sl-font-mono);
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        color: var(--sl-color-accent);
+        min-width: 4.5rem;
+      }
+      .pg-tr-decision .pg-tr-kind {
+        color: var(--sl-color-accent-high);
+      }
+
+      .pg-load-error {
+        padding: 0.75rem 1.25rem;
+        background: #2a1414;
+        color: #ffd7cc;
+        border-top: 1px solid #5a2a2a;
+        font-size: 0.85rem;
+      }
+      .pg-load-error a {
+        color: #ffb4a2;
+      }
+    </style>
+  </body>
+</html>

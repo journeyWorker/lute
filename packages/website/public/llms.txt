@@ -7,6 +7,7 @@ Lute is deliberately non-Turing: every document is a finite, terminating artifac
 ## Docs
 
 - [Installation](https://lute-lang.vercel.app/getting-started/installation/): Install the `lute` CLI with bunx, a global bun install, or from Rust source, then verify the toolchain.
+- [Try Lute (playground)](https://lute-lang.vercel.app/playground/): A fully client-side browser playground — the Lute core compiled to WebAssembly — with live diagnostics, the compiled JSON IR, and a mock-driven trace over one self-contained core-profile document.
 - [Write your first scene](https://lute-lang.vercel.app/getting-started/first-scene/): Build one small, real Lute scene from an empty file step by step, running `lute` at every step.
 - [Learning paths](https://lute-lang.vercel.app/getting-started/learning-paths/): Role-first reading routes — scenario writer, narrative programmer, engine integrator, plugin author, AI tooling developer — each an ordered list of existing pages.
 - [Build an investigation](https://lute-lang.vercel.app/getting-started/build-an-investigation/): A first-project tutorial walking the worked investigation example end to end — manifest, schema, facts + Datalog, a fact-guarded hub, a quest, after: sequencing, check-project, scenario reach, two trace mocks, compile — including the deliberate W-UNPROVEN-RELATIONAL boundary.
