@@ -22,6 +22,21 @@ MAY drift apart again when a future release genuinely changes only some axes.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Added
+
+- **Browser playground** — the website ships a fully client-side
+  [Try Lute](https://lute-lang.vercel.app/playground/) page: a new
+  `lute-wasm` crate compiles the checker, compiler, and tracer to
+  WebAssembly (2.3 MB, committed at
+  `packages/website/public/playground/pkg/` so the site build stays
+  Rust-free), exposing `check_source` / `compile_source` / `trace_source` /
+  `version`. The page offers live diagnostics with click-to-seek, an
+  on-demand compiled-IR view, a mock-driven trace transcript, and three
+  embedded checker-clean examples. Scope: one self-contained document,
+  core profile (no `uses:` imports or plugins).
+
 ## [0.7.0] - 2026-07-20
 
 ### Changed

@@ -1,0 +1,19 @@
+[package]
+name = "lute-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+lute-core-span = { path = "../lute-core-span" }
+lute-manifest = { path = "../lute-manifest" }
+lute-check = { path = "../lute-check" }
+lute-syntax = { path = "../lute-syntax" }
+lute-compile = { path = "../lute-compile" }
+lute-trace = { path = "../lute-trace" }
+serde_json = { workspace = true }
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"
