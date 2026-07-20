@@ -2,7 +2,7 @@ name: Test
 
 # `offline` is the baseline `cargo test --workspace` gate — zero network,
 # runs on every PR touching Rust sources. `launcher-typecheck` compiles
-# the `lutecli` JS launcher (packages/cli) under `tsc --noEmit` so a type
+# the `@lute-lang/lute` JS launcher (packages/cli) under `tsc --noEmit` so a type
 # regression in the platform-detection / binary-resolution logic is caught
 # without a native build.
 
@@ -44,7 +44,7 @@ jobs:
         run: cargo test --workspace
 
   launcher-typecheck:
-    name: typecheck lutecli launcher (tsc --noEmit)
+    name: typecheck @lute-lang/lute launcher (tsc --noEmit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

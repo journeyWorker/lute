@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `lutecli`'s launcher: platform detection, binary resolution,
+// `@lute-lang/lute`'s launcher: platform detection, binary resolution,
 // argv/exit-code passthrough. Adapted line-for-line (design D2) from
 // the sibling `canon` monorepo's `packages/cli/src/index.ts`'s
 // `resolveTargetPackageName` / libc-kind probing / search-path order /
@@ -11,7 +11,7 @@
 // binary"): the search-path order here puts the workspace dev build FIRST
 // (`target/<triple>/release/`, then `target/release/`), so `bun run dev`
 // iteration inside the lute monorepo never silently picks up a stale
-// installed `lutecli-core-<platform>` package.
+// installed `@lute-lang/lute-core-<platform>` package.
 import { spawnSync, execSync } from "node:child_process";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
@@ -21,10 +21,11 @@ const binaryName = process.platform === "win32" ? "lute.exe" : "lute";
 
 const currentDir = fileURLToPath(new URL(".", import.meta.url));
 const dirName = basename(currentDir);
-// In npm/bun install: currentDir = .../node_modules/lutecli/dist/
-//   cliDir = .../node_modules/lutecli/
-//   scopeDir = .../node_modules/           (unscoped: siblings are
-//              node_modules/lutecli-core-<platform>/)
+// In npm/bun install (SCOPED under @lute-lang): currentDir = .../node_modules/@lute-lang/lute/dist/
+//   cliDir = .../node_modules/@lute-lang/lute/
+//   scopeDir = .../node_modules/@lute-lang/   (the npm scope dir; the sibling
+//              platform package is node_modules/@lute-lang/lute-core-<platform>/)
+//   workspaceRoot = .../node_modules/
 // In monorepo dev (dist): currentDir = .../packages/cli/dist/
 //   cliDir = .../packages/cli/
 //   scopeDir = .../packages/
@@ -116,7 +117,7 @@ function loaderPresent(prefix: string): boolean {
 }
 
 // Only the two S0 acceptance-bar platforms (design D3: macOS arm64, Linux
-// x64 gnu) resolve to a real `lutecli-core-<platform>` package today.
+// x64 gnu) resolve to a real `@lute-lang/lute-core-<platform>` package
 // Every other platform/arch/libc combination returns null and hits the
 // "Unsupported platform fails with an actionable error" scenario — adding
 // a target later is a new `packages/core-<platform>/` + a CI matrix row,
@@ -188,27 +189,31 @@ searchPaths.push(join(workspaceRoot, "target", "release", binaryName));
 //    binary directly rather than through an optionalDependency).
 searchPaths.push(join(cliDir, "bin", binaryName));
 
-// 3. The resolved `lutecli-core-<platform>` optionalDependency, in every
-//    location a package manager might have placed it. The npm package is
-//    UNSCOPED (`lutecli-core-<platform>`); `resolveTargetPackageName`
-//    returns the short `core-<platform>` suffix, which doubles as the
-//    monorepo `packages/<dir>` directory name, so name and dir are built
-//    from the one suffix here.
-const platformPkgName = targetPackage ? `lutecli-${targetPackage}` : null;
+// 3. The resolved platform optionalDependency, in every location a package
+//    manager might have placed it. Packages are SCOPED under @lute-lang:
+//    the launcher is `@lute-lang/lute` and each platform binary is
+//    `@lute-lang/lute-core-<platform>`. `resolveTargetPackageName` returns
+//    the short `core-<platform>` suffix, which doubles as the monorepo
+//    `packages/<dir>` directory name; both the scope-relative suffix
+//    (`lute-<suffix>`) and the full scoped name are derived from it here.
+const platformSuffix = targetPackage ? `lute-${targetPackage}` : null;
+const platformPkgName = platformSuffix ? `@lute-lang/${platformSuffix}` : null;
 if (targetPackage) {
   searchPaths.push(
     // Monorepo development: prebuilt binary staged into packages/core-<platform>/bin
     join(workspaceRoot, "packages", targetPackage, "bin", binaryName),
   );
 }
-if (platformPkgName) {
+if (platformSuffix && platformPkgName) {
   searchPaths.push(
-    // npm/bun install: sibling unscoped package (node_modules/lutecli-core-<platform>/bin/...)
-    join(scopeDir, platformPkgName, "bin", binaryName),
+    // npm/bun install: sibling inside the same @lute-lang/ scope dir
+    // (node_modules/@lute-lang/lute-core-<platform>/bin/...). A scoped
+    // install nests one extra level, so scopeDir IS the @lute-lang/ scope
+    // dir and the platform package sits right next to the launcher.
+    join(scopeDir, platformSuffix, "bin", binaryName),
     // Nested node_modules: non-hoisted / pnpm
     join(cliDir, "node_modules", platformPkgName, "bin", binaryName),
-    // Hoisted edge cases
-    join(scopeDir, "node_modules", platformPkgName, "bin", binaryName),
+    // Hoisted to an ancestor node_modules
     join(workspaceRoot, "node_modules", platformPkgName, "bin", binaryName),
   );
 }
@@ -239,7 +244,7 @@ if (!binary) {
   if (platformPkgName) {
     console.error(`  expected optional package: ${platformPkgName}`);
   } else {
-    console.error("  no lutecli-core-<platform> package exists for this platform/arch yet");
+    console.error("  no @lute-lang/lute-core-<platform> package exists for this platform/arch yet");
   }
   console.error("  build from source: cargo build --release -p lute-cli");
   process.exit(1);

@@ -6,7 +6,7 @@
       "name": "lute-workspace",
     },
     "packages/cli": {
-      "name": "lutecli",
+      "name": "@lute-lang/lute",
       "version": "0.1.0",
       "bin": {
         "lute": "./bin.js",
@@ -16,16 +16,16 @@
         "typescript": "^5.0.0",
       },
       "optionalDependencies": {
-        "lutecli-core-darwin-arm64": "workspace:*",
-        "lutecli-core-linux-x64": "workspace:*",
+        "@lute-lang/lute-core-darwin-arm64": "workspace:*",
+        "@lute-lang/lute-core-linux-x64": "workspace:*",
       },
     },
     "packages/core-darwin-arm64": {
-      "name": "lutecli-core-darwin-arm64",
+      "name": "@lute-lang/lute-core-darwin-arm64",
       "version": "0.1.0",
     },
     "packages/core-linux-x64": {
-      "name": "lutecli-core-linux-x64",
+      "name": "@lute-lang/lute-core-linux-x64",
       "version": "0.1.0",
     },
     "packages/website": {
@@ -188,6 +188,12 @@
     "@img/sharp-win32-x64": ["@img/sharp-win32-x64@0.34.5", "", { "os": "win32", "cpu": "x64" }, "sha512-+29YMsqY2/9eFEiW93eqWnuLcWcufowXewwSNIT6UwZdUUCrM3oFjMWH/Z6/TMmb4hlFenmfAVbpWeup2jryCw=="],
 
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
+
+    "@lute-lang/lute": ["@lute-lang/lute@workspace:packages/cli"],
+
+    "@lute-lang/lute-core-darwin-arm64": ["@lute-lang/lute-core-darwin-arm64@workspace:packages/core-darwin-arm64"],
+
+    "@lute-lang/lute-core-linux-x64": ["@lute-lang/lute-core-linux-x64@workspace:packages/core-linux-x64"],
 
     "@lute/website": ["@lute/website@workspace:packages/website"],
 
@@ -558,12 +564,6 @@
     "longest-streak": ["longest-streak@3.1.0", "", {}, "sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g=="],
 
     "lru-cache": ["lru-cache@11.5.2", "", {}, "sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g=="],
-
-    "lutecli": ["lutecli@workspace:packages/cli"],
-
-    "lutecli-core-darwin-arm64": ["lutecli-core-darwin-arm64@workspace:packages/core-darwin-arm64"],
-
-    "lutecli-core-linux-x64": ["lutecli-core-linux-x64@workspace:packages/core-linux-x64"],
 
     "magic-string": ["magic-string@0.30.21", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
 

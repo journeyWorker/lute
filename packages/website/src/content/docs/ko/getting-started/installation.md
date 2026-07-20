@@ -13,10 +13,10 @@ Lute는 단일 명령줄 도구 `lute` 하나로 제공됩니다. 이 도구는 
 게시된 npm 패키지를 가져와 번들된 네이티브 바이너리를 실행합니다:
 
 ```sh
-bunx lutecli check scene.lute
+bunx @lute-lang/lute check scene.lute
 ```
 
-npm 패키지 이름은 `lutecli`이고, 이 패키지가 설치하는 명령은 `lute`입니다. `bunx lutecli <args>`와
+npm 패키지 이름은 `@lute-lang/lute`이고, 이 패키지가 설치하는 명령은 `lute`입니다. `bunx @lute-lang/lute <args>`와
 전역 설치된 `lute <args>`는 동일한 프로그램입니다.
 
 ## 전역 설치
@@ -24,20 +24,20 @@ npm 패키지 이름은 `lutecli`이고, 이 패키지가 설치하는 명령은
 일상적인 사용을 위해 `lute`를 `PATH`에 유지하려면, 패키지를 bun으로 전역 설치하세요:
 
 ```sh
-bun add -g lutecli
+bun add -g @lute-lang/lute
 lute check scene.lute
 ```
 
-`lutecli`는 얇은 런처입니다: 플랫폼을 감지하여, 플랫폼별 선택적 의존성
-(`lutecli-core-darwin-arm64` 또는 `lutecli-core-linux-x64`)으로 배포되는 사전 빌드된 네이티브
+`@lute-lang/lute`는 얇은 런처입니다: 플랫폼을 감지하여, 플랫폼별 선택적 의존성
+(`@lute-lang/lute-core-darwin-arm64` 또는 `@lute-lang/lute-core-linux-x64`)으로 배포되는 사전 빌드된 네이티브
 바이너리로 디스패치합니다. 올바른 바이너리는 설치 시점에 자동으로 선택됩니다.
 
 ## 플랫폼 지원
 
 | 플랫폼 | npm 코어 패키지 | 상태 |
 |---|---|---|
-| macOS (Apple silicon) | `lutecli-core-darwin-arm64` | 지원됨 |
-| Linux (x86-64) | `lutecli-core-linux-x64` | 지원됨 |
+| macOS (Apple silicon) | `@lute-lang/lute-core-darwin-arm64` | 지원됨 |
+| Linux (x86-64) | `@lute-lang/lute-core-linux-x64` | 지원됨 |
 
 지원되지 않는 플랫폼에서는 런처가 지원 매트릭스를 알려주는 실행 가능한 오류와 함께 종료됩니다.
 Windows와 musl 기반 Linux는 아직 패키징되지 않았습니다 — 대신 소스에서 빌드하세요.

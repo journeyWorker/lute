@@ -10,7 +10,7 @@ moment `.github/workflows/build-native.yml` (test matrix) and
 table.
 
 This script fails CI the instant one matrix (or the shared env, or a
-platform package's `package.json` name, or `lutecli`'s
+    platform package's `package.json` name, or `@lute-lang/lute`'s
 `optionalDependencies` set) drifts from the others — closing the drift
 hole BEFORE a broken release rather than discovering it via a failed
 publish.
@@ -181,7 +181,7 @@ def main() -> int:
         if pkg_name:
             platform_names.add(pkg_name)
 
-    # 4. lutecli's optionalDependencies keys are EXACTLY the set of
+    # 4. @lute-lang/lute's optionalDependencies keys are EXACTLY the set of
     #    platform package names the publish matrix ships (no orphan dep,
     #    no unshipped platform).
     cli_manifest = ROOT / "packages/cli/package.json"
@@ -190,7 +190,7 @@ def main() -> int:
         opt_keys = set(opt.keys())
         check(
             opt_keys == platform_names,
-            f"lutecli optionalDependencies drift:\n  optionalDependencies={sorted(opt_keys)}\n  publish matrix names ={sorted(platform_names)}",
+            f"@lute-lang/lute optionalDependencies drift:\n  optionalDependencies={sorted(opt_keys)}\n  publish matrix names ={sorted(platform_names)}",
         )
     else:
         ERRORS.append("packages/cli/package.json is missing")

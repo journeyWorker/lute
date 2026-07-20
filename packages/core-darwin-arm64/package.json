@@ -1,5 +1,5 @@
 {
-  "name": "lutecli-core-darwin-arm64",
+  "name": "@lute-lang/lute-core-darwin-arm64",
   "version": "0.1.0",
   "description": "lute CLI binary for darwin arm64",
   "license": "MIT",
