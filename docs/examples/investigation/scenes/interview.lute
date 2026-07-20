@@ -1,0 +1,58 @@
+---
+kind: scene
+luteVersion: "0.6.1"
+character: detective
+season: 1
+episode: 2
+title: The Interview Room
+# Sequenced AFTER the crime scene (0.2.0 §2.2): the checker/`lute scenario`
+# assume the only declared route here runs through `detective.s01ep01`.
+after: 'visited("detective.s01ep01")'
+uses: ../world.schema.yaml
+---
+
+/*
+  The interrogation. A revisit `<hub>` (§7.3.2) whose choices are FACT-GUARDED
+  — `pressLedger`/`pressLetter` are eligible only once the matching clue has
+  been found (`when="holds(foundClue(...))"`). `askAlibi` is `once`; `leave`
+  is the unguarded `exit` that satisfies the no-dead-end obligation. After the
+  hub, a `<match on="run.suspectFocus">` reads the run-tier enum the choices
+  wrote — exhaustive over the enum domain, so no `<otherwise>` is needed.
+*/
+
+## The Interview Room
+
+@narrator: Three chairs, one table, and the smell of cold coffee.
+
+<hub id="interrogate">
+  <choice id="pressLedger" label="Press them on the ledger" when="holds(foundClue(ledger))">
+    @detective: These numbers were bled dry. Explain them.
+    ::set{ run.suspectFocus = "blake" }
+    ::set{ run.leadStrength += 1 }
+  </choice>
+  <choice id="pressLetter" label="Press them on the letter" when="holds(foundClue(letter))">
+    @detective: You signed this, then you tried to unsign it.
+    ::set{ run.suspectFocus = "blake" }
+    ::set{ run.leadStrength += 1 }
+  </choice>
+  <choice id="askAlibi" label="Ask for an alibi" once>
+    @detective: Walk me through last night. Slowly.
+  </choice>
+  <choice id="leave" label="End the interview" exit>
+    @detective: We're done here. For now.
+  </choice>
+</hub>
+
+## Reading the Room
+
+<match on="run.suspectFocus">
+  <when is="blake">
+    @detective{mono}: Blake keeps surfacing. A thread worth pulling.
+  </when>
+  <when is="cass">
+    @detective{mono}: Cass, then — the quiet ones keep the best books.
+  </when>
+  <when is="dana">
+    @detective{mono}: Dana. I'm not convinced, but I'll note it.
+  </when>
+</match>

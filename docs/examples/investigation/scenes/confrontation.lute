@@ -1,0 +1,45 @@
+---
+kind: scene
+luteVersion: "0.6.1"
+character: detective
+season: 1
+episode: 3
+title: The Confrontation
+# Sequenced AFTER the interview — closing the reachability chain
+# crime-scene -> interview -> confrontation.
+after: 'visited("detective.s01ep02")'
+uses: ../world.schema.yaml
+---
+
+/*
+  The accusation. A `<branch>` offers one exclusive accusation; each choice
+  records the pick into the run-tier enum `run.accused` via the `into=`/`value=`
+  record sugar. The verdict lines then branch on whether the accusation matched
+  `run.trueKiller` — a pair of complementary `when=` guards, so exactly one of
+  success/failure emits. This is the document both trace mocks drive: seeding
+  `run.trueKiller` and forcing `accuse` reaches two different endings.
+*/
+
+## The Confrontation
+
+@narrator: Everyone in one room. The detective lays the file on the table.
+@detective{mono}: One name. I only get to say one.
+
+<branch id="accuse">
+  <choice id="accuseBlake" label="Accuse Blake" into="run.accused" value="blake">
+    @detective: Blake. The ledger and the letter were both yours.
+  </choice>
+  <choice id="accuseCass" label="Accuse Cass" into="run.accused" value="cass">
+    @detective: Cass. You balanced these books in blood.
+  </choice>
+  <choice id="accuseDana" label="Accuse Dana" into="run.accused" value="dana">
+    @detective: Dana. You were never as far away as you claimed.
+  </choice>
+</branch>
+
+## The Verdict
+
+@narrator{when="run.accused == run.trueKiller"}: The cuffs close on the right wrists. Case closed.
+@detective{mono when="run.accused == run.trueKiller"}: Booked. The file can finally rest.
+@narrator{when="run.accused != run.trueKiller"}: The wrong suspect walks free. Somewhere, the real one exhales.
+@detective{mono when="run.accused != run.trueKiller"}: I got it wrong. The file stays open.

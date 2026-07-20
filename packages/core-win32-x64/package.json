@@ -1,12 +1,12 @@
 {
-  "name": "@lute-lang/lute-core-linux-x64",
+  "name": "@lute-lang/lute-core-win32-x64",
   "version": "0.2.0",
-  "description": "lute CLI binary for linux x64 (glibc)",
+  "description": "lute CLI binary for windows x64",
   "license": "MIT",
   "type": "module",
-  "os": ["linux"],
+  "os": ["win32"],
   "cpu": ["x64"],
-  "main": "bin/lute",
+  "main": "bin/lute.exe",
   "files": ["bin"],
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
@@ -15,6 +15,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/journeyWorker/lute.git",
-    "directory": "packages/core-linux-x64"
+    "directory": "packages/core-win32-x64"
   }
 }

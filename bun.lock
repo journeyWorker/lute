@@ -7,7 +7,7 @@
     },
     "packages/cli": {
       "name": "@lute-lang/lute",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "bin": {
         "lute": "./bin.js",
       },
@@ -16,17 +16,22 @@
         "typescript": "^5.0.0",
       },
       "optionalDependencies": {
-        "@lute-lang/lute-core-darwin-arm64": "workspace:*",
-        "@lute-lang/lute-core-linux-x64": "workspace:*",
+        "@lute-lang/lute-core-darwin-arm64": "0.2.0",
+        "@lute-lang/lute-core-linux-x64": "0.2.0",
+        "@lute-lang/lute-core-win32-x64": "0.2.0",
       },
     },
     "packages/core-darwin-arm64": {
       "name": "@lute-lang/lute-core-darwin-arm64",
-      "version": "0.1.0",
+      "version": "0.2.0",
     },
     "packages/core-linux-x64": {
       "name": "@lute-lang/lute-core-linux-x64",
-      "version": "0.1.0",
+      "version": "0.2.0",
+    },
+    "packages/core-win32-x64": {
+      "name": "@lute-lang/lute-core-win32-x64",
+      "version": "0.2.0",
     },
     "packages/website": {
       "name": "@lute/website",
@@ -194,6 +199,8 @@
     "@lute-lang/lute-core-darwin-arm64": ["@lute-lang/lute-core-darwin-arm64@workspace:packages/core-darwin-arm64"],
 
     "@lute-lang/lute-core-linux-x64": ["@lute-lang/lute-core-linux-x64@workspace:packages/core-linux-x64"],
+
+    "@lute-lang/lute-core-win32-x64": ["@lute-lang/lute-core-win32-x64@workspace:packages/core-win32-x64"],
 
     "@lute/website": ["@lute/website@workspace:packages/website"],
 

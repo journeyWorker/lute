@@ -1,0 +1,40 @@
+---
+kind: scene
+luteVersion: "0.6.1"
+character: detective
+season: 1
+episode: 1
+title: The Study
+# Graph ROOT: no `after:`, so `lute scenario` treats this scene as an
+# unconditional entry point the rest of the case is reachable from.
+uses: ../world.schema.yaml
+---
+
+/*
+  The opening scene. The detective walks the crime scene and LOGS evidence:
+  each `::assert{ foundClue(...) }` writes a relational-fact delta (0.3.0 §5),
+  and each `::set{ run.cluesLogged += 1 }` bumps the scalar counter the quest's
+  `gatherEvidence` objective gates on. Because `foundClue` is asserted here,
+  the derived relation `points` becomes producible project-wide (its rule's
+  base atoms both have producers: `foundClue` here, `implicates` seeded).
+*/
+
+## The Study
+
+@narrator: The victim's study, untouched since the coroner left.
+@detective{mono}: Two things in here don't belong. Log them.
+
+::assert{ foundClue(ledger) }
+::set{ run.cluesLogged += 1 }
+@detective: A ledger — the balances scratched out in red ink.
+
+::assert{ foundClue(letter) }
+::set{ run.cluesLogged += 1 }
+@detective: And a letter, signed once and then unsigned.
+
+/*
+  A fact-query `when=` guard over the DERIVED relation `points` (0.3.0 §7):
+  `holds(points(blake))` is true once a found clue implicates Blake. The line
+  emits only when the derivation holds — the engine evaluates it at play time.
+*/
+@detective{mono when="holds(points(blake))"}: Both threads pull toward one name.

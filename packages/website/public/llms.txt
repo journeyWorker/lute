@@ -1,6 +1,6 @@
 # Lute
 
-> Lute is a total language for visual-novel scenarios: `.lute` documents compile to flat JSON command records plus CEL. Author dialogue, branches, timelines, and relational state; statically check reachability and simulate before you ship. Language version 0.6.1.
+> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. Language version 0.6.1.
 
 Lute is deliberately non-Turing: every document is a finite, terminating artifact, so the checker can prove reachability, definite-assignment, and envelope properties instead of guessing. The CLI (`lute`) is a headless checker, compiler, and preview tool; `lute context --json` emits the project-resolved authoring surface an AI or human needs to write valid Lute, and `lute check --json` gives a machine-readable diagnostic loop. Below, each link points to a single documentation page on <https://lute-lang.vercel.app>.
 
@@ -26,6 +26,7 @@ Lute is deliberately non-Turing: every document is a finite, terminating artifac
 - [Reachability](https://lute-lang.vercel.app/connectivity/reachability/): How Lute proves whether a node has a satisfiable route under the `after` graph — the Reachable/Unreachable/Unknown verdicts.
 - [Guaranteed / Possible envelopes](https://lute-lang.vercel.app/connectivity/envelopes/): The per-node available-state analysis — the Guaranteed and Possible tables over run/user state and the Possible-minus-Guaranteed warning.
 - [CLI reference](https://lute-lang.vercel.app/tooling/cli/): Every `lute` subcommand — check, check-project, compile, trace, scenario, context, tag, fix, catalog refresh — with flags and exit codes.
+- [Runtime contract](https://lute-lang.vercel.app/tooling/runtime-contract/): The engine-side contract — what Lute emits (a versioned JSON IR plus CEL) and what an engine adapter must implement to play it: the command loop, CEL evaluation, facts, quest lifecycle, and typed bridges.
 - [Tracing guide](https://lute-lang.vercel.app/tooling/tracing/): Preview a scene before shipping — seeding state, facts, choices, events, and accepts via flags or a mock YAML file, and the `E-TRACE-*` refusals.
 - [Providers and catalog](https://lute-lang.vercel.app/tooling/providers-and-catalog/): Snapshot-first provider resolution, the `--providers` flag, `catalog refresh` re-stamping, and `capabilityVersion`.
 - [Editors and LSP](https://lute-lang.vercel.app/tooling/editors/): Installing `lute-lsp`, wiring the VS Code, Neovim, and Oh My Pi clients, and the language features the server provides.

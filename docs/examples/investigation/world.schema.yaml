@@ -1,0 +1,38 @@
+# Shared world schema for the investigation example (dsl §9.2 scalar tiers +
+# 0.3.0 §3/§4 relational vocabulary). A pure declaration map (no `---`/body,
+# D14), imported by every scene and the quest via `uses: ../world.schema.yaml`.
+
+# --- Scalar state (run/user tiers) ---------------------------------------
+# Every path carries a `default:`, so each read is definitely assigned even in
+# a standalone single-file `check` (no cross-scene envelope needed).
+state:
+  run.cluesLogged:  { type: number, default: 0 }
+  run.leadStrength: { type: number, default: 0 }
+  run.suspectFocus: { type: { enum: [blake, cass, dana] }, default: blake }
+  run.accused:      { type: { enum: [none, blake, cass, dana] }, default: none }
+  run.trueKiller:   { type: { enum: [blake, cass, dana] }, default: blake }
+  user.solved:      { type: number, default: 0 }
+
+# --- Relational fact world (0.3.0 §3) ------------------------------------
+entities:
+  suspect: { members: [blake, cass, dana] }
+  clue:    { members: [ledger, letter, knife] }
+
+relations:
+  # `foundClue` is asserted by the crime scene as the detective logs evidence.
+  foundClue:  { args: [clue], tier: run }
+  # `implicates` is the static case map — which clue points at which suspect.
+  implicates: { args: [clue, suspect], tier: run, key: [0] }
+  # `points` is DERIVED: a suspect the found clues implicate (see `rules:`).
+  points:     { args: [suspect], derive: true }
+
+# Seed facts (0.3.0 §4): the fixed evidence-to-suspect map, loaded from start.
+facts:
+  - "implicates(ledger, blake)"
+  - "implicates(letter, blake)"
+  - "implicates(knife, cass)"
+
+# Datalog derivation (0.3.0 §7): a suspect is `points`-ed at once a clue that
+# implicates them has been found. Function-free, terminating by construction.
+rules:
+  - "points(S) :- foundClue(C), implicates(C, S)"

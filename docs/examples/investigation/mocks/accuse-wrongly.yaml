@@ -1,0 +1,8 @@
+# Trace mock (dsl 0.4.0 §4.3) — the detective accuses the WRONG suspect.
+# Same truth (`run.trueKiller: blake`) but a different forced `accuse` choice,
+# so `run.accused` (cass) diverges from `run.trueKiller` and the failure ending
+# fires. Contrast the transcript with accuse-correctly.yaml.
+state:
+  run.trueKiller: blake
+choose:
+  accuse: accuseCass

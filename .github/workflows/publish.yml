@@ -88,10 +88,17 @@ jobs:
             target: aarch64-apple-darwin
             package_dir: core-darwin-arm64
             package_name: "@lute-lang/lute-core-darwin-arm64"
+            binary_ext: ""
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             package_dir: core-linux-x64
             package_name: "@lute-lang/lute-core-linux-x64"
+            binary_ext: ""
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+            package_dir: core-win32-x64
+            package_name: "@lute-lang/lute-core-win32-x64"
+            binary_ext: ".exe"
 
     steps:
       - uses: actions/checkout@v7
@@ -115,13 +122,14 @@ jobs:
         run: cargo build --release -p lute-cli --target ${{ matrix.settings.target }}
 
       - name: Strip binary
+        if: matrix.settings.binary_ext == ''
         run: strip "target/${{ matrix.settings.target }}/release/lute"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v6
         with:
           name: lute-binary-${{ matrix.settings.target }}
-          path: target/${{ matrix.settings.target }}/release/lute
+          path: target/${{ matrix.settings.target }}/release/lute${{ matrix.settings.binary_ext }}
           if-no-files-found: error
 
   publish:
@@ -170,17 +178,24 @@ jobs:
           name: lute-binary-x86_64-unknown-linux-gnu
           path: packages/core-linux-x64/bin
 
+      - name: Download win32-x64 binary artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: lute-binary-x86_64-pc-windows-msvc
+          path: packages/core-win32-x64/bin
+
       - name: Stage binaries executable
         run: |
           chmod +x packages/core-darwin-arm64/bin/lute
           chmod +x packages/core-linux-x64/bin/lute
+          chmod +x packages/core-win32-x64/bin/lute.exe
 
       - name: Apply the workspace version to every package.json
         env:
           VERSION: ${{ needs.read-version.outputs.version }}
         run: |
           set -euo pipefail
-          for pkg in packages/cli packages/core-darwin-arm64 packages/core-linux-x64; do
+          for pkg in packages/cli packages/core-darwin-arm64 packages/core-linux-x64 packages/core-win32-x64; do
             jq --arg v "$VERSION" '.version = $v' "$pkg/package.json" > "$pkg/package.json.tmp"
             mv "$pkg/package.json.tmp" "$pkg/package.json"
           done
@@ -229,7 +244,7 @@ jobs:
             exit 1
           }
           ALREADY=""
-          for pkg_dir in core-darwin-arm64 core-linux-x64 cli; do
+          for pkg_dir in core-darwin-arm64 core-linux-x64 core-win32-x64 cli; do
             PKG=$(jq -r .name "packages/$pkg_dir/package.json")
             if is_published "$PKG"; then
               ALREADY="$ALREADY $PKG"
@@ -267,6 +282,20 @@ jobs:
 
       - name: Publish @lute-lang/lute-core-linux-x64 (idempotent)
         working-directory: packages/core-linux-x64
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          PKG=$(jq -r .name package.json)
+          if npm view "$PKG@$VERSION" version >/dev/null 2>&1; then
+            echo "$PKG@$VERSION already on npm — skipping (idempotent)."
+          else
+            npm publish --provenance --access public
+          fi
+
+      - name: Publish @lute-lang/lute-core-win32-x64 (idempotent)
+        working-directory: packages/core-win32-x64
         env:
           VERSION: ${{ needs.read-version.outputs.version }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

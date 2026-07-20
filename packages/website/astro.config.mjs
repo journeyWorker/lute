@@ -4,11 +4,12 @@ import starlight from "@astrojs/starlight";
 
 // https://astro.build/config
 export default defineConfig({
+  site: "https://lute-lang.vercel.app",
   integrations: [
     starlight({
       title: "Lute",
       description:
-        "A total language for visual-novel scenarios — compiles to flat JSON command records plus CEL.",
+        "A statically analyzable narrative language for branching games — compiles to a versioned JSON IR plus CEL.",
       defaultLocale: "root",
       locales: {
         root: { label: "English", lang: "en" },
@@ -72,6 +73,7 @@ export default defineConfig({
           translations: { ko: "툴링" },
           items: [
             { slug: "tooling/cli" },
+            { slug: "tooling/runtime-contract" },
             { slug: "tooling/tracing" },
             { slug: "tooling/providers-and-catalog" },
             { slug: "tooling/editors" },
