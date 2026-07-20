@@ -1,0 +1,24 @@
+---
+kind: scene
+luteVersion: "0.7.0"
+character: hero
+season: 1
+episode: 1
+title: Choice Basic
+uses: ./schema.yaml
+---
+
+## The Fork
+
+@narrator: The road splits.
+
+<branch id="path">
+  <choice id="left" label="Go left" into="run.dir" value="left">
+    @hero: Left it is.
+  </choice>
+  <choice id="right" label="Go right" into="run.dir" value="right">
+    @hero: Right it is.
+  </choice>
+</branch>
+
+@narrator: The journey continues.

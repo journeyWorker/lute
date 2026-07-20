@@ -1,0 +1,112 @@
+{
+  "kind": "scene",
+  "lute": "0.7.0",
+  "irVersion": "0.7.0",
+  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "meta": {
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Match Otherwise"
+  },
+  "state": [
+    {
+      "path": "run.mood",
+      "type": "enum",
+      "domain": [
+        "happy",
+        "sad",
+        "neutral"
+      ],
+      "default": "neutral"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Reading the room.",
+      "lineId": "hero.s01ep01.narrator_0010"
+    },
+    {
+      "kind": "match",
+      "addr": "001-0200",
+      "subject": "run.mood",
+      "arms": [
+        {
+          "test": "",
+          "target": "001-0300",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "run.mood"
+            },
+            "r": {
+              "lit": "happy"
+            }
+          }
+        },
+        {
+          "test": "",
+          "target": "001-0500",
+          "expr": {
+            "op": "==",
+            "l": {
+              "path": "run.mood"
+            },
+            "r": {
+              "lit": "sad"
+            }
+          }
+        }
+      ],
+      "otherwise": "001-0700",
+      "converge": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "I'm glad.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero-0010"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0400",
+      "target": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0500",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "I'm low.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero-0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0600",
+      "target": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0700",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "I feel nothing in particular.",
+      "lineId": "hero.s01ep01.hero_0030",
+      "voiceKey": "hero-0030"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0800",
+      "target": "001-0900"
+    }
+  ]
+}

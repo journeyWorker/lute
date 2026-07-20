@@ -1,6 +1,6 @@
 {
   "name": "@lute-lang/lute-core-win32-x64",
-  "version": "0.2.0",
+  "version": "0.7.0",
   "description": "lute CLI binary for windows x64",
   "license": "MIT",
   "type": "module",

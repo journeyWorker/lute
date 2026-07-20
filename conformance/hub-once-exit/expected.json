@@ -1,0 +1,51 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "chose": "probe",
+      "hub": "talk",
+      "kind": "hub"
+    },
+    {
+      "addr": "001-0200",
+      "kind": "line",
+      "speaker": "hero",
+      "text": "Tell me more."
+    },
+    {
+      "addr": "001-0300",
+      "kind": "set",
+      "path": "run.probes",
+      "value": 1
+    },
+    {
+      "addr": "001-0100",
+      "chose": "leave",
+      "hub": "talk",
+      "kind": "hub"
+    },
+    {
+      "addr": "001-0400",
+      "kind": "line",
+      "speaker": "hero",
+      "text": "We're done here."
+    },
+    {
+      "addr": "001-0600",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "The interview is over."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.7",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "run.probes": 1,
+    "scene.choices.talk": "leave",
+    "scene.visited.talk.leave": true,
+    "scene.visited.talk.probe": true
+  }
+}

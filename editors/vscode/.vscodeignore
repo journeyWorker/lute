@@ -1,5 +1,8 @@
 .gitignore
 .vscodeignore
+.vscode/**
+test/**
 **/.DS_Store
 **/*.map
 *.vsix
+package-lock.json

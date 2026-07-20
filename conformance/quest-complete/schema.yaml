@@ -1,0 +1,4 @@
+# Scalar state for the quest-complete conformance fixture.
+state:
+  run.atGoal: { type: bool, default: false }
+  run.done:   { type: number, default: 0 }

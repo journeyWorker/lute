@@ -1,6 +1,6 @@
 # Lute
 
-> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. Language version 0.6.1.
+> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. Language version 0.7.0.
 
 Lute is deliberately non-Turing: every document is a finite, terminating artifact, so the checker can prove reachability, definite-assignment, and envelope properties instead of guessing. The CLI (`lute`) is a headless checker, compiler, and preview tool; `lute context --json` emits the project-resolved authoring surface an AI or human needs to write valid Lute, and `lute check --json` gives a machine-readable diagnostic loop. Below, each link points to a single documentation page on <https://lute-lang.vercel.app>.
 
@@ -8,6 +8,9 @@ Lute is deliberately non-Turing: every document is a finite, terminating artifac
 
 - [Installation](https://lute-lang.vercel.app/getting-started/installation/): Install the `lute` CLI with bunx, a global bun install, or from Rust source, then verify the toolchain.
 - [Write your first scene](https://lute-lang.vercel.app/getting-started/first-scene/): Build one small, real Lute scene from an empty file step by step, running `lute` at every step.
+- [Learning paths](https://lute-lang.vercel.app/getting-started/learning-paths/): Role-first reading routes — scenario writer, narrative programmer, engine integrator, plugin author, AI tooling developer — each an ordered list of existing pages.
+- [Build an investigation](https://lute-lang.vercel.app/getting-started/build-an-investigation/): A first-project tutorial walking the worked investigation example end to end — manifest, schema, facts + Datalog, a fact-guarded hub, a quest, after: sequencing, check-project, scenario reach, two trace mocks, compile — including the deliberate W-UNPROVEN-RELATIONAL boundary.
+- [Is Lute right for you?](https://lute-lang.vercel.app/getting-started/when-to-use/): Honest fit/no-fit selection guidance — the projects and teams Lute serves well today versus the ones it does not fit yet.
 - [Frontmatter & profiles](https://lute-lang.vercel.app/language/frontmatter-and-profiles/): The YAML frontmatter block that opens every `.lute` document, plus the profile/plugins capability selectors.
 - [Dialogue & cast](https://lute-lang.vercel.app/language/dialogue-and-cast/): Content lines — the `@speaker` syntax — plus delivery flags, line attributes, interpolation, and the cast/display-name model.
 - [Staging directives](https://lute-lang.vercel.app/language/directives/): Single-line staging leaves — `::bg`, `::music`, `::sfx`, `::camera`, and more — their attributes, timing keys, and the wait model.
@@ -25,7 +28,7 @@ Lute is deliberately non-Turing: every document is a finite, terminating artifac
 - [The scene graph and after:](https://lute-lang.vercel.app/connectivity/scene-graph/): How Lute assembles a project-wide prerequisite graph from each document's `after` declaration and the restricted formula grammar.
 - [Reachability](https://lute-lang.vercel.app/connectivity/reachability/): How Lute proves whether a node has a satisfiable route under the `after` graph — the Reachable/Unreachable/Unknown verdicts.
 - [Guaranteed / Possible envelopes](https://lute-lang.vercel.app/connectivity/envelopes/): The per-node available-state analysis — the Guaranteed and Possible tables over run/user state and the Possible-minus-Guaranteed warning.
-- [CLI reference](https://lute-lang.vercel.app/tooling/cli/): Every `lute` subcommand — check, check-project, compile, trace, scenario, context, tag, fix, catalog refresh — with flags and exit codes.
+- [CLI reference](https://lute-lang.vercel.app/tooling/cli/): Every `lute` subcommand — init, new, check, check-project, compile, run, trace, test, scenario (with `--format json|dot`), context, tag, fix, doctor, loc export/report, catalog refresh, version — with flags and exit codes.
 - [Runtime contract](https://lute-lang.vercel.app/tooling/runtime-contract/): The engine-side contract — what Lute emits (a versioned JSON IR plus CEL) and what an engine adapter must implement to play it: the command loop, CEL evaluation, facts, quest lifecycle, and typed bridges.
 - [Tracing guide](https://lute-lang.vercel.app/tooling/tracing/): Preview a scene before shipping — seeding state, facts, choices, events, and accepts via flags or a mock YAML file, and the `E-TRACE-*` refusals.
 - [Providers and catalog](https://lute-lang.vercel.app/tooling/providers-and-catalog/): Snapshot-first provider resolution, the `--providers` flag, `catalog refresh` re-stamping, and `capabilityVersion`.
@@ -38,6 +41,7 @@ Lute is deliberately non-Turing: every document is a finite, terminating artifac
 
 ## Specification
 
+- [Current specification](https://lute-lang.vercel.app/spec/current/): The consolidated index of what the language enforces today at 0.7.0 — each language area mapped to the proposal that introduced or last changed it.
 - [Specification index](https://lute-lang.vercel.app/spec/): The versioned Lute spec stack — every scenario-DSL revision plus the plugin-system and character-cast proposals, linking the normative repository sources.
 - [Normative proposals](https://github.com/journeyWorker/lute/tree/main/docs/proposals): The repository proposal files are the normative source of truth; the website is the readable companion.
 

@@ -1,0 +1,2 @@
+# No mock needed — the scene asserts its own base fact; the runner derives
+# `suspected(mira)` from the least-fixpoint and the guarded line fires.

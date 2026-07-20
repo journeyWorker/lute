@@ -2,9 +2,14 @@
   "name": "lute",
   "displayName": "Lute",
   "description": "Language support for the Lute scenario-authoring DSL (.lute): diagnostics, hover, completion, go-to-definition, references, folding, symbols, and highlighting via the lute-lsp language server.",
-  "version": "0.0.1",
-  "publisher": "lute",
-  "license": "SEE LICENSE IN ../../README.md",
+  "version": "0.7.0",
+  "publisher": "lute-lang",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journeyWorker/lute.git",
+    "directory": "editors/vscode"
+  },
   "engines": {
     "vscode": "^1.82.0"
   },
@@ -42,6 +47,16 @@
         "path": "./syntaxes/lute.tmLanguage.json"
       }
     ],
+    "configuration": {
+      "title": "Lute",
+      "properties": {
+        "lute.lsp.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to the `lute-lsp` language server binary. When empty, the extension resolves `lute-lsp` from your `PATH`."
+        }
+      }
+    },
     "semanticTokenTypes": [
       { "id": "content", "description": "Dialogue / narration text" },
       { "id": "staging", "description": "Staging directive" },

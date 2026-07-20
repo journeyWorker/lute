@@ -1,0 +1,3 @@
+# Seed the subject to a value NO arm matches, so the `<otherwise>` fires.
+state:
+  run.mood: neutral

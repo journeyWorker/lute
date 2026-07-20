@@ -1,0 +1,3 @@
+# Scalar state for the choice-basic conformance fixture.
+state:
+  run.dir: { type: { enum: [none, left, right] }, default: none }

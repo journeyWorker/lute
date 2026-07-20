@@ -1,0 +1,3 @@
+# Scalar state for the match-otherwise conformance fixture.
+state:
+  run.mood: { type: { enum: [happy, sad, neutral] }, default: neutral }

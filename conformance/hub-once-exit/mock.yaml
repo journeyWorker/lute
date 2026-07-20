@@ -1,0 +1,5 @@
+# Force the hub visit sequence: probe, probe (the second is refused — `once`),
+# then the `exit` option `leave`. The runner must run the probe body EXACTLY
+# once, then leave the hub at its converge.
+choose:
+  talk: [probe, probe, leave]

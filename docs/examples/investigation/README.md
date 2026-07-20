@@ -138,6 +138,61 @@ cargo run -q -p lute-cli -- compile docs/examples/investigation/scenes/crime-sce
   --project docs/examples/investigation -o /tmp/crime-scene.json
 ```
 
-Exit `0`; the artifact is stamped `"lute": "0.6.1"` / `"irVersion": "0.6.1"`.
+Exit `0`; the artifact is stamped `"lute": "0.7.0"` / `"irVersion": "0.7.0"`.
 Every document in the project compiles (`scenes/*.lute` and
 `quests/identify-killer.lute`) — swap the path above.
+
+## 5. Scenario tests (`lute test`)
+
+`lute trace` is a manual preview; `lute test` turns those mock-driven
+playthroughs into repeatable assertions. Each `*.test.yaml` under `tests/`
+names a document (`file:`, resolved relative to the test file), carries the
+same five mock surfaces as `lute trace --mock`
+(`state:`/`facts:`/`choose:`/`events:`/`accepts:`), and declares an `expect:`
+block:
+
+```yaml
+file: ../scenes/confrontation.lute
+state:                       # mock seed — identical to `lute trace --mock`
+  run.trueKiller: blake
+choose:
+  accuse: accuseBlake
+expect:
+  exit: complete             # complete | incomplete
+  transcriptContains:        # substrings that MUST appear in the transcript
+    - "The cuffs close on the right wrists. Case closed."
+  state:                     # the trace's FINAL written state
+    run.accused: blake
+```
+
+Run the whole suite from the repository root:
+
+```sh
+cargo run -q -p lute-cli -- test docs/examples/investigation
+```
+
+```
+PASS  .../tests/accuse-correctly.test.yaml  (.../scenes/confrontation.lute)
+PASS  .../tests/accuse-wrongly.test.yaml  (.../scenes/confrontation.lute)
+PASS  .../tests/interview-press-ledger.test.yaml  (.../scenes/interview.lute)
+
+3 passed, 0 failed
+```
+
+Exit `0` when every test passes, `1` when any expectation fails (the miss is
+reported as `expected … got …`), `2` on an I/O error or a malformed test
+file. Add `--json` for a machine report, and `--coverage` for an honest
+chosen-vs-never-chosen / executed-vs-unexecuted roll-up **over the traced
+paths only** — never a whole-space coverage claim (D1: trace explains, it
+never proves):
+
+```sh
+cargo run -q -p lute-cli -- test docs/examples/investigation --coverage
+```
+
+```
+coverage over 3 traced path(s):
+  branch/hub accuse: 2/3 chosen [accuseBlake, accuseCass]; never chosen [accuseDana]
+  branch/hub interrogate: 2/4 chosen [leave, pressLedger]; 2 never seen eligible in any traced path
+  match `run.suspectFocus`: 1/3 arm(s) executed [arm 1]; 2 unexecuted
+```

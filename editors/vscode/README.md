@@ -5,17 +5,35 @@ VS Code extension for the Lute scenario DSL: `.lute` language association,
 folding, symbols, semantic-token highlighting), a TextMate grammar for baseline
 syntax highlighting, and comment/bracket configuration.
 
-## Prerequisite
+## Prerequisite: the `lute-lsp` server binary
 
-Install the language server so `lute-lsp` is on your `PATH`:
+The extension spawns the `lute-lsp` language server over stdio. Install it so it
+is discoverable:
 
 ```sh
 cargo install --path crates/lute-lsp   # -> ~/.cargo/bin/lute-lsp
 ```
 
-(Alternatively `cargo build -p lute-lsp` and add `target/debug` to `PATH`.) The
-extension spawns `lute-lsp` over stdio; if it is missing you get an error toast
-pointing back here, and highlighting still works from the bundled TextMate grammar.
+(Alternatively `cargo build -p lute-lsp` and add `target/debug` to `PATH`.)
+
+### How the binary is resolved
+
+On activation the extension looks for `lute-lsp` in this order:
+
+1. **The `lute.lsp.path` setting** — set it to an absolute path to the binary
+   (Settings → *Lute: Lsp: Path*, or `"lute.lsp.path": "/abs/path/to/lute-lsp"`
+   in `settings.json`). Use this when the server is not on `PATH`.
+2. **`PATH`** — when the setting is empty (the default), the plain `lute-lsp`
+   command is spawned and resolved through your `PATH`.
+
+If neither resolves, `client.start()` fails and the extension shows an error
+toast naming where it looked and how to fix it (install the binary or set
+`lute.lsp.path`). Baseline TextMate highlighting still works without the server.
+
+> **Planned: auto-download.** A future release will optionally download a
+> `lute-lsp` build matching the extension version into the extension's global
+> storage when neither the setting nor `PATH` resolves. It is **not** implemented
+> in this release — the two-step resolution above is the current behavior.
 
 ## Develop / run from source
 

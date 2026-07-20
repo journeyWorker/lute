@@ -1,0 +1,25 @@
+---
+kind: scene
+luteVersion: "0.7.0"
+character: hero
+season: 1
+episode: 1
+title: Match Otherwise
+uses: ./schema.yaml
+---
+
+## The Mood
+
+@narrator: Reading the room.
+
+<match on="run.mood">
+  <when is="happy">
+    @hero: I'm glad.
+  </when>
+  <when is="sad">
+    @hero: I'm low.
+  </when>
+  <otherwise>
+    @hero: I feel nothing in particular.
+  </otherwise>
+</match>

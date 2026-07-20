@@ -10,7 +10,7 @@ behavior lives on the far side of the artifact, in the **engine**. This page is
 the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)
 and the machine-checkable shape is
-[`schemas/lute-ir-0.6.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.6.schema.json)
+[`schemas/lute-ir-0.7.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.7.schema.json)
 (JSON Schema draft 2020-12).
 
 ## What Lute does vs. what the engine does

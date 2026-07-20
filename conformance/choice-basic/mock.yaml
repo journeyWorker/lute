@@ -1,0 +1,3 @@
+# Force the `path` branch to its `left` choice.
+choose:
+  path: left

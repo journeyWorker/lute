@@ -1,0 +1,15 @@
+---
+kind: quest
+luteVersion: "0.7.0"
+uses: ./schema.yaml
+title: Quest Complete
+---
+
+<quest id="reachGoal" title="Reach the Goal" start="true">
+  <objective id="arrive" title="Arrive at the goal" done="run.atGoal == true"/>
+
+  <on event="questComplete">
+    ::set{ run.done += 1 }
+    @narrator: The goal is reached.
+  </on>
+</quest>

@@ -1,0 +1,5 @@
+# Seed the objective's `done` predicate true: the quest activates (start=true),
+# its one required objective completes, the quest transitions to `complete`, and
+# the `questComplete` handler body runs.
+state:
+  run.atGoal: true
