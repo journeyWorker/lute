@@ -26,9 +26,34 @@ Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted or
 
 ```console
 $ lute compile <file> [--json] [--providers <DIR>] [--project <DIR>] [-o <FILE>]
+                      [--locales <FILE>] [--deny <CODE>]… [--deny-warnings]
+$ lute compile --all --project <DIR> -o <DIR> [--providers <DIR>] [--locales <FILE>]
 ```
 
 Compile a document to its JSON command-record artifact (gated on a clean check). Exit **0** on success, **1** on a failed gate, **2** on I/O or serialization failure. The artifact is always JSON; `-o`/`--out` writes it to a file instead of stdout. With `--project`, the gate is the target's reconciled `check-project` verdict.
+
+### `--all` — project-wide compile and index
+
+`--all` compiles **every** `*.lute` document under `--project <DIR>` into `-o <DIR>`, mirroring the project's own layout (`quests/a.lute` → `<outdir>/quests/a.lute.json`), and writes a `<outdir>/project.index.json`. It requires both `--project` and `-o`, and takes no `<file>`; any other combination is a usage error (exit **2**). `*.component.lute` fragments are skipped — a component is inlined into its importers and has no artifact of its own.
+
+The index carries the document table plus the **union** of every artifact's `entities`, `enums`, `relations`, `seedFacts`, `rules`, and `prereqEdges` — the union [an engine must compute anyway](/tooling/runtime-contract/) before it can evaluate anything:
+
+```json
+{
+  "irVersion": "0.8.0",
+  "capabilityVersion": "…",
+  "documents": [
+    { "path": "quests/a.lute", "artifact": "quests/a.lute.json", "kind": "quest", "key": "findKai" }
+  ],
+  "entities": [], "enums": [], "relations": [], "seedFacts": [], "rules": [], "prereqEdges": []
+}
+```
+
+All paths are forward-slash relative (never absolute), `documents` is sorted by `path`, and every vocabulary array is deduplicated and totally ordered, so the index is byte-stable across runs. `--all` is all-or-nothing: a single document failing its gate prints the diagnostics and exits **1** having written nothing. Two documents declaring the same entity kind / enum / relation / prerequisite node with **different** signatures, or resolving different capability snapshots, is likewise an error (exit **1**) — never a silent pick.
+
+### `--locales` — merge a translation bundle
+
+`--locales <bundle.json>` merges a locale bundle (see [`loc import`](#loc-import)) into the artifact: `texts` on every line record and `labels` on every choice/hub option, both keyed by `lineId`. The source-language `text`/`label` is never overwritten, and both maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A translatable record missing a locale the bundle declares is `W-L10N-MISSING`, one per `(lineId, locale)` pair, written to stderr; `--deny W-L10N-MISSING` (or `--deny-warnings`) promotes it to an error, so CI can require a complete translation.
 
 ## trace
 
@@ -146,6 +171,30 @@ $ lute loc export <dir> [--format json|csv] [-o <FILE>]
 ```
 
 Extract every translatable content line — the stable `code`, speaker, text, and choice labels — across a project to a localization export. `--format` is `json` (default) or `csv`; `-o`/`--out` writes to a file instead of stdout. Exit **0** on success, **2** on I/O.
+
+Each row also carries the `lineId` the compiler will stamp on that record — the join `loc import` and `compile --locales` key on. It is `null` (JSON) or empty (CSV) for a line with no authored `code`, whose id the compiler back-fills from the post-expansion command stream and which no source-only walk can reproduce: run `lute tag` first, and the advisory `N lines untagged — run lute tag` on stderr goes away with it.
+
+## loc import
+
+```console
+$ lute loc import <file>… [-o <FILE>]
+```
+
+Canonicalize translated `loc export` files into one **locale bundle** — the reverse direction, consumed by `lute compile --locales`. Exit **0** on success, **1** on `E-LOCALE-BUNDLE`, **2** on I/O.
+
+Input is exactly what `export` writes, in either format (`.csv` → CSV, anything else → JSON). `export` carries no locale, because it extracts the *source* language — so the normal workflow is **one file per locale**: copy the export to `ja-JP.json`, translate the `text`/`label` values, and the file **stem** is the locale tag. A row carrying its own non-empty `locale` field (JSON) or `locale` column (CSV) overrides that, so a single merged file spanning every locale also works.
+
+```json
+{
+  "schemaVersion": 1,
+  "locales": ["en-US", "ja-JP"],
+  "entries": {
+    "bianca.s01ep02.bianca_0010": { "en-US": "Hello there.", "ja-JP": "こんにちは。" }
+  }
+}
+```
+
+`locales` and `entries` are both sorted, so the bundle is byte-stable: importing the same inputs twice produces identical bytes. An unparseable input, a `lineId` appearing twice within one locale, or an empty locale tag is `E-LOCALE-BUNDLE`, reported with the offending file and row. A row with **no** `lineId` is skipped rather than rejected — an untagged line simply has no stable identity yet — and a single stderr summary counts them.
 
 ## loc report
 

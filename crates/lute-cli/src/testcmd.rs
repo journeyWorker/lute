@@ -173,10 +173,17 @@ fn run_one_test(
     let lute_path = base.join(&rel);
     let lute_display = lute_path.display().to_string();
 
-    let Some(input) = crate::build_input(&lute_path, providers, None) else {
+    let Some(built) = crate::build_input(&lute_path, providers, None) else {
         // build_input already printed the read error.
         return Err(ExitCode::from(2));
     };
+    let crate::BuiltInput { input, resolve_error } = built;
+    // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
+    // option, missing active plugin, bad identity template) is a build-failing
+    // error; it printed above, and it MUST gate here or it would pass silently.
+    if resolve_error {
+        return Err(ExitCode::from(1));
+    }
 
     let (report, exit) = trace_document(&input, mocks);
 
