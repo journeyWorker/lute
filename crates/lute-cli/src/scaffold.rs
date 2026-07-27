@@ -2,7 +2,7 @@
 //!
 //! Every generated artifact is designed to pass the checker CLEAN: `lute init`
 //! output survives `lute check-project <dir>`, and `lute new` output survives
-//! `lute check <file>`. Frontmatter stamps `luteVersion: "0.7.0"` (the current
+//! `lute check <file>`. Frontmatter stamps `luteVersion: "0.8.0"` (the current
 //! [`lute_check::LUTE_LANG_VERSION`]) so no `W-LUTE-VERSION-STALE` fires, and
 //! every read state path carries a `default:` so single-file definite
 //! assignment holds without a cross-scene envelope.
@@ -49,14 +49,14 @@ fn minimal_files() -> Vec<File> {
 state:
   run.greeted: { type: bool, default: false }
 "
-            .to_string(),
+            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
         File {
             rel: "scenes/opening.lute",
             content: "\
 ---
 kind: scene
-luteVersion: \"0.7.0\"
+luteVersion: \"{lang}\"
 character: narrator
 season: 1
 episode: 1
@@ -70,7 +70,7 @@ uses: ../world.schema.yaml
 ::set{ run.greeted = true }
 @narrator{when=\"run.greeted\"}: Edit this scene, then run `lute check-project`.
 "
-            .to_string(),
+            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
         File {
             rel: "mocks/playthrough.yaml",
@@ -80,7 +80,7 @@ uses: ../world.schema.yaml
 state:
   run.greeted: false
 "
-            .to_string(),
+            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
         File {
             rel: "README.md",
@@ -132,14 +132,14 @@ facts:
 rules:
   - \"points(S) :- foundClue(C), implicates(C, S)\"
 "
-            .to_string(),
+            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
         File {
             rel: "scenes/crime-scene.lute",
             content: "\
 ---
 kind: scene
-luteVersion: \"0.7.0\"
+luteVersion: \"{lang}\"
 character: detective
 season: 1
 episode: 1
@@ -156,14 +156,14 @@ uses: ../world.schema.yaml
 @detective: A ledger, its balances scratched out in red ink.
 @detective{mono when=\"holds(points(blake))\"}: One name is starting to surface.
 "
-            .to_string(),
+            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
         File {
             rel: "scenes/interview.lute",
             content: "\
 ---
 kind: scene
-luteVersion: \"0.7.0\"
+luteVersion: \"{lang}\"
 character: detective
 season: 1
 episode: 2
@@ -187,14 +187,14 @@ uses: ../world.schema.yaml
   </choice>
 </hub>
 "
-            .to_string(),
+            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
         File {
             rel: "quests/identify-killer.lute",
             content: "\
 ---
 kind: quest
-luteVersion: \"0.7.0\"
+luteVersion: \"{lang}\"
 uses: ../world.schema.yaml
 title: Identify the Killer
 ---
@@ -204,7 +204,7 @@ title: Identify the Killer
   <objective id=\"nameSuspect\" title=\"Focus on a suspect\" done=\"run.suspectFocus != 'none'\"/>
 </quest>
 "
-            .to_string(),
+            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
         File {
             rel: "mocks/playthrough.yaml",
@@ -216,7 +216,7 @@ facts:
 choose:
   interrogate: pressLedger
 "
-            .to_string(),
+            .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
         File {
             rel: "README.md",
@@ -415,11 +415,12 @@ fn new_scene(name: &str, dir: &Path) -> ExitCode {
     } else {
         ""
     };
+    let lang = lute_check::LUTE_LANG_VERSION;
     let content = format!(
         "\
 ---
 kind: scene
-luteVersion: \"0.7.0\"
+luteVersion: \"{lang}\"
 # Naming rule (`lute new scene`): `character` = the name you passed; `season` =
 # 1; `episode` = 1 + the number of existing `scenes/*.lute` at creation time,
 # so the canonical key `{name}.s01ep{episode:02}` is unique among the scenes
@@ -453,11 +454,12 @@ fn new_quest(name: &str, dir: &Path) -> ExitCode {
     let path = dir.join("quests").join(format!("{name}.lute"));
     let ident = to_ident(name);
     let progress = format!("run.{ident}Progress");
+    let lang = lute_check::LUTE_LANG_VERSION;
     let content = format!(
         "\
 ---
 kind: quest
-luteVersion: \"0.7.0\"
+luteVersion: \"{lang}\"
 title: {name}
 # Self-contained progress counter — a scene can bump it with
 # `::set{{ {progress} += 1 }}` to satisfy the objective below.

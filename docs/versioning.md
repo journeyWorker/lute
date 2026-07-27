@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.7.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.7.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.7.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.7.schema.json`](../schemas/lute-ir-0.7.schema.json)). Consuming engines gate parsing on it. |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.8.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.8.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.8.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.8.schema.json`](../schemas/lute-ir-0.8.schema.json)). Consuming engines gate parsing on it. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -30,6 +30,9 @@ release's number; the axes MAY still drift apart again only when an axis
 genuinely does not change (e.g. a toolchain-only bug-fix release leaves the
 language and IR numbers where they are). Alignment is a presentation guarantee,
 not a merge of the axes — each still means exactly what its row above says.
+`0.8.0` keeps that alignment: it advances the language (a new core directive,
+a new `after:` primitive, a narrowed `state:` rule), the IR (a new `end`
+command kind plus append-only fields), and the toolchain together.
 
 ## Which bump when
 
