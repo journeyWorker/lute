@@ -78,8 +78,9 @@ Two families of `quest.<id>.*` paths are **engine-owned**, not author-written
   objective's `done` predicate first holds (monotonic within an instance).
 - `quest.<id>.activatedAt` — a `narrativeTime` (dsl 0.8.0 §5), populated by the
   engine at the `unset → active` transition. This is the anchor `validAt(rel,
-  t)` was missing: `validAt(arrivedSpace(x), quest.q1.activatedAt)` asks "did
-  this happen after the quest was accepted?". Readable in CEL under the
+  t)` was missing. `validAt` asks whether the fact was valid *at* `t`
+  (`established ≤ t < invalidated`, dsl 0.3.0 §3.2), so "since activation" is
+  `holds(R) && !validAt(R, quest.q1.activatedAt)`. Readable in CEL under the
   ordering-only comparison surface (`<`, `<=`, `==`, `>`, `>=`; `!=` stays
   rejected, 0.3.0 D8); never author-declarable (`E-QUEST-RESERVED-DECL`) and
   never author-writable (`E-QUEST-RESERVED-WRITE`).
