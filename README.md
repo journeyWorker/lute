@@ -32,8 +32,8 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | versioned spec stack — base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) + `0.2.0`/`0.2.2`/`0.3.0`/`0.4.0`/`0.5.0`–`0.5.2`/`0.6.0`/`0.6.1` deltas, current tip [`0.7.0`](docs/proposals/scenario-dsl/0.7.0.md) (version unification — byte-for-byte `0.6.1` grammar + semantics) | the examples below; [`architecture.md`](docs/architecture.md) |
-| **writing a plugin** (directives, state, providers, bridge) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution | [`plugin-system.md`](docs/plugin-system.md) |
+| **writing `.lute` scenarios** | versioned spec stack — base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) + `0.2.0`/`0.2.2`/`0.3.0`/`0.4.0`/`0.5.0`–`0.5.2`/`0.6.0`/`0.6.1`/`0.7.0` deltas, current tip [`0.8.0`](docs/proposals/scenario-dsl/0.8.0.md) (adoption release — `::end`, `after: active(…)`, `quest.<id>.activatedAt`, uniform `addr` widths, localization round trip) | the examples below; [`architecture.md`](docs/architecture.md) |
+| **writing a plugin** (directives, state, providers, bridge, `stampAttrs`) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution — plus the [`0.0.2`](docs/proposals/plugin-system/0.0.2.md) delta (option/frontmatter validation, declarative `lower: { record }`, cross-cutting `stampAttrs`) | [`plugin-system.md`](docs/plugin-system.md) |
 | **building the compiler / checker / LSP** | both proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
 | **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
@@ -112,12 +112,13 @@ Install the server once (`cargo install --path crates/lute-lsp`), then:
 Lute's status splits along three independent axes (see
 [`docs/versioning.md`](docs/versioning.md) for the full policy):
 
-- **Language: draft.** The grammar is at **0.7.0** — the normative surface is
+- **Language: draft.** The grammar is at **0.8.0** — the normative surface is
   the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 / 0.3.0 / 0.4.0 /
-  0.5.0–0.5.2 / 0.6.0 / 0.6.1 / 0.7.0 deltas; 0.7.0 is a version-unification
-  release, byte-for-byte 0.6.1 semantics). Being draft means the grammar may
-  still break before 1.0; each breaking change ships a `lute fix` migration where
-  the rewrite is mechanical.
+  0.5.0–0.5.2 / 0.6.0 / 0.6.1 / 0.7.0 / 0.8.0 deltas; 0.8.0 is the adoption
+  release — `::end`, `after: active(…)`, `quest.<id>.activatedAt`, uniform
+  `addr` widths, a localization round trip, and project-wide compile). Being
+  draft means the grammar may still break before 1.0; each breaking change ships
+  a `lute fix` migration where the rewrite is mechanical.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver,
   LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
   (`lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-cli`,
