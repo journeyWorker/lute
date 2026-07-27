@@ -249,4 +249,29 @@ options:
     const { ok } = validateAgainst(ajv, pluginSchema.$id, doc);
     expect(ok).toBe(false);
   });
+
+  test("good StampAttrsFile (plugin §14.1 `stampattrs/*.yaml`) validates", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    const doc = Bun.YAML.parse(
+      "stampAttrs:\n  - { name: bonusId, type: string }\n  - { name: bonusScore, type: number }\n",
+    );
+    const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, doc);
+    expect(ok, JSON.stringify(errors)).toBe(true);
+  });
+
+  test("PluginManifest may declare the `stampattrs` export", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    const doc = Bun.YAML.parse(
+      "id: demo.plugin\nversion: 0.1.0\nkind: capability\nexports:\n  stampattrs: stampattrs/\n",
+    );
+    const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, doc);
+    expect(ok, JSON.stringify(errors)).toBe(true);
+  });
+
+  test("broken StampAttrsFile: entry missing required `type`", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    const doc = Bun.YAML.parse("stampAttrs:\n  - { name: bonusId }\n");
+    const { ok } = validateAgainst(ajv, pluginSchema.$id, doc);
+    expect(ok).toBe(false);
+  });
 });

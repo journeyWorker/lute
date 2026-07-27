@@ -115,6 +115,52 @@ fn push_unset_literal_diags(diags: &mut Vec<Diagnostic>, hits: &[UnsetSentinelHi
     }
 }
 
+/// `W-CODE-AFTER-END` (dsl 0.8.0): a record following `::end` in the SAME
+/// straight-line body. `::end` terminates the walk at its own record
+/// (`lute.core`'s `terminatesWalk`), so nothing after it in that body can
+/// ever run.
+///
+/// Scoped to the IMMEDIATELY ENCLOSING sequence — a shot body, one
+/// `<choice>` body, one `<when>`/`<otherwise>` arm, one `<on>`/
+/// `<objective>` body. An `::end` inside one `<choice>` says nothing about
+/// a sibling choice or about content after the enclosing `<branch>`: those
+/// are DIFFERENT bodies, reached by a different route, and the walk that
+/// terminated never entered them. Cross-body reachability is
+/// `E-CONN-UNREACHABLE`'s job (a whole-project graph), not this local lint.
+///
+/// A WARNING, never an error: unreachable content is inert, not
+/// ill-formed — the same call `W-OTHERWISE-DEAD` makes for a defensive
+/// `<otherwise>`.
+pub(crate) const W_CODE_AFTER_END: &str = "W-CODE-AFTER-END";
+
+/// One `W-CODE-AFTER-END` for `nodes` (a single straight-line body) when a
+/// `::end` is followed by anything, anchored at the FIRST such node — the
+/// place an author would cut from. Exactly one per body: everything past
+/// the first unreachable node is unreachable for the SAME reason, and N
+/// warnings for one mistake is noise.
+///
+/// Dispatch is by TAG ([`lute_manifest::core::END_DIRECTIVE`]), the same
+/// key `lower_directive` lowers on — see the `terminatesWalk` note in
+/// `lute_manifest::validate::SEMANTICS_VOCAB` for why the flag declares
+/// the semantics but never drives the dispatch.
+fn check_code_after_end(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
+    let is_end = |n: &Node| {
+        matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::END_DIRECTIVE)
+    };
+    let Some(end_at) = nodes.iter().position(is_end) else {
+        return;
+    };
+    let Some(dead) = nodes.get(end_at + 1) else {
+        return;
+    };
+    diags.push(diag(
+        W_CODE_AFTER_END,
+        Severity::Warning,
+        "unreachable content after `::end` (the walk terminates here)".to_string(),
+        crate::admission::node_span(dead),
+    ));
+}
+
 /// §5.2/§5.3 whole-document pass. Walks `doc.shots` + `doc.quests`
 /// recursively (arm/choice/on/objective bodies, mirroring
 /// `check_admission`'s walk, admission.rs:220-296); timeline clips carry no
@@ -171,7 +217,13 @@ pub(crate) fn check_reachability(doc: &Document, folded: &FoldedEnv) -> Vec<Diag
 /// choices decide with the incoming `ctx` unchanged (`dollar: None` at the
 /// top level — "for choices, `dollar = None`"). Timeline clips (`ClipNode`)
 /// carry no arms — skipped, like every other leaf node.
+///
+/// `nodes` is by construction exactly ONE straight-line body at every call
+/// site (a shot, an arm, a choice, an `<on>`/`<objective>` body), which is
+/// precisely [`check_code_after_end`]'s unit of analysis — so the
+/// `W-CODE-AFTER-END` scan rides this recursion instead of duplicating it.
 fn walk_reach(nodes: &[Node], defs: &DefTable<'_>, ctx: &DecideCtx<'_>, diags: &mut Vec<Diagnostic>) {
+    check_code_after_end(nodes, diags);
     for node in nodes {
         match node {
             Node::Match(m) => {

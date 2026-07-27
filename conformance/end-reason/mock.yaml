@@ -1,0 +1,4 @@
+# Force the `parting` branch to its `leave` choice, whose body terminates the
+# walk with `reason: left`.
+choose:
+  parting: leave

@@ -400,7 +400,7 @@ fn eval_conditional(
 /// every atom that could resolve it lands in `unresolved`.
 fn eval_ground(name: &str, args: &[&IdedExpr], env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
     let values: Vec<Value> = args.iter().map(|a| eval(&a.expr, env, unresolved)).collect();
-    if values.iter().any(|v| *v == Value::Unknown) {
+    if values.contains(&Value::Unknown) {
         return Value::Unknown;
     }
     let decided: Option<Vec<Decided>> = values.into_iter().map(to_decided).collect();

@@ -14,9 +14,19 @@ const MANIFEST: &str = include_str!("../assets/lute.core/plugin.yaml");
 const STAGING: &str = include_str!("../assets/lute.core/directives/staging.yaml");
 const ENUMS: &str = include_str!("../assets/lute.core/enums.yaml");
 
+/// The `lute.core` tag of the walk terminator, `::end` (dsl 0.8.0). The ONE
+/// directive declaring `terminatesWalk` ([`crate::validate::SEMANTICS_VOCAB`]),
+/// shared as a const because three crates below the compiler dispatch on it and
+/// MUST agree: `lute-check`'s `W-CODE-AFTER-END` dead-code pass and its
+/// `<track>`-clip guard, `lute-compile`'s `lower_directive` (→ `Command::End`),
+/// and `lute-trace`'s walk. Mirrors how `COMPONENT_BEGIN`/`COMPONENT_END` are
+/// shared rather than re-spelled per crate.
+pub const END_DIRECTIVE: &str = "end";
+
 /// Build the built-in `lute.core` capability snapshot: all dsl Appendix A
-/// baseline directives (bg/music/sfx/auto/vfx/cut/video/camera) plus the core
-/// enums, stamped with a deterministic `capabilityVersion` (plugin §13).
+/// baseline directives (bg/music/sfx/auto/vfx/cut/video/camera) plus the 0.8.0
+/// walk terminator `::end`, plus the core enums, stamped with a deterministic
+/// `capabilityVersion` (plugin §13).
 pub fn load_core_snapshot() -> CapabilitySnapshot {
     let manifest: PluginManifest =
         serde_yaml::from_str(MANIFEST).expect("core plugin.yaml must parse");
@@ -76,14 +86,35 @@ pub fn load_core_snapshot() -> CapabilitySnapshot {
 mod tests {
     use super::*;
 
+    /// The `lute.core` baseline is CLOSED (dsl Appendix A + the 0.8.0
+    /// terminator): exactly these nine directives, no more. Asserting the
+    /// exact set — not just presence — is what makes an accidental
+    /// addition/removal in `staging.yaml` a test failure rather than a
+    /// silent vocabulary change every downstream `E-UNKNOWN-DIRECTIVE`
+    /// decision depends on.
     #[test]
     fn core_snapshot_has_baseline_directives() {
         let snap = load_core_snapshot();
-        for name in [
-            "bg", "music", "sfx", "auto", "vfx", "cut", "video", "camera",
-        ] {
-            assert!(snap.directive(name).is_some(), "missing ::{name}");
-        }
+        let names: Vec<&str> = snap.directives.keys().map(String::as_str).collect();
+        assert_eq!(
+            names,
+            ["auto", "bg", "camera", "cut", END_DIRECTIVE, "music", "sfx", "vfx", "video"],
+            "the lute.core baseline is exactly 9 directives"
+        );
+    }
+
+    /// dsl 0.8.0: `::end` is the walk terminator — an optional `reason`
+    /// string and the `terminatesWalk` flag, nothing else.
+    #[test]
+    fn end_declares_optional_reason_and_terminates_walk() {
+        let snap = load_core_snapshot();
+        let end = snap.directive(END_DIRECTIVE).expect("missing ::end");
+        assert_eq!(end.semantics, ["terminatesWalk"]);
+        assert!(crate::validate::validate_directive(end).is_empty());
+        let [reason] = &end.attrs[..] else { panic!("::end declares exactly one attr") };
+        assert_eq!(reason.name, "reason");
+        assert!(!reason.required);
+        assert_eq!(reason.ty, crate::types::Type::Str);
     }
 
     #[test]
