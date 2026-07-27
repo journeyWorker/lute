@@ -54,6 +54,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Absolute path to the `lute-lsp` language server binary. When empty, the extension resolves `lute-lsp` from your `PATH`."
+        },
+        "lute.versionCheck": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Warn when the running `lute-lsp` binary is older than a document's `luteVersion:` target. A stale server silently mis-analyzes newer grammar; disable only if you knowingly run a pinned older server."
         }
       }
     },

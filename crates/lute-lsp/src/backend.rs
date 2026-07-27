@@ -484,7 +484,16 @@ impl LanguageServer for Backend {
             },
             server_info: Some(ServerInfo {
                 name: "lute-lsp".into(),
-                version: Some(env!("CARGO_PKG_VERSION").into()),
+                // Advertise the LANGUAGE version this server implements, not the
+                // raw crate version. An editor client uses this to detect a
+                // STALE binary (one older than a document's `luteVersion`
+                // target): the server cannot self-detect staleness — its own
+                // `W-LUTE-VERSION-STALE` check compares a stamp against this
+                // same `LUTE_LANG_VERSION`, so an old server would tell an
+                // author to DOWNGRADE a valid stamp. The two axes are unified at
+                // release (crate == language), but sourcing the language version
+                // keeps the signal honest if they ever diverge again.
+                version: Some(lute_check::LUTE_LANG_VERSION.into()),
             }),
             ..Default::default()
         })
