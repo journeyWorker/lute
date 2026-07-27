@@ -144,6 +144,12 @@ needs (see *Changed* for the one exception).
   `compile --project` is exempt: a sibling belonging to a nested subproject
   legitimately mis-resolves under a forced root, and that is not the target
   document's fault.
+  Because that text is now the whole of what a failing author sees, every
+  `AssembleError` renders prose: the five variants that previously fell back to
+  a Rust `Debug` form (`E-PLUGIN-MISSING-ACTIVE`, `E-PLUGIN-DUP-ACROSS` /
+  `E-DOMAIN-DUP`, `E-PLUGIN-RESERVED-NAME`, `E-STATE-SHAPE-CYCLE`,
+  `E-PLUGIN-UNKNOWN-ASSETKIND`) now say what went wrong and what to do. Codes
+  are unchanged.
 - **Plugin option validation** (spec Appendix C1) — activation rejects an
   unknown option name (`E-PLUGIN-OPTION-UNKNOWN`) and a value that fails its
   declared type (`E-PLUGIN-OPTION-TYPE`).
