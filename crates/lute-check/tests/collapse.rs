@@ -207,10 +207,8 @@ fn component_parse_suppresses_undeclared_component() {
     let dir = unique_dir();
     // No `component:` name declared -> E-COMPONENT-PARSE; never enters the table.
     write_lute(&dir, "broken.lute", "---\nparams:\n  who: string\n---\n## G.\n@x: hi\n");
-    let scene = format!(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [broken.lute]\n---\n\
-         ## Shot 1.\n::use{{component=\"broken\" who=\"x\"}}\n"
-    );
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [broken.lute]\n---\n\
+         ## Shot 1.\n::use{component=\"broken\" who=\"x\"}\n".to_string();
     let (doc, _) = lute_syntax::parse(&scene);
     let (meta0, _) = lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
     let components = resolve_components(&dir, &meta0.components, doc.meta.span);
