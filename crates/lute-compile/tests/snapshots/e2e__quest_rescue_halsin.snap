@@ -4,13 +4,18 @@ expression: json
 ---
 {
   "kind": "quest",
-  "lute": "0.7.0",
-  "irVersion": "0.7.0",
-  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "lute": "0.8.0",
+  "irVersion": "0.8.0",
+  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
   "meta": {
     "title": "Act 1 — Emerald Grove"
   },
   "state": [
+    {
+      "path": "quest.rescueHalsin.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:rescueHalsin"
+    },
     {
       "path": "quest.rescueHalsin.objectives.learn.done",
       "type": "bool",

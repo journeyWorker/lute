@@ -198,8 +198,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.7.0");
-    assert_eq!(artifact.ir_version, "0.7.0");
+    assert_eq!(artifact.lute, "0.8.0");
+    assert_eq!(artifact.ir_version, "0.8.0");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
@@ -671,7 +671,7 @@ fn quest_doc_compiles_to_quest_artifact() {
     assert!(cmds.iter().any(|c| c["kind"] == "on" && c["event"] == "questComplete"));
     // an <on> body content line lowered as a line record with a {questId} lineId:
     assert!(cmds.iter().any(|c| c["kind"] == "line"
-        && c["lineId"].as_str().map_or(false, |s| s.starts_with("rescueHalsin."))));
+        && c["lineId"].as_str().is_some_and(|s| s.starts_with("rescueHalsin."))));
 }
 
 /// A checker-admitted DIRECT quest-body-level content line + `::set` (dsl

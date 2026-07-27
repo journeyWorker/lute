@@ -346,13 +346,7 @@ fn existing_goldens_untouched() {
         let snap_path = manifest_dir.join("tests/snapshots").join(snap_name);
         let snap_text = std::fs::read_to_string(&snap_path).unwrap();
         // Strip insta's `---\nsource: …\nexpression: …\n---\n` header.
-        let body = snap_text
-            .splitn(2, "---\n")
-            .nth(1)
-            .unwrap()
-            .splitn(2, "---\n")
-            .nth(1)
-            .unwrap();
+        let body = snap_text.split_once("---\n").unwrap().1.split_once("---\n").unwrap().1;
         assert_eq!(
             json, body,
             "{path}'s recompiled artifact must stay byte-identical to {snap_name} (B2)"

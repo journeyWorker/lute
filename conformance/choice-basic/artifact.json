@@ -1,8 +1,8 @@
 {
   "kind": "scene",
-  "lute": "0.7.0",
-  "irVersion": "0.7.0",
-  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "lute": "0.8.0",
+  "irVersion": "0.8.0",
+  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
   "meta": {
     "character": "hero",
     "season": 1,
@@ -118,6 +118,12 @@
       "speaker": "narrator",
       "text": "The journey continues.",
       "lineId": "hero.s01ep01.narrator_0020"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "The Fork"
     }
   ]
 }

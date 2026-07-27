@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.7.0",
-  "irVersion": "0.7.0",
-  "capabilityVersion": "3236d059a0e6d6cc34cadcf2542f1a4a0fecda4c2d3769ec63cf186c55ae5275",
+  "lute": "0.8.0",
+  "irVersion": "0.8.0",
+  "capabilityVersion": "f1adba0a32c286746630e3def1aca91b63d97d750bb9386a2288d433d3807dda",
   "meta": {
     "character": "bianca",
     "season": 1,
@@ -967,6 +967,32 @@ expression: json
       "kind": "jump",
       "addr": "006-2200",
       "target": "006-2300"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "Venny's Again"
+    },
+    {
+      "shot": 2,
+      "heading": "The Rehearsed Entrance"
+    },
+    {
+      "shot": 3,
+      "heading": "The Service Bridge"
+    },
+    {
+      "shot": 4,
+      "heading": "The Approach"
+    },
+    {
+      "shot": 5,
+      "heading": "What Was Recorded"
+    },
+    {
+      "shot": 6,
+      "heading": "Content Gates"
     }
   ]
 }
