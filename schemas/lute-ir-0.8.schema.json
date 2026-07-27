@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.7.schema.json",
-  "title": "Lute compiled IR artifact (irVersion 0.7.x)",
-  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `Artifact`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec \u00a74.1, A9): an engine gates on `irVersion` by MAJOR.MINOR \u2014 it MUST accept any artifact whose `irVersion` major.minor it implements and MUST refuse one from a newer major.minor (the PATCH component is an advisory, backward-compatible refinement and never gates). `lute` (the language version) is informational for the runtime and does not gate parsing. Forward compatibility: an engine MUST IGNORE unknown OBJECT FIELDS (new optional fields are added append-only within a minor line) so a newer PATCH artifact still loads on an older engine of the same major.minor; an engine MUST treat an unknown command `kind` as an ERROR (a new command kind is a real capability the engine cannot fake). Field declaration order in an artifact is a byte-stability contract of the compiler but carries no semantics for a consumer.",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.8.schema.json",
+  "title": "Lute compiled IR artifact (irVersion 0.8.x)",
+  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `Artifact`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec §4.1, A9): an engine gates on `irVersion` by MAJOR.MINOR — it MUST accept any artifact whose `irVersion` major.minor it implements and MUST refuse one from a newer major.minor (the PATCH component is an advisory, backward-compatible refinement and never gates). `lute` (the language version) is informational for the runtime and does not gate parsing. Forward compatibility: an engine MUST IGNORE unknown OBJECT FIELDS (new optional fields are added append-only within a minor line) so a newer PATCH artifact still loads on an older engine of the same major.minor; an engine MUST treat an unknown command `kind` as an ERROR (a new command kind is a real capability the engine cannot fake). Field declaration order in an artifact is a byte-stability contract of the compiler but carries no semantics for a consumer.\n\nIR 0.8.0: within one artifact every `addr` shares a field width, so lexicographic order over `addr` equals execution order (dsl 0.8.0 §2). Engines loading artifacts from mixed toolchain versions SHOULD still compare `addr` segment-wise numerically.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -20,7 +20,7 @@
         "scene",
         "quest"
       ],
-      "description": "document kind discriminator (dsl 0.2.0 \u00a72/\u00a73.1); read first \u2014 it selects `meta`'s shape."
+      "description": "document kind discriminator (dsl 0.2.0 §2/§3.1); read first — it selects `meta`'s shape."
     },
     "lute": {
       "type": "string",
@@ -28,11 +28,11 @@
     },
     "irVersion": {
       "type": "string",
-      "description": "IR schema version the engine gates on (major.minor), e.g. \"0.7.0\"."
+      "description": "IR schema version the engine gates on (major.minor), e.g. \"0.8.0\"."
     },
     "capabilityVersion": {
       "type": "string",
-      "description": "plugin-system \u00a713 capability snapshot stamp (a content hash); a consumer may refuse a mismatched snapshot."
+      "description": "plugin-system §13 capability snapshot stamp (a content hash); a consumer may refuse a mismatched snapshot."
     },
     "meta": {
       "$ref": "#/$defs/artifactMeta"
@@ -42,7 +42,7 @@
       "items": {
         "$ref": "#/$defs/stateEntry"
       },
-      "description": "the folded init/type table (\u00a74.1); may be empty but is always present."
+      "description": "the folded init/type table (§4.1); may be empty but is always present."
     },
     "entities": {
       "type": "array",
@@ -84,7 +84,7 @@
       "items": {
         "$ref": "#/$defs/command"
       },
-      "description": "the flat command-record stream (\u00a74.4)."
+      "description": "the flat command-record stream (§4.4)."
     },
     "prereqEdges": {
       "type": "array",
@@ -92,6 +92,13 @@
         "$ref": "#/$defs/prereqEdgeEntry"
       },
       "description": "advisory raw `after` prerequisite edges (connectivity T13); omitted when empty."
+    },
+    "shots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/shotEntry"
+      },
+      "description": "dsl 0.8.0 §6: authored `## ` shot headings, in document order. Omitted when no shot carries a heading. Quest documents have no shots."
     }
   },
   "allOf": [
@@ -151,7 +158,7 @@
         "by",
         "reason"
       ],
-      "description": "\u00a74.3 injection provenance (lute_check::inject::Provenance): why an implicit command exists."
+      "description": "§4.3 injection provenance (lute_check::inject::Provenance): why an implicit command exists."
     },
     "source": {
       "type": "object",
@@ -164,10 +171,10 @@
       "required": [
         "component"
       ],
-      "description": "\u00a74.3 component source stamp on component-expanded records (D8)."
+      "description": "§4.3 component source stamp on component-expanded records (D8)."
     },
     "exprNode": {
-      "description": "Portable CEL expression AST (IR A7, expr.rs). Serialized as an UNTAGGED serde enum \u2014 each variant is a bare object distinguished by its keys. A plain JSON walker evaluates it; the parallel `raw`/string field carries the source CEL for debug. Absent whenever the CEL slot was empty or fell outside the closed Lute-CEL profile (dsl \u00a78.4).",
+      "description": "Portable CEL expression AST (IR A7, expr.rs). Serialized as an UNTAGGED serde enum — each variant is a bare object distinguished by its keys. A plain JSON walker evaluates it; the parallel `raw`/string field carries the source CEL for debug. Absent whenever the CEL slot was empty or fell outside the closed Lute-CEL profile (dsl §8.4).",
       "oneOf": [
         {
           "type": "object",
@@ -333,7 +340,7 @@
       "description": "A CEL slot's raw text plus its optional portable lowered `expr` (IR A7). `expr` is absent for empty/out-of-profile CEL."
     },
     "placeholder": {
-      "description": "One {{\u2026}} interpolation placeholder (IR A3), internally tagged on `kind` (lowercase). The runtime substitutes it against live state; the enclosing text/label keeps the verbatim {{\u2026}} marker.",
+      "description": "One {{…}} interpolation placeholder (IR A3), internally tagged on `kind` (lowercase). The runtime substitutes it against live state; the enclosing text/label keeps the verbatim {{…}} marker.",
       "oneOf": [
         {
           "type": "object",
@@ -395,7 +402,7 @@
         "voiceover",
         "offscreen"
       ],
-      "description": ":line role (\u00a74.4). Voiced roles (dialogue/voiceover/offscreen) carry a voiceKey; monologue/narration do not."
+      "description": ":line role (§4.4). Voiced roles (dialogue/voiceover/offscreen) carry a voiceKey; monologue/narration do not."
     },
     "entityKindEntry": {
       "type": "object",
@@ -419,7 +426,7 @@
         "name",
         "open"
       ],
-      "description": "One merged relational entity kind (dsl 0.3.0 \u00a73.1)."
+      "description": "One merged relational entity kind (dsl 0.3.0 §3.1)."
     },
     "enumEntry": {
       "type": "object",
@@ -439,7 +446,7 @@
         "name",
         "members"
       ],
-      "description": "One merged relational `enums:` entry (dsl 0.3.0 \u00a73)."
+      "description": "One merged relational `enums:` entry (dsl 0.3.0 §3)."
     },
     "relationEntry": {
       "type": "object",
@@ -470,7 +477,7 @@
             "type": "integer",
             "minimum": 0
           },
-          "description": "0-based functional-key arg indices (\u00a74); absent when undeclared."
+          "description": "0-based functional-key arg indices (§4); absent when undeclared."
         }
       },
       "additionalProperties": true,
@@ -480,7 +487,7 @@
         "derive",
         "reserved"
       ],
-      "description": "One merged relation declaration (dsl 0.3.0 \u00a74)."
+      "description": "One merged relation declaration (dsl 0.3.0 §4)."
     },
     "seedFactEntry": {
       "type": "object",
@@ -501,10 +508,10 @@
         "relation",
         "args"
       ],
-      "description": "One seed `facts:` ground tuple (dsl 0.3.0 \u00a74)."
+      "description": "One seed `facts:` ground tuple (dsl 0.3.0 §4)."
     },
     "termEntry": {
-      "description": "One rule term (dsl 0.3.0 \u00a77.1), tagged on `kind`. Bools lower to a Const with value \"true\"/\"false\".",
+      "description": "One rule term (dsl 0.3.0 §7.1), tagged on `kind`. Bools lower to a Const with value \"true\"/\"false\".",
       "oneOf": [
         {
           "type": "object",
@@ -559,10 +566,10 @@
         "relation",
         "terms"
       ],
-      "description": "One rule atom: a relation applied to terms (dsl 0.3.0 \u00a77.1)."
+      "description": "One rule atom: a relation applied to terms (dsl 0.3.0 §7.1)."
     },
     "bodyEntry": {
-      "description": "One rule body literal (dsl 0.3.0 \u00a77.1), tagged on `kind`: a positive/negated atom, a CEL guard, or a term comparison.",
+      "description": "One rule body literal (dsl 0.3.0 §7.1), tagged on `kind`: a positive/negated atom, a CEL guard, or a term comparison.",
       "oneOf": [
         {
           "type": "object",
@@ -649,7 +656,7 @@
         "body",
         "raw"
       ],
-      "description": "One Datalog rule (dsl 0.3.0 \u00a77.1), emitted as STRUCTURED data. Lute performs NO evaluation (D1); the engine runs the least-fixpoint over this rule set."
+      "description": "One Datalog rule (dsl 0.3.0 §7.1), emitted as STRUCTURED data. Lute performs NO evaluation (D1); the engine runs the least-fixpoint over this rule set."
     },
     "prereqEdgeEntry": {
       "type": "object",
@@ -660,7 +667,7 @@
         },
         "after": {
           "type": "string",
-          "description": "the RAW declared `after` formula text \u2014 unresolved, unvalidated CEL."
+          "description": "the RAW declared `after` formula text — unresolved, unvalidated CEL."
         }
       },
       "additionalProperties": true,
@@ -668,7 +675,7 @@
         "node",
         "after"
       ],
-      "description": "One advisory prerequisite edge (connectivity spec \u00a72.6, T13): a single node's raw declared `after`, verbatim."
+      "description": "One advisory prerequisite edge (connectivity spec §2.6, T13): a single node's raw declared `after`, verbatim."
     },
     "sceneMeta": {
       "type": "object",
@@ -696,7 +703,7 @@
         "episode",
         "episodeId"
       ],
-      "description": "Scene-kind envelope meta (\u00a74.1). Present when `kind` == \"scene\"."
+      "description": "Scene-kind envelope meta (§4.1). Present when `kind` == \"scene\"."
     },
     "questMeta": {
       "type": "object",
@@ -709,7 +716,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Quest-kind envelope meta (dsl 0.2.0 \u00a76.1). MAY serialize as {} when neither key is authored. Present when `kind` == \"quest\"."
+      "description": "Quest-kind envelope meta (dsl 0.2.0 §6.1). MAY serialize as {} when neither key is authored. Present when `kind` == \"quest\"."
     },
     "stateEntry": {
       "type": "object",
@@ -719,7 +726,7 @@
         },
         "type": {
           "type": "string",
-          "description": "value-level type label (bool/number/string/enum/list<\u2026>/map<\u2026>/record)."
+          "description": "value-level type label (bool/number/string/enum/list<…>/map<…>/record)."
         },
         "domain": {
           "type": "array",
@@ -741,7 +748,7 @@
         "path",
         "type"
       ],
-      "description": "One folded state slot (\u00a74.1): the engine's init/type table entry."
+      "description": "One folded state slot (§4.1): the engine's init/type table entry."
     },
     "effectSource": {
       "description": "The origin of an Effect's value (IR A12, untagged).",
@@ -802,7 +809,7 @@
         "path",
         "from"
       ],
-      "description": "A resolved plugin state-write binding (IR A12): where a bridge result / increment / literal lands. The runtime applies it after the bridge call \u2014 no manifest lookup, no per-plugin knowledge."
+      "description": "A resolved plugin state-write binding (IR A12): where a bridge result / increment / literal lands. The runtime applies it after the bridge call — no manifest lookup, no per-plugin knowledge."
     },
     "choiceOption": {
       "type": "object",
@@ -831,6 +838,13 @@
           "items": {
             "$ref": "#/$defs/placeholder"
           }
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "dsl 0.8.0 §7: merged locale labels, locale tag → text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`/`label`."
         }
       },
       "additionalProperties": true,
@@ -876,6 +890,13 @@
           "items": {
             "$ref": "#/$defs/placeholder"
           }
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "dsl 0.8.0 §7: merged locale labels, locale tag → text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`/`label`."
         }
       },
       "additionalProperties": true,
@@ -946,7 +967,7 @@
         "optional",
         "body"
       ],
-      "description": "One objective inlined in QuestCmd.objectives (dsl 0.2.0 \u00a76.4). Declaration data only; the engine derives completion (all non-optional objectives done \u21d2 quest complete)."
+      "description": "One objective inlined in QuestCmd.objectives (dsl 0.2.0 §6.4). Declaration data only; the engine derives completion (all non-optional objectives done ⇒ quest complete)."
     },
     "cmdLine": {
       "type": "object",
@@ -956,7 +977,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "role": {
           "$ref": "#/$defs/role"
@@ -987,7 +1008,7 @@
         },
         "voiceKey": {
           "type": "string",
-          "description": "present only for voiced roles (\u00a74.2)."
+          "description": "present only for voiced roles (§4.2)."
         },
         "placeholders": {
           "type": "array",
@@ -1016,6 +1037,13 @@
         },
         "source": {
           "$ref": "#/$defs/source"
+        },
+        "texts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "dsl 0.8.0 §7: merged locale texts, locale tag → text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`/`label`."
         }
       },
       "additionalProperties": true,
@@ -1027,7 +1055,7 @@
         "text",
         "lineId"
       ],
-      "description": "A spoken/narrated content line (\u00a74.4)."
+      "description": "A spoken/narrated content line (§4.4)."
     },
     "cmdBackground": {
       "type": "object",
@@ -1037,7 +1065,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "location": {
           "type": "string"
@@ -1085,7 +1113,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "action": {
           "type": "string"
@@ -1140,7 +1168,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "sound": {
           "type": "string"
@@ -1188,7 +1216,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "vfxType": {
           "type": "string"
@@ -1237,7 +1265,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "character": {
           "type": "string"
@@ -1293,7 +1321,7 @@
         "addr",
         "character"
       ],
-      "description": "An authored ::auto or an injected sprite command (\u00a77.4); injected records carry `provenance` in the stamp."
+      "description": "An authored ::auto or an injected sprite command (§7.4); injected records carry `provenance` in the stamp."
     },
     "cmdCamera": {
       "type": "object",
@@ -1303,7 +1331,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "focus": {
           "type": "string"
@@ -1363,7 +1391,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "assetId": {
           "type": "string"
@@ -1412,7 +1440,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "assetId": {
           "type": "string"
@@ -1458,7 +1486,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "path": {
           "type": "string"
@@ -1505,7 +1533,7 @@
         "op",
         "value"
       ],
-      "description": "A state write (\u00a74.4)."
+      "description": "A state write (§4.4)."
     },
     "cmdAssert": {
       "type": "object",
@@ -1515,7 +1543,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "relation": {
           "type": "string"
@@ -1557,7 +1585,7 @@
         "relation",
         "args"
       ],
-      "description": "One asserted fact delta (dsl 0.3.0 \u00a75). DATA only \u2014 the engine applies it as a positive write to the relation's fact set."
+      "description": "One asserted fact delta (dsl 0.3.0 §5). DATA only — the engine applies it as a positive write to the relation's fact set."
     },
     "cmdRetract": {
       "type": "object",
@@ -1567,7 +1595,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "relation": {
           "type": "string"
@@ -1577,7 +1605,7 @@
           "items": {
             "type": "string"
           },
-          "description": "ground literals or \"_\" wildcards (\u00a75 RetractPattern)."
+          "description": "ground literals or \"_\" wildcards (§5 RetractPattern)."
         },
         "wait": {
           "type": "boolean"
@@ -1609,7 +1637,7 @@
         "relation",
         "args"
       ],
-      "description": "One retracted fact delta (dsl 0.3.0 \u00a75). The engine applies it as a negative write; \"_\" positions are a bulk wildcard the engine resolves."
+      "description": "One retracted fact delta (dsl 0.3.0 §5). The engine applies it as a negative write; \"_\" positions are a bulk wildcard the engine resolves."
     },
     "cmdChoice": {
       "type": "object",
@@ -1619,7 +1647,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "branchId": {
           "type": "string"
@@ -1677,7 +1705,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "subject": {
           "type": "string"
@@ -1734,7 +1762,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "id": {
           "type": "string"
@@ -1783,7 +1811,7 @@
         "options",
         "converge"
       ],
-      "description": "<hub> (\u00a77.3.2): a choice plus revisit semantics; re-presentation is a runtime property of the hub kind (no backward jump emitted)."
+      "description": "<hub> (§7.3.2): a choice plus revisit semantics; re-presentation is a runtime property of the hub kind (no backward jump emitted)."
     },
     "cmdJump": {
       "type": "object",
@@ -1793,7 +1821,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "target": {
           "type": "string"
@@ -1807,6 +1835,50 @@
       ],
       "description": "Unconditional control-flow jump. Carries no stamp."
     },
+    "cmdEnd": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "end"
+        },
+        "addr": {
+          "type": "string",
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        },
+        "reason": {
+          "type": "string",
+          "description": "free-form author string the host MAY surface (e.g. \"completed\"); Lute assigns it no meaning."
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "number"
+        },
+        "delay": {
+          "type": "number"
+        },
+        "at": {
+          "type": "number"
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "addr"
+      ],
+      "description": "dsl 0.8.0 §3: terminate the walk at this record. Equivalent to falling off the end of `commands`, except `reason` is carried. NEW in IR 0.8.0 — an engine implementing only 0.7 MUST refuse the artifact (unknown `kind` is a hard error)."
+    },
     "cmdBarrier": {
       "type": "object",
       "properties": {
@@ -1815,7 +1887,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "timeline": {
           "type": "integer",
@@ -1834,7 +1906,7 @@
         "timeline",
         "at"
       ],
-      "description": "A timeline join point (\u00a711.4). Carries no stamp."
+      "description": "A timeline join point (§11.4). Carries no stamp."
     },
     "cmdQuest": {
       "type": "object",
@@ -1844,7 +1916,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "id": {
           "type": "string"
@@ -1897,7 +1969,7 @@
         "id",
         "objectives"
       ],
-      "description": "<quest> declaration head (dsl 0.2.0 \u00a76.3). A declaration head: objective completion bodies and <on> arms follow as their own addressed records."
+      "description": "<quest> declaration head (dsl 0.2.0 §6.3). A declaration head: objective completion bodies and <on> arms follow as their own addressed records."
     },
     "cmdOn": {
       "type": "object",
@@ -1907,7 +1979,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "event": {
           "type": "string"
@@ -1949,7 +2021,7 @@
         "event",
         "body"
       ],
-      "description": "<on> event-condition-action record (dsl 0.2.0 \u00a74, \u00a76.6): an independent event rule."
+      "description": "<on> event-condition-action record (dsl 0.2.0 §4, §6.6): an independent event rule."
     },
     "cmdPlugin": {
       "type": "object",
@@ -1959,7 +2031,7 @@
         },
         "addr": {
           "type": "string",
-          "description": "the record's resolved address (\u00a74.2), unique within the artifact; jump/converge/target/body fields point at these."
+          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
         },
         "tag": {
           "type": "string",
@@ -2009,7 +2081,7 @@
       "description": "Plugin-directive passthrough (Command::Other), serialized as kind \"plugin\"."
     },
     "command": {
-      "description": "One command record (\u00a74.4), internally tagged on `kind`. An engine MUST error on an unknown `kind` (version-negotiation policy, top-level description); it MUST ignore unknown FIELDS within a known record.",
+      "description": "One command record (§4.4), internally tagged on `kind`. An engine MUST error on an unknown `kind` (version-negotiation policy, top-level description); it MUST ignore unknown FIELDS within a known record.",
       "oneOf": [
         {
           "$ref": "#/$defs/cmdLine"
@@ -2060,6 +2132,9 @@
           "$ref": "#/$defs/cmdJump"
         },
         {
+          "$ref": "#/$defs/cmdEnd"
+        },
+        {
           "$ref": "#/$defs/cmdBarrier"
         },
         {
@@ -2083,6 +2158,26 @@
           "$ref": "#/$defs/questMeta"
         }
       ]
+    },
+    "shotEntry": {
+      "type": "object",
+      "properties": {
+        "shot": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based document position of the shot (dsl 0.6.0 §3.2); matches the `addr` shot segment."
+        },
+        "heading": {
+          "type": "string",
+          "description": "the verbatim `## ` heading text."
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "shot",
+        "heading"
+      ],
+      "description": "dsl 0.8.0 §6: one authored shot heading. Purely descriptive — control flow never references it."
     }
   }
 }

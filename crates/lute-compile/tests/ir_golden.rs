@@ -26,6 +26,7 @@ fn line_serializes_per_spec() {
         line_id: "bianca.s01ep02.bianca_0010".into(),
         voice_key: Some("bianca-0010".into()),
         placeholders: Vec::new(),
+        texts: Default::default(),
         code: Some("0010".into()),
         stamp: Stamp::default(),
     });
@@ -51,6 +52,7 @@ fn unvoiced_line_has_no_voice_key() {
         line_id: "bianca.s01ep02.narrator_0010".into(),
         voice_key: None,
         placeholders: Vec::new(),
+        texts: Default::default(),
         code: None,
         stamp: Stamp::default(),
     });
@@ -79,6 +81,7 @@ fn offscreen_line_serializes_as_voiced() {
         line_id: "bianca.s01ep02.fixer_0010".into(),
         voice_key: Some("fixer-0010".into()),
         placeholders: Vec::new(),
+        texts: Default::default(),
         code: None,
         stamp: Stamp::default(),
     });
@@ -129,6 +132,7 @@ fn choice_matches_spec_worked_example() {
             expr: None,
             target: "004-0600".into(),
             placeholders: Vec::new(),
+            labels: Default::default(),
         }],
         converge: "004-1100".into(),
         stamp: Stamp::default(),
@@ -354,6 +358,7 @@ fn retarget_and_addr_helpers_visit_every_flow_field() {
             expr: None,
             target: "@1".into(),
             placeholders: Vec::new(),
+            labels: Default::default(),
         }],
         converge: "@2".into(),
         stamp: Stamp::default(),
@@ -405,6 +410,7 @@ fn envelope_serializes_with_state_entries() {
         rules: Vec::new(),
         commands: Vec::new(),
         prereq_edges: Vec::new(),
+        shots: Vec::new(),
     };
     assert_eq!(
         serde_json::to_string(&a).unwrap(),

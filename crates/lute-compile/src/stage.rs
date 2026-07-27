@@ -185,7 +185,7 @@ fn emit_primitive(
     // Pure reducer step (arch #2): next stage state + this node's injections.
     let (next, injected) = lower_node(state, node, lookahead);
     let authored = match node {
-        Node::Line(l) => Some(lower_line(l)),
+        Node::Line(l) => Some(lower_line(l, cx.snapshot)),
         Node::Directive(d) => lower_directive(d, cx.snapshot),
         Node::Set(s) => Some(lower_set(s)),
         Node::Assert(a) => Some(lower_assert(a)),
@@ -284,6 +284,7 @@ fn walk_branch(
                 .iter()
                 .map(placeholder_from_interp)
                 .collect(),
+            labels: Default::default(),
         })
         .collect();
     let mut cmd = Command::Choice(ChoiceCmd {
@@ -347,6 +348,7 @@ fn walk_hub(
                 .iter()
                 .map(placeholder_from_interp)
                 .collect(),
+            labels: Default::default(),
         })
         .collect();
     let mut cmd = Command::Hub(HubCmd {
