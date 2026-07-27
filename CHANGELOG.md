@@ -24,18 +24,148 @@ table.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-27
+
+The **adoption release**. Every item here traces to a concrete gap found while
+assessing Lute against a real, large game catalog — 777 authored scenes /
+73,847 command rows / 583 quests / 3,104 condition rows
+([`docs/adoption/oshiz-assessment.md`](docs/adoption/oshiz-assessment.md) §10).
+Specs: [`scenario-dsl/0.8.0.md`](docs/proposals/scenario-dsl/0.8.0.md) and
+[`plugin-system/0.0.2.md`](docs/proposals/plugin-system/0.0.2.md).
+
+All three version axes advance to `0.8.0`; the IR JSON schema is renamed
+`schemas/lute-ir-0.7.schema.json` → [`schemas/lute-ir-0.8.schema.json`](schemas/lute-ir-0.8.schema.json).
+A document stamped `luteVersion: "0.7.0"` fires the pre-existing
+`W-LUTE-VERSION-STALE`; restamping is the only edit a 0.7.0-clean document
+needs (see *Changed* for the one exception).
+
+### Fixed
+
+- **`addr` field width no longer overflows** — the index segment was fixed at
+  4 digits, so a shot with 100+ records emitted `001-11500` beside `001-1400`
+  and **lexicographic ordering silently diverged from execution order**; an
+  engine that ordered or range-checked addresses as strings would rewind into
+  already-played content. This was hit in production by the `tactus` pilot and
+  was invisible to the conformance suite, whose fixtures were all 4-digit.
+  Both segments are now padded to a width computed from the document and
+  **uniform across the whole artifact**, so *lexicographic order over `addr`
+  equals execution order* is a guarantee an engine may rely on. The fold counts
+  only addresses actually emitted, so a document whose every shot emits fewer
+  than 100 addresses is byte-identical to 0.7.0.
+
 ### Added
 
+- **`::end{reason?}`** — the ninth `lute.core` directive and a new IR command
+  kind `end`: terminate the walk, carrying an optional free-form reason the host
+  may surface. Content after an `::end` in the same straight-line body is
+  reported `W-CODE-AFTER-END`. New conformance fixture `conformance/end-reason/`.
+  Termination is control flow, so it is core rather than a plugin directive —
+  a plugin record is opaque to reachability analysis and could not be proven to
+  terminate.
+- **`after:` gains `active("questId")`** — the prerequisite profile admitted
+  `visited` and `completed`, but the quest lifecycle is
+  `unset → active → complete|failed`, so it could express two of three
+  observable states. Graph semantics match `completed` (reachability, cycles);
+  the state envelope is strictly weaker. `lute scenario` reports the edge kind
+  in `text`, `json` (`kinds`), and `dot` (`active` renders dashed).
+- **`quest.<id>.activatedAt`** — a reserved `narrativeTime` slot the engine
+  stamps at the `unset → active` transition. `validAt(rel, t)` existed since
+  0.3.0 but had **no author-writable `t`**; this is it. Readable in CEL,
+  never author-declarable (`E-QUEST-RESERVED-DECL`) or writable
+  (`E-QUEST-RESERVED-WRITE`), and exempt from `E-MAYBE-UNSET` because a
+  maybe-unset verdict on it would be undischargeable.
+- **`Artifact.shots`** — authored `## ` headings now survive compilation.
+  0.6.0 made shot headings free text and lowering discarded them, so a
+  compile → decompile round trip lost every section title; headings were the
+  only authored structure with no other IR carrier.
+- **Localization round trip** — `lute loc import <file>…` canonicalizes
+  `loc export` output into a `lineId`-keyed locale bundle, and
+  `lute compile --locales <bundle.json>` merges it into `LineCmd.texts` and the
+  choice/hub option `labels`. `text`/`label` stay the source-language string, so
+  a 0.7 consumer is unaffected. A missing `(lineId, locale)` pair is
+  `W-L10N-MISSING`, promotable with `--deny`. A malformed bundle is
+  `E-LOCALE-BUNDLE`.
+- **`lute compile --all --project <dir> -o <dir>`** — project-wide compile
+  emitting one artifact per document plus `project.index.json`, whose
+  `entities`/`enums`/`relations`/`seedFacts`/`rules`/`prereqEdges` are the
+  deterministic **union** across every document. The runtime contract already
+  required engines to compute that union; until now every adopter re-implemented
+  it. All-or-nothing: one failing document writes no output.
+- **`identity:` templates** — `lute.project.yaml` can now shape `lineId` and
+  `voiceKey` (`{prefix}`, `{speaker}`, `{code}`), so a catalog with an existing
+  identity convention can be migrated. Defaults reproduce 0.7.0 byte-for-byte;
+  an unknown token is `E-IDENTITY-TEMPLATE`.
+- **Plugin `stampAttrs`** — a plugin may declare **cross-cutting** attributes
+  admissible on every directive *and* on content lines, landing flattened in the
+  record's stamp. Engines routinely carry per-record metadata orthogonal to the
+  record kind (analytics tags, bonus hooks); 0.0.1 could declare attributes only
+  per-directive. `stampAttrs` participates in `capabilityVersion`.
+- **Declarative lowering is implemented** — `lower: { record, fields }` parsed
+  since 0.0.1 but `lute-compile` never matched on it, so *every* plugin
+  directive became `kind: "plugin"`. A directive may now lower to one of the
+  eight non-control-flow staging kinds, with `fromAttr`/literal field bindings
+  validated at assembly (`E-LOWER-RECORD-UNKNOWN`, `E-LOWER-RECORD-FIELD`). The
+  emitted record inherits the target kind's `wait` default, so it is
+  indistinguishable from the core directive an engine dispatches identically.
 - **Browser playground** — the website ships a fully client-side
-  [Try Lute](https://lute-lang.vercel.app/playground/) page: a new
-  `lute-wasm` crate compiles the checker, compiler, and tracer to
-  WebAssembly (2.3 MB, committed at
-  `packages/website/public/playground/pkg/` so the site build stays
+  [Try Lute](https://lute-lang.vercel.app/playground/) page: a new `lute-wasm`
+  crate compiles the checker, compiler, and tracer to WebAssembly (2.3 MB,
+  committed at `packages/website/public/playground/pkg/` so the site build stays
   Rust-free), exposing `check_source` / `compile_source` / `trace_source` /
-  `version`. The page offers live diagnostics with click-to-seek, an
-  on-demand compiled-IR view, a mock-driven trace transcript, and three
-  embedded checker-clean examples. Scope: one self-contained document,
-  core profile (no `uses:` imports or plugins).
+  `version`. Live diagnostics with click-to-seek, an on-demand compiled-IR view,
+  a mock-driven trace transcript, and three embedded checker-clean examples.
+  Scope: one self-contained document, core profile (no `uses:` or plugins).
+- **LSP stale-binary version guard** — `lute-lsp` advertises the language
+  version it implements (`lute_check::LUTE_LANG_VERSION`) as the LSP
+  `serverInfo.version`, and the VS Code extension warns once when the running
+  server is strictly older than a document's frontmatter `luteVersion:` target.
+  A stale server silently mis-analyzes newer grammar and cannot self-detect it
+  (its own `W-LUTE-VERSION-STALE` compares against the version it was built at),
+  so the client-side comparison is the only reliable signal. Toggle with
+  `lute.versionCheck` (default on). Diagnostics remain a byte-for-byte
+  reprojection of the CLI (`crates/lute-lsp/tests/divergence.rs`).
+
+### Changed
+
+- **Author `state:` is scalar — enforced** (`E-STATE-COLLECTION`). Three sources
+  disagreed: the normative text said scalar-only, the shape validator accepted
+  the full `Type` union (so `type: { list: string }` silently passed), and
+  `docs/runtime/state-lifecycle.md` documented `list<…>`/`map<…>`/`record` as
+  valid. All three now agree — collection-shaped `StateEntry` types reach the
+  artifact only through a plugin `state_shapes` expansion. **This is the one
+  case where a 0.7.0-clean document may newly fail**; collections were always
+  meant to be modelled as `relations:` (0.3.0 §3).
+- **`E-`-severity capability-resolution diagnostics now gate the exit code.**
+  Project/plugin resolution errors print on the `lute:` channel rather than the
+  per-document diagnostic list, and were previously advisory — so a new
+  `E-PLUGIN-OPTION-TYPE` would have printed and passed. They now fail
+  `check`/`check-project`/`compile`/`test`, matching the binary-severity rule
+  (`E-` gates). The forced-single-root reconciliation scan behind
+  `compile --project` is exempt: a sibling belonging to a nested subproject
+  legitimately mis-resolves under a forced root, and that is not the target
+  document's fault.
+- **Plugin option validation** (spec Appendix C1) — activation rejects an
+  unknown option name (`E-PLUGIN-OPTION-UNKNOWN`) and a value that fails its
+  declared type (`E-PLUGIN-OPTION-TYPE`).
+- **Plugin frontmatter value validation** (C2) — a plugin-owned frontmatter key
+  is now checked against its declared schema, not merely admitted
+  (`E-FRONTMATTER-SCHEMA`).
+- **Reserved stamp-attribute names** (C4, widened) — a plugin declaring `at`,
+  `duration`, `delay`, `wait`, `timeline`, `provenance`, or `source` as an
+  attribute is rejected at assembly with `E-PLUGIN-RESERVED-STAMP-ATTR`, on both
+  the `stampAttrs` and per-directive surfaces.
+- **`lute init` / `lute new` stamp the current language version** instead of a
+  hardcoded literal, so scaffolds cannot go stale on a version bump again.
+
+### Not done, deliberately
+
+Recorded so they are not re-proposed — each was rejected on measured evidence,
+see [`scenario-dsl/0.8.0.md`](docs/proposals/scenario-dsl/0.8.0.md) §10:
+Datalog aggregation (`sum`), any Datalog surface extension, author-declarable
+collection state, and a per-record `label` field. Plugin spec item **C3**
+(the `wait="false"` stale-default bridge read) remains open: it needs a
+dominance analysis the checker does not perform, and is deferred rather than
+half-shipped.
 
 ## [0.7.0] - 2026-07-20
 
