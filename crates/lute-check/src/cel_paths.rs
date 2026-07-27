@@ -52,18 +52,20 @@ pub(crate) fn is_state_path(path: &str) -> bool {
         .is_some_and(|root| STATE_ROOTS.contains(&root))
 }
 
-/// `true` for a RESERVED quest path (dsl 0.2.0 §5.2): `quest.<id>.state`
-/// (3 segments, segment 2 == `state`) or `quest.<id>.objectives.<oid>.done`
-/// (5 segments, segment 2 == `objectives`, segment 4 == `done`). These are
-/// engine-populated, implicitly-declared sub-namespaces of `quest.<id>.*` —
-/// content MAY read them but MUST NOT `::set` them (`E-QUEST-RESERVED-WRITE`).
+/// `true` for a RESERVED quest path (dsl 0.2.0 §5.2, dsl 0.8.0 §5):
+/// `quest.<id>.state` (3 segments, segment 2 == `state`),
+/// `quest.<id>.activatedAt` (3 segments, segment 2 == `activatedAt`), or
+/// `quest.<id>.objectives.<oid>.done` (5 segments, segment 2 == `objectives`,
+/// segment 4 == `done`). These are engine-populated, implicitly-declared
+/// sub-namespaces of `quest.<id>.*` — content MAY read them but MUST NOT
+/// `::set` them (`E-QUEST-RESERVED-WRITE`) nor author-declare them
+/// (`E-QUEST-RESERVED-DECL`).
 pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
     let segs: Vec<&str> = path.split('.').collect();
-    match segs.as_slice() {
-        ["quest", _, "state"] => true,
-        ["quest", _, "objectives", _, "done"] => true,
-        _ => false,
-    }
+    matches!(
+        segs.as_slice(),
+        ["quest", _, "state"] | ["quest", _, "activatedAt"] | ["quest", _, "objectives", _, "done"]
+    )
 }
 
 /// `true` specifically for the `quest.<id>.objectives.<oid>.done` reserved
@@ -76,6 +78,24 @@ pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
 /// the two reserved shapes differently without re-deriving the segment shape.
 pub(crate) fn is_reserved_quest_objective_done(path: &str) -> bool {
     matches!(path.split('.').collect::<Vec<&str>>().as_slice(), ["quest", _, "objectives", _, "done"])
+}
+
+/// `true` specifically for the `quest.<id>.activatedAt` reserved shape (3
+/// segments, segment 2 == `activatedAt`) — the sub-case of
+/// [`is_reserved_quest_path`] that `check_quest` seeds with a
+/// [`lute_manifest::types::Type::NarrativeTime`] decl (dsl 0.8.0 §5): the
+/// quest-instance activation instant, engine-populated at the
+/// `unset → active` transition.
+///
+/// Needed as its own predicate at three sites where the three reserved shapes
+/// diverge: the narrative-time classification in [`crate::temporal`] (a
+/// FOREIGN quest's anchor is readable but never folded into this document's
+/// schema, so `resolve_type` alone cannot see it), the definite-assignment
+/// exemption in [`crate::defassign`], and the `<match>` domain synthesis in
+/// [`crate::match_check`] (narrative time is opaque — `Domain::Infinite`, not
+/// the lifecycle enum `quest.<id>.state` carries).
+pub(crate) fn is_reserved_quest_activated_at(path: &str) -> bool {
+    matches!(path.split('.').collect::<Vec<&str>>().as_slice(), ["quest", _, "activatedAt"])
 }
 
 /// `E-PATH-IDENT`: a `-` in a CEL-facing name — a state-path segment, a `defs`

@@ -35,6 +35,17 @@ A quest with **no `start`** is *accept-driven*: an external accept (the CLI
 activates it. A quest that carries a `start` predicate needs no accept
 (`E-TRACE-ACCEPT` guards the mismatch).
 
+### Activation instant — `quest.<id>.activatedAt`
+
+On the `unset → active` transition the engine MUST stamp
+`quest.<id>.activatedAt` with the current narrative time (dsl 0.8.0 §5,
+[state-lifecycle.md](./state-lifecycle.md)). It is the anchor authors pass to
+`validAt(rel(args), t)` to ask "did this happen **after** the quest was
+accepted?" — the shape every `*_AFTER`-style gate needs. Content may read it
+but never writes it (`E-QUEST-RESERVED-WRITE`), and never declares it
+(`E-QUEST-RESERVED-DECL`). For a repeatable quest the engine re-stamps it on
+each re-instantiation, alongside clearing the instance's other scratch fields.
+
 ### Failure — `fail`, before completion
 
 `QuestCmd.fail` is an optional predicate evaluated **before** derived

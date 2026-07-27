@@ -2,11 +2,11 @@
 //! statically-known expected type is incompatible with the def's produced type
 //! (dsl §8). Fed through the assembled `check()` over inline `state:`/`defs:`
 //! frontmatter (mirrors `group_d.rs`'s harness).
-use lute_check::{check, CheckInput, Mode, SchemaImports};
+use lute_check::{check, CheckInput, Mode, Namespace, SchemaImports, StateDecl};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::DefDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_manifest::types::Type;
+use lute_manifest::types::{Field, Type};
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n";
 
@@ -27,23 +27,64 @@ fn codes(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Same harness as [`codes`], but with `imports` pre-populated — the surface a
+/// plugin `state_shapes` export / imported schema doc folds through. Since dsl
+/// 0.8.0 §4 an AUTHOR `state:` block may only declare scalars
+/// (`E-STATE-COLLECTION`), so a record-shaped decl has to arrive this way.
+fn codes_with_imports(text: &str, imports: SchemaImports) -> Vec<String> {
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "ref_type".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports,
+        components: Default::default(),
+    };
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
+}
+
 #[test]
 fn setexpr_nested_path_mismatch_flags_ref_type() {
     // NESTED-path resolver: `scene.player` is a Record with `hp: number`; a
     // `def flag: bool` assigned to `scene.player.hp` is a clear mismatch. This
     // exercises `set_op::resolve_type`'s descend-into-Record branch (the
     // reviewer's required correction over exact-key lookup).
+    //
+    // The record decl is injected through `imports.state` rather than an
+    // author `state:` block: dsl 0.8.0 §4 narrowed author state to scalars
+    // (`E-STATE-COLLECTION`, decl NOT installed), so the descend branch is now
+    // reachable ONLY from the plugin/imported surface — which is exactly the
+    // surface this resolver serves.
+    let mut imports = SchemaImports::default();
+    imports.state.decls.insert(
+        "scene.player".to_string(),
+        StateDecl {
+            ty: Type::Record(vec![Field {
+                name: "hp".to_string(),
+                ty: Type::Number,
+                default: None,
+                required: false,
+                shape: None,
+            }]),
+            default: None,
+            namespace: Namespace::Scene,
+        },
+    );
     let t = format!(
-        "{HDR}state:\n  \
-         scene.player: {{ type: {{ record: [ {{ name: hp, type: number }} ] }} }}\n\
-         defs:\n  flag: {{ type: bool, cel: \"true\" }}\n---\n## Shot 1.\n\
+        "{HDR}defs:\n  flag: {{ type: bool, cel: \"true\" }}\n---\n## Shot 1.\n\
          ::set{{scene.player.hp = @flag}}\n"
     );
+    let cs = codes_with_imports(&t, imports);
     assert!(
-        codes(&t).contains(&"E-REF-TYPE".to_string()),
-        "bool def assigned to a nested number field must flag E-REF-TYPE; got {:?}",
-        codes(&t)
+        cs.contains(&"E-REF-TYPE".to_string()),
+        "bool def assigned to a nested number field must flag E-REF-TYPE; got {cs:?}"
     );
+    assert!(!cs.contains(&"E-STATE-COLLECTION".to_string()), "{cs:?}");
 }
 
 #[test]

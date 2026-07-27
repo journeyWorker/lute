@@ -59,7 +59,7 @@ fn diag(message: String, span: Span) -> Diagnostic {
 /// (which needs every MEMBER of a colliding group, first occurrence
 /// included). An empty id is skipped here too (see
 /// [`check_project_quest_ids`]'s own doc comment on why).
-fn group_by_id<'a>(docs: &'a [(PathBuf, Document)]) -> BTreeMap<&'a str, Vec<(&'a Path, Span)>> {
+fn group_by_id(docs: &[(PathBuf, Document)]) -> BTreeMap<&str, Vec<(&Path, Span)>> {
     let mut by_id: BTreeMap<&str, Vec<(&Path, Span)>> = BTreeMap::new();
     for (path, doc) in docs {
         for quest in &doc.quests {
@@ -276,6 +276,17 @@ pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
             let segs: Vec<&str> = ref_path.split('.').collect();
             match segs.as_slice() {
                 ["quest", id, "state"] => {
+                    if !defined.contains_key(id) {
+                        out.push((
+                            path.clone(),
+                            ref_diag(unknown_quest_message(&ref_path, id), span),
+                        ));
+                    }
+                }
+                // dsl 0.8.0 §5: the reserved narrative-time anchor carries no
+                // objective segment, so its only project-wide obligation is
+                // that the quest id resolves — same rule as `quest.<id>.state`.
+                ["quest", id, "activatedAt"] => {
                     if !defined.contains_key(id) {
                         out.push((
                             path.clone(),

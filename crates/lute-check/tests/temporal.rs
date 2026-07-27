@@ -161,3 +161,84 @@ fn undeclared_anchor_path_stays_e_undeclared() {
     assert!(c.contains(&"E-UNDECLARED".to_string()), "{c:?}");
     assert!(!c.contains(&"E-TEMPORAL-ARG".to_string()), "{c:?}");
 }
+
+// --- dsl 0.8.0 §5: `quest.<id>.activatedAt`, the reserved narrative-time
+// anchor. `validAt(rel, t)` shipped in 0.3.0 §8 with no author-writable `t`;
+// the quest-instance activation instant is that `t`. -------------------------
+
+/// Entity/relation vocabulary plus a seed fact, so the queried relation is
+/// PRODUCIBLE (`producible.rs`) — an objective gated on a never-producible
+/// relation is `E-OBJECTIVE-UNSATISFIABLE`, a §4.2 reachability verdict
+/// orthogonal to narrative-time typing.
+const QUEST_VOCAB: &str = "entities:\n  loc: { members: [map] }\nrelations:\n  \
+                           sawClue: { args: [loc] }\nfacts:\n  - \"sawClue(map)\"\n";
+
+/// A `kind: quest` document whose single `<objective done>` slot carries
+/// `cond` — the spec's own §5 example shape.
+fn quest_done(cond: &str) -> String {
+    format!(
+        "---\nkind: quest\n{QUEST_VOCAB}---\n<quest id=\"q1\">\n\
+         <objective id=\"o\" done=\"{cond}\"/>\n</quest>\n",
+    )
+}
+
+#[test]
+fn validat_against_quest_activated_at_is_clean() {
+    // The whole point of the slot: `validAt`'s second argument now has an
+    // author-writable narrative-time expression. No E-TEMPORAL-ARG (the
+    // anchor classifies as narrative time), no E-UNDECLARED (it is an
+    // implicitly-declared reserved quest field), no E-MAYBE-UNSET (narrative
+    // time admits no `isSet`/`has` guard — that would itself be
+    // E-TEMPORAL-ARG — so the engine-populated anchor is definite).
+    let cs = codes(&quest_done("validAt(sawClue(map), quest.q1.activatedAt)"));
+    for code in ["E-TEMPORAL-ARG", "E-UNDECLARED", "E-MAYBE-UNSET", "E-CEL-PROFILE"] {
+        assert!(!cs.contains(&code.to_string()), "{code}: {cs:?}");
+    }
+    assert!(!cs.iter().any(|c| c.starts_with("E-")), "{cs:?}");
+}
+
+#[test]
+fn foreign_quest_activated_at_is_narrative_time_too() {
+    // A quest THIS document never folds: the reserved shape is implicitly
+    // declared project-wide, so `is_nt` must recognise it WITHOUT a schema
+    // decl to resolve against — otherwise `validAt`'s second argument would
+    // be E-TEMPORAL-ARG purely because the quest lives in another file.
+    let cs = codes(&quest_done("validAt(sawClue(map), quest.elsewhere.activatedAt)"));
+    assert!(!cs.contains(&"E-TEMPORAL-ARG".to_string()), "{cs:?}");
+    assert!(!cs.contains(&"E-UNDECLARED".to_string()), "{cs:?}");
+}
+
+#[test]
+fn author_decl_of_quest_activated_at_is_reserved_decl() {
+    let cs = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         state:\n  quest.q1.activatedAt: { type: number }\n---\n## Shot 1.\n@x: hi\n",
+    );
+    assert!(cs.contains(&"E-QUEST-RESERVED-DECL".to_string()), "{cs:?}");
+}
+
+#[test]
+fn set_to_quest_activated_at_is_reserved_write() {
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"q1\">\n<objective id=\"o\" done=\"run.d\"/>\n\
+         <on event=\"questActive\">\n::set{quest.q1.activatedAt = 1}\n</on>\n</quest>\n",
+    );
+    assert!(cs.contains(&"E-QUEST-RESERVED-WRITE".to_string()), "{cs:?}");
+}
+
+#[test]
+fn not_equals_between_two_activated_at_anchors_is_rejected_by_d8() {
+    // D8 is unchanged by the new slot: `!=` stays outside the ordering-only
+    // surface even between two genuine narrative-time values.
+    let cs = codes(&quest_done("quest.q1.activatedAt != quest.q2.activatedAt"));
+    assert!(cs.contains(&"E-TEMPORAL-ARG".to_string()), "D8: {cs:?}");
+
+    // ...while the five admitted ordering ops between the same two anchors
+    // stay legal, so the rejection above is D8 and not a classification miss.
+    for op in ["<", "<=", "==", ">", ">="] {
+        let ok = codes(&quest_done(&format!(
+            "quest.q1.activatedAt {op} quest.q2.activatedAt"
+        )));
+        assert!(!ok.contains(&"E-TEMPORAL-ARG".to_string()), "{op}: {ok:?}");
+    }
+}

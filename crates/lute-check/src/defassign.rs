@@ -75,8 +75,8 @@ use lute_syntax::ast::{
 };
 
 use crate::cel_paths::{
-    collect_path_uses, is_reserved_quest_objective_done, is_reserved_quest_path, is_state_path,
-    PathRole,
+    collect_path_uses, is_reserved_quest_activated_at, is_reserved_quest_objective_done,
+    is_reserved_quest_path, is_state_path, PathRole,
 };
 use crate::meta::StateSchema;
 // (no `Ctx` import — `check_definite_assignment`'s `_ctx` param was always
@@ -655,16 +655,30 @@ fn is_declared(path: &str, schema: &StateSchema) -> bool {
 
 /// True when the schema decl that `path` resolves to (exact or nearest ancestor)
 /// carries a `default` — the engine seeds it at scene entry (dsl §9.3) — OR
-/// `path` is the reserved `quest.<id>.objectives.<oid>.done` shape (dsl 0.2.0
-/// §5.2/§6.4): `check_quest` always seeds that decl with `default: false`
-/// (`match_check::check_quest`), so a read is DEFINITE even when this
-/// document never locally folds a `<quest>` for that id (a foreign-quest
-/// read must mirror the same synthetic decl the owning document's own fold
-/// would produce). `quest.<id>.state` carries NO default (its `unset`
-/// member is proven only via `<match>` exhaustiveness, dsl 0.2.0 §5.2) so it
-/// is deliberately excluded here.
+/// `path` is one of the two reserved quest shapes whose read is DEFINITE by
+/// construction even when this document never locally folds a `<quest>` for
+/// that id (a foreign-quest read must mirror the same synthetic decl the
+/// owning document's own fold would produce):
+///
+/// * `quest.<id>.objectives.<oid>.done` (dsl 0.2.0 §5.2/§6.4) — `check_quest`
+///   always seeds it with `default: false` (`match_check::check_quest`).
+/// * `quest.<id>.activatedAt` (dsl 0.8.0 §5) — `Type::NarrativeTime` is
+///   OPAQUE: no literal inhabits it, so it can carry no `default:`, AND the
+///   only guard forms `check_read` accepts (`isSet(p)`/`has(p)`) are
+///   themselves `E-TEMPORAL-ARG` on a narrative-time operand
+///   ([`crate::temporal`], dsl 0.3.0 §6). A maybe-unset verdict here would
+///   therefore be UNDISCHARGEABLE — every read of the anchor would error with
+///   no author remedy — so the engine-populated anchor is treated as definite
+///   and the `unset` case is left to the runtime, exactly as `validAt`'s own
+///   semantics require. This is the one place `activatedAt` deliberately
+///   diverges from `quest.<id>.state`.
+///
+/// `quest.<id>.state` carries NO default (its `unset` member is proven only
+/// via `<match>` exhaustiveness, dsl 0.2.0 §5.2) so it is deliberately
+/// excluded here.
 fn has_default(path: &str, schema: &StateSchema) -> bool {
     is_reserved_quest_objective_done(path)
+        || is_reserved_quest_activated_at(path)
         || schema
             .decls
             .iter()

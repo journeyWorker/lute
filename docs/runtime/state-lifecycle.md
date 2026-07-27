@@ -7,7 +7,7 @@ entry is:
 | field        | meaning |
 | ------------ | ------- |
 | `path`       | the dotted state path, e.g. `run.metMira`, `scene.choices.sofaHelp`. |
-| `type`       | a value-level type label: `bool` / `number` / `string` / `enum` / `list<…>` / `map<…>` / `record`. |
+| `type`       | a value-level type label: `bool` / `number` / `string` / `enum` / `narrativeTime` / `list<…>` / `map<…>` / `record`. **An AUTHOR `state:` declaration is scalar-only** — `bool`/`number`/`string`/`enum` (dsl 0.8.0 §4, `E-STATE-COLLECTION`); `narrativeTime` and the collection labels appear only on engine-surfaced slots (a reserved quest slot, or a plugin `state_shapes` expansion). |
 | `domain`     | for an `enum`, its member set. An implicit branch slot or a `quest.<id>.state` slot appends `"unset"` to the domain. Absent for non-enums. |
 | `default`    | the initial value (any JSON scalar/array/object, integral-collapsed). **Absent** when the slot has no default — the slot is *maybe-unset* until written. |
 | `provenance` | `"branch:<id>"` for an implicit `<branch>`/`<hub>` choice slot, `"quest:<id>"` for a reserved quest slot; absent for an author-declared slot. |
@@ -76,6 +76,13 @@ Two families of `quest.<id>.*` paths are **engine-owned**, not author-written
   *derives* every transition (see [quest-lifecycle.md](./quest-lifecycle.md)).
 - `quest.<id>.objectives.<oid>.done` — a plain `bool`, recorded when the
   objective's `done` predicate first holds (monotonic within an instance).
+- `quest.<id>.activatedAt` — a `narrativeTime` (dsl 0.8.0 §5), populated by the
+  engine at the `unset → active` transition. This is the anchor `validAt(rel,
+  t)` was missing: `validAt(arrivedSpace(x), quest.q1.activatedAt)` asks "did
+  this happen after the quest was accepted?". Readable in CEL under the
+  ordering-only comparison surface (`<`, `<=`, `==`, `>`, `>=`; `!=` stays
+  rejected, 0.3.0 D8); never author-declarable (`E-QUEST-RESERVED-DECL`) and
+  never author-writable (`E-QUEST-RESERVED-WRITE`).
 
 A `StateEntry` for these carries `provenance: "quest:<id>"`, so the engine can
 tell a reserved slot from an author's own `quest.<id>.*` scratch declaration
