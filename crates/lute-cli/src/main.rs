@@ -58,6 +58,7 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
 
+mod compile_all;
 mod doctor;
 mod loc;
 mod runner;
@@ -132,10 +133,13 @@ enum Command {
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
     },
-    /// Compile a checked `.lute` document to its JSON command-record artifact.
+    /// Compile a checked `.lute` document to its JSON command-record artifact,
+    /// or — with `--all` — every document in a project plus a
+    /// `project.index.json` unioning their vocabularies.
     Compile {
-        /// Path to the `.lute` file to compile.
-        file: PathBuf,
+        /// Path to the `.lute` file to compile. Ignored (and optional) under
+        /// `--all`, which takes its documents from `--project` instead.
+        file: Option<PathBuf>,
         /// On a failed gate, print the diagnostics as JSON instead of
         /// human-readable lines. (The artifact itself is always JSON.)
         #[arg(long)]
@@ -147,9 +151,34 @@ enum Command {
         /// document's activated capability snapshot.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
-        /// Write the artifact here instead of stdout.
+        /// Write the artifact here instead of stdout. Under `--all` this is a
+        /// required output DIRECTORY, not a file.
         #[arg(short = 'o', long = "out", value_name = "FILE")]
         out: Option<PathBuf>,
+        /// Compile EVERY `*.lute` document under `--project <dir>` into
+        /// `-o <dir>`, mirroring the project's own directory layout, and write
+        /// a `project.index.json` whose `entities`/`enums`/`relations`/
+        /// `seedFacts`/`rules`/`prereqEdges` are the UNION across all of them
+        /// (`docs/runtime/execution-model.md` requires an engine to compute
+        /// exactly that union before it can evaluate anything). Requires BOTH
+        /// `--project` and `-o`; any other combination is a usage error.
+        #[arg(long)]
+        all: bool,
+        /// Merge a locale bundle (`lute loc import`) into the artifact:
+        /// `texts` on every line, `labels` on every choice/hub option, keyed by
+        /// `lineId` (dsl 0.8.0 §7). `text`/`label` stay the source language.
+        /// A record missing a declared locale is `W-L10N-MISSING`.
+        #[arg(long, value_name = "FILE")]
+        locales: Option<PathBuf>,
+        /// Promote every diagnostic with EXACTLY this code to an error for the
+        /// verdict and exit code (repeatable) — the same §5 policy `check`
+        /// applies, over the warnings compile itself emits (`W-L10N-MISSING`).
+        #[arg(long = "deny", value_name = "CODE", value_parser = parse_deny_code)]
+        deny: Vec<String>,
+        /// Promote EVERY warning to an error for the verdict and exit code
+        /// (spec §5).
+        #[arg(long = "deny-warnings")]
+        deny_warnings: bool,
     },
     /// Back-fill a stable `code` into every untagged `:line` (dsl §12),
     /// rewriting the file in place.
@@ -386,6 +415,27 @@ enum LocCommand {
         #[arg(short = 'o', long = "out", value_name = "FILE")]
         out: Option<PathBuf>,
     },
+    /// Canonicalize translated `loc export` files into ONE locale bundle —
+    /// the reverse direction (dsl 0.8.0 §7), consumed by
+    /// `lute compile --locales <bundle.json>`.
+    ///
+    /// Accepts exactly what `export` writes, in either format (`.csv` → CSV,
+    /// anything else → JSON). `export` carries no locale (it extracts the
+    /// SOURCE language), so the locale tag is the FILE STEM — the normal
+    /// workflow is one translated file per locale (`ja-JP.json`,
+    /// `en-US.json`). A row carrying its own non-empty `locale`
+    /// field/column overrides that, so a single merged file also works.
+    ///
+    /// Exit `0`, `1` on `E-LOCALE-BUNDLE` (unparseable input, a duplicate
+    /// `lineId` within one locale, or an empty locale tag), `2` on I/O.
+    Import {
+        /// One translated export per locale.
+        #[arg(required = true, value_name = "FILE")]
+        files: Vec<PathBuf>,
+        /// Write the bundle here instead of stdout.
+        #[arg(short = 'o', long = "out", value_name = "FILE")]
+        out: Option<PathBuf>,
+    },
     /// Word-count and line-count report per document and per speaker.
     Report {
         /// Directory to walk recursively for `*.lute` files.
@@ -466,20 +516,27 @@ const DENIABLE_CODES: &[&str] = &[
     "E-DOLLAR-OUTSIDE-MATCH", "E-DOMAIN-DUP", "E-DOMAIN-UNKNOWN", "E-DUP-BRANCH",
     "E-DUP-LINE-CODE", "E-DUP-TRACK", "E-ENTITY-KIND-CLASH", "E-ENTITY-KIND-SHAPE",
     "E-EXTENDS-RELATION-SIG", "E-EXTENDS-STATE-TYPE", "E-FACT-DOMAIN", "E-FACT-TIER-WRITE",
-    "E-GRAMMAR-NOT-ADMITTED", "E-HUB-NO-EXIT", "E-INTERP-UNTERMINATED", "E-INTO-TARGET",
+    "E-FRONTMATTER-SCHEMA",
+    "E-GRAMMAR-NOT-ADMITTED", "E-HUB-NO-EXIT", "E-IDENTITY-TEMPLATE",
+    "E-INTERP-UNTERMINATED", "E-INTO-TARGET",
     "E-INTO-UNDECLARED", "E-INTO-VALUE", "E-KIND-MISSING", "E-KIND-NAME-CLASH",
-    "E-LEGACY-CONTENT-SIGIL", "E-LOGIC-CONTENT", "E-MATCH-DUP-OTHERWISE", "E-MATCH-RELATION-SUBJECT",
+    "E-LEGACY-CONTENT-SIGIL", "E-LOCALE-BUNDLE", "E-LOGIC-CONTENT", "E-LOWER-RECORD-FIELD",
+    "E-LOWER-RECORD-UNKNOWN",
+    "E-MATCH-DUP-OTHERWISE", "E-MATCH-RELATION-SUBJECT",
     "E-MAYBE-UNSET", "E-META-MISSING", "E-META-PARSE", "E-META-UNKNOWN-KEY",
     "E-MISSING-ATTR", "E-NONEXHAUSTIVE", "E-OBJECTIVE-ID-DUP", "E-OBJECTIVE-ID-MISSING",
     "E-OBJECTIVE-MISSING-DONE", "E-OBJECTIVE-UNSATISFIABLE", "E-ON-NO-EVENT", "E-PATH-IDENT",
     "E-PERSIST-REMOVED", "E-PLUGIN-DUP-ACROSS", "E-PLUGIN-DUP-ID", "E-PLUGIN-INVALID-DIRECTIVE",
     "E-PLUGIN-IO", "E-PLUGIN-MANIFEST", "E-PLUGIN-MISSING-ACTIVE", "E-PLUGIN-MISSING-EXPORT",
-    "E-PLUGIN-PARSE", "E-PLUGIN-RESERVED-NAME", "E-PLUGIN-UNKNOWN-ASSETKIND", "E-PLUGIN-UNKNOWN-EXPORT",
+    "E-PLUGIN-OPTION-TYPE", "E-PLUGIN-OPTION-UNKNOWN",
+    "E-PLUGIN-PARSE", "E-PLUGIN-RESERVED-NAME", "E-PLUGIN-RESERVED-STAMP-ATTR",
+    "E-PLUGIN-UNKNOWN-ASSETKIND", "E-PLUGIN-UNKNOWN-EXPORT",
     "E-PROFILE-EXTENDS-CYCLE", "E-PROFILE-UNKNOWN", "E-QUEST-ID-DUP", "E-QUEST-ID-MISSING",
     "E-QUEST-RESERVED-DECL", "E-QUEST-RESERVED-WRITE", "E-QUEST-UNREACHABLE", "E-REF-ARG-TYPE",
     "E-REF-ARITY", "E-REF-TYPE", "E-RELATION-ARITY", "E-RELATION-DOMAIN",
     "E-RELATION-DUP", "E-RELATION-EMPTY", "E-RELATION-RESERVED-WRITE", "E-RELATION-UNKNOWN",
-    "E-RETRACT-WILDCARD-ASSERT", "E-SET-OP-TYPE", "E-STATE-DECL", "E-STATE-MAYBE-UNAVAILABLE",
+    "E-RETRACT-WILDCARD-ASSERT", "E-SET-OP-TYPE", "E-STATE-COLLECTION", "E-STATE-DECL",
+    "E-STATE-MAYBE-UNAVAILABLE",
     "E-STATE-NAMESPACE", "E-STATE-REDECLARE", "E-STATE-SHAPE-CYCLE", "E-STRING-ESCAPE",
     "E-TAG-NOT-ONE-LINE", "E-TEMPORAL-ARG", "E-TIMELINE-CONTENT", "E-TIMELINE-DURATION",
     "E-TITLE-PLACEMENT", "E-TRACK-KEY", "E-UNCLASSIFIED", "E-UNCLOSED-TAG",
@@ -488,10 +545,11 @@ const DENIABLE_CODES: &[&str] = &[
     "E-UNSET-UNCOVERED", "E-USES-CYCLE", "E-USES-DUP-DEF", "E-USES-DUP-RELATION",
     "E-USES-DUP-STATE", "E-USES-NOT-FOUND", "E-USES-PARSE", "E-VALIDAT-DERIVED",
     "E-WHEN-LITERAL-DOMAIN", "E-WHEN-PATTERN", "E-WRITE-CONFLICT", "W-ASSET-PLACEHOLDER",
-    "W-CATALOG-STALE", "W-DERIVE-NO-RULES", "W-INJECT-CONFLICT", "W-INTO-SET-DUP",
-    "W-LUTE-VERSION-STALE", "W-OBJECTIVE-HIDDEN", "W-OTHERWISE-DEAD", "W-OVERLAP-ARMS",
-    "W-QUEST-REF-UNKNOWN", "W-TIMELINE-CLIPS", "W-TIMELINE-TOTAL", "W-TIMELINE-TRACKS",
-    "W-UNPROVEN-RELATIONAL",
+    "W-CATALOG-STALE", "W-CODE-AFTER-END", "W-DERIVE-NO-RULES", "W-INJECT-CONFLICT",
+    "W-INTO-SET-DUP", "W-L10N-MISSING", "W-LUTE-VERSION-STALE", "W-OBJECTIVE-HIDDEN",
+    "W-OTHERWISE-DEAD",
+    "W-OVERLAP-ARMS", "W-QUEST-REF-UNKNOWN", "W-TIMELINE-CLIPS", "W-TIMELINE-TOTAL",
+    "W-TIMELINE-TRACKS", "W-UNPROVEN-RELATIONAL",
 ];
 
 /// clap `value_parser` for `--deny <CODE>`: accept only a code in the known
@@ -591,12 +649,19 @@ fn main() -> ExitCode {
             providers,
             project,
             out,
-        } => run_compile(
-            &file,
+            all,
+            locales,
+            deny,
+            deny_warnings,
+        } => dispatch_compile(
+            file.as_deref(),
             json,
             providers.as_deref(),
             project.as_deref(),
             out.as_deref(),
+            all,
+            locales.as_deref(),
+            &DenyPolicy::new(&deny, deny_warnings),
         ),
         Command::Context {
             file,
@@ -649,6 +714,9 @@ fn main() -> ExitCode {
         Command::Loc(LocCommand::Export { dir, format, out }) => {
             loc::run_export(&dir, format.as_deref().unwrap_or("json"), out.as_deref())
         }
+        Command::Loc(LocCommand::Import { files, out }) => {
+            loc::run_import(&files, out.as_deref())
+        }
         Command::Loc(LocCommand::Report { dir, json }) => loc::run_report(&dir, json),
         Command::Scenario {
             dir,
@@ -694,6 +762,19 @@ fn run_version(json: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// A `CheckInput` plus the verdict of the capability-resolution step that
+/// produced it.
+pub(crate) struct BuiltInput {
+    pub input: CheckInput,
+    /// `true` when resolving the project/plugin snapshot emitted an
+    /// `E-`-severity diagnostic (plugin 0.0.2 §2 option validation,
+    /// `E-PLUGIN-MISSING-ACTIVE`, `E-IDENTITY-TEMPLATE`, …). These describe the
+    /// PROJECT rather than a span in the document, so they print through the
+    /// `lute:` channel instead of the per-document diagnostic list — but they
+    /// are errors, and every gating command MUST fold this into its exit code.
+    pub resolve_error: bool,
+}
+
 /// Assemble the `CheckInput` for `file` exactly as `check` does: project
 /// snapshot resolution (plugin §4/§11), provider-catalog precedence (plugin
 /// §10), and `uses:`/`components:` imports resolved against the file's own
@@ -702,7 +783,7 @@ fn build_input(
     file: &Path,
     providers: Option<&Path>,
     project: Option<&Path>,
-) -> Option<CheckInput> {
+) -> Option<BuiltInput> {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
         Err(e) => {
@@ -744,8 +825,16 @@ fn build_input(
 
     let (snapshot, rdiags) =
         resolve_document_snapshot(project.as_ref(), meta0.profile.as_deref(), &meta0.plugins);
+    let mut resolve_error = false;
     for d in &rdiags {
         eprintln!("lute: {}: {}", d.code, d.message);
+        // An `E-` resolve diagnostic is a build-failing error like any other
+        // (dsl 0.1.0 Appendix E: severity is binary, `E-` gates). It travels
+        // the `lute:` channel instead of the per-document diagnostic list
+        // because it describes the PROJECT, not a span in this file — but it
+        // must still set the exit code, or `E-PLUGIN-OPTION-TYPE` and friends
+        // would print and pass.
+        resolve_error |= d.code.starts_with("E-");
     }
 
     // Resolve the scene's `uses:` schema imports (dsl §9.2) and `components:`
@@ -755,16 +844,19 @@ fn build_input(
     let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
     let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
 
-    Some(CheckInput {
-        text,
-        uri: file.display().to_string(),
-        snapshot,
-        providers,
-        // Batch/build analysis, not the interactive LSP default (both behave
-        // identically today; the checker does not branch on mode yet).
-        mode: Mode::Ci,
-        imports,
-        components,
+    Some(BuiltInput {
+        input: CheckInput {
+            text,
+            uri: file.display().to_string(),
+            snapshot,
+            providers,
+            // Batch/build analysis, not the interactive LSP default (both behave
+            // identically today; the checker does not branch on mode yet).
+            mode: Mode::Ci,
+            imports,
+            components,
+        },
+        resolve_error,
     })
 }
 
@@ -778,9 +870,16 @@ fn run_check(
     project: Option<&Path>,
     policy: &DenyPolicy,
 ) -> ExitCode {
-    let Some(input) = build_input(file, providers, project) else {
+    let Some(built) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
+    let BuiltInput { input, resolve_error } = built;
+    // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
+    // option, missing active plugin, bad identity template) is a build-failing
+    // error; it printed above, and it MUST gate here or it would pass silently.
+    if resolve_error {
+        return ExitCode::from(1);
+    }
     let result = check(&input);
     // §5 verdict: a promoted (denied) diagnostic fails an otherwise-clean run.
     let ok = result.ok && !policy.any_denied(&result.diagnostics);
@@ -940,9 +1039,27 @@ fn collect_project_docs(
 
     for file in &files {
         let root = if single_root { dir.to_path_buf() } else { project_root_for(file, dir) };
-        let Some(input) = build_input(file, providers, Some(&root)) else {
+        let Some(built) = build_input(file, providers, Some(&root)) else {
             return Err(ExitCode::from(2));
         };
+        let BuiltInput { input, resolve_error } = built;
+        // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
+        // option, missing active plugin, bad identity template) is a
+        // build-failing error; it printed above, and it MUST gate or it would
+        // pass silently.
+        //
+        // ONLY under per-file root resolution (`single_root == false`). With
+        // `single_root == true` the caller has deliberately forced every file
+        // under ONE root to reconcile a DIFFERENT target document's envelope
+        // (connectivity spec §5) — a sibling that legitimately belongs to a
+        // nested subproject then resolves against the wrong `lute.project.yaml`
+        // and reports e.g. `E-PROFILE-UNKNOWN` for a profile its own project
+        // does define. That is an artifact of the forced root, not a fault of
+        // the document being compiled, and must not fail it. `check-project`
+        // (which uses each file's own nearest root) still catches the real ones.
+        if resolve_error && !single_root {
+            return Err(ExitCode::from(1));
+        }
         let (doc, _) = lute_syntax::parse(&input.text);
         let (folded, _, _) = fold_env(&doc, &input);
         foldeds.push(folded);
@@ -1641,12 +1758,31 @@ fn project_gate_result(
         );
         return Err(ExitCode::from(2));
     };
+    Ok(gate_for_doc(&reconciled, matched_key, base))
+}
+
+/// The spec §5 gate verdict for ONE already-reconciled document: its own
+/// reconciled `CheckResult`, MERGED with every project-wide diagnostic anchored
+/// on that same file — so an `E-STATE-MAYBE-UNAVAILABLE`/`E-CONN-*` fault on
+/// this document's OWN `after`/reads blocks it, while a SIBLING's project-only
+/// fault does not. `ok` is recomputed over the merged set.
+///
+/// Split out of [`project_gate_result`] so `compile --all`
+/// ([`compile_all::run`]) can gate EVERY document off ONE project
+/// reconciliation instead of re-running the whole single-root collection once
+/// per file (which would be quadratic in project size, and could in principle
+/// observe a project mid-edit differently between passes).
+fn gate_for_doc(
+    reconciled: &ReconciledProject,
+    path: &PathBuf,
+    base: &lute_check::CheckResult,
+) -> lute_check::CheckResult {
     let mut result = base.clone();
     // §5: block on the TARGET's own reconciled diagnostics only — merge in
     // every project-wide diagnostic anchored on this same file (its own
     // `E-STATE-MAYBE-UNAVAILABLE`/`E-CONN-*`), never a sibling's.
-    for (path, d) in &reconciled.project_diagnostics {
-        if path == matched_key {
+    for (p, d) in &reconciled.project_diagnostics {
+        if p == path {
             result.diagnostics.push(d.clone());
         }
     }
@@ -1670,13 +1806,13 @@ fn project_gate_result(
     if !already_cyclic {
         if let Some((id, span)) = reconciled
             .nodes_by_path
-            .get(matched_key)
+            .get(path)
             .and_then(|hosted| hosted.iter().find(|(id, _)| reconciled.cycle_degraded.contains(id)))
         {
             // Normalize line/col from the target's own text (mirrors
             // `reconcile_collected`'s project-diag normalization) — the raw
             // `character:`-key node span carries zeroed line/col otherwise.
-            let text = std::fs::read_to_string(matched_key).unwrap_or_default();
+            let text = std::fs::read_to_string(path).unwrap_or_default();
             let span = normalize_span_from_text(&text, *span);
             result.diagnostics.push(lute_check::connectivity::cycle_diag(
                 format!(
@@ -1689,7 +1825,7 @@ fn project_gate_result(
         }
     }
     result.ok = !result.diagnostics.iter().any(|d| d.severity == Severity::Error);
-    Ok(result)
+    result
 }
 
 // ===========================================================================
@@ -1896,6 +2032,9 @@ fn format_prereq(f: &lute_check::PrereqFormula) -> String {
         lute_check::PrereqFormula::Completed(id) => {
             format!("completed({})", quote_cel_string(id))
         }
+        lute_check::PrereqFormula::Active(id) => {
+            format!("active({})", quote_cel_string(id))
+        }
         lute_check::PrereqFormula::And(l, r) => {
             format!("({} && {})", format_prereq(l), format_prereq(r))
         }
@@ -1905,7 +2044,8 @@ fn format_prereq(f: &lute_check::PrereqFormula) -> String {
     }
 }
 
-/// Quote+escape a `visited`/`completed` atom id for CEL-like rendering.
+/// Quote+escape a `visited`/`completed`/`active` atom id for CEL-like
+/// rendering.
 /// JSON string-literal escaping (`serde_json::to_string`) is a safe,
 /// well-tested superset of what a CEL string literal needs
 /// (backslash/quote/control-char escaping) — a raw `format!("\"{id}\"")`
@@ -2011,7 +2151,11 @@ fn print_prereq_structure(scenario: &RootScenario, node: &lute_check::connectivi
             for atom in lute_check::atoms(f) {
                 targets.insert(match atom {
                     lute_check::Atom::Visited(key) => lute_check::connectivity::NodeId::Scene(key),
-                    lute_check::Atom::Completed(id) => lute_check::connectivity::NodeId::Quest(id),
+                    // Both quest-lifecycle atoms resolve to the same node;
+                    // the per-edge kind is reported by the graph views.
+                    lute_check::Atom::Completed(id) | lute_check::Atom::Active(id) => {
+                        lute_check::connectivity::NodeId::Quest(id)
+                    }
                 });
             }
             if !targets.is_empty() {
@@ -2423,6 +2567,24 @@ fn topo_layers(
     layers
 }
 
+/// The comma-joined atom-kind token(s) justifying the `from -> to` edge
+/// (lang 0.8.0) — `visited`, `completed`, `active`, or a combination when one
+/// formula reaches the same node through more than one atom. Rendered from
+/// `ConnGraph::edge_kinds_for`'s `BTreeSet`, so the order is `EdgeKind`'s own
+/// and the output is deterministic. A `?` marks the impossible case of an
+/// `edges` pair with no recorded kind — never fabricates a kind it cannot
+/// read off the graph.
+pub(crate) fn edge_kinds_text(
+    graph: &lute_check::connectivity::ConnGraph,
+    from: &lute_check::connectivity::NodeId,
+    to: &lute_check::connectivity::NodeId,
+) -> String {
+    match graph.edge_kinds_for(from, to) {
+        Some(kinds) => kinds.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", "),
+        None => "?".to_string(),
+    }
+}
+
 fn print_graph_for_root(root: &Path, graph: &lute_check::connectivity::ConnGraph) {
     println!("project root: {}", root.display());
     if graph.nodes.is_empty() {
@@ -2449,11 +2611,11 @@ fn print_graph_for_root(root: &Path, graph: &lute_check::connectivity::ConnGraph
             stuck.join(", ")
         );
     }
-    println!("  edges (prerequisite -> dependent):");
+    println!("  edges (prerequisite -> dependent) [atom kind(s)]:");
     let mut printed_any = false;
     for (from, targets) in &graph.edges {
         for to in targets {
-            println!("    {from} -> {to}");
+            println!("    {from} -> {to} [{}]", edge_kinds_text(graph, from, to));
             printed_any = true;
         }
     }
@@ -2521,9 +2683,16 @@ fn run_context(
     providers: Option<&Path>,
     project: Option<&Path>,
 ) -> ExitCode {
-    let Some(input) = build_input(file, providers, project) else {
+    let Some(built) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
+    let BuiltInput { input, resolve_error } = built;
+    // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
+    // option, missing active plugin, bad identity template) is a build-failing
+    // error; it printed above, and it MUST gate here or it would pass silently.
+    if resolve_error {
+        return ExitCode::from(1);
+    }
     // Parse + fold exactly as `compile` does (minus codegen): the folded env's
     // `.state` is the document's valid readable/writable state surface. No CEL
     // fill is needed — the schema fold reads structural ids/attrs, not CEL slots.
@@ -3100,33 +3269,146 @@ fn context_outline(surface: &serde_json::Value) -> String {
     out
 }
 
+/// Route `lute compile` to the single-file ([`run_compile`]) or whole-project
+/// ([`compile_all::run`]) path, rejecting every flag combination that means
+/// neither.
+///
+/// `--all` REQUIRES `--project <dir>` (it has no other way to know which
+/// documents belong to the project, and the capability snapshot resolves per
+/// project) and `-o <dir>` (there is no single artifact to put on stdout). It
+/// also takes no `<file>`: naming one would imply the other documents are
+/// somehow secondary, which they are not. Every violation is exit `2`, the
+/// usage tier — clap cannot express these dependencies itself, so they are
+/// checked here and reported in clap's own voice.
+#[allow(clippy::too_many_arguments)]
+fn dispatch_compile(
+    file: Option<&Path>,
+    json: bool,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+    out: Option<&Path>,
+    all: bool,
+    locales: Option<&Path>,
+    policy: &DenyPolicy,
+) -> ExitCode {
+    if !all {
+        let Some(file) = file else {
+            eprintln!(
+                "error: the following required arguments were not provided:\n  <FILE>\n\n\
+                 Usage: lute compile <FILE>\n       lute compile --all --project <DIR> -o <DIR>"
+            );
+            return ExitCode::from(2);
+        };
+        return run_compile(file, json, providers, project, out, locales, policy);
+    }
+
+    let mut usage: Vec<&str> = Vec::new();
+    if project.is_none() {
+        usage.push("--all requires --project <DIR> (the document set and capability snapshot both resolve per project)");
+    }
+    if out.is_none() {
+        usage.push("--all requires -o <DIR>, an output DIRECTORY (there is no single artifact to write to stdout)");
+    }
+    if file.is_some() {
+        usage.push("--all takes no <FILE>: it compiles every document under --project");
+    }
+    if !usage.is_empty() {
+        for message in usage {
+            eprintln!("error: {message}");
+        }
+        eprintln!("\nUsage: lute compile --all --project <DIR> -o <DIR>");
+        return ExitCode::from(2);
+    }
+    let bundle = match locales.map(load_locale_bundle).transpose() {
+        Ok(b) => b,
+        Err(code) => return code,
+    };
+    compile_all::run(
+        project.expect("checked above"),
+        out.expect("checked above"),
+        providers,
+        json,
+        bundle.as_ref(),
+        policy,
+    )
+}
+
 /// Run `compile` over one file. Exit `0` with the artifact on stdout (or
 /// `-o <FILE>`), `1` when the check gate fails (diagnostics to stdout,
 /// human or `--json`), `2` on I/O or serialization failure.
+///
+/// With `--locales <bundle.json>` the compiled artifact additionally carries
+/// per-record locale texts ([`load_locale_bundle`] then
+/// [`lute_compile::locale::merge_locales`], dsl 0.8.0 §7). Any resulting
+/// `W-L10N-MISSING` prints to STDERR — stdout may be carrying the artifact —
+/// and, when `--deny` promotes it, flips the verdict to `1` with NO artifact
+/// written.
 fn run_compile(
     file: &Path,
     json: bool,
     providers: Option<&Path>,
     project: Option<&Path>,
     out: Option<&Path>,
+    locales: Option<&Path>,
+    policy: &DenyPolicy,
 ) -> ExitCode {
-    let Some(input) = build_input(file, providers, project) else {
+    // Loaded BEFORE the compile so a malformed bundle fails fast, before any
+    // work — and, with `-o`, before the previous artifact is overwritten.
+    let bundle = match locales.map(load_locale_bundle).transpose() {
+        Ok(b) => b,
+        Err(code) => return code,
+    };
+    let Some(built) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
+    let BuiltInput { input, resolve_error } = built;
+    // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
+    // option, missing active plugin, bad identity template) is a build-failing
+    // error; it printed above, and it MUST gate here or it would pass silently.
+    if resolve_error {
+        return ExitCode::from(1);
+    }
     // Project-aware gate (connectivity spec §5): WITH `--project <dir>` the
     // target compiles against its RECONCILED `check-project` verdict (an
     // envelope-Guaranteed `run.*`/`user.*` read no longer blocks; a read no
     // route guarantees blocks with `E-STATE-MAYBE-UNAVAILABLE`). WITHOUT it,
     // the standalone single-file `check` gate, unchanged.
+    // 0.8.0 §9: the `identity:` block templates `lineId`/`voiceKey`. It is a
+    // PROJECT setting, so it only applies on the `--project` path; a loose
+    // scene keeps `IdentityTemplates::default()`, i.e. 0.7.0's pair. A project
+    // that fails to load already printed its error in `build_input`; falling
+    // back to the default here matches that core-only degradation.
     let compiled = match project {
-        Some(dir) => match project_gate_result(file, dir, providers) {
-            Ok(gate) => lute_compile::compile_with_check(&input, gate),
-            Err(code) => return code,
-        },
+        Some(dir) => {
+            let identity = load_project(dir)
+                .ok()
+                .flatten()
+                .map(|p| p.identity)
+                .unwrap_or_default();
+            match project_gate_result(file, dir, providers) {
+                Ok(gate) => lute_compile::compile_with_check(&input, gate, &identity),
+                Err(code) => return code,
+            }
+        }
         None => lute_compile::compile(&input),
     };
     match compiled {
-        Ok(artifact) => {
+        Ok(mut artifact) => {
+            // dsl 0.8.0 §7: merge strictly downstream of the addressing pass —
+            // `compile_with_check` has already stamped every final `lineId`,
+            // which is the ONLY key a bundle joins on.
+            if let Some(bundle) = &bundle {
+                let missing = lute_compile::locale::merge_locales(&mut artifact, bundle);
+                // STDERR, not stdout: without `-o` the artifact itself is on
+                // stdout, and a warning line in the middle of it would make
+                // the compile output unparseable.
+                eprint!("{}", render_diagnostics(file, &missing, policy));
+                let denied = missing.iter().filter(|d| policy.denied(d)).count();
+                if denied > 0 {
+                    eprintln!("--deny promoted {denied} diagnostic(s); no artifact emitted");
+                    return ExitCode::FAILURE;
+                }
+            }
             let mut s = match serde_json::to_string_pretty(&artifact) {
                 Ok(s) => s,
                 Err(e) => {
@@ -3190,6 +3472,26 @@ fn run_compile(
     }
 }
 
+/// Read + parse a `--locales <bundle.json>` file (dsl 0.8.0 §7). A missing or
+/// unreadable file is I/O (`2`, matching every other file the CLI opens); a
+/// file that IS readable but is not a bundle is `E-LOCALE-BUNDLE` (`1`) — the
+/// same code `lute loc import` reports for a malformed input, so the two ends
+/// of the round trip name the same defect the same way.
+fn load_locale_bundle(path: &Path) -> Result<lute_compile::locale::LocaleBundle, ExitCode> {
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        eprintln!("lute: cannot read {}: {e}", path.display());
+        ExitCode::from(2)
+    })?;
+    lute_compile::locale::LocaleBundle::parse(&text).map_err(|msg| {
+        eprintln!(
+            "{}: error [{}] {msg}",
+            path.display(),
+            loc::E_LOCALE_BUNDLE
+        );
+        ExitCode::FAILURE
+    })
+}
+
 /// Write `s` to stdout as raw bytes, returning any I/O error instead of
 /// panicking the way `print!`/`println!` do when the pipe is closed (EPIPE,
 /// e.g. `lute compile f.lute | head`). Callers map `Err` to exit `2`, matching
@@ -3230,9 +3532,16 @@ fn run_trace(
     providers: Option<&Path>,
     project: Option<&Path>,
 ) -> ExitCode {
-    let Some(input) = build_input(file, providers, project) else {
+    let Some(built) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
+    let BuiltInput { input, resolve_error } = built;
+    // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
+    // option, missing active plugin, bad identity template) is a build-failing
+    // error; it printed above, and it MUST gate here or it would pass silently.
+    if resolve_error {
+        return ExitCode::from(1);
+    }
 
     let file_mocks = match mock {
         Some(path) => {
@@ -3410,12 +3719,17 @@ fn run_fix(file: &Path) -> ExitCode {
 /// One `file:line:col: severity [CODE] message` line per diagnostic. A
 /// primary that collapsed same-root repeats (dsl 0.4.0 §8.2 C1/C5) appends a
 /// trailing ` (+N more: 12:3, 47:9, …)` — line:column, comma-joined, document
-/// order. Shared by [`print_human`] (the `check`/`compile` diagnostic list)
-/// and `run_trace`'s Refused rendering (dsl 0.4.0 §4.5: "the `E-TRACE-*`
-/// codes render exactly as check diagnostics do") — ONE line format, never a
-/// second convention.
-fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic], policy: &DenyPolicy) {
+/// order. Shared by [`print_human`] (the `check`/`compile` diagnostic list),
+/// `run_trace`'s Refused rendering (dsl 0.4.0 §4.5: "the `E-TRACE-*` codes
+/// render exactly as check diagnostics do"), and `compile --locales`'
+/// `W-L10N-MISSING` stream — ONE line format, never a second convention.
+///
+/// Rendered to a `String` rather than printed so a caller whose STDOUT is
+/// carrying an artifact can send the same bytes to stderr instead
+/// ([`print_diagnostics`] is the stdout wrapper every prior caller uses).
+fn render_diagnostics(file: &Path, diagnostics: &[Diagnostic], policy: &DenyPolicy) -> String {
     let path = file.display();
+    let mut out = String::new();
     for d in diagnostics {
         let more = if d.covered.is_empty() {
             String::new()
@@ -3431,7 +3745,8 @@ fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic], policy: &DenyPolic
         // marker so it is distinguishable from a native error.
         let denied = policy.denied(d);
         let marker = if denied { " [denied]" } else { "" };
-        println!(
+        let _ = writeln!(
+            out,
             "{path}:{}:{}: {} [{}]{marker} {}{more}",
             d.span.line,
             d.span.column,
@@ -3446,7 +3761,8 @@ fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic], policy: &DenyPolic
         // so the author sees what actually failed without a separate
         // `check` of the component.
         for r in &d.related {
-            println!(
+            let _ = writeln!(
+                out,
                 "    {}:{}:{}: {} [{}] {}",
                 r.file,
                 r.diagnostic.span.line,
@@ -3457,6 +3773,13 @@ fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic], policy: &DenyPolic
             );
         }
     }
+    out
+}
+
+/// [`render_diagnostics`] to stdout — the sink every `check`/`trace` caller
+/// has always used.
+fn print_diagnostics(file: &Path, diagnostics: &[Diagnostic], policy: &DenyPolicy) {
+    print!("{}", render_diagnostics(file, diagnostics, policy));
 }
 
 /// A summary line per diagnostic (via [`print_diagnostics`]), then a
