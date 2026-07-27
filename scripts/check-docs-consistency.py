@@ -26,9 +26,12 @@ scripts/check-release-workflow-safety.py):
    appear anywhere under packages/website/ or docs/ (canonical is
    lute-lang.vercel.app).
 
-3. Example-check manifest: prints the list of example roots CI is expected to
-   run `lute check-project` against (docs/examples, plus conformance/ when
-   present). The actual `lute` invocation lives in the workflow, not here.
+3. Example-check manifest: prints the one example root CI runs
+   `lute check-project` against (docs/examples). `conformance/` is NOT a root:
+   each fixture is an independent single-document contract test replayed on its
+   own (see conformance/README.md), and several deliberately reuse the same
+   scene identity, so unioning them into one project is `E-CONN-EPISODE-ID-DUP`
+   by construction. The actual `lute` invocation lives in the workflow.
 
 Exit: 0 clean, 1 on a consistency violation, 2 on a missing/unreadable input.
 """
@@ -50,7 +53,9 @@ LLMS_FULL = ROOT / "packages/website/public/llms-full.txt"
 DOMAIN_ROOTS = (ROOT / "packages/website", ROOT / "docs")
 STALE_DOMAIN = "lute-website.vercel.app"
 
-EXAMPLE_ROOT_CANDIDATES = ("docs/examples", "conformance")
+# `conformance/` is deliberately absent — see the module docstring: its fixtures
+# are replayed one at a time and several share a scene identity on purpose.
+EXAMPLE_ROOT_CANDIDATES = ("docs/examples",)
 
 # Precise CURRENT-language-version claim phrasings actually present in the two
 # llms files. Applied to the FULL file text (not line-by-line) so a claim that
