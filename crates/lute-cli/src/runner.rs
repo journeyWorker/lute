@@ -1,6 +1,6 @@
 //! `lute run` — the reference headless runner over a COMPILED artifact
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.7.schema.json`).
+//! `schemas/lute-ir-0.8.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
 //! artifact (`lute compile` output), gates on `irVersion` by **major.minor**
@@ -153,7 +153,7 @@ pub fn run_artifact(artifact: &Path, mock: Option<&Path>, json_out: bool) -> Exi
     }
 }
 
-/// Parse `"0.7.0"` → `(0, 7)`; `None` when it lacks a `major.minor` prefix.
+/// Parse `"0.8.0"` → `(0, 8)`; `None` when it lacks a `major.minor` prefix.
 fn parse_major_minor(v: &str) -> Option<(u64, u64)> {
     let mut it = v.split('.');
     let maj = it.next()?.parse().ok()?;
@@ -261,6 +261,13 @@ struct Runner {
 
     /// A `choice`/`hub` was reached with no mock decision (exit 3).
     incomplete: bool,
+    /// An `end` record executed (dsl 0.8.0): the walk is OVER. Distinct from
+    /// [`Runner::incomplete`] — an `end` walk is a COMPLETE walk (exit 0),
+    /// behaviorally identical to falling off the end of `commands`, with the
+    /// author's `reason` surfaced in the transcript. Checked wherever
+    /// `incomplete` is, so a terminator inside a hub option / quest body
+    /// segment stops the WHOLE walk and not merely its bounded `run_range`.
+    terminated: bool,
     /// An unknown command `kind` or malformed record (exit 2).
     fatal: Option<String>,
 }
@@ -340,6 +347,7 @@ impl Runner {
             transcript: Vec::new(),
             quest_status: BTreeMap::new(),
             incomplete: false,
+            terminated: false,
             fatal: None,
         };
 
@@ -453,8 +461,14 @@ impl Runner {
     }
 
     /// Drive the dispatcher over `[start, stop)`. Used for the whole scene
-    /// (`0..len`) and for bounded hub-option / quest-body segments.
+    /// (`0..len`) and for bounded hub-option / quest-body segments. Once an
+    /// `end` record has run the walk is over, so every LATER segment (a quest
+    /// `<on>` body, an objective body) is a no-op — the one guard here is what
+    /// makes that true for all of them at once.
     fn run_range(&mut self, start: usize, stop: usize) {
+        if self.terminated {
+            return;
+        }
         let mut pc = start;
         let mut guard = 0usize;
         let limit = self.commands.len() * 64 + 1024;
@@ -466,7 +480,7 @@ impl Runner {
             }
             match self.step(pc) {
                 Step::Next(n) => {
-                    if self.fatal.is_some() || self.incomplete {
+                    if self.fatal.is_some() || self.incomplete || self.terminated {
                         return;
                     }
                     if n < start || n >= stop {
@@ -514,6 +528,14 @@ impl Runner {
             "barrier" => {
                 self.rec_barrier(&cmd);
                 Step::Next(pc + 1)
+            }
+            // dsl 0.8.0: the walk terminator. `Halt` unwinds THIS range; the
+            // `terminated` flag unwinds every enclosing one (hub option body,
+            // quest segment) so the walk stops exactly as it would by running
+            // off the end of `commands`.
+            "end" => {
+                self.rec_end(&cmd);
+                Step::Halt
             }
             "plugin" => {
                 self.exec_plugin(&cmd);
@@ -766,7 +788,7 @@ impl Runner {
             let start = self.resolve(target);
             let stop = boundaries.iter().find(|&&b| b > start).copied().unwrap_or(self.commands.len());
             self.run_range(start, stop);
-            if self.fatal.is_some() || self.incomplete {
+            if self.fatal.is_some() || self.incomplete || self.terminated {
                 return Step::Halt;
             }
             if once {
@@ -814,6 +836,18 @@ impl Runner {
             "timeline": cmd.get("timeline").cloned().unwrap_or(Json::Null),
             "at": cmd.get("at").cloned().unwrap_or(Json::Null),
             "note": "timeline join — no real clock simulated",
+        }));
+    }
+
+    /// Record the `end` record and mark the walk over (dsl 0.8.0). `reason` is
+    /// optional in the IR; it rides the transcript as JSON `null` when absent so
+    /// the machine record's key set never varies with authoring.
+    fn rec_end(&mut self, cmd: &Json) {
+        self.terminated = true;
+        self.transcript.push(json!({
+            "addr": addr(cmd),
+            "kind": "end",
+            "reason": cmd.get("reason").cloned().unwrap_or(Json::Null),
         }));
     }
 
@@ -918,15 +952,25 @@ impl Runner {
         let mut done: BTreeSet<(usize, usize)> = BTreeSet::new();
         self.reevaluate(&quests, &handlers, &seg_starts, &mut done);
 
-        // Mock events fire in order; each re-evaluates the lifecycle.
+        // Mock events fire in order; each re-evaluates the lifecycle. An `end`
+        // inside a handler/objective body ends the WALK (dsl 0.8.0), so no
+        // later event is delivered — nothing downstream of the terminator runs.
         let events: Vec<String> = self.mock.events.clone();
         for ev in events {
+            if self.terminated {
+                break;
+            }
             self.fire_event(&ev, &handlers, &seg_starts);
             self.reevaluate(&quests, &handlers, &seg_starts, &mut done);
         }
 
         // Incomplete if an active quest is stuck on an undecidable required
-        // objective (a missing mock left the `done` predicate unknown).
+        // objective (a missing mock left the `done` predicate unknown). An
+        // `end` record makes this moot: the author declared the walk finished,
+        // so an unsettled objective is a deliberate outcome, not a missing mock.
+        if self.terminated {
+            return;
+        }
         for q in &quests {
             if self.quest_status.get(&q.id).map(String::as_str) == Some("active") {
                 for o in &q.objectives {
@@ -949,7 +993,7 @@ impl Runner {
     ) {
         let mut changed = true;
         let mut rounds = 0;
-        while changed && rounds < quests.len() * 8 + 16 {
+        while changed && !self.terminated && rounds < quests.len() * 8 + 16 {
             changed = false;
             rounds += 1;
             for (qi, q) in quests.iter().enumerate() {
@@ -1104,6 +1148,10 @@ impl Runner {
                 ),
                 "match" => format!("  {a}  match  -> {}", e.get("result").and_then(Json::as_str).unwrap_or("")),
                 "barrier" => format!("  {a}  barrier (no real clock)"),
+                "end" => match e.get("reason").and_then(Json::as_str) {
+                    Some(r) => format!("  {a}  end    reason={r}"),
+                    None => format!("  {a}  end"),
+                },
                 "plugin" => format!(
                     "  {a}  plugin {} (external call, not invoked)",
                     e.get("tag").and_then(Json::as_str).unwrap_or("")

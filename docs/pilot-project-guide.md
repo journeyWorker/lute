@@ -29,7 +29,7 @@ target/release/lute --version   # 0.7.0 확인 — 스테일 바이너리 주의
 ```
 
 - `LUTE_BIN` 환경변수로 절대경로를 프로젝트 스크립트에 주입한다. npm `@lute-lang/lute`도 있지만 로컬 소스가 항상 최신.
-- **에디터 LSP는 신뢰하지 마라.** 파일럿 시점 기준 lute-lsp는 구버전 문법(cinematic shot heading 등)으로 오진한다. 정본은 오직 CLI `lute check` / `check-project`.
+- **에디터 LSP는 소스상 0.8 정합이다 — 위험은 스테일 *바이너리*다.** `lute-lsp`는 모든 진단을 공유 `lute_check::check`로 흘려보내므로 CLI와 바이트 단위로 일치한다(`crates/lute-lsp/tests/divergence.rs` 골든이 강제). 파일럿 시점의 "cinematic shot heading 오진"은 문법이 아니라 PATH에 깔린 **낡은 lute-lsp 바이너리**가 원인이었다. 이제 서버가 `serverInfo.version`으로 구현 언어 버전을 광고하고, VS Code 확장이 문서의 `luteVersion:`보다 서버가 낮으면 경고한다(`lute.versionCheck`, 기본 on). 그래도 정본은 CLI `lute check` / `check-project`이며, 편집기를 새로 세팅하면 `cargo install --path crates/lute-lsp`로 서버를 최신화하라.
 
 ## 3. 프로젝트 스켈레톤 (검증된 형태)
 
@@ -48,12 +48,12 @@ project/
 ```
 
 - 플러그인 매니페스트는 `docs/examples/idola-project/plugins/idola.minigame/`을 복사해 개명하는 게 가장 빠르고 정확하다. tactus의 실전 사례: `~/Workspace/tactus/story/plugins/tactus.battle/`.
-- **Phase 0에서 스모크 씬 1개**(대사 1줄 + 브리지 디렉티브 1회 + `<match>`)로 `check → compile`이 exit 0인지 즉시 검증해 매니페스트 스키마 오차를 소진하라. 스키마: `schemas/lute.plugin.json`, `schemas/lute-ir-0.7.schema.json`.
+- **Phase 0에서 스모크 씬 1개**(대사 1줄 + 브리지 디렉티브 1회 + `<match>`)로 `check → compile`이 exit 0인지 즉시 검증해 매니페스트 스키마 오차를 소진하라. 스키마: `schemas/lute.plugin.json`, `schemas/lute-ir-0.8.schema.json`.
 - 컴파일 스크립트에서 ajv는 **draft 2020-12** 필요: `import Ajv from 'ajv/dist/2020'`.
 
 ## 4. 저작 규칙 (check를 통과하는 형태)
 
-- 프론트매터: `kind: scene`, `mode: inline`, `luteVersion: "0.7.0"`, `profile: <capability profile>`. 상태 선언의 enum 스칼라는 `{ type: { enum: [...] }, default: ... }` 형태(`values:`/`domain:` 아님).
+- 프론트매터: `kind: scene`, `mode: inline`, `luteVersion: "0.8.0"`, `profile: <capability profile>`. 상태 선언의 enum 스칼라는 `{ type: { enum: [...] }, default: ... }` 형태(`values:`/`domain:` 아님).
 - 관계 선언: `relations: { persuaded: { args: [character, route], tier: run, key: [0] } }` + `entities`/`enums`. `::assert{rel(a,b)}`로 기록, 퀘스트 objective에서 `count(persuaded(_,_)) >= 7`로 판정 — 이 패턴은 0.7에서 완전 동작한다.
 - number 대상 `<match on=...>` + `<when test="$ >= 4">`도 정상 동작한다 (파일럿 계획 때 우려했던 거부 없음).
 - 대사 `emotion=`은 **lute 내장 enum**(neutral, surprised, delighted, shy, content, angry, sad)만 허용된다. 엔진 포트레이트 키(serious/soft 등)와 다르면 엔진 쪽에서 매핑 테이블을 둬라.
@@ -79,9 +79,8 @@ project/
 ## 7. 에이전트 조직 운영 (1-N-M) — 무엇이 통했나
 
 - **통한 것**: Phase 0에서 `src/contracts.ts`(팀 간 인터페이스)를 메인이 직접 확정 → 부서장 5인(시나리오/런타임/전투/UI/아트) 병렬 파견, 컨텍스트는 공유 `local://` 정본 문서 1개 + 각자 절만. 부서 간 질문은 hub 메시징. 완료 기준을 "명령 + exit 0" 형태로 명시.
-- **함정 1 — 능력 없는 워커에게 위임 금지**: 워커 서브에이전트에는 task 툴/이미지 생성 툴이 없을 수 있다. 능력이 필요한 작업(이미지 생성 등)은 그 능력을 가진 에이전트 타입에 **직접** 배정하라. 부모가 응답 없는 워커 체인은 데드락된다 — 리드가 침묵하면 취소하고 메인이 직접 재발주.
-- **함정 2 — 아트는 디렉션 체계부터**: 레퍼런스 리서치 → 아트 바이블(팔레트/렌더링 규정/프롬프트 템플릿) → 캐릭터 레퍼런스 시트 → 시트를 입력 이미지로 강제한 파생 생성 → 크기/알파/동일인물 검수 루프. 이 순서를 건너뛰고 개별 프롬프트로 뿌리면 화풍이 흩어진다. (참고: tactus `docs/art/art-bible.md`, `_key.py` 그린스크린 키잉 파이프라인 — 생성 모델이 알파를 지원 안 할 때.)
-- **함정 3 — 리드 완료 보고 ≠ 검증**: 메인이 전체 `tsc --noEmit` + 전체 vitest + 실제 플레이를 다시 돌려라. 부서별 스코프 체크만으로는 통합 타입 에러와 크로스 팀 버그(플리커, HUD 겹침)가 남는다.
+- **함정 1 — 아트는 디렉션 체계부터**: 레퍼런스 리서치 → 아트 바이블(팔레트/렌더링 규정/프롬프트 템플릿) → 캐릭터 레퍼런스 시트 → 시트를 입력 이미지로 강제한 파생 생성 → 크기/알파/동일인물 검수 루프. 이 순서를 건너뛰고 개별 프롬프트로 뿌리면 화풍이 흩어진다. (참고: tactus `docs/art/art-bible.md`, `_key.py` 그린스크린 키잉 파이프라인 — 생성 모델이 알파를 지원 안 할 때.)
+- **함정 2 — 리드 완료 보고 ≠ 검증**: 메인이 전체 `tsc --noEmit` + 전체 vitest + 실제 플레이를 다시 돌려라. 부서별 스코프 체크만으로는 통합 타입 에러와 크로스 팀 버그(플리커, HUD 겹침)가 남는다.
 
 ## 8. 검증 게이트 요약 (다음 파일럿의 Definition of Done)
 

@@ -1,0 +1,36 @@
+---
+kind: scene
+luteVersion: "0.8.0"
+character: hero
+season: 1
+episode: 1
+title: End Reason
+---
+
+/*
+  dsl 0.8.0 `::end`: the walk terminator. Both branch arms end the walk with
+  their own `reason`, so the converge line below the <branch> is never
+  reached on ANY route -- an engine that falls through to it (rather than
+  stopping at the `end` record) fails this fixture on its very last command.
+
+  The two `::end`s sit in DIFFERENT bodies, so neither makes the other's arm
+  -- or the converge -- `W-CODE-AFTER-END` at check time: unreachability here
+  is a whole-branch property, not a straight-line one.
+*/
+
+## The Parting
+
+@narrator: The road ends at the river.
+
+<branch id="parting">
+  <choice id="stay" label="Hold the crossing">
+    @hero: I'll hold the crossing.
+    ::end{reason="stayed"}
+  </choice>
+  <choice id="leave" label="Walk away">
+    @hero: There's nothing left here.
+    ::end{reason="left"}
+  </choice>
+</branch>
+
+@narrator: Never reached — both arms terminate the walk.
