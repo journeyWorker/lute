@@ -44,6 +44,7 @@ fn plugin_with_directive(id: &str, dname: &str) -> LoadedPlugin {
         frontmatter: BTreeMap::new(),
         asset_kinds: vec![],
         events: vec![],
+        stamp_attrs: vec![],
     }
 }
 
@@ -675,14 +676,23 @@ fn plugin_with_directive_attr(id: &str, dname: &str, attr_name: &str) -> LoadedP
     p
 }
 
-/// dsl §7.5/§10: `at`, `duration`, `delay`, `wait` are "cross-cutting reserved
-/// across all directives and profiles"; a plugin manifest declaring one as an
-/// attribute name is an assembly-time error. Each reserved key, used as a
-/// plugin directive's attr name, must be rejected as `ReservedName` and the
-/// offending directive must NOT be merged into the snapshot.
+/// plugin §14 / Appendix C4: every key the CORE stamp owns — the dsl §7.5/§10
+/// timing keys `at`/`duration`/`delay`/`wait` PLUS `timeline`/`provenance`/
+/// `source` — is reserved against a plugin's directive attrs. Each, used as a
+/// plugin directive's attr name, must be rejected as `ReservedStampAttr`
+/// (`E-PLUGIN-RESERVED-STAMP-ATTR`) and the offending directive must NOT be
+/// merged into the snapshot.
 #[test]
-fn assemble_rejects_reserved_timing_attr_names_on_plugin_directives() {
-    for reserved in ["at", "duration", "delay", "wait"] {
+fn assemble_rejects_reserved_stamp_attr_names_on_plugin_directives() {
+    for reserved in [
+        "at",
+        "duration",
+        "delay",
+        "wait",
+        "timeline",
+        "provenance",
+        "source",
+    ] {
         let reg = InstalledPlugins {
             by_id: BTreeMap::from([(
                 "idola.minigame".to_string(),
@@ -702,19 +712,164 @@ fn assemble_rejects_reserved_timing_attr_names_on_plugin_directives() {
             },
         ];
         let (snap, errs) = assemble_snapshot(&active, &reg);
-        assert!(
-            errs.iter().any(|e| matches!(
+        let hit = errs
+            .iter()
+            .find(|e| matches!(
                 e,
-                lute_manifest::assemble::AssembleError::ReservedName { id, plugin }
-                    if id == reserved && plugin == "idola.minigame"
-            )),
-            "reserved timing attr `{reserved}` on a plugin directive must be ReservedName, got {errs:?}"
+                lute_manifest::assemble::AssembleError::ReservedStampAttr { plugin, name }
+                    if name == reserved && plugin == "idola.minigame"
+            ))
+            .unwrap_or_else(|| {
+                panic!("reserved stamp attr `{reserved}` on a plugin directive must be ReservedStampAttr, got {errs:?}")
+            });
+        assert_eq!(hit.code(), "E-PLUGIN-RESERVED-STAMP-ATTR");
+        assert_eq!(
+            hit.to_string(),
+            format!(
+                "plugin `idola.minigame` declares reserved stamp attribute `{reserved}`; \
+                 `at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source` \
+                 are owned by the core stamp (plugin §14)"
+            )
         );
         assert!(
             snap.directive("minigame").is_none(),
-            "a plugin directive declaring reserved timing attr `{reserved}` must not be merged"
+            "a plugin directive declaring reserved stamp attr `{reserved}` must not be merged"
         );
     }
+}
+
+/// The SAME reservation on the OTHER surface: a `stampAttrs` entry naming a
+/// core stamp key is rejected and never merged, while its non-reserved
+/// siblings in the same export still land in `snapshot.stamp_attrs`.
+#[test]
+fn assemble_rejects_reserved_names_in_stamp_attrs_export() {
+    for reserved in [
+        "at",
+        "duration",
+        "delay",
+        "wait",
+        "timeline",
+        "provenance",
+        "source",
+    ] {
+        let mut p = plugin_with_directive("idola.minigame", "minigame");
+        p.stamp_attrs = vec![
+            AttrDecl {
+                name: reserved.into(),
+                required: false,
+                ty: Type::Str,
+                default: None,
+            },
+            AttrDecl {
+                name: "bonusId".into(),
+                required: false,
+                ty: Type::Str,
+                default: None,
+            },
+        ];
+        let reg = InstalledPlugins {
+            by_id: BTreeMap::from([(
+                "idola.minigame".to_string(),
+                InstalledPlugin { loaded: p },
+            )]),
+        };
+        let active = vec![
+            ActivePlugin {
+                id: "lute.core".into(),
+                options: BTreeMap::new(),
+            },
+            ActivePlugin {
+                id: "idola.minigame".into(),
+                options: BTreeMap::new(),
+            },
+        ];
+        let (snap, errs) = assemble_snapshot(&active, &reg);
+        assert!(
+            errs.iter().any(|e| e.code() == "E-PLUGIN-RESERVED-STAMP-ATTR"),
+            "reserved `stampAttrs` name `{reserved}` must be rejected, got {errs:?}"
+        );
+        assert!(
+            !snap.stamp_attrs.contains_key(reserved),
+            "reserved `stampAttrs` name `{reserved}` must NOT be merged"
+        );
+        assert!(
+            snap.stamp_attrs.contains_key("bonusId"),
+            "a non-reserved sibling in the same export must still merge"
+        );
+    }
+}
+
+/// A clean `stampAttrs` export merges into the snapshot AND moves
+/// `capabilityVersion` — a changed cross-cutting vocabulary is a changed
+/// capability surface (plugin §14.1). A plugin with NO `stampAttrs` must
+/// hash identically to the pre-`stampAttrs` baseline (guarded fold).
+#[test]
+fn stamp_attrs_merge_and_participate_in_capability_version() {
+    let base = plugin_with_directive("idola.minigame", "minigame");
+    let mut with_attrs = base.clone();
+    with_attrs.stamp_attrs = vec![
+        AttrDecl {
+            name: "bonusId".into(),
+            required: false,
+            ty: Type::Str,
+            default: None,
+        },
+        AttrDecl {
+            name: "bonusScore".into(),
+            required: false,
+            ty: Type::Number,
+            default: None,
+        },
+    ];
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.minigame".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let assemble = |loaded: LoadedPlugin| {
+        let reg = InstalledPlugins {
+            by_id: BTreeMap::from([(
+                "idola.minigame".to_string(),
+                InstalledPlugin { loaded },
+            )]),
+        };
+        assemble_snapshot(&active, &reg)
+    };
+
+    let (plain, errs) = assemble(base);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(plain.stamp_attrs.is_empty());
+
+    let (stamped, errs) = assemble(with_attrs);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(matches!(
+        stamped.stamp_attrs.get("bonusScore").map(|a| &a.ty),
+        Some(Type::Number)
+    ));
+    assert_ne!(
+        plain.version, stamped.version,
+        "a populated `stampAttrs` vocabulary must move `capabilityVersion`"
+    );
+}
+
+/// Byte-stability guard for the guarded hash fold: an EMPTY `stamp_attrs`
+/// must leave `capabilityVersion` byte-identical to a snapshot assembled
+/// before the field existed — i.e. the core-only baseline is untouched.
+#[test]
+fn empty_stamp_attrs_leaves_capability_version_untouched() {
+    let core = lute_manifest::core::load_core_snapshot();
+    let mut probe = core.clone();
+    probe.stamp_attrs.clear();
+    assert_eq!(
+        core.version,
+        lute_manifest::snapshot::capability_version(&probe),
+        "an empty `stamp_attrs` must not perturb the core capabilityVersion"
+    );
 }
 
 /// A plugin directive with an ordinary (non-reserved) attr name must assemble

@@ -185,3 +185,60 @@ fn loads_events_export() {
     assert_eq!(loaded.events[0].name, "combatEnd");
     fs::remove_dir_all(&tmp).ok();
 }
+
+/// plugin §14.1: the `stampattrs` export loads off disk exactly like its
+/// sibling export kinds — `stampAttrs:` entries deserialize as ordinary
+/// `AttrDecl`s (name + `type:` tagged map), and a per-package duplicate name
+/// is a `DuplicateId` from the shared `merge_named` path.
+fn write_stamp_attrs_pkg(root: &std::path::Path, dup: bool) {
+    fs::create_dir_all(root.join("stampattrs")).unwrap();
+    fs::write(
+        root.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  stampattrs: stampattrs/\n",
+    )
+    .unwrap();
+    let second = if dup { "bonusId" } else { "bonusScore" };
+    fs::write(
+        root.join("stampattrs/a.yaml"),
+        format!(
+            "stampAttrs:\n  - name: bonusId\n    type: string\n  - name: {second}\n    type: number\n"
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn loads_stamp_attrs_export() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_sa_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_stamp_attrs_pkg(&tmp, false);
+    let loaded = load_plugin_dir(&tmp).expect("loads");
+    assert_eq!(loaded.stamp_attrs.len(), 2);
+    assert_eq!(loaded.stamp_attrs[0].name, "bonusId");
+    assert!(matches!(
+        loaded.stamp_attrs[0].ty,
+        lute_manifest::types::Type::Str
+    ));
+    assert!(matches!(
+        loaded.stamp_attrs[1].ty,
+        lute_manifest::types::Type::Number
+    ));
+    fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn loads_stamp_attrs_rejects_dup() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_sadup_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_stamp_attrs_pkg(&tmp, true);
+    let errs = load_plugin_dir(&tmp).expect_err("dup stampAttr name");
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::loader::LoadError::DuplicateId { kind, id }
+                if kind == "stampAttr" && id == "bonusId"
+        )),
+        "{errs:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}

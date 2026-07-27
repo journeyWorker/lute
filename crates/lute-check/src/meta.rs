@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::DefParam;
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
-use lute_manifest::types::{Literal, Type};
+use lute_manifest::types::{lit_str, type_accepts, type_str, Literal, Type};
 use lute_syntax::ast::Meta;
 
 use crate::cel_paths::{is_reserved_quest_path, state_path_has_hyphen, E_PATH_IDENT};
@@ -194,6 +194,13 @@ pub enum DocKind {
 /// 0.2.0 Appendix B).
 pub const E_KIND_MISSING: &str = "E-KIND-MISSING";
 pub const E_UNKNOWN_KIND: &str = "E-UNKNOWN-KIND";
+
+/// dsl 0.8.0 §4: an author `state:` declaration whose `type` is `list`,
+/// `record`, or `map`. Author state is scalar (`number|bool|string|enum`);
+/// collection shapes reach the artifact's state table only through a plugin
+/// `state_shapes` expansion. Like `E-TEMPORAL-ARG` (dsl 0.3.0 D11) the decl is
+/// NOT installed, so a later read of the path is plain `E-UNDECLARED`.
+pub const E_STATE_COLLECTION: &str = "E-STATE-COLLECTION";
 
 /// Resolve the frontmatter `kind:` scalar (dsl 0.2.0 §3.1) — a cheap peek of
 /// `meta.raw_yaml` run BEFORE the full [`parse_meta_kind`] pass (kind gates
@@ -394,8 +401,12 @@ pub fn parse_meta_kind(
     // Unknown-key check over the top-level keys (dsl §6.1); applies to every kind.
     // `component:`/`params:` (dsl §13) are allowed ONLY in a component file, so a
     // scene or schema doc that declares them hits the unknown-key diagnostic.
+    //
+    // A key the CORE owns keeps its bespoke handling below (each is lifted and
+    // typed by its own `get_*`/parse step); only a PLUGIN-owned key routes
+    // through the declared-schema check (plugin Appendix C2).
     let component_key_allowed = kind == MetaKind::Component;
-    for (k, _) in map.iter() {
+    for (k, v) in map.iter() {
         let Some(key) = k.as_str() else {
             diags.push(err(
                 "E-META-UNKNOWN-KEY",
@@ -403,15 +414,38 @@ pub fn parse_meta_kind(
             ));
             continue;
         };
-        let known = UNIVERSAL_KEYS.contains(&key)
+        let core_key = UNIVERSAL_KEYS.contains(&key)
             || (key == "kind" && matches!(kind, MetaKind::Scene | MetaKind::Quest))
             || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
-            || (component_key_allowed && COMPONENT_ONLY_KEYS.contains(&key))
-            || snapshot.frontmatter.contains_key(key);
-        if !known {
+            || (component_key_allowed && COMPONENT_ONLY_KEYS.contains(&key));
+        if core_key {
+            continue;
+        }
+        let Some(ty) = snapshot.frontmatter.get(key) else {
             diags.push(err(
                 "E-META-UNKNOWN-KEY",
                 format!("unknown top-level meta key `{key}` (not a core key and not owned by an active plugin)"),
+            ));
+            continue;
+        };
+        // plugin Appendix C2: "The checker MUST validate a scene's frontmatter
+        // block against each active plugin's declared key schema; a value that
+        // violates the schema is a static error." A value with no `Literal`
+        // representation at all (null, a `!tag`, a non-string mapping key)
+        // is the SAME error, never a panic.
+        let lit = Literal::from_yaml(v);
+        if !lit.as_ref().is_some_and(|l| type_accepts(ty, l)) {
+            let found = match &lit {
+                Some(l) => lit_str(l),
+                None => unrepresentable_yaml(v).to_string(),
+            };
+            diags.push(err_at(
+                "E-FRONTMATTER-SCHEMA",
+                format!(
+                    "frontmatter key `{key}` expects {} (declared by an active plugin), got {found}",
+                    type_str(ty)
+                ),
+                meta_key_span(meta, key),
             ));
         }
     }
@@ -709,6 +743,38 @@ pub fn parse_meta_kind(
                                 meta_key_span(meta, path),
                             ));
                         }
+                        Ok(raw)
+                            if matches!(
+                                raw.ty,
+                                Type::List(_) | Type::Record(_) | Type::Map { .. }
+                            ) =>
+                        {
+                            // dsl 0.8.0 §4: author `state:` is SCALAR
+                            // (`number|bool|string|enum`). `StateDeclRaw`
+                            // deserializes the full `Type` union because the
+                            // SAME shape carries plugin `state_shapes`
+                            // expansions (where a `record`/`map` slot is
+                            // legitimate) — so the scalar-only rule the
+                            // normative text has always stated is enforced
+                            // HERE, at the author-decl site, not in the
+                            // deserializer. Mirrors the `narrativeTime` arm
+                            // above: emit and SKIP the install, so a later
+                            // read falls back to plain `E-UNDECLARED` rather
+                            // than resolving through a phantom
+                            // collection-typed slot (and, via
+                            // `set_op::descend`, inventing field types for
+                            // every path under it).
+                            diags.push(err_at(
+                                E_STATE_COLLECTION,
+                                format!(
+                                    "state path `{path}` cannot declare a collection type \
+                                     (`list`/`record`/`map`); author state is scalar \
+                                     (number|bool|string|enum) — model collections as \
+                                     `relations:` (dsl 0.3.0 §3) or a plugin `state_shapes` slot"
+                                ),
+                                meta_key_span(meta, path),
+                            ));
+                        }
                         Ok(raw) => {
                             typed.state.decls.insert(
                                 path.to_string(),
@@ -758,8 +824,27 @@ pub fn infer_meta_kind_from_shape(meta: &Meta, has_body: bool) -> Option<MetaKin
     None
 }
 
+/// Describe a frontmatter value that has NO [`Literal`] representation, for the
+/// "got …" half of an `E-FRONTMATTER-SCHEMA` message. `Literal::from_yaml`
+/// bails on `null`, a `!tag`, a non-string mapping key, or any nesting that
+/// contains one — none of which any declared plugin key type inhabits, so each
+/// is a schema violation rather than a checker failure.
+fn unrepresentable_yaml(v: &serde_yaml::Value) -> &'static str {
+    match v {
+        serde_yaml::Value::Null => "null",
+        serde_yaml::Value::Tagged(_) => "a tagged value",
+        serde_yaml::Value::Sequence(_) => "a sequence with an unrepresentable element",
+        serde_yaml::Value::Mapping(_) => {
+            "a mapping with a non-string key or an unrepresentable value"
+        }
+        // Scalars always convert; defensive.
+        _ => "an unrepresentable value",
+    }
+}
+
 /// Best-effort narrow document span for a meta-side diagnostic pointing at the
 /// offending identifier (a hyphenated `defs` name / def param / state path).
+///
 /// serde gives no per-key spans, so the key is located textually in `raw_yaml`.
 ///
 /// **Key-aware:** the needle is matched only where it is a YAML *mapping key* —
@@ -1210,6 +1295,125 @@ mod tests {
                 .iter()
                 .any(|d| d.code == "E-META-UNKNOWN-KEY" && d.message.contains("`component`")),
             "Schema mode must reject `component:`; got {sdiags:?}"
+        );
+    }
+
+    /// A snapshot whose active plugins declare three typed frontmatter keys
+    /// (plugin Appendix C2).
+    fn snap_with_frontmatter() -> CapabilitySnapshot {
+        let mut snap = CapabilitySnapshot::default();
+        snap.frontmatter
+            .insert("questTier".into(), Type::Enum(vec!["a".into(), "b".into()]));
+        snap.frontmatter.insert("difficulty".into(), Type::Number);
+        snap.frontmatter.insert(
+            "tags".into(),
+            Type::List(Box::new(crate::meta::Type::Str)),
+        );
+        snap
+    }
+
+    fn parse_with_snapshot(yaml: &str) -> Vec<Diagnostic> {
+        let meta = Meta {
+            raw_yaml: yaml.to_string(),
+            span: lute_core_span::Span {
+                byte_start: 0,
+                byte_end: yaml.len(),
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            },
+        };
+        parse_meta(&meta, &snap_with_frontmatter()).1
+    }
+
+    const SCENE_HEAD: &str = "character: bianca\nseason: 1\nepisode: 2\n";
+
+    #[test]
+    fn plugin_frontmatter_key_with_wrong_typed_value_is_an_error() {
+        let diags = parse_with_snapshot(&format!("{SCENE_HEAD}difficulty: hard\n"));
+        let hits: Vec<_> = diags
+            .iter()
+            .filter(|d| d.code == "E-FRONTMATTER-SCHEMA")
+            .collect();
+        assert_eq!(hits.len(), 1, "{diags:?}");
+        assert_eq!(
+            hits[0].message,
+            "frontmatter key `difficulty` expects number (declared by an active plugin), got \"hard\""
+        );
+        assert_eq!(hits[0].severity, Severity::Error);
+        // The span points at the offending KEY, not the whole frontmatter.
+        assert_eq!(
+            &format!("{SCENE_HEAD}difficulty: hard\n")
+                [hits[0].span.byte_start - 4..hits[0].span.byte_end - 4],
+            "difficulty"
+        );
+        // A schema violation is NOT also an unknown key.
+        assert!(!diags.iter().any(|d| d.code == "E-META-UNKNOWN-KEY"));
+    }
+
+    #[test]
+    fn plugin_frontmatter_key_with_a_conforming_value_passes() {
+        let diags = parse_with_snapshot(&format!(
+            "{SCENE_HEAD}difficulty: 3\nquestTier: b\ntags: [rhythm, timing]\n"
+        ));
+        assert!(
+            !diags
+                .iter()
+                .any(|d| d.code == "E-FRONTMATTER-SCHEMA" || d.code == "E-META-UNKNOWN-KEY"),
+            "{diags:?}"
+        );
+    }
+
+    #[test]
+    fn enum_and_list_frontmatter_violations_report_the_declared_type() {
+        let diags = parse_with_snapshot(&format!(
+            "{SCENE_HEAD}questTier: zzz\ntags: [rhythm, 4]\n"
+        ));
+        let msgs: Vec<_> = diags
+            .iter()
+            .filter(|d| d.code == "E-FRONTMATTER-SCHEMA")
+            .map(|d| d.message.as_str())
+            .collect();
+        assert_eq!(
+            msgs,
+            vec![
+                "frontmatter key `questTier` expects enum(a|b) (declared by an active plugin), got \"zzz\"",
+                "frontmatter key `tags` expects list<string> (declared by an active plugin), got [\"rhythm\", 4]",
+            ],
+            "{diags:?}"
+        );
+    }
+
+    #[test]
+    fn unrepresentable_frontmatter_value_is_the_same_error_not_a_panic() {
+        // `null` has no `Literal` form at all — a schema violation, never a panic.
+        let diags = parse_with_snapshot(&format!("{SCENE_HEAD}difficulty:\n"));
+        let hits: Vec<_> = diags
+            .iter()
+            .filter(|d| d.code == "E-FRONTMATTER-SCHEMA")
+            .collect();
+        assert_eq!(hits.len(), 1, "{diags:?}");
+        assert_eq!(
+            hits[0].message,
+            "frontmatter key `difficulty` expects number (declared by an active plugin), got null"
+        );
+    }
+
+    #[test]
+    fn core_keys_are_not_routed_through_the_plugin_schema_check() {
+        // `title`/`season` are core keys with bespoke handling; a plugin schema
+        // check must never fire on them, and a genuinely unknown key still hits
+        // `E-META-UNKNOWN-KEY` rather than the schema code.
+        let diags = parse_with_snapshot(&format!("{SCENE_HEAD}title: A Night Out\nnope: 1\n"));
+        assert!(
+            !diags.iter().any(|d| d.code == "E-FRONTMATTER-SCHEMA"),
+            "{diags:?}"
+        );
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code == "E-META-UNKNOWN-KEY" && d.message.contains("`nope`")),
+            "{diags:?}"
         );
     }
 }

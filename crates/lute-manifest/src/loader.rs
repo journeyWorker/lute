@@ -22,6 +22,10 @@ pub struct LoadedPlugin {
     pub frontmatter: BTreeMap<String, Type>,
     pub asset_kinds: Vec<AssetKindDecl>,
     pub events: Vec<EventDecl>,
+    /// plugin §14.1 `stampattrs/*.yaml`: CROSS-CUTTING attrs admissible on
+    /// every directive and content line, lowered into the record's stamp
+    /// rather than its own fields.
+    pub stamp_attrs: Vec<AttrDecl>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -104,6 +108,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
         frontmatter: BTreeMap::new(),
         asset_kinds: Vec::new(),
         events: Vec::new(),
+        stamp_attrs: Vec::new(),
     };
 
     // Read each declared export. A relative export path resolves under `dir`.
@@ -152,6 +157,15 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
             }),
             "events" => read_kind::<EventsFile, _>(&path, &mut errs, |f, e| {
                 merge_named(&mut out.events, f.events, "event", |ev| ev.name.clone(), e)
+            }),
+            "stampattrs" => read_kind::<StampAttrsFile, _>(&path, &mut errs, |f, e| {
+                merge_named(
+                    &mut out.stamp_attrs,
+                    f.stamp_attrs,
+                    "stampAttr",
+                    |a| a.name.clone(),
+                    e,
+                )
             }),
             other => errs.push(LoadError::UnknownExport {
                 export: other.to_string(),

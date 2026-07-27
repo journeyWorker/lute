@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::core::load_core_snapshot;
 use crate::resolve::{ActivePlugin, InstalledPlugins};
-use crate::schema::StateShape;
+use crate::schema::{AttrDecl, StateShape};
 use crate::snapshot::{capability_version, CapabilitySnapshot, Domain, ResolvedPlugin};
 use crate::types::Type;
 
@@ -26,9 +26,15 @@ pub enum AssembleError {
     MissingActivePlugin {
         id: String,
     },
+    /// A directive declaration rejected by [`crate::validate::validate_directive`].
+    /// `code` is the WRAPPED [`crate::validate::ManifestError`]'s own code — the
+    /// family spans the generic `E-PLUGIN-INVALID-DIRECTIVE` and the
+    /// declarative-lowering `E-LOWER-RECORD-*` pair, and a consumer keys on the
+    /// specific one.
     InvalidDirective {
         plugin: String,
         directive: String,
+        code: &'static str,
         msg: String,
     },
     CyclicStateShape {
@@ -38,6 +44,14 @@ pub enum AssembleError {
         directive: String,
         attr: String,
         kind: String,
+    },
+    /// plugin §14 / Appendix C4: a plugin declared an attribute — on its
+    /// `stampAttrs` export or on one of its directives — whose name collides
+    /// with a key the CORE stamp owns. Both surfaces share the one code —
+    /// the message names the offending attr, which identifies it either way.
+    ReservedStampAttr {
+        plugin: String,
+        name: String,
     },
 }
 
@@ -55,9 +69,32 @@ impl AssembleError {
             AssembleError::DuplicateAcrossPlugins { .. } => "E-PLUGIN-DUP-ACROSS",
             AssembleError::ReservedName { .. } => "E-PLUGIN-RESERVED-NAME",
             AssembleError::MissingActivePlugin { .. } => "E-PLUGIN-MISSING-ACTIVE",
-            AssembleError::InvalidDirective { .. } => "E-PLUGIN-INVALID-DIRECTIVE",
+            AssembleError::InvalidDirective { code, .. } => code,
             AssembleError::CyclicStateShape { .. } => "E-STATE-SHAPE-CYCLE",
             AssembleError::UnknownAssetKind { .. } => "E-PLUGIN-UNKNOWN-ASSETKIND",
+            AssembleError::ReservedStampAttr { .. } => "E-PLUGIN-RESERVED-STAMP-ATTR",
+        }
+    }
+}
+
+impl std::fmt::Display for AssembleError {
+    /// Human-readable rendering, surfaced by `project.rs` as the
+    /// [`crate::project::ResolveDiag`] message. Only variants with a
+    /// spec-mandated message text render prose; every other variant falls
+    /// back to its `Debug` form — exactly what `project.rs` has always
+    /// emitted, so existing diagnostic text stays byte-identical.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AssembleError::ReservedStampAttr { plugin, name } => write!(
+                f,
+                "plugin `{plugin}` declares reserved stamp attribute `{name}`; \
+                 `at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source` \
+                 are owned by the core stamp (plugin §14)"
+            ),
+            // `InvalidDirective.msg` is already prose (the per-directive
+            // validator's own message text); Debug-wrapping would mangle it.
+            AssembleError::InvalidDirective { msg, .. } => write!(f, "{msg}"),
+            other => write!(f, "{other:?}"),
         }
     }
 }
@@ -70,17 +107,30 @@ impl AssembleError {
 /// (non-core) plugin, same as `scene`.
 const RESERVED_DIRECTIVE_NAMES: &[&str] = &["scene", "cut", "on", "quest", "objective"];
 
-/// dsl §7.5/§10 timing attribute keys — `at`, `duration`, `delay`, `wait` — are
-/// "cross-cutting reserved across all directives and profiles" (§7.5); a plugin
-/// manifest "MUST NOT declare any of these as one of its attribute names —
-/// doing so is an assembly-time error" (§7.5), which §10 restates by pointing
-/// back at §7.5. `lute.core` legitimately OWNS these keys on its own staging
-/// directives (`camera`'s `duration`/`delay`/`wait`, `video`'s `wait`), so —
-/// exactly like `RESERVED_DIRECTIVE_NAMES` — this is enforced only against
-/// NON-core plugin directive attrs, never core's own embedded declarations,
-/// and never against authored-document usage (that's the checker's concern,
-/// not assembly's).
-const RESERVED_TIMING_ATTR_NAMES: &[&str] = &["at", "duration", "delay", "wait"];
+/// The keys the CORE stamp owns (compile-IR §4.3 `Stamp`): the dsl §7.5/§10
+/// timing keys `at`/`duration`/`delay`/`wait` — "cross-cutting reserved
+/// across all directives and profiles" (§7.5), a plugin manifest "MUST NOT
+/// declare any of these as one of its attribute names — doing so is an
+/// assembly-time error" — PLUS the three remaining stamp keys `timeline`,
+/// `provenance`, `source`, which plugin §14 / Appendix C4 folds into the same
+/// reservation now that `stampAttrs` lets a plugin write into the stamp
+/// directly. Enforced on BOTH plugin surfaces — per-directive `attrs` and the
+/// `stampAttrs` export — as `E-PLUGIN-RESERVED-STAMP-ATTR`.
+///
+/// `lute.core` legitimately OWNS the timing keys on its own staging directives
+/// (`camera`'s `duration`/`delay`/`wait`, `video`'s `wait`), so — exactly like
+/// `RESERVED_DIRECTIVE_NAMES` — this is enforced only against NON-core plugin
+/// declarations, never core's own embedded ones, and never against
+/// authored-document usage (that's the checker's concern, not assembly's).
+const RESERVED_STAMP_ATTR_NAMES: &[&str] = &[
+    "at",
+    "duration",
+    "delay",
+    "wait",
+    "timeline",
+    "provenance",
+    "source",
+];
 
 /// Merge every ACTIVE plugin's loaded package onto the embedded `lute.core`
 /// base into a single deterministic capability snapshot (plugin §13). Returns
@@ -139,13 +189,13 @@ pub fn assemble_snapshot(
                 .attrs
                 .iter()
                 .map(|a| a.name.as_str())
-                .filter(|n| RESERVED_TIMING_ATTR_NAMES.contains(n))
+                .filter(|n| RESERVED_STAMP_ATTR_NAMES.contains(n))
                 .collect();
             if !reserved_attrs.is_empty() {
                 for name in reserved_attrs {
-                    errs.push(AssembleError::ReservedName {
-                        id: name.to_string(),
+                    errs.push(AssembleError::ReservedStampAttr {
                         plugin: ap.id.clone(),
+                        name: name.to_string(),
                     });
                 }
                 continue;
@@ -163,7 +213,8 @@ pub fn assemble_snapshot(
                 errs.push(AssembleError::InvalidDirective {
                     plugin: ap.id.clone(),
                     directive: d.name.clone(),
-                    msg: format!("{me:?}"),
+                    code: me.code(),
+                    msg: me.message(),
                 });
             }
             dir_owner.insert(d.name.clone(), ap.id.clone());
@@ -241,6 +292,30 @@ pub fn assemble_snapshot(
             &mut snap.asset_kinds,
             pkg.asset_kinds.iter().map(|k| (k.kind.clone(), k.clone())),
             "assetKind",
+            &ap.id,
+            &mut errs,
+        );
+        // plugin §14.1 `stampAttrs`: the CROSS-CUTTING attr vocabulary. A name
+        // the core stamp owns is rejected here (never merged) — the same
+        // reservation the per-directive `attrs` loop above enforces, so a
+        // plugin cannot reach a reserved key through either door. Surviving
+        // entries go through the SAME `merge_map` as the sibling maps, so a
+        // cross-plugin duplicate is dropped (first owner wins) and reported.
+        let mut stamp_attrs: Vec<(String, AttrDecl)> = Vec::new();
+        for a in &pkg.stamp_attrs {
+            if RESERVED_STAMP_ATTR_NAMES.contains(&a.name.as_str()) {
+                errs.push(AssembleError::ReservedStampAttr {
+                    plugin: ap.id.clone(),
+                    name: a.name.clone(),
+                });
+                continue;
+            }
+            stamp_attrs.push((a.name.clone(), a.clone()));
+        }
+        merge_map(
+            &mut snap.stamp_attrs,
+            stamp_attrs.into_iter(),
+            "stampAttr",
             &ap.id,
             &mut errs,
         );

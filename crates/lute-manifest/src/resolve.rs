@@ -1,4 +1,4 @@
-use crate::types::Literal;
+use crate::types::{lit_str, type_accepts, type_str, Literal, Type};
 use std::collections::BTreeMap;
 
 /// One installed plugin's fully loaded package (plugin §4). Carries the parsed
@@ -218,6 +218,117 @@ fn merge_map(dst: &mut BTreeMap<String, Literal>, src: &BTreeMap<String, Literal
             }
         }
     }
+}
+
+/// An activation-time plugin-OPTION violation (plugin Appendix C1: "Activation
+/// MUST reject an option value that is not valid for its declared type, and
+/// MUST reject an unknown option name"). Separate from [`ResolveError`] because
+/// it is REPORTED, never fatal: an unknown/mistyped option does not invalidate
+/// the activation ORDER, so the snapshot still assembles and the author still
+/// sees the document's real directive diagnostics instead of a cascade of
+/// "unknown directive" noise from a core-only fallback.
+#[derive(Clone, Debug, PartialEq)]
+pub enum OptionError {
+    /// An activated option name the owning manifest never declares.
+    UnknownOption {
+        plugin: String,
+        name: String,
+        declared: Vec<String>,
+    },
+    /// A declared option whose merged value fails [`type_accepts`].
+    OptionType {
+        plugin: String,
+        name: String,
+        expected: Type,
+        got: Literal,
+    },
+}
+
+impl OptionError {
+    /// Stable, machine-readable code per variant; mirrors the checker's `E-*`
+    /// diagnostic-code family so consumers can key on it.
+    pub fn code(&self) -> &'static str {
+        match self {
+            OptionError::UnknownOption { .. } => "E-PLUGIN-OPTION-UNKNOWN",
+            OptionError::OptionType { .. } => "E-PLUGIN-OPTION-TYPE",
+        }
+    }
+
+    /// Author-facing prose. Unlike [`ResolveError`], which renders through
+    /// `Debug`, these carry a written message: the fix (a name typo, a wrong
+    /// literal shape) is only actionable with the declared set / expected type
+    /// spelled out.
+    pub fn message(&self) -> String {
+        match self {
+            OptionError::UnknownOption {
+                plugin,
+                name,
+                declared,
+            } => {
+                let list = if declared.is_empty() {
+                    "none".to_string()
+                } else {
+                    declared.join(", ")
+                };
+                format!("plugin `{plugin}` has no option `{name}` (declared: {list})")
+            }
+            OptionError::OptionType {
+                plugin,
+                name,
+                expected,
+                got,
+            } => format!(
+                "option `{plugin}.{name}` expects {}, got {}",
+                type_str(expected),
+                lit_str(got)
+            ),
+        }
+    }
+}
+
+/// plugin Appendix C1: validate every MERGED option value against the owning
+/// `PluginManifest.options`. Runs on the output of [`resolve_activation`] —
+/// i.e. exactly the post-§11.2-merge map, so a value only has to be valid in
+/// its FINAL layered form, never in each intermediate layer.
+///
+/// Collects EVERY violation (no bail on the first) so one pass reports the
+/// whole broken profile. Deterministic: `active` is in resolution order and
+/// each plugin's options are a `BTreeMap`.
+///
+/// An active id with no installed package is skipped — there is no manifest to
+/// validate against. That covers the synthetic `lute.core` baseline and any id
+/// a profile named but never installed (assembly reports the latter as
+/// `E-PLUGIN-MISSING-ACTIVE`).
+pub fn validate_activation_options(
+    active: &[ActivePlugin],
+    installed: &InstalledPlugins,
+) -> Vec<OptionError> {
+    let mut errs = Vec::new();
+    for ap in active {
+        let Some(inst) = installed.get(&ap.id) else {
+            continue;
+        };
+        let decls = &inst.manifest().options;
+        for (name, value) in &ap.options {
+            let Some(decl) = decls.iter().find(|o| &o.name == name) else {
+                errs.push(OptionError::UnknownOption {
+                    plugin: ap.id.clone(),
+                    name: name.clone(),
+                    declared: decls.iter().map(|o| o.name.clone()).collect(),
+                });
+                continue;
+            };
+            if !type_accepts(&decl.ty, value) {
+                errs.push(OptionError::OptionType {
+                    plugin: ap.id.clone(),
+                    name: name.clone(),
+                    expected: decl.ty.clone(),
+                    got: value.clone(),
+                });
+            }
+        }
+    }
+    errs
 }
 
 /// Detect a cycle in the `depends` graph restricted to activated plugins
@@ -563,6 +674,7 @@ mod tests {
             frontmatter: Default::default(),
             asset_kinds: vec![],
             events: vec![],
+            stamp_attrs: vec![],
         }
     }
 
@@ -693,5 +805,137 @@ mod tests {
             resolve_activation(&graph, "s", &BTreeMap::new(), &inst),
             Err(ResolveError::DependsVersionMismatch { .. })
         ));
+    }
+
+    /// plugin Appendix C1 fixture: one plugin declaring two typed options.
+    fn opt_manifest() -> crate::schema::PluginManifest {
+        let mut m = manifest("idola.minigame", "0.1.0", &[]);
+        m.options = vec![
+            crate::schema::OptionDecl {
+                name: "resultScope".into(),
+                ty: Type::Enum(vec!["scene".into(), "run".into()]),
+                default: None,
+            },
+            crate::schema::OptionDecl {
+                name: "rounds".into(),
+                ty: Type::Number,
+                default: None,
+            },
+        ];
+        m
+    }
+
+    fn one_plugin_graph(opts: BTreeMap<String, Literal>) -> ProfileGraph {
+        ProfileGraph {
+            profiles: BTreeMap::from([(
+                "story".to_string(),
+                Profile {
+                    extends: None,
+                    plugins: BTreeMap::from([("idola.minigame".to_string(), opts)]),
+                },
+            )]),
+            default_profile: "story".to_string(),
+        }
+    }
+
+    fn resolve_and_validate(opts: BTreeMap<String, Literal>) -> Vec<OptionError> {
+        let inst = installed(vec![opt_manifest()]);
+        let active =
+            resolve_activation(&one_plugin_graph(opts), "story", &BTreeMap::new(), &inst).unwrap();
+        validate_activation_options(&active, &inst)
+    }
+
+    #[test]
+    fn unknown_option_name_is_rejected() {
+        let errs = resolve_and_validate(opts(&[("resultScop", Literal::Str("scene".into()))]));
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert_eq!(errs[0].code(), "E-PLUGIN-OPTION-UNKNOWN");
+        assert_eq!(
+            errs[0].message(),
+            "plugin `idola.minigame` has no option `resultScop` (declared: resultScope, rounds)"
+        );
+    }
+
+    #[test]
+    fn wrong_typed_option_value_is_rejected() {
+        // `resultScope` is enum(scene|run); `rounds` is number.
+        let errs = resolve_and_validate(opts(&[
+            ("resultScope", Literal::Str("galaxy".into())),
+            ("rounds", Literal::Str("three".into())),
+        ]));
+        let mut msgs: Vec<_> = errs.iter().map(|e| (e.code(), e.message())).collect();
+        msgs.sort();
+        assert_eq!(
+            msgs,
+            vec![
+                (
+                    "E-PLUGIN-OPTION-TYPE",
+                    "option `idola.minigame.resultScope` expects enum(scene|run), got \"galaxy\""
+                        .to_string()
+                ),
+                (
+                    "E-PLUGIN-OPTION-TYPE",
+                    "option `idola.minigame.rounds` expects number, got \"three\"".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn valid_options_still_resolve_clean() {
+        let errs = resolve_and_validate(opts(&[
+            ("resultScope", Literal::Str("run".into())),
+            ("rounds", Literal::Num(3.0)),
+        ]));
+        assert!(errs.is_empty(), "{errs:?}");
+    }
+
+    #[test]
+    fn options_validate_against_the_merged_value_not_each_layer() {
+        // plugin §11.2: a parent layer's bad value that a child layer OVERRIDES
+        // is not an error — only the final merged value is validated.
+        let inst = installed(vec![opt_manifest()]);
+        let graph = ProfileGraph {
+            profiles: BTreeMap::from([
+                (
+                    "base".to_string(),
+                    Profile {
+                        extends: None,
+                        plugins: BTreeMap::from([(
+                            "idola.minigame".to_string(),
+                            opts(&[("resultScope", Literal::Str("galaxy".into()))]),
+                        )]),
+                    },
+                ),
+                (
+                    "story".to_string(),
+                    Profile {
+                        extends: Some("base".to_string()),
+                        plugins: BTreeMap::from([(
+                            "idola.minigame".to_string(),
+                            opts(&[("resultScope", Literal::Str("scene".into()))]),
+                        )]),
+                    },
+                ),
+            ]),
+            default_profile: "story".to_string(),
+        };
+        let active = resolve_activation(&graph, "story", &BTreeMap::new(), &inst).unwrap();
+        assert!(
+            validate_activation_options(&active, &inst).is_empty(),
+            "the overridden layer must not be validated"
+        );
+    }
+
+    #[test]
+    fn uninstalled_active_plugin_options_are_skipped() {
+        // `lute.core` is synthetic (never in `installed`); there is no manifest
+        // to validate against, so its options must not fabricate an error.
+        let inst = installed(vec![opt_manifest()]);
+        let active = vec![ActivePlugin {
+            id: "lute.core".into(),
+            options: opts(&[("whatever", Literal::Bool(true))]),
+        }];
+        assert!(validate_activation_options(&active, &inst).is_empty());
     }
 }

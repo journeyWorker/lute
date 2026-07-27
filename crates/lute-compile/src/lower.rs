@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use lute_manifest::schema::{DirectiveDecl, WriteDecl, WriteValue};
+use lute_manifest::schema::{DirectiveDecl, Lowering, WriteDecl, WriteValue};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, PathSegment, Type};
 use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, Line, Retract, Set};
@@ -22,7 +22,7 @@ fn has_delivery_flag(attrs: &[Attr], key: &str) -> bool {
     attrs.iter().any(|a| a.key == key && matches!(a.value, AttrValue::BoolTrue))
 }
 
-pub fn lower_line(line: &Line) -> Command {
+pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
     let get = |k: &str| attr_string(&line.attrs, k);
     let role = if line.speaker == "narrator" {
         Role::Narration
@@ -48,8 +48,18 @@ pub fn lower_line(line: &Line) -> Command {
         line_id: String::new(),
         voice_key: None,
         placeholders: line.interps.iter().map(placeholder_from_interp).collect(),
+        texts: Default::default(),
         code: get("code"),
-        stamp: Stamp::default(),
+        stamp: Stamp {
+            // plugin §14.1: a content line carries cross-cutting stamp attrs
+            // like any other record. The built-in content-line keys win (they
+            // ARE the record's own fields above) — the same precedence the
+            // checker applies in `content_line::check_content_line_attrs`.
+            extra: stamp_extra(&line.attrs, snapshot, |k| {
+                lute_check::content_line::KNOWN_ATTRS.contains(&k)
+            }),
+            ..Stamp::default()
+        },
     })
 }
 
@@ -105,15 +115,25 @@ pub fn lower_retract(r: &Retract) -> Command {
 }
 
 /// Lower one directive. `None` for `::use` and the component sentinels (the
-/// walker consumes those); `Some(Command::Other(..))` for plugin directives.
+/// walker consumes those). A plugin directive lowers to its declared
+/// `lower: { record, fields }` staging command when it has one
+/// ([`lower_record`]), else falls through to the `Some(Command::Other(..))`
+/// passthrough.
 pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option<Command> {
     let get = |k: &str| attr_string(&dir.attrs, k);
     let get_f64 = |k: &str| attr_f64(&dir.attrs, k);
     let get_bool = |k: &str| attr_bool(&dir.attrs, k);
+    let decl = snapshot.directive(&dir.tag);
     let stamp = Stamp {
         wait: effective_wait(dir, snapshot),
         duration: get_f64("duration"),
         delay: get_f64("delay"),
+        // plugin §14.1: cross-cutting `stampAttrs` ride the stamp on EVERY
+        // directive, core and plugin alike. A key the directive DECLARES
+        // itself stays the record's own field — the same precedence the
+        // checker applies in `directives::check_directive` — so this only
+        // lifts the genuinely cross-cutting ones.
+        extra: stamp_extra(&dir.attrs, snapshot, |k| declares_attr(decl, k)),
         ..Stamp::default()
     };
     Some(match dir.tag.as_str() {
@@ -190,19 +210,57 @@ pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option
             action: get("action"),
             stamp,
         }),
+        // dsl 0.8.0: the walk terminator. `::end` declares no `wait` attr, so
+        // `effective_wait` yields `None` and the stamp stays omitted — the same
+        // byte-stable treatment `music`/`sfx`/`vfx` get (§4.4).
+        lute_manifest::core::END_DIRECTIVE => Command::End(EndCmd {
+            addr: String::new(),
+            reason: get("reason"),
+            stamp,
+        }),
         // `COMPONENT_BEGIN`/`END`: normalization sentinels → no record. `use`:
         // DEFENSIVE/unreachable — normalize.rs fail-louds a timeline-clip `::use`
         // (E-COMPILE-COMPONENT) so `compile()` aborts at the §5 diag gate before any
         // artifact is kept; a Node-position `::use` is already expanded away (D8).
         "use" | COMPONENT_BEGIN | COMPONENT_END => return None,
         _ => {
+            // Declarative lowering (`docs/plugin-system.md`): a directive whose
+            // manifest decl carries `lower: { record, fields }` becomes that
+            // CORE staging command, not the `kind: "plugin"` passthrough.
+            // `lower: { kind: builtin, … }` — and an unknown/undeclared tag —
+            // fall through untouched.
+            if let Some(cmd) = decl.and_then(|d| match &d.lower {
+                Lowering::Record { record, fields } => {
+                    // §4.4 blocking is a property of the RECORD KIND the engine
+                    // dispatches on, not of the authored tag. `effective_wait`
+                    // keys its builtin fallback on `dir.tag` (`bg`/`video`/…),
+                    // which never matches a plugin tag — so without this a
+                    // `lower: { record: background }` directive would emit a
+                    // `background` record with no `wait` while core `::bg`
+                    // emits `wait: true`, and an engine would block for one and
+                    // not the other. Author/manifest resolution still wins.
+                    let mut stamp = stamp.clone();
+                    if stamp.wait.is_none() {
+                        stamp.wait = record_wait_default(record);
+                    }
+                    lower_record(record, fields, dir, &stamp)
+                }
+                Lowering::Builtin { .. } => None,
+            }) {
+                return Some(cmd);
+            }
             // Plugin passthrough (plan spec-gap note 1): fields typed via the
             // directive's manifest AttrDecls when the decl is known.
-            let decl = snapshot.directive(&dir.tag);
             let mut fields = BTreeMap::new();
             for a in &dir.attrs {
                 if a.key == "wait" || a.key == "duration" || a.key == "delay" {
                     continue; // already resolved into the stamp
+                }
+                // A cross-cutting stamp attr this directive does not declare
+                // itself already rode into `stamp.extra` above; it must not be
+                // duplicated as one of the record's own `fields`.
+                if !declares_attr(decl, &a.key) && snapshot.stamp_attrs.contains_key(&a.key) {
+                    continue;
                 }
                 fields.insert(a.key.clone(), attr_json(a, decl));
             }
@@ -220,6 +278,152 @@ pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option
                 stamp,
             })
         }
+    })
+}
+
+/// Where one declarative-lowering target field gets its value.
+enum FieldSrc<'a> {
+    /// `{ fromAttr: <attrName> }` — read the authored attr off the directive.
+    Attr(&'a str),
+    /// A YAML literal baked into the manifest.
+    Lit(&'a serde_yaml::Value),
+}
+
+/// Build the CORE staging command a plugin directive declares via
+/// `lower: { record, fields }` (`docs/plugin-system.md`), substituting each
+/// `fromAttr` binding from the authored attrs and carrying the caller's
+/// `stamp` unchanged. `None` when `record` is not one of the staging kinds —
+/// the caller then falls back to the `kind: "plugin"` passthrough.
+///
+/// TOTAL by construction: the declaration was already validated at ASSEMBLY
+/// (`lute_manifest::validate::validate_directive` → `E-LOWER-RECORD-UNKNOWN` /
+/// `E-LOWER-RECORD-FIELD`) against the SAME field table this reads, so a
+/// conforming project never lands here with a bad mapping. A non-conforming
+/// one still cannot produce garbage: an unknown record degrades to
+/// passthrough, an unknown target field is ignored, and an unresolvable
+/// binding (missing attr, wrong literal kind) leaves the target field at its
+/// `None`/default — never a panic.
+fn lower_record(
+    record: &str,
+    fields: &serde_yaml::Value,
+    dir: &Directive,
+    stamp: &Stamp,
+) -> Option<Command> {
+    // Gate on the shared table so an unknown record kind is a passthrough, not
+    // a silently-empty staging record.
+    lute_manifest::validate::lower_record_fields(record)?;
+
+    let mut srcs: BTreeMap<&str, FieldSrc> = BTreeMap::new();
+    if let serde_yaml::Value::Mapping(m) = fields {
+        for (k, v) in m {
+            let Some(target) = k.as_str() else { continue };
+            let src = match v.get("fromAttr").and_then(|a| a.as_str()) {
+                Some(attr) => FieldSrc::Attr(attr),
+                None => FieldSrc::Lit(v),
+            };
+            srcs.insert(target, src);
+        }
+    }
+
+    // One resolver per target kind; a field with no binding, or a binding whose
+    // source is absent/uncoercible, yields `None` (the field's default).
+    let s = |target: &str| -> Option<String> {
+        match srcs.get(target)? {
+            FieldSrc::Attr(a) => attr_string(&dir.attrs, a),
+            FieldSrc::Lit(v) => match v {
+                serde_yaml::Value::String(s) => Some(s.clone()),
+                serde_yaml::Value::Bool(b) => Some(b.to_string()),
+                serde_yaml::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            },
+        }
+    };
+    let n = |target: &str| -> Option<f64> {
+        match srcs.get(target)? {
+            FieldSrc::Attr(a) => attr_f64(&dir.attrs, a),
+            FieldSrc::Lit(v) => v.as_f64(),
+        }
+    };
+    let b = |target: &str| -> Option<bool> {
+        match srcs.get(target)? {
+            FieldSrc::Attr(a) => attr_bool(&dir.attrs, a),
+            FieldSrc::Lit(v) => v.as_bool(),
+        }
+    };
+
+    let stamp = stamp.clone();
+    // Field names below are the SERIALIZED (camelCase) IR names, matching
+    // `lute_manifest::validate::lower_record_fields` entry-for-entry — the
+    // `record_field_table_matches_lowering` test holds the two in lockstep.
+    Some(match record {
+        "background" => Command::Background(BackgroundCmd {
+            addr: String::new(),
+            location: s("location"),
+            time: s("time"),
+            asset_id: s("assetId"),
+            stamp,
+        }),
+        "music" => Command::Music(MusicCmd {
+            addr: String::new(),
+            action: s("action").unwrap_or_default(),
+            mood: s("mood"),
+            volume: s("volume"),
+            asset_id: s("assetId"),
+            track: s("track"),
+            stamp,
+        }),
+        "sfx" => Command::Sfx(SfxCmd {
+            addr: String::new(),
+            sound: s("sound"),
+            asset_id: s("assetId"),
+            name: s("name"),
+            stamp,
+        }),
+        "vfx" => Command::Vfx(VfxCmd {
+            addr: String::new(),
+            vfx_type: s("vfxType").unwrap_or_default(),
+            label: s("label"),
+            transition: s("transition"),
+            stamp,
+        }),
+        "sprite" => Command::Sprite(SpriteCmd {
+            addr: String::new(),
+            character: s("character").unwrap_or_default(),
+            anchor: s("anchor"),
+            action: s("action"),
+            exit: b("exit"),
+            pos_reset: b("posReset"),
+            preload: b("preload"),
+            emotion: s("emotion"),
+            costume: s("costume"),
+            stamp,
+        }),
+        "camera" => Command::Camera(CameraCmd {
+            addr: String::new(),
+            focus: s("focus"),
+            zoom: n("zoom"),
+            move_x: n("moveX"),
+            move_y: n("moveY"),
+            shake: n("shake"),
+            reset: b("reset"),
+            easing: s("easing"),
+            stamp,
+        }),
+        "cut" => Command::Cut(CutCmd {
+            addr: String::new(),
+            asset_id: s("assetId").unwrap_or_default(),
+            action: s("action"),
+            full: b("full"),
+            stamp,
+        }),
+        "video" => Command::Video(VideoCmd {
+            addr: String::new(),
+            asset_id: s("assetId").unwrap_or_default(),
+            action: s("action"),
+            stamp,
+        }),
+        // Unreachable: the table gate above admits exactly these eight.
+        _ => return None,
     })
 }
 
@@ -249,6 +453,22 @@ pub fn effective_wait(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option<
     }
     match dir.tag.as_str() {
         "bg" | "video" => Some(true),
+        "cut" | "camera" => Some(false),
+        _ => None,
+    }
+}
+
+/// The builtin `wait` default of a CORE record KIND (compile-IR §4.4), keyed
+/// on the emitted `kind` rather than the authored tag. [`effective_wait`]'s
+/// own fallback keys on `dir.tag`, which is correct for core directives (whose
+/// tag and record kind coincide) but never matches a plugin directive that
+/// reaches the same record kind through `lower: { record, fields }`. Kept
+/// beside `effective_wait` so the two tables are read together and cannot
+/// drift: `background`/`video` block, `cut`/`camera` do not, and every other
+/// staging kind defines no `wait` at all (the field stays omitted).
+fn record_wait_default(record: &str) -> Option<bool> {
+    match record {
+        "background" | "video" => Some(true),
         "cut" | "camera" => Some(false),
         _ => None,
     }
@@ -287,10 +507,60 @@ pub(crate) fn attr_bool(attrs: &[Attr], key: &str) -> Option<bool> {
         })
 }
 
+/// Whether `decl` declares `key` as one of the directive's OWN attributes.
+/// The discriminator between "this is a field of the record" and "this may be
+/// a plugin-declared cross-cutting stamp attr" (plugin §14.1) — and the same
+/// precedence the checker uses when admitting an attr key.
+fn declares_attr(decl: Option<&DirectiveDecl>, key: &str) -> bool {
+    decl.is_some_and(|d| d.attrs.iter().any(|a| a.name == key))
+}
+
+/// Lift the plugin-declared CROSS-CUTTING attrs (plugin §14.1 `stampAttrs`)
+/// out of `attrs` into a record's `Stamp.extra`, each value typed by its
+/// declaring `AttrDecl` through the SAME [`attr_json_typed`] path a directive
+/// field uses. `own` reports the keys the record itself consumes: those WIN
+/// and stay put, mirroring the checker's admission order (the record's own
+/// decls, then `stampAttrs`, then `E-UNKNOWN-ATTR`).
+///
+/// Byte-stability: an UNAUTHORED stamp attr is never injected, not even when
+/// its decl carries a `default` — absent means absent, so a document that
+/// authors none serializes exactly as it did before the vocabulary existed.
+/// A reserved stamp key can never appear here (assembly rejects one,
+/// `E-PLUGIN-RESERVED-STAMP-ATTR`), so `extra` can never shadow the core stamp.
+fn stamp_extra(
+    attrs: &[Attr],
+    snapshot: &CapabilitySnapshot,
+    own: impl Fn(&str) -> bool,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut extra = BTreeMap::new();
+    // Overwhelmingly the common case: no plugin declares a cross-cutting
+    // vocabulary, so skip the per-attr map lookups entirely.
+    if snapshot.stamp_attrs.is_empty() {
+        return extra;
+    }
+    for a in attrs {
+        if own(&a.key) {
+            continue;
+        }
+        if let Some(sdecl) = snapshot.stamp_attrs.get(&a.key) {
+            extra.insert(a.key.clone(), attr_json_typed(a, Some(&sdecl.ty)));
+        }
+    }
+    extra
+}
+
 fn attr_json(attr: &Attr, decl: Option<&DirectiveDecl>) -> serde_json::Value {
     let ty = decl
         .and_then(|d| d.attrs.iter().find(|a| a.name == attr.key))
         .map(|a| &a.ty);
+    attr_json_typed(attr, ty)
+}
+
+/// An attr value as JSON in the shape its declared type asks for: `number`
+/// parses, `bool` maps the two literals, everything else stays a string. An
+/// undeclared type (`None`) or an unparseable value falls back to the raw
+/// string rather than dropping the value.
+fn attr_json_typed(attr: &Attr, ty: Option<&Type>) -> serde_json::Value {
     match &attr.value {
         AttrValue::BoolTrue => serde_json::Value::Bool(true),
         AttrValue::Ref(slot) => serde_json::Value::String(slot.raw.clone()),
@@ -367,7 +637,7 @@ mod tests {
     fn lower_first(body: &str) -> serde_json::Value {
         let ns = nodes(body);
         let cmd = match &ns[0] {
-            Node::Line(l) => lower_line(l),
+            Node::Line(l) => lower_line(l, &snap()),
             Node::Directive(d) => lower_directive(d, &snap()).expect("lowers"),
             Node::Set(s) => lower_set(s),
             other => panic!("unexpected node {other:?}"),
@@ -556,5 +826,188 @@ mod tests {
         let v = lower_first("::auto{character=\"bianca\" anchor=\"center\"}");
         assert_eq!(v["kind"], "sprite");
         assert!(v.get("costume").is_none(), "costume must be absent, got {:?}", v.get("costume"));
+    }
+
+    /// A snapshot whose `::<tag>` plugin directive declares `attrs` and the
+    /// given `lower:`.
+    fn snap_with(tag: &str, attrs: &[(&str, Type)], lower: Lowering) -> CapabilitySnapshot {
+        let mut snap = snap();
+        snap.directives.insert(
+            tag.to_string(),
+            DirectiveDecl {
+                name: tag.to_string(),
+                layer: Some("staging".into()),
+                attrs: attrs
+                    .iter()
+                    .map(|(n, ty)| lute_manifest::schema::AttrDecl {
+                        name: (*n).to_string(),
+                        required: false,
+                        ty: ty.clone(),
+                        default: None,
+                    })
+                    .collect(),
+                semantics: vec![],
+                state: None,
+                effects: None,
+                bridge: None,
+                lower,
+            },
+        );
+        snap
+    }
+
+    fn record_lowering(record: &str, fields_yaml: &str) -> Lowering {
+        Lowering::Record {
+            record: record.into(),
+            fields: serde_yaml::from_str(fields_yaml).expect("fixture yaml"),
+        }
+    }
+
+    fn lower_with(body: &str, snapshot: &CapabilitySnapshot) -> serde_json::Value {
+        let ns = nodes(body);
+        let Node::Directive(d) = &ns[0] else {
+            panic!("expected a directive, got {:?}", ns[0])
+        };
+        serde_json::to_value(lower_directive(d, snapshot).expect("lowers")).unwrap()
+    }
+
+    #[test]
+    fn declarative_record_lowering_emits_the_core_staging_record() {
+        // The declarative-lowering promise: `::backdrop{img=…}` declaring
+        // `lower: { record: background, fields: { assetId: { fromAttr: img } } }`
+        // becomes a real `background` record — NOT the `kind: "plugin"`
+        // passthrough it used to fall into.
+        let snapshot = snap_with(
+            "backdrop",
+            &[("img", Type::Str)],
+            record_lowering("background", "{ assetId: { fromAttr: img } }"),
+        );
+        let v = lower_with("::backdrop{img=\"BG.x\"}", &snapshot);
+        assert_eq!(v["kind"], "background");
+        assert_eq!(v["assetId"], "BG.x");
+        assert!(v.get("tag").is_none(), "must not be a passthrough: {v}");
+        // Unbound target fields stay absent (skip-if-none), so the record is
+        // byte-identical to the same `::bg` an author could have written.
+        assert!(v.get("location").is_none(), "{v}");
+        assert!(v.get("time").is_none(), "{v}");
+    }
+
+    #[test]
+    fn builtin_lowering_still_takes_the_plugin_passthrough() {
+        let snapshot = snap_with(
+            "minigame",
+            &[("img", Type::Str)],
+            Lowering::Builtin {
+                kind: "builtin".into(),
+                name: "minigame".into(),
+            },
+        );
+        let v = lower_with("::minigame{img=\"BG.x\"}", &snapshot);
+        assert_eq!(v["kind"], "plugin");
+        assert_eq!(v["tag"], "minigame");
+        assert_eq!(v["fields"]["img"], "BG.x");
+    }
+
+    #[test]
+    fn record_lowering_mixes_literals_and_missing_sources() {
+        // A baked literal fills its field; a `fromAttr` whose source attr the
+        // author omitted leaves the target at its default (absent).
+        let snapshot = snap_with(
+            "scenery",
+            &[("img", Type::Str), ("where", Type::Str)],
+            record_lowering(
+                "background",
+                "{ assetId: { fromAttr: img }, location: { fromAttr: where }, time: dusk }",
+            ),
+        );
+        let v = lower_with("::scenery{img=\"BG.y\"}", &snapshot);
+        assert_eq!(v["kind"], "background");
+        assert_eq!(v["assetId"], "BG.y");
+        assert_eq!(v["time"], "dusk");
+        assert!(v.get("location").is_none(), "unsourced field stays absent: {v}");
+    }
+
+    #[test]
+    fn record_lowering_typed_fields_serialize_as_json_scalars() {
+        let snapshot = snap_with(
+            "lens",
+            &[("z", Type::Number), ("snap", Type::Bool)],
+            record_lowering("camera", "{ zoom: { fromAttr: z }, reset: { fromAttr: snap } }"),
+        );
+        let v = lower_with("::lens{z=\"1.25\" snap=\"true\"}", &snapshot);
+        assert_eq!(v["kind"], "camera");
+        assert_eq!(v["zoom"], 1.25);
+        assert_eq!(v["reset"], true);
+    }
+
+    #[test]
+    fn unknown_record_degrades_to_passthrough_never_a_panic() {
+        // A declaration assembly would have rejected (`E-LOWER-RECORD-UNKNOWN`)
+        // must still lower TOTALLY if it somehow leaks through.
+        let snapshot = snap_with(
+            "narrate",
+            &[("img", Type::Str)],
+            record_lowering("line", "{ speaker: { fromAttr: img } }"),
+        );
+        let v = lower_with("::narrate{img=\"x\"}", &snapshot);
+        assert_eq!(v["kind"], "plugin");
+        assert_eq!(v["tag"], "narrate");
+    }
+
+    #[test]
+    fn record_field_table_matches_lowering() {
+        // The manifest-side field table (`lower_record_fields`, the validator's
+        // authority) and this module's per-record construction MUST agree name
+        // for name — bind every table field through a `fromAttr` and assert the
+        // serialized record carries all of them.
+        use lute_manifest::validate::{lower_record_fields, lower_record_kinds, LowerFieldKind};
+        for record in lower_record_kinds() {
+            let table = lower_record_fields(record).expect("table entry");
+            let attrs: Vec<(&str, Type)> = table
+                .iter()
+                .map(|(n, k)| {
+                    (
+                        *n,
+                        match k {
+                            LowerFieldKind::Str => Type::Str,
+                            LowerFieldKind::Num => Type::Number,
+                            LowerFieldKind::Bool => Type::Bool,
+                        },
+                    )
+                })
+                .collect();
+            let fields_yaml = format!(
+                "{{ {} }}",
+                table
+                    .iter()
+                    .map(|(n, _)| format!("{n}: {{ fromAttr: {n} }}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            let body = format!(
+                "::probe{{{}}}",
+                table
+                    .iter()
+                    .map(|(n, k)| {
+                        let v = match k {
+                            LowerFieldKind::Str => "v",
+                            LowerFieldKind::Num => "1.5",
+                            LowerFieldKind::Bool => "true",
+                        };
+                        format!("{n}=\"{v}\"")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            let snapshot = snap_with("probe", &attrs, record_lowering(record, &fields_yaml));
+            let v = lower_with(&body, &snapshot);
+            assert_eq!(v["kind"], record, "record kind for `{record}`");
+            for (name, _) in table {
+                assert!(
+                    v.get(name).is_some(),
+                    "record `{record}` must bind `{name}`; got {v}"
+                );
+            }
+        }
     }
 }

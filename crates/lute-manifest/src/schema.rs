@@ -51,6 +51,28 @@ pub struct EventsFile {
     pub events: Vec<EventDecl>,
 }
 
+/// plugin §14.1 cross-cutting stamp-attribute declaration file (export
+/// `stampattrs/*.yaml`).
+///
+/// Each entry is an ordinary [`AttrDecl`] — the SAME name/required/type/default
+/// surface a directive attr uses — but admissible on EVERY directive AND on
+/// content lines rather than on one directive, and lowered into the IR
+/// record's stamp (compile-IR §4.3 `Stamp.extra`) instead of the record's own
+/// fields. A name colliding with a reserved stamp key (`at`/`duration`/
+/// `delay`/`wait`/`timeline`/`provenance`/`source`) is an assembly-time
+/// `E-PLUGIN-RESERVED-STAMP-ATTR` (plugin §14, Appendix C4).
+///
+/// `required` and `default` are inert on this surface by construction: a
+/// cross-cutting attr is optional on every record (requiring one would make
+/// EVERY directive in the document illegal without it), and an unauthored
+/// stamp attr is NOT default-injected — absent means absent, so a document
+/// that authors none produces a byte-identical artifact.
+#[derive(Debug, Deserialize)]
+pub struct StampAttrsFile {
+    #[serde(rename = "stampAttrs")]
+    pub stamp_attrs: Vec<AttrDecl>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DirectiveDecl {
     pub name: String,
