@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.7.0",
-  "irVersion": "0.7.0",
-  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "lute": "0.8.0",
+  "irVersion": "0.8.0",
+  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
   "meta": {
     "character": "demo",
     "season": 1,
@@ -56,6 +56,12 @@ expression: json
       "speaker": "narrator",
       "text": "And the scene carries on.",
       "lineId": "demo.s01ep02.narrator_0020"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "Greeting by Component"
     }
   ]
 }
