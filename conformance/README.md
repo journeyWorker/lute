@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.7.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.8.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -44,7 +44,7 @@ a plain `diff`.
 ```json
 {
   "kind":       "scene" | "quest",
-  "irVersion":  "0.7",                 // the major.minor line the engine gated on
+  "irVersion":  "0.8",                 // the major.minor line the engine gated on
   "exit":       "complete" | "incomplete",
   "commands":   [ /* executed records, in execution order */ ],
   "state":      { "<path>": <value>, ... },   // final scalar state, key-sorted
@@ -70,6 +70,7 @@ a plain `diff`.
 | `hub-once-exit` | `hub` re-presentation — the mock forces `[probe, probe, leave]`; `probe` is `once` (the second force is refused) and `leave` is the `exit` option that leaves the hub |
 | `facts-datalog-rule` | the **Datalog least-fixpoint** — an `assert` delta plus a seeded fact drive the derived relation `suspected` (cel-and-facts.md); a `holds(...)` guard over the derived relation returns a definite answer |
 | `quest-complete` | the **quest lifecycle** — `start=true` activation, monotone objective completion, derived quest completion, and the `questComplete` `<on>` handler body (quest-lifecycle.md) |
+| `end-reason` | the **`::end` walk terminator** (dsl 0.8.0) — the forced arm's `end` record stops the walk with its `reason` surfaced; the shared converge one record later is never reached, and the run is still `complete` |
 
 ## Boundaries — what the reference runner deliberately does NOT implement
 

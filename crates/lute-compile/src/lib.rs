@@ -17,7 +17,9 @@ pub mod address;
 pub mod cfg;
 pub mod expand;
 pub mod expr;
+pub mod index;
 pub mod ir;
+pub mod locale;
 pub mod lower;
 pub mod normalize;
 pub mod schedule;
@@ -31,6 +33,7 @@ use lute_cel::CelArena;
 use lute_check::meta::{canonical_episode_id, canonical_episode_key, StateSchema};
 use lute_check::{check, fold_env, CheckInput, CheckResult, DefTable, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
+use lute_manifest::project::IdentityTemplates;
 use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{Arm, Document, Node};
@@ -46,13 +49,13 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// A9). Independent of [`LUTE_LANG_VERSION`] — bumped on its own for a pure
 /// IR-shape addition with no language-grammar change (connectivity T13:
 /// advisory `prereqEdges` emission); engines gate parsing on it.
-pub const LUTE_IR_VERSION: &str = "0.7.0";
+pub const LUTE_IR_VERSION: &str = "0.8.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
 /// compile-stage errors (`E-COMPILE-*`). Never panics.
 pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
-    compile_with_check(input, check(input))
+    compile_with_check(input, check(input), &IdentityTemplates::default())
 }
 
 /// Like [`compile`] but gated on a CALLER-SUPPLIED [`CheckResult`] instead of
@@ -62,11 +65,17 @@ pub fn compile(input: &CheckInput) -> Result<Artifact, Vec<Diagnostic>> {
 /// proves Guaranteed no longer blocks with a standalone `E-MAYBE-UNSET`, and a
 /// read no route guarantees blocks with the project's error-grade
 /// `E-STATE-MAYBE-UNAVAILABLE`. [`compile`] itself is the thin wrapper
-/// `compile_with_check(input, check(input))`, so every existing caller is
-/// byte-identical. Never panics.
+/// `compile_with_check(input, check(input), &IdentityTemplates::default())`,
+/// so every existing caller is byte-identical.
+///
+/// `identity` carries the project's `identity:` `lineId`/`voiceKey` templates
+/// (0.8.0 §9, adoption G4) — [`IdentityTemplates::default`] IS 0.7.0's
+/// hardcoded pair, so a project without the block compiles byte-identically.
+/// Never panics.
 pub fn compile_with_check(
     input: &CheckInput,
     result: CheckResult,
+    identity: &IdentityTemplates,
 ) -> Result<Artifact, Vec<Diagnostic>> {
     // D6 gate: codegen runs only on a clean check, so every pass below may
     // RELY on checker-proven invariants (declared paths, exhaustiveness,
@@ -141,7 +150,7 @@ pub fn compile_with_check(
             // reported — check() is the diagnostic surface, the artifact is
             // ours (plan note 8).
             state.diags.clear();
-            let (commands, addr_diags) = address::assign_addresses(shots);
+            let (commands, addr_diags) = address::assign_addresses(shots, identity);
             (ArtifactMeta::Scene(meta), commands, addr_diags)
         }
         lute_check::DocKind::Quest => {
@@ -161,7 +170,7 @@ pub fn compile_with_check(
                     trailing,
                 });
             }
-            let (commands, addr_diags) = address::assign_addresses(shots);
+            let (commands, addr_diags) = address::assign_addresses(shots, identity);
             (ArtifactMeta::Quest(quest_meta(&doc)), commands, addr_diags)
         }
     };
@@ -187,7 +196,28 @@ pub fn compile_with_check(
         rules,
         commands,
         prereq_edges: prereq_edge_entries(&doc, &folded),
+        shots: shot_entries(&doc),
     })
+}
+
+/// Collect the authored `## ` shot headings (dsl 0.8.0 §6) into the artifact's
+/// descriptive `shots` table. Shot number is the 1-based DOCUMENT position
+/// (0.6.0 §3.2), matching the `addr` shot segment. Blank headings are skipped,
+/// so a document that titles no shot emits no table at all — byte-identical to
+/// 0.7.0. Quest documents have no shots (their addressing unit is the
+/// `<quest>`), so this returns empty for them.
+fn shot_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::ShotEntry> {
+    doc.shots
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| {
+            let heading = s.heading.trim();
+            (!heading.is_empty()).then(|| ir::ShotEntry {
+                shot: i as i64 + 1,
+                heading: heading.to_string(),
+            })
+        })
+        .collect()
 }
 
 /// Lower the checker's merged relational vocabulary (0.3.0 T7's
@@ -446,11 +476,14 @@ fn quest_meta(doc: &Document) -> QuestMeta {
 /// The RESOLVED + FOLDED state table (§4.1): BTreeMap order = sorted by path
 /// (deterministic). Implicit `scene.choices.*` entries append `unset` to
 /// their domain and carry `branch:<id>` provenance (§11.1, plan note 10);
-/// reserved quest entries (`quest.<id>.state`, `quest.<id>.objectives.<oid>.done`,
-/// IR addendum §1–2) carry `quest:<id>` provenance — a `quest.<id>.state` enum
+/// reserved quest entries (`quest.<id>.state`, `quest.<id>.activatedAt`,
+/// `quest.<id>.objectives.<oid>.done`, IR addendum §1–2, dsl 0.8.0 §5) carry
+/// `quest:<id>` provenance — a `quest.<id>.state` enum
 /// ALSO appends `unset` to its domain (mirrors the branch convention) but is
 /// NOT seeded a forced default (unlike a branch slot: the engine populates it,
-/// maybe-unset, before the quest is known — addendum §3.1's "no default").
+/// maybe-unset, before the quest is known — addendum §3.1's "no default"). The
+/// `.state` suffix gate on `append_unset` keeps the opaque `narrativeTime`
+/// anchor out of that convention: it has no enumerable domain at all.
 fn state_entries(
     schema: &StateSchema,
     branch_paths: &BTreeSet<String>,
@@ -570,10 +603,11 @@ fn collect_branch_paths_nodes(nodes: &[Node], paths: &mut BTreeSet<String>) {
     }
 }
 
-/// The set of RESERVED quest state paths (dsl 0.2.0 §5.2, IR addendum §1–2):
-/// `quest.<id>.state` (one per `<quest>`) and, per top-level `<objective>`
-/// (grammar admission guarantees objectives appear only directly in a quest
-/// body, never nested — mirrors `lute_check::match_check::check_quest`),
+/// The set of RESERVED quest state paths (dsl 0.2.0 §5.2, dsl 0.8.0 §5, IR
+/// addendum §1–2): `quest.<id>.state` and `quest.<id>.activatedAt` (one each
+/// per `<quest>`) and, per top-level `<objective>` (grammar admission
+/// guarantees objectives appear only directly in a quest body, never nested —
+/// mirrors `lute_check::match_check::check_quest`),
 /// `quest.<id>.objectives.<oid>.done` — mapped to the owning quest's id for
 /// the `"quest:<id>"` provenance stamp. Membership here — NOT a `quest.`
 /// prefix guess — is the reliable discriminator between a checker-folded
@@ -582,6 +616,7 @@ fn collect_quest_reserved_paths(doc: &Document) -> BTreeMap<String, String> {
     let mut paths = BTreeMap::new();
     for quest in &doc.quests {
         paths.insert(format!("quest.{}.state", quest.id), quest.id.clone());
+        paths.insert(format!("quest.{}.activatedAt", quest.id), quest.id.clone());
         for node in &quest.body {
             if let Node::Objective(o) = node {
                 paths.insert(
@@ -660,12 +695,11 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // dsl 0.6.1 Appendix B: both stamps advance to 0.6.1 for this
-        // compatible refinement (verification-coverage signals + warning
-        // promotion). They are still tracked as independent pins (T13) even
-        // though they coincide here.
-        assert_eq!(super::LUTE_IR_VERSION, "0.7.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.7.0");
+        // dsl 0.8.0 Appendix C: both stamps advance to 0.8.0 for the
+        // adoption release (new `end` kind + append-only IR fields). They are
+        // still tracked as independent pins (T13) even though they coincide.
+        assert_eq!(super::LUTE_IR_VERSION, "0.8.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.8.0");
     }
 
     #[test]
@@ -674,8 +708,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.7.0");
-        assert_eq!(v["irVersion"], "0.7.0");
+        assert_eq!(v["lute"], "0.8.0");
+        assert_eq!(v["irVersion"], "0.8.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");
@@ -783,5 +817,30 @@ mod tests {
         let art = super::compile(&raw_scene_no_after()).unwrap();
         let v = serde_json::to_value(&art).unwrap();
         assert!(v.get("prereqEdges").is_none()); // skip_serializing_if = Vec::is_empty
+    }
+
+    /// dsl 0.8.0 §5: the reserved narrative-time anchor rides the artifact
+    /// `state` table exactly as `quest.<id>.state` does — same `quest:<id>`
+    /// provenance, `default: null` (skipped), and `type: "narrativeTime"`.
+    /// It does NOT append `unset` to a domain (there is none: narrative time
+    /// is opaque), which is why `append_unset` stays gated on the `.state`
+    /// suffix.
+    #[test]
+    fn quest_state_table_carries_the_activated_at_anchor() {
+        let art = super::compile(&test_input(
+            "---\nkind: quest\n---\n<quest id=\"q1\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n",
+        ))
+        .unwrap();
+        let v = serde_json::to_value(&art).unwrap();
+        let entry = v["state"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["path"] == serde_json::json!("quest.q1.activatedAt"))
+            .expect("the anchor is in the state table");
+        assert_eq!(entry["type"], serde_json::json!("narrativeTime"));
+        assert_eq!(entry["provenance"], serde_json::json!("quest:q1"));
+        assert!(entry.get("domain").is_none(), "opaque: no domain: {entry}");
+        assert!(entry.get("default").is_none(), "engine-populated: {entry}");
     }
 }

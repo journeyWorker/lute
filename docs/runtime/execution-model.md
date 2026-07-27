@@ -3,7 +3,7 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the JSON IR described
-by [`schemas/lute-ir-0.7.schema.json`](../../schemas/lute-ir-0.7.schema.json).
+by [`schemas/lute-ir-0.8.schema.json`](../../schemas/lute-ir-0.8.schema.json).
 It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**
 (design decision D1). Everything on the far side of the artifact is the
 engine's job. These documents describe that job, grounded in
@@ -53,10 +53,23 @@ snapshot you do not match.
 ## Addressing and control flow
 
 Every executable record carries an `addr` (`address.rs`), a position string
-`"{shot:03}-{(index+1)*100:04}"` (e.g. `"001-0300"`). `addr` is **regenerated
-on every compile** — it is a position, not an identity. The stable content
-joins are `lineId` / `voiceKey`, derived from per-speaker `code` (dsl §12), and
-are what you key localization and voice assets on.
+`"{shot}-{(index+1)*100}"` (e.g. `"001-0300"`). `addr` is **regenerated on
+every compile** — it is a position, not an identity. The stable content joins
+are `lineId` / `voiceKey`, derived from per-speaker `code` (dsl §12), and are
+what you key localization and voice assets on.
+
+**Field width (IR 0.8.0, dsl 0.8.0 §2).** Both segments are zero-padded to a
+width computed from the document — at least `3` for the shot and `4` for the
+index, wider when the document needs it — and that width is **uniform across
+the whole artifact**. Therefore, *within one artifact, lexicographic order over
+every emitted `addr` equals execution order.*
+
+> Before 0.8.0 the index field was fixed at 4 digits, so a shot with 100+
+> records emitted `001-11500` beside `001-1400` and string comparison reported
+> `"001-11500" < "001-1400"` — an engine ordering or range-checking addresses
+> lexicographically would rewind into already-played content. If you may load
+> artifacts built by a 0.7-or-earlier toolchain, **compare `addr` segment-wise
+> numerically**, never as a plain string.
 
 The `commands` array is already in **final execution order**. The engine walks
 it with a program counter, resolving control-flow targets — which are all
@@ -72,6 +85,9 @@ it with a program counter, resolving control-flow targets — which are all
 - **`quest` / `on`** — declaration heads: `objective.body` and `on.body` are
   `addr` targets into separately-emitted body segments (see
   [quest-lifecycle.md](./quest-lifecycle.md)).
+- **`end`** — terminates the walk (dsl 0.8.0 §3); carries an optional free-form
+  `reason`. Equivalent to running off the end of `commands`, except the reason
+  is available to the host.
 - **`barrier`** — a timeline join (see
   [timeline-semantics.md](./timeline-semantics.md)).
 
@@ -133,6 +149,7 @@ function run(artifact: Artifact, state: StateStore, facts: FactStore) {
         break;
       }
       case "jump":    next = cmd.target; break;
+      case "end":     finish(cmd.reason); return;      // dsl 0.8.0 §3 — terminate the walk
       case "barrier": joinTimeline(cmd.timeline, cmd.at); break; // see timeline-semantics.md
 
       // ── quest-kind declarations (consumed by the lifecycle driver) ──

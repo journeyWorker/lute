@@ -61,6 +61,26 @@ pub struct Artifact {
     /// above moved (byte-stability contract, file header).
     #[serde(rename = "prereqEdges", skip_serializing_if = "Vec::is_empty")]
     pub prereq_edges: Vec<PrereqEdgeEntry>,
+    /// Authored shot headings (dsl 0.8.0 §6), 1-based `shot` number → the
+    /// verbatim `## ` heading text. 0.6.0 made shot headings free text and
+    /// dropped `Shot.number` from the AST; before 0.8.0 the heading was
+    /// discarded entirely at lowering, so a compile → decompile round trip
+    /// lost the author's section titles (the only authored structure with no
+    /// other IR carrier). Emitted only for shots whose heading is non-empty;
+    /// omitted entirely when no shot carries one. APPENDED LAST — after
+    /// `prereqEdges`, the prior last field (byte-stability contract).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub shots: Vec<ShotEntry>,
+}
+
+/// One authored shot heading (dsl 0.8.0 §6): the 1-based document-position
+/// shot number and its verbatim `## ` text. Purely descriptive — control flow
+/// never references it; `addr`'s shot segment is the join.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShotEntry {
+    pub shot: i64,
+    pub heading: String,
 }
 
 /// One advisory prerequisite edge (connectivity spec §2.6, T13): a single
@@ -227,6 +247,15 @@ pub struct Stamp {
     pub provenance: Option<lute_check::Provenance>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
+    /// Plugin-declared CROSS-CUTTING attrs (plugin 0.0.2 §14.1 `stampAttrs:`),
+    /// flattened alongside the reserved timing keys above. An engine reads
+    /// these exactly like a directive `fields` entry — typed by the declaring
+    /// plugin's `AttrDecl`, absent when unauthored. Assembly REJECTS a
+    /// `stampAttrs` name colliding with any reserved key above
+    /// (`E-PLUGIN-RESERVED-STAMP-ATTR`), so this map can never shadow them.
+    /// Serialized LAST within the stamp so existing field order is untouched.
+    #[serde(flatten, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// `source { component }` on component-expanded records (§4.3, D8).
@@ -297,6 +326,7 @@ pub enum Command {
     Match(MatchCmd),
     Hub(HubCmd),
     Jump(JumpCmd),
+    End(EndCmd),
     Barrier(BarrierCmd),
     Quest(QuestCmd),
     On(OnCmd),
@@ -360,6 +390,12 @@ pub struct LineCmd {
     /// Absent when the line has no interpolation (byte-stability: skip-if-empty).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub placeholders: Vec<Placeholder>,
+    /// Merged locale texts (dsl 0.8.0 §7), locale tag → translated text, keyed
+    /// on this record's `lineId`. Populated only when `compile --locales` was
+    /// given a locale bundle; `text` always remains the SOURCE-language string
+    /// (`contentLang`), so a 0.7 consumer is unaffected. Absent when empty.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub texts: BTreeMap<String, String>,
     /// Authored (or back-filled) per-speaker `code` — feeds `lineId`/`voiceKey`
     /// in the addressing pass, NEVER serialized (3-id model, §4.2).
     #[serde(skip)]
@@ -568,6 +604,10 @@ pub struct ChoiceOption {
     /// when the label has none (skip-if-empty). Label text stays verbatim.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub placeholders: Vec<Placeholder>,
+    /// Merged locale labels (dsl 0.8.0 §7), locale tag → translated label,
+    /// keyed on this option's `lineId`. See `LineCmd::texts`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
 }
 
 /// `<hub>` (§7.3.2, IR A2): structurally a `choice` plus revisit flags. The
@@ -604,6 +644,10 @@ pub struct HubOption {
     /// when the label has none (skip-if-empty). Label text stays verbatim.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub placeholders: Vec<Placeholder>,
+    /// Merged locale labels (dsl 0.8.0 §7), locale tag → translated label,
+    /// keyed on this option's `lineId`. See `LineCmd::texts`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -631,6 +675,22 @@ pub struct MatchArm {
 pub struct JumpCmd {
     pub addr: String,
     pub target: String,
+}
+
+/// `::end{reason?}` (dsl 0.8.0 §5): terminate the walk at this record.
+/// A NEW command kind, so an engine that does not implement 0.8 must refuse
+/// the artifact rather than silently fall through (execution-model version
+/// policy: an unknown `kind` is a hard error). `reason` is a free-form
+/// author string the host may surface (`completed` / `error` / a custom
+/// ending id); absent when unauthored.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EndCmd {
+    pub addr: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(flatten)]
+    pub stamp: Stamp,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -793,6 +853,7 @@ impl Command {
             Command::Hub(c) => &mut c.addr,
             Command::Jump(c) => &mut c.addr,
             Command::Barrier(c) => &mut c.addr,
+            Command::End(c) => &mut c.addr,
             Command::Other(c) => &mut c.addr,
             Command::Quest(c) => &mut c.addr,
             Command::On(c) => &mut c.addr,
@@ -850,6 +911,7 @@ impl Command {
             | Command::Assert(_)
             | Command::Retract(_)
             | Command::Barrier(_)
+            | Command::End(_)
             | Command::Other(_) => {}
         }
     }
@@ -875,6 +937,7 @@ impl Command {
             Command::Other(c) => Some(&mut c.stamp),
             Command::Quest(c) => Some(&mut c.stamp),
             Command::On(c) => Some(&mut c.stamp),
+            Command::End(c) => Some(&mut c.stamp),
             Command::Jump(_) | Command::Barrier(_) => None,
         }
     }
