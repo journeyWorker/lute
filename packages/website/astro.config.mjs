@@ -1,6 +1,24 @@
 // @ts-check
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+
+// The SAME TextMate grammar the VS Code extension ships — read, not copied, so
+// the site can never highlight a dialect the editor does not. `editors/vscode`
+// owns it and `tmgrammar.test.js` guards it; this file only renames the scope's
+// display name (`Lute`) to the lowercase id authors type in a fence (```lute).
+const luteGrammar = {
+  ...JSON.parse(
+    readFileSync(
+      fileURLToPath(
+        new URL("../../editors/vscode/syntaxes/lute.tmLanguage.json", import.meta.url),
+      ),
+      "utf8",
+    ),
+  ),
+  name: "lute",
+};
 
 // https://astro.build/config
 export default defineConfig({
@@ -108,6 +126,9 @@ export default defineConfig({
           items: [{ slug: "spec/current" }, { slug: "spec" }],
         },
       ],
+      expressiveCode: {
+        shiki: { langs: [luteGrammar] },
+      },
     }),
   ],
 });
