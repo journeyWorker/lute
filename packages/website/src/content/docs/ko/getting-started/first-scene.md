@@ -6,7 +6,7 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 이 문서는 Lute를 한 번도 다뤄본 적 없는 시나리오 작가를 위한 "여기서 시작" 안내입니다 —
 컴파일러 배경지식은 필요 없습니다. 빈 파일에서 **작지만 실제로 동작하는 장면 하나**를 단계별로
 만들며, 매 단계마다 실제 `lute` 도구를 실행해 도구가 정확히 뭐라고 말하는지 확인합니다. 언어
-버전 **0.7.0**을 대상으로 합니다.
+버전 **0.8.0**을 대상으로 합니다.
 
 일반 텍스트 편집기, 터미널, 그리고 `lute` 명령
 ([먼저 설치하세요](/ko/getting-started/installation/))이 필요합니다. 여기서 작성하는 모든
@@ -18,10 +18,11 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest`
+my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing
+failed: my-scene.lute (4 error(s), 0 warning(s))
 ```
 
 이것이 `lute check`의 핵심 아이디어입니다: 파일을 읽고 무엇이 왜 잘못되었는지 한 줄씩 정확히
@@ -62,7 +63,8 @@ ok: my-scene.lute (0 warning(s))
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it
+my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
+failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 기억해야 할 규칙: **모든 내용은 헤딩 아래에 있습니다.** Lute 문서는 "샷"의 나열입니다 — 장면의
@@ -179,7 +181,8 @@ state:
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:19:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` — write `@speaker{…}: text`; `lute fix` applies this migration automatically
+my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 **진단 읽기:** `file:line:col: error [CODE] message`. 정확한 줄, 정확한 문제, 그리고 대신 무엇을
@@ -187,7 +190,7 @@ my-scene.lute:19:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was re
 
 ```
 $ lute fix my-scene.lute
-lute: migrated 1 edit(s)
+lute: migrated 1 edit(s) to 0.2.2
 ```
 
 `lute fix`는 파일을 제자리에서 다시 씁니다(바꿔야 할 부분만) 그리고 다시 검사하면 깔끔하게
@@ -200,24 +203,60 @@ lute: migrated 1 edit(s)
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.7.0",
-  "meta": { "character": "mira", "season": 1, "episode": 1, "episodeId": "s01ep01", "title": "A Quiet Table" },
+  "lute": "0.8.0",
+  "irVersion": "0.8.0",
+  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
+  "meta": {
+    "character": "mira",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "A Quiet Table"
+  },
   "state": [ … ],
   "commands": [
-    { "kind": "line", "role": "narration", "speaker": "narrator",
-      "text": "The diner is empty at this hour, and Mira likes it that way." },
-    { "kind": "line", "role": "dialogue", "speaker": "mira",
-      "text": "{{userName}}, you made it.", "emotion": "content", "variant": 0 },
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The diner is empty at this hour, and Mira likes it that way.",
+      "lineId": "mira.s01ep01.narrator_0010"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "dialogue",
+      "speaker": "mira",
+      "text": "{{userName}}, you made it.",
+      "emotion": "content",
+      "variant": 0,
+      "lineId": "mira.s01ep01.mira_0010",
+      "voiceKey": "mira-0010",
+      "placeholders": [ … ]
+    },
     …
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "The Counter"
+    }
   ]
 }
 ```
 
-(공간을 위해 재포맷하여 표시했습니다.) 이 파일은 절대 손으로 편집하지 않습니다 — 엔진이 소비하는
-컴파일된 산출물입니다. 오류 없이 컴파일되었다는 것은 그 장면이 **정적으로 유효함**을 증명합니다:
-모든 구성이 올바르게 형성되었고, 모든 상태 경로가 선언되었으며, 모든 `<match>`가 망라적입니다.
-이것이 장면이 처음부터 끝까지 플레이 가능함을 증명하는 것은 아닙니다 — 그것은 통합 시점에
-검증되는 런타임 속성입니다.
+(`…`는 지면을 위해 잘라낸 자리이고, 나머지는 출력 그대로입니다.) 한눈에 알아둘 필드가 둘
+있습니다. **`addr`**는 레코드의 주소로 `{shot}-{index}` 형태이며, 하나의 산출물 안의 모든
+`addr`는 같은 너비로 채워집니다 — 그래서 `addr` 문자열을 정렬하기만 하면 실행 순서가 나옵니다.
+파싱할 필요가 없습니다. **`shots`**는 당신이 쓴 `## ` 헤딩을 산출물까지 실어 나르므로, 하위
+도구가 어떤 레코드가 *어느 비트에* 속하는지 여전히 말할 수 있습니다.
+
+이 파일은 절대 손으로 편집하지 않습니다 — 엔진이 소비하는 컴파일된 산출물입니다. 오류 없이
+컴파일되었다는 것은 그 장면이 **정적으로 유효함**을 증명합니다: 모든 구성이 올바르게
+형성되었고, 모든 상태 경로가 선언되었으며, 모든 `<match>`가 망라적입니다. 이것이 장면이
+처음부터 끝까지 플레이 가능함을 증명하는 것은 아닙니다 — 그것은 통합 시점에 검증되는 런타임
+속성입니다.
 
 마지막으로, `lute trace`는 게임을 열지 않고 플레이스루를 미리 봅니다 — 각 분기에서 어떤 선택을
 할지 `--choose <branchId>=<choiceId>`로 알려주면, 장면을 따라가며 화면에 무엇이 표시될지
@@ -225,8 +264,8 @@ $ lute compile my-scene.lute
 
 ```
 $ lute trace my-scene.lute --choose orderChoice=black
-trace: my-scene.lute
-  ## The Counter
+trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
+  ## Shot 1.
     @narrator  The diner is empty at this hour, and Mira likes it that way.
     @mira  {{userName}}, you made it.
     @mira  I should not be this pleased about a coffee order.
@@ -247,17 +286,23 @@ trace complete: 1 decision; choices 1/2 (orderChoice)
 이것은 플레이어를 어디로도 이동시키지 않으며 점프도 아닙니다 — *권고적(advisory)*입니다: 도구는
 이를 사용해 당신의 에피소드들이 하나의 일관되고 분석 가능한 그래프로 맞물리는지 검증합니다.
 
-`after:`는 의도적으로 아주 작습니다. 정확히 두 개의 구성 요소만 주어집니다:
+`after:`는 의도적으로 아주 작습니다. 정확히 세 개의 구성 요소만 주어집니다:
 
 - `visited("<sceneKey>")` — 플레이어가 그 장면을 본 순간 참이 됩니다.
 - `completed("<questId>")` — 그 퀘스트가 완료된 순간 참이 됩니다.
+- `active("<questId>")` — 그 퀘스트가 진행 중인 동안 참입니다: 시작되었고, 아직 끝나지 않은 상태.
+
+`completed`와 `active`는 서로 반대말이 아닙니다. `completed`는 과거에 대한 영구적인 사실이고,
+`active`는 열렸다가 닫히는 구간입니다. 퀘스트가 *진행되는 동안에만* 말이 되는 장면이라면
+`active`를 쓰세요.
 
 `&&`(둘 다)와 `||`(둘 중 하나)로 조합하세요:
 
 ```yaml
 after: 'visited("mira.s01ep01")'
 after: 'visited("mira.s01ep01") && completed("theCoffeeDebt")'
-after: 'visited("mira.s01ep01") || visited("mira.s01ep02")'
+after: 'visited("mira.s01ep01") && active("theCoffeeDebt")'
+after: 'visited("mira.s01ep01") || visited("mira.s01ep03")'
 ```
 
 이것이 어휘의 전부입니다. `!`도, 산술도, 상태 읽기도 없습니다 — 이것들은 의도적으로 제외되었습니다.
@@ -329,8 +374,8 @@ project root: episodes
   topological layers:
     layer 0: scene(mira.s01ep01)
     layer 1: scene(mira.s01ep02)
-  edges (prerequisite -> dependent):
-    scene(mira.s01ep01) -> scene(mira.s01ep02)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
 `reach <key>`는 "플레이어가 여기까지 도달할 수 있는가, 그리고 어떤 경로로?"에 답하고,
@@ -339,9 +384,14 @@ project root: episodes
 
 ```
 $ lute scenario episodes envelope mira.s01ep02
-envelope for scene(mira.s01ep02) (pre-entry):
+project root: episodes
+envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
     - run.metMira
+  Possible (set on at least one declared route reaching this node):
+    - run.metMira
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
+    (none)
 ```
 
 `run.metMira`가 **Guaranteed**인 것은 경로 때문입니다: 부스로 들어가는 모든 선언된 경로는
@@ -356,19 +406,27 @@ envelope for scene(mira.s01ep02) (pre-entry):
 
 ```
 $ lute context my-scene.lute
-directives (8):
+capabilityVersion: 78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3
+directives (9):
   auto: character, anchor, action
   bg: location, time, assetId
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
   cut: assetId, action, full
+  end: reason
   music: action, mood, volume, assetId, track
   sfx: sound, assetId, name
   vfx: type, label, transition
   video: assetId, action, wait
 enums (6):
+  anchor: left, center, right
   emotion: neutral, surprised, delighted, shy, content, angry, sad
   mood: peaceful, tense, romantic, sad, upbeat
-  …
+  musicAction: start, change, stop, resume, fade-out
+  vfxType: whiteOut, blackOut, rain, snow, leaves, petals, raindrop
+  volume: silent, down, normal, up, full
+stateSchema (2):
+  scene.choices.orderChoice: enum [black, familiar, unset]
+  scene.knowsMira: bool
 deliveryFlags (3):
   {mono}: interior monologue / thought (not spoken aloud in-scene)
   {os}: off-screen: the speaker is heard but not currently staged/visible

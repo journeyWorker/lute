@@ -80,22 +80,27 @@ Why Lute
 
 ## Built for scenarios you can trust
 
-    Every scenario provably terminates and every path is analyzable — no
-    infinite loops, no unbounded recursion, no unreachable surprises.
+    Every scenario provably terminates — no infinite loops, no unbounded
+    recursion — and ::end makes an ending explicit, so anything written
+    after it is reported as dead rather than quietly shipped.
     Directives and providers are declared with typed manifests, so the
-    checker knows exactly what each plugin can emit and consume.
+    checker knows exactly what each plugin can emit and consume — and rejects
+    a manifest that mistypes an option or claims a name the core owns.
     Guards are plain CEL expressions; a Datalog fact layer lets
     you derive higher-order truths and query them across a scene.
-    lute trace runs a scenario against mock YAML — state, facts,
-    choices, events — so you watch it play out before anyone plays it.
-    Reachability analysis plus Guaranteed / Possible envelopes prove which
-    scenes, choices, and states can ever actually be reached.
+    lute trace runs one deterministic, mock-driven path — state, facts,
+    choices, events — so you watch a scenario play out before anyone does.
+    It walks that path, not every path.
+    Reachability runs over your declared after: routes — visited, completed,
+    active — and returns Reachable / Unreachable / Unknown; relational gates
+    surface as human-review boundaries, never false certainty.
     lute context emits a structured view of a project built for
     agents — the language was designed to be written with a model, not despite one.
     A language server ships diagnostics, hovers, and completions to your
     editor, so mistakes surface as you type, not at runtime.
-    Output is flat JSON command records plus CEL — trivial to load into any
-    engine, in any language, with zero Lute runtime.
+    Engines don't embed the Lute parser or compiler; they implement the
+    documented runtime contract against a versioned JSON IR plus CEL — any
+    engine, any language.
 
 See it play
 
@@ -115,12 +120,16 @@ Lute's command records into a scene.
 
 Ready to write one? [Get started with `bunx @lute-lang/lute` →](/getting-started/installation/)
 
+Or write Lute right now — no install — in the **Try Lute** playground
+(https://lute-lang.vercel.app/playground/): live diagnostics, the compiled JSON IR, and a
+mock-driven trace, all in your browser.
+
 ---
 
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.7.0**.
+compiles, traces, and inspects them. The current language version is **0.8.0**.
 
 ## Quick start with `bunx`
 
@@ -174,9 +183,24 @@ produces `./target/debug/lute`.
 
 Whichever route you took, confirm the tool is on your `PATH`:
 
-```sh
-lute --version
 ```
+$ lute version
+lute toolchain 0.8.0
+language      0.8.0
+IR schema     0.8.0
+```
+
+Those are three independent axes: the **toolchain** version is this CLI, the **language** version
+is the grammar and semantics the checker enforces, and the **IR schema** version is what
+`lute compile` stamps into every artifact as `irVersion`. They happen to move together today, but
+nothing requires them to. For scripts and CI, `--json` prints the same three axes as one object:
+
+```
+$ lute version --json
+{"toolchain":"0.8.0","language":"0.8.0","ir":"0.8.0"}
+```
+
+(`lute --version` also works and prints just `lute 0.8.0` — the toolchain axis alone.)
 
 ## Next
 
@@ -190,7 +214,7 @@ an empty file, running `lute` at every step.
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.7.0**.
+**0.8.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -203,10 +227,11 @@ Create an empty file, `my-scene.lute`, and run the checker on it — the checker
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest`
+my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing
+failed: my-scene.lute (4 error(s), 0 warning(s))
 ```
 
 That's the whole idea of `lute check`: it reads your file and tells you, line by line, exactly
@@ -248,7 +273,8 @@ Check again:
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it
+my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
+failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 The rule to remember: **all content lives under a heading.** A Lute document is a sequence of
@@ -366,7 +392,8 @@ Say you type an old-style sigil out of habit — a colon instead of `@` — on t
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:19:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` — write `@speaker{…}: text`; `lute fix` applies this migration automatically
+my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 **Reading a diagnostic:** `file:line:col: error [CODE] message`. It names the exact line, the exact
@@ -374,7 +401,7 @@ problem, and exactly what to write instead. For this mechanical class of fix, ru
 
 ```
 $ lute fix my-scene.lute
-lute: migrated 1 edit(s)
+lute: migrated 1 edit(s) to 0.2.2
 ```
 
 `lute fix` rewrites the file in place (only what needs to change) and re-check comes back clean.
@@ -386,23 +413,59 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.7.0",
-  "meta": { "character": "mira", "season": 1, "episode": 1, "episodeId": "s01ep01", "title": "A Quiet Table" },
+  "lute": "0.8.0",
+  "irVersion": "0.8.0",
+  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
+  "meta": {
+    "character": "mira",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "A Quiet Table"
+  },
   "state": [ … ],
   "commands": [
-    { "kind": "line", "role": "narration", "speaker": "narrator",
-      "text": "The diner is empty at this hour, and Mira likes it that way." },
-    { "kind": "line", "role": "dialogue", "speaker": "mira",
-      "text": "{{userName}}, you made it.", "emotion": "content", "variant": 0 },
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The diner is empty at this hour, and Mira likes it that way.",
+      "lineId": "mira.s01ep01.narrator_0010"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "dialogue",
+      "speaker": "mira",
+      "text": "{{userName}}, you made it.",
+      "emotion": "content",
+      "variant": 0,
+      "lineId": "mira.s01ep01.mira_0010",
+      "voiceKey": "mira-0010",
+      "placeholders": [ … ]
+    },
     …
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "The Counter"
+    }
   ]
 }
 ```
 
-(Shown reformatted for space.) You never hand-edit this file — it's the compiled artifact the
-engine consumes. That it compiled without error is proof the scene is **statically valid**: every
-construct well-formed, every state path declared, every `<match>` exhaustive. It is not proof the
-scene is playable end to end — that's a runtime property, verified at integration time.
+(`…` marks where output was trimmed for space; everything else is verbatim.) Two fields are worth
+knowing on sight. **`addr`** is the record's address, `{shot}-{index}`, and every `addr` in one
+artifact is padded to the same width — so sorting the `addr` strings gives you execution order, no
+parsing required. **`shots`** carries your `## ` headings through to the artifact, so a tool
+downstream can still say *which beat* a record belongs to.
+
+You never hand-edit this file — it's the compiled artifact the engine consumes. That it compiled
+without error is proof the scene is **statically valid**: every construct well-formed, every state
+path declared, every `<match>` exhaustive. It is not proof the scene is playable end to end —
+that's a runtime property, verified at integration time.
 
 Finally, `lute trace` previews a playthrough without opening the game — you tell it which choice to
 take at each branch with `--choose <branchId>=<choiceId>`, and it walks the scene and prints what
@@ -410,8 +473,8 @@ would show on screen:
 
 ```
 $ lute trace my-scene.lute --choose orderChoice=black
-trace: my-scene.lute
-  ## The Counter
+trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
+  ## Shot 1.
     @narrator  The diner is empty at this hour, and Mira likes it that way.
     @mira  {{userName}}, you made it.
     @mira  I should not be this pleased about a coffee order.
@@ -432,17 +495,23 @@ declare that intended ordering with one frontmatter key: **`after:`**.
 doesn't move the player anywhere and it isn't a jump — it's *advisory*: the tool uses it to verify
 your episodes fit together into one coherent, analysable graph.
 
-`after:` is deliberately tiny. You get exactly two building blocks:
+`after:` is deliberately tiny. You get exactly three building blocks:
 
 - `visited("<sceneKey>")` — true once the player has seen that scene.
 - `completed("<questId>")` — true once that quest is finished.
+- `active("<questId>")` — true while that quest is running: started, not yet finished.
+
+`completed` and `active` are not opposites. `completed` is a permanent fact about the past;
+`active` is a window that opens and closes. Reach for `active` when a scene only makes sense
+*during* a quest.
 
 Combine them with `&&` (both) and `||` (either):
 
 ```yaml
 after: 'visited("mira.s01ep01")'
 after: 'visited("mira.s01ep01") && completed("theCoffeeDebt")'
-after: 'visited("mira.s01ep01") || visited("mira.s01ep02")'
+after: 'visited("mira.s01ep01") && active("theCoffeeDebt")'
+after: 'visited("mira.s01ep01") || visited("mira.s01ep03")'
 ```
 
 That is the whole vocabulary. There is no `!`, no arithmetic, and no reading state — those are
@@ -514,8 +583,8 @@ project root: episodes
   topological layers:
     layer 0: scene(mira.s01ep01)
     layer 1: scene(mira.s01ep02)
-  edges (prerequisite -> dependent):
-    scene(mira.s01ep01) -> scene(mira.s01ep02)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
 `reach <key>` answers "can the player ever get here, and by what route?"; `envelope <key>` answers
@@ -523,9 +592,14 @@ the question you most want before writing a `when=` guard — *what state is saf
 
 ```
 $ lute scenario episodes envelope mira.s01ep02
-envelope for scene(mira.s01ep02) (pre-entry):
+project root: episodes
+envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
     - run.metMira
+  Possible (set on at least one declared route reaching this node):
+    - run.metMira
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
+    (none)
 ```
 
 `run.metMira` is **Guaranteed** because of the route: every declared route into the booth passes
@@ -540,11 +614,13 @@ declared state, and the delivery-flag vocabulary — resolved for the specific f
 
 ```
 $ lute context my-scene.lute
-directives (8):
+capabilityVersion: 78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3
+directives (9):
   auto: character, anchor, action
   bg: location, time, assetId
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
   cut: assetId, action, full
+  end: reason
   music: action, mood, volume, assetId, track
   sfx: sound, assetId, name
   vfx: type, label, transition
@@ -553,6 +629,9 @@ enums (6):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
   mood: peaceful, tense, romantic, sad, upbeat
   …
+stateSchema (2):
+  scene.choices.orderChoice: enum [black, familiar, unset]
+  scene.knowsMira: bool
 deliveryFlags (3):
   {mono}: interior monologue / thought (not spoken aloud in-scene)
   {os}: off-screen: the speaker is heard but not currently staged/visible
@@ -763,7 +842,7 @@ parsed.
 
 ---
 
-# Staging directives
+# Core directives
 
 A **staging directive** is a single-line leaf that stages the scene: background, music, sound,
 character entrance, camera, cut-ins, and effects. Its shape is:
@@ -779,7 +858,8 @@ accepts.
 
 ## Core vocabulary
 
-The core staging directives and their canonical attributes:
+`lute.core` declares exactly nine directives — eight staging leaves plus the walk terminator
+`::end` — with these canonical attributes:
 
 | Directive | Attributes |
 |---|---|
@@ -791,6 +871,7 @@ The core staging directives and their canonical attributes:
 | `::cut` | `assetId` (`CUT.*`), `action` (`show`\|`hide`), `full` |
 | `::vfx` | `type` (e.g. `whiteOut`, `petals`), `label`, `transition` |
 | `::video` | `assetId` (`VID.*`), `action` (`show`\|`hide`), `wait` |
+| `::end` | `reason` (optional, free-form) — terminates the walk; control flow, not staging (below) |
 
 ```lute
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
@@ -829,6 +910,55 @@ non-blocking. Concurrency is therefore just consecutive non-`wait` directives; t
 
 The `at` key is *not* a staging timing attribute; it is a timeline-position key valid only on
 clips inside a [`<timeline>`](/language/timeline-and-property-tracks/).
+
+## `::end` — terminating the walk
+
+`::end` stops the walk at its own record. It is exactly equivalent to falling off the end of the
+command array, except that it carries a reason:
+
+```lute
+@narrator: The platform emptied out. Nothing left to catch.
+::end{reason="missedTheLastTrain"}
+```
+
+`reason` is optional and free-form — `"completed"`, `"error"`, an ending id. Lute assigns it no
+meaning; it rides through to the artifact for the host to surface. `::end` is the only entry in the
+table above that is not a staging leaf, so it is not admitted inside a
+[`<track>`](/language/timeline-and-property-tracks/) clip (`E-TIMELINE-CONTENT`), which takes
+staging leaves and `::set` only.
+
+Anything after an `::end` **in the same straight-line body** can never run, and the checker says so
+once per body, anchored at the first dead node: `W-CODE-AFTER-END` — *unreachable content after
+`::end` (the walk terminates here)*. It is a warning; promote it with
+`lute check --deny W-CODE-AFTER-END`.
+
+The scope is the *immediately enclosing* sequence only — one shot body, one `<choice>` body, one
+`<when>` arm, one objective body, one `<on>` body. An `::end` in one choice says nothing about its
+siblings, nor about content after the enclosing `<branch>`, so a per-branch ending is written the
+obvious way and the shared tail below it stays live:
+
+```lute
+<branch id="ledge">
+  <choice id="jump" label="Jump for it">
+    @mira: Nothing to it.
+    ::end{reason="fell"}
+  </choice>
+  <choice id="wait" label="Wait for the ladder">
+    @mira: I can be patient.
+  </choice>
+</branch>
+
+@narrator: The siren faded somewhere east.
+```
+
+### Why termination is core, not a plugin directive
+
+Termination is control flow, and control flow is the one thing plugin vocabulary does not get. A
+plugin directive lowers to a record of `kind: "plugin"`, which is opaque to the checker:
+reachability analysis cannot know that such a record terminates, so content after it would never be
+reported dead and `W-CODE-AFTER-END` could not exist. Shipping `::end` as a new IR command kind is
+also the honest version signal — an engine that does not implement 0.8.0 must refuse the artifact
+rather than fall through a record it does not recognise.
 
 ## Reserved directives
 
@@ -1330,14 +1460,22 @@ you author line by line; quests are the run-to-completion goal machines that gat
 A scene is one episode — the frontmatter identity triple (`character`/`season`/`episode`) plus its
 shots. Scenes are *sequenced* with the frontmatter key **`after:`**, which declares the routes the
 checker and `lute scenario` assume reach this scene. It is advisory ordering metadata, not a jump.
-Its vocabulary is exactly two predicates combined with `&&` / `||`:
+Its vocabulary is exactly three predicates combined with `&&` / `||`:
 
 - `visited("<sceneKey>")` — true once the player has seen that scene (key = `{character}.{episodeId}`);
-- `completed("<questId>")` — true once that quest is finished.
+- `completed("<questId>")` — true once that quest is finished;
+- `active("<questId>")` — true once that quest has been taken up and not yet resolved.
 
 ```yaml
-after: 'visited("mira.s01ep01") && completed("theCoffeeDebt")'
+after: 'visited("mira.s01ep01") && active("theCoffeeDebt")'
 ```
+
+`active` is new in 0.8.0, and it closes an asymmetry. The quest lifecycle is `unset` → `active` →
+`complete` | `failed`, yet the prerequisite vocabulary could name only two of those three observable
+states. For the reachability graph an `active` edge is **identical** to a `completed` one: both
+assert "that node must be reachable before this one", so cycle and unreachability analysis is
+unchanged. The state envelope it carries is strictly **weaker** — after `completed(q)` a consumer
+may assume `quest.q.state == complete`; after `active(q)`, only that the quest reached `active`.
 
 There is no negation, arithmetic, or state read in `after:`. See
 [Scene graph & after:](/connectivity/scene-graph/) for how these declarations form the reachability
@@ -1405,6 +1543,31 @@ Content elsewhere can also gate on quest lifecycle by reading the reserved `ques
 Quests can gate on relational facts too — `start="holds(inParty(shadowheart))"` — see
 [Facts & Datalog](/state/facts-and-datalog/) for the fact surface, worked in full by
 [`docs/examples/quest-rescue-halsin.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-rescue-halsin.lute).
+
+### `quest.<id>.activatedAt`
+
+Beside `quest.<id>.state`, every quest carries a second reserved path: **`quest.<id>.activatedAt`**,
+the `narrativeTime` instant the engine stamps at the `unset` → `active` transition. Like
+`quest.<id>.state` it is engine-populated, so it is neither author-declarable
+(`E-QUEST-RESERVED-DECL`) nor author-writable (`E-QUEST-RESERVED-WRITE`) — but content may *read*
+it, which is the whole point: it is the time anchor `validAt(rel, t)` never had.
+
+```lute
+<objective id="visitedSinceAccept" title="Go back to the station" done="holds(arrivedSpace(station_front)) && !validAt(arrivedSpace(station_front), quest.theCoffeeDebt.activatedAt)"/>
+```
+
+A tag and all of its attributes must sit on **one physical line**, so do not wrap a long
+`<objective …/>` for readability — it is a parse error. Note the shape: `validAt` is a
+*point-in-time* query, true iff the fact was valid **at** that instant, so "since activation" is the
+conjunction "true now, and not yet true at activation" — a bare `validAt(R, …activatedAt)` asks the
+opposite question. Away from `validAt`, a narrative-time value admits only the ordering comparisons
+`<`, `<=`, `==`, `>`, `>=`; `!=` is `E-TEMPORAL-ARG`, as is any arithmetic on one.
+
+`activatedAt` is also the one reserved path exempt from `E-MAYBE-UNSET`, because a maybe-unset
+verdict on it would be undischargeable: no literal inhabits `narrativeTime`, so the slot can carry
+no `default:`, and both guard forms — `isSet(p)` and `has(p)` — are themselves `E-TEMPORAL-ARG` on a
+narrative-time operand. `quest.<id>.state` has an escape hatch (`<match>` exhaustiveness over its
+lifecycle enum); this has none.
 
 ---
 
@@ -1490,7 +1653,7 @@ the shared `E-USES-{NOT-FOUND,CYCLE,PARSE}` diagnostics.
 
 # The state model
 
-Lute scalar state is a set of typed paths (`number`, `bool`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
+Lute scalar state is a set of typed paths (`number`, `bool`, `string`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
 
 | Namespace | Reset boundary | Typical use |
 |---|---|---|
@@ -1512,6 +1675,10 @@ state:
   user.level:         { type: number, default: 1 }
   app.rating:         { type: enum, values: [teen, adult], default: teen }
 ```
+
+Author `state:` is **scalar-only** — `number`, `bool`, `string`, or `enum`, and nothing else. A declaration whose `type` is `list`, `record`, or `map` is `E-STATE-COLLECTION`, and the declaration is *not installed*: a later read of that path reports a plain `E-UNDECLARED` rather than resolving against a phantom collection-typed slot.
+
+Enforcement is new in 0.8.0, but it removes an ambiguity rather than adding a restriction: the normative text always said scalar, while the shape validator accepted the whole type union and the runtime documentation described `list<…>` / `map<…>` / `record` as valid. All three now agree. Collections were always meant to be modelled **relationally** — an inventory is `ownsItem(item)`, not a `list<string>` — so reach for [`relations:`](/state/facts-and-datalog/) instead. Collection-shaped entry types still reach the compiled artifact, but only through a plugin `state_shapes` expansion, never from an author's `state:` block. This is the one case where a 0.7.0-clean document may newly fail.
 
 ## Reads and writes
 
@@ -1548,6 +1715,22 @@ Content writes **deltas** with the leaf directives `::assert` and `::retract`; t
 ::assert{ atLocation(shadowheart, grove) }
 ::retract{ atLocation(shadowheart, _) }
 ```
+
+## Querying history with `validAt`
+
+Because every fact carries a valid-time interval, a guard can ask whether a fact held *at a past instant* rather than right now: `validAt(rel(args), t)`, beside the valid-now `holds(rel(args))` and `count(rel(args)) OP n` (see [CEL expressions](/state/cel/)). It is admitted over base relations, and over derived ones whose rules carry no CEL guard in any feeding stratum — a guard reads scalar state, scalars keep no history, so a point-in-the-past derivation through one is ill-defined (`E-VALIDAT-DERIVED`).
+
+`t` must be a `narrativeTime` expression, and there is exactly one an author can write: **`quest.<id>.activatedAt`**, the instant the engine stamps when a quest goes `unset` → `active` (see [Quests & scenes](/language/quests-and-scenes/)). Declaring a `narrativeTime` path of your own is `E-TEMPORAL-ARG`, so before 0.8.0 reserved that slot `validAt` had no anchor to point at and the query was unusable in practice.
+
+`validAt` is **point-in-time**, not "after": it is true iff the fact was valid *at* `t`. So the gate a quest actually wants — not *did this ever happen* but *did it happen since the quest was taken up* — is the conjunction "valid now **and** not valid at the activation instant":
+
+```lute
+<quest id="theCoffeeDebt" title="Settle the coffee debt">
+  <objective id="visitedSinceAccept" title="Go back to the station" done="holds(arrivedSpace(station_front)) && !validAt(arrivedSpace(station_front), quest.theCoffeeDebt.activatedAt)"/>
+</quest>
+```
+
+The objective completes only on a visit made after the debt was accepted — never on one the player had already made. (A tag and all of its attributes must sit on one physical line; that `<objective …/>` cannot be wrapped.)
 
 ## Datalog derivation
 
@@ -1589,7 +1772,7 @@ Inside a `<match>`, the token `$` resolves to the subject expression `S` and MUS
 
 The Lute-CEL environment provides exactly: CEL operators, literals, list literals, the ternary `?:`, the `in` membership operator, the `has()` macro, and the single extension `isSet(<path>)` (true iff a state path is assigned). **No other functions** exist — a comprehension (`map`/`filter`/`exists`/`all`), `size`, or `matches` is a static error (`E-CEL-PROFILE`). State-path segments, `defs` names, and param names are CEL-facing identifiers and forbid `-` (`E-PATH-IDENT`).
 
-When the relational layer is in play, conditions may also read the fact database through a bounded predicate surface: `holds(rel(args|_))` (valid-now membership, any slot may be `_`), `count(rel(args|_)) OP n` (distinct valid tuples), and `validAt(rel(args|_), T)` (historical form over base relations). Joins under aggregation are expressed as [derived relations](/state/facts-and-datalog/), never multi-relation `count`. A `<match on>` subject must stay a scalar/enum path; fact queries live in guards only.
+When the relational layer is in play, conditions may also read the fact database through a bounded predicate surface: `holds(rel(args|_))` (valid-now membership, any slot may be `_`), `count(rel(args|_)) OP n` (distinct valid tuples), and `validAt(rel(args|_), T)` (point-in-time membership over base relations — true iff the fact was valid *at* `T`, never "after" it). `T` is a `narrativeTime` expression — in practice `quest.<id>.activatedAt`, the only one an author can name (see [Quests & scenes](/language/quests-and-scenes/)). Joins under aggregation are expressed as [derived relations](/state/facts-and-datalog/), never multi-relation `count`. A `<match on>` subject must stay a scalar/enum path; fact queries live in guards only.
 
 ## Compile target
 
@@ -1657,24 +1840,53 @@ after: 'visited("sofia.ep02") && (completed("sideQuestA") || completed("sideQues
 <quest id="riverDebt" after="visited('sofia.ep02')" start="…" fail="…">
 ```
 
-The value is CEL under a maximally-restricted profile admitting exactly conjunction and disjunction over two opaque predicates — **no negation, no arithmetic, no state reads**:
+The value is CEL under a maximally-restricted profile admitting exactly conjunction and disjunction over three opaque predicates — **no negation, no arithmetic, no state reads**:
 
 ```
-Formula ::= "visited(" StringLit ")" | "completed(" StringLit ")"
+Formula ::= "visited(" StringLit ")" | "completed(" StringLit ")" | "active(" StringLit ")"
           | "(" Formula ")" | Formula "&&" Formula | Formula "||" Formula
 ```
 
-`visited(K)`'s string is the project's canonical `{character}.{episodeId}` episode key — the same join the compiler computes for `lineId`. `completed(Q)` names a `<quest id>`. These predicates are scoped to this one slot; writing `visited(...)` in any ordinary CEL guard is just an unknown-function error.
+`visited(K)`'s string is the project's canonical `{character}.{episodeId}` episode key — the same join the compiler computes for `lineId`. `completed(Q)` and `active(Q)` both name a `<quest id>`. These predicates are scoped to this one slot; writing `visited(...)` in any ordinary CEL guard is just an unknown-function error, and anything outside the grammar above is `E-CONN-PROFILE`.
+
+`active(Q)` (0.8.0) is the third prerequisite atom. The quest lifecycle is `unset → active → complete | failed`, so a profile carrying only `visited`/`completed` could express two of the three observable states: "this scene unlocks *while* the investigation is running" had no spelling. It is the **strictly weaker** lifecycle claim — `completed(Q)` licenses "`Q` finished and its completion writes ran", `active(Q)` licenses only "`Q` reached `active`" — which is why [reachability](/connectivity/reachability/) treats the two identically while [envelopes](/connectivity/envelopes/) do not.
 
 ## Node assembly and edges
 
-At `check-project` time the tooling walks every document's frontmatter, computes each episode's canonical key into a project-wide **set**, and resolves each `visited(K)` / `completed(K)` by exact string equality — never by decomposing the key. From each formula it derives a **topological-precedence DAG**: an edge `p → n` for every node `p` referenced anywhere in `n`'s formula, regardless of `&&`/`||` position. This over-approximating edge set is used for cycle detection and as the traversal order for the reachability and envelope passes.
+At `check-project` time the tooling walks every document's frontmatter, computes each episode's canonical key into a project-wide **set**, and resolves each `visited(K)` / `completed(K)` / `active(K)` by exact string equality — never by decomposing the key. From each formula it derives a **topological-precedence DAG**: an edge `p → n` for every node `p` referenced anywhere in `n`'s formula, regardless of `&&`/`||` position and regardless of which atom named it. This over-approximating edge set is used for cycle detection and as the traversal order for the reachability and envelope passes.
 
 The checker's claims are entirely **graph-structural** — is the edge set acyclic, do referenced ids exist, is there a satisfiable route, what does the graph guarantee. The formula's truth at a play session is a runtime question the engine evaluates, exactly as it evaluates `<quest start>`; Lute never runs it.
 
 ## Viewing the graph
 
 `lute scenario <dir>` prints the assembled node/edge graph as deterministic topological waves, per resolved project root — the whole-graph view, without any centralized edge-manifest file to keep in sync with frontmatter.
+
+```console
+$ lute scenario .
+project root: .
+  topological layers:
+    layer 0: scene(narrator.s01ep01)
+    layer 1: quest(findkai)
+    layer 2: scene(narrator.s01ep02)
+    layer 3: scene(narrator.s01ep03)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(narrator.s01ep01) -> quest(findkai) [visited]
+    scene(narrator.s01ep02) -> scene(narrator.s01ep03) [visited]
+    quest(findkai) -> scene(narrator.s01ep02) [active]
+    quest(findkai) -> scene(narrator.s01ep03) [completed]
+```
+
+A quest becomes a graph node by declaring `after` (even `after=""`); a quest that never opts into a graph position is still addressable by `lute scenario <dir> envelope quest:<id>`, but contributes no edges.
+
+### Edge kinds
+
+`completed(Q)` and `active(Q)` both land on the same `quest(Q)` node and are indistinguishable once the formula is flattened — so the graph records, alongside each edge, the atom kind(s) that justify it. All three output formats report it:
+
+- **`text`** — a bracketed list after each edge, as above. One edge carries both kinds when a formula names the same quest twice: `after: 'active("findkai") || completed("findkai")'` prints `[completed, active]`.
+- **`json`** — each edge is `{"from":…,"to":…,"kinds":[…]}`; `kinds` is an array for the same reason.
+- **`dot`** — an edge justified **only** by `active` atoms renders `[style=dashed]`; anything carrying a `visited` or `completed` atom stays solid, because the stronger claim is what a reader should see.
+
+The kind is presentational and analytical, never structural: the DAG shape is identical either way, since an `active` edge constrains ordering exactly as a `completed` edge does.
 
 ---
 
@@ -1685,15 +1897,18 @@ Once the [scene graph](/connectivity/scene-graph/) is assembled, `check-project`
 ```
 reachable(visited(Y)) = ¬unreachable(Y)
 reachable(completed(Q)) = ¬E-QUEST-UNREACHABLE(Q)
+reachable(active(Q))    = ¬E-QUEST-UNREACHABLE(Q)
 reachable(X && Y) = reachable(X) ∧ reachable(Y)
 reachable(X || Y) = reachable(X) ∨ reachable(Y)
 ```
+
+`active(Q)` and `completed(Q)` are **identical here**. Both assert "that node must be reachable before this one," both resolve to the same `quest(Q)` node, and both contribute the same edge to the precedence DAG — so `E-CONN-CYCLE`, `E-CONN-UNREACHABLE`, and `E-CONN-UNKNOWN-NODE` behave exactly as they did before `active` existed, and `active` atoms count toward `E-CONN-FORMULA-TOO-COMPLEX` like any other. The distinction between the two only surfaces in [envelopes](/connectivity/envelopes/), which ask what a route *wrote*, not whether it exists.
 
 Any node with an absent or empty `after` is a graph entry point (`reachable = true` trivially) — no separate "declare the start" convention is needed. Because the grammar excludes negation, every formula is monotone, so each node's verdict is computed once and memoized over the topological order: linear, no blowup. A node with no satisfiable route is `E-CONN-UNREACHABLE` — the one connectivity error that needs no hedge, because it is a pure fact about the *authored* graph's self-consistency.
 
 ## Verdicts
 
-`lute scenario reach <nodeId>` reports one of three verdicts plus the node's declared `after` prerequisite structure:
+`lute scenario <dir> reach <nodeId>` reports one of three verdicts plus the node's declared `after` prerequisite structure:
 
 - **Reachable** — a satisfiable route exists under the declared `after` graph.
 - **Unreachable** — no declared route reaches the node (`E-CONN-UNREACHABLE`).
@@ -1702,11 +1917,16 @@ Any node with an absent or empty `after` is a graph entry point (`reachable = tr
 `<nodeId>` is a scene's canonical key (e.g. `bianca.s01ep02`) or `quest:<id>` for a quest.
 
 ```console
-$ lute scenario reach kestrel.s01ep02
-reach kestrel.s01ep02:
-  verdict: Reachable
-  after: visited("kestrel.s01ep01")
+$ lute scenario . reach narrator.s01ep02
+project root: .
+reach scene(narrator.s01ep02):
+  verdict: Reachable — a satisfiable route exists under your declared routes.
+  after: active("findkai")
+  referenced node(s) (see `after` above for the && / || structure — this is NOT a flat requirement list):
+    - quest(findkai): Reachable — a satisfiable route exists under your declared routes.
 ```
+
+The referenced-node list is deliberately not a checklist: it reports each atom's own verdict, and the `after:` line above it is the only place the `&&` / `||` structure lives. A node whose formula is a disjunction needs only one of them.
 
 ## Cycle degradation is per-node
 
@@ -1720,7 +1940,7 @@ Under the locked A-hybrid enforcement posture the graph is advisory data the eng
 
 # Guaranteed / Possible envelopes
 
-The **envelope** answers a proactive question: *by the time control reaches node X, what state is actually set?* This is distinct from what's legal to read (governed by schema import). The envelope tracks two sets per node, scoped to **`run.*` / `user.*` only** — the tiers whose writes are monotonic ("once set, stays set," so union/intersect over predecessors is sound). Quest scratch fields (`quest.<id>.*`) are excluded; "was it reachable at X" is answered directly by `completed(Q)` in the route structure.
+The **envelope** answers a proactive question: *by the time control reaches node X, what state is actually set?* This is distinct from what's legal to read (governed by schema import). The envelope tracks two sets per node, scoped to **`run.*` / `user.*` only** — the tiers whose writes are monotonic ("once set, stays set," so union/intersect over predecessors is sound). Quest scratch fields (`quest.<id>.*`) are excluded; "was it reachable at X" is answered directly by `completed(Q)` / `active(Q)` in the route structure.
 
 - **Guaranteed(X)** — set on *every* declared route to X.
 - **Possible(X)** — set on *some* declared route to X.
@@ -1730,6 +1950,7 @@ Both are a graph-lift of `defassign`'s own lattice: each node's guaranteed-write
 ```
 visited(Y):   G = Guaranteed(Y) ∪ G(Y)      P = Possible(Y) ∪ P(Y)
 completed(Q): G = P = writesOnComplete(Q)
+active(Q):    G = ∅                         P = writesOnComplete(Q)
 X && Y:       G = G(X) ∪ G(Y)               P = P(X) ∪ P(Y)
 X || Y:       G = G(X) ∩ G(Y)               P = P(X) ∪ P(Y)
 entry node:   G = P = D
@@ -1737,9 +1958,30 @@ entry node:   G = P = D
 
 `D`, the entry base case, is the set of `run.*`/`user.*` paths carrying a schema `default` — reused verbatim from the import layer. `D ⊆ Guaranteed(n)` at *every* node, matching definite-assignment's "a defaulted path is always assigned" invariant lifted to the whole graph. This structural recursion is provably identical to a per-route ∩/∪ computation, never materializing the exponential route set.
 
+## `active(Q)` is strictly weaker than `completed(Q)`
+
+This is the one place the two quest atoms diverge. `completed(Q)` licenses the assumption `quest.Q.state == complete`, so everything the quest's required objectives and its `<on questComplete>` handlers write — `writesOnComplete(Q)` — lands on **both** sides of the table. `active(Q)` licenses only "`Q` reached `active`": those completion writes have not necessarily run, so they contribute to **Possible** and to Guaranteed not at all.
+
+Take a quest `findkai` whose completion writes `run.kaiFound`, and a scene gated `after: 'active("findkai")'` that reads it:
+
+```console
+$ lute scenario . envelope narrator.s01ep02
+project root: .
+envelope for scene(narrator.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
+  Guaranteed (safe to read under your declared routes):
+    - run.greeted
+  Possible (set on at least one declared route reaching this node):
+    - run.greeted
+    - run.kaiFound
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
+    - ./scenes/whileActive.lute:14:17: state path `run.kaiFound` is set under your declared routes on SOME routes reaching this node, but not every one — not yet guaranteed (dsl §4.3)
+```
+
+Swap that node's `after` to `completed("findkai")` and `run.kaiFound` moves into Guaranteed, leaving `Possible \ Guaranteed` empty. (`run.greeted` carries a schema `default`, so it is in `D` and guaranteed under both.) Reading a quest's completion write from a scene gated on `active` is therefore the `Possible \ Guaranteed` warning-grade class — which is correct, and is exactly the mistake the atom exists to make visible rather than to hide.
+
 ## Reading the tables
 
-`lute scenario envelope <nodeId>` prints both tables. The diagnostic reads for a state path `P` at node X:
+`lute scenario <dir> envelope <nodeId>` prints both tables. The diagnostic reads for a state path `P` at node X:
 
 - `P ∈ Guaranteed(X)` → safe under your declared routes; no diagnostic.
 - `P ∉ Possible(X)` → no declared route ever sets `P` before X — **error grade**, `E-STATE-MAYBE-UNAVAILABLE`, shipped by default in `check-project`.
@@ -1749,7 +1991,7 @@ Every message carries the verbatim "under your declared routes" qualifier (A-hyb
 
 ## Quest addressing
 
-`lute scenario envelope quest:<id>` prints a real table for **every** quest:
+`lute scenario <dir> envelope quest:<id>` prints a real table for **every** quest:
 
 - A quest **with** an `after` attribute → the full `Guaranteed`/`Possible` tables, computed exactly like a scene's.
 - A quest **without** `after` → the defaults-only `D` table (never empty, never an error), plus a one-line note that declaring `after` would enrich it beyond defaults-only.
@@ -1783,9 +2025,40 @@ Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted or
 
 ```console
 $ lute compile <file> [--json] [--providers <DIR>] [--project <DIR>] [-o <FILE>]
+                      [--locales <FILE>] [--deny <CODE>]… [--deny-warnings]
+$ lute compile --all --project <DIR> -o <DIR> [--providers <DIR>] [--locales <FILE>]
+                      [--json] [--deny <CODE>]… [--deny-warnings]
 ```
 
 Compile a document to its JSON command-record artifact (gated on a clean check). Exit **0** on success, **1** on a failed gate, **2** on I/O or serialization failure. The artifact is always JSON; `-o`/`--out` writes it to a file instead of stdout. With `--project`, the gate is the target's reconciled `check-project` verdict.
+
+### `--all` — project-wide compile and index
+
+`--all` compiles **every** `*.lute` document under `--project <DIR>` into `-o <DIR>`, mirroring the project's own layout (`quests/a.lute` → `<outdir>/quests/a.lute.json`), and writes a `<outdir>/project.index.json`. Under `--all`, `-o` is an output **directory**, not a file; it is created if absent. `*.component.lute` fragments are skipped — a component is inlined into its importers and has no artifact of its own. `--all` requires **both** `--project` and `-o` and takes no `<file>`; each of the three is checked independently and every violation is reported, then the command exits **2** without reading a document.
+
+The index carries the document table plus the deterministic **union** of every artifact's `entities`, `enums`, `relations`, `seedFacts`, `rules`, and `prereqEdges` — the union an engine must compute anyway before it can evaluate anything:
+
+```json
+{
+  "irVersion": "0.8.0",
+  "capabilityVersion": "…",
+  "documents": [
+    { "path": "quests/findKai.lute", "artifact": "quests/findKai.lute.json",
+      "kind": "quest", "key": "findkai" },
+    { "path": "scenes/opening.lute", "artifact": "scenes/opening.lute.json",
+      "kind": "scene", "key": "narrator.s01ep01" }
+  ],
+  "entities": [], "enums": [], "relations": [], "seedFacts": [], "rules": [], "prereqEdges": []
+}
+```
+
+`path` is the source relative to the project root; `artifact` is its compiled output relative to the output directory; `key` is the document's canonical node id — a scene's `{character}.{episodeId}`, or a quest document's **first** declared `<quest id>`. All paths are forward-slash relative, never absolute. `documents` is sorted by `path` and every vocabulary array is deduplicated and totally ordered, so the index is byte-stable across runs; unlike an artifact, which omits an empty vocabulary array, the index always emits all six.
+
+`--all` is **all-or-nothing**: every document is compiled in memory and the index built before anything touches the filesystem. Three things stop the write, each exiting **1** with nothing emitted — a failed gate (`N of M document(s) failed; no output written`), a `--deny`-promoted warning, and a **vocabulary conflict** (two documents declaring the same entity kind / enum / relation / prerequisite node with different signatures, or resolving different capability snapshots). That last class is the one `check-project` cannot see, because it validates each document against its own resolved vocabulary and never unions across independent documents. An `E-`-severity capability-resolution diagnostic (a bad plugin option, a bad `identity:` template) also exits **1**. `--all` writes but never prunes: an artifact whose source document was deleted stays in the output directory.
+
+### `--locales` — merge a translation bundle
+
+`--locales <bundle.json>` merges a locale bundle (see `loc import`) into the artifact: `texts` on every line record and `labels` on every choice/hub option, both keyed by `lineId`. The source-language `text`/`label` is never overwritten, and both maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A bundle entry matching nothing in this document is ignored; a bundle legitimately spans a whole project, and it composes with `--all`, merging the one bundle into every artifact. A translatable record missing a locale the bundle declares is `W-L10N-MISSING`, one per `(lineId, locale)` pair on stderr. It is a warning — the artifact still emits, carrying the source-language string — and `--deny W-L10N-MISSING` (or `--deny-warnings`) promotes it so CI can require a complete translation before anything ships.
 
 ## trace
 
@@ -1804,7 +2077,7 @@ $ lute scenario <dir> [--providers <DIR>] [--format text|json|dot]
               [reach <nodeId> | envelope <nodeId>]
 ```
 
-Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach <nodeId>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope <nodeId>` (or `envelope quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/). `<nodeId>` is a scene's canonical key or `quest:<id>`. `--format` selects the bare graph view's shape: `text` (default), `json` (a stable-keyed `{"roots":[{"root":…,"nodes":[…],"edges":[…],"reach":{…}}]}` document), or `dot` (one Graphviz `digraph` per root). Exit **0** on success, **2** on I/O or an unresolvable node id.
+Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach <nodeId>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope <nodeId>` (or `envelope quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/). `<nodeId>` is a scene's canonical key or `quest:<id>`. `--format` selects the bare graph view's shape: `text` (default — the topological layers, then one line per edge with the [atom kind(s)](/connectivity/scene-graph/) that justify it in brackets), `json` (`{"roots":[{"root":…,"layers":[[…]],"nodes":[…],"edges":[…]}]}`, each node `{id, kind, prereq, reach}` with `prereq` the raw declared formula or `null` for an entry node, each edge `{from, to, kinds}`), or `dot` (one Graphviz `digraph` per root; scenes are boxes, quests ellipses, and an `active`-only edge is drawn `[style=dashed]`). Exit **0** on success, **2** on I/O or an unresolvable node id.
 
 ## context
 
@@ -1884,7 +2157,27 @@ Run the project's scenario tests: every `*.test.yaml` under `<dir>` traces its s
 $ lute loc export <dir> [--format json|csv] [-o <FILE>]
 ```
 
-Extract every translatable content line (stable `code`, speaker, text, choice labels) across a project to a localization export. `--format` is `json` (default) or `csv`; `-o`/`--out` writes to a file. Exit **0** on success, **2** on I/O.
+Extract every translatable content line (stable `code`, speaker, text, choice labels) across a project to a localization export. `--format` is `json` (default) or `csv`; `-o`/`--out` writes to a file. Exit **0** on success, **2** on I/O. Each row also carries the `lineId` the compiler will stamp on that record — the join `loc import` and `compile --locales` key on. It is `null` (JSON) or empty (CSV) for a line with no authored `code`, whose id the compiler back-fills from the post-expansion command stream and which no source-only walk can reproduce: run `lute tag` first, and the advisory `N lines untagged — run lute tag` on stderr goes away with it.
+
+## loc import
+
+```console
+$ lute loc import <file>… [-o <FILE>]
+```
+
+Canonicalize translated `loc export` files into one **locale bundle** — the reverse direction, consumed by `lute compile --locales`. Exit **0** on success, **1** on `E-LOCALE-BUNDLE`, **2** on I/O. Input is exactly what `export` writes, in either format (`.csv` → CSV, anything else → JSON). `export` carries no locale, because it extracts the *source* language, so the normal workflow is **one file per locale**: copy the export to `ja-JP.json`, translate the `text`/`label` values, and the file **stem** is the locale tag. A row carrying its own non-empty `locale` field (JSON) or `locale` column (CSV) overrides that, so a single merged file spanning every locale also works.
+
+```json
+{
+  "schemaVersion": 1,
+  "locales": ["en-US", "ja-JP"],
+  "entries": {
+    "bianca.s01ep02.bianca_0010": { "en-US": "Hello there.", "ja-JP": "こんにちは。" }
+  }
+}
+```
+
+`locales` and `entries` are both sorted, so the bundle is byte-stable: importing the same inputs twice produces identical bytes. An unparseable input, a `lineId` appearing twice within one locale, or an empty locale tag is `E-LOCALE-BUNDLE`, reported with the offending file and row. A row with **no** `lineId` is skipped rather than rejected — an untagged line simply has no stable identity yet — and a single stderr summary counts them.
 
 ## loc report
 
@@ -1901,6 +2194,51 @@ $ lute version [--json]
 ```
 
 Print the three independent version axes ([versioning](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)): the toolchain version, the language version, and the IR schema version. Distinct from clap's built-in `--version` (toolchain only). `--json` prints `{"toolchain":…,"language":…,"ir":…}`. Always exits **0**.
+
+---
+
+# Runtime contract
+
+`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.8.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.8.schema.json) (JSON Schema draft 2020-12).
+
+Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard to a portable `expr` AST, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. The engine trusts the artifact, initializes state and owns the tier lifetimes, **evaluates** guards, **computes the minimal model** over the fact store, **derives** the quest lifecycle, **makes** the bridge call, and honors the timeline barrier.
+
+## The envelope
+
+Every artifact opens with a fixed envelope: `kind` (`"scene"` | `"quest"` — read first; it selects `meta`'s shape), `lute` (language-version pin, informational), `irVersion` (the version you **gate on**), `capabilityVersion` (a plugin-snapshot hash; refuse a mismatch), `meta`, `state` (the folded init/type table), `entities` / `enums` / `relations` / `seedFacts` / `rules` (the relational vocabulary, omitted when empty), `commands` (the flat, ordered, addressed command stream), `prereqEdges` (advisory raw `after` prerequisite edges, omitted when empty), and `shots` (authored `## ` headings as `{shot, heading}`, omitted when empty).
+
+One artifact is produced per document. A project's engine **unions** the `relations` / `rules` / `seedFacts` / `entities` / `enums` / `prereqEdges` across every artifact it loads, exactly as it concatenates the command streams — the same union [`lute compile --all`](/tooling/cli/) precomputes into `project.index.json`.
+
+## Version negotiation
+
+Gate on `irVersion` by **major.minor**: **accept** any artifact whose major.minor you implement; **refuse** one from a newer major.minor (the PATCH component is an advisory, backward-compatible refinement and never gates); **ignore unknown object fields**, since optional fields are added append-only within a minor line; and **treat an unknown command `kind` as an error** — a new command kind is a real capability you cannot fake.
+
+What IR 0.8.0 changed, for a consumer:
+
+- **`end` is a new command `kind`.** By the unknown-kind rule an engine implementing only IR 0.7 **must refuse** an artifact carrying one — it cannot fall through the record, because `end` terminates the walk and falling through would play content the author marked unreachable. This is why termination is a core kind rather than a plugin directive: a plugin directive lowers to `kind: "plugin"`, which an older engine would happily skip.
+- **`shots` and the locale maps are append-only optional fields**, so by the ignore-unknown-fields rule a 0.7 engine still loads a 0.8 artifact that carries no `end` record.
+- **The `addr` width invariant is new** — the one change that can alter bytes in an artifact you already consume.
+- The schema file was renamed `schemas/lute-ir-0.7.schema.json` → `schemas/lute-ir-0.8.schema.json` along with the minor bump.
+
+## Addressing
+
+Every executable record carries an `addr`, a position string `"{shot}-{(index + 1) * 100}"` (e.g. `"001-0300"`). It is **regenerated on every compile** — a position, not an identity; the stable content joins are `lineId` / `voiceKey`. Both segments are zero-padded to a width computed from the document — at least `3` for the shot and `4` for the index, wider when the document needs it — and that width is **uniform across the whole artifact**. The guarantee that follows is the one an engine may rely on: *within one artifact every emitted `addr` has the same length, therefore lexicographic order over `addr` equals execution order.* A document whose every shot emits fewer than 100 addresses, with fewer than 1000 shots, is byte-identical to what 0.7.0 produced — the widths only grow past their minimums when the artifact actually needs them.
+
+**If you may load artifacts built by a 0.7-or-earlier toolchain, compare `addr` segment-wise numerically, never as a plain string.** Before 0.8.0 the index segment was fixed at 4 digits, so a shot with 100+ records emitted `001-11500` beside `001-1400` and string comparison reported `"001-11500" < "001-1400"` — an engine ordering or range-checking addresses lexicographically would rewind into already-played content.
+
+## The dispatcher
+
+The `commands` array is already in execution order. Control-flow fields — `jump.target`, choice/hub option `target` and `converge`, match arm `target`/`otherwise`/`converge` — are all addrs. Walk with a program counter over an `addr → index` map, dispatching on `kind`; `null` next means fall through to `pc + 1`, and an unrecognized `kind` is a hard error, never a skip. The full command set is twenty-one kinds: `line`, `background`, `music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video`, `set`, `assert`, `retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`, `plugin`.
+
+`end` carries an optional free-form `reason` — an author string (`"completed"`, an ending id) Lute assigns no meaning to and the host MAY surface. Terminating on it is identical to running off the end of `commands`, except the reason is available.
+
+## Localized text
+
+A `line` record's `text` and a choice/hub option's `label` are always the **source language** (`contentLang`). When the artifact was built with [`lute compile --locales`](/tooling/cli/), the record also carries a `texts` map (option: `labels`), locale tag → translated string, keyed on the record's `lineId`. Both maps are omitted when empty, so an artifact compiled without `--locales` is byte-identical to before and a consumer that ignores them keeps rendering the source language. Present a locale by looking it up in `texts` and falling back to `text` — the compiler warns at build time (`W-L10N-MISSING`) about exactly those gaps, so a complete bundle leaves nothing to fall back to.
+
+## The runtime docs
+
+Each surface has its own contract document under [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime): `execution-model.md` (artifact shape, version gate, addressing, the dispatcher loop), `state-lifecycle.md` (the `scene`/`run`/`user`/`app`/`quest.<id>` tiers, initialization, reset boundaries), `cel-and-facts.md` (evaluating the `expr` AST, the fact store's assert/retract deltas, the stratified least fixpoint), `quest-lifecycle.md` (`start`/`fail` precedence, required vs. optional objectives, monotone completion, lifecycle events), `timeline-semantics.md` (the local clock, per-track cursors, barriers, the one-writer-per-target invariant), and `bridge-protocol.md` (typed bridge calls, return shapes, `wait`, resolved state effects).
 
 ---
 
@@ -2066,15 +2404,39 @@ lute check scene.lute --json --deny W-UNPROVEN-RELATIONAL --deny-warnings
 
 `--deny <CODE>` (repeatable) treats exactly that code as an error for the verdict and exit code; `--deny-warnings` promotes every warning. A promoted diagnostic reports severity `error` and carries `"denied": true` in JSON, distinguishing it from a native error. An unknown code is a usage error (exit `2`). Errors are never demotable.
 
+## Capability-resolution errors gate the exit code
+
+Some errors describe the **project**, not a span in a document: a plugin option that does not exist or fails its declared type, an `identity:` template naming an unknown token, a profile activating a plugin that is not installed. These print on the `lute:` channel — stderr, `lute: <CODE>: <message>` — and are **not** in the `--json` diagnostic list, because they have no document position to attach to.
+
+Since 0.8.0 they set the exit code; previously they printed and the build passed, so a typo'd plugin option shipped silently. Verified on `check`, `check-project`, `compile` (including `--all`), `context`, and `trace`. The one deliberate exemption is the forced-single-root reconciliation scan behind `compile --project`: a sibling document belonging to a nested subproject legitimately mis-resolves under a forced root, and that is not the target document's fault.
+
+**The harness consequence is the important part.** Exit `1` with an **empty stdout** is now a reachable state under `--json`, and it means a project-level error. A loop that parses stdout and treats "no diagnostics" as "clean" will report success on a broken project. Branch on the exit code first, parse JSON second, and surface stderr when the two disagree. The codes on this channel: `E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`, `E-PLUGIN-MISSING-ACTIVE`, `E-IDENTITY-TEMPLATE`, and the plugin load/assembly family (`E-PLUGIN-MANIFEST`, `E-PLUGIN-PARSE`, `E-PLUGIN-DUP-ID`, …).
+
 ## Exit-code contract
 
 | Command | 0 | 1 | 2 | 3 |
 |---|---|---|---|---|
 | `check` / `check-project` | clean | error present | I/O | — |
-| `compile` | success | failed gate | I/O / serialization | — |
+| `compile` (incl. `--all`) | success | failed gate | I/O / serialization | — |
 | `trace` | complete | refused | I/O | incomplete |
+| `test` | every test passed | a test failed | I/O | — |
+| `loc import` | bundle written | `E-LOCALE-BUNDLE` | I/O | — |
 
 For `trace`, distinguish the two failure modes: **1 = refused** (check errors or invalid mocks — fix the document, then retry) versus **3 = incomplete** (an `unknown` guard halted the walk — supply more mock seeds, then retry). They demand different retry strategies.
+
+`compile --all` is all-or-nothing: exit **1** means nothing was written, so a partially-updated output directory is never a state the harness has to reason about.
+
+## Diagnostics a generator will meet
+
+The 0.8.0 additions a model-driven loop actually trips:
+
+- **`E-STATE-COLLECTION` — the one that will bite first.** Author `state:` is scalar (`bool | number | string | enum`); a `list`, `record`, or `map` declaration is rejected. Models reach for `type: { list: string }` constantly, and this is the single case where a document that was clean under 0.7.0 newly fails. The fix is never to coerce the type — it is to model the collection as [`relations:`](/state/facts-and-datalog/). Feed the diagnostic back verbatim; it names the remedy.
+- **`W-CODE-AFTER-END`** — content after `::end` in the same straight-line body (shot body, `<choice>` body, `<when>` arm, objective body, `<on>` body) is unreachable, reported once per body at the first such node. A generator that emits a terminator and then keeps writing produces exactly this.
+- **`E-IDENTITY-TEMPLATE`** — a `lute.project.yaml` `identity:` template using a token other than `{prefix}`, `{speaker}`, `{code}`. Project-level, so it arrives on the `lute:` channel, not in JSON.
+- **`W-L10N-MISSING` / `E-LOCALE-BUNDLE`** — the localization round trip: one warning per `(lineId, locale)` pair a `compile --locales` bundle fails to cover, and the error for a malformed bundle at `loc import`. A harness that owns translation should run `--deny W-L10N-MISSING`.
+- **The plugin family**, fired when the model authors a *plugin* rather than a document: `E-PLUGIN-OPTION-UNKNOWN` (an activated option name the manifest never declares), `E-PLUGIN-OPTION-TYPE` (a merged option value failing its declared type), `E-PLUGIN-RESERVED-STAMP-ATTR` (an attr named `at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`), `E-LOWER-RECORD-UNKNOWN` and `E-LOWER-RECORD-FIELD` (a bad declarative `lower:`), all on the `lute:` channel — and `E-FRONTMATTER-SCHEMA` (a plugin-owned frontmatter key violating its declared schema), the only one of them with a document position and therefore a JSON diagnostic.
+
+Every code on this page is a valid `--deny` argument; an unknown code is a usage error (exit `2`), so the flag cannot silently protect nothing.
 
 ## Fixits
 
@@ -2109,7 +2471,7 @@ Plugins add vocabulary; the core owns grammar and behavior. Control flow, loweri
 - **State shapes** — reusable typed records and structured path templates that open typed slots.
 - **Providers** — snapshot-first id registries (character ids, asset ids, minigame ids) resolved against a pinned catalog, never a live network call.
 - **Bridge signatures** — typed runtime calls whose declared result fields are the only values a directive may write back into story state (see [Bridge](/plugins/bridge/)).
-- **Enums, defs, frontmatter keys, asset kinds, and world events** — closed value sets, shared typed-CEL `@refs`, plugin-owned `---` meta keys, structured asset-id templates, and `<on event>` triggers.
+- **Enums, defs, frontmatter keys, asset kinds, world events, and cross-cutting attributes** — closed value sets, shared typed-CEL `@refs`, plugin-owned `---` meta keys, structured asset-id templates, `<on event>` triggers, and [`stampAttrs`](/plugins/manifests/) admissible on every directive and content line.
 - **Diagnostics** — per-attribute messages, deprecations, aliases, and fix-its.
 
 ## What a plugin MUST NOT add
@@ -2119,6 +2481,20 @@ Grammar productions, new bracket forms, new block kinds, new control flow, or an
 The trap to name: authors most want things that *feel* like vocabulary but are compiler behavior — "have her leave naturally", "keep the same pose unless mood changes", "hit this SFX exactly as the line appears". Those are served, if at all, by a **named builtin lowering hook** added to the core, gated by a golden test per directive. **If a directive can't get a clean golden test, it isn't just data — it's code.**
 
 The [character/cast](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/0.0.1.md) capability is the canonical example: it adds the `cast:` frontmatter key, a `character` provider, `scene.cast.<id>.*` state, the `CH` asset kind, and the `::seal` / `::reveal` / `::wear` directives — all pure desugaring to `::set`, no new semantics.
+
+## A declaration is checked, not trusted
+
+Declaring a surface in a manifest does not make the toolchain believe it. Every plugin-owned surface is validated before an author can reach it: [option values at activation](/plugins/profiles/) (`E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`), [attribute names against the core stamp](/plugins/manifests/) (`E-PLUGIN-RESERVED-STAMP-ATTR`), and [declarative lowering against the target record's real field table](/plugins/manifests/) (`E-LOWER-RECORD-UNKNOWN`, `E-LOWER-RECORD-FIELD`). All of them fail at load, assembly, or activation — before a broken manifest can mislead a writer.
+
+Plugin-owned **frontmatter keys** are the same story. A `frontmatter/*.yaml` export declares `{ key, schema }` pairs; the checker admits those keys past `E-META-UNKNOWN-KEY` *and* validates their values against the declared `schema`. A violation is **`E-FRONTMATTER-SCHEMA`**, reported at the key's own span:
+
+```
+$ lute check scene.lute --project .
+scene.lute:10:1: error [E-FRONTMATTER-SCHEMA] frontmatter key `bonusTrack` expects bool (declared by an active plugin), got "yesplease"
+failed: scene.lute (1 error(s), 0 warning(s))
+```
+
+A value with no manifest-literal representation at all — `null`, a `!tag`, a non-string mapping key — is the same error, never a panic and never a silent pass. Core frontmatter keys keep their existing bespoke handling and are not routed through this check.
 
 ---
 
@@ -2131,7 +2507,7 @@ A plugin is a directory whose entry is a single `plugin.yaml`. Its `exports` map
 ```yaml
 id: idola.minigame          # REQUIRED — reverse-dotted, globally unique id
 version: 0.1.0              # REQUIRED — the plugin's own semver
-kind: capability           # REQUIRED — only "capability" is defined in 0.0.1
+kind: capability           # REQUIRED — only "capability" is defined
 depends:                   # OPTIONAL — { id, range } against other plugins
   - { id: lute.core, range: "^0.0.1" }
 exports:                   # REQUIRED — which sub-directories the loader reads
@@ -2141,6 +2517,7 @@ exports:                   # REQUIRED — which sub-directories the loader reads
   bridge: bridge/
   assetkinds: assetkinds/
   defs: defs/
+  stampattrs: stampattrs/
 options:                   # OPTIONAL — typed activation options
   - { name: resultScope,  type: { enum: [scene, run] }, default: scene }
   - { name: allowedKinds, type: { list: { enum: [rhythm, puzzle, timing] } }, default: [rhythm, puzzle, timing] }
@@ -2158,7 +2535,54 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `bridge/*.yaml` — typed runtime bridge capabilities.
 - `defs/*.yaml` — shared typed-CEL `@refs`.
 - `assetkinds/*.yaml` — asset-id segment templates (compose / query modes) with ordered `fallback` hooks.
+- `stampattrs/*.yaml` — cross-cutting attributes admissible on every directive and content line (below).
 - `enums/*.yaml`, `frontmatter/*.yaml`, `events/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, world events, and hover docs.
+
+## Cross-cutting attributes (`stampAttrs`)
+
+Ordinary attributes are declared per directive. An engine that tags *every* record with the same key — an analytics id, an experiment bucket, a bonus hook — had no declaration site for one, and could never put it on a content line at all. `stampattrs/*.yaml` is that site:
+
+```yaml
+stampAttrs:
+  - { name: bonusId,    type: string }
+  - { name: bonusScore, type: number }
+```
+
+Entries are ordinary `AttrDecl`s — the same `{ name, required?, type, default? }` shape a directive attr uses — but they are admissible on **every** directive *and* on content lines (`@speaker{…}: text`), on top of that surface's own attributes. Resolution is strict: the surface's own declarations win, then `stampAttrs`, then `E-UNKNOWN-ATTR`. Value typing rides the existing attribute path, so a mistyped one is a plain `E-ATTR-TYPE` / `E-BAD-ENUM` — no new rules. An authored stamp attribute lands **flattened into the record's stamp**, beside the reserved timing keys, never in the record's own `fields`.
+
+An **unauthored** stamp attribute is not injected — not even when its declaration carries a `default`. Absent means absent, so declaring a cross-cutting vocabulary and authoring none of it leaves the artifact byte-identical. The declaration is not free, though: `stampAttrs` participates in `capabilityVersion`, because a changed cross-cutting vocabulary is a changed capability surface and an engine must be able to refuse the mismatch.
+
+### Reserved stamp keys
+
+The core stamp owns seven names — `at`, `duration`, `delay`, `wait`, `timeline`, `provenance`, `source`. A plugin declaring an attribute under any of them is rejected at assembly with **`E-PLUGIN-RESERVED-STAMP-ATTR`**, on both the `stampAttrs` export *and* an ordinary per-directive `attrs` entry, so a plugin cannot reach a reserved key through either door. The offending declaration is dropped rather than merged; its non-reserved siblings still land. This is why a blocking plugin directive names its own flag `sync` and not `wait`.
+
+## Declarative lowering
+
+A directive's `lower:` says what the compiler emits for it. There are two forms:
+
+```yaml
+lower: { record: <kind>, fields: { … } }   # a finite attrs → one core record
+lower: { kind: builtin, name: <hook> }     # a named core hook
+```
+
+The `record` form — parsed since plugin-system 0.0.1 but only **implemented in 0.0.2**, so before that every plugin directive became `kind: "plugin"` — targets one of the eight **non-control-flow staging kinds** (`background`, `music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video`), binding each target field to a `fromAttr` reference or a literal:
+
+```yaml
+directives:
+  - name: backdrop
+    attrs:
+      - { name: img,  required: true, type: string }
+      - { name: when, type: string }
+    lower:
+      record: background
+      fields:
+        assetId: { fromAttr: img }
+        time:    { fromAttr: when }
+```
+
+`::backdrop{img="bg.lounge" when="night"}` then compiles to a real `background` record, not a `kind: "plugin"` passthrough. The emitted record inherits the **target kind's** `wait` default (`background` and `video` block, `cut` and `camera` do not, the rest omit the key), so it is indistinguishable from the core directive an author could have written by hand; an optional source attribute that was not authored leaves its target field absent.
+
+Those eight are the whole vocabulary, and the exclusion is principled: control-flow kinds (`jump`, `choice`, `match`, `hub`, `barrier`, `end`, `quest`, `on`) carry addresses the compiler's own passes resolve, and content kinds (`line`) carry identity — `lineId` / `voiceKey` — derived from the authored `code`. Neither is a finite attrs→fields mapping, so neither is data. Both failures are caught at **assembly**, before anything is lowered: **`E-LOWER-RECORD-UNKNOWN`** (`record:` names something outside the eight) and **`E-LOWER-RECORD-FIELD`** (a target field the record kind does not have, or a `fromAttr` naming an attribute the directive never declares).
 
 ## Installation & the profile graph
 
@@ -2183,7 +2607,7 @@ profiles:
 
 Given the same installed plugins, selected profile, and scene frontmatter, resolution produces a **byte-identical** capability snapshot. It applies, in exact order: `lute.core` → `profiles.global` → the selected profile's `extends` chain (parent first) → the selected profile → scene-local `plugins:` → the dependency closure. Scalar options override, maps deep-merge, lists replace.
 
-The snapshot is one immutable artifact carrying `plugins`, `enums`, `providers`, `stateShapes`, `stateTemplates`, `assetKinds`, `directives`, `bridgeCapabilities`, `frontmatter`, `events`, `diagnostics`, and more. Its `capabilityVersion` is a content hash over the resolved plugin ids+versions, their options, the active profile, and the bound provider snapshot versions. Every generated artifact is stamped with the `capabilityVersion` it targets, and a consumer refuses mismatched stamps. Providers are **snapshot-first**: the compiler fails if required catalog data is missing but never blocks on the network, and the LSP keeps a stale snapshot with a *catalog-stale* diagnostic rather than false *unknown-id* errors.
+The snapshot is one immutable artifact carrying `plugins`, `enums`, `providers`, `stateShapes`, `stateTemplates`, `assetKinds`, `directives`, `bridgeCapabilities`, `frontmatter`, `events`, `stampAttrs`, `diagnostics`, and more. Its `capabilityVersion` is a content hash over that whole resolved surface — plugin ids+versions and their merged option objects, and every directive, enum, provider, state shape, bridge capability, def, frontmatter key and stamp attribute in it. Any drift in a populated field yields a different version, and adding a directive to `lute.core` moves it for every project. Every generated artifact is stamped with the `capabilityVersion` it targets, and a consumer refuses mismatched stamps. Providers are **snapshot-first**: the compiler fails if required catalog data is missing but never blocks on the network, and the LSP keeps a stale snapshot with a *catalog-stale* diagnostic rather than false *unknown-id* errors.
 
 ---
 
@@ -2232,7 +2656,7 @@ directives:
     lower:  { kind: builtin, name: bridgeMinigame }
 ```
 
-Every written path MUST be declared by the slot's shape. A blocking bridge uses a plugin-owned `sync` attribute — **not** the reserved dsl timing key `wait`, which (with `at` / `duration` / `delay`) is reserved across all directives and MUST NOT be redefined by a plugin.
+Every written path MUST be declared by the slot's shape. A blocking bridge uses a plugin-owned `sync` attribute — **not** the reserved dsl timing key `wait`. `at`, `duration`, `delay`, `wait`, `timeline`, `provenance` and `source` are the seven names the core stamp owns; a plugin declaring an attribute under any of them is rejected at assembly with [`E-PLUGIN-RESERVED-STAMP-ATTR`](/plugins/manifests/).
 
 ## Worked example: `::minigame` and the match on its result slot
 
@@ -2260,7 +2684,9 @@ The scene writes nothing by hand. It runs the bridge, then reads the declared sl
 
 ## Sync semantics & the stale-default trap
 
-With `sync="true"` (the default for a blocking bridge) the writes **dominate** the immediately following read — the `<match>` sees the produced outcome. With `sync="false"` the writes do *not* dominate: because result slots are typically shape-defaulted (e.g. `rank: fail`), a following read is **not** `E-MAYBE-UNSET` — it silently reads the **default**, not the outcome. The checker reports this as a distinct *result-read-before-produced* (stale-default) diagnostic. Prefer a blocking bridge whenever story logic branches on the result.
+With `sync="true"` (the default for a blocking bridge) the writes **dominate** the immediately following read — the `<match>` sees the produced outcome. With `sync="false"` they do *not*: because result slots are typically shape-defaulted (e.g. `rank: fail`), a following read is **not** `E-MAYBE-UNSET` — it silently reads the **default**, not the outcome.
+
+**Nothing diagnoses that today.** The *result-read-before-produced* check is specified but not implemented: it needs a dataflow question the checker does not currently ask — "is this read dominated by the bridge call that produces it?" — which is checker-core analysis rather than manifest validation, and it was deferred rather than half-shipped. A non-blocking bridge whose result is read too early therefore checks clean, compiles clean, and plays wrong. Until it lands the rule is yours to keep: **use a blocking bridge whenever story logic branches on the result**, and reserve `sync="false"` for a bridge whose outcome nothing in the same scene reads.
 
 ---
 
@@ -2290,7 +2716,7 @@ defaultProfile: story
 
 - **`global` is reserved** and is applied before any other profile — every profile inherits it, which is where `lute.core` and the base language domains come from.
 - **`extends`** names a single parent profile; the chain MUST be acyclic. Parents apply before children.
-- **`plugins`** is a map from plugin id to a typed option object, or `true` (which normalizes to defaults). Presence of a legal key **activates** that plugin. There is no `plugins.use` list, and 0.0.1 has no scene-local *deactivation* — a `false` value is a static error (`E-PROFILE-PLUGIN-VALUE`), never an off switch. To exclude a plugin, do not inherit a profile that activates it.
+- **`plugins`** is a map from plugin id to a typed option object, or `true` (which normalizes to defaults). Presence of a legal key **activates** that plugin. There is no `plugins.use` list, and there is no scene-local *deactivation* — a `false` value is a static error (`E-PROFILE-PLUGIN-VALUE`), never an off switch. To exclude a plugin, do not inherit a profile that activates it.
 
 ## Selecting a profile in a scene
 
@@ -2317,17 +2743,31 @@ Activation resolves deterministically in this exact order: `lute.core` → `glob
 
 A reference to a directive, attribute, or id from an installed-but-**inactive** plugin is a diagnostic with fix-its ("change profile" / "activate plugin") — never silently accepted syntax.
 
+## Options are checked, not just merged
+
+Activation validates every supplied option against the owning plugin's `options:` declaration. The check runs on the **post-merge** value, so only the final layered value is judged — a bad value in a parent profile that a child overrides is never reported, and a bad final value is reported once no matter how many layers set it.
+
+An option name the plugin does not declare is **`E-PLUGIN-OPTION-UNKNOWN`**, and the message names the whole declared set so the fix is usually a typo away. A value that fails its declared type is **`E-PLUGIN-OPTION-TYPE`**; every violation in the profile is collected in one pass rather than bailing on the first:
+
+```
+$ lute check scene.lute --project .
+lute: E-PLUGIN-OPTION-UNKNOWN: plugin `idola.bonus` has no option `resultScop` (declared: resultScope, rounds)
+lute: E-PLUGIN-OPTION-TYPE: option `idola.bonus.rounds` expects number, got "three"
+```
+
+Both describe the project rather than a span in any one file, and both are errors: they print without a file position and they set the CLI exit code. They travel the same resolution channel as load errors and unresolved `depends`, so the CLI, the checker, and the LSP observe them identically. An option no layer sets is absent from the merge and takes its declared default, which is not re-checked — the declaration is the source of both the type and the value.
+
 ---
 
 # Full-spec showcase
 
-The [`docs/examples/showcase/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) project is one self-contained scenario that exercises **every implemented Lute feature** end-to-end and checks clean:
+The [`docs/examples/showcase/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) project is one self-contained scenario that drives the implemented language surface end-to-end — frontmatter and profiles, all four state tiers, schema composition, `<branch>`/`<match>`/`<hub>`, timelines, content components, and a plugin bridge — and checks clean:
 
 ```sh
 lute check docs/examples/showcase/episode01.lute --project docs/examples/showcase   # exit 0, 0 warnings
 ```
 
-It ships a complete plugin (`showcase.pack`) exporting all six kinds — `directives/`, `state/` (shapes + templates), `providers/`, `bridge/`, `assetkinds/`, `defs/` — plus a base/child schema pair, a reusable content component, and a pinned `castId` catalog. Three scene files drive it.
+It ships a complete plugin (`showcase.pack`) covering six of the export kinds — `directives/`, `state/` (shapes + templates), `providers/`, `bridge/`, `assetkinds/`, `defs/` — plus a base/child schema pair, a reusable content component, and a pinned `castId` catalog. Three scene files drive it.
 
 ## `episode01.lute` — the full feature map
 
@@ -2382,28 +2822,61 @@ The companion to hub-demo: the same `<when is="…">` literal-pattern arms, but 
 </match>
 ```
 
+## What 0.8.0 changed here
+
+All three scenes are restamped `luteVersion: "0.8.0"` — a one-line diff each, and the plugin was not touched — and they still check clean. Beyond the artifact's own `lute` / `irVersion` stamps, two things moved in the compiled output, and neither is anything you author.
+
+**`shots`.** Authored `## ` headings used to be parsed and then discarded — the only authored structure with no IR carrier. They now survive compilation, so `episode01.lute` emits its six section titles beside the command array:
+
+```json
+"shots": [
+  { "shot": 1, "heading": "Venny's Again" },
+  { "shot": 2, "heading": "The Rehearsed Entrance" },
+  { "shot": 3, "heading": "The Service Bridge" },
+  { "shot": 4, "heading": "The Approach" },
+  { "shot": 5, "heading": "What Was Recorded" },
+  { "shot": 6, "heading": "Content Gates" }
+]
+```
+
+**`capabilityVersion`.** The `lute.core` snapshot went from eight directives to nine when `::end` landed, and the hash folds every directive in the snapshot — so every artifact here carries a new stamp. Nothing about `showcase.pack` changed; the number moved because the core vocabulary did.
+
+No `addr` moved. Every shot in the project emits well under 100 addresses, which is precisely the byte-stability the [uniform-width rule](/tooling/runtime-contract/) was designed to preserve.
+
+The showcase does not reach the rest of 0.8.0: there is no `::end`, no `after: active(…)`, no quest document, and no `stampattrs/` export in `showcase.pack`. Those live on [Core directives](/language/directives/), [Quests & scenes](/language/quests-and-scenes/), and [Manifests](/plugins/manifests/).
+
 For the complete project — the plugin manifests, schemas, component, catalog, and the full feature→line map — see the [showcase directory and its README](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) in the repository.
 
 ---
 
 # Current specification
 
-The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.7.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
+The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.8.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
 | Frontmatter & profiles | 0.1.0 | 0.2.0 (document-kind system) | [0.2.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md) |
 | Content lines (`@speaker`) | 0.1.0 | 0.5.1 (delivery-flag honesty) | [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
+| Core directives (the closed `lute.core` vocabulary) | 0.1.0 | 0.8.0 (`::end{reason?}` — the ninth core directive, terminating the walk) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Branch / match / when / hub | 0.1.0 | 0.4.0 (param-scoped component `<match>`) | [0.4.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md) |
 | `into=` records | 0.1.0 (as `persist=`/`into=`) | 0.6.0 (**breaking** — `persist=` removed) | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
-| State tiers | 0.1.0 | 0.2.0 (added `quest.*` tier) | [0.2.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md) |
+| State tiers (scalar `scene`/`run`/`user`/`app`) | 0.1.0 | 0.8.0 (author `state:` is scalar-only, now enforced — `E-STATE-COLLECTION`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Facts & Datalog | 0.3.0 | 0.3.0 | [0.3.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md) |
-| Quests (`<quest>`, `<on>`) | 0.2.0 | 0.2.0 | [0.2.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md) |
+| Quests (`<quest>`, `<on>`) | 0.2.0 | 0.8.0 (`quest.<id>.activatedAt` — a reserved `narrativeTime` anchor for `validAt`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Timeline & property tracks | 0.1.0 | 0.1.0 | [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
-| Connectivity & `after:` | 0.2.0 (`after:`) | 0.5.0 (reachability boundary) | [0.5.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.0.md) |
-| Coverage warnings | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
+| Connectivity & `after:` | 0.2.0 (`after:`) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
+| Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
+| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.8.0 (uniform `addr` width per artifact; the `end` command kind; `shots`, `texts`, `labels`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
+| Warning-severity diagnostics | 0.6.1 | 0.8.0 (`W-CODE-AFTER-END`, `W-L10N-MISSING`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Deny promotion (`--deny`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.7.0 (version unification — language/IR/toolchain aligned; byte-for-byte `0.6.1` semantics) | [0.7.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.7.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.8.0 (language, IR, and toolchain at `0.8.0`; the IR schema becomes `lute-ir-0.8.schema.json`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
+
+Notes on the boundaries:
+
+- **`0.8.0` — the adoption release — is backward compatible in the grammar, but it is not a pure addition.** The IR **gains a command kind**, `end`; an unknown `kind` is a hard error under the execution-model version policy, so a `0.7` engine MUST refuse an artifact carrying one — the intended signal, since termination is a capability an older engine cannot fake. And `E-STATE-COLLECTION` **enforces a rule that was always normative but never checked**: a `state:` declaration typed `list`/`record`/`map` used to pass the shape validator and now fails. Everything else is optional and append-only — apart from that one declaration, a `0.7.0`-clean document needs nothing but a restamped `luteVersion:` to check clean under `0.8.0`.
+- **`addr` widths are uniform per artifact, and that is now a guarantee** — *lexicographic order over `addr` equals execution order*. A document whose every shot emits fewer than 100 addresses compiles byte-identically to `0.7.0`. `addr` is still a position regenerated on every compile, never an identity; the stable joins remain `lineId` / `voiceKey`.
+- **`0.6.0` is the one breaking grammar revision in the current stack** — it removed `persist=` so `into=` alone drives the choice run-record sugar, and made shot headings free text.
+- **Capability surfaces are specified separately.** The plugin system's current revision is `0.0.2`, which lands alongside `0.8.0`: option and frontmatter value validation, reserved stamp-attribute rejection, cross-cutting `stampAttrs`, and the declarative `lower: { record, fields }` form made real.
 
 ---
 
@@ -2411,7 +2884,7 @@ The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://gith
 
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.7.0**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.8.0**.
 
 ## Scenario DSL (the language)
 
@@ -2427,7 +2900,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.5.2 | A single new `E-UNSET-LITERAL` diagnostic catching the most common misspelling of the *unset* sentinel in a CEL guard. | [0.5.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.2.md) |
 | 0.6.0 | `into=` records without `persist=`; free shot headings — **breaking**. | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
 | 0.6.1 | Three verification-coverage warnings (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`) and `--deny`/`--deny-warnings` warning promotion; a compatible refinement of 0.6.0. | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| **0.7.0** | Current tip — version unification: language, IR, and toolchain aligned at `0.7.0`; **no grammar, semantic, or IR shape change** (byte-for-byte `0.6.1` semantics). | [0.7.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.7.0.md) |
+| 0.7.0 | Version unification — language, IR, and toolchain aligned at `0.7.0`; **no grammar, semantic, or IR shape change** (byte-for-byte `0.6.1` semantics). | [0.7.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.7.0.md) |
+| **0.8.0** | Current tip — the **adoption release**: `::end` termination, `after: active()`, the reserved `quest.<id>.activatedAt` anchor, scalar-only author `state:`, `Artifact.shots`, the localization round trip, `identity:` templates, and a uniform-width `addr`; every item traces to a gap found assessing Lute against a real 777-scene / 583-quest game catalog. | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals
@@ -2435,6 +2909,7 @@ The **repository files are the normative source of truth.** This site is the rea
 | Proposal | Scope | Source |
 |---|---|---|
 | Plugin system 0.0.1 | Normative formats and semantics of the capability/plugin system — plugin packages, YAML manifest schemas, resolution, the capability snapshot, and the data↔code boundary. | [plugin-system/0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.1.md) |
+| Plugin system 0.0.2 | Delta on 0.0.1 — plugin option and frontmatter value validation, reserved stamp-attribute rejection, cross-cutting `stampAttrs` admissible on every directive and content line, and the declarative `lower: { record, fields }` form implemented. | [plugin-system/0.0.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.2.md) |
 | Character & cast 0.0.1 | The language contract for character identity, display label, costume, name-reveal, and voice-join — as a capability plugin (registry, `cast:` frontmatter, `scene.cast.*` state, resolution, `seal`/`reveal`/`wear`). | [character-cast/0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/0.0.1.md) |
 
 The plugin system also carries a human-facing overview at [`docs/plugin-system.md`](https://github.com/journeyWorker/lute/blob/main/docs/plugin-system.md), and the character/cast capability its design rationale at [`character-cast/design.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/design.md).

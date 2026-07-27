@@ -28,13 +28,24 @@ Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted or
 $ lute compile <file> [--json] [--providers <DIR>] [--project <DIR>] [-o <FILE>]
                       [--locales <FILE>] [--deny <CODE>]… [--deny-warnings]
 $ lute compile --all --project <DIR> -o <DIR> [--providers <DIR>] [--locales <FILE>]
+                      [--json] [--deny <CODE>]… [--deny-warnings]
 ```
 
 Compile a document to its JSON command-record artifact (gated on a clean check). Exit **0** on success, **1** on a failed gate, **2** on I/O or serialization failure. The artifact is always JSON; `-o`/`--out` writes it to a file instead of stdout. With `--project`, the gate is the target's reconciled `check-project` verdict.
 
 ### `--all` — project-wide compile and index
 
-`--all` compiles **every** `*.lute` document under `--project <DIR>` into `-o <DIR>`, mirroring the project's own layout (`quests/a.lute` → `<outdir>/quests/a.lute.json`), and writes a `<outdir>/project.index.json`. It requires both `--project` and `-o`, and takes no `<file>`; any other combination is a usage error (exit **2**). `*.component.lute` fragments are skipped — a component is inlined into its importers and has no artifact of its own.
+`--all` compiles **every** `*.lute` document under `--project <DIR>` into `-o <DIR>`, mirroring the project's own layout (`quests/a.lute` → `<outdir>/quests/a.lute.json`), and writes a `<outdir>/project.index.json`. Under `--all`, `-o` is an output **directory**, not a file; it is created if absent. `*.component.lute` fragments are skipped — a component is inlined into its importers and has no artifact of its own.
+
+`--all` requires **both** `--project` and `-o` and takes no `<file>`. Each of those three is checked independently and every violation is reported, then the command exits **2** without reading a document:
+
+```console
+$ lute compile --all
+error: --all requires --project <DIR> (the document set and capability snapshot both resolve per project)
+error: --all requires -o <DIR>, an output DIRECTORY (there is no single artifact to write to stdout)
+
+Usage: lute compile --all --project <DIR> -o <DIR>
+```
 
 The index carries the document table plus the **union** of every artifact's `entities`, `enums`, `relations`, `seedFacts`, `rules`, and `prereqEdges` — the union [an engine must compute anyway](/tooling/runtime-contract/) before it can evaluate anything:
 
@@ -43,17 +54,50 @@ The index carries the document table plus the **union** of every artifact's `ent
   "irVersion": "0.8.0",
   "capabilityVersion": "…",
   "documents": [
-    { "path": "quests/a.lute", "artifact": "quests/a.lute.json", "kind": "quest", "key": "findKai" }
+    { "path": "quests/findKai.lute", "artifact": "quests/findKai.lute.json",
+      "kind": "quest", "key": "findkai" },
+    { "path": "scenes/opening.lute", "artifact": "scenes/opening.lute.json",
+      "kind": "scene", "key": "narrator.s01ep01" }
   ],
   "entities": [], "enums": [], "relations": [], "seedFacts": [], "rules": [], "prereqEdges": []
 }
 ```
 
-All paths are forward-slash relative (never absolute), `documents` is sorted by `path`, and every vocabulary array is deduplicated and totally ordered, so the index is byte-stable across runs. `--all` is all-or-nothing: a single document failing its gate prints the diagnostics and exits **1** having written nothing. Two documents declaring the same entity kind / enum / relation / prerequisite node with **different** signatures, or resolving different capability snapshots, is likewise an error (exit **1**) — never a silent pick.
+`path` is the source, relative to the project root; `artifact` is its compiled output, relative to the output directory; `key` is the document's canonical node id — a scene's `{character}.{episodeId}`, or a quest document's **first** declared `<quest id>` (a quest pack's remaining ids stay recoverable from its own artifact's `quest` records). All paths are forward-slash relative, never absolute, so an index survives being copied between machines or packed into a game archive.
+
+`documents` is sorted by `path` and every vocabulary array is deduplicated and totally ordered, so the index is byte-stable across runs. Unlike an artifact, which omits an empty vocabulary array, the index always emits all six — an engine unions them unconditionally, and an absent key would force it to distinguish "no relations" from "index too old to carry them".
+
+### `--all` is all-or-nothing
+
+Every document is compiled in memory and the index is built before anything touches the filesystem. Three things stop the write, each exiting **1** with nothing emitted:
+
+- **A failed gate.** One document's diagnostics print, followed by `N of M document(s) failed; no output written`.
+- **A `--deny`-promoted warning** (`--deny W-L10N-MISSING`, `--deny-warnings`): `--deny promoted N diagnostic(s); no output written`.
+- **A vocabulary conflict.** Two documents declaring the same entity kind / enum / relation / prerequisite node with **different** signatures, or resolving different capability snapshots — never a silent pick. This is the one class `check-project` cannot see, because it validates each document against its own resolved vocabulary and never unions across independent documents:
+
+```console
+$ lute check-project .
+ok: . (2 file(s), 0 project-wide warning(s))
+$ lute compile --all --project . -o out
+lute compile --all: relation `knows` is declared with conflicting signatures by two documents (`scenes/a.lute` and `scenes/b.lute`)
+lute compile --all: 1 vocabulary conflict(s); no output written
+```
+
+An `E-`-severity capability-resolution diagnostic (a bad plugin option, a bad `identity:` template) also exits **1** — see [the AI harness guide](/tooling/ai-harness/#capability-resolution-errors-gate-the-exit-code).
+
+`--all` writes, but never prunes: an artifact whose source document was deleted stays in the output directory. Build into a directory you own and clear.
 
 ### `--locales` — merge a translation bundle
 
-`--locales <bundle.json>` merges a locale bundle (see [`loc import`](#loc-import)) into the artifact: `texts` on every line record and `labels` on every choice/hub option, both keyed by `lineId`. The source-language `text`/`label` is never overwritten, and both maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A translatable record missing a locale the bundle declares is `W-L10N-MISSING`, one per `(lineId, locale)` pair, written to stderr; `--deny W-L10N-MISSING` (or `--deny-warnings`) promotes it to an error, so CI can require a complete translation.
+`--locales <bundle.json>` merges a locale bundle (see [`loc import`](#loc-import)) into the artifact: `texts` on every line record and `labels` on every choice/hub option, both keyed by `lineId`. The source-language `text`/`label` is never overwritten, and both maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A bundle entry matching nothing in this document is ignored; a bundle legitimately spans a whole project. It composes with `--all`, merging the one bundle into every artifact.
+
+A translatable record missing a locale the bundle declares is `W-L10N-MISSING`, one per `(lineId, locale)` pair, written to stderr. It is a warning: the artifact still emits, carrying the source-language string. `--deny W-L10N-MISSING` (or `--deny-warnings`) promotes it, so CI can require a complete translation before anything ships:
+
+```console
+$ lute compile scenes/opening.lute --project . --locales bundle.json --deny W-L10N-MISSING -o out.json
+scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `narrator.s01ep01.narrator_0020`
+--deny promoted 1 diagnostic(s); no artifact emitted
+```
 
 ## trace
 
@@ -72,7 +116,13 @@ $ lute scenario <dir> [--providers <DIR>] [--format text|json|dot]
               [reach <nodeId> | envelope <nodeId>]
 ```
 
-Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach <nodeId>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope <nodeId>` (or `envelope quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/). `<nodeId>` is a scene's canonical key or `quest:<id>`. `--format` selects the output shape of the bare graph view: `text` (default, the topological layers), `json` (a stable-keyed `{"roots":[{"root":…,"nodes":[…],"edges":[…],"reach":{…}}]}` document), or `dot` (one Graphviz `digraph` per root). Exit **0** on success, **2** on I/O or an unresolvable node id.
+Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach <nodeId>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope <nodeId>` (or `envelope quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/). `<nodeId>` is a scene's canonical key or `quest:<id>`. Exit **0** on success, **2** on I/O or an unresolvable node id.
+
+`--format` selects the output shape of the bare graph view:
+
+- `text` (default) — the topological layers, then one line per edge with the [atom kind(s)](/connectivity/scene-graph/#edge-kinds) that justify it in brackets.
+- `json` — `{"roots":[{"root":…,"layers":[[…]],"nodes":[…],"edges":[…]}]}`. Each node is `{id, kind, prereq, reach}` (`prereq` is the raw declared formula, `null` for an entry node); each edge is `{from, to, kinds}`, where `kinds` is an array because one formula may reference the same node under more than one atom.
+- `dot` — one Graphviz `digraph` per root; scenes are boxes, quests ellipses, and an `active`-only edge is drawn `[style=dashed]`.
 
 ## context
 

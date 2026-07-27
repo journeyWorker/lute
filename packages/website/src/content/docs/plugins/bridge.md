@@ -46,7 +46,7 @@ directives:
     lower:  { kind: builtin, name: bridgeMinigame }
 ```
 
-Every written path MUST be declared by the slot's shape. A blocking bridge uses a plugin-owned `sync` attribute — **not** the reserved dsl timing key `wait`, which (with `at` / `duration` / `delay`) is reserved across all directives and MUST NOT be redefined by a plugin.
+Every written path MUST be declared by the slot's shape. A blocking bridge uses a plugin-owned `sync` attribute — **not** the reserved dsl timing key `wait`. `at`, `duration`, `delay`, `wait`, `timeline`, `provenance` and `source` are the seven names the core stamp owns; a plugin declaring an attribute under any of them is rejected at assembly with [`E-PLUGIN-RESERVED-STAMP-ATTR`](/plugins/manifests/).
 
 ## Worked example: `::minigame` and the match on its result slot
 
@@ -74,4 +74,8 @@ The scene writes nothing by hand. It runs the bridge, then reads the declared sl
 
 ## Sync semantics & the stale-default trap
 
-With `sync="true"` (the default for a blocking bridge) the writes **dominate** the immediately following read — the `<match>` sees the produced outcome. With `sync="false"` the writes do *not* dominate: because result slots are typically shape-defaulted (e.g. `rank: fail`), a following read is **not** `E-MAYBE-UNSET` — it silently reads the **default**, not the outcome. The checker reports this as a distinct *result-read-before-produced* (stale-default) diagnostic. Prefer a blocking bridge whenever story logic branches on the result.
+With `sync="true"` (the default for a blocking bridge) the writes **dominate** the immediately following read — the `<match>` sees the produced outcome. With `sync="false"` they do *not*: because result slots are typically shape-defaulted (e.g. `rank: fail`), a following read is **not** `E-MAYBE-UNSET` — it silently reads the **default**, not the outcome.
+
+**Nothing diagnoses that today.** The *result-read-before-produced* check is specified but not implemented: it needs a dataflow question the checker does not currently ask — "is this read dominated by the bridge call that produces it?" — which is checker-core analysis rather than manifest validation, and it was deferred rather than half-shipped. A non-blocking bridge whose result is read too early therefore checks clean, compiles clean, and plays wrong.
+
+Until it lands the rule is yours to keep: **use a blocking bridge whenever story logic branches on the result**, and reserve `sync="false"` for a bridge whose outcome nothing in the same scene reads.

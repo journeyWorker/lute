@@ -6,7 +6,7 @@ description: The versioned Lute spec stack — every scenario-DSL revision plus 
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
 :::note
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.7.0**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.8.0**.
 :::
 
 ## Scenario DSL (the language)
@@ -23,7 +23,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.5.2 | A single new `E-UNSET-LITERAL` diagnostic catching the most common misspelling of the *unset* sentinel in a CEL guard. | [0.5.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.2.md) |
 | 0.6.0 | `into=` records without `persist=`; free shot headings — **breaking**. | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
 | 0.6.1 | Three verification-coverage warnings (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`) and `--deny`/`--deny-warnings` warning promotion; a compatible refinement of 0.6.0. | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| **0.7.0** | Current tip — version unification: language, IR, and toolchain aligned at `0.7.0`; **no grammar, semantic, or IR shape change** (byte-for-byte `0.6.1` semantics). | [0.7.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.7.0.md) |
+| 0.7.0 | Version unification — language, IR, and toolchain aligned at `0.7.0`; **no grammar, semantic, or IR shape change** (byte-for-byte `0.6.1` semantics). | [0.7.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.7.0.md) |
+| **0.8.0** | Current tip — the **adoption release**: `::end` termination, `after: active()`, the reserved `quest.<id>.activatedAt` anchor, scalar-only author `state:`, `Artifact.shots`, the localization round trip, `identity:` templates, and a uniform-width `addr`; every item traces to a gap found assessing Lute against a real 777-scene / 583-quest game catalog. | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals
@@ -31,6 +32,7 @@ The **repository files are the normative source of truth.** This site is the rea
 | Proposal | Scope | Source |
 |---|---|---|
 | Plugin system 0.0.1 | Normative formats and semantics of the capability/plugin system — plugin packages, YAML manifest schemas, resolution, the capability snapshot, and the data↔code boundary. | [plugin-system/0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.1.md) |
+| Plugin system 0.0.2 | Delta on 0.0.1 — plugin option and frontmatter value validation, reserved stamp-attribute rejection, cross-cutting `stampAttrs` admissible on every directive and content line, and the declarative `lower: { record, fields }` form implemented. | [plugin-system/0.0.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.2.md) |
 | Character & cast 0.0.1 | The language contract for character identity, display label, costume, name-reveal, and voice-join — as a capability plugin (registry, `cast:` frontmatter, `scene.cast.*` state, resolution, `seal`/`reveal`/`wear`). | [character-cast/0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/0.0.1.md) |
 
 The plugin system also carries a human-facing overview at [`docs/plugin-system.md`](https://github.com/journeyWorker/lute/blob/main/docs/plugin-system.md), and the character/cast capability its design rationale at [`character-cast/design.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/design.md).

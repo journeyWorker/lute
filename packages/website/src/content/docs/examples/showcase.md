@@ -1,15 +1,15 @@
 ---
 title: Full-spec showcase
-description: A walkthrough of the self-contained showcase project — a full-feature episode plus hub and when-is companions that exercise every implemented Lute feature and check clean.
+description: A walkthrough of the self-contained showcase project — a full-feature episode plus hub and when-is companions that drive the implemented language surface end-to-end and check clean under 0.8.0.
 ---
 
-The [`docs/examples/showcase/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) project is one self-contained scenario that exercises **every implemented Lute feature** end-to-end and checks clean:
+The [`docs/examples/showcase/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) project is one self-contained scenario that drives the implemented language surface end-to-end — frontmatter and profiles, all four state tiers, schema composition, `<branch>`/`<match>`/`<hub>`, timelines, content components, and a plugin bridge — and checks clean:
 
 ```sh
 lute check docs/examples/showcase/episode01.lute --project docs/examples/showcase   # exit 0, 0 warnings
 ```
 
-It ships a complete plugin (`showcase.pack`) exporting all six kinds — `directives/`, `state/` (shapes + templates), `providers/`, `bridge/`, `assetkinds/`, `defs/` — plus a base/child schema pair, a reusable content component, and a pinned `castId` catalog. Three scene files drive it.
+It ships a complete plugin (`showcase.pack`) covering six of the export kinds — `directives/`, `state/` (shapes + templates), `providers/`, `bridge/`, `assetkinds/`, `defs/` — plus a base/child schema pair, a reusable content component, and a pinned `castId` catalog. Three scene files drive it.
 
 ## `episode01.lute` — the full feature map
 
@@ -58,10 +58,39 @@ The companion to hub-demo: the same `<when is="…">` literal-pattern arms, but 
 
 ```lute
 <match on="scene.mood">
-  <when is="calm">          @fixer{mono}: Steady breathing. Nothing to prove tonight. </when>
-  <when is="tense">         @fixer{mono}: Shoulders drawn tight — I should tread carefully. </when>
-  <when is="joyful|playful"> @fixer{mono}: Light in the eyes, whichever way it tilts. </when>
+  <when is="calm">
+    @fixer{mono}: Steady breathing. Nothing to prove tonight.
+  </when>
+  <when is="tense">
+    @fixer{mono}: Shoulders drawn tight — I should tread carefully.
+  </when>
+  <when is="joyful|playful">
+    @fixer{mono}: Light in the eyes, whichever way it tilts.
+  </when>
 </match>
 ```
+
+## What 0.8.0 changed here
+
+All three scenes are restamped `luteVersion: "0.8.0"` — a one-line diff each, and the plugin was not touched — and they still check clean. Beyond the artifact's own `lute` / `irVersion` stamps, two things moved in the compiled output, and neither is anything you author.
+
+**`shots`.** Authored `## ` headings used to be parsed and then discarded — the only authored structure with no IR carrier. They now survive compilation, so `episode01.lute` emits its six section titles beside the command array:
+
+```json
+"shots": [
+  { "shot": 1, "heading": "Venny's Again" },
+  { "shot": 2, "heading": "The Rehearsed Entrance" },
+  { "shot": 3, "heading": "The Service Bridge" },
+  { "shot": 4, "heading": "The Approach" },
+  { "shot": 5, "heading": "What Was Recorded" },
+  { "shot": 6, "heading": "Content Gates" }
+]
+```
+
+**`capabilityVersion`.** The `lute.core` snapshot went from eight directives to nine when `::end` landed, and the hash folds every directive in the snapshot — so every artifact here carries a new stamp. Nothing about `showcase.pack` changed; the number moved because the core vocabulary did.
+
+No `addr` moved. Every shot in the project emits well under 100 addresses, which is precisely the byte-stability the [uniform-width rule](/tooling/runtime-contract/) was designed to preserve.
+
+The showcase does not reach the rest of 0.8.0: there is no `::end`, no `after: active(…)`, no quest document, and no `stampattrs/` export in `showcase.pack`. Those live on [Core directives](/language/directives/), [Quests & scenes](/language/quests-and-scenes/), and [Manifests](/plugins/manifests/).
 
 For the complete project — the plugin manifests, schemas, component, catalog, and the full feature→line map — see the [showcase directory and its README](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) in the repository.

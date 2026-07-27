@@ -8,15 +8,18 @@ Once the [scene graph](/connectivity/scene-graph/) is assembled, `check-project`
 ```
 reachable(visited(Y)) = ¬unreachable(Y)
 reachable(completed(Q)) = ¬E-QUEST-UNREACHABLE(Q)
+reachable(active(Q))    = ¬E-QUEST-UNREACHABLE(Q)
 reachable(X && Y) = reachable(X) ∧ reachable(Y)
 reachable(X || Y) = reachable(X) ∨ reachable(Y)
 ```
+
+`active(Q)` and `completed(Q)` are **identical here**. Both assert "that node must be reachable before this one," both resolve to the same `quest(Q)` node, and both contribute the same edge to the precedence DAG — so `E-CONN-CYCLE`, `E-CONN-UNREACHABLE`, and `E-CONN-UNKNOWN-NODE` behave exactly as they did before `active` existed, and `active` atoms count toward `E-CONN-FORMULA-TOO-COMPLEX` like any other. The distinction between the two only surfaces in [envelopes](/connectivity/envelopes/), which ask what a route *wrote*, not whether it exists. Reachability asks the weaker question and gets the same answer either way.
 
 Any node with an absent or empty `after` is a graph entry point (`reachable = true` trivially) — no separate "declare the start" convention is needed. Because the grammar excludes negation, every formula is monotone, so each node's verdict is computed once and memoized over the topological order: linear, no blowup. A node with no satisfiable route is `E-CONN-UNREACHABLE` — the one connectivity error that needs no hedge, because it is a pure fact about the *authored* graph's self-consistency.
 
 ## Verdicts
 
-`lute scenario reach <nodeId>` reports one of three verdicts plus the node's declared `after` prerequisite structure:
+`lute scenario <dir> reach <nodeId>` reports one of three verdicts plus the node's declared `after` prerequisite structure:
 
 - **Reachable** — a satisfiable route exists under the declared `after` graph.
 - **Unreachable** — no declared route reaches the node (`E-CONN-UNREACHABLE`).
@@ -25,11 +28,16 @@ Any node with an absent or empty `after` is a graph entry point (`reachable = tr
 `<nodeId>` is a scene's canonical key (e.g. `bianca.s01ep02`) or `quest:<id>` for a quest.
 
 ```console
-$ lute scenario reach kestrel.s01ep02
-reach kestrel.s01ep02:
-  verdict: Reachable
-  after: visited("kestrel.s01ep01")
+$ lute scenario . reach narrator.s01ep02
+project root: .
+reach scene(narrator.s01ep02):
+  verdict: Reachable — a satisfiable route exists under your declared routes.
+  after: active("findkai")
+  referenced node(s) (see `after` above for the && / || structure — this is NOT a flat requirement list):
+    - quest(findkai): Reachable — a satisfiable route exists under your declared routes.
 ```
+
+The referenced-node list is deliberately not a checklist: it reports each atom's own verdict, and the `after:` line above it is the only place the `&&` / `||` structure lives. A node whose formula is a disjunction needs only one of them.
 
 ## Cycle degradation is per-node
 

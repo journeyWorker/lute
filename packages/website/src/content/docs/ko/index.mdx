@@ -66,6 +66,19 @@ bunx @lute-lang/lute check scene.lute
 필수라서, 모든 분기는 total합니다.
 
 ```lute
+---
+kind: scene
+character: bianca
+season: 1
+episode: 2
+title: The Hostess with a Name
+pov: fixer
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+defs:
+  fond: { type: bool, cel: "scene.affect.bianca >= 1" }
+---
+
 ## The Hostess with a Name
 ::camera{focus="bianca" zoom="1.1" duration="0.5"}
 
@@ -99,6 +112,15 @@ bunx @lute-lang/lute check scene.lute
 (`pos`, `opacity`)으로 나누고, 독립적인 카메라 트랙과 나란히 배치합니다:
 
 ```lute
+---
+kind: scene
+character: bianca
+season: 1
+episode: 1
+---
+
+## Beat
+
 <timeline duration="1.2">
   <track subject="bianca" property="pos">
     ::auto{character="bianca" anchor="left" action="slide-in-left"}

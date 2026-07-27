@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.7.0**.
+**0.8.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -19,10 +19,11 @@ Create an empty file, `my-scene.lute`, and run the checker on it — the checker
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest`
+my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing
+failed: my-scene.lute (4 error(s), 0 warning(s))
 ```
 
 That's the whole idea of `lute check`: it reads your file and tells you, line by line, exactly
@@ -64,7 +65,8 @@ Check again:
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it
+my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
+failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 The rule to remember: **all content lives under a heading.** A Lute document is a sequence of
@@ -182,7 +184,8 @@ Say you type an old-style sigil out of habit — a colon instead of `@` — on t
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:19:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` — write `@speaker{…}: text`; `lute fix` applies this migration automatically
+my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 **Reading a diagnostic:** `file:line:col: error [CODE] message`. It names the exact line, the exact
@@ -190,7 +193,7 @@ problem, and exactly what to write instead. For this mechanical class of fix, ru
 
 ```
 $ lute fix my-scene.lute
-lute: migrated 1 edit(s)
+lute: migrated 1 edit(s) to 0.2.2
 ```
 
 `lute fix` rewrites the file in place (only what needs to change) and re-check comes back clean.
@@ -202,23 +205,59 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.7.0",
-  "meta": { "character": "mira", "season": 1, "episode": 1, "episodeId": "s01ep01", "title": "A Quiet Table" },
+  "lute": "0.8.0",
+  "irVersion": "0.8.0",
+  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
+  "meta": {
+    "character": "mira",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "A Quiet Table"
+  },
   "state": [ … ],
   "commands": [
-    { "kind": "line", "role": "narration", "speaker": "narrator",
-      "text": "The diner is empty at this hour, and Mira likes it that way." },
-    { "kind": "line", "role": "dialogue", "speaker": "mira",
-      "text": "{{userName}}, you made it.", "emotion": "content", "variant": 0 },
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The diner is empty at this hour, and Mira likes it that way.",
+      "lineId": "mira.s01ep01.narrator_0010"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0200",
+      "role": "dialogue",
+      "speaker": "mira",
+      "text": "{{userName}}, you made it.",
+      "emotion": "content",
+      "variant": 0,
+      "lineId": "mira.s01ep01.mira_0010",
+      "voiceKey": "mira-0010",
+      "placeholders": [ … ]
+    },
     …
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "The Counter"
+    }
   ]
 }
 ```
 
-(Shown reformatted for space.) You never hand-edit this file — it's the compiled artifact the
-engine consumes. That it compiled without error is proof the scene is **statically valid**: every
-construct well-formed, every state path declared, every `<match>` exhaustive. It is not proof the
-scene is playable end to end — that's a runtime property, verified at integration time.
+(`…` marks where output was trimmed for space; everything else is verbatim.) Two fields are worth
+knowing on sight. **`addr`** is the record's address, `{shot}-{index}`, and every `addr` in one
+artifact is padded to the same width — so sorting the `addr` strings gives you execution order, no
+parsing required. **`shots`** carries your `## ` headings through to the artifact, so a tool
+downstream can still say *which beat* a record belongs to.
+
+You never hand-edit this file — it's the compiled artifact the engine consumes. That it compiled
+without error is proof the scene is **statically valid**: every construct well-formed, every state
+path declared, every `<match>` exhaustive. It is not proof the scene is playable end to end —
+that's a runtime property, verified at integration time.
 
 Finally, `lute trace` previews a playthrough without opening the game — you tell it which choice to
 take at each branch with `--choose <branchId>=<choiceId>`, and it walks the scene and prints what
@@ -226,8 +265,8 @@ would show on screen:
 
 ```
 $ lute trace my-scene.lute --choose orderChoice=black
-trace: my-scene.lute
-  ## The Counter
+trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
+  ## Shot 1.
     @narrator  The diner is empty at this hour, and Mira likes it that way.
     @mira  {{userName}}, you made it.
     @mira  I should not be this pleased about a coffee order.
@@ -248,17 +287,23 @@ declare that intended ordering with one frontmatter key: **`after:`**.
 doesn't move the player anywhere and it isn't a jump — it's *advisory*: the tool uses it to verify
 your episodes fit together into one coherent, analysable graph.
 
-`after:` is deliberately tiny. You get exactly two building blocks:
+`after:` is deliberately tiny. You get exactly three building blocks:
 
 - `visited("<sceneKey>")` — true once the player has seen that scene.
 - `completed("<questId>")` — true once that quest is finished.
+- `active("<questId>")` — true while that quest is running: started, not yet finished.
+
+`completed` and `active` are not opposites. `completed` is a permanent fact about the past;
+`active` is a window that opens and closes. Reach for `active` when a scene only makes sense
+*during* a quest.
 
 Combine them with `&&` (both) and `||` (either):
 
 ```yaml
 after: 'visited("mira.s01ep01")'
 after: 'visited("mira.s01ep01") && completed("theCoffeeDebt")'
-after: 'visited("mira.s01ep01") || visited("mira.s01ep02")'
+after: 'visited("mira.s01ep01") && active("theCoffeeDebt")'
+after: 'visited("mira.s01ep01") || visited("mira.s01ep03")'
 ```
 
 That is the whole vocabulary. There is no `!`, no arithmetic, and no reading state — those are
@@ -330,8 +375,8 @@ project root: episodes
   topological layers:
     layer 0: scene(mira.s01ep01)
     layer 1: scene(mira.s01ep02)
-  edges (prerequisite -> dependent):
-    scene(mira.s01ep01) -> scene(mira.s01ep02)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
 `reach <key>` answers "can the player ever get here, and by what route?"; `envelope <key>` answers
@@ -339,9 +384,14 @@ the question you most want before writing a `when=` guard — *what state is saf
 
 ```
 $ lute scenario episodes envelope mira.s01ep02
-envelope for scene(mira.s01ep02) (pre-entry):
+project root: episodes
+envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
     - run.metMira
+  Possible (set on at least one declared route reaching this node):
+    - run.metMira
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, dsl §6, surfaced here per §5):
+    (none)
 ```
 
 `run.metMira` is **Guaranteed** because of the route: every declared route into the booth passes
@@ -356,19 +406,27 @@ declared state, and the delivery-flag vocabulary — resolved for the specific f
 
 ```
 $ lute context my-scene.lute
-directives (8):
+capabilityVersion: 78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3
+directives (9):
   auto: character, anchor, action
   bg: location, time, assetId
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
   cut: assetId, action, full
+  end: reason
   music: action, mood, volume, assetId, track
   sfx: sound, assetId, name
   vfx: type, label, transition
   video: assetId, action, wait
 enums (6):
+  anchor: left, center, right
   emotion: neutral, surprised, delighted, shy, content, angry, sad
   mood: peaceful, tense, romantic, sad, upbeat
-  …
+  musicAction: start, change, stop, resume, fade-out
+  vfxType: whiteOut, blackOut, rain, snow, leaves, petals, raindrop
+  volume: silent, down, normal, up, full
+stateSchema (2):
+  scene.choices.orderChoice: enum [black, familiar, unset]
+  scene.knowsMira: bool
 deliveryFlags (3):
   {mono}: interior monologue / thought (not spoken aloud in-scene)
   {os}: off-screen: the speaker is heard but not currently staged/visible

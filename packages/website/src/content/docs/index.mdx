@@ -104,6 +104,19 @@ gets the number; asking gently just warms her. `<match>` is first-match-wins
 with a mandatory `<otherwise>`, so every branch is total.
 
 ```lute
+---
+kind: scene
+character: bianca
+season: 1
+episode: 2
+title: The Hostess with a Name
+pov: fixer
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+defs:
+  fond: { type: bool, cel: "scene.affect.bianca >= 1" }
+---
+
 ## The Hostess with a Name
 ::camera{focus="bianca" zoom="1.1" duration="0.5"}
 
@@ -137,6 +150,15 @@ One choreographed beat, many concurrent tracks — split a single subject across
 property-scoped tracks (`pos`, `opacity`) alongside an independent camera track:
 
 ```lute
+---
+kind: scene
+character: bianca
+season: 1
+episode: 1
+---
+
+## Beat
+
 <timeline duration="1.2">
   <track subject="bianca" property="pos">
     ::auto{character="bianca" anchor="left" action="slide-in-left"}
@@ -162,6 +184,21 @@ far the case has moved. The checker validates every relation signature, guard,
 and match arm before a player ever sees it.
 
 ```lute
+---
+kind: scene
+character: detective
+season: 1
+episode: 1
+entities:
+  clue:    { members: [cufflink, ledger] }
+  suspect: { members: [mireille] }
+relations:
+  found:   { args: [clue], tier: run }
+  accused: { args: [suspect], tier: run }
+state:
+  run.caseProgress: { type: number, default: 0 }
+---
+
 ## The Study
 
 @narrator: The lamp still burned. The ledger had already given you one name.
@@ -208,12 +245,13 @@ choice unlocks because `holds(found(ledger))` already holds.
 <CardGrid stagger>
   <Card title="Total, not Turing-complete" icon="approve-check">
     Every scenario provably terminates — no infinite loops, no unbounded
-    recursion. That decidability is the reason the checker can analyze paths
-    at all instead of guessing.
+    recursion — and <code>::end</code> makes an ending explicit, so anything
+    written after it is reported as dead rather than quietly shipped.
   </Card>
   <Card title="Typed plugin capabilities" icon="puzzle">
     Directives and providers are declared with typed manifests, so the
-    checker knows exactly what each plugin can emit and consume.
+    checker knows exactly what each plugin can emit and consume — and rejects
+    a manifest that mistypes an option or claims a name the core owns.
   </Card>
   <Card title="CEL + Datalog facts" icon="list-format">
     Guards are plain <code>CEL</code> expressions; a Datalog fact layer lets
@@ -225,8 +263,9 @@ choice unlocks because `holds(found(ledger))` already holds.
     does. It walks that path, not every path.
   </Card>
   <Card title="Graph-checked connectivity" icon="random">
-    Reachability runs over your declared <code>after:</code> routes and returns
-    Reachable / Unreachable / Unknown — relational gates surface as human-review
+    Reachability runs over your declared <code>after:</code> routes —
+    <code>visited</code>, <code>completed</code>, <code>active</code> — and returns
+    Reachable / Unreachable / Unknown; relational gates surface as human-review
     boundaries, never false certainty.
   </Card>
   <Card title="AI-ready authoring surface" icon="comment">
