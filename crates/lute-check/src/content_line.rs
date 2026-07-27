@@ -12,11 +12,15 @@ use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_syntax::ast::{Attr, AttrValue, Line};
 
-use crate::directives::check_domain_member;
+use crate::directives::{check_attr_value, check_domain_member};
 
-/// Known content-line attribute keys (dsl 0.2.2 §7.1, §D7). Mirrors the
-/// `get(...)`/`attr_bool(...)` reads in `lute-compile`'s `lower_line`.
-const KNOWN_ATTRS: &[&str] = &[
+/// Known content-line attribute keys (dsl 0.2.2 §7.1, §D7) — the keys a
+/// content line OWNS. `lute-compile`'s `lower_line` reads exactly these
+/// (`get(...)`/`attr_bool(...)`) and consumes this slice directly, so the two
+/// crates cannot drift: a key here is a record field, a key NOT here may be a
+/// plugin-declared cross-cutting `stampAttrs` entry, which lowers into the
+/// record's stamp instead (plugin §14.1).
+pub const KNOWN_ATTRS: &[&str] = &[
     "code", "emotion", "variant", "action", "dialogMotion", "mono", "os", "vo", "as",
 ];
 
@@ -63,6 +67,32 @@ pub fn check_content_line_attrs(
     let mut delivery_flags: Vec<&Attr> = Vec::new();
     for attr in &line.attrs {
         if !KNOWN_ATTRS.contains(&attr.key.as_str()) {
+            // plugin §14.1: a plugin-declared CROSS-CUTTING `stampAttrs` entry
+            // is admissible on a content line too — the driving case is an
+            // engine that carries the same metadata on EVERY record, dialogue
+            // included. Resolution order mirrors the directive surface: the
+            // built-in content-line set above wins, then `stampAttrs`, then
+            // `E-UNKNOWN-ATTR`. Typing runs through the SAME
+            // `check_attr_value` a directive attr uses; like `emotion`/`action`
+            // below, its `Layer::Staging` output is re-layered to
+            // `Layer::Content` (dsl 0.1.0 §7.1).
+            if let Some(sdecl) = snapshot.stamp_attrs.get(&attr.key) {
+                let mut scratch = Vec::new();
+                check_attr_value(
+                    &line.speaker,
+                    sdecl,
+                    attr,
+                    snapshot,
+                    providers,
+                    domains,
+                    &mut scratch,
+                );
+                for mut d in scratch {
+                    d.layer = Layer::Content;
+                    diags.push(d);
+                }
+                continue;
+            }
             diags.push(err(
                 E_UNKNOWN_ATTR,
                 format!("unknown content-line attribute `{}` (dsl 0.1.0 §7.1)", attr.key),
@@ -128,8 +158,8 @@ pub fn check_content_line_attrs(
             // schema's closed `enums:`/`entities:` (A3) or a plugin-declared
             // `action` provider; core-only docs never trip this branch, so
             // `action="wave"` stays clean with zero domain lookups.
-            "action" => {
-                if domains.contains_key("action") || snapshot.providers.contains_key("action") {
+            "action"
+                if (domains.contains_key("action") || snapshot.providers.contains_key("action")) => {
                     let mut scratch = Vec::new();
                     check_domain_member(&line.speaker, "action", attr, domains, snapshot, providers, &mut scratch);
                     for mut d in scratch {
@@ -137,7 +167,6 @@ pub fn check_content_line_attrs(
                         diags.push(d);
                     }
                 }
-            }
             _ => {}
         }
     }

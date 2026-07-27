@@ -161,6 +161,67 @@ fn key_accepts(key: &Type, k: &str) -> bool {
     }
 }
 
+/// Render a [`Type`] for a DIAGNOSTIC message (plugin §7 spellings). Base
+/// labels match the authoring surface (`bool`/`number`/`string`); compound
+/// types name their element(s) (`list<T>`, `map<K,V>`, `record{a,b}`) and
+/// reference-bearing types keep their target (`providerRef:<catalog>`,
+/// `assetKind:<kind>`, `slotId:<namespace>`, `enumFromOption:<option>`) so the
+/// reader knows WHAT a value resolves against.
+///
+/// Distinct from `lute-cli`'s `attr_type_str`, which serves the JSON authoring
+/// surface and returns the enum member domain as a SEPARATE field; a one-line
+/// diagnostic has nowhere to put that, so `enum` inlines its members here.
+pub fn type_str(ty: &Type) -> String {
+    match ty {
+        Type::Bool => "bool".to_string(),
+        Type::Number => "number".to_string(),
+        Type::Str => "string".to_string(),
+        Type::Enum(members) => format!("enum({})", members.join("|")),
+        Type::List(inner) => format!("list<{}>", type_str(inner)),
+        Type::Record(fields) => format!(
+            "record{{{}}}",
+            fields
+                .iter()
+                .map(|f| f.name.as_str())
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Type::Map { key, value } => format!("map<{},{}>", type_str(key), type_str(value)),
+        Type::EnumFromOption(opt) => format!("enumFromOption:{opt}"),
+        Type::ProviderRef(name) => format!("providerRef:{name}"),
+        Type::Domain(name) => format!("domain:{name}"),
+        Type::SlotId { namespace } => format!("slotId:{namespace}"),
+        Type::AssetKind(name) => format!("assetKind:{name}"),
+        Type::NarrativeTime => "narrativeTime".to_string(),
+    }
+}
+
+/// Render a [`Literal`] for a DIAGNOSTIC message — the "got X" half of a
+/// type-mismatch. A string is quoted so an empty or space-bearing value is
+/// visible; an integral number collapses (`3`, not `3.0`) to match the
+/// authoring surface and the compiled envelope.
+pub fn lit_str(lit: &Literal) -> String {
+    match lit {
+        Literal::Bool(b) => b.to_string(),
+        Literal::Num(n) if n.fract() == 0.0 && n.is_finite() && n.abs() < 9.0e15 => {
+            format!("{}", *n as i64)
+        }
+        Literal::Num(n) => n.to_string(),
+        Literal::Str(s) => format!("\"{s}\""),
+        Literal::List(items) => format!(
+            "[{}]",
+            items.iter().map(lit_str).collect::<Vec<_>>().join(", ")
+        ),
+        Literal::Map(m) => format!(
+            "{{{}}}",
+            m.iter()
+                .map(|(k, v)| format!("{k}: {}", lit_str(v)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
+}
+
 // --- serde representation --------------------------------------------------
 //
 // `TypeDef`/`FieldDef` mirror the public types with the spec's serde attributes.

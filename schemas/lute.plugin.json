@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://lute.dev/schemas/lute.plugin.json",
   "title": "Lute plugin manifest + export files",
-  "description": "STRUCTURE-only schema for `plugin.yaml` (PluginManifest, plugin §5) and every export file kind it can `exports:` (plugin §6-10): directives, state/{shapes,templates}, providers, bridge, defs (LIST form), frontmatter, enums, events, assetkinds. Mirrors `crates/lute-manifest/src/schema.rs` 1:1 (each definition below is named after its Rust struct). `additionalProperties` is left permissive everywhere EXCEPT the `type:` tagged-map forms (borrowed from lute.schema.json), matching that none of these structs derive `#[serde(deny_unknown_fields)]` in Rust — only the manifest `Type` union's `singleton_map_recursive` genuinely requires a closed single-key shape. A document matches exactly ONE of the `oneOf` branches below, discriminated by its own required top-level key (`directives:`, `stateShapes:`, `id:`+`version:`+`kind:`+`exports:`, …).",
+  "description": "STRUCTURE-only schema for `plugin.yaml` (PluginManifest, plugin §5) and every export file kind it can `exports:` (plugin §6-10, §14): directives, state/{shapes,templates}, providers, bridge, defs (LIST form), frontmatter, enums, events, assetkinds, stampattrs. Mirrors `crates/lute-manifest/src/schema.rs` 1:1 (each definition below is named after its Rust struct). `additionalProperties` is left permissive everywhere EXCEPT the `type:` tagged-map forms (borrowed from lute.schema.json), matching that none of these structs derive `#[serde(deny_unknown_fields)]` in Rust — only the manifest `Type` union's `singleton_map_recursive` genuinely requires a closed single-key shape. A document matches exactly ONE of the `oneOf` branches below, discriminated by its own required top-level key (`directives:`, `stateShapes:`, `id:`+`version:`+`kind:`+`exports:`, …).",
   "oneOf": [
     {
       "$ref": "#/definitions/pluginManifest"
@@ -36,6 +36,9 @@
     },
     {
       "$ref": "#/definitions/assetKindsFile"
+    },
+    {
+      "$ref": "#/definitions/stampAttrsFile"
     }
   ],
   "definitions": {
@@ -87,7 +90,8 @@
               "frontmatter",
               "docs",
               "assetkinds",
-              "events"
+              "events",
+              "stampattrs"
             ]
           },
           "additionalProperties": {
@@ -681,6 +685,21 @@
       "properties": {
         "name": {
           "type": "string"
+        }
+      }
+    },
+    "stampAttrsFile": {
+      "description": "schema.rs::StampAttrsFile (export `stampattrs/*.yaml`, plugin §14.1). CROSS-CUTTING attribute vocabulary: each entry is an ordinary attrDecl, but admissible on EVERY directive AND on content lines, and lowered into the IR record's stamp rather than its own fields. A name colliding with a key the core stamp owns (`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`) is an assembly-time E-PLUGIN-RESERVED-STAMP-ATTR. `required` and `default` are inert on this surface: a cross-cutting attr is optional on every record, and an unauthored one is never default-injected.",
+      "type": "object",
+      "required": [
+        "stampAttrs"
+      ],
+      "properties": {
+        "stampAttrs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/attrDecl"
+          }
         }
       }
     },

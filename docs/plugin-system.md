@@ -1,12 +1,19 @@
 # Lute — Plugin System (overview & rationale)
 
-**Status:** draft / forward-looking. Not yet implemented.
+**Status:** **implemented.** The manifest loader, capability resolution, profile
+activation, the capability snapshot + `capabilityVersion`, providers, bridge
+declarations, and declarative lowering all ship in `lute-manifest` /
+`lute-check` / `lute-compile`. (This line previously read "draft /
+forward-looking, not yet implemented" long after the system shipped — a stale
+doc, not a stale feature.)
 
 > **Normative spec:** the plugin formats and semantics — the YAML manifest schemas, the capability
 > resolution algorithm, the capability snapshot, and the data↔code boundary — are specified with
-> RFC 2119 rigor in [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md).
-> **That proposal is the source of truth.** This document is the human-facing **overview +
-> rationale** (the *why* and the author's mental model); where the two differ, the proposal wins.
+> RFC 2119 rigor in [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md), with the
+> [`0.0.2`](proposals/plugin-system/0.0.2.md) delta adding option/frontmatter value validation,
+> cross-cutting `stampAttrs`, and the implemented `lower: { record, fields }` form.
+> **Those proposals are the source of truth.** This document is the human-facing **overview +
+> rationale** (the *why* and the author's mental model); where they differ, the proposals win.
 
 **Audience:** plugin authors, and the compiler/checker/LSP implementers who consume what a plugin
 declares.

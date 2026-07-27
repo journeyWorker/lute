@@ -141,6 +141,20 @@ pub fn check_directive(
                 );
                 continue;
             }
+            // plugin §14.1: a plugin-declared CROSS-CUTTING `stampAttrs` entry
+            // is admissible on EVERY directive, not just the one that declared
+            // it — real engines carry metadata (analytics tags, scoring ids) on
+            // every record regardless of kind. Resolution order is strict: the
+            // directive's OWN `AttrDecl`s win (the `find` above), then this,
+            // then `E-UNKNOWN-ATTR`. Value typing runs through the exact same
+            // `check_attr_value` path a declared directive attr uses, so
+            // `E-ATTR-TYPE`/`E-BAD-ENUM` behave identically on both surfaces.
+            if let Some(sdecl) = snapshot.stamp_attrs.get(&attr.key) {
+                check_attr_value(
+                    &dir.tag, sdecl, attr, snapshot, providers, domains, &mut diags,
+                );
+                continue;
+            }
             diags.push(diag(
                 "E-UNKNOWN-ATTR",
                 Severity::Error,
@@ -193,7 +207,7 @@ fn universal_timing_decl(key: &str) -> Option<AttrDecl> {
 ///
 /// A `Ref` (CEL `@expr`) value is left untyped here — CEL type/scope resolution
 /// is Task 4.3's job — so only literal `Str`/`BoolTrue` values are checked.
-fn check_attr_value(
+pub(crate) fn check_attr_value(
     tag: &str,
     adecl: &AttrDecl,
     attr: &Attr,

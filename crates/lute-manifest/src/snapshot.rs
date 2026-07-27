@@ -37,6 +37,15 @@ pub struct CapabilitySnapshot {
     /// part of the resolved capability surface, so NOT folded into the version.
     pub inactive: BTreeMap<String, String>,
     pub events: BTreeMap<String, EventDecl>,
+    /// Plugin-declared CROSS-CUTTING attrs (plugin §14.1 `stampAttrs:`),
+    /// folded from every active plugin's `stampattrs` export. Admissible on
+    /// EVERY directive and content line — the checker resolves an attr key
+    /// against the record's own decls FIRST and falls back here — and lowered
+    /// into the IR record's stamp (`Stamp.extra`), never its own fields. A
+    /// name colliding with a reserved stamp key is rejected at assembly
+    /// (`E-PLUGIN-RESERVED-STAMP-ATTR`), so this map can never shadow the
+    /// core stamp.
+    pub stamp_attrs: BTreeMap<String, AttrDecl>,
 }
 
 /// An enum-style named vocabulary: an ordered member list, same shape as an
@@ -208,6 +217,20 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
             h.update(name.as_bytes());
             h.update(b"=");
             h.update(format!("{e:?}").as_bytes());
+            h.update(b";");
+        }
+    }
+    // GUARDED for the same reason as `events` above: a snapshot with no
+    // plugin-declared cross-cutting vocabulary hashes byte-identically to a
+    // pre-`stampAttrs` snapshot. A CHANGED cross-cutting vocabulary IS a
+    // changed capability surface (plugin §14.1), so once populated it folds
+    // in unconditionally.
+    if !snap.stamp_attrs.is_empty() {
+        h.update(b"\nstampAttrs\n");
+        for (name, a) in &snap.stamp_attrs {
+            h.update(name.as_bytes());
+            h.update(b"=");
+            h.update(format!("{a:?}").as_bytes());
             h.update(b";");
         }
     }
