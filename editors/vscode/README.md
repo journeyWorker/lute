@@ -35,6 +35,20 @@ toast naming where it looked and how to fix it (install the binary or set
 > storage when neither the setting nor `PATH` resolves. It is **not** implemented
 > in this release — the two-step resolution above is the current behavior.
 
+### Stale-server version guard
+
+A `lute-lsp` binary older than the language a document targets silently
+mis-analyzes newer grammar — the server cannot self-detect this (its own
+`W-LUTE-VERSION-STALE` check compares against the version it was *built* at). To
+catch it, the server advertises the language version it implements as
+`serverInfo.version`, and the extension compares that against each `.lute`
+document's frontmatter `luteVersion:` stamp. When the server is strictly older,
+a one-time warning tells you to rebuild it (`cargo install --path
+crates/lute-lsp`) or point `lute.lsp.path` at a current binary. Disable the
+check with `"lute.versionCheck": false` (only if you knowingly pin an older
+server). The CLI (`lute check` / `check-project`) remains the canonical source
+of truth.
+
 ## Develop / run from source
 
 ```sh

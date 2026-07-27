@@ -9,6 +9,11 @@ const {
   LanguageClient,
   TransportKind,
 } = require("vscode-languageclient/node");
+const {
+  parseFrontmatterLuteVersion,
+  serverIsStale,
+  staleServerMessage,
+} = require("./version-guard");
 
 /** @type {import("vscode-languageclient/node").LanguageClient | undefined} */
 let client;
@@ -57,21 +62,61 @@ function activate(context) {
   );
 
   // start() rejects if the server binary is missing; surface a hint instead
-  // of a raw stack trace.
-  client.start().catch((err) => {
-    const where = configuredPath
-      ? `the configured 'lute.lsp.path' (${configuredPath})`
-      : "your PATH";
-    window.showErrorMessage(
-      `Lute: failed to start '${command}' from ${where}. ` +
-        "Install it with `cargo install --path crates/lute-lsp`, or set " +
-        "`lute.lsp.path` to the binary. (" +
-        String(err) +
-        ")"
-    );
-  });
+  // of a raw stack trace. On success, wire the stale-binary version guard.
+  client.start().then(
+    () => wireVersionGuard(context),
+    (err) => {
+      const where = configuredPath
+        ? `the configured 'lute.lsp.path' (${configuredPath})`
+        : "your PATH";
+      window.showErrorMessage(
+        `Lute: failed to start '${command}' from ${where}. ` +
+          "Install it with `cargo install --path crates/lute-lsp`, or set " +
+          "`lute.lsp.path` to the binary. (" +
+          String(err) +
+          ")"
+      );
+    }
+  );
 
   context.subscriptions.push({ dispose: () => void deactivate() });
+}
+
+/**
+ * Warn once if the running server is older than a `.lute` document targets.
+ * The server advertises the language version it implements as
+ * `serverInfo.version` (see `backend.rs`); a document declares its target via
+ * the frontmatter `luteVersion:` stamp. When the server is strictly older, its
+ * diagnostics are untrustworthy for newer grammar — the exact failure the pilot
+ * hit with a stale binary — so surface an actionable warning. Disabled by the
+ * `lute.versionCheck` setting.
+ * @param {import("vscode").ExtensionContext} context
+ */
+function wireVersionGuard(context) {
+  if (!client) {
+    return;
+  }
+  if (!workspace.getConfiguration("lute").get("versionCheck", true)) {
+    return;
+  }
+  const info = client.initializeResult && client.initializeResult.serverInfo;
+  const serverVersion = info && info.version;
+  if (!serverVersion) {
+    return;
+  }
+  let warned = false;
+  const inspect = (doc) => {
+    if (warned || !doc || doc.languageId !== "lute") {
+      return;
+    }
+    const declared = parseFrontmatterLuteVersion(doc.getText());
+    if (declared && serverIsStale(serverVersion, declared)) {
+      warned = true;
+      window.showWarningMessage(staleServerMessage(serverVersion, declared));
+    }
+  };
+  workspace.textDocuments.forEach(inspect);
+  context.subscriptions.push(workspace.onDidOpenTextDocument(inspect));
 }
 
 function deactivate() {
