@@ -39,9 +39,12 @@ activates it. A quest that carries a `start` predicate needs no accept
 
 On the `unset → active` transition the engine MUST stamp
 `quest.<id>.activatedAt` with the current narrative time (dsl 0.8.0 §5,
-[state-lifecycle.md](./state-lifecycle.md)). It is the anchor authors pass to
-`validAt(rel(args), t)` to ask "did this happen **after** the quest was
-accepted?" — the shape every `*_AFTER`-style gate needs. Content may read it
+[state-lifecycle.md](./state-lifecycle.md)). It is the anchor authors pass as
+`validAt(rel(args), t)`'s second argument. `validAt` is a point-in-time query —
+true iff the fact was valid *at* `t` (dsl 0.3.0 §3.2, `established ≤ t <
+invalidated`) — so an `*_AFTER`-style gate is the conjunction "true now, and
+not yet true at activation": `holds(R) && !validAt(R, quest.<id>.activatedAt)`.
+Content may read the stamp
 but never writes it (`E-QUEST-RESERVED-WRITE`), and never declares it
 (`E-QUEST-RESERVED-DECL`). For a repeatable quest the engine re-stamps it on
 each re-instantiation, alongside clearing the instance's other scratch fields.

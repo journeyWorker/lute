@@ -12,14 +12,23 @@ you author line by line; quests are the run-to-completion goal machines that gat
 A scene is one episode — the frontmatter identity triple (`character`/`season`/`episode`) plus its
 shots. Scenes are *sequenced* with the frontmatter key **`after:`**, which declares the routes the
 checker and `lute scenario` assume reach this scene. It is advisory ordering metadata, not a jump.
-Its vocabulary is exactly two predicates combined with `&&` / `||`:
+Its vocabulary is exactly three predicates combined with `&&` / `||`:
 
 - `visited("<sceneKey>")` — true once the player has seen that scene (key = `{character}.{episodeId}`);
-- `completed("<questId>")` — true once that quest is finished.
+- `completed("<questId>")` — true once that quest is finished;
+- `active("<questId>")` — true once that quest has been taken up and not yet resolved.
 
 ```yaml
-after: 'visited("mira.s01ep01") && completed("theCoffeeDebt")'
+after: 'visited("mira.s01ep01") && active("theCoffeeDebt")'
 ```
+
+`active` is new in 0.8.0, and it closes an asymmetry. The quest lifecycle is `unset` → `active` →
+`complete` | `failed`, yet the prerequisite vocabulary could name only two of those three observable
+states — "reachable while the debt is still outstanding" had no spelling at all. For the
+reachability graph an `active` edge is **identical** to a `completed` one: both assert "that node
+must be reachable before this one", so cycle and unreachability analysis is unchanged. The state
+envelope it carries is strictly **weaker** — after `completed(q)` a consumer may assume
+`quest.q.state == complete`; after `active(q)`, only that the quest reached `active`.
 
 There is no negation, arithmetic, or state read in `after:`. See
 [Scene graph & after:](/connectivity/scene-graph/) for how these declarations form the reachability
@@ -87,3 +96,30 @@ Content elsewhere can also gate on quest lifecycle by reading the reserved `ques
 Quests can gate on relational facts too — `start="holds(inParty(shadowheart))"` — see
 [Facts & Datalog](/state/facts-and-datalog/) for the fact surface, worked in full by
 [`docs/examples/quest-rescue-halsin.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-rescue-halsin.lute).
+
+### `quest.<id>.activatedAt`
+
+Beside `quest.<id>.state`, every quest carries a second reserved path: **`quest.<id>.activatedAt`**,
+the `narrativeTime` instant the engine stamps at the `unset` → `active` transition. Like
+`quest.<id>.state` it is engine-populated, so it is neither author-declarable
+(`E-QUEST-RESERVED-DECL`) nor author-writable (`E-QUEST-RESERVED-WRITE`) — but content may *read*
+it, which is the whole point: it is the time anchor `validAt(rel, t)` never had.
+
+```lute
+<objective id="visitedSinceAccept" title="Go back to the station" done="holds(arrivedSpace(station_front)) && !validAt(arrivedSpace(station_front), quest.theCoffeeDebt.activatedAt)"/>
+```
+
+A tag and all of its attributes must sit on **one physical line**, so do not wrap a long
+`<objective …/>` for readability — it is a parse error. Note the shape: `validAt` is a
+*point-in-time* query, true iff the fact was valid **at** that instant, so "since activation"
+is the conjunction "true now, and not yet true at activation" — a bare
+`validAt(R, …activatedAt)` asks the opposite question. Away from `validAt`, a narrative-time value
+admits only the ordering comparisons `<`, `<=`, `==`, `>`, `>=`; `!=` is `E-TEMPORAL-ARG`, as is any
+arithmetic on one. See [Facts & Datalog](/state/facts-and-datalog/) for the interval semantics.
+
+`activatedAt` is also the one reserved path exempt from `E-MAYBE-UNSET`, because a maybe-unset
+verdict on it would be undischargeable: no literal inhabits `narrativeTime`, so the slot can carry
+no `default:`, and both guard forms — `isSet(p)` and `has(p)` — are themselves `E-TEMPORAL-ARG` on a
+narrative-time operand. `quest.<id>.state` has an escape hatch (`<match>` exhaustiveness over its
+lifecycle enum); this has none. The engine guarantees the stamp exists for any activated instance,
+and a read is only meaningful inside one.

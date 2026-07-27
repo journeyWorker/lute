@@ -29,6 +29,22 @@ Content writes **deltas** with the leaf directives `::assert` and `::retract`; t
 ::retract{ atLocation(shadowheart, _) }
 ```
 
+## Querying history with `validAt`
+
+Because every fact carries a valid-time interval, a guard can ask whether a fact held *at a past instant* rather than right now: `validAt(rel(args), t)`, beside the valid-now `holds(rel(args))` and `count(rel(args)) OP n` (see [CEL expressions](/state/cel/)). It is admitted over base relations, and over derived ones whose rules carry no CEL guard in any feeding stratum — a guard reads scalar state, scalars keep no history, so a point-in-the-past derivation through one is ill-defined (`E-VALIDAT-DERIVED`).
+
+`t` must be a `narrativeTime` expression, and there is exactly one an author can write: **`quest.<id>.activatedAt`**, the instant the engine stamps when a quest goes `unset` → `active` (see [Quests & scenes](/language/quests-and-scenes/)). Declaring a `narrativeTime` path of your own is `E-TEMPORAL-ARG`, so before 0.8.0 reserved that slot `validAt` had no anchor to point at and the query was unusable in practice.
+
+Together they express the gate a quest actually wants — not *did this ever happen*, but *did it happen since the quest was taken up*:
+
+```lute
+<quest id="theCoffeeDebt" title="Settle the coffee debt">
+  <objective id="visitedSinceAccept" title="Go back to the station" done="holds(arrivedSpace(station_front)) && !validAt(arrivedSpace(station_front), quest.theCoffeeDebt.activatedAt)"/>
+</quest>
+```
+
+The fact is valid now and was *not* valid at the activation instant, so the objective completes only on a visit made after the debt was accepted — never on one the player had already made. (A tag and all of its attributes must sit on one physical line; that `<objective …/>` cannot be wrapped.)
+
 ## Datalog derivation
 
 A relation marked `derive: true` is computed by `rules:` — Horn clauses, function-free, with stratified negation. Multiple rules for one head union.

@@ -568,7 +568,9 @@ Lute에는 `Type::NarrativeTime` + `validAt(rel, t)`가 있으나:
 
 `baselineAt`은 퀘스트 인스턴스가 활성화된 시각이다. Lute의 `quest.<id>.*` 티어에
 엔진이 채우는 `quest.<id>.activatedAt: narrativeTime`을 **예약 슬롯**으로 두면
-`validAt(arrivedSpace(x), quest.<id>.activatedAt)`로 표현된다.
+`holds(arrivedSpace(x)) && !validAt(arrivedSpace(x), quest.<id>.activatedAt)`로 표현된다
+(`validAt`은 "그 시점에 유효했는가"를 묻는 시점 질의이므로 — 0.3.0 §3.2의
+`established ≤ t < invalidated` — "이후"는 "지금 참이고 활성화 시점엔 아직 아니었다"의 논리곱이다).
 
 필요: `quest.<id>` 예약 슬롯에 narrativeTime 앵커 추가 + 플러그인
 `state_shapes`에서 narrativeTime 앵커를 선언하는 경로 문서화. **작은 언어 작업.**
