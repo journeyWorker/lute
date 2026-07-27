@@ -41,7 +41,7 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
             trailing,
         });
     }
-    assign_addresses(shots)
+    assign_addresses(shots, &lute_manifest::project::IdentityTemplates::default())
 }
 
 const SRC: &str = r#"---
