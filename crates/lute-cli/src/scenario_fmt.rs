@@ -17,7 +17,7 @@ use std::process::ExitCode;
 
 use serde_json::{Map, Value};
 
-use lute_check::connectivity::{NodeId, PrereqState};
+use lute_check::connectivity::{ConnGraph, EdgeKind, NodeId, PrereqState};
 use lute_check::envelope;
 
 use crate::{
@@ -131,11 +131,29 @@ fn run_json(dir: &Path, providers: Option<&Path>, command: Option<ScenarioComman
     }
 }
 
+/// The atom kind(s) justifying one `from -> to` edge, as a sorted JSON array
+/// of `EdgeKind` tokens (lang 0.8.0). An ARRAY, not a scalar: one formula may
+/// reach the same node through both `active(Q)` and `completed(Q)`, and
+/// collapsing that would hide the stronger or the weaker justification.
+/// Sourced from `ConnGraph::edge_kinds_for`'s `BTreeSet`, so the order is
+/// deterministic; an `edges` pair with no recorded kind (impossible — the two
+/// maps are built in one pass) emits `[]` rather than a fabricated kind.
+fn edge_kinds_json(graph: &ConnGraph, from: &NodeId, to: &NodeId) -> Value {
+    match graph.edge_kinds_for(from, to) {
+        Some(kinds) => {
+            Value::Array(kinds.iter().map(|k| Value::String(k.as_str().to_string())).collect())
+        }
+        None => Value::Array(Vec::new()),
+    }
+}
+
 /// One root's bare graph view as JSON: `root`, its `nodes` (id in `NodeId`
 /// display form so edges resolve unambiguously, `kind`, `reach` token, and
 /// declared `prereq` formula), the flattened `edges` (prerequisite ->
-/// dependent, mirroring `print_graph_for_root`'s SAME `graph.edges` walk),
-/// and the deterministic topological `layers` ([`crate::topo_layers`]).
+/// dependent, mirroring `print_graph_for_root`'s SAME `graph.edges` walk,
+/// each carrying the `kinds` array that justifies it — lang 0.8.0, see
+/// [`edge_kinds_json`]), and the deterministic topological `layers`
+/// ([`crate::topo_layers`]).
 fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
     let nodes: Vec<Value> = scenario
         .graph
@@ -157,6 +175,7 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
             let mut obj = Map::new();
             obj.insert("from".to_string(), Value::String(from.to_string()));
             obj.insert("to".to_string(), Value::String(to.to_string()));
+            obj.insert("kinds".to_string(), edge_kinds_json(&scenario.graph, from, to));
             edges.push(Value::Object(obj));
         }
     }
@@ -214,7 +233,11 @@ fn reach_json(
         for atom in lute_check::atoms(f) {
             targets.insert(match atom {
                 lute_check::Atom::Visited(key) => NodeId::Scene(key),
-                lute_check::Atom::Completed(id) => NodeId::Quest(id),
+                // Both quest-lifecycle atoms name the SAME node; the
+                // `completed`/`active` distinction lives on the graph edge.
+                lute_check::Atom::Completed(id) | lute_check::Atom::Active(id) => {
+                    NodeId::Quest(id)
+                }
             });
         }
         let referenced: Vec<Value> = targets
@@ -360,7 +383,8 @@ fn run_dot(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand
 /// box scene / ellipse quest; color by reach verdict — green reachable / red
 /// unreachable / gray unknown / orange cycle-degraded; label = id) and an
 /// edge line per `graph.edges` entry (the SAME prerequisite -> dependent walk
-/// the JSON/text views use). Every id is JSON-escaped+quoted so an id
+/// the JSON/text views use, with an `active`-ONLY edge drawn `style=dashed` —
+/// lang 0.8.0). Every id is JSON-escaped+quoted so an id
 /// containing a `"`/`\`/control char stays valid Graphviz.
 fn root_dot(root: &Path, scenario: &RootScenario) -> String {
     let mut s = String::new();
@@ -385,12 +409,24 @@ fn root_dot(root: &Path, scenario: &RootScenario) -> String {
             dot_quote(&label),
         ));
     }
+    // `active`-only edges are dashed: the prerequisite is the weaker "reached
+    // `active`" claim, not "completed". An edge justified by `completed`
+    // (or `visited`) — including one ALSO justified by `active` — stays solid,
+    // since the stronger justification is what a reader may rely on. Walk
+    // order is `graph.edges`' own `BTreeMap`/`BTreeSet` order, so the output
+    // is byte-deterministic.
     for (from, targets) in &scenario.graph.edges {
         for to in targets {
+            let active_only = scenario
+                .graph
+                .edge_kinds_for(from, to)
+                .is_some_and(|kinds| kinds.iter().all(|k| *k == EdgeKind::Active));
+            let style = if active_only { " [style=dashed]" } else { "" };
             s.push_str(&format!(
-                "  {} -> {};\n",
+                "  {} -> {}{};\n",
                 dot_quote(&from.to_string()),
                 dot_quote(&to.to_string()),
+                style,
             ));
         }
     }

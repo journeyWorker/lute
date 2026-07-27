@@ -339,22 +339,27 @@ pub fn propagate(
 }
 
 /// `true` iff `f` contains an atom that is itself unresolvable — a
-/// `visited(Y)` with `Y` absent from `per_doc.scene`, or a `completed(Q)`
-/// with `Q` absent from `per_doc.quest_writes_on_complete` (see
+/// `visited(Y)` with `Y` absent from `per_doc.scene`, or a
+/// `completed(Q)`/`active(Q)` with `Q` absent from
+/// `per_doc.quest_writes_on_complete` (see
 /// [`PerDocEffects`]'s contract: key ABSENCE is the resolvability signal,
 /// deliberately never gated on `g.nodes` — a plain no-`after` quest is a
 /// valid resolvable leaf that is intentionally never a graph node) — OR
-/// references (via any `visited`/`completed` atom, through ANY `&&`/`||`
-/// nesting) a node already in `tainted`. See [`propagate`]'s doc comment
-/// for why this must NOT reuse `check_reachability`'s
+/// references (via any `visited`/`completed`/`active` atom, through ANY
+/// `&&`/`||` nesting) a node already in `tainted`. See [`propagate`]'s doc
+/// comment for why this must NOT reuse `check_reachability`'s
 /// `Or`-recovers-a-clean-arm logic — taint propagates through both
 /// operators identically here.
+///
+/// `active(Q)` taints on exactly the same condition as `completed(Q)`: it
+/// contributes `Q`'s completion writes to `possible` (see [`eval_formula`]),
+/// so an unresolvable `Q` would UNDER-APPROXIMATE `possible` just as badly.
 fn formula_tainted(f: &PrereqFormula, per_doc: &PerDocEffects, tainted: &BTreeSet<NodeId>) -> bool {
     match f {
         PrereqFormula::Visited(key) => {
             !per_doc.scene.contains_key(key) || tainted.contains(&NodeId::Scene(key.clone()))
         }
-        PrereqFormula::Completed(id) => {
+        PrereqFormula::Completed(id) | PrereqFormula::Active(id) => {
             !per_doc.quest_writes_on_complete.contains_key(id) || tainted.contains(&NodeId::Quest(id.clone()))
         }
         PrereqFormula::And(l, r) | PrereqFormula::Or(l, r) => {
@@ -369,6 +374,17 @@ fn formula_tainted(f: &PrereqFormula, per_doc: &PerDocEffects, tainted: &BTreeSe
 /// write sets; `completed(Q)` is `writesOnComplete(Q)` (T9) on both sides;
 /// `&&` unions both sides; `||` intersects `guaranteed` but UNIONS
 /// `possible` (a route through either arm still makes a write possible).
+///
+/// ## `active(Q)` is the STRICTLY WEAKER lifecycle atom (lang 0.8.0)
+/// `completed(Q)` licenses the assumption `quest.Q.state == complete`, so
+/// `writesOnComplete(Q)` lands on BOTH sides of the table. `active(Q)`
+/// licenses only "`Q` reached `active`" — its completion writes have NOT
+/// necessarily run, so they contribute to `possible` (the quest may go on to
+/// complete on some route through this node) and to `guaranteed` NOT AT ALL.
+/// That is exactly `Env { guaranteed: {}, possible: writesOnComplete(Q) }`:
+/// sound as an under-approximation of `guaranteed` and as an
+/// over-approximation of `possible`, and never stronger than the
+/// `completed(Q)` row it weakens.
 fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<NodeId, Env>) -> Env {
     match f {
         PrereqFormula::Visited(key) => {
@@ -383,6 +399,10 @@ fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<Node
         PrereqFormula::Completed(id) => {
             let writes = per_doc.quest_writes_on_complete.get(id).cloned().unwrap_or_default();
             Env { guaranteed: writes.clone(), possible: writes }
+        }
+        PrereqFormula::Active(id) => {
+            let writes = per_doc.quest_writes_on_complete.get(id).cloned().unwrap_or_default();
+            Env { guaranteed: BTreeSet::new(), possible: writes }
         }
         PrereqFormula::And(l, r) => {
             let el = eval_formula(l, per_doc, envs);
@@ -905,6 +925,7 @@ mod tests {
             nodes: infos.into_iter().map(|n| (n.id.clone(), n)).collect(),
             edges: BTreeMap::new(),
             topo_order,
+            ..ConnGraph::default()
         }
     }
 
@@ -1247,6 +1268,15 @@ mod tests {
             PrereqFormula::Visited(key) | PrereqFormula::Completed(key) => {
                 let (g_atom, p_atom) = atoms.get(key).cloned().unwrap_or_default();
                 vec![g_atom, p_atom]
+            }
+            PrereqFormula::Active(key) => {
+                // lang 0.8.0: the weaker lifecycle atom guarantees NOTHING and
+                // admits the quest's completion writes only as possible — its
+                // route family is `{∅, P_atom}`, so intersecting recovers `∅`
+                // and unioning recovers `P_atom`, exactly `eval_formula`'s
+                // `Env { guaranteed: {}, possible: writes }`.
+                let (_g_atom, p_atom) = atoms.get(key).cloned().unwrap_or_default();
+                vec![BTreeSet::new(), p_atom]
             }
             PrereqFormula::And(l, r) => {
                 let rl = bruteforce_routes(l, atoms);

@@ -776,3 +776,127 @@ fn scenario_reach_reports_unreachable_for_dead_required_objective_quest() {
         "the gated scene's own verdict must be E-CONN-UNREACHABLE: {text_scene}"
     );
 }
+
+// --- lang 0.8.0: `active` vs `completed` edge kinds in the three views ---
+
+/// One root carrying BOTH quest-lifecycle edge kinds plus a `visited` one:
+/// `scene(a.s01ep01) --visited--> quest(gate)`, then `quest(gate)` fanning out
+/// to `quest(viaActive)` via `active("gate")` and `quest(viaCompleted)` via
+/// `completed("gate")`. The two lifecycle edges are structurally identical, so
+/// only the reported KIND can tell them apart.
+fn both_edge_kinds_fixture() -> (PathBuf, String) {
+    let dir = temp_dir("scenario-edge-kinds");
+    write(
+        &dir,
+        "a.lute",
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n",
+    );
+    write(
+        &dir,
+        "q.lute",
+        "---\nkind: quest\nstate:\n  run.done: { type: bool, default: false }\n---\n\
+         <quest id=\"gate\" after=\"visited('a.s01ep01')\">\n\
+         <objective id=\"o1\" done=\"run.done\"/>\n</quest>\n\
+         <quest id=\"viaActive\" after=\"active('gate')\">\n\
+         <objective id=\"o2\" done=\"run.done\"/>\n</quest>\n\
+         <quest id=\"viaCompleted\" after=\"completed('gate')\">\n\
+         <objective id=\"o3\" done=\"run.done\"/>\n</quest>\n",
+    );
+    let path = dir.to_str().unwrap().to_string();
+    (dir, path)
+}
+
+#[test]
+fn scenario_json_reports_each_edge_kind_distinguishably() {
+    let (_dir, path) = both_edge_kinds_fixture();
+    let out = run(&["scenario", &path, "--format", "json"]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "{out_text}");
+
+    let v: serde_json::Value = serde_json::from_str(&out_text)
+        .unwrap_or_else(|e| panic!("scenario --format json must emit valid JSON ({e}): {out_text}"));
+    let edges = v["roots"][0]["edges"].as_array().expect("edges array");
+
+    let kinds_of = |to: &str| -> Vec<String> {
+        edges
+            .iter()
+            .find(|e| e["from"] == "quest(gate)" && e["to"] == to)
+            .unwrap_or_else(|| panic!("missing edge to {to}: {out_text}"))["kinds"]
+            .as_array()
+            .expect("kinds array")
+            .iter()
+            .map(|k| k.as_str().expect("kind token").to_string())
+            .collect()
+    };
+    assert_eq!(kinds_of("quest(viaActive)"), vec!["active".to_string()]);
+    assert_eq!(kinds_of("quest(viaCompleted)"), vec!["completed".to_string()]);
+
+    // The pre-existing `visited` edge keeps reporting its own kind — the field
+    // is uniform, not an `active`-only annotation.
+    let visited_edge = edges
+        .iter()
+        .find(|e| e["to"] == "quest(gate)")
+        .unwrap_or_else(|| panic!("missing visited edge: {out_text}"));
+    assert_eq!(visited_edge["kinds"], serde_json::json!(["visited"]));
+
+    // Additive only: `from`/`to` are untouched.
+    assert_eq!(visited_edge["from"], "scene(a.s01ep01)");
+}
+
+#[test]
+fn scenario_text_graph_labels_each_edge_kind() {
+    let (_dir, path) = both_edge_kinds_fixture();
+    let out = run(&["scenario", &path]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "{out_text}");
+    assert!(
+        out_text.contains("quest(gate) -> quest(viaActive) [active]"),
+        "the text view must name the `active` edge kind: {out_text}"
+    );
+    assert!(
+        out_text.contains("quest(gate) -> quest(viaCompleted) [completed]"),
+        "the text view must name the `completed` edge kind: {out_text}"
+    );
+    assert!(
+        out_text.contains("scene(a.s01ep01) -> quest(gate) [visited]"),
+        "the text view must name the `visited` edge kind: {out_text}"
+    );
+}
+
+#[test]
+fn scenario_dot_dashes_active_edges_only_and_is_deterministic() {
+    let (_dir, path) = both_edge_kinds_fixture();
+    let out = run(&["scenario", &path, "--format", "dot"]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "{out_text}");
+    assert!(
+        out_text.contains("\"quest(gate)\" -> \"quest(viaActive)\" [style=dashed];"),
+        "an `active` edge must be dashed: {out_text}"
+    );
+    assert!(
+        out_text.contains("\"quest(gate)\" -> \"quest(viaCompleted)\";"),
+        "a `completed` edge must keep the plain solid style: {out_text}"
+    );
+    assert!(
+        out_text.contains("\"scene(a.s01ep01)\" -> \"quest(gate)\";"),
+        "a `visited` edge must keep the plain solid style: {out_text}"
+    );
+
+    let again = stdout(&run(&["scenario", &path, "--format", "dot"]));
+    assert_eq!(out_text, again, "dot output must be byte-identical across runs");
+}
+
+#[test]
+fn scenario_reach_accepts_an_active_prerequisite() {
+    // End-to-end: `active(…)` must survive the per-file grammar check
+    // (no E-CONN-PROFILE) and resolve to a real, reachable verdict.
+    let (_dir, path) = both_edge_kinds_fixture();
+    let out = run(&["scenario", &path, "reach", "quest:viaActive"]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "{out_text}");
+    assert!(out_text.contains("Reachable"), "{out_text}");
+    assert!(
+        out_text.contains("active(\"gate\")"),
+        "the declared `after` structure must round-trip the `active` atom: {out_text}"
+    );
+}

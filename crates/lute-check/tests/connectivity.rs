@@ -201,7 +201,7 @@ fn unknown_completed_quest_attribute_is_flagged_and_anchored_on_quest_after() {
 
 // --- Task 5: topological-precedence DAG + `E-CONN-CYCLE` (typed `NodeId`) ---
 
-use lute_check::connectivity::{assemble_graph, NodeId, PrereqState};
+use lute_check::connectivity::{assemble_graph, EdgeKind, NodeId, PrereqState};
 
 #[test]
 fn two_node_cycle_is_flagged() {
@@ -1821,5 +1821,199 @@ fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachab
         !unreachable_diag.1.message.to_lowercase().contains("at runtime"),
         "E-CONN-UNREACHABLE must never phrase itself as a runtime claim: {}",
         unreachable_diag.1.message
+    );
+}
+
+// --- lang 0.8.0: the `active(Q)` prerequisite atom ---
+
+/// `q1` (plain, always-startable) -> `q2` gated on `active("q1")` -> `q3`
+/// gated on `active("q2")`. `q2`/`q3` are graph nodes (they declare `after`);
+/// `q1` is a plain leaf dependency. Every link is an `active` edge, and the
+/// whole chain must come out `Reachable` with no diagnostic — an `active`
+/// edge carries exactly the reachability weight a `completed` edge does.
+#[test]
+fn active_gated_three_node_chain_is_reachable() {
+    let text = "---\nkind: quest\n---\n\
+        <quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n\
+        <quest id=\"q2\" start=\"true\" after=\"active('q1')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n\
+        <quest id=\"q3\" start=\"true\" after=\"active('q2')\">\n<objective id=\"o3\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[("quests.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+
+    let resolve = resolve_nodes(&docs, &key_set, &quest_ids);
+    assert!(
+        !resolve.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
+        "every `active` target is a declared quest: {resolve:?}"
+    );
+
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "an acyclic active chain must be clean: {diags:?}");
+
+    let q2 = NodeId::Quest("q2".to_string());
+    let q3 = NodeId::Quest("q3".to_string());
+    assert_eq!(
+        g.edges.get(&q2).cloned().unwrap_or_default(),
+        [q3.clone()].into_iter().collect(),
+        "active(\"q2\") must edge q2 -> q3 exactly as completed would"
+    );
+    assert_eq!(
+        g.edge_kinds_for(&q2, &q3).map(|k| k.iter().copied().collect::<Vec<_>>()),
+        Some(vec![EdgeKind::Active]),
+        "the q2 -> q3 edge must be tagged `active`"
+    );
+
+    let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
+    assert_eq!(reach.get(&q2), Some(&Reachability::Reachable));
+    assert_eq!(reach.get(&q3), Some(&Reachability::Reachable));
+    assert!(r_diags.is_empty(), "unexpected reachability diags: {r_diags:?}");
+}
+
+/// `pa` requires `active("pb")` and `pb` requires `active("pa")` — a cycle
+/// running entirely through `active` edges. Cycle detection must be exactly
+/// as strong as it is for `completed`/`visited`: `E-CONN-CYCLE`, and both
+/// members dropped from `topo_order`.
+#[test]
+fn cycle_through_active_edges_is_conn_cycle() {
+    let text = "---\nkind: quest\n---\n\
+        <quest id=\"pa\" start=\"true\" after=\"active('pb')\">\n<objective id=\"oa\" done=\"true\"/>\n</quest>\n\
+        <quest id=\"pb\" start=\"true\" after=\"active('pa')\">\n<objective id=\"ob\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[("quests.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(
+        diags.iter().any(|(_, d)| d.code == "E-CONN-CYCLE"),
+        "an `active`-only cycle must still be E-CONN-CYCLE: {diags:?}"
+    );
+    assert!(
+        !g.topo_order.contains(&NodeId::Quest("pa".to_string()))
+            && !g.topo_order.contains(&NodeId::Quest("pb".to_string())),
+        "both cycle members must be excluded from topo_order: {:?}",
+        g.topo_order
+    );
+}
+
+/// `active` shares `completed`'s node namespace and its existence
+/// requirement: an undeclared target is `E-CONN-UNKNOWN-NODE`, named as an
+/// `active` reference (never mislabeled `completed`).
+#[test]
+fn active_on_an_undeclared_quest_is_unknown_node() {
+    let text = "---\nkind: quest\n---\n\
+        <quest id=\"q1\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n\
+        <quest id=\"q2\" start=\"true\" after=\"active('nope')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[("quests.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let res = resolve_nodes(&docs, &key_set, &quest_ids);
+    let hit = res
+        .iter()
+        .find(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE")
+        .unwrap_or_else(|| panic!("expected E-CONN-UNKNOWN-NODE, got {res:?}"));
+    assert!(
+        hit.1.message.contains("`active`") && hit.1.message.contains("`nope`"),
+        "the diagnostic must name the `active` atom and its target: {}",
+        hit.1.message
+    );
+}
+
+/// `active("q")` and `completed("q")` in ONE formula both land on the same
+/// `NodeId::Quest("q")` — the edge must record BOTH kinds rather than
+/// collapsing to whichever atom was flattened last.
+#[test]
+fn active_and_completed_on_one_target_record_both_edge_kinds() {
+    let text = "---\nkind: quest\n---\n\
+        <quest id=\"src\" start=\"true\" after=\"active('leaf')\">\n<objective id=\"o0\" done=\"true\"/>\n</quest>\n\
+        <quest id=\"leaf\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n\
+        <quest id=\"dep\" start=\"true\" after=\"active('src') || completed('src')\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
+    let docs = docs_for(&[("quests.lute", text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    assert!(diags.is_empty(), "unexpected diags: {diags:?}");
+    let src = NodeId::Quest("src".to_string());
+    let dep = NodeId::Quest("dep".to_string());
+    assert_eq!(
+        g.edge_kinds_for(&src, &dep).map(|k| k.iter().copied().collect::<Vec<_>>()),
+        Some(vec![EdgeKind::Completed, EdgeKind::Active]),
+        "both atoms must be recorded on the single src -> dep edge"
+    );
+}
+
+/// The envelope split (dsl §4.3, lang 0.8.0): after `completed(Q)` a consumer
+/// may assume `Q`'s completion writes landed, so they are GUARANTEED; after
+/// `active(Q)` only that `Q` started, so the SAME writes are merely POSSIBLE.
+#[test]
+fn active_envelope_is_strictly_weaker_than_completed() {
+    use lute_check::connectivity::NodeInfo;
+    use lute_check::envelope::{propagate, PerDocEffects};
+    use lute_check::PrereqFormula;
+
+    fn quest_node(id: &str, f: PrereqFormula) -> NodeInfo {
+        NodeInfo {
+            id: NodeId::Quest(id.to_string()),
+            path: PathBuf::from("t.lute"),
+            prereq: PrereqState::Valid(f),
+            span: Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) },
+        }
+    }
+
+    let after_completed = quest_node("afterCompleted", PrereqFormula::Completed("w".to_string()));
+    let after_active = quest_node("afterActive", PrereqFormula::Active("w".to_string()));
+    let order = vec![after_completed.id.clone(), after_active.id.clone()];
+    let g = lute_check::connectivity::ConnGraph {
+        nodes: [after_completed, after_active].into_iter().map(|n| (n.id.clone(), n)).collect(),
+        topo_order: order,
+        ..Default::default()
+    };
+
+    let mut per_doc = PerDocEffects::default();
+    per_doc
+        .quest_writes_on_complete
+        .insert("w".to_string(), ["run.flag".to_string()].into_iter().collect());
+
+    let (envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+    assert!(tainted.is_empty(), "both quest atoms resolve, so nothing may taint: {tainted:?}");
+
+    let strong = envs.get(&NodeId::Quest("afterCompleted".to_string())).expect("memoized");
+    assert!(strong.guaranteed.contains("run.flag"), "completed(Q) guarantees Q's completion writes");
+    assert!(strong.possible.contains("run.flag"));
+
+    let weak = envs.get(&NodeId::Quest("afterActive".to_string())).expect("memoized");
+    assert!(
+        !weak.guaranteed.contains("run.flag"),
+        "active(Q) must NOT guarantee Q's completion writes: {:?}",
+        weak.guaranteed
+    );
+    assert!(
+        weak.possible.contains("run.flag"),
+        "active(Q) must still admit Q's completion writes as POSSIBLE: {:?}",
+        weak.possible
+    );
+}
+
+/// The `MAX_FORMULA_ATOMS` guard counts `active` atoms exactly like the
+/// others — widening the grammar must not open a hole in the complexity cap.
+#[test]
+fn oversized_active_only_formula_is_capped() {
+    let clauses: Vec<String> = (0..300).map(|i| format!("active('q{i}')")).collect();
+    let formula = clauses.join(" || ");
+    let text = format!(
+        "---\nkind: quest\n---\n<quest id=\"big\" start=\"true\" after=\"{formula}\">\n\
+         <objective id=\"o\" done=\"true\"/>\n</quest>\n"
+    );
+    let docs = docs_for(&[("quests.lute", &text)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let (g, _diags) = assemble_graph(&docs, &key_set, &quest_ids);
+    let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
+    assert!(
+        r_diags.iter().any(|(_, d)| d.code == "E-CONN-FORMULA-TOO-COMPLEX"),
+        "300 `active` atoms must trip the same cap: {r_diags:?}"
+    );
+    assert_eq!(
+        reach.get(&NodeId::Quest("big".to_string())),
+        Some(&Reachability::Unknown),
+        "an over-cap formula must not be evaluated"
     );
 }

@@ -127,8 +127,9 @@ pub fn check_conn_episode_dup(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Dia
 }
 
 /// `E-CONN-UNKNOWN-NODE` (dsl §2.3/§4.1 §A): an `after` prerequisite
-/// formula's `visited(K)`/`completed(Q)` atom names a node that does not
-/// exist anywhere in the project — `K` is not a key in [`scene_key_set`], or
+/// formula's `visited(K)`/`completed(Q)`/`active(Q)` atom names a node that
+/// does not exist anywhere in the project — `K` is not a key in
+/// [`scene_key_set`], or
 /// `Q` is not a declared `<quest id>`. Exact-string lookup ONLY (never
 /// decomposed back into `character`/`episodeId` parts, mirroring
 /// [`scene_key_set`]'s own key identity) — Task 5 (DAG/cycle) builds its
@@ -220,7 +221,8 @@ fn nearest_match<'a>(
 }
 
 /// Exact-lookup every atom flattened out of `formula` (T1 [`atoms`]) against
-/// `key_set` (`Atom::Visited`) / `quest_ids` (`Atom::Completed`); a miss
+/// `key_set` (`Atom::Visited`) / `quest_ids` (`Atom::Completed`,
+/// `Atom::Active` — both name a QUEST, lang 0.8.0); a miss
 /// pushes one [`E_CONN_UNKNOWN_NODE`] anchored at `span` — the SOURCE
 /// formula's span (the scene's `after:` key span, or the quest's
 /// `after_span`), never a synthetic per-atom location (`PrereqFormula`
@@ -234,29 +236,33 @@ fn check_formula_atoms(
     out: &mut Vec<(PathBuf, Diagnostic)>,
 ) {
     for atom in atoms(formula) {
-        match atom {
+        // `completed`/`active` (lang 0.8.0) BOTH name a quest and both resolve
+        // against the SAME declared-quest set — `active(Q)` is a weaker CLAIM
+        // about `Q`, never a weaker existence requirement. Only the function
+        // name quoted back in the message differs.
+        let (id, func) = match &atom {
             Atom::Visited(key) => {
-                if !key_set.contains_key(&key) {
+                if !key_set.contains_key(key) {
                     let mut message = format!(
                         "unknown node: no scene resolves to key `{key}` (`visited`, dsl §2.3/§4.1)"
                     );
-                    if let Some(sugg) = nearest_match(&key, key_set.keys().map(String::as_str), 2) {
+                    if let Some(sugg) = nearest_match(key, key_set.keys().map(String::as_str), 2) {
                         message.push_str(&format!(" — did you mean `{sugg}`?"));
                     }
                     out.push((path.to_path_buf(), unknown_node_diag(message, span)));
                 }
+                continue;
             }
-            Atom::Completed(id) => {
-                if !quest_ids.contains(&id) {
-                    let mut message = format!(
-                        "unknown node: no quest declares id `{id}` (`completed`, dsl §2.3/§4.1)"
-                    );
-                    if let Some(sugg) = nearest_match(&id, quest_ids.iter().map(String::as_str), 2) {
-                        message.push_str(&format!(" — did you mean `{sugg}`?"));
-                    }
-                    out.push((path.to_path_buf(), unknown_node_diag(message, span)));
-                }
+            Atom::Completed(id) => (id, "completed"),
+            Atom::Active(id) => (id, "active"),
+        };
+        if !quest_ids.contains(id) {
+            let mut message =
+                format!("unknown node: no quest declares id `{id}` (`{func}`, dsl §2.3/§4.1)");
+            if let Some(sugg) = nearest_match(id, quest_ids.iter().map(String::as_str), 2) {
+                message.push_str(&format!(" — did you mean `{sugg}`?"));
             }
+            out.push((path.to_path_buf(), unknown_node_diag(message, span)));
         }
     }
 }
@@ -310,9 +316,11 @@ pub fn resolve_nodes(
 pub enum NodeId {
     /// `visited(K)` target: `K` is a [`scene_key_set`] canonical key.
     Scene(String),
-    /// `completed(Q)` target: `Q` is an `after`-declaring `<quest id>` (a
-    /// plain, no-`after` quest is never a [`ConnGraph`] node — see
-    /// [`assemble_graph`]).
+    /// `completed(Q)`/`active(Q)` target: `Q` is an `after`-declaring
+    /// `<quest id>` (a plain, no-`after` quest is never a [`ConnGraph`] node
+    /// — see [`assemble_graph`]). BOTH lifecycle atoms resolve to the same
+    /// node; the atom they came from is recorded separately as an
+    /// [`EdgeKind`] (lang 0.8.0).
     Quest(String),
 }
 
@@ -359,6 +367,53 @@ pub enum PrereqState {
     Invalid,
 }
 
+/// Every edge in a [`ConnGraph`] is also tagged with the ATOM it came from
+/// (lang 0.8.0, [`ConnGraph::edge_kinds`]). The tag is presentation- and
+/// envelope-relevant only: the DAG itself treats all three identically —
+/// each says "the prerequisite node must be reached before the dependent
+/// one" — so reachability ([`check_reachability`]) and cycle detection
+/// ([`E_CONN_CYCLE`]) are deliberately blind to it.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub enum EdgeKind {
+    /// From a `visited(K)` atom; the prerequisite is a [`NodeId::Scene`].
+    Visited,
+    /// From a `completed(Q)` atom; the prerequisite quest reached `complete`.
+    Completed,
+    /// From an `active(Q)` atom (lang 0.8.0); the prerequisite quest reached
+    /// `active` — STRICTLY WEAKER than [`Self::Completed`], and the
+    /// difference is load-bearing in [`crate::envelope`], which may not
+    /// assume the quest's completion writes landed.
+    Active,
+}
+
+impl EdgeKind {
+    /// The stable lowercase token naming this edge kind — the SAME text the
+    /// source atom's function uses, so `lute scenario`'s text/dot/json views
+    /// can print it without re-deriving a second vocabulary.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EdgeKind::Visited => "visited",
+            EdgeKind::Completed => "completed",
+            EdgeKind::Active => "active",
+        }
+    }
+}
+
+impl fmt::Display for EdgeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// The [`EdgeKind`] an [`Atom`] contributes.
+fn atom_edge_kind(atom: &Atom) -> EdgeKind {
+    match atom {
+        Atom::Visited(_) => EdgeKind::Visited,
+        Atom::Completed(_) => EdgeKind::Completed,
+        Atom::Active(_) => EdgeKind::Active,
+    }
+}
+
 /// The project-wide topological-precedence DAG (dsl §2.4 graph 1): every
 /// scene plus every `after`-declaring quest as a node, a flattened
 /// `prerequisite -> dependent` edge per formula atom that targets another
@@ -377,7 +432,26 @@ pub enum PrereqState {
 pub struct ConnGraph {
     pub nodes: BTreeMap<NodeId, NodeInfo>,
     pub edges: BTreeMap<NodeId, BTreeSet<NodeId>>,
+    /// Which atom kind(s) justify each `prerequisite -> dependent` edge in
+    /// [`Self::edges`] (lang 0.8.0), keyed identically to `edges` so a
+    /// renderer walking `edges` can look the kinds up by reference, without
+    /// materializing a key. A SET, not a single kind: one formula may
+    /// reference the same quest through both `active(Q)` and `completed(Q)`
+    /// (`active("q") || completed("q")`), and collapsing that to one kind
+    /// would silently drop the stronger or the weaker justification. The two
+    /// maps are built in one pass and stay in exact correspondence: every
+    /// `edges` pair has a nonempty entry here and vice versa.
+    pub edge_kinds: BTreeMap<NodeId, BTreeMap<NodeId, BTreeSet<EdgeKind>>>,
     pub topo_order: Vec<NodeId>,
+}
+
+impl ConnGraph {
+    /// The [`EdgeKind`]s justifying the `from -> to` edge, or `None` when no
+    /// such edge exists. Sorted by [`EdgeKind`]'s own `Ord` (a `BTreeSet`), so
+    /// every renderer built on it is deterministic for free.
+    pub fn edge_kinds_for(&self, from: &NodeId, to: &NodeId) -> Option<&BTreeSet<EdgeKind>> {
+        self.edge_kinds.get(from).and_then(|by_dep| by_dep.get(to))
+    }
 }
 
 /// dsl §2.4 (graph 1) / §4.1 (§A cycle): the topological-precedence DAG over
@@ -414,10 +488,12 @@ pub fn cycle_diag(message: String, span: Span) -> Diagnostic {
 /// - **Edges**: flattened, over-approximating (ignoring `&&`/`||` position)
 ///   — for each atom `p` in node `n`'s formula, add `p -> n` IFF `p` is
 ///   itself a node in this graph. `visited(K)` targets `NodeId::Scene(K)`;
-///   `completed(Q)` targets `NodeId::Quest(Q)` ONLY when `Q` is itself an
-///   `after`-declaring quest node — `completed` on a plain (no-`after`)
-///   quest is a LEAF dependency (Task 6's quest-lifecycle signal, never a
-///   DAG edge here).
+///   `completed(Q)` and `active(Q)` (lang 0.8.0) BOTH target
+///   `NodeId::Quest(Q)`, ONLY when `Q` is itself an `after`-declaring quest
+///   node — either lifecycle atom on a plain (no-`after`) quest is a LEAF
+///   dependency (Task 6's quest-lifecycle signal, never a DAG edge here).
+///   The two are structurally IDENTICAL edges; which atom produced each is
+///   recorded out-of-band in [`ConnGraph::edge_kinds`].
 ///
 /// `key_set` (T3 [`scene_key_set`]) is supplied by the caller — computed
 /// once per resolved project root (`lute-cli`'s `by_root` grouping), same
@@ -508,20 +584,34 @@ pub fn assemble_graph(
     // Edges: flattened union of atoms per formula -- `atom_target -> n` iff
     // `atom_target` is itself a node above (never a bare-string cross-check
     // against key_set/quest_ids -- membership in `nodes`, typed, is the only
-    // question here).
+    // question here). Each edge also records the ATOM KIND(s) that justify it
+    // (lang 0.8.0 `EdgeKind`) -- `completed(Q)` and `active(Q)` both land on
+    // the same `NodeId::Quest(Q)` and are otherwise indistinguishable once
+    // flattened, but the envelope pass and `lute scenario` both need to tell
+    // them apart. The DAG shape itself is UNCHANGED by the kind: an `active`
+    // edge constrains ordering exactly as a `completed` edge does, so cycle
+    // detection below stays exactly as strong.
     let mut edges: BTreeMap<NodeId, BTreeSet<NodeId>> = BTreeMap::new();
+    let mut edge_kinds: BTreeMap<NodeId, BTreeMap<NodeId, BTreeSet<EdgeKind>>> = BTreeMap::new();
     for info in nodes.values() {
         let formula = match &info.prereq {
             PrereqState::Valid(f) => f,
             PrereqState::Absent | PrereqState::Invalid => continue,
         };
         for atom in atoms(formula) {
+            let kind = atom_edge_kind(&atom);
             let target = match atom {
                 Atom::Visited(key) => NodeId::Scene(key),
-                Atom::Completed(id) => NodeId::Quest(id),
+                Atom::Completed(id) | Atom::Active(id) => NodeId::Quest(id),
             };
             if nodes.contains_key(&target) {
-                edges.entry(target).or_default().insert(info.id.clone());
+                edges.entry(target.clone()).or_default().insert(info.id.clone());
+                edge_kinds
+                    .entry(target)
+                    .or_default()
+                    .entry(info.id.clone())
+                    .or_default()
+                    .insert(kind);
             }
         }
     }
@@ -541,6 +631,7 @@ pub fn assemble_graph(
         ConnGraph {
             nodes,
             edges,
+            edge_kinds,
             topo_order,
         },
         diags,
@@ -764,7 +855,9 @@ fn too_complex_diag(message: String, span: Span) -> Diagnostic {
 ///     reachability; not a known node ⇒ `Unknown` (that miss is
 ///     `E-CONN-UNKNOWN-NODE`'s problem, T4 — it must never CASCADE into a
 ///     false `E-CONN-UNREACHABLE`).
-///   - `completed(Q)`, by precedence:
+///   - `completed(Q)` AND `active(Q)` (lang 0.8.0 — IDENTICAL here; see
+///     below for why the weaker atom earns no weaker verdict), by
+///     precedence:
 ///     1. `Q ∉ quest_ids` (undeclared) ⇒ `Unknown`.
 ///     2. `Q ∈ ambiguous_quest_ids` (>1 declaration) ⇒ `Unknown`.
 ///     3. `Q ∈ unreachable_quests` ⇒ `Unreachable` (quest lifecycle,
@@ -772,6 +865,15 @@ fn too_complex_diag(message: String, span: Span) -> Diagnostic {
 ///     4. `NodeId::Quest(Q) ∈ nodes` (an `after`-declaring quest already
 ///        memoized above) ⇒ its memoized reachability (TRANSITIVE).
 ///     5. else (a declared PLAIN quest, not unreachable) ⇒ `Reachable`.
+///
+///     Case 3 is the only one where `active` could conceivably be weaker,
+///     and it is not: `unreachable_quests` carries
+///     [`crate::reachability::E_QUEST_UNREACHABLE`], whose BOTH roots
+///     (dsl 0.4.0 §5.3) already preclude the `active` state — a `start`
+///     that decides false never activates the quest at all, and a `fail`
+///     that decides true fails it at the first evaluation instant (0.2
+///     §6.3 precedence), so it is never observably `active` either.
+///     `Unreachable` is therefore PROVEN for `active(Q)` too, not guessed.
 ///   - `And`: `Unreachable` iff EITHER arm is `Unreachable` (checked
 ///     first — it dominates); else `Reachable` iff BOTH `Reachable`; else
 ///     `Unknown`.
@@ -857,10 +959,14 @@ fn eval_reach(
                 Reachability::Unknown
             }
         }
-        PrereqFormula::Completed(id) => {
-            if !quest_ids.contains(id) {
-                Reachability::Unknown
-            } else if ambiguous_quest_ids.contains(id) {
+        // Graph semantics are IDENTICAL for both quest-lifecycle atoms — see
+        // `check_reachability`'s doc comment for why `unreachable_quests`
+        // soundly covers `active(Q)` too (lang 0.8.0).
+        PrereqFormula::Completed(id) | PrereqFormula::Active(id) => {
+            // Unknown for two distinct reasons, same verdict: the id names no
+            // declared quest at all, or it names more than one (ambiguous), so
+            // no single node's reachability can answer for it.
+            if !quest_ids.contains(id) || ambiguous_quest_ids.contains(id) {
                 Reachability::Unknown
             } else if unreachable_quests.contains(id) {
                 Reachability::Unreachable

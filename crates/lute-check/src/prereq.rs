@@ -1,14 +1,30 @@
 //! Restricted-CEL `after` prerequisite-profile grammar + validator (connectivity
 //! layer, Task 1). The `after:` value on a quest/scene is a CEL string that MUST
-//! reduce to a pure boolean formula over `visited("id")` / `completed("id")`
-//! atoms combined with `&&` / `||` (parens are free — cel-parser bakes grouping
-//! into tree shape, so there is no separate paren node to admit). This is a
-//! DELIBERATELY narrower profile than [`crate::cel_resolve::check_cel_profile`]
-//! (the general Lute-CEL admit-walk): no negation, no arithmetic/comparison
-//! operators, no state-path reads, no other function calls. A NEW sibling walk
-//! — never route through `check_cel_profile`, whose broad "any literal/ident
-//! passes" leaves would silently reopen this grammar to `scene.x`, `1 + 1`,
-//! `!visited(...)`, etc.
+//! reduce to a pure boolean formula over `visited("id")` / `completed("id")` /
+//! `active("id")` atoms combined with `&&` / `||` (parens are free — cel-parser
+//! bakes grouping into tree shape, so there is no separate paren node to admit).
+//! This is a DELIBERATELY narrower profile than
+//! [`crate::cel_resolve::check_cel_profile`] (the general Lute-CEL admit-walk):
+//! no negation, no arithmetic/comparison operators, no state-path reads, no
+//! other function calls. A NEW sibling walk — never route through
+//! `check_cel_profile`, whose broad "any literal/ident passes" leaves would
+//! silently reopen this grammar to `scene.x`, `1 + 1`, `!visited(...)`, etc.
+//!
+//! ## `active` (lang 0.8.0)
+//! The quest lifecycle is `unset → active → complete|failed`, but 0.7.0 admitted
+//! only the terminal `completed(Q)` — gating on "this quest is currently under
+//! way" was inexpressible, which is an asymmetry rather than a simplification
+//! (the OSHiZ adoption analysis measured 477 of 841 quest-referencing gate rows
+//! needing exactly it). `active(Q)` is admitted ALONGSIDE `completed(Q)`, same
+//! shape and same single-string-literal arity; the profile stays otherwise
+//! closed. The two differ ONLY downstream:
+//! - graph-wise they are IDENTICAL (both say "Q must be reached before me"), so
+//!   [`crate::connectivity`]'s reachability and cycle detection treat them the
+//!   same;
+//! - envelope-wise `active` is STRICTLY WEAKER — after `completed(Q)` a consumer
+//!   may assume `Q`'s completion writes landed, after `active(Q)` only that `Q`
+//!   started, so [`crate::envelope`] contributes them to `possible` but never to
+//!   `guaranteed`.
 //!
 //! Downstream connectivity tasks (graph assembly, reachability, envelope) all
 //! consume [`PrereqFormula`]/[`atoms`] — the shapes here are load-bearing;
@@ -20,19 +36,25 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 
 /// `E-CONN-PROFILE` (connectivity layer, Task 1): an `after` CEL formula used a
 /// construct outside the restricted prerequisite profile — anything other than
-/// `visited(StringLit)` / `completed(StringLit)` combined with `&&` / `||`
-/// (parens are free; grouping is structural, not a separate node). Negation,
-/// arithmetic, comparisons, state reads, and any other function call are all
-/// out of profile. Emitted at the `span` passed to [`parse_prereq`], mirroring
-/// `E_CEL_PROFILE`'s stop-and-report-then-skip-the-branch shape.
+/// `visited(StringLit)` / `completed(StringLit)` / `active(StringLit)` combined
+/// with `&&` / `||` (parens are free; grouping is structural, not a separate
+/// node). Negation, arithmetic, comparisons, state reads, and any other function
+/// call are all out of profile. Emitted at the `span` passed to
+/// [`parse_prereq`], mirroring `E_CEL_PROFILE`'s stop-and-report-then-skip-the-
+/// branch shape.
 pub const E_CONN_PROFILE: &str = "E-CONN-PROFILE";
 
 /// The parsed `after` prerequisite formula: a boolean expression over
-/// `visited`/`completed` atoms, closed under `&&`/`||`.
+/// `visited`/`completed`/`active` atoms, closed under `&&`/`||`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrereqFormula {
     Visited(String),
     Completed(String),
+    /// lang 0.8.0 `active("questId")`: the quest reached the `active`
+    /// lifecycle state. A STRICTLY WEAKER claim than [`Self::Completed`] —
+    /// see this module's header for the graph-identical / envelope-weaker
+    /// split.
+    Active(String),
     And(Box<PrereqFormula>, Box<PrereqFormula>),
     Or(Box<PrereqFormula>, Box<PrereqFormula>),
 }
@@ -43,6 +65,9 @@ pub enum PrereqFormula {
 pub enum Atom {
     Visited(String),
     Completed(String),
+    /// lang 0.8.0: see [`PrereqFormula::Active`]. Targets a QUEST node,
+    /// exactly like [`Self::Completed`].
+    Active(String),
 }
 
 /// Parse `raw` (the CEL text of an `after` value) under the restricted
@@ -92,8 +117,8 @@ pub fn parse_prereq(raw: &str, span: Span) -> (Option<PrereqFormula>, Vec<Diagno
 }
 
 /// The admit-walk: recurse into `&&`/`||` operator calls and well-shaped
-/// `visited`/`completed` calls; anything else is out of profile and stops
-/// descent into that branch (mirrors `E_CEL_PROFILE`'s stop-and-report).
+/// `visited`/`completed`/`active` calls; anything else is out of profile and
+/// stops descent into that branch (mirrors `E_CEL_PROFILE`'s stop-and-report).
 fn walk(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>) -> Option<PrereqFormula> {
     use cel_parser::ast::operators as op;
 
@@ -111,12 +136,12 @@ fn walk(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>) -> Option<PrereqFo
                         _ => None,
                     };
                 }
-                "visited" | "completed" if c.args.len() == 1 => {
+                name @ ("visited" | "completed" | "active") if c.args.len() == 1 => {
                     if let Expr::Literal(Val::String(s)) = &c.args[0].expr {
-                        return Some(if c.func_name == "visited" {
-                            PrereqFormula::Visited(s.clone())
-                        } else {
-                            PrereqFormula::Completed(s.clone())
+                        return Some(match name {
+                            "visited" => PrereqFormula::Visited(s.clone()),
+                            "completed" => PrereqFormula::Completed(s.clone()),
+                            _ => PrereqFormula::Active(s.clone()),
                         });
                     }
                 }
@@ -133,20 +158,21 @@ fn out_of_profile_message(expr: &Expr) -> String {
     match expr {
         Expr::Call(c) => format!(
             "`{}(…)` is outside the `after` prerequisite profile — only \
-             `visited(\"id\")`, `completed(\"id\")`, `&&`, and `||` are permitted \
-             (no negation, arithmetic, comparisons, or other calls)",
+             `visited(\"id\")`, `completed(\"id\")`, `active(\"id\")`, `&&`, and \
+             `||` are permitted (no negation, arithmetic, comparisons, or other \
+             calls)",
             c.func_name
         ),
         _ => "this construct is outside the `after` prerequisite profile — only \
-              `visited(\"id\")` / `completed(\"id\")` combined with `&&` / `||` \
-              are permitted"
+              `visited(\"id\")` / `completed(\"id\")` / `active(\"id\")` combined \
+              with `&&` / `||` are permitted"
             .to_string(),
     }
 }
 
 /// Flatten a [`PrereqFormula`] into its leaf atoms (edge-extraction helper for
 /// later connectivity tasks — graph assembly reads these to know which
-/// `visited`/`completed` targets an `after` formula depends on).
+/// `visited`/`completed`/`active` targets an `after` formula depends on).
 pub fn atoms(f: &PrereqFormula) -> Vec<Atom> {
     let mut out = Vec::new();
     collect_atoms(f, &mut out);
@@ -157,6 +183,7 @@ fn collect_atoms(f: &PrereqFormula, out: &mut Vec<Atom>) {
     match f {
         PrereqFormula::Visited(id) => out.push(Atom::Visited(id.clone())),
         PrereqFormula::Completed(id) => out.push(Atom::Completed(id.clone())),
+        PrereqFormula::Active(id) => out.push(Atom::Active(id.clone())),
         PrereqFormula::And(l, r) | PrereqFormula::Or(l, r) => {
             collect_atoms(l, out);
             collect_atoms(r, out);
@@ -247,6 +274,65 @@ mod tests {
         assert!(codes.contains(&E_CONN_PROFILE.to_string()));
 
         let (f, codes) = parse("");
+        assert!(f.is_none());
+        assert!(codes.contains(&E_CONN_PROFILE.to_string()));
+    }
+
+    // --- lang 0.8.0: `active(StringLit)` ---
+
+    #[test]
+    fn active_string_literal_parses() {
+        let (f, codes) = parse(r#"active("q1")"#);
+        assert!(codes.is_empty(), "unexpected diags: {codes:?}");
+        assert_eq!(f, Some(PrereqFormula::Active("q1".to_string())));
+    }
+
+    #[test]
+    fn active_composes_with_completed_under_and() {
+        let (f, codes) = parse(r#"active("a") && completed("b")"#);
+        assert!(codes.is_empty(), "unexpected diags: {codes:?}");
+        assert_eq!(
+            f,
+            Some(PrereqFormula::And(
+                Box::new(PrereqFormula::Active("a".to_string())),
+                Box::new(PrereqFormula::Completed("b".to_string())),
+            ))
+        );
+    }
+
+    #[test]
+    fn active_flattens_to_its_own_atom() {
+        let (f, codes) = parse(r#"active("a") || completed("a")"#);
+        assert!(codes.is_empty(), "unexpected diags: {codes:?}");
+        assert_eq!(
+            atoms(&f.expect("in-profile formula")),
+            vec![Atom::Active("a".to_string()), Atom::Completed("a".to_string())],
+            "`active` and `completed` on the SAME id must stay distinguishable atoms"
+        );
+    }
+
+    #[test]
+    fn negated_active_rejected() {
+        // The profile stays closed: widening it with `active` admits the CALL,
+        // never negation around it.
+        let (f, codes) = parse(r#"!active("a")"#);
+        assert!(f.is_none());
+        assert!(codes.contains(&E_CONN_PROFILE.to_string()));
+    }
+
+    #[test]
+    fn active_non_literal_arg_rejected() {
+        // A state-path read is still out of profile as an `active` argument —
+        // the arg shape check is the SAME single-string-literal one
+        // `visited`/`completed` get.
+        let (f, codes) = parse(r#"active(scene.x)"#);
+        assert!(f.is_none());
+        assert!(codes.contains(&E_CONN_PROFILE.to_string()));
+    }
+
+    #[test]
+    fn active_wrong_arity_rejected() {
+        let (f, codes) = parse(r#"active("a", "b")"#);
         assert!(f.is_none());
         assert!(codes.contains(&E_CONN_PROFILE.to_string()));
     }
