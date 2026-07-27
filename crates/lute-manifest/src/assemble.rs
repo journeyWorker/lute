@@ -79,10 +79,10 @@ impl AssembleError {
 
 impl std::fmt::Display for AssembleError {
     /// Human-readable rendering, surfaced by `project.rs` as the
-    /// [`crate::project::ResolveDiag`] message. Only variants with a
-    /// spec-mandated message text render prose; every other variant falls
-    /// back to its `Debug` form — exactly what `project.rs` has always
-    /// emitted, so existing diagnostic text stays byte-identical.
+    /// [`crate::project::ResolveDiag`] message. Every variant renders prose:
+    /// since 0.8.0 an `E-`-severity resolution diagnostic gates the CLI exit
+    /// code, so this text is the whole of what a failing author sees — a
+    /// `Debug` form leaking Rust struct syntax is not an acceptable answer.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AssembleError::ReservedStampAttr { plugin, name } => write!(
@@ -92,9 +92,43 @@ impl std::fmt::Display for AssembleError {
                  are owned by the core stamp (plugin §14)"
             ),
             // `InvalidDirective.msg` is already prose (the per-directive
-            // validator's own message text); Debug-wrapping would mangle it.
+            // validator's own message text); wrapping it would mangle it.
             AssembleError::InvalidDirective { msg, .. } => write!(f, "{msg}"),
-            other => write!(f, "{other:?}"),
+            AssembleError::DuplicateAcrossPlugins {
+                kind,
+                id,
+                first,
+                second,
+            } => write!(
+                f,
+                "{kind} `{id}` is declared by both `{first}` and `{second}`; \
+                 two active plugins cannot own the same name"
+            ),
+            AssembleError::ReservedName { id, plugin } => write!(
+                f,
+                "plugin `{plugin}` declares `{id}`, a name the core vocabulary \
+                 reserves (dsl §10)"
+            ),
+            AssembleError::MissingActivePlugin { id } => write!(
+                f,
+                "plugin `{id}` is activated by the project manifest but is not \
+                 installed; add it under the plugins directory or drop it from \
+                 the profile"
+            ),
+            AssembleError::CyclicStateShape { shape } => write!(
+                f,
+                "state shape `{shape}` is cyclic; a shape cannot contain itself, \
+                 directly or through another shape"
+            ),
+            AssembleError::UnknownAssetKind {
+                directive,
+                attr,
+                kind,
+            } => write!(
+                f,
+                "directive `{directive}` binds attribute `{attr}` to asset kind \
+                 `{kind}`, which no active plugin declares"
+            ),
         }
     }
 }
