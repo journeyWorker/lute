@@ -3,7 +3,7 @@ title: The state model
 description: Lute's tiered scalar state — the run, user, and app lifetime namespaces (plus episode-local scene), how paths are declared, and the path-sensitive definite-assignment rules that govern reads and writes.
 ---
 
-Lute scalar state is a set of typed paths (`number`, `bool`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
+Lute scalar state is a set of typed paths (`number`, `bool`, `string`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
 
 | Namespace | Reset boundary | Typical use |
 |---|---|---|
@@ -25,6 +25,10 @@ state:
   user.level:         { type: number, default: 1 }
   app.rating:         { type: enum, values: [teen, adult], default: teen }
 ```
+
+Author `state:` is **scalar-only** — `number`, `bool`, `string`, or `enum`, and nothing else. A declaration whose `type` is `list`, `record`, or `map` is `E-STATE-COLLECTION`, and the declaration is *not installed*: a later read of that path reports a plain `E-UNDECLARED` rather than resolving against a phantom collection-typed slot.
+
+Enforcement is new in 0.8.0, but it removes an ambiguity rather than adding a restriction. The normative text always said scalar, but the shape validator accepted the whole type union and the runtime documentation described `list<…>` / `map<…>` / `record` as valid entry types — three sources, three answers. All three now agree. Collections were always meant to be modelled **relationally**: an inventory is `ownsItem(item)`, not a `list<string>`, so reach for [`relations:`](/state/facts-and-datalog/) instead. Collection-shaped entry types do still reach the compiled artifact, but only through a plugin `state_shapes` expansion — never from an author's `state:` block.
 
 ## Reads and writes
 

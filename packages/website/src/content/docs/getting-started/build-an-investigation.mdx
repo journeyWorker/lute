@@ -207,14 +207,16 @@ whether the accusation matched the truth:
 cargo run -q -p lute-cli -- check-project docs/examples/investigation
 ```
 
-Exit `0`. Every file checks clean except for **one project-wide warning** on the
+Exit `0`. Every file checks clean; the only thing reported is **one project-wide warning** on the
 quest:
 
 ```
-docs/examples/investigation/quests/identify-killer.lute:
-  26:3: warning [W-UNPROVEN-RELATIONAL] `done="holds(implicates(ledger, blake))"` is gated by a
-  relational fact query over producible relation(s) `implicates`; static reachability analysis
-  (dsl 0.6.1 §2) neither proves nor refutes it. Verify with `lute trace` seeds or human review
+ok: docs/examples/investigation/quests/identify-killer.lute (0 warning(s))
+ok: docs/examples/investigation/scenes/confrontation.lute (0 warning(s))
+ok: docs/examples/investigation/scenes/crime-scene.lute (0 warning(s))
+ok: docs/examples/investigation/scenes/interview.lute (0 warning(s))
+project-wide diagnostics:
+docs/examples/investigation/quests/identify-killer.lute:26:3: warning [W-UNPROVEN-RELATIONAL] `done="holds(implicates(ledger, blake))"` is gated by a relational fact query over producible relation(s) `implicates`; static reachability analysis (dsl 0.6.1 §2) neither proves nor refutes it. Verify with `lute trace` seeds or human review
 ok: docs/examples/investigation (4 file(s), 1 project-wide warning(s))
 ```
 
@@ -238,8 +240,12 @@ cargo run -q -p lute-cli -- scenario docs/examples/investigation reach detective
 ```
 
 ```
+project root: docs/examples/investigation
+reach scene(detective.s01ep03):
   verdict: Reachable — a satisfiable route exists under your declared routes.
   after: visited("detective.s01ep02")
+  referenced node(s) (see `after` above for the && / || structure — this is NOT a flat requirement list):
+    - scene(detective.s01ep02): Reachable — a satisfiable route exists under your declared routes.
 ```
 
 Note the hedge — *"under your declared routes."* Reachability reasons about the
@@ -277,16 +283,50 @@ cargo run -q -p lute-cli -- trace docs/examples/investigation/scenes/confrontati
   --mock docs/examples/investigation/mocks/accuse-correctly.yaml
 ```
 
-Accuse the **wrong** suspect → the failure ending:
+```
+trace: docs/examples/investigation/scenes/confrontation.lute  (seeds: 1 paths, 0 facts; 1 selection)
+note: the schema declares seed facts (e.g. `implicates`) but trace does not auto-load them (§3.1, the explicit-world model) — supply seeded relations explicitly via --fact
+  ## Shot 1.
+    @narrator  Everyone in one room. The detective lays the file on the table.
+    @detective  One name. I only get to say one.
+  <branch accuse>   eligible: accuseBlake, accuseCass, accuseDana   -> accuseBlake
+    @detective  Blake. The ledger and the letter were both yours.
+    ::set  run.accused = blake  (into sugar)
+  ## Shot 2.
+  <match run.accused == run.trueKiller>   -> arm 1 ((run.accused == run.trueKiller))
+    @narrator  The cuffs close on the right wrists. Case closed.
+  <match run.accused == run.trueKiller>   -> arm 1 ((run.accused == run.trueKiller))
+    @detective  Booked. The file can finally rest.
+  <match run.accused != run.trueKiller>   -> otherwise
+  <match run.accused != run.trueKiller>   -> otherwise
+trace complete: 5 decisions; choices 1/3 (accuse), arms 1/2 (run.accused != run.trueKiller), arms 1/2 (run.accused == run.trueKiller)
+```
+
+Accuse the **wrong** suspect → the failure ending. Same document, same seeded truth, one different
+forced choice:
 
 ```sh
 cargo run -q -p lute-cli -- trace docs/examples/investigation/scenes/confrontation.lute \
   --mock docs/examples/investigation/mocks/accuse-wrongly.yaml
 ```
 
-Both traces exit `0` (a complete walk) and reach visibly **different** endings —
-the same document, two forced choices. See the [tracing guide](/tooling/tracing/)
-for every mock surface.
+```
+  <branch accuse>   eligible: accuseBlake, accuseCass, accuseDana   -> accuseCass
+    @detective  Cass. You balanced these books in blood.
+    ::set  run.accused = cass  (into sugar)
+  ## Shot 2.
+  <match run.accused == run.trueKiller>   -> otherwise
+  <match run.accused == run.trueKiller>   -> otherwise
+  <match run.accused != run.trueKiller>   -> arm 1 ((run.accused != run.trueKiller))
+    @narrator  The wrong suspect walks free. Somewhere, the real one exhales.
+  <match run.accused != run.trueKiller>   -> arm 1 ((run.accused != run.trueKiller))
+    @detective  I got it wrong. The file stays open.
+```
+
+(Second transcript trimmed to the point of divergence.) Both traces exit `0` — a complete walk —
+and the `note:` is the explicit-world model showing its work: `trace` will not silently load the
+schema's seed facts for you, so a fact-gated line needs `--fact`. See the
+[tracing guide](/tooling/tracing/) for every mock surface.
 
 ## 11. Compile
 
@@ -297,7 +337,7 @@ cargo run -q -p lute-cli -- compile docs/examples/investigation/scenes/crime-sce
   --project docs/examples/investigation -o /tmp/crime-scene.json
 ```
 
-Exit `0`; the artifact is stamped `"lute": "0.7.0"` / `"irVersion": "0.7.0"`.
+Exit `0`; the artifact is stamped `"lute": "0.8.0"` / `"irVersion": "0.8.0"`.
 Every document in the project compiles. That artifact — not the source — is what
 an engine plays through the [runtime contract](/tooling/runtime-contract/).
 

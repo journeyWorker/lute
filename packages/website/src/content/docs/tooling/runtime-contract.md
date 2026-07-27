@@ -1,6 +1,6 @@
 ---
 title: Runtime contract
-description: What a game engine must implement to run a compiled Lute artifact — the envelope and version-negotiation policy, the dispatcher loop over command kinds, and the split between what Lute proves and what the engine executes.
+description: What a game engine must implement to run a compiled Lute artifact — the envelope, version negotiation and the IR 0.8.0 delta, the addr width invariant, and the dispatcher loop over the twenty-one command kinds.
 ---
 
 Lute is a total, side-effect-free compiler. `lute compile <file>` checks a
@@ -48,6 +48,7 @@ Every artifact opens with a fixed envelope (the `Artifact` struct in
 | `entities` / `enums` / `relations` / `seedFacts` / `rules` | the relational vocabulary (omitted when empty). |
 | `commands` | the flat, ordered, addressed command stream. |
 | `prereqEdges` | advisory raw `after` prerequisite edges (omitted when empty). |
+| `shots` | authored `## ` shot headings, `{shot, heading}` (omitted when empty). |
 
 One artifact is produced per document. A project's engine **unions** the
 `relations` / `rules` / `seedFacts` / `entities` / `enums` / `prereqEdges`
@@ -65,13 +66,56 @@ Gate on `irVersion` by **major.minor**:
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
 
+### What IR 0.8.0 changed
+
+The schema file was renamed `schemas/lute-ir-0.7.schema.json` →
+`schemas/lute-ir-0.8.schema.json` along with the minor bump. Three deltas
+matter to a consumer:
+
+- **`end` is a new command `kind`.** By the unknown-kind rule above, an engine
+  implementing only IR 0.7 **must refuse** an artifact carrying one — it cannot
+  fall through the record, because `end` terminates the walk and falling
+  through would play content the author marked unreachable. This is why
+  termination is a core kind rather than a plugin directive: a plugin directive
+  lowers to `kind: "plugin"`, which an older engine would happily skip.
+- **`shots` and the locale maps are append-only optional fields**, so by the
+  ignore-unknown-fields rule a 0.7 engine still loads a 0.8 artifact that
+  carries no `end` record.
+- **The `addr` width invariant is new**, and it is the one change that can
+  alter bytes in an artifact you already consume. See below.
+
+## Addressing
+
+Every executable record carries an `addr`, a position string
+`"{shot}-{(index + 1) * 100}"` (e.g. `"001-0300"`). It is **regenerated on
+every compile** — a position, not an identity. The stable content joins are
+`lineId` / `voiceKey`.
+
+Both segments are zero-padded to a width computed from the document — at least
+`3` for the shot and `4` for the index, wider when the document needs it — and
+that width is **uniform across the whole artifact**. The guarantee that follows
+is the one you can rely on:
+
+> Within one artifact, every emitted `addr` has the same length; therefore
+> **lexicographic order over `addr` equals execution order.**
+
+A document whose every shot emits fewer than 100 addresses, with fewer than
+1000 shots, is byte-identical to what 0.7.0 produced — the widths only grow
+past their minimums when the artifact actually needs them.
+
+**If you may load artifacts built by a 0.7-or-earlier toolchain, compare `addr`
+segment-wise numerically, never as a plain string.** Before 0.8.0 the index
+segment was fixed at 4 digits, so a shot with 100+ records emitted `001-11500`
+beside `001-1400` and string comparison reported `"001-11500" < "001-1400"` —
+an engine ordering or range-checking addresses lexicographically would rewind
+into already-played content.
+
 ## The dispatcher
 
-The `commands` array is already in execution order. Each record carries an
-`addr` (a regenerated position string); control-flow fields — `jump.target`,
-choice/hub option `target` and `converge`, match arm `target`/`otherwise`/
-`converge` — are all addrs. Walk with a program counter over an `addr → index`
-map, dispatching on `kind`:
+The `commands` array is already in execution order. Control-flow fields —
+`jump.target`, choice/hub option `target` and `converge`, match arm
+`target`/`otherwise`/`converge` — are all [addrs](#addressing). Walk with a
+program counter over an `addr → index` map, dispatching on `kind`:
 
 ```ts
 const index = new Map(artifact.commands.map((c, i) => [c.addr, i]));
@@ -103,6 +147,7 @@ while (pc < artifact.commands.length) {
       next = arm ? arm.target : (cmd.otherwise ?? cmd.converge); break;
     }
     case "jump":    next = cmd.target; break;
+    case "end":     finish(cmd.reason); return;  // terminates the walk
     case "barrier": joinTimeline(cmd.timeline, cmd.at); break;
 
     // quest declarations & plugin bridges
@@ -117,9 +162,40 @@ while (pc < artifact.commands.length) {
 }
 ```
 
-The full command set is twenty kinds: `line`, `background`, `music`, `sfx`,
+The full command set is twenty-one kinds: `line`, `background`, `music`, `sfx`,
 `vfx`, `sprite`, `camera`, `cut`, `video`, `set`, `assert`, `retract`,
-`choice`, `match`, `hub`, `jump`, `barrier`, `quest`, `on`, `plugin`.
+`choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`, `plugin`.
+
+`end` carries an optional free-form `reason` — an author string
+(`"completed"`, an ending id) Lute assigns no meaning to and the host MAY
+surface. Terminating on it is identical to running off the end of `commands`,
+except the reason is available.
+
+## Localized text
+
+A `line` record's `text` and a choice/hub option's `label` are always the
+**source language** (`contentLang`). When the artifact was built with
+[`lute compile --locales`](/tooling/cli/#--locales--merge-a-translation-bundle),
+the record also carries a `texts` map (option: `labels`), locale tag →
+translated string, keyed on the record's `lineId`:
+
+```json
+{
+  "kind": "line",
+  "addr": "001-0100",
+  "role": "narration",
+  "speaker": "narrator",
+  "text": "Welcome to your new Lute project.",
+  "lineId": "narrator.s01ep01.narrator_0010",
+  "texts": { "ja-JP": "Lute プロジェクトへようこそ。" }
+}
+```
+
+Both maps are omitted when empty, so an artifact compiled without `--locales`
+is byte-identical to before, and a consumer that ignores them keeps rendering
+the source language. Present a locale by looking it up in `texts` and falling
+back to `text` — the compiler warns at build time (`W-L10N-MISSING`) about
+exactly those gaps, so a complete bundle leaves nothing to fall back to.
 
 ## The runtime docs
 
