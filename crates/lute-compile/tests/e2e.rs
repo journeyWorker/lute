@@ -63,22 +63,35 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
     let mut sorted = addrs.clone();
     sorted.sort();
     assert_eq!(sorted, addrs, "addrs strictly ascending");
+    // 0.8.0 (§4.2, adoption G2): ONE addr width per ARTIFACT. This is what
+    // makes the ascending assertion above a real ordering guarantee instead
+    // of an accident of every shot holding <100 records — a 5-digit index
+    // beside 4-digit siblings sorts `001-10000` before `001-1100`.
+    let widths: BTreeSet<usize> = addrs.iter().map(|a| a.len()).collect();
+    assert!(
+        widths.len() <= 1,
+        "every addr in one artifact shares a width, got {widths:?}"
+    );
 
     // Valid control-flow destinations = every real record addr PLUS each shot's
-    // one-past-end converge slot. Addressing (§5.6) assigns record `i` the addr
-    // `{shot:03}-{(i+1)*100:04}` and the end-of-shot converge one slot past the
-    // last record, i.e. `max idx in shot + 100`. A dangling addr resolves to
-    // neither and must fail.
+    // one-past-end converge slot. Addressing (§5.6) assigns record `i` the
+    // addr `{shot}-{(i+1)*100}` at the artifact's uniform width, and the
+    // end-of-shot converge one slot past the last record, i.e.
+    // `max idx in shot + 100`. A dangling addr resolves to neither and must
+    // fail.
     let mut valid: BTreeSet<String> = addrs.iter().map(|a| a.to_string()).collect();
-    let mut shot_max: BTreeMap<&str, u32> = BTreeMap::new();
+    // Width is read off the addrs rather than hardcoded, so the converge slot
+    // is reconstructed correctly for a wide artifact too.
+    let mut shot_max: BTreeMap<&str, (u32, usize)> = BTreeMap::new();
     for a in &addrs {
         let (shot, idx) = a.rsplit_once('-').expect("addr shaped `shot-idx`");
+        let width = idx.len();
         let idx: u32 = idx.parse().expect("addr idx is numeric");
-        let slot = shot_max.entry(shot).or_insert(0);
-        *slot = (*slot).max(idx);
+        let slot = shot_max.entry(shot).or_insert((0, width));
+        slot.0 = slot.0.max(idx);
     }
-    for (shot, max) in &shot_max {
-        valid.insert(format!("{shot}-{:04}", max + 100));
+    for (shot, (max, width)) in &shot_max {
+        valid.insert(format!("{shot}-{:0width$}", max + 100, width = width));
     }
 
     for c in commands {

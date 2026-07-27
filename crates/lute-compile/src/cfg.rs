@@ -11,7 +11,7 @@ pub struct Label(pub u32);
 
 impl Label {
     /// Symbolic target text: `"@<n>"` — cannot collide with a real addr
-    /// (`"{shot:03}-{idx:04}"`).
+    /// (digits and `-` only, whatever width `address::addr_of` picked).
     pub fn sym(self) -> String {
         format!("@{}", self.0)
     }
