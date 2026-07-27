@@ -295,7 +295,7 @@ fn parse_rule_atom(c: &mut Cur) -> Result<RuleAtom, DatalogError> {
         at: c.i,
         msg: "expected relation name".to_string(),
     })?;
-    let terms = parse_arg_list(c, |c| parse_rule_term(c))?;
+    let terms = parse_arg_list(c, parse_rule_term)?;
     Ok(RuleAtom { relation, relation_span, terms, span: (atom_start, c.i) })
 }
 
@@ -386,7 +386,7 @@ fn parse_body_literal(c: &mut Cur) -> Result<BodyLiteral, DatalogError> {
 
     c.ws();
     if c.peek() == Some(b'(') {
-        let terms = parse_arg_list(c, |c| parse_rule_term(c))?;
+        let terms = parse_arg_list(c, parse_rule_term)?;
         let relation_span = (at, at + name.len());
         return Ok(BodyLiteral::Pos(RuleAtom {
             relation: name,

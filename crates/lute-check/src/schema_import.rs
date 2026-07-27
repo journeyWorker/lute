@@ -684,7 +684,7 @@ fn read_and_parse(
 
 /// Report `E-USES-DUP-*`/`E-KIND-NAME-CLASH` for every depth level at which
 /// >= 2 DISTINCT files declare `name`. Deterministic: levels ascend, and the
-/// two named files are the byte-sorted-first pair.
+/// > two named files are the byte-sorted-first pair.
 fn emit_level_dups<T>(
     code: &str,
     noun: &str,
