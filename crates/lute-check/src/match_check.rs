@@ -70,7 +70,10 @@ use lute_syntax::ast::{
     Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node, Quest,
 };
 
-use crate::cel_paths::{is_reserved_quest_objective_done, is_reserved_quest_path, E_PATH_IDENT};
+use crate::cel_paths::{
+    is_reserved_quest_activated_at, is_reserved_quest_objective_done, is_reserved_quest_path,
+    E_PATH_IDENT,
+};
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
 
@@ -612,18 +615,35 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
     let mut decls: Vec<(String, StateDecl)> = if id.is_empty() {
         Vec::new()
     } else {
-        vec![(
-            format!("quest.{id}.state"),
-            StateDecl {
-                ty: Type::Enum(vec![
-                    "active".to_string(),
-                    "complete".to_string(),
-                    "failed".to_string(),
-                ]),
-                default: None,
-                namespace: Namespace::Quest,
-            },
-        )]
+        vec![
+            (
+                format!("quest.{id}.state"),
+                StateDecl {
+                    ty: Type::Enum(vec![
+                        "active".to_string(),
+                        "complete".to_string(),
+                        "failed".to_string(),
+                    ]),
+                    default: None,
+                    namespace: Namespace::Quest,
+                },
+            ),
+            // dsl 0.8.0 §5: the quest-instance activation instant — the
+            // author-readable `t` `validAt(rel, t)` never had. Engine-
+            // populated at the `unset → active` transition, so `default:
+            // None` exactly like `quest.<id>.state`; narrative time is
+            // OPAQUE (no literal inhabits `Type::NarrativeTime`), so it is
+            // never author-declarable (`E-QUEST-RESERVED-DECL`) nor
+            // author-writable (`E-QUEST-RESERVED-WRITE`).
+            (
+                format!("quest.{id}.activatedAt"),
+                StateDecl {
+                    ty: Type::NarrativeTime,
+                    default: None,
+                    namespace: Namespace::Quest,
+                },
+            ),
+        ]
     };
 
     let mut objective_ids: BTreeSet<&str> = BTreeSet::new();
@@ -955,6 +975,19 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
                     ]),
                     // `check_quest` seeds this decl with `default: Some(false)`.
                     maybe_unset: false,
+                    resolved: true,
+                }
+            } else if is_reserved_quest_activated_at(path) {
+                // dsl 0.8.0 §5: narrative time is OPAQUE — no enumerable
+                // domain, so `Domain::Infinite` exactly as `infer_domain`'s
+                // `Some(decl)` arm computes for the LOCALLY folded
+                // `Type::NarrativeTime` decl (`_ => Domain::Infinite`).
+                // `resolved: true` (the path IS declared, its domain simply
+                // is not finite) and `maybe_unset: true` (`default: None` in
+                // `Namespace::Quest`) mirror that arm's verdict too.
+                DomainInfo {
+                    domain: Domain::Infinite,
+                    maybe_unset: true,
                     resolved: true,
                 }
             } else if is_reserved_quest_path(path) {
@@ -2454,9 +2487,9 @@ mod tests {
         );
         assert_eq!(
             paths,
-            vec!["quest.q.state", "quest.q.objectives.o2.done"],
-            "the quest's own state decl and the well-formed objective's done decl \
-             still fold; only the id-less objective's decl is skipped"
+            vec!["quest.q.state", "quest.q.activatedAt", "quest.q.objectives.o2.done"],
+            "the quest's own state + activatedAt decls and the well-formed objective's \
+             done decl still fold; only the id-less objective's decl is skipped"
         );
     }
 

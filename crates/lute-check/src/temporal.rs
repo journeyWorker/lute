@@ -77,11 +77,22 @@ pub fn check_temporal(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Ve
 
 /// `true` when `expr` produces a narrative-time value (dsl 0.3.0 §6): a bare
 /// `now()` call, or a pure `Ident`/`Select` state-path chain
-/// ([`crate::cel_paths::select_path`]) whose declared type
-/// ([`crate::set_op::resolve_type`]) is [`Type::NarrativeTime`]. Purely
-/// syntactic/type-driven — an unresolvable (undeclared) path is never NT, so
-/// it stays whatever else the checker independently flags it as (plain
-/// `E-UNDECLARED`, dsl 0.3.0 D11's reuse note).
+/// ([`crate::cel_paths::select_path`]) that is either the reserved
+/// `quest.<id>.activatedAt` anchor (dsl 0.8.0 §5) or whose declared type
+/// ([`crate::set_op::resolve_type`]) is [`Type::NarrativeTime`].
+///
+/// The reserved-shape test comes FIRST and is independent of the folded
+/// schema, mirroring `cel_resolve::is_declared`/`defassign::is_declared`: a
+/// reserved quest path is implicitly declared UNCONDITIONALLY, so reading a
+/// FOREIGN quest's anchor (no local `<quest id>` fold, hence no
+/// `resolve_type` hit) must classify as narrative time exactly as a local
+/// one does — otherwise `validAt(rel(a), quest.foo.activatedAt)` would be
+/// `E-TEMPORAL-ARG` purely because the quest lives in another document.
+///
+/// Otherwise purely syntactic/type-driven — an unresolvable (undeclared,
+/// non-reserved) path is never NT, so it stays whatever else the checker
+/// independently flags it as (plain `E-UNDECLARED`, dsl 0.3.0 D11's reuse
+/// note).
 fn is_nt(expr: &Expr, ctx: &Ctx<'_>) -> bool {
     if let Expr::Call(c) = expr {
         if c.func_name == "now" && c.target.is_none() && c.args.is_empty() {
@@ -89,10 +100,13 @@ fn is_nt(expr: &Expr, ctx: &Ctx<'_>) -> bool {
         }
     }
     match crate::cel_paths::select_path(expr) {
-        Some(path) => matches!(
-            crate::set_op::resolve_type(&path, &ctx.env.state),
-            Some(Type::NarrativeTime)
-        ),
+        Some(path) => {
+            crate::cel_paths::is_reserved_quest_activated_at(&path)
+                || matches!(
+                    crate::set_op::resolve_type(&path, &ctx.env.state),
+                    Some(Type::NarrativeTime)
+                )
+        }
         None => false,
     }
 }
