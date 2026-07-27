@@ -57,7 +57,7 @@ ok: my-scene.lute (0 warning(s))
 Clean — but the file has no content yet. Try adding a line of narration directly under the
 frontmatter:
 
-```
+```lute
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 ```
 

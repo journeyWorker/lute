@@ -55,7 +55,7 @@ ok: my-scene.lute (0 warning(s))
 깔끔합니다 — 하지만 파일에는 아직 내용이 없습니다. 프런트매터 바로 아래에 내레이션 한 줄을
 추가해 보세요:
 
-```
+```lute
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 ```
 
