@@ -1,0 +1,109 @@
+{
+  "kind": "scene",
+  "lute": "0.8.0",
+  "irVersion": "0.8.0",
+  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
+  "meta": {
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "End Reason"
+  },
+  "state": [
+    {
+      "path": "scene.choices.parting",
+      "type": "enum",
+      "domain": [
+        "stay",
+        "leave",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:parting"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The road ends at the river.",
+      "lineId": "hero.s01ep01.narrator_0010"
+    },
+    {
+      "kind": "choice",
+      "addr": "001-0200",
+      "branchId": "parting",
+      "recordKey": "scene.choices.parting",
+      "options": [
+        {
+          "id": "stay",
+          "label": "Hold the crossing",
+          "lineId": "hero.s01ep01.parting.stay",
+          "target": "001-0300"
+        },
+        {
+          "id": "leave",
+          "label": "Walk away",
+          "lineId": "hero.s01ep01.parting.leave",
+          "target": "001-0600"
+        }
+      ],
+      "converge": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "I'll hold the crossing.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero-0010"
+    },
+    {
+      "kind": "end",
+      "addr": "001-0400",
+      "reason": "stayed"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0500",
+      "target": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0600",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "There's nothing left here.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero-0020"
+    },
+    {
+      "kind": "end",
+      "addr": "001-0700",
+      "reason": "left"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0800",
+      "target": "001-0900"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0900",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Never reached — both arms terminate the walk.",
+      "lineId": "hero.s01ep01.narrator_0020"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "The Parting"
+    }
+  ]
+}

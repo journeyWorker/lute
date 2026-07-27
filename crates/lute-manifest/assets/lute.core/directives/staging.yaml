@@ -59,3 +59,8 @@ directives:
       - { name: delay, type: number }
       - { name: wait, type: bool, default: false }
     lower: { kind: builtin, name: cameraTransform }
+  - name: end
+    attrs:
+      - { name: reason, required: false, type: string }
+    semantics: [ "terminatesWalk" ]
+    lower: { kind: builtin, name: end }

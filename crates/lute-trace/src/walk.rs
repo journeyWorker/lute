@@ -50,15 +50,21 @@ use crate::mock::{self, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
 use crate::report::{self, ComponentBoundary, Coverage, CoverageCount, Decision, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry};
 use crate::value::{UnresolvedAtom, Value};
 
-/// Walk control flow: `Continue` past this node/construct; `Incomplete`
+/// Walk control flow: `Continue` past this node/construct; `Ended` is the
+/// dsl 0.8.0 `::end` terminator — the walk is OVER, but COMPLETELY so (§4.5
+/// exit 0, exactly like running out of nodes, never exit 3); `Incomplete`
 /// propagates all the way up to [`trace_document`] as an `unknown` guard
 /// that HALTED the walk (§4.4, exit 3); `Refused` propagates a walk-time
 /// `E-TRACE-CHOICE` (a forced choice ineligible at its presentation point,
 /// §4.4, exit 1). Every `walk_*` function returns this and every caller
 /// stops immediately on a non-`Continue` value — the walk truly halts, it
-/// never merely skips the offending construct.
+/// never merely skips the offending construct. `Ended` therefore needs no
+/// per-caller plumbing: it rides the SAME `!matches!(flow, Flow::Continue)`
+/// propagation every other halting value uses, and only the exit-code match
+/// at the bottom of this file distinguishes it.
 enum Flow {
     Continue,
+    Ended,
     Incomplete,
     Refused(Vec<Diagnostic>),
 }
@@ -246,7 +252,7 @@ fn literal_matches(lit: &str, v: &Value) -> bool {
 /// matches it either way.
 fn eval_is_pattern(pat: &IsPattern, subject_raw: &str, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
     let alts: Vec<&str> = pat.raw.split('|').map(str::trim).collect();
-    let wants_unset = alts.iter().any(|a| *a == "unset");
+    let wants_unset = alts.contains(&"unset");
     let subject_path = slot_expr(subject_raw).and_then(|e| expr_path(&e));
     if let Some(path) = &subject_path {
         match env.state.read(path) {
@@ -423,7 +429,13 @@ fn walk_line(l: &Line, w: &mut Walk<'_>) {
     w.steps.push(Step::Line { speaker: l.speaker.clone(), text });
 }
 
-fn walk_directive(d: &Directive, w: &mut Walk<'_>) {
+/// A leaf `::directive`: recorded as a [`Step::Directive`], then `Continue` —
+/// EXCEPT `::end` (dsl 0.8.0), which is recorded the same way and then
+/// terminates the walk. `::end` is UNCONDITIONAL: there is no guard to
+/// evaluate, so no K3 outcome is involved and nothing here can read
+/// `unknown` — the record is emitted and the walk stops, exactly as if the
+/// document had run out of nodes.
+fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
     let boundary = if d.tag == lute_compile::normalize::COMPONENT_BEGIN {
         Some(ComponentBoundary::Begin)
     } else if d.tag == lute_compile::normalize::COMPONENT_END {
@@ -432,6 +444,11 @@ fn walk_directive(d: &Directive, w: &mut Walk<'_>) {
         None
     };
     w.steps.push(Step::Directive { tag: d.tag.clone(), component_boundary: boundary });
+    if d.tag == lute_manifest::core::END_DIRECTIVE {
+        Flow::Ended
+    } else {
+        Flow::Continue
+    }
 }
 
 fn combine_numeric(op: &str, a: Value, b: Value) -> Value {
@@ -750,10 +767,7 @@ fn walk_node(node: &Node, w: &mut Walk<'_>, sugar_ctx: Option<&Choice>) -> Flow 
             walk_line(l, w);
             Flow::Continue
         }
-        Node::Directive(d) => {
-            walk_directive(d, w);
-            Flow::Continue
-        }
+        Node::Directive(d) => walk_directive(d, w),
         Node::Set(s) => {
             walk_set(s, w, sugar_ctx);
             Flow::Continue
@@ -1556,9 +1570,15 @@ pub fn trace_with_check(
     // unlike an unknown `<match>` guard) — so `Incomplete` is driven by
     // EITHER signal, matching §4.5's exit-3 contract for both halted and
     // merely-unresolved-but-otherwise-complete walks.
+    //
+    // `Ended` (dsl 0.8.0 `::end`) rides the `Continue` arms verbatim: an
+    // author-declared terminator is a COMPLETE walk, not a halted one — the
+    // only thing it changes is that the nodes after it were never visited.
+    // An unresolved atom recorded BEFORE the terminator still downgrades it
+    // to exit 3, exactly as it would for a walk that ran to the last node.
     let exit = match flow {
-        Flow::Continue if report.unresolved.is_empty() => TraceExit::Complete,
-        Flow::Continue | Flow::Incomplete => TraceExit::Incomplete,
+        Flow::Continue | Flow::Ended if report.unresolved.is_empty() => TraceExit::Complete,
+        Flow::Continue | Flow::Ended | Flow::Incomplete => TraceExit::Incomplete,
         Flow::Refused(ds) => TraceExit::Refused(ds),
     };
     (report, exit)

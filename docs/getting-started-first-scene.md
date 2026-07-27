@@ -245,7 +245,7 @@ $ ./target/debug/lute compile my-scene.lute
   "kind": "scene",
   "lute": "0.7.0",
   "irVersion": "0.7.0",
-  "capabilityVersion": "b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d",
+  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
   "meta": {
     "character": "mira",
     "season": 1,
@@ -540,7 +540,7 @@ it:
 
 ```
 $ ./target/debug/lute context my-scene.lute
-capabilityVersion: b5187e53c769059a2413754ad831064a0383b51f79a4fbed268f2b484361f29d
+capabilityVersion: 78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3
 directives (8):
   auto: character, anchor, action
   bg: location, time, assetId

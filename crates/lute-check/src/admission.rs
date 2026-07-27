@@ -314,7 +314,10 @@ fn context_reason(doc: DocKind, ctx: GrammarContext) -> &'static str {
     }
 }
 
-fn node_span(node: &Node) -> Span {
+/// The span a [`Node`] anchors a diagnostic at. `pub(crate)`: the §5.2
+/// reachability pass reuses it verbatim for `W-CODE-AFTER-END` so both
+/// point at the same byte range for the same node.
+pub(crate) fn node_span(node: &Node) -> Span {
     match node {
         Node::Line(l) => l.span,
         Node::Directive(d) => d.span,

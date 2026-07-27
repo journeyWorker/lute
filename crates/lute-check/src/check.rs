@@ -829,9 +829,9 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(line_code_diags);
     // 6c. Connectivity layer (T2, dsl connectivity spec §2.1/§5): a scene's
     // `after:` frontmatter and each quest's `after` attribute share the SAME
-    // restricted `visited()`/`completed()` formula grammar T1's `prereq`
-    // module defines. `check()` (single-file) validates ONLY that local
-    // grammar here — it has no project graph to resolve `visited`/`completed`
+    // restricted `visited()`/`completed()`/`active()` formula grammar T1's
+    // `prereq` module defines. `check()` (single-file) validates ONLY that
+    // local grammar here — it has no project graph to resolve the atoms'
     // targets against, so node existence is deferred to `check-project`
     // (Task 3+).
     //
@@ -1160,6 +1160,29 @@ impl Walker<'_> {
                                 ClipNode::Directive(d) if d.tag == "use" => {
                                     check_use(d, self.components, ctx, &mut self.diags);
                                     self.check_attr_refs(&d.attrs, ctx, None);
+                                }
+                                // dsl 0.8.0: `::end` is a walk TERMINATOR, not
+                                // a staging leaf — a `<track>` clip may hold
+                                // only staging directives and `::set` (§7.4).
+                                // The parser's own `E-TIMELINE-CONTENT` guard
+                                // can't see this: a track clip is grammatically
+                                // any `::name{…}`, and the D9 precedent
+                                // (`::assert` in a `<track>` falls through to
+                                // `E-UNKNOWN-DIRECTIVE`) only bites because
+                                // `assert` is not a DECLARED directive. `::end`
+                                // IS declared, so it needs this explicit arm —
+                                // reusing §7.4's own code rather than minting a
+                                // second "not admitted here" diagnostic.
+                                ClipNode::Directive(d)
+                                    if d.tag == lute_manifest::core::END_DIRECTIVE =>
+                                {
+                                    self.diags.push(timeline_content_diag(
+                                        "`::end` terminates the walk and is not a staging leaf; \
+                                         a <track> body may contain only staging directives and \
+                                         ::set (dsl §7.4)"
+                                            .to_string(),
+                                        d.span,
+                                    ));
                                 }
                                 ClipNode::Directive(d) => {
                                     self.diags.extend(check_directive(
@@ -1513,6 +1536,24 @@ fn use_diag(code: &str, message: String, span: Span) -> Diagnostic {
         message,
         span,
         layer: Layer::Staging,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// Build the §7.4 `E-TIMELINE-CONTENT` diagnostic for a `<track>` clip the
+/// PARSER admitted but the checker rejects — same code, severity, and layer
+/// `lute_syntax`'s own guard emits (`parser::emit_o`), so a track violation
+/// reads identically whichever layer caught it.
+fn timeline_content_diag(message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: lute_syntax::parser::E_TIMELINE_CONTENT.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Logic,
         fixits: Vec::new(),
         provenance: None,
         covered: Vec::new(),
