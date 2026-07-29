@@ -946,14 +946,13 @@ its `exit*` arm matched nothing repo-wide."
 ```
 
 ---
-
 ### Task 4: Empty the core's vocabulary
 
 **Files:**
 - Modify: `crates/lute-manifest/assets/lute.core/enums.yaml`
 - Modify: `crates/lute-manifest/assets/lute.core/directives/staging.yaml:12, 28`
 - Modify: `tree-sitter-lute/tree-sitter.json`, `tree-sitter-lute/package.json` (re-stamp `metadata.capabilityVersion`)
-- Re-record (capabilityVersion line ONLY): the 8 `crates/lute-compile/tests/snapshots/e2e__*.snap` that pin a stamp
+- Do NOT touch: `crates/lute-compile/tests/snapshots/e2e__*.snap` — eight embed a stamp, but their `docs/examples` inputs are not vocabulary-complete until Task 8, which owns those re-records
 - Test: `crates/lute-manifest/src/core.rs` (inline `mod tests`)
 
 **Interfaces:**
@@ -1024,21 +1023,20 @@ In `crates/lute-manifest/assets/lute.core/directives/staging.yaml`:
 Run: `cargo test -p lute-manifest 2>&1 | tail -30`
 Expected: PASS.
 
-- [ ] **Step 5: Re-stamp `capabilityVersion` and re-record the stamp-bearing snapshots**
+- [ ] **Step 5: Re-stamp the tree-sitter `capabilityVersion`**
 
-This step is **expected churn, not a regression.** `capability_version` (`crates/lute-manifest/src/snapshot.rs:142`) folds `snap.enums` and the directive/attr declarations, so emptying the core's six enums and retyping two attrs necessarily changes the hash. Two guards fire:
+This is **expected churn, not a regression.** `capability_version` (`crates/lute-manifest/src/snapshot.rs:142`) folds `snap.enums` and the directive/attr declarations, so emptying the core's six enums and retyping two attrs necessarily changes the hash.
 
-1. `crates/lute-manifest/tests/tree_sitter_stamp.rs` asserts `metadata.capabilityVersion` in **both** `tree-sitter-lute/tree-sitter.json` and `tree-sitter-lute/package.json` equals the core snapshot's version. Read the new value from the test's own failure message (it prints both sides) and write it into both files.
-2. Eight `crates/lute-compile/tests/snapshots/e2e__*.snap` embed a stamp: `components_scene`, `gated_line`, `quest_rescue_halsin`, `affinity_reaction`, `bianca_s01ep02`, `connected_quest`, `quest_grove`, `showcase_episode01`. (`showcase_episode01` carries a *different* hash from the other seven because it folds project domains; it changes too.)
+`crates/lute-manifest/tests/tree_sitter_stamp.rs` asserts `metadata.capabilityVersion` in **both** `tree-sitter-lute/tree-sitter.json` and `tree-sitter-lute/package.json` equals the core snapshot's version. Read the new value from the test's own failure message (it prints both sides) and write it into both files. Re-stamping on a capability-surface change is established practice here; the 0.2.2 work did the same.
 
-Re-record with `cargo insta review` (or `INSTA_UPDATE=always cargo test -p lute-compile`), then **inspect every diff and confirm each one changes the `capabilityVersion` line and nothing else.** A stamp-only delta is behavior-preserving; any other line means a real regression — stop and report it instead of blessing it. State in your report, per snapshot, that the delta was stamp-only.
+**Do NOT re-record the `e2e__*.snap` goldens in this task.** Eight of them embed a stamp (`components_scene`, `gated_line`, `quest_rescue_halsin`, `affinity_reaction`, `bianca_s01ep02`, `connected_quest`, `quest_grove`, `showcase_episode01`), but their inputs live in `docs/examples`, which does not declare a vocabulary until Task 8. The vocabulary-using ones therefore **panic inside `golden()` at `compile(&input)` before `insta::assert_snapshot!` is ever reached**, so `INSTA_UPDATE` cannot produce a delta for them at all. Task 8 owns those re-records, after the examples are vocabulary-complete. Expect these eight to FAIL from here until Task 8, and say so in your commit body.
 
-This is the established practice on this repo for a capability-surface change; the 0.2.2 work did exactly the same re-stamp plus four snapshot re-accepts.
+(For the record, `showcase_episode01` carries a different hash from the other seven not because it folds project domains — `capability_version` does not hash `snap.domains`, and `e2e::input_for` keeps schema imports out of the `CapabilitySnapshot` — but because `resolve_document_snapshot` activates the `showcase.pack` plugin and hashes that plugin's capability surface.)
 
 - [ ] **Step 6: Run the dependent suites**
 
-Run: `cargo test -p lute-check -p lute-compile 2>&1 | tail -40`
-Expected: PASS with **no snapshot delta beyond the eight stamp-only ones from Step 5** — Task 2 already gave every vocabulary-using fixture its own declaration. **A failure naming a missing member is a fixture Task 2 missed: add it to `crates/lute-test-vocab`, never restore a core member.**
+Run: `cargo test -p lute-check -p lute-compile --no-fail-fast 2>&1 | tail -40`
+Expected: `lute-check` fully green. In `lute-compile`, the ONLY acceptable failures are the eight stamp-bearing `e2e__*` goldens explained in Step 5, whose `docs/examples` inputs have no vocabulary until Task 8 — list them by name in your report. **No snapshot file may be re-recorded in this task.** Task 2 already gave every vocabulary-using unit fixture its own declaration, so a failure naming a missing member elsewhere is a fixture Task 2 missed: add it to `crates/lute-test-vocab`, never restore a core member.
 
 - [ ] **Step 7: Verify conformance is untouched**
 
@@ -1051,7 +1049,7 @@ Expected: any failures are `docs/examples`-driven only; no conformance fixture c
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/lute-manifest crates/lute-compile/tests/snapshots tree-sitter-lute
+git add crates/lute-manifest tree-sitter-lute
 git commit -m "feat(manifest)!: the core ships no vocabulary members
 
 assets/lute.core/enums.yaml is now empty. The seven domain names survive only
@@ -1471,6 +1469,26 @@ Its two content-line `action="sway"`/`action="lean"` usages (`:162`, `:165`) are
 `docs/plugin-system.md` — its data↔code boundary list already cites `emotion="smug"` as registrable data (`:57`); add that as of 0.9.0 this is actually achievable, and that the core ships no members.
 
 `docs/adoption/oshiz-assessment.md:313` — the D1 row lists `emotion` among domains a project can declare, which was false when written. Correct it and note 0.9.0 makes it true.
+
+- [ ] **Step 6b: Re-record the eight stamp-bearing e2e goldens**
+
+Task 4 deliberately deferred these: emptying the core changed `capabilityVersion`, but the vocabulary-using `e2e__*` goldens **panicked inside `golden()` at `compile(&input)`** before `insta::assert_snapshot!` could run, because their `docs/examples` inputs had no vocabulary. Steps 1-3 just made those inputs vocabulary-complete, so now they can be re-recorded.
+
+The eight: `components_scene`, `gated_line`, `quest_rescue_halsin`, `affinity_reaction`, `bianca_s01ep02`, `connected_quest`, `quest_grove`, `showcase_episode01`.
+
+```bash
+INSTA_UPDATE=always cargo test -p lute-compile 2>&1 | tail -20
+cargo insta review     # or inspect `git diff` on the .snap files directly
+```
+
+**The expected delta is NOT stamp-only, and that is correct.** Two changes are legitimate here; anything else is a regression to stop and report:
+
+1. The `capabilityVersion` line, from emptying the core (Task 4).
+2. **A populated `enums` array.** The vocabulary now arrives as project schema `enums:`, `build_rel_vocab` copies `SchemaImports.rel.enums`, and `lute-compile`'s `rel_entries` serializes every entry into the artifact. Today's snapshots have no `enums` field at all because the vocabulary lived in the capability snapshot, which is not serialized per artifact. So each affected golden gains the seven declared vocabularies.
+
+This is an observable artifact-content change, not an IR-schema change: no field is added, renamed, or moved, and `irVersion` stays `0.8.0`. It is the honest consequence of the vocabulary becoming project-declared data — the artifact is now self-describing about the vocabulary it was compiled against. Record it in the commit body, and confirm per snapshot that its diff contains only these two kinds of line.
+
+Check whether `docs/runtime/` documents the artifact's `enums` array; if it describes it as empty or absent for core-only projects, correct that too.
 
 - [ ] **Step 7: Bump the language version**
 
