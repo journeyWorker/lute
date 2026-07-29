@@ -194,7 +194,7 @@ enums:
   sprite-affecting, but `pose` is absent from `KNOWN_ATTRS`, so `@x{pose="…"}` is `E-UNKNOWN-ATTR`
   and neither line is reachable. The stateful set becomes `emotion | variant | action |
   dialogMotion`.
-- **Two fictional `semantics` flags.** `SEMANTICS_VOCAB` (`validate.rs:4`) declares 11 flags and
+- **Two fictional `semantics` flags.** `SEMANTICS_VOCAB` (`validate.rs:4`) declares 12 flags and
   **zero are consumed** by the checker or compiler; `isStateful` and `cancelsPrevious` are attached
   to no directive and have no honest consumer even after this change. Remove them (plugin 0.0.3
   delta; no shipped plugin declares either). The remaining nine keep their current declarative
@@ -340,7 +340,7 @@ Steps 1–2 are independent; 3 depends on 1–2; 4 on 3; 5 on 4. Steps 6–8 fol
   `ui` 13, `love-lockdown-*` 60 alongside 7 of core's 8 directives), and none of those rows carries
   `character`/`anchor`, so none needs stage-rule participation.
 - **Driving reducer dispatch from `semantics` flags** (`clearsStage`, a `sceneSlot:` declaration,
-  wiring the nine surviving flags). `inject.rs` keeps matching `d.tag == "auto"|"bg"|"music"`. The
+  wiring the ten surviving flags). `inject.rs` keeps matching `d.tag == "auto"|"bg"|"music"`. The
   measured need is zero: no OSHiZ-side directive wants stage rules, and `mutatesScene` cannot drive
   it anyway (declared on both `::bg` and `::music`, `staging.yaml:7,16`, so branching on it would
   make `::music` clear the stage). Left as a separate, evidence-gated change.
