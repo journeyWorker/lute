@@ -1029,14 +1029,14 @@ This is **expected churn, not a regression.** `capability_version` (`crates/lute
 
 `crates/lute-manifest/tests/tree_sitter_stamp.rs` asserts `metadata.capabilityVersion` in **both** `tree-sitter-lute/tree-sitter.json` and `tree-sitter-lute/package.json` equals the core snapshot's version. Read the new value from the test's own failure message (it prints both sides) and write it into both files. Re-stamping on a capability-surface change is established practice here; the 0.2.2 work did the same.
 
-**Do NOT re-record the `e2e__*.snap` goldens in this task.** Eight of them embed a stamp (`components_scene`, `gated_line`, `quest_rescue_halsin`, `affinity_reaction`, `bianca_s01ep02`, `connected_quest`, `quest_grove`, `showcase_episode01`), but their inputs live in `docs/examples`, which does not declare a vocabulary until Task 8. The vocabulary-using ones therefore **panic inside `golden()` at `compile(&input)` before `insta::assert_snapshot!` is ever reached**, so `INSTA_UPDATE` cannot produce a delta for them at all. Task 8 owns those re-records, after the examples are vocabulary-complete. Expect these eight to FAIL from here until Task 8, and say so in your commit body.
+**Do NOT re-record the `e2e__*.snap` goldens in this task.** Nine `e2e` tests break: the eight that embed a stamp (`components_scene`, `gated_line`, `quest_rescue_halsin`, `affinity_reaction`, `bianca_s01ep02`, `connected_quest`, `quest_grove`, `showcase_episode01`) plus `plugin_record_carries_resolved_effects`, which reads `showcase`'s `stinger.component.lute`. Their inputs live in `docs/examples`, which declares no vocabulary until Task 8, so the vocabulary-using ones **panic inside `golden()` at `compile(&input)` before `insta::assert_snapshot!` is ever reached** — `INSTA_UPDATE` cannot produce a delta for them at all. Task 8 owns those re-records, after the examples are vocabulary-complete. Expect them to FAIL from here until Task 8, and say so in your commit body.
 
 (For the record, `showcase_episode01` carries a different hash from the other seven not because it folds project domains — `capability_version` does not hash `snap.domains`, and `e2e::input_for` keeps schema imports out of the `CapabilitySnapshot` — but because `resolve_document_snapshot` activates the `showcase.pack` plugin and hashes that plugin's capability surface.)
 
 - [ ] **Step 6: Run the dependent suites**
 
 Run: `cargo test -p lute-check -p lute-compile --no-fail-fast 2>&1 | tail -40`
-Expected: `lute-check` fully green. In `lute-compile`, the ONLY acceptable failures are the eight stamp-bearing `e2e__*` goldens explained in Step 5, whose `docs/examples` inputs have no vocabulary until Task 8 — list them by name in your report. **No snapshot file may be re-recorded in this task.** Task 2 already gave every vocabulary-using unit fixture its own declaration, so a failure naming a missing member elsewhere is a fixture Task 2 missed: add it to `crates/lute-test-vocab`, never restore a core member.
+Expected: `lute-check` fully green apart from its own `docs/examples`-driven suites (`examples_check.rs` ×3, `trace.rs` ×1). In `lute-compile`, the acceptable failures are the nine `e2e` tests from Step 5, `component_fold::existing_goldens_untouched`, and `compile.rs` ×3 — all `docs/examples`-driven. **No snapshot file may be re-recorded in this task.** Classify every failure you see against a named later task; Task 2 already gave every vocabulary-using unit fixture its own declaration, so a failure naming a missing member OUTSIDE the `docs/examples` set is a fixture Task 2 missed: add it to `crates/lute-test-vocab`, never restore a core member.
 
 - [ ] **Step 7: Verify conformance is untouched**
 
@@ -1434,17 +1434,32 @@ enums:
     exits: [fade-out, fade-out-down, fade-out-slow, hide]
 ```
 
-- [ ] **Step 2: Run check-project to find every example that cannot reach it**
+- [ ] **Step 2: Give `showcase` its vocabulary through its PLUGIN, not a schema**
 
-Run: `cargo run -q -p lute-cli -- check-project docs/examples 2>&1 | tail -40`
-Expected: remaining `E-DOMAIN-UNKNOWN` errors name documents whose `uses:` chain does not reach `base.schema.yaml`, and the four subproject roots (`idola-project`, `investigation`, `plugindef-project`, `showcase`) which resolve against their own `lute.project.yaml`.
+`docs/examples/showcase` is its own project root and its `showcase.pack` plugin already exports `directives/ state/ providers/ bridge/ assetkinds/ defs/` — but no `enums/`. That matters beyond tidiness: `crates/lute-cli/tests/cli.rs:373` (`context_surface_has_plugin_and_core_directives`) asserts the `context --json` `enums` object is non-empty, and that key is `snap.enums`, which `assemble.rs` populates **only** from a plugin's `enums` export. A project schema's `enums:` surfaces under the separate `projectEnums` key. So that assertion has been riding entirely on the core's six members and goes red permanently unless showcase's vocabulary comes from the plugin.
 
-For each, add `enums:` to that subproject's own schema file, or add `base.schema.yaml` to the document's `uses:`. Do **not** duplicate the block where a `uses:` edit suffices — `E-USES-DUP-*` will catch a double declaration.
+Add an `enums` export to `docs/examples/showcase/plugins/showcase.pack/` (a new `enums/` dir plus the `exports:` entry) carrying the vocabulary its scenes use. Do NOT retarget the test assertion to `projectEnums` — the assertion is about the capability surface, and post-0.9.0 a plugin enums export is exactly how an engine or vendor ships a genre vocabulary. Keep the assertion honest by making the flagship plugin example demonstrate that route.
 
-- [ ] **Step 3: Iterate until clean**
+The result is that each route is demonstrated once: **plugin export** in `showcase`, **project schema** in the top-level examples via `base.schema.yaml`. They are separate project roots, so there is no `E-DOMAIN-DUP` between them. Whichever route a subproject uses, do not declare the same name twice within one root.
 
-Run: `cargo run -q -p lute-cli -- check-project docs/examples`
-Expected: exit 0 (warnings allowed, matching `.github/workflows/docs.yml:70`).
+- [ ] **Step 3: Drive the whole measured failure set to zero**
+
+Emptying the core in Task 4 left **26 failing tests, every one `docs/examples`-driven**. This step is not done until all 26 pass. Work the list rather than trusting `check-project` alone, because ten of them compile or trace examples that `check-project` does not exercise:
+
+| Suite | Count | Tests |
+|---|---|---|
+| `lute-compile/tests/e2e.rs` | 9 | `affinity_reaction`, `bianca_s01ep02`, `components_scene`, `connected_quest`, `gated_line`, `quest_grove`, `quest_rescue_halsin`, `showcase_episode01`, `plugin_record_carries_resolved_effects` |
+| `lute-cli/tests/cli.rs` | 5 | `context_surface_has_plugin_and_core_directives`, `hub_demo_example_checks_clean`, `hub_demo_example_compiles`, `check_clean_file_exits_zero_json`, `check_with_empty_providers_dir_is_permissive` |
+| `lute-compile/tests/compile.rs` | 3 | `compile_writes_out_file`, `compile_bianca_exits_zero_with_artifact_json`, `compile_out_to_unwritable_path_exits_two` |
+| `lute-check/tests/examples_check.rs` | 3 | `corpus_check_project_is_clean_end_to_end`, `showcase_episode_checks_clean_with_yaml_schema_chain`, `affinity_reaction_pair_checks_clean_under_project` |
+| `lute-cli/tests/plugin_loaded.rs` | 2 | `date_minigame_is_clean_with_plugin_project`, `date_minigame_clean_with_project_catalog_autodiscovered` |
+| `lute-lsp/tests/divergence.rs` | 2 | `divergence_holds_under_plugin_project`, `headless_and_lsp_diagnostics_match_warning_bearing` |
+| `lute-check/tests/trace.rs` | 1 | `component_expansion_transcript_has_no_sentinel_leak` |
+| `lute-compile/tests/component_fold.rs` | 1 | `existing_goldens_untouched` |
+
+Note the failing set spans FIVE crates including `lute-lsp` — a project whose vocabulary is incomplete diverges between the CLI and the LSP, which is what `divergence.rs` exists to catch.
+
+Iterate: `cargo run -q -p lute-cli -- check-project docs/examples` to exit 0 (warnings allowed, matching `.github/workflows/docs.yml:70`), then `cargo test --workspace --no-fail-fast` and confirm the count reaches zero. Each remaining `E-DOMAIN-UNKNOWN` names a document whose `uses:` chain does not reach a declaration, or a subproject root (`idola-project`, `investigation`, `plugindef-project`, `showcase`) resolving against its own `lute.project.yaml`. Prefer extending a `uses:` over copying the block — `E-USES-DUP-*` catches a double declaration.
 
 - [ ] **Step 4: Fix `docs/architecture.md`**
 
@@ -1478,11 +1493,11 @@ This task already re-records goldens, so close it here. Add an exit to one exist
 
 The point is that a future change to how `exits:` is read shows up in a compiled artifact, not only in a unit assertion. Note in your report which scene you extended and which golden now pins the exit.
 
-- [ ] **Step 6b: Re-record the eight stamp-bearing e2e goldens**
+- [ ] **Step 6b: Re-record the nine e2e goldens**
 
 Task 4 deliberately deferred these: emptying the core changed `capabilityVersion`, but the vocabulary-using `e2e__*` goldens **panicked inside `golden()` at `compile(&input)`** before `insta::assert_snapshot!` could run, because their `docs/examples` inputs had no vocabulary. Steps 1-3 just made those inputs vocabulary-complete, so now they can be re-recorded.
 
-The eight: `components_scene`, `gated_line`, `quest_rescue_halsin`, `affinity_reaction`, `bianca_s01ep02`, `connected_quest`, `quest_grove`, `showcase_episode01`.
+The nine: `components_scene`, `gated_line`, `quest_rescue_halsin`, `affinity_reaction`, `bianca_s01ep02`, `connected_quest`, `quest_grove`, `showcase_episode01`, and `plugin_record_carries_resolved_effects` (which reads `showcase`'s `stinger.component.lute`).
 
 ```bash
 INSTA_UPDATE=always cargo test -p lute-compile 2>&1 | tail -20
