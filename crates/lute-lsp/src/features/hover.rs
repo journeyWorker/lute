@@ -343,7 +343,13 @@ mod tests {
         let text = "## Shot 1.\n::auto{character=\"b\" anchor=\"center\"}\n";
         let doc = parsed(text);
         let off = pos_on(text, "center");
-        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let h = hover_at(
+            &doc,
+            &lute_test_vocab::vocab_snapshot(),
+            &SchemaImports::default(),
+            off,
+        )
+        .unwrap();
         let s = contents_text(&h);
         assert!(
             s.contains("left") && s.contains("right"),

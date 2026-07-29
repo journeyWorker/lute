@@ -21,7 +21,7 @@ use lute_core_span::Span;
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::{AttrDecl, DirectiveDecl, Lowering, ProviderDecl};
-use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
+use lute_manifest::snapshot::{capability_version, CapabilitySnapshot, Domain};
 use lute_manifest::types::Type;
 use lute_syntax::ast::{Attr, AttrValue, Directive};
 use std::collections::BTreeMap;
@@ -167,8 +167,21 @@ fn merge_domains_unions_project_with_core() {
     let dir = unique_dir();
     write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
-    let snapshot = load_core_snapshot();
-    // Core ships no "action" domain (only emotion/mood/volume/anchor/vfxType/musicAction).
+    // A baseline carrying exactly ONE domain, `emotion` (reusing
+    // `lute_test_vocab`'s entry so its members have a single definition), and
+    // deliberately NOT `action`: the union has to be observable in both
+    // directions, so the project's `action` must be the only source of that
+    // name while `emotion` can only come from the baseline. `vocab_snapshot()`
+    // is unusable here — it ships an `action` of its own.
+    let mut snapshot = load_core_snapshot();
+    let emotion = lute_test_vocab::test_domains()
+        .remove("emotion")
+        .expect("lute_test_vocab provides an `emotion` domain");
+    snapshot
+        .enums
+        .insert("emotion".to_string(), emotion.members.clone());
+    snapshot.domains.insert("emotion".to_string(), emotion);
+    snapshot.version = capability_version(&snapshot);
     assert!(!snapshot.domains.contains_key("action"));
     let (merged, diags) = merge_domains(&snapshot, &imports, zero_span());
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
@@ -176,28 +189,33 @@ fn merge_domains_unions_project_with_core() {
         merged.get("action").map(|d| d.members.clone()),
         Some(vec!["wave".to_string(), "bow".to_string()])
     );
-    // Union, not replace: the core baseline domains are still present.
+    // Union, not replace: the snapshot's baseline domains are still present.
     assert!(merged.contains_key("emotion"));
 }
 
 /// A project schema declaring a domain name that already exists in the
-/// plugin/core vocabulary is a plugin/project clash — `E-DOMAIN-DUP`, core
-/// wins (never a silent shadow of the fixed-core vocabulary).
+/// plugin/snapshot vocabulary is a plugin/project clash — `E-DOMAIN-DUP`, the
+/// snapshot wins (never a silent shadow of the vocabulary already in place).
 #[test]
-fn merge_domains_flags_clash_with_core_domain() {
+fn merge_domains_flags_clash_with_snapshot_domain() {
     let dir = unique_dir();
     write_lute(&dir, "schema.lute", "---\nenums:\n  emotion: [rogue]\n---\n");
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
-    let snapshot = load_core_snapshot();
-    let core_emotion_members = snapshot.domains["emotion"].members.clone();
+    let snapshot = lute_test_vocab::vocab_snapshot();
+    let snapshot_emotion_members = snapshot
+        .domains
+        .get("emotion")
+        .expect("the test snapshot must provide an `emotion` domain to clash with")
+        .members
+        .clone();
     let (merged, diags) = merge_domains(&snapshot, &imports, zero_span());
     let codes: Vec<&str> = diags.iter().map(|d| d.code.as_str()).collect();
     assert!(
         codes.contains(&"E-DOMAIN-DUP"),
         "expected E-DOMAIN-DUP, got {codes:?}"
     );
-    // Core wins: the project's conflicting member list is dropped.
-    assert_eq!(merged["emotion"].members, core_emotion_members);
+    // The snapshot wins: the project's conflicting member list is dropped.
+    assert_eq!(merged["emotion"].members, snapshot_emotion_members);
 }
 
 /// End-to-end through the real check pipeline: a scene `uses:` a schema
@@ -302,10 +320,13 @@ fn codes_with_domain_attr_against(
         .collect()
 }
 
-/// Convenience for the core-baseline-only cases: no project schema is in
+/// Convenience for the snapshot-baseline-only cases: no project schema is in
 /// play, so the merged view IS `snapshot.domains` directly (A2's baseline).
+/// The baseline is `lute_test_vocab::vocab_snapshot()` — from 0.9.0 the core
+/// ships no content vocabulary, so the domains these cases resolve against
+/// have to come from a declared test vocabulary.
 fn codes_with_domain_attr(type_yaml: &str, value: &str) -> Vec<String> {
-    let snapshot = load_core_snapshot();
+    let snapshot = lute_test_vocab::vocab_snapshot();
     let domains = snapshot.domains.clone();
     codes_with_domain_attr_against(type_yaml, value, &snapshot, &domains)
 }
@@ -318,7 +339,8 @@ fn unknown_domain_ref_errors() {
 
 #[test]
 fn domain_member_ok_nonmember_errors() {
-    // { domain: mood } — mood is a lute.core baseline enum-style domain
+    // { domain: mood } — `mood` is a closed enum-style domain the test
+    // vocabulary (`lute_test_vocab`) declares in the baseline snapshot.
     assert!(!codes_with_domain_attr("{ domain: mood }", "peaceful")
         .iter()
         .any(|c| c == "E-BAD-ENUM"));
