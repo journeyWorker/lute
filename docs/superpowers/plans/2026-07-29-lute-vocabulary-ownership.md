@@ -17,7 +17,7 @@
 - **No `crates/*/tests/snapshots/*.snap` may be re-recorded** except where a task explicitly says so. A surprise snapshot delta is a regression, not a fixture needing blessing.
 - **Branch:** `feat/lute-0.9.0-vocabulary-ownership` (already created; the design doc is committed there).
 - **Every commit message** states what changed and why, in the style of the branch's existing commits — imperative subject under ~72 chars, body explaining the reasoning.
-- **Run `cargo fmt` before each commit**; do not reformat unrelated code.
+- **NEVER run repo-wide `cargo fmt`.** It is not idempotent on this tree: rustfmt 1.9.0-stable with no `rustfmt.toml` reformats 136 files (+7118/-2009) of pre-existing code, which collides with "do not reformat unrelated code". Instead check only the lines you wrote: `rustfmt --emit stdout <file>` and compare, or `cargo fmt -- --check` scoped to your files. Commits must contain logical changes only. (A separate repo-wide fmt commit is a decision for the humans, not for a task in this plan.)
 
 ---
 
