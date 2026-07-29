@@ -237,6 +237,7 @@ firing for the seven names.
 | Axis | Effect |
 |---|---|
 | **IR schema** | **unchanged (0.8.0)** by D-B |
+| **Artifact content** | changes, deliberately: a project's declared vocabulary now reaches the compiled artifact's `enums` array. `build_rel_vocab` copies `SchemaImports.rel.enums` and `lute-compile`'s `rel_entries` serializes each entry, whereas a core-shipped vocabulary lived in the capability snapshot and was never serialized per artifact. Not an IR-schema change (no field added, renamed, or moved; `irVersion` stays `0.8.0`) — the artifact simply becomes self-describing about the vocabulary it was compiled against, which is the honest consequence of that vocabulary becoming project-declared data. Engines that ignore `enums` are unaffected |
 | **capabilityVersion** | changes — core's `enums`/`domains` empty and two attr types change. Stamped and expected (plugin §13) |
 | **Documents** | breaking: a document using any of the seven slots needs its project to declare that domain. `lute init` scaffolds one |
 | **Plugins** | break only if one declares `isStateful`/`cancelsPrevious` (none shipped) |
@@ -247,18 +248,28 @@ Measured migration surface:
 
 - **`conformance/`: zero fixtures.** No conformance source uses `emotion`/`anchor`/`vfxType`/
   `volume`/`mood`, so every single-document contract test is untouched.
-- **Tests: 14 sites.** `lute-check`: `line_when`, `content_line`, `component_match`, `examples`,
-  `fact_query`, `fragment_kind`, plus the `#[cfg(test)]` `core_domains()` helper in
-  `src/directives.rs:732`; `lute-compile`: `inject`, `component_fold`, `timeline`, `compile`,
-  `address`, `flatten`, `stamp_attrs`. All 12 `golden/*.lute` fixtures route through **one**
-  harness (`golden.rs:21`, which calls `load_core_snapshot()` directly), so they are covered by a
-  single shared test vocabulary. 61 files call `load_core_snapshot`; only these touch vocabulary.
-  **The first count of this surface said 11 files and was wrong** — it came from grepping attribute
-  literals (`emotion=`, `anchor=`, …), which cannot see a domain referenced programmatically
-  (`fact_query.rs` resolves `emotion` via `snap.domains["emotion"]`; `directives.rs`'s inline tests
-  go through `core_domains()`) or an attribute that only becomes domain-typed under D-A
-  (`fragment_kind.rs` authors `::auto{action="fade-in-up"}`). Any future re-measurement of a
-  vocabulary surface must cover all three forms.
+- **Tests: 19 sites**, plus the `golden.rs` harness. `lute-check`: `line_when`, `content_line`
+  (one test deliberately stays on the bare core — see below), `component_match`, `examples`,
+  `fact_query`, `fragment_kind`, three tests in `domains.rs`, and the `#[cfg(test)]`
+  `vocab_domains()` helper in `src/directives.rs`; `lute-compile`: `inject`, `component_fold`,
+  `timeline`, `compile`, `address`, `flatten`, `stamp_attrs`; `lute-lsp`: the `completion.rs` and
+  `hover.rs` anchor-domain tests. All 12 `golden/*.lute` fixtures route through one harness
+  (`golden.rs`), so they are covered by the shared test vocabulary. 49 Rust files mention
+  `load_core_snapshot`; only these touch vocabulary.
+  **Two counts of this surface were wrong before this one.** The first said 11 files: it came from
+  grepping attribute literals (`emotion=`, `anchor=`, …), which cannot see a domain referenced
+  programmatically (`fact_query.rs` resolves `emotion` via `snap.domains["emotion"]`;
+  `directives.rs`'s inline tests went through a `core_domains()` helper) or an attribute that only
+  becomes domain-typed under D-A (`fragment_kind.rs` authors `::auto{action="fade-in-up"}`). The
+  second said 14 and still missed the three `domains.rs` tests and both `lute-lsp` sites. What
+  finally worked was a **probe**: temporarily write `enums: {}` over the core, run the suites, and
+  read the failure list. Any future re-measurement of a vocabulary surface should probe, not grep.
+  Three of the found sites needed a semantic decision rather than a mechanical switch, because they
+  assert *about* the core baseline: `merge_domains_unions_project_with_core` needs a snapshot that
+  has `emotion` but lacks `action`, so it builds a local one; the clash test indexed
+  `snapshot.domains["emotion"]` and would have panicked, not failed; and `content_line.rs`'s
+  `action_is_open_by_default` must keep asserting against a snapshot with NO `action` domain or it
+  passes for the wrong reason.
 - **`docs/examples/`: 5 project roots**, each already carrying `lute.project.yaml`, and
   `base.schema.yaml`/`state.schema.yaml`/`act1.schema.yaml`/`child.schema.yaml` already holding
   `state:`/`defs:` blocks — `enums:` joins them. CI runs `check-project docs/examples`
