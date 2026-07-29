@@ -538,6 +538,7 @@ dependencies = [
  "lute-core-span",
  "lute-manifest",
  "lute-syntax",
+ "lute-test-vocab",
  "serde",
  "serde_yaml",
 ]
@@ -569,6 +570,7 @@ dependencies = [
  "lute-core-span",
  "lute-manifest",
  "lute-syntax",
+ "lute-test-vocab",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -616,6 +618,13 @@ name = "lute-syntax"
 version = "0.8.0"
 dependencies = [
  "lute-core-span",
+]
+
+[[package]]
+name = "lute-test-vocab"
+version = "0.8.0"
+dependencies = [
+ "lute-manifest",
 ]
 
 [[package]]

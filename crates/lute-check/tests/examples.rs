@@ -22,7 +22,7 @@ fn input_for(text: &str) -> CheckInput {
     CheckInput {
         text: text.to_string(),
         uri: "test".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
+        snapshot: lute_test_vocab::vocab_snapshot(),
         providers: permissive_providers(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
@@ -36,7 +36,7 @@ fn bianca_example_checks_clean() {
     let input = CheckInput {
         text,
         uri: "bianca".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
+        snapshot: lute_test_vocab::vocab_snapshot(),
         providers: permissive_providers(),
         mode: Mode::Author,
         imports: SchemaImports::default(),

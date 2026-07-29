@@ -8,7 +8,7 @@ fn input(text: &str) -> CheckInput {
     CheckInput {
         text: text.to_string(),
         uri: "test".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
+        snapshot: lute_test_vocab::vocab_snapshot(),
         providers: Default::default(),
         mode: Mode::Ci,
         imports: Default::default(),

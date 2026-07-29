@@ -13,7 +13,7 @@ use lute_manifest::types::Type;
 /// Core snapshot + a plugin directive `p` (own attr `label`) + the OSHiZ-shaped
 /// cross-cutting vocabulary `bonusId: string` / `bonusScore: number`.
 fn snap_with_stamp_attrs() -> CapabilitySnapshot {
-    let mut snap = lute_manifest::core::load_core_snapshot();
+    let mut snap = lute_test_vocab::vocab_snapshot();
     snap.directives.insert(
         "p".to_string(),
         DirectiveDecl {
@@ -144,7 +144,7 @@ fn a_document_authoring_none_is_byte_identical() {
          @sofia{{emotion=\"content\"}}: hello\n\
          @narrator: done\n"
     );
-    let plain = commands(&text, lute_manifest::core::load_core_snapshot());
+    let plain = commands(&text, lute_test_vocab::vocab_snapshot());
     let declared = commands(&text, snap_with_stamp_attrs());
     assert_eq!(
         serde_json::to_string(&plain).unwrap(),
