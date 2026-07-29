@@ -85,18 +85,32 @@ fn emotion_member_clean_nonmember_errors() {
     assert!(codes(&format!("{HDR}@x{{emotion=\"zzz\"}}: hi\n")).contains(&"E-BAD-ENUM".to_string()));
 }
 
+/// dsl 0.9.0 D-C: a domain slot with no declared domain is an ERROR. Before
+/// 0.9.0 `action` was silently skipped when undeclared (this test's ancestor,
+/// `action_is_open_by_default`, asserted exactly that), which is why a typo in
+/// a 9,880-row action vocabulary shipped unchecked.
+///
+/// DELIBERATELY runs against the BARE CORE (`load_core_snapshot()`), not the
+/// shared test vocabulary: the claim is about NOTHING declaring an `action`
+/// domain. Against `vocab_snapshot()` it would only prove membership.
 #[test]
-fn action_is_open_by_default() {
-    // DELIBERATELY asserts against the BARE CORE (`load_core_snapshot()`), not
-    // the shared test vocabulary: the claim is that with NOTHING declaring an
-    // `action` domain, an arbitrary value is accepted (content_line.rs's
-    // `"action" if domains.contains_key("action") || …` guard is never taken).
-    // Run against `vocab_snapshot()` this test would only prove that the value
-    // happens to be one of the helper's 14 members — and `"nonesuch-flourish"`
-    // below would be `E-BAD-ENUM`. It must stay on the bare core.
+fn undeclared_action_domain_is_an_error() {
     let cs = codes_with(
-        &format!("{HDR}@x{{action=\"nonesuch-flourish\"}}: hi\n"),
+        &format!("{HDR}@x{{action=\"wave\"}}: hi\n"),
         lute_manifest::core::load_core_snapshot(),
     );
-    assert!(!cs.iter().any(|c| c == "E-DOMAIN-UNKNOWN" || c == "E-BAD-ENUM"), "{cs:?}");
+    assert!(
+        cs.contains(&"E-DOMAIN-UNKNOWN".to_string()),
+        "undeclared `action` must error: {cs:?}"
+    );
+}
+
+/// Declared → membership is checked, exactly like `emotion`.
+#[test]
+fn declared_action_domain_is_membership_checked() {
+    let clean = codes(&format!("{HDR}@x{{action=\"wave\"}}: hi\n"));
+    assert!(!clean.iter().any(|c| c == "E-DOMAIN-UNKNOWN"), "{clean:?}");
+    assert!(!clean.iter().any(|c| c == "E-BAD-ENUM"), "{clean:?}");
+    let bad = codes(&format!("{HDR}@x{{action=\"zzz\"}}: hi\n"));
+    assert!(bad.contains(&"E-BAD-ENUM".to_string()), "{bad:?}");
 }
