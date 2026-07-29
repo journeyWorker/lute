@@ -1461,6 +1461,21 @@ Note there is a `compile.rs` under BOTH `lute-cli/tests/` and `lute-compile/test
 
 Iterate: `cargo run -q -p lute-cli -- check-project docs/examples` to exit 0 (warnings allowed, matching `.github/workflows/docs.yml:70`), then `cargo test --workspace --no-fail-fast` and confirm the count reaches zero. Each remaining `E-DOMAIN-UNKNOWN` names a document whose `uses:` chain does not reach a declaration, or a subproject root (`idola-project`, `investigation`, `plugindef-project`, `showcase`) resolving against its own `lute.project.yaml`. Prefer extending a `uses:` over copying the block — `E-USES-DUP-*` catches a double declaration.
 
+- [ ] **Step 3b: Rebuild the playground WebAssembly**
+
+`packages/website/public/playground/pkg/lute_wasm_bg.wasm` is a COMMITTED prebuilt artifact, so the site build stays Rust-free — which means it does not pick up any of this branch's changes on its own. It currently embeds the 0.8.0 core, so the browser playground would keep enforcing the OLD rules: accepting `emotion="delighted"` with no declaration, and rejecting a project-declared member it has never heard of. Its version badge would also read 0.8.0 against 0.9.0 docs.
+
+This exact failure has happened before. Commit `87d2325` ("build(playground): rebuild the committed WebAssembly at 0.8.0") fixed the same staleness one version earlier, where the artifact was still 0.7.0 and the demo could not parse `::end`. Follow its recipe:
+
+```bash
+cd crates/lute-wasm && wasm-pack build --target web --release
+# then copy the pkg/ output to packages/website/public/playground/pkg/
+```
+
+Check that commit's diff for the exact output paths it updated rather than guessing. The exported API (`check_source` / `compile_source` / `trace_source` / `version`) is unchanged by this branch, so the only `.d.ts` delta should be a version string.
+
+Then smoke it in a real browser against the built site, as that commit did: confirm the badge reads the new version, that a document using `emotion=` with NO declared vocabulary now reports `E-DOMAIN-UNKNOWN`, and that the same document with a declared `enums:` block checks clean. Record both observations — a rebuilt-but-unverified blob is how the 0.7.0 artifact survived into 0.8.0 in the first place.
+
 - [ ] **Step 4: Fix `docs/architecture.md`**
 
 Its two content-line `action="sway"`/`action="lean"` usages (`:162`, `:165`) are illustrative prose in a ```lute block, covered by no CI gate — the `examples` job checks only `docs/examples` and the `website` job checks highlighting, not semantics. Either keep the values (they are in the vocabulary above) and add a one-line note that the snippet assumes a declared vocabulary, or point the reader at `docs/examples/base.schema.yaml`. Add a short paragraph recording that doc-embedded snippets are not semantically gated.
