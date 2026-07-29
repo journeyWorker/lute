@@ -60,22 +60,18 @@ pub fn load_core_snapshot() -> CapabilitySnapshot {
     let domains: BTreeMap<String, Domain> = enums
         .enums
         .iter()
-        .map(|(k, v)| {
-            (
-                k.clone(),
-                Domain {
-                    members: v.clone(),
-                    open: false,
-                },
-            )
-        })
+        .map(|(k, v)| (k.clone(), v.clone().into_domain()))
         .collect();
 
     let mut snap = CapabilitySnapshot {
         plugins,
         directives,
         domains,
-        enums: enums.enums,
+        enums: enums
+            .enums
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone().into_domain().members))
+            .collect(),
         ..Default::default()
     };
     snap.version = capability_version(&snap);

@@ -61,10 +61,21 @@ pub struct CapabilitySnapshot {
 /// enumerable at compile time, so `members` stays empty and a later checker
 /// task (A4) must treat membership as always-accept (or provider-backed)
 /// rather than closed-list membership.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Domain {
     pub members: Vec<String>,
     pub open: bool,
+    /// dsl 0.9.0 D-D: the member the compiler substitutes when the slot is
+    /// absent. Declared, never hardcoded — this replaced `lute-check`'s
+    /// `DEFAULT_ANCHOR`. Required for the `anchor` slot
+    /// ([`crate::validate::SLOT_REQUIRES_DEFAULT`]), rejected elsewhere.
+    pub default: Option<String>,
+    /// dsl 0.9.0 D-D: the members that end a character's presence on stage.
+    /// Declared, never inferred — this replaced the `fade-out*`/`exit*`/`hide`
+    /// prefix heuristic that `lute-check::inject` and `lute-compile::lower`
+    /// each carried their own copy of. Required for the `action` slot
+    /// ([`crate::validate::SLOT_REQUIRES_EXITS`]), rejected elsewhere.
+    pub exits: Vec<String>,
 }
 
 #[derive(Clone, Debug)]

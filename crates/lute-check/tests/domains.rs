@@ -58,14 +58,24 @@ fn write_lute(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
 }
 
+/// A project `enums:` declaration of the `action` slot in the dsl 0.9.0 D-D
+/// long form. `action` is in `SLOT_REQUIRES_EXITS`, so a bare member list is
+/// an `E-ENUM-MISSING-SEMANTICS` error; every test below that needs a
+/// project-only domain reuses this one fixture.
+const ACTION_SCHEMA: &str =
+    "---\nenums:\n  action:\n    members: [wave, bow]\n    exits: [bow]\n---\n";
+
 /// Step 1 (failing-first) assertion: a project schema declaring
-/// `enums: { action: [wave, bow] }` is visible — as a `Domain` with members
-/// `[wave, bow]` — in the merged vocabulary the checker consults, via
-/// `SchemaImports.domains` (the same lift path `state:`/`defs:` already use).
+/// `enums: { action: { members: [wave, bow], exits: [bow] } }` is visible — as
+/// a `Domain` with members `[wave, bow]` — in the merged vocabulary the
+/// checker consults, via `SchemaImports.domains` (the same lift path
+/// `state:`/`defs:` already use). `action` is one of the dsl 0.9.0 D-D slots
+/// that MUST declare its `exits:` members, so the fixture uses the long form;
+/// the lift carries that declared semantics through untouched.
 #[test]
 fn project_enum_domain_is_visible_in_schema_imports() {
     let dir = unique_dir();
-    write_lute(&dir, "schema.lute", "---\nenums:\n  action: [wave, bow]\n---\n");
+    write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let res = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
     let action = res
@@ -74,6 +84,10 @@ fn project_enum_domain_is_visible_in_schema_imports() {
         .unwrap_or_else(|| panic!("action domain missing: {:?}", res.domains.keys().collect::<Vec<_>>()));
     assert_eq!(action.members, vec!["wave".to_string(), "bow".to_string()]);
     assert!(!action.open);
+    // dsl 0.9.0 D-D: the long form's member semantics must survive the lift —
+    // a projection down to a bare member list here would silently discard them.
+    assert_eq!(action.exits, vec!["bow".to_string()]);
+    assert_eq!(action.default, None);
 }
 
 /// `entities: { <kind>: { members: [...] } }` lifts as a closed domain too.
@@ -151,7 +165,7 @@ fn entity_kind_declared_by_two_peers_is_e_kind_name_clash() {
 #[test]
 fn merge_domains_unions_project_with_core() {
     let dir = unique_dir();
-    write_lute(&dir, "schema.lute", "---\nenums:\n  action: [wave, bow]\n---\n");
+    write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     let snapshot = load_core_snapshot();
     // Core ships no "action" domain (only emotion/mood/volume/anchor/vfxType/musicAction).
@@ -187,14 +201,14 @@ fn merge_domains_flags_clash_with_core_domain() {
 }
 
 /// End-to-end through the real check pipeline: a scene `uses:` a schema
-/// declaring `enums: { action: [wave, bow] }` checks clean (no
+/// declaring the `action` slot (`ACTION_SCHEMA`) checks clean (no
 /// `E-META-UNKNOWN-KEY`/`E-USES-PARSE` from the new frontmatter keys), and
 /// the same `input.snapshot`/`input.imports` the pipeline consumed, fed to
 /// `merge_domains`, exposes `action` in the merged vocabulary.
 #[test]
 fn scene_uses_enum_schema_checks_clean_and_domain_is_merged() {
     let dir = unique_dir();
-    write_lute(&dir, "schema.lute", "---\nenums:\n  action: [wave, bow]\n---\n");
+    write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: schema.lute\n---\n## Shot 1.\n@x: hi\n";
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
@@ -313,12 +327,12 @@ fn domain_member_ok_nonmember_errors() {
 
 #[test]
 fn project_declared_domain_validates() {
-    // A schema doc declares enums: { action: [wave, bow] }; imported, then an
+    // A schema doc declares the `action` slot (`ACTION_SCHEMA`); imported, then an
     // attr { domain: action } accepts "wave" and errors "zzz" -- proving the
     // PROJECT domain (lifted by A3's `merge_domains`, absent from core) is
     // what `check_attr_value`'s `Type::Domain` arm actually resolved against.
     let dir = unique_dir();
-    write_lute(&dir, "schema.lute", "---\nenums:\n  action: [wave, bow]\n---\n");
+    write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
     let snapshot = load_core_snapshot();
@@ -370,7 +384,7 @@ fn open_domain_accepts_any_string() {
 ///
 /// No shipped core domain/provider pair collides today, so this constructs
 /// the minimal artificial collision by hand: a project-declared closed
-/// `enums: { action: [wave, bow] }` domain (A3 lift), plus a synthetic
+/// `action` domain (`ACTION_SCHEMA`, an A3 lift), plus a synthetic
 /// `action` `ProviderDecl` inserted directly into a `snapshot.providers`
 /// clone (there is no schema-level `providers:` import key to drive this
 /// through `uses:`, so this mirrors how `codes_with_domain_attr_against`
@@ -384,7 +398,7 @@ fn open_domain_accepts_any_string() {
 #[test]
 fn closed_domain_membership_wins_over_same_named_provider() {
     let dir = unique_dir();
-    write_lute(&dir, "schema.lute", "---\nenums:\n  action: [wave, bow]\n---\n");
+    write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
     let mut snapshot = load_core_snapshot();
