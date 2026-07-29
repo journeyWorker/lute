@@ -445,3 +445,95 @@ fn closed_domain_membership_wins_over_same_named_provider() {
         "provider path must NOT run for a name that resolves to a closed domain; got {bad_codes:?}"
     );
 }
+
+// --- dsl 0.9.0 D-D: member-semantics validation is PROVENANCE-aware. A
+// domain reaching `merge_domains` came from either `enums:` or the
+// `entities:` kind projection; only the former can carry `exits:`/`default:`,
+// so the diagnostic for a kind-derived slot must name a fix that exists. ---
+
+/// Collect the `E-ENUM-MISSING-SEMANTICS` messages `merge_domains` produces
+/// for a project schema body, against the real core baseline.
+fn missing_semantics_messages(body: &str) -> Vec<String> {
+    let dir = unique_dir();
+    write_lute(&dir, "schema.lute", body);
+    let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
+    let snapshot = load_core_snapshot();
+    let (_merged, diags) = merge_domains(&snapshot, &imports, zero_span());
+    diags
+        .iter()
+        .filter(|d| d.code == "E-ENUM-MISSING-SEMANTICS")
+        .map(|d| d.message.clone())
+        .collect()
+}
+
+/// An `entities:` kind named `action` still lands in the merged vocabulary as
+/// a closed `action` domain with no `exits:` — a real semantics loss, so it
+/// MUST be diagnosed. But `EntityKindDecl` has no `exits:` key, so the
+/// generic "must declare `exits:`" wording is unsatisfiable: the message has
+/// to point at `enums:`, the shape that can express it.
+#[test]
+fn kind_declared_slot_points_author_at_enums() {
+    let msgs =
+        missing_semantics_messages("---\nentities:\n  action: { members: [wave, bow] }\n---\n");
+    assert_eq!(
+        msgs.len(),
+        1,
+        "expected exactly one E-ENUM-MISSING-SEMANTICS, got {msgs:?}"
+    );
+    let msg = &msgs[0];
+    assert!(
+        msg.contains("`action`"),
+        "message must name the domain: {msg}"
+    );
+    assert!(
+        msg.contains("enums:"),
+        "message must point at `enums:`, the declaration shape that can carry the \
+         semantics: {msg}"
+    );
+    assert!(
+        msg.contains("entities:"),
+        "message must name the provenance that cannot express it: {msg}"
+    );
+    // The pre-fix wording — the shared validator's generic text — tells the
+    // author to add a key `entities:` silently discards. Reject it explicitly.
+    assert!(
+        !msg.contains("the compiler reads it instead of inferring"),
+        "generic validator wording is unsatisfiable for a kind-derived domain: {msg}"
+    );
+}
+
+/// Guard against over-broad validation: an ordinary entity-kind name is not a
+/// semantics-bearing slot, so it gets no member-semantics diagnostic at all.
+#[test]
+fn kind_declared_ordinary_name_has_no_semantics_diag() {
+    let msgs = missing_semantics_messages("---\nentities:\n  npc: { members: [ana, bo] }\n---\n");
+    assert!(
+        msgs.is_empty(),
+        "ordinary kind name must not be slot-validated: {msgs:?}"
+    );
+}
+
+/// Path 1 is unchanged: an `enums:`-declared slot CAN carry `exits:`, so the
+/// long form stays clean and the bare member list still errors.
+#[test]
+fn enum_declared_slot_validation_is_unchanged() {
+    let ok = missing_semantics_messages(
+        "---\nenums:\n  action:\n    members: [sway, hide]\n    exits: [hide]\n---\n",
+    );
+    assert!(
+        ok.is_empty(),
+        "declared `exits:` must satisfy the slot: {ok:?}"
+    );
+
+    let bad = missing_semantics_messages("---\nenums:\n  action: [sway, hide]\n---\n");
+    assert_eq!(
+        bad.len(),
+        1,
+        "expected exactly one E-ENUM-MISSING-SEMANTICS, got {bad:?}"
+    );
+    assert!(
+        bad[0].contains("must declare `exits:`"),
+        "enum path keeps the shared validator's wording: {}",
+        bad[0]
+    );
+}

@@ -512,14 +512,58 @@ pub fn merge_domains(
             ));
             continue;
         }
-        // dsl 0.9.0 D-D: the SAME shared validator `assemble.rs` runs on the
-        // plugin path, so the member-semantics rule set is not duplicated.
-        for issue in lute_manifest::validate::validate_domain(name, dom) {
-            diags.push(uses_diag(issue.code(), issue.message(), at));
+        // dsl 0.9.0 D-D — PROVENANCE MATTERS, do not collapse this branch
+        // back into one `validate_domain` call. `imports.domains` fuses TWO
+        // sources (see `resolve_imports`): project `enums:` decls, and the
+        // `kinds_to_domains` projection of `entities:` kinds. An
+        // `EntityKindDecl` can only express `members` or `open` — an
+        // authored `exits:`/`default:` key on it is discarded — so telling
+        // the author of `entities: { action: ... }` to "declare `exits:`"
+        // names a fix that cannot exist. Skipping the check instead would
+        // let an `action` slot with no exits through silently, which is the
+        // exact behavior loss 0.9.0 removes. So: validate enum-declared
+        // names with the SHARED validator `assemble.rs` runs on the plugin
+        // path (no duplicated rule set), and for a kind-declared name that
+        // occupies a semantics-bearing slot, report the real fix — redeclare
+        // it as an `enums:` domain.
+        if imports.rel.enums.contains_key(name) {
+            for issue in lute_manifest::validate::validate_domain(name, dom) {
+                diags.push(uses_diag(issue.code(), issue.message(), at));
+            }
+        } else if let Some(key) = missing_slot_semantics_key(name, dom) {
+            diags.push(uses_diag(
+                "E-ENUM-MISSING-SEMANTICS",
+                format!(
+                    "domain `{name}` is declared as an `entities:` kind, which cannot \
+                     express the `{key}:` member semantics this slot requires; declare \
+                     `{name}` with `enums:` instead (dsl 0.9.0 D-D)"
+                ),
+                at,
+            ));
         }
         merged.insert(name.clone(), dom.clone());
     }
     (merged, diags)
+}
+
+/// The member-semantics key a domain named `name` is REQUIRED to declare but
+/// cannot, given it arrived from an `entities:` kind projection — `None` when
+/// the name is not a semantics-bearing slot (dsl 0.9.0 D-D
+/// `SLOT_REQUIRES_EXITS`/`SLOT_REQUIRES_DEFAULT`) or when the domain is OPEN
+/// (registry-style: no static member list, so every member-semantics rule is
+/// vacuous — the same escape [`lute_manifest::validate::validate_domain`]
+/// takes, so the two provenance paths never disagree about openness).
+fn missing_slot_semantics_key(name: &str, dom: &Domain) -> Option<&'static str> {
+    if dom.open {
+        return None;
+    }
+    if lute_manifest::validate::SLOT_REQUIRES_EXITS.contains(&name) {
+        Some("exits")
+    } else if lute_manifest::validate::SLOT_REQUIRES_DEFAULT.contains(&name) {
+        Some("default")
+    } else {
+        None
+    }
 }
 
 /// Relax an edge in the 0-1 BFS: record `canon` at `depth` (and enqueue it) when
