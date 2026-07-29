@@ -769,7 +769,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
     let mut inject_state = StageState::default();
     let mut injections = Vec::new();
     for shot in &doc.shots {
-        fold_injections(&shot.body, &mut inject_state, &mut injections);
+        fold_injections(&shot.body, &mut inject_state, &mut injections, domains);
     }
     let inject_diags = std::mem::take(&mut inject_state.diags);
     // `node_summary` already covers `Node::On`/`Node::Objective` (Plan A), so
@@ -2896,23 +2896,28 @@ fn insert_shape_fields(
 /// is not modeled — a preview, not final codegen). `<timeline>` clips are staged
 /// separately in `timeline_tables` and do not participate in stage-entity
 /// lifetime here (see the injection reducer's node-kind coverage).
-fn fold_injections(nodes: &[Node], state: &mut StageState, out: &mut Vec<InjectedCommand>) {
+fn fold_injections(
+    nodes: &[Node],
+    state: &mut StageState,
+    out: &mut Vec<InjectedCommand>,
+    domains: &std::collections::BTreeMap<String, Domain>,
+) {
     for (i, node) in nodes.iter().enumerate() {
         let taken = std::mem::take(state);
-        let (next, emit) = lower_node(taken, node, &nodes[i + 1..]);
+        let (next, emit) = lower_node(taken, node, &nodes[i + 1..], domains);
         *state = next;
         out.extend(emit);
         match node {
             Node::Branch(b) => {
                 for choice in &b.choices {
-                    fold_injections(&choice.body, state, out);
+                    fold_injections(&choice.body, state, out, domains);
                 }
             }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            fold_injections(body, state, out)
+                            fold_injections(body, state, out, domains)
                         }
                     }
                 }

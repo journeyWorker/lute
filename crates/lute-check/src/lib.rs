@@ -60,7 +60,7 @@ pub use directives::E_AT_CONTEXT;
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
 pub use fix::{fix_document, FixResult};
 pub use inject::{
-    lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,
+    is_declared_exit, lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState,
 };
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, is_exhaustive,
