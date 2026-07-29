@@ -1470,6 +1470,14 @@ Its two content-line `action="sway"`/`action="lean"` usages (`:162`, `:165`) are
 
 `docs/adoption/oshiz-assessment.md:313` — the D1 row lists `emotion` among domains a project can declare, which was false when written. Correct it and note 0.9.0 makes it true.
 
+- [ ] **Step 6a: Add an end-to-end golden that covers an authored exit**
+
+Task 3's review found a real coverage gap it could not close under its own constraints (snapshots were forbidden there): **no crate snapshot or conformance artifact contains a sprite `exit` field or a `stage-bookkeeping` provenance at all.** So the exit path — the very behavior whose hardcoded heuristic Task 3 deleted in favour of the declared `exits:` list — rests entirely on unit tests. Adequate, the reviewer judged, but a compiled artifact has never once pinned it.
+
+This task already re-records goldens, so close it here. Add an exit to one existing `docs/examples` scene that a golden covers — a `::auto{character="…" action="fade-out"}` after the character has been shown — choosing whichever scene makes narrative sense rather than bolting one on. Then re-record and confirm the artifact gains a `sprite` record carrying `exit: true`.
+
+The point is that a future change to how `exits:` is read shows up in a compiled artifact, not only in a unit assertion. Note in your report which scene you extended and which golden now pins the exit.
+
 - [ ] **Step 6b: Re-record the eight stamp-bearing e2e goldens**
 
 Task 4 deliberately deferred these: emptying the core changed `capabilityVersion`, but the vocabulary-using `e2e__*` goldens **panicked inside `golden()` at `compile(&input)`** before `insta::assert_snapshot!` could run, because their `docs/examples` inputs had no vocabulary. Steps 1-3 just made those inputs vocabulary-complete, so now they can be re-recorded.
