@@ -25,8 +25,13 @@ pub const END_DIRECTIVE: &str = "end";
 
 /// Build the built-in `lute.core` capability snapshot: all dsl Appendix A
 /// baseline directives (bg/music/sfx/auto/vfx/cut/video/camera) plus the 0.8.0
-/// walk terminator `::end`, plus the core enums, stamped with a deterministic
-/// `capabilityVersion` (plugin §13).
+/// walk terminator `::end`, stamped with a deterministic `capabilityVersion`
+/// (plugin §13).
+///
+/// dsl 0.9.0 D-A: it carries NO vocabulary members. `assets/lute.core/
+/// enums.yaml` is empty, so both `enums` and `domains` come out empty; the
+/// seven domain names survive only as attribute types in `staging.yaml`, and
+/// every member comes from a project schema or a plugin.
 pub fn load_core_snapshot() -> CapabilitySnapshot {
     let manifest: PluginManifest =
         serde_yaml::from_str(MANIFEST).expect("core plugin.yaml must parse");
@@ -48,15 +53,14 @@ pub fn load_core_snapshot() -> CapabilitySnapshot {
         },
     );
 
-    // Seed `domains` from the same core enum map that seeds `enums` (mirrors
-    // the plugin-loop fold in `assemble.rs`, which does the identical
+    // Seed `domains` from the same core enum map that seeds `enums` below
+    // (mirrors the plugin-loop fold in `assemble.rs`, which does the identical
     // `name -> Domain { members }` mapping for each active plugin's `enums`
-    // export): built here, at the SAME seed site as `enums: enums.enums`
-    // below, so the two stay in sync by construction rather than via a
-    // separate mechanism. Without this, `lute.core`'s baseline enums
-    // (emotion/mood/volume/anchor/vfxType/musicAction) would land in
-    // `snap.enums` but never in `snap.domains`, leaving `domains` an
-    // incomplete view of the merged vocabulary.
+    // export). `enums.yaml` is empty as of dsl 0.9.0 D-A, so both maps come
+    // out empty — the fold stays because it is what keeps them in sync BY
+    // CONSTRUCTION: were the asset ever to regrow a member, it would land in
+    // both views at once instead of leaving `domains` a silently incomplete
+    // one.
     let domains: BTreeMap<String, Domain> = enums
         .enums
         .iter()
@@ -81,6 +85,7 @@ pub fn load_core_snapshot() -> CapabilitySnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Type;
 
     /// The `lute.core` baseline is CLOSED (dsl Appendix A + the 0.8.0
     /// terminator): exactly these nine directives, no more. Asserting the
@@ -123,23 +128,76 @@ mod tests {
         }
     }
 
+    /// dsl 0.9.0 D-A: `musicAction` used to be a six-member core enum. It
+    /// survives as a SLOT — `::music{action}` still names it, so a project or
+    /// plugin declaring `musicAction` members gets them checked — but the core
+    /// itself ships none. Asserting the absence, rather than dropping the
+    /// test, is what keeps `fade-out` and friends from creeping back in.
     #[test]
-    fn music_action_enum_matches_spec() {
+    fn music_action_is_a_slot_with_no_members() {
         let snap = load_core_snapshot();
-        let e = snap.enums.get("musicAction").unwrap();
-        assert!(e.contains(&"fade-out".to_string()));
+        let action = snap
+            .directive("music")
+            .and_then(|d| d.attrs.iter().find(|a| a.name == "action"))
+            .expect("missing music.action");
+        assert_eq!(action.ty, Type::Domain("musicAction".into()));
+        assert_eq!(snap.enums.get("musicAction"), None);
+        assert!(snap.domains.get("musicAction").is_none());
     }
 
+    /// dsl 0.9.0 D-A: the core's vocabulary surface is exactly this set of
+    /// domain NAMES, referenced from attribute types and populated by nobody.
+    /// (`emotion` and the content-line `action` are the two further slots, but
+    /// they are named by `lute-check`'s content-line pass rather than by a
+    /// directive attr, so they are out of this snapshot's reach.) Pinning the
+    /// exact set makes an accidental new slot — or a silently dropped one —
+    /// a failure here rather than an `E-DOMAIN-UNKNOWN` in an author's file.
     #[test]
-    fn core_baseline_enums_are_domains() {
+    fn core_domain_slots_are_declared_as_attr_types() {
         let snap = load_core_snapshot();
-        for name in ["emotion", "mood", "volume", "anchor", "vfxType", "musicAction"] {
+        let mut slots: Vec<&str> = snap
+            .directives
+            .values()
+            .flat_map(|d| &d.attrs)
+            .filter_map(|a| match &a.ty {
+                Type::Domain(n) => Some(n.as_str()),
+                _ => None,
+            })
+            .collect();
+        slots.sort_unstable();
+        slots.dedup();
+        assert_eq!(slots, ["action", "anchor", "mood", "musicAction", "vfxType", "volume"]);
+        for slot in slots {
             assert!(
-                snap.domains.contains_key(name),
-                "missing core domain {name}: {:?}",
-                snap.domains.keys().collect::<Vec<_>>()
+                !snap.domains.contains_key(slot),
+                "the core must ship no members for slot {slot}"
             );
         }
-        assert_eq!(snap.domains["emotion"].members, snap.enums["emotion"]);
+    }
+
+    /// dsl 0.9.0 D-A: the core declares SLOTS, never MEMBERS. A concrete
+    /// vocabulary in the binary is a category error for a general authoring
+    /// tool — this test is the guard that keeps one from creeping back.
+    #[test]
+    fn core_ships_no_vocabulary_members() {
+        let snap = load_core_snapshot();
+        assert!(snap.enums.is_empty(), "core enums: {:?}", snap.enums);
+        assert!(snap.domains.is_empty(), "core domains: {:?}", snap.domains.keys());
+    }
+
+    /// dsl 0.9.0 D-A: the two attrs that were free strings become checkable.
+    #[test]
+    fn slot_attrs_are_domain_typed() {
+        let snap = load_core_snapshot();
+        let ty = |dir: &str, attr: &str| {
+            snap.directive(dir)
+                .and_then(|d| d.attrs.iter().find(|a| a.name == attr))
+                .map(|a| a.ty.clone())
+                .unwrap_or_else(|| panic!("missing {dir}.{attr}"))
+        };
+        assert_eq!(ty("auto", "action"), Type::Domain("action".into()));
+        assert_eq!(ty("auto", "anchor"), Type::Domain("anchor".into()));
+        assert_eq!(ty("music", "mood"), Type::Domain("mood".into()));
+        assert_eq!(ty("vfx", "type"), Type::Domain("vfxType".into()));
     }
 }
