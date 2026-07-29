@@ -1988,6 +1988,46 @@ fn walk_component_body(
         match node {
             Node::Line(l) => {
                 body_attr_refs(&l.attrs, snapshot, arena, ctx, None, diags);
+                // finding 2 (Task 7b, the SAME class as finding 1 below):
+                // `check_content_line_attrs` was skipped here entirely, so
+                // NO content-line attribute rule applied inside a component
+                // body — not the unknown-key check (dsl 0.1.0 §7.1), not the
+                // `emotion`/`action` domain-slot resolution (0.9.0 D-C), not
+                // the delivery-flag rules (0.2.2 §D7). A `::use` was
+                // therefore a hole straight through 0.9.0's central
+                // invariant: an undeclared vocabulary member authored inside
+                // a component reached the compiled artifact unflagged.
+                //
+                // VOCABULARY SCOPE (the one design decision here): `domains`
+                // is the IMPORTING document's merged vocabulary — `check()`
+                // threads `folded.domains` (= `merge_domains(input.snapshot,
+                // input.imports, …)`) into `validate_components`, and
+                // `ComponentDef` (component_import.rs) carries only
+                // `params`/`body`/`src`, never the component file's OWN
+                // `uses:` imports. Resolving against the component's own
+                // declared vocabulary would be preferable (a component's
+                // validity should not depend on its importer), but those
+                // imports are simply not reachable from here, and inventing a
+                // second resolution path for one call is worse than the
+                // divergence it would fix. So: the importing document's
+                // vocabulary, deliberately — with one residual divergence
+                // from a STANDALONE `lute check <component>.lute` (which
+                // walks the body through `Walker::walk` against the
+                // component's own `uses:`): a domain that ONLY the component
+                // declares is `E-DOMAIN-UNKNOWN` through a scene that does
+                // not also import it. The narrow surface is why that is
+                // tolerable — the content-line slots name exactly two fixed
+                // domains (`emotion`/`action`), and `merge_domains` DROPS any
+                // project-schema domain whose name the plugin/core baseline
+                // already owns (`E-DOMAIN-DUP`), so whenever the baseline
+                // declares them both paths resolve the identical members.
+                crate::content_line::check_content_line_attrs(
+                    l,
+                    snapshot,
+                    providers,
+                    domains,
+                    diags,
+                );
                 // `{{@param}}` in a component body is a referent too (dsl
                 // §7.6, §6.2): resolved against the component `@param` env in
                 // `ctx` — an undeclared ref is `E-UNDECLARED-REF`. A bare
