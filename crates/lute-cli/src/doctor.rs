@@ -5,10 +5,29 @@
 //! (exit `2`). Each check is a `✓`/`✗` line; a `✗` carries a remedy hint. The
 //! `--json` variant emits the same checks as a stable-keyed object.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_manifest::provider::ProviderSet;
+use lute_manifest::snapshot::Domain;
+use lute_manifest::validate::{SLOT_REQUIRES_DEFAULT, SLOT_REQUIRES_EXITS};
+
+/// The seven vocabulary slots the language declares (dsl 0.9.0 D-A): six typed
+/// by `lute.core`'s staging directives, plus the content-line `emotion`. The
+/// core ships NO members for any of them, so each is declared by a project
+/// schema (`enums:`) or a plugin — and using an undeclared one is
+/// `E-DOMAIN-UNKNOWN` (D-C). Reported here so a project missing a slot learns
+/// it from `doctor` rather than from a diagnostic mid-scene.
+const VOCAB_SLOTS: &[&str] = &[
+    "emotion",
+    "action",
+    "anchor",
+    "mood",
+    "volume",
+    "musicAction",
+    "vfxType",
+];
 
 /// One checklist entry: a stable `key` (JSON), a human `label`, the boolean
 /// `ok` state (`None` = informational, neither pass nor fail), a `detail`
@@ -67,6 +86,75 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// The merged domain vocabulary the project's documents ACTUALLY resolve,
+/// unioned across every `.lute` file under `dir` (`root` is the enclosing
+/// project root, or `dir` when nothing at or above it carries a manifest).
+///
+/// Deliberately no second resolution path: this reuses `crate::build_input` —
+/// the SAME per-document resolution `lute check`/`check-project` perform (each
+/// file's own project root via `crate::project_root_for`, its activated
+/// capability snapshot per plugin §4/§11, then its `uses:`/`extends:` schema
+/// imports per dsl §9.2) — and folds it through the SAME `merge_domains` the
+/// checker consults for `Type::Domain` resolution. So a slot `doctor` calls
+/// declared is a slot the checker resolves, by construction rather than by
+/// two implementations agreeing.
+///
+/// A slot counts as declared for the PROJECT when at least one document
+/// resolves it. `merge_domains`'s diagnostics are dropped: `doctor` reports and
+/// never gates, and a domain collision or a missing `exits:` is `check`'s to
+/// report — at a span, in the file that caused it.
+fn resolved_domains(root: &Path, lute_files: &[PathBuf]) -> BTreeMap<String, Domain> {
+    // `merge_domains` anchors its (discarded) diagnostics at this span; there
+    // is no one document to blame for a project-wide report, so it gets the
+    // same zeroed placeholder the CLI's other source-less call sites use.
+    let at = lute_core_span::Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    };
+    let mut out = BTreeMap::new();
+    for file in lute_files {
+        let project = crate::project_root_for(file, root);
+        let Some(built) = crate::build_input(file, None, Some(&project)) else {
+            continue;
+        };
+        let (merged, _diags) = lute_check::schema_import::merge_domains(
+            &built.input.snapshot,
+            &built.input.imports,
+            at,
+        );
+        out.extend(merged);
+    }
+    out
+}
+
+/// One declared slot's entry in the `doctor` report: the slot name, plus the
+/// member-level semantics the compiler READS for the two slots that carry it
+/// (dsl 0.9.0 D-D) — `action`'s `exits:` and `anchor`'s `default:`. Those two
+/// are why a slot declaration is more than a member list, and both are
+/// invisible in the scene text that depends on them, so the resolved values
+/// belong on the line: a `default:` pointing at the wrong anchor is a silent
+/// staging bug everywhere except here.
+fn slot_entry(slot: &str, domain: &Domain) -> String {
+    if SLOT_REQUIRES_EXITS.contains(&slot) {
+        let exits = if domain.exits.is_empty() {
+            "none".to_string()
+        } else {
+            domain.exits.join("/")
+        };
+        format!("{slot} (exits: {exits})")
+    } else if SLOT_REQUIRES_DEFAULT.contains(&slot) {
+        format!(
+            "{slot} (default: {})",
+            domain.default.as_deref().unwrap_or("none")
+        )
+    } else {
+        slot.to_string()
+    }
+}
+
 /// Assemble the full checklist for `dir`. Returns `None` when `dir` is
 /// unreadable (the only hard failure — caller exits `2`).
 fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
@@ -97,7 +185,8 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     ));
 
     // --- Project manifest (walk up from `dir`) ---------------------------
-    match find_manifest_dir(dir) {
+    let manifest_dir = find_manifest_dir(dir);
+    match &manifest_dir {
         Some(root) => checks.push(Check::pass(
             "project",
             "lute.project.yaml",
@@ -129,7 +218,8 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     }
 
     // --- Provider snapshots (`providers/` under the manifest dir) --------
-    let providers_dir = find_manifest_dir(dir)
+    let providers_dir = manifest_dir
+        .clone()
         .unwrap_or_else(|| dir.to_path_buf())
         .join("providers");
     if providers_dir.is_dir() {
@@ -163,6 +253,41 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
             "providers",
             "provider snapshots",
             "no providers/ directory (core-only project)".to_string(),
+        ));
+    }
+
+    // --- Vocabulary slots (dsl 0.9.0 D-A/D-C) ----------------------------
+    // The core declares the slots and ships no members, so a project that
+    // never declares one only finds out when an author writes the attr. This
+    // is where it finds out first.
+    let domains = resolved_domains(manifest_dir.as_deref().unwrap_or(dir), &lute_files);
+    let declared: Vec<String> = VOCAB_SLOTS
+        .iter()
+        .filter_map(|slot| domains.get(*slot).map(|dom| slot_entry(slot, dom)))
+        .collect();
+    let missing: Vec<&str> = VOCAB_SLOTS
+        .iter()
+        .copied()
+        .filter(|slot| !domains.contains_key(*slot))
+        .collect();
+    checks.push(Check::info(
+        "vocabularySlots",
+        "vocabulary slots declared",
+        if declared.is_empty() {
+            "none".to_string()
+        } else {
+            declared.join(", ")
+        },
+    ));
+    if !missing.is_empty() {
+        checks.push(Check::info(
+            "vocabularySlotsMissing",
+            "not declared (using one errors)",
+            format!(
+                "{} — declare members in a project schema's `enums:` \
+                 (`lute init` scaffolds a starter set)",
+                missing.join(", ")
+            ),
         ));
     }
 
