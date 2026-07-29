@@ -99,11 +99,44 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
 
 /// The core snapshot with [`test_domains`] folded in — the drop-in replacement
 /// for `load_core_snapshot()` in any fixture that uses vocabulary attrs.
+///
+/// `load_core_snapshot()` stamps `snap.version` before returning, so folding
+/// the vocabulary in leaves that stamp describing a snapshot we no longer have
+/// (`snap.enums` gains `action`, and `enums` is hashed). Re-stamp so every
+/// fixture using this helper emits the `capabilityVersion` of the snapshot it
+/// actually compiled against.
 pub fn vocab_snapshot() -> CapabilitySnapshot {
     let mut snap = load_core_snapshot();
     for (name, dom) in test_domains() {
         snap.enums.insert(name.clone(), dom.members.clone());
         snap.domains.insert(name, dom);
     }
+    snap.version = lute_manifest::snapshot::capability_version(&snap);
     snap
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The helper adds an `action` key to `snap.enums`, and `enums` is folded
+    /// into the content stamp (`capability_version`), so a snapshot carrying
+    /// the test vocabulary MUST NOT present the bare core's `version`.
+    /// `load_core_snapshot()` stamps before we fold the domains in, so the
+    /// stamp has to be recomputed after the fold or every compile path that
+    /// switched to this helper would emit a stale `capabilityVersion`.
+    #[test]
+    fn vocab_snapshot_restamps_its_content_version() {
+        let core = load_core_snapshot();
+        let vocab = vocab_snapshot();
+        assert_ne!(
+            vocab.version, core.version,
+            "vocab_snapshot() must re-stamp: its enums differ from the bare core's"
+        );
+        assert_eq!(
+            vocab.version,
+            lute_manifest::snapshot::capability_version(&vocab),
+            "the stamp must be the hash of the snapshot actually returned"
+        );
+    }
 }
