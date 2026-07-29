@@ -9,7 +9,7 @@ fn codes(text: &str) -> Vec<String> {
     let input = CheckInput {
         text: text.to_string(),
         uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
+        snapshot: lute_test_vocab::vocab_snapshot(),
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
@@ -110,10 +110,12 @@ fn quest_lifecycle_guards_admit_fact_queries() {
 /// write, AND a `holds`/`count`/`validAt` query pattern — but
 /// `check_fact_queries` used to hand `check_atom` an EMPTY domains map, so a
 /// bad domain-member value in a query silently passed. `felt`'s sole arg
-/// `emotion` is `lute.core`'s baseline domain (`snap.domains["emotion"]`,
-/// closed, members `[neutral, surprised, delighted, shy, content, angry,
-/// sad]`) — reachable with NO `entities:`/`enums:` declared at all, proving
-/// the arg resolves via the merged `domains` map, not a RelVocab kind/enum.
+/// `emotion` is a CLOSED domain of the harness snapshot
+/// (`lute_test_vocab::vocab_snapshot()`, members `[neutral, surprised,
+/// delighted, shy, content, angry, sad]`) — declared by the snapshot's
+/// vocabulary, NOT by this fixture's frontmatter, which names no
+/// `entities:`/`enums:` at all. That is exactly what proves the arg resolves
+/// via the merged `domains` map rather than a RelVocab kind/enum.
 const DOMAIN_VOCAB: &str = "relations:\n  felt: { args: [emotion] }\n";
 
 fn scene_when_domain(cond: &str) -> String {

@@ -1,11 +1,20 @@
 use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
+use lute_manifest::snapshot::CapabilitySnapshot;
 
+/// The default harness: the shared test vocabulary, so a fixture writing
+/// `emotion="neutral"` declares that vocabulary the way a real project does.
 fn codes(text: &str) -> Vec<String> {
+    codes_with(text, lute_test_vocab::vocab_snapshot())
+}
+
+/// Same harness against an explicit snapshot — for the one test whose subject
+/// IS the absence of a vocabulary declaration.
+fn codes_with(text: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
     let input = CheckInput {
         text: text.to_string(),
         uri: "t".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
+        snapshot,
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
@@ -78,7 +87,16 @@ fn emotion_member_clean_nonmember_errors() {
 
 #[test]
 fn action_is_open_by_default() {
-    // action stays free-form in a core-only context (no project action domain)
-    let cs = codes(&format!("{HDR}@x{{action=\"wave\"}}: hi\n"));
+    // DELIBERATELY asserts against the BARE CORE (`load_core_snapshot()`), not
+    // the shared test vocabulary: the claim is that with NOTHING declaring an
+    // `action` domain, an arbitrary value is accepted (content_line.rs's
+    // `"action" if domains.contains_key("action") || …` guard is never taken).
+    // Run against `vocab_snapshot()` this test would only prove that the value
+    // happens to be one of the helper's 14 members — and `"nonesuch-flourish"`
+    // below would be `E-BAD-ENUM`. It must stay on the bare core.
+    let cs = codes_with(
+        &format!("{HDR}@x{{action=\"nonesuch-flourish\"}}: hi\n"),
+        lute_manifest::core::load_core_snapshot(),
+    );
     assert!(!cs.iter().any(|c| c == "E-DOMAIN-UNKNOWN" || c == "E-BAD-ENUM"), "{cs:?}");
 }
