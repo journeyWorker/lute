@@ -87,8 +87,8 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
 }
 
 /// The merged domain vocabulary the project's documents ACTUALLY resolve,
-/// unioned across every `.lute` file under `dir` (`root` is the enclosing
-/// project root, or `dir` when nothing at or above it carries a manifest).
+/// unioned across every `.lute` file under `root`, plus the DEDUPLICATED
+/// project-resolution problems that resolution surfaced.
 ///
 /// Deliberately no second resolution path: this reuses `crate::build_input` —
 /// the SAME per-document resolution `lute check`/`check-project` perform (each
@@ -99,11 +99,25 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
 /// declared is a slot the checker resolves, by construction rather than by
 /// two implementations agreeing.
 ///
+/// `root` is the WALK ROOT handed to `crate::project_root_for`, i.e. the lower
+/// bound of each file's own ancestor search. It MUST be the directory `doctor`
+/// was asked about, for the reason spelled out at the call site.
+///
 /// A slot counts as declared for the PROJECT when at least one document
 /// resolves it. `merge_domains`'s diagnostics are dropped: `doctor` reports and
 /// never gates, and a domain collision or a missing `exits:` is `check`'s to
 /// report — at a span, in the file that caused it.
-fn resolved_domains(root: &Path, lute_files: &[PathBuf]) -> BTreeMap<String, Domain> {
+///
+/// The project-resolution problems are NOT dropped, and are not printed either:
+/// they are the very thing an author runs `doctor` to see. A broken
+/// `lute.project.yaml` (or an unknown profile, a missing active plugin, a bad
+/// plugin option) describes the PROJECT, so every document under it resolves the
+/// identical message — returned deduplicated, in first-seen order, for the
+/// caller to render as ONE `Check`.
+fn resolved_domains(
+    root: &Path,
+    lute_files: &[PathBuf],
+) -> (BTreeMap<String, Domain>, Vec<String>) {
     // `merge_domains` anchors its (discarded) diagnostics at this span; there
     // is no one document to blame for a project-wide report, so it gets the
     // same zeroed placeholder the CLI's other source-less call sites use.
@@ -115,11 +129,17 @@ fn resolved_domains(root: &Path, lute_files: &[PathBuf]) -> BTreeMap<String, Dom
         utf16_range: (0, 0),
     };
     let mut out = BTreeMap::new();
+    let mut problems: Vec<String> = Vec::new();
     for file in lute_files {
         let project = crate::project_root_for(file, root);
         let Some(built) = crate::build_input(file, None, Some(&project)) else {
             continue;
         };
+        for m in &built.project_diags {
+            if !problems.iter().any(|p| p == m) {
+                problems.push(m.clone());
+            }
+        }
         let (merged, _diags) = lute_check::schema_import::merge_domains(
             &built.input.snapshot,
             &built.input.imports,
@@ -127,7 +147,7 @@ fn resolved_domains(root: &Path, lute_files: &[PathBuf]) -> BTreeMap<String, Dom
         );
         out.extend(merged);
     }
-    out
+    (out, problems)
 }
 
 /// One declared slot's entry in the `doctor` report: the slot name, plus the
@@ -260,7 +280,18 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // The core declares the slots and ships no members, so a project that
     // never declares one only finds out when an author writes the attr. This
     // is where it finds out first.
-    let domains = resolved_domains(manifest_dir.as_deref().unwrap_or(dir), &lute_files);
+    //
+    // INVARIANT: the walk root is the REQUESTED `dir`, never `manifest_dir`.
+    // `doctor`'s root policy MUST equal `check-project`'s or `doctor` lies about
+    // the checker's verdict: `check-project <dir>` passes `dir` as
+    // `project_root_for`'s lower bound, so it cannot ascend above the directory
+    // it was asked about. Handing `manifest_dir` in here would let `doctor` pick
+    // up a parent `lute.project.yaml` — and report a plugin-declared slot as
+    // declared while `check-project` on the SAME dir rejects it with
+    // `E-DOMAIN-UNKNOWN`. `manifest_dir` remains the right answer for the
+    // "found `lute.project.yaml` at …" line above, which reports the ancestry
+    // rather than predicting a verdict.
+    let (domains, project_problems) = resolved_domains(dir, &lute_files);
     let declared: Vec<String> = VOCAB_SLOTS
         .iter()
         .filter_map(|slot| domains.get(*slot).map(|dom| slot_entry(slot, dom)))
@@ -288,6 +319,24 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
                  (`lute init` scaffolds a starter set)",
                 missing.join(", ")
             ),
+        ));
+    }
+
+    // --- Project resolution (what `build_input` used to print raw) -------
+    // A `lute.project.yaml` that fails to load, an unknown profile, a missing
+    // active plugin, a bad plugin option, a malformed `identity:` template: all
+    // describe the PROJECT, so every document under it reports the identical
+    // message. Reported here ONCE, through the same `Check` model as everything
+    // else — a `doctor` whose findings only reach stderr is invisible to any
+    // consumer parsing its output, and `doctor` is the command you run when
+    // something is already wrong. Absent key == nothing to report.
+    if !project_problems.is_empty() {
+        checks.push(Check::fail(
+            "projectResolution",
+            "project resolution",
+            project_problems.join("; "),
+            "fix `lute.project.yaml` (or the plugin/profile it activates); \
+             `lute check-project` fails on the same problem",
         ));
     }
 
