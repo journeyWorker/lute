@@ -29,9 +29,12 @@ pub const END_DIRECTIVE: &str = "end";
 /// (plugin §13).
 ///
 /// dsl 0.9.0 D-A: it carries NO vocabulary members. `assets/lute.core/
-/// enums.yaml` is empty, so both `enums` and `domains` come out empty; the
-/// seven domain names survive only as attribute types in `staging.yaml`, and
-/// every member comes from a project schema or a plugin.
+/// enums.yaml` is empty, so both `enums` and `domains` come out empty; every
+/// member comes from a project schema or a plugin. SIX of the seven slot names
+/// survive here as attribute types in `staging.yaml` (`action`, `anchor`,
+/// `mood`, `musicAction`, `vfxType`, `volume`); the seventh, `emotion`, is a
+/// content-line slot owned by `lute-check`'s `content_line` checker rather than
+/// by any directive attribute.
 pub fn load_core_snapshot() -> CapabilitySnapshot {
     let manifest: PluginManifest =
         serde_yaml::from_str(MANIFEST).expect("core plugin.yaml must parse");
@@ -128,7 +131,7 @@ mod tests {
         }
     }
 
-    /// dsl 0.9.0 D-A: `musicAction` used to be a six-member core enum. It
+    /// dsl 0.9.0 D-A: `musicAction` used to be a five-member core enum. It
     /// survives as a SLOT — `::music{action}` still names it, so a project or
     /// plugin declaring `musicAction` members gets them checked — but the core
     /// itself ships none. Asserting the absence, rather than dropping the
