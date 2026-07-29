@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::core::load_core_snapshot;
 use crate::resolve::{ActivePlugin, InstalledPlugins};
 use crate::schema::{AttrDecl, StateShape};
-use crate::snapshot::{capability_version, CapabilitySnapshot, Domain, ResolvedPlugin};
+use crate::snapshot::{capability_version, CapabilitySnapshot, ResolvedPlugin};
 use crate::types::Type;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -53,6 +53,11 @@ pub enum AssembleError {
         plugin: String,
         name: String,
     },
+    /// dsl 0.9.0 D-D: a plugin-declared domain's member semantics are invalid.
+    DomainSemantics {
+        plugin: String,
+        issue: crate::validate::DomainIssue,
+    },
 }
 
 impl AssembleError {
@@ -73,6 +78,7 @@ impl AssembleError {
             AssembleError::CyclicStateShape { .. } => "E-STATE-SHAPE-CYCLE",
             AssembleError::UnknownAssetKind { .. } => "E-PLUGIN-UNKNOWN-ASSETKIND",
             AssembleError::ReservedStampAttr { .. } => "E-PLUGIN-RESERVED-STAMP-ATTR",
+            AssembleError::DomainSemantics { issue, .. } => issue.code(),
         }
     }
 }
@@ -129,6 +135,9 @@ impl std::fmt::Display for AssembleError {
                 "directive `{directive}` binds attribute `{attr}` to asset kind \
                  `{kind}`, which no active plugin declares"
             ),
+            AssembleError::DomainSemantics { plugin, issue } => {
+                write!(f, "plugin `{plugin}`: {}", issue.message())
+            }
         }
     }
 }
@@ -293,7 +302,9 @@ pub fn assemble_snapshot(
         );
         merge_map(
             &mut snap.enums,
-            pkg.enums.iter().map(|(k, v)| (k.clone(), v.clone())),
+            pkg.enums
+                .iter()
+                .map(|(k, v)| (k.clone(), v.members.clone())),
             "enum",
             &ap.id,
             &mut errs,
@@ -307,21 +318,23 @@ pub fn assemble_snapshot(
         // `AssembleError::code()` surfaces it as `E-DOMAIN-DUP`.
         merge_map(
             &mut snap.domains,
-            pkg.enums
-                .iter()
-                .map(|(k, v)| {
-                    (
-                        k.clone(),
-                        Domain {
-                            members: v.clone(),
-                            open: false,
-                        },
-                    )
-                }),
+            pkg.enums.iter().map(|(k, v)| (k.clone(), v.clone())),
             "domain",
             &ap.id,
             &mut errs,
         );
+        // dsl 0.9.0 D-D: the member semantics a plugin-declared domain carries
+        // (`default:`/`exits:`) go through the SAME validator the project
+        // schema path uses (`lute-check`'s `merge_domains`), so the rule set
+        // lives in one place.
+        for (name, dom) in &pkg.enums {
+            for issue in crate::validate::validate_domain(name, dom) {
+                errs.push(AssembleError::DomainSemantics {
+                    plugin: ap.id.clone(),
+                    issue,
+                });
+            }
+        }
         merge_map(
             &mut snap.asset_kinds,
             pkg.asset_kinds.iter().map(|k| (k.kind.clone(), k.clone())),

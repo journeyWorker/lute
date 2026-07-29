@@ -13,7 +13,7 @@ use crate::types::Type;
 pub struct LoadedPlugin {
     pub manifest: PluginManifest,
     pub directives: Vec<DirectiveDecl>,
-    pub enums: BTreeMap<String, Vec<String>>,
+    pub enums: BTreeMap<String, crate::snapshot::Domain>,
     pub state_shapes: Vec<StateShape>,
     pub state_templates: Vec<StateTemplate>,
     pub providers: Vec<ProviderDecl>,
@@ -287,7 +287,11 @@ fn read_state(path: &Path, out: &mut LoadedPlugin, errs: &mut Vec<LoadError>) {
     }
 }
 
-fn read_enums(path: &Path, dst: &mut BTreeMap<String, Vec<String>>, errs: &mut Vec<LoadError>) {
+fn read_enums(
+    path: &Path,
+    dst: &mut BTreeMap<String, crate::snapshot::Domain>,
+    errs: &mut Vec<LoadError>,
+) {
     for file in yaml_files(path, errs) {
         let s = match std::fs::read_to_string(&file) {
             Ok(s) => s,
@@ -302,7 +306,7 @@ fn read_enums(path: &Path, dst: &mut BTreeMap<String, Vec<String>>, errs: &mut V
         match serde_yaml::from_str::<EnumsFile>(&s) {
             Ok(f) => {
                 for (k, v) in f.enums {
-                    if dst.insert(k.clone(), v).is_some() {
+                    if dst.insert(k.clone(), v.into_domain()).is_some() {
                         errs.push(LoadError::DuplicateId {
                             kind: "enum".into(),
                             id: k,

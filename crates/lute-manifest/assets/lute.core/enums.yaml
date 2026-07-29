@@ -2,6 +2,8 @@ enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
   mood: [peaceful, tense, romantic, sad, upbeat]
   volume: [silent, down, normal, up, full]
-  anchor: [left, center, right]
+  anchor:
+    members: [left, center, right]
+    default: center
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
   musicAction: [start, change, stop, resume, fade-out]

@@ -371,11 +371,180 @@ fn yaml_kind(v: &serde_yaml::Value) -> &'static str {
     }
 }
 
+/// dsl 0.9.0 D-D: the domain slots whose members carry compiler-relevant
+/// semantics. The core owns the SLOT (it knows `action` needs to say which
+/// members exit); the project owns the MEMBERS. A declaration of one of these
+/// names without its semantics key is an error, never a fallback — a silent
+/// fallback to a `fade-out*` prefix rule is the hidden coupling 0.9.0 removes.
+pub const SLOT_REQUIRES_EXITS: &[&str] = &["action"];
+/// dsl 0.9.0 D-D: slots that must declare the member used when absent.
+pub const SLOT_REQUIRES_DEFAULT: &[&str] = &["anchor"];
+
+/// A member-semantics defect in one domain declaration (dsl 0.9.0 D-D).
+/// Shape mirrors [`crate::asset::AssetIssue`]: a data-only finding the caller
+/// renders into its own diagnostic type, so the plugin path
+/// (`AssembleError`) and the project path (`lute-check`'s `uses_diag`) share
+/// one rule set instead of duplicating it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DomainIssue {
+    DefaultNotMember { name: String, value: String },
+    ExitNotMember { name: String, value: String },
+    MissingSemantics { name: String, key: &'static str },
+    UnexpectedSemantics { name: String, key: &'static str },
+}
+
+impl DomainIssue {
+    pub fn code(&self) -> &'static str {
+        match self {
+            DomainIssue::DefaultNotMember { .. } => "E-ENUM-DEFAULT-NOT-MEMBER",
+            DomainIssue::ExitNotMember { .. } => "E-ENUM-EXITS-NOT-MEMBER",
+            DomainIssue::MissingSemantics { .. } => "E-ENUM-MISSING-SEMANTICS",
+            DomainIssue::UnexpectedSemantics { .. } => "E-ENUM-UNEXPECTED-SEMANTICS",
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            DomainIssue::DefaultNotMember { name, value } => format!(
+                "domain `{name}` declares `default: {value}`, which is not one of its members"
+            ),
+            DomainIssue::ExitNotMember { name, value } => format!(
+                "domain `{name}` lists `{value}` in `exits:`, which is not one of its members"
+            ),
+            DomainIssue::MissingSemantics { name, key } => format!(
+                "domain `{name}` must declare `{key}:` — the compiler reads it instead of \
+                 inferring member semantics (dsl 0.9.0 D-D)"
+            ),
+            DomainIssue::UnexpectedSemantics { name, key } => format!(
+                "domain `{name}` declares `{key}:`, which has no meaning for this slot \
+                 (dsl 0.9.0 D-D)"
+            ),
+        }
+    }
+}
+
+/// Validate one domain declaration's member semantics (dsl 0.9.0 D-D). Pure
+/// and total. An OPEN (registry-style) domain has no static member list, so
+/// every rule here is vacuous for it.
+pub fn validate_domain(name: &str, d: &crate::snapshot::Domain) -> Vec<DomainIssue> {
+    let mut out = Vec::new();
+    if d.open {
+        return out;
+    }
+    let wants_exits = SLOT_REQUIRES_EXITS.contains(&name);
+    let wants_default = SLOT_REQUIRES_DEFAULT.contains(&name);
+
+    if let Some(v) = &d.default {
+        if !wants_default {
+            out.push(DomainIssue::UnexpectedSemantics {
+                name: name.to_string(),
+                key: "default",
+            });
+        } else if !d.members.contains(v) {
+            out.push(DomainIssue::DefaultNotMember {
+                name: name.to_string(),
+                value: v.clone(),
+            });
+        }
+    } else if wants_default {
+        out.push(DomainIssue::MissingSemantics {
+            name: name.to_string(),
+            key: "default",
+        });
+    }
+
+    if !d.exits.is_empty() {
+        if !wants_exits {
+            out.push(DomainIssue::UnexpectedSemantics {
+                name: name.to_string(),
+                key: "exits",
+            });
+        } else {
+            for v in &d.exits {
+                if !d.members.contains(v) {
+                    out.push(DomainIssue::ExitNotMember {
+                        name: name.to_string(),
+                        value: v.clone(),
+                    });
+                }
+            }
+        }
+    } else if wants_exits {
+        out.push(DomainIssue::MissingSemantics {
+            name: name.to_string(),
+            key: "exits",
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::schema::{AttrDecl, DirectiveDecl, Lowering};
     use crate::types::Type;
+
+    fn dom(members: &[&str], default: Option<&str>, exits: &[&str]) -> crate::snapshot::Domain {
+        crate::snapshot::Domain {
+            members: members.iter().map(|s| s.to_string()).collect(),
+            open: false,
+            default: default.map(str::to_string),
+            exits: exits.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn action_requires_exits_anchor_requires_default() {
+        let missing_exits = validate_domain("action", &dom(&["sway"], None, &[]));
+        assert_eq!(
+            missing_exits.iter().map(|i| i.code()).collect::<Vec<_>>(),
+            ["E-ENUM-MISSING-SEMANTICS"]
+        );
+        let missing_default = validate_domain("anchor", &dom(&["left"], None, &[]));
+        assert_eq!(
+            missing_default.iter().map(|i| i.code()).collect::<Vec<_>>(),
+            ["E-ENUM-MISSING-SEMANTICS"]
+        );
+        assert!(validate_domain("action", &dom(&["sway", "hide"], None, &["hide"])).is_empty());
+        assert!(validate_domain("anchor", &dom(&["left"], Some("left"), &[])).is_empty());
+    }
+
+    #[test]
+    fn semantics_must_reference_members() {
+        assert_eq!(
+            validate_domain("action", &dom(&["sway"], None, &["zzz"]))
+                .iter()
+                .map(|i| i.code())
+                .collect::<Vec<_>>(),
+            ["E-ENUM-EXITS-NOT-MEMBER"]
+        );
+        assert_eq!(
+            validate_domain("anchor", &dom(&["left"], Some("zzz"), &[]))
+                .iter()
+                .map(|i| i.code())
+                .collect::<Vec<_>>(),
+            ["E-ENUM-DEFAULT-NOT-MEMBER"]
+        );
+    }
+
+    #[test]
+    fn semantics_on_an_unrelated_slot_is_rejected() {
+        let issues = validate_domain("emotion", &dom(&["neutral"], Some("neutral"), &["neutral"]));
+        let codes: Vec<&str> = issues.iter().map(|i| i.code()).collect();
+        assert_eq!(
+            codes,
+            ["E-ENUM-UNEXPECTED-SEMANTICS", "E-ENUM-UNEXPECTED-SEMANTICS"]
+        );
+    }
+
+    #[test]
+    fn open_domain_is_exempt() {
+        // A registry-style domain has no static members, so member-semantics
+        // requirements cannot apply to it.
+        let mut d = dom(&[], None, &[]);
+        d.open = true;
+        assert!(validate_domain("action", &d).is_empty());
+    }
 
     fn dir(name: &str, semantics: &[&str]) -> DirectiveDecl {
         DirectiveDecl {

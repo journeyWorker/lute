@@ -246,7 +246,7 @@ pub fn resolve_imports(
         BTreeMap::new();
     let mut relation_by_name: BTreeMap<String, Vec<(PathBuf, usize, RelationDecl)>> =
         BTreeMap::new();
-    let mut enum_by_name: BTreeMap<String, Vec<(PathBuf, usize, Vec<String>)>> = BTreeMap::new();
+    let mut enum_by_name: BTreeMap<String, Vec<(PathBuf, usize, Domain)>> = BTreeMap::new();
     let mut fact_entries: Vec<(usize, PathBuf, usize, FactDecl)> = Vec::new();
     let mut rule_entries: Vec<(usize, PathBuf, usize, RuleDecl)> = Vec::new();
     for (canon, doc) in &parsed {
@@ -285,7 +285,7 @@ pub fn resolve_imports(
                 enum_by_name
                     .entry(name.clone())
                     .or_default()
-                    .push((canon.clone(), depth, dom.members.clone()));
+                    .push((canon.clone(), depth, dom.clone()));
             }
         }
         for (i, fact) in doc.facts.iter().enumerate() {
@@ -390,7 +390,7 @@ pub fn resolve_imports(
         rel_relations.insert(name, winner);
     }
 
-    let mut rel_enums: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut rel_enums: BTreeMap<String, Domain> = BTreeMap::new();
     for (name, entries) in enum_by_name {
         emit_level_dups("E-USES-DUP-RELATION", "enum", &name, &entries, &mut diags, at);
         let Some((winner, winner_depth)) = pick_winner(&entries) else {
@@ -398,7 +398,7 @@ pub fn resolve_imports(
         };
         for (_, depth, base_members) in &entries {
             if *depth > winner_depth {
-                let missing = missing_members(&winner, base_members);
+                let missing = missing_members(&winner.members, &base_members.members);
                 if !missing.is_empty() {
                     diags.push(uses_diag(
                         "E-EXTENDS-RELATION-SIG",
@@ -419,15 +419,7 @@ pub fn resolve_imports(
     // per-doc: the enum projection runs first, `kinds_to_domains` overwrites).
     let mut domains: BTreeMap<String, Domain> = rel_enums
         .iter()
-        .map(|(name, members)| {
-            (
-                name.clone(),
-                Domain {
-                    members: members.clone(),
-                    open: false,
-                },
-            )
-        })
+        .map(|(name, dom)| (name.clone(), dom.clone()))
         .collect();
     domains.extend(kinds_to_domains(&rel_kinds));
 
@@ -476,7 +468,10 @@ pub fn resolve_imports(
         rel: RelImports {
             kinds: rel_kinds,
             relations: rel_relations,
-            enums: rel_enums,
+            enums: rel_enums
+                .iter()
+                .map(|(k, v)| (k.clone(), v.members.clone()))
+                .collect(),
             facts,
             rules,
         },
@@ -516,6 +511,11 @@ pub fn merge_domains(
                 at,
             ));
             continue;
+        }
+        // dsl 0.9.0 D-D: the SAME shared validator `assemble.rs` runs on the
+        // plugin path, so the member-semantics rule set is not duplicated.
+        for issue in lute_manifest::validate::validate_domain(name, dom) {
+            diags.push(uses_diag(issue.code(), issue.message(), at));
         }
         merged.insert(name.clone(), dom.clone());
     }
