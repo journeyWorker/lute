@@ -454,9 +454,20 @@ fn closed_domain_membership_wins_over_same_named_provider() {
 /// Collect the `E-ENUM-MISSING-SEMANTICS` messages `merge_domains` produces
 /// for a project schema body, against the real core baseline.
 fn missing_semantics_messages(body: &str) -> Vec<String> {
+    missing_semantics_messages_files(&[("schema.lute", body)], &["schema.lute"])
+}
+
+/// Multi-file variant: write every `(file, body)` pair into one temp dir,
+/// resolve `roots`, and collect the same messages. Needed for the
+/// mixed-provenance case, where the SAME domain name must arrive from two
+/// DIFFERENT imported files (one `entities:`, one `enums:`).
+fn missing_semantics_messages_files(files: &[(&str, &str)], roots: &[&str]) -> Vec<String> {
     let dir = unique_dir();
-    write_lute(&dir, "schema.lute", body);
-    let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
+    for (name, body) in files {
+        write_lute(&dir, name, body);
+    }
+    let roots: Vec<String> = roots.iter().map(|r| (*r).to_string()).collect();
+    let imports = resolve_imports(&dir, &roots, &[], zero_span());
     let snapshot = load_core_snapshot();
     let (_merged, diags) = merge_domains(&snapshot, &imports, zero_span());
     diags
@@ -535,5 +546,76 @@ fn enum_declared_slot_validation_is_unchanged() {
         bad[0].contains("must declare `exits:`"),
         "enum path keeps the shared validator's wording: {}",
         bad[0]
+    );
+}
+
+/// Provenance must come from the WINNING projection. When separate imported
+/// files declare `action` under `entities:` AND under `enums:`,
+/// `resolve_imports` retains it in BOTH `rel.kinds` and `rel.enums`, and
+/// builds `domains` as enums-then-`.extend(kinds_to_domains(..))` — so the
+/// KIND projection is the `Domain` in hand, and it cannot carry `exits:`
+/// however the enum peer declared it. Reading provenance off the losing
+/// (enum) source emits the shared validator's generic wording against a
+/// value that can never satisfy it.
+#[test]
+fn mixed_provenance_uses_the_winning_kind_projection() {
+    let msgs = missing_semantics_messages_files(
+        &[
+            (
+                "k.lute",
+                "---\nentities:\n  action: { members: [wave, bow] }\n---\n",
+            ),
+            (
+                "e.lute",
+                "---\nenums:\n  action:\n    members: [wave, bow]\n    exits: [bow]\n---\n",
+            ),
+            ("a.lute", "---\nuses: [k.lute, e.lute]\n---\n"),
+        ],
+        &["a.lute"],
+    );
+    assert_eq!(
+        msgs.len(),
+        1,
+        "expected exactly one E-ENUM-MISSING-SEMANTICS, got {msgs:?}"
+    );
+    let msg = &msgs[0];
+    assert!(
+        msg.contains("enums:") && msg.contains("entities:"),
+        "kind-derived wording must point at `enums:` and name the `entities:` provenance: {msg}"
+    );
+    assert!(
+        !msg.contains("must declare `exits:`"),
+        "generic validator wording is unsatisfiable for the kind-derived winner: {msg}"
+    );
+}
+
+/// An OPEN kind-derived slot is not merely unvalidated, it is unworkable: a
+/// registry-style domain cannot enumerate its exits, yet `kinds_to_domains`
+/// hands the compiler an `action` with empty `exits` and no `default`. So the
+/// openness escape `validate_domain` takes for MEMBERSHIP rules must not
+/// apply here — the slot's semantics are a compiler input.
+#[test]
+fn open_kind_declared_slot_points_author_at_enums() {
+    let msgs = missing_semantics_messages("---\nentities:\n  action: { open: engine }\n---\n");
+    assert_eq!(
+        msgs.len(),
+        1,
+        "expected exactly one E-ENUM-MISSING-SEMANTICS, got {msgs:?}"
+    );
+    assert!(
+        msgs[0].contains("enums:"),
+        "message must point at `enums:`: {}",
+        msgs[0]
+    );
+}
+
+/// The guard against over-broad validation: an open registry kind under an
+/// ORDINARY name is a normal, supported declaration — no semantics diagnostic.
+#[test]
+fn open_kind_declared_ordinary_name_has_no_semantics_diag() {
+    let msgs = missing_semantics_messages("---\nentities:\n  npc: { open: engine }\n---\n");
+    assert!(
+        msgs.is_empty(),
+        "open registry kinds are a normal declaration: {msgs:?}"
     );
 }
