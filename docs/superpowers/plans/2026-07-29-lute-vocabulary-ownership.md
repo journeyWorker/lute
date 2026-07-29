@@ -1369,7 +1369,7 @@ fn line_is_stateful(line: &Line) -> bool {
 
 - [ ] **Step 4: Remove the two fictional flags**
 
-In `crates/lute-manifest/src/validate.rs`, delete exactly two entries from `SEMANTICS_VOCAB` — `"isStateful"` and `"cancelsPrevious"` — leaving nine. **Keep `isExit`**: unlike those two it has a real role (a directive that always exits its character regardless of the action member), and although no shipped directive declares it today, it is the directive-level counterpart to the member-level `exits:` this plan introduces. Add a comment:
+In `crates/lute-manifest/src/validate.rs`, delete exactly two entries from `SEMANTICS_VOCAB` — `"isStateful"` and `"cancelsPrevious"` — leaving ten. **Keep `isExit`**: unlike those two it has a real role (a directive that always exits its character regardless of the action member), and although no shipped directive declares it today, it is the directive-level counterpart to the member-level `exits:` this plan introduces. Add a comment:
 
 ```rust
     // `isStateful` and `cancelsPrevious` were removed in plugin 0.0.3: no
@@ -1491,7 +1491,7 @@ Its two content-line `action="sway"`/`action="lean"` usages (`:162`, `:165`) are
 
 `docs/proposals/plugin-system/0.0.3.md` — follow `0.0.2.md`:
 - `enums` export entries may be the long form
-- `SEMANTICS_VOCAB` loses `isStateful` and `cancelsPrevious` (9 flags)
+- `SEMANTICS_VOCAB` loses `isStateful` and `cancelsPrevious` (12 flags → 10)
 - `lute.core` exports an empty `enums`
 
 - [ ] **Step 6: Correct the prose docs**
