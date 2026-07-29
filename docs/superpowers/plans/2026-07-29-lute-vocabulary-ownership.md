@@ -1450,14 +1450,14 @@ Emptying the core in Task 4 left **26 failing tests, every one `docs/examples`-d
 |---|---|---|
 | `lute-compile/tests/e2e.rs` | 9 | `affinity_reaction`, `bianca_s01ep02`, `components_scene`, `connected_quest`, `gated_line`, `quest_grove`, `quest_rescue_halsin`, `showcase_episode01`, `plugin_record_carries_resolved_effects` |
 | `lute-cli/tests/cli.rs` | 5 | `context_surface_has_plugin_and_core_directives`, `hub_demo_example_checks_clean`, `hub_demo_example_compiles`, `check_clean_file_exits_zero_json`, `check_with_empty_providers_dir_is_permissive` |
-| `lute-compile/tests/compile.rs` | 3 | `compile_writes_out_file`, `compile_bianca_exits_zero_with_artifact_json`, `compile_out_to_unwritable_path_exits_two` |
-| `lute-check/tests/examples_check.rs` | 3 | `corpus_check_project_is_clean_end_to_end`, `showcase_episode_checks_clean_with_yaml_schema_chain`, `affinity_reaction_pair_checks_clean_under_project` |
+| `lute-cli/tests/compile.rs` | 3 | `compile_writes_out_file`, `compile_bianca_exits_zero_with_artifact_json`, `compile_out_to_unwritable_path_exits_two` |
+| `lute-cli/tests/examples_check.rs` | 3 | `corpus_check_project_is_clean_end_to_end`, `showcase_episode_checks_clean_with_yaml_schema_chain`, `affinity_reaction_pair_checks_clean_under_project` |
 | `lute-cli/tests/plugin_loaded.rs` | 2 | `date_minigame_is_clean_with_plugin_project`, `date_minigame_clean_with_project_catalog_autodiscovered` |
 | `lute-lsp/tests/divergence.rs` | 2 | `divergence_holds_under_plugin_project`, `headless_and_lsp_diagnostics_match_warning_bearing` |
-| `lute-check/tests/trace.rs` | 1 | `component_expansion_transcript_has_no_sentinel_leak` |
+| `lute-cli/tests/trace.rs` | 1 | `component_expansion_transcript_has_no_sentinel_leak` |
 | `lute-compile/tests/component_fold.rs` | 1 | `existing_goldens_untouched` |
 
-Note the failing set spans FIVE crates including `lute-lsp` — a project whose vocabulary is incomplete diverges between the CLI and the LSP, which is what `divergence.rs` exists to catch.
+Note there is a `compile.rs` under BOTH `lute-cli/tests/` and `lute-compile/tests/`; the failing three are `lute-cli`'s. So 14 of the 26 are `lute-cli`'s, and only `e2e`/`component_fold` belong to `lute-compile`.
 
 Iterate: `cargo run -q -p lute-cli -- check-project docs/examples` to exit 0 (warnings allowed, matching `.github/workflows/docs.yml:70`), then `cargo test --workspace --no-fail-fast` and confirm the count reaches zero. Each remaining `E-DOMAIN-UNKNOWN` names a document whose `uses:` chain does not reach a declaration, or a subproject root (`idola-project`, `investigation`, `plugindef-project`, `showcase`) resolving against its own `lute.project.yaml`. Prefer extending a `uses:` over copying the block — `E-USES-DUP-*` catches a double declaration.
 
