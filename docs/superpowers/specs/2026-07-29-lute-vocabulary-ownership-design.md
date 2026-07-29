@@ -167,11 +167,11 @@ check writes `{ domain: X }`. `dialogMotion` is not a domain slot today and does
 
 Breakage: a document using content-line `action=` in a project that declares **no** `action` domain.
 Because `lute.vn` declares one (D-E), this is empty for any baseline project. Measured surface:
-content-line `action=` appears **twice in the whole repo** — `action="sway"` and `action="lean"` in
-`docs/architecture.md:162,165` — and both values are baseline members by D-E(b). Zero `.lute` files
-use it; the only other occurrences are Rust unit tests that build source strings inline
-(`inject.rs:94` `action="pose-lean"`, `content_line.rs:67` `action="wave"`), and `pose-lean` is the
-one value that must be updated to a member when its test is touched.
+content-line `action=` occurs **three times repo-wide** — `sway` and `lean`
+(`docs/architecture.md:162,165`) and `wave` — and all three are baseline members by D-E(b). Zero
+`.lute` files use it. The only other occurrences build source strings inline in Rust fixtures
+(`inject.rs:94` `action="pose-lean"`, `content_line.rs:67` `action="wave"`); both values are baseline
+members by D-E(b)/(c), so **no test needs its action value changed**.
 
 ## D-E. `enums:` grows a long form: `members` / `default` / `exits`
 
@@ -193,8 +193,8 @@ enums:
     members: [left, center, right]
     default: center
   action:
-    members: [fade-in-up, fade-in-slow, slide-in-left, walk-in, idle, wave, pose-turn,
-              sway, lean, fade-out, fade-out-down, fade-out-slow, hide]
+    members: [fade-in-up, fade-in-slow, slide-in-left, walk-in, idle, wave, sway, lean,
+              pose-turn, pose-lean, fade-out, fade-out-down, fade-out-slow, hide]
     exits:   [fade-out, fade-out-down, fade-out-slow, hide]
 ```
 
@@ -204,24 +204,35 @@ enums:
 - `exits:` is meaningful only where the domain is bound to a `mayExitCharacter` directive attr
   (D-F); declaring it elsewhere is inert, not an error.
 
-**`lute.vn`'s baseline `action` members are recorded from evidence, never invented.** Appendix A
+**`lute.vn`'s baseline `action` members are recorded from measurement, never invented.** Appendix A
 (`scenario-dsl/0.0.1.md:577`) deliberately left `::auto{action}` an open action-id
 (*"e.g. `fade-in-up`/`fade-out-down`/`pose-*`"*), so there is no prior enumeration to copy. The
-member list above is exactly the union of three measured sets:
+14 members above are exactly the union of four mechanically derived sets:
 
 - (a) every `::auto{action="…"}` value in the repo — `fade-in-up` ×22, `slide-in-left` ×3,
   `fade-out-down` ×2, `fade-in-slow`, `idle`, `pose-turn`, `walk-in`, `wave`;
-- (b) every **content-line** `action="…"` value — `sway` and `lean`, both in `docs/architecture.md`
-  (`:162`, `:165`). CI would **not** catch their omission: the `examples` job runs
+- (b) every **content-line** `action="…"` value — `sway`, `lean` (`docs/architecture.md:162,165`)
+  and `wave` (already in (a)). CI would **not** catch their omission: the `examples` job runs
   `check-project docs/examples` only, and the `website` job checks syntax highlighting, not
   semantics (`.github/workflows/docs.yml:70,73`). They are included because shipped reference
-  documentation must remain valid Lute, not because a gate forces it — and their absence from any
-  gate is itself worth noting in the docs task (§5.7);
-- (c) the three exit ids `is_exit_action` recognizes that no example happens to use — `fade-out`,
+  documentation must remain valid Lute, not because a gate forces it — and that gap is itself worth
+  recording in the docs task (§5.7);
+- (c) `pose-lean`, the one action value that appears only in a Rust fixture (`inject.rs:94`).
+  Including it keeps a passing test passing; excluding it would force an unrelated test edit.
+  (`pose-reset` and `pose-changed` are **not** members — they are the `auto-pose-reset` rule name and
+  prose, never attribute values: `inject.rs:25,268,283`.)
+- (d) the three exit ids `is_exit_action` recognizes that no fixture uses — `fade-out`,
   `fade-out-slow`, `hide`.
 
-`exits:` reproduces `is_exit_action`'s verdict on every member, so behavior is preserved and every
-golden holds. `::auto{action}` is retyped `string` → `{ domain: action }`.
+`exits:` reproduces `is_exit_action`'s verdict on all 14, so behavior is preserved and every golden
+holds. **One branch of that function is dead and needs no replacement:** `action.starts_with("exit")`
+(`inject.rs:371`) matches **zero** occurrences repo-wide, so no `exit*` family enters `exits:`.
+`::auto{action}` is retyped `string` → `{ domain: action }`.
+
+`pose-*` is left as an enumerated set, not a pattern. Appendix A's `pose-*` is prose, and the
+language has no member-pattern facility; inventing one for two known values would add a matching
+syntax to every domain declaration for no measured need. A project with a large pose family
+overrides `action` (OSHiZ: 53 members).
 
 Only `::auto` is retyped. `::cut{action}` and `::video{action}` are already `{ enum: [show, hide] }`
 (`staging.yaml:40,46`) and `::music{action}` is already `{ domain: musicAction }` (`:11`) — three
@@ -313,7 +324,7 @@ core-owned `KNOWN_ATTRS` slots per D-B — with the dead entry removed (D-G).
 |---|---|
 | **IR schema** | **unchanged (0.8.0)** by D-B. No artifact field moves |
 | **capabilityVersion** | changes — the core snapshot splits and `lute.vn` joins. Stamped and expected (plugin §13) |
-| **Existing documents** | unchanged: `lute.vn` is auto-activated and declares every baseline domain including `action`. The only strictness-sensitive surface is content-line `action=`, which appears twice repo-wide (`docs/architecture.md:162,165`) and whose two values are baseline members (D-E) |
+| **Existing documents** | unchanged: `lute.vn` is auto-activated and declares every baseline domain including `action`. The only strictness-sensitive surface is content-line `action=` — three occurrences repo-wide, all baseline members (D-D, D-E) |
 | **Existing plugins** | break only if one declares `isStateful`/`cancelsPrevious` (none shipped) |
 | **`lute.project.yaml`** | no new keys. Override lives in the vocabulary declaration, not the profile |
 | **Versions** | language 0.9.0; plugin-system 0.0.3; toolchain per release |
@@ -327,9 +338,10 @@ Evidence, not assertions — each item names the command that produces it.
    The one expected test edit is `core_snapshot_has_baseline_directives` (`core.rs:96`, asserts
    exactly 9 directives), which splits into a `lute.core` assertion (`::end`) and a `lute.vn`
    assertion (the other 8).
-2. **`exits:` reproduces `is_exit_action`.** A table test over all 13 baseline `action` members
+2. **`exits:` reproduces `is_exit_action`.** A table test over all 14 baseline `action` members
    asserting `exits:` membership equals `is_exit_action`'s verdict, written and passing **before**
-   the function is deleted, so the replacement is proven equivalent rather than assumed.
+   the function is deleted, so the replacement is proven equivalent rather than assumed. The test
+   also pins the dead `exit*` branch: no baseline member starts with `exit`.
 3. **Override works end to end.** The `plugins/oshiz.vn/` fixture used in this session's diagnosis,
    now with `overrides: [emotion]` and OSHiZ's 17 members: `lute check scene.lute --project .`
    accepts `@bianca{emotion="affection"}: hi` and still rejects `emotion="zzz"`, and
