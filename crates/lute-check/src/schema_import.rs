@@ -512,25 +512,37 @@ pub fn merge_domains(
             ));
             continue;
         }
-        // dsl 0.9.0 D-D — PROVENANCE MATTERS, do not collapse this branch
-        // back into one `validate_domain` call. `imports.domains` fuses TWO
-        // sources (see `resolve_imports`): project `enums:` decls, and the
-        // `kinds_to_domains` projection of `entities:` kinds. An
-        // `EntityKindDecl` can only express `members` or `open` — an
-        // authored `exits:`/`default:` key on it is discarded — so telling
-        // the author of `entities: { action: ... }` to "declare `exits:`"
-        // names a fix that cannot exist. Skipping the check instead would
-        // let an `action` slot with no exits through silently, which is the
-        // exact behavior loss 0.9.0 removes. So: validate enum-declared
-        // names with the SHARED validator `assemble.rs` runs on the plugin
-        // path (no duplicated rule set), and for a kind-declared name that
-        // occupies a semantics-bearing slot, report the real fix — redeclare
-        // it as an `enums:` domain.
-        if imports.rel.enums.contains_key(name) {
+        // dsl 0.9.0 D-D — ONE rule, but it needs PROVENANCE: a domain
+        // occupying a semantics-bearing slot must be able to CARRY that
+        // slot's semantics, and only an `enums:` decl can. Do not collapse
+        // this branch back into one `validate_domain` call: `imports.domains`
+        // fuses two sources (see `resolve_imports`) and an `EntityKindDecl`
+        // can express only `members` or `open` — an authored
+        // `exits:`/`default:` key on it is discarded — so the shared
+        // validator's generic "declare `exits:`" names a fix that cannot
+        // exist for a kind-derived value, while skipping the check would let
+        // an `action` slot with no exits through silently (the exact behavior
+        // loss 0.9.0 removes).
+        //
+        // Provenance comes from the WINNING projection, not from whichever
+        // map happens to contain the name: `resolve_imports` builds `domains`
+        // as the enum projection `.extend`ed with `kinds_to_domains`, so when
+        // separate imported files declare one name under both `entities:` and
+        // `enums:`, BOTH maps retain it and the KIND entry is the `Domain` in
+        // hand. Hence: kind-derived (any name `kinds_to_domains` projects —
+        // `KindShape::Invalid` is skipped there, so such a name reaching here
+        // is the enum entry) → point the author at `enums:`; otherwise the
+        // value is enum-derived and goes to the SHARED validator
+        // `assemble.rs` runs on the plugin path (no duplicated rule set).
+        let kind_derived = matches!(
+            imports.rel.kinds.get(name).map(|decl| &decl.shape),
+            Some(KindShape::Members(_) | KindShape::Open)
+        );
+        if !kind_derived {
             for issue in lute_manifest::validate::validate_domain(name, dom) {
                 diags.push(uses_diag(issue.code(), issue.message(), at));
             }
-        } else if let Some(key) = missing_slot_semantics_key(name, dom) {
+        } else if let Some(key) = missing_slot_semantics_key(name) {
             diags.push(uses_diag(
                 "E-ENUM-MISSING-SEMANTICS",
                 format!(
@@ -547,16 +559,20 @@ pub fn merge_domains(
 }
 
 /// The member-semantics key a domain named `name` is REQUIRED to declare but
-/// cannot, given it arrived from an `entities:` kind projection — `None` when
-/// the name is not a semantics-bearing slot (dsl 0.9.0 D-D
-/// `SLOT_REQUIRES_EXITS`/`SLOT_REQUIRES_DEFAULT`) or when the domain is OPEN
-/// (registry-style: no static member list, so every member-semantics rule is
-/// vacuous — the same escape [`lute_manifest::validate::validate_domain`]
-/// takes, so the two provenance paths never disagree about openness).
-fn missing_slot_semantics_key(name: &str, dom: &Domain) -> Option<&'static str> {
-    if dom.open {
-        return None;
-    }
+/// cannot, given it arrived from an `entities:` kind projection — `None` only
+/// when the name is not a semantics-bearing slot (dsl 0.9.0 D-D
+/// `SLOT_REQUIRES_EXITS`/`SLOT_REQUIRES_DEFAULT`).
+///
+/// Deliberately NOT exempting an open domain, unlike
+/// [`lute_manifest::validate::validate_domain`]: that escape is right for
+/// MEMBERSHIP rules (a registry-style domain has no static member list, so a
+/// rule about its members is vacuous) and wrong here. A slot's semantics are
+/// a compiler INPUT, not a statement about members — the compiler reads
+/// `action`'s exits and `anchor`'s default — so openness cannot make the
+/// requirement vacuous. It makes it unsatisfiable: an open domain cannot
+/// enumerate its exits at all, so `entities: { action: { open: engine } }` is
+/// not merely unvalidated, it is unworkable, and `enums:` is the only fix.
+fn missing_slot_semantics_key(name: &str) -> Option<&'static str> {
     if lute_manifest::validate::SLOT_REQUIRES_EXITS.contains(&name) {
         Some("exits")
     } else if lute_manifest::validate::SLOT_REQUIRES_DEFAULT.contains(&name) {
