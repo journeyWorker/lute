@@ -945,6 +945,8 @@ its `exit*` arm matched nothing repo-wide."
 **Files:**
 - Modify: `crates/lute-manifest/assets/lute.core/enums.yaml`
 - Modify: `crates/lute-manifest/assets/lute.core/directives/staging.yaml:12, 28`
+- Modify: `tree-sitter-lute/tree-sitter.json`, `tree-sitter-lute/package.json` (re-stamp `metadata.capabilityVersion`)
+- Re-record (capabilityVersion line ONLY): the 8 `crates/lute-compile/tests/snapshots/e2e__*.snap` that pin a stamp
 - Test: `crates/lute-manifest/src/core.rs` (inline `mod tests`)
 
 **Interfaces:**
@@ -1015,12 +1017,23 @@ In `crates/lute-manifest/assets/lute.core/directives/staging.yaml`:
 Run: `cargo test -p lute-manifest 2>&1 | tail -30`
 Expected: PASS.
 
-- [ ] **Step 5: Run the dependent suites**
+- [ ] **Step 5: Re-stamp `capabilityVersion` and re-record the stamp-bearing snapshots**
+
+This step is **expected churn, not a regression.** `capability_version` (`crates/lute-manifest/src/snapshot.rs:142`) folds `snap.enums` and the directive/attr declarations, so emptying the core's six enums and retyping two attrs necessarily changes the hash. Two guards fire:
+
+1. `crates/lute-manifest/tests/tree_sitter_stamp.rs` asserts `metadata.capabilityVersion` in **both** `tree-sitter-lute/tree-sitter.json` and `tree-sitter-lute/package.json` equals the core snapshot's version. Read the new value from the test's own failure message (it prints both sides) and write it into both files.
+2. Eight `crates/lute-compile/tests/snapshots/e2e__*.snap` embed a stamp: `components_scene`, `gated_line`, `quest_rescue_halsin`, `affinity_reaction`, `bianca_s01ep02`, `connected_quest`, `quest_grove`, `showcase_episode01`. (`showcase_episode01` carries a *different* hash from the other seven because it folds project domains; it changes too.)
+
+Re-record with `cargo insta review` (or `INSTA_UPDATE=always cargo test -p lute-compile`), then **inspect every diff and confirm each one changes the `capabilityVersion` line and nothing else.** A stamp-only delta is behavior-preserving; any other line means a real regression — stop and report it instead of blessing it. State in your report, per snapshot, that the delta was stamp-only.
+
+This is the established practice on this repo for a capability-surface change; the 0.2.2 work did exactly the same re-stamp plus four snapshot re-accepts.
+
+- [ ] **Step 6: Run the dependent suites**
 
 Run: `cargo test -p lute-check -p lute-compile 2>&1 | tail -40`
-Expected: PASS with no snapshot re-recording — Task 2 already gave every vocabulary-using fixture its own declaration. **Any failure here names a fixture Task 2 missed; add it to the shared helper rather than restoring a core member.**
+Expected: PASS with **no snapshot delta beyond the eight stamp-only ones from Step 5** — Task 2 already gave every vocabulary-using fixture its own declaration. **A failure naming a missing member is a fixture Task 2 missed: add it to `crates/lute-test-vocab`, never restore a core member.**
 
-- [ ] **Step 6: Verify conformance is untouched**
+- [ ] **Step 7: Verify conformance is untouched**
 
 Run: `cargo run -q -p lute-cli -- check-project docs/examples 2>&1 | tail -20`
 Expected: this FAILS right now with `E-DOMAIN-UNKNOWN` — `docs/examples` has no vocabulary declaration yet. That is expected and is fixed in Task 8; record the failing output in the commit body. Then confirm the conformance suite is genuinely unaffected:
@@ -1028,11 +1041,10 @@ Expected: this FAILS right now with `E-DOMAIN-UNKNOWN` — `docs/examples` has n
 Run: `cargo test -p lute-cli 2>&1 | tail -30`
 Expected: any failures are `docs/examples`-driven only; no conformance fixture changes.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-cargo fmt
-git add crates/lute-manifest
+git add crates/lute-manifest crates/lute-compile/tests/snapshots tree-sitter-lute
 git commit -m "feat(manifest)!: the core ships no vocabulary members
 
 assets/lute.core/enums.yaml is now empty. The seven domain names survive only
