@@ -198,13 +198,37 @@ pub(crate) fn check_reachability(doc: &Document, folded: &FoldedEnv) -> Vec<Diag
         dollar: None,
         params: &param_domains,
     };
+    check_reachability_in(doc, &defs, &base_ctx)
+}
+
+/// The §5.2/§5.3 walk itself, over a caller-supplied resolution environment —
+/// the seam [`check_reachability`] resolves a whole [`FoldedEnv`] into, and the
+/// ONE entry point `validate_components` reaches for a component body (Task
+/// 7e), which has no `FoldedEnv` of its own.
+///
+/// Splitting the pass here rather than manufacturing a second `FoldedEnv` is
+/// the point: BOTH callers hand over exactly a [`DefTable`] and a base
+/// [`DecideCtx`], so the imported-component path and the STANDALONE
+/// component-file self-check above agree by CONSTRUCTION — the component branch
+/// of `param_domains` above and `validate_components`'s own per-component table
+/// are the same `param_domain(ty)` map over the same `params:` list, and a
+/// component's `DefTable.bodies` is empty on both paths (a component file has
+/// no frontmatter `defs:`; a bodiless `@ref` marker resolves via `params`, D3).
+///
+/// `base_ctx.dollar` MUST be `None`: every `$` binding this walk needs is a
+/// FRESH one it derives per `<match>` subject (see [`walk_reach`]).
+pub(crate) fn check_reachability_in(
+    doc: &Document,
+    defs: &DefTable<'_>,
+    base_ctx: &DecideCtx<'_>,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for shot in &doc.shots {
-        walk_reach(&shot.body, &defs, &base_ctx, &mut diags);
+        walk_reach(&shot.body, defs, base_ctx, &mut diags);
     }
     for quest in &doc.quests {
-        diags.extend(check_quest_reach(quest, &defs, &base_ctx));
-        walk_reach(&quest.body, &defs, &base_ctx, &mut diags);
+        diags.extend(check_quest_reach(quest, defs, base_ctx));
+        walk_reach(&quest.body, defs, base_ctx, &mut diags);
     }
     diags
 }
@@ -420,12 +444,14 @@ impl Coverage {
     }
 }
 
-/// Per-`<match>` engine (dsl 0.4.0 §5.2), reused inside component bodies
-/// (Task 7). `ctx.dollar` MUST be `Domain(&infer_domain(subject))` — the
-/// caller (`walk_reach` here; Task 7's `walk_component_body`) builds it. An
-/// unexpected shape (`None`/`Value`) degrades to an unresolved domain rather
-/// than panicking, so no literal-domain claim is ever made without proof.
-pub(crate) fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec<Diagnostic> {
+/// Per-`<match>` engine (dsl 0.4.0 §5.2). `ctx.dollar` MUST be
+/// `Domain(&infer_domain(subject))` — [`walk_reach`], the sole caller, builds
+/// it, for a root document and for a component body alike (Task 7e: the
+/// arm-local call `walk_component_body` used to make was folded into the
+/// whole-body [`check_reachability_in`] walk). An unexpected shape
+/// (`None`/`Value`) degrades to an unresolved domain rather than panicking, so
+/// no literal-domain claim is ever made without proof.
+fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec<Diagnostic> {
     let dom = match &ctx.dollar {
         Some(DollarBinding::Domain(d)) => (*d).clone(),
         _ => DomainInfo {

@@ -107,7 +107,12 @@ const PARITY_LINES: &[&str] = &[
     "@bianca{mono os vo}: hi",
     // a valued delivery flag is malformed, not a second flag (§D7)
     "@bianca{mono=\"yes\"}: hi",
-    // all four families at once, so ordering/aggregation is compared too
+    // all four families at once, so the whole code MULTISET is compared, not
+    // one family in isolation (both sides go through `sorted`, so this pins
+    // the multiset — relative ORDER is deliberately not asserted: the checker
+    // promises no per-rule emission order, only `check()`'s final
+    // byte-offset-then-code sort, which a component body's collapsed span
+    // makes meaningless anyway)
     "@narrator{pose=\"idle\" emotion=\"nope\" mono os}: hi",
     // clean line — parity must hold for the empty diagnostic set as well
     "@bianca{emotion=\"neutral\" variant=\"a\" vo}: hi",
