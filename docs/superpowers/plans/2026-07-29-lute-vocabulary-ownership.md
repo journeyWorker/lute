@@ -686,12 +686,15 @@ Expected: PASS with **no** snapshot changes (`INSTA_UPDATE` unset). The vocabula
 
 - [ ] **Step 5: Switch the remaining vocabulary-using test files**
 
-Replace `lute_manifest::core::load_core_snapshot()` with `lute_test_vocab::vocab_snapshot()` in exactly these eleven files:
+Replace `lute_manifest::core::load_core_snapshot()` with `lute_test_vocab::vocab_snapshot()` in these fourteen sites:
 
 - `crates/lute-check/tests/line_when.rs`
-- `crates/lute-check/tests/content_line.rs`
+- `crates/lute-check/tests/content_line.rs` — but see the exception below
 - `crates/lute-check/tests/component_match.rs`
 - `crates/lute-check/tests/examples.rs`
+- `crates/lute-check/tests/fact_query.rs` — its `DOMAIN_VOCAB` (`:117`) resolves `emotion` through `snap.domains["emotion"]`, and the doc comment at `:112-116` says so explicitly; **update that prose too**, or it becomes a lie once the core is emptied
+- `crates/lute-check/tests/fragment_kind.rs` — authors `::auto{action="fade-in-up"}` at `:56`, `:72`, `:97`, which Task 4's retype turns into a domain lookup
+- `crates/lute-check/src/directives.rs` — the `#[cfg(test)]` helper `core_domains()` at `:732-734`; inline tests validate `musicAction`/`mood`/`vfxType`/`anchor` through it. Test code inside a production file is still test code; dev-dependencies are available to it
 - `crates/lute-compile/tests/inject.rs`
 - `crates/lute-compile/tests/component_fold.rs`
 - `crates/lute-compile/tests/timeline.rs`
@@ -700,7 +703,11 @@ Replace `lute_manifest::core::load_core_snapshot()` with `lute_test_vocab::vocab
 - `crates/lute-compile/tests/flatten.rs`
 - `crates/lute-compile/tests/stamp_attrs.rs`
 
-Leave every other `load_core_snapshot()` call site alone — a suite that uses no vocabulary attr must keep asserting against the bare core.
+**Exception, and it matters:** `content_line.rs`'s `action_is_open_by_default` asserts that with NO `action` domain declared an arbitrary `action="…"` is accepted. Pointing it at the vocabulary helper hands it a closed 14-member `action` domain, and it then passes only because its value happens to be a member — the test stops testing its subject. Give that file a `codes_with(text, snapshot)` variant and run this ONE test against `load_core_snapshot()`.
+
+**Do NOT switch** `crates/lute-compile/tests/e2e.rs` or `ir_golden.rs`: they pin a `capabilityVersion`, and `vocab_snapshot()` is not stamp-neutral. Task 4 handles the stamp churn deliberately.
+
+**Then sweep, do not trust this list.** It was built by grepping for attribute literals (`emotion=`, `anchor=`, …), which cannot see a domain referenced programmatically (`snap.domains["emotion"]`) or an attribute that only becomes domain-typed in Task 4 (`::auto{action}`, `::music{mood}`) — that blind spot is exactly how `fact_query.rs`, `fragment_kind.rs`, and `directives.rs` were missed on the first pass. Search the tree for every remaining `load_core_snapshot()` call and justify each survivor against all seven slot names in all three of those forms. Record the survivors and the reasoning; that record is what makes Task 4 safe.
 
 - [ ] **Step 6: Run both suites**
 

@@ -247,12 +247,18 @@ Measured migration surface:
 
 - **`conformance/`: zero fixtures.** No conformance source uses `emotion`/`anchor`/`vfxType`/
   `volume`/`mood`, so every single-document contract test is untouched.
-- **Tests: 11 files**, ~29 usages (`lute-check`: `line_when`, `content_line`, `component_match`,
-  `examples`; `lute-compile`: `inject` ×8, `component_fold` ×4, `timeline` ×3, `compile` ×2,
-  `address`, `flatten`, `stamp_attrs`). All 12 `golden/*.lute` fixtures route through **one**
+- **Tests: 14 sites.** `lute-check`: `line_when`, `content_line`, `component_match`, `examples`,
+  `fact_query`, `fragment_kind`, plus the `#[cfg(test)]` `core_domains()` helper in
+  `src/directives.rs:732`; `lute-compile`: `inject`, `component_fold`, `timeline`, `compile`,
+  `address`, `flatten`, `stamp_attrs`. All 12 `golden/*.lute` fixtures route through **one**
   harness (`golden.rs:21`, which calls `load_core_snapshot()` directly), so they are covered by a
-  single shared test helper that merges core with a fixture vocabulary. 61 files call
-  `load_core_snapshot`; only these 11 touch vocabulary.
+  single shared test vocabulary. 61 files call `load_core_snapshot`; only these touch vocabulary.
+  **The first count of this surface said 11 files and was wrong** — it came from grepping attribute
+  literals (`emotion=`, `anchor=`, …), which cannot see a domain referenced programmatically
+  (`fact_query.rs` resolves `emotion` via `snap.domains["emotion"]`; `directives.rs`'s inline tests
+  go through `core_domains()`) or an attribute that only becomes domain-typed under D-A
+  (`fragment_kind.rs` authors `::auto{action="fade-in-up"}`). Any future re-measurement of a
+  vocabulary surface must cover all three forms.
 - **`docs/examples/`: 5 project roots**, each already carrying `lute.project.yaml`, and
   `base.schema.yaml`/`state.schema.yaml`/`act1.schema.yaml`/`child.schema.yaml` already holding
   `state:`/`defs:` blocks — `enums:` joins them. CI runs `check-project docs/examples`
