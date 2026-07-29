@@ -364,7 +364,7 @@ fn stage_bookkeeping_line(state: &mut StageState, line: &Line) {
         if let Some(e) = attr_str(&line.attrs, "emotion") {
             sp.emotion = Some(e);
         }
-        if let Some(p) = attr_str(&line.attrs, "action").or_else(|| attr_str(&line.attrs, "pose")) {
+        if let Some(p) = attr_str(&line.attrs, "action") {
             sp.pose = Some(p);
         }
     }
@@ -378,7 +378,7 @@ fn line_is_stateful(line: &Line) -> bool {
     line.attrs.iter().any(|a| {
         matches!(
             a.key.as_str(),
-            "emotion" | "variant" | "action" | "pose" | "dialogMotion"
+            "emotion" | "variant" | "action" | "dialogMotion"
         )
     })
 }
@@ -541,6 +541,26 @@ mod tests {
             .any(|c| c.provenance.by == "auto-pose-reset"));
         assert!(st2.dirty.contains("bianca"), "a stateful line marks dirty");
         assert_eq!(st2.on_stage["bianca"].emotion.as_deref(), Some("delighted"));
+    }
+
+    /// `pose` is not a content-line attribute (`content_line.rs`'s
+    /// KNOWN_ATTRS), so `@x{pose="…"}` is E-UNKNOWN-ATTR and the reducer could
+    /// never observe one. The reads were unreachable; this pins that the
+    /// stateful set is exactly the four real sprite-affecting slots.
+    #[test]
+    fn stateful_set_has_no_unreachable_attrs() {
+        // `line()` yields a `Node`; `line_is_stateful` takes the inner `Line`.
+        let spoken = |attrs: Vec<Attr>| match line("bianca", attrs) {
+            Node::Line(l) => l,
+            other => panic!("expected a Line, got {other:?}"),
+        };
+        for key in ["emotion", "variant", "action", "dialogMotion"] {
+            assert!(
+                line_is_stateful(&spoken(vec![attr(key, "x")])),
+                "`{key}` must mark a line stateful"
+            );
+        }
+        assert!(!line_is_stateful(&spoken(vec![attr("pose", "x")])));
     }
 
     // --- rule 3: entry-emotion-lookahead ---
