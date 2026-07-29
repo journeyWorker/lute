@@ -16,9 +16,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use lute_check::{parse_meta, resolve_components, resolve_imports, CheckInput, Mode};
 use lute_compile::compile;
-use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_test_vocab::vocab_snapshot;
 
 static UNIQ: AtomicU64 = AtomicU64::new(0);
 
@@ -54,7 +54,7 @@ fn compile_scene(dir: &Path, scene_text: &str) -> serde_json::Value {
     let input = CheckInput {
         text: scene_text.to_string(),
         uri: "scene.lute".into(),
-        snapshot: load_core_snapshot(),
+        snapshot: vocab_snapshot(),
         providers: ProviderSet::default(),
         mode: Mode::Ci,
         imports,

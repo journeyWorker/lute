@@ -18,7 +18,7 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
         diags.iter().all(|d| d.severity != Severity::Error),
         "{diags:#?}"
     );
-    let snapshot = lute_manifest::core::load_core_snapshot();
+    let snapshot = lute_test_vocab::vocab_snapshot();
     let env = Env::default();
     let mut cx = WalkCx {
         snapshot: &snapshot,
