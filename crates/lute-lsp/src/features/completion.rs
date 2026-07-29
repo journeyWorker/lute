@@ -667,7 +667,7 @@ mod tests {
         let off = text.find("anchor=\"").unwrap() + "anchor=\"".len();
         let items = complete_at(
             &doc,
-            &load_core_snapshot(),
+            &lute_test_vocab::vocab_snapshot(),
             &ProviderSet::default(),
             &SchemaImports::default(),
             off,
