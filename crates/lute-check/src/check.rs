@@ -80,11 +80,11 @@ use crate::cel_message::translate_cel_parse;
 use crate::cel_resolve::{check_rule_guards, compatible};
 use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
-use crate::decide::{DecideCtx, DollarBinding};
+use crate::decide::DecideCtx;
 use crate::directives::{at_context, check_directive};
 use crate::inject::{lower_node, InjectedCommand, StageState};
 use crate::match_check::{check_param_match, param_domain};
-use crate::reachability::{check_match_reach, check_reachability};
+use crate::reachability::check_reachability;
 use crate::schema_import::{merge_domains, SchemaImports};
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
@@ -1762,6 +1762,55 @@ fn validate_components(
         // two records with one `lineId` in 0.8.0, independent of this gap. It
         // is deliberately left alone here.
         body_diags.extend(check_line_codes(&body));
+        // Task 7e, the THIRD instance of the same class as Task 7b's
+        // (content-line attrs) and Task 7c's (duplicate line codes):
+        // `check_reachability` had exactly ONE callsite — `check()` step 8,
+        // over the ROOT document. `walk_component_body` called
+        // `check_match_reach` for `Node::Match` alone, so everything else the
+        // §5.2/§5.3 pass owns escaped inside a component body: a content
+        // line's `when=` guard was never reachability-checked, and content
+        // following an allowed `::end` never flagged. A component whose line
+        // carried a provably-false guard therefore checked CLEAN through a
+        // `::use` (exit 0) while the identical line errored `E-ARM-DEAD` at
+        // scene level AND when that same component file was checked
+        // STANDALONE — the toolchain contradicting itself about one file
+        // depending only on how it was reached.
+        //
+        // ENV SEAM (the one decision here): `check_reachability` needs a
+        // resolution environment, and no `FoldedEnv` exists for a component
+        // body (`ComponentDef` carries `params`/`body`/`src` only). Rather
+        // than manufacture a second one — which is exactly how a NEW
+        // divergence gets built while closing an old one — the pass was split
+        // at its own seam: `check_reachability_in` takes the `DefTable` +
+        // base `DecideCtx` its `FoldedEnv` entry point resolves into, and
+        // BOTH the STANDALONE component self-check (reachability.rs's
+        // `folded.typed.component` branch) and this call hand over the SAME
+        // shape — `param_domain(ty)` over the component's own `params:` list,
+        // an EMPTY `bodies` table (a component file has no frontmatter
+        // `defs:`; a bodiless `@ref` marker resolves via `params`, D3), the
+        // component's own (empty) state schema, and `dollar: None`. The two
+        // paths therefore agree by construction, not by coincidence.
+        //
+        // This is now the SOLE owner of component-body reachability: the
+        // `check_match_reach` call that used to sit in
+        // `walk_component_body`'s `Node::Match` arm was removed, since this
+        // whole-body walk reaches every `<match>` it did and more.
+        let reach_bodies: std::collections::BTreeMap<String, String> =
+            std::collections::BTreeMap::new();
+        let reach_defs = DefTable {
+            bodies: &reach_bodies,
+            params: &env.def_params,
+        };
+        let reach_ctx = DecideCtx {
+            schema: &env.state,
+            dollar: None,
+            params: &param_domains,
+        };
+        body_diags.extend(crate::reachability::check_reachability_in(
+            &body,
+            &reach_defs,
+            &reach_ctx,
+        ));
         // D6 (dsl 0.4.0 §6.2): the positive `E-COMPONENT-STATE` scan
         // (`component_slot_state_scan`/`component_interp_scan`) is the
         // AUTHORITATIVE diagnosis for an ambient-state read inside a
@@ -2174,25 +2223,15 @@ fn walk_component_body(
                             "bare_param_ref confirmed `name` is a declared param; \
                              param_domains is built from the same def.params list",
                         );
-                        diags.extend(check_param_match(m, dom.clone(), ctx));
-                        // §5 reachability (Task 4/T7) inside the component
-                        // body: `E-ARM-DEAD` (decided-false guard +
-                        // subsumption) / `W-OTHERWISE-DEAD`, over the SAME
-                        // domain — a component has no frontmatter `defs:`
-                        // (`bodies` is always empty; a bodiless `@ref`
-                        // marker resolves via `params` instead, D3).
-                        let empty_bodies: std::collections::BTreeMap<String, String> =
-                            std::collections::BTreeMap::new();
-                        let reach_defs = DefTable {
-                            bodies: &empty_bodies,
-                            params: &ctx.env.def_params,
-                        };
-                        let reach_ctx = DecideCtx {
-                            schema: &ctx.env.state,
-                            dollar: Some(DollarBinding::Domain(&dom)),
-                            params: param_domains,
-                        };
-                        diags.extend(check_match_reach(m, &reach_defs, &reach_ctx));
+                        diags.extend(check_param_match(m, dom, ctx));
+                        // §5 reachability (`E-ARM-DEAD` / `W-OTHERWISE-DEAD` /
+                        // `E-UNSET-LITERAL`) is NOT run here: Task 7e moved it
+                        // to the ONE whole-body `check_reachability_in` call in
+                        // `validate_components`, which owns it for the ENTIRE
+                        // body — this `<match>`, every other one, and the
+                        // content-line `when=` guards and post-`::end` content
+                        // this arm-local call never reached. Calling it here too
+                        // would double-report every dead `<when test>`.
                         for arm in &m.arms {
                             match arm {
                                 Arm::When { test, body, .. } => {
