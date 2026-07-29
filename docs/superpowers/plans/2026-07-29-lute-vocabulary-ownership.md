@@ -1398,6 +1398,55 @@ must not carry fiction (plugin 0.0.3)."
 
 ---
 
+### Task 7b: Gate content lines inside component bodies (RELEASE BLOCKER)
+
+Inserted mid-execution. Task 7's review refuted its unreachability proof, and
+chasing that down surfaced a hole far bigger than `pose`: **imported component
+bodies bypass the entire content-line attribute checker.**
+
+`check_content_line_attrs` has exactly ONE callsite — `check.rs:1005`, the scene
+walker's `Node::Line` arm. `walk_component_body`'s `Node::Line` arm
+(`check.rs:1989`) calls only `body_attr_refs` and `component_interp_scan`, so no
+content-line attribute rule applies inside a component.
+
+Measured. The identical three lines:
+
+| Where | Result |
+|---|---|
+| scene level | 5 errors: `E-BAD-ENUM`, `E-DELIVERY-NARRATOR`, `E-DELIVERY-CONFLICT` ×3 |
+| component body | **0 errors, exit 0** |
+
+`lute compile` also exits 0, and the undeclared value lands in the artifact:
+`emotion values in artifact: ['TOTALLY-UNDECLARED']`.
+
+**Why this blocks 0.9.0.** The release's headline invariant is "using an
+undeclared vocabulary member is an error" (Task 5). A component falsifies it.
+Every 0.9.0 mechanism routes through `check_content_line_attrs` —
+`E-DOMAIN-UNKNOWN`, `E-BAD-ENUM`, the `exits:`/`default:` member semantics — so
+the feature this branch exists to ship has a silent bypass, and invalid
+vocabulary reaches the engine-facing artifact.
+
+Pre-existing, not introduced here. But it does mean Task 7's deletion changed
+behavior on a live path: before it, a component's `@x{pose=…}` really did set
+sprite pose. Once this gate closes, `pose` there is `E-UNKNOWN-ATTR` and Task 7's
+deletion is retroactively correct — so this task lands the gate and KEEPS the
+deletion.
+
+The fix is a one-liner: `walk_component_body` already receives all five arguments
+`check_content_line_attrs` needs.
+
+**Also recorded from Task 7's review:** the implementer's proof leaned on
+`check_content_line_attrs` gating the reducer, but `check()` folds injections even
+for lines that already errored — so argument (1) was weaker than claimed. The
+deletion survives on the compile-abort argument plus this gate.
+
+**Close the class, not the instance.** The comment at `check.rs:2005-2012` records
+the same class patched once before ("`check_cel_slot` was skipped here entirely").
+This is the third occurrence, so Task 7b's deliverable includes a full audit of
+every per-line check the scene arm performs that the component arm does not.
+
+---
+
 ### Task 8: Documents, examples, and the version bump
 
 **Files:**
