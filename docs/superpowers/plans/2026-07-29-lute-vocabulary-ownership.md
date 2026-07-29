@@ -547,33 +547,55 @@ accepted on a slot that has no such semantics."
 ### Task 2: A shared test vocabulary, so fixtures declare what they use
 
 **Files:**
-- Create: `crates/lute-check/tests/support/mod.rs`
+- Create: `crates/lute-test-vocab/Cargo.toml`
+- Create: `crates/lute-test-vocab/src/lib.rs`
+- Modify: `crates/lute-check/Cargo.toml:16-17` (add the dev-dependency)
+- Modify: `crates/lute-compile/Cargo.toml:18-19` (add the dev-dependency)
 - Modify: `crates/lute-check/tests/golden.rs:18-27` (the harness that calls `load_core_snapshot`)
 - Test: the existing suites are the test.
 
 **Interfaces:**
 - Consumes: `Domain` from Task 1.
-- Produces: `support::vocab_snapshot() -> CapabilitySnapshot` — the core snapshot plus the vocabulary every fixture uses. Later tasks and the 11 vocabulary-using test files call this instead of `load_core_snapshot()`.
+- Produces: `lute_test_vocab::vocab_snapshot() -> CapabilitySnapshot` and `lute_test_vocab::test_domains() -> BTreeMap<String, Domain>` — the core snapshot plus the vocabulary every fixture uses. Later tasks and the 11 vocabulary-using test files call this instead of `load_core_snapshot()`.
 
-- [ ] **Step 1: Write the helper**
+**Why a crate and not a `tests/support/mod.rs`:** integration tests in different packages cannot share a module, and `lute-check` and `lute-compile` both need this exact vocabulary. Copying it into both would be two hand-synced definitions of one fact — the same defect class this whole plan exists to delete (`is_exit_action` ×2). A `publish = false` dev-dependency crate keeps one definition and keeps test data out of the production crates. `crates/*` is already the workspace member glob (`Cargo.toml:3`), so the crate joins automatically.
 
-Create `crates/lute-check/tests/support/mod.rs`:
+- [ ] **Step 1: Create the shared crate**
+
+`crates/lute-test-vocab/Cargo.toml`:
+
+```toml
+[package]
+name = "lute-test-vocab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+lute-manifest = { path = "../lute-manifest" }
+```
+
+`crates/lute-test-vocab/src/lib.rs`:
 
 ```rust
 //! Shared test vocabulary (dsl 0.9.0 D-A/D-F).
 //!
 //! From 0.9.0 the core ships NO domain members, so a fixture that writes
 //! `emotion="delighted"` must declare that vocabulary exactly as a real
-//! project does. This helper is that declaration: the core snapshot plus the
-//! members the checker/compiler fixtures use. Keeping it in one place means a
-//! fixture never silently depends on a member the core used to provide.
+//! project does. This crate is that declaration, shared by `lute-check`'s and
+//! `lute-compile`'s test suites as a dev-dependency: ONE definition, so a
+//! fixture can never silently depend on a member the core used to provide and
+//! the two suites can never drift apart.
+//!
+//! `publish = false`; nothing outside `#[cfg(test)]` code should depend on it.
 
 use std::collections::BTreeMap;
 
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 
-fn closed(members: &[&str]) -> Domain {
+pub fn closed(members: &[&str]) -> Domain {
     Domain {
         members: members.iter().map(|s| s.to_string()).collect(),
         ..Default::default()
@@ -645,26 +667,31 @@ pub fn vocab_snapshot() -> CapabilitySnapshot {
 
 **Note on the `action` member list:** these 14 are exactly what the design doc's earlier revision measured from the repo — every `::auto{action="…"}` value, the content-line values in `docs/architecture.md`, `pose-lean` from `inject.rs`'s fixture, and the three exit ids the deleted heuristic recognized. `exits:` reproduces that heuristic's verdict on all 14, which Task 3 proves.
 
-- [ ] **Step 2: Switch the golden harness**
+- [ ] **Step 2: Wire the dev-dependency**
 
-In `crates/lute-check/tests/golden.rs`, add `mod support;` at the top and change the `snapshot:` field (`:21`) from `lute_manifest::core::load_core_snapshot()` to `support::vocab_snapshot()`.
+Add to the `[dev-dependencies]` section of BOTH `crates/lute-check/Cargo.toml` (`:16`) and `crates/lute-compile/Cargo.toml` (`:18`):
 
-- [ ] **Step 3: Run the goldens**
+```toml
+lute-test-vocab = { path = "../lute-test-vocab" }
+```
+
+- [ ] **Step 3: Switch the golden harness**
+
+In `crates/lute-check/tests/golden.rs`, change the `snapshot:` field (`:21`) from `lute_manifest::core::load_core_snapshot()` to `lute_test_vocab::vocab_snapshot()`. No `mod` declaration is needed — it is an ordinary crate dependency.
+
+- [ ] **Step 4: Run the goldens**
 
 Run: `cargo test -p lute-check --test golden 2>&1 | tail -20`
 Expected: PASS with **no** snapshot changes (`INSTA_UPDATE` unset). The vocabulary is identical to what the core currently ships, so every golden must be byte-identical.
 
-- [ ] **Step 4: Switch the remaining vocabulary-using test files**
+- [ ] **Step 5: Switch the remaining vocabulary-using test files**
 
-Add `mod support;` and replace `load_core_snapshot()` with `support::vocab_snapshot()` in exactly these files:
+Replace `lute_manifest::core::load_core_snapshot()` with `lute_test_vocab::vocab_snapshot()` in exactly these eleven files:
 
 - `crates/lute-check/tests/line_when.rs`
 - `crates/lute-check/tests/content_line.rs`
 - `crates/lute-check/tests/component_match.rs`
 - `crates/lute-check/tests/examples.rs`
-
-For `lute-compile`, create `crates/lute-compile/tests/support/mod.rs` with the same content (integration tests are separate crates and cannot share a module across packages; duplicating this one fixture helper is the boring, working choice — note that in a comment), then switch:
-
 - `crates/lute-compile/tests/inject.rs`
 - `crates/lute-compile/tests/component_fold.rs`
 - `crates/lute-compile/tests/timeline.rs`
@@ -673,16 +700,18 @@ For `lute-compile`, create `crates/lute-compile/tests/support/mod.rs` with the s
 - `crates/lute-compile/tests/flatten.rs`
 - `crates/lute-compile/tests/stamp_attrs.rs`
 
-- [ ] **Step 5: Run both suites**
+Leave every other `load_core_snapshot()` call site alone — a suite that uses no vocabulary attr must keep asserting against the bare core.
+
+- [ ] **Step 6: Run both suites**
 
 Run: `cargo test -p lute-check -p lute-compile 2>&1 | tail -30`
 Expected: PASS, no snapshot re-recording.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 cargo fmt
-git add crates/lute-check/tests crates/lute-compile/tests
+git add crates/lute-test-vocab crates/lute-check crates/lute-compile Cargo.lock
 git commit -m "test: fixtures declare the vocabulary they use
 
 Purely additive: the vocabulary in the helper is identical to what
@@ -866,7 +895,7 @@ then use `default` where `DEFAULT_ANCHOR` was, including the `W-INJECT-CONFLICT`
 - [ ] **Step 6: Run the check suite**
 
 Run: `cargo test -p lute-check 2>&1 | tail -30`
-Expected: PASS, no snapshot changes. The old `DEFAULT_ANCHOR`-based tests at `:470-478` and `:549-551` must be updated to pass `&support`-style domains; use the `anchor_domain("center")` helper so their assertions keep their original meaning.
+Expected: PASS, no snapshot changes. The old `DEFAULT_ANCHOR`-based tests at `:470-478` and `:549-551` must be updated to pass a domains map; use the `anchor_domain("center")` helper so their assertions keep their original meaning.
 
 - [ ] **Step 7: Do the same in `lute-compile`**
 
@@ -1065,7 +1094,7 @@ fn declared_action_domain_is_membership_checked() {
 }
 ```
 
-**Note:** `codes()` in this file must already route through `support::vocab_snapshot()` after Task 2. Add a `codes_with(text, snapshot)` variant alongside it if one does not exist — read the top of the file and follow its existing harness shape.
+**Note:** `codes()` in this file must already route through `lute_test_vocab::vocab_snapshot()` after Task 2. Add a `codes_with(text, snapshot)` variant alongside it if one does not exist — read the top of the file and follow its existing harness shape.
 
 - [ ] **Step 2: Run to verify it fails**
 
