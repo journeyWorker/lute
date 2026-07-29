@@ -33,6 +33,50 @@ profiles:
     .to_string()
 }
 
+/// The starter content vocabulary shared by every template (dsl 0.9.0 D-F).
+///
+/// The compiler declares the seven vocabulary SLOTS and ships NO members
+/// (`lute_manifest::core::load_core_snapshot`), so using any of them is
+/// `E-DOMAIN-UNKNOWN` until a project declares its own. That default has to
+/// live SOMEWHERE for a fresh project to check clean, and here — in a
+/// scaffolded file the author owns — is the only place it can live without
+/// baking a genre into the binary: editing this file is an edit, whereas
+/// repudiating a compiled-in member list is a fight.
+///
+/// All seven slots are filled, not just the ones the starter scene happens to
+/// use: a half-filled vocabulary would hand a fresh project an
+/// `E-DOMAIN-UNKNOWN` the first time an author reached for `::music` or
+/// `::vfx`, which is exactly the first contact this file exists to prevent.
+fn vocabulary_schema() -> String {
+    "\
+# Your project's content vocabulary (dsl 0.9.0).
+#
+# Lute's compiler ships NO members — a general authoring tool should not decide
+# what emotions your characters have. This file is yours to edit; the starter
+# set below is a convention, not a rule.
+#
+# `action` must declare `exits:` (which members end a character's presence on
+# stage) and `anchor` must declare `default:` (the member used when a `::auto`
+# omits it). The compiler reads those instead of guessing from names.
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fade-in-up, sway, lean, idle, fade-out, hide]
+    exits: [fade-out, hide]
+  # The four remaining slots, typed by the staging directives (`::music`,
+  # `::vfx`, `::auto`). Declared up front so reaching for one is an edit to
+  # THIS list rather than an `E-DOMAIN-UNKNOWN`.
+  mood: [peaceful, tense, romantic, sad, upbeat]
+  volume: [silent, down, normal, up, full]
+  musicAction: [start, change, stop, resume, fade-out]
+  vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
+"
+    .to_string()
+}
+
 /// The `minimal` template: one entry scene over a tiny scalar schema.
 fn minimal_files() -> Vec<File> {
     vec![
@@ -52,6 +96,10 @@ state:
             .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
         File {
+            rel: "vocabulary.schema.yaml",
+            content: vocabulary_schema(),
+        },
+        File {
             rel: "scenes/opening.lute",
             content: "\
 ---
@@ -61,12 +109,14 @@ character: narrator
 season: 1
 episode: 1
 title: Opening
-uses: ../world.schema.yaml
+uses:
+  - ../world.schema.yaml
+  - ../vocabulary.schema.yaml
 ---
 
 ## Opening
 
-@narrator: Welcome to your new Lute project.
+@narrator{emotion=\"delighted\"}: Welcome to your new Lute project.
 ::set{ run.greeted = true }
 @narrator{when=\"run.greeted\"}: Edit this scene, then run `lute check-project`.
 "
@@ -135,6 +185,10 @@ rules:
             .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
         File {
+            rel: "vocabulary.schema.yaml",
+            content: vocabulary_schema(),
+        },
+        File {
             rel: "scenes/crime-scene.lute",
             content: "\
 ---
@@ -145,7 +199,9 @@ season: 1
 episode: 1
 title: The Crime Scene
 # Graph ROOT: no `after:`, so this scene is an unconditional entry point.
-uses: ../world.schema.yaml
+uses:
+  - ../world.schema.yaml
+  - ../vocabulary.schema.yaml
 ---
 
 ## The Study
@@ -153,7 +209,7 @@ uses: ../world.schema.yaml
 @narrator: The victim's study, untouched since the coroner left.
 ::assert{ foundClue(ledger) }
 ::set{ run.cluesLogged += 1 }
-@detective: A ledger, its balances scratched out in red ink.
+@detective{emotion=\"surprised\"}: A ledger, its balances scratched out in red ink.
 @detective{mono when=\"holds(points(blake))\"}: One name is starting to surface.
 "
             .replace("{lang}", lute_check::LUTE_LANG_VERSION),
@@ -170,7 +226,9 @@ episode: 2
 title: The Interview
 # Sequenced AFTER the crime scene (canonical key `detective.s01ep01`).
 after: 'visited(\"detective.s01ep01\")'
-uses: ../world.schema.yaml
+uses:
+  - ../world.schema.yaml
+  - ../vocabulary.schema.yaml
 ---
 
 ## The Interview Room
@@ -402,18 +460,29 @@ fn write_new(path: &Path, content: &str, hint: &str) -> ExitCode {
 /// **Naming rule (documented in the generated file's comment):** `character`
 /// is the given `name` verbatim; `season` is `1`; `episode` is `1 + <number of
 /// existing scenes/*.lute>`, so the canonical key `{character}.s01ep{NN}`
-/// stays unique against the scenes already present. The scene `uses:` the
-/// project schema only when `<dir>/world.schema.yaml` exists (otherwise it is
-/// self-contained with no state reads).
+/// stays unique against the scenes already present. The scene `uses:` each
+/// project schema that EXISTS at `<dir>` — `world.schema.yaml` for state,
+/// `vocabulary.schema.yaml` for the dsl 0.9.0 vocabulary slots (an `emotion=`
+/// or `action=` attr resolves against nothing without it) — and nothing when
+/// neither is there, leaving it self-contained.
 fn new_scene(name: &str, dir: &Path) -> ExitCode {
     let scenes_dir = dir.join("scenes");
     let path = scenes_dir.join(format!("{name}.lute"));
     let episode = count_scenes(&scenes_dir) + 1;
-    let has_schema = dir.join("world.schema.yaml").exists();
-    let uses_line = if has_schema {
-        "uses: ../world.schema.yaml\n"
-    } else {
-        ""
+    let schemas: Vec<&str> = ["world.schema.yaml", "vocabulary.schema.yaml"]
+        .into_iter()
+        .filter(|rel| dir.join(rel).exists())
+        .collect();
+    let uses_line = match schemas.as_slice() {
+        [] => String::new(),
+        [one] => format!("uses: ../{one}\n"),
+        many => {
+            let mut s = String::from("uses:\n");
+            for rel in many {
+                s.push_str(&format!("  - ../{rel}\n"));
+            }
+            s
+        }
     };
     let lang = lute_check::LUTE_LANG_VERSION;
     let content = format!(

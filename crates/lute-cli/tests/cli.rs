@@ -897,3 +897,115 @@ fn fix_migrates_line_and_choice_as_in_place_idempotent() {
         "second fix run must be a no-op"
     );
 }
+
+// --- dsl 0.9.0 D-F: vocabulary OWNERSHIP. The compiler declares the seven
+// slots and ships no members, so the opinionated starter set lives in the
+// TEMPLATE (`lute init`) — a file the author owns and edits — and `lute
+// doctor` reports which slots a project actually resolves, so a missing one
+// surfaces before an author hits `E-DOMAIN-UNKNOWN`.
+
+/// `lute init` must produce a project that checks clean out of the box, which
+/// is only possible if it declares a vocabulary AND the scaffolded scene can
+/// REACH it: the starter scene uses an `emotion=` attr, so an unreachable
+/// (un-`uses:`-ed) declaration fails this with `E-DOMAIN-UNKNOWN`.
+#[test]
+fn init_scaffolds_a_checkable_vocabulary() {
+    let dir = temp_dir("init-vocab");
+    let proj = dir.join("proj");
+    let out = Command::new(BIN)
+        .args(["init", proj.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "init failed: {out:?}");
+    assert!(
+        proj.join("vocabulary.schema.yaml").is_file(),
+        "init must scaffold a vocabulary declaration"
+    );
+    let scene = std::fs::read_to_string(proj.join("scenes/opening.lute")).unwrap();
+    assert!(
+        scene.contains("emotion="),
+        "the starter scene must USE a vocabulary slot, or `check-project` below \
+         would pass without ever resolving the declaration:\n{scene}"
+    );
+    let check = Command::new(BIN)
+        .args(["check-project", proj.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "scaffolded project must check clean:\n{}{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+}
+
+/// `lute doctor` reports the seven vocabulary slots against what the project
+/// actually resolves: every slot declared for a fresh scaffold, and every slot
+/// missing once the declaration is deleted.
+#[test]
+fn doctor_reports_which_vocabulary_slots_resolve() {
+    const SLOTS: &[&str] = &[
+        "emotion",
+        "action",
+        "anchor",
+        "mood",
+        "volume",
+        "musicAction",
+        "vfxType",
+    ];
+    let dir = temp_dir("doctor-vocab");
+    let proj = dir.join("proj");
+    assert!(Command::new(BIN)
+        .args(["init", proj.to_str().unwrap()])
+        .output()
+        .unwrap()
+        .status
+        .success());
+
+    let out = Command::new(BIN)
+        .args(["doctor", proj.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let declared = text
+        .lines()
+        .find(|l| l.contains("vocabulary slots declared"))
+        .unwrap_or_else(|| panic!("doctor must report declared slots:\n{text}"))
+        .to_string();
+    for slot in SLOTS {
+        assert!(
+            declared.contains(slot),
+            "the scaffolded vocabulary declares `{slot}`:\n{declared}"
+        );
+    }
+    assert!(
+        !text.contains("not declared"),
+        "a fresh scaffold leaves no slot undeclared:\n{text}"
+    );
+
+    // Delete the declaration: the SAME report must now name every slot as
+    // undeclared, so it tracks the project rather than printing a constant.
+    std::fs::remove_file(proj.join("vocabulary.schema.yaml")).unwrap();
+    let out = Command::new(BIN)
+        .args(["doctor", proj.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let missing = text
+        .lines()
+        .find(|l| l.contains("not declared"))
+        .unwrap_or_else(|| panic!("doctor must report undeclared slots:\n{text}"))
+        .to_string();
+    for slot in SLOTS {
+        assert!(
+            missing.contains(slot),
+            "`{slot}` is undeclared once the vocabulary is gone:\n{missing}"
+        );
+    }
+    assert!(
+        text.contains("vocabulary slots declared: none"),
+        "no slot resolves without the declaration:\n{text}"
+    );
+}

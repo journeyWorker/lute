@@ -275,7 +275,8 @@ enum Command {
     #[command(subcommand)]
     Catalog(CatalogCommand),
     /// Scaffold a new Lute project directory: `lute.project.yaml`, a state
-    /// schema, a starter scene, and a trace mock — ready for `lute check-project`.
+    /// schema, a starter vocabulary, a starter scene, and a trace mock — ready
+    /// for `lute check-project`.
     Init {
         /// Directory to create (must not already contain a `lute.project.yaml`).
         dir: PathBuf,
@@ -295,7 +296,8 @@ enum Command {
         dir: PathBuf,
     },
     /// Diagnose the local toolchain + project setup: versions, project
-    /// manifest, provider snapshots, and editor integration hints.
+    /// manifest, provider snapshots, vocabulary slots, and editor integration
+    /// hints.
     Doctor {
         /// Project directory to inspect (default: current directory).
         #[arg(default_value = ".")]
