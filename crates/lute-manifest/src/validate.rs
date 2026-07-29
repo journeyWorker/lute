@@ -2,16 +2,17 @@ use crate::schema::{DirectiveDecl, Lowering};
 
 /// plugin §8.1 closed vocabulary — owned by the core; a plugin MUST NOT invent flags.
 pub const SEMANTICS_VOCAB: &[&str] = &[
+    // `isStateful` and `cancelsPrevious` were removed in plugin 0.0.3: no
+    // shipped directive declared either and neither had a consumer, and a
+    // CLOSED vocabulary must not advertise flags that do nothing.
     "writes.sceneState",
     "writes.characterState",
     "reads.onStage",
     "mayExitCharacter",
     "usesAnchor",
     "isExit",
-    "isStateful",
     "mutatesScene",
     "requiresAnchor",
-    "cancelsPrevious",
     "bridgeCall",
     // dsl 0.8.0: the directive unconditionally TERMINATES the walk at its own
     // record — nothing after it in the enclosing straight-line body ever runs.
