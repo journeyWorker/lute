@@ -762,7 +762,9 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // 6b. Duplicate authored line codes (dsl §12): two `:line`s for the same
     //     speaker with the same trimmed `code` derive identical `lineId`/
     //     `voiceKey` join keys — a clean-check invariant the compile gate relies
-    //     on. Whole-document, per-speaker; owns `E-DUP-LINE-CODE`.
+    //     on. Whole-document, per-speaker; owns `E-DUP-LINE-CODE`. The ROOT
+    //     document only: each imported component body gets its OWN isolated
+    //     run of this same pass in `validate_components` (Task 7c).
     let line_code_diags = check_line_codes(&doc);
 
     // 7. Resolved view: injection fold + the timeline tables gathered in the walk.
@@ -1687,6 +1689,10 @@ fn ref_produced_type<'a>(raw: &str, ctx: &'a Ctx<'_>) -> Option<&'a Type> {
 /// — a component file's own byte spans cannot be represented in this document's
 /// diagnostic surface (mirroring how import diagnostics report at the scene
 /// frontmatter). Deterministic: components iterate in name order.
+///
+/// Each body ALSO gets its own isolated run of the whole-document
+/// duplicate-line-code pass ([`check_line_codes`], dsl §12) — see the comment
+/// at that call for the scope boundary.
 fn validate_components(
     components: &ComponentSet,
     snapshot: &CapabilitySnapshot,
@@ -1731,6 +1737,31 @@ fn validate_components(
                 &mut body_diags,
             );
         }
+        // Task 7c, the SAME class of gap as Task 7b's (the content-line attr
+        // checker) one arm up: `check_line_codes` had exactly ONE callsite —
+        // `check()` step 6, over the ROOT document — so a component body never
+        // reached it. Two identical `(speaker, code)` content lines inside a
+        // body therefore passed `lute check` through a `::use` (exit 0) while
+        // the same pair errored `E-DUP-LINE-CODE` at scene level AND when the
+        // component was checked standalone, and `lute compile` went on to emit
+        // two records carrying one `lineId` — the voice-key / i18n identity
+        // spine, so two lines collapsing onto one id collide on one voice
+        // asset.
+        //
+        // Reused verbatim rather than re-implemented: `check_line_codes` is
+        // already a whole-`&Document` pass and `body` IS a `Document`, so
+        // pointing it at the body needs no narrower entry point. Its own
+        // identity scoping (dsl 0.2.0 §7 — one scope per document for shots,
+        // one per `<quest>`) then makes each component body its own scope for
+        // free, exactly as each quest is.
+        //
+        // SCOPE: this checks uniqueness WITHIN one body. Post-expansion
+        // identity across a component `::use`d twice is a separate and
+        // PRE-EXISTING question, not this pass's: a single perfectly VALID
+        // `code="0010"` line in a component `::use`d twice already lowers to
+        // two records with one `lineId` in 0.8.0, independent of this gap. It
+        // is deliberately left alone here.
+        body_diags.extend(check_line_codes(&body));
         // D6 (dsl 0.4.0 §6.2): the positive `E-COMPONENT-STATE` scan
         // (`component_slot_state_scan`/`component_interp_scan`) is the
         // AUTHORITATIVE diagnosis for an ambient-state read inside a
