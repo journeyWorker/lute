@@ -51,8 +51,18 @@ fn codes(dir: &Path, scene: &str) -> Vec<String> {
 const GREET: &str = "---\ncomponent: greet\nparams:\n  who: string\n---\n\
 ## Scene 1.\n::auto{character=@who}\n@narrator: Hello there.\n";
 
+/// The `anchor` slot, declared inline. `GREET`'s `::auto` writes no `anchor`, so
+/// `auto-anchor-on-show` reads this `default:` — an undeclared `anchor` there is
+/// `E-DOMAIN-UNKNOWN` (dsl 0.9.0 D-D), which would drown out every
+/// component-resolution code these fixtures are actually about.
+const ANCHOR_ENUMS: &str = "enums:\n  anchor:\n    members: [left, center, right]\n    \
+                            default: center\n";
+
 fn scene(components: &str, body: &str) -> String {
-    format!("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [{components}]\n---\n## Shot 1.\n{body}\n")
+    format!(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [{components}]\n\
+         {ANCHOR_ENUMS}---\n## Shot 1.\n{body}\n"
+    )
 }
 
 #[test]

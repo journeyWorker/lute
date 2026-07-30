@@ -93,6 +93,7 @@ An `E-`-severity capability-resolution diagnostic (a bad plugin option, a bad `i
 
 A translatable record missing a locale the bundle declares is `W-L10N-MISSING`, one per `(lineId, locale)` pair, written to stderr. It is a warning: the artifact still emits, carrying the source-language string. `--deny W-L10N-MISSING` (or `--deny-warnings`) promotes it, so CI can require a complete translation before anything ships:
 
+<!-- lute-diagnostics -->
 ```console
 $ lute compile scenes/opening.lute --project . --locales bundle.json --deny W-L10N-MISSING -o out.json
 scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `narrator.s01ep01.narrator_0020`

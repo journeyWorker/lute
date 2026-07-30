@@ -1,11 +1,20 @@
 use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
+use lute_manifest::snapshot::CapabilitySnapshot;
 
+/// The default harness: the shared test vocabulary, so a fixture writing
+/// `emotion="neutral"` declares that vocabulary the way a real project does.
 fn codes(text: &str) -> Vec<String> {
+    codes_with(text, lute_test_vocab::vocab_snapshot())
+}
+
+/// Same harness against an explicit snapshot — for the one test whose subject
+/// IS the absence of a vocabulary declaration.
+fn codes_with(text: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
     let input = CheckInput {
         text: text.to_string(),
         uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
+        snapshot,
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
@@ -76,9 +85,32 @@ fn emotion_member_clean_nonmember_errors() {
     assert!(codes(&format!("{HDR}@x{{emotion=\"zzz\"}}: hi\n")).contains(&"E-BAD-ENUM".to_string()));
 }
 
+/// dsl 0.9.0 D-C: a domain slot with no declared domain is an ERROR. Before
+/// 0.9.0 `action` was silently skipped when undeclared (this test's ancestor,
+/// `action_is_open_by_default`, asserted exactly that), which is why a typo in
+/// a 9,880-row action vocabulary shipped unchecked.
+///
+/// DELIBERATELY runs against the BARE CORE (`load_core_snapshot()`), not the
+/// shared test vocabulary: the claim is about NOTHING declaring an `action`
+/// domain. Against `vocab_snapshot()` it would only prove membership.
 #[test]
-fn action_is_open_by_default() {
-    // action stays free-form in a core-only context (no project action domain)
-    let cs = codes(&format!("{HDR}@x{{action=\"wave\"}}: hi\n"));
-    assert!(!cs.iter().any(|c| c == "E-DOMAIN-UNKNOWN" || c == "E-BAD-ENUM"), "{cs:?}");
+fn undeclared_action_domain_is_an_error() {
+    let cs = codes_with(
+        &format!("{HDR}@x{{action=\"wave\"}}: hi\n"),
+        lute_manifest::core::load_core_snapshot(),
+    );
+    assert!(
+        cs.contains(&"E-DOMAIN-UNKNOWN".to_string()),
+        "undeclared `action` must error: {cs:?}"
+    );
+}
+
+/// Declared → membership is checked, exactly like `emotion`.
+#[test]
+fn declared_action_domain_is_membership_checked() {
+    let clean = codes(&format!("{HDR}@x{{action=\"wave\"}}: hi\n"));
+    assert!(!clean.iter().any(|c| c == "E-DOMAIN-UNKNOWN"), "{clean:?}");
+    assert!(!clean.iter().any(|c| c == "E-BAD-ENUM"), "{clean:?}");
+    let bad = codes(&format!("{HDR}@x{{action=\"zzz\"}}: hi\n"));
+    assert!(bad.contains(&"E-BAD-ENUM".to_string()), "{bad:?}");
 }

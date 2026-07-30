@@ -4,8 +4,14 @@ name: Docs
 # schemas, or the two crate files that own the canonical version strings.
 # Three jobs:
 #   consistency — stdlib-python single-source version/domain drift guard.
-#   examples    — build lute-cli and `check-project` the example roots so a
-#                 doc example that stops checking cleanly fails the PR.
+#   examples    — build lute-cli, `check-project` the example roots, and
+#                 compile-check every declared-checkable ```lute snippet in
+#                 BOTH doc trees (packages/website/src/content/docs and
+#                 docs/), so a doc example or a doc SNIPPET that stops
+#                 matching its declared outcome fails the PR. `docs/**` is in
+#                 the trigger paths below, so it has to be a root here too —
+#                 a trigger that fires on files nothing reads advertises
+#                 coverage it does not provide.
 #   website     — build the Astro/Starlight site under Bun so a broken page
 #                 or link is caught before merge.
 
@@ -19,6 +25,8 @@ on:
       - "crates/lute-check/src/lib.rs"
       - "crates/lute-compile/src/lib.rs"
       - "scripts/check-docs-consistency.py"
+      - "scripts/check-doc-snippets.py"
+      - ".github/workflows/docs.yml"
 
 # One in-flight run per ref; a new push cancels the previous run.
 concurrency:
@@ -42,7 +50,7 @@ jobs:
         run: python3 scripts/check-docs-consistency.py
 
   examples:
-    name: Check example projects
+    name: Check example projects and doc snippets
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -69,6 +77,34 @@ jobs:
       # (exit 1) fails this job.
       - name: check-project docs/examples
         run: cargo run -q -p lute-cli -- check-project docs/examples
+
+      # A doc's ```lute blocks are source too, and until now nothing ever ran a
+      # checker over them: the `website` job builds pages, not snippets, and
+      # `check-project` above reads only docs/examples. Reuses the lute-cli
+      # built above rather than cold-building the workspace in a job of its
+      # own.
+      #
+      # The unit of verification is a block PAIRED WITH ITS EXPECTED OUTCOME,
+      # declared in the fence meta: `check` / `check="<path>"` (must be clean,
+      # standalone or inside that path's project) or `expect="<CODE>,…"` (must
+      # fail with exactly those codes — this is what makes a tutorial's
+      # deliberately-failing intermediate states verifiable). `unverified=`
+      # opts out with a reason. Every skip is named in the output, and two
+      # one-directional counters fail if a marker is quietly dropped or a new
+      # unmarked whole document appears. Also pins the docs' quoted
+      # `capabilityVersion` hashes against `lute context --json`.
+      #
+      # A third marker class covers quoted diagnostic TEXT, which the two
+      # above never read: `<!-- lute-diagnostics -->` (`{/* … */}` in .mdx)
+      # above a fence declares that it holds real CLI output, and every
+      # message in it is unwrapped and matched against the `format!` literals
+      # in `crates/*/src`. That closes the hole a measured probe found — a
+      # reworded `E-DOMAIN-DUP` left this script at exit 0 while
+      # `language/vocabulary.md` quoted a sentence the binary no longer
+      # emitted. Same floor-and-cap shape: deleting a marker fails, adding an
+      # unmarked quote fails.
+      - name: Compile-check ```lute snippets in both doc trees
+        run: python3 scripts/check-doc-snippets.py --lute ./target/debug/lute
 
   website:
     name: Build website

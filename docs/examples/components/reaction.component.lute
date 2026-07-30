@@ -8,6 +8,10 @@
 component: reaction
 params:
   tier: { enum: [cold, warm, fond] }
+# A component's own vocabulary import (dsl 0.9.0), for a STANDALONE `lute
+# check` of this file; through `::use` the IMPORTING document's vocabulary
+# applies (0.9.0 §5, known limitation).
+uses: ../base.schema.yaml
 ---
 
 ## The Tiered Greeting

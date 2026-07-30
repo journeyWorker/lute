@@ -11,14 +11,15 @@
 
 use lute_check::{check, CheckInput, Mode, SchemaImports};
 
-/// Canonical `CheckInput` for a fixture: the core snapshot, an empty (fully
-/// permissive) provider set, and interactive `Author` mode — the same shape the
-/// example integration tests use (`tests/examples.rs`).
+/// Canonical `CheckInput` for a fixture: the shared test vocabulary snapshot
+/// (`lute_test_vocab`), an empty (fully permissive) provider set, and
+/// interactive `Author` mode — the same shape the example integration tests
+/// use (`tests/examples.rs`).
 fn input_for(text: &str) -> CheckInput {
     CheckInput {
         text: text.to_string(),
         uri: "test".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
+        snapshot: lute_test_vocab::vocab_snapshot(),
         providers: lute_manifest::provider::ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),

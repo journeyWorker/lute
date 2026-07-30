@@ -275,7 +275,8 @@ enum Command {
     #[command(subcommand)]
     Catalog(CatalogCommand),
     /// Scaffold a new Lute project directory: `lute.project.yaml`, a state
-    /// schema, a starter scene, and a trace mock — ready for `lute check-project`.
+    /// schema, a starter vocabulary, a starter scene, and a trace mock — ready
+    /// for `lute check-project`.
     Init {
         /// Directory to create (must not already contain a `lute.project.yaml`).
         dir: PathBuf,
@@ -295,7 +296,8 @@ enum Command {
         dir: PathBuf,
     },
     /// Diagnose the local toolchain + project setup: versions, project
-    /// manifest, provider snapshots, and editor integration hints.
+    /// manifest, provider snapshots, vocabulary slots, and editor integration
+    /// hints.
     Doctor {
         /// Project directory to inspect (default: current directory).
         #[arg(default_value = ".")]
@@ -515,6 +517,8 @@ const DENIABLE_CODES: &[&str] = &[
     "E-DEPENDS-VERSION", "E-DERIVE-TIER", "E-DERIVE-UNDECLARED", "E-DERIVED-WRITE",
     "E-DOLLAR-OUTSIDE-MATCH", "E-DOMAIN-DUP", "E-DOMAIN-UNKNOWN", "E-DUP-BRANCH",
     "E-DUP-LINE-CODE", "E-DUP-TRACK", "E-ENTITY-KIND-CLASH", "E-ENTITY-KIND-SHAPE",
+    "E-ENUM-DEFAULT-NOT-MEMBER", "E-ENUM-EXITS-NOT-MEMBER", "E-ENUM-MISSING-SEMANTICS",
+    "E-ENUM-UNEXPECTED-SEMANTICS",
     "E-EXTENDS-RELATION-SIG", "E-EXTENDS-STATE-TYPE", "E-FACT-DOMAIN", "E-FACT-TIER-WRITE",
     "E-FRONTMATTER-SCHEMA",
     "E-GRAMMAR-NOT-ADMITTED", "E-HUB-NO-EXIT", "E-IDENTITY-TEMPLATE",
@@ -538,7 +542,8 @@ const DENIABLE_CODES: &[&str] = &[
     "E-RETRACT-WILDCARD-ASSERT", "E-SET-OP-TYPE", "E-STATE-COLLECTION", "E-STATE-DECL",
     "E-STATE-MAYBE-UNAVAILABLE",
     "E-STATE-NAMESPACE", "E-STATE-REDECLARE", "E-STATE-SHAPE-CYCLE", "E-STRING-ESCAPE",
-    "E-TAG-NOT-ONE-LINE", "E-TEMPORAL-ARG", "E-TIMELINE-CONTENT", "E-TIMELINE-DURATION",
+    "E-TAG-INLINE-BODY", "E-TAG-NOT-ONE-LINE", "E-TEMPORAL-ARG", "E-TIMELINE-CONTENT",
+    "E-TIMELINE-DURATION",
     "E-TITLE-PLACEMENT", "E-TRACK-KEY", "E-UNCLASSIFIED", "E-UNCLOSED-TAG",
     "E-UNDECLARED", "E-UNDECLARED-REF", "E-UNKNOWN-ATTR", "E-UNKNOWN-DIRECTIVE",
     "E-UNKNOWN-EVENT", "E-UNKNOWN-ID", "E-UNKNOWN-KIND", "E-UNSET-LITERAL",
@@ -773,6 +778,34 @@ pub(crate) struct BuiltInput {
     /// `lute:` channel instead of the per-document diagnostic list — but they
     /// are errors, and every gating command MUST fold this into its exit code.
     pub resolve_error: bool,
+    /// The project-level problems resolution surfaced, in emission order: a
+    /// `lute.project.yaml` that failed to load, then each
+    /// [`resolve_document_snapshot`] diagnostic as `<code>: <message>`. Each is
+    /// the BODY of one `lute: …` stderr line.
+    ///
+    /// RETURNED rather than printed because they describe the PROJECT, not this
+    /// document: a caller that resolves many documents under one project would
+    /// print the identical line once per file, and a caller that reports through
+    /// a structured model (`lute doctor`) could not capture them at all. Every
+    /// gating command calls [`BuiltInput::report_project_diags`] immediately, so
+    /// its stderr is byte-identical to when `build_input` printed them itself.
+    pub project_diags: Vec<String>,
+    /// The document's own lifted frontmatter, as `build_input` already parsed it
+    /// to resolve the snapshot. Carried because the domain vocabulary a document
+    /// resolves includes its OWN inline `enums:`/`entities:` projection
+    /// (`TypedMeta::domains`), which `merge_domains` needs alongside
+    /// `input.imports` — see `doctor::resolved_domains`.
+    pub meta: lute_check::TypedMeta,
+}
+
+impl BuiltInput {
+    /// Print [`BuiltInput::project_diags`] on the `lute:` stderr channel — the
+    /// exact lines `build_input` used to emit inline.
+    pub fn report_project_diags(&self) {
+        for m in &self.project_diags {
+            eprintln!("lute: {m}");
+        }
+    }
 }
 
 /// Assemble the `CheckInput` for `file` exactly as `check` does: project
@@ -796,13 +829,14 @@ fn build_input(
     // `--project`, load the project and assemble the scene's activated snapshot
     // (plugin §4/§11); without it, `resolve_document_snapshot(None, ..)` returns
     // the core-only `lute.core` baseline — behavior identical to before.
+    let mut project_diags: Vec<String> = Vec::new();
     let project = match project {
         Some(dir) => match load_project(dir) {
             Ok(p) => p,
             Err(e) => {
                 // A malformed project must not silently mis-validate: surface it
                 // and fall back to core-only rather than pretending it loaded.
-                eprintln!("lute: {e}");
+                project_diags.push(e);
                 None
             }
         },
@@ -827,7 +861,7 @@ fn build_input(
         resolve_document_snapshot(project.as_ref(), meta0.profile.as_deref(), &meta0.plugins);
     let mut resolve_error = false;
     for d in &rdiags {
-        eprintln!("lute: {}: {}", d.code, d.message);
+        project_diags.push(format!("{}: {}", d.code, d.message));
         // An `E-` resolve diagnostic is a build-failing error like any other
         // (dsl 0.1.0 Appendix E: severity is binary, `E-` gates). It travels
         // the `lute:` channel instead of the per-document diagnostic list
@@ -857,6 +891,8 @@ fn build_input(
             components,
         },
         resolve_error,
+        project_diags,
+        meta: meta0,
     })
 }
 
@@ -873,7 +909,10 @@ fn run_check(
     let Some(built) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
-    let BuiltInput { input, resolve_error } = built;
+    // `build_input` no longer prints these itself (`lute doctor` folds them into
+    // its checklist instead); every gating command emits them exactly as before.
+    built.report_project_diags();
+    let BuiltInput { input, resolve_error, .. } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
@@ -1042,7 +1081,10 @@ fn collect_project_docs(
         let Some(built) = build_input(file, providers, Some(&root)) else {
             return Err(ExitCode::from(2));
         };
-        let BuiltInput { input, resolve_error } = built;
+        // Per file, exactly as `build_input` printed them before: this loop
+        // resolves each document's own root, so the lines stay one-per-document.
+        built.report_project_diags();
+        let BuiltInput { input, resolve_error, .. } = built;
         // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
         // option, missing active plugin, bad identity template) is a
         // build-failing error; it printed above, and it MUST gate or it would
@@ -2686,7 +2728,8 @@ fn run_context(
     let Some(built) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
-    let BuiltInput { input, resolve_error } = built;
+    built.report_project_diags();
+    let BuiltInput { input, resolve_error, .. } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
@@ -3361,7 +3404,8 @@ fn run_compile(
     let Some(built) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
-    let BuiltInput { input, resolve_error } = built;
+    built.report_project_diags();
+    let BuiltInput { input, resolve_error, .. } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
@@ -3535,7 +3579,8 @@ fn run_trace(
     let Some(built) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
-    let BuiltInput { input, resolve_error } = built;
+    built.report_project_diags();
+    let BuiltInput { input, resolve_error, .. } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.

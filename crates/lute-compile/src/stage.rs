@@ -183,10 +183,10 @@ fn emit_primitive(
     clip: Option<ClipStamp>,
 ) -> StageState {
     // Pure reducer step (arch #2): next stage state + this node's injections.
-    let (next, injected) = lower_node(state, node, lookahead);
+    let (next, injected) = lower_node(state, node, lookahead, &cx.env.domains);
     let authored = match node {
         Node::Line(l) => Some(lower_line(l, cx.snapshot)),
-        Node::Directive(d) => lower_directive(d, cx.snapshot),
+        Node::Directive(d) => lower_directive(d, cx.snapshot, &cx.env.domains),
         Node::Set(s) => Some(lower_set(s)),
         Node::Assert(a) => Some(lower_assert(a)),
         Node::Retract(r) => Some(lower_retract(r)),

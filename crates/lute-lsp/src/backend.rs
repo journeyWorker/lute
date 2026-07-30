@@ -205,22 +205,15 @@ impl Backend {
             &typed.plugins,
         );
 
-        // Domain refs: this file's own `enums:`/`entities:` (not part of
-        // `imports.domains`, which only covers files REACHED via `uses:`/
-        // `extends:` — see `SchemaImports::domains`) unioned with its imports,
-        // checked against the project's active baseline. On a same-name
-        // collision the import-graph side wins (mirrors `resolve_imports`'s own
-        // "shallower wins" convention: this file, depth 0, is the shallowest).
-        let mut own_domains = imports.domains.clone();
-        for (name, dom) in &typed.domains {
-            own_domains.entry(name.clone()).or_insert_with(|| dom.clone());
-        }
-        let domain_imports = lute_check::SchemaImports {
-            domains: own_domains,
-            ..Default::default()
-        };
+        // Domain refs: this file's own `enums:`/`entities:` unioned with its
+        // imports, checked against the project's active baseline. Both sources
+        // go through `merge_domains`, which owns the fusion AND the inline-wins
+        // precedence (`resolve_imports`'s shallowest-wins rule: this file is
+        // depth 0 to any import's depth >= 1) — the SAME call `check()` makes
+        // for a scene, so the two surfaces cannot disagree about which member
+        // list is live.
         let (_domains, domain_diags) =
-            lute_check::schema_import::merge_domains(&baseline, &domain_imports, whole);
+            lute_check::schema_import::merge_domains(&baseline, &imports, &typed, whole);
         diags.extend(domain_diags);
 
         // The merged state schema `defs:` CEL paths resolve against: this

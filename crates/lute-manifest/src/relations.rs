@@ -227,7 +227,7 @@ pub fn kinds_to_domains(kinds: &BTreeMap<String, EntityKindDecl>) -> BTreeMap<St
                     name.clone(),
                     Domain {
                         members: members.clone(),
-                        open: false,
+                        ..Default::default()
                     },
                 );
             }
@@ -237,6 +237,7 @@ pub fn kinds_to_domains(kinds: &BTreeMap<String, EntityKindDecl>) -> BTreeMap<St
                     Domain {
                         members: Vec::new(),
                         open: true,
+                        ..Default::default()
                     },
                 );
             }

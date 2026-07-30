@@ -53,7 +53,7 @@ project/
 
 ## 4. 저작 규칙 (check를 통과하는 형태)
 
-- 프론트매터: `kind: scene`, `mode: inline`, `luteVersion: "0.8.0"`, `profile: <capability profile>`. 상태 선언의 enum 스칼라는 `{ type: { enum: [...] }, default: ... }` 형태(`values:`/`domain:` 아님).
+- 프론트매터: `kind: scene`, `mode: inline`, `luteVersion: "0.9.0"`, `profile: <capability profile>`. 상태 선언의 enum 스칼라는 `{ type: { enum: [...] }, default: ... }` 형태(`values:`/`domain:` 아님).
 - 관계 선언: `relations: { persuaded: { args: [character, route], tier: run, key: [0] } }` + `entities`/`enums`. `::assert{rel(a,b)}`로 기록, 퀘스트 objective에서 `count(persuaded(_,_)) >= 7`로 판정 — 이 패턴은 0.7에서 완전 동작한다.
 - number 대상 `<match on=...>` + `<when test="$ >= 4">`도 정상 동작한다 (파일럿 계획 때 우려했던 거부 없음).
 - 대사 `emotion=`은 **lute 내장 enum**(neutral, surprised, delighted, shy, content, angry, sad)만 허용된다. 엔진 포트레이트 키(serious/soft 등)와 다르면 엔진 쪽에서 매핑 테이블을 둬라.

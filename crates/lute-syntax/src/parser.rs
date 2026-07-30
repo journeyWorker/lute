@@ -79,6 +79,19 @@ pub const E_TAG_NOT_ONE_LINE: &str = "E-TAG-NOT-ONE-LINE";
 /// itself names the (fixable) deprecation instead of the residual
 /// "unrecognized line" bucket.
 pub const E_LEGACY_CONTENT_SIGIL: &str = "E-LEGACY-CONTENT-SIGIL";
+/// Diagnostic code (dsl §2.3): an element's body — and, in the worst case, its
+/// matching `</tag>` close — was written on the opener's own physical line
+/// (`<tag …>body</tag>`). That single-line form is deliberately **not**
+/// supported: an element with children uses the block form, children on their
+/// **own** lines. Distinct from [`E_TAG_NOT_ONE_LINE`], whose subject is the
+/// OPENER (its `>`/attributes running past the newline) — here the opener is
+/// impeccable and the BODY is misplaced, so reusing that code would tell the
+/// author to fix something already correct. Naming it also denies the three
+/// misdirecting diagnostics this shape used to cause — a missing-close claim
+/// against a close that is right there, an "unexpected block" against a
+/// well-formed sibling, and (worst) `E-NONEXHAUSTIVE` against a `<match>`
+/// whose arms merely failed to parse.
+pub const E_TAG_INLINE_BODY: &str = "E-TAG-INLINE-BODY";
 
 /// Parse a `.lute` document into its AST and parse diagnostics.
 ///
@@ -1635,6 +1648,91 @@ mod tests {
             matches!(doc.shots[0].body[0], Node::On(_)),
             "expected an On node: {:?}",
             doc.shots[0].body
+        );
+    }
+
+    #[test]
+    fn inline_tag_body_is_named() {
+        // §2.3: an element with children uses the BLOCK form — children on
+        // their own lines. A single-line `<tag>…</tag>` must name exactly that,
+        // not a misleading E-UNCLOSED-TAG (the close is right there on the
+        // line) or E-UNCLASSIFIED (the following arm is well-formed).
+        let (doc, diags) = parse(
+            "## Shot 1.\n\
+             <match on=\"run.mood\">\n\
+             <when is=\"calm\"> @fixer{mono}: Steady. </when>\n\
+             <otherwise> @fixer{mono}: Not steady. </otherwise>\n\
+             </match>\n",
+        );
+        assert_eq!(
+            diags
+                .iter()
+                .filter(|d| d.code == "E-TAG-INLINE-BODY")
+                .count(),
+            2,
+            "one diagnostic per offending line: {diags:?}"
+        );
+        let d = diags
+            .iter()
+            .find(|d| d.code == "E-TAG-INLINE-BODY")
+            .unwrap_or_else(|| panic!("expected E-TAG-INLINE-BODY: {diags:?}"));
+        assert!(
+            d.message.contains("own line") && d.message.contains("§2.3"),
+            "message must name the own-line rule and cite §2.3: {}",
+            d.message
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == "E-UNCLOSED-TAG"),
+            "the inline `</when>` IS the close — no unclosed-tag misdirection: {diags:?}"
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == "E-UNCLASSIFIED"),
+            "a well-formed `<otherwise>` is never `unexpected block here`: {diags:?}"
+        );
+        // The element IS complete on its line, so recovery keeps the arm
+        // stream intact: both arms still reach the checker, which is what
+        // denies the spurious exhaustiveness verdict a basis to fire.
+        let Node::Match(m) = &doc.shots[0].body[0] else {
+            panic!("expected a Match node: {:?}", doc.shots[0].body);
+        };
+        assert_eq!(m.arms.len(), 2, "both arms recovered: {:?}", m.arms);
+    }
+
+    #[test]
+    fn block_form_tag_body_stays_clean() {
+        // Regression guard for the fix above: the SUPPORTED block form of the
+        // same content must keep parsing with zero diagnostics.
+        let (_, diags) = parse(
+            "## Shot 1.\n\
+             <match on=\"run.mood\">\n\
+             <when is=\"calm\">\n\
+             @fixer{mono}: Steady.\n\
+             </when>\n\
+             <otherwise>\n\
+             @fixer{mono}: Not steady.\n\
+             </otherwise>\n\
+             </match>\n",
+        );
+        assert!(diags.is_empty(), "block form must parse clean: {diags:?}");
+    }
+
+    #[test]
+    fn inline_tag_body_named_on_sibling_block_elements() {
+        // The mistake is available on every block element, and every one of
+        // them opens through the SAME `parse_open_tag`, so `<on>` reports it
+        // exactly as `<when>`/`<otherwise>` do — no unclosed-tag cascade.
+        let (_, diags) = parse("## Shot 1.\n<on event=\"x\"> @fixer: hi. </on>\n");
+        assert_eq!(
+            diags
+                .iter()
+                .filter(|d| d.code == "E-TAG-INLINE-BODY")
+                .count(),
+            1,
+            "{diags:?}"
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == "E-UNCLOSED-TAG"),
+            "{diags:?}"
         );
     }
 

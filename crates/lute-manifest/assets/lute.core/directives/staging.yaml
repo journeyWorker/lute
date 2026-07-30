@@ -9,7 +9,7 @@ directives:
   - name: music
     attrs:
       - { name: action, type: { domain: musicAction } }
-      - { name: mood, type: string }
+      - { name: mood, type: { domain: mood } }
       - { name: volume, type: { domain: volume } }
       - { name: assetId, type: string }
       - { name: track, type: string }
@@ -25,7 +25,7 @@ directives:
     attrs:
       - { name: character, type: string }
       - { name: anchor, type: { domain: anchor } }
-      - { name: action, type: string }
+      - { name: action, type: { domain: action } }
     semantics: [ "reads.onStage", "usesAnchor", "mayExitCharacter", "writes.characterState" ]
     lower: { kind: builtin, name: autoStage }
   - name: vfx

@@ -19,7 +19,7 @@ fn codes(text: &str) -> Vec<String> {
     let input = CheckInput {
         text: text.to_string(),
         uri: "line_when".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
+        snapshot: lute_test_vocab::vocab_snapshot(),
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
@@ -149,7 +149,7 @@ fn component_codes(dir: &Path, scene: &str) -> Vec<String> {
     let input = CheckInput {
         text: scene.to_string(),
         uri: "scene".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
+        snapshot: lute_test_vocab::vocab_snapshot(),
         providers: ProviderSet::default(),
         mode: Mode::Ci,
         imports: Default::default(),

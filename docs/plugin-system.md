@@ -11,7 +11,10 @@ doc, not a stale feature.)
 > resolution algorithm, the capability snapshot, and the data↔code boundary — are specified with
 > RFC 2119 rigor in [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md), with the
 > [`0.0.2`](proposals/plugin-system/0.0.2.md) delta adding option/frontmatter value validation,
-> cross-cutting `stampAttrs`, and the implemented `lower: { record, fields }` form.
+> cross-cutting `stampAttrs`, and the implemented `lower: { record, fields }` form, and the
+> [`0.0.3`](proposals/plugin-system/0.0.3.md) delta making `lute.core`'s `enums` export empty,
+> admitting the `enums` long form (`members`/`default`/`exits`), and shrinking the closed
+> `semantics` vocabulary from twelve flags to ten.
 > **Those proposals are the source of truth.** This document is the human-facing **overview +
 > rationale** (the *why* and the author's mental model); where they differ, the proposals win.
 
@@ -59,6 +62,23 @@ false → **code** (a compiler-core change, not a plugin).
 
 - *Data:* a new `::shake`, `emotion="smug"`, `::vfx type="rain"`, `musicAction="duck"`, a new
   `::bg transition="wipe"` attr.
+
+  `emotion="smug"` is the example this document led with from the start, and until dsl 0.9.0 it
+  was **aspirational**: the six baseline vocabularies shipped as closed members inside
+  `lute.core`, so a project schema declaring `emotion:` got `E-DOMAIN-DUP` and a plugin
+  exporting it failed whole-project resolution. As of 0.9.0 it is simply true. **The core ships
+  no members at all** — it declares the seven slots (`emotion`, `action`, `anchor`, `mood`,
+  `volume`, `musicAction`, `vfxType`) and nothing else, so every member comes from one of three
+  declaration routes — an `enums:` block in the using document's own frontmatter, a project
+  schema's `enums:` reached through `uses:`/`extends:`, or a plugin's `enums` export — and using a
+  slot nobody declared is `E-DOMAIN-UNKNOWN` rather than silently unchecked (dsl 0.9.0 §2–§3).
+  The routes differ only in reach and reporting: a plugin export is capability surface
+  (`capabilityVersion`), the two project routes are project data that travels into the artifact,
+  a plugin wins an `E-DOMAIN-DUP` clash against either, and inline wins over an imported
+  declaration of the same slot provided it re-declares a superset of its members. One scope
+  limit: a component body resolves vocabulary against the **importing** document — a component's
+  own `uses:` is discarded at parse — so a component naming a domain only it declares passes
+  standalone and is `E-DOMAIN-UNKNOWN` through a scene that does not import the same vocabulary.
 - *Code:* a new branching construct, a new timeline-resolver behavior, a new exhaustiveness rule,
   "run until interrupted", "bind this action to future dialogue state", "auto-place characters".
 
@@ -87,6 +107,8 @@ plugins/<id>/
   docs/*.md             # hover docs (non-normative)
   frontmatter/*.yaml    # plugin-owned meta keys (e.g. cast:)       → proposal §6.8
   assetkinds/*.yaml     # asset id templates (compose / query)      → proposal §6.9
+  enums/*.yaml          # named content vocabularies (members)      → proposal §6.10, 0.0.3 §2
+  stampattrs/*.yaml     # cross-cutting stamp attributes            → proposal 0.0.2 §4
 ```
 
 Everything a plugin declares is **typed** by one small manifest type system (`enum`, `list`,

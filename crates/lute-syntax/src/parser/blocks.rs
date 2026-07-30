@@ -9,8 +9,8 @@
 
 use super::attrs::{take_bool, take_cel, take_str, take_str_spanned};
 use super::{
-    close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TAG_NOT_ONE_LINE,
-    E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
+    close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TAG_INLINE_BODY,
+    E_TAG_NOT_ONE_LINE, E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
 };
 use crate::ast::*;
 use lute_core_span::Layer;
@@ -24,6 +24,13 @@ struct OpenTag {
     end_o: usize,
     /// True for a self-closing `<tag …/>` (dsl 0.2.0 §6.4).
     self_closing: bool,
+    /// True when the element's body AND its matching `</tag>` close were both
+    /// written on the opener's own physical line — the unsupported single-line
+    /// form (dsl §2.3), already reported as [`E_TAG_INLINE_BODY`]. The element
+    /// IS closed, just in the wrong form, so the block parsers claim no
+    /// following lines for it and [`Parser::consume_close`] reports no
+    /// [`E_UNCLOSED_TAG`]: ONE diagnostic names the mistake.
+    inline_closed: bool,
 }
 
 impl Parser<'_> {
@@ -56,7 +63,9 @@ impl Parser<'_> {
         // `E-UNCLOSED-TAG`/`E-UNCLASSIFIED` to fire from wherever the parser
         // resyncs. Do NOT attempt to consume the wrap — the one-physical-line
         // model (§2.3) is retained, not relaxed.
-        if after > e || self.body.as_bytes().get(after.wrapping_sub(1)) != Some(&b'>') {
+        let one_line =
+            after <= e && self.body.as_bytes().get(after.wrapping_sub(1)) == Some(&b'>');
+        if !one_line {
             self.emit_o(
                 E_TAG_NOT_ONE_LINE,
                 "a tag and all its attributes must be on one physical line; wrapping is not \
@@ -71,12 +80,43 @@ impl Parser<'_> {
         // attr scanner tolerates the lone `/` (skips it as an unparseable token),
         // so detect it from the raw byte just before the consumed terminator.
         let self_closing = after >= 2 && self.body.as_bytes()[after - 2] == b'/';
+        // dsl §2.3 `E-TAG-INLINE-BODY`: the opener is impeccable (it closed on
+        // its own line) but text FOLLOWS its `>` — the author wrote the body,
+        // and often the close too, on the opener's line. `parse_open_tag`
+        // consumes whole lines, so that text is dropped; left unnamed it
+        // resurfaces as an unclosed-tag claim against a close that is right
+        // there, an "unexpected block here" against the next well-formed
+        // sibling, and a fabricated `E-NONEXHAUSTIVE` against a `<match>`
+        // whose arms simply never parsed. A self-closing `<tag …/>` is
+        // excluded: it HAS no body, so trailing text there is a different
+        // mistake and would need a different message — one code, one meaning.
+        let rest = if one_line { &self.body[after..e] } else { "" };
+        let inline_body = !self_closing && !rest.trim().is_empty();
+        // The close on the SAME line means the element is complete there: the
+        // recovery below claims no following lines for it, which is what keeps
+        // the surrounding node stream (a `<match>`'s arms, say) intact.
+        let inline_closed = inline_body && holds_inline_close(rest, &self.body[cstart + 1..j]);
+        if inline_body {
+            let name = self.body[cstart + 1..j].to_string();
+            self.emit_o(
+                E_TAG_INLINE_BODY,
+                format!(
+                    "<{name}>'s body must be on its own line: the opener, each body line, and \
+                     `</{name}>` each need a physical line of their own — a single-line \
+                     `<{name}>…</{name}>` with an inline body is not supported (dsl §2.3)"
+                ),
+                start_o,
+                self.orig(e),
+                Layer::Logic,
+            );
+        }
         self.cursor += 1;
         OpenTag {
             attrs,
             start_o,
             end_o,
             self_closing,
+            inline_closed,
         }
     }
 
@@ -89,6 +129,14 @@ impl Parser<'_> {
     /// Consume the matching close if present; else emit `E_UNCLOSED_TAG`.
     /// Returns the original-text end offset of the block.
     fn consume_close(&mut self, name: &str, open: &OpenTag, last_end: usize) -> usize {
+        if open.inline_closed {
+            // dsl §2.3: the close WAS written — on the opener's own line, in
+            // the unsupported single-line form already reported as
+            // `E_TAG_INLINE_BODY`. Claiming the element "is never closed" on
+            // top of that is precisely the misdirection that code exists to
+            // remove; the author has one mistake, not two.
+            return open.end_o;
+        }
         if self.at_close(name) {
             let end = self.orig(self.line_content_end(self.cursor));
             self.cursor += 1;
@@ -114,8 +162,7 @@ impl Parser<'_> {
         let mut last_end = open.end_o;
         loop {
             self.skip_blanks();
-            if self.cursor >= self.lines.len() || self.stop_at_heading() || self.at_close("branch")
-            {
+            if self.block_body_done(&open) || self.at_close("branch") {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
@@ -246,7 +293,7 @@ impl Parser<'_> {
         let mut last_end = open.end_o;
         loop {
             self.skip_blanks();
-            if self.cursor >= self.lines.len() || self.stop_at_heading() || self.at_close("hub") {
+            if self.block_body_done(&open) || self.at_close("hub") {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
@@ -308,7 +355,7 @@ impl Parser<'_> {
         let mut last_end = open.end_o;
         loop {
             self.skip_blanks();
-            if self.cursor >= self.lines.len() || self.stop_at_heading() || self.at_close("match") {
+            if self.block_body_done(&open) || self.at_close("match") {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
@@ -399,10 +446,7 @@ impl Parser<'_> {
         let mut last_end = open.end_o;
         loop {
             self.skip_blanks();
-            if self.cursor >= self.lines.len()
-                || self.stop_at_heading()
-                || self.at_close("timeline")
-            {
+            if self.block_body_done(&open) || self.at_close("timeline") {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
@@ -450,7 +494,7 @@ impl Parser<'_> {
         let mut last_end = open.end_o;
         loop {
             self.skip_blanks();
-            if self.cursor >= self.lines.len() || self.stop_at_heading() || self.at_close("track") {
+            if self.block_body_done(&open) || self.at_close("track") {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
@@ -500,7 +544,7 @@ impl Parser<'_> {
         let mut last_end = open.end_o;
         loop {
             self.skip_blanks();
-            if self.cursor >= self.lines.len() || self.stop_at_heading() || self.at_close(name) {
+            if self.block_body_done(open) || self.at_close(name) {
                 break;
             }
             let trimmed = self.trimmed(self.cursor);
@@ -517,6 +561,19 @@ impl Parser<'_> {
         (body, end_o)
     }
 
+    /// True when the block opened by `open` claims no further physical lines,
+    /// for either of the two reasons every child scan above shares: the cursor
+    /// left this block's territory (EOF, or a `## ` shot heading — both hard
+    /// terminators), or the element was ALREADY closed on its own opener line
+    /// (dsl §2.3's unsupported single-line form, reported as
+    /// [`E_TAG_INLINE_BODY`]). The second is what stops the parser swallowing
+    /// the author's next well-formed sibling as this element's stray child and
+    /// misreporting it — with the arm/child stream left intact, the checker
+    /// also keeps a basis for the verdicts it draws from it.
+    fn block_body_done(&self, open: &OpenTag) -> bool {
+        open.inline_closed || self.cursor >= self.lines.len() || self.stop_at_heading()
+    }
+
     /// True if `cursor` sits on a shot heading (`## `) — a hard block terminator.
     fn stop_at_heading(&self) -> bool {
         self.cursor < self.lines.len() && self.trimmed(self.cursor).starts_with("## ")
@@ -526,6 +583,19 @@ impl Parser<'_> {
     fn skip_stray(&mut self) {
         self.cursor += 1;
     }
+}
+
+/// True if `rest` — the text following a `<tag …>` opener's `>` on the opener's
+/// OWN physical line — holds that tag's `</name>` close, i.e. the whole element
+/// was written on one line (dsl §2.3's unsupported single-line form). The name
+/// must end where [`close_tag_name`]'s own `take_while` would end it, so
+/// `</when>` and `</when >` match while `</whenever>` does not.
+fn holds_inline_close(rest: &str, name: &str) -> bool {
+    rest.match_indices("</").any(|(i, _)| {
+        rest[i + 2..].strip_prefix(name).is_some_and(|tail| {
+            !tail.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+    })
 }
 
 /// Original-text end offset of an [`Arm`].

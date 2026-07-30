@@ -18,8 +18,14 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
         diags.iter().all(|d| d.severity != Severity::Error),
         "{diags:#?}"
     );
-    let snapshot = lute_manifest::core::load_core_snapshot();
-    let env = Env::default();
+    let snapshot = lute_test_vocab::vocab_snapshot();
+    // The walker reads member-level vocabulary off `Env.domains` (the `anchor`
+    // domain's `default:`, the `action` domain's `exits:`), so the env must
+    // declare the same vocabulary the snapshot does.
+    let env = Env {
+        domains: lute_test_vocab::test_domains(),
+        ..Default::default()
+    };
     let mut cx = WalkCx {
         snapshot: &snapshot,
         env: &env,

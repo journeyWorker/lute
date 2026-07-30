@@ -1,10 +1,45 @@
 name: Test
 
 # `offline` is the baseline `cargo test --workspace` gate — zero network,
-# runs on every PR touching Rust sources. `launcher-typecheck` compiles
-# the `@lute-lang/lute` JS launcher (packages/cli) under `tsc --noEmit` so a type
-# regression in the platform-detection / binary-resolution logic is caught
-# without a native build.
+# runs on every PR touching Rust sources. It also owns the `schemas/**`
+# drift gate: `tree-sitter-lute/test/json_schema.test.js` asserts that both
+# shipped JSON Schemas accept every shape the Rust deserializers in
+# `crates/lute-manifest/src/{schema.rs,types.rs,entities.rs}` accept, and
+# some of its cases scaffold real projects with `lute init`. That needs a
+# built `lute` AND bun; this job already pays for the cargo build, so the
+# harness rides along instead of cold-building the workspace in a second
+# job. Drift originates in the Rust source, which is why `crates/**` (and
+# therefore `crates/lute-manifest/**`) must stay in the trigger set below.
+# The same job also owns the nvim query mirror gate:
+# `tree-sitter-lute/test/nvim_query_sync.test.js` asserts that every
+# `(quest`/`(on`/`(objective` pattern the CANONICAL grammar queries
+# (`tree-sitter-lute/queries/*.scm`) match is also matched by the shipped
+# editor mirror (`editors/nvim/queries/lute/*.scm`), so a node added to one
+# and forgotten in the other cannot ship. It needs neither cargo nor `lute`,
+# only bun — it rides here because this job has already installed bun and the
+# tree-sitter-lute lockfile for the harness above. Its inputs are the two
+# query trees, which is why BOTH are in the trigger set below; a filter on
+# only one side would let the mirror rot whenever the canonical side moved.
+# `launcher-typecheck` compiles the `@lute-lang/lute` JS launcher
+# (packages/cli) under `tsc --noEmit` so a type regression in the
+# platform-detection / binary-resolution logic is caught without a native
+# build.
+#
+# `offline` also owns the CRATES-SIDE half of the documentation contract. The
+# docs quote real CLI output — capability hashes, `lute context` transcripts,
+# diagnostic text — and `.github/workflows/docs.yml` cannot own that half: its
+# `paths:` names only `crates/lute-check/src/lib.rs` and
+# `crates/lute-compile/src/lib.rs`, and widening it to `crates/**` would run a
+# full Astro website build on every Rust change. So the two doc checks ride
+# here, where `crates/**` is already in the trigger set and `target/debug/lute`
+# is already built. This is not duplicated coverage: `docs.yml` fires when a
+# DOC moves, this job fires when the BINARY the doc quotes moves.
+#
+# Deliberately NOT added to the trigger set: `docs/**`,
+# `packages/website/**`, or the two script paths. Those are the doc-side
+# inputs, `docs.yml` already triggers on all of them and runs the same two
+# scripts, and firing a full `cargo test --workspace` for a prose edit would
+# be pure cost. The one input this job uniquely covers is `crates/**`.
 
 on:
   pull_request:
@@ -13,6 +48,13 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "packages/cli/**"
+      - "schemas/**"
+      - "tree-sitter-lute/queries/**"
+      - "editors/nvim/queries/**"
+      - "tree-sitter-lute/test/json_schema.test.js"
+      - "tree-sitter-lute/test/nvim_query_sync.test.js"
+      - "tree-sitter-lute/package.json"
+      - "tree-sitter-lute/bun.lock"
       - ".github/workflows/test.yml"
   workflow_dispatch:
 
@@ -22,7 +64,7 @@ env:
 
 jobs:
   offline:
-    name: cargo test --workspace (offline)
+    name: cargo test --workspace + JS harnesses + doc gates (offline)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -42,6 +84,54 @@ jobs:
 
       - name: cargo test --workspace
         run: cargo test --workspace
+
+      # The harness resolves `lute` via `target/debug/lute` first
+      # (tree-sitter-lute/test/json_schema.test.js::luteBin), so build the
+      # dev-profile binary explicitly. After `cargo test --workspace` this is
+      # a cache hit, not a second compile.
+      - name: Build lute (dev profile, for `lute init` scaffold cases)
+        run: cargo build -q -p lute-cli
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      # tree-sitter-lute is NOT part of the root bun workspace (root
+      # `workspaces` is `packages/*`), so its own lockfile must be installed
+      # here or `ajv` is missing and the harness cannot run.
+      - name: Install harness dependencies
+        working-directory: tree-sitter-lute
+        run: bun install --frozen-lockfile
+
+      - name: JSON Schema drift gate (schemas/ vs lute-manifest deserializers)
+        working-directory: tree-sitter-lute
+        run: bun test test/json_schema.test.js
+
+      - name: nvim query mirror gate (editors/nvim vs tree-sitter-lute queries)
+        working-directory: tree-sitter-lute
+        run: bun test test/nvim_query_sync.test.js
+
+      # Reuses `target/debug/lute` built above. Verified to have teeth: adding
+      # one attribute to a `lute.core` staging directive moves
+      # `capabilityVersion` and this step fails on all 8 hashes the docs pin.
+      # Both doc trees are scanned, exactly as in `docs.yml`. It also pins the
+      # diagnostic MESSAGE TEXT the docs quote against the `format!` literals
+      # in `crates/*/src`, which is the half `crates/**` uniquely moves:
+      # rewording `E-DOMAIN-DUP` in `crates/lute-check/src/schema_import.rs`
+      # now fails here, naming `language/vocabulary.md` and the drifted
+      # sentence. Before that pin existed the same reword passed at exit 0.
+      - name: Doc snippet + pinned-capability gate (docs vs this binary)
+        run: python3 scripts/check-doc-snippets.py --lute ./target/debug/lute
+
+      # Its crate inputs today are only the two version consts `docs.yml`
+      # already triggers on, so this is redundancy — but it is a stdlib-python
+      # run with no build and no deps, and it is the script that grows a new
+      # single-sourced const whenever one appears. Here that new crate input is
+      # covered the moment it lands; in `docs.yml` it would need someone to
+      # remember a `paths:` entry, which is the exact drift this job closes.
+      - name: Docs consistency check (version parity, stale domain)
+        run: python3 scripts/check-docs-consistency.py
 
   launcher-typecheck:
     name: typecheck @lute-lang/lute launcher (tsc --noEmit)

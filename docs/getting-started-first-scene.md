@@ -30,12 +30,14 @@ configuration. Just the language itself.
 Create an empty file, `my-scene.lute`, and run the checker on it — the checker is the tool that
 tells you whether a `.lute` file is valid:
 
+<!-- lute-diagnostics -->
 ```
 $ ./target/debug/lute check my-scene.lute
 my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing
 my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing
+failed: my-scene.lute (4 error(s), 0 warning(s))
 ```
 
 That's the whole idea of `lute check`: it reads your file and tells you, line by line, exactly
@@ -76,9 +78,11 @@ frontmatter:
 
 Check again:
 
+<!-- lute-diagnostics -->
 ```
 $ ./target/debug/lute check my-scene.lute
-my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6 §3.3)
+my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
+failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 This is the rule to remember: **all content lives under a heading.** A Lute document is a
@@ -112,11 +116,46 @@ reserved speaker `@narrator`. Add a line where Mira speaks:
 @mira{emotion="content" variant="0"}: {{userName}}, you made it.
 ```
 
-- `@mira` is the speaker. `emotion="content"` and `variant="0"` pick which portrait/pose to show
-  — these are catalog vocabulary, not something you invent; `lute context` (Part 4) lists the
-  legal values for your project.
+- `@mira` is the speaker. `emotion="content"` and `variant="0"` pick which portrait/pose to
+  show.
 - `{{userName}}` is an **interpolation** — text wrapped in double braces gets filled in at
   runtime. `{{userName}}` is the one that's always available: the player's own name.
+
+Save and check. This one does **not** pass yet:
+
+<!-- lute-diagnostics -->
+```
+$ ./target/debug/lute check my-scene.lute
+my-scene.lute:14:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+failed: my-scene.lute (1 error(s), 0 warning(s))
+```
+
+Nothing is misspelled. This is the rule that **Lute ships the slot, you ship the members.**
+`emotion` is one of seven vocabulary *slots* the language knows about — `emotion`, `action`,
+`anchor`, `mood`, `volume`, `musicAction`, `vfxType` — but the compiler holds no opinion about
+which emotions your characters have. That is your story's call, so no value is legal until you
+say it is. Declare the members where you declare everything else about the document — the
+frontmatter:
+
+```yaml
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+```
+
+Declare only the slots your scene actually uses; this one uses `emotion` and nothing else. Two
+slots carry required semantics once you declare them: `action` needs an `exits:` list naming the
+members that take a character off stage, and `anchor` needs a `default:`. You don't have to type
+any of this by hand for a real project — `lute init` scaffolds all seven slots with a starter
+member list into a shared `vocabulary.schema.yaml` that scenes pull in with `uses:`, which is the
+right shape once several files share one vocabulary. For a single tutorial file, frontmatter is
+simpler.
+
+Re-check:
+
+```
+$ ./target/debug/lute check my-scene.lute
+ok: my-scene.lute (0 warning(s))
+```
 
 Now add an inner-voice line for Mira — her private thought, not spoken aloud:
 
@@ -130,7 +169,7 @@ thought, not speech, and works for any character, not just the player. Two other
 exist alongside it: `{os}` marks a line as **off-screen** (the speaker is heard but not currently
 staged/visible), and `{vo}` marks it as **voiceover** (narration-style delivery layered over the
 scene). All three are mutually exclusive — at most one per line — and none is allowed on
-`@narrator`. `lute context` (Part 4) always lists the full set with its meanings.
+`@narrator`. `lute context` (Part 6) always lists the full set with its meanings.
 
 Check the file again:
 
@@ -141,7 +180,7 @@ ok: my-scene.lute (0 warning(s))
 
 The file so far:
 
-```lute
+```lute check
 ---
 kind: scene
 title: A Quiet Table
@@ -149,6 +188,8 @@ character: mira
 season: 1
 episode: 1
 pov: fixer
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 ---
 
 ## The Counter
@@ -214,13 +255,15 @@ Say you type the old-style sigil out of habit — a colon instead of `@` — on 
 :mira{mono}: I should not be this pleased about a coffee order.
 ```
 
+<!-- lute-diagnostics -->
 ```
 $ ./target/debug/lute check my-scene.lute
-my-scene.lute:19:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+my-scene.lute:20:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 **Reading a diagnostic:** `file:line:col: error [CODE] message`. Here it names the exact line
-(19), the exact problem (an old sigil), and exactly what to write instead. For this specific,
+(20), the exact problem (an old sigil), and exactly what to write instead. For this specific,
 mechanical class of fix, you don't have to hand-edit it — run:
 
 ```
@@ -243,9 +286,9 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.7.0",
-  "irVersion": "0.7.0",
-  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
+  "lute": "0.9.0",
+  "irVersion": "0.8.0",
+  "capabilityVersion": "0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07",
   "meta": {
     "character": "mira",
     "season": 1,
@@ -262,6 +305,10 @@ $ ./target/debug/lute compile my-scene.lute
       "provenance": "branch:orderChoice"
     },
     { "path": "scene.knowsMira", "type": "bool", "default": false }
+  ],
+  "enums": [
+    { "name": "emotion",
+      "members": ["neutral", "surprised", "delighted", "shy", "content", "angry", "sad"] }
   ],
   "commands": [
     { "kind": "line", "addr": "001-0100", "role": "narration", "speaker": "narrator",
@@ -292,12 +339,17 @@ $ ./target/debug/lute compile my-scene.lute
       "text": "You remembered. That's new.", "emotion": "surprised", "variant": 0,
       "lineId": "mira.s01ep01.mira_0040", "voiceKey": "mira-0040" },
     { "kind": "jump", "addr": "001-0800", "target": "001-0900" }
+  ],
+  "shots": [
+    { "shot": 1, "heading": "The Counter" }
   ]
 }
 ```
 
 (Shown reformatted for space; the real output is one JSON document, unindented choices included
-verbatim.) You will never hand-edit this file — it's the compiled artifact the engine consumes.
+verbatim.) Your `enums:` declaration rides along into the artifact's own **`enums`** block, so
+the engine resolves values against exactly the vocabulary the checker used. You will never
+hand-edit this file — it's the compiled artifact the engine consumes.
 Its existence, and that it compiled without error, is proof the scene is **statically valid** —
 every construct well-formed, every state path declared, every `<match>` exhaustive — and that
 the artifact emitted successfully. It is not proof the scene is playable end to end: that's a
@@ -310,7 +362,7 @@ scene and prints exactly what would show on screen:
 ```
 $ ./target/debug/lute trace my-scene.lute --choose orderChoice=black
 trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
-  ## The Counter
+  ## Shot 1.
     @narrator  The diner is empty at this hour, and Mira likes it that way.
     @mira  {{userName}}, you made it.
     @mira  I should not be this pleased about a coffee order.
@@ -339,17 +391,21 @@ whether a game engine actually *enforces* this ordering at runtime is engine-dep
 
 ### What you can write in `after:`
 
-`after:` is deliberately tiny — not arbitrary code. You get exactly two building blocks:
+`after:` is deliberately tiny — not arbitrary code. You get exactly three building blocks:
 
 - `visited("<sceneKey>")` — true once the player has seen that scene.
 - `completed("<questId>")` — true once that quest is finished. The `<questId>` is the
   `id` on a `<quest>` (the *other* document kind, from Part 6's pointers).
+- `active("<questId>")` — true *while* that quest is running: started, not yet finished.
+  `completed` and `active` are not opposites — `completed` is a permanent fact about the past,
+  `active` is a window that opens and closes.
 
 You combine them with `&&` (both) and `||` (either):
 
 ```yaml
 after: 'visited("mira.s01ep01")'
 after: 'visited("mira.s01ep01") && completed("theCoffeeDebt")'
+after: 'visited("mira.s01ep01") && active("theCoffeeDebt")'
 after: 'visited("mira.s01ep01") || visited("mira.s01ep02")'
 ```
 
@@ -418,7 +474,7 @@ profiles:
     plugins: {}
 ```
 
-```lute
+```lute check-project="docs/examples/episodes/booth.lute"
 ---
 kind: scene
 title: The Usual Booth
@@ -427,6 +483,8 @@ season: 1
 episode: 2
 pov: fixer
 after: 'visited("mira.s01ep01")'
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 state:
   run.metMira: { type: bool }
 ---
@@ -437,6 +495,12 @@ state:
 
 @narrator: The coffee is already poured.
 ```
+
+Vocabulary is declared per document, so the booth repeats the diner's `enums:` block verbatim.
+Two files is exactly where you stop copying it: move the block into a `vocabulary.schema.yaml`
+sitting next to them and replace it in each scene with `uses: [./vocabulary.schema.yaml]`.
+`check-project` still reports the same three `ok:` lines, and that is precisely the layout
+`lute init` scaffolds.
 
 `booth.lute` is `mira.s01ep02`. It declares `after: 'visited("mira.s01ep01")'` — it becomes
 reachable only once the diner has been seen — and its guarded line reads `run.metMira`, the
@@ -462,8 +526,8 @@ project root: episodes
   topological layers:
     layer 0: scene(mira.s01ep01)
     layer 1: scene(mira.s01ep02)
-  edges (prerequisite -> dependent):
-    scene(mira.s01ep01) -> scene(mira.s01ep02)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
 `reach <key>` answers "can the player ever get here, and by what route?":
@@ -534,37 +598,43 @@ routes, the guaranteed state at each node — instead of guessing.
 ## Part 6 — Where to go next
 
 **Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
-project accepts — the staging directives, their attributes, the enum values (like `emotion`),
-the declared state, and the delivery-flag vocabulary — resolved for the specific file you give
-it:
+project accepts — the staging directives, their attributes, the vocabulary members in scope
+(your `emotion` list, say), the declared state, and the delivery-flag vocabulary — resolved for
+the specific file you give it:
 
 ```
 $ ./target/debug/lute context my-scene.lute
-capabilityVersion: 78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3
-directives (8):
+capabilityVersion: 0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07
+directives (9):
   auto: character, anchor, action
   bg: location, time, assetId
   camera: focus, zoom, move-x, move-y, shake, reset, duration, easing, delay, wait
   cut: assetId, action, full
+  end: reason
   music: action, mood, volume, assetId, track
   sfx: sound, assetId, name
   vfx: type, label, transition
   video: assetId, action, wait
-enums (6):
-  anchor: left, center, right
-  emotion: neutral, surprised, delighted, shy, content, angry, sad
-  mood: peaceful, tense, romantic, sad, upbeat
-  musicAction: start, change, stop, resume, fade-out
-  vfxType: whiteOut, blackOut, rain, snow, leaves, petals, raindrop
-  volume: silent, down, normal, up, full
-stateSchema (2):
+enums (0):
+stateSchema (3):
+  run.metMira: bool
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
 deliveryFlags (3):
   {mono}: interior monologue / thought (not spoken aloud in-scene)
   {os}: off-screen: the speaker is heard but not currently staged/visible
   {vo}: voiceover: narration-style delivery layered over the scene
+projectEnums (1):
+  emotion: neutral, surprised, delighted, shy, content, angry, sad
 ```
+
+`enums (0)` is not a bug: that line counts members supplied by the active *plugins*, and this
+file activates none. Your own declarations show up under **`projectEnums`** — the vocabulary
+that actually resolves `emotion="content"`.
+
+`stateSchema` is the same story for state: your own declarations (`scene.knowsMira` from Part 3,
+`run.metMira` from Part 5) plus `scene.choices.orderChoice`, which the `<branch>` declares on your
+behalf so a later construct can read which option the player took.
 
 `deliveryFlags` is always present — a fixed, project-independent list — so it's the one place you
 can always confirm what `{mono}`/`{os}`/`{vo}` mean without hunting through this tutorial. If

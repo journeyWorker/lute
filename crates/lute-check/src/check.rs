@@ -80,11 +80,11 @@ use crate::cel_message::translate_cel_parse;
 use crate::cel_resolve::{check_rule_guards, compatible};
 use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
-use crate::decide::{DecideCtx, DollarBinding};
+use crate::decide::DecideCtx;
 use crate::directives::{at_context, check_directive};
 use crate::inject::{lower_node, InjectedCommand, StageState};
 use crate::match_check::{check_param_match, param_domain};
-use crate::reachability::{check_match_reach, check_reachability};
+use crate::reachability::check_reachability;
 use crate::schema_import::{merge_domains, SchemaImports};
 use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
@@ -161,6 +161,10 @@ const STRUCTURAL_CODES: &[&str] = &[
     "E-CONTENT-OUTSIDE-SHOT",
     "E-CONTENT-LINE-BRACKET",
     "E-TAG-NOT-ONE-LINE",
+    // dsl §2.3: an inline `<tag …>body</tag>` body is DROPPED from the node
+    // stream (the parser consumes whole lines), the same corruption as the
+    // wrapped-opener sibling above.
+    "E-TAG-INLINE-BODY",
     // FL1 (dsl 0.5.0 §2.1/§2.2): split off E-UNCLASSIFIED — same drop-the-line
     // node-stream corruption as its former residual bucket.
     "E-LEGACY-CONTENT-SIGIL",
@@ -306,8 +310,11 @@ pub fn fold_env(
 
     // 3c. The FULL merged domain vocabulary (data-catalog foundation A4):
     //     `snapshot.domains` (A2 — core baseline + active-plugin `enums`)
-    //     UNION project-authored domains lifted from this scene's schema
-    //     imports (A3's `merge_domains`) — computed ONCE here (0.3.0 T7 moved
+    //     UNION the PROJECT's domains — this scene's schema imports AND its own
+    //     inline `enums:`/`entities:` projection (`typed.domains`), which is the
+    //     same value `build_rel_vocab` gets one line below, so the domain map
+    //     and `RelVocab` can never disagree about a name either of them
+    //     declares (A3's `merge_domains`). Computed ONCE here (0.3.0 T7 moved
     //     this from `check()`) so `lute-compile` (which calls `fold_env`
     //     directly) sees the SAME vocabulary, never double-emitting
     //     `E-DOMAIN-DUP`. Then the merged, validated relational vocabulary
@@ -315,7 +322,8 @@ pub fn fold_env(
     //     `entities:`/`relations:`/`enums:`/`facts:`/`rules:`, every
     //     declaration checked (§3.1/§4) and every seed `facts:` entry
     //     validated via `check_atom` (D12 wildcard-in-seed included).
-    let (domains, domain_diags) = merge_domains(&input.snapshot, &input.imports, doc.meta.span);
+    let (domains, domain_diags) =
+        merge_domains(&input.snapshot, &input.imports, &typed, doc.meta.span);
     let (mut vocab, rel_diags) =
         crate::rel_schema::build_rel_vocab(&input.imports, &typed, &domains, &doc.meta);
     fold_diags.extend(domain_diags);
@@ -762,14 +770,30 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // 6b. Duplicate authored line codes (dsl §12): two `:line`s for the same
     //     speaker with the same trimmed `code` derive identical `lineId`/
     //     `voiceKey` join keys — a clean-check invariant the compile gate relies
-    //     on. Whole-document, per-speaker; owns `E-DUP-LINE-CODE`.
+    //     on. Whole-document, per-speaker; owns `E-DUP-LINE-CODE`. The ROOT
+    //     document only: each imported component body gets its OWN isolated
+    //     run of this same pass in `validate_components` (Task 7c).
     let line_code_diags = check_line_codes(&doc);
 
     // 7. Resolved view: injection fold + the timeline tables gathered in the walk.
+    //    Unlike steps 6b/8, this pass is NOT root-only: `fold_injections`
+    //    enters each `::use` in document position, folding the component body
+    //    against the stage state inherited AT that site (Task 7g — see
+    //    `fold_use`). That position dependence is why the body is folded here
+    //    rather than isolated in `validate_components` like the line-code and
+    //    reachability passes.
     let mut inject_state = StageState::default();
     let mut injections = Vec::new();
+    let mut using = Vec::new();
     for shot in &doc.shots {
-        fold_injections(&shot.body, &mut inject_state, &mut injections);
+        fold_injections(
+            &shot.body,
+            &mut inject_state,
+            &mut injections,
+            domains,
+            &input.components,
+            &mut using,
+        );
     }
     let inject_diags = std::mem::take(&mut inject_state.diags);
     // `node_summary` already covers `Node::On`/`Node::Objective` (Plan A), so
@@ -880,6 +904,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // additionally produce the pre-existing W-OVERLAP-ARMS — the dead-arm
     // error is the root.
     suppress_dead_arm_overlaps(&mut diags);
+    // dsl §2.3: a block whose CHILDREN did not parse gives the verdicts drawn
+    // from that child list nothing to judge — drop them rather than claim the
+    // author's logic is wrong on top of their parse error.
+    suppress_unparsed_child_list_verdicts(&mut diags);
 
     // Dedup overlapping `E-UNDECLARED` (carry-forward #4) BEFORE the sort.
     let mut diags = dedup_undeclared(diags);
@@ -1687,6 +1715,10 @@ fn ref_produced_type<'a>(raw: &str, ctx: &'a Ctx<'_>) -> Option<&'a Type> {
 /// — a component file's own byte spans cannot be represented in this document's
 /// diagnostic surface (mirroring how import diagnostics report at the scene
 /// frontmatter). Deterministic: components iterate in name order.
+///
+/// Each body ALSO gets its own isolated run of the whole-document
+/// duplicate-line-code pass ([`check_line_codes`], dsl §12) — see the comment
+/// at that call for the scope boundary.
 fn validate_components(
     components: &ComponentSet,
     snapshot: &CapabilitySnapshot,
@@ -1731,6 +1763,96 @@ fn validate_components(
                 &mut body_diags,
             );
         }
+        // Task 7f, the SAME class as Task 7b/7c/7e — but one level out: not a
+        // rule that skipped the body, a whole SURFACE nothing walked.
+        // `check_admission` has exactly ONE callsite (`check()` step 8, over
+        // the ROOT document) and the loop above iterates `body.shots` only, so
+        // a component file's `doc.quests` reached NEITHER pass. A top-level
+        // `<quest>` therefore errored `E-GRAMMAR-NOT-ADMITTED` when that file
+        // was checked STANDALONE yet checked CLEAN through a `::use`, and
+        // lowering then dropped the entire declaration — a `::set` state write
+        // inside it included — without a word. `check_component_toplevel` owns
+        // the general rule (content present at a component document's top level
+        // but processed by nothing is an error, never a silent drop) and an
+        // EXHAUSTIVE `Document` destructuring that fails to compile if a future
+        // field could reintroduce the same hole; see its doc comment for the
+        // per-field verdicts. Landed in `body_diags` so it inherits the
+        // component re-anchoring below, matching the standalone check's code.
+        body_diags.extend(crate::admission::check_component_toplevel(&body));
+        // Task 7c, the SAME class of gap as Task 7b's (the content-line attr
+        // checker) one arm up: `check_line_codes` had exactly ONE callsite —
+        // `check()` step 6, over the ROOT document — so a component body never
+        // reached it. Two identical `(speaker, code)` content lines inside a
+        // body therefore passed `lute check` through a `::use` (exit 0) while
+        // the same pair errored `E-DUP-LINE-CODE` at scene level AND when the
+        // component was checked standalone, and `lute compile` went on to emit
+        // two records carrying one `lineId` — the voice-key / i18n identity
+        // spine, so two lines collapsing onto one id collide on one voice
+        // asset.
+        //
+        // Reused verbatim rather than re-implemented: `check_line_codes` is
+        // already a whole-`&Document` pass and `body` IS a `Document`, so
+        // pointing it at the body needs no narrower entry point. Its own
+        // identity scoping (dsl 0.2.0 §7 — one scope per document for shots,
+        // one per `<quest>`) then makes each component body its own scope for
+        // free, exactly as each quest is.
+        //
+        // SCOPE: this checks uniqueness WITHIN one body. Post-expansion
+        // identity across a component `::use`d twice is a separate and
+        // PRE-EXISTING question, not this pass's: a single perfectly VALID
+        // `code="0010"` line in a component `::use`d twice already lowers to
+        // two records with one `lineId` in 0.8.0, independent of this gap. It
+        // is deliberately left alone here.
+        body_diags.extend(check_line_codes(&body));
+        // Task 7e, the THIRD instance of the same class as Task 7b's
+        // (content-line attrs) and Task 7c's (duplicate line codes):
+        // `check_reachability` had exactly ONE callsite — `check()` step 8,
+        // over the ROOT document. `walk_component_body` called
+        // `check_match_reach` for `Node::Match` alone, so everything else the
+        // §5.2/§5.3 pass owns escaped inside a component body: a content
+        // line's `when=` guard was never reachability-checked, and content
+        // following an allowed `::end` never flagged. A component whose line
+        // carried a provably-false guard therefore checked CLEAN through a
+        // `::use` (exit 0) while the identical line errored `E-ARM-DEAD` at
+        // scene level AND when that same component file was checked
+        // STANDALONE — the toolchain contradicting itself about one file
+        // depending only on how it was reached.
+        //
+        // ENV SEAM (the one decision here): `check_reachability` needs a
+        // resolution environment, and no `FoldedEnv` exists for a component
+        // body (`ComponentDef` carries `params`/`body`/`src` only). Rather
+        // than manufacture a second one — which is exactly how a NEW
+        // divergence gets built while closing an old one — the pass was split
+        // at its own seam: `check_reachability_in` takes the `DefTable` +
+        // base `DecideCtx` its `FoldedEnv` entry point resolves into, and
+        // BOTH the STANDALONE component self-check (reachability.rs's
+        // `folded.typed.component` branch) and this call hand over the SAME
+        // shape — `param_domain(ty)` over the component's own `params:` list,
+        // an EMPTY `bodies` table (a component file has no frontmatter
+        // `defs:`; a bodiless `@ref` marker resolves via `params`, D3), the
+        // component's own (empty) state schema, and `dollar: None`. The two
+        // paths therefore agree by construction, not by coincidence.
+        //
+        // This is now the SOLE owner of component-body reachability: the
+        // `check_match_reach` call that used to sit in
+        // `walk_component_body`'s `Node::Match` arm was removed, since this
+        // whole-body walk reaches every `<match>` it did and more.
+        let reach_bodies: std::collections::BTreeMap<String, String> =
+            std::collections::BTreeMap::new();
+        let reach_defs = DefTable {
+            bodies: &reach_bodies,
+            params: &env.def_params,
+        };
+        let reach_ctx = DecideCtx {
+            schema: &env.state,
+            dollar: None,
+            params: &param_domains,
+        };
+        body_diags.extend(crate::reachability::check_reachability_in(
+            &body,
+            &reach_defs,
+            &reach_ctx,
+        ));
         // D6 (dsl 0.4.0 §6.2): the positive `E-COMPONENT-STATE` scan
         // (`component_slot_state_scan`/`component_interp_scan`) is the
         // AUTHORITATIVE diagnosis for an ambient-state read inside a
@@ -1988,6 +2110,46 @@ fn walk_component_body(
         match node {
             Node::Line(l) => {
                 body_attr_refs(&l.attrs, snapshot, arena, ctx, None, diags);
+                // finding 2 (Task 7b, the SAME class as finding 1 below):
+                // `check_content_line_attrs` was skipped here entirely, so
+                // NO content-line attribute rule applied inside a component
+                // body — not the unknown-key check (dsl 0.1.0 §7.1), not the
+                // `emotion`/`action` domain-slot resolution (0.9.0 D-C), not
+                // the delivery-flag rules (0.2.2 §D7). A `::use` was
+                // therefore a hole straight through 0.9.0's central
+                // invariant: an undeclared vocabulary member authored inside
+                // a component reached the compiled artifact unflagged.
+                //
+                // VOCABULARY SCOPE (the one design decision here): `domains`
+                // is the IMPORTING document's merged vocabulary — `check()`
+                // threads `folded.domains` (= `merge_domains(input.snapshot,
+                // input.imports, …)`) into `validate_components`, and
+                // `ComponentDef` (component_import.rs) carries only
+                // `params`/`body`/`src`, never the component file's OWN
+                // `uses:` imports. Resolving against the component's own
+                // declared vocabulary would be preferable (a component's
+                // validity should not depend on its importer), but those
+                // imports are simply not reachable from here, and inventing a
+                // second resolution path for one call is worse than the
+                // divergence it would fix. So: the importing document's
+                // vocabulary, deliberately — with one residual divergence
+                // from a STANDALONE `lute check <component>.lute` (which
+                // walks the body through `Walker::walk` against the
+                // component's own `uses:`): a domain that ONLY the component
+                // declares is `E-DOMAIN-UNKNOWN` through a scene that does
+                // not also import it. The narrow surface is why that is
+                // tolerable — the content-line slots name exactly two fixed
+                // domains (`emotion`/`action`), and `merge_domains` DROPS any
+                // project-schema domain whose name the plugin/core baseline
+                // already owns (`E-DOMAIN-DUP`), so whenever the baseline
+                // declares them both paths resolve the identical members.
+                crate::content_line::check_content_line_attrs(
+                    l,
+                    snapshot,
+                    providers,
+                    domains,
+                    diags,
+                );
                 // `{{@param}}` in a component body is a referent too (dsl
                 // §7.6, §6.2): resolved against the component `@param` env in
                 // `ctx` — an undeclared ref is `E-UNDECLARED-REF`. A bare
@@ -2103,25 +2265,15 @@ fn walk_component_body(
                             "bare_param_ref confirmed `name` is a declared param; \
                              param_domains is built from the same def.params list",
                         );
-                        diags.extend(check_param_match(m, dom.clone(), ctx));
-                        // §5 reachability (Task 4/T7) inside the component
-                        // body: `E-ARM-DEAD` (decided-false guard +
-                        // subsumption) / `W-OTHERWISE-DEAD`, over the SAME
-                        // domain — a component has no frontmatter `defs:`
-                        // (`bodies` is always empty; a bodiless `@ref`
-                        // marker resolves via `params` instead, D3).
-                        let empty_bodies: std::collections::BTreeMap<String, String> =
-                            std::collections::BTreeMap::new();
-                        let reach_defs = DefTable {
-                            bodies: &empty_bodies,
-                            params: &ctx.env.def_params,
-                        };
-                        let reach_ctx = DecideCtx {
-                            schema: &ctx.env.state,
-                            dollar: Some(DollarBinding::Domain(&dom)),
-                            params: param_domains,
-                        };
-                        diags.extend(check_match_reach(m, &reach_defs, &reach_ctx));
+                        diags.extend(check_param_match(m, dom, ctx));
+                        // §5 reachability (`E-ARM-DEAD` / `W-OTHERWISE-DEAD` /
+                        // `E-UNSET-LITERAL`) is NOT run here: Task 7e moved it
+                        // to the ONE whole-body `check_reachability_in` call in
+                        // `validate_components`, which owns it for the ENTIRE
+                        // body — this `<match>`, every other one, and the
+                        // content-line `when=` guards and post-`::end` content
+                        // this arm-local call never reached. Calling it here too
+                        // would double-report every dead `<when test>`.
                         for arm in &m.arms {
                             match arm {
                                 Arm::When { test, body, .. } => {
@@ -2896,29 +3048,113 @@ fn insert_shape_fields(
 /// is not modeled — a preview, not final codegen). `<timeline>` clips are staged
 /// separately in `timeline_tables` and do not participate in stage-entity
 /// lifetime here (see the injection reducer's node-kind coverage).
-fn fold_injections(nodes: &[Node], state: &mut StageState, out: &mut Vec<InjectedCommand>) {
+///
+/// A `::use` is entered too ([`fold_use`], Task 7g) — `using` carries the
+/// component names on the current expansion path so a `::use` cycle
+/// terminates.
+fn fold_injections(
+    nodes: &[Node],
+    state: &mut StageState,
+    out: &mut Vec<InjectedCommand>,
+    domains: &std::collections::BTreeMap<String, Domain>,
+    components: &ComponentSet,
+    using: &mut Vec<String>,
+) {
     for (i, node) in nodes.iter().enumerate() {
         let taken = std::mem::take(state);
-        let (next, emit) = lower_node(taken, node, &nodes[i + 1..]);
+        let (next, emit) = lower_node(taken, node, &nodes[i + 1..], domains);
         *state = next;
         out.extend(emit);
         match node {
             Node::Branch(b) => {
                 for choice in &b.choices {
-                    fold_injections(&choice.body, state, out);
+                    fold_injections(&choice.body, state, out, domains, components, using);
                 }
             }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            fold_injections(body, state, out)
+                            fold_injections(body, state, out, domains, components, using)
                         }
                     }
                 }
             }
+            Node::Directive(d) if d.tag == "use" => {
+                fold_use(d, state, out, domains, components, using);
+            }
             _ => {}
         }
+    }
+}
+
+/// Task 7g, the FOURTH instance of the same class as Task 7b's (content-line
+/// attrs), Task 7c's (duplicate line codes) and Task 7e's (reachability):
+/// [`fold_injections`] had exactly ONE callsite — `check()` step 7, over the
+/// ROOT document's shots — and a `::use` folded as an ordinary unknown
+/// directive, so its body was never entered. A `::auto` whose explicit
+/// `anchor` equals the `anchor` domain's declared `default:` therefore checked
+/// CLEAN through a `::use` while the identical directive warned
+/// `W-INJECT-CONFLICT` at scene level AND when that same component file was
+/// checked STANDALONE. `lute compile`'s own CFG walk DID derive it (it folds
+/// the NORMALIZED tree, body already inlined) but discarded it — see the
+/// `state.diags.clear()` comment in `lute-compile/src/lib.rs` — so the
+/// warning was reported by no tool at all.
+///
+/// THE SEAM (the one decision here): the body folds IN DOCUMENT POSITION,
+/// against the `StageState` INHERITED at this `::use` — the same reducer, the
+/// same threaded environment the enclosing walk already carries, which is
+/// exactly the context `lute compile` folds the inlined body in. A per-body
+/// fold against a FRESH `StageState` (the shape Tasks 7c/7e use, because
+/// their passes are position-independent) would be wrong HERE: the reducer's
+/// entrance rules are stage-state dependent — `lower_auto` returns early when
+/// the character is already on stage — so an empty entry state would INVENT
+/// conflicts that do not exist in context, trading an old divergence for a
+/// new one.
+///
+/// Body diagnostics are re-anchored the way every other component-body
+/// diagnostic is (component name + source path prefix, cleared fixits, a span
+/// this document can represent) — but at THIS `::use` directive rather than
+/// the scene frontmatter `validate_components` uses: the conflict is a
+/// property of this invocation SITE, not of the component file in isolation,
+/// so the site is the only honest anchor. A nested `::use` prefixes again,
+/// naming the whole expansion path.
+///
+/// An unresolvable name (no `component=` attr, or one absent from the table)
+/// is silently skipped — the resolution failure is already
+/// `E-COMPONENT-UNKNOWN`/`E-COMPONENT-PARSE` on the import surface.
+fn fold_use(
+    d: &Directive,
+    state: &mut StageState,
+    out: &mut Vec<InjectedCommand>,
+    domains: &std::collections::BTreeMap<String, Domain>,
+    components: &ComponentSet,
+    using: &mut Vec<String>,
+) {
+    let Some(name) = attr_str(d, "component") else {
+        return;
+    };
+    let Some(def) = components.table.get(&name) else {
+        return;
+    };
+    // A `::use` cycle is `E-COMPONENT-CYCLE` (reported by the expansion
+    // checker); this fold only has to TERMINATE on it. Stack discipline,
+    // exactly as `insert_shape_fields` uses for self-referential state shapes:
+    // popping after the body keeps a legitimate diamond (one component reached
+    // twice by disjoint paths) foldable.
+    if using.iter().any(|n| n == &name) {
+        return;
+    }
+    using.push(name);
+    let mark = state.diags.len();
+    for shot in &def.body.shots {
+        fold_injections(&shot.body, state, out, domains, components, using);
+    }
+    let name = using.pop().expect("pushed above");
+    for diag in &mut state.diags[mark..] {
+        diag.message = format!("component `{name}` ({}): {}", def.src.display(), diag.message);
+        diag.span = d.span;
+        diag.fixits.clear();
     }
 }
 
@@ -2953,6 +3189,70 @@ fn suppress_dead_arm_overlaps(diags: &mut Vec<Diagnostic>) {
     }
     diags.retain(|d| {
         !(d.code == "W-OVERLAP-ARMS" && dead_spans.iter().any(|s| spans_overlap(*s, d.span)))
+    });
+}
+
+/// The parse failures that can cost a block element a CHILD outright: a line
+/// that classified as nothing, a tag whose close never resolved, an opener
+/// wrapped past its newline, a body (and close) written on the opener's own
+/// line. Membership rule: after one of these, the child list a verdict below
+/// reads is NOT the child list the author wrote. Deliberately EXCLUDES
+/// `E-LOGIC-CONTENT`/`E-TIMELINE-CONTENT` (the children parsed; one of them is
+/// merely illegal in that body) and the content-line failures
+/// `E-CONTENT-LINE-BRACKET`/`E-LEGACY-CONTENT-SIGIL` (they cost a child's own
+/// BODY line, never the child) — for those the verdict is still earned.
+const CHILD_PARSE_FAILURE_CODES: &[&str] = &[
+    "E-TAG-INLINE-BODY",
+    "E-TAG-NOT-ONE-LINE",
+    "E-UNCLASSIFIED",
+    "E-UNCLOSED-TAG",
+];
+
+/// The verdicts drawn from a block's CHILD LIST alone — each says "these
+/// children do not cover / do not include X" and anchors at the whole block's
+/// span: a `<match>`'s coverage trio ([`crate::match_check`]'s
+/// `E-NONEXHAUSTIVE`/`E-UNSET-UNCOVERED`/`E-AGE-GATE`, all read off one
+/// `has_otherwise`/`covered` derivation over `m.arms`), plus `<branch>`'s and
+/// `<hub>`'s "no `<choice>` at all" / "no exit choice" verdicts over
+/// `choices`. `E-BRANCH-ALL-GUARDED` is NOT here and needs no gate: it skips
+/// the empty branch by construction, and a child that parses keeps its own
+/// `when`, so no lost child can flip its verdict.
+const CHILD_LIST_VERDICT_CODES: &[&str] = &[
+    "E-AGE-GATE",
+    "E-BRANCH-EMPTY",
+    "E-HUB-NO-EXIT",
+    "E-NONEXHAUSTIVE",
+    "E-UNSET-UNCOVERED",
+];
+
+/// dsl §2.3: a block whose children did not parse gives these verdicts nothing
+/// to judge. Each would be read off a child list the author never wrote, so it
+/// lands as a FALSE claim about their logic stacked on the real (parse) error —
+/// the most harmful cascade there is, since `E-NONEXHAUSTIVE` on an exhaustive
+/// `<match>` sends the author to rewrite logic that was already correct. Any
+/// [`CHILD_PARSE_FAILURE_CODES`] diagnostic landing inside the block therefore
+/// drops every [`CHILD_LIST_VERDICT_CODES`] verdict for it (span overlap: a
+/// verdict carries the whole block's span, so a failure on one of its lines is
+/// always inside it).
+///
+/// Same shape as [`suppress_dead_arm_overlaps`] (span-scoped, so ONE broken
+/// `<match>` never silences a healthy one elsewhere in the document) and the
+/// same principle as C3/D12's [`suppress_unproven_absence`]: a failed
+/// parse/resolution suppresses the claims that depend on what it never built.
+/// [`crate::cel_resolve`] applies it upstream too — a `slot.ast: None` skips
+/// the AST pass outright rather than cascade off unparsed CEL.
+fn suppress_unparsed_child_list_verdicts(diags: &mut Vec<Diagnostic>) {
+    let unparsed: Vec<Span> = diags
+        .iter()
+        .filter(|d| CHILD_PARSE_FAILURE_CODES.contains(&d.code.as_str()))
+        .map(|d| d.span)
+        .collect();
+    if unparsed.is_empty() {
+        return;
+    }
+    diags.retain(|d| {
+        !(CHILD_LIST_VERDICT_CODES.contains(&d.code.as_str())
+            && unparsed.iter().any(|s| spans_overlap(*s, d.span)))
     });
 }
 

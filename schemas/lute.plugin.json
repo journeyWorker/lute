@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://lute.dev/schemas/lute.plugin.json",
   "title": "Lute plugin manifest + export files",
-  "description": "STRUCTURE-only schema for `plugin.yaml` (PluginManifest, plugin §5) and every export file kind it can `exports:` (plugin §6-10, §14): directives, state/{shapes,templates}, providers, bridge, defs (LIST form), frontmatter, enums, events, assetkinds, stampattrs. Mirrors `crates/lute-manifest/src/schema.rs` 1:1 (each definition below is named after its Rust struct). `additionalProperties` is left permissive everywhere EXCEPT the `type:` tagged-map forms (borrowed from lute.schema.json), matching that none of these structs derive `#[serde(deny_unknown_fields)]` in Rust — only the manifest `Type` union's `singleton_map_recursive` genuinely requires a closed single-key shape. A document matches exactly ONE of the `oneOf` branches below, discriminated by its own required top-level key (`directives:`, `stateShapes:`, `id:`+`version:`+`kind:`+`exports:`, …).",
+  "description": "STRUCTURE-only schema for `plugin.yaml` (PluginManifest, plugin §5) and every export file kind it can `exports:` (plugin §6-10, §14): directives, state/{shapes,templates}, providers, bridge, defs (LIST form), frontmatter, enums, events, assetkinds, stampattrs. Mirrors `crates/lute-manifest/src/schema.rs` 1:1 (each definition below is named after its Rust struct). `additionalProperties` is left permissive everywhere EXCEPT two shapes borrowed from lute.schema.json — the `type:` tagged-map forms, whose `singleton_map_recursive` genuinely requires a closed single-key shape, and the `enums:` long form, closed deliberately AGAINST serde's silent tolerance because an unknown key there (a typo'd `exit:`) loses vocabulary semantics with no diagnostic. Otherwise none of these structs derive `#[serde(deny_unknown_fields)]`. A document matches exactly ONE of the `oneOf` branches below, discriminated by its own required top-level key (`directives:`, `stateShapes:`, `id:`+`version:`+`kind:`+`exports:`, …).",
   "oneOf": [
     {
       "$ref": "#/definitions/pluginManifest"
@@ -50,6 +50,9 @@
     },
     "literal": {
       "$ref": "https://lute.dev/schemas/lute.schema.json#/definitions/literal"
+    },
+    "enumDecl": {
+      "$ref": "https://lute.dev/schemas/lute.schema.json#/definitions/enumDecl"
     },
     "pluginManifest": {
       "description": "schema.rs::PluginManifest — plugin.yaml root.",
@@ -644,7 +647,7 @@
       }
     },
     "enumsFile": {
-      "description": "schema.rs::EnumsFile — enums.yaml `enums:` (same shape as a project doc's `enums:`).",
+      "description": "schema.rs::EnumsFile — enums.yaml `enums:` (`BTreeMap<String, EnumDecl>`, the same shape as a project doc's `enums:`, so both routes share lute.schema.json's `enumDecl`). Each entry is either the bare `[member...]` sequence or the dsl 0.9.0 D-D long form `{ members:, default:, exits: }`; see that definition for why `default:`/`exits:` stay optional here and unknown keys do not.",
       "type": "object",
       "required": [
         "enums"
@@ -653,10 +656,7 @@
         "enums": {
           "type": "object",
           "additionalProperties": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+            "$ref": "#/definitions/enumDecl"
           }
         }
       }

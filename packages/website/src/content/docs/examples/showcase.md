@@ -1,6 +1,6 @@
 ---
 title: Full-spec showcase
-description: A walkthrough of the self-contained showcase project — a full-feature episode plus hub and when-is companions that drive the implemented language surface end-to-end and check clean under 0.8.0.
+description: A walkthrough of the self-contained showcase project — a full-feature episode plus hub and when-is companions that drive the implemented language surface end-to-end and check clean under 0.9.0.
 ---
 
 The [`docs/examples/showcase/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) project is one self-contained scenario that drives the implemented language surface end-to-end — frontmatter and profiles, all four state tiers, schema composition, `<branch>`/`<match>`/`<hub>`, timelines, content components, and a plugin bridge — and checks clean:
@@ -92,5 +92,15 @@ All three scenes are restamped `luteVersion: "0.8.0"` — a one-line diff each, 
 No `addr` moved. Every shot in the project emits well under 100 addresses, which is precisely the byte-stability the [uniform-width rule](/tooling/runtime-contract/) was designed to preserve.
 
 The showcase does not reach the rest of 0.8.0: there is no `::end`, no `after: active(…)`, no quest document, and no `stampattrs/` export in `showcase.pack`. Those live on [Core directives](/language/directives/), [Quests & scenes](/language/quests-and-scenes/), and [Manifests](/plugins/manifests/).
+
+## What 0.9.0 changed here
+
+Language 0.9.0 moved content-vocabulary **members** out of the compiler: `lute.core` declares the seven slots (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) and ships no members, so a project must declare its own or get `E-DOMAIN-UNKNOWN`.
+
+The showcase declares its vocabulary through **`showcase.pack`**, not through a schema — a new `enums/` export listed in `plugin.yaml`. That is the point: a plugin `enums` export is how an engine or genre pack ships a vocabulary to every project that activates it, and it surfaces on the capability snapshot (`lute context --json` → `enums`, and therefore `capabilityVersion`). Two other routes exist, both **project** data: an `enums:` block in a project schema reached through `uses:`/`extends:` (`docs/examples/base.schema.yaml` demonstrates that one), and an `enums:` block in a document's **own frontmatter** — the only route open to a single file with no project around it, which is why the [playground](/playground/) uses it. Both surface under the separate `projectEnums` key and travel into the compiled artifact's `enums` array instead. Declaring the same slot through a plugin **and** either project route in one root is `E-DOMAIN-DUP` and the plugin wins, so each root picks one per slot; inline-vs-imported is not a dup — inline wins and must re-declare a superset of the imported members.
+
+Consequences visible here: the three scenes are restamped `luteVersion: "0.9.0"`, `capabilityVersion` moves again (the core's vocabulary emptied *and* `showcase.pack` grew an export), and the artifacts' `enums` arrays stay **absent** — a plugin-supplied vocabulary is capability surface, not per-document data. `irVersion` stays `0.8.0`: no artifact field was added, renamed, or moved.
+
+The imported `stinger` component is also now checked exactly as it is when checked standalone. Five whole-document passes used to run only at the document root and skip imported component bodies; all five run over them now, so `stinger.component.lute`'s `::music`/`::vfx` values are validated through the `::use` as well as directly.
 
 For the complete project — the plugin manifests, schemas, component, catalog, and the full feature→line map — see the [showcase directory and its README](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) in the repository.
