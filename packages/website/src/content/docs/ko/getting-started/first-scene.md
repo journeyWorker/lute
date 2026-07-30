@@ -150,7 +150,7 @@ ok: my-scene.lute (0 warning(s))
 
 지금까지의 파일:
 
-```lute
+```lute check
 ---
 kind: scene
 title: A Quiet Table
@@ -372,7 +372,7 @@ profiles:
     plugins: {}
 ```
 
-```lute
+```lute check-project="docs/examples/episodes/booth.lute"
 ---
 kind: scene
 title: The Usual Booth

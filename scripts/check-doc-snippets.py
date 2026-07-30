@@ -158,11 +158,13 @@ SNIPPET_ROOTS = (
     Root(
         path="packages/website/src/content/docs",
         suffixes=(".md", ".mdx"),
-        # The two `first-scene` tutorials in both locales: each page's second
-        # whole document is only meaningful inside the two-file project the
-        # prose builds step by step, and each tutorial replays every `lute`
-        # invocation against the real binary in its own text.
-        max_unmarked_whole=4,
+        # Zero: every whole document on the website now carries a marker. Both
+        # `first-scene` tutorials' second whole document — the booth scene,
+        # meaningful only inside the two-file project the prose builds — is
+        # pinned with `check-project="docs/examples/episodes/booth.lute"`, so
+        # the layout that makes it check is a real project in this repo rather
+        # than a promise in a comment.
+        max_unmarked_whole=0,
     ),
     # The repo-side docs. A first-class root, not an afterthought: `docs.yml`
     # already triggers on `docs/**`, and until now nothing in the workflow read
@@ -182,9 +184,10 @@ SNIPPET_ROOTS = (
                 "agent plan/spec artifacts, not documentation of the language",
             ),
         ),
-        # docs/adoption/oshiz-assessment.md illustrates a mapping onto a
-        # customer catalog that does not exist in this repo.
-        max_unmarked_whole=2,
+        # Zero: `docs/adoption/oshiz-assessment.md:257` illustrates a mapping
+        # onto a customer catalog that does not exist in this repo, and now
+        # says so with `unverified="<reason>"` rather than by silence.
+        max_unmarked_whole=0,
     ),
 )
 
@@ -239,7 +242,7 @@ DIAG_RE = re.compile(r"^\S*?:\d+:\d+: error \[([A-Z0-9-]+)\]", re.MULTILINE)
 PROJECT_DIAG_RE = re.compile(r"^lute: ([A-Z][A-Z0-9-]+): ", re.MULTILINE)
 
 # Verified blocks may only grow. Quietly deleting a marker fails instead.
-MIN_VERIFIED_BLOCKS = 12
+MIN_VERIFIED_BLOCKS = 18
 
 ERRORS: list[str] = []
 

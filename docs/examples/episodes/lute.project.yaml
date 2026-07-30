@@ -1,0 +1,8 @@
+# docs/examples/episodes/lute.project.yaml
+# The two-file project the `first-scene` tutorial builds in Part 5, as a
+# runnable example a reader can diff their own `episodes/` folder against.
+# Core-only, exactly the one-line manifest the page shows.
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}

@@ -1,0 +1,19 @@
+---
+kind: scene
+title: The Usual Booth
+character: mira
+season: 1
+episode: 2
+pov: fixer
+after: 'visited("mira.s01ep01")'
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+state:
+  run.metMira: { type: bool }
+---
+
+## The Counter
+
+@mira{emotion="content" variant="0" when="run.metMira"}: Back again. You know where you sit.
+
+@narrator: The coffee is already poured.
