@@ -143,6 +143,7 @@ fn resolved_domains(
         let (merged, _diags) = lute_check::schema_import::merge_domains(
             &built.input.snapshot,
             &built.input.imports,
+            &built.meta,
             at,
         );
         out.extend(merged);

@@ -789,6 +789,12 @@ pub(crate) struct BuiltInput {
     /// gating command calls [`BuiltInput::report_project_diags`] immediately, so
     /// its stderr is byte-identical to when `build_input` printed them itself.
     pub project_diags: Vec<String>,
+    /// The document's own lifted frontmatter, as `build_input` already parsed it
+    /// to resolve the snapshot. Carried because the domain vocabulary a document
+    /// resolves includes its OWN inline `enums:`/`entities:` projection
+    /// (`TypedMeta::domains`), which `merge_domains` needs alongside
+    /// `input.imports` — see `doctor::resolved_domains`.
+    pub meta: lute_check::TypedMeta,
 }
 
 impl BuiltInput {
@@ -885,6 +891,7 @@ fn build_input(
         },
         resolve_error,
         project_diags,
+        meta: meta0,
     })
 }
 

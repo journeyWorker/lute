@@ -558,6 +558,81 @@ fn divergence_holds_under_uses_import() {
     );
 }
 
+/// No-divergence when the vocabulary is declared INLINE rather than imported
+/// (dsl 0.9.0). `enums:` is in `UNIVERSAL_KEYS`, so a document may declare its
+/// own domains, and both surfaces resolve them through the SAME
+/// `merge_domains` seam `check()` calls — there is no separate LSP domain
+/// resolution to drift. Two cases, both with the declaration inline and NO
+/// `uses:`: (a) a member the inline block declares is accepted, and (b) one it
+/// does not is `E-BAD-ENUM` whose message quotes the INLINE member list, so a
+/// surface that dropped the inline declaration could not produce it.
+#[test]
+fn divergence_holds_under_inline_enums() {
+    // (a) happy path: the inline declaration alone makes `emotion` resolvable.
+    let ok = "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\n\
+              enums:\n  emotion: [neutral, gleeful]\n---\n## Shot 1.\n\
+              @bianca{emotion=\"gleeful\"}: declared inline.\n";
+    let res = check(&input_for(ok));
+    assert!(
+        res.diagnostics.iter().all(|d| d.severity != Severity::Error),
+        "an inline `enums:` declaration must satisfy the line; got {:?}",
+        res.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+    let index = idx(ok);
+    let headless: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &index))
+        .collect();
+    let via_lsp: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
+        .collect();
+    assert_eq!(
+        headless, via_lsp,
+        "headless and LSP surfaces diverged under an inline `enums:` declaration"
+    );
+
+    // (b) non-vacuous: a non-member is E-BAD-ENUM, and the message enumerates
+    // the inline members — the assertion that the inline block is LIVE, not
+    // merely tolerated.
+    let bad = "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\n\
+               enums:\n  emotion: [neutral, gleeful]\n---\n## Shot 1.\n\
+               @bianca{emotion=\"zzz\"}: not a declared member.\n";
+    let bres = check(&input_for(bad));
+    let bad_enum = bres
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-BAD-ENUM")
+        .unwrap_or_else(|| {
+            panic!(
+                "a non-member against an inline declaration must be E-BAD-ENUM; got {:?}",
+                bres.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        bad_enum.message.contains("neutral, gleeful"),
+        "the message must quote the INLINE member list: {}",
+        bad_enum.message
+    );
+    let bindex = idx(bad);
+    let bheadless: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &bindex))
+        .collect();
+    let bvia_lsp: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex, &test_uri())))
+        .collect();
+    assert_eq!(
+        bheadless, bvia_lsp,
+        "E-BAD-ENUM against an inline declaration diverged between surfaces"
+    );
+}
+
 /// No-divergence under `components:` component imports (dsl §13). Two cases: (a)
 /// an error-clean scene that imports + `::use`s a valid presentational component
 /// (resolved via the SAME `resolve_components` both surfaces call) and (b) a scene

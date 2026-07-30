@@ -33,7 +33,7 @@ use lute_manifest::relations::{
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_syntax::ast::Meta;
 
-use crate::meta::{parse_meta_kind, FactDecl, MetaKind, RuleDecl, StateDecl, StateSchema};
+use crate::meta::{parse_meta_kind, FactDecl, MetaKind, RuleDecl, StateDecl, StateSchema, TypedMeta};
 
 /// The resolved result of a scene's composition imports (dsl §9.2): the merged
 /// imported state schema, the merged imported `defs` (untyped YAML values, like
@@ -478,28 +478,61 @@ pub fn resolve_imports(
     }
 }
 
-/// Union a resolved schema import's project-declared domains (data-catalog
-/// foundation A3, [`SchemaImports::domains`]) with the plugin/core baseline
-/// already on `snapshot` ([`CapabilitySnapshot::domains`], A2) — the ACTUAL
-/// merged domain vocabulary a later checker task (A4) resolves
-/// `Type::Domain(name)` against, mirroring how `check.rs::fold_env` unions
-/// `input.snapshot.defs` with `input.imports.defs`.
+/// Union the PROJECT's declared domains with the plugin/core baseline already
+/// on `snapshot` ([`CapabilitySnapshot::domains`], A2) — the ACTUAL merged
+/// domain vocabulary a later checker task (A4) resolves `Type::Domain(name)`
+/// against, mirroring how `check.rs::fold_env` unions `input.snapshot.defs`
+/// with `input.imports.defs`.
 ///
-/// A name declared on BOTH sides — a plugin/project clash — is reported via
-/// the SAME `E-DOMAIN-DUP` code `assemble.rs`'s `merge_map` uses for a
-/// cross-plugin collision (data-catalog foundation design: "a plugin/project
-/// name clash is an error, never a silent shadow"); the plugin/core entry
-/// wins (first owner wins, matching `merge_map`'s drop-and-report
-/// semantics) and the project entry is dropped, not merged/overridden. Pure
-/// and total; never panics.
+/// The project side has TWO sources, and both are the identical two-step
+/// projection of the same YAML shape — `parse_enums`, then
+/// `.extend(kinds_to_domains(..))`:
+///
+/// * `imports.domains` — every file reached via `uses:`/`extends:`, projected
+///   by [`resolve_imports`] from the depth-resolved [`RelImports`].
+/// * `inline.domains` — THIS document's own `enums:`/`entities:`, projected by
+///   `parse_meta` ([`TypedMeta::domains`]). `enums:` is in `UNIVERSAL_KEYS`, so
+///   an inline block is deliberately legal syntax in any document; before dsl
+///   0.9.0 it parsed and was then dropped here, and `E-DOMAIN-UNKNOWN` told the
+///   author to declare a domain they had already declared.
+///
+/// Neither is re-derived: each source hands over the projection it already
+/// built, because two projections of one YAML shape drift.
+///
+/// Precedence, inline vs imported: the INLINE declaration wins, and a
+/// non-superset re-declaration is decision D5's `E-EXTENDS-RELATION-SIG`. That
+/// is not a choice made here — it is [`resolve_imports`]'s own shallowest-wins
+/// rule (`pick_winner`) applied to a document that is depth 0 to any import's
+/// depth >= 1, and it is exactly what `rel_schema::build_rel_vocab` already
+/// does for the same names in `RelVocab::enums`/`kinds` one line below the
+/// `merge_domains` call in `check.rs`. Those two maps MUST NOT disagree about
+/// which member list is in force. The D5 diagnostic stays `build_rel_vocab`'s
+/// alone — one owner, no duplicate — so this function only applies the
+/// precedence.
+///
+/// A name declared on both the project and plugin/core sides — a
+/// plugin/project clash, inline or imported alike — is reported via the SAME
+/// `E-DOMAIN-DUP` code `assemble.rs`'s `merge_map` uses for a cross-plugin
+/// collision (data-catalog foundation design: "a plugin/project name clash is
+/// an error, never a silent shadow"); the plugin/core entry wins (first owner
+/// wins, matching `merge_map`'s drop-and-report semantics) and the project
+/// entry is dropped, not merged/overridden. `E-DOMAIN-DUP` is NOT reachable
+/// for a project-project collision: decision D2 splits those into
+/// `E-USES-DUP-RELATION` / `E-KIND-NAME-CLASH`, raised where the collision is
+/// seen. Pure and total; never panics.
 pub fn merge_domains(
     snapshot: &CapabilitySnapshot,
     imports: &SchemaImports,
+    inline: &TypedMeta,
     at: Span,
 ) -> (BTreeMap<String, Domain>, Vec<Diagnostic>) {
     let mut merged = snapshot.domains.clone();
     let mut diags = Vec::new();
-    for (name, dom) in &imports.domains {
+    let mut project = imports.domains.clone();
+    for (name, dom) in &inline.domains {
+        project.insert(name.clone(), dom.clone());
+    }
+    for (name, dom) in &project {
         if merged.contains_key(name) {
             diags.push(uses_diag(
                 "E-DOMAIN-DUP",
@@ -515,9 +548,9 @@ pub fn merge_domains(
         // dsl 0.9.0 D-D — ONE rule, but it needs PROVENANCE: a domain
         // occupying a semantics-bearing slot must be able to CARRY that
         // slot's semantics, and only an `enums:` decl can. Do not collapse
-        // this branch back into one `validate_domain` call: `imports.domains`
-        // fuses two sources (see `resolve_imports`) and an `EntityKindDecl`
-        // can express only `members` or `open` — an authored
+        // this branch back into one `validate_domain` call: each source's
+        // `domains` fuses `enums:` and `entities:` (see above) and an
+        // `EntityKindDecl` can express only `members` or `open` — an authored
         // `exits:`/`default:` key on it is discarded — so the shared
         // validator's generic "declare `exits:`" names a fix that cannot
         // exist for a kind-derived value, while skipping the check would let
@@ -525,17 +558,26 @@ pub fn merge_domains(
         // loss 0.9.0 removes).
         //
         // Provenance comes from the WINNING projection, not from whichever
-        // map happens to contain the name: `resolve_imports` builds `domains`
-        // as the enum projection `.extend`ed with `kinds_to_domains`, so when
-        // separate imported files declare one name under both `entities:` and
-        // `enums:`, BOTH maps retain it and the KIND entry is the `Domain` in
-        // hand. Hence: kind-derived (any name `kinds_to_domains` projects —
+        // map happens to contain the name: each source builds its `domains` as
+        // the enum projection `.extend`ed with `kinds_to_domains`, so when one
+        // name is declared under both `entities:` and `enums:`, BOTH maps
+        // retain it and the KIND entry is the `Domain` in hand. Hence:
+        // kind-derived (any name `kinds_to_domains` projects —
         // `KindShape::Invalid` is skipped there, so such a name reaching here
         // is the enum entry) → point the author at `enums:`; otherwise the
         // value is enum-derived and goes to the SHARED validator
         // `assemble.rs` runs on the plugin path (no duplicated rule set).
+        //
+        // Which source's kinds map to read follows the same precedence as the
+        // value itself: an inline declaration overrode the imported one above,
+        // so its provenance overrides too.
+        let kinds = if inline.domains.contains_key(name) {
+            &inline.rel_kinds.kinds
+        } else {
+            &imports.rel.kinds
+        };
         let kind_derived = matches!(
-            imports.rel.kinds.get(name).map(|decl| &decl.shape),
+            kinds.get(name).map(|decl| &decl.shape),
             Some(KindShape::Members(_) | KindShape::Open)
         );
         if !kind_derived {

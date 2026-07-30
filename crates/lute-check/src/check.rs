@@ -306,8 +306,11 @@ pub fn fold_env(
 
     // 3c. The FULL merged domain vocabulary (data-catalog foundation A4):
     //     `snapshot.domains` (A2 — core baseline + active-plugin `enums`)
-    //     UNION project-authored domains lifted from this scene's schema
-    //     imports (A3's `merge_domains`) — computed ONCE here (0.3.0 T7 moved
+    //     UNION the PROJECT's domains — this scene's schema imports AND its own
+    //     inline `enums:`/`entities:` projection (`typed.domains`), which is the
+    //     same value `build_rel_vocab` gets one line below, so the domain map
+    //     and `RelVocab` can never disagree about a name either of them
+    //     declares (A3's `merge_domains`). Computed ONCE here (0.3.0 T7 moved
     //     this from `check()`) so `lute-compile` (which calls `fold_env`
     //     directly) sees the SAME vocabulary, never double-emitting
     //     `E-DOMAIN-DUP`. Then the merged, validated relational vocabulary
@@ -315,7 +318,8 @@ pub fn fold_env(
     //     `entities:`/`relations:`/`enums:`/`facts:`/`rules:`, every
     //     declaration checked (§3.1/§4) and every seed `facts:` entry
     //     validated via `check_atom` (D12 wildcard-in-seed included).
-    let (domains, domain_diags) = merge_domains(&input.snapshot, &input.imports, doc.meta.span);
+    let (domains, domain_diags) =
+        merge_domains(&input.snapshot, &input.imports, &typed, doc.meta.span);
     let (mut vocab, rel_diags) =
         crate::rel_schema::build_rel_vocab(&input.imports, &typed, &domains, &doc.meta);
     fold_diags.extend(domain_diags);
