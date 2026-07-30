@@ -768,10 +768,24 @@ pub fn check(input: &CheckInput) -> CheckResult {
     let line_code_diags = check_line_codes(&doc);
 
     // 7. Resolved view: injection fold + the timeline tables gathered in the walk.
+    //    Unlike steps 6b/8, this pass is NOT root-only: `fold_injections`
+    //    enters each `::use` in document position, folding the component body
+    //    against the stage state inherited AT that site (Task 7g — see
+    //    `fold_use`). That position dependence is why the body is folded here
+    //    rather than isolated in `validate_components` like the line-code and
+    //    reachability passes.
     let mut inject_state = StageState::default();
     let mut injections = Vec::new();
+    let mut using = Vec::new();
     for shot in &doc.shots {
-        fold_injections(&shot.body, &mut inject_state, &mut injections, domains);
+        fold_injections(
+            &shot.body,
+            &mut inject_state,
+            &mut injections,
+            domains,
+            &input.components,
+            &mut using,
+        );
     }
     let inject_diags = std::mem::take(&mut inject_state.diags);
     // `node_summary` already covers `Node::On`/`Node::Objective` (Plan A), so
@@ -3022,11 +3036,17 @@ fn insert_shape_fields(
 /// is not modeled — a preview, not final codegen). `<timeline>` clips are staged
 /// separately in `timeline_tables` and do not participate in stage-entity
 /// lifetime here (see the injection reducer's node-kind coverage).
+///
+/// A `::use` is entered too ([`fold_use`], Task 7g) — `using` carries the
+/// component names on the current expansion path so a `::use` cycle
+/// terminates.
 fn fold_injections(
     nodes: &[Node],
     state: &mut StageState,
     out: &mut Vec<InjectedCommand>,
     domains: &std::collections::BTreeMap<String, Domain>,
+    components: &ComponentSet,
+    using: &mut Vec<String>,
 ) {
     for (i, node) in nodes.iter().enumerate() {
         let taken = std::mem::take(state);
@@ -3036,20 +3056,93 @@ fn fold_injections(
         match node {
             Node::Branch(b) => {
                 for choice in &b.choices {
-                    fold_injections(&choice.body, state, out, domains);
+                    fold_injections(&choice.body, state, out, domains, components, using);
                 }
             }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            fold_injections(body, state, out, domains)
+                            fold_injections(body, state, out, domains, components, using)
                         }
                     }
                 }
             }
+            Node::Directive(d) if d.tag == "use" => {
+                fold_use(d, state, out, domains, components, using);
+            }
             _ => {}
         }
+    }
+}
+
+/// Task 7g, the FOURTH instance of the same class as Task 7b's (content-line
+/// attrs), Task 7c's (duplicate line codes) and Task 7e's (reachability):
+/// [`fold_injections`] had exactly ONE callsite — `check()` step 7, over the
+/// ROOT document's shots — and a `::use` folded as an ordinary unknown
+/// directive, so its body was never entered. A `::auto` whose explicit
+/// `anchor` equals the `anchor` domain's declared `default:` therefore checked
+/// CLEAN through a `::use` while the identical directive warned
+/// `W-INJECT-CONFLICT` at scene level AND when that same component file was
+/// checked STANDALONE. `lute compile`'s own CFG walk DID derive it (it folds
+/// the NORMALIZED tree, body already inlined) but discarded it — see the
+/// `state.diags.clear()` comment in `lute-compile/src/lib.rs` — so the
+/// warning was reported by no tool at all.
+///
+/// THE SEAM (the one decision here): the body folds IN DOCUMENT POSITION,
+/// against the `StageState` INHERITED at this `::use` — the same reducer, the
+/// same threaded environment the enclosing walk already carries, which is
+/// exactly the context `lute compile` folds the inlined body in. A per-body
+/// fold against a FRESH `StageState` (the shape Tasks 7c/7e use, because
+/// their passes are position-independent) would be wrong HERE: the reducer's
+/// entrance rules are stage-state dependent — `lower_auto` returns early when
+/// the character is already on stage — so an empty entry state would INVENT
+/// conflicts that do not exist in context, trading an old divergence for a
+/// new one.
+///
+/// Body diagnostics are re-anchored the way every other component-body
+/// diagnostic is (component name + source path prefix, cleared fixits, a span
+/// this document can represent) — but at THIS `::use` directive rather than
+/// the scene frontmatter `validate_components` uses: the conflict is a
+/// property of this invocation SITE, not of the component file in isolation,
+/// so the site is the only honest anchor. A nested `::use` prefixes again,
+/// naming the whole expansion path.
+///
+/// An unresolvable name (no `component=` attr, or one absent from the table)
+/// is silently skipped — the resolution failure is already
+/// `E-COMPONENT-UNKNOWN`/`E-COMPONENT-PARSE` on the import surface.
+fn fold_use(
+    d: &Directive,
+    state: &mut StageState,
+    out: &mut Vec<InjectedCommand>,
+    domains: &std::collections::BTreeMap<String, Domain>,
+    components: &ComponentSet,
+    using: &mut Vec<String>,
+) {
+    let Some(name) = attr_str(d, "component") else {
+        return;
+    };
+    let Some(def) = components.table.get(&name) else {
+        return;
+    };
+    // A `::use` cycle is `E-COMPONENT-CYCLE` (reported by the expansion
+    // checker); this fold only has to TERMINATE on it. Stack discipline,
+    // exactly as `insert_shape_fields` uses for self-referential state shapes:
+    // popping after the body keeps a legitimate diamond (one component reached
+    // twice by disjoint paths) foldable.
+    if using.iter().any(|n| n == &name) {
+        return;
+    }
+    using.push(name);
+    let mark = state.diags.len();
+    for shot in &def.body.shots {
+        fold_injections(&shot.body, state, out, domains, components, using);
+    }
+    let name = using.pop().expect("pushed above");
+    for diag in &mut state.diags[mark..] {
+        diag.message = format!("component `{name}` ({}): {}", def.src.display(), diag.message);
+        diag.span = d.span;
+        diag.fixits.clear();
     }
 }
 

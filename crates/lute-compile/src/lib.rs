@@ -146,9 +146,35 @@ pub fn compile_with_check(
                     trailing,
                 });
             }
-            // Our fold re-derives W-INJECT-CONFLICTs check() already
-            // reported — check() is the diagnostic surface, the artifact is
-            // ours (plan note 8).
+            // `check()` is the diagnostic surface, the artifact is ours (plan
+            // note 8): the `W-INJECT-CONFLICT`s this walk re-derives are
+            // dropped rather than reported a second time. Warnings never gate
+            // (the D6 `Err` above is Error-only), so there is no `Ok`-path
+            // channel to carry one out of here regardless.
+            //
+            // The invariant that makes the drop lossless: `check()` derives
+            // the SAME conflicts this walk does, for the same reason — one
+            // `lute_check::inject` reducer, one threaded `StageState`, folded
+            // in document position. Note the "for the same reason": until
+            // Task 7g the justification was the weaker "check() already
+            // reported it", which held for root-level content and was FALSE
+            // for an imported component body. `check()`'s `fold_injections`
+            // treated a `::use` as an opaque leaf, while THIS walk runs after
+            // `normalize_document` has already inlined the body — so a body
+            // conflict was derived only here and then discarded here, i.e.
+            // reported by no tool at all. `check()` now folds THROUGH the
+            // `::use` with the stage state inherited at that site (see
+            // `lute_check`'s `fold_use`), which is exactly the context this
+            // walk folds the inlined body in, so both sides agree by
+            // construction.
+            //
+            // Residual, deliberate: this walk folds the EXPANDED tree, so it
+            // can see a conflict that only exists once a `@param` is bound to
+            // a literal at the `::use` site. `check()` is a pre-expansion
+            // surface and is blind to that shape — identically so whether the
+            // component is reached through a `::use` or checked STANDALONE, so
+            // no route disagrees with another; it is a precision boundary, not
+            // the divergence Task 7g closed.
             state.diags.clear();
             let (commands, addr_diags) = address::assign_addresses(shots, identity);
             (ArtifactMeta::Scene(meta), commands, addr_diags)
