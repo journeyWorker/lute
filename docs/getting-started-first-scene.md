@@ -177,7 +177,7 @@ ok: my-scene.lute (0 warning(s))
 
 The file so far:
 
-```lute
+```lute check
 ---
 kind: scene
 title: A Quiet Table
@@ -470,7 +470,7 @@ profiles:
     plugins: {}
 ```
 
-```lute
+```lute check-project="docs/examples/episodes/booth.lute"
 ---
 kind: scene
 title: The Usual Booth
