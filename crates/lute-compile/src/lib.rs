@@ -147,30 +147,47 @@ pub fn compile_with_check(
                 });
             }
             // `check()` is the diagnostic surface, the artifact is ours (plan
-            // note 8): the `W-INJECT-CONFLICT`s this walk re-derives are
-            // dropped rather than reported a second time. Warnings never gate
-            // (the D6 `Err` above is Error-only), so there is no `Ok`-path
-            // channel to carry one out of here regardless.
+            // note 8): whatever this walk re-derives on `StageState::diags` is
+            // dropped rather than reported a second time. Since dsl 0.9.0 D-D
+            // that channel is no longer warning-only — besides the
+            // `W-INJECT-CONFLICT`s, `auto-anchor-on-show` pushes
+            // `E-DOMAIN-UNKNOWN` (an Error) for an `::auto` that relies on an
+            // undeclared `anchor` domain's `default:`. So the drop needs an
+            // argument that covers an Error, not the old one about warnings
+            // never gating.
             //
-            // The invariant that makes the drop lossless: `check()` derives
-            // the SAME conflicts this walk does, for the same reason — one
-            // `lute_check::inject` reducer, one threaded `StageState`, folded
-            // in document position. Note the "for the same reason": until
-            // Task 7g the justification was the weaker "check() already
-            // reported it", which held for root-level content and was FALSE
-            // for an imported component body. `check()`'s `fold_injections`
-            // treated a `::use` as an opaque leaf, while THIS walk runs after
-            // `normalize_document` has already inlined the body — so a body
-            // conflict was derived only here and then discarded here, i.e.
-            // reported by no tool at all. `check()` now folds THROUGH the
-            // `::use` with the stage state inherited at that site (see
-            // `lute_check`'s `fold_use`), which is exactly the context this
-            // walk folds the inlined body in, so both sides agree by
-            // construction.
+            // The argument: the D6 gate at the top of this function already
+            // returned `Err(result.diagnostics)` unless `check()` was clean, so
+            // reaching this line PROVES `check()` derived no Error. The drop is
+            // lossless exactly insofar as `check()` derives every Error this
+            // walk can — and it does, for both codes, because both sides run
+            // the one `lute_check::inject` reducer over one threaded
+            // `StageState`, folded in document position:
             //
-            // Residual, deliberate: this walk folds the EXPANDED tree, so it
-            // can see a conflict that only exists once a `@param` is bound to
-            // a literal at the `::use` site. `check()` is a pre-expansion
+            //   * `E-DOMAIN-UNKNOWN` turns on attribute-KEY presence (a
+            //     `character` attr, no `anchor` attr) plus one document-wide
+            //     fact (nothing declares an `anchor` domain).
+            //     `normalize_document` and `expand_document` rewrite attr
+            //     VALUES and inline component bodies; neither invents an
+            //     `::auto` nor adds or removes an attr key, so the trigger is
+            //     invariant under everything separating this tree from the one
+            //     `check()` folds.
+            //   * `W-INJECT-CONFLICT` is the divergence Task 7g closed: until
+            //     then `check()`'s `fold_injections` treated a `::use` as an
+            //     opaque leaf while THIS walk runs after `normalize_document`
+            //     has inlined the body, so a body conflict was derived only
+            //     here and discarded here, i.e. reported by no tool at all.
+            //     `check()` now folds THROUGH the `::use` with the stage state
+            //     inherited at that site (see `lute_check`'s `fold_use`), which
+            //     is exactly the context this walk folds the inlined body in,
+            //     so both sides agree by construction.
+            //
+            // Residual, deliberate, and warning-only: this walk folds the
+            // EXPANDED tree, so it can see a conflict that only exists once a
+            // `@param` is bound to a literal at the `::use` site. That one is a
+            // VALUE comparison (the authored `anchor` against the domain
+            // `default:`), which is why it is param-sensitive and why the
+            // key-presence Error above is not. `check()` is a pre-expansion
             // surface and is blind to that shape — identically so whether the
             // component is reached through a `::use` or checked STANDALONE, so
             // no route disagrees with another; it is a precision boundary, not

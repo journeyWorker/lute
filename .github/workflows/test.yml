@@ -10,6 +10,16 @@ name: Test
 # harness rides along instead of cold-building the workspace in a second
 # job. Drift originates in the Rust source, which is why `crates/**` (and
 # therefore `crates/lute-manifest/**`) must stay in the trigger set below.
+# The same job also owns the nvim query mirror gate:
+# `tree-sitter-lute/test/nvim_query_sync.test.js` asserts that every
+# `(quest`/`(on`/`(objective` pattern the CANONICAL grammar queries
+# (`tree-sitter-lute/queries/*.scm`) match is also matched by the shipped
+# editor mirror (`editors/nvim/queries/lute/*.scm`), so a node added to one
+# and forgotten in the other cannot ship. It needs neither cargo nor `lute`,
+# only bun — it rides here because this job has already installed bun and the
+# tree-sitter-lute lockfile for the harness above. Its inputs are the two
+# query trees, which is why BOTH are in the trigger set below; a filter on
+# only one side would let the mirror rot whenever the canonical side moved.
 # `launcher-typecheck` compiles the `@lute-lang/lute` JS launcher
 # (packages/cli) under `tsc --noEmit` so a type regression in the
 # platform-detection / binary-resolution logic is caught without a native
@@ -23,7 +33,10 @@ on:
       - "Cargo.lock"
       - "packages/cli/**"
       - "schemas/**"
+      - "tree-sitter-lute/queries/**"
+      - "editors/nvim/queries/**"
       - "tree-sitter-lute/test/json_schema.test.js"
+      - "tree-sitter-lute/test/nvim_query_sync.test.js"
       - "tree-sitter-lute/package.json"
       - "tree-sitter-lute/bun.lock"
       - ".github/workflows/test.yml"
@@ -35,7 +48,7 @@ env:
 
 jobs:
   offline:
-    name: cargo test --workspace + JSON Schema harness (offline)
+    name: cargo test --workspace + JS harnesses (offline)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -78,6 +91,10 @@ jobs:
       - name: JSON Schema drift gate (schemas/ vs lute-manifest deserializers)
         working-directory: tree-sitter-lute
         run: bun test test/json_schema.test.js
+
+      - name: nvim query mirror gate (editors/nvim vs tree-sitter-lute queries)
+        working-directory: tree-sitter-lute
+        run: bun test test/nvim_query_sync.test.js
 
   launcher-typecheck:
     name: typecheck @lute-lang/lute launcher (tsc --noEmit)
