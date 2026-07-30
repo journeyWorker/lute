@@ -3,6 +3,9 @@ kind: scene
 character: bianca
 season: 1
 episode: 1
+# The project's content vocabulary (dsl 0.9.0): `anchor=`/`action=` resolve
+# against the `enums:` block this import reaches.
+uses: base.schema.yaml
 ---
 
 /*

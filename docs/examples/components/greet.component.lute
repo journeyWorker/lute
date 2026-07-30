@@ -7,6 +7,11 @@
 component: greet
 params:
   who: string
+# A component's own vocabulary import (dsl 0.9.0). It makes a STANDALONE
+# `lute check` of this file resolve `action=`; through `::use` the IMPORTING
+# document's vocabulary is the one that applies (see 0.9.0 §5, known
+# limitation), so both sides declare it.
+uses: ../base.schema.yaml
 ---
 
 ## A Familiar Face

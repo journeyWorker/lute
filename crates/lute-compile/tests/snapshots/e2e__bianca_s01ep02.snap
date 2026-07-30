@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.8.0",
+  "lute": "0.9.0",
   "irVersion": "0.8.0",
-  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
+  "capabilityVersion": "0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07",
   "meta": {
     "character": "bianca",
     "season": 1,
@@ -15,6 +15,11 @@ expression: json
     "title": "Behold the Performance of All-Purpose Bianca"
   },
   "state": [
+    {
+      "path": "run.blessed",
+      "type": "bool",
+      "default": false
+    },
     {
       "path": "scene.affect.bianca",
       "type": "number",
@@ -35,6 +40,88 @@ expression: json
       "path": "scene.flags.saw_beam",
       "type": "bool",
       "default": false
+    }
+  ],
+  "enums": [
+    {
+      "name": "action",
+      "members": [
+        "fade-in-up",
+        "fade-in-slow",
+        "slide-in-left",
+        "walk-in",
+        "idle",
+        "wave",
+        "sway",
+        "lean",
+        "pose-turn",
+        "fade-out",
+        "fade-out-down",
+        "fade-out-slow",
+        "hide"
+      ]
+    },
+    {
+      "name": "anchor",
+      "members": [
+        "left",
+        "center",
+        "right"
+      ]
+    },
+    {
+      "name": "emotion",
+      "members": [
+        "neutral",
+        "surprised",
+        "delighted",
+        "shy",
+        "content",
+        "angry",
+        "sad"
+      ]
+    },
+    {
+      "name": "mood",
+      "members": [
+        "peaceful",
+        "tense",
+        "romantic",
+        "sad",
+        "upbeat"
+      ]
+    },
+    {
+      "name": "musicAction",
+      "members": [
+        "start",
+        "change",
+        "stop",
+        "resume",
+        "fade-out"
+      ]
+    },
+    {
+      "name": "vfxType",
+      "members": [
+        "whiteOut",
+        "blackOut",
+        "rain",
+        "snow",
+        "leaves",
+        "petals",
+        "raindrop"
+      ]
+    },
+    {
+      "name": "volume",
+      "members": [
+        "silent",
+        "down",
+        "normal",
+        "up",
+        "full"
+      ]
     }
   ],
   "commands": [
@@ -737,8 +824,15 @@ expression: json
       "lineId": "bianca.s01ep02.narrator_0160"
     },
     {
-      "kind": "music",
+      "kind": "sprite",
       "addr": "005-1800",
+      "character": "bianca",
+      "action": "fade-out",
+      "exit": true
+    },
+    {
+      "kind": "music",
+      "addr": "005-1900",
       "action": "stop"
     }
   ],

@@ -6,7 +6,13 @@ season: 1
 episode: 2
 title: Behold the Performance of All-Purpose Bianca
 pov: fixer
-luteVersion: "0.8.0"
+luteVersion: "0.9.0"
+
+# The project's content vocabulary (dsl 0.9.0): `emotion`/`action`/`anchor`/
+# `mood`/`volume`/`musicAction`/`vfxType` are compiler-declared SLOTS with no
+# built-in members, so every value below is legal only because this file
+# reaches a declaration.
+uses: base.schema.yaml
 
 state:
   scene.affect.bianca:  { type: number, default: 0 }
@@ -174,5 +180,13 @@ defs:
 </match>
 
 @narrator: The part of me that catalogues life events was already cataloguing.
+
+/*
+  An authored EXIT (dsl 0.9.0 D-D): `fade-out` is in this project's declared
+  `action` `exits:` list, so the compiler marks the sprite record `exit: true`
+  and drops her from the stage — it reads the declared list rather than
+  inferring an exit from the member's name.
+*/
+::auto{character="bianca" action="fade-out"}
 
 ::music{action="stop"}

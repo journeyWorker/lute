@@ -8,6 +8,10 @@ kind: scene
 character: demo
 season: 1
 episode: 1
+# The project's content vocabulary (dsl 0.9.0): the imported component's body
+# resolves `emotion=` against THIS document's vocabulary, so the importer owns
+# the declaration.
+uses: base.schema.yaml
 components: [components/reaction.component.lute]
 state:
   scene.affect.bianca: { type: number, default: 0 }

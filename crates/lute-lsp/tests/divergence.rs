@@ -55,6 +55,26 @@ fn input_for(text: &str) -> CheckInput {
     }
 }
 
+/// [`input_for`] plus the document's OWN `uses:`/`extends:` imports, resolved
+/// relative to `dir` through the SAME `resolve_imports` the LSP backend calls
+/// (`backend.rs`'s `analyze`). Required for any on-disk fixture whose
+/// declarations arrive through a schema import — as of dsl 0.9.0 that includes
+/// the content VOCABULARY, which a project declares in an imported `enums:`
+/// block. Leaving the imports unresolved would analyze a different (under-
+/// assembled) document than either surface really sees, so the golden would
+/// stop being a golden.
+fn input_for_in(text: &str, dir: &std::path::Path) -> CheckInput {
+    let (doc, _) = lute_syntax::parse(text);
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    CheckInput {
+        imports: lute_check::resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span),
+        ..input_for(text)
+    }
+}
+
 /// A `TextIndex` over the exact document text the diagnostics' byte offsets refer
 /// to — the same index the LSP backend builds in `analyze()`.
 fn idx(text: &str) -> TextIndex<'_> {
@@ -171,11 +191,17 @@ fn headless_and_lsp_diagnostics_match() {
 
 /// Warning-bearing golden: `bianca-s01ep02.lute` is error-clean but carries a
 /// `W-INJECT-CONFLICT` warning, so the golden also covers the Warning severity
-/// round-trip. Same equality invariant.
+/// round-trip. Same equality invariant. Its content vocabulary arrives through
+/// its `uses: base.schema.yaml` (dsl 0.9.0), and the injected-anchor conflict it
+/// carries is only computable once that declaration's `anchor` `default:` is in
+/// scope — so the imports must be resolved, exactly as both surfaces do.
 #[test]
 fn headless_and_lsp_diagnostics_match_warning_bearing() {
     let text = std::fs::read_to_string("../../docs/examples/bianca-s01ep02.lute").unwrap();
-    let res = check(&input_for(&text));
+    let res = check(&input_for_in(
+        &text,
+        std::path::Path::new("../../docs/examples"),
+    ));
 
     assert!(
         !res.diagnostics.is_empty(),
@@ -234,6 +260,14 @@ fn divergence_holds_under_plugin_project() {
     // The plugin's provider catalog (same set both surfaces would use), so the
     // `providerRef` id `bianca_service_01` resolves and positions match.
     let providers = ProviderSet::load("../../docs/examples/idola-project/catalog");
+    // The scene's own `uses:` chain, resolved by the SAME `resolve_imports` both
+    // surfaces call. `idola.minigame` ships directives and a bridge but no
+    // vocabulary, so this subproject declares its content vocabulary in a project
+    // schema (dsl 0.9.0) — an unresolved import would leave every `emotion=`/
+    // `action=` value undeclared and the fixture would no longer be the
+    // "clean once the plugin resolves" document this golden is about.
+    let dir = std::path::Path::new("../../docs/examples/idola-project");
+    let imports = lute_check::resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span);
 
     let input = CheckInput {
         text: text.clone(),
@@ -241,7 +275,7 @@ fn divergence_holds_under_plugin_project() {
         snapshot,
         providers,
         mode: Mode::Author,
-        imports: SchemaImports::default(),
+        imports,
         components: Default::default(),
     };
     let res = check(&input);

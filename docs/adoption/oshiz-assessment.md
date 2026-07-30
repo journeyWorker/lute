@@ -310,7 +310,7 @@ OSHiZ의 134개 테이블은 이 5개에 따라 갈린다. **이 층이 Mode A�
 
 | # | Lute 표면 | 실체 | OSHiZ 대응 | 적합 |
 |---|---|---|---|---|
-| D1 | **선언 문서**<br/>(`*.schema.yaml`, `uses:`/`extends:`) | body 없는 순수 선언 맵 (D14). 담을 수 있는 키는 정확히 `state` `defs` `enums` `entities` `relations` `facts` `rules` | 조건/보상 enum, tier·grade·timeslot·emotion·stage 도메인, 캐릭터/스페이스/아이템 엔티티 | ✅ 강함 |
+| D1 | **선언 문서**<br/>(`*.schema.yaml`, `uses:`/`extends:`) | body 없는 순수 선언 맵 (D14). 담을 수 있는 키는 정확히 `state` `defs` `enums` `entities` `relations` `facts` `rules` | 조건/보상 enum, tier·grade·timeslot·stage 도메인, `emotion`(dsl 0.9.0부터 — 아래 참조), 캐릭터/스페이스/아이템 엔티티 | ✅ 강함 |
 | D2 | **`facts:`** | ground seed 사실 (와일드카드 불가) | 작은 정적 매핑 테이블 | ⚠️ 제한적 |
 | D3 | **provider 스냅샷**<br/>(`catalog/<name>.yaml`) | `entries: { providerName: [id...] }` flat YAML. 스냅샷 우선 — 라이브 카탈로그 의존 금지 | `item_definitions` `quests` `spaces` `products` `idola_events` `characters` … **id 우주 전체** | ✅ **최고 가치** |
 | D4 | **assetKinds** | 세그먼트 구조화 에셋 id 템플릿 | `CH.sofia.athleisure.surprised.0` (38,090행) | ✅ 강함 |
@@ -325,6 +325,23 @@ OSHiZ의 134개 테이블은 이 5개에 따라 갈린다. **이 층이 Mode A�
 `uses:` 합성은 이걸 **한 번 선언**으로 바꾸고, 중복 선언은 `E-USES-DUP-*`가 잡는다.
 `extends:`는 상위집합 재선언만 허용(`E-EXTENDS-STATE-TYPE`/`E-EXTENDS-RELATION-SIG`)이라
 도메인별 파생(예: `promise_date`가 base 조건 어휘에 `MOOD_GTE`류를 추가)도 안전하다.
+
+**정정 — `emotion`은 이 표를 쓴 시점에 프로젝트가 선언할 수 없었다.** 당시
+`emotion`/`mood`/`vfxType`/`anchor`/`volume`/`musicAction` 6개 어휘는 닫힌 멤버 목록으로
+`lute.core` 안에 들어 있었고, 어떤 경로로도 확장·대체가 불가능했다: 프로젝트 스키마에
+`enums: emotion: […]`를 쓰면 `E-DOMAIN-DUP`으로 멤버가 버려지고, 자체 capability 플러그인으로
+`emotion`을 export하면 `E-PLUGIN-DUP-ACROSS`로 **프로젝트 해석 전체가 실패**했으며,
+`lute.core`는 비활성화할 수 없다. 그래서 이 평가서가 측정한 30,861개 `emotion` 값 중 **20.7%가
+표현 불가**였다(코어는 `angry`, 카탈로그는 `furious`).
+
+**dsl 0.9.0에서 참이 되었다.** 코어는 이제 **슬롯만 선언하고 멤버는 하나도 싣지 않는다**
+([`../proposals/scenario-dsl/0.9.0.md`](../proposals/scenario-dsl/0.9.0.md) §2). 7개 슬롯
+(`emotion` `action` `anchor` `mood` `volume` `musicAction` `vfxType`)의 멤버는 전부 프로젝트
+스키마의 `enums:` 또는 플러그인의 `enums` export에서 온다. 결과적으로 D1의 레버리지는 이
+평가서가 쓴 것보다 **더 크다**: 조건 enum 중복 제거뿐 아니라 콘텐츠 어휘 자체가 D1으로
+들어온다. 반대급부는 선언이 **의무**라는 점 — 선언하지 않은 슬롯을 쓰면
+`E-DOMAIN-UNKNOWN`이며, 그 대신 지금까지 검증이 전혀 없던 `action`(9,880값/53종)이 검사
+대상이 된다. `action`은 `exits:`를, `anchor`는 `default:`를 함께 선언해야 한다(§3).
 
 ```yaml
 # oshiz.world.schema.yaml  — 전 도메인이 uses: 하는 단일 어휘
