@@ -214,6 +214,78 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
     diags
 }
 
+/// Validate a COMPONENT document's top level (dsl §13 x dsl 0.4.0 §6.1): a
+/// component file must not carry top-level content the component walker does
+/// not process.
+///
+/// Deliberately NOT a component-kind admission table — no `DocKind` variant, no
+/// new `(GrammarContext, NodeKind)` rows, and every §6 body rule left exactly
+/// as-is. The defect this closes is narrower and structural: `check()` runs
+/// [`check_admission`] over the ROOT document only, and `validate_components`
+/// walks `body.shots` only, so a component file's `doc.quests` reached NEITHER.
+/// A top-level `<quest>` therefore errored `E-GRAMMAR-NOT-ADMITTED` when the
+/// file was checked STANDALONE (a component file resolves to `DocKind::Scene`,
+/// which admits no top-level `<quest>`) yet checked CLEAN through a `::use`,
+/// and lowering then dropped the whole declaration — its `::set` state write
+/// included — without a word. Hence the rule: **content present at a component
+/// document's top level but processed by nothing is an ERROR, never a silent
+/// drop.**
+///
+/// The [`Document`] destructuring below is EXHAUSTIVE (no `..`), the same
+/// compiler-forced canary [`NodeKind`] is for `Node`: adding a field to
+/// `Document` fails to compile here until that field is classified as walked or
+/// rejected. Per-field verdicts:
+///
+/// * `meta` — PROCESSED: `component_import::parse_component` runs
+///   `parse_meta_kind(.., MetaKind::Component)` over it and turns any parse or
+///   frontmatter error into `E-COMPONENT-PARSE`.
+/// * `title` — EXEMPT, and the exemption is the point: a document `# ` title is
+///   inert across the whole toolchain. Its only reader anywhere is
+///   [`check_admission`]'s quest-kind rejection above, and lowering reads the
+///   frontmatter `title:` key (`lute-compile`'s `artifact_meta`), never this
+///   field — so the ROOT document discards it exactly as a component body does.
+///   Flagging it would INVENT the mirror-image divergence (clean standalone,
+///   error imported) rather than close one.
+/// * `shots` — WALKED: `validate_components` runs `walk_component_body` over
+///   each `shot.body`, plus the whole-body `check_line_codes` (Task 7c) and
+///   `check_reachability_in` (Task 7e) passes. A shot's `heading` is required
+///   scaffolding, not content — the parser refuses body content outside a shot
+///   (`E-CONTENT-OUTSIDE-SHOT`) — and is discarded on `::use` expansion by
+///   design, since an expanded component contributes nodes to the consuming
+///   shot rather than a shot of its own.
+/// * `quests` — UNWALKED: the instance this pass reports.
+/// * `span` — the document's own byte extent, not content.
+///
+/// Reported at each declaration's own span; `validate_components` re-anchors
+/// these to the consuming scene the same way it re-anchors every other
+/// component-body diagnostic, so the `component `name` (path): …` prefix and
+/// the `E-GRAMMAR-NOT-ADMITTED` code both match what the standalone check says
+/// about the same file.
+pub fn check_component_toplevel(doc: &Document) -> Vec<Diagnostic> {
+    let Document {
+        meta: _,
+        title: _,
+        shots: _,
+        quests,
+        span: _,
+    } = doc;
+    quests
+        .iter()
+        .map(|quest| {
+            diag(
+                format!(
+                    "`<quest id=\"{}\">` is not admitted at the document top level of a \
+                     component document; a component is presentational content only, and \
+                     top-level content the component walker never processes would be \
+                     silently dropped on `::use` (dsl §13, dsl 0.4.0 §6.1)",
+                    quest.id
+                ),
+                quest.span,
+            )
+        })
+        .collect()
+}
+
 /// Walk a node stream, flagging every [`Node`] not admitted at `ctx`, and
 /// recursing into nested bodies with the context transition the construct
 /// implies (see the module docs). Always recurses (even into a node just
