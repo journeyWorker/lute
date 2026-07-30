@@ -1737,6 +1737,22 @@ fn validate_components(
                 &mut body_diags,
             );
         }
+        // Task 7f, the SAME class as Task 7b/7c/7e — but one level out: not a
+        // rule that skipped the body, a whole SURFACE nothing walked.
+        // `check_admission` has exactly ONE callsite (`check()` step 8, over
+        // the ROOT document) and the loop above iterates `body.shots` only, so
+        // a component file's `doc.quests` reached NEITHER pass. A top-level
+        // `<quest>` therefore errored `E-GRAMMAR-NOT-ADMITTED` when that file
+        // was checked STANDALONE yet checked CLEAN through a `::use`, and
+        // lowering then dropped the entire declaration — a `::set` state write
+        // inside it included — without a word. `check_component_toplevel` owns
+        // the general rule (content present at a component document's top level
+        // but processed by nothing is an error, never a silent drop) and an
+        // EXHAUSTIVE `Document` destructuring that fails to compile if a future
+        // field could reintroduce the same hole; see its doc comment for the
+        // per-field verdicts. Landed in `body_diags` so it inherits the
+        // component re-anchoring below, matching the standalone check's code.
+        body_diags.extend(crate::admission::check_component_toplevel(&body));
         // Task 7c, the SAME class of gap as Task 7b's (the content-line attr
         // checker) one arm up: `check_line_codes` had exactly ONE callsite —
         // `check()` step 6, over the ROOT document — so a component body never
