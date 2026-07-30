@@ -21,9 +21,11 @@ fn temp_dir(tag: &str) -> PathBuf {
 
 const SCHEMA: &str = "---\nstate:\n  run.choseHelp: { type: bool, default: false }\n---\n";
 // Scene reads the imported run path; `run.choseHelp` is defaulted so it's clean.
+// Arm bodies sit on their OWN lines: an inline `<when …>@x: a` silently DROPPED
+// that content line and is `E-TAG-INLINE-BODY` (dsl §2.3).
 const SCENE: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: schema.lute\n---\n\
-## Shot 1.\n<match on=\"run.choseHelp\">\n<when test=\"$ == true\">@x: a\n</when>\n\
-<otherwise>@x: b\n</otherwise>\n</match>\n";
+## Shot 1.\n<match on=\"run.choseHelp\">\n<when test=\"$ == true\">\n@x: a\n</when>\n\
+<otherwise>\n@x: b\n</otherwise>\n</match>\n";
 
 #[test]
 fn cli_resolves_uses_import_exits_zero() {

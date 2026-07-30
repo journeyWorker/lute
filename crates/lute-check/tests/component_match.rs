@@ -5,11 +5,11 @@
 //! CLI/LSP call), and validated through the assembled `check()` — mirrors
 //! `tests/components_use.rs`'s harness.
 use lute_check::{check, parse_meta, resolve_components, CheckInput, Mode};
-use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::{AttrDecl, DirectiveDecl, DirectiveState, Lowering, SlotDecl};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{PathSegment, Type};
+use lute_test_vocab::vocab_snapshot;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -72,15 +72,15 @@ fn codes_with_snapshot(dir: &Path, scene: &str, snapshot: CapabilitySnapshot) ->
         .collect()
 }
 
-/// The core-baseline convenience: no synthetic directive is in play.
+/// The vocabulary-baseline convenience: no synthetic directive is in play.
 fn codes(dir: &Path, scene: &str) -> Vec<String> {
-    codes_with_snapshot(dir, scene, load_core_snapshot())
+    codes_with_snapshot(dir, scene, vocab_snapshot())
 }
 
-/// Register a synthetic directive on a CLONE of the core snapshot (mirrors
-/// `tests/domains.rs`'s `codes_with_domain_attr_against` idiom).
+/// Register a synthetic directive on a CLONE of the vocabulary snapshot
+/// (mirrors `tests/domains.rs`'s `codes_with_domain_attr_against` idiom).
 fn snapshot_with_directive(decl: DirectiveDecl) -> CapabilitySnapshot {
-    let mut snap = load_core_snapshot();
+    let mut snap = vocab_snapshot();
     snap.directives.insert(decl.name.clone(), decl);
     snap
 }

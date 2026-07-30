@@ -177,7 +177,8 @@ fn run_one_test(
         // build_input already printed the read error.
         return Err(ExitCode::from(2));
     };
-    let crate::BuiltInput { input, resolve_error } = built;
+    built.report_project_diags();
+    let crate::BuiltInput { input, resolve_error, .. } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.

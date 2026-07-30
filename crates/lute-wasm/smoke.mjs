@@ -12,6 +12,23 @@ const glue = await import(pkgDir + "lute_wasm.js");
 const bytes = readFileSync(pkgDir + "lute_wasm_bg.wasm");
 await glue.default({ module_or_path: bytes });
 
+// The three axes move independently (docs/versioning.md), so READ them from the
+// crates that own each constant rather than hardcoding — a hardcoded triple
+// silently rots into asserting a version behind, which is the exact failure this
+// harness exists to catch in the committed blob.
+const crates = fileURLToPath(new URL("../", import.meta.url));
+const constOf = (file, name) =>
+  readFileSync(crates + file, "utf8").match(
+    new RegExp(`pub const ${name}: &str = "([^"]+)"`),
+  )[1];
+const EXPECT = {
+  language: constOf("lute-check/src/lib.rs", "LUTE_LANG_VERSION"),
+  ir: constOf("lute-compile/src/lib.rs", "LUTE_IR_VERSION"),
+  toolchain: readFileSync(crates + "../Cargo.toml", "utf8").match(
+    /^version = "([^"]+)"/m,
+  )[1],
+};
+
 const VALID = `---
 kind: scene
 character: sofia
@@ -64,7 +81,12 @@ function assert(cond, msg) {
 
 // version()
 const ver = section("version()", glue.version());
-assert(ver.toolchain === "0.7.0" && ver.language === "0.7.0" && ver.ir === "0.7.0", "version axes are 0.7.0");
+assert(
+  ver.toolchain === EXPECT.toolchain &&
+    ver.language === EXPECT.language &&
+    ver.ir === EXPECT.ir,
+  `version axes are toolchain ${EXPECT.toolchain} / language ${EXPECT.language} / IR ${EXPECT.ir}`,
+);
 
 // check_source — valid
 const chkOk = section("check_source(VALID)", glue.check_source(VALID));
@@ -77,12 +99,12 @@ assert(chkBad.ok === false, "invalid doc is not ok");
 assert(chkBad.diagnostics.length > 0, "invalid doc yields diagnostics");
 assert(chkBad.diagnostics.every((d) => d.code && d.severity && d.message && d.span), "diagnostics carry code/severity/message/span");
 
-// compile_source — valid (artifact stamps 0.7.0)
+// compile_source — valid (artifact stamps the language + IR axes above)
 const cmpOk = section("compile_source(VALID)", glue.compile_source(VALID));
 assert(cmpOk.ok === true, "valid doc compiles ok");
 assert(cmpOk.artifact && typeof cmpOk.artifact === "object", "artifact is an object");
-assert(cmpOk.artifact.lute === "0.7.0", "artifact.lute is 0.7.0");
-assert(cmpOk.artifact.irVersion === "0.7.0", "artifact.irVersion is 0.7.0");
+assert(cmpOk.artifact.lute === EXPECT.language, `artifact.lute is ${EXPECT.language}`);
+assert(cmpOk.artifact.irVersion === EXPECT.ir, `artifact.irVersion is ${EXPECT.ir}`);
 
 // compile_source — invalid (ok:false + diagnostics)
 const cmpBad = section("compile_source(INVALID)", glue.compile_source(INVALID));

@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use lute_manifest::schema::{DirectiveDecl, Lowering, WriteDecl, WriteValue};
-use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::{Literal, PathSegment, Type};
 use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, Line, Retract, Set};
 
@@ -119,7 +119,15 @@ pub fn lower_retract(r: &Retract) -> Command {
 /// `lower: { record, fields }` staging command when it has one
 /// ([`lower_record`]), else falls through to the `Some(Command::Other(..))`
 /// passthrough.
-pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option<Command> {
+///
+/// `domains` is the resolved vocabulary: whether an `::auto`'s `action` ENDS the
+/// character's presence is the `action` domain's declared `exits:` (dsl 0.9.0
+/// D-D), not a prefix convention this crate re-guesses.
+pub fn lower_directive(
+    dir: &Directive,
+    snapshot: &CapabilitySnapshot,
+    domains: &BTreeMap<String, Domain>,
+) -> Option<Command> {
     let get = |k: &str| attr_string(&dir.attrs, k);
     let get_f64 = |k: &str| attr_f64(&dir.attrs, k);
     let get_bool = |k: &str| attr_bool(&dir.attrs, k);
@@ -169,8 +177,10 @@ pub fn lower_directive(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option
         }),
         "auto" => {
             let action = get("action");
+            // ONE reader of `exits:` for both crates (dsl 0.9.0 D-E): this used
+            // to be a private prefix heuristic kept in sync by hand.
             let exit = match action.as_deref() {
-                Some(a) if is_exit_action(a) => Some(true),
+                Some(a) if lute_check::is_declared_exit(a, domains) => Some(true),
                 _ => None,
             };
             Command::Sprite(SpriteCmd {
@@ -474,12 +484,6 @@ fn record_wait_default(record: &str) -> Option<bool> {
     }
 }
 
-/// dsl Appendix A `::auto` exit vocabulary (mirrors `lute-check::inject`'s
-/// private helper byte-for-byte).
-fn is_exit_action(action: &str) -> bool {
-    action.starts_with("fade-out") || action.starts_with("exit") || action == "hide"
-}
-
 pub(crate) fn attr_string(attrs: &[Attr], key: &str) -> Option<String> {
     attrs.iter().find(|a| a.key == key).map(|a| match &a.value {
         AttrValue::Str(s) => s.clone(),
@@ -634,11 +638,19 @@ mod tests {
         lute_manifest::core::load_core_snapshot()
     }
 
+    /// The shared test vocabulary (`lute-test-vocab`), so these lowering tests
+    /// declare their `action`/`anchor` members exactly once, in the same place
+    /// `lute-check`'s suite does — a second hand-written copy here would be the
+    /// duplication dsl 0.9.0 D-E deleted.
+    fn doms() -> BTreeMap<String, Domain> {
+        lute_test_vocab::test_domains()
+    }
+
     fn lower_first(body: &str) -> serde_json::Value {
         let ns = nodes(body);
         let cmd = match &ns[0] {
             Node::Line(l) => lower_line(l, &snap()),
-            Node::Directive(d) => lower_directive(d, &snap()).expect("lowers"),
+            Node::Directive(d) => lower_directive(d, &snap(), &doms()).expect("lowers"),
             Node::Set(s) => lower_set(s),
             other => panic!("unexpected node {other:?}"),
         };
@@ -788,13 +800,13 @@ mod tests {
     fn use_and_sentinels_lower_to_nothing() {
         let ns = nodes("::use{component=\"greet\" who=\"bianca\"}");
         let Node::Directive(d) = &ns[0] else { panic!() };
-        assert!(lower_directive(d, &snap()).is_none());
+        assert!(lower_directive(d, &snap(), &doms()).is_none());
         let begin = lute_syntax::ast::Directive {
             tag: crate::normalize::COMPONENT_BEGIN.to_string(),
             attrs: Vec::new(),
             span: d.span,
         };
-        assert!(lower_directive(&begin, &snap()).is_none());
+        assert!(lower_directive(&begin, &snap(), &doms()).is_none());
     }
 
     #[test]
@@ -868,7 +880,7 @@ mod tests {
         let Node::Directive(d) = &ns[0] else {
             panic!("expected a directive, got {:?}", ns[0])
         };
-        serde_json::to_value(lower_directive(d, snapshot).expect("lowers")).unwrap()
+        serde_json::to_value(lower_directive(d, snapshot, &doms()).expect("lowers")).unwrap()
     }
 
     #[test]

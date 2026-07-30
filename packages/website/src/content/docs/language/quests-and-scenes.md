@@ -87,9 +87,15 @@ Content elsewhere can also gate on quest lifecycle by reading the reserved `ques
 
 ```lute
 <match on="quest.rescueHalsin.state">
-  <when is="complete"> @shadowheart: You did well back there. </when>
-  <when is="failed">   @shadowheart: We were too late. </when>
-  <otherwise>          @shadowheart: We should keep moving. </otherwise>
+  <when is="complete">
+    @shadowheart: You did well back there.
+  </when>
+  <when is="failed">
+    @shadowheart: We were too late.
+  </when>
+  <otherwise>
+    @shadowheart: We should keep moving.
+  </otherwise>
 </match>
 ```
 

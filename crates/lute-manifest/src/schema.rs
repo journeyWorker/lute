@@ -41,9 +41,46 @@ pub struct FrontmatterDecl {
     pub schema: Type,
 }
 
+/// One `enums:` entry. A bare sequence is shorthand for `{ members: […] }`
+/// (dsl 0.9.0 D-D), so every pre-0.9.0 `enums.yaml` keeps parsing byte-for-byte.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum EnumDecl {
+    Members(Vec<String>),
+    Long {
+        members: Vec<String>,
+        #[serde(default)]
+        default: Option<String>,
+        #[serde(default)]
+        exits: Vec<String>,
+    },
+}
+
+impl EnumDecl {
+    /// Project into the shared [`crate::snapshot::Domain`] shape.
+    pub fn into_domain(self) -> crate::snapshot::Domain {
+        match self {
+            EnumDecl::Members(members) => crate::snapshot::Domain {
+                members,
+                ..Default::default()
+            },
+            EnumDecl::Long {
+                members,
+                default,
+                exits,
+            } => crate::snapshot::Domain {
+                members,
+                open: false,
+                default,
+                exits,
+            },
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct EnumsFile {
-    pub enums: std::collections::BTreeMap<String, Vec<String>>,
+    pub enums: std::collections::BTreeMap<String, EnumDecl>,
 }
 
 #[derive(Debug, Deserialize)]

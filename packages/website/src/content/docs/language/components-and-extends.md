@@ -14,11 +14,12 @@ wherever it is invoked. It lives in its own **component file** — a `.lute` doc
 frontmatter declares `component: <name>` and, optionally, `params:` (typed exactly like a
 [def param](/language/params/)). The body is a **presentational template**.
 
-```lute
+```lute check="docs/examples/components/greet.component.lute"
 ---
 component: greet
 params:
   who: string
+uses: ../base.schema.yaml
 ---
 
 ## A Familiar Face
@@ -33,16 +34,22 @@ A parameter is referenced as `@<param>` in ref and attribute positions, and insi
 `{{@param}}` interpolation. `@who` binds to the invocation argument at expansion time — it is legal
 in the `character` position only because that attribute is `string`-typed.
 
+The `uses:` line is the component's own [content vocabulary](/language/vocabulary/) import — since
+`0.9.0` `action="fade-in-up"` resolves against a declared `action` domain, and a component file has
+to reach one to check on its own. Through `::use` it is the **importing** document's vocabulary that
+applies (see [the known limitation](/language/vocabulary/#known-limitation-a-component-body-resolves-against-the-importing-document)), so both sides declare it.
+
 A scene imports components via a `components:` frontmatter key (canonicalized, cycle-checked, and
 diamond-deduped like `uses:` — see [Imports](/language/imports/)), then invokes one with the
 reserved built-in directive **`::use`**:
 
-```lute
+```lute check="docs/examples/components/scene.lute"
 ---
 kind: scene
 character: demo
 season: 1
 episode: 2
+uses: ../base.schema.yaml
 components: [greet.component.lute]
 ---
 
@@ -66,19 +73,26 @@ pass values in through params instead. One notable exception: a `<match>` that d
 component's own param is admitted, because dispatch on a param is a pure read of an invocation
 argument, not of ambient state:
 
-```lute
+```lute check="docs/examples/components/reaction.component.lute"
 ---
 component: reaction
 params:
   tier: { enum: [cold, warm, fond] }
+uses: ../base.schema.yaml
 ---
 
 ## The Tiered Greeting
 
 <match on="@tier">
-  <when is="fond"> @bianca{emotion="delighted"}: You remembered! </when>
-  <when is="warm"> @bianca{emotion="content"}: Not bad at all, Mr. Fixer. </when>
-  <when is="cold"> @bianca{emotion="neutral"}: ...Shall we begin? </when>
+  <when is="fond">
+    @bianca{emotion="delighted"}: You remembered!
+  </when>
+  <when is="warm">
+    @bianca{emotion="content"}: Not bad at all, Mr. Fixer.
+  </when>
+  <when is="cold">
+    @bianca{emotion="neutral"}: ...Shall we begin?
+  </when>
 </match>
 ```
 

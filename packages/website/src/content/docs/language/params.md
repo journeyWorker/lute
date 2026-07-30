@@ -25,7 +25,9 @@ to its inline CEL before evaluation — a def is not a runtime function call, ju
 CEL. A bool def reads as a guard; a number def reads as a staging value:
 
 ```lute
-<when test="@fond"> @fixer{mono}: I asked nicely. </when>
+<when test="@fond">
+  @fixer{mono}: I asked nicely.
+</when>
 ::camera{zoom="@closeUp"}
 ```
 
@@ -47,8 +49,12 @@ defs:
 
 ```lute
 <match on="scene.affect.bianca">
-  <when test="@atLeast(3)"> @fixer{mono}: A veteran's welcome. </when>
-  <otherwise>              @fixer{mono}: Early days yet. </otherwise>
+  <when test="@atLeast(3)">
+    @fixer{mono}: A veteran's welcome.
+  </when>
+  <otherwise>
+    @fixer{mono}: Early days yet.
+  </otherwise>
 </match>
 ```
 

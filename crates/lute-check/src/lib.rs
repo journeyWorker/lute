@@ -37,7 +37,7 @@ pub mod timeline;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.8.0";
+pub const LUTE_LANG_VERSION: &str = "0.9.0";
 
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_paths::E_PATH_IDENT;
@@ -60,7 +60,7 @@ pub use directives::E_AT_CONTEXT;
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
 pub use fix::{fix_document, FixResult};
 pub use inject::{
-    lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState, DEFAULT_ANCHOR,
+    is_declared_exit, lower_node, InjectKind, InjectedCommand, Provenance, SpriteState, StageState,
 };
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, is_exhaustive,

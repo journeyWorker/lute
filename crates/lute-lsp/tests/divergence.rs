@@ -55,6 +55,26 @@ fn input_for(text: &str) -> CheckInput {
     }
 }
 
+/// [`input_for`] plus the document's OWN `uses:`/`extends:` imports, resolved
+/// relative to `dir` through the SAME `resolve_imports` the LSP backend calls
+/// (`backend.rs`'s `analyze`). Required for any on-disk fixture whose
+/// declarations arrive through a schema import — as of dsl 0.9.0 that includes
+/// the content VOCABULARY, which a project declares in an imported `enums:`
+/// block. Leaving the imports unresolved would analyze a different (under-
+/// assembled) document than either surface really sees, so the golden would
+/// stop being a golden.
+fn input_for_in(text: &str, dir: &std::path::Path) -> CheckInput {
+    let (doc, _) = lute_syntax::parse(text);
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    CheckInput {
+        imports: lute_check::resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span),
+        ..input_for(text)
+    }
+}
+
 /// A `TextIndex` over the exact document text the diagnostics' byte offsets refer
 /// to — the same index the LSP backend builds in `analyze()`.
 fn idx(text: &str) -> TextIndex<'_> {
@@ -171,11 +191,17 @@ fn headless_and_lsp_diagnostics_match() {
 
 /// Warning-bearing golden: `bianca-s01ep02.lute` is error-clean but carries a
 /// `W-INJECT-CONFLICT` warning, so the golden also covers the Warning severity
-/// round-trip. Same equality invariant.
+/// round-trip. Same equality invariant. Its content vocabulary arrives through
+/// its `uses: base.schema.yaml` (dsl 0.9.0), and the injected-anchor conflict it
+/// carries is only computable once that declaration's `anchor` `default:` is in
+/// scope — so the imports must be resolved, exactly as both surfaces do.
 #[test]
 fn headless_and_lsp_diagnostics_match_warning_bearing() {
     let text = std::fs::read_to_string("../../docs/examples/bianca-s01ep02.lute").unwrap();
-    let res = check(&input_for(&text));
+    let res = check(&input_for_in(
+        &text,
+        std::path::Path::new("../../docs/examples"),
+    ));
 
     assert!(
         !res.diagnostics.is_empty(),
@@ -234,6 +260,14 @@ fn divergence_holds_under_plugin_project() {
     // The plugin's provider catalog (same set both surfaces would use), so the
     // `providerRef` id `bianca_service_01` resolves and positions match.
     let providers = ProviderSet::load("../../docs/examples/idola-project/catalog");
+    // The scene's own `uses:` chain, resolved by the SAME `resolve_imports` both
+    // surfaces call. `idola.minigame` ships directives and a bridge but no
+    // vocabulary, so this subproject declares its content vocabulary in a project
+    // schema (dsl 0.9.0) — an unresolved import would leave every `emotion=`/
+    // `action=` value undeclared and the fixture would no longer be the
+    // "clean once the plugin resolves" document this golden is about.
+    let dir = std::path::Path::new("../../docs/examples/idola-project");
+    let imports = lute_check::resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span);
 
     let input = CheckInput {
         text: text.clone(),
@@ -241,7 +275,7 @@ fn divergence_holds_under_plugin_project() {
         snapshot,
         providers,
         mode: Mode::Author,
-        imports: SchemaImports::default(),
+        imports,
         components: Default::default(),
     };
     let res = check(&input);
@@ -328,10 +362,12 @@ fn divergence_holds_under_plugin_defs() {
         .expect("temp plugindef project has a lute.project.yaml");
 
     // A scene whose whole `<when test>` bool guard is a bare plugin-def `@ref`;
-    // only the ref differs between the two cases.
+    // only the ref differs between the two cases. Arm bodies sit on their OWN
+    // lines: an inline `<when …>@narrator: a` silently DROPPED that content
+    // line and is `E-TAG-INLINE-BODY` (dsl §2.3).
     let scene = |guard: &str| {
         format!(
-            "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n"
+            "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n"
         )
     };
 
@@ -524,6 +560,81 @@ fn divergence_holds_under_uses_import() {
     );
 }
 
+/// No-divergence when the vocabulary is declared INLINE rather than imported
+/// (dsl 0.9.0). `enums:` is in `UNIVERSAL_KEYS`, so a document may declare its
+/// own domains, and both surfaces resolve them through the SAME
+/// `merge_domains` seam `check()` calls — there is no separate LSP domain
+/// resolution to drift. Two cases, both with the declaration inline and NO
+/// `uses:`: (a) a member the inline block declares is accepted, and (b) one it
+/// does not is `E-BAD-ENUM` whose message quotes the INLINE member list, so a
+/// surface that dropped the inline declaration could not produce it.
+#[test]
+fn divergence_holds_under_inline_enums() {
+    // (a) happy path: the inline declaration alone makes `emotion` resolvable.
+    let ok = "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\n\
+              enums:\n  emotion: [neutral, gleeful]\n---\n## Shot 1.\n\
+              @bianca{emotion=\"gleeful\"}: declared inline.\n";
+    let res = check(&input_for(ok));
+    assert!(
+        res.diagnostics.iter().all(|d| d.severity != Severity::Error),
+        "an inline `enums:` declaration must satisfy the line; got {:?}",
+        res.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+    );
+    let index = idx(ok);
+    let headless: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &index))
+        .collect();
+    let via_lsp: Vec<Norm> = res
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &index, &test_uri())))
+        .collect();
+    assert_eq!(
+        headless, via_lsp,
+        "headless and LSP surfaces diverged under an inline `enums:` declaration"
+    );
+
+    // (b) non-vacuous: a non-member is E-BAD-ENUM, and the message enumerates
+    // the inline members — the assertion that the inline block is LIVE, not
+    // merely tolerated.
+    let bad = "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\n\
+               enums:\n  emotion: [neutral, gleeful]\n---\n## Shot 1.\n\
+               @bianca{emotion=\"zzz\"}: not a declared member.\n";
+    let bres = check(&input_for(bad));
+    let bad_enum = bres
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-BAD-ENUM")
+        .unwrap_or_else(|| {
+            panic!(
+                "a non-member against an inline declaration must be E-BAD-ENUM; got {:?}",
+                bres.diagnostics.iter().map(|d| d.code.clone()).collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        bad_enum.message.contains("neutral, gleeful"),
+        "the message must quote the INLINE member list: {}",
+        bad_enum.message
+    );
+    let bindex = idx(bad);
+    let bheadless: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_headless(d, &bindex))
+        .collect();
+    let bvia_lsp: Vec<Norm> = bres
+        .diagnostics
+        .iter()
+        .map(|d| normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(d, &bindex, &test_uri())))
+        .collect();
+    assert_eq!(
+        bheadless, bvia_lsp,
+        "E-BAD-ENUM against an inline declaration diverged between surfaces"
+    );
+}
+
 /// No-divergence under `components:` component imports (dsl §13). Two cases: (a)
 /// an error-clean scene that imports + `::use`s a valid presentational component
 /// (resolved via the SAME `resolve_components` both surfaces call) and (b) a scene
@@ -541,7 +652,14 @@ fn divergence_holds_under_components() {
     .unwrap();
 
     // (a) happy path: import + ::use a valid component cleanly; projections agree.
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [greet.lute]\n---\n## Shot 1.\n::use{component=\"greet\" who=\"bianca\"}\n";
+    // `greet.lute`'s `::auto` writes no `anchor`, so `auto-anchor-on-show` reads
+    // the `anchor` domain's `default:` — the scene declares that slot inline, or
+    // the implicit read is `E-DOMAIN-UNKNOWN` (dsl 0.9.0 D-D) and drowns out the
+    // component projection this case is about.
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+                components: [greet.lute]\nenums:\n  anchor:\n    \
+                members: [left, center, right]\n    default: center\n\
+                ---\n## Shot 1.\n::use{component=\"greet\" who=\"bianca\"}\n";
     let (doc, _) = lute_syntax::parse(text);
     let (meta0, _) = lute_check::parse_meta(
         &doc.meta,

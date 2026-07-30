@@ -48,7 +48,7 @@ pub fn hover_at(
             // enum attr documents its domain; else the attr's own declaration.
             if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
                 asset_segment_hover(kind, doc, off)
-            } else if let Some(vals) = attr_enum_values(snapshot, imports, dir, key) {
+            } else if let Some(vals) = attr_enum_values(snapshot, imports, &meta, dir, key) {
                 Some(format!("**enum** `{key}`\n\ndomain: {}", vals.join(", ")))
             } else {
                 attr_hover(snapshot, dir, key)
@@ -343,11 +343,39 @@ mod tests {
         let text = "## Shot 1.\n::auto{character=\"b\" anchor=\"center\"}\n";
         let doc = parsed(text);
         let off = pos_on(text, "center");
-        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let h = hover_at(
+            &doc,
+            &lute_test_vocab::vocab_snapshot(),
+            &SchemaImports::default(),
+            off,
+        )
+        .unwrap();
         let s = contents_text(&h);
         assert!(
             s.contains("left") && s.contains("right"),
             "shows enum domain: {s}"
+        );
+    }
+
+    /// The declaration-site twin of the test above: with the CORE snapshot (dsl
+    /// 0.9.0 D-A — it ships NO members), `anchor` can only resolve through the
+    /// document's OWN inline `enums:` projection. Hover goes through the same
+    /// `merge_domains` seam `check()` does, so an inline declaration documents
+    /// itself exactly as a plugin/imported one does.
+    #[test]
+    fn hover_on_inline_declared_domain_shows_its_members() {
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n\
+                    enums:\n  anchor:\n    members: [portside, midships, starboard]\n    \
+                    default: midships\n---\n## Shot 1.\n\
+                    ::auto{character=\"b\" anchor=\"midships\"}\n";
+        let doc = parsed(text);
+        let off = pos_on(text, "\"midships\"") + 1;
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off)
+            .expect("an inline `enums:` declaration must document its own attr value");
+        let s = contents_text(&h);
+        assert!(
+            s.contains("portside") && s.contains("starboard"),
+            "shows the INLINE domain: {s}"
         );
     }
 

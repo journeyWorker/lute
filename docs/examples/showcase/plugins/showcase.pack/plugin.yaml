@@ -9,6 +9,7 @@ exports:
   bridge: bridge/
   assetkinds: assetkinds/
   defs: defs/
+  enums: enums/
 options:
   - { name: resultScope, type: { enum: [scene, run] }, default: scene }
   - { name: allowedKinds, type: { list: { enum: [rhythm, puzzle, timing] } }, default: [rhythm, puzzle, timing] }

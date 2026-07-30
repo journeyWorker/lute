@@ -1,0 +1,26 @@
+# This subproject's own content vocabulary (dsl 0.9.0 D-A/D-C). `idola-project`
+# is a project root in its own right (it has its own `lute.project.yaml`), so it
+# declares its own members — a sibling root's declaration never reaches here,
+# and because the roots are separate there is no `E-DOMAIN-DUP` between them.
+# `idola.minigame` is a bridge/directive pack that ships no vocabulary, so the
+# project schema route is the one to use.
+#
+# This is the file shape `lute init` scaffolds, and `lute doctor <dir>` lists
+# which slots a root has declared.
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+  mood: [bright, peaceful, tense, romantic, upbeat]
+  volume: [silent, down, normal, up, full]
+  musicAction: [start, change, stop, resume, fade-out]
+  vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
+  # Long form (dsl 0.9.0 D-D): the two slots whose members carry semantics the
+  # compiler reads — `anchor`'s absent-attr member and `action`'s exiting
+  # members — must spell them out; a bare list for either is
+  # `E-ENUM-MISSING-SEMANTICS`.
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fade-in-up, fade-in-slow, slide-in-left, walk-in, idle, wave, sway, lean,
+              pose-turn, fade-out, fade-out-down, fade-out-slow, hide]
+    exits: [fade-out, fade-out-down, fade-out-slow, hide]

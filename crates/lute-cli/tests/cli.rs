@@ -897,3 +897,269 @@ fn fix_migrates_line_and_choice_as_in_place_idempotent() {
         "second fix run must be a no-op"
     );
 }
+
+// --- dsl 0.9.0 D-F: vocabulary OWNERSHIP. The compiler declares the seven
+// slots and ships no members, so the opinionated starter set lives in the
+// TEMPLATE (`lute init`) — a file the author owns and edits — and `lute
+// doctor` reports which slots a project actually resolves, so a missing one
+// surfaces before an author hits `E-DOMAIN-UNKNOWN`.
+
+/// `lute init` must produce a project that checks clean out of the box, which
+/// is only possible if it declares a vocabulary AND the scaffolded scene can
+/// REACH it: the starter scene uses an `emotion=` attr, so an unreachable
+/// (un-`uses:`-ed) declaration fails this with `E-DOMAIN-UNKNOWN`.
+#[test]
+fn init_scaffolds_a_checkable_vocabulary() {
+    let dir = temp_dir("init-vocab");
+    let proj = dir.join("proj");
+    let out = Command::new(BIN)
+        .args(["init", proj.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "init failed: {out:?}");
+    assert!(
+        proj.join("vocabulary.schema.yaml").is_file(),
+        "init must scaffold a vocabulary declaration"
+    );
+    let scene = std::fs::read_to_string(proj.join("scenes/opening.lute")).unwrap();
+    assert!(
+        scene.contains("emotion="),
+        "the starter scene must USE a vocabulary slot, or `check-project` below \
+         would pass without ever resolving the declaration:\n{scene}"
+    );
+    let check = Command::new(BIN)
+        .args(["check-project", proj.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "scaffolded project must check clean:\n{}{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+}
+
+/// `lute doctor` reports the seven vocabulary slots against what the project
+/// actually resolves: every slot declared for a fresh scaffold, and every slot
+/// missing once the declaration is deleted.
+#[test]
+fn doctor_reports_which_vocabulary_slots_resolve() {
+    const SLOTS: &[&str] = &[
+        "emotion",
+        "action",
+        "anchor",
+        "mood",
+        "volume",
+        "musicAction",
+        "vfxType",
+    ];
+    let dir = temp_dir("doctor-vocab");
+    let proj = dir.join("proj");
+    assert!(Command::new(BIN)
+        .args(["init", proj.to_str().unwrap()])
+        .output()
+        .unwrap()
+        .status
+        .success());
+
+    let out = Command::new(BIN)
+        .args(["doctor", proj.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let declared = text
+        .lines()
+        .find(|l| l.contains("vocabulary slots declared"))
+        .unwrap_or_else(|| panic!("doctor must report declared slots:\n{text}"))
+        .to_string();
+    for slot in SLOTS {
+        assert!(
+            declared.contains(slot),
+            "the scaffolded vocabulary declares `{slot}`:\n{declared}"
+        );
+    }
+    assert!(
+        !text.contains("not declared"),
+        "a fresh scaffold leaves no slot undeclared:\n{text}"
+    );
+
+    // Delete the declaration: the SAME report must now name every slot as
+    // undeclared, so it tracks the project rather than printing a constant.
+    std::fs::remove_file(proj.join("vocabulary.schema.yaml")).unwrap();
+    let out = Command::new(BIN)
+        .args(["doctor", proj.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let missing = text
+        .lines()
+        .find(|l| l.contains("not declared"))
+        .unwrap_or_else(|| panic!("doctor must report undeclared slots:\n{text}"))
+        .to_string();
+    for slot in SLOTS {
+        assert!(
+            missing.contains(slot),
+            "`{slot}` is undeclared once the vocabulary is gone:\n{missing}"
+        );
+    }
+    assert!(
+        text.contains("vocabulary slots declared: none"),
+        "no slot resolves without the declaration:\n{text}"
+    );
+}
+
+/// Write `rel` under `dir`, creating parents. The vocabulary/doctor fixtures
+/// below are nested plugin trees, so every one of them needs this.
+fn write_at(dir: &std::path::Path, rel: &str, content: &str) {
+    let path = dir.join(rel);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, content).unwrap();
+}
+
+/// `doctor <dir>` and `check-project <dir>` MUST resolve the same project root
+/// for the same target, or `doctor` reports a vocabulary the checker rejects.
+///
+/// The fixture is the asymmetry itself: `proj/lute.project.yaml` activates a
+/// plugin whose `enums` export declares `musicAction`, `proj/scenes/` carries NO
+/// manifest, and `proj/scenes/a.lute` writes `::music{action="start"}`.
+/// `check-project proj/scenes` cannot ascend above the requested dir, loads no
+/// project, and reports `E-DOMAIN-UNKNOWN`. A `doctor` that walks up to `proj`
+/// would call the same slot declared.
+///
+/// A plugin `enums` export is the ONLY root-dependent domain source: a project
+/// schema's `enums:` reaches a scene through its own `uses:`, resolved relative
+/// to the scene's directory and so independent of the project root. Only plugin
+/// activation flows through `lute.project.yaml`.
+#[test]
+fn doctor_and_check_project_agree_on_the_project_root_boundary() {
+    let dir = temp_dir("doctor-root-boundary");
+    let proj = dir.join("proj");
+    write_at(
+        &proj,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: demo\nprofiles:\n  demo:\n    plugins: { demo.vocab: true }\n",
+    );
+    write_at(
+        &proj,
+        "plugins/demo.vocab/plugin.yaml",
+        "id: demo.vocab\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\nexports:\n  enums: enums/\n",
+    );
+    write_at(
+        &proj,
+        "plugins/demo.vocab/enums/vocab.yaml",
+        "enums:\n  musicAction: [start, stop]\n",
+    );
+    write_at(
+        &proj,
+        "scenes/a.lute",
+        "---\nkind: scene\ncharacter: narrator\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n::music{action=\"start\"}\n@narrator: hello\n",
+    );
+    let scenes = proj.join("scenes");
+
+    let check = Command::new(BIN)
+        .args(["check-project", scenes.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let check_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+    assert!(
+        check_text.contains("E-DOMAIN-UNKNOWN") && check_text.contains("musicAction"),
+        "fixture premise: the checker cannot ascend above the requested dir, so \
+         `musicAction` is undeclared for it:\n{check_text}"
+    );
+
+    let out = Command::new(BIN)
+        .args(["doctor", scenes.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let declared = text
+        .lines()
+        .find(|l| l.contains("vocabulary slots declared"))
+        .unwrap_or_else(|| panic!("doctor must report declared slots:\n{text}"))
+        .to_string();
+    assert!(
+        !declared.contains("musicAction"),
+        "doctor called `musicAction` declared while `check-project` on the SAME \
+         dir reports E-DOMAIN-UNKNOWN — doctor ascended above the requested \
+         directory:\n{declared}"
+    );
+    let missing = text
+        .lines()
+        .find(|l| l.contains("not declared"))
+        .unwrap_or_else(|| panic!("doctor must report undeclared slots:\n{text}"))
+        .to_string();
+    assert!(
+        missing.contains("musicAction"),
+        "doctor must agree with the checker's verdict for this dir:\n{missing}"
+    );
+}
+
+/// A project-resolution failure is doctor's REASON TO EXIST, so it must ride the
+/// `Check` model: once (not once per document), in the human checklist AND under
+/// a stable `--json` key, with NOTHING on stderr — stderr plus exit `2` stays
+/// reserved for an unreadable target.
+#[test]
+fn doctor_reports_a_broken_project_manifest_once_as_a_check() {
+    let dir = temp_dir("doctor-broken-project");
+    let proj = dir.join("proj");
+    write_at(&proj, "lute.project.yaml", "defaultProfile: [not, a, string]\n");
+    write_at(
+        &proj,
+        "scenes/a.lute",
+        "---\nkind: scene\ncharacter: narrator\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n@narrator: a\n",
+    );
+    write_at(
+        &proj,
+        "scenes/b.lute",
+        "---\nkind: scene\ncharacter: narrator\nseason: 1\nepisode: 2\n---\n\n## Shot 1.\n\n@narrator: b\n",
+    );
+
+    // Two documents resolve the same broken project: the per-file loop used to
+    // print the identical message twice, straight to stderr.
+    let out = Command::new(BIN)
+        .args(["doctor", proj.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "doctor reports, never gates: {out:?}");
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        stderr.is_empty(),
+        "a reportable project problem belongs in the checklist, not on stderr:\n{stderr}"
+    );
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let hits = text.matches("invalid type: sequence").count();
+    assert_eq!(
+        hits, 1,
+        "the project problem must appear ONCE regardless of document count:\n{text}"
+    );
+
+    let out = Command::new(BIN)
+        .args(["doctor", proj.to_str().unwrap(), "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stderr).is_empty(),
+        "`--json` must be self-contained too: {out:?}"
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let entry = &v["checks"]["projectResolution"];
+    assert_eq!(entry["ok"], false, "a broken project is a ✗: {v}");
+    let detail = entry["detail"].as_str().unwrap_or_default();
+    assert_eq!(
+        detail.matches("invalid type: sequence").count(),
+        1,
+        "deduplicated in `--json` as well: {v}"
+    );
+    assert!(
+        entry["hint"].is_string(),
+        "a ✗ carries a remedy hint: {v}"
+    );
+}

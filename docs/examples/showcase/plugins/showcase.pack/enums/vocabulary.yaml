@@ -1,0 +1,35 @@
+# plugin §4 `enums` export — one of the THREE 0.9.0 declaration routes
+# (dsl 0.9.0 §3/D-C). The compiler declares the vocabulary SLOTS and ships no
+# members; here an engine/genre pack ships the members for every project that
+# activates it, so a scene under `docs/examples/showcase` needs no `enums:` of
+# its own. (The top-level `docs/examples` demonstrates the imported-schema
+# route, a project schema's `enums:` in `base.schema.yaml`; the third route is
+# an `enums:` block in a document's OWN frontmatter, which is what a single file
+# or the playground uses.) A name declared by BOTH a plugin and either project
+# route in one root is `E-DOMAIN-DUP` and the plugin wins, so each root picks
+# one route per slot.
+#
+# A plugin-exported vocabulary surfaces on the capability snapshot (`lute
+# context --json` -> `enums`), which neither project route does — both land
+# under the separate `projectEnums` key.
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+  # The showcase pack's own genre palette: deliberately not the same list as
+  # `docs/examples/base.schema.yaml`, because the members are the PROJECT's (or
+  # its engine's) to choose — only the slot name is the compiler's.
+  mood: [bright, tense, peaceful, romantic, upbeat]
+  volume: [silent, down, normal, up, full]
+  musicAction: [start, change, stop, resume, fade-out]
+  vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
+  # Long form (dsl 0.9.0 D-D): `anchor` MUST say which member applies when the
+  # attr is absent, and `action` MUST say which members exit their character —
+  # the compiler reads `exits:` rather than inferring from a name prefix. The
+  # same validator runs on this export and on a project schema's `enums:`, so a
+  # plugin cannot ship a slot without its semantics either.
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fade-in-up, fade-in-slow, slide-in-left, walk-in, idle, wave, sway, lean,
+              pose-turn, fade-out, fade-out-down, fade-out-slow, hide]
+    exits: [fade-out, fade-out-down, fade-out-slow, hide]

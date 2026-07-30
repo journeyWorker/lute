@@ -33,6 +33,7 @@ cargo run -q -p lute-cli -- check-project docs/examples/investigation
 Exit `0`. Every file checks clean except for **one project-wide warning** on the
 quest:
 
+<!-- lute-diagnostics -->
 ```
 docs/examples/investigation/quests/identify-killer.lute:
   26:3: warning [W-UNPROVEN-RELATIONAL] `done="holds(implicates(ledger, blake))"` is gated by a

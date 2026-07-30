@@ -58,7 +58,7 @@ pub fn complete_at(
             if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
                 asset_segment_items(kind, doc, providers, off)
             } else {
-                enum_value_items(snapshot, imports, dir, key)
+                enum_value_items(snapshot, imports, &meta, dir, key)
             }
         }
         Cursor::Cel {
@@ -328,10 +328,11 @@ fn attr_key_items(
 fn enum_value_items(
     snapshot: &CapabilitySnapshot,
     imports: &SchemaImports,
+    meta: &lute_check::TypedMeta,
     directive: &str,
     key: &str,
 ) -> Vec<CompletionItem> {
-    attr_enum_values(snapshot, imports, directive, key)
+    attr_enum_values(snapshot, imports, meta, directive, key)
         .into_iter()
         .flatten()
         .map(|v| CompletionItem {
@@ -667,7 +668,7 @@ mod tests {
         let off = text.find("anchor=\"").unwrap() + "anchor=\"".len();
         let items = complete_at(
             &doc,
-            &load_core_snapshot(),
+            &lute_test_vocab::vocab_snapshot(),
             &ProviderSet::default(),
             &SchemaImports::default(),
             off,
@@ -676,6 +677,32 @@ mod tests {
         assert!(
             ls.contains(&"left") && ls.contains(&"center") && ls.contains(&"right"),
             "anchor enum members: {ls:?}"
+        );
+    }
+
+    /// The declaration-site twin: with the CORE snapshot (dsl 0.9.0 D-A — no
+    /// shipped members), the only source of `anchor`'s members is the document's
+    /// OWN inline `enums:` projection, so these candidates prove completion
+    /// resolves through the same `merge_domains` seam `check()` does.
+    #[test]
+    fn completion_of_inline_declared_domain_values() {
+        let text = "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n\
+                    enums:\n  anchor:\n    members: [portside, midships, starboard]\n    \
+                    default: midships\n---\n## Shot 1.\n\
+                    ::auto{character=\"b\" anchor=\"\"}\n";
+        let doc = parsed(text);
+        let off = text.find("anchor=\"\"").unwrap() + "anchor=\"".len();
+        let items = complete_at(
+            &doc,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        let ls = labels(&items);
+        assert!(
+            ls.contains(&"portside") && ls.contains(&"midships") && ls.contains(&"starboard"),
+            "inline-declared anchor members: {ls:?}"
         );
     }
 

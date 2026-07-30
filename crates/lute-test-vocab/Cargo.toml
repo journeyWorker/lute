@@ -1,0 +1,9 @@
+[package]
+name = "lute-test-vocab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+lute-manifest = { path = "../lute-manifest" }

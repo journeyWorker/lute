@@ -65,7 +65,7 @@ bunx @lute-lang/lute check scene.lute
 물으면 그녀의 마음이 조금 누그러집니다. `<match>`는 첫 일치가 우선이며 `<otherwise>`가
 필수라서, 모든 분기는 total합니다.
 
-```lute
+```lute check
 ---
 kind: scene
 character: bianca
@@ -75,6 +75,8 @@ title: The Hostess with a Name
 pov: fixer
 state:
   scene.affect.bianca: { type: number, default: 0 }
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 defs:
   fond: { type: bool, cel: "scene.affect.bianca >= 1" }
 ---
@@ -111,12 +113,15 @@ defs:
 정교하게 안무된 하나의 순간, 여러 개의 동시 트랙 — 하나의 대상을 속성별 트랙
 (`pos`, `opacity`)으로 나누고, 독립적인 카메라 트랙과 나란히 배치합니다:
 
-```lute
+```lute check
 ---
 kind: scene
 character: bianca
 season: 1
 episode: 1
+enums:
+  anchor: { members: [left, center, right], default: center }
+  action: { members: [slide-in-left, fade-in-up, fade-out], exits: [fade-out] }
 ---
 
 ## Beat

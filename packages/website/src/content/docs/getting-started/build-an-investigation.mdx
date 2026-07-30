@@ -210,6 +210,7 @@ cargo run -q -p lute-cli -- check-project docs/examples/investigation
 Exit `0`. Every file checks clean; the only thing reported is **one project-wide warning** on the
 quest:
 
+{/* lute-diagnostics */}
 ```
 ok: docs/examples/investigation/quests/identify-killer.lute (0 warning(s))
 ok: docs/examples/investigation/scenes/confrontation.lute (0 warning(s))
@@ -337,7 +338,7 @@ cargo run -q -p lute-cli -- compile docs/examples/investigation/scenes/crime-sce
   --project docs/examples/investigation -o /tmp/crime-scene.json
 ```
 
-Exit `0`; the artifact is stamped `"lute": "0.8.0"` / `"irVersion": "0.8.0"`.
+Exit `0`; the artifact is stamped `"lute": "0.9.0"` / `"irVersion": "0.8.0"`.
 Every document in the project compiles. That artifact — not the source — is what
 an engine plays through the [runtime contract](/tooling/runtime-contract/).
 

@@ -45,7 +45,7 @@ Every artifact opens with a fixed envelope (the `Artifact` struct in
 | `capabilityVersion` | a plugin-snapshot hash; refuse a mismatch. |
 | `meta` | scene meta (`character`/`season`/`episode`/`episodeId`) or quest meta. |
 | `state` | the folded init/type table. |
-| `entities` / `enums` / `relations` / `seedFacts` / `rules` | the relational vocabulary (omitted when empty). |
+| `entities` / `enums` / `relations` / `seedFacts` / `rules` | the declared vocabulary (omitted when empty). |
 | `commands` | the flat, ordered, addressed command stream. |
 | `prereqEdges` | advisory raw `after` prerequisite edges (omitted when empty). |
 | `shots` | authored `## ` shot headings, `{shot, heading}` (omitted when empty). |
@@ -53,6 +53,20 @@ Every artifact opens with a fixed envelope (the `Artifact` struct in
 One artifact is produced per document. A project's engine **unions** the
 `relations` / `rules` / `seedFacts` / `entities` / `enums` / `prereqEdges`
 across every artifact it loads, exactly as it concatenates the command streams.
+
+`enums` is the one field whose **content** moved at language `0.9.0` while the
+schema stood still. It has always carried the domains an author declares in an
+`enums:` block; since content-vocabulary members became the project's to
+declare, those domains — `emotion`, `action`, `anchor`, `mood`, `volume`,
+`musicAction`, `vfxType` — arrive through the same array. A project declaring
+them inline or through `uses:`/`extends:` emits them; a project whose members
+come from a plugin's `enums` export emits **no** `enums` at all, because a
+plugin vocabulary is capability surface (folded into `capabilityVersion`), not
+per-document data. Either way this is data an engine already unions, so nothing
+new is required of it — and `irVersion` stays `0.8.0` precisely because no field
+was added, renamed, or moved. Members carrying compiler semantics (`action`'s
+`exits:`, `anchor`'s `default:`) are resolved away at compile time and never
+serialized: an engine needs no member semantics at runtime.
 
 ## Version negotiation
 

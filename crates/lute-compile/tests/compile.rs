@@ -8,7 +8,7 @@ fn input(text: &str) -> CheckInput {
     CheckInput {
         text: text.to_string(),
         uri: "test".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
+        snapshot: lute_test_vocab::vocab_snapshot(),
         providers: Default::default(),
         mode: Mode::Ci,
         imports: Default::default(),
@@ -198,7 +198,7 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.8.0");
+    assert_eq!(artifact.lute, "0.9.0");
     assert_eq!(artifact.ir_version, "0.8.0");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(

@@ -405,9 +405,9 @@ pub(crate) fn check_domain_member(
             "E-DOMAIN-UNKNOWN",
             Severity::Error,
             format!(
-                "`{name}` is not a known domain — declared by neither the plugin/core \
-                 vocabulary nor a project schema (dsl data-catalog foundation, `::{tag}` \
-                 attribute `{}`)",
+                "`{name}` is not a declared domain — declare its members in an `enums:` block \
+                 in this document's own frontmatter, in a project schema reached through \
+                 `uses:`, or in a plugin's `enums` export before using `{}` (dsl 0.9.0 D-C)",
                 attr.key
             ),
             attr.value_span,
@@ -724,13 +724,17 @@ mod tests {
         BTreeMap::new()
     }
 
-    /// The A2 baseline `domains` view (`snapshot.domains`, no project schema
-    /// imports) — for tests that exercise a core `{domain: X}`-typed staging
-    /// attr (`music.action`/`volume`, `auto.anchor`, `vfx.type` — A5 dedupe).
-    /// `empty_domains()` above stays correct for every OTHER test here, none
-    /// of which touch a domain-typed attr.
-    fn core_domains() -> BTreeMap<String, Domain> {
-        load_core_snapshot().domains
+    /// The baseline `domains` view (no project schema imports) — for tests that
+    /// exercise a `{domain: X}`-typed staging attr (`music.action`/`volume`,
+    /// `auto.anchor`, `vfx.type` — A5 dedupe). Sourced from the shared test
+    /// vocabulary (`lute_test_vocab`, a dev-dependency, so this `#[cfg(test)]`
+    /// module may use it) rather than from `load_core_snapshot().domains`: from
+    /// 0.9.0 the vocabulary is the PROJECT's to declare, and these tests own
+    /// their vocabulary the way a real project does. `empty_domains()` above
+    /// stays correct for every OTHER test here, none of which touch a
+    /// domain-typed attr.
+    fn vocab_domains() -> BTreeMap<String, Domain> {
+        lute_test_vocab::vocab_snapshot().domains
     }
 
     fn ctx() -> Ctx<'static> {
@@ -754,14 +758,14 @@ mod tests {
     #[test]
     fn bad_enum_value_errors() {
         let d = directive("music", &[("action", "explode")]); // not in musicAction enum
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &core_domains(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &vocab_domains(), &ctx());
         assert!(errs.iter().any(|e| e.code == "E-BAD-ENUM"));
     }
 
     #[test]
     fn known_directive_valid_attrs_pass() {
         let d = directive("music", &[("action", "start"), ("mood", "peaceful")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &core_domains(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &vocab_domains(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -834,7 +838,7 @@ mod tests {
         // `music` (core) declares no timing attrs at all -- the fallback must
         // apply to core directives just as much as plugin ones.
         let d = directive("music", &[("action", "start"), ("delay", "1.0")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &core_domains(), &ctx());
+        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &vocab_domains(), &ctx());
         assert!(errs.is_empty(), "{errs:?}");
     }
 

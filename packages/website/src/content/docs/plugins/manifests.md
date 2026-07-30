@@ -41,6 +41,8 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `stampattrs/*.yaml` — cross-cutting attributes admissible on every directive and content line (below).
 - `enums/*.yaml`, `frontmatter/*.yaml`, `events/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, world events, and hover docs.
 
+`enums/` is the third route a project gets its [content vocabulary](/language/vocabulary/) from, and the only one that is *capability* rather than project data: `lute.core` declares the seven slots and exports an **empty** `enums`, so an engine or genre pack ships members to every project that activates it. Its entries take the same long form as an author's `enums:` block — a bare sequence is shorthand for `{ members: [...] }`, and `action` must carry `exits:` while `anchor` must carry `default:`.
+
 ## Cross-cutting attributes (`stampAttrs`)
 
 Ordinary attributes are declared per directive. An engine that tags *every* record with the same key — an analytics id, an experiment bucket, a bonus hook — had no declaration site for one, and could never put it on a content line at all. `stampattrs/*.yaml` is that site:
@@ -68,6 +70,7 @@ An **unauthored** stamp attribute is not injected — not even when its declarat
 
 The core stamp owns seven names — `at`, `duration`, `delay`, `wait`, `timeline`, `provenance`, `source`. A plugin declaring an attribute under any of them is rejected at assembly with **`E-PLUGIN-RESERVED-STAMP-ATTR`**:
 
+<!-- lute-diagnostics -->
 ```
 $ lute check scene.lute --project .
 lute: E-PLUGIN-RESERVED-STAMP-ATTR: plugin `idola.bonus` declares reserved stamp attribute `duration`; `at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source` are owned by the core stamp (plugin §14)
@@ -114,6 +117,7 @@ Both failures are caught at **assembly**, before anything is lowered — a decla
 - **`E-LOWER-RECORD-UNKNOWN`** — `record:` names something outside the eight.
 - **`E-LOWER-RECORD-FIELD`** — a target field the record kind does not have, or a `fromAttr` naming an attribute the directive never declares.
 
+<!-- lute-diagnostics -->
 ```
 $ lute check scene.lute --project .
 lute: E-LOWER-RECORD-FIELD: directive `::backdrop` lowers to record `background`: unknown target field `mood` (record `background` binds: location, time, assetId)

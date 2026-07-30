@@ -76,13 +76,45 @@
     },
     "enumsMap": {
       "type": "object",
-      "description": "entities.rs::parse_enums — { name: [member...] }, each becomes a closed Domain.",
+      "description": "entities.rs::parse_enums — vocabulary slot name -> members, each becoming a closed ordered Domain. dsl 0.9.0 D-F moved content-vocabulary MEMBERS out of the compiler (`lute.core/enums.yaml` is `enums: {}`), so this block is where a project declares its own; using a slot nobody declared is `E-DOMAIN-UNKNOWN`.",
       "additionalProperties": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
+        "$ref": "#/definitions/enumDecl"
       }
+    },
+    "enumDecl": {
+      "description": "schema.rs::EnumDecl (untagged: `Members(Vec<String>)` | `Long { members, default, exits }`) and the equivalent hand-rolled shapes in entities.rs::parse_enums. A bare sequence is shorthand for `{ members: [...] }` (dsl 0.9.0 D-D), so every pre-0.9.0 declaration keeps validating. `members` is REQUIRED in the long form — it carries no `#[serde(default)]`, and parse_enums SKIPS an entry whose `members:` is missing rather than declaring an empty closed domain. `default:`/`exits:` are optional HERE by design: dsl 0.9.0 requires `exits:` on the `action` slot and `default:` on `anchor`, but that rule is keyed to the slot NAME and to which slots a project declares, which no positional JSON Schema can express — `lute check` owns it and reports it. Unknown keys are closed even though serde IGNORES them: a typo'd `exit:` would silently drop the stage-exit semantics with no diagnostic from any layer, which is exactly what an editor schema is for.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "members"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "members": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "default": {
+              "type": "string"
+            },
+            "exits": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
     },
     "entityDecl": {
       "description": "entities.rs::parse_entities — `{ members: [...] }` (closed) or `{ open: <any> }` (engine-populated; the VALUE is never inspected, only key presence). Neither key present silently produces no domain in Rust — flagged here as a real shape mistake.",

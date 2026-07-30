@@ -1,9 +1,11 @@
 //! Built-in content-line (`@speaker{…}:`) attribute schema (dsl 0.1.0 §7.1, §12.1).
 //! Content lines are NOT capability-schema-driven; their attribute set is a fixed
-//! part of the scene-kind vocabulary, validated here — EXCEPT `emotion`/`action`,
-//! which are domain-typed (data-catalog foundation A5) and resolve through the
-//! SAME merged-vocabulary resolver (`crate::directives::check_domain_member`) a
-//! `{domain: X}`-typed directive attr uses, not a bespoke local list.
+//! part of the scene-kind vocabulary, validated here. `emotion` and `action` are
+//! the two DOMAIN SLOTS in that set: they are domain-typed (data-catalog
+//! foundation A5, dsl 0.9.0 D-C) and resolve through the SAME merged-vocabulary
+//! resolver (`crate::directives::check_domain_member`) a `{domain: X}`-typed
+//! directive attr uses, not a bespoke local list. Neither is optional — a slot
+//! whose domain nothing declares is `E-DOMAIN-UNKNOWN`.
 
 use std::collections::BTreeMap;
 
@@ -152,21 +154,19 @@ pub fn check_content_line_attrs(
                     diags.push(d);
                 }
             }
-            // `action`: OPEN by default (preserves 0.1.0's free-string behavior —
-            // core ships no `action` domain at all). Only consult the shared
-            // resolver when SOMETHING actually declares `action` — a project
-            // schema's closed `enums:`/`entities:` (A3) or a plugin-declared
-            // `action` provider; core-only docs never trip this branch, so
-            // `action="wave"` stays clean with zero domain lookups.
-            "action"
-                if (domains.contains_key("action") || snapshot.providers.contains_key("action")) => {
-                    let mut scratch = Vec::new();
-                    check_domain_member(&line.speaker, "action", attr, domains, snapshot, providers, &mut scratch);
-                    for mut d in scratch {
-                        d.layer = Layer::Content;
-                        diags.push(d);
-                    }
+            // `action`: domain-typed like `emotion` (dsl 0.9.0 D-C). Before
+            // 0.9.0 this arm was guarded on the domain already existing, so an
+            // undeclared `action` silently skipped validation entirely — the
+            // guard is gone, and an undeclared domain is now `E-DOMAIN-UNKNOWN`
+            // from the shared resolver's step 4.
+            "action" => {
+                let mut scratch = Vec::new();
+                check_domain_member(&line.speaker, "action", attr, domains, snapshot, providers, &mut scratch);
+                for mut d in scratch {
+                    d.layer = Layer::Content;
+                    diags.push(d);
                 }
+            }
             _ => {}
         }
     }

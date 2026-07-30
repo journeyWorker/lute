@@ -369,7 +369,10 @@ fn plugin_with_enum(id: &str, dname: &str, ename: &str, members: &[&str]) -> Loa
     let mut p = plugin_with_directive(id, dname);
     p.enums.insert(
         ename.into(),
-        members.iter().map(|m| m.to_string()).collect(),
+        lute_manifest::snapshot::Domain {
+            members: members.iter().map(|m| m.to_string()).collect(),
+            ..Default::default()
+        },
     );
     p
 }

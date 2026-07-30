@@ -67,9 +67,15 @@ A `<when>` arm matches on a literal pattern (`is`), a CEL guard (`test`), or bot
 
 ```lute
 <match on="scene.mood">
-  <when is="calm">          @fixer{mono}: Steady breathing. </when>
-  <when is="tense">         @fixer{mono}: Shoulders drawn tight. </when>
-  <when is="joyful|playful">@fixer{mono}: Light in the eyes. </when>
+  <when is="calm">
+    @fixer{mono}: Steady breathing. Nothing to prove tonight.
+  </when>
+  <when is="tense">
+    @fixer{mono}: Shoulders drawn tight — I should tread carefully.
+  </when>
+  <when is="joyful|playful">
+    @fixer{mono}: Light in the eyes.
+  </when>
 </match>
 ```
 
@@ -97,5 +103,18 @@ A single content line may carry a `when="G"` guard directly: the line is emitted
 
 *(From [`docs/examples/gated-line.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/gated-line.lute).)*
 
-This is exact sugar for a one-arm match — `<match on="G"><when test="$">…</when><otherwise/></match>`
-— and lowers to that record identically, leaving the line's `code`/`lineId`/`voiceKey` unchanged.
+This is exact sugar for a one-arm match, and lowers to that record identically, leaving the line's
+`code`/`lineId`/`voiceKey` unchanged. Written out it is the explicit twin below — every tag takes a
+line of its own, because there is no inline `<when>…</when>` form:
+
+```lute
+<match on="run.metHelpfully">
+  <when test="$">
+    @sofia: You helped me back then. I've been meaning to thank you.
+  </when>
+  <otherwise>
+  </otherwise>
+</match>
+```
+
+*(That file keeps both forms, one shot each, so they stay visibly interchangeable.)*

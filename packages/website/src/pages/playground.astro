@@ -135,6 +135,15 @@ state:
   scene.affect.bianca: { type: number, default: 0 }
 defs:
   fond: { type: bool, cel: "scene.affect.bianca >= 1" }
+enums:
+  # NOTE (language 0.9.0): the compiler declares the vocabulary SLOTS — emotion,
+  # action, anchor, mood, volume, musicAction, vfxType — and ships NO members, so
+  # a slot must be declared before use or it is E-DOMAIN-UNKNOWN. There are three
+  # declaration routes, and THIS one — an enums: block in the document's own
+  # frontmatter — is the one the playground can use: it checks ONE in-memory
+  # document with no filesystem, so it resolves no uses: import and activates no
+  # plugin. See docs/proposals/scenario-dsl/0.9.0.md section 3.
+  emotion: [neutral, delighted, shy, content]
 ---
 
 # The Hostess with a Name
@@ -142,8 +151,8 @@ defs:
 ## Closing Up
 
 @narrator: A hostess walked over with a menu pressed to her chest. Her face caught.
-@bianca{emotion="surprised"}: Oh!
-@bianca{emotion="delighted"}: Mr. Fixer! From the ramen counter — you eat at Mechageki too, isn't it wonderful?
+@bianca{emotion="delighted"}: Oh!
+@bianca: Mr. Fixer! From the ramen counter — you eat at Mechageki too, isn't it wonderful?
 
 /* a choice of TONE — both paths get the number; the gentle ask warms her */
 <branch id="number">
@@ -156,7 +165,7 @@ defs:
   </choice>
 </branch>
 
-@bianca{emotion="delighted"}: Of course! Right away, Mr. Fixer.
+@bianca{emotion="content"}: Of course! Right away, Mr. Fixer.
 
 /* state-driven callback — first-match-wins; <otherwise> is mandatory */
 <match on="scene.choices.number">
@@ -606,7 +615,10 @@ state:
           wasm = mod;
           try {
             const v = JSON.parse(wasm.version());
-            versionBadge.textContent = `toolchain ${v.toolchain} · IR ${v.ir}`;
+            // All three axes: as of language 0.9.0 they no longer share one
+            // number (the grammar moved, the IR contract did not), so a badge
+            // that omitted the language axis could not show what changed.
+            versionBadge.textContent = `toolchain ${v.toolchain} · language ${v.language} · IR ${v.ir}`;
             versionBadge.className = "pg-badge pg-badge-ok";
           } catch {
             versionBadge.textContent = "ready";

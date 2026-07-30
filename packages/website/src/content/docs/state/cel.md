@@ -15,9 +15,15 @@ CEL text sits in every guard and value slot:
 
 ```lute
 <match on="scene.affect.sofia">
-  <when test="$ >= 3"> ... </when>
-  <when test="@chose('couch', 'ignore')"> ... </when>
-  <otherwise> ... </otherwise>
+  <when test="$ >= 3">
+    @sofia: …
+  </when>
+  <when test="@chose('couch', 'ignore')">
+    @sofia: …
+  </when>
+  <otherwise>
+    @sofia: …
+  </otherwise>
 </match>
 ```
 

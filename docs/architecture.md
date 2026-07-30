@@ -11,12 +11,19 @@ target is the flat command-record format the engine consumes.
 
 > This document is the **implementation architecture + design rationale**. The **language** is
 > specified normatively as a versioned proposal stack — base grammar
-> [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the 0.2.0 / 0.2.2 /
-> 0.3.0 deltas, current tip [`proposals/scenario-dsl/0.3.0.md`](proposals/scenario-dsl/0.3.0.md).
+> [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
+> deltas, current tip [`proposals/scenario-dsl/0.9.0.md`](proposals/scenario-dsl/0.9.0.md).
 > The **plugin / extensibility system** is specified in
-> [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) (human overview:
-> [`plugin-system.md`](plugin-system.md)). Use the specs as the SoT and this doc for the
-> AST/compiler/LSP architecture.
+> [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
+> ([`0.0.2`](proposals/plugin-system/0.0.2.md), [`0.0.3`](proposals/plugin-system/0.0.3.md);
+> human overview: [`plugin-system.md`](plugin-system.md)). Use the specs as the SoT and this doc
+> for the AST/compiler/LSP architecture.
+>
+> **The `.lute` snippets in this file are illustrative prose, not gated fixtures.** No CI job
+> checks them semantically: the `examples` job runs `lute check-project docs/examples` and the
+> `website` job checks syntax highlighting, neither of which reads this document's code fences.
+> They are kept consistent by review. Anything you intend to *run* belongs in
+> [`examples/`](examples), which is gated.
 
 ## Why
 
@@ -164,6 +171,13 @@ non-blocking so dialogue rides over it; a focus-then-speak beat sets `wait="true
 ::camera{focus="sofia" zoom="@closeUp" duration="0.5" wait="true"}  /* holds → the line waits for the pan */
 @sofia{code="0020" emotion="neutral" action="lean"}: 그러니까, 매니저. 딱 한 뼘. 두 뼘.
 ```
+
+Every `emotion=`/`action=`/`anchor=` value above is a member of a **project-declared**
+vocabulary, not a built-in one: since dsl 0.9.0 the compiler declares the slot and ships no
+members, so this snippet checks only in a project whose schema declares `emotion`, `action`
+(with its `exits:`) and `anchor` (with its `default:`). See
+[`examples/base.schema.yaml`](examples/base.schema.yaml) for the declaration these values come
+from, and [`proposals/scenario-dsl/0.9.0.md`](proposals/scenario-dsl/0.9.0.md) §3 for the rules.
 
 ### 3. `<timeline>` — multi-track choreography block (After-Effects model)
 

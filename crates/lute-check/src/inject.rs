@@ -14,9 +14,10 @@
 //! 1. an explicit typed [`StageState`] threaded through — *one value passed
 //!    through, not scattered loop-local sets*;
 //! 2. lowering as a **pure reducer** — [`lower_node`] takes `state` by value and
-//!    a read-only `node` + `lookahead` slice and returns `(state', emit)`. No
-//!    globals, no I/O, deterministic — testable by feeding a node + state and
-//!    asserting the emitted commands + the next state;
+//!    a read-only `node` + `lookahead` slice + the resolved `domains` vocabulary
+//!    and returns `(state', emit)`. No globals, no I/O, deterministic — testable
+//!    by feeding a node + state and asserting the emitted commands + the next
+//!    state;
 //! 3. the injection ruleset as **named, ordered, pure** functions, each
 //!    unit-testable:
 //!    - [`auto_anchor_on_show`] — a show/stage with no explicit anchor → inject
@@ -29,6 +30,19 @@
 //!      auto-hide sprites left on stage across a scene change (`::bg`), the one
 //!      implicit command this rule emits (`by = "stage-bookkeeping"`);
 //! 4. [`Provenance`] `{ injected, by, reason }` on every injected command.
+//!
+//! ## Implicit vocabulary reads are CHECKED reads
+//! A rule that consults a domain's declared semantics when the corresponding
+//! attribute is ABSENT owns the diagnostic for that domain being undeclared:
+//! `check_directive` validates AUTHORED attrs only, so on the absent-attribute
+//! path no other pass ever names the domain. `auto_anchor_on_show`'s read of
+//! `anchor`'s `default:` is the one such read in this ruleset, and it reports
+//! `E-DOMAIN-UNKNOWN` (see [`missing_anchor_domain_diag`]). Every other rule
+//! either reads no vocabulary at all (`auto_pose_reset`, `entry_emotion_lookahead`,
+//! `stage_bookkeeping`'s scene-change arm) or reads it only from an attribute the
+//! author WROTE (`is_declared_exit` on `::auto`'s `action`), which the attribute
+//! check already covers. A new rule of the first shape must diagnose, not
+//! silently skip: skipping turns an undeclared slot into a behavior change.
 //!
 //! ## Data-vs-code boundary
 //! The arch doc's ideal is *manifest-driven, code-executed*: the manifest's
@@ -54,11 +68,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::snapshot::Domain;
 use lute_syntax::ast::{Attr, AttrValue, Directive, Line, Node};
-
-/// Default anchor the [`auto_anchor_on_show`] rule injects when a character is
-/// shown without one (dsl Appendix A: `anchor = left|center|right`).
-pub const DEFAULT_ANCHOR: &str = "center";
 
 /// Per-character stage entity: where the sprite stands and its current
 /// pose/emotion. `Default` = an as-yet-unpositioned sprite.
@@ -129,18 +140,25 @@ pub struct InjectedCommand {
 /// `lookahead` (the following sibling nodes) for entry-emotion resolution, and
 /// return the next state + the commands injected for this node.
 ///
-/// Deterministic and side-effect-free: same `(state, node, lookahead)` ⇒ same
-/// `(state', emit)`. The named rules run in the arch doc's order per node kind.
-/// Nested nodes (`<branch>`/`<match>`/`<timeline>` bodies) are walked by the
-/// caller (T4.9); this reducer resolves one flat node at a time.
+/// Deterministic and side-effect-free: same `(state, node, lookahead, domains)`
+/// ⇒ same `(state', emit)`. The named rules run in the arch doc's order per node
+/// kind. Nested nodes (`<branch>`/`<match>`/`<timeline>` bodies) are walked by
+/// the caller (T4.9); this reducer resolves one flat node at a time.
+///
+/// `domains` is the resolved vocabulary (dsl 0.9.0 D-D): the member-level facts
+/// this reducer needs — the `anchor` domain's `default:` and the `action`
+/// domain's `exits:` — are DECLARED there, never compiled in.
 pub fn lower_node(
     mut state: StageState,
     node: &Node,
     lookahead: &[Node],
+    domains: &BTreeMap<String, Domain>,
 ) -> (StageState, Vec<InjectedCommand>) {
     let mut emit = Vec::new();
     match node {
-        Node::Directive(d) if d.tag == "auto" => lower_auto(&mut state, d, lookahead, &mut emit),
+        Node::Directive(d) if d.tag == "auto" => {
+            lower_auto(&mut state, d, lookahead, &mut emit, domains)
+        }
         Node::Directive(d) if d.tag == "bg" => stage_bookkeeping_bg(&mut state, d, &mut emit),
         Node::Directive(d) if d.tag == "music" => {
             // Bookkeeping only: no implicit command.
@@ -162,6 +180,7 @@ fn lower_auto(
     d: &Directive,
     lookahead: &[Node],
     emit: &mut Vec<InjectedCommand>,
+    domains: &BTreeMap<String, Domain>,
 ) {
     let Some(character) = attr_str(&d.attrs, "character") else {
         return;
@@ -169,7 +188,10 @@ fn lower_auto(
     let action = attr_str(&d.attrs, "action");
 
     // Exit: the `::auto` IS the hide command — bookkeeping just frees the slot.
-    if action.as_deref().map(is_exit_action).unwrap_or(false) {
+    if action
+        .as_deref()
+        .is_some_and(|a| is_declared_exit(a, domains))
+    {
         state.on_stage.remove(&character);
         state.dirty.remove(&character);
         return;
@@ -194,47 +216,68 @@ fn lower_auto(
     }
 
     // Entrance / show.
-    auto_anchor_on_show(state, d, &character, emit);
+    auto_anchor_on_show(state, d, &character, emit, domains);
     let emotion = entry_emotion_lookahead(&character, lookahead, emit);
-    stage_bookkeeping_show(state, d, &character, emotion);
+    stage_bookkeeping_show(state, d, &character, emotion, domains);
 }
 
 /// Rule `auto-anchor-on-show`: a character shown with **no** explicit anchor
-/// gets an injected anchor command (defaulting to [`DEFAULT_ANCHOR`]). If the
-/// author wrote an anchor equal to what this rule would inject, that is the
-/// author-written-vs-would-inject case → `W-INJECT-CONFLICT` (warn, no double
-/// injection). A *different* explicit anchor is a deliberate override, honored
-/// silently.
+/// gets an injected anchor command, at the `anchor` domain's DECLARED
+/// `default:`. If the author wrote an anchor equal to what this rule would
+/// inject, that is the author-written-vs-would-inject case →
+/// `W-INJECT-CONFLICT` (warn, no double injection). A *different* explicit
+/// anchor is a deliberate override, honored silently.
+///
+/// The no-attribute arm makes the `anchor` domain an **implicit dependency of
+/// the `::auto` itself**, and therefore a CHECKED one: see
+/// [`missing_anchor_domain_diag`].
 fn auto_anchor_on_show(
     state: &mut StageState,
     d: &Directive,
     character: &str,
     emit: &mut Vec<InjectedCommand>,
+    domains: &BTreeMap<String, Domain>,
 ) {
-    match d.attrs.iter().find(|a| a.key == "anchor") {
-        None => emit.push(InjectedCommand {
-            kind: InjectKind::Anchor {
-                character: character.to_string(),
-                anchor: DEFAULT_ANCHOR.to_string(),
-            },
-            provenance: Provenance {
-                injected: true,
-                by: "auto-anchor-on-show".to_string(),
-                reason: format!(
-                    "`{character}` shown without an explicit anchor; defaulting to `{DEFAULT_ANCHOR}`"
-                ),
-            },
-        }),
-        Some(anchor_attr) => {
-            if attr_value_str(&anchor_attr.value).as_deref() == Some(DEFAULT_ANCHOR) {
-                state.diags.push(conflict_diag(
-                    format!(
-                        "`{character}` is shown with an explicit `anchor=\"{DEFAULT_ANCHOR}\"` that \
-                         `auto-anchor-on-show` would otherwise inject"
+    let Some(anchor_attr) = d.attrs.iter().find(|a| a.key == "anchor") else {
+        match default_anchor(domains) {
+            Some(default) => emit.push(InjectedCommand {
+                kind: InjectKind::Anchor {
+                    character: character.to_string(),
+                    anchor: default.to_string(),
+                },
+                provenance: Provenance {
+                    injected: true,
+                    by: "auto-anchor-on-show".to_string(),
+                    reason: format!(
+                        "`{character}` shown without an explicit anchor; defaulting to `{default}`"
                     ),
-                    anchor_attr.value_span,
-                ));
-            }
+                },
+            }),
+            // No `anchor` domain at all: the implicit read has nothing to read,
+            // and nobody else will say so (see `missing_anchor_domain_diag`).
+            None if !domains.contains_key("anchor") => state
+                .diags
+                .push(missing_anchor_domain_diag(character, d.span)),
+            // DECLARED but with no `default:` — already `E-ENUM-MISSING-SEMANTICS`
+            // at the declaration (dsl 0.9.0 D-D makes `default:` mandatory for
+            // the `anchor` slot), so this arm stays silent instead of piling a
+            // second diagnostic onto one mistake.
+            None => {}
+        }
+        return;
+    };
+    // An AUTHORED `anchor` names the domain, so `check_domain_member` already
+    // validated it — both its membership and the domain's very existence. This
+    // arm only decides whether the author pre-empted the injection.
+    if let Some(default) = default_anchor(domains) {
+        if attr_value_str(&anchor_attr.value).as_deref() == Some(default) {
+            state.diags.push(conflict_diag(
+                format!(
+                    "`{character}` is shown with an explicit `anchor=\"{default}\"` that \
+                     `auto-anchor-on-show` would otherwise inject"
+                ),
+                anchor_attr.value_span,
+            ));
         }
     }
 }
@@ -319,20 +362,22 @@ fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<In
 }
 
 /// Rule `stage-bookkeeping` (show arm): record the entering character on stage
-/// with its resolved anchor (explicit or [`DEFAULT_ANCHOR`]) and looked-ahead
-/// emotion. Pure state update — the anchor/emotion *commands* were already
-/// emitted by their rules.
+/// with its resolved anchor (explicit, else the `anchor` domain's declared
+/// `default:`, else none) and looked-ahead emotion. Pure state update — the
+/// anchor/emotion *commands* were already emitted by their rules.
 fn stage_bookkeeping_show(
     state: &mut StageState,
     d: &Directive,
     character: &str,
     emotion: Option<String>,
+    domains: &BTreeMap<String, Domain>,
 ) {
-    let anchor = attr_str(&d.attrs, "anchor").unwrap_or_else(|| DEFAULT_ANCHOR.to_string());
+    let anchor =
+        attr_str(&d.attrs, "anchor").or_else(|| default_anchor(domains).map(str::to_string));
     state.on_stage.insert(
         character.to_string(),
         SpriteState {
-            anchor: Some(anchor),
+            anchor,
             pose: None,
             emotion,
         },
@@ -347,7 +392,7 @@ fn stage_bookkeeping_line(state: &mut StageState, line: &Line) {
         if let Some(e) = attr_str(&line.attrs, "emotion") {
             sp.emotion = Some(e);
         }
-        if let Some(p) = attr_str(&line.attrs, "action").or_else(|| attr_str(&line.attrs, "pose")) {
+        if let Some(p) = attr_str(&line.attrs, "action") {
             sp.pose = Some(p);
         }
     }
@@ -361,14 +406,33 @@ fn line_is_stateful(line: &Line) -> bool {
     line.attrs.iter().any(|a| {
         matches!(
             a.key.as_str(),
-            "emotion" | "variant" | "action" | "pose" | "dialogMotion"
+            "emotion" | "variant" | "action" | "dialogMotion"
         )
     })
 }
 
-/// The `::auto` action ids that exit a character (dsl Appendix A: `fade-out-*`).
-fn is_exit_action(action: &str) -> bool {
-    action.starts_with("fade-out") || action.starts_with("exit") || action == "hide"
+/// The `anchor` domain's declared default, `None` when the project declares no
+/// `anchor` vocabulary at all or declares it without a `default:` (dsl 0.9.0
+/// D-D). Two very different shapes, so callers must distinguish them: the
+/// second is already `E-ENUM-MISSING-SEMANTICS` at the declaration, the first is
+/// diagnosed only where the read happens (see [`missing_anchor_domain_diag`]).
+fn default_anchor(domains: &BTreeMap<String, Domain>) -> Option<&str> {
+    domains.get("anchor")?.default.as_deref()
+}
+
+/// Whether `action` is a declared exit member of the resolved `action` domain
+/// (dsl 0.9.0 D-D) — replaces the `fade-out*`/`exit*`/`hide` prefix heuristic
+/// that this crate and `lute-compile` each carried a hand-synced copy of.
+/// Named for what it now asks (a lookup in declared data), not for the rule it
+/// replaced.
+///
+/// `pub` so `lute-compile`'s lowerer asks the SAME function instead of
+/// re-spelling the lookup: the point of moving this fact into the manifest is
+/// that exactly one place reads it.
+pub fn is_declared_exit(action: &str, domains: &BTreeMap<String, Domain>) -> bool {
+    domains
+        .get("action")
+        .is_some_and(|d| d.exits.iter().any(|e| e == action))
 }
 
 /// First `emotion` attr on a spoken line by `character` in the lookahead slice.
@@ -402,6 +466,44 @@ fn conflict_diag(message: String, span: Span) -> Diagnostic {
         code: "W-INJECT-CONFLICT".to_string(),
         severity: Severity::Warning,
         message,
+        span,
+        layer: Layer::Staging,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// Build the `E-DOMAIN-UNKNOWN` error for `auto-anchor-on-show`'s IMPLICIT read
+/// of the `anchor` domain (dsl 0.9.0 D-C/D-D), anchored at the `::auto` that
+/// carries the dependency — the only span an author can act on, since no
+/// attribute exists to point at.
+///
+/// Why the reducer reports this at all: `auto.anchor` is OPTIONAL, and
+/// `check_directive`/`check_domain_member` only validate AUTHORED attrs. So on
+/// the no-attribute path nothing else in the pipeline ever names `anchor`, and
+/// an undeclared `anchor` slot used to sail through `check` while silently
+/// dropping the default-anchor command 0.8.0 injected unconditionally — an
+/// undeclared slot turning into a behavior change rather than an error, which is
+/// the exact failure dsl 0.9.0 exists to prevent.
+///
+/// The code is reused, not minted: this IS "a domain slot is used but no source
+/// declares the domain", the whole meaning of `E-DOMAIN-UNKNOWN` — merely used
+/// implicitly rather than spelled out. A separate code would split one fact
+/// across two names and need registering in the CLI's `DENIABLE_CODES`, where
+/// `E-DOMAIN-UNKNOWN` already sits.
+fn missing_anchor_domain_diag(character: &str, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: "E-DOMAIN-UNKNOWN".to_string(),
+        severity: Severity::Error,
+        message: format!(
+            "`{character}` is shown without an explicit `anchor`, so this `::auto` uses the \
+             `anchor` domain's declared `default:` — but no source declares an `anchor` domain. \
+             Declare it in an `enums:` block in this document's own frontmatter, in a project \
+             schema reached through `uses:`, or in a plugin's `enums` export, or write an \
+             explicit `anchor` here (dsl 0.9.0 D-D)"
+        ),
         span,
         layer: Layer::Staging,
         fixits: Vec::new(),
@@ -467,13 +569,14 @@ mod tests {
     // --- rule 1: auto-anchor-on-show (brief) ---
     #[test]
     fn show_without_anchor_injects_anchor_with_provenance() {
+        let doms = anchor_domain("center");
         let st = StageState::default();
-        let (st2, injected) = lower_node(st, &show_bianca_no_anchor(), &[]);
+        let (st2, injected) = lower_node(st, &show_bianca_no_anchor(), &[], &doms);
         assert!(injected
             .iter()
             .any(|c| c.provenance.by == "auto-anchor-on-show"));
         assert!(injected.iter().any(|c| c.provenance.injected
-            && matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == DEFAULT_ANCHOR)));
+            && matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
         assert!(st2.on_stage.contains_key("bianca"));
     }
 
@@ -483,7 +586,7 @@ mod tests {
         let mut st = StageState::default();
         st.dirty.insert("bianca".into());
         st.on_stage.insert("bianca".into(), SpriteState::default());
-        let (st2, injected) = lower_node(st, &line_bianca(), &[]);
+        let (st2, injected) = lower_node(st, &line_bianca(), &[], &anchor_domain("center"));
         assert!(injected
             .iter()
             .any(|c| c.provenance.by == "auto-pose-reset"));
@@ -494,8 +597,12 @@ mod tests {
     fn stateful_line_does_not_pose_reset_and_marks_dirty() {
         let mut st = StageState::default();
         st.on_stage.insert("bianca".into(), SpriteState::default());
-        let (st2, injected) =
-            lower_node(st, &line("bianca", vec![attr("emotion", "delighted")]), &[]);
+        let (st2, injected) = lower_node(
+            st,
+            &line("bianca", vec![attr("emotion", "delighted")]),
+            &[],
+            &anchor_domain("center"),
+        );
         assert!(!injected
             .iter()
             .any(|c| c.provenance.by == "auto-pose-reset"));
@@ -503,12 +610,37 @@ mod tests {
         assert_eq!(st2.on_stage["bianca"].emotion.as_deref(), Some("delighted"));
     }
 
+    /// `pose` is not a content-line attribute (`content_line.rs`'s
+    /// KNOWN_ATTRS), so `@x{pose="…"}` is E-UNKNOWN-ATTR and the reducer could
+    /// never observe one. The reads were unreachable; this pins that the
+    /// stateful set is exactly the four real sprite-affecting slots.
+    #[test]
+    fn stateful_set_has_no_unreachable_attrs() {
+        // `line()` yields a `Node`; `line_is_stateful` takes the inner `Line`.
+        let spoken = |attrs: Vec<Attr>| match line("bianca", attrs) {
+            Node::Line(l) => l,
+            other => panic!("expected a Line, got {other:?}"),
+        };
+        for key in ["emotion", "variant", "action", "dialogMotion"] {
+            assert!(
+                line_is_stateful(&spoken(vec![attr(key, "x")])),
+                "`{key}` must mark a line stateful"
+            );
+        }
+        assert!(!line_is_stateful(&spoken(vec![attr("pose", "x")])));
+    }
+
     // --- rule 3: entry-emotion-lookahead ---
     #[test]
     fn entry_emotion_lookahead_preloads_first_emotion() {
         let st = StageState::default();
         let look = [line("bianca", vec![attr("emotion", "delighted")])];
-        let (st2, injected) = lower_node(st, &show_bianca_no_anchor(), &look);
+        let (st2, injected) = lower_node(
+            st,
+            &show_bianca_no_anchor(),
+            &look,
+            &anchor_domain("center"),
+        );
         let load = injected
             .iter()
             .find(|c| c.provenance.by == "entry-emotion-lookahead")
@@ -531,7 +663,7 @@ mod tests {
             attrs: vec![attr("location", "cafe")],
             span: span(),
         });
-        let (st2, injected) = lower_node(st, &bg, &[]);
+        let (st2, injected) = lower_node(st, &bg, &[], &anchor_domain("center"));
         assert!(injected
             .iter()
             .any(|c| c.provenance.by == "stage-bookkeeping"
@@ -544,12 +676,10 @@ mod tests {
     // --- W-INJECT-CONFLICT: author wrote the anchor the rule would inject ---
     #[test]
     fn explicit_default_anchor_warns_inject_conflict() {
+        let doms = anchor_domain("center");
         let st = StageState::default();
-        let show = auto(vec![
-            attr("character", "bianca"),
-            attr("anchor", DEFAULT_ANCHOR),
-        ]);
-        let (st2, injected) = lower_node(st, &show, &[]);
+        let show = auto(vec![attr("character", "bianca"), attr("anchor", "center")]);
+        let (st2, injected) = lower_node(st, &show, &[], &doms);
         // Author wrote what the rule would inject → warn, don't double-inject.
         assert!(!injected
             .iter()
@@ -558,10 +688,7 @@ mod tests {
             && d.severity == Severity::Warning
             && d.layer == Layer::Staging));
         // The character is still staged, at the author's anchor.
-        assert_eq!(
-            st2.on_stage["bianca"].anchor.as_deref(),
-            Some(DEFAULT_ANCHOR)
-        );
+        assert_eq!(st2.on_stage["bianca"].anchor.as_deref(), Some("center"));
     }
 
     #[test]
@@ -570,7 +697,7 @@ mod tests {
         // no conflict.
         let st = StageState::default();
         let show = auto(vec![attr("character", "bianca"), attr("anchor", "left")]);
-        let (st2, injected) = lower_node(st, &show, &[]);
+        let (st2, injected) = lower_node(st, &show, &[], &anchor_domain("center"));
         assert!(!injected
             .iter()
             .any(|c| c.provenance.by == "auto-anchor-on-show"));
@@ -587,7 +714,9 @@ mod tests {
             attr("character", "bianca"),
             attr("action", "fade-out-down"),
         ]);
-        let (st2, injected) = lower_node(st, &exit, &[]);
+        // The shipped test vocabulary declares `fade-out-down` an exit, which is
+        // what this test always meant by it.
+        let (st2, injected) = lower_node(st, &exit, &[], &lute_test_vocab::test_domains());
         assert!(injected.is_empty(), "the ::auto is itself the hide");
         assert!(!st2.on_stage.contains_key("bianca"));
         assert!(!st2.dirty.contains("bianca"));
@@ -602,10 +731,198 @@ mod tests {
             st
         };
         let look = [line("bianca", vec![attr("emotion", "sad")])];
-        let (a_st, a_em) = lower_node(build(), &show_bianca_no_anchor(), &look);
-        let (b_st, b_em) = lower_node(build(), &show_bianca_no_anchor(), &look);
+        let doms = anchor_domain("center");
+        let (a_st, a_em) = lower_node(build(), &show_bianca_no_anchor(), &look, &doms);
+        let (b_st, b_em) = lower_node(build(), &show_bianca_no_anchor(), &look, &doms);
         assert_eq!(a_em, b_em);
         assert_eq!(a_st.on_stage, b_st.on_stage);
         assert_eq!(a_st.dirty, b_st.dirty);
+    }
+
+    /// dsl 0.9.0 D-E: `exits:` must reproduce the deleted prefix heuristic's
+    /// verdict on every member the shipped fixtures use, so the replacement is
+    /// proven equivalent rather than assumed. Kept after deletion as the
+    /// regression pin: the literal list below IS the old heuristic.
+    #[test]
+    fn declared_exits_match_the_former_heuristic() {
+        fn former_heuristic(action: &str) -> bool {
+            action.starts_with("fade-out") || action.starts_with("exit") || action == "hide"
+        }
+        let members = [
+            "fade-in-up",
+            "fade-in-slow",
+            "slide-in-left",
+            "walk-in",
+            "idle",
+            "wave",
+            "sway",
+            "lean",
+            "pose-turn",
+            "pose-lean",
+            "fade-out",
+            "fade-out-down",
+            "fade-out-slow",
+            "hide",
+        ];
+        let declared_exits = ["fade-out", "fade-out-down", "fade-out-slow", "hide"];
+        for m in members {
+            assert_eq!(
+                declared_exits.contains(&m),
+                former_heuristic(m),
+                "`{m}`: declared exits disagree with the former heuristic"
+            );
+        }
+        // The `exit*` arm of the heuristic matched nothing repo-wide, so no
+        // `exit*` member exists to reproduce.
+        assert!(!members.iter().any(|m| m.starts_with("exit")));
+        // The literals above are the HISTORICAL rule, so they stay literal; tie
+        // them to the vocabulary the fixtures actually declare, or the pin would
+        // only compare a copy against itself.
+        let action = &lute_test_vocab::test_domains()["action"];
+        assert_eq!(action.members, members.map(str::to_string).to_vec());
+        assert_eq!(action.exits, declared_exits.map(str::to_string).to_vec());
+    }
+
+    fn anchor_domain(default: &str) -> BTreeMap<String, Domain> {
+        let mut d = BTreeMap::new();
+        d.insert(
+            "anchor".to_string(),
+            Domain {
+                members: vec!["left".into(), "middle".into(), "right".into()],
+                open: false,
+                default: Some(default.to_string()),
+                exits: Vec::new(),
+            },
+        );
+        d.insert(
+            "action".to_string(),
+            Domain {
+                members: vec!["vanish".into(), "arrive".into()],
+                open: false,
+                default: None,
+                exits: vec!["vanish".into()],
+            },
+        );
+        d
+    }
+
+    /// The injected anchor is the DECLARED default, not a compiled-in `center`.
+    #[test]
+    fn injected_anchor_comes_from_the_domain() {
+        let doms = anchor_domain("middle");
+        let (st, injected) =
+            lower_node(StageState::default(), &show_bianca_no_anchor(), &[], &doms);
+        assert!(injected.iter().any(|c| c.provenance.injected
+            && matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "middle")));
+        assert_eq!(st.on_stage["bianca"].anchor.as_deref(), Some("middle"));
+    }
+
+    /// Exit detection follows `exits:`, so a vocabulary that does not use the
+    /// `fade-out*` convention still works.
+    #[test]
+    fn exit_follows_declared_exits() {
+        let doms = anchor_domain("middle");
+        let mut st = StageState::default();
+        st.on_stage.insert("bianca".into(), SpriteState::default());
+        let exit = auto(vec![attr("character", "bianca"), attr("action", "vanish")]);
+        let (st2, _) = lower_node(st, &exit, &[], &doms);
+        assert!(!st2.on_stage.contains_key("bianca"), "`vanish` must exit");
+    }
+
+    /// A DECLARED `anchor` that supplies no `default:` injects nothing: that
+    /// shape is already `E-ENUM-MISSING-SEMANTICS` at the declaration (dsl
+    /// 0.9.0 D-D makes `default:` mandatory for the `anchor` slot), so the
+    /// reducer stays silent rather than reporting it a second time.
+    #[test]
+    fn declared_anchor_without_a_default_injects_nothing() {
+        let mut doms = BTreeMap::new();
+        doms.insert(
+            "anchor".to_string(),
+            Domain {
+                members: vec!["left".into()],
+                open: false,
+                default: None,
+                exits: Vec::new(),
+            },
+        );
+        let (st, injected) =
+            lower_node(StageState::default(), &show_bianca_no_anchor(), &[], &doms);
+        assert!(!injected
+            .iter()
+            .any(|c| c.provenance.by == "auto-anchor-on-show"));
+        assert!(st.diags.is_empty(), "got {:?}", st.diags);
+        assert_eq!(st.on_stage["bianca"].anchor, None);
+    }
+
+    // --- the IMPLICIT `anchor` domain read (dsl 0.9.0 D-D) -------------------
+
+    /// `action` declared in the 0.9.0 long form with `anchor` NOT declared —
+    /// the project shape that silently dropped 0.8.0's default anchor.
+    fn action_only_domain() -> BTreeMap<String, Domain> {
+        let mut d = anchor_domain("center");
+        d.remove("anchor");
+        d
+    }
+
+    /// An `::auto` with no `anchor` attr READS the `anchor` domain's `default:`,
+    /// so the domain is a dependency of the DIRECTIVE. Nothing authored the
+    /// domain name, and directive validation walks AUTHORED attrs only — so
+    /// unless the reducer reports it, 0.8.0's default-anchor command simply
+    /// vanishes with zero diagnostics.
+    #[test]
+    fn implicit_anchor_read_without_a_declared_domain_errors() {
+        let (st, injected) = lower_node(
+            StageState::default(),
+            &show_bianca_no_anchor(),
+            &[],
+            &action_only_domain(),
+        );
+        assert!(!injected
+            .iter()
+            .any(|c| c.provenance.by == "auto-anchor-on-show"));
+        let unknown: Vec<_> = st
+            .diags
+            .iter()
+            .filter(|d| d.code == "E-DOMAIN-UNKNOWN")
+            .collect();
+        assert_eq!(unknown.len(), 1, "one E-DOMAIN-UNKNOWN, got {:?}", st.diags);
+        assert_eq!(unknown[0].severity, Severity::Error);
+        assert_eq!(unknown[0].layer, Layer::Staging);
+        assert_eq!(st.on_stage["bianca"].anchor, None);
+    }
+
+    /// The regression guard for the fix: the WORKING path still works. Same
+    /// document, `anchor` declared ⇒ the declared default is injected and
+    /// nothing is reported.
+    #[test]
+    fn implicit_anchor_read_with_a_declared_domain_stays_clean() {
+        let (st, injected) = lower_node(
+            StageState::default(),
+            &show_bianca_no_anchor(),
+            &[],
+            &anchor_domain("center"),
+        );
+        assert!(injected.iter().any(|c| c.provenance.injected
+            && matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
+        assert!(st.diags.is_empty(), "got {:?}", st.diags);
+        assert_eq!(st.on_stage["bianca"].anchor.as_deref(), Some("center"));
+    }
+
+    /// An EXPLICIT `anchor` with no declared `anchor` domain is the ATTRIBUTE
+    /// path's error (`check_domain_member`), never the reducer's. Pinned so the
+    /// two paths keep reporting once each and never twice for one `::auto`.
+    #[test]
+    fn explicit_anchor_without_a_declared_domain_is_the_attributes_error() {
+        let show = auto(vec![attr("character", "bianca"), attr("anchor", "center")]);
+        let (st, injected) = lower_node(StageState::default(), &show, &[], &action_only_domain());
+        assert!(!injected
+            .iter()
+            .any(|c| c.provenance.by == "auto-anchor-on-show"));
+        assert!(
+            st.diags.is_empty(),
+            "the attribute check owns this one: {:?}",
+            st.diags
+        );
+        assert_eq!(st.on_stage["bianca"].anchor.as_deref(), Some("center"));
     }
 }

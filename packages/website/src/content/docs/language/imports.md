@@ -7,7 +7,7 @@ The `run`/`user`/`app` state schema is **game/season-global** — one persisted 
 different type per scene — so it lives in a single source-of-truth schema document that each scene
 imports, rather than being redeclared everywhere. That import is the **`uses:`** frontmatter key.
 
-```lute
+```lute check="docs/examples/carry-ep.lute"
 ---
 kind: scene
 character: sofia
@@ -21,8 +21,12 @@ uses: state.schema.yaml
 @narrator: Previously, a choice was made.
 
 <match on="run.choseHelp">
-  <when test="$ == true"> @sofia: Thanks for helping me back then. </when>
-  <otherwise>             @sofia: ... </otherwise>
+  <when test="$ == true">
+    @sofia: Thanks for helping me back then.
+  </when>
+  <otherwise>
+    @sofia: ...
+  </otherwise>
 </match>
 ```
 
@@ -64,7 +68,7 @@ union — overriding a base's declaration with your own — use `extends:` inste
 lower-precedence base layering and override rules are covered in
 [Components & extends](/language/components-and-extends/).
 
-```lute
+```lute check="docs/examples/extends-demo.lute"
 ---
 kind: scene
 character: sofia
