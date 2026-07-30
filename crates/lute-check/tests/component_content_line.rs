@@ -10,13 +10,17 @@
 //! artifact through a `::use`, falsifying 0.9.0's headline invariant.
 //!
 //! The load-bearing test here is [`scene_component_parity`]: it asserts the
-//! SAME line yields the SAME diagnostic codes at scene level and inside a
-//! component body, so a future one-sided change fails loudly (the
-//! resolution-drift-is-a-bug-class spirit of `lute-lsp/tests/divergence.rs`).
+//! SAME line yields the SAME diagnostic codes on all THREE paths — at scene
+//! level, in a component FILE checked standalone, and in that same component
+//! body reached through a `::use` — so a future one-sided change fails loudly
+//! (the resolution-drift-is-a-bug-class spirit of `lute-lsp/tests/divergence.rs`,
+//! and the shape its four sibling suites already use).
 //!
 //! Harness: temp-dir component files resolved through `resolve_components` —
 //! the SAME resolver the CLI/LSP call — mirroring `tests/component_match.rs`.
-use lute_check::{check, parse_meta, resolve_components, CheckInput, Mode, SchemaImports};
+use lute_check::{
+    check, parse_meta, resolve_components, CheckInput, ComponentSet, Mode, SchemaImports,
+};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
@@ -44,35 +48,13 @@ const USE_SCENE: &str =
     "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
 ## Shot 1.\n::use{component=\"c\"}\n";
 
-/// `line` sitting directly in a scene body — the reference behaviour every
-/// assertion below is measured against.
-fn scene_codes(line: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
-    let text = format!("{HDR}{line}\n");
-    let input = CheckInput {
-        text,
-        uri: "scene".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-    };
-    sorted(check(&input).diagnostics.into_iter().map(|d| d.code))
-}
-
-/// The SAME `line` sitting in a paramless component body, reached through a
-/// `::use` from a scene — i.e. the imported-component path.
-fn component_codes(line: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
-    let dir = unique_dir();
-    std::fs::write(
-        dir.join("c.lute"),
-        format!("---\ncomponent: c\n---\n## Scene 1.\n{line}\n"),
-    )
-    .unwrap();
-    let text = USE_SCENE.to_string();
-    let (doc, _) = lute_syntax::parse(&text);
-    let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
-    let components = resolve_components(&dir, &meta0.components, doc.meta.span);
+/// One `check()` run over `text`, with `components` already resolved. The three
+/// path helpers below differ ONLY in what they hand this.
+fn check_codes(
+    text: String,
+    components: ComponentSet,
+    snapshot: CapabilitySnapshot,
+) -> Vec<String> {
     let input = CheckInput {
         text,
         uri: "scene".into(),
@@ -83,6 +65,42 @@ fn component_codes(line: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
         components,
     };
     sorted(check(&input).diagnostics.into_iter().map(|d| d.code))
+}
+
+/// A paramless component FILE carrying `line` — the same source text both the
+/// standalone and the `::use` leg check, so the only variable between them is
+/// which root walks it.
+fn component_file(line: &str) -> String {
+    format!("---\ncomponent: c\n---\n## Scene 1.\n{line}\n")
+}
+
+/// `line` sitting directly in a scene body — the reference behaviour every
+/// assertion below is measured against.
+fn scene_codes(line: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
+    check_codes(format!("{HDR}{line}\n"), Default::default(), snapshot)
+}
+
+/// The SAME `line` in a component FILE checked STANDALONE — no importing scene,
+/// the component document walked as its own root. This leg is not decoration:
+/// of the five bypasses this branch closed, the content-line one is the one
+/// that CORRUPTED THE ARTIFACT (undeclared vocabulary reached `lute compile`),
+/// so a scene-vs-`::use` comparison alone would stay green through exactly the
+/// regression that costs most — a standalone root that stops calling
+/// `check_content_line_attrs`.
+fn standalone_codes(line: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
+    check_codes(component_file(line), Default::default(), snapshot)
+}
+
+/// The SAME `line` sitting in a paramless component body, reached through a
+/// `::use` from a scene — i.e. the imported-component path.
+fn component_codes(line: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
+    let dir = unique_dir();
+    std::fs::write(dir.join("c.lute"), component_file(line)).unwrap();
+    let text = USE_SCENE.to_string();
+    let (doc, _) = lute_syntax::parse(&text);
+    let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
+    let components = resolve_components(&dir, &meta0.components, doc.meta.span);
+    check_codes(text, components, snapshot)
 }
 
 fn sorted(codes: impl Iterator<Item = String>) -> Vec<String> {
@@ -118,16 +136,25 @@ const PARITY_LINES: &[&str] = &[
     "@bianca{emotion=\"neutral\" variant=\"a\" vo}: hi",
 ];
 
-/// The load-bearing invariant: scene level and component body agree, code for
-/// code, on every line above.
+/// The load-bearing invariant: scene level, a standalone component file, and a
+/// component body reached through a `::use` agree, code for code, on every line
+/// above — all three sorted multisets, so a bypass on ANY of the three paths
+/// fails here.
 #[test]
 fn scene_component_parity() {
     for line in PARITY_LINES {
         let at_scene = scene_codes(line, vocab_snapshot());
-        let in_component = component_codes(line, vocab_snapshot());
         assert_eq!(
-            at_scene, in_component,
-            "content-line diagnostics diverge between scene level and component body for `{line}`"
+            at_scene,
+            standalone_codes(line, vocab_snapshot()),
+            "content-line diagnostics diverge between scene level and a standalone \
+             component file for `{line}`"
+        );
+        assert_eq!(
+            at_scene,
+            component_codes(line, vocab_snapshot()),
+            "content-line diagnostics diverge between scene level and a component \
+             body reached through a `::use` for `{line}`"
         );
     }
 }

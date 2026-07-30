@@ -38,6 +38,7 @@ them is definable by anyone:
 | Attempt | Result today | Site |
 |---|---|---|
 | project schema `enums: emotion: […]` | `E-DOMAIN-DUP`, project members dropped | `schema_import.rs:508` |
+| inline `enums: emotion: […]` in the using document's own frontmatter | parsed, then **silently dropped** before the merge — no diagnostic at the declaration, and `E-DOMAIN-UNKNOWN` at the use told the author to declare what they had just declared | `merge_domains` took only `snapshot` + `imports` |
 | own capability plugin exporting `emotion` | `E-PLUGIN-DUP-ACROSS` + `E-DOMAIN-DUP`, **whole project resolution fails** — `lute context` refuses too | `assemble.rs:308` → `merge_map:462` |
 | provider named `emotion` | closed domain wins over same-named provider | `directives.rs:390` |
 | not activating `lute.core` | impossible — unconditional | `resolve.rs:141` |
@@ -67,7 +68,17 @@ split.
 
 **The core declares *slots*; it never declares *members*.** `assets/lute.core/enums.yaml` is
 emptied. Seven domain names survive as *types on attributes* with no member list anywhere in the
-binary, and every member comes from a project schema or a plugin.
+binary, and every member comes from one of three declaration routes: the using document's own
+inline `enums:`, a project schema reached through `uses:`/`extends:`, or a plugin's `enums` export.
+All three are the same two-step projection of the same YAML shape, so they reach one merged
+vocabulary rather than three parallel ones. Precedence: a project declaration (inline or imported)
+clashing with the plugin/core vocabulary is `E-DOMAIN-DUP` and the plugin wins, drop-and-report;
+inline vs imported is the decision-D5 refinement — inline wins and MUST re-declare a superset,
+else `E-EXTENDS-RELATION-SIG`, never `E-DOMAIN-DUP`, which D2 reserves for plugin-involving
+clashes. The inline route is what a single-file author and the playground use, and it is the one
+route a **component body** cannot use: a component's `uses:` is discarded at parse and its body
+resolves vocabulary against the importing document, so a component naming a domain only IT declares
+passes standalone and is `E-DOMAIN-UNKNOWN` through a scene that does not import it.
 
 Because the core declares no members, **there is nothing to override**: no `overrides:` protocol, no
 "baseline plugin" concept, no override-conflict diagnostics. `E-DOMAIN-DUP` survives untouched for
@@ -136,12 +147,18 @@ typo like `step-foward` ships. **Delete the guard clause.** `action` then falls 
 `check_domain_member` exactly as `emotion` does, and step 4 (`directives.rs:402`) already emits the
 right diagnostic:
 
-> `E-DOMAIN-UNKNOWN` — `action` is not a known domain, declared by neither the plugin/core
-> vocabulary nor a project schema
+> `E-DOMAIN-UNKNOWN` — `action` is not a declared domain, declared by none of the three routes:
+> this document's own frontmatter, an imported project schema, a plugin's `enums` export
 
 **No new diagnostic code; strictness arrives by removing a special case, not by adding a rule.**
-Reword the message for the content-line context and to name the fix (declare the domain); keep the
-code.
+Reword the message for the content-line context and to name the fix (declare the domain, by any of
+the three routes); keep the code. Shipped text:
+
+```
+`{name}` is not a declared domain — declare its members in an `enums:` block in this document's
+own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export
+before using `{attr}` (dsl 0.9.0 D-C)
+```
 
 An undeclared slot is an **error, not a warning**: a slot whose members nobody wrote down cannot be
 checked, and silently not checking is the failure mode this whole design exists to remove.
@@ -197,7 +214,7 @@ enums:
 - **Two fictional `semantics` flags.** `SEMANTICS_VOCAB` (`validate.rs:4`) declares 12 flags and
   **zero are consumed** by the checker or compiler; `isStateful` and `cancelsPrevious` are attached
   to no directive and have no honest consumer even after this change. Remove them (plugin 0.0.3
-  delta; no shipped plugin declares either). The remaining nine keep their current declarative
+  delta; no shipped plugin declares either). The remaining **ten** keep their current declarative
   roles — wiring them to drive dispatch is explicitly **not** in this design (§6).
 
 **Audit backing the central claim.** A repo-wide search for member-literal branches
@@ -223,7 +240,7 @@ the fix; `lute doctor` reports which slots are declared and which are not.
 
 | Code | Severity | Meaning | New? |
 |---|---|---|---|
-| `E-DOMAIN-UNKNOWN` | error | a domain slot is used but no source declares the domain (D-C) | reused; message reworded |
+| `E-DOMAIN-UNKNOWN` | error | a domain slot is used but none of the three routes declares the domain (D-C) | reused; message reworded to name all three |
 | `E-ENUM-DEFAULT-NOT-MEMBER` | error | `default:` is not in `members:` | ✔ |
 | `E-ENUM-EXITS-NOT-MEMBER` | error | an `exits:` entry is not in `members:` | ✔ |
 | `E-ENUM-MISSING-SEMANTICS` | error | `action` declared without `exits:`, or `anchor` without `default:` | ✔ |

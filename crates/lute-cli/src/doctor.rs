@@ -15,10 +15,11 @@ use lute_manifest::validate::{SLOT_REQUIRES_DEFAULT, SLOT_REQUIRES_EXITS};
 
 /// The seven vocabulary slots the language declares (dsl 0.9.0 D-A): six typed
 /// by `lute.core`'s staging directives, plus the content-line `emotion`. The
-/// core ships NO members for any of them, so each is declared by a project
-/// schema (`enums:`) or a plugin — and using an undeclared one is
-/// `E-DOMAIN-UNKNOWN` (D-C). Reported here so a project missing a slot learns
-/// it from `doctor` rather than from a diagnostic mid-scene.
+/// core ships NO members for any of them, so each is declared by a document's
+/// own inline `enums:`, a project schema (`enums:`), or a plugin — and using an
+/// undeclared one is `E-DOMAIN-UNKNOWN` (D-C). Reported here so a project
+/// missing a slot learns it from `doctor` rather than from a diagnostic
+/// mid-scene.
 const VOCAB_SLOTS: &[&str] = &[
     "emotion",
     "action",
@@ -316,7 +317,8 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
             "vocabularySlotsMissing",
             "not declared (using one errors)",
             format!(
-                "{} — declare members in a project schema's `enums:` \
+                "{} — declare members in a project schema's `enums:`, in a \
+                 document's own frontmatter, or in a plugin's `enums` export \
                  (`lute init` scaffolds a starter set)",
                 missing.join(", ")
             ),

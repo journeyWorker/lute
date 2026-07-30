@@ -68,9 +68,17 @@ false → **code** (a compiler-core change, not a plugin).
   `lute.core`, so a project schema declaring `emotion:` got `E-DOMAIN-DUP` and a plugin
   exporting it failed whole-project resolution. As of 0.9.0 it is simply true. **The core ships
   no members at all** — it declares the seven slots (`emotion`, `action`, `anchor`, `mood`,
-  `volume`, `musicAction`, `vfxType`) and nothing else, so every member comes from a project
-  schema's `enums:` or a plugin's `enums` export, and using a slot nobody declared is
-  `E-DOMAIN-UNKNOWN` rather than silently unchecked (dsl 0.9.0 §2–§3).
+  `volume`, `musicAction`, `vfxType`) and nothing else, so every member comes from one of three
+  declaration routes — an `enums:` block in the using document's own frontmatter, a project
+  schema's `enums:` reached through `uses:`/`extends:`, or a plugin's `enums` export — and using a
+  slot nobody declared is `E-DOMAIN-UNKNOWN` rather than silently unchecked (dsl 0.9.0 §2–§3).
+  The routes differ only in reach and reporting: a plugin export is capability surface
+  (`capabilityVersion`), the two project routes are project data that travels into the artifact,
+  a plugin wins an `E-DOMAIN-DUP` clash against either, and inline wins over an imported
+  declaration of the same slot provided it re-declares a superset of its members. One scope
+  limit: a component body resolves vocabulary against the **importing** document — a component's
+  own `uses:` is discarded at parse — so a component naming a domain only it declares passes
+  standalone and is `E-DOMAIN-UNKNOWN` through a scene that does not import the same vocabulary.
 - *Code:* a new branching construct, a new timeline-resolver behavior, a new exhaustiveness rule,
   "run until interrupted", "bind this action to future dialogue state", "auto-place characters".
 

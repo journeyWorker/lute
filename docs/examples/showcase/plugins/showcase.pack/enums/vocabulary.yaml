@@ -1,15 +1,17 @@
-# plugin §4 `enums` export — the SECOND of the two 0.9.0 declaration routes
-# (dsl 0.9.0 D-C). The compiler declares the vocabulary SLOTS and ships no
+# plugin §4 `enums` export — one of the THREE 0.9.0 declaration routes
+# (dsl 0.9.0 §3/D-C). The compiler declares the vocabulary SLOTS and ships no
 # members; here an engine/genre pack ships the members for every project that
 # activates it, so a scene under `docs/examples/showcase` needs no `enums:` of
-# its own. (The top-level `docs/examples` demonstrates the other route, a
-# project schema's `enums:` in `base.schema.yaml`.) A name declared by BOTH a
-# plugin and the project schema of one root is `E-DOMAIN-DUP`, so each root
-# picks one route per slot.
+# its own. (The top-level `docs/examples` demonstrates the imported-schema
+# route, a project schema's `enums:` in `base.schema.yaml`; the third route is
+# an `enums:` block in a document's OWN frontmatter, which is what a single file
+# or the playground uses.) A name declared by BOTH a plugin and either project
+# route in one root is `E-DOMAIN-DUP` and the plugin wins, so each root picks
+# one route per slot.
 #
 # A plugin-exported vocabulary surfaces on the capability snapshot (`lute
-# context --json` -> `enums`), which a project schema's `enums:` does not — it
-# lands under the separate `projectEnums` key.
+# context --json` -> `enums`), which neither project route does — both land
+# under the separate `projectEnums` key.
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
   # The showcase pack's own genre palette: deliberately not the same list as

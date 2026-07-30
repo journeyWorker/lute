@@ -336,8 +336,11 @@ OSHiZ의 134개 테이블은 이 5개에 따라 갈린다. **이 층이 Mode A�
 
 **dsl 0.9.0에서 참이 되었다.** 코어는 이제 **슬롯만 선언하고 멤버는 하나도 싣지 않는다**
 ([`../proposals/scenario-dsl/0.9.0.md`](../proposals/scenario-dsl/0.9.0.md) §2). 7개 슬롯
-(`emotion` `action` `anchor` `mood` `volume` `musicAction` `vfxType`)의 멤버는 전부 프로젝트
-스키마의 `enums:` 또는 플러그인의 `enums` export에서 온다. 결과적으로 D1의 레버리지는 이
+(`emotion` `action` `anchor` `mood` `volume` `musicAction` `vfxType`)의 멤버는 전부 세 가지
+선언 경로 — 문서 자신의 프런트매터에 쓴 인라인 `enums:`, `uses:`/`extends:`로 가져오는 프로젝트
+스키마의 `enums:`, 플러그인의 `enums` export — 에서 온다. OSHiZ처럼 문서가 여러 개인
+프로젝트는 두 번째 경로가 정답이다(한 곳에 선언하고 전 도메인이 `uses:`). 인라인 경로는 파일
+하나짜리 재현 케이스나 플레이그라운드용이다. 결과적으로 D1의 레버리지는 이
 평가서가 쓴 것보다 **더 크다**: 조건 enum 중복 제거뿐 아니라 콘텐츠 어휘 자체가 D1으로
 들어온다. 반대급부는 선언이 **의무**라는 점 — 선언하지 않은 슬롯을 쓰면
 `E-DOMAIN-UNKNOWN`이며, 그 대신 지금까지 검증이 전혀 없던 `action`(9,880값/53종)이 검사

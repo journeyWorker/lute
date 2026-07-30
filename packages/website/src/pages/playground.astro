@@ -135,11 +135,15 @@ state:
   scene.affect.bianca: { type: number, default: 0 }
 defs:
   fond: { type: bool, cel: "scene.affect.bianca >= 1" }
-# NOTE (language 0.9.0): the compiler declares the vocabulary SLOTS and ships no
-# members, so emotion=/action=/anchor= need a declaration reached through uses:
-# or an active plugin's enums export. The playground checks ONE in-memory
-# document with no filesystem, so it cannot resolve an import — hence no
-# vocabulary attributes below. See docs/proposals/scenario-dsl/0.9.0.md section 3.
+enums:
+  # NOTE (language 0.9.0): the compiler declares the vocabulary SLOTS — emotion,
+  # action, anchor, mood, volume, musicAction, vfxType — and ships NO members, so
+  # a slot must be declared before use or it is E-DOMAIN-UNKNOWN. There are three
+  # declaration routes, and THIS one — an enums: block in the document's own
+  # frontmatter — is the one the playground can use: it checks ONE in-memory
+  # document with no filesystem, so it resolves no uses: import and activates no
+  # plugin. See docs/proposals/scenario-dsl/0.9.0.md section 3.
+  emotion: [neutral, delighted, shy, content]
 ---
 
 # The Hostess with a Name
@@ -147,7 +151,7 @@ defs:
 ## Closing Up
 
 @narrator: A hostess walked over with a menu pressed to her chest. Her face caught.
-@bianca: Oh!
+@bianca{emotion="delighted"}: Oh!
 @bianca: Mr. Fixer! From the ramen counter — you eat at Mechageki too, isn't it wonderful?
 
 /* a choice of TONE — both paths get the number; the gentle ask warms her */
@@ -161,7 +165,7 @@ defs:
   </choice>
 </branch>
 
-@bianca: Of course! Right away, Mr. Fixer.
+@bianca{emotion="content"}: Of course! Right away, Mr. Fixer.
 
 /* state-driven callback — first-match-wins; <otherwise> is mandatory */
 <match on="scene.choices.number">

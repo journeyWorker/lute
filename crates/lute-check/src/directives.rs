@@ -405,8 +405,9 @@ pub(crate) fn check_domain_member(
             "E-DOMAIN-UNKNOWN",
             Severity::Error,
             format!(
-                "`{name}` is not a declared domain — declare its members in a project schema \
-                 (`enums:`) or a plugin's `enums` export before using `{}` (dsl 0.9.0 D-C)",
+                "`{name}` is not a declared domain — declare its members in an `enums:` block \
+                 in this document's own frontmatter, in a project schema reached through \
+                 `uses:`, or in a plugin's `enums` export before using `{}` (dsl 0.9.0 D-C)",
                 attr.key
             ),
             attr.value_span,
