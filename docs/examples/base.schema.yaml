@@ -5,10 +5,11 @@ defs:
 # The project's own content vocabulary (dsl 0.9.0 D-A/D-C). The compiler
 # declares the SLOTS — `emotion`, `action`, `anchor`, `mood`, `volume`,
 # `musicAction`, `vfxType` — and ships no members; a slot used with no
-# declaration here (or in an active plugin's `enums` export) is
-# `E-DOMAIN-UNKNOWN`. Any document reaching this file through `uses:`/
-# `extends:` inherits the whole vocabulary, so declaring it once per project
-# root is the migration every 0.9.0 project performs.
+# declaration here (or in the using document's own frontmatter, or in an active
+# plugin's `enums` export) is `E-DOMAIN-UNKNOWN`. Any document reaching this
+# file through `uses:`/`extends:` inherits the whole vocabulary, so declaring it
+# once per project root is the migration every 0.9.0 project performs — the
+# inline route is for a single file with no project around it.
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
   mood: [peaceful, tense, romantic, sad, upbeat]

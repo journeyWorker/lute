@@ -1,8 +1,8 @@
 # dsl 0.9.0 D-A: the core declares domain SLOTS (as attribute types in
 # `directives/staging.yaml`), never their MEMBERS. Lute ships as a general
 # authoring toolchain, so a concrete emotion/action/vfx vocabulary here would
-# be a genre baked into the compiler. Members come from a project schema or a
-# plugin; `lute init` scaffolds a starter set.
+# be a genre baked into the compiler. Members come from a document's own inline
+# `enums:`, a project schema, or a plugin; `lute init` scaffolds a starter set.
 #
 # Intentionally empty. `core.rs`'s `core_ships_no_vocabulary_members` pins it.
 enums: {}

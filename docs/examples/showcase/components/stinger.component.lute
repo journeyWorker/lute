@@ -11,9 +11,15 @@ params:
 
 ## The Stinger Beat
 
-/* `@cue` is legal in these attr positions because `mood`/`label` are
-   `string`-typed core attrs (dsl Appendix A); a component body carries no state
-   read/write and no logic block (§13.4). */
+/* `@cue` is legal in both attr positions, for two different reasons. `label` IS
+   a `string`-typed core attr (dsl Appendix A). `mood` is NOT: dsl 0.9.0 retyped
+   `::music{mood}` from `string` to `{ domain: mood }`. A domain-typed attr still
+   accepts a `string`-typed component PARAMETER, because the checker treats a
+   domain as an id type and never type-flags a `@ref` against one — domain
+   MEMBERSHIP is checked for authored literals only. So `mood=@cue` is checked
+   for neither type nor membership: the `::use` arg is judged against the param's
+   `string` type, and `cue` reaches `::music` unvalidated. A component body
+   carries no state read/write and no logic block (§13.4). */
 ::music{action="change" mood=@cue}
 ::vfx{type="whiteOut" label=@cue transition="fade"}
 @narrator: A beat of silence, then the moment lands.

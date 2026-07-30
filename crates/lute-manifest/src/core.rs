@@ -30,9 +30,10 @@ pub const END_DIRECTIVE: &str = "end";
 ///
 /// dsl 0.9.0 D-A: it carries NO vocabulary members. `assets/lute.core/
 /// enums.yaml` is empty, so both `enums` and `domains` come out empty; every
-/// member comes from a project schema or a plugin. SIX of the seven slot names
-/// survive here as attribute types in `staging.yaml` (`action`, `anchor`,
-/// `mood`, `musicAction`, `vfxType`, `volume`); the seventh, `emotion`, is a
+/// member comes from a document's own inline `enums:`, a project schema, or a
+/// plugin. SIX of the seven slot names survive here as attribute types in
+/// `staging.yaml` (`action`, `anchor`, `mood`, `musicAction`, `vfxType`,
+/// `volume`); the seventh, `emotion`, is a
 /// content-line slot owned by `lute-check`'s `content_line` checker rather than
 /// by any directive attribute.
 pub fn load_core_snapshot() -> CapabilitySnapshot {
