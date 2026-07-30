@@ -612,7 +612,8 @@ directives (9):
   vfx: type, label, transition
   video: assetId, action, wait
 enums (0):
-stateSchema (2):
+stateSchema (3):
+  run.metMira: bool
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
 deliveryFlags (3):
@@ -626,6 +627,10 @@ projectEnums (1):
 `enums (0)` is not a bug: that line counts members supplied by the active *plugins*, and this
 file activates none. Your own declarations show up under **`projectEnums`** — the vocabulary
 that actually resolves `emotion="content"`.
+
+`stateSchema` is the same story for state: your own declarations (`scene.knowsMira` from Part 3,
+`run.metMira` from Part 5) plus `scene.choices.orderChoice`, which the `<branch>` declares on your
+behalf so a later construct can read which option the player took.
 
 `deliveryFlags` is always present — a fixed, project-independent list — so it's the one place you
 can always confirm what `{mono}`/`{os}`/`{vo}` mean without hunting through this tutorial. If
