@@ -59,6 +59,7 @@ export default defineConfig({
           translations: { ko: "언어" },
           items: [
             { slug: "language/frontmatter-and-profiles" },
+            { slug: "language/vocabulary" },
             { slug: "language/dialogue-and-cast" },
             { slug: "language/directives" },
             { slug: "language/branch-match-when" },
