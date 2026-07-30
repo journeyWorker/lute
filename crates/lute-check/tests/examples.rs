@@ -244,10 +244,13 @@ fn hyphen_path_ident_span_is_key_aware() {
 
 #[test]
 fn new_split_codes_are_structural_and_suppress_the_resolved_view() {
-    // dsl 0.5.0 §2.1: E-CONTENT-OUTSIDE-SHOT / E-CONTENT-LINE-BRACKET /
-    // E-TAG-NOT-ONE-LINE all corrupt the node stream the same way their
-    // parent E-UNCLASSIFIED/E-UNCLOSED-TAG did, so `resolved` stays `None`
-    // (the Some-vs-None structural-break policy).
+    // dsl 0.5.0 §2.1 / §2.3: E-CONTENT-OUTSIDE-SHOT / E-CONTENT-LINE-BRACKET /
+    // E-TAG-NOT-ONE-LINE / E-TAG-INLINE-BODY all corrupt the node stream the
+    // same way their parent E-UNCLASSIFIED/E-UNCLOSED-TAG did, so `resolved`
+    // stays `None` (the Some-vs-None structural-break policy). The inline-body
+    // case belongs here for the same reason as its wrapped-opener sibling: the
+    // parser consumes whole lines, so the body sharing the opener's line is
+    // DROPPED — a resolved view built from it would be missing content.
     for (code, text) in [
         ("E-CONTENT-OUTSIDE-SHOT", "@narrator: hi before any shot\n"),
         (
@@ -257,6 +260,10 @@ fn new_split_codes_are_structural_and_suppress_the_resolved_view() {
         (
             "E-TAG-NOT-ONE-LINE",
             "## Shot 1.\n<on event=\"x\"\nwhen=\"run.a\">\n</on>\n",
+        ),
+        (
+            "E-TAG-INLINE-BODY",
+            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\"> @x: hi. </choice>\n</branch>\n",
         ),
     ] {
         let res = check(&input_for(text));

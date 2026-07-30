@@ -362,10 +362,12 @@ fn divergence_holds_under_plugin_defs() {
         .expect("temp plugindef project has a lute.project.yaml");
 
     // A scene whose whole `<when test>` bool guard is a bare plugin-def `@ref`;
-    // only the ref differs between the two cases.
+    // only the ref differs between the two cases. Arm bodies sit on their OWN
+    // lines: an inline `<when …>@narrator: a` silently DROPPED that content
+    // line and is `E-TAG-INLINE-BODY` (dsl §2.3).
     let scene = |guard: &str| {
         format!(
-            "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n"
+            "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n"
         )
     };
 
