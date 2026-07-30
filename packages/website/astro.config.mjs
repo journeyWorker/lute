@@ -20,6 +20,23 @@ const luteGrammar = {
   name: "lute",
 };
 
+/** Matches the `lute-diagnostics` marker and nothing else. */
+const DIAGNOSTIC_MARKER = /^<!--\s*lute-diagnostics\b[\s\S]*?-->$/;
+
+/** Remove `<!-- lute-diagnostics … -->` marker nodes from the mdast. */
+function stripDiagnosticMarkers() {
+  return (tree) => {
+    const walk = (node) => {
+      if (!Array.isArray(node.children)) return;
+      node.children = node.children.filter(
+        (child) => !(child.type === "html" && DIAGNOSTIC_MARKER.test(child.value.trim())),
+      );
+      node.children.forEach(walk);
+    };
+    walk(tree);
+  };
+}
+
 // https://astro.build/config
 export default defineConfig({
   site: "https://lute-lang.vercel.app",
@@ -132,4 +149,14 @@ export default defineConfig({
       },
     }),
   ],
+  markdown: {
+    // `<!-- lute-diagnostics -->` declares to scripts/check-doc-snippets.py
+    // that the fence below it quotes real CLI diagnostic output, so the
+    // message text can be pinned against the `format!` literals in crates/**.
+    // It is a build-time annotation for the repo, not content: strip it rather
+    // than ship an internal review note (and, on an opted-out block, a
+    // paragraph-long reason) inside every reader's HTML. `.mdx` needs no
+    // handling — MDX comments never reach the tree.
+    remarkPlugins: [stripDiagnosticMarkers],
+  },
 });

@@ -30,6 +30,7 @@ configuration. Just the language itself.
 Create an empty file, `my-scene.lute`, and run the checker on it — the checker is the tool that
 tells you whether a `.lute` file is valid:
 
+<!-- lute-diagnostics -->
 ```
 $ ./target/debug/lute check my-scene.lute
 my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)
@@ -77,6 +78,7 @@ frontmatter:
 
 Check again:
 
+<!-- lute-diagnostics -->
 ```
 $ ./target/debug/lute check my-scene.lute
 my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
@@ -121,6 +123,7 @@ reserved speaker `@narrator`. Add a line where Mira speaks:
 
 Save and check. This one does **not** pass yet:
 
+<!-- lute-diagnostics -->
 ```
 $ ./target/debug/lute check my-scene.lute
 my-scene.lute:14:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
@@ -252,6 +255,7 @@ Say you type the old-style sigil out of habit — a colon instead of `@` — on 
 :mira{mono}: I should not be this pleased about a coffee order.
 ```
 
+<!-- lute-diagnostics -->
 ```
 $ ./target/debug/lute check my-scene.lute
 my-scene.lute:20:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically

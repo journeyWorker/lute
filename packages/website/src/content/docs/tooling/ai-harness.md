@@ -37,6 +37,7 @@ Some errors describe the **project**, not a span in a document: a plugin option 
 
 Since 0.8.0 they set the exit code. Previously they printed and the build passed, so a typo'd plugin option shipped silently:
 
+<!-- lute-diagnostics -->
 ```console
 $ lute check scene.lute --project . --json
 lute: E-PLUGIN-OPTION-TYPE: option `showcase.pack.resultScope` expects enum(scene|run), got "galaxy"
@@ -95,6 +96,7 @@ state:
 @mira: What have you got in there?
 ```
 
+<!-- lute-diagnostics -->
 ```console
 $ lute check scene.lute
 scene.lute:7:3: error [E-STATE-COLLECTION] state path `run.inventory` cannot declare a collection type (`list`/`record`/`map`); author state is scalar (number|bool|string|enum) — model collections as `relations:` (dsl 0.3.0 §3) or a plugin `state_shapes` slot

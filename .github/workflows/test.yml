@@ -115,7 +115,12 @@ jobs:
       # Reuses `target/debug/lute` built above. Verified to have teeth: adding
       # one attribute to a `lute.core` staging directive moves
       # `capabilityVersion` and this step fails on all 8 hashes the docs pin.
-      # Both doc trees are scanned, exactly as in `docs.yml`.
+      # Both doc trees are scanned, exactly as in `docs.yml`. It also pins the
+      # diagnostic MESSAGE TEXT the docs quote against the `format!` literals
+      # in `crates/*/src`, which is the half `crates/**` uniquely moves:
+      # rewording `E-DOMAIN-DUP` in `crates/lute-check/src/schema_import.rs`
+      # now fails here, naming `language/vocabulary.md` and the drifted
+      # sentence. Before that pin existed the same reword passed at exit 0.
       - name: Doc snippet + pinned-capability gate (docs vs this binary)
         run: python3 scripts/check-doc-snippets.py --lute ./target/debug/lute
 

@@ -32,6 +32,7 @@ Declaring a surface in a manifest does not make the toolchain believe it. Every 
 
 Plugin-owned **frontmatter keys** are the same story. A `frontmatter/*.yaml` export declares `{ key, schema }` pairs; the checker admits those keys past `E-META-UNKNOWN-KEY` *and* validates their values against the declared `schema`. A violation is **`E-FRONTMATTER-SCHEMA`**, reported at the key's own span:
 
+<!-- lute-diagnostics -->
 ```
 $ lute check scene.lute --project .
 scene.lute:10:1: error [E-FRONTMATTER-SCHEMA] frontmatter key `bonusTrack` expects bool (declared by an active plugin), got "yesplease"
