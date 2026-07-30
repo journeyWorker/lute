@@ -161,6 +161,10 @@ const STRUCTURAL_CODES: &[&str] = &[
     "E-CONTENT-OUTSIDE-SHOT",
     "E-CONTENT-LINE-BRACKET",
     "E-TAG-NOT-ONE-LINE",
+    // dsl §2.3: an inline `<tag …>body</tag>` body is DROPPED from the node
+    // stream (the parser consumes whole lines), the same corruption as the
+    // wrapped-opener sibling above.
+    "E-TAG-INLINE-BODY",
     // FL1 (dsl 0.5.0 §2.1/§2.2): split off E-UNCLASSIFIED — same drop-the-line
     // node-stream corruption as its former residual bucket.
     "E-LEGACY-CONTENT-SIGIL",
@@ -900,6 +904,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // additionally produce the pre-existing W-OVERLAP-ARMS — the dead-arm
     // error is the root.
     suppress_dead_arm_overlaps(&mut diags);
+    // dsl §2.3: a block whose CHILDREN did not parse gives the verdicts drawn
+    // from that child list nothing to judge — drop them rather than claim the
+    // author's logic is wrong on top of their parse error.
+    suppress_unparsed_child_list_verdicts(&mut diags);
 
     // Dedup overlapping `E-UNDECLARED` (carry-forward #4) BEFORE the sort.
     let mut diags = dedup_undeclared(diags);
@@ -3181,6 +3189,70 @@ fn suppress_dead_arm_overlaps(diags: &mut Vec<Diagnostic>) {
     }
     diags.retain(|d| {
         !(d.code == "W-OVERLAP-ARMS" && dead_spans.iter().any(|s| spans_overlap(*s, d.span)))
+    });
+}
+
+/// The parse failures that can cost a block element a CHILD outright: a line
+/// that classified as nothing, a tag whose close never resolved, an opener
+/// wrapped past its newline, a body (and close) written on the opener's own
+/// line. Membership rule: after one of these, the child list a verdict below
+/// reads is NOT the child list the author wrote. Deliberately EXCLUDES
+/// `E-LOGIC-CONTENT`/`E-TIMELINE-CONTENT` (the children parsed; one of them is
+/// merely illegal in that body) and the content-line failures
+/// `E-CONTENT-LINE-BRACKET`/`E-LEGACY-CONTENT-SIGIL` (they cost a child's own
+/// BODY line, never the child) — for those the verdict is still earned.
+const CHILD_PARSE_FAILURE_CODES: &[&str] = &[
+    "E-TAG-INLINE-BODY",
+    "E-TAG-NOT-ONE-LINE",
+    "E-UNCLASSIFIED",
+    "E-UNCLOSED-TAG",
+];
+
+/// The verdicts drawn from a block's CHILD LIST alone — each says "these
+/// children do not cover / do not include X" and anchors at the whole block's
+/// span: a `<match>`'s coverage trio ([`crate::match_check`]'s
+/// `E-NONEXHAUSTIVE`/`E-UNSET-UNCOVERED`/`E-AGE-GATE`, all read off one
+/// `has_otherwise`/`covered` derivation over `m.arms`), plus `<branch>`'s and
+/// `<hub>`'s "no `<choice>` at all" / "no exit choice" verdicts over
+/// `choices`. `E-BRANCH-ALL-GUARDED` is NOT here and needs no gate: it skips
+/// the empty branch by construction, and a child that parses keeps its own
+/// `when`, so no lost child can flip its verdict.
+const CHILD_LIST_VERDICT_CODES: &[&str] = &[
+    "E-AGE-GATE",
+    "E-BRANCH-EMPTY",
+    "E-HUB-NO-EXIT",
+    "E-NONEXHAUSTIVE",
+    "E-UNSET-UNCOVERED",
+];
+
+/// dsl §2.3: a block whose children did not parse gives these verdicts nothing
+/// to judge. Each would be read off a child list the author never wrote, so it
+/// lands as a FALSE claim about their logic stacked on the real (parse) error —
+/// the most harmful cascade there is, since `E-NONEXHAUSTIVE` on an exhaustive
+/// `<match>` sends the author to rewrite logic that was already correct. Any
+/// [`CHILD_PARSE_FAILURE_CODES`] diagnostic landing inside the block therefore
+/// drops every [`CHILD_LIST_VERDICT_CODES`] verdict for it (span overlap: a
+/// verdict carries the whole block's span, so a failure on one of its lines is
+/// always inside it).
+///
+/// Same shape as [`suppress_dead_arm_overlaps`] (span-scoped, so ONE broken
+/// `<match>` never silences a healthy one elsewhere in the document) and the
+/// same principle as C3/D12's [`suppress_unproven_absence`]: a failed
+/// parse/resolution suppresses the claims that depend on what it never built.
+/// [`crate::cel_resolve`] applies it upstream too — a `slot.ast: None` skips
+/// the AST pass outright rather than cascade off unparsed CEL.
+fn suppress_unparsed_child_list_verdicts(diags: &mut Vec<Diagnostic>) {
+    let unparsed: Vec<Span> = diags
+        .iter()
+        .filter(|d| CHILD_PARSE_FAILURE_CODES.contains(&d.code.as_str()))
+        .map(|d| d.span)
+        .collect();
+    if unparsed.is_empty() {
+        return;
+    }
+    diags.retain(|d| {
+        !(CHILD_LIST_VERDICT_CODES.contains(&d.code.as_str())
+            && unparsed.iter().any(|s| spans_overlap(*s, d.span)))
     });
 }
 
