@@ -462,7 +462,8 @@ directives (9):
   vfx: type, label, transition
   video: assetId, action, wait
 enums (0):
-stateSchema (2):
+stateSchema (3):
+  run.metMira: bool
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
 deliveryFlags (3):
@@ -476,6 +477,10 @@ projectEnums (1):
 `enums (0)`은 버그가 아닙니다: 그 줄은 활성화된 *플러그인*이 제공하는 멤버를 세는데, 이 파일은
 플러그인을 하나도 쓰지 않습니다. 당신이 직접 선언한 것은 **`projectEnums`** 아래에 나옵니다 —
 `emotion="content"`를 실제로 해석해 주는 어휘입니다.
+
+`stateSchema`도 상태에 대해 같은 이야기입니다: 당신이 직접 선언한 것(Part 3의 `scene.knowsMira`,
+Part 5의 `run.metMira`)에, `<branch>`가 대신 선언해 주는 `scene.choices.orderChoice`가 더해진
+목록입니다. 뒤따르는 구성이 플레이어가 어느 선택지를 골랐는지 읽을 수 있도록 하기 위한 것입니다.
 
 디렉티브 이름, 속성, 유효한 `emotion` 값을 추측하는 대신 다시 확인하고 싶을 때 언제든 실행하세요.
 여기서부터는 각 구성을 깊이 다루는 **Language** 섹션을 따라가거나, 실제 프로젝트를 기능별로

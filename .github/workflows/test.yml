@@ -24,6 +24,22 @@ name: Test
 # (packages/cli) under `tsc --noEmit` so a type regression in the
 # platform-detection / binary-resolution logic is caught without a native
 # build.
+#
+# `offline` also owns the CRATES-SIDE half of the documentation contract. The
+# docs quote real CLI output — capability hashes, `lute context` transcripts,
+# diagnostic text — and `.github/workflows/docs.yml` cannot own that half: its
+# `paths:` names only `crates/lute-check/src/lib.rs` and
+# `crates/lute-compile/src/lib.rs`, and widening it to `crates/**` would run a
+# full Astro website build on every Rust change. So the two doc checks ride
+# here, where `crates/**` is already in the trigger set and `target/debug/lute`
+# is already built. This is not duplicated coverage: `docs.yml` fires when a
+# DOC moves, this job fires when the BINARY the doc quotes moves.
+#
+# Deliberately NOT added to the trigger set: `docs/**`,
+# `packages/website/**`, or the two script paths. Those are the doc-side
+# inputs, `docs.yml` already triggers on all of them and runs the same two
+# scripts, and firing a full `cargo test --workspace` for a prose edit would
+# be pure cost. The one input this job uniquely covers is `crates/**`.
 
 on:
   pull_request:
@@ -48,7 +64,7 @@ env:
 
 jobs:
   offline:
-    name: cargo test --workspace + JS harnesses (offline)
+    name: cargo test --workspace + JS harnesses + doc gates (offline)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -95,6 +111,22 @@ jobs:
       - name: nvim query mirror gate (editors/nvim vs tree-sitter-lute queries)
         working-directory: tree-sitter-lute
         run: bun test test/nvim_query_sync.test.js
+
+      # Reuses `target/debug/lute` built above. Verified to have teeth: adding
+      # one attribute to a `lute.core` staging directive moves
+      # `capabilityVersion` and this step fails on all 8 hashes the docs pin.
+      # Both doc trees are scanned, exactly as in `docs.yml`.
+      - name: Doc snippet + pinned-capability gate (docs vs this binary)
+        run: python3 scripts/check-doc-snippets.py --lute ./target/debug/lute
+
+      # Its crate inputs today are only the two version consts `docs.yml`
+      # already triggers on, so this is redundancy — but it is a stdlib-python
+      # run with no build and no deps, and it is the script that grows a new
+      # single-sourced const whenever one appears. Here that new crate input is
+      # covered the moment it lands; in `docs.yml` it would need someone to
+      # remember a `paths:` entry, which is the exact drift this job closes.
+      - name: Docs consistency check (version parity, stale domain)
+        run: python3 scripts/check-docs-consistency.py
 
   launcher-typecheck:
     name: typecheck @lute-lang/lute launcher (tsc --noEmit)
