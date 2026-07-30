@@ -6,6 +6,10 @@ kind: scene
 character: demo
 season: 1
 episode: 2
+# The project's content vocabulary (dsl 0.9.0). The importer declares it: an
+# expanded component body resolves its `action=` against THIS document's
+# vocabulary, because a component's own `uses:` is not carried through `::use`.
+uses: ../base.schema.yaml
 components: [greet.component.lute]
 ---
 

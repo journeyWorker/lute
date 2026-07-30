@@ -2,3 +2,28 @@ state:
   run.blessed: { type: bool, default: false }
 defs:
   wealthy: { type: bool, cel: "run.blessed" }
+# The project's own content vocabulary (dsl 0.9.0 D-A/D-C). The compiler
+# declares the SLOTS — `emotion`, `action`, `anchor`, `mood`, `volume`,
+# `musicAction`, `vfxType` — and ships no members; a slot used with no
+# declaration here (or in an active plugin's `enums` export) is
+# `E-DOMAIN-UNKNOWN`. Any document reaching this file through `uses:`/
+# `extends:` inherits the whole vocabulary, so declaring it once per project
+# root is the migration every 0.9.0 project performs.
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+  mood: [peaceful, tense, romantic, sad, upbeat]
+  volume: [silent, down, normal, up, full]
+  musicAction: [start, change, stop, resume, fade-out]
+  vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
+  # Long form (dsl 0.9.0 D-D): a bare list is shorthand for `{ members: [...] }`,
+  # but the two slots carrying compiler-relevant member semantics must spell
+  # them out. `anchor` MUST declare the member used when the attr is absent;
+  # `action` MUST declare which members exit their character (the compiler reads
+  # `exits:` instead of inferring from a `fade-out*` name prefix).
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fade-in-up, fade-in-slow, slide-in-left, walk-in, idle, wave, sway, lean,
+              pose-turn, fade-out, fade-out-down, fade-out-slow, hide]
+    exits: [fade-out, fade-out-down, fade-out-slow, hide]

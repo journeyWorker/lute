@@ -93,4 +93,14 @@ No `addr` moved. Every shot in the project emits well under 100 addresses, which
 
 The showcase does not reach the rest of 0.8.0: there is no `::end`, no `after: active(…)`, no quest document, and no `stampattrs/` export in `showcase.pack`. Those live on [Core directives](/language/directives/), [Quests & scenes](/language/quests-and-scenes/), and [Manifests](/plugins/manifests/).
 
+## What 0.9.0 changed here
+
+Language 0.9.0 moved content-vocabulary **members** out of the compiler: `lute.core` declares the seven slots (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) and ships no members, so a project must declare its own or get `E-DOMAIN-UNKNOWN`.
+
+The showcase declares its vocabulary through **`showcase.pack`**, not through a schema — a new `enums/` export listed in `plugin.yaml`. That is the point: a plugin `enums` export is how an engine or genre pack ships a vocabulary to every project that activates it, and it surfaces on the capability snapshot (`lute context --json` → `enums`, and therefore `capabilityVersion`). A project schema's `enums:` is the other route; it surfaces under the separate `projectEnums` key and travels into the compiled artifact's `enums` array instead. `docs/examples/base.schema.yaml` demonstrates that one. Declaring the same slot through both routes in one project root is `E-DOMAIN-DUP`, so each root picks one per slot.
+
+Consequences visible here: the three scenes are restamped `luteVersion: "0.9.0"`, `capabilityVersion` moves again (the core's vocabulary emptied *and* `showcase.pack` grew an export), and the artifacts' `enums` arrays stay **absent** — a plugin-supplied vocabulary is capability surface, not per-document data. `irVersion` stays `0.8.0`: no artifact field was added, renamed, or moved.
+
+The imported `stinger` component is also now checked exactly as it is when checked standalone. Five whole-document passes used to run only at the document root and skip imported component bodies; all five run over them now, so `stinger.component.lute`'s `::music`/`::vfx` values are validated through the `::use` as well as directly.
+
 For the complete project — the plugin manifests, schemas, component, catalog, and the full feature→line map — see the [showcase directory and its README](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) in the repository.

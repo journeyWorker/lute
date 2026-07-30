@@ -721,11 +721,13 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // dsl 0.8.0 Appendix C: both stamps advance to 0.8.0 for the
-        // adoption release (new `end` kind + append-only IR fields). They are
-        // still tracked as independent pins (T13) even though they coincide.
+        // dsl 0.9.0 D-A: the LANGUAGE version advances to 0.9.0 (content
+        // vocabulary members move out of the compiler) while the IR schema
+        // stays 0.8.0 — no artifact field was added, renamed, or moved. The two
+        // stamps have always been tracked as independent pins (T13); this is
+        // the release that makes them diverge.
         assert_eq!(super::LUTE_IR_VERSION, "0.8.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.8.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.9.0");
     }
 
     #[test]
@@ -734,7 +736,7 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.8.0");
+        assert_eq!(v["lute"], "0.9.0");
         assert_eq!(v["irVersion"], "0.8.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);

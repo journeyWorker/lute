@@ -21,9 +21,20 @@ One artifact is produced per `.lute` document (`lute compile <file>` →
   and `meta`;
 - a **folded state table** — `state: StateEntry[]` (see
   [state-lifecycle.md](./state-lifecycle.md));
-- a **relational vocabulary** — `entities` / `enums` / `relations` /
-  `seedFacts` / `rules`, emitted as data for your Datalog evaluator (see
-  [cel-and-facts.md](./cel-and-facts.md)); each is omitted when empty;
+- a **declared vocabulary** — `entities` / `enums` / `relations` / `seedFacts` /
+  `rules`, emitted as data; each is omitted when empty. `entities` /
+  `relations` / `seedFacts` / `rules` feed your Datalog evaluator (see
+  [cel-and-facts.md](./cel-and-facts.md)). **`enums` carries both** the
+  relational enum domains AND, since dsl 0.9.0, the document's declared
+  **content** vocabulary (`emotion`, `action`, `anchor`, `mood`, `volume`,
+  `musicAction`, `vfxType`) when the project declares it in a schema the
+  document imports — the compiler ships no members of its own, so the artifact
+  is self-describing about the vocabulary it was compiled against. Each entry is
+  `{ name, members }`; member-level semantics (`exits:`/`default:`) are **not**
+  serialized, because the compiler has already resolved them into `sprite.exit`
+  and the emitted anchor. A vocabulary supplied by a plugin `enums` export does
+  **not** appear here — it is part of `capabilityVersion` instead. Nothing about
+  this changes `irVersion`, and an engine that ignores `enums` is unaffected;
 - a flat, ordered **`commands: Command[]`** stream — the executable body;
 - an advisory **`prereqEdges`** graph (this document's raw `after` formulas;
   connectivity T13 — see [quest-lifecycle.md](./quest-lifecycle.md) for how

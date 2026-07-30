@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "quest",
-  "lute": "0.8.0",
+  "lute": "0.9.0",
   "irVersion": "0.8.0",
-  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
+  "capabilityVersion": "0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07",
   "meta": {},
   "state": [
     {
