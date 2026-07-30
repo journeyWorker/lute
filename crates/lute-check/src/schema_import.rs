@@ -537,9 +537,11 @@ pub fn merge_domains(
             diags.push(uses_diag(
                 "E-DOMAIN-DUP",
                 format!(
-                    "domain `{name}` is declared by a project schema but already exists in \
-                     the plugin/core vocabulary; a domain name must be declared by exactly \
-                     one source"
+                    "domain `{name}` is declared by this project — in a document's own \
+                     `enums:` frontmatter or in a project schema reached through \
+                     `uses:`/`extends:` — but already exists in the plugin/core vocabulary; \
+                     a domain name must be declared by exactly one source, so drop the \
+                     project declaration or the plugin's `enums` export (the plugin's wins)"
                 ),
                 at,
             ));

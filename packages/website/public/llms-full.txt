@@ -29,6 +29,21 @@ gets the number; asking gently just warms her. `<match>` is first-match-wins
 with a mandatory `<otherwise>`, so every branch is total.
 
 ```lute
+---
+kind: scene
+character: bianca
+season: 1
+episode: 2
+title: The Hostess with a Name
+pov: fixer
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+state:
+  scene.affect.bianca: { type: number, default: 0 }
+defs:
+  fond: { type: bool, cel: "scene.affect.bianca >= 1" }
+---
+
 ## The Hostess with a Name
 ::camera{focus="bianca" zoom="1.1" duration="0.5"}
 
@@ -62,6 +77,16 @@ One choreographed beat, many concurrent tracks — split a single subject across
 property-scoped tracks (`pos`, `opacity`) alongside an independent camera track:
 
 ```lute
+---
+kind: scene
+character: bianca
+season: 1
+episode: 1
+enums:
+  anchor: { members: [left, center, right], default: center }
+  action: { members: [slide-in-left, fade-in-up, fade-out], exits: [fade-out] }
+---
+
 <timeline duration="1.2">
   <track subject="bianca" property="pos">
     ::auto{character="bianca" anchor="left" action="slide-in-left"}
@@ -186,18 +211,20 @@ Whichever route you took, confirm the tool is on your `PATH`:
 ```
 $ lute version
 lute toolchain 0.8.0
-language      0.8.0
+language      0.9.0
 IR schema     0.8.0
 ```
 
 Those are three independent axes: the **toolchain** version is this CLI, the **language** version
 is the grammar and semantics the checker enforces, and the **IR schema** version is what
-`lute compile` stamps into every artifact as `irVersion`. They happen to move together today, but
-nothing requires them to. For scripts and CI, `--json` prints the same three axes as one object:
+`lute compile` stamps into every artifact as `irVersion`. Nothing requires them to move together,
+and as of language 0.9.0 they no longer do: the language moved while the IR schema deliberately
+stayed at 0.8.0, because no artifact field was added, renamed, or moved. For scripts and CI,
+`--json` prints the same three axes as one object:
 
 ```
 $ lute version --json
-{"toolchain":"0.8.0","language":"0.8.0","ir":"0.8.0"}
+{"toolchain":"0.8.0","language":"0.9.0","ir":"0.8.0"}
 ```
 
 (`lute --version` also works and prints just `lute 0.8.0` — the toolchain axis alone.)
@@ -307,11 +334,39 @@ reserved speaker `@narrator`. Add a line where Mira speaks:
 @mira{emotion="content" variant="0"}: {{userName}}, you made it.
 ```
 
-- `@mira` is the speaker. `emotion="content"` and `variant="0"` pick which portrait/pose to show —
-  these are catalog vocabulary, not something you invent; `lute context` (Part 4) lists the legal
-  values for your project.
+- `@mira` is the speaker. `emotion="content"` and `variant="0"` pick which portrait/pose to show.
 - `{{userName}}` is an **interpolation** — text wrapped in double braces gets filled in at runtime.
   `{{userName}}` is the one that's always available: the player's own name.
+
+Save and check. This one does **not** pass yet:
+
+```
+$ lute check my-scene.lute
+my-scene.lute:14:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+failed: my-scene.lute (1 error(s), 0 warning(s))
+```
+
+Nothing is misspelled — this is the rule that **Lute ships the slot, you ship the members.**
+`emotion` is one of seven vocabulary slots the language knows about (`emotion`, `action`, `anchor`,
+`mood`, `volume`, `musicAction`, `vfxType`), but the compiler holds no opinion about which emotions
+your characters have, so no value is legal until you say it is. Declare the members where you
+declare everything else about the document — the frontmatter:
+
+```yaml
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+```
+
+Declare only the slots your scene actually uses; this one uses `emotion` and nothing else. (`action`
+additionally requires an `exits:` list and `anchor` a `default:` — see
+[Content vocabulary](/language/vocabulary/). `lute init` scaffolds all seven into a shared
+`vocabulary.schema.yaml` that scenes pull in with `uses:`; for a single tutorial file, frontmatter is
+simpler.) Re-check:
+
+```
+$ lute check my-scene.lute
+ok: my-scene.lute (0 warning(s))
+```
 
 Now add an inner-voice line for Mira — her private thought, not spoken aloud:
 
@@ -336,6 +391,8 @@ character: mira
 season: 1
 episode: 1
 pov: fixer
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 ---
 
 ## The Counter
@@ -392,7 +449,7 @@ Say you type an old-style sigil out of habit — a colon instead of `@` — on t
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+my-scene.lute:20:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -413,9 +470,9 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.8.0",
+  "lute": "0.9.0",
   "irVersion": "0.8.0",
-  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
+  "capabilityVersion": "0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07",
   "meta": {
     "character": "mira",
     "season": 1,
@@ -424,6 +481,7 @@ $ lute compile my-scene.lute
     "title": "A Quiet Table"
   },
   "state": [ … ],
+  "enums": [ … ],
   "commands": [
     {
       "kind": "line",
@@ -456,7 +514,9 @@ $ lute compile my-scene.lute
 }
 ```
 
-(`…` marks where output was trimmed for space; everything else is verbatim.) Two fields are worth
+(`…` marks where output was trimmed for space; everything else is verbatim.) Your `enums:`
+declaration rides along into the artifact's own **`enums`** block, so the engine resolves values
+against exactly the vocabulary the checker used. Two other fields are worth
 knowing on sight. **`addr`** is the record's address, `{shot}-{index}`, and every `addr` in one
 artifact is padded to the same width — so sorting the `addr` strings gives you execution order, no
 parsing required. **`shots`** carries your `## ` headings through to the artifact, so a tool
@@ -553,6 +613,8 @@ season: 1
 episode: 2
 pov: fixer
 after: 'visited("mira.s01ep01")'
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 state:
   run.metMira: { type: bool }
 ---
@@ -563,6 +625,10 @@ state:
 
 @narrator: The coffee is already poured.
 ```
+
+Vocabulary is declared per document, so the booth repeats the diner's `enums:` block. Two files is
+the point where you stop copying it: move the block into a `vocabulary.schema.yaml` next to them and
+replace it in each scene with `uses: [./vocabulary.schema.yaml]` — the layout `lute init` scaffolds.
 
 Single-file `lute check` can't judge cross-file relationships — a `.lute` file on its own has no
 idea what other episodes exist. The **project** checker can:
@@ -609,12 +675,13 @@ through the diner, which always `::set`s it. That's a genuine cross-scene guaran
 ## Part 6 — Where to go next
 
 **Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
-project accepts — the staging directives, their attributes, the enum values (like `emotion`), the
-declared state, and the delivery-flag vocabulary — resolved for the specific file you give it:
+project accepts — the staging directives, their attributes, the vocabulary members in scope (your
+`emotion` list, say), the declared state, and the delivery-flag vocabulary — resolved for the
+specific file you give it:
 
 ```
 $ lute context my-scene.lute
-capabilityVersion: 78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3
+capabilityVersion: 0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07
 directives (9):
   auto: character, anchor, action
   bg: location, time, assetId
@@ -625,10 +692,7 @@ directives (9):
   sfx: sound, assetId, name
   vfx: type, label, transition
   video: assetId, action, wait
-enums (6):
-  emotion: neutral, surprised, delighted, shy, content, angry, sad
-  mood: peaceful, tense, romantic, sad, upbeat
-  …
+enums (0):
 stateSchema (2):
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
@@ -636,7 +700,13 @@ deliveryFlags (3):
   {mono}: interior monologue / thought (not spoken aloud in-scene)
   {os}: off-screen: the speaker is heard but not currently staged/visible
   {vo}: voiceover: narration-style delivery layered over the scene
+projectEnums (1):
+  emotion: neutral, surprised, delighted, shy, content, angry, sad
 ```
+
+`enums (0)` is not a bug: that line counts members supplied by the active *plugins*, and this file
+activates none. Your own declarations show up under **`projectEnums`** — the vocabulary that
+actually resolves `emotion="content"`.
 
 Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value
 instead of guessing. From here, follow the **Language** section for each construct in depth, or read
@@ -726,6 +796,8 @@ error (`E-KIND-MISSING`, `E-META-MISSING`).
   [Components & extends](/language/components-and-extends/)).
 - inline **`state`** and **`defs`** blocks (see [State model](/state/state-model/) and
   [Params](/language/params/)).
+- **`enums`** — the content-vocabulary and relational-domain declaration. A universal key: legal in a
+  scene, a quest, or a schema (see [Content vocabulary](/language/vocabulary/)).
 
 A top-level key that is neither a core key nor owned by an active plugin is a static error.
 Plugins may contribute additional frontmatter keys through their manifest (for example, `cast:` is
@@ -759,6 +831,124 @@ same resolved capability snapshot, so what checks clean is exactly what compiles
 
 ---
 
+# Content vocabulary
+
+The compiler declares the content-vocabulary **slots**; your project declares the **members**. Since
+language `0.9.0` the built-in `lute.core` plugin ships an empty `enums:` — there is no baseline list
+to override or work around — and the other half of that trade is that **using a slot nothing declares
+is an error**:
+
+```
+error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:`
+block in this document's own frontmatter, in a project schema reached through `uses:`, or in a
+plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+```
+
+## The seven slots
+
+| Slot | Bound at |
+|---|---|
+| `emotion` | content line `emotion=` |
+| `action` | content line `action=`, `::auto{action}` |
+| `anchor` | `::auto{anchor}` |
+| `mood` | `::music{mood}` |
+| `volume` | `::music{volume}` |
+| `musicAction` | `::music{action}` |
+| `vfxType` | `::vfx{type}` |
+
+`::music{action}` fills the `musicAction` slot — attribute name and slot name differ, and the
+diagnostic names the slot. **Not vocabulary:** `::cut{action}` / `::video{action}` are an inline
+`{ enum: [show, hide] }` on the directive, and the delivery flags `{mono}` / `{os}` / `{vo}`, the
+reserved `narrator` speaker, and `::end` are grammar.
+
+## Declaring members
+
+A declaration is an `enums:` block; a bare sequence is shorthand for `{ members: [...] }`.
+
+```yaml
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fade-in-up, sway, lean, idle, fade-out, hide]
+    exits: [fade-out, hide]
+  mood: [peaceful, tense, romantic, sad, upbeat]
+  volume: [silent, down, normal, up, full]
+  musicAction: [start, change, stop, resume, fade-out]
+  vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
+```
+
+There are exactly **three routes** to that block, all through one parser and one validator:
+
+1. **Inline** — the using document's own frontmatter. `enums:` is a universal frontmatter key. This
+   is the only route open to a single-file author and to the playground, which checks one in-memory
+   document and can resolve no import.
+2. **Imported** — a project schema reached through `uses:` **or** `extends:`; both carry vocabulary.
+   The route a multi-document project should prefer: declare once at the root.
+3. **Plugin** — a capability plugin's `enums` export. Unlike the other two it is capability surface:
+   it lands under `lute context --json`'s `enums` and moves `capabilityVersion`, where the two
+   project routes land under the separate `projectEnums` key and move neither.
+
+Declaration is **per project root** — a directory with a `lute.project.yaml`. A sibling root's
+declaration never reaches yours.
+
+**The plugin route needs the project on the command line.** A bare single-file `lute check <file>`
+does **not** resolve project plugins: that run is core-only, so a document relying on the plugin
+route reports `E-DOMAIN-UNKNOWN`. Use `lute check <file> --project <dir>`, or `lute check-project
+<dir>`, which resolves the root itself.
+
+## Precedence when two routes declare one slot
+
+- **Either project route against a plugin** is `E-DOMAIN-DUP`, and the **plugin wins**: the project
+  entry is dropped and reported, so subsequent values are judged against the plugin's members. Inline
+  and imported are treated identically here. Pick one route per slot. Since the core ships no
+  members, this only ever fires against a plugin you activated.
+- **Inline against imported** is not a clash: the **inline declaration wins and MUST re-declare a
+  superset** of the imported base's members. Dropping one is `E-EXTENDS-RELATION-SIG`. It is
+  `E-DOMAIN-DUP` in **neither** direction — that code is reserved for clashes involving a plugin.
+
+## Member semantics: `exits:` and `default:`
+
+Two slots have members the compiler *branches on*, and it will not guess which:
+
+- **A declaration of `action` MUST supply `exits:`** — the members that end a character's presence on
+  stage. A member listed there lowers to a `sprite` record carrying `exit: true`; one not listed does
+  not.
+- **A declaration of `anchor` MUST supply `default:`** — the member used when a character is shown
+  with no explicit anchor, injected as a `sprite` record with `provenance.by: "auto-anchor-on-show"`.
+
+For the other five slots both keys are meaningless and **rejected**, so a typo cannot hide in an
+ignored key. `default:` and every `exits:` entry must itself be a declared member.
+
+| Code | Fires when |
+|---|---|
+| `E-ENUM-MISSING-SEMANTICS` | `action` declared without `exits:`, or `anchor` without `default:` |
+| `E-ENUM-UNEXPECTED-SEMANTICS` | `exits:` or `default:` on a slot that has no such semantics |
+| `E-ENUM-DEFAULT-NOT-MEMBER` | `default:` is not one of `members:` |
+| `E-ENUM-EXITS-NOT-MEMBER` | an `exits:` entry is not one of `members:` |
+
+Neither key is serialized into the artifact — the compiler has already resolved them into
+`sprite.exit` and the emitted anchor, so an engine needs no member semantics at runtime.
+
+## Tooling, artifact, and one scope limit
+
+`lute init` scaffolds a starter vocabulary for all seven slots into a `vocabulary.schema.yaml` the
+generated scene imports. `lute doctor <dir>` reports which slots a root declares, with the semantics
+inline (`vocabulary slots declared: none` when it declares nothing). For a project declaring inline
+or through `uses:`/`extends:`, the compiled artifact's `enums` array becomes populated — an
+artifact-*content* change only: `irVersion` stays `"0.8.0"` and no IR field moved. A
+plugin-supplied vocabulary does not appear there; it is capability surface.
+
+**Known limitation.** A component's own `uses:` and its own inline `enums:` are both discarded at
+parse, so a folded component body resolves vocabulary against the **importing** document. A component
+naming a slot only *it* declares checks clean standalone and reports `E-DOMAIN-UNKNOWN` through a
+`::use`, anchored at the importing document's frontmatter with a prefix naming the component and its
+file. Keep the declaration at the project root and let both the scene and the component reach it.
+
+---
+
 # Dialogue & cast
 
 Content is the spoken and narrated text of a scene. Every content line has the same shape:
@@ -788,10 +978,13 @@ There is no separate monologue or prose node — role is derived from the speake
 ## Line attributes
 
 Attributes in `{…}` are content metadata: `code` (a stable per-line id), `emotion`, `variant`,
-`action`, `dialogMotion`, and `as` (a one-off speaker-label override). Their *domains* are project
-vocabulary, not grammar — run `lute context <file>` to list the legal `emotion`/`variant` values
-for your project. None is required; a missing `code` is back-filled deterministically at compile
-time and can be persisted with `lute tag`.
+`action`, `dialogMotion`, and `as` (a one-off speaker-label override). `emotion` and `action` fill
+**vocabulary slots**: the compiler declares the slot and ships no members, so the project must
+declare them — inline in this document's `enums:` frontmatter, in a project schema reached through
+`uses:`/`extends:`, or in a plugin's `enums` export — and using an undeclared slot is
+`E-DOMAIN-UNKNOWN` (see [Content vocabulary](/language/vocabulary/)). Run `lute context <file>` to
+list the members in scope. None of the attributes is required; a missing `code` is back-filled
+deterministically at compile time and can be persisted with `lute tag`.
 
 ```lute
 @bianca{as="???"}: ...who's there?
@@ -1602,9 +1795,11 @@ uses: state.schema.yaml
 ## Declaration files
 
 A `.schema.yaml` file is a **plain YAML declaration map** — no `---` envelope, no body, just
-`state:` / `defs:` (and, for the relational layer, `entities:` / `relations:` / `facts:` / `rules:`).
-It carries no `character`/`season`/`episode`, because it is imported and validated in import mode,
-never run as a scene.
+`state:` / `defs:` / `enums:` (and, for the relational layer, `entities:` / `relations:` / `facts:` /
+`rules:`). It carries no `character`/`season`/`episode`, because it is imported and validated in
+import mode, never run as a scene. Its `enums:` is the *imported* one of the three
+content-vocabulary routes, and `extends:` carries it exactly as `uses:` does (see
+[Content vocabulary](/language/vocabulary/)).
 
 ```yaml
 state:
@@ -1786,7 +1981,7 @@ The `run` / `user` / `app` tiers are game/season-global: one persisted value can
 
 ## Schema shape
 
-A schema declares `state:` (scalar tiers), `defs:` (named typed-CEL macros), and — when the relational layer is used — `entities:` / `enums:` / `relations:` / `facts:` / `rules:`.
+A schema declares `state:` (scalar tiers), `defs:` (named typed-CEL macros), `enums:` (declared member lists), and — when the relational layer is used — `entities:` / `relations:` / `facts:` / `rules:`. An `enums:` block does double duty: its domains are argument types for the relational layer, and since language `0.9.0` they are also how a project declares the **content vocabulary** — `emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`, for which the compiler ships no members (see [Content vocabulary](/language/vocabulary/)).
 
 ```yaml
 state:
@@ -2085,7 +2280,7 @@ Read-only reporting over the connectivity layer. With no subcommand, prints the 
 $ lute context <file> [--json] [--providers <DIR>] [--project <DIR>]
 ```
 
-Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, delivery flags, referenced reserved quest paths, and `capabilityVersion`. A capability query, not validation — it emits regardless of document diagnostics. Exit **0** on success, **2** on I/O.
+Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, plugin-supplied `enums` plus the project's own `projectEnums`, asset kinds, providers, state schema, relational vocabulary, delivery flags, referenced reserved quest paths, and `capabilityVersion`. A capability query, not validation — it emits regardless of document diagnostics. Exit **0** on success, **2** on I/O.
 
 ## tag
 
@@ -2117,7 +2312,7 @@ Re-stamp every pinned provider snapshot in `<dir>` against the current `capabili
 $ lute init <dir> [--template minimal|investigation]
 ```
 
-Scaffold a new Lute project directory — `lute.project.yaml`, a state schema, a starter scene, and a trace mock, ready for `lute check-project`. `<dir>` must not already contain a `lute.project.yaml`. `--template` is `minimal` (default) or `investigation`. Exit **0** on success, **2** on I/O or a refused overwrite.
+Scaffold a new Lute project directory — `lute.project.yaml`, a state schema, a `vocabulary.schema.yaml` declaring a starter member list for all seven [content-vocabulary](/language/vocabulary/) slots, a starter scene that imports both, and a trace mock, ready for `lute check-project`. `<dir>` must not already contain a `lute.project.yaml`. `--template` is `minimal` (default) or `investigation`. Exit **0** on success, **2** on I/O or a refused overwrite.
 
 ## new
 
@@ -2133,7 +2328,7 @@ Scaffold one new document (`scene`, `quest`, or `schema`) into an existing proje
 $ lute doctor [<dir>] [--json]
 ```
 
-Diagnose the local toolchain and project setup: version axes, project manifest, provider snapshots, editor-integration hints. `--json` emits JSON. Exit **0** when every check passes, **1** on a reported problem, **2** on I/O.
+Diagnose the local toolchain and project setup: version axes, project manifest, provider snapshots, which [content-vocabulary](/language/vocabulary/) slots the root declares (with `exits:`/`default:` inline, or `none`), editor-integration hints. `--json` emits JSON. Exit **0** when every check passes, **1** on a reported problem, **2** on I/O.
 
 ## run
 
@@ -2386,7 +2581,7 @@ Seed the model from the project's *authoring surface*, never from guesswork:
 lute context scene.lute --json --project .
 ```
 
-It emits the project-resolved directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, imported components, and a `capabilityVersion`. It is a capability **query**, not validation: it emits regardless of the document's own diagnostics (exit `0`), and — the key property — **works on an empty file**, because the surface comes from the resolved project and plugins, not the document body. Use `capabilityVersion` as a prompt-cache key: the vocabulary only changes when it does.
+It emits the project-resolved directives, attrs, plugin-supplied `enums` plus the project's own `projectEnums`, asset kinds, providers, state schema, relational vocabulary, imported components, and a `capabilityVersion`. It is a capability **query**, not validation: it emits regardless of the document's own diagnostics (exit `0`), and — the key property — **works on an empty file**, because the surface comes from the resolved project and plugins, not the document body. Use `capabilityVersion` as a prompt-cache key: the vocabulary only changes when it does.
 
 ## Feedback loop: `lute check --json`
 

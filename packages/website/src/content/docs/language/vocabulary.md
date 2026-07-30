@@ -103,8 +103,10 @@ project routes — an inline `enums:` block and an imported schema's are treated
 project entry is dropped and reported, so subsequent values are judged against the plugin's members:
 
 ```
-error [E-DOMAIN-DUP] domain `emotion` is declared by a project schema but already exists in the
-plugin/core vocabulary; a domain name must be declared by exactly one source
+error [E-DOMAIN-DUP] domain `emotion` is declared by this project — in a document's own `enums:`
+frontmatter or in a project schema reached through `uses:`/`extends:` — but already exists in the
+plugin/core vocabulary; a domain name must be declared by exactly one source, so drop the project
+declaration or the plugin's `enums` export (the plugin's wins)
 error [E-BAD-ENUM] `furious` is not a valid value for `emotion` of `::narrator`
 (expected one of: neutral, delighted, pensive)
 ```
