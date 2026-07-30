@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.8.0**.
+**0.9.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -99,11 +99,42 @@ reserved speaker `@narrator`. Add a line where Mira speaks:
 @mira{emotion="content" variant="0"}: {{userName}}, you made it.
 ```
 
-- `@mira` is the speaker. `emotion="content"` and `variant="0"` pick which portrait/pose to show —
-  these are catalog vocabulary, not something you invent; `lute context` (Part 4) lists the legal
-  values for your project.
+- `@mira` is the speaker. `emotion="content"` and `variant="0"` pick which portrait/pose to show.
 - `{{userName}}` is an **interpolation** — text wrapped in double braces gets filled in at runtime.
   `{{userName}}` is the one that's always available: the player's own name.
+
+Save and check. This one does **not** pass yet:
+
+```
+$ lute check my-scene.lute
+my-scene.lute:14:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+failed: my-scene.lute (1 error(s), 0 warning(s))
+```
+
+Nothing is misspelled — this is the rule that **Lute ships the slot, you ship the members.**
+`emotion` is one of seven vocabulary slots the language knows about (`emotion`, `action`, `anchor`,
+`mood`, `volume`, `musicAction`, `vfxType`), but the compiler holds no opinion about which emotions
+your characters have. That is your story's call, so no value is legal until you say it is. Declare
+the members where you declare everything else about the document — the frontmatter:
+
+```yaml
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+```
+
+Declare only the slots your scene actually uses; this one uses `emotion` and nothing else. (Two
+slots carry required semantics once you declare them: `action` needs an `exits:` list naming the
+members that take a character off stage, and `anchor` needs a `default:`. `lute init` scaffolds all
+seven with a starter member list, in a shared `vocabulary.schema.yaml` that scenes pull in with
+`uses:` — the right shape once several files share one vocabulary. For a single tutorial file,
+frontmatter is simpler.)
+
+Re-check:
+
+```
+$ lute check my-scene.lute
+ok: my-scene.lute (0 warning(s))
+```
 
 Now add an inner-voice line for Mira — her private thought, not spoken aloud:
 
@@ -128,6 +159,8 @@ character: mira
 season: 1
 episode: 1
 pov: fixer
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 ---
 
 ## The Counter
@@ -184,7 +217,7 @@ Say you type an old-style sigil out of habit — a colon instead of `@` — on t
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+my-scene.lute:20:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -205,9 +238,9 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.8.0",
+  "lute": "0.9.0",
   "irVersion": "0.8.0",
-  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
+  "capabilityVersion": "0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07",
   "meta": {
     "character": "mira",
     "season": 1,
@@ -216,6 +249,7 @@ $ lute compile my-scene.lute
     "title": "A Quiet Table"
   },
   "state": [ … ],
+  "enums": [ … ],
   "commands": [
     {
       "kind": "line",
@@ -248,8 +282,10 @@ $ lute compile my-scene.lute
 }
 ```
 
-(`…` marks where output was trimmed for space; everything else is verbatim.) Two fields are worth
-knowing on sight. **`addr`** is the record's address, `{shot}-{index}`, and every `addr` in one
+(`…` marks where output was trimmed for space; everything else is verbatim.) Your `enums:`
+declaration rides along into the artifact's own **`enums`** block, so the engine resolves values
+against exactly the vocabulary the checker used. Two other fields are worth knowing on sight.
+**`addr`** is the record's address, `{shot}-{index}`, and every `addr` in one
 artifact is padded to the same width — so sorting the `addr` strings gives you execution order, no
 parsing required. **`shots`** carries your `## ` headings through to the artifact, so a tool
 downstream can still say *which beat* a record belongs to.
@@ -345,6 +381,8 @@ season: 1
 episode: 2
 pov: fixer
 after: 'visited("mira.s01ep01")'
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 state:
   run.metMira: { type: bool }
 ---
@@ -355,6 +393,11 @@ state:
 
 @narrator: The coffee is already poured.
 ```
+
+Vocabulary is declared per document, so the booth repeats the diner's `enums:` block. Two files is
+the point where you stop copying it: move the block into a `vocabulary.schema.yaml` next to them and
+replace it in each scene with `uses: [./vocabulary.schema.yaml]`. That is exactly the layout
+`lute init` scaffolds.
 
 Single-file `lute check` can't judge cross-file relationships — a `.lute` file on its own has no
 idea what other episodes exist. The **project** checker can:
@@ -401,12 +444,13 @@ through the diner, which always `::set`s it. That's a genuine cross-scene guaran
 ## Part 6 — Where to go next
 
 **Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
-project accepts — the staging directives, their attributes, the enum values (like `emotion`), the
-declared state, and the delivery-flag vocabulary — resolved for the specific file you give it:
+project accepts — the staging directives, their attributes, the vocabulary members in scope (your
+`emotion` list, say), the declared state, and the delivery-flag vocabulary — resolved for the
+specific file you give it:
 
 ```
 $ lute context my-scene.lute
-capabilityVersion: 78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3
+capabilityVersion: 0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07
 directives (9):
   auto: character, anchor, action
   bg: location, time, assetId
@@ -417,13 +461,7 @@ directives (9):
   sfx: sound, assetId, name
   vfx: type, label, transition
   video: assetId, action, wait
-enums (6):
-  anchor: left, center, right
-  emotion: neutral, surprised, delighted, shy, content, angry, sad
-  mood: peaceful, tense, romantic, sad, upbeat
-  musicAction: start, change, stop, resume, fade-out
-  vfxType: whiteOut, blackOut, rain, snow, leaves, petals, raindrop
-  volume: silent, down, normal, up, full
+enums (0):
 stateSchema (2):
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
@@ -431,7 +469,13 @@ deliveryFlags (3):
   {mono}: interior monologue / thought (not spoken aloud in-scene)
   {os}: off-screen: the speaker is heard but not currently staged/visible
   {vo}: voiceover: narration-style delivery layered over the scene
+projectEnums (1):
+  emotion: neutral, surprised, delighted, shy, content, angry, sad
 ```
+
+`enums (0)` is not a bug: that line counts members supplied by the active *plugins*, and this file
+activates none. Your own declarations show up under **`projectEnums`** — the vocabulary that
+actually resolves `emotion="content"`.
 
 Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value
 instead of guessing. From here, follow the **Language** section for each construct in depth, or read

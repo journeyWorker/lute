@@ -6,7 +6,7 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 이 문서는 Lute를 한 번도 다뤄본 적 없는 시나리오 작가를 위한 "여기서 시작" 안내입니다 —
 컴파일러 배경지식은 필요 없습니다. 빈 파일에서 **작지만 실제로 동작하는 장면 하나**를 단계별로
 만들며, 매 단계마다 실제 `lute` 도구를 실행해 도구가 정확히 뭐라고 말하는지 확인합니다. 언어
-버전 **0.8.0**을 대상으로 합니다.
+버전 **0.9.0**을 대상으로 합니다.
 
 일반 텍스트 편집기, 터미널, 그리고 `lute` 명령
 ([먼저 설치하세요](/ko/getting-started/installation/))이 필요합니다. 여기서 작성하는 모든
@@ -98,10 +98,42 @@ ok: my-scene.lute (0 warning(s))
 ```
 
 - `@mira`는 화자입니다. `emotion="content"`와 `variant="0"`은 어떤 초상화/포즈를 보여줄지
-  고릅니다 — 이것들은 당신이 지어내는 것이 아니라 카탈로그 어휘입니다. `lute context`(Part 4)가
-  프로젝트에서 사용할 수 있는 유효한 값들을 나열합니다.
+  고릅니다.
 - `{{userName}}`은 **보간(interpolation)**입니다 — 이중 중괄호로 감싼 텍스트는 런타임에
   채워집니다. `{{userName}}`은 항상 사용 가능한 것입니다: 플레이어 자신의 이름입니다.
+
+저장하고 검사해 보세요. 이번에는 **통과하지 않습니다**:
+
+```
+$ lute check my-scene.lute
+my-scene.lute:14:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
+failed: my-scene.lute (1 error(s), 0 warning(s))
+```
+
+오타가 아닙니다 — **슬롯은 Lute가 정하고, 멤버는 당신이 정한다**는 규칙 때문입니다. `emotion`은
+언어가 아는 일곱 개의 어휘 슬롯(`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`,
+`vfxType`) 중 하나이지만, 당신의 캐릭터가 어떤 감정을 갖는지에 대해 컴파일러는 아무 의견도 갖지
+않습니다. 그것은 당신 이야기의 몫이므로, 선언하기 전까지는 어떤 값도 유효하지 않습니다. 멤버는
+문서에 관한 다른 모든 것을 선언하는 곳 — 프런트매터 — 에 선언합니다:
+
+```yaml
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+```
+
+장면이 실제로 쓰는 슬롯만 선언하세요. 이 장면이 쓰는 것은 `emotion` 하나뿐입니다. (선언할 때
+필수 의미를 함께 요구하는 슬롯이 둘 있습니다: `action`은 캐릭터를 무대에서 내보내는 멤버를
+나열하는 `exits:`가, `anchor`는 `default:`가 필요합니다. `lute init`은 일곱 슬롯 전부를 시작용
+멤버와 함께 공유 `vocabulary.schema.yaml`에 만들어 주고, 장면들은 `uses:`로 그것을 끌어옵니다 —
+여러 파일이 하나의 어휘를 공유하게 되면 그 형태가 맞습니다. 튜토리얼처럼 파일이 하나라면
+프런트매터가 더 간단합니다.)
+
+다시 검사하세요:
+
+```
+$ lute check my-scene.lute
+ok: my-scene.lute (0 warning(s))
+```
 
 이제 Mira의 속마음 줄을 추가하세요 — 소리 내어 말하지 않는 그녀의 사적인 생각입니다:
 
@@ -126,6 +158,8 @@ character: mira
 season: 1
 episode: 1
 pov: fixer
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 ---
 
 ## The Counter
@@ -181,7 +215,7 @@ state:
 
 ```
 $ lute check my-scene.lute
-my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
+my-scene.lute:20:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -203,9 +237,9 @@ lute: migrated 1 edit(s) to 0.2.2
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.8.0",
+  "lute": "0.9.0",
   "irVersion": "0.8.0",
-  "capabilityVersion": "78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3",
+  "capabilityVersion": "0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07",
   "meta": {
     "character": "mira",
     "season": 1,
@@ -214,6 +248,7 @@ $ lute compile my-scene.lute
     "title": "A Quiet Table"
   },
   "state": [ … ],
+  "enums": [ … ],
   "commands": [
     {
       "kind": "line",
@@ -246,8 +281,10 @@ $ lute compile my-scene.lute
 }
 ```
 
-(`…`는 지면을 위해 잘라낸 자리이고, 나머지는 출력 그대로입니다.) 한눈에 알아둘 필드가 둘
-있습니다. **`addr`**는 레코드의 주소로 `{shot}-{index}` 형태이며, 하나의 산출물 안의 모든
+(`…`는 지면을 위해 잘라낸 자리이고, 나머지는 출력 그대로입니다.) 당신이 선언한 `enums:`는
+산출물의 **`enums`** 블록으로 그대로 실려 가므로, 엔진은 체커가 쓴 것과 똑같은 어휘로 값을
+해석합니다. 그 밖에 한눈에 알아둘 필드가 둘 있습니다. **`addr`**는 레코드의 주소로
+`{shot}-{index}` 형태이며, 하나의 산출물 안의 모든
 `addr`는 같은 너비로 채워집니다 — 그래서 `addr` 문자열을 정렬하기만 하면 실행 순서가 나옵니다.
 파싱할 필요가 없습니다. **`shots`**는 당신이 쓴 `## ` 헤딩을 산출물까지 실어 나르므로, 하위
 도구가 어떤 레코드가 *어느 비트에* 속하는지 여전히 말할 수 있습니다.
@@ -344,6 +381,8 @@ season: 1
 episode: 2
 pov: fixer
 after: 'visited("mira.s01ep01")'
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 state:
   run.metMira: { type: bool }
 ---
@@ -354,6 +393,11 @@ state:
 
 @narrator: The coffee is already poured.
 ```
+
+어휘는 문서 단위로 선언되므로 부스 장면은 다이너의 `enums:` 블록을 그대로 반복합니다. 파일이
+둘이 되는 지점이 복사를 그만둘 때입니다: 블록을 옆에 둔 `vocabulary.schema.yaml`로 옮기고, 각
+장면에서는 `uses: [./vocabulary.schema.yaml]`로 바꾸세요. `lute init`이 만들어 주는 배치가 바로
+이것입니다.
 
 단일 파일 `lute check`는 파일 간 관계를 판단할 수 없습니다 — `.lute` 파일 하나만으로는 다른
 에피소드가 무엇이 존재하는지 알 길이 없습니다. **프로젝트** 체커는 할 수 있습니다:
@@ -401,12 +445,12 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
 ## Part 6 — 다음 갈 곳
 
 **무엇을 쓸 수 있는지 확실하지 않으신가요?** `lute context <file>`는 프로젝트가 허용하는 어휘를
-정확히 출력합니다 — 연출 디렉티브, 그 속성, 열거 값(예: `emotion`), 선언된 상태, 전달 플래그
-어휘 — 당신이 지정한 특정 파일에 맞게 해석하여:
+정확히 출력합니다 — 연출 디렉티브, 그 속성, 현재 유효한 어휘 멤버(예: 당신의 `emotion` 목록),
+선언된 상태, 전달 플래그 어휘 — 당신이 지정한 특정 파일에 맞게 해석하여:
 
 ```
 $ lute context my-scene.lute
-capabilityVersion: 78a2f619ac416b39b604b5b0fe4ceff0fdde5a353ae1beeff737fddaf4d58bd3
+capabilityVersion: 0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07
 directives (9):
   auto: character, anchor, action
   bg: location, time, assetId
@@ -417,13 +461,7 @@ directives (9):
   sfx: sound, assetId, name
   vfx: type, label, transition
   video: assetId, action, wait
-enums (6):
-  anchor: left, center, right
-  emotion: neutral, surprised, delighted, shy, content, angry, sad
-  mood: peaceful, tense, romantic, sad, upbeat
-  musicAction: start, change, stop, resume, fade-out
-  vfxType: whiteOut, blackOut, rain, snow, leaves, petals, raindrop
-  volume: silent, down, normal, up, full
+enums (0):
 stateSchema (2):
   scene.choices.orderChoice: enum [black, familiar, unset]
   scene.knowsMira: bool
@@ -431,7 +469,13 @@ deliveryFlags (3):
   {mono}: interior monologue / thought (not spoken aloud in-scene)
   {os}: off-screen: the speaker is heard but not currently staged/visible
   {vo}: voiceover: narration-style delivery layered over the scene
+projectEnums (1):
+  emotion: neutral, surprised, delighted, shy, content, angry, sad
 ```
+
+`enums (0)`은 버그가 아닙니다: 그 줄은 활성화된 *플러그인*이 제공하는 멤버를 세는데, 이 파일은
+플러그인을 하나도 쓰지 않습니다. 당신이 직접 선언한 것은 **`projectEnums`** 아래에 나옵니다 —
+`emotion="content"`를 실제로 해석해 주는 어휘입니다.
 
 디렉티브 이름, 속성, 유효한 `emotion` 값을 추측하는 대신 다시 확인하고 싶을 때 언제든 실행하세요.
 여기서부터는 각 구성을 깊이 다루는 **Language** 섹션을 따라가거나, 실제 프로젝트를 기능별로
