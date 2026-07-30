@@ -14,11 +14,16 @@ scripts/check-release-workflow-safety.py):
    - `LUTE_LANG_VERSION` is read from crates/lute-check/src/lib.rs and
      `LUTE_IR_VERSION` from crates/lute-compile/src/lib.rs (the canonical
      definitions — see those files' doc comments).
-   - Every CURRENT-version claim in packages/website/public/llms.txt and
-     llms-full.txt must equal `LUTE_LANG_VERSION`. Only lines that literally
-     assert the current version are matched (precise phrasings pinned below);
-     historical proposal-table rows (`| **0.6.0** | ... |`) are exempt because
-     they carry none of those phrasings.
+   - Every CURRENT-version claim in packages/website/public/llms.txt,
+     llms-full.txt, and every page under packages/website/src/content/docs/
+     must equal `LUTE_LANG_VERSION`. Only text that literally asserts the
+     CURRENT language version is matched (precise phrasings pinned below), so
+     the two hazards the docs tree adds stay out: `tooling/**` says `0.8.0`
+     about the IR schema and about release history, and `spec/**` maps every
+     feature to the version that introduced or last changed it. Neither
+     carries a pinned phrasing. The llms files must each carry at least one
+     claim (they are generated summaries and losing the claim would be
+     drift); an ordinary docs page needs none.
    - The IR schema `schemas/lute-ir-<major.minor>.schema.json` for the current
      IR version's major.minor must exist.
 
@@ -49,6 +54,8 @@ IR_CONST_FILE = ROOT / "crates/lute-compile/src/lib.rs"
 SCHEMA_DIR = ROOT / "schemas"
 LLMS = ROOT / "packages/website/public/llms.txt"
 LLMS_FULL = ROOT / "packages/website/public/llms-full.txt"
+DOCS_CONTENT = ROOT / "packages/website/src/content/docs"
+DOCS_CONTENT_SUFFIXES = (".md", ".mdx")
 
 DOMAIN_ROOTS = (ROOT / "packages/website", ROOT / "docs")
 STALE_DOMAIN = "lute-website.vercel.app"
@@ -57,15 +64,44 @@ STALE_DOMAIN = "lute-website.vercel.app"
 # are replayed one at a time and several share a scene identity on purpose.
 EXAMPLE_ROOT_CANDIDATES = ("docs/examples",)
 
-# Precise CURRENT-language-version claim phrasings actually present in the two
-# llms files. Applied to the FULL file text (not line-by-line) so a claim that
-# wraps across a newline — e.g. "targets language version\n**0.6.1**." — is
-# still captured. Proposal-table rows ("| **0.6.1** | Current tip ... |") carry
-# none of these phrasings and are therefore exempt.
+# Precise CURRENT-language-version claim phrasings. Applied to the FULL file
+# text (not line-by-line) so a claim that wraps across a newline — e.g.
+# "targets language version\n**0.6.1**." — is still captured.
+#
+# Every pattern below is anchored on wording that can ONLY be a claim about the
+# language version as it stands right now. That precision is what lets the same
+# set run over packages/website/src/content/docs/ without flagging the two
+# legitimate `0.8.0`s living there:
+#
+#   * IR-version claims. `tooling/runtime-contract.md`'s "What IR 0.8.0
+#     changed", `tooling/cli.md`'s `"irVersion": "0.8.0"`, and
+#     `getting-started/installation.md`'s `IR schema     0.8.0` name a
+#     different axis. None of them says "language".
+#   * Historical attribution. `spec/**` maps each feature to the version that
+#     introduced or last changed it, `tooling/ai-harness.md` says "Since 0.8.0
+#     they set the exit code", and `examples/showcase.md` quotes
+#     `luteVersion: "0.8.0"` under a "What 0.8.0 changed here" heading. Those
+#     are past-tense attributions, not current-version assertions — which is
+#     also why `luteVersion:` is deliberately NOT pinned here.
+#
+# The last three patterns pin REPLAYED OUTPUT rather than prose, because a
+# transcript rots exactly as silently as a sentence: the `language` axis of
+# `lute version` and `lute version --json`, and the `"lute"` stamp a compiled
+# artifact carries (its sibling `"irVersion"` is a different axis and is not
+# matched).
 VERSION_CLAIM_PATTERNS = (
     re.compile(r"current language version is\s+\*\*(\d+\.\d+\.\d+)\*\*"),
     re.compile(r"targets language version\s+\*\*(\d+\.\d+\.\d+)\*\*"),
     re.compile(r"Language version\s+(\d+\.\d+\.\d+)\."),
+    # Korean locale phrasings (ko/**): "현재 언어 버전은 **0.9.0**입니다" and
+    # "언어 버전 **0.9.0**을 대상으로 합니다".
+    re.compile(r"현재 언어 버전은\s*\*\*(\d+\.\d+\.\d+)\*\*"),
+    re.compile(r"언어\s*버전\s+\*\*(\d+\.\d+\.\d+)\*\*"),
+    # `lute version` human output — the middle of three labelled axes.
+    re.compile(r"^language\s+(\d+\.\d+\.\d+)\s*$", re.MULTILINE),
+    # `lute version --json` and a compiled artifact's language stamp.
+    re.compile(r'"language"\s*:\s*"(\d+\.\d+\.\d+)"'),
+    re.compile(r'"lute"\s*:\s*"(\d+\.\d+\.\d+)"'),
 )
 
 ERRORS: list[str] = []
@@ -95,23 +131,45 @@ def extract_const(path: pathlib.Path, name: str) -> str:
     return m.group(1)
 
 
-def check_version_claims(path: pathlib.Path, expected: str) -> None:
+def check_version_claims(
+    path: pathlib.Path, expected: str, *, require_claim: bool = True
+) -> int:
+    """Pin every CURRENT-language-version claim in `path` to `expected`.
+
+    Returns the number of claims found. `require_claim` is for the two llms
+    files, which are generated summaries whose claim going missing is itself
+    drift; an ordinary docs page is free to carry none.
+    """
     text = read(path)
     rel = path.relative_to(ROOT)
-    found: list[str] = []
+    found: list[tuple[int, str]] = []
     for pat in VERSION_CLAIM_PATTERNS:
-        found.extend(pat.findall(text))
-    check(
-        len(found) > 0,
-        f"{rel}: no current-language-version claim found (expected a phrasing "
-        f"like 'current language version is **{expected}**'); did the wording "
-        f"change? Update VERSION_CLAIM_PATTERNS in this script.",
-    )
-    for v in found:
+        for m in pat.finditer(text):
+            found.append((text.count("\n", 0, m.start()) + 1, m.group(1)))
+    if require_claim:
+        check(
+            len(found) > 0,
+            f"{rel}: no current-language-version claim found (expected a phrasing "
+            f"like 'current language version is **{expected}**'); did the wording "
+            f"change? Update VERSION_CLAIM_PATTERNS in this script.",
+        )
+    for line, v in sorted(found):
         check(
             v == expected,
-            f"{rel}: version claim {v!r} != crate LUTE_LANG_VERSION {expected!r}",
+            f"{rel}:{line}: current-language-version claim {v!r} != crate "
+            f"LUTE_LANG_VERSION {expected!r}",
         )
+    return len(found)
+
+
+def docs_content_pages() -> list[pathlib.Path]:
+    if not DOCS_CONTENT.is_dir():
+        fail(f"missing docs content tree: {DOCS_CONTENT.relative_to(ROOT)}")
+    return sorted(
+        p
+        for p in DOCS_CONTENT.rglob("*")
+        if p.is_file() and p.suffix in DOCS_CONTENT_SUFFIXES
+    )
 
 
 def check_stale_domain() -> None:
@@ -140,9 +198,18 @@ def main() -> int:
     lang_version = extract_const(LANG_CONST_FILE, "LUTE_LANG_VERSION")
     ir_version = extract_const(IR_CONST_FILE, "LUTE_IR_VERSION")
 
-    # 1. Version claims in the website llms files match the crate const.
-    check_version_claims(LLMS, lang_version)
-    check_version_claims(LLMS_FULL, lang_version)
+    # 1. Version claims in the website llms files match the crate const. Both
+    # are generated summaries, so a MISSING claim is drift too.
+    claims = check_version_claims(LLMS, lang_version)
+    claims += check_version_claims(LLMS_FULL, lang_version)
+
+    # 1a. …and so does every claim on every page of the docs content tree.
+    # This is the scope that was missing: the same first pattern that guards
+    # llms.txt matched, verbatim, the stale string that shipped in
+    # spec/index.md — it was simply never pointed at these files.
+    pages = docs_content_pages()
+    for page in pages:
+        claims += check_version_claims(page, lang_version, require_claim=False)
 
     # 1b. The IR schema for the current IR major.minor exists.
     ir_mm = ".".join(ir_version.split(".")[:2])
@@ -169,7 +236,9 @@ def main() -> int:
     print(
         f"check-docs-consistency: OK — language version {lang_version}, "
         f"IR version {ir_version} (schema {schema.relative_to(ROOT)}); "
-        f"website version claims and canonical domain are coherent."
+        f"{claims} current-language-version claim(s) across llms.txt, "
+        f"llms-full.txt and {len(pages)} docs page(s) all read "
+        f"{lang_version}; canonical domain is coherent."
     )
     print("check-docs-consistency: example roots for CI check-project:")
     for r in roots:

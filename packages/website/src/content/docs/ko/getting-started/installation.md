@@ -5,7 +5,7 @@ description: bunx, 전역 bun 설치, 또는 Rust 소스로 Lute CLI를 설치�
 
 Lute는 단일 명령줄 도구 `lute` 하나로 제공됩니다. 이 도구는 `.lute` 시나리오 파일을 읽어
 검사(check), 컴파일(compile), 트레이스(trace)하고 그 내용을 살펴봅니다. 현재 언어 버전은
-**0.8.0**입니다.
+**0.9.0**입니다.
 
 ## `bunx`로 빠르게 시작하기
 
@@ -62,20 +62,22 @@ cargo install --path crates/lute-cli
 ```
 $ lute version
 lute toolchain 0.8.0
-language      0.8.0
+language      0.9.0
 IR schema     0.8.0
 ```
 
 이 셋은 서로 독립적인 축이며, 다른 곳에서도 다시 마주치게 됩니다: **toolchain** 버전은 이 CLI
 자체이고, **language** 버전은 체커가 강제하는 문법과 의미론이며, **IR schema** 버전은
-`lute compile`이 모든 산출물에 `irVersion`으로 새겨 넣는 값입니다. 지금은 셋이 함께 움직이지만,
-반드시 그래야 할 이유는 없습니다.
+`lute compile`이 모든 산출물에 `irVersion`으로 새겨 넣는 값입니다. 이번 릴리스가 바로 이 셋이
+정말로 독립적이라는 증거입니다: `0.9.0`은 **language**만 움직였습니다 — 콘텐츠 어휘의 멤버가
+프로젝트의 소유가 되었죠 — 반면 toolchain과 IR schema는 `0.8.0`에 그대로 남았습니다. 산출물의
+필드가 추가되거나 이름이 바뀌거나 이동하지 않았기 때문입니다.
 
 스크립트와 CI에서는 `--json`이 같은 세 축을 하나의 객체로 출력합니다:
 
 ```
 $ lute version --json
-{"toolchain":"0.8.0","language":"0.8.0","ir":"0.8.0"}
+{"toolchain":"0.8.0","language":"0.9.0","ir":"0.8.0"}
 ```
 
 (`lute --version`도 동작하며 `lute 0.8.0`만 출력합니다 — toolchain 축 하나뿐입니다.)

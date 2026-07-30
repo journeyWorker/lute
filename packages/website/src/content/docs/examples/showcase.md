@@ -1,6 +1,6 @@
 ---
 title: Full-spec showcase
-description: A walkthrough of the self-contained showcase project — a full-feature episode plus hub and when-is companions that drive the implemented language surface end-to-end and check clean under 0.8.0.
+description: A walkthrough of the self-contained showcase project — a full-feature episode plus hub and when-is companions that drive the implemented language surface end-to-end and check clean under 0.9.0.
 ---
 
 The [`docs/examples/showcase/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/showcase) project is one self-contained scenario that drives the implemented language surface end-to-end — frontmatter and profiles, all four state tiers, schema composition, `<branch>`/`<match>`/`<hub>`, timelines, content components, and a plugin bridge — and checks clean:

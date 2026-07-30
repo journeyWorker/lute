@@ -25,7 +25,7 @@ profiles:
 defaultProfile: story
 ```
 
-- **`global` is reserved** and is applied before any other profile — every profile inherits it, which is where `lute.core` and the base language domains come from.
+- **`global` is reserved** and is applied before any other profile — every profile inherits it, which is where `lute.core`'s directives, attributes, and vocabulary *slots* come from. Since `0.9.0` it is only the slots: `lute.core` ships an empty `enums:`, so the [members are the project's](/language/vocabulary/) to declare.
 - **`extends`** names a single parent profile; the chain MUST be acyclic. Parents apply before children.
 - **`plugins`** is a map from plugin id to a typed option object, or `true` (which normalizes to defaults). Presence of a legal key **activates** that plugin. There is no `plugins.use` list, and there is no scene-local *deactivation* — a `false` value is a static error (`E-PROFILE-PLUGIN-VALUE`), never an off switch. To exclude a plugin, do not inherit a profile that activates it.
 
@@ -33,7 +33,7 @@ defaultProfile: story
 
 A scene names its profile in frontmatter (absent ⇒ `defaultProfile`) and MAY add scene-local `plugins:` — additive only. Here the scene narrows `allowedKinds` so `rhythm` is the only legal minigame kind:
 
-```lute
+```lute check="docs/examples/idola-project/date-minigame.lute"
 ---
 kind: scene
 character: bianca
@@ -47,6 +47,8 @@ plugins:
     allowedKinds: [rhythm]
 ---
 ```
+
+*(Frontmatter of [`docs/examples/idola-project/date-minigame.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/idola-project/date-minigame.lute), whose [`lute.project.yaml`](https://github.com/journeyWorker/lute/blob/main/docs/examples/idola-project/lute.project.yaml) declares the profile graph above.)*
 
 ## Resolution & merge
 

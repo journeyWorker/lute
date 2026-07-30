@@ -103,7 +103,7 @@ Dialogue, player choice, and state-driven callbacks — the branch below always
 gets the number; asking gently just warms her. `<match>` is first-match-wins
 with a mandatory `<otherwise>`, so every branch is total.
 
-```lute
+```lute check
 ---
 kind: scene
 character: bianca
@@ -113,6 +113,8 @@ title: The Hostess with a Name
 pov: fixer
 state:
   scene.affect.bianca: { type: number, default: 0 }
+enums:
+  emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 defs:
   fond: { type: bool, cel: "scene.affect.bianca >= 1" }
 ---
@@ -149,12 +151,15 @@ defs:
 One choreographed beat, many concurrent tracks — split a single subject across
 property-scoped tracks (`pos`, `opacity`) alongside an independent camera track:
 
-```lute
+```lute check
 ---
 kind: scene
 character: bianca
 season: 1
 episode: 1
+enums:
+  anchor: { members: [left, center, right], default: center }
+  action: { members: [slide-in-left, fade-in-up, fade-out], exits: [fade-out] }
 ---
 
 ## Beat
@@ -183,7 +188,7 @@ clue is a relational fact you `::assert`; and a closing `<match>` reacts to how
 far the case has moved. The checker validates every relation signature, guard,
 and match arm before a player ever sees it.
 
-```lute
+```lute check
 ---
 kind: scene
 character: detective

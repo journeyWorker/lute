@@ -254,18 +254,15 @@ graph LR
 
 `sub_quest_anon_look_0001`을 Lute로 그대로 쓰면:
 
-```lute
+```lute unverified="illustrates a mapping onto the oshiz catalog — `oshiz.world.schema.yaml`, the `oshiz` profile and the `::grant` plugin directive live in that game's project, not in this repo"
 ---
 kind: quest
 uses: oshiz.world.schema.yaml
 profile: oshiz
 ---
-<quest id="sub_quest_anon_look_0001"
-       start="holds(clearedIdolaEvent(npc_anon_ep01))">
-  <objective id="collect"
-             done="count(ownsItem(normal_local_mart_indoor_empty_milk_carton)) >= 5" />
-  <objective id="talk"
-             done="holds(talkedWith(anon))" />
+<quest id="sub_quest_anon_look_0001" start="holds(clearedIdolaEvent(npc_anon_ep01))">
+  <objective id="collect" done="count(ownsItem(normal_local_mart_indoor_empty_milk_carton)) >= 5" />
+  <objective id="talk" done="holds(talkedWith(anon))" />
   <on event="questComplete">
     ::grant{kind="ECHO_MULTIPLIER" amount="1"}
     ::grant{kind="EXP_ACCOUNT" amount="80"}
