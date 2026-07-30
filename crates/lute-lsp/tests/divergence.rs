@@ -650,7 +650,11 @@ fn divergence_holds_under_components() {
     .unwrap();
 
     // (a) happy path: import + ::use a valid component cleanly; projections agree.
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [greet.lute]\n---\n## Shot 1.\n::use{component=\"greet\" who=\"bianca\"}\n";
+    // `greet.lute`'s `::auto` writes no `anchor`, so `auto-anchor-on-show` reads
+    // the `anchor` domain's `default:` — the scene declares that slot inline, or
+    // the implicit read is `E-DOMAIN-UNKNOWN` (dsl 0.9.0 D-D) and drowns out the
+    // component projection this case is about.
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [greet.lute]\nenums:\n  anchor:\n    members: [left, center, right]\n    default: center\n---\n## Shot 1.\n::use{component=\"greet\" who=\"bianca\"}\n";
     let (doc, _) = lute_syntax::parse(text);
     let (meta0, _) = lute_check::parse_meta(
         &doc.meta,

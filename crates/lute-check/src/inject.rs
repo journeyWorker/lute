@@ -31,6 +31,19 @@
 //!      implicit command this rule emits (`by = "stage-bookkeeping"`);
 //! 4. [`Provenance`] `{ injected, by, reason }` on every injected command.
 //!
+//! ## Implicit vocabulary reads are CHECKED reads
+//! A rule that consults a domain's declared semantics when the corresponding
+//! attribute is ABSENT owns the diagnostic for that domain being undeclared:
+//! `check_directive` validates AUTHORED attrs only, so on the absent-attribute
+//! path no other pass ever names the domain. `auto_anchor_on_show`'s read of
+//! `anchor`'s `default:` is the one such read in this ruleset, and it reports
+//! `E-DOMAIN-UNKNOWN` (see [`missing_anchor_domain_diag`]). Every other rule
+//! either reads no vocabulary at all (`auto_pose_reset`, `entry_emotion_lookahead`,
+//! `stage_bookkeeping`'s scene-change arm) or reads it only from an attribute the
+//! author WROTE (`is_declared_exit` on `::auto`'s `action`), which the attribute
+//! check already covers. A new rule of the first shape must diagnose, not
+//! silently skip: skipping turns an undeclared slot into a behavior change.
+//!
 //! ## Data-vs-code boundary
 //! The arch doc's ideal is *manifest-driven, code-executed*: the manifest's
 //! per-directive `reads`/`writes`/`semantics` flags declare *which* directives
@@ -214,6 +227,10 @@ fn lower_auto(
 /// inject, that is the author-written-vs-would-inject case →
 /// `W-INJECT-CONFLICT` (warn, no double injection). A *different* explicit
 /// anchor is a deliberate override, honored silently.
+///
+/// The no-attribute arm makes the `anchor` domain an **implicit dependency of
+/// the `::auto` itself**, and therefore a CHECKED one: see
+/// [`missing_anchor_domain_diag`].
 fn auto_anchor_on_show(
     state: &mut StageState,
     d: &Directive,
@@ -221,35 +238,46 @@ fn auto_anchor_on_show(
     emit: &mut Vec<InjectedCommand>,
     domains: &BTreeMap<String, Domain>,
 ) {
-    let Some(default) = default_anchor(domains) else {
-        // No declared `anchor` vocabulary: nothing to inject, and the missing
-        // declaration is already an error at the attribute.
+    let Some(anchor_attr) = d.attrs.iter().find(|a| a.key == "anchor") else {
+        match default_anchor(domains) {
+            Some(default) => emit.push(InjectedCommand {
+                kind: InjectKind::Anchor {
+                    character: character.to_string(),
+                    anchor: default.to_string(),
+                },
+                provenance: Provenance {
+                    injected: true,
+                    by: "auto-anchor-on-show".to_string(),
+                    reason: format!(
+                        "`{character}` shown without an explicit anchor; defaulting to `{default}`"
+                    ),
+                },
+            }),
+            // No `anchor` domain at all: the implicit read has nothing to read,
+            // and nobody else will say so (see `missing_anchor_domain_diag`).
+            None if !domains.contains_key("anchor") => state
+                .diags
+                .push(missing_anchor_domain_diag(character, d.span)),
+            // DECLARED but with no `default:` — already `E-ENUM-MISSING-SEMANTICS`
+            // at the declaration (dsl 0.9.0 D-D makes `default:` mandatory for
+            // the `anchor` slot), so this arm stays silent instead of piling a
+            // second diagnostic onto one mistake.
+            None => {}
+        }
         return;
     };
-    match d.attrs.iter().find(|a| a.key == "anchor") {
-        None => emit.push(InjectedCommand {
-            kind: InjectKind::Anchor {
-                character: character.to_string(),
-                anchor: default.to_string(),
-            },
-            provenance: Provenance {
-                injected: true,
-                by: "auto-anchor-on-show".to_string(),
-                reason: format!(
-                    "`{character}` shown without an explicit anchor; defaulting to `{default}`"
+    // An AUTHORED `anchor` names the domain, so `check_domain_member` already
+    // validated it — both its membership and the domain's very existence. This
+    // arm only decides whether the author pre-empted the injection.
+    if let Some(default) = default_anchor(domains) {
+        if attr_value_str(&anchor_attr.value).as_deref() == Some(default) {
+            state.diags.push(conflict_diag(
+                format!(
+                    "`{character}` is shown with an explicit `anchor=\"{default}\"` that \
+                     `auto-anchor-on-show` would otherwise inject"
                 ),
-            },
-        }),
-        Some(anchor_attr) => {
-            if attr_value_str(&anchor_attr.value).as_deref() == Some(default) {
-                state.diags.push(conflict_diag(
-                    format!(
-                        "`{character}` is shown with an explicit `anchor=\"{default}\"` that \
-                         `auto-anchor-on-show` would otherwise inject"
-                    ),
-                    anchor_attr.value_span,
-                ));
-            }
+                anchor_attr.value_span,
+            ));
         }
     }
 }
@@ -383,10 +411,11 @@ fn line_is_stateful(line: &Line) -> bool {
     })
 }
 
-/// The `anchor` domain's declared default, or `None` when the project declares
-/// no `anchor` vocabulary (dsl 0.9.0 D-D). A missing declaration means the
-/// checker has already reported `E-DOMAIN-UNKNOWN` at the attribute, so the
-/// reducer simply injects nothing rather than inventing a member.
+/// The `anchor` domain's declared default, `None` when the project declares no
+/// `anchor` vocabulary at all or declares it without a `default:` (dsl 0.9.0
+/// D-D). Two very different shapes, so callers must distinguish them: the
+/// second is already `E-ENUM-MISSING-SEMANTICS` at the declaration, the first is
+/// diagnosed only where the read happens (see [`missing_anchor_domain_diag`]).
 fn default_anchor(domains: &BTreeMap<String, Domain>) -> Option<&str> {
     domains.get("anchor")?.default.as_deref()
 }
@@ -437,6 +466,44 @@ fn conflict_diag(message: String, span: Span) -> Diagnostic {
         code: "W-INJECT-CONFLICT".to_string(),
         severity: Severity::Warning,
         message,
+        span,
+        layer: Layer::Staging,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// Build the `E-DOMAIN-UNKNOWN` error for `auto-anchor-on-show`'s IMPLICIT read
+/// of the `anchor` domain (dsl 0.9.0 D-C/D-D), anchored at the `::auto` that
+/// carries the dependency — the only span an author can act on, since no
+/// attribute exists to point at.
+///
+/// Why the reducer reports this at all: `auto.anchor` is OPTIONAL, and
+/// `check_directive`/`check_domain_member` only validate AUTHORED attrs. So on
+/// the no-attribute path nothing else in the pipeline ever names `anchor`, and
+/// an undeclared `anchor` slot used to sail through `check` while silently
+/// dropping the default-anchor command 0.8.0 injected unconditionally — an
+/// undeclared slot turning into a behavior change rather than an error, which is
+/// the exact failure dsl 0.9.0 exists to prevent.
+///
+/// The code is reused, not minted: this IS "a domain slot is used but no source
+/// declares the domain", the whole meaning of `E-DOMAIN-UNKNOWN` — merely used
+/// implicitly rather than spelled out. A separate code would split one fact
+/// across two names and need registering in the CLI's `DENIABLE_CODES`, where
+/// `E-DOMAIN-UNKNOWN` already sits.
+fn missing_anchor_domain_diag(character: &str, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: "E-DOMAIN-UNKNOWN".to_string(),
+        severity: Severity::Error,
+        message: format!(
+            "`{character}` is shown without an explicit `anchor`, so this `::auto` uses the \
+             `anchor` domain's declared `default:` — but no source declares an `anchor` domain. \
+             Declare it in an `enums:` block in this document's own frontmatter, in a project \
+             schema reached through `uses:`, or in a plugin's `enums` export, or write an \
+             explicit `anchor` here (dsl 0.9.0 D-D)"
+        ),
         span,
         layer: Layer::Staging,
         fixits: Vec::new(),
@@ -762,21 +829,100 @@ mod tests {
         assert!(!st2.on_stage.contains_key("bianca"), "`vanish` must exit");
     }
 
-    /// No declared `anchor` vocabulary ⇒ nothing to inject and no invented
-    /// member: the missing declaration is already `E-DOMAIN-UNKNOWN` at the
-    /// attribute, so the reducer stays silent.
+    /// A DECLARED `anchor` that supplies no `default:` injects nothing: that
+    /// shape is already `E-ENUM-MISSING-SEMANTICS` at the declaration (dsl
+    /// 0.9.0 D-D makes `default:` mandatory for the `anchor` slot), so the
+    /// reducer stays silent rather than reporting it a second time.
     #[test]
-    fn no_declared_anchor_domain_injects_nothing() {
+    fn declared_anchor_without_a_default_injects_nothing() {
+        let mut doms = BTreeMap::new();
+        doms.insert(
+            "anchor".to_string(),
+            Domain {
+                members: vec!["left".into()],
+                open: false,
+                default: None,
+                exits: Vec::new(),
+            },
+        );
+        let (st, injected) =
+            lower_node(StageState::default(), &show_bianca_no_anchor(), &[], &doms);
+        assert!(!injected
+            .iter()
+            .any(|c| c.provenance.by == "auto-anchor-on-show"));
+        assert!(st.diags.is_empty(), "got {:?}", st.diags);
+        assert_eq!(st.on_stage["bianca"].anchor, None);
+    }
+
+    // --- the IMPLICIT `anchor` domain read (dsl 0.9.0 D-D) -------------------
+
+    /// `action` declared in the 0.9.0 long form with `anchor` NOT declared —
+    /// the project shape that silently dropped 0.8.0's default anchor.
+    fn action_only_domain() -> BTreeMap<String, Domain> {
+        let mut d = anchor_domain("center");
+        d.remove("anchor");
+        d
+    }
+
+    /// An `::auto` with no `anchor` attr READS the `anchor` domain's `default:`,
+    /// so the domain is a dependency of the DIRECTIVE. Nothing authored the
+    /// domain name, and directive validation walks AUTHORED attrs only — so
+    /// unless the reducer reports it, 0.8.0's default-anchor command simply
+    /// vanishes with zero diagnostics.
+    #[test]
+    fn implicit_anchor_read_without_a_declared_domain_errors() {
         let (st, injected) = lower_node(
             StageState::default(),
             &show_bianca_no_anchor(),
             &[],
-            &BTreeMap::new(),
+            &action_only_domain(),
         );
         assert!(!injected
             .iter()
             .any(|c| c.provenance.by == "auto-anchor-on-show"));
-        assert!(st.diags.is_empty());
+        let unknown: Vec<_> = st
+            .diags
+            .iter()
+            .filter(|d| d.code == "E-DOMAIN-UNKNOWN")
+            .collect();
+        assert_eq!(unknown.len(), 1, "one E-DOMAIN-UNKNOWN, got {:?}", st.diags);
+        assert_eq!(unknown[0].severity, Severity::Error);
+        assert_eq!(unknown[0].layer, Layer::Staging);
         assert_eq!(st.on_stage["bianca"].anchor, None);
+    }
+
+    /// The regression guard for the fix: the WORKING path still works. Same
+    /// document, `anchor` declared ⇒ the declared default is injected and
+    /// nothing is reported.
+    #[test]
+    fn implicit_anchor_read_with_a_declared_domain_stays_clean() {
+        let (st, injected) = lower_node(
+            StageState::default(),
+            &show_bianca_no_anchor(),
+            &[],
+            &anchor_domain("center"),
+        );
+        assert!(injected.iter().any(|c| c.provenance.injected
+            && matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
+        assert!(st.diags.is_empty(), "got {:?}", st.diags);
+        assert_eq!(st.on_stage["bianca"].anchor.as_deref(), Some("center"));
+    }
+
+    /// An EXPLICIT `anchor` with no declared `anchor` domain is the ATTRIBUTE
+    /// path's error (`check_domain_member`), never the reducer's. Pinned so the
+    /// two paths keep reporting once each and never twice for one `::auto`.
+    #[test]
+    fn explicit_anchor_without_a_declared_domain_is_the_attributes_error() {
+        let show = auto(vec![attr("character", "bianca"), attr("anchor", "center")]);
+        let (st, injected) = lower_node(StageState::default(), &show, &[], &action_only_domain());
+        assert!(!injected
+            .iter()
+            .any(|c| c.provenance.by == "auto-anchor-on-show"));
+        assert!(
+            st.diags.is_empty(),
+            "the attribute check owns this one: {:?}",
+            st.diags
+        );
+        assert_eq!(st.on_stage["bianca"].anchor.as_deref(), Some("center"));
     }
 }
