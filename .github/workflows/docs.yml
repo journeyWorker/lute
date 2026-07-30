@@ -93,6 +93,16 @@ jobs:
       # one-directional counters fail if a marker is quietly dropped or a new
       # unmarked whole document appears. Also pins the docs' quoted
       # `capabilityVersion` hashes against `lute context --json`.
+      #
+      # A third marker class covers quoted diagnostic TEXT, which the two
+      # above never read: `<!-- lute-diagnostics -->` (`{/* … */}` in .mdx)
+      # above a fence declares that it holds real CLI output, and every
+      # message in it is unwrapped and matched against the `format!` literals
+      # in `crates/*/src`. That closes the hole a measured probe found — a
+      # reworded `E-DOMAIN-DUP` left this script at exit 0 while
+      # `language/vocabulary.md` quoted a sentence the binary no longer
+      # emitted. Same floor-and-cap shape: deleting a marker fails, adding an
+      # unmarked quote fails.
       - name: Compile-check ```lute snippets in both doc trees
         run: python3 scripts/check-doc-snippets.py --lute ./target/debug/lute
 

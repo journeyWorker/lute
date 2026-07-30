@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile-check the ```lute snippets in the documentation surface.
+r"""Compile-check the ```lute snippets in the documentation surface.
 
 The `website` CI job builds the Astro site, so it catches a broken page or a
 broken link. It has never once looked at what is *inside* a fenced block, and
@@ -103,6 +103,138 @@ deliberately dependency-free stdlib python3 and runs in a CI job with no Rust
 toolchain. This one already needs the binary, so binary-derived facts belong
 here.
 
+QUOTED DIAGNOSTIC TEXT
+----------------------
+
+The docs quote diagnostic *messages* verbatim, and 0.9.0's messages are
+deliberately instructive — `E-DOMAIN-UNKNOWN` enumerates all three declaration
+routes, `E-DOMAIN-DUP` names the two ways out. Those strings ARE the feature's
+user experience, and nothing above reads them: the markers up there assert exit
+codes and code SETS (`DIAG_RE` captures the bracketed code and throws the
+message away). That gap was measured, not assumed — rewording `E-DOMAIN-DUP` in
+`crates/lute-check/src/schema_import.rs` left this script at exit 0 while
+`language/vocabulary.md` quoted a sentence the binary no longer emits.
+
+So a fenced block holding real CLI diagnostic output is DECLARED, the same way
+a checkable snippet is, with a marker on the line above the fence:
+
+    <!-- lute-diagnostics -->                     (.md — an HTML comment)
+    {/* lute-diagnostics */}                      (.mdx — MDX has no HTML comments)
+
+    <!-- lute-diagnostics unverified="<reason>" -->
+        The reviewed opt-out, spelled exactly like the fence-meta one: for a
+        quote that is deliberately abridged or illustrative. An empty reason is
+        an error, and the reason is printed on every run.
+
+Every diagnostic-shaped line in a marked fence is parsed, unwrapped, and pinned
+to the Rust source. An UNMARKED fence containing diagnostic-shaped lines is
+reported and capped per root at `max_unmarked_diagnostics` (0), so adding a
+quote without a marker fails; the pinned-record count is floored by
+`MIN_PINNED_DIAGNOSTICS`, so deleting a marker fails. Same floor-and-cap shape
+as the snippet counters above, for the same reason.
+
+The two `packages/website/public/llms*.txt` bundles are covered too, under a
+STRICTER rule. They are excluded from the ```lute scan above for a measured
+reason (see the comment on SNIPPET_ROOTS) that does not apply here: a quoted
+message is the binary's or it is not, no project layout required. They are
+flattened copies of pages whose every quote is now declared, so there is no
+independent authoring decision to declare in them — an unmarked quote there
+must simply PIN. The marker still works if a mirrored quote ever needs the
+`unverified=` escape hatch; it is only not required. llms-full.txt:847 is a
+byte-identical copy of the `E-DOMAIN-UNKNOWN` sentence on
+`language/vocabulary.md`, i.e. exactly the copy a reword would strand.
+
+
+WHERE THE EXPECTED TEXT COMES FROM: the Rust sources, not a fixture run
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Everything else in this script verifies against a real `lute` run, so running
+the binary was the first candidate here too. It was rejected on measurement.
+Of the 26 quoting fences, 8 quote plugin-resolution failures
+(`E-PLUGIN-OPTION-TYPE`, `E-PLUGIN-RESERVED-STAMP-ATTR`, `E-LOWER-RECORD-*`,
+`E-FRONTMATTER-SCHEMA`) that only a deliberately-malformed plugin manifest can
+produce. A run-based pin needs one such fixture per quote: ~8 new broken
+mini-projects that must live somewhere `check-project docs/examples` and the
+capability-hash pin above do not see, each of which is itself a thing that
+rots, and none of which makes the comparison any sounder than an exact string
+match. The fixture is a means of obtaining the string; the string is the
+contract.
+
+The stated risk of scraping — that a source literal is not what the binary
+prints — is not waved away, it is MEASURED on every run. `check_message_fidelity`
+takes the real diagnostic output the `expect=`-marked blocks above already
+produce, feeds it through the same parser and the same matcher, and floors the
+number of real messages that resolve to a scraped literal at
+`MIN_FIDELITY_SAMPLES`. If message composition ever stops being "one `format!`
+literal per diagnostic", that floor breaks before a doc quote can silently
+diverge. It costs no extra process: those runs happen anyway.
+
+
+WHY THE MATCHER CANNOT PASS BY BEING VAGUE
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A matcher whose own regex is too loose reports success while the defect ships,
+which is worse than no matcher. Five independent constraints, every one of them
+enforced per quote per run:
+
+  1. FULL ANCHOR. The doc's normalised message must match a literal end to end
+     (`\Z`). Substring matching is never used.
+  2. ONLY REAL PLACEHOLDERS BECOME WILDCARDS. `PLACEHOLDER_RE` accepts Rust's
+     format grammar and nothing else — `{name}`, `{}`, `{0}`, `{name:spec}`.
+     A brace run like `{ type: bool, cel: "true" }` is NOT a placeholder and
+     stays literal. (It is a real literal in lute-lsp, and under a sloppier
+     placeholder rule it compiled to bare `(.+?)` — a pattern matching every
+     string in the corpus. That is the exact failure this rule exists to stop.)
+  3. ADMISSION FLOOR. A literal joins the corpus only with >= 16 characters of
+     literal text AND one unbroken literal run of >= 8. Near-all-wildcard
+     format strings (`{prefix}.{speaker}_{code}`) never become patterns.
+  4. BOUNDED WILDCARDS. A wildcard matches at least one character, never a
+     newline (messages are normalised to one line), and never an elision (`…`
+     or `...`) — an elided quote is abridged and must say so with
+     `unverified=`. A wildcard span longer than `MAX_FREE_INTERPOLATION` must
+     ITSELF resolve to a corpus literal, which is what pins the inner half of a
+     composed message such as `E-LOWER-RECORD-FIELD`.
+  5. MUTATION SELF-TEST. For every quote, every pinned literal run of >= 3
+     characters is overwritten in the DOC text with a canary and the match is
+     re-attempted. If any mutant still matches, the pattern is not actually
+     pinning that run and the check fails with `matcher too permissive`. This
+     is a proof per quote, not a threshold: it fails loudly rather than
+     silently passing.
+
+Two further constraints make the pin name the right diagnostic: the matching
+literal must be UNIQUE in the corpus, and it must live in a source file that
+also declares the quoted code as a string literal.
+
+
+NORMALISATION — EXACTLY THESE RULES, AND NO MORE
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Docs wrap long messages; the binary prints one line. Unwrapping is where a
+comparison turns into a loophole, so the rules are deliberately minimal and are
+asserted on every run by `self_test()`:
+
+  D1. A record STARTS at a line matching one of the three shapes the CLI emits:
+      `<path>:L:C: <sev> [CODE] …`, `<sev> [CODE] …` (the position elided, as
+      the reference pages write it), or `lute: CODE: …`. The header — position,
+      severity, brackets, and the `[denied]` promotion marker — is STRUCTURE,
+      parsed and removed; only the message is compared.
+  D2. A record ENDS at a blank line, another header, a `$ ` command echo, or an
+      `ok:` / `failed:` / `--deny` / `project-wide diagnostics:` summary line.
+  D3. Continuation lines are `strip()`ped and joined with EXACTLY ONE space.
+      A documented wrap point therefore ASSERTS that a single space exists at
+      that point in the emitted message. Wrapping mid-word does not become a
+      match: `docu-\nment` normalises to `docu- ment`, which is not `document`.
+  D4. Nothing else is touched. Runs of spaces inside a line, case, punctuation,
+      Unicode dashes and the `…` inside `@speaker{…}` all survive byte-for-byte
+      into the comparison. There is no whitespace collapsing, no case folding,
+      no punctuation smoothing — each of those would let two genuinely
+      different messages compare equal, which is the failure mode of reporting
+      success while the defect ships.
+
+The one thing D3 cannot see is whether the emitted message had two spaces where
+the doc wrapped. That is the entire residual, it is stated rather than hidden,
+and the CLI emits single-spaced prose.
+
 
 USAGE
 -----
@@ -136,6 +268,9 @@ class Root:
     suffixes: tuple[str, ...]
     #: Cap on whole-document blocks carrying no marker. May only be lowered.
     max_unmarked_whole: int
+    #: Cap on fences quoting diagnostic output with no `lute-diagnostics`
+    #: marker. May only be lowered; marking a fence is always allowed.
+    max_unmarked_diagnostics: int = 0
     #: Sub-trees deliberately outside the scan, each with its reason.
     exclude: tuple[tuple[str, str], ...] = field(default=())
 
@@ -244,7 +379,77 @@ PROJECT_DIAG_RE = re.compile(r"^lute: ([A-Z][A-Z0-9-]+): ", re.MULTILINE)
 # Verified blocks may only grow. Quietly deleting a marker fails instead.
 MIN_VERIFIED_BLOCKS = 18
 
+# ---------------------------------------------------------------------------
+# Quoted diagnostic text. See the module docstring for the full rationale.
+# ---------------------------------------------------------------------------
+
+# The marker that declares "the fence below quotes real CLI diagnostic output".
+# Two spellings for one concept, because the file formats differ: `.md` takes an
+# HTML comment, `.mdx` has none (MDX 3 rejects `<!--`) and takes a JSX comment.
+# Both are invisible in rendered output.
+DIAG_MARKER_RE = re.compile(
+    r"^[ \t]*(?:<!--|\{/\*)[ \t]*lute-diagnostics\b(?P<meta>.*?)[ \t]*(?:-->|\*/\})[ \t]*$"
+)
+DIAG_MARKERS = ("unverified",)
+
+# D1 — the three header shapes the CLI emits, plus the `[denied]` promotion
+# marker `lute-cli` appends to the bracketed code. Everything these capture is
+# STRUCTURE and is stripped before comparison; only `rest` is the message.
+_SEV = r"(?P<sev>error|warning) \[(?P<code>[A-Z][A-Z0-9-]*)\](?P<denied> \[denied\])?"
+QUOTE_HEAD_RES = (
+    # `path:L:C: error [CODE] …`, and the position-only form the repo README
+    # writes under an indented path heading (`  26:3: warning [CODE] …`).
+    re.compile(r"^[ \t]*(?:(?P<path>[^\s:]+):)?(?P<line>\d+):(?P<col>\d+): " + _SEV + r" (?P<rest>.*)$"),
+    # The position elided entirely, as the reference pages write it.
+    re.compile(r"^[ \t]*" + _SEV + r" (?P<rest>.*)$"),
+    # A project-level diagnostic: no span in any one file.
+    re.compile(r"^[ \t]*lute: (?P<code>[A-Z][A-Z0-9-]+): (?P<rest>.*)$"),
+)
+
+# D2 — a record ends here. (A new header is checked before this.)
+QUOTE_STOP_RE = re.compile(r"^\s*$|^\s*\$ |^(?:ok|failed): |^--deny |^project-wide diagnostics:")
+
+# Rust's format-argument grammar and nothing else: `{}`, `{0}`, `{name}`,
+# `{name:spec}`, and the `{{` / `}}` brace escapes. A brace run that is not one
+# of these is ordinary text and stays literal — see docstring constraint 2.
+PLACEHOLDER_RE = re.compile(r"\{\{|\}\}|\{(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+)?(?::[^{}]*)?\}")
+
+# Crates whose `format!` literals can reach a user-visible diagnostic. `/src/`
+# only: `tests/` fixtures quote codes and messages for their own assertions and
+# would let a pin survive on a test's copy of a string the binary stopped using.
+MESSAGE_SOURCE_GLOB = "crates/*/src/**/*.rs"
+
+# Corpus admission (docstring constraint 3).
+MIN_LITERAL_CHARS = 16
+MIN_LITERAL_RUN = 8
+
+# An interpolated value longer than this must itself resolve to a corpus
+# literal, which is what pins the inner half of a composed message. Measured
+# headroom: the longest genuine value in the docs today is the 55-character
+# staging-kind list in `E-LOWER-RECORD-UNKNOWN`.
+MAX_FREE_INTERPOLATION = 64
+
+# An elision marker inside an interpolated span means the quote is abridged.
+ELISION_RE = re.compile(r"…|\.\.\.")
+
+# Overwrites a pinned literal run in the mutation self-test. Cannot occur in
+# source text, so a surviving match can only come from a permissive pattern.
+CANARY = "\x01"
+
+# Pinned diagnostic records may only grow: deleting a marker fails here even
+# before the per-root unmarked cap catches the fence.
+MIN_PINNED_DIAGNOSTICS = 48
+
+# Real messages, harvested from the `expect=` runs above, that must resolve
+# against the scraped corpus. This is the standing proof that a `format!`
+# literal is still what the binary prints.
+MIN_FIDELITY_SAMPLES = 12
+
 ERRORS: list[str] = []
+
+#: Every `lute` invocation's cleaned output, in call order. Sampled by
+#: `check_message_fidelity`.
+REAL_OUTPUT: list[str] = []
 
 
 def fail(msg: str) -> "None":
@@ -252,24 +457,33 @@ def fail(msg: str) -> "None":
     sys.exit(2)
 
 
-def parse_meta(meta: str) -> tuple[dict[str, str | None], list[str]]:
-    """Split a fence meta string into recognised markers and everything else."""
+def parse_meta(
+    meta: str, allowed: tuple[str, ...] = MARKERS
+) -> tuple[dict[str, str | None], list[str]]:
+    """Split a marker meta string into recognised markers and everything else."""
     known: dict[str, str | None] = {}
     other: list[str] = []
     for m in META_RE.finditer(meta):
         if m.group(1) is None:
             other.append(m.group(4))
-        elif m.group(1) in MARKERS:
+        elif m.group(1) in allowed:
             known[m.group(1)] = m.group(2) if m.group(2) is not None else m.group(3)
         else:
             other.append(m.group(0))
     return known, other
 
 
-def extract_blocks(path: pathlib.Path) -> list[dict]:
-    """Every ```lute block in `path`, with its 1-based opening line and meta."""
+def extract_fences(path: pathlib.Path) -> list[dict]:
+    """Every fenced block in `path`.
+
+    Each entry carries the 1-based opening line, the info string, the fence
+    meta, the body lines, and `diag_meta` — the meta of a `lute-diagnostics`
+    marker owning this fence, or None when there is none. A marker owns the
+    fence below it across blank lines only; anything else in between and the
+    fence is unmarked, which is the safe direction.
+    """
     lines = path.read_text(encoding="utf-8").splitlines()
-    blocks: list[dict] = []
+    fences: list[dict] = []
     opener: tuple[str, int, str, int, str] | None = None
     body: list[str] = []
     for i, line in enumerate(lines):
@@ -283,17 +497,36 @@ def extract_blocks(path: pathlib.Path) -> list[dict]:
             # A closer repeats the opener's character at least as many times
             # and carries no info string.
             if info == "" and char == opener[0] and len(run) >= opener[1]:
-                if opener[2] == "lute":
-                    blocks.append(
-                        {"line": opener[3] + 1, "meta": opener[4], "body": "\n".join(body)}
-                    )
+                j = opener[3] - 1
+                while j >= 0 and not lines[j].strip():
+                    j -= 1
+                marker = DIAG_MARKER_RE.match(lines[j]) if j >= 0 else None
+                fences.append(
+                    {
+                        "line": opener[3] + 1,
+                        "info": opener[2],
+                        "meta": opener[4],
+                        "body": body,
+                        "diag_meta": marker.group("meta") if marker else None,
+                        "marker_line": j + 1 if marker else None,
+                    }
+                )
                 opener = None
                 continue
         if opener is not None:
             body.append(line)
     if opener is not None:
         ERRORS.append(f"{path.relative_to(ROOT)}:{opener[3] + 1}: unterminated code fence")
-    return blocks
+    return fences
+
+
+def extract_blocks(fences: list[dict]) -> list[dict]:
+    """The ```lute subset, with its body joined back into one document."""
+    return [
+        {"line": f["line"], "meta": f["meta"], "body": "\n".join(f["body"])}
+        for f in fences
+        if f["info"] == "lute"
+    ]
 
 
 def classify(body: str) -> str:
@@ -379,6 +612,10 @@ def run_block(
         target.write_text(body.rstrip("\n") + "\n", encoding="utf-8")
         rc, out = run_lute(lute, args)
         out = out.replace(strip, "" if rel is not None else "<block>")
+    # Kept for `check_message_fidelity`: this is real, current binary output,
+    # and it costs nothing to reuse as the standing proof that the scraped
+    # `format!` literals are still what the binary prints.
+    REAL_OUTPUT.append(out)
     return rc, out, scope
 
 
@@ -514,6 +751,489 @@ def check_pinned_hashes(known: dict[str, str], pages: list[pathlib.Path]) -> int
     return seen
 
 
+# ---------------------------------------------------------------------------
+# Quoted diagnostic text: scrape, normalise, pin.
+# ---------------------------------------------------------------------------
+
+
+def rust_string_literals(text: str) -> list[str]:
+    r"""Every string literal in one Rust source, comments excluded.
+
+    Comments are skipped because doc comments in this codebase discuss codes
+    and quote message fragments; a pin that could satisfy itself from a comment
+    would survive the very edit it exists to catch. Escapes are decoded the way
+    rustc decodes them — in particular a trailing `\\` swallows the newline AND
+    the next line's leading whitespace, which is how every long message in
+    `crates/**` is written, so the reconstruction is exact rather than guessed.
+    """
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == "/" and text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j + 1
+            continue
+        if c == "/" and text.startswith("/*", i):
+            depth, i = 1, i + 2
+            while i < n and depth:
+                if text.startswith("/*", i):
+                    depth, i = depth + 1, i + 2
+                elif text.startswith("*/", i):
+                    depth, i = depth - 1, i + 2
+                else:
+                    i += 1
+            continue
+        if c == "r" and i + 1 < n and text[i + 1] in '"#':
+            k = i + 1
+            while k < n and text[k] == "#":
+                k += 1
+            if k < n and text[k] == '"':
+                close = '"' + "#" * (k - i - 1)
+                j = text.find(close, k + 1)
+                if j < 0:
+                    break
+                out.append(text[k + 1 : j])
+                i = j + len(close)
+                continue
+        if c == '"':
+            j, buf = i + 1, []
+            while j < n:
+                ch = text[j]
+                if ch == "\\":
+                    nxt = text[j + 1] if j + 1 < n else ""
+                    if nxt == "\n":
+                        j += 2
+                        while j < n and text[j] in " \t":
+                            j += 1
+                        continue
+                    simple = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"', "'": "'", "0": "\0"}
+                    if nxt in simple:
+                        buf.append(simple[nxt])
+                        j += 2
+                        continue
+                    uni = re.match(r"\\u\{([0-9a-fA-F_]+)\}", text[j:])
+                    if nxt == "u" and uni:
+                        buf.append(chr(int(uni.group(1).replace("_", ""), 16)))
+                        j += len(uni.group(0))
+                        continue
+                    buf.append(nxt)
+                    j += 2
+                    continue
+                if ch == '"':
+                    break
+                buf.append(ch)
+                j += 1
+            out.append("".join(buf))
+            i = j + 1
+            continue
+        if c == "'":
+            chlit = re.match(r"'(\\.|[^\\'])'", text[i:])
+            i += len(chlit.group(0)) if chlit else 1
+            continue
+        i += 1
+    return out
+
+
+#: A diagnostic code as it appears in the Rust sources: a standalone literal.
+CODE_LITERAL_RE = re.compile(r"^[EW]-[A-Z0-9]+(?:-[A-Z0-9]+)*\Z")
+
+
+@dataclass(frozen=True)
+class MessagePattern:
+    """One admitted `format!` literal, compiled for full-anchored matching."""
+
+    literal: str
+    regex: re.Pattern[str]
+    sources: tuple[str, ...]
+    #: Every diagnostic code declared as a literal in any of `sources`. A quote
+    #: may only pin to a literal whose own file declares the quoted code.
+    codes: frozenset[str]
+
+
+def compile_message_pattern(literal: str) -> re.Pattern[str] | None:
+    """Compile `literal` if it clears the admission floor, else None."""
+    if "\n" in literal:
+        return None
+    parts: list[str] = []
+    runs: list[str] = []
+    i = 0
+    for m in PLACEHOLDER_RE.finditer(literal):
+        seg = literal[i : m.start()]
+        parts.append(re.escape(seg))
+        runs.append(seg)
+        tok = m.group(0)
+        if tok in ("{{", "}}"):
+            parts.append(re.escape(tok[0]))
+            runs.append(tok[0])
+        else:
+            # At least one character, never a newline: a message is one line
+            # after normalisation, and an empty interpolation is not a value.
+            parts.append(r"(.+?)")
+        i = m.end()
+    seg = literal[i:]
+    parts.append(re.escape(seg))
+    runs.append(seg)
+    if sum(len(r) for r in runs) < MIN_LITERAL_CHARS:
+        return None
+    if max((len(r.strip()) for r in runs), default=0) < MIN_LITERAL_RUN:
+        return None
+    try:
+        return re.compile("".join(parts) + r"\Z")
+    except re.error:
+        return None
+
+
+def message_corpus(sources: dict[str, list[str]] | None = None) -> list[MessagePattern]:
+    """Every admitted message literal in `crates/*/src/**`, deduplicated."""
+    if sources is None:
+        sources = {}
+        for f in sorted(ROOT.glob(MESSAGE_SOURCE_GLOB)):
+            sources[str(f.relative_to(ROOT))] = rust_string_literals(
+                f.read_text(encoding="utf-8")
+            )
+    owners: dict[str, set[str]] = {}
+    codes_in: dict[str, set[str]] = {}
+    for rel, lits in sources.items():
+        for lit in lits:
+            owners.setdefault(lit, set()).add(rel)
+            if CODE_LITERAL_RE.match(lit):
+                codes_in.setdefault(rel, set()).add(lit)
+    corpus: list[MessagePattern] = []
+    for lit, rels in sorted(owners.items()):
+        rx = compile_message_pattern(lit)
+        if rx is not None:
+            codes = frozenset().union(*(codes_in.get(r, set()) for r in rels))
+            corpus.append(MessagePattern(lit, rx, tuple(sorted(rels)), codes))
+    return corpus
+
+
+def unwrap_records(body: list[str]) -> list[tuple[int, str, str]]:
+    """Diagnostic records in a fence body, per normalisation rules D1-D4.
+
+    Returns (0-based offset of the header line within the body, code, message).
+    """
+    recs: list[tuple[int, str, str]] = []
+    cur: list | None = None
+    for off, line in enumerate(body):
+        head = next((m for r in QUOTE_HEAD_RES if (m := r.match(line))), None)
+        if head is not None:
+            if cur is not None:
+                recs.append((cur[0], cur[1], cur[2]))
+            cur = [off, head.group("code"), head.group("rest").rstrip()]
+            continue
+        if cur is None:
+            continue
+        if QUOTE_STOP_RE.match(line):
+            recs.append((cur[0], cur[1], cur[2]))
+            cur = None
+            continue
+        # D3: exactly one space at a documented wrap point.
+        cur[2] = cur[2] + " " + line.strip()
+    if cur is not None:
+        recs.append((cur[0], cur[1], cur[2]))
+    return recs
+
+
+def mutation_survivors(rx: re.Pattern[str], match: re.Match[str], text: str) -> list[str]:
+    """Pinned literal runs of `text` that the pattern does NOT actually pin.
+
+    Overwrites each run with `CANARY` and re-matches. A run whose destruction
+    the pattern tolerates was never load-bearing, and a matcher built only from
+    such runs is the "passes because the regex is too loose" failure.
+    """
+    spans: list[tuple[int, int]] = []
+    prev = 0
+    for g in range(1, rx.groups + 1):
+        s, e = match.span(g)
+        if s < 0:
+            continue
+        spans.append((prev, s))
+        prev = e
+    spans.append((prev, len(text)))
+    survivors = []
+    for s, e in spans:
+        run = text[s:e]
+        if len(run.strip()) < 3:
+            continue
+        if rx.match(text[:s] + CANARY * (e - s) + text[e:]):
+            survivors.append(run)
+    return survivors
+
+
+def pin_message(
+    corpus: list[MessagePattern], code: str, msg: str, depth: int = 0
+) -> tuple[MessagePattern | None, str | None]:
+    """Resolve one normalised message against the corpus.
+
+    Returns (pattern, None) on success, (None, reason) on failure. Every
+    constraint in the docstring's matcher section is applied here.
+    """
+    hits = [(mp, m) for mp in corpus if (m := mp.regex.match(msg))]
+    if not hits:
+        return None, (
+            "no `format!` literal in crates/*/src matches this text — the "
+            "message was reworded, or the doc drifted from it"
+        )
+    if depth == 0:
+        hits = [(mp, m) for mp, m in hits if code in mp.codes]
+        if not hits:
+            return None, (
+                f"text matches a literal, but no source declaring `{code}` — "
+                f"the quote and the code do not belong together"
+            )
+    if len({mp.literal for mp, _ in hits}) > 1:
+        return None, f"ambiguous: {len(hits)} distinct literals match this text"
+    mp, m = hits[0]
+    for g in m.groups():
+        if not g:
+            continue
+        if ELISION_RE.search(g):
+            return None, (
+                f"the interpolated span {g[:60]!r} contains an elision — the "
+                f"quote is abridged, so declare it "
+                f'`unverified="<reason>"` instead of pinning it'
+            )
+        if len(g) <= MAX_FREE_INTERPOLATION:
+            continue
+        if depth >= 2:
+            return None, f"composed message nested too deep at {g[:60]!r}"
+        _, why = pin_message(corpus, code, g, depth + 1)
+        if why is not None:
+            return None, f"unpinned {len(g)}-character span {g[:60]!r}: {why}"
+    if depth == 0:
+        loose = mutation_survivors(mp.regex, m, msg)
+        if loose:
+            return None, (
+                "matcher too permissive: destroying the pinned run(s) "
+                + ", ".join(repr(r[:40]) for r in loose)
+                + " still matches. Refusing to report a pass this pattern did "
+                "not earn."
+            )
+    return mp, None
+
+
+#: Self-contained documents whose only purpose is to make the binary SPEAK.
+#: They carry no fixture files and no project layout — every one is a string
+#: this script writes to a temp dir — and between them they cover the
+#: diagnostics the tutorials quote most: the missing-frontmatter set, the
+#: undeclared-domain sentence, the legacy-sigil migration hint, the
+#: member-semantics pair and a bad enum value.
+FIDELITY_PROBES = (
+    # No frontmatter at all: E-KIND-MISSING, E-META-MISSING x3,
+    # E-CONTENT-OUTSIDE-SHOT.
+    "@narrator: bare.\n",
+    # E-STATE-DECL, E-DOMAIN-UNKNOWN, E-LEGACY-CONTENT-SIGIL.
+    "---\nkind: scene\ncharacter: probe\nseason: 1\nepisode: 1\n"
+    "state:\n  run.inventory: { type: list }\n---\n"
+    '\n## Probe\n\n@narrator{emotion="furious"}: hello.\n\n:narrator: legacy.\n',
+    # E-ENUM-MISSING-SEMANTICS x2, E-BAD-ENUM.
+    "---\nkind: scene\ncharacter: probe\nseason: 1\nepisode: 1\n"
+    "enums:\n  emotion: [neutral]\n  action: [wave]\n  anchor: [center]\n---\n"
+    '\n## Probe\n\n@narrator{emotion="furious"}: hello.\n',
+)
+
+
+def check_message_fidelity(lute: str, corpus: list[MessagePattern]) -> list[tuple[str, str]]:
+    """Resolve REAL binary output against the corpus. See docstring.
+
+    A scraped literal is only ground truth while it is still what the binary
+    prints, so that claim is measured rather than asserted: every message this
+    binary emits — from the `expect=`-marked blocks above, which ran anyway,
+    and from `FIDELITY_PROBES` — goes through the same parser and the same
+    matcher as a doc quote, and the number that resolve is floored.
+    """
+    for probe in FIDELITY_PROBES:
+        run_block(lute, probe, None)
+    samples: dict[tuple[str, str], bool] = {}
+    for out in REAL_OUTPUT:
+        for _, code, msg in unwrap_records(out.splitlines()):
+            if (code, msg) in samples:
+                continue
+            samples[(code, msg)] = pin_message(corpus, code, msg)[1] is None
+    resolved = [k for k, ok in samples.items() if ok]
+    if len(resolved) < MIN_FIDELITY_SAMPLES:
+        ERRORS.append(
+            f"message fidelity dropped: {len(resolved)} of {len(samples)} real "
+            f"diagnostic message(s) emitted by this binary resolve to a "
+            f"`format!` literal in crates/*/src, floor is "
+            f"{MIN_FIDELITY_SAMPLES}. The scraped literals are the ground "
+            f"truth every quoted diagnostic is pinned against, so they must "
+            f"keep reproducing real output. Unresolved:\n"
+            + "\n".join(
+                f"      [{c}] {m[:110]}" for (c, m), ok in sorted(samples.items()) if not ok
+            )
+        )
+    return sorted(resolved)
+
+
+def check_quoted_diagnostics(
+    corpus: list[MessagePattern],
+    rel_page: pathlib.PurePath,
+    fences: list[dict],
+    pinned: list[str],
+    opted_out: list[tuple[str, str]],
+    unmarked: list[str] | None,
+) -> None:
+    """Pin, opt out, or report every fence in one file that quotes output.
+
+    `unmarked is None` selects the MIRROR rule used for the llms bundles: they
+    are flattened copies of pages whose every quote is already declared, so
+    there is no independent authoring decision to declare there and an unmarked
+    quote must simply PIN. The marker still works if a future mirrored quote
+    needs the `unverified=` escape hatch; it is just not required.
+    """
+    for f in fences:
+        where = f"{rel_page}:{f['line']}"
+        recs = unwrap_records(f["body"])
+        if f["diag_meta"] is None:
+            if not recs:
+                continue
+            if unmarked is not None:
+                unmarked.append(f"{where}  ({len(recs)} record(s), first is [{recs[0][1]}])")
+                continue
+        else:
+            marker_at = f"{rel_page}:{f['marker_line']}"
+            marks, other = parse_meta(f["diag_meta"], DIAG_MARKERS)
+            if other:
+                ERRORS.append(
+                    f"{marker_at}: unrecognised `lute-diagnostics` option(s) "
+                    f"{' '.join(other)} — the only option is "
+                    f'unverified="<reason>"'
+                )
+                continue
+            if not recs:
+                ERRORS.append(
+                    f"{marker_at}: `lute-diagnostics` marks a fence with no "
+                    f"diagnostic output in it. A marker that pins nothing is a "
+                    f"claim of coverage this check does not provide — drop it, "
+                    f"or move it above the fence that holds the quote."
+                )
+                continue
+            if "unverified" in marks:
+                why = (marks["unverified"] or "").strip()
+                if not why:
+                    ERRORS.append(
+                        f'{marker_at}: `unverified` needs a reason — write '
+                        f'unverified="why this quote cannot be pinned"'
+                    )
+                    continue
+                opted_out.append((f"{where}  ({len(recs)} record(s))", why))
+                continue
+        for off, code, msg in recs:
+            at = f"{rel_page}:{f['line'] + 1 + off}"
+            mp, why = pin_message(corpus, code, msg)
+            if why is not None:
+                ERRORS.append(
+                    f"{at}: quoted `{code}` text is not what the binary "
+                    f"emits — {why}.\n"
+                    f"      documented: {msg}\n"
+                    f"      Rewording a diagnostic silently invalidates every "
+                    f"page quoting it; update this page, or restore the "
+                    f"message in crates/*/src."
+                )
+                continue
+            pinned.append(f"{at}  [{code}] -> {'/'.join(mp.sources)}")
+
+
+def self_test() -> None:
+    """Assert the normaliser and the matcher on their boundary cases.
+
+    Runs unconditionally, on synthetic literals, before anything real is read.
+    A comparator that has not been shown to reject is not evidence of a pass.
+    """
+    corp = message_corpus(
+        {
+            "crates/x/src/a.rs": [
+                "slot `{slot}` needs a declaration before use (dsl 0.9.0 D-C)",
+                "slot `{slot}` needs a declaration before reuse (dsl 0.9.0 D-C)",
+                "the quick brown fox jumps over it",
+                "E-BOUNDARY",
+            ],
+            "crates/x/src/b.rs": ["{a}.{b}_{c}", "{ type: bool, cel: \"true\" }"],
+        }
+    )
+    lits = {mp.literal for mp in corp}
+
+    def bad(why: str) -> None:
+        fail(f"self-test: {why}")
+
+    # Admission: a near-all-wildcard format string never becomes a pattern,
+    # and a brace run that is not a format placeholder stays literal.
+    if "{a}.{b}_{c}" in lits:
+        bad("`{a}.{b}_{c}` was admitted; it is 2 literal characters of anchor")
+    brace = '{ type: bool, cel: "true" }'
+    if brace not in lits:
+        bad("a non-placeholder brace run must stay a literal, not be dropped")
+    brace_rx = next(mp.regex for mp in corp if mp.literal == brace)
+    if brace_rx.match("anything at all here"):
+        bad("a non-placeholder brace run compiled to a wildcard")
+
+    # D1/D2/D3: header stripped, wrap points joined with exactly one space,
+    # summary lines end the record.
+    recs = unwrap_records(
+        [
+            "$ lute check s.lute",
+            "s.lute:3:1: error [E-BOUNDARY] the quick brown",
+            "fox jumps over it",
+            "failed: s.lute (1 error(s), 0 warning(s))",
+        ]
+    )
+    if recs != [(1, "E-BOUNDARY", "the quick brown fox jumps over it")]:
+        bad(f"unwrapping is wrong: {recs!r}")
+    if unwrap_records(["error [E-BOUNDARY] a", "", "b"])[0][2] != "a":
+        bad("a blank line must end a record")
+    if unwrap_records(["error [E-BOUNDARY] [denied] a b c d"])[0][2] != "a b c d":
+        bad("the `[denied]` promotion marker is header, not message")
+
+    def pin(msg: str) -> str | None:
+        return pin_message(corp, "E-BOUNDARY", msg)[1]
+
+    # D3 boundary: a wrap INSIDE a word must not normalise into the word.
+    if pin("the quick brown fox jumps over it") is not None:
+        bad("the exact message must pin")
+    joined = unwrap_records(["error [E-BOUNDARY] the quick bro", "wn fox jumps over it"])[0][2]
+    if joined != "the quick bro wn fox jumps over it":
+        bad("a mid-word wrap must not be silently healed")
+    if pin(joined) is None:
+        bad("a mid-word wrap must NOT pin")
+    # D4: no whitespace collapsing, no punctuation smoothing.
+    if pin("the quick  brown fox jumps over it") is None:
+        bad("a doubled internal space must NOT pin")
+    if pin("the quick brown fox jumps over it.") is None:
+        bad("trailing punctuation must NOT pin")
+    if pin("The quick brown fox jumps over it") is None:
+        bad("a case change must NOT pin")
+
+    # Wildcards: never empty, never past their following anchor, never an
+    # elision, and the whole text must be consumed.
+    if pin_message(corp, "E-BOUNDARY", "slot `x` needs a declaration before use (dsl 0.9.0 D-C)")[1]:
+        bad("a legitimate interpolation must pin")
+    if pin("slot `` needs a declaration before use (dsl 0.9.0 D-C)") is None:
+        bad("an empty interpolation must NOT pin")
+    if pin("slot `x` needs a declaration before use (dsl 0.9.0 D-C) and more") is None:
+        bad("trailing text outside the literal must NOT pin")
+    if pin("slot `…` needs a declaration before use (dsl 0.9.0 D-C)") is None:
+        bad("an elision inside an interpolated span must NOT pin")
+    # Two literals one word apart stay distinguishable, and neither is claimed
+    # by the other.
+    if pin("slot `x` needs a declaration before reuse (dsl 0.9.0 D-C)") is not None:
+        bad("the near-twin literal must pin to itself")
+    if pin("slot `x` needs a declaration before misuse (dsl 0.9.0 D-C)") is None:
+        bad("a reworded message must NOT pin to either near-twin")
+    # A quote may not borrow a literal from a file that never declares its code.
+    if pin_message(corp, "E-ELSEWHERE", "the quick brown fox jumps over it")[1] is None:
+        bad("a quote must not pin to a literal whose file does not declare the code")
+
+    # The mutation self-test itself must be able to condemn: an anchor that a
+    # neighbouring wildcard can simply re-absorb is not pinning anything, and
+    # `mutation_survivors` must say so rather than report a clean match.
+    loose_rx = re.compile(r"(.+?)abc(.+?)\Z")
+    loose_txt = "xabcabcx"
+    if mutation_survivors(loose_rx, loose_rx.match(loose_txt), loose_txt) != ["abc"]:
+        bad("mutation_survivors failed to condemn a re-absorbable anchor")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
@@ -537,12 +1257,18 @@ def main() -> int:
             f"(`cargo build -p lute-cli`) or pass --lute"
         )
 
+    self_test()
+    corpus = message_corpus()
+
     verified: list[str] = []
     opted_out: list[tuple[str, str]] = []
     unmarked_whole: list[str] = []
     other_meta: list[tuple[str, str]] = []
     fragments = 0
     all_pages: list[pathlib.Path] = []
+    pinned: list[str] = []
+    diag_opted_out: list[tuple[str, str]] = []
+    unmarked_diags: list[str] = []
 
     for root in SNIPPET_ROOTS:
         pages = root.pages()
@@ -550,9 +1276,14 @@ def main() -> int:
             fail(f"snippet root has no pages: {root.path}")
         all_pages += pages
         root_unmarked: list[str] = []
+        root_unmarked_diags: list[str] = []
         for page in pages:
             rel_page = page.relative_to(ROOT)
-            for b in extract_blocks(page):
+            fences = extract_fences(page)
+            check_quoted_diagnostics(
+                corpus, rel_page, fences, pinned, diag_opted_out, root_unmarked_diags
+            )
+            for b in extract_blocks(fences):
                 where = f"{rel_page}:{b['line']}"
                 marks, other = parse_meta(b["meta"])
                 if other:
@@ -622,6 +1353,36 @@ def main() -> int:
                 f'`unverified="<reason>"`.\n'
                 + "\n".join(f"      {w}" for w in root_unmarked)
             )
+        unmarked_diags += root_unmarked_diags
+        if len(root_unmarked_diags) > root.max_unmarked_diagnostics:
+            ERRORS.append(
+                f"{root.path}: {len(root_unmarked_diags)} fence(s) quoting "
+                f"diagnostic output with no `lute-diagnostics` marker, cap is "
+                f"{root.max_unmarked_diagnostics}. A quoted diagnostic with no "
+                f"marker is a sentence the binary is free to rewrite behind the "
+                f"docs' back: put `<!-- lute-diagnostics -->` "
+                f"(`{{/* lute-diagnostics */}}` in .mdx) on the line above the "
+                f"fence, or `<!-- lute-diagnostics unverified=\"<reason>\" -->` "
+                f"if the quote is deliberately abridged.\n"
+                + "\n".join(f"      {w}" for w in root_unmarked_diags)
+            )
+
+    # The llms bundles are flattened mirrors of pages whose every quote is now
+    # declared, and they were already a scanned surface for the capability
+    # pin. They get the MIRROR rule (see `check_quoted_diagnostics`): no marker
+    # required, but every quote must pin. One of their eleven — the
+    # `E-DOMAIN-UNKNOWN` sentence at llms-full.txt:847 — is a byte-identical
+    # copy of a page quote, which is exactly the copy a reword would strand.
+    for bundle in HASH_SCAN_EXTRA:
+        if bundle.is_file():
+            check_quoted_diagnostics(
+                corpus,
+                bundle.relative_to(ROOT),
+                extract_fences(bundle),
+                pinned,
+                diag_opted_out,
+                None,
+            )
 
     caps = capability_versions(lute)
     hashes = check_pinned_hashes(caps, all_pages)
@@ -633,6 +1394,17 @@ def main() -> int:
             f"a snippet fixed. Restore it, or lower MIN_VERIFIED_BLOCKS in this "
             f"script with a reason."
         )
+
+    if len(pinned) < MIN_PINNED_DIAGNOSTICS:
+        ERRORS.append(
+            f"quoted-diagnostic coverage dropped: {len(pinned)} pinned "
+            f"record(s), floor is {MIN_PINNED_DIAGNOSTICS}. A "
+            f"`lute-diagnostics` marker was removed rather than a quote fixed. "
+            f"Restore it, or lower MIN_PINNED_DIAGNOSTICS in this script with a "
+            f"reason."
+        )
+
+    fidelity = check_message_fidelity(lute, corpus)
 
     # Always report coverage, pass or fail. A check that quietly skips is the
     # exact failure mode this script exists to prevent.
@@ -661,6 +1433,28 @@ def main() -> int:
     )
     for k, v in caps.items():
         print(f"  · {v[:16]}…  {k}")
+    print(
+        f"check-doc-snippets: {len(pinned)} quoted diagnostic record(s) pinned "
+        f"to {len(corpus)} `format!` literal(s) scanned from "
+        f"{MESSAGE_SOURCE_GLOB}:"
+    )
+    for p in pinned:
+        print(f"  ✓ {p}")
+    print(
+        f"check-doc-snippets: {len(diag_opted_out)} quoted diagnostic(s) "
+        f"explicitly unverified, {len(unmarked_diags)} quoting fence(s) "
+        f"unmarked:"
+    )
+    for where, why in diag_opted_out:
+        print(f"  – {where}  unverified: {why}")
+    for where in unmarked_diags:
+        print(f"  ? {where}  quotes diagnostic output with no marker")
+    print(
+        f"check-doc-snippets: {len(fidelity)} real message(s) emitted by this "
+        f"binary resolve to a scraped literal (floor {MIN_FIDELITY_SAMPLES}):"
+    )
+    for code, msg in fidelity:
+        print(f"  · [{code}] {msg[:96]}{'…' if len(msg) > 96 else ''}")
 
     if ERRORS:
         print("\ncheck-doc-snippets: FAILURES\n", file=sys.stderr)

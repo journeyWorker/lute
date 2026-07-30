@@ -10,6 +10,7 @@ empty `enums:`; there is no baseline list to override, repudiate, or work around
 
 The consequence is the other half of the trade: **using a slot nothing declares is an error.**
 
+<!-- lute-diagnostics -->
 ```
 error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:`
 block in this document's own frontmatter, in a project schema reached through `uses:`, or in a
@@ -102,6 +103,7 @@ The two clashes behave differently, and the difference is worth reading twice.
 project routes — an inline `enums:` block and an imported schema's are treated the same way. The
 project entry is dropped and reported, so subsequent values are judged against the plugin's members:
 
+<!-- lute-diagnostics -->
 ```
 error [E-DOMAIN-DUP] domain `emotion` is declared by this project — in a document's own `enums:`
 frontmatter or in a project schema reached through `uses:`/`extends:` — but already exists in the
@@ -119,6 +121,7 @@ superset.** A document may re-declare a slot its schema already declares in orde
 and the inline list then governs. Dropping a member the base declared is
 `E-EXTENDS-RELATION-SIG`:
 
+<!-- lute-diagnostics -->
 ```
 error [E-EXTENDS-RELATION-SIG] enum `emotion` is missing base member(s) ["delighted"]; an inline
 re-declaration must re-declare a superset of the imported base's members (dsl 0.3.0 §4.1)
@@ -194,6 +197,7 @@ State it plainly, because it will bite someone. **A component's own `uses:` and 
 
 So a component naming a slot only *it* declares passes standalone and fails through a `::use`:
 
+<!-- lute-diagnostics unverified="deliberately abridged — both quotes elide the component's path (`…/c.component.lute`) and the tail of the shared E-DOMAIN-UNKNOWN sentence (`— …`) because the block exists to show the `component ... (...):` prefix, not the message it prefixes; the unabridged sentence is pinned at vocabulary.md:14" -->
 ```
 $ lute check c.component.lute      # its own uses: declares emotion, its own inline enums: declares vfxType
 ok: c.component.lute (0 warning(s))

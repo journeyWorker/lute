@@ -62,6 +62,7 @@ Activation validates every supplied option against the owning plugin's `options:
 
 An option name the plugin does not declare is **`E-PLUGIN-OPTION-UNKNOWN`**, and the message names the whole declared set so the fix is usually a typo away:
 
+<!-- lute-diagnostics -->
 ```
 $ lute check scene.lute --project .
 lute: E-PLUGIN-OPTION-UNKNOWN: plugin `idola.bonus` has no option `resultScop` (declared: resultScope, rounds)
@@ -69,6 +70,7 @@ lute: E-PLUGIN-OPTION-UNKNOWN: plugin `idola.bonus` has no option `resultScop` (
 
 A value that fails its declared type is **`E-PLUGIN-OPTION-TYPE`**. Every violation in the profile is collected in one pass rather than bailing on the first:
 
+<!-- lute-diagnostics -->
 ```
 $ lute check scene.lute --project .
 lute: E-PLUGIN-OPTION-TYPE: option `idola.bonus.resultScope` expects enum(scene|run), got "galaxy"

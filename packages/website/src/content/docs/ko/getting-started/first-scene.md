@@ -16,6 +16,7 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 
 빈 파일 `my-scene.lute`를 만들고 체커를 실행하세요 — 체커는 `.lute` 파일이 유효한지 알려줍니다:
 
+<!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
 my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)
@@ -61,6 +62,7 @@ ok: my-scene.lute (0 warning(s))
 
 다시 검사하세요:
 
+<!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
 my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it (dsl 0.6.0 §3.3)
@@ -104,6 +106,7 @@ ok: my-scene.lute (0 warning(s))
 
 저장하고 검사해 보세요. 이번에는 **통과하지 않습니다**:
 
+<!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
 my-scene.lute:14:16: error [E-DOMAIN-UNKNOWN] `emotion` is not a declared domain — declare its members in an `enums:` block in this document's own frontmatter, in a project schema reached through `uses:`, or in a plugin's `enums` export before using `emotion` (dsl 0.9.0 D-C)
@@ -213,6 +216,7 @@ state:
 :mira{mono}: I should not be this pleased about a coffee order.
 ```
 
+<!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
 my-scene.lute:20:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text` (dsl §7.1); `lute fix` applies this migration automatically
