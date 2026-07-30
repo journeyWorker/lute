@@ -39,9 +39,11 @@ time, so these entries sit under *Unreleased*.
   `lute.core` ships **no vocabulary members**. It declares seven *slots* —
   `emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType` — as
   the types of core content-line and directive attributes, and nothing more.
-  Every member now comes from a project schema's `enums:` (imported through
-  `uses:`/`extends:`) or from a plugin's `enums` export. Using a slot that no
-  source declares is `E-DOMAIN-UNKNOWN`.
+  Every member now comes from one of three declaration routes: an `enums:` block
+  in the using document's **own frontmatter**, a project schema's `enums:`
+  (imported through `uses:`/`extends:`), or a plugin's `enums` export. Using a
+  slot that no source declares is `E-DOMAIN-UNKNOWN`, and the diagnostic names
+  all three routes.
 
   Until now those six baseline vocabularies were closed lists inside
   `lute.core` that **no route could extend**: a project schema declaring
@@ -57,6 +59,15 @@ time, so these entries sit under *Unreleased*.
 - **`::auto{action}` and `::music{mood}` are domain-typed**, having been free
   strings. This is why the `mood` domain had been declared-but-inert since it
   shipped.
+- **An `::auto` that omits `anchor` now checks the `anchor` slot it implicitly
+  reads.** The default-anchor injection reads the `anchor` domain's `default:`,
+  but nothing in the document names `anchor` on that path and directive
+  validation only sees AUTHORED attributes — so a project that declared `action`
+  and forgot `anchor` checked clean while the anchor command 0.8.0 emitted
+  unconditionally simply disappeared from the artifact. An undeclared slot is now
+  `E-DOMAIN-UNKNOWN` there too, reported on the `::auto` itself, so the slot rule
+  above holds for implicit reads as well as written ones. Writing an explicit
+  `anchor` was, and remains, an error at the attribute.
 - **A component body is checked the same way through `::use` as standalone.**
   Five whole-document passes ran only at the document root and never over an
   imported component body, so the same content checked clean inside a component
@@ -70,12 +81,19 @@ time, so these entries sit under *Unreleased*.
   top-level `<quest>` entirely. **A component body that used to check clean may
   now report; every such report is a defect that was already there.**
 - **Artifact content changes; the IR schema does not.** A project-declared
-  vocabulary now reaches the compiled artifact's existing `enums` array, because
-  it is project data like `entities:`/`relations:`. No field is added, renamed,
-  or moved, and `irVersion` stays `0.8.0`. A vocabulary supplied by a plugin
-  `enums` export does not appear there — it is part of `capabilityVersion`.
+  vocabulary — inline or imported — now reaches the compiled artifact's existing
+  `enums` array, because it is project data like `entities:`/`relations:`. No
+  field is added, renamed, or moved, and `irVersion` stays `0.8.0`. A vocabulary
+  supplied by a plugin `enums` export does not appear there — it is part of
+  `capabilityVersion`.
   `capabilityVersion` changes for every project (the core's vocabulary emptied
   and two attribute types changed).
+- **`capabilityVersion` covers the member semantics, not just the members.** The
+  stamp folds a plugin-exported vocabulary's `default:`/`exits:` alongside its
+  member list. Those keys now decide emitted output — the injected anchor and
+  `sprite.exit` — so two capability surfaces that agree on members and differ
+  only there compile differently and no longer share a stamp. A surface carrying
+  no vocabulary at all hashes byte-identically to before.
 - **`lute new scene`** imports `vocabulary.schema.yaml` when the project has one.
 
 ### Added
@@ -88,7 +106,20 @@ time, so these entries sit under *Unreleased*.
   slots both keys are rejected. Four new diagnostics:
   `E-ENUM-MISSING-SEMANTICS`, `E-ENUM-UNEXPECTED-SEMANTICS`,
   `E-ENUM-DEFAULT-NOT-MEMBER`, `E-ENUM-EXITS-NOT-MEMBER`. The same validator
-  runs on the project-schema and the plugin-export route.
+  runs on all three routes.
+- **A document's own inline `enums:`/closed `entities:` now declares vocabulary
+  for that document.** `enums:` has always been legal frontmatter in any
+  document, but the projection was built and then dropped before the domain
+  merge, so using what you had just declared on the line above still reported
+  `E-DOMAIN-UNKNOWN`. It now reaches the merge by the same path an imported
+  declaration does, and surfaces in `lute context --json`'s `projectEnums`, in
+  `lute doctor`'s slot report, and in LSP hover/completion. This is the only
+  route open to a single-file author or the playground, which checks one
+  in-memory document and can resolve no import. Precedence: inline wins over an
+  imported declaration of the same slot and must re-declare a superset of its
+  members (`E-EXTENDS-RELATION-SIG` otherwise); against a plugin or the core it
+  is `E-DOMAIN-DUP` and the plugin wins. A component body is the one place it
+  does not apply — see *Known limitation*.
 - **`lute init` scaffolds a starter vocabulary** (`vocabulary.schema.yaml`)
   covering all seven slots with `exits:`/`default:` filled in, so a fresh project
   checks clean out of the box and its starter scene actually uses a slot. The
@@ -114,12 +145,18 @@ time, so these entries sit under *Unreleased*.
 
 ### Migration
 
-1. **Declare your vocabulary.** Add an `enums:` block to a schema your documents
-   already import, or export `enums` from your own capability plugin. `lute init`
+1. **Declare your vocabulary**, by whichever of the three routes fits. Add an
+   `enums:` block to a schema your documents already import (best for a
+   multi-document project), add one to a single document's own frontmatter (the
+   only route open to a one-file author or the playground, which resolves no
+   imports), or export `enums` from your own capability plugin. `lute init`
    scaffolds one; `lute doctor <dir>` lists which slots a project root has
-   declared, and `lute check` names the fix on the first undeclared use. Declare
-   per project root — a sibling root's declaration does not reach in, and
-   declaring one slot through both routes in one root is `E-DOMAIN-DUP`.
+   declared, and `lute check` names all three routes on the first undeclared use.
+   Declare per project root — a sibling root's declaration does not reach in.
+   Declaring one slot through a plugin **and** either project route in one root
+   is `E-DOMAIN-DUP` (the plugin wins); declaring it both inline and in an
+   imported schema is not, but the inline block must re-declare a superset of the
+   imported members or it is `E-EXTENDS-RELATION-SIG`.
 2. **Spell out the member semantics** — `exits:` for `action`, `default:` for
    `anchor` — and include the members the old core rejected.
 3. **Restamp** `luteVersion: "0.8.0"` → `"0.9.0"` (the pre-existing
@@ -132,9 +169,10 @@ the seven slots.
 #### Known limitation
 
 A component body resolves its vocabulary against the **importing** document,
-because a component's own `uses:` is not carried through `::use`. So a component
-naming a domain only *it* declares passes a standalone `lute check` and fails
-through a `::use` from a scene that does not import the same vocabulary. Keep the
+because neither a component's own `uses:` nor an inline `enums:` block in its
+frontmatter is carried through `::use`. So a component naming a domain only *it*
+declares passes a standalone `lute check` and fails through a `::use` from a
+scene that does not declare or import the same vocabulary. Keep the
 declaration at the project root so both reach the same one. A *component schema*
 surface that carries a component's own imports into the expansion is a named
 future direction, filed separately

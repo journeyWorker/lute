@@ -129,8 +129,8 @@ impl SnapshotBuilder {
 }
 
 /// plugin §13: deterministic content hash over the whole resolved capability
-/// surface — plugin ids+versions+option objects, directives, enums, providers,
-/// state shapes, bridge capabilities, defs, and frontmatter. Every generated
+/// surface — plugin ids+versions+option objects, directives, enums, domains,
+/// providers, state shapes, bridge capabilities, defs, and frontmatter. Every generated
 /// artifact is stamped with this so a consumer can refuse a mismatched snapshot;
 /// any drift in a populated field yields a different version. `snap.version`
 /// itself is excluded (it is the output). Each field is written under a distinct
@@ -242,6 +242,25 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
             h.update(name.as_bytes());
             h.update(b"=");
             h.update(format!("{a:?}").as_bytes());
+            h.update(b";");
+        }
+    }
+    // GUARDED for the same reason as `events` above: a vocabulary-LESS snapshot
+    // (including `lute.core`, whose `enums.yaml` is empty as of dsl 0.9.0 D-A)
+    // hashes byte-identically to a pre-`domains` snapshot. Once populated it
+    // folds in unconditionally, and via `Domain`'s whole `Debug` — NOT just
+    // `members`: dsl 0.9.0 D-D made `default:` and `exits:` drive EMITTED
+    // output (the injected anchor, `sprite.exit`), so two surfaces agreeing on
+    // members but differing there compile differently and must not share a
+    // stamp. `members` is folded twice for a plugin/core `enums` fold (once
+    // here, once under `enums`), which is harmless: the stamp only ever needs
+    // to over-distinguish, never under-.
+    if !snap.domains.is_empty() {
+        h.update(b"\ndomains\n");
+        for (name, d) in &snap.domains {
+            h.update(name.as_bytes());
+            h.update(b"=");
+            h.update(format!("{d:?}").as_bytes());
             h.update(b";");
         }
     }
@@ -439,5 +458,90 @@ mod tests {
         );
         assert!(s.event("combatEnd").is_some());
         assert!(s.event("nope").is_none());
+    }
+
+    /// dsl 0.9.0 D-D: `Domain::default`/`Domain::exits` DRIVE emitted output
+    /// (the injected anchor, `sprite.exit`), so they are capability surface.
+    fn dom(members: &[&str], default: Option<&str>, exits: &[&str]) -> Domain {
+        Domain {
+            members: members.iter().map(|s| s.to_string()).collect(),
+            open: false,
+            default: default.map(str::to_string),
+            exits: exits.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn domain_default_changes_capability_version() {
+        // Identical members, identical everything else: only the member the
+        // compiler substitutes for an absent `anchor` differs. That substitution
+        // lands in the IR, so the stamp MUST distinguish these surfaces.
+        let mk = |anchor_default: &str| {
+            let mut snap = CapabilitySnapshot::default();
+            snap.domains.insert(
+                "anchor".into(),
+                dom(&["center", "left"], Some(anchor_default), &[]),
+            );
+            capability_version(&snap)
+        };
+        assert_ne!(
+            mk("center"),
+            mk("left"),
+            "anchor.default drives the injected anchor; it must affect the stamp"
+        );
+    }
+
+    #[test]
+    fn domain_exits_change_capability_version() {
+        // Identical members; only WHICH of them ends a character's stage
+        // presence differs. That decides whether `sprite.exit` is emitted.
+        let mk = |exits: &[&str]| {
+            let mut snap = CapabilitySnapshot::default();
+            snap.domains
+                .insert("action".into(), dom(&["enter", "leave", "wave"], None, exits));
+            capability_version(&snap)
+        };
+        assert_ne!(
+            mk(&["leave"]),
+            mk(&["wave"]),
+            "action.exits drives sprite.exit; it must affect the stamp"
+        );
+    }
+
+    #[test]
+    fn domain_hash_is_deterministic_and_order_independent() {
+        let build = |reversed: bool| {
+            let mut snap = CapabilitySnapshot::default();
+            let entries: Vec<(&str, Domain)> = vec![
+                ("action", dom(&["enter", "leave"], None, &["leave"])),
+                ("anchor", dom(&["center", "left"], Some("center"), &[])),
+            ];
+            let entries: Vec<_> = if reversed {
+                entries.into_iter().rev().collect()
+            } else {
+                entries
+            };
+            for (name, d) in entries {
+                snap.domains.insert(name.into(), d);
+            }
+            capability_version(&snap)
+        };
+        let a = build(false);
+        assert_eq!(a, build(false), "hashing the same snapshot twice must agree");
+        assert_eq!(a, build(true), "insertion order must not perturb the stamp");
+    }
+
+    #[test]
+    fn domainless_snapshot_keeps_its_pre_domains_stamp() {
+        // DECISION: the `domains` section is GUARDED like `events`/`stampAttrs`,
+        // so a snapshot carrying NO vocabulary — including `lute.core`, whose
+        // `enums.yaml` is empty as of dsl 0.9.0 D-A — hashes byte-identically to
+        // the pre-0.9.0 digest. This literal pins that: it is the SHA-256 of the
+        // unguarded section markers alone.
+        assert_eq!(
+            capability_version(&CapabilitySnapshot::default()),
+            "e4d422238da1596ef546a76c06acac962e8763b0240c0ab0dd0276d25d74db76",
+            "an empty `domains` map must not perturb the capability stamp"
+        );
     }
 }
