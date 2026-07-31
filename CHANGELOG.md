@@ -22,7 +22,7 @@ working as written — the axes move independently and only *present* as one
 number when they all moved. See [`docs/versioning.md`](docs/versioning.md) for
 the full policy and the axes table.
 
-## [Unreleased]
+## [0.9.0] - 2026-07-29
 
 **Language `0.9.0` — vocabulary ownership: the core declares slots, the project
 declares members.** Breaking at the language axis (pre-1.0 allowance). Specs:
@@ -30,8 +30,8 @@ declares members.** Breaking at the language axis (pre-1.0 allowance). Specs:
 [`plugin-system/0.0.3.md`](docs/proposals/plugin-system/0.0.3.md).
 `LUTE_LANG_VERSION` is `0.9.0`; **`LUTE_IR_VERSION` stays `0.8.0`** and the IR
 JSON schema stays [`schemas/lute-ir-0.8.schema.json`](schemas/lute-ir-0.8.schema.json).
-The toolchain number for the release that ships this is assigned at publish
-time, so these entries sit under *Unreleased*.
+The toolchain ships as `0.9.0` alongside the language; the IR axis is the one
+that does not move.
 
 ### Changed
 
