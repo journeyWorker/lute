@@ -3,7 +3,7 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the JSON IR described
-by [`schemas/lute-ir-0.8.schema.json`](../../schemas/lute-ir-0.8.schema.json).
+by [`schemas/lute-ir-0.9.schema.json`](../../schemas/lute-ir-0.9.schema.json).
 It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**
 (design decision D1). Everything on the far side of the artifact is the
 engine's job. These documents describe that job, grounded in
@@ -33,8 +33,8 @@ One artifact is produced per `.lute` document (`lute compile <file>` →
   `{ name, members }`; member-level semantics (`exits:`/`default:`) are **not**
   serialized, because the compiler has already resolved them into `sprite.exit`
   and the emitted anchor. A vocabulary supplied by a plugin `enums` export does
-  **not** appear here — it is part of `capabilityVersion` instead. Nothing about
-  this changes `irVersion`, and an engine that ignores `enums` is unaffected;
+  **not** appear here — it is part of `capabilityVersion` instead. None of this
+  changes the artifact *shape*, and an engine that ignores `enums` is unaffected;
 - a flat, ordered **`commands: Command[]`** stream — the executable body;
 - an advisory **`prereqEdges`** graph (this document's raw `after` formulas;
   connectivity T13 — see [quest-lifecycle.md](./quest-lifecycle.md) for how
@@ -60,6 +60,14 @@ Gate parsing on `irVersion` by **major.minor** (spec §4.1, A9):
 `lute` (the language version) is informational for the runtime and does not
 gate. `capabilityVersion` lets you refuse an artifact compiled against a plugin
 snapshot you do not match.
+
+**IR `0.9.0` is shape-identical to IR `0.8.0`** — no field added, renamed, or
+moved, and no new command `kind`. The number re-aligned with the release
+([`docs/versioning.md`](../versioning.md)), and `schemas/lute-ir-0.8.schema.json`
+was renamed to `schemas/lute-ir-0.9.schema.json` with only its own version
+strings edited. The gate above is still normative, so an engine implementing
+`0.8` **refuses** a `0.9.0` artifact until it accepts `0.9` — widening the gate
+is the whole migration, with no parser or behaviour change behind it.
 
 ## Addressing and control flow
 

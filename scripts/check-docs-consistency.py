@@ -16,14 +16,17 @@ scripts/check-release-workflow-safety.py):
      definitions — see those files' doc comments).
    - Every CURRENT-version claim in packages/website/public/llms.txt,
      llms-full.txt, and every page under packages/website/src/content/docs/
-     must equal `LUTE_LANG_VERSION`. Only text that literally asserts the
-     CURRENT language version is matched (precise phrasings pinned below), so
-     the two hazards the docs tree adds stay out: `tooling/**` says `0.8.0`
-     about the IR schema and about release history, and `spec/**` maps every
-     feature to the version that introduced or last changed it. Neither
-     carries a pinned phrasing. The llms files must each carry at least one
-     claim (they are generated summaries and losing the claim would be
-     drift); an ordinary docs page needs none.
+     must equal `LUTE_LANG_VERSION`. Claims are found two ways — an exact
+     phrasing list AND a cue-plus-bold-version rule (both described at
+     VERSION_CLAIM_PATTERNS below) — because a list of sentences someone
+     thought of only catches the sentences someone thought of. What must stay
+     unmatched are the two hazards this tree really contains: `tooling/**`
+     says `0.8.0` about the IR line and about release history, and `spec/**`
+     maps every feature to the version that introduced or last changed it.
+     Both write a historical version in `backticks`, never in **bold**. The
+     llms files must each carry at least one claim (they are generated
+     summaries and losing the claim would be drift); an ordinary docs page
+     needs none.
    - The IR schema `schemas/lute-ir-<major.minor>.schema.json` for the current
      IR version's major.minor must exist.
 
@@ -56,6 +59,22 @@ LLMS = ROOT / "packages/website/public/llms.txt"
 LLMS_FULL = ROOT / "packages/website/public/llms-full.txt"
 DOCS_CONTENT = ROOT / "packages/website/src/content/docs"
 DOCS_CONTENT_SUFFIXES = (".md", ".mdx")
+
+# The repo-side prose surface, scanned for the same claims. The website tree
+# alone was one directory short: the root README.md carried "the grammar is at
+# **0.8.0**", a stale "current tip 0.8.0" spec row, and a quoted excerpt still
+# stamped `luteVersion: "0.1.0"` — eight releases behind — with nothing looking
+# at the file at all.
+#
+# The two excluded subtrees are excluded for the reasons
+# scripts/check-doc-snippets.py already documents, and this list is kept
+# deliberately identical to that script's:
+#   * docs/proposals/**  — frozen normative history. Each proposal describes
+#     its own release and legitimately says "this document stays **0.0.1**".
+#   * docs/superpowers/** — agent plan/spec artifacts, not documentation.
+REPO_DOC_FILES = (ROOT / "README.md", ROOT / "CHANGELOG.md")
+REPO_DOC_TREE = ROOT / "docs"
+REPO_DOC_EXCLUDED = ("proposals", "superpowers")
 
 DOMAIN_ROOTS = (ROOT / "packages/website", ROOT / "docs")
 STALE_DOMAIN = "lute-website.vercel.app"
@@ -104,6 +123,76 @@ VERSION_CLAIM_PATTERNS = (
     re.compile(r'"lute"\s*:\s*"(\d+\.\d+\.\d+)"'),
 )
 
+# Pass 2 — the one that does not depend on anyone predicting a sentence.
+#
+# Pass 1 is a list of exact phrasings, and a list only catches what someone
+# thought of. It has already been escaped once: llms-full.txt mirrored
+# spec/current.md and spec/index.md, drifted a whole release behind on
+# "what is *current* at language version **0.8.0**" and a "| **0.8.0** |
+# Current tip" table row, and neither phrasing was in the list — so a guard
+# sitting directly on that file said OK.
+#
+# So instead of adding those two sentences, pin the CONVENTION the docs
+# already follow, which is much harder to slip past:
+#
+#   A bare version in **bold** asserts a version. A version being talked
+#   ABOUT is written in `backticks`.
+#
+# Every `**X.Y.Z**` in the scanned set is a current-language-version claim, and
+# every historical mention — `spec/**`'s introduced/last-changed columns,
+# `tooling/**`'s IR line and release history, "Before `0.8.0` the index
+# field…" — is backticked.
+#
+# The bold alone is not quite enough to fire on, because a bolded version can
+# legitimately name a different axis ("Plugin system **0.0.3**"). So the
+# sentence must ALSO carry a cue, of either kind:
+#
+#   * a CURRENCY cue — "current", "latest", "as of", "현재" …
+#     ("The current language version is **0.9.0**", "| **0.9.0** | Current tip")
+#   * an AXIS cue — the sentence names the language/grammar axis itself
+#     ("It targets language version **0.9.0**", "The grammar is at **0.9.0**",
+#      "언어 버전 **0.9.0**을 대상으로 합니다")
+#
+# Two cue kinds rather than one because the README's phrasing carries no
+# currency word at all — it just asserts what the grammar is — and that is the
+# file that went eight releases stale.
+#
+# A violation here means one of two things, and the message says both: the
+# number is stale, or a historical version got bolded and should be
+# `backticked` instead.
+BOLD_VERSION_RE = re.compile(r"\*\*(\d+\.\d+\.\d+)\*\*")
+CLAIM_CUE_RE = re.compile(
+    r"current|currently|latest|today|as of|now at|up to date"
+    r"|language|grammar"
+    r"|현재|최신|지금|언어|문법",
+    re.IGNORECASE,
+)
+# Sentence-ish boundaries. A blank line ends a unit; so does terminal
+# punctuation followed by whitespace. A SINGLE newline does not — the docs are
+# hard-wrapped at ~100 columns and a claim routinely straddles one
+# ("It targets language version\n**0.9.0**.").
+SEGMENT_BREAK_RE = re.compile(r"\n[ \t]*\n|(?<=[.!?:;])\s+")
+
+
+def cue_claims(text: str) -> list[tuple[int, str]]:
+    """Bold bare versions sitting in a sentence that asserts one."""
+    found: list[tuple[int, str]] = []
+    pos = 0
+    for brk in SEGMENT_BREAK_RE.finditer(text):
+        _scan_segment(text, pos, brk.start(), found)
+        pos = brk.end()
+    _scan_segment(text, pos, len(text), found)
+    return found
+
+
+def _scan_segment(text: str, start: int, end: int, out: list[tuple[int, str]]) -> None:
+    seg = text[start:end]
+    if not CLAIM_CUE_RE.search(seg):
+        return
+    for m in BOLD_VERSION_RE.finditer(seg):
+        out.append((text.count("\n", 0, start + m.start()) + 1, m.group(1)))
+
+
 ERRORS: list[str] = []
 
 
@@ -146,6 +235,9 @@ def check_version_claims(
     for pat in VERSION_CLAIM_PATTERNS:
         for m in pat.finditer(text):
             found.append((text.count("\n", 0, m.start()) + 1, m.group(1)))
+    exact = set(found)
+    cued = [c for c in cue_claims(text) if c not in exact]
+    found.extend(cued)
     if require_claim:
         check(
             len(found) > 0,
@@ -157,7 +249,9 @@ def check_version_claims(
         check(
             v == expected,
             f"{rel}:{line}: current-language-version claim {v!r} != crate "
-            f"LUTE_LANG_VERSION {expected!r}",
+            f"LUTE_LANG_VERSION {expected!r} — either the number is stale, or a "
+            f"HISTORICAL version got written in **bold** inside a sentence that "
+            f"asserts currency (write a historical version in `backticks`)",
         )
     return len(found)
 
@@ -172,22 +266,35 @@ def docs_content_pages() -> list[pathlib.Path]:
     )
 
 
+def repo_doc_pages() -> list[pathlib.Path]:
+    """README/CHANGELOG plus docs/**.md, minus the two frozen subtrees."""
+    pages = [p for p in REPO_DOC_FILES if p.is_file()]
+    for p in REPO_DOC_TREE.rglob("*.md"):
+        rel = p.relative_to(REPO_DOC_TREE)
+        if rel.parts and rel.parts[0] in REPO_DOC_EXCLUDED:
+            continue
+        pages.append(p)
+    return sorted(set(pages))
+
+
 def check_stale_domain() -> None:
+    # The same one-directory-short bug bit here too: DOMAIN_ROOTS never
+    # included the repo root, so README.md's links were unscanned.
+    targets: list[pathlib.Path] = [p for p in REPO_DOC_FILES if p.is_file()]
     for base in DOMAIN_ROOTS:
         if not base.is_dir():
             continue
-        for p in sorted(base.rglob("*")):
-            if not p.is_file():
-                continue
-            try:
-                text = p.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
-                continue  # binary / unreadable — no textual URL to leak
-            if STALE_DOMAIN in text:
-                ERRORS.append(
-                    f"{p.relative_to(ROOT)}: contains stale domain "
-                    f"'{STALE_DOMAIN}' (canonical is lute-lang.vercel.app)"
-                )
+        targets.extend(p for p in base.rglob("*") if p.is_file())
+    for p in sorted(set(targets)):
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue  # binary / unreadable — no textual URL to leak
+        if STALE_DOMAIN in text:
+            ERRORS.append(
+                f"{p.relative_to(ROOT)}: contains stale domain "
+                f"'{STALE_DOMAIN}' (canonical is lute-lang.vercel.app)"
+            )
 
 
 def example_roots() -> list[str]:
@@ -203,11 +310,12 @@ def main() -> int:
     claims = check_version_claims(LLMS, lang_version)
     claims += check_version_claims(LLMS_FULL, lang_version)
 
-    # 1a. …and so does every claim on every page of the docs content tree.
-    # This is the scope that was missing: the same first pattern that guards
-    # llms.txt matched, verbatim, the stale string that shipped in
-    # spec/index.md — it was simply never pointed at these files.
-    pages = docs_content_pages()
+    # 1a. …and so does every claim on every page of the docs content tree,
+    # AND on the repo-side prose surface. Scope is what failed twice here: the
+    # first time the website tree was unscanned and spec/index.md shipped
+    # stale; the second time the website tree was scanned but README.md was
+    # not, and it went eight releases stale in a block quoting a real file.
+    pages = docs_content_pages() + repo_doc_pages()
     for page in pages:
         claims += check_version_claims(page, lang_version, require_claim=False)
 
@@ -220,7 +328,7 @@ def main() -> int:
         f"{schema.relative_to(ROOT)}",
     )
 
-    # 2. No stale canonical domain anywhere under the docs/website trees.
+    # 2. No stale canonical domain under the docs/website trees or the root.
     check_stale_domain()
 
     # 3. Example-check manifest for the workflow.

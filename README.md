@@ -32,8 +32,8 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | versioned spec stack — base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) + `0.2.0`/`0.2.2`/`0.3.0`/`0.4.0`/`0.5.0`–`0.5.2`/`0.6.0`/`0.6.1`/`0.7.0` deltas, current tip [`0.8.0`](docs/proposals/scenario-dsl/0.8.0.md) (adoption release — `::end`, `after: active(…)`, `quest.<id>.activatedAt`, uniform `addr` widths, localization round trip) | the examples below; [`architecture.md`](docs/architecture.md) |
-| **writing a plugin** (directives, state, providers, bridge, `stampAttrs`) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution — plus the [`0.0.2`](docs/proposals/plugin-system/0.0.2.md) delta (option/frontmatter validation, declarative `lower: { record }`, cross-cutting `stampAttrs`) | [`plugin-system.md`](docs/plugin-system.md) |
+| **writing `.lute` scenarios** | versioned spec stack — base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) + `0.2.0`/`0.2.2`/`0.3.0`/`0.4.0`/`0.5.0`–`0.5.2`/`0.6.0`/`0.6.1`/`0.7.0`/`0.8.0` deltas, current tip [`0.9.0`](docs/proposals/scenario-dsl/0.9.0.md) (vocabulary ownership — the compiler declares the seven content-vocabulary slots and ships no members, so every member is the project's; `enums:` long form with `exits:`/`default:`; an undeclared slot is `E-DOMAIN-UNKNOWN`; imported component bodies get the five root-only check stages) | the examples below; [`architecture.md`](docs/architecture.md) |
+| **writing a plugin** (directives, state, providers, bridge, `stampAttrs`) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution — plus the [`0.0.2`](docs/proposals/plugin-system/0.0.2.md) delta (option/frontmatter validation, declarative `lower: { record }`, cross-cutting `stampAttrs`) and the [`0.0.3`](docs/proposals/plugin-system/0.0.3.md) delta (an empty `lute.core` `enums`, the `enums` export long form, `semantics` twelve flags → ten) | [`plugin-system.md`](docs/plugin-system.md) |
 | **building the compiler / checker / LSP** | both proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
 | **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
@@ -77,7 +77,7 @@ An excerpt of [`docs/examples/idola-project/date-minigame.lute`](docs/examples/i
 character: bianca
 season: 1
 episode: 5
-luteVersion: "0.1.0"
+luteVersion: "0.9.0"
 profile: date-minigame
 ---
 
@@ -112,11 +112,14 @@ Install the server once (`cargo install --path crates/lute-lsp`), then:
 Lute's status splits along three independent axes (see
 [`docs/versioning.md`](docs/versioning.md) for the full policy):
 
-- **Language: draft.** The grammar is at **0.8.0** — the normative surface is
+- **Language: draft.** The grammar is at **0.9.0** — the normative surface is
   the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 / 0.3.0 / 0.4.0 /
-  0.5.0–0.5.2 / 0.6.0 / 0.6.1 / 0.7.0 / 0.8.0 deltas; 0.8.0 is the adoption
-  release — `::end`, `after: active(…)`, `quest.<id>.activatedAt`, uniform
-  `addr` widths, a localization round trip, and project-wide compile). Being
+  0.5.0–0.5.2 / 0.6.0 / 0.6.1 / 0.7.0 / 0.8.0 / 0.9.0 deltas; 0.9.0 is
+  vocabulary ownership — the compiler declares the seven content-vocabulary
+  slots and ships no members, so a project declares its own or gets
+  `E-DOMAIN-UNKNOWN`). Every release re-aligns the three visible axis numbers,
+  so the toolchain and the IR read `0.9.0` too; the IR is shape-identical to
+  `0.8.0`, and an engine gated on IR `0.8` need only widen that gate. Being
   draft means the grammar may still break before 1.0; each breaking change ships
   a `lute fix` migration where the rewrite is mechanical.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver,

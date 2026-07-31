@@ -10,39 +10,68 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.8.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.9.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
 | **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.9.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.8.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.8.schema.json`](../schemas/lute-ir-0.8.schema.json)). Consuming engines gate parsing on it. |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.9.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.9.schema.json`](../schemas/lute-ir-0.9.schema.json)). Consuming engines gate parsing on it. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
-The **language and toolchain versions are independent**: a toolchain release
-need not advance the language (e.g. a new CLI subcommand or a bug fix), and a
-language delta can ship under any toolchain version. Likewise the IR version
-bumps on a pure artifact-shape change even when the grammar is untouched.
+The axes are **independent in meaning**: a toolchain release need not advance
+the language (e.g. a new CLI subcommand or a bug fix), a language delta can
+ship under any toolchain version, and the IR version answers a pure
+artifact-shape question the grammar never asks. What each number *means* is
+the row above; what each number *reads* is the rule below.
 
-**Aligned as of `0.7.0`.** Although the axes are independent, they had drifted
-to different visible numbers (language/IR `0.6.1`, toolchain `0.2.0`). The
-`0.7.0` release **re-aligns every axis at one number** so a single release
-presents a single number and users stop reconciling three. Going forward the
-policy is: a release that changes any axis re-aligns the visible numbers to that
-release's number; the axes MAY still drift apart again only when an axis
-genuinely does not change (e.g. a toolchain-only bug-fix release leaves the
-language and IR numbers where they are). Alignment is a presentation guarantee,
-not a merge of the axes — each still means exactly what its row above says.
-`0.8.0` kept that alignment: it advanced the language (a new core directive,
-a new `after:` primitive, a narrowed `state:` rule), the IR (a new `end`
-command kind plus append-only fields), and the toolchain together.
+## Alignment
 
-**`0.9.0` deliberately breaks the alignment, and that is the policy working.**
-Vocabulary ownership ([`proposals/scenario-dsl/0.9.0.md`](proposals/scenario-dsl/0.9.0.md))
-is a language change with **no artifact-schema change**: no IR field is added,
-renamed, or moved, so the IR stays `0.8.0` and the JSON schema stays
-`schemas/lute-ir-0.8.schema.json`. The release does change **artifact content**
-(a project-declared vocabulary now reaches the existing `enums` array) and
-`capabilityVersion` (the core's vocabulary emptied), but neither is a schema
-bump. Read a version pair like `language 0.9.0 / IR 0.8.0` as exactly what the
-rows above say it is: the grammar moved, the artifact contract did not.
+**Aligned as of `0.7.0`, and on every release since.** The axes had drifted to
+different visible numbers (language/IR `0.6.1`, toolchain `0.2.0`), and the
+`0.7.0` release re-aligned them so a single release presents a single number
+and users stop reconciling three. That is now the standing rule, and it has no
+exceptions:
+
+> **Every release re-aligns every visible axis number to that release's
+> number.**
+
+An axis that did not substantively change still moves. If a release leaves the
+artifact shape untouched, the IR number becomes the release number anyway and
+the [changelog](../CHANGELOG.md) says so explicitly — naming the bump a
+**no-op for consumers**, so the number moved but the contract did not. "This
+axis did not really change" is a fact for the changelog to record. It is never
+a reason to hold a number back, and the axes are not permitted to drift apart
+again.
+
+Alignment is a **presentation guarantee, not a merge of the axes.** Each row
+above still means exactly what it says, and each still bumps for its own
+reason: `irVersion` remains the artifact-schema contract an engine gates on,
+`luteVersion:` remains the grammar contract the checker enforces, and the
+toolchain version remains the thing you pin in CI. Alignment guarantees only
+that the numbers you *read* on a given release match, so "which `0.9.0`?" is
+never a question. Read the changelog to learn which axes changed
+substantively; read the numbers only to learn which release you are on.
+
+`0.8.0` kept the alignment: it advanced the language (a new core directive, a
+new `after:` primitive, a narrowed `state:` rule), the IR (a new `end` command
+kind plus append-only fields), and the toolchain together.
+
+**`0.9.0` aligns all three axes at `0.9.0`.** Vocabulary ownership
+([`proposals/scenario-dsl/0.9.0.md`](proposals/scenario-dsl/0.9.0.md)) is a
+language change, the toolchain release carries it, and the IR number moves with
+them under the rule above — even though **IR `0.9.0` is shape-identical to IR
+`0.8.0`: no field is added, renamed, or moved.**
+`schemas/lute-ir-0.9.schema.json` is the `0.8` schema renamed in place, with no
+field added, renamed, moved, or retyped. The release does change artifact
+**content** (a project-declared vocabulary now reaches the existing `enums`
+array) and `capabilityVersion` (the core's vocabulary emptied), but neither is
+a change of shape.
+
+That has one real cost, and hiding it would be worse than paying it. The
+[runtime contract](runtime/execution-model.md#version-negotiation) requires an
+engine to **refuse** an artifact whose `irVersion` major.minor is newer than
+the one it implements, so an engine built against IR `0.8` refuses every
+`0.9.0` artifact until it widens that gate. Because the shape is identical,
+widening the gate is the *entire* migration: accept `0.9`, change nothing
+else — no parser change, no new field to read, no behaviour to add.
 
 ## Which bump when
 
