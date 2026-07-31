@@ -321,8 +321,8 @@ mod tests {
     fn scene(character: &str, capability: &str) -> Artifact {
         Artifact {
             kind: DocKind::Scene,
-            lute: "0.8.0".to_string(),
-            ir_version: "0.8.0".to_string(),
+            lute: "0.9.0".to_string(),
+            ir_version: "0.9.0".to_string(),
             capability_version: capability.to_string(),
             meta: ArtifactMeta::Scene(SceneMeta {
                 character: character.to_string(),
@@ -400,7 +400,7 @@ mod tests {
 
         // Deliberately UNSORTED input: `documents` must still come out sorted.
         let docs = [("z/b.lute", b), ("a/a.lute", a)];
-        let index = build_index("0.8.0", &inputs(&docs)).expect("no conflicts");
+        let index = build_index("0.9.0", &inputs(&docs)).expect("no conflicts");
 
         assert_eq!(
             index.documents.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(),
@@ -427,7 +427,7 @@ mod tests {
         let mut b = scene("kai", "cap-1");
         b.relations = vec![relation("knows", &["npc", "item"])];
         let docs = [("a.lute", a), ("b.lute", b)];
-        let errors = build_index("0.8.0", &inputs(&docs)).expect_err("arity differs");
+        let errors = build_index("0.9.0", &inputs(&docs)).expect_err("arity differs");
         assert_eq!(
             errors,
             vec![IndexError::Conflict {
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn two_capability_snapshots_are_an_error() {
         let docs = [("a.lute", scene("bianca", "cap-1")), ("b.lute", scene("kai", "cap-2"))];
-        let errors = build_index("0.8.0", &inputs(&docs)).expect_err("two profiles");
+        let errors = build_index("0.9.0", &inputs(&docs)).expect_err("two profiles");
         assert!(
             matches!(errors[0], IndexError::CapabilityMismatch { .. }),
             "{errors:?}"
@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn empty_vocabulary_arrays_are_still_emitted() {
         let docs = [("a.lute", scene("bianca", "cap-1"))];
-        let index = build_index("0.8.0", &inputs(&docs)).unwrap();
+        let index = build_index("0.9.0", &inputs(&docs)).unwrap();
         let json = index.to_json().unwrap();
         for key in ["entities", "enums", "relations", "seedFacts", "rules", "prereqEdges"] {
             assert!(json.contains(&format!("\"{key}\": []")), "missing empty `{key}`: {json}");
