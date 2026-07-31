@@ -1,6 +1,6 @@
 ---
 title: Runtime contract
-description: What a game engine must implement to run a compiled Lute artifact — the envelope, version negotiation and the IR 0.8.0 delta, the addr width invariant, and the dispatcher loop over the twenty-one command kinds.
+description: What a game engine must implement to run a compiled Lute artifact — the envelope, version negotiation and the IR 0.9.0 alignment bump, the addr width invariant, and the dispatcher loop over the twenty-one command kinds.
 ---
 
 Lute is a total, side-effect-free compiler. `lute compile <file>` checks a
@@ -10,7 +10,7 @@ behavior lives on the far side of the artifact, in the **engine**. This page is
 the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)
 and the machine-checkable shape is
-[`schemas/lute-ir-0.8.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.8.schema.json)
+[`schemas/lute-ir-0.9.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.9.schema.json)
 (JSON Schema draft 2020-12).
 
 ## What Lute does vs. what the engine does
@@ -63,8 +63,10 @@ them inline or through `uses:`/`extends:` emits them; a project whose members
 come from a plugin's `enums` export emits **no** `enums` at all, because a
 plugin vocabulary is capability surface (folded into `capabilityVersion`), not
 per-document data. Either way this is data an engine already unions, so nothing
-new is required of it — and `irVersion` stays `0.8.0` precisely because no field
-was added, renamed, or moved. Members carrying compiler semantics (`action`'s
+new is required of it — no field was added, renamed, or moved. `irVersion` reads
+`0.9.0` purely because the release aligns every axis, not because the shape
+changed; see [What IR 0.9.0 changed](#what-ir-090-changed). Members carrying
+compiler semantics (`action`'s
 `exits:`, `anchor`'s `default:`) are resolved away at compile time and never
 serialized: an engine needs no member semantics at runtime.
 
@@ -80,11 +82,52 @@ Gate on `irVersion` by **major.minor**:
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
 
+### What IR 0.9.0 changed
+
+**Nothing in the shape — that is the whole answer.** IR `0.9.0` is
+**shape-identical** to IR `0.8.0`: no field added, no field renamed, no field
+moved, no field retyped, no new command `kind`, no changed constraint. The
+schema file was renamed `schemas/lute-ir-0.8.schema.json` →
+`schemas/lute-ir-0.9.schema.json`, and the whole textual diff between the two
+is four lines: the `$id`, the `title`, a note appended to the top-level
+`description`, and the example version string in `irVersion`'s own
+description. Mask those and the two files hash identically — same `required`,
+same top-level properties, same 48 `$defs`.
+
+The number moved because Lute's
+[versioning policy](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)
+re-aligns every visible axis number on every release, so a `0.9.0` toolchain
+stamps `"irVersion": "0.9.0"`. The IR *contract* did not change; only the
+number did.
+
+**That still costs you one line of code, and we would rather say so than let
+you find out at load time.** The gate above is normative: an engine that
+implements IR `0.8` **must refuse** an artifact stamped `0.9.0`, because `0.9`
+is a newer major.minor. Every engine on the `0.8` line will therefore reject
+`0.9.0` artifacts until it is updated — and the update is exactly this, with
+nothing after it:
+
+> **Widen the gate to accept `0.9`. Change nothing else.** No parser change, no
+> new field to read, no new `kind` to dispatch, no behavioural difference.
+
+An engine that accepts both `0.8` and `0.9` is correct against both lines at
+once. Apart from the `irVersion` string itself, the bump changes no byte of any
+artifact. If you validate against the JSON Schema, repoint at
+`lute-ir-0.9.schema.json` — it replaced the `0.8` file by rename rather than
+sitting beside it.
+
+What *did* move at `0.9.0` is artifact **content**, not shape: `enums` may now
+carry the project's content-vocabulary domains (see
+[the envelope](#the-envelope)) and `capabilityVersion` changes because the
+core's vocabulary emptied. Both are new values in fields that already existed,
+and an engine already unions `enums` and already compares `capabilityVersion`.
+
 ### What IR 0.8.0 changed
 
-The schema file was renamed `schemas/lute-ir-0.7.schema.json` →
-`schemas/lute-ir-0.8.schema.json` along with the minor bump. Three deltas
-matter to a consumer:
+*History, retained for anyone still on the `0.8` line — this is the last bump
+that changed the shape.* The schema file was renamed
+`schemas/lute-ir-0.7.schema.json` → `schemas/lute-ir-0.8.schema.json` along
+with the minor bump. Three deltas matter to a consumer:
 
 - **`end` is a new command `kind`.** By the unknown-kind rule above, an engine
   implementing only IR 0.7 **must refuse** an artifact carrying one — it cannot

@@ -116,8 +116,8 @@ Termination is control flow, and control flow is the one thing plugin vocabulary
 plugin directive lowers to a record of `kind: "plugin"`, which is opaque to the checker:
 reachability analysis cannot know that such a record terminates, so content after it would never be
 reported dead and `W-CODE-AFTER-END` could not exist. Shipping `::end` as a new IR command kind is
-also the honest version signal — an engine that does not implement 0.8.0 must refuse the artifact
-rather than fall through a record it does not recognise.
+also the honest version signal — an engine that does not implement the IR minor that introduced it
+(`0.8.0`) must refuse the artifact rather than fall through a record it does not recognise.
 
 ## Reserved directives
 
