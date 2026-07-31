@@ -60,6 +60,22 @@ LLMS_FULL = ROOT / "packages/website/public/llms-full.txt"
 DOCS_CONTENT = ROOT / "packages/website/src/content/docs"
 DOCS_CONTENT_SUFFIXES = (".md", ".mdx")
 
+# The repo-side prose surface, scanned for the same claims. The website tree
+# alone was one directory short: the root README.md carried "the grammar is at
+# **0.8.0**", a stale "current tip 0.8.0" spec row, and a quoted excerpt still
+# stamped `luteVersion: "0.1.0"` — eight releases behind — with nothing looking
+# at the file at all.
+#
+# The two excluded subtrees are excluded for the reasons
+# scripts/check-doc-snippets.py already documents, and this list is kept
+# deliberately identical to that script's:
+#   * docs/proposals/**  — frozen normative history. Each proposal describes
+#     its own release and legitimately says "this document stays **0.0.1**".
+#   * docs/superpowers/** — agent plan/spec artifacts, not documentation.
+REPO_DOC_FILES = (ROOT / "README.md", ROOT / "CHANGELOG.md")
+REPO_DOC_TREE = ROOT / "docs"
+REPO_DOC_EXCLUDED = ("proposals", "superpowers")
+
 DOMAIN_ROOTS = (ROOT / "packages/website", ROOT / "docs")
 STALE_DOMAIN = "lute-website.vercel.app"
 
@@ -122,20 +138,33 @@ VERSION_CLAIM_PATTERNS = (
 #   A bare version in **bold** asserts a version. A version being talked
 #   ABOUT is written in `backticks`.
 #
-# Every `**X.Y.Z**` in the tree today is a current-language-version claim, and
+# Every `**X.Y.Z**` in the scanned set is a current-language-version claim, and
 # every historical mention — `spec/**`'s introduced/last-changed columns,
 # `tooling/**`'s IR line and release history, "Before `0.8.0` the index
-# field…" — is backticked. Requiring a currency CUE in the same sentence keeps
-# the rule off a bolded version that is genuinely not a currency claim (a
-# plugin-system revision, say) while still catching any rewording of one.
+# field…" — is backticked.
+#
+# The bold alone is not quite enough to fire on, because a bolded version can
+# legitimately name a different axis ("Plugin system **0.0.3**"). So the
+# sentence must ALSO carry a cue, of either kind:
+#
+#   * a CURRENCY cue — "current", "latest", "as of", "현재" …
+#     ("The current language version is **0.9.0**", "| **0.9.0** | Current tip")
+#   * an AXIS cue — the sentence names the language/grammar axis itself
+#     ("It targets language version **0.9.0**", "The grammar is at **0.9.0**",
+#      "언어 버전 **0.9.0**을 대상으로 합니다")
+#
+# Two cue kinds rather than one because the README's phrasing carries no
+# currency word at all — it just asserts what the grammar is — and that is the
+# file that went eight releases stale.
 #
 # A violation here means one of two things, and the message says both: the
 # number is stale, or a historical version got bolded and should be
 # `backticked` instead.
 BOLD_VERSION_RE = re.compile(r"\*\*(\d+\.\d+\.\d+)\*\*")
-CURRENCY_CUE_RE = re.compile(
+CLAIM_CUE_RE = re.compile(
     r"current|currently|latest|today|as of|now at|up to date"
-    r"|현재|최신|지금",
+    r"|language|grammar"
+    r"|현재|최신|지금|언어|문법",
     re.IGNORECASE,
 )
 # Sentence-ish boundaries. A blank line ends a unit; so does terminal
@@ -146,7 +175,7 @@ SEGMENT_BREAK_RE = re.compile(r"\n[ \t]*\n|(?<=[.!?:;])\s+")
 
 
 def cue_claims(text: str) -> list[tuple[int, str]]:
-    """Bold bare versions sitting in a sentence that asserts currency."""
+    """Bold bare versions sitting in a sentence that asserts one."""
     found: list[tuple[int, str]] = []
     pos = 0
     for brk in SEGMENT_BREAK_RE.finditer(text):
@@ -158,7 +187,7 @@ def cue_claims(text: str) -> list[tuple[int, str]]:
 
 def _scan_segment(text: str, start: int, end: int, out: list[tuple[int, str]]) -> None:
     seg = text[start:end]
-    if not CURRENCY_CUE_RE.search(seg):
+    if not CLAIM_CUE_RE.search(seg):
         return
     for m in BOLD_VERSION_RE.finditer(seg):
         out.append((text.count("\n", 0, start + m.start()) + 1, m.group(1)))
@@ -237,22 +266,35 @@ def docs_content_pages() -> list[pathlib.Path]:
     )
 
 
+def repo_doc_pages() -> list[pathlib.Path]:
+    """README/CHANGELOG plus docs/**.md, minus the two frozen subtrees."""
+    pages = [p for p in REPO_DOC_FILES if p.is_file()]
+    for p in REPO_DOC_TREE.rglob("*.md"):
+        rel = p.relative_to(REPO_DOC_TREE)
+        if rel.parts and rel.parts[0] in REPO_DOC_EXCLUDED:
+            continue
+        pages.append(p)
+    return sorted(set(pages))
+
+
 def check_stale_domain() -> None:
+    # The same one-directory-short bug bit here too: DOMAIN_ROOTS never
+    # included the repo root, so README.md's links were unscanned.
+    targets: list[pathlib.Path] = [p for p in REPO_DOC_FILES if p.is_file()]
     for base in DOMAIN_ROOTS:
         if not base.is_dir():
             continue
-        for p in sorted(base.rglob("*")):
-            if not p.is_file():
-                continue
-            try:
-                text = p.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
-                continue  # binary / unreadable — no textual URL to leak
-            if STALE_DOMAIN in text:
-                ERRORS.append(
-                    f"{p.relative_to(ROOT)}: contains stale domain "
-                    f"'{STALE_DOMAIN}' (canonical is lute-lang.vercel.app)"
-                )
+        targets.extend(p for p in base.rglob("*") if p.is_file())
+    for p in sorted(set(targets)):
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue  # binary / unreadable — no textual URL to leak
+        if STALE_DOMAIN in text:
+            ERRORS.append(
+                f"{p.relative_to(ROOT)}: contains stale domain "
+                f"'{STALE_DOMAIN}' (canonical is lute-lang.vercel.app)"
+            )
 
 
 def example_roots() -> list[str]:
@@ -268,11 +310,12 @@ def main() -> int:
     claims = check_version_claims(LLMS, lang_version)
     claims += check_version_claims(LLMS_FULL, lang_version)
 
-    # 1a. …and so does every claim on every page of the docs content tree.
-    # This is the scope that was missing: the same first pattern that guards
-    # llms.txt matched, verbatim, the stale string that shipped in
-    # spec/index.md — it was simply never pointed at these files.
-    pages = docs_content_pages()
+    # 1a. …and so does every claim on every page of the docs content tree,
+    # AND on the repo-side prose surface. Scope is what failed twice here: the
+    # first time the website tree was unscanned and spec/index.md shipped
+    # stale; the second time the website tree was scanned but README.md was
+    # not, and it went eight releases stale in a block quoting a real file.
+    pages = docs_content_pages() + repo_doc_pages()
     for page in pages:
         claims += check_version_claims(page, lang_version, require_claim=False)
 
@@ -285,7 +328,7 @@ def main() -> int:
         f"{schema.relative_to(ROOT)}",
     )
 
-    # 2. No stale canonical domain anywhere under the docs/website trees.
+    # 2. No stale canonical domain under the docs/website trees or the root.
     check_stale_domain()
 
     # 3. Example-check manifest for the workflow.
