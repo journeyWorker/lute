@@ -16,14 +16,17 @@ scripts/check-release-workflow-safety.py):
      definitions — see those files' doc comments).
    - Every CURRENT-version claim in packages/website/public/llms.txt,
      llms-full.txt, and every page under packages/website/src/content/docs/
-     must equal `LUTE_LANG_VERSION`. Only text that literally asserts the
-     CURRENT language version is matched (precise phrasings pinned below), so
-     the two hazards the docs tree adds stay out: `tooling/**` says `0.8.0`
-     about the IR schema and about release history, and `spec/**` maps every
-     feature to the version that introduced or last changed it. Neither
-     carries a pinned phrasing. The llms files must each carry at least one
-     claim (they are generated summaries and losing the claim would be
-     drift); an ordinary docs page needs none.
+     must equal `LUTE_LANG_VERSION`. Claims are found two ways — an exact
+     phrasing list AND a cue-plus-bold-version rule (both described at
+     VERSION_CLAIM_PATTERNS below) — because a list of sentences someone
+     thought of only catches the sentences someone thought of. What must stay
+     unmatched are the two hazards this tree really contains: `tooling/**`
+     says `0.8.0` about the IR line and about release history, and `spec/**`
+     maps every feature to the version that introduced or last changed it.
+     Both write a historical version in `backticks`, never in **bold**. The
+     llms files must each carry at least one claim (they are generated
+     summaries and losing the claim would be drift); an ordinary docs page
+     needs none.
    - The IR schema `schemas/lute-ir-<major.minor>.schema.json` for the current
      IR version's major.minor must exist.
 
@@ -104,6 +107,63 @@ VERSION_CLAIM_PATTERNS = (
     re.compile(r'"lute"\s*:\s*"(\d+\.\d+\.\d+)"'),
 )
 
+# Pass 2 — the one that does not depend on anyone predicting a sentence.
+#
+# Pass 1 is a list of exact phrasings, and a list only catches what someone
+# thought of. It has already been escaped once: llms-full.txt mirrored
+# spec/current.md and spec/index.md, drifted a whole release behind on
+# "what is *current* at language version **0.8.0**" and a "| **0.8.0** |
+# Current tip" table row, and neither phrasing was in the list — so a guard
+# sitting directly on that file said OK.
+#
+# So instead of adding those two sentences, pin the CONVENTION the docs
+# already follow, which is much harder to slip past:
+#
+#   A bare version in **bold** asserts a version. A version being talked
+#   ABOUT is written in `backticks`.
+#
+# Every `**X.Y.Z**` in the tree today is a current-language-version claim, and
+# every historical mention — `spec/**`'s introduced/last-changed columns,
+# `tooling/**`'s IR line and release history, "Before `0.8.0` the index
+# field…" — is backticked. Requiring a currency CUE in the same sentence keeps
+# the rule off a bolded version that is genuinely not a currency claim (a
+# plugin-system revision, say) while still catching any rewording of one.
+#
+# A violation here means one of two things, and the message says both: the
+# number is stale, or a historical version got bolded and should be
+# `backticked` instead.
+BOLD_VERSION_RE = re.compile(r"\*\*(\d+\.\d+\.\d+)\*\*")
+CURRENCY_CUE_RE = re.compile(
+    r"current|currently|latest|today|as of|now at|up to date"
+    r"|현재|최신|지금",
+    re.IGNORECASE,
+)
+# Sentence-ish boundaries. A blank line ends a unit; so does terminal
+# punctuation followed by whitespace. A SINGLE newline does not — the docs are
+# hard-wrapped at ~100 columns and a claim routinely straddles one
+# ("It targets language version\n**0.9.0**.").
+SEGMENT_BREAK_RE = re.compile(r"\n[ \t]*\n|(?<=[.!?:;])\s+")
+
+
+def cue_claims(text: str) -> list[tuple[int, str]]:
+    """Bold bare versions sitting in a sentence that asserts currency."""
+    found: list[tuple[int, str]] = []
+    pos = 0
+    for brk in SEGMENT_BREAK_RE.finditer(text):
+        _scan_segment(text, pos, brk.start(), found)
+        pos = brk.end()
+    _scan_segment(text, pos, len(text), found)
+    return found
+
+
+def _scan_segment(text: str, start: int, end: int, out: list[tuple[int, str]]) -> None:
+    seg = text[start:end]
+    if not CURRENCY_CUE_RE.search(seg):
+        return
+    for m in BOLD_VERSION_RE.finditer(seg):
+        out.append((text.count("\n", 0, start + m.start()) + 1, m.group(1)))
+
+
 ERRORS: list[str] = []
 
 
@@ -146,6 +206,9 @@ def check_version_claims(
     for pat in VERSION_CLAIM_PATTERNS:
         for m in pat.finditer(text):
             found.append((text.count("\n", 0, m.start()) + 1, m.group(1)))
+    exact = set(found)
+    cued = [c for c in cue_claims(text) if c not in exact]
+    found.extend(cued)
     if require_claim:
         check(
             len(found) > 0,
@@ -157,7 +220,9 @@ def check_version_claims(
         check(
             v == expected,
             f"{rel}:{line}: current-language-version claim {v!r} != crate "
-            f"LUTE_LANG_VERSION {expected!r}",
+            f"LUTE_LANG_VERSION {expected!r} — either the number is stale, or a "
+            f"HISTORICAL version got written in **bold** inside a sentence that "
+            f"asserts currency (write a historical version in `backticks`)",
         )
     return len(found)
 

@@ -33,10 +33,10 @@ capability proposals), see the [specification index](/spec/).
 | Timeline & property tracks | 0.1.0 | 0.1.0 | [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
 | Connectivity & `after:` sequencing | 0.2.0 (`after:` scene sequencing) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
-| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.9.0 (**IR schema unchanged at `0.8.0`**; artifact *content* moves — `enums` becomes populated from the project's own declaration, and `capabilityVersion` changes) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
+| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.9.0 (**IR shape unchanged — `0.9.0` is shape-identical to `0.8.0`**; `irVersion` re-aligns to `0.9.0` and artifact *content* moves — `enums` becomes populated from the project's own declaration, and `capabilityVersion` changes) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | Warning-severity diagnostics (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`) | 0.6.1 | 0.9.0 (`W-CODE-AFTER-END` and `W-INJECT-CONFLICT` now reachable inside an imported component body, anchored at the `::use` site) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | Deny promotion (`--deny` / `--deny-warnings`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.9.0 (language advances to `0.9.0` while **the IR schema stays `0.8.0`** — the axes are independent and this release genuinely changes no artifact field; the toolchain reads `0.8.0`) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.9.0 (all three axes read `0.9.0` — toolchain, language, and IR — because a release re-aligns every visible number; the IR shape is untouched, so an engine gated on `0.8` widens to `0.9` and changes nothing else) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 
 ## Notes on the boundaries
 
@@ -75,8 +75,10 @@ capability proposals), see the [specification index](/spec/).
   — a bare sequence is shorthand for `{ members: [...] }` — but a declaration of
   `action` MUST now supply `exits:` and one of `anchor` MUST supply `default:`,
   because those are the two places the compiler branches on *which* member, and
-  it no longer infers them from a name prefix. **The IR schema does not move**:
-  `irVersion` stays `"0.8.0"` and no field is added, renamed, or moved. The
+  it no longer infers them from a name prefix. **The IR shape does not move**:
+  no field is added, renamed, or moved, and `irVersion` reads `"0.9.0"` only
+  because a release re-aligns every axis — an engine gated on IR `0.8` must
+  widen its gate to `0.9` and change nothing else. The
   artifact's *content* does move — `enums` becomes populated for a project that
   declares inline or through `uses:`, and `capabilityVersion` shifts. The
   authoring side is written up at [Content vocabulary](/language/vocabulary/).

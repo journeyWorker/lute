@@ -12,15 +12,16 @@ Lute tracks three independent version axes; this file covers only the first:
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.8.0`) and gated on by consuming engines.
+  artifact (currently `0.9.0`) and gated on by consuming engines.
 
-The `0.7.0` and `0.8.0` releases held all three axes **aligned** at one visible
-number to remove version confusion. **`0.9.0` deliberately breaks that
-alignment**: it advances the language to `0.9.0` and leaves the IR at `0.8.0`,
-because it genuinely does not change the artifact schema. That is the policy
-working as written — the axes move independently and only *present* as one
-number when they all moved. See [`docs/versioning.md`](docs/versioning.md) for
-the full policy and the axes table.
+Every release holds all three axes **aligned** at one visible number, so a
+release presents one number and nobody has to reconcile three. `0.9.0` keeps
+that alignment: the language and the toolchain both advance, and the IR number
+moves with them even though **IR `0.9.0` is shape-identical to IR `0.8.0`**.
+Alignment is a presentation guarantee, not a claim that every axis changed
+substantively — this changelog is where you learn which ones did. See
+[`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
+table.
 
 ## [0.9.0] - 2026-07-29
 
@@ -28,10 +29,12 @@ the full policy and the axes table.
 declares members.** Breaking at the language axis (pre-1.0 allowance). Specs:
 [`scenario-dsl/0.9.0.md`](docs/proposals/scenario-dsl/0.9.0.md) and
 [`plugin-system/0.0.3.md`](docs/proposals/plugin-system/0.0.3.md).
-`LUTE_LANG_VERSION` is `0.9.0`; **`LUTE_IR_VERSION` stays `0.8.0`** and the IR
-JSON schema stays [`schemas/lute-ir-0.8.schema.json`](schemas/lute-ir-0.8.schema.json).
-The toolchain ships as `0.9.0` alongside the language; the IR axis is the one
-that does not move.
+`LUTE_LANG_VERSION` is `0.9.0` and the toolchain ships as `0.9.0`.
+**`LUTE_IR_VERSION` also moves to `0.9.0`** under the axis-alignment rule even
+though the artifact shape is untouched; the IR JSON schema is
+[`schemas/lute-ir-0.9.schema.json`](schemas/lute-ir-0.9.schema.json), the `0.8`
+file renamed with no shape edit. **For a consuming engine the IR bump is a
+no-op apart from one gate widening** — see the IR bullet under *Changed*.
 
 ### Changed
 
@@ -80,12 +83,23 @@ that does not move.
   value, and a duplicated `lineId`. A third silently **dropped** a component's
   top-level `<quest>` entirely. **A component body that used to check clean may
   now report; every such report is a defect that was already there.**
-- **Artifact content changes; the IR schema does not.** A project-declared
+- **IR `0.9.0` — the number moves, the shape does not.** `irVersion` is now
+  `0.9.0` and the schema is
+  [`schemas/lute-ir-0.9.schema.json`](schemas/lute-ir-0.9.schema.json), the
+  `0.8` file renamed. **No field is added, renamed, or moved, and no command
+  `kind` is new**: IR `0.9.0` is shape-identical to IR `0.8.0`, and the number
+  moved only because a release re-aligns every axis. **This is a no-op for
+  consumers except for one thing, which is not optional**: the
+  [runtime contract](docs/runtime/execution-model.md#version-negotiation)
+  requires an engine to refuse an artifact from a newer `irVersion`
+  major.minor, so an engine implementing `0.8` **will reject every `0.9.0`
+  artifact** until it widens its gate to accept `0.9`. Widening the gate is the
+  whole migration — no parser change, no new field, no new behaviour.
+- **Artifact content changes; the artifact shape does not.** A project-declared
   vocabulary — inline or imported — now reaches the compiled artifact's existing
-  `enums` array, because it is project data like `entities:`/`relations:`. No
-  field is added, renamed, or moved, and `irVersion` stays `0.8.0`. A vocabulary
-  supplied by a plugin `enums` export does not appear there — it is part of
-  `capabilityVersion`.
+  `enums` array, because it is project data like `entities:`/`relations:`. A
+  vocabulary supplied by a plugin `enums` export does not appear there — it is
+  part of `capabilityVersion`.
   `capabilityVersion` changes for every project (the core's vocabulary emptied
   and two attribute types changed).
 - **`capabilityVersion` covers the member semantics, not just the members.** The
