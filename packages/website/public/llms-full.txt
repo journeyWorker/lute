@@ -210,24 +210,26 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.8.0
+lute toolchain 0.9.0
 language      0.9.0
-IR schema     0.8.0
+IR schema     0.9.0
 ```
 
 Those are three independent axes: the **toolchain** version is this CLI, the **language** version
 is the grammar and semantics the checker enforces, and the **IR schema** version is what
-`lute compile` stamps into every artifact as `irVersion`. Nothing requires them to move together,
-and as of language 0.9.0 they no longer do: the language moved while the IR schema deliberately
-stayed at 0.8.0, because no artifact field was added, renamed, or moved. For scripts and CI,
+`lute compile` stamps into every artifact as `irVersion`. They mean different things, but a
+release always re-aligns all three visible numbers to that release's number, so all three read
+`0.9.0`. What actually moved at `0.9.0` is the language; the IR is shape-identical to `0.8.0` —
+no artifact field was added, renamed, or moved — so an engine gated on IR `0.8` only has to widen
+its gate to accept `0.9`. For scripts and CI,
 `--json` prints the same three axes as one object:
 
 ```
 $ lute version --json
-{"toolchain":"0.8.0","language":"0.9.0","ir":"0.8.0"}
+{"toolchain":"0.9.0","language":"0.9.0","ir":"0.9.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.8.0` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.9.0` — the toolchain axis alone.)
 
 ## Next
 
@@ -471,7 +473,7 @@ $ lute compile my-scene.lute
 {
   "kind": "scene",
   "lute": "0.9.0",
-  "irVersion": "0.8.0",
+  "irVersion": "0.9.0",
   "capabilityVersion": "0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07",
   "meta": {
     "character": "mira",
@@ -943,7 +945,8 @@ Neither key is serialized into the artifact — the compiler has already resolve
 generated scene imports. `lute doctor <dir>` reports which slots a root declares, with the semantics
 inline (`vocabulary slots declared: none` when it declares nothing). For a project declaring inline
 or through `uses:`/`extends:`, the compiled artifact's `enums` array becomes populated — an
-artifact-*content* change only: `irVersion` stays `"0.8.0"` and no IR field moved. A
+artifact-*content* change only: no IR field was added, renamed, or moved (`irVersion` reads
+`"0.9.0"` because a release re-aligns every axis, not because the shape moved). A
 plugin-supplied vocabulary does not appear there; it is capability surface.
 
 **Known limitation.** A component's own `uses:` and its own inline `enums:` are both discarded at
@@ -1155,8 +1158,8 @@ Termination is control flow, and control flow is the one thing plugin vocabulary
 plugin directive lowers to a record of `kind: "plugin"`, which is opaque to the checker:
 reachability analysis cannot know that such a record terminates, so content after it would never be
 reported dead and `W-CODE-AFTER-END` could not exist. Shipping `::end` as a new IR command kind is
-also the honest version signal — an engine that does not implement 0.8.0 must refuse the artifact
-rather than fall through a record it does not recognise.
+also the honest version signal — an engine that does not implement the IR minor that introduced it
+(`0.8.0`) must refuse the artifact rather than fall through a record it does not recognise.
 
 ## Reserved directives
 
@@ -2240,7 +2243,7 @@ The index carries the document table plus the deterministic **union** of every a
 
 ```json
 {
-  "irVersion": "0.8.0",
+  "irVersion": "0.9.0",
   "capabilityVersion": "…",
   "documents": [
     { "path": "quests/findKai.lute", "artifact": "quests/findKai.lute.json",
@@ -2399,7 +2402,7 @@ Print the three independent version axes ([versioning](https://github.com/journe
 
 # Runtime contract
 
-`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.8.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.8.schema.json) (JSON Schema draft 2020-12).
+`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.9.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.9.schema.json) (JSON Schema draft 2020-12).
 
 Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard to a portable `expr` AST, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. The engine trusts the artifact, initializes state and owns the tier lifetimes, **evaluates** guards, **computes the minimal model** over the fact store, **derives** the quest lifecycle, **makes** the bridge call, and honors the timeline barrier.
 
@@ -2413,7 +2416,9 @@ One artifact is produced per document. A project's engine **unions** the `relati
 
 Gate on `irVersion` by **major.minor**: **accept** any artifact whose major.minor you implement; **refuse** one from a newer major.minor (the PATCH component is an advisory, backward-compatible refinement and never gates); **ignore unknown object fields**, since optional fields are added append-only within a minor line; and **treat an unknown command `kind` as an error** — a new command kind is a real capability you cannot fake.
 
-What IR 0.8.0 changed, for a consumer:
+What IR 0.9.0 changed, for a consumer: **nothing in the shape.** IR 0.9.0 is shape-identical to IR 0.8.0 — no field added, renamed, moved, or retyped, and no new command `kind`. The schema file was renamed `schemas/lute-ir-0.8.schema.json` → `schemas/lute-ir-0.9.schema.json`; mask its `$id`, `title`, and two version strings and the two files are identical. The number moved only because a release re-aligns every visible version axis ([versioning](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)). The gate above is still normative, so an engine implementing IR 0.8 **must refuse** a 0.9.0 artifact: **widen the gate to accept 0.9 and change nothing else** — no parser change, no new field, no new `kind`, no behavioural difference. What did move is artifact *content*, not shape: `enums` may now carry the project's content vocabulary, and `capabilityVersion` changes because the core's vocabulary emptied.
+
+What IR 0.8.0 changed, for a consumer (history — the last bump that changed the shape):
 
 - **`end` is a new command `kind`.** By the unknown-kind rule an engine implementing only IR 0.7 **must refuse** an artifact carrying one — it cannot fall through the record, because `end` terminates the walk and falling through would play content the author marked unreachable. This is why termination is a core kind rather than a plugin directive: a plugin directive lowers to `kind: "plugin"`, which an older engine would happily skip.
 - **`shots` and the locale maps are append-only optional fields**, so by the ignore-unknown-fields rule a 0.7 engine still loads a 0.8 artifact that carries no `end` record.
@@ -3051,14 +3056,16 @@ For the complete project — the plugin manifests, schemas, component, catalog, 
 
 # Current specification
 
-The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.8.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
+The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.9.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
 | Frontmatter & profiles | 0.1.0 | 0.2.0 (document-kind system) | [0.2.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md) |
 | Content lines (`@speaker`) | 0.1.0 | 0.5.1 (delivery-flag honesty) | [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
-| Core directives (the closed `lute.core` vocabulary) | 0.1.0 | 0.8.0 (`::end{reason?}` — the ninth core directive, terminating the walk) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
+| Core directives (the closed `lute.core` vocabulary) | 0.1.0 | 0.9.0 (`::auto{action}` and `::music{mood}` retyped from free `string` to `{ domain: … }`, so both slots are checkable at last; the core's own member lists emptied) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
+| Content vocabulary (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) | 0.1.0 (closed member lists shipped inside `lute.core`) | 0.9.0 (**the project owns the members** — the compiler declares slots and ships none; three declaration routes; the `exits:`/`default:` long form; an undeclared slot is `E-DOMAIN-UNKNOWN`) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | Branch / match / when / hub | 0.1.0 | 0.4.0 (param-scoped component `<match>`) | [0.4.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md) |
+| Reusable content components (`::use` expansion) | 0.1.0 | 0.9.0 (five root-only check stages now run over an imported component body — content-line attrs, `E-DUP-LINE-CODE`, reachability, unwalked-content admission, injection folding) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | `into=` records | 0.1.0 (as `persist=`/`into=`) | 0.6.0 (**breaking** — `persist=` removed) | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
 | State tiers (scalar `scene`/`run`/`user`/`app`) | 0.1.0 | 0.8.0 (author `state:` is scalar-only, now enforced — `E-STATE-COLLECTION`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Facts & Datalog | 0.3.0 | 0.3.0 | [0.3.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md) |
@@ -3066,17 +3073,18 @@ The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://gith
 | Timeline & property tracks | 0.1.0 | 0.1.0 | [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
 | Connectivity & `after:` | 0.2.0 (`after:`) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
-| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.8.0 (uniform `addr` width per artifact; the `end` command kind; `shots`, `texts`, `labels`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
-| Warning-severity diagnostics | 0.6.1 | 0.8.0 (`W-CODE-AFTER-END`, `W-L10N-MISSING`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
+| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.9.0 (**IR shape unchanged — `0.9.0` is shape-identical to `0.8.0`**; `irVersion` re-aligns to `0.9.0` and artifact *content* moves — `enums` becomes populated from the project's own declaration, and `capabilityVersion` changes) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
+| Warning-severity diagnostics | 0.6.1 | 0.9.0 (`W-CODE-AFTER-END` and `W-INJECT-CONFLICT` now reachable inside an imported component body, anchored at the `::use` site) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | Deny promotion (`--deny`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.8.0 (language, IR, and toolchain at `0.8.0`; the IR schema becomes `lute-ir-0.8.schema.json`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.9.0 (all three axes read `0.9.0` — toolchain, language, and IR — because a release re-aligns every visible number; the IR shape is untouched, so an engine gated on `0.8` widens to `0.9` and changes nothing else) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 
 Notes on the boundaries:
 
 - **`0.8.0` — the adoption release — is backward compatible in the grammar, but it is not a pure addition.** The IR **gains a command kind**, `end`; an unknown `kind` is a hard error under the execution-model version policy, so a `0.7` engine MUST refuse an artifact carrying one — the intended signal, since termination is a capability an older engine cannot fake. And `E-STATE-COLLECTION` **enforces a rule that was always normative but never checked**: a `state:` declaration typed `list`/`record`/`map` used to pass the shape validator and now fails. Everything else is optional and append-only — apart from that one declaration, a `0.7.0`-clean document needs nothing but a restamped `luteVersion:` to check clean under `0.8.0`.
 - **`addr` widths are uniform per artifact, and that is now a guarantee** — *lexicographic order over `addr` equals execution order*. A document whose every shot emits fewer than 100 addresses compiles byte-identically to `0.7.0`. `addr` is still a position regenerated on every compile, never an identity; the stable joins remain `lineId` / `voiceKey`.
 - **`0.6.0` is the one breaking grammar revision in the current stack** — it removed `persist=` so `into=` alone drives the choice run-record sugar, and made shot headings free text.
-- **Capability surfaces are specified separately.** The plugin system's current revision is `0.0.2`, which lands alongside `0.8.0`: option and frontmatter value validation, reserved stamp-attribute rejection, cross-cutting `stampAttrs`, and the declarative `lower: { record, fields }` form made real.
+- **`0.9.0` — vocabulary ownership — is breaking in validation, not in grammar.** The compiler declares the seven content-vocabulary slots and ships **no members**, so a document writing `emotion="delighted"` needs its project to declare `emotion`; an undeclared slot is `E-DOMAIN-UNKNOWN`, an error, where `action` in particular used to be skipped outright. Every pre-`0.9.0` `enums:` block still parses byte-for-byte, but a declaration of `action` MUST now supply `exits:` and one of `anchor` MUST supply `default:`. The IR **shape** does not move — no field added, renamed, or moved — and `irVersion` reads `0.9.0` only because a release re-aligns every axis; artifact *content* does move (`enums` becomes populated, `capabilityVersion` shifts). `0.9.0` also made an imported component body check exactly like the content it is: five root-only stages now run over it.
+- **Capability surfaces are specified separately.** The plugin system's current revision is `0.0.3`, landing alongside `0.9.0`: the `enums` export long form, `lute.core`'s empty `enums`, and the closed `semantics` vocabulary shrinking from twelve flags to ten.
 
 ---
 
@@ -3101,7 +3109,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.6.0 | `into=` records without `persist=`; free shot headings — **breaking**. | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
 | 0.6.1 | Three verification-coverage warnings (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`) and `--deny`/`--deny-warnings` warning promotion; a compatible refinement of 0.6.0. | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
 | 0.7.0 | Version unification — language, IR, and toolchain aligned at `0.7.0`; **no grammar, semantic, or IR shape change** (byte-for-byte `0.6.1` semantics). | [0.7.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.7.0.md) |
-| **0.8.0** | Current tip — the **adoption release**: `::end` termination, `after: active()`, the reserved `quest.<id>.activatedAt` anchor, scalar-only author `state:`, `Artifact.shots`, the localization round trip, `identity:` templates, and a uniform-width `addr`; every item traces to a gap found assessing Lute against a real 777-scene / 583-quest game catalog. | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
+| 0.8.0 | The **adoption release**: `::end` termination, `after: active()`, the reserved `quest.<id>.activatedAt` anchor, scalar-only author `state:`, `Artifact.shots`, the localization round trip, `identity:` templates, and a uniform-width `addr`; every item traces to a gap found assessing Lute against a real 777-scene / 583-quest game catalog. | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
+| **0.9.0** | Current tip — **vocabulary ownership**: the compiler declares the seven content-vocabulary *slots* (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) and ships **no members**, so every member is the project's, declared inline, in a schema reached through `uses:`, or by a plugin's `enums` export; the `enums:` long form's `exits:`/`default:` carries the member semantics two hardcoded name heuristics used to guess; using a slot nobody declared is `E-DOMAIN-UNKNOWN` instead of silently unchecked; and five root-only check stages now run over imported component bodies. **Breaking** for documents that use a slot. The **IR re-aligns to `0.9.0` and is shape-identical to `0.8.0`** — an engine gated on `0.8` widens its gate and changes nothing else. | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals
@@ -3110,6 +3119,7 @@ The **repository files are the normative source of truth.** This site is the rea
 |---|---|---|
 | Plugin system 0.0.1 | Normative formats and semantics of the capability/plugin system — plugin packages, YAML manifest schemas, resolution, the capability snapshot, and the data↔code boundary. | [plugin-system/0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.1.md) |
 | Plugin system 0.0.2 | Delta on 0.0.1 — plugin option and frontmatter value validation, reserved stamp-attribute rejection, cross-cutting `stampAttrs` admissible on every directive and content line, and the declarative `lower: { record, fields }` form implemented. | [plugin-system/0.0.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.2.md) |
+| Plugin system 0.0.3 | Delta on 0.0.1/0.0.2, landing with dsl 0.9.0 — `lute.core` exports an **empty** `enums`, an `enums` entry may use the long form carrying member semantics (`members`/`default`/`exits`), and the closed `semantics` flag vocabulary drops the two flags no consumer read (`isStateful`, `cancelsPrevious`), twelve → ten. | [plugin-system/0.0.3.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.3.md) |
 | Character & cast 0.0.1 | The language contract for character identity, display label, costume, name-reveal, and voice-join — as a capability plugin (registry, `cast:` frontmatter, `scene.cast.*` state, resolution, `seal`/`reveal`/`wear`). | [character-cast/0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/0.0.1.md) |
 
 The plugin system also carries a human-facing overview at [`docs/plugin-system.md`](https://github.com/journeyWorker/lute/blob/main/docs/plugin-system.md), and the character/cast capability its design rationale at [`character-cast/design.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/design.md).

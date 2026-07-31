@@ -1,6 +1,6 @@
 //! `lute run` — the reference headless runner over a COMPILED artifact
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.8.schema.json`).
+//! `schemas/lute-ir-0.9.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
 //! artifact (`lute compile` output), gates on `irVersion` by **major.minor**
@@ -153,7 +153,7 @@ pub fn run_artifact(artifact: &Path, mock: Option<&Path>, json_out: bool) -> Exi
     }
 }
 
-/// Parse `"0.8.0"` → `(0, 8)`; `None` when it lacks a `major.minor` prefix.
+/// Parse `"0.9.0"` → `(0, 9)`; `None` when it lacks a `major.minor` prefix.
 fn parse_major_minor(v: &str) -> Option<(u64, u64)> {
     let mut it = v.split('.');
     let maj = it.next()?.parse().ok()?;

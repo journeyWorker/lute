@@ -51,7 +51,7 @@ The index carries the document table plus the **union** of every artifact's `ent
 
 ```json
 {
-  "irVersion": "0.8.0",
+  "irVersion": "0.9.0",
   "capabilityVersion": "…",
   "documents": [
     { "path": "quests/findKai.lute", "artifact": "quests/findKai.lute.json",

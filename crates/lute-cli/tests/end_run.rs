@@ -2,11 +2,11 @@
 //! the `end` record stops the walk, surfaces its `reason`, and still exits
 //! `complete` — behaviorally identical to running off the end of `commands`.
 //!
-//! Also replays the `conformance/end-reason` fixture against its checked-in
-//! `expected.json`, so the frozen third-party contract is enforced in CI and
-//! not only by the README's manual loop.
+//! The `conformance/end-reason` replay that used to live here moved to
+//! `tests/conformance.rs`, which replays EVERY fixture in the corpus instead
+//! of this one — a strict superset of the check it replaces.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
@@ -109,25 +109,4 @@ fn a_walk_without_end_is_untouched() {
     let v = compile_and_run("plain", &format!("{HDR}@narrator: a\n@narrator: b\n"), None);
     assert_eq!(kinds(&v), ["line", "line"]);
     assert_eq!(v["exit"], "complete");
-}
-
-/// The frozen third-party contract: `conformance/end-reason` replays
-/// byte-identically to its checked-in `expected.json` (conformance/README.md).
-#[test]
-fn conformance_end_reason_replays_byte_identically() {
-    let dir = Path::new("../../conformance/end-reason");
-    let out = Command::new(BIN)
-        .args([
-            "run",
-            dir.join("artifact.json").to_str().unwrap(),
-            "--mock",
-            dir.join("mock.yaml").to_str().unwrap(),
-            "--json",
-        ])
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "run: {}", String::from_utf8_lossy(&out.stderr));
-    let got = String::from_utf8(out.stdout).unwrap();
-    let expected = std::fs::read_to_string(dir.join("expected.json")).unwrap();
-    assert_eq!(got, expected, "transcript must match the frozen fixture byte for byte");
 }
