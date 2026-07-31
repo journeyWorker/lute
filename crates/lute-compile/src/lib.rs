@@ -46,10 +46,17 @@ use lute_syntax::ast::{Arm, Document, Node};
 pub use lute_check::LUTE_LANG_VERSION;
 
 /// IR schema version stamped into the envelope's `irVersion` field (spec §4.1,
-/// A9). Independent of [`LUTE_LANG_VERSION`] — bumped on its own for a pure
-/// IR-shape addition with no language-grammar change (connectivity T13:
-/// advisory `prereqEdges` emission); engines gate parsing on it.
-pub const LUTE_IR_VERSION: &str = "0.8.0";
+/// A9). Tracked as its own axis from [`LUTE_LANG_VERSION`] — the two are
+/// separate pins (T13) — but per `docs/versioning.md` a release RE-ALIGNS every
+/// visible number to that release's number, so 0.9.0 stamps 0.9.0 here.
+///
+/// IR 0.9.0 is **shape-identical** to 0.8.0: no artifact field was added,
+/// renamed, moved, or retyped, and `schemas/lute-ir-0.9.schema.json` is the
+/// 0.8 schema renamed. Because engines gate by major.minor and MUST refuse a
+/// newer one (`docs/runtime/execution-model.md`), a 0.8 engine will refuse a
+/// 0.9.0 artifact until it widens its gate — and widening the gate is the
+/// ONLY change it needs.
+pub const LUTE_IR_VERSION: &str = "0.9.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -738,12 +745,13 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // dsl 0.9.0 D-A: the LANGUAGE version advances to 0.9.0 (content
-        // vocabulary members move out of the compiler) while the IR schema
-        // stays 0.8.0 — no artifact field was added, renamed, or moved. The two
-        // stamps have always been tracked as independent pins (T13); this is
-        // the release that makes them diverge.
-        assert_eq!(super::LUTE_IR_VERSION, "0.8.0");
+        // 0.9.0 axis alignment (docs/versioning.md): a release re-aligns the
+        // visible numbers to that release's number, so LANGUAGE and IR both
+        // read 0.9.0. The IR bump is a PURE RESTAMP — no artifact field was
+        // added, renamed, or moved, and lute-ir-0.9.schema.json is the 0.8
+        // schema renamed. The two stamps stay independently tracked pins
+        // (T13); this release simply lands them on the same number.
+        assert_eq!(super::LUTE_IR_VERSION, "0.9.0");
         assert_eq!(super::LUTE_LANG_VERSION, "0.9.0");
     }
 
@@ -754,7 +762,7 @@ mod tests {
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
         assert_eq!(v["lute"], "0.9.0");
-        assert_eq!(v["irVersion"], "0.8.0");
+        assert_eq!(v["irVersion"], "0.9.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");
