@@ -2304,3 +2304,567 @@ under per-file `check --deny-warnings`, and only `check-project` reports it (it 
 well: distinct message bodies for an unknown quest id and for a known quest that does not
 declare that objective). This generalises T3.11's caveat from `after:` to the whole quest
 layer.
+
+### T5 — The terminators
+
+Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`. Two scenes added:
+`scenes/bridge.lute` (`anseo.s01ep10`, the success terminal) and `scenes/shed.lute`
+(`anseo.s01ep11`, the failure terminal) — the corpus's **first two `::end`s**. Nothing
+under `docs/examples/` had ever terminated a walk before, so every entry below is a
+first-use measurement. Both `after:` routes are provisional (Task 8 repoints them).
+
+#### T5.1 — `::end` works, first try, on every surface that carries it — WORKED WELL
+
+- **Intent** — two endings. Vesna reaches the bridge and the ship still steers; or the
+  Purser gets its module and the allocation is satisfied. Each beat stops there.
+- **Attempt** — the brief's two files verbatim, `::end{reason="bridge-reached"}` and
+  `::end{reason="shed-with-module"}` as the last node of each document.
+- **Result** — `ok: docs/examples/anseo (5 file(s), …)`, exit 0. Every surface that is
+  supposed to carry the terminator does:
+  - **the artifact** — `{"kind":"end","addr":"001-0400","reason":"bridge-reached"}`, an
+    ordinary addressed record at the normal +100 gap, no `wait`/`duration` stamp;
+  - **`lute run`** — `001-0400  end    reason=bridge-reached`, then `run complete`;
+  - **`W-CODE-AFTER-END`** — fires exactly as `directives.md` describes, once, anchored
+    at the first dead node rather than at the `::end`, with the spec's message verbatim;
+  - **`--deny W-CODE-AFTER-END`** — promotes it to `error [W-CODE-AFTER-END] [denied]`,
+    exit 1.
+  - **`E-UNKNOWN-ATTR`** — `::end{ending="…"}` is `` `::end` has no attribute `ending` ``.
+    The attribute *key* is closed even though its value is not (T5.3).
+- **Resolution** — n/a; nothing was substituted.
+- **Verdict** — worked well. This is the least-exercised construct in the language and
+  it behaved like the best-exercised one. Worth saying plainly before the four entries
+  that follow, all of which are about what `::end` *does not* mean rather than about
+  anything it got wrong.
+
+#### T5.2 — the same JSON document carries two unrelated `reason` fields, and the obvious verification matches the wrong one — ERGONOMIC
+
+- **Intent** — confirm the authored reason survives to the artifact.
+- **Attempt** — the first thing anyone types:
+  ```console
+  $ lute compile docs/examples/anseo/scenes/bridge.lute -o /tmp/t5.json
+  $ grep -n '"reason"' /tmp/t5.json
+  217:        "reason": "pre-loading `vesna`'s first emotion `level` seen ahead of the entrance"
+  233:      "reason": "bridge-reached"
+  ```
+- **Result** — two `reason` keys, and the **first** one is not mine. `bridge.lute`'s
+  `::auto` triggers `entry-emotion-lookahead`, whose injected preload sprite carries
+  `provenance: { injected, by, reason }` — and that `reason` is a *human-readable English
+  justification for a compiler decision*. Mine is an *opaque author token for a host to
+  dispatch on*. Same key, same document, one nested under `provenance` and one not,
+  contracts with nothing in common. `grep -m1`, `jq '..|.reason?|select(.)' | head -1`,
+  and any harness that greps the file all read the injector's prose and report success.
+- **Resolution** — match the record, not the key:
+  `jq -c '.commands[] | select(.kind=="end")'` → `{"kind":"end","addr":"001-0400","reason":"bridge-reached"}`.
+- **Verdict** — `ERGONOMIC`. Not `TOOL-DEFECT`: both shapes are documented, both are
+  where they should be, and a *correct* consumer walking `commands[]` by `kind` never
+  sees the collision. The cost is entirely on ad-hoc verification, which is what an
+  author and an AI harness actually do — and the evidence that the cost is real is that
+  this task's own brief had to carry a warning sentence about it. `provenance.reason` is
+  the field with the weaker claim on the name (it is a `why`, not a `what`); calling it
+  `note` or `justification` would end the collision for free.
+
+#### T5.3 — `::end`'s `reason` is unconstrained, and the one thing an author reaches for to constrain it is accepted, advertised as live vocabulary, and inert — TOOL-DEFECT
+
+This is T5's most serious finding.
+
+- **Intent** — a work with a closed set of endings wants its ending ids closed too. Every
+  other value in Anseo's content is checked against a declared domain (T1.2, T1.3), so the
+  natural instinct is to declare one for the ending ids and get the same protection.
+- **Attempt, in order.** All probes on a scratch copy of the project.
+  1. **Is `reason` required?** `::end` bare → `ok`, 0 warnings. Documented (`reason` is
+     optional), so not a finding — but it means a terminator can carry no identity at all
+     and the artifact simply omits the field.
+  2. **Duplicate reason across both documents.** Set `bridge-reached` on the shed
+     terminator too, so two different endings of one project answer to one id →
+     `check-project` clean, 0 project-wide diagnostics. No cross-document notion of an
+     ending id exists to collide.
+  3. **Misspelled reason.** `::end{reason="bridge-reachd"}` → `ok`, exit 0. Nothing to
+     spell it against.
+  4. **Empty reason.** `::end{reason=""}` → `ok`, and it reaches the artifact as
+     `{"kind":"end","addr":"001-0200","reason":""}`. A host that distinguishes "no reason
+     given" (field absent) from "reason given" now has a silent third state: field
+     present, empty.
+  5. **Declare a domain for it** — the actual attempt, and the one that matters:
+     ```yaml
+     # world.schema.yaml
+     enums:
+       reason: [bridge-reached, shed-with-module]
+     ```
+- **Result** — the declaration is accepted with no diagnostic (no `E-DOMAIN-DUP`, no
+  `E-DOMAIN-UNKNOWN`), it **constrains nothing** — `::end{reason="not-a-declared-member"}`
+  still checks `ok`, exit 0 — and it is then *advertised as live vocabulary by two
+  surfaces*:
+  ```console
+  $ lute context scenes/p1.lute
+  projectEnums (8):
+    action: brace, drift, turn-away, seal, unseal, step-out, go-under
+    anchor: port, center, starboard
+    emotion: level, clipped, frayed, hollowed, wry, stricken
+    mood: quiet, pressurized, failing, weightless
+    musicAction: start, swell, cut, resume, fade-out
+    reason: bridge-reached, shed-with-module      <-- enforces nothing
+    vfxType: shed, klaxon, pressure-drop, frost
+    volume: silent, muted, normal, raised, alarm
+  ```
+  ```console
+  $ jq -c '.enums[] | select(.name=="reason")' artifact.json
+  {"name":"reason","members":["bridge-reached","shed-with-module"]}
+  ```
+  `reason` sits in `projectEnums` beside the seven slots that *are* enforced, with no mark
+  distinguishing it, and ships into the compiled artifact's `enums` array — the array
+  `vocabulary.md` describes as making "the artifact self-describing about the vocabulary it
+  was compiled against". The artifact asserts it was compiled against a two-member `reason`
+  domain. It was not compiled against it at all.
+- **Generality** — not specific to the name. `enums: sausage: [a, b]` behaves identically:
+  accepted, listed in `projectEnums`, shipped in `enums`, read by nothing. Any project may
+  declare arbitrary dead vocabulary and both surfaces will vouch for it.
+- **Resolution** — `NONE — intent abandoned.` The shipped corpus leaves `reason` as a free
+  string. The mirrored-state proxy in T5.4 is the closest thing to typing an ending, and it
+  does not type `reason`.
+- **Verdict** — `TOOL-DEFECT`. The language is honest: `directives.md` says `reason` is
+  "optional and free-form … Lute assigns it no meaning", and 0.8.0 §3 agrees. So the
+  *absence* of typed end reasons is a documented design choice and not a finding. What is a
+  finding is that the two surfaces an author and a harness use to learn what is enforced —
+  `lute context`, whose `--help` calls itself the surface "an AI needs to WRITE valid Lute",
+  and the artifact's self-describing `enums` array — both report an enforced domain that is
+  not enforced. This is T1.6's defect with the sign flipped: there `context` omitted things
+  the project really had; here it invents one the project really does not. An author who
+  declares the domain, sees it in `context`, sees it in the artifact, and concludes their
+  ending ids are now typed has been told so by two tools and is wrong. A `W-DOMAIN-UNREAD`
+  on a declared domain no active construct reads would close it, and the checker already
+  knows the reading set — it computes `E-DOMAIN-UNKNOWN` from exactly that.
+
+#### T5.4 — nothing says two endings are one story's alternation, and nothing says one of them is the bad one; both are reachable only by mirroring the ending into declared state and saying it twice — ERGONOMIC
+
+The assignment's two hardest questions, and they turn out to be one question. Both probes
+were run to a working end before this verdict was assigned.
+
+- **Intent** — two things a work with endings wants to state. (a) *These are the endings of
+  this story* — a set, a category, an exhaustiveness claim, something that makes adding a
+  third ending a change to a declared list rather than a new string in a new file. (b)
+  *This one is the failure* — `::end{reason="shed-with-module"}` says the shed happened; it
+  does not say it went badly.
+- **Attempt (a), the ending set.** Four routes, in the order I reached for them:
+  1. **Frontmatter.** `ending: true`, `terminal: true`, `outcome: failure`, and
+     `endings: [bridge-reached, shed-with-module]` on the scene →
+     `error [E-META-UNKNOWN-KEY] unknown top-level meta key `ending` (not a core key and
+     not owned by an active plugin)` for each. A closed key set is the right design and the
+     diagnostic even names the escape hatch — but the escape hatch is *ship a plugin*.
+  2. **A `reason` enum domain.** T5.3: accepted, advertised, inert.
+  3. **The graph.** T5.5: no notion of termination anywhere in it.
+  4. **Mirror it into declared state** — the one that works:
+     ```yaml
+     run.ending: { type: { enum: [unspecified, bridge-reached, shed-with-module] }, default: unspecified }
+     ```
+     ```lute
+     ::set{run.ending = "bridge-reached"}
+     ::end{reason="bridge-reached"}
+     ```
+     and then the claim becomes checkable, because `<match>` exhaustiveness is real: a
+     `<match on="run.ending">` covering one arm is
+     `error [E-NONEXHAUSTIVE] non-exhaustive `<match>`: the subject's domain is not fully
+     covered and there is no `<otherwise>`` plus `E-UNSET-UNCOVERED`. Add a third ending to
+     the enum and every reader of it breaks until it is handled. That is exactly the
+     property (a) wanted.
+- **Attempt (b), the failure ending.** `::end` declares one attribute, so there is nothing
+  to write on it (`E-UNKNOWN-ATTR`, T5.1). The language's actual failure vocabulary is the
+  quest lifecycle, so: a quest whose `fail=` reads the mirrored enum.
+  ```lute
+  <quest id="theWalk" title="The Walk" start="run.shedPressure >= 0" fail="run.ending == 'shed-with-module'">
+  <objective id="reachBridge" title="Reach the bridge" done="run.ending == 'bridge-reached'"/>
+  <on event="questComplete">
+  @narrator: The ship still had a helm.
+  </on>
+  <on event="questFailed">
+  @narrator: The allocation was satisfied. That was all.
+  </on>
+  </quest>
+  ```
+  Driven end to end (`compile --all`, then `run` the quest artifact with
+  `state: {run.ending: shed-with-module}`):
+  ```
+  quest theWalk -> active
+  quest theWalk -> failed
+    001-0500  narrator: The allocation was satisfied. That was all.
+  -- quests --
+    theWalk: failed
+  ```
+  So (b) **is** expressible. Lute has genuine, typed, engine-observable failure semantics
+  with a lifecycle event and a reserved readable path. They attach to a quest, not to an
+  ending.
+- **Resolution** — the shipped corpus keeps the two bare `::end{reason}`s. The proxy above
+  is not in `docs/examples/anseo/` because paying its price for two endings in an
+  eleven-scene prologue is not a call this task should make for Task 8, and recording what
+  it costs is the deliverable. What it costs:
+  1. **Every ending is stated twice, in two syntaxes, and nothing checks that they agree.**
+     `::set{run.ending = "bridge-reached"}` and `::end{reason="bridge-reached"}` are
+     unrelated strings on adjacent lines. Swap one and both check clean.
+  2. **The half that is supposed to be typed is not.** T3.2's hole applies verbatim to enum
+     paths — `::set{run.ending = "shed-with-modle"}` against a declared
+     `{ enum: [bridge-reached, shed-with-module] }` is `ok`, exit 0. Verified here, not
+     assumed. So the *entire* protection the proxy buys is `<match>` exhaustiveness at the
+     read sites; the write sites are as unchecked as the `reason` strings they mirror.
+  3. **A sentinel enum member exists only to satisfy the checker.** `run.ending` has no
+     honest default, and without one every quest predicate reading it is `E-MAYBE-UNSET`
+     (T5.6). A two-ending story therefore declares a three-member domain, and every
+     exhaustive `<match>` over it carries an arm for a value that is not an ending.
+  4. **Polarity lands on the quest, not the ending.** The `end` record in the shed artifact
+     is still `{"kind":"end","reason":"shed-with-module"}`. A host reading the terminator —
+     the record whose entire purpose is to tell the host how the walk ended — learns nothing
+     about whether that was good. It must separately be running the quest layer and reading
+     `quest.theWalk.state`.
+  5. **Nothing observes the join.** The quest lives in its own document; `lute run` takes
+     one artifact, so no shipped tool plays the scene and the quest together. This is
+     T4.7's shape exactly and is counted there, not re-filed.
+- **Verdict** — `ERGONOMIC`, for both halves. Not `LANGUAGE-GAP`, and the distinction is
+  worth stating because I went looking for one: **the story is fully expressible.** Both
+  endings are written, both play, both stop, and "the shed ending is a failure" reaches an
+  engine as a typed lifecycle transition. Nothing was substituted and no beat was dropped.
+  What is missing is a *first-class structural claim about* the endings, and the working
+  form of that claim is materially worse than the natural one — split across a schema, two
+  `::set`s, a quest document and an enum arity the story does not have, to say something
+  `::end` is one attribute away from saying itself. That is the `ERGONOMIC` criterion, and
+  the honest reading of T5 is that five tasks in, **there is still no `LANGUAGE-GAP`.**
+
+  One note for the controller, offered as wording rather than as a missing verdict.
+  `LANGUAGE-GAP`'s criterion is two sentences — "The intent cannot be expressed. You changed
+  the story to fit the tool." — and this entry is the first case in five tasks where those
+  can come apart: a claim *about* the work can be inexpressible while the work itself is
+  intact, so nothing gets substituted and no reader of the example would ever notice. I
+  resolved it against `LANGUAGE-GAP` here because a lossy-but-working proxy exists and
+  `ERGONOMIC` describes it accurately, and I do not think this entry needs a new verdict.
+  But if a later task hits the same seam with *no* proxy at all, the second sentence will
+  read as a precondition it should not be.
+
+#### T5.5 — `::end` is not an ending, and no tool will tell you whether a route reaches one — DOC-WRONG
+
+- **Intent** — the structural question a branching work lives or dies on. Two terminals now
+  exist; ask the tooling (i) which nodes are terminals, (ii) whether every route reaches
+  one, (iii) whether a route can dead-end without terminating.
+- **Attempt** — `lute scenario docs/examples/anseo`, `scenario reach`, `--format json`, plus
+  a probe scene declaring itself downstream of a terminal.
+- **Result** —
+  ```
+  project root: docs/examples/anseo
+    topological layers:
+      layer 0: scene(anseo.s01ep01)
+      layer 1: scene(anseo.s01ep02)
+      layer 2: scene(anseo.s01ep10), scene(anseo.s01ep11)
+    edges (prerequisite -> dependent) [atom kind(s)]:
+      scene(anseo.s01ep01) -> scene(anseo.s01ep02) [visited]
+      scene(anseo.s01ep02) -> scene(anseo.s01ep10) [visited]
+      scene(anseo.s01ep02) -> scene(anseo.s01ep11) [visited]
+  ```
+  ep10 and ep11 are leaves — but that is an `after:`-derived property and coincidence. The
+  JSON node record is `{"id","kind","prereq","reach"}` and has no terminal field.
+  `scenario reach anseo.s01ep10` reports `Reachable` and its prerequisites, nothing about
+  what happens when you get there. Nothing distinguishes ep10 (terminates) from ep01 (does
+  not); nothing flags a leaf that never terminates; the project checked clean through T1–T4
+  with **zero** `::end` in it and no surface remarked on that either.
+- **The probe that explains why.** A third scene, `after: 'visited("anseo.s01ep10")'` —
+  declaring itself downstream of the scene whose only route ends in `::end`:
+  ```
+  ok: /tmp/t5probe/scenes/after-the-end.lute (0 warning(s))
+      layer 3: scene(anseo.s01ep12)
+      scene(anseo.s01ep10) -> scene(anseo.s01ep12) [visited]
+  ```
+  Clean, layered, `Reachable`. My first read was that this is a missing analysis. It is
+  not — **it is correct, and it is correct because `::end` does not mean what its name says.**
+  `directives.md` is precise about this: `::end` "is exactly equivalent to falling off the
+  end of the command array, except that it carries a reason", and `lute-cli`'s own test is
+  named `ending_matches_falling_off_the_end_except_for_the_reason` (identical `exit`,
+  identical `state`). Every document falls off the end of its command array. So `::end` is
+  a `break` with a label attached: it ends *this document's walk*, which ending the document
+  does anyway, and it means nothing whatsoever about the run. `visited("anseo.s01ep10")`
+  is satisfiable *because the scene was visited* — the walk stopped, the engine routes on.
+  There is therefore no "does every route reach an ending" property to compute, because
+  Lute has no ending to reach. `bridge.lute` with `::end` and `wake.lute` without it are,
+  at the run level, the same kind of document.
+- **What `::end` actually buys, precisely.** Two things, both real and both local: the
+  free-form `reason` on one artifact record, and `W-CODE-AFTER-END` dead-code analysis
+  within one straight-line body. Nothing else. It is well named for the first and
+  mis-named for what an author reads into it.
+- **Resolution** — `NONE — intent abandoned.` (i), (ii) and (iii) are unanswerable by any
+  shipped tool, and (ii)/(iii) are not well-formed questions in the language's model.
+- **Verdict** — `DOC-WRONG`, and located on one specific sentence rather than on the
+  reference pages, which are accurate. The homepage's "Built for scenarios you can trust"
+  card (`packages/website/src/content/docs/index.mdx:251-255`) reads:
+
+  > Every scenario provably terminates — no infinite loops, no unbounded recursion — and
+  > `::end` makes an ending explicit, so anything written after it is reported as dead
+  > rather than quietly shipped.
+
+  Both halves of the clause after the dash are false. `::end` does not make *an ending*
+  explicit — it makes a document's early exit explicit, and `directives.md` says so two
+  clicks away. And "anything written after it" is *not* "anything": it is the immediately
+  enclosing straight-line body only, which `directives.md` also states correctly and this
+  card contradicts. The load-bearing falsehood is the last four words — see T5.7, where the
+  dead line is reported *and* quietly shipped, to the artifact, to the localization export,
+  and to the production word count, at exit 0. This is the table's own argument for ranking
+  `DOC-WRONG` above `DOC-GAP`: silence makes an author search, and the reference pages would
+  have answered them. This sentence makes them stop searching, on the front page, in the
+  section titled "scenarios you can trust". An author who reads it believes the language has
+  endings and that dead content cannot reach the artifact; both beliefs are wrong and
+  neither will be corrected by anything that fails.
+
+#### T5.6 — a guard the checker honours in a scene is ignored in a quest predicate, and the diagnostic blames its absence — TOOL-DEFECT
+
+Found reaching for T5.4(b)'s quest gate, on the un-defaulted ending enum.
+
+- **Intent** — `fail="run.ending == 'shed-with-module'"` on a quest, where `run.ending` is a
+  declared enum with no default (it has no honest default — before an ending, there is no
+  ending). `E-MAYBE-UNSET`, correctly. `state-model.md` names the remedy: "a dominating
+  `::set{p = …}` write **or a guard (`has(p)` / `isSet(p)`)** proves it".
+- **Attempt** — apply the documented remedy in the only place a quest predicate has:
+  ```lute
+  <quest id="theWalk" … fail="isSet(run.ending) && run.ending == 'shed-with-module'">
+  <objective id="reachBridge" … done="isSet(run.ending) && run.ending == 'bridge-reached'"/>
+  ```
+- **Result** — unchanged, and anchored on the guarded read:
+  ```
+  quests/the-walk.lute:8:74: error [E-MAYBE-UNSET] state path `run.ending` may be read before it is set (no default, no dominating `::set`, no guard) (dsl §9.4)
+  quests/the-walk.lute:9:60: error [E-MAYBE-UNSET] state path `run.ending` may be read before it is set (no default, no dominating `::set`, no guard) (dsl §9.4)
+  ```
+  *"no guard"* — with `isSet(run.ending) &&` five characters to its left.
+- **The narrowing exists; it is one construct away.** Three probes, same project, same path,
+  same expression:
+  | where | expression | result |
+  |---|---|---|
+  | scene content line `when=` | `isSet(run.ending) && run.ending == 'bridge-reached'` | `ok`, exit 0 |
+  | quest `<objective done=>` | `isSet(run.ending)` alone | `ok`, exit 0 |
+  | quest `<objective done=>` | `isSet(run.ending) && run.ending == 'bridge-reached'` | `E-MAYBE-UNSET` at col 35 |
+  | quest `<quest fail=>` | `has(run.ending) && run.ending == '…'` | `E-MAYBE-UNSET` |
+  So `isSet`/`has` are admitted in a quest predicate, and intra-expression `&&`
+  short-circuit narrowing is implemented — for a scene line guard. The quest predicate slot
+  does not run it.
+- **Resolution** — added a sentinel `unspecified` member and `default: unspecified` to the
+  enum. That works, and it is T5.4's cost item 3: a two-ending story declaring a
+  three-member domain, and every exhaustive `<match>` over it carrying an arm for a
+  non-ending, because the only other route to a quest gate on an optional path is closed.
+- **Verdict** — `TOOL-DEFECT`, and it is the misdirecting-diagnostic case the protocol
+  ranks near the top. The message does not say "a guard here must dominate the read" or
+  "quest predicates are evaluated without flow context"; it says **"no guard"**, which is
+  false about the text it is pointing at. An author who has just read `state-model.md`,
+  applied the documented remedy, and been told the remedy is absent has no next move —
+  the working fix (distort the domain with a sentinel) is not hinted at anywhere in the
+  message, and the reason the fix is needed is invisible. Either arm closes it: run the
+  same narrowing in the predicate slot, or say what is actually true in the message.
+
+#### T5.7 — content after `::end` is reported *and* shipped: to the artifact, to `loc export`, and to the production word count — no verdict fits, escalating
+
+The assignment asks whether warning is the right severity for authored content that will
+never play. Here is what the severity buys and what it costs, then my answer.
+
+- **Attempt** — the required Step 3 probe. One content line after the shed terminator:
+  ```lute
+  @purser{code="0010" emotion="level" os}: Module released. Allocation is satisfied.
+  ::end{reason="shed-with-module"}
+  @vesna{code="0020" emotion="hollowed"}: Then we're the allocation.
+  ```
+- **Result** — the diagnostic is exemplary: one per body, at the first dead node, spec
+  message verbatim, `--deny`-promotable (T5.1). And then, at exit 0:
+  ```console
+  $ lute check-project docs/examples/anseo          # ok, 5 file(s).  EXIT=0
+  $ lute compile …/shed.lute -o /tmp/t5-dead.json
+  {"kind":"line","addr":"001-0100","text":"Module released. Allocation is satisfied."}
+  {"kind":"end","addr":"001-0200","reason":"shed-with-module"}
+  {"kind":"line","addr":"001-0300","text":"Then we're the allocation."}   <-- proven dead
+
+  $ lute loc export docs/examples/anseo -o /tmp/t5-loc.json
+  1 lines untagged — run lute tag
+  $ jq -r '..|objects|select(has("text"))|"\(.code)  \(.text)"' /tmp/t5-loc.json | grep -i allocation
+  0010  Module released. Allocation is satisfied.
+  0020  Then we're the allocation.                                        <-- for translation
+
+  $ lute loc report docs/examples/anseo | grep shed
+  docs/examples/anseo/scenes/shed.lute      2      9      …               <-- billed
+  #  and with the probe line removed, the same row reads:  1      5
+  ```
+  The line the checker has *proven* unreachable becomes a command record with a real
+  address, an entry in the localization export, and — by the difference between those two
+  report rows — exactly 1 line / 4 words of the production budget. `loc export --help`
+  calls itself "Extract **every translatable content line**".
+  Money is spent translating and recording a line that cannot play.
+- **The asymmetry.** This is one reachability pass with two severities. Its sibling verdict
+  on provably-dead gated content is `E-ARM-DEAD` — an **error** — so that content never
+  reaches an artifact, never reaches a translator, and never reaches a budget. Verified on
+  a scratch scene, both forms, outside Anseo:
+  ```console
+  $ lute compile t5arm/b.lute -o /tmp/t5arm-b.json     # <choice … when="false">
+  t5arm/b.lute:17:1: error [E-ARM-DEAD] choice can never fire: guard `false` is provably false (dsl 0.4 §5.2)
+  1 error(s); no artifact emitted
+  $ lute compile t5arm/a.lute -o /tmp/t5arm.json       # @narrator{when="false"}
+  t5arm/a.lute:13:45: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard is provably false (dsl 0.4 §7.2, §5.2)
+  1 error(s); no artifact emitted
+  ```
+  Post-`::end` content is the same proof of the same property in the same pass, and it
+  ships. Nothing about the `::end` case is less certain: `W-CODE-AFTER-END` fires only on
+  the provable straight-line case, which is why its scope is so carefully bounded (a
+  sibling `<choice>`'s `::end` says nothing, and correctly does not warn).
+- **My answer, with reasons.** Warning is the wrong severity; `E-CODE-AFTER-END` is right,
+  and I would ship it as an error even though it is the more disruptive change.
+  1. *The proof is total, not heuristic.* Every case this fires on is unreachable in the
+     same sense `E-ARM-DEAD`'s is. Two severities for one proof needs a justification and
+     0.8.0 §3 offers none.
+  2. *Warning severity is load-bearing on the thing it fails to prevent.* A warning's
+     contract is "this may be fine". Here the tool knows it is not fine, and the
+     consequence is not stylistic: it is bytes in a shipped artifact and invoices in a
+     localization pipeline.
+  3. *`--deny` is not a mitigation.* Denial is per-project CI policy, chosen by whoever set
+     up the build, and it promotes on a code the author of the dead line may never see. The
+     default is what most projects get.
+  4. *The counter-argument, and why it loses.* Dead content after a terminator is plausibly
+     work-in-progress an author wants to keep while iterating — real, and the reason a
+     warning was chosen. But that is also true of a dead `<branch>` arm, which is an error;
+     comment it out, or move it above the `::end`. Iteration convenience does not outweigh
+     shipping proven-dead content to paid downstream consumers, and the language already
+     made that trade the other way one code over.
+  5. *If it must stay a warning*, then the artifact and `loc` are the wrong place to pay
+     for it: `compile` should drop provably-dead records, or `loc export` should skip them.
+     Reporting *and* shipping is the one combination with no defensible reading.
+- **Resolution** — probe line removed. `check-project docs/examples/anseo` back to
+  `ok (5 file(s))`.
+- **Verdict** — **no verdict fits, and I am escalating rather than forcing one.** The
+  language is right (0.8.0 §3 specifies warning), the docs are right (`directives.md` says
+  warning and says how to promote it), and every tool does exactly what it was specified to
+  do — so `DOC-GAP`, `DOC-WRONG`, `AUTHOR-ERROR` and `TOOL-DEFECT` are all false, and
+  `ERGONOMIC`/`LANGUAGE-GAP` are about expressibility, which is not at issue. The table has
+  no row for **"the specified behaviour is wrong"** — a finding against the design as
+  designed, rather than against an implementation of it or a description of it. That is a
+  category a maturity assessment of a 0.9.0 language needs, because it is where the
+  remaining decisions actually live: this entry, and T5.5's homepage claim, both point at
+  choices someone made deliberately. The nearest honest label would be something like
+  `SPEC-WRONG` or `DESIGN`. Controller's call; I have stated the finding, the evidence, and
+  my recommendation, and I have not hyphenated a hybrid to make it fit.
+
+  (T5.5 is filed `DOC-WRONG` and not escalated, because there the falsehood is in prose the
+  reference pages already contradict — a wrong sentence, not a wrong decision. This entry
+  has no wrong sentence anywhere.)
+
+#### T5.8 — the `anchor` domain's declared `default:` cannot be written on purpose — ERGONOMIC
+
+- **Intent** — Vesna at the helm, dead centre. The bridge is the one scene in the prologue
+  where where she stands is the point, so the staging says so:
+  `::auto{character="vesna" anchor="center" action="brace"}`. Anseo's `anchor` slot is
+  `{ members: [port, center, starboard], default: center }`, declared in T1 long before this
+  scene existed.
+- **Result** — a permanent warning on the finished scene:
+  ```
+  docs/examples/anseo/scenes/bridge.lute:11:34: warning [W-INJECT-CONFLICT] `vesna` is shown with an explicit `anchor="center"` that `auto-anchor-on-show` would otherwise inject
+  ```
+  The message is accurate and the mechanism is right (no double injection, the author's
+  anchor wins). But the *only* authored shape it fires on is agreement: writing a
+  **different** anchor is honoured silently, and writing **none** is silent. So the one
+  value an author cannot state explicitly is the one the schema calls the default — and
+  `port`, which every other Anseo scene writes explicitly, is fine.
+- **Resolution** — kept as written, warning and all. The three alternatives are all worse:
+  delete a true statement about the staging; change `world`'s `anchor` `default:` to a
+  member the project never uses, distorting the schema to silence a diagnostic; or omit the
+  attribute and rely on an injection rule, which reads as an oversight to the next author.
+  This is the first diagnostic in five tasks the corpus carries deliberately, so, to be
+  unambiguous for Task 8 and for review: **`bridge.lute`'s warning is intentional and is
+  the evidence for this entry, not an unfinished edit.**
+- **Verdict** — `ERGONOMIC`, and slightly worse than it looks because there is **no
+  suppression**. `lute check` has `--deny <CODE>` and `--deny-warnings` and no `--allow`,
+  and there is no in-source acknowledgement — so a project on `--deny-warnings` in CI (which
+  the toolchain's own docs encourage) cannot express "centre, on purpose" at all: it must
+  either not say it or edit its vocabulary. `W-INJECT-CONFLICT` earns its keep in its other
+  role — T2.1 cites it as the precedent for "this staging attribute is not doing what you
+  think" — but redundancy and conflict are different claims, and this is the redundant case
+  wearing the conflicting case's name and severity. A note-level severity, or an `--allow`,
+  or simply not warning when the explicit value equals the injected one (nothing is lost,
+  nothing is ambiguous, nothing is overridden) would each close it.
+
+#### T5.9 — `lute trace` records the terminator and drops its only payload — ERGONOMIC
+
+- **Intent** — preview the two endings in the author's preview tool, which is where the
+  reasons should be most visible.
+- **Result** — the walk stops in the right place and the terminator is recorded, but
+  reasonlessly, in both renderings:
+  ```console
+  $ lute trace docs/examples/anseo/scenes/bridge.lute
+    ## Shot 1.
+      <auto>
+      @vesna  Whatever's left of the ship, it's steering.
+      <end>
+  trace complete: 0 decisions
+  $ lute trace …/bridge.lute --json | jq -c '.steps[]'
+  {"kind":"directive","tag":"end","component_boundary":null}
+  ```
+  `<end>` is rendered exactly like `<auto>`, and the JSON `TraceReport` has no exit or
+  disposition field at all (`["coverage","decisions","file","notes","seeds","steps","unresolved"]`),
+  so a harness reading `trace --json` cannot tell a walk that was terminated from one that
+  ran out of nodes, nor recover which ending it just previewed. `lute run` prints
+  `end    reason=bridge-reached` from the same information.
+- **Resolution** — used `lute run` on the compiled artifact to read the reasons back.
+- **Verdict** — `ERGONOMIC`, deliberately not `TOOL-DEFECT`: `trace` records directive
+  *tags* and not attributes, uniformly — `<auto>`'s `anchor`/`action` are dropped the same
+  way — so this is a consistent terseness rather than a broken contract, and T3.12 records
+  that `trace` renders branching honestly. The cost lands disproportionately on `::end`
+  because `reason` is not one attribute among several: it is the terminator's *entire*
+  payload, the only thing distinguishing it from falling off the end of the document
+  (T5.5). A project with several endings previews them all as an identical `<end>`.
+
+#### T5 summary
+
+Nine entries: one *worked well* (T5.1), one `TOOL-DEFECT` on the vocabulary surfaces
+(T5.3), one `TOOL-DEFECT` on a misdirecting diagnostic (T5.6), one `DOC-WRONG` (T5.5),
+four `ERGONOMIC` (T5.2, T5.4, T5.8, T5.9), and one entry that **fits no verdict in the
+table** (T5.7), escalated rather than forced. No `LANGUAGE-GAP` and no `DOC-GAP`. Five
+tasks in, the `LANGUAGE-GAP` column is still empty, and T5.4 is the closest anything has
+come — close enough that it argues with the criterion's wording rather than scoring
+against it.
+
+**`::end` works. It is also not what its name, or the front page, says it is.** The
+construct itself is the cleanest first-use in this log: nine directives in `lute.core`, the
+ninth exercised for the first time by this task, and it lowered, addressed, ran, and
+dead-code-analysed correctly on the first attempt with no probing required (T5.1). What
+five entries then measure is a gap between the construct and the concept an author brings
+to it. `::end` is `break` plus a label: `directives.md` says it is "exactly equivalent to
+falling off the end of the command array, except that it carries a reason", the CLI's own
+test is named after that equivalence, and my after-the-terminator probe confirms it — a
+scene may declare itself `after:` a scene that terminates, and that is *correct*, because
+terminating a document's walk is what every document does. There is no ending in Lute. So
+the three questions a branching work actually asks — which nodes are terminals, does every
+route reach one, can a route dead-end without terminating — are not unanswered by the
+tooling (T5.5); they are unaskable, and `lute scenario`'s node record has no field for
+them because there is no property to put there.
+
+**Two endings, one story is expressible only as two spellings of the same word, in
+different languages, with nothing checking them against each other.** T5.4 is the entry to
+read. The set claim and the polarity claim both resolve to the same workaround — mirror
+each ending into a declared enum state path, `::set` it beside the `::end`, and let
+`<match>` exhaustiveness (real, and good) or a quest `fail=` (real, typed, and observable
+as `quest.…state = failed`) carry the structure. It works; it was driven end to end. It
+costs a schema path the story does not need, a sentinel enum member that exists only
+because a quest predicate ignores its own documented guard (T5.6), each ending said twice
+with no cross-check, a `::set` half that is as untyped as the `reason` it mirrors (T3.2,
+re-verified here for enum paths), a whole quest document to carry polarity, and an `end`
+record that still tells a host nothing about whether the walk ended well. One optional
+attribute on `::end` — a declared-domain `reason`, or an `outcome` — would collapse most
+of that.
+
+**Two findings are about tools vouching for things that are not true, which is now the
+dominant pattern of this log.** T5.3: declare `enums: reason: [...]`, and `lute context`
+lists it in `projectEnums (8)` beside the seven enforced slots while the compiled artifact
+ships it in the `enums` array documented as describing "the vocabulary it was compiled
+against". It enforces nothing; any domain name behaves this way. That is T1.6 with the sign
+flipped — `context` omitting what the project has, now inventing what it does not. T5.6:
+`isSet(p) && p == x` narrows in a scene line guard, does not narrow in a quest predicate,
+and the resulting `E-MAYBE-UNSET` says **"no guard"** while pointing five characters right
+of one. Both are cheap fixes on information the checker already has.
+
+**The one thing this task would change first is neither.** It is T5.7, which is why it is
+escalated: `W-CODE-AFTER-END` is a warning, so at exit 0 a line the checker has *proven*
+unreachable becomes an addressed command record, an entry in `lute loc export` ("every
+translatable content line"), and 4 words of `lute loc report`'s production budget — while
+the same reachability pass's verdict on a dead `<branch>` arm is `E-ARM-DEAD`, an error,
+which ships nothing. One proof, two severities, and the permissive one is the one that
+reaches a translator's invoice. Reported *and* quietly shipped — which is, word for word,
+what the homepage promises cannot happen (T5.5).
+
+Two housekeeping notes for whoever reads the corpus next. `bridge.lute` carries a
+deliberate `W-INJECT-CONFLICT` (T5.8) — the `anchor` domain's declared `default:` is the
+one member an author may not write on purpose, there is no `--allow` and no in-source
+suppression, and the scene keeps the true statement rather than the clean output. And both
+`after:` routes here are Task 8's to repoint; the graph in T5.5 is provisional by design.

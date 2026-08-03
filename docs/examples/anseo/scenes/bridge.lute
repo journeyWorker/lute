@@ -1,0 +1,13 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 10
+uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
+after: 'visited("anseo.s01ep02")'
+---
+
+## The Bridge
+::auto{character="vesna" anchor="center" action="brace"}
+@vesna{code="0010" emotion="level"}: Whatever's left of the ship, it's steering.
+::end{reason="bridge-reached"}

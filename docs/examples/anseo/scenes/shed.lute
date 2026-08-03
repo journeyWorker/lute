@@ -1,0 +1,12 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 11
+uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
+after: 'visited("anseo.s01ep02")'
+---
+
+## Shed
+@purser{code="0010" emotion="level" os}: Module released. Allocation is satisfied.
+::end{reason="shed-with-module"}
