@@ -1,0 +1,45 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 5
+uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
+after: 'visited("anseo.s01ep03")'
+---
+
+## Machine Deck
+
+::bg{location="machine-deck" time="ship-night"}
+::vfx{type="frost"}
+
+@purser{code="0010" emotion="level" os}: Coupling five-six is outside tolerance. Release proceeds as scheduled.
+@narrator{code="0020"}: The ring had walked a finger's width off its seat. When the shed fired, module five would not let go — it would tear, and take the spine with it.
+@toma{code="0030" emotion="frayed" os when="holds(awake(toma))"}: Don't put a hand on that ring. It'll take the arm and thank you for it.
+@narrator{code="0040" when="!holds(awake(toma))"}: There was nobody down here to tell you which of the four handles was the one.
+
+/*
+  The subject is a dummy. A relation may not be a `<match on>` subject
+  (E-MATCH-RELATION-SUBJECT) but IS admitted in a `<when test>`, so the only
+  way to gate a BLOCK on `awake(toma)` is to open the match on something the
+  guard never reads. See T7 in the drive-test findings log.
+*/
+<match on="true">
+<when test="holds(awake(toma))">
+::auto{character="toma" anchor="port" action="brace"}
+@toma{code="0050" emotion="clipped"}: Shim's behind you. The steel one. Composite's for people who enjoy fires.
+@toma{code="0060" emotion="level"}: Quarter turn. Stop when it stops arguing with you.
+::auto{character="toma" action="seal"}
+@toma{code="0070" emotion="frayed"}: That's a seat. That's a real seat — it'll let go clean when the time comes.
+@toma{code="0080" emotion="hollowed"}: Twelve years I kept this ship's joints honest and it's shedding me a module at a time.
+@purser{code="0090" emotion="level" os}: Coupling five-six is within tolerance. Schedule unchanged.
+</when>
+<otherwise>
+@narrator{code="0100"}: You got both hands on the shim, and both hands were not the thing the ring wanted.
+::set{run.shedPressure += 1}
+::vfx{type="klaxon"}
+@purser{code="0110" emotion="level" os}: Coupling five-six remains outside tolerance. Release will be executed with margin. The schedule advances.
+@narrator{code="0120"}: Margin. Somewhere in the wall a relay closed on the word, and the ship agreed to lose more than it had planned to.
+</otherwise>
+</match>
+
+@narrator{code="0130"}: Aft of you a bulkhead picked up the noise and handed it forward, one section at a time, until it reached the part of the ship you were standing in.

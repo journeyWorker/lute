@@ -1,0 +1,32 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 6
+uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
+after: 'visited("anseo.s01ep04") || visited("anseo.s01ep05")'
+---
+
+## The Stowaway
+
+::bg{location="module-nine-void" time="ship-night"}
+@narrator{code="0010"}: A hatch that should have been welded shut in the yard, with the paint worn off its lip from opening.
+
+::auto{character="ottavio" anchor="starboard" action="unseal"}
+@ottavio{code="0020" emotion="clipped"}: Don't. Whatever you were about to do with your hands — don't.
+@ottavio{code="0030" emotion="frayed"}: You're not the Purser. The Purser doesn't knock.
+
+::assert{found(ottavio)}
+::assert{awake(ottavio)}
+@ottavio{code="0040" emotion="level"}: Ottavio. I load ships. I have loaded this one four times and never once been aboard it.
+
+::assert{knows(ottavio, manifest)}
+@ottavio{code="0050" emotion="wry"}: I'm not on the manifest. That isn't an accident, that's a career.
+@ottavio{code="0060" emotion="level"}: The Purser allocates against listed mass. I'm not listed. I eat, I breathe, I don't count.
+@ottavio{code="0070" emotion="stricken" when="run.shedPressure >= 2"}: Only the schedule's running at twice the rate I planned for, and I've been doing arithmetic I don't enjoy.
+@ottavio{code="0080" emotion="hollowed"}: When it takes this module it won't subtract me from the total. It'll just take me.
+
+@ilsabet{code="0090" emotion="clipped" os when="holds(awake(ilsabet))"}: He's lying about one thing. Ask him who altered the heading.
+@ottavio{code="0100" emotion="frayed" when="holds(awake(ilsabet))"}: One thing. She says that as though it were a small number.
+
+@ottavio{code="0110" emotion="level"}: So. You're the first person aboard who knows I'm here. Do something useful with that.

@@ -3615,3 +3615,646 @@ resolves; T6.11 — admit `string` as a renderable type, without which a param c
 component's words and the construct's headline feature is decorative; T6.3 — forward the
 component-internal span and roll up the N caller reports. The first is a blocker. The rest are
 the difference between a construct you can use and one you can trust.
+
+---
+
+### T7 — The branch scenes
+
+Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`, rebuilt before the
+first probe. Four scenes added: `scenes/spine-a.lute` (`anseo.s01ep03`, the first shed on
+screen and the corpus's second `<timeline>` ever), `scenes/hydroponics.lute`
+(`anseo.s01ep04`), `scenes/machine-deck.lute` (`anseo.s01ep05`), `scenes/stowaway.lute`
+(`anseo.s01ep06`).
+
+This is the first task whose deliverable is **dialogue** rather than a construct. T1–T6 each
+drove one mechanism to its edge with as little prose as the mechanism needed. T7 writes four
+scenes of a real story and measures what four scenes cost — which is a different question,
+and it surfaces a different class of finding: the substitution you make three times without
+noticing, and the line you retype in every file.
+
+#### T7.1 — the Purser cannot interrupt anyone; a `<track>` may not hold a line, and a line may not hold a time — LANGUAGE-GAP
+
+- **Intent** — written before any Lute was typed. The Purser is a ship voice reading a
+  schedule aloud. Its first appearance on the spine should be cut off *by the thing it is
+  announcing*: it begins "Module four is scheduled for release in—" and the module goes
+  before the number does. The joke and the horror are both in the overlap. Separately, and
+  more ordinarily: Vesna talking over the klaxon rather than after it.
+- **Attempt** — the beat is choreography, so the first form reached for put the line inside
+  the timeline that carries the choreography, at an offset:
+  ```lute
+  <track subject="purser" property="voice">
+    @purser{code="0050" emotion="level" os at="0.2"}: Released.
+  </track>
+  ```
+- **Result** —
+  ```
+  spine-a.lute:36:5: error [E-TIMELINE-CONTENT] a <track> body may contain only staging
+  directives and ::set
+  ```
+  Correct, documented, and reasoned: `language/timeline-and-property-tracks.md` says tracks
+  are "staging-only and non-interactive … No dialogue, prose, `<choice>`, `<branch>`, or
+  `<match>` may appear inside — those would make the beat reader-paced rather than
+  clock-paced." That rationale is sound and I would not remove the restriction.
+- **Second attempt — put the time on the line instead of the line on the clock.** If a
+  content line carried any of the §7.5 timing attrs, two lines could be made to overlap
+  without a timeline at all. All three, probed one at a time in the project:
+  ```
+  10:36: error [E-UNKNOWN-ATTR] unknown content-line attribute `at` (dsl 0.1.0 §7.1)
+  10:36: error [E-UNKNOWN-ATTR] unknown content-line attribute `delay` (dsl 0.1.0 §7.1)
+  10:36: error [E-UNKNOWN-ATTR] unknown content-line attribute `wait` (dsl 0.1.0 §7.1)
+  ```
+  A content line has no temporal surface of any kind. `@vesna,toma{…}: Together.` — one line,
+  two speakers, the cheapest possible spelling of simultaneity — is
+  `E-UNCLASSIFIED: content line needs a second ':' before its text`, i.e. the comma is read as
+  part of the speaker name.
+- **Resolution — the story changed.** The interruption is now **punctuation and sequence**:
+  the Purser's line ends in an em-dash, the timeline follows it, and a reader supplies the
+  overlap. Vesna-over-the-klaxon became Vesna-before-the-klaxon. Both work as prose. Neither
+  is what I wrote down first, and nothing in the source, the artifact, or `lute trace` records
+  that an overlap was ever intended — the em-dash is invisible to every tool.
+- **Verdict** — `LANGUAGE-GAP`, shape (a): I changed the story to fit the tool. Recorded
+  without a complaint attached to the timeline restriction, which is right, and without one
+  attached to `E-UNKNOWN-ATTR`, which is accurate and cites its clause. The gap is that
+  between "reader-paced dialogue" and "clock-paced staging" the language has no third thing,
+  and overlapping speech is the most common beat in any recorded medium that is neither. Two
+  characters speaking at once is not an exotic want; it is how arguments, alarms and ship
+  voices work. A minimal fix that does not disturb the timeline's rationale: admit content
+  lines in a `<track>` but require them to carry an explicit `at`, so the beat stays
+  clock-paced and the "reader-paced" objection does not arise. Failing that, a `{over}`
+  delivery flag beside `{mono}`/`{os}`/`{vo}` — "this line begins before the previous one
+  ends" — would at least let the source say what the em-dash is doing.
+
+#### T7.2 — two clips that touch are an overlap; two clips at the same instant are not — TOOL-DEFECT
+
+- **Intent** — the shed effect plays, and the pressure drop begins the moment it finishes.
+  One channel, two clips, hand-off at the boundary. `::vfx{type="shed" at="0.8" duration="0.4"}`
+  ends at `1.2`, so the next clip goes `at="1.2"`.
+- **Attempt** —
+  ```lute
+  <track channel="vfx">
+    ::vfx{type="shed" label="module four" at="0.8" duration="0.4"}
+    ::vfx{type="pressure-drop" transition="cut" at="1.2"}
+  </track>
+  ```
+- **Result** —
+  ```
+  spine-a.lute:38:5: error [E-CLIP-OVERLAP] clip at 1.2 overlaps another clip in track `#vfx`
+  ```
+  `docs/runtime/timeline-semantics.md` specifies the rule as "two clips in the **same** track
+  whose `[at, at+duration)` **half-open** intervals overlap". `[0.8, 1.2)` and `[1.2, …)` do
+  not overlap under that definition. The implemented test is closed on the first clip's end.
+- **Probed until the rule was exact.** Five one-clip-pair variants, each checked on its own:
+
+  | clips in one track | result |
+  |---|---|
+  | `at=0.8 duration=0.4` + `at=1.2 duration=0.1` | **E-CLIP-OVERLAP** |
+  | `at=0.8 duration=0.4` + `at=1.19 duration=0.1` | **E-CLIP-OVERLAP** |
+  | `at=0.8 duration=0.4` + `at=1.2000001 duration=0.1` | `ok` |
+  | `at=0.8 duration=0.4` + `at=1.3 duration=0.1` | `ok` |
+  | `at=0.8 duration=0.4` + `at=0.8` *(no duration)* | **`ok`** |
+  | `at=0.8` + `at=0.8` *(neither has a duration)* | **`ok`** |
+
+  So the check requires `next.at > prev.at + prev.duration` **strictly** — and a clip with no
+  resolvable `duration` is exempt from the analysis entirely, in both directions.
+- **Why the second half is the worse half.** The invariant this code exists to enforce is
+  stated in the same document: "within one track, at most one clip is active at any instant —
+  a track is a single sequential writer", and that is the premise the engine contract's
+  concurrent-execution option is built on. The last two rows are two clips scheduled at
+  **literally the same instant on the same track** and they pass. The first two rows are
+  clips that are *never* simultaneous and they fail. The check is inverted at exactly the
+  boundary it is about.
+- **Resolution** — the shed's `duration` is `0.35` in the committed scene. I did not want
+  `0.35`; I wanted `0.4` and a hand-off. The number in the file is an artifact of the
+  diagnostic, and this is the small silent kind of substitution T7 exists to count: nobody
+  reading `spine-a.lute` will ever know why the shed is 350ms.
+- **Also, in passing** — `E-TIMELINE-DURATION` (correctly raised when I set
+  `<timeline duration="0.5">` over a clip ending at 1.2) renders the bound as
+  `max resolved clip end 1.2000000000000002`. Float accumulation leaking into an
+  author-facing message; the same `0.8 + 0.4` that the overlap check is comparing.
+- **Verdict** — `TOOL-DEFECT`. The language is fine, the docs are fine and *specify the
+  correct rule*, and the diagnostic's span and wording are good. The implementation
+  contradicts its own written contract in the permissive direction for the case that matters
+  and the restrictive direction for the case authors write. Boundary hand-off is the normal
+  way to sequence two effects on one channel; an author who hits this learns to sprinkle
+  epsilons, and never learns that the invariant they are being protected by is not being
+  enforced.
+
+#### T7.3 — a timeline's tracks do not exist in the artifact, and one engine option in the runtime contract cannot be implemented — SPEC-WRONG
+
+- **Intent** — verify, after the fact, that the six-track beat I wrote actually reached the
+  compiled artifact as a six-track beat.
+- **Attempt** — `lute compile scenes/spine-a.lute --project docs/examples/anseo`, then the
+  union of keys over every record carrying a `timeline` stamp.
+- **Result** — the scheduling is exactly right and the tracks are gone:
+  ```
+  action, addr, anchor, at, character, duration, focus, kind, label, mood, shake, sound,
+  timeline, transition, vfxType, volume, wait, zoom
+  ```
+  Eight clips, `(at, track index)`-sorted, barrier at the explicit `duration`:
+  ```
+  sfx    001-0700  at 0.0   dur 0.6
+  camera 001-0800  at 0.0   dur 0.3
+  camera 001-0900  at 0.35  dur 0.5
+  sprite 001-1000  at 0.4
+  music  001-1100  at 0.5
+  vfx    001-1200  at 0.8   dur 0.35
+  sprite 001-1300  at 0.9
+  vfx    001-1400  at 1.2
+  barrier 001-1500 at 1.6
+  ```
+  There is no `track`, `subject`, `channel`, or `property` field on any of them. The two
+  clips I deliberately split across two property tracks on one subject —
+  `subject="vesna" property="pos"` and `subject="vesna" property="grip"` — arrive as:
+  ```json
+  {"kind":"sprite","addr":"001-1000","character":"vesna","anchor":"port","action":"brace","at":0.4,"timeline":1}
+  {"kind":"sprite","addr":"001-1300","character":"vesna","action":"seal","at":0.9,"timeline":1}
+  ```
+  distinguishable only by the `action` an author happened to write.
+- **Why this is a defect and not just terseness.** `docs/runtime/timeline-semantics.md`
+  closes with an **Engine contract** giving "two sound options", and says the write-conflict
+  guarantee "makes both equivalent in observable state":
+  1. replay the pre-scheduled `(at, track)` order;
+  2. **"Run tracks concurrently.** Drive each track's clips on the local clock in parallel."
+
+  Option 2 is not implementable from the artifact. An engine cannot drive per-track clips in
+  parallel when nothing in the stream says which clips are a track. Nor can it do the natural
+  implementation of a track — one tween slot per track key, each new clip superseding the
+  previous one on that key — which is the entire reason `language/timeline-and-property-tracks.md`
+  gives for property tracks existing: "Two `subject="camera"` tracks would silently fight."
+  The checker proves they do not fight, then deletes the evidence of which writer is which,
+  so an engine receiving two `sprite` records for `vesna` must either re-derive the split or
+  treat them as one writer — the exact fight the feature prevents.
+- **The spec is internally consistent about it, which is why the verdict is `SPEC-WRONG`.**
+  The same page's "What the IR carries" section lists the `Stamp` fields — `timeline`, `at`,
+  `duration`, `delay` — and `track` is correctly absent from that list. Nothing is
+  undocumented and no tool is lying; the compiler emits precisely what the IR schema
+  specifies. Two clauses of one document disagree, and the one that governs the wire format
+  won.
+- **Proposed alternative** — add `track` (the resolved track key string, exactly the one
+  `E-DUP-TRACK` and `E-CLIP-OVERLAP` already compute and print — `#vfx`, `vesna.pos`,
+  `camera`) to `Stamp`, beside `timeline`. It is one field, it is already in hand at
+  schedule time, and without it the second engine option and the property-track feature are
+  both decorative.
+
+#### T7.4 — the timeline is choreography, and the instinct to make it the clock is worth recording — WORKED WELL, with a note
+
+- **What worked, and it is the cleanest first-use since T5.1.** Six tracks written in one
+  pass, three keyed by `channel=`, one by `subject=`, two as property tracks on a single
+  subject, with deliberately overlapping cross-track offsets (`camera` 0.35–0.85 straddles
+  `vesna.pos` at 0.4). It checked clean on the second attempt and both errors on the first
+  attempt were real. The cursor math is right (an omitted `at` on the track's first clip
+  starts at 0.0; `::sfx` with `duration="0.6"` and no `at` lands at 0.0), the sort is right,
+  the barrier lands on the explicit `duration` (1.6) rather than the content maximum (1.2),
+  and `E-AT-CONTEXT` — *"`at` is valid only on a `<track>` clip; `::vfx` here is not a
+  timeline clip (dsl §7.5)"* — is the most precisely-scoped diagnostic I hit in this task.
+- **`property=` is free-form and nothing checks it.** `property="grip"` is accepted with no
+  diagnostic, exactly as `property="pos"` is. That is defensible — the property namespace is
+  engine policy, not language vocabulary — but it is worth stating beside T7.3, because the
+  string an author invents to separate two writers is neither validated nor transmitted.
+- **The note: I wanted the timeline to be the countdown, and it must not be.** The shed
+  schedule is the spine of this whole prologue, and the first thing a `<timeline duration>`
+  looks like is a countdown to it. It is not, and the design is right that it is not: the
+  timeline's clock is local, sub-second, and non-interactive, while the shed clock is
+  `run.shedPressure`, advanced by `::set` in choice arms across four documents and readable by
+  a guard. Fusing them would put a player-paced quantity on a frame-paced clock. Recorded
+  because the instinct was strong enough that I typed `<timeline duration="1.2">` around the
+  wrong beat once before catching it, and because the brief predicted it — an author without
+  that warning has one construct spelled `duration` and one spelled `+= 1`, and only the docs
+  distinguish them. `timeline-and-property-tracks.md` does, in its first sentence
+  ("bounded, non-interactive choreography unit"). It is doing real work there.
+
+#### T7.5 — `lute context`'s per-directive attribute lists omit the timing attrs, and the checker accepts them
+
+- **Intent** — write `::sfx{sound="klaxon-two-tone" duration="0.6"}` and check the attribute
+  is legal before compiling.
+- **Attempt** — `lute context docs/examples/anseo/scenes/spine-a.lute`, which prints
+  `sfx: sound, assetId, name`. No `duration`, no `at`, no `delay`, no `wait`. `::vfx` and
+  `::music` likewise list only their own attrs. (`camera` and `video` *do* list some — `camera`
+  shows `duration, easing, delay, wait`, `video` shows `wait` — which makes the omission look
+  like a real per-directive difference rather than a uniform one.)
+- **Result** — the checker accepts `duration` on `::sfx`, `::vfx` and `::music`, inside a
+  timeline and outside one (`::sfx{sound="hum" duration="0.6"}` alone in a shot: `ok`). The
+  §7.5 timing attrs are cross-cutting and apply to every staging directive; `context`
+  presents them as belonging to two directives out of nine.
+- **Resolution** — none needed; I wrote them anyway and they work.
+- **Verdict** — folded into T1.6/T3.7 rather than filed as a new one, but recorded as a
+  **recurrence**, because it is the same failure a third time and in the same list: the
+  `directives (9)` block asserts a per-directive attribute surface, and it is neither complete
+  per directive (here) nor complete in its directive set (T3.7). Two of the three
+  `duration`-bearing clips in `spine-a`'s timeline are attributes `context` says do not exist.
+
+#### T7.6 — a relation may guard a line but may not open a block; the block form needs a subject the guard never reads — ERGONOMIC
+
+- **Intent** — `machine-deck`'s whole scene turns on one condition: is Toma awake. If he is, he
+  talks you through seating the coupling and the schedule holds; if he is not, you fail and
+  `run.shedPressure += 1`. That is a two-arm conditional over a *block* of eight lines and two
+  staging directives, not over one line.
+- **Attempt** — the obvious form, and the one the language's own state-dispatch construct
+  suggests:
+  ```lute
+  <match on="holds(awake(toma))">
+  <when test="$">
+  ```
+- **Result** —
+  ```
+  machine-deck.lute:20:12: error [E-MATCH-RELATION-SUBJECT] relations are guard-only; a
+  `<match on>` subject must stay enum/bool/scalar so exhaustiveness stays decidable (dsl 0.3.0 §8)
+  ```
+  A clear diagnostic with a stated rationale — and the rationale does not survive inspection.
+  `holds(...)` is bool-valued; bool is the canonical finite domain the exhaustiveness section of
+  `branch-match-when.md` uses as its example ("a bool covered by `is="true"`/`is="false"` needs
+  none either"). Exhaustiveness over a relational subject is *more* decidable than over the
+  `number` subject the same construct accepts without comment. Whatever the real reason is —
+  presumably that a Datalog query is not a scalar read and the `$`-substitution machinery does
+  not want it — decidability is not it.
+- **Probed for the form that does work.** Four variants:
+
+  | form | result |
+  |---|---|
+  | `<when test="holds(awake(toma))">` with no enclosing `<match>` | `E-UNCLASSIFIED: unexpected block here` |
+  | `<match on="holds(awake(toma))"><when test="$">` | `E-MATCH-RELATION-SUBJECT` |
+  | `<match on="run.shedPressure"><when test="holds(awake(toma))">` | `ok` |
+  | `<match on="true"><when test="holds(awake(toma))">` | `ok` |
+
+  So a relation is admitted in `test=` and refused in `on=`. There is no `<if>`, and a bare
+  `<when>` is not a block. The only way to gate a block on a relation is to open a `<match>` on
+  a subject the guard never uses.
+- **Resolution** — the committed scene carries `<match on="true">` and a six-line comment
+  explaining why, because without one the next reader will "fix" it. `<otherwise>` is then
+  mandatory (`E-NONEXHAUSTIVE` if omitted), which here is harmless — I wanted the else arm — but
+  means a *one*-armed relational block costs a dummy subject and an empty `<otherwise>` too.
+- **Verdict** — `ERGONOMIC`. The intent is fully expressible and nothing is mirrored, lost, or
+  unchecked; `lute trace` and `lute run` both drive the two arms correctly (transcripts below in
+  T7.15). What an author writes is `on="true"` — a subject that is a lie about what the block
+  dispatches on — in a language whose other constructs are unusually honest about their own
+  meaning. Admitting a bool-valued relational query as a `<match on>` subject, with
+  `<otherwise>` required exactly as it is for a `test`-guarded arm today, would close this with
+  no loss of decidability.
+
+#### T7.7 — the content-line `when=` is documented as "exact sugar" for a `<match>` that does not compile, and `lute trace` prints the illegal form back at you — DOC-WRONG
+
+- **Intent** — n/a authorially; found while writing T7.6's entry, because the page that refused
+  my `<match>` is the page that told me the two forms were the same thing.
+- **Attempt** — `language/branch-match-when.md`, §"The `when=` content-line sugar":
+
+  > This is **exact sugar for a one-arm match**, and lowers to that record identically… Written
+  > out it is the explicit twin below
+
+  followed by a worked `@sofia{when="run.metHelpfully"}` / `<match on="run.metHelpfully">` pair,
+  and the assurance that the example file "keeps both forms, one shot each, so they stay visibly
+  interchangeable."
+- **Result** — they are not interchangeable. In the same project, in the same document:
+  ```lute
+  @toma{code="0030" emotion="frayed" os when="holds(awake(toma))"}: …    # ok
+  <match on="holds(awake(toma))">                                        # E-MATCH-RELATION-SUBJECT
+  ```
+  The sugar admits a guard class its stated desugaring rejects outright. An author who believes
+  the page — and this page is otherwise one of the best in the docs — writes the "explicit twin"
+  of a line that already compiles and gets a hard error, with a diagnostic that never mentions
+  that the sugared form is legal.
+- **And the tooling states the illegal form as fact.** `lute trace` renders a guarded content
+  line as a match decision, using the guard as the subject:
+  ```
+  <match holds(awake(toma))>   -> arm 1 ((holds(awake(toma))))
+      @toma  Don't put a hand on that ring. It'll take the arm and thank you for it.
+  <match !holds(awake(toma))>   -> otherwise
+  ```
+  `<match holds(awake(toma))>` is, character for character, the subject the checker refuses. The
+  preview tool desugars exactly the way the doc says — internally, where the restriction does not
+  apply — and prints the result to the author as if it were source.
+- **Resolution** — none available; T7.6 records what the scene ships.
+- **Verdict** — `DOC-WRONG`, and it is the flavour the table ranks above `DOC-GAP` for a reason:
+  the sentence is emphatic ("exact", "identically", "visibly interchangeable"), so an author does
+  not go looking. The claim is true for scalar guards, which is every example on the page. One
+  qualifying clause fixes it — *"exact sugar wherever the guard is a legal `<match>` subject; a
+  relational guard is legal on a line and not as a subject (§8)"* — and it would have saved the
+  round trip that produced T7.6.
+
+#### T7.8 — a line with no words gets a `lineId`, a `voiceKey`, a command record and a translation row, and nothing says a thing — TOOL-DEFECT (silence)
+
+- **Intent** — `hydroponics`'s third answer is to say nothing. The beat wants a held silence and
+  then Vesna's reaction to it. Reaching for the cheapest spelling of "this character is present
+  and produces no words":
+  ```lute
+  @vesna{code="0160" emotion="hollowed"}:
+  ```
+- **Result** — `ok`, 0 warnings. And downstream:
+  ```json
+  {"kind":"line","addr":"001-0100","role":"dialogue","speaker":"vesna","text":"",
+   "emotion":"hollowed","lineId":"anseo.s01ep90.vesna_0010","voiceKey":"vesna-0010"}
+  ```
+  `lute loc export --format json` emits it as a translatable unit:
+  ```json
+  {"code":"0010","kind":"line","lineId":"anseo.s01ep90.vesna_0010","speaker":"vesna","text":""}
+  ```
+  So an empty line reaches a translator as a row with nothing in it, reaches a voice pipeline as a
+  `voiceKey` implying a recording exists, and reaches `lute loc report` as a line with zero words.
+- **Resolution** — the committed scene does not use it. The silence is
+  `::camera{focus="vesna" zoom="1.15" duration="1.4" wait="true"}` — a documented blocking hold
+  (`directives.md`, "Timing & the `wait` model") — followed by Vesna's line. See T7.9 for why
+  this substitution is recorded as a *good* one.
+- **Verdict** — `TOOL-DEFECT`, filed under the protocol's **silence** category. Nothing here is a
+  language question: an empty content line is a plausible thing to type, the parser accepts it,
+  and every consumer downstream treats it as a real line. The checker knows the text is empty at
+  the moment it assigns the `lineId`. `W-CODE-AFTER-END` exists for a line the checker proved
+  will never play; there is no counterpart for a line that will play and say nothing. This is
+  T5.7's shape one step earlier in the pipeline — the localization and production surfaces
+  accepting content the checker could have flagged for free — and the fix is the same size:
+  `W-EMPTY-LINE`, or exclude empty text from `loc export`.
+
+#### T7.9 — a silence has to be attached to a staging subject, and the one form that isn't is undocumented — recorded, no verdict
+
+- **Intent** — as T7.8: a beat of nothing, held, then a reaction.
+- **Attempt / result** — there is no beat primitive. `::pause{duration="1.2"}` and
+  `::beat{duration="1.2"}` are both `E-UNKNOWN-DIRECTIVE`. The documented way to hold the script
+  is `wait="true"` with a `duration` on a staging directive (`directives.md` §"Timing & the
+  `wait` model"), so a silence is spelled as a camera instruction, a background change, or a
+  video.
+- **The undocumented form, found by reading the runtime contract and then probing.** `barrier_at`
+  is "the timeline's explicit `<timeline duration>` when present, otherwise the maximum clip end
+  across all tracks (`0.0` for an empty timeline)". So a timeline with **no tracks at all** and an
+  explicit duration is a pure hold. It checks clean and compiles to exactly one record:
+  ```lute
+  <timeline duration="1.2">
+  </timeline>
+  ```
+  ```json
+  {"kind":"barrier","addr":"001-0200","timeline":1,"at":1.2}
+  ```
+  A timeline containing one empty `<track>` also checks clean. Neither shape appears anywhere on
+  the website; "pause" does not occur in `packages/website/src/content/docs` at all, and the only
+  mention of an empty timeline in the repo is the parenthetical above, which is about the
+  fallback case and reads as though an empty timeline were a no-op.
+- **Resolution** — I used the camera. `::camera{focus="vesna" zoom="1.15" duration="1.4" wait="true"}`
+  during the silence is *better* writing than a bare hold: the camera pushing in while the player
+  says nothing is the shot I want anyway.
+- **No verdict, deliberately.** I considered `ERGONOMIC` and rejected it. The criterion is "the
+  working form is materially worse than the natural one", and here the working form is better. It
+  is recorded because the protocol asks for every substitution including small ones, and because
+  the *next* author who wants a beat with no camera in it will find nothing — one sentence in
+  `directives.md` pointing at the `wait` model, and one line in the timeline page noting that an
+  empty timeline with a `duration` is a legal hold, would close it.
+
+#### T7.10 — `lute trace` prints `## Shot 1.` where its own documented transcript prints the author's heading — DOC-WRONG
+
+- **Intent** — four scenes into a story, use `trace` to check I had not misplaced a beat.
+- **Attempt** — `lute trace docs/examples/anseo/scenes/hydroponics.lute --project docs/examples/anseo --mock …`
+- **Result** — the transcript opens `## Shot 1.` My heading is `## Hydroponics`, and the compiled
+  artifact keeps it: `"shots":[{"shot":1,"heading":"Hydroponics"}]`. The tool holds the title and
+  prints an ordinal.
+- **The docs say otherwise, and I ran their exact command to be sure.**
+  `tooling/tracing.md` §"Reading the transcript" gives:
+  ```console
+  $ lute trace docs/examples/choice-persist.lute --choose sofaHelp=help
+  trace: choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
+    ## Recording the Choice
+  ```
+  Run against the shipped binary and the shipped file:
+  ```console
+  $ ./target/debug/lute trace docs/examples/choice-persist.lute --project docs/examples --choose sofaHelp=help
+  trace: docs/examples/choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
+    ## Shot 1.
+  ```
+  The documented output and the actual output differ on the one line that tells you where you are.
+- **Resolution** — none needed; I read shot ordinals instead.
+- **Verdict** — `DOC-WRONG`. Cheap on its own — but this is the tool an author reaches for
+  precisely when they are holding four scenes in their head, and the shipped example promises the
+  affordance that would help. It is also the log's dominant pattern once more, in miniature: the
+  information is in hand (`heading` is in the IR, and the doc proves the transcript once printed
+  it) and the surface drops it. Compare T5.9 — `trace` recording `::end` and dropping its
+  `reason` — and T4.10.
+
+#### T7.11 — a mock YAML key spelled `choices:` instead of `choose:` is silently discarded — recurrence of T3.10
+
+- **Attempt** — the first mock file I wrote for `hydroponics`:
+  ```yaml
+  state: { run.shedPressure: 2, run.vesnaTrust: 0 }
+  choices: { thePlainAnswer: ownIt }
+  ```
+- **Result** — `trace: … (seeds: 2 paths, 0 facts; 0 selections)`, and the branch line reads
+  `-> ownIt (auto)`. With the key corrected to `choose:`, `1 selection` and `-> ownIt`. No
+  diagnostic either way. The walk still *looked* right — first-eligible auto-selection happened to
+  pick the arm I had asked for — so the only two signals that my mock did nothing were a count in
+  the header and the parenthetical `(auto)`.
+- **Recurrence of T3.10** (`TOOL-DEFECT`), not re-counted in T7's tally. Recorded because it is a
+  *different* key from the one T3.10 found, on the same file format, and because trace has a
+  refusal code for every other mock malformation — `E-TRACE-MOCK-UNDECLARED`,
+  `E-TRACE-MOCK-TYPE`, `E-TRACE-MOCK-FACT`, `E-TRACE-CHOICE`, `E-TRACE-EVENT`, `E-TRACE-ACCEPT`
+  — so an author has every reason to believe a bad mock is reported. The five top-level keys are a
+  closed set; an unknown one should be `E-TRACE-MOCK-KEY` with a did-you-mean, which the codebase
+  clearly knows how to write.
+
+#### T7.12 — four more scenes, thirty retyped frontmatter lines, and no mechanism to hoist any of them — ERGONOMIC
+
+- **Intent** — write a fourth, fifth, sixth scene of one work. Each one opens by restating that it
+  is a scene, that it belongs to Anseo, that it is season 1, and which two schemas it imports.
+- **Measurement**, over the eight scenes now in `scenes/` (frontmatter = lines between the `---`
+  fences):
+
+  | line | files carrying it verbatim |
+  |---|---|
+  | `kind: scene` | 8 / 8 |
+  | `character: anseo` | 8 / 8 |
+  | `season: 1` | 8 / 8 |
+  | `uses: [../vocabulary.schema.yaml, ../world.schema.yaml]` | 7 / 8 |
+
+  48 frontmatter key lines across the eight scenes and **18 distinct** ones — so 30 are
+  byte-identical duplicates of a line already in another file — and only two keys, `episode:`
+  and `after:`, carry per-file information. Frontmatter is 18% of the corpus's scene lines
+  (48 of 260) and its majority is boilerplate.
+- **Checked before filing, because the docs describe two composition mechanisms.** Neither
+  applies: `uses:` unions *peer schemas* and `extends:` composes *schema* documents with override
+  precedence (`components-and-extends.md` §"Schema `extends:`") — both operate on schema files,
+  neither on document meta. `frontmatter-and-profiles.md` documents `profile:` falling back to the
+  project's `defaultProfile`, so the *idea* of a project-level default for a frontmatter key
+  already exists in the language and is applied to exactly one key. Collapsing the two `uses:`
+  into one `extends:`-composed schema would save one import per file and touch none of the other
+  three lines — and T6.2's rule (component and caller must *both* declare the vocabulary import)
+  means the imports cannot be centralised anyway.
+- **Verdict** — `ERGONOMIC`. Nothing is inexpressible and nothing is at risk; `lute new scene`
+  scaffolds the block, so the typing cost is near zero. The cost is on the *reading* side and it
+  compounds with the corpus: three of the six lines at the top of every file are noise that the
+  eye must skip to find the two that matter, and `character:`/`season:` are already known to the
+  project — `lute.project.yaml` **consumes** them, in `identity: lineId: "{prefix}.{speaker}_{code}"`
+  where `{prefix}` is `{character}.s{season}ep{episode}`. The manifest that reads those two values
+  cannot supply them. A `defaults:` block in `lute.project.yaml` mirroring the `defaultProfile`
+  precedent, overridable per document, would take the eight scenes' frontmatter from 48 lines to
+  17 — the 24 universal-key lines and the seven identical `uses:` lines gone, `wake.lute`'s
+  divergent single import still stated where it diverges.
+
+#### T7.13 — the envelope answers read-safety precisely and there is no answer to "what could this be by now" — ERGONOMIC
+
+- **Intent** — the honest one, written while typing `hydroponics`'s first `<match on="run.shedPressure">`.
+  I needed two facts I could not hold in my head across six documents: (1) **which values can
+  `run.shedPressure` have when control reaches episode 4**, so I know how many arms to write and
+  whether any is dead; and (2) **is Vesna on stage when this scene opens**, so I know whether to
+  stage her or assume her.
+- **Attempt** — `lute scenario docs/examples/anseo envelope anseo.s01ep04`, then the same for
+  `anseo.s01ep01` and `anseo.s01ep06` as controls.
+- **Result** — byte-identical output for all three:
+  ```
+  Guaranteed: run.shedPressure, run.vesnaTrust
+  Possible:   run.shedPressure, run.vesnaTrust
+  Possible \ Guaranteed — warning-grade reads: (none)
+  ```
+  `anseo.s01ep01` is the root, with no predecessor and no upstream write of any kind;
+  `anseo.s01ep06` sits behind five scenes and four `::set`s. The tables cannot tell them apart,
+  because both declared paths carry a `default:` and a defaulted path is always safe to read. For
+  a schema written the way `state/schemas.md` encourages, these tables are constant across the
+  entire graph.
+- **And the feature is not broken — I checked, and nearly filed it as one.** In a scratch copy of
+  the project I added `run.probeNoDefault: { type: number }` (no default), wrote it on the
+  `ownIt` arm of episode 4 only, and read it from a guard in episode 6:
+  ```
+  Possible \ Guaranteed -- warning-grade reads:
+    - ./scenes/stowaway.lute:32:44: state path `run.probeNoDefault` is set under your declared
+      routes on SOME routes reaching this node, but not every one — not yet guaranteed (dsl §4.3)
+  ```
+  Exactly right, filtered to reads that actually occur, with a span, three documents from the
+  write. `check-project` reports that same file `ok (0 warnings)`, which the tool's own header
+  says it will. **This is a WORKED WELL and it is recorded as one.**
+- **What is still unanswered.** Neither question I had. On (1): the connectivity layer holds every
+  `::set` on every route — it must, to compute `Possible` at all — and reports set-membership
+  rather than value. `run.shedPressure` is `0`, `1` or `2` at episode 4 and `0`–`3` at episode 6;
+  I derived that by opening `cryobank.lute` and `machine-deck.lute` and adding integers, and if I
+  had got it wrong the third `<match>` arm would simply be dead with nothing to say so. On (2):
+  nothing anywhere models stage presence across documents — `trace` walks one document, `scenario`
+  is pure graph math over `after:`, `context` describes vocabulary. Whether Vesna is standing in
+  hydroponics when it opens is a question the toolchain has no representation for, which is the
+  same hole T2.4 measured from the other side (a character exits, keeps speaking, and nothing
+  objects).
+- **Verdict** — `ERGONOMIC`, on T4.7's precedent ("nothing an author can run answers *is this
+  quest reachable?*"). The working form is reading four documents and doing arithmetic; it is
+  correct, it does not scale, and nothing checks it. A `--values` mode on `envelope`, reporting the
+  reachable value set per numeric/enum path from the `::set`s already collected, would answer (1)
+  with data the tool has in hand. (2) needs a model that does not exist and is a larger question
+  than this entry.
+
+#### T7.14 — environment note: the `lute-lsp` on `PATH` reports 17 errors on a file `check-project` calls `ok`
+
+Not a language finding, and filed as T1.11's kind of note — but it cost real time and the next
+drive-test agent will hit it.
+
+`/usr/local/bin/lute-lsp` → `~/.cargo/bin/lute-lsp`, **dated 10 July**. The workspace's own
+`target/debug/lute-lsp` is dated 3 August. Every editor-surface diagnostic in this session came
+from the July binary, and on `scenes/cryobank.lute` — committed, unmodified, `ok (0 warning(s))`
+under `check-project` — it reports **17 errors**, including `E-UNKNOWN-DIRECTIVE` on `::assert`,
+`E-UNCLASSIFIED` on every `@speaker:` content line, `E-META-UNKNOWN-KEY` on `after`,
+`E-SHOT-HEADING` on `## The Cryobank`, `anchor` values from a vocabulary this project does not
+declare (`left, center, right`), and `E-USES-PARSE … has parse/frontmatter errors (10 issue(s))`
+on `vocabulary.schema.yaml` — where 10 is the file's line count.
+
+Two things make this worth the paragraph. First, the failure mode is *confident wrongness at
+volume*: 17 red squiggles on a clean file, with plausible-looking codes, on the surface an author
+looks at most. Second, nothing detects it. `backend.rs` resolves the project root correctly
+(nearest ancestor `lute.project.yaml`) and reuses the CLI's own `resolve_document_snapshot`, so
+the two surfaces genuinely cannot diverge *at the same version* — the whole divergence is the
+three-week gap, and there is no handshake that would notice. `lute doctor` prints the three
+version axes and then, under editor integration, only `VS Code extension: not detectable from the
+CLI`; it never looks for a `lute-lsp` on `PATH` or compares its version to its own. That is a
+one-line addition to a command whose entire purpose is "diagnose the local toolchain + project
+setup", and it is the exact class of stale-binary trap T6's process note recorded for `lute`
+itself. Every finding above was taken from `./target/debug/lute`, rebuilt first.
+
+#### T7.15 — four documents, one story, and the parts that carried it — WORKED WELL
+
+A maturity assessment that only lists friction is not an assessment, and this task wrote 49
+content lines and 617 words across four scenes and four routes without the language getting in
+the way once, outside the entries above.
+
+- **`after:` takes a disjunction and the graph is right.** `stowaway` is reachable from either
+  branch of the fork, and the natural spelling worked first try:
+  ```yaml
+  after: 'visited("anseo.s01ep04") || visited("anseo.s01ep05")'
+  ```
+  `lute scenario` resolves it to **two** edges, not one, and lays all eight scenes out
+  in five topological layers with the ep03 fork and the ep06 join both correct:
+  ```
+  layer 2: scene(anseo.s01ep03), scene(anseo.s01ep10), scene(anseo.s01ep11)
+  layer 3: scene(anseo.s01ep04), scene(anseo.s01ep05)
+  layer 4: scene(anseo.s01ep06)
+  scene(anseo.s01ep04) -> scene(anseo.s01ep06) [visited]
+  scene(anseo.s01ep05) -> scene(anseo.s01ep06) [visited]
+  ```
+  This is the surface that most helped me hold four scenes at once, and it is the one that
+  needed no probing.
+- **Guarded content lines are load-bearing and cheap.** Five of them across two scenes, three
+  guard classes — a scalar (`when="run.shedPressure >= 2"`), a relation
+  (`when="holds(awake(ilsabet))"`) and a negated relation (`when="!holds(awake(toma))"`) — all
+  correct on first write, all visible in `trace`. The `holds(awake(ilsabet))` line in
+  `stowaway` is a payoff four episodes downstream of the `<choice>` arm in `cryobank` that
+  asserts it, in a different file, and it required nothing but writing the guard.
+- **`trace` and `run` agree, and both are readable.** Every branch of every scene was driven
+  before commit: `machine-deck` on both arms via `--fact "awake(toma)"`; `hydroponics` on the
+  honest arm at each of the three `run.shedPressure` values; `stowaway` with
+  `--fact "awake(ilsabet)" --state run.shedPressure=2`. Then the same routes through the
+  compiled artifact with `lute run`, which is the check that matters — the honest arm ends
+  `run.vesnaTrust = 1`, the failed coupling ends `run.shedPressure = 2` from a seed of 1, and
+  the facts block carries `knows(vesna, manifest)`. Task 9's `what-vesna-carries` is reachable,
+  demonstrated rather than asserted.
+- **The diagnostics I hit were, with one exception, excellent.** `E-AT-CONTEXT` names the
+  construct, the directive and the clause. `E-MATCH-RELATION-SUBJECT` states its rationale
+  (T7.6 disputes the rationale, not the message). `E-NONEXHAUSTIVE`, `E-TIMELINE-CONTENT`,
+  `E-CLIP-OVERLAP`, `E-UNKNOWN-ATTR` and `E-TIMELINE-DURATION` all landed on the right span with
+  the right words. The four scenes' first drafts drew **six** diagnostics in total —
+  `E-CLIP-OVERLAP` twice, `E-TIMELINE-CONTENT`, `E-MATCH-RELATION-SUBJECT`, and an
+  `E-UNCLOSED-TAG`/`E-UNCLASSIFIED` pair from a stray line my editor left in the file rather
+  than from anything I authored. Five were true; the sixth is T7.2.
+- **Volume is cheap once the shapes are known.** 10 documents, 61 lines, 695 words, 6 choices
+  (`lute loc report`). The fourth scene took a fraction of the first, and none of the four
+  needed a construct that had to be discovered.
+
+#### T7 summary
+
+Fifteen entries: three *worked well* (T7.4, T7.15, and the verified-correct envelope inside
+T7.13), three `ERGONOMIC` (T7.6, T7.12, T7.13), two `TOOL-DEFECT` (T7.2, T7.8), two `DOC-WRONG`
+(T7.7, T7.10), one `SPEC-WRONG` (T7.3), one `LANGUAGE-GAP` (T7.1), two recurrences carrying no
+new verdict (T7.5 → T1.6/T3.7, T7.11 → T3.10), one entry deliberately left without a verdict
+(T7.9), and one environment note (T7.14). No `DOC-GAP` and no `AUTHOR-ERROR`.
+
+**The authoring rule held, and it cost the story exactly one thing.** Every beat in the brief
+was written before the Lute was, and one of them did not survive: the Purser cannot be
+interrupted (T7.1). That is the whole `LANGUAGE-GAP` in four scenes, and it is a real one —
+overlapping speech is not exotic, and the language's two temporal modes (reader-paced dialogue,
+clock-paced staging) have nothing between them. Everything else was expressible; three things
+were expressible only sideways (T7.6's dummy subject, T7.12's retyped frontmatter, T7.13's
+arithmetic-by-hand), and each is recorded with the shape of the thing I actually typed.
+
+**Volume surfaces a different class of finding than depth, which was this task's premise and it
+held.** T1–T6 each drove one construct to its edge. T7 wrote four scenes and the findings that
+fell out are: a boundary condition you only meet when a track has two clips (T7.2), a doc
+sentence that is true for every example on its page and false for the guard class a fourth scene
+reaches for (T7.7), a mock key you only mistype once you are writing mocks routinely (T7.11), and
+30 duplicated lines that are invisible in one file and 18% of the corpus in eight (T7.12). None
+of these is discoverable from a showcase scene. The single most valuable measurement in this
+section is the plainest: **four scenes of real dialogue drew six diagnostics, five of them
+true, and two of those five were an editor accident rather than an authoring mistake** — a
+better first-draft hit rate than the log's tone to this point would predict.
+
+**`<timeline>` is the headline construct and the reading is split down the middle.** As an
+authoring surface it is the cleanest first-use since T5.1 — six tracks, three keying styles,
+overlapping cross-track offsets, correct cursor math, correct barrier, and a diagnostic
+(`E-AT-CONTEXT`) that knows exactly where it is (T7.4). As a *contract* it has two holes that
+point the same way. `E-CLIP-OVERLAP` rejects the boundary hand-off its own written spec makes
+legal and accepts two clips at the same instant on one track, which is the only thing the
+invariant exists to prevent (T7.2). And the track — the unit all three timeline invariants are
+*about* — is not in the IR at all, so the second of the two engine options the runtime contract
+offers cannot be implemented, and property tracks, whose stated purpose is telling an engine that
+one subject has two independent writers, tell it nothing (T7.3). The checker computes the
+guarantee and deletes the evidence; that is T1–T6's dominant pattern arriving in the staging
+layer.
+
+**Two recurrences worth naming because they are now three-and four-time offenders.** `lute
+context`'s `directives (N)` block is incomplete for the third time and in a third way (T7.5: the
+§7.5 timing attrs are documented as valid on *any* staging directive and listed on two of nine).
+And nothing gates stage presence: `@toma` speaks before any `::auto` stages him, `@ilsabet` speaks
+in a scene that never stages her at all, both at exit 0 — correct in my source because both carry
+`{os}`, and unchecked either way, which is T2.4 from the other end.
+
+**What T7 would fix first.** T7.2, because it is a wrong answer in both directions on a
+correctness check and the fix is a comparison operator. Then T7.3, one field on `Stamp`. Then
+T7.7, one clause on one sentence — the cheapest item in this whole log and the one that cost this
+task the most, because a page that says "exact" and "identically" and "visibly interchangeable" is
+a page you stop questioning. T7.1 is the only entry here asking for language design rather than
+repair, and the minimal version — content lines admitted in a `<track>` when they carry an
+explicit `at` — does not disturb the rationale that currently excludes them.

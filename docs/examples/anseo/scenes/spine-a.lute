@@ -1,0 +1,46 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 3
+uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
+after: 'visited("anseo.s01ep02")'
+---
+
+## Spine, A-Section
+
+::bg{location="spine-a" time="ship-night"}
+::auto{character="vesna" anchor="port" action="drift"}
+
+@vesna{code="0010" emotion="level"}: Hand on the rail. Not the conduit — the rail.
+@vesna{code="0020" emotion="clipped"}: It won't warn you twice.
+@purser{code="0030" emotion="level" os}: Standby. Module four is scheduled for release in—
+
+<timeline duration="1.6">
+  <track channel="sfx">
+    ::sfx{sound="klaxon-two-tone" duration="0.6"}
+  </track>
+  <track channel="music">
+    ::music{action="swell" mood="failing" volume="alarm" at="0.5"}
+  </track>
+  <track subject="camera">
+    ::camera{focus="vesna" zoom="1.1" duration="0.3"}
+    ::camera{shake="0.6" duration="0.5" at="0.35"}
+  </track>
+  <track subject="vesna" property="pos">
+    ::auto{character="vesna" anchor="port" action="brace" at="0.4"}
+  </track>
+  <track subject="vesna" property="grip">
+    ::auto{character="vesna" action="seal" at="0.9"}
+  </track>
+  <track channel="vfx">
+    ::vfx{type="shed" label="module four" at="0.8" duration="0.35"}
+    ::vfx{type="pressure-drop" transition="cut" at="1.2"}
+  </track>
+</timeline>
+
+@narrator{code="0100"}: The rail went cold under your hands, and forty metres of ship stopped being ship.
+@vesna{code="0110" emotion="frayed"}: Four was water reclaim.
+@vesna{code="0120" emotion="hollowed"}: We were drinking that an hour ago.
+@purser{code="0130" emotion="level" os}: Allocation is short by three modules.
+@vesna{code="0140" emotion="clipped"}: It says that like it's the weather.
