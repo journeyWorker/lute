@@ -31,7 +31,9 @@ Every entry carries:
 - **Attempt** — the form you reached for first, verbatim.
 - **Result** — the exact diagnostic, or the silence.
 - **Resolution** — what you ended up writing, or `NONE — intent abandoned`.
-- **Verdict** — one of the four below.
+- **Verdict** — exactly one of the five below. Never invent a verdict or hyphenate a
+  hybrid (`AUTHOR-ERROR-adjacent` is not a verdict); if none fits, say so in the entry
+  and raise it with the controller, who owns this table.
 
 ### Verdicts
 
@@ -41,6 +43,7 @@ Every entry carries:
 | `ERGONOMIC` | Expressible, but the working form is materially worse than the natural one — more verbose, more indirect, or split across files for no modelling reason. |
 | `DOC-GAP` | Expressible and reasonable, but **you had to read Rust source, a proposal, or a test to find it.** The website docs and `lute context` did not get you there. |
 | `AUTHOR-ERROR` | The docs said so plainly and you missed it. Not a finding — record it only if the diagnostic pointed somewhere unhelpful. |
+| `TOOL-DEFECT` | The language and its docs are fine; a *tool* is wrong, incomplete, or lying about its own contract. A misdirecting diagnostic, a false green, a capability surface that omits something it advertises. Distinct from `DOC-GAP`: the information exists, but the tool that promised to hand it to you did not. |
 
 **The `DOC-GAP` bar is deliberately harsh.** A working author cannot read
 `lower.rs`. If you needed to, the language failed them even though it compiled.
@@ -128,19 +131,55 @@ Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`.
 - **Resolution** — deleted `scenes/opening.lute` per Step 5; both errors cleared.
 - **Verdict** — worked well. Schema-edit blast radius is visible and precise.
 
-#### T1.4 — `E-BAD-ENUM` renders a content line's speaker as a `::directive` — DIAGNOSTIC NIT
+#### T1.4 — `E-BAD-ENUM` renders a content line's speaker as a `::directive` that does not exist — TOOL-DEFECT
 
-- **Intent** — n/a; observed while reading T1.3's output.
-- **Result** — the offending source is a content line, `@narrator{emotion="delighted"}: …`,
-  but the diagnostic calls it ``for `emotion` of `::narrator` ``. There is no
-  `::narrator` directive in the language or in the file. An author who trusts the
+- **Intent** — n/a authorially; first seen in T1.3's output, then probed
+  deliberately, because a diagnostic naming a construct the language does not
+  have is the protocol's highest-priority category.
+- **Attempt** — reproduced from scratch, outside Anseo, so this entry reruns
+  without the example tree:
+  ```console
+  $ ./target/debug/lute init /tmp/t14/proj
+  $ cp docs/examples/anseo/vocabulary.schema.yaml /tmp/t14/proj/vocabulary.schema.yaml
+  $ ./target/debug/lute check-project /tmp/t14/proj
+  ```
+  The offending source is the scaffolder's own line 15, untouched:
+  `@narrator{emotion="delighted"}: Welcome to your new Lute project.`
+- **Result** — exit 1:
+  ```
+  /tmp/t14/proj/scenes/opening.lute:15:20: error [E-BAD-ENUM] `delighted` is not a valid value for `emotion` of `::narrator` (expected one of: level, clipped, frayed, hollowed, wry, stricken)
+  failed: /tmp/t14/proj/scenes/opening.lute (1 error(s), 0 warning(s))
+  failed: /tmp/t14/proj (1 file(s), 0 project-wide error(s), 0 project-wide warning(s))
+  ```
+  There is no `::narrator` directive in the language, in the file, or in the
+  nine-directive list `lute context` prints (T1.6). An author who trusts the
   message and searches for `::narrator` finds nothing.
-- **Resolution** — the span (`15:20`) is correct and lands you on the right
-  attribute, so the cost is seconds, not minutes.
-- **Verdict** — `AUTHOR-ERROR`-adjacent, recorded only because the protocol asks
-  for diagnostics that point somewhere unhelpful. Minor, but it is a
-  one-word fix (`@narrator`) and the same code path presumably renders every
-  content-line enum error this way.
+- **Second probe — it is the renderer, not this line.** One scratch file carrying
+  a real directive and a content line, each with one bad enum value. Same
+  frontmatter as the scaffold's scene, `episode: 2`, saved as
+  `/tmp/t14/proj/scenes/probe.lute`:
+  ```lute
+  ## Probe
+
+  ::auto{character="narrator" anchor="nowhere" action="brace"}
+  @narrator{action="jitter"}: A line with a bad action.
+  ```
+  `./target/debug/lute check /tmp/t14/proj/scenes/probe.lute --project /tmp/t14/proj`:
+  ```
+  /tmp/t14/proj/scenes/probe.lute:15:37: error [E-BAD-ENUM] `nowhere` is not a valid value for `anchor` of `::auto` (expected one of: port, center, starboard)
+  /tmp/t14/proj/scenes/probe.lute:16:19: error [E-BAD-ENUM] `jitter` is not a valid value for `action` of `::narrator` (expected one of: brace, drift, turn-away, seal, unseal, step-out, go-under)
+  ```
+  `::auto` is right; `::narrator` is fabricated. The `::` is prefixed to the
+  owning node's name unconditionally, so this is how *every* content-line enum
+  error renders — `action` as much as `emotion` — not a one-off in T1.3's output.
+- **Resolution** — none needed. The spans (`15:20`, `16:19`) are correct and land
+  on the offending attribute, so the cost is seconds, not minutes.
+- **Verdict** — `TOOL-DEFECT`. The language is fine and so are its docs:
+  `language/dialogue-and-cast.md` opens by stating the content-line form
+  `@speaker{attributes}: the text they say`. A *tool* is describing the author's
+  source as a construct that does not exist. Small in cost, but it is a one-word
+  fix (`@narrator`) on a shared code path, and it is the cheap kind of wrong — a
+  message that invents vocabulary the author will then go looking for.
 
 #### T1.5 — `lute context` cannot answer "what may I write here?" until the file exists — ERGONOMIC
 
@@ -161,7 +200,7 @@ Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`.
   full of errors, but not a file that does not exist yet. A `--project <DIR>`-only
   invocation with no `<FILE>` would close this; the flag already exists.
 
-#### T1.6 — `lute context` gives you the vocabulary but not the grammar — would NOT have been enough to write `wake.lute`
+#### T1.6 — `lute context` gives you the vocabulary but not the grammar it advertises — TOOL-DEFECT
 
 This is the direct measurement of authoring-surface maturity, so it gets the
 detail.
@@ -198,7 +237,15 @@ detail.
      attribute in `wake.lute` with no vocabulary backing it, and the
      zero-padded-by-tens convention (`0010`, `0020`) is nowhere either. An
      author working from `context` alone writes lines with no `code` — which
-     checks clean, and silently yields unstable identity.
+     checks clean, and silently yields *positional* identity. Verified on a
+     scratch project: two bare `@narrator:` lines compile to `…narrator_0010`
+     and `…narrator_0020`; insert one line above them, recompile, and those two
+     unchanged lines become `_0020` and `_0030`.
+     `language/dialogue-and-cast.md` is accurate and careful here — a missing
+     `code` "is back-filled deterministically at compile time and can be
+     persisted with `lute tag`", i.e. deterministic per compile, not stable
+     across edits, which is why `lute tag` exists at all. `context` mentions
+     neither `code` nor `lute tag`.
   3. **Frontmatter.** No `kind:`, `character:`, `season:`, `episode:`, and —
      most damaging — no `uses:`. `uses:` is the mechanism that puts the enums
      and state the output is *describing* into scope. The surface describes the
@@ -212,12 +259,44 @@ detail.
   could have produced the `::auto` line correctly and every *value* correctly,
   and would have had to guess the frontmatter, the `@speaker{…}:` form, the
   heading, and `code` — i.e. the whole grammar.
-- **Verdict** — `DOC-GAP`. The command is well-built and its project resolution
-  is exactly right; the gap is one of category. It is a complete **vocabulary**
-  surface and not an **authoring** surface, and its help text promises the
-  latter. The cheapest honest fix is not to add grammar to `context` but to stop
-  claiming it: what an AI needs to write valid Lute is this output *plus* a
-  form reference, and nothing in the output says so.
+- **Verdict** — `TOOL-DEFECT`, not `DOC-GAP`. Every form listed above is
+  documented on the shipped website, and I checked each before assigning this:
+  - the **content-line form** — `language/dialogue-and-cast.md`, which opens
+    "Every content line has the same shape: `@speaker{attributes}: the text they
+    say`", then names the line attributes with `code` first;
+  - the **frontmatter block** — `language/frontmatter-and-profiles.md`, "Every
+    `.lute` document opens with a **YAML frontmatter block** delimited by two
+    `---` lines", with `kind`/`character`/`season`/`episode` in its worked example;
+  - **`uses:`** — `language/imports.md`, whose title is literally "Imports
+    (uses:)" and whose first paragraph names it as the import mechanism;
+  - the **`## ` heading** — `getting-started/first-scene.md`, which teaches it
+    through `E-CONTENT-OUTSIDE-SHOT` and states the rule as "all content lives
+    under a heading".
+
+  So the `DOC-GAP` bar is not met, and claiming it inflated the reading: I did
+  not have to open Rust, a proposal, or a test, and a working author would not
+  have to either. What failed is the tool's own contract. `lute context --help`
+  reads: *"Emit the project-resolved AUTHORING SURFACE for a `.lute` file — the
+  directives/attrs/enums/asset-kinds/providers/state-schema/components +
+  capabilityVersion an AI needs to WRITE valid Lute against THIS file's
+  project."* Read closely, the noun list is honest — every item in it is
+  vocabulary, and every item in it is delivered, well. The overclaim is the
+  purpose clause. What the output contains is not what an AI needs to write valid
+  Lute; it is precisely the half the docs deliberately *delegate* to it.
+  `dialogue-and-cast.md` makes that division explicit from the other side —
+  "Their *domains* are project vocabulary, not grammar — run `lute context
+  <file>` to list the legal `emotion`/`variant` values for your project." The
+  docs own the forms and hand off the values; `context` owns the values and
+  claims the whole surface.
+
+  That is the `TOOL-DEFECT` criterion exactly: the information exists, and the
+  tool that promised to hand it to you did not. It is also worse in practice than
+  a documentation hole would be, because the output gives no signal that anything
+  is missing — no cross-reference, no form section, not even an explanation of
+  the empty `enums (0)`. It reads complete, and a harness pointed at it (which
+  the help text invites) has no way to discover otherwise. The cheapest honest
+  fix is still not to add grammar to `context`, but to stop claiming it in
+  `--help` and to have the output name the pages that carry the forms.
 
 #### T1.7 — the `identity:` block is documented only as an error-code entry — DOC-GAP
 
@@ -320,30 +399,150 @@ detail.
   recover, but the filename and span both point away from the problem. Per the
   protocol this outranks most of what is above it.
 
-#### T1.10 — nested projects resolve to the nearest manifest — WORKED WELL, and load-bearing here
+#### T1.10 — which manifest governs a nested project is decided by the root you invoke, not by proximity — TOOL-DEFECT
+
+Re-run from scratch during the fix pass, because the original entry described its
+probes only in prose. **The re-run overturns its conclusion.** The original read
+"nearest manifest wins" and was filed *worked well*; nearest manifest does not
+win. What follows is what the commands actually print.
 
 - **Intent** — `docs/examples/anseo` is a project *inside* the `docs/examples`
   project, and acceptance requires both `check-project docs/examples/anseo` and
   `check-project docs/examples` to pass. I need to know which manifest governs
   Anseo's scenes when the outer root is the one being walked — otherwise the
   `identity:` block I just wrote is decorative for ten of the eleven scenes.
-- **Attempt** — three probes. (a) `check-project docs/examples` and confirm the
-  nested scene is actually walked. (b) A scratch nested pair in `/tmp` with a
-  deliberately invalid `identity:` token in the *inner* manifest, checked from
-  the *outer* root. (c) The same pair with a valid but distinctive
-  `lineId: "OUTER-{prefix}…"` in the outer manifest only, compiling an inner
-  scene.
-- **Result** —
-  (a) `ok: docs/examples/anseo/scenes/wake.lute` appears in the outer run; 31
-  `ok:` lines, `30 file(s)`. The nested scene is walked, not skipped.
-  (b) The outer walk surfaces the inner manifest's error verbatim and exits 1 —
-  so nested manifests are *discovered*, not ignored.
-  (c) The inner scene compiles to `"lineId": "narrator.s01ep01.narrator_0010"`,
-  with no `OUTER-` prefix. **Nearest manifest wins.**
-- **Verdict** — worked well, and quietly important. Anseo can be a
-  self-contained project with its own vocabulary, world, and identity templates
-  while living inside the shared examples tree, and neither root contaminates
-  the other. Every later task can rely on this.
+
+- **Attempt (a) — is the nested scene walked at all?**
+  ```console
+  $ ./target/debug/lute check-project docs/examples
+  ```
+- **Result (a)** — exit 0, closing with
+  `ok: docs/examples (30 file(s), 5 project-wide warning(s))`, 31 `ok:` lines, and
+  among them:
+  ```
+  ok: docs/examples/anseo/scenes/wake.lute (0 warning(s))
+  ```
+  The nested scene is walked, not skipped. This part of the original entry holds.
+
+- **Attempt (b) — is a nested manifest discovered?** A two-manifest scratch tree,
+  built entirely by `lute init` so it pastes and runs:
+  ```console
+  $ lute init /tmp/nest && lute init /tmp/nest/inner
+  $ printf '\nidentity:\n  lineId: "{scene}.{speaker}_{code}"\n' >> /tmp/nest/inner/lute.project.yaml
+  $ lute check-project /tmp/nest
+  ```
+  `{scene}` is not a legal token (T1.7), and it is in the **inner** manifest only.
+  Baseline before the edit: `lute check-project /tmp/nest` is exit 0 with both
+  scenes `ok:`.
+- **Result (b)** — exit 1, and this is the entire output:
+  ```
+  lute: E-IDENTITY-TEMPLATE: unknown token `{scene}` in identity template `lineId`; valid tokens are {prefix}, {speaker}, {code}
+  ```
+  So nested manifests *are* read and validated by `check-project`: a broken one
+  two directories down fails the outer run. Note what the outer run does **not**
+  say — which manifest. The line is byte-identical to what
+  `lute check-project /tmp/nest/inner` prints, carries no path, and the walk emits
+  no `ok:` lines before it. In a tree with two manifests you are told a manifest
+  is broken and left to find out which. (Recorded here rather than as its own
+  entry: same defect class as T1.9's `0:0` span — a project-level diagnostic with
+  no usable location.)
+
+- **Attempt (c) — whose templates land in the artifact?** The original entry's
+  probe, done properly: give the two manifests *mutually distinguishable*
+  templates instead of testing one against a default.
+  ```console
+  $ lute init /tmp/nest3 && lute init /tmp/nest3/inner
+  # append to /tmp/nest3/lute.project.yaml:
+  #   identity:
+  #     lineId: "OUTER-{prefix}.{speaker}_{code}"
+  # append to /tmp/nest3/inner/lute.project.yaml:
+  #   identity:
+  #     lineId: "INNER-{prefix}.{speaker}_{code}"
+  # and in /tmp/nest3/inner/scenes/opening.lute, so the two scaffolds do not
+  # collide on episode key: character: narrator  ->  character: inner
+  $ lute compile --all --project /tmp/nest3 -o /tmp/nest3out
+  ```
+- **Result (c)** — exit 0, `lute compile --all: 2 document(s) -> /tmp/nest3out`,
+  and every `lineId` in both artifacts — including the **nested** project's —
+  carries the outer template:
+  ```
+  "lineId": "OUTER-inner.s01ep01.narrator_0010"
+  "lineId": "OUTER-inner.s01ep01.narrator_0020"
+  "lineId": "OUTER-narrator.s01ep01.narrator_0010"
+  "lineId": "OUTER-narrator.s01ep01.narrator_0020"
+  ```
+  `INNER-` appears nowhere. Compiling at the inner root gives it back, and
+  single-file compiles follow `--project`, never proximity:
+  ```console
+  $ lute compile --all --project /tmp/nest3/inner -o /tmp/nest3in
+  "lineId": "INNER-inner.s01ep01.narrator_0010"
+
+  $ lute compile /tmp/nest3/inner/scenes/opening.lute --project /tmp/nest3        -> "OUTER-inner.s01ep01.narrator_0010"
+  $ lute compile /tmp/nest3/inner/scenes/opening.lute --project /tmp/nest3/inner  -> "INNER-inner.s01ep01.narrator_0010"
+  $ lute compile /tmp/nest3/inner/scenes/opening.lute                             -> "inner.s01ep01.narrator_0010"
+  ```
+  The last is the default template: with no `--project`, **no** manifest is
+  consulted — not even the one sitting in the file's own project directory.
+
+- **Attempt (d) — do the checker and the compiler agree?** The (c) tree with the
+  inner manifest's template set to the illegal `"{scene}.{speaker}_{code}"` from
+  (b), everything else unchanged.
+- **Result (d)** — they do not:
+  ```console
+  $ lute check-project /tmp/nest4
+  lute: E-IDENTITY-TEMPLATE: unknown token `{scene}` in identity template `lineId`; valid tokens are {prefix}, {speaker}, {code}
+  # exit 1
+
+  $ lute compile --all --project /tmp/nest4 -o /tmp/nest4out
+  lute compile --all: 2 document(s) -> /tmp/nest4out
+  # exit 0, every lineId prefixed OUTER-
+  ```
+  One command refuses to proceed over a manifest the other never reads.
+
+- **Corrected conclusion.** **The invoked root wins; the nearest manifest does
+  not.** `--project <DIR>` *is* the manifest selector — a `lute.project.yaml`
+  closer to the document is not preferred, and with no `--project` none is used.
+  `check-project` additionally walks and validates nested manifests, but
+  validating a manifest is not the same as letting it govern.
+
+- **What this means for Anseo, plainly.** Anseo's `identity:` block governs only
+  when Anseo is compiled *as its own root*. Compiled from `docs/examples`, its
+  scenes take the outer manifest's templates. Today that is invisible:
+  ```console
+  $ lute compile docs/examples/anseo/scenes/wake.lute --project docs/examples      -o /tmp/a-outer.json
+  $ lute compile docs/examples/anseo/scenes/wake.lute --project docs/examples/anseo -o /tmp/a-own.json
+  $ cmp -s /tmp/a-outer.json /tmp/a-own.json && echo identical
+  identical
+  ```
+  Both give `"lineId": "anseo.s01ep01.vesna_0010"` and `"voiceKey": "vesna-0010"`.
+  But that is **coincidence, not resolution**: `docs/examples/lute.project.yaml`
+  declares no `identity:` block, and the defaults are exactly
+  `{prefix}.{speaker}_{code}` / `{speaker}-{code}` (T1.7) — which is what Anseo's
+  block sets. The day `docs/examples` grows an `identity:` block, every Anseo
+  artifact built from the outer root silently changes its `lineId`s, and
+  `check-project` stays green through it. (The outer-root invocation also prints
+  five `lute: E-PROFILE-UNKNOWN` lines for *other* examples' profiles while still
+  exiting 0 and emitting the artifact — noted, not pursued; it belongs to
+  whichever task touches profiles.)
+
+- **Verdict** — `TOOL-DEFECT`. Not for "invoked root wins" — that is a defensible
+  design and it is what the flag's own help says (`compile --project <DIR>`:
+  "Project directory (`lute.project.yaml` + `plugins/`) resolving the document's
+  activated capability snapshot"; `--all` "Compile EVERY `*.lute` document under
+  `--project <dir>`"). The defect is that `check-project` and `compile` disagree
+  about whether a nested manifest exists at all — (d) shows one failing the build
+  over a file the other does not open. The website states the opposite guarantee
+  (`language/frontmatter-and-profiles.md`: "The checker, LSP, and compiler all
+  validate the document against the same resolved capability snapshot, so what
+  checks clean is exactly what compiles"), and nothing anywhere warns that a
+  nested project's manifest is inert under an outer-root build.
+
+- **Correction of record.** The original probe (c) put a distinctive template on
+  the **outer** manifest and left the inner one at its defaults, so an
+  un-prefixed `lineId` was consistent with *both* hypotheses — and it was read as
+  proof of the wrong one. Later tasks must not carry "nearest manifest wins"
+  forward; if a task needs Anseo's identity templates to apply, it must compile
+  with `--project docs/examples/anseo`.
 
 #### T1.11 — environment note, not a language finding
 
@@ -359,11 +558,22 @@ contradicts the compiler, and nothing in either tool says why.
 
 #### T1 summary
 
-Eleven entries: five *worked well*, two `DOC-GAP`, two `ERGONOMIC` (one of them
-the silent-mock case), one diagnostic nit, one environment note. Nothing in
+Eleven entries: four *worked well*, three `TOOL-DEFECT`, two `ERGONOMIC` (one of
+them the silent-mock case), one `DOC-GAP`, one environment note. Nothing in
 Task 1 was inexpressible — every construct the brief asked for compiled, and the
-identity chain landed exactly on `anseo.s01ep01.vesna_0010` first try. The
-friction is uniformly *informational*: the tool knows things (the closed token
-set, the seven slots, the derivation of `{prefix}`) that it will tell you only
-after you have guessed wrong, and `lute context` — the one command explicitly
-built to tell you in advance — describes values without describing forms.
+identity chain landed exactly on `anseo.s01ep01.vesna_0010` first try.
+
+The friction is almost entirely *informational*, and the fix pass moved where it
+sits. Only **one** entry is a genuine hole in the documentation: T1.7, the
+`identity:` block, where the tool knows things (the closed token set, the
+derivation of `{prefix}`) it will tell you only after you have guessed wrong. The
+other three findings are tools misreporting a world the docs describe correctly —
+`lute context` promises the write-surface and ships the vocabulary half of it
+while the website carries the forms (T1.6); `E-BAD-ENUM` renders every content
+line's speaker as a `::directive` that does not exist (T1.4); `check-project` and
+`compile` disagree about whether a nested project's manifest exists (T1.10).
+
+That is a better reading of 0.9.0 than the first pass gave — the language and its
+docs are in better shape than the tools that describe them — and a worse one for
+anyone trusting a tool's own account of itself. One thing must not be carried
+forward from the first pass: T1.10's original "nearest manifest wins" is wrong.
