@@ -678,6 +678,36 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // quest's body, which recurses through the real `Node::On`/
     // `Node::Objective` walk arms below.
     match folded.doc_kind {
+        // A COMPONENT file opened as its own root. `resolve_doc_kind` has no
+        // Component variant (import-role docs carry no `kind:`), so such a file
+        // degrades to `DocKind::Scene` above — and `Walker` admits every logic
+        // block, because in a SCENE they are all legal. The presentational
+        // contract (dsl 0.4.0 §6.2) therefore never applied on this leg:
+        // `lute check c.component.lute` reported `ok` for a body that fails at
+        // every `::use` site. This is the mirror of Task 7f (there the
+        // standalone leg was too STRICT); the fix is the same shape — route the
+        // body through the ONE implementation of the contract rather than
+        // teaching `Walker` a second copy of it.
+        //
+        // `walk_component_body` anchors each diagnostic at the offending node's
+        // OWN span, which is already what this leg wants (the `::use` leg
+        // re-anchors in `validate_components`). Diags land in `walker.diags` so
+        // the single `mem::take` below stays the one drain.
+        crate::meta::DocKind::Scene if folded.typed.component.is_some() => {
+            for shot in &doc.shots {
+                walk_component_body(
+                    &shot.body,
+                    &input.snapshot,
+                    &input.providers,
+                    domains,
+                    &arena,
+                    &base_ctx,
+                    &input.components,
+                    &walker.param_domains,
+                    &mut walker.diags,
+                );
+            }
+        }
         crate::meta::DocKind::Scene => {
             for shot in &doc.shots {
                 walker.walk(&shot.body, &base_ctx);
