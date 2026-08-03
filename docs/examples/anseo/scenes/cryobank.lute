@@ -1,0 +1,31 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 2
+uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
+after: 'visited("anseo.s01ep01")'
+---
+
+## The Cryobank
+::auto{character="vesna" anchor="port" action="drift"}
+@vesna{code="0010" emotion="clipped"}: Every pod you crack, the Purser reads as load.
+@purser{code="0020" emotion="level" os}: Allocation notes the draw. The schedule advances.
+
+<branch id="whoWakes">
+<choice id="wakeToma" label="Wake the engineer">
+::set{run.shedPressure += 2}
+::assert{awake(toma)}
+::assert{knows(toma, shed_sequence)}
+@toma{code="0030" emotion="frayed"}: How long have I been under?
+</choice>
+<choice id="wakeIlsabet" label="Wake the navigator">
+::set{run.shedPressure += 1}
+::assert{awake(ilsabet)}
+::assert{knows(ilsabet, true_heading)}
+@ilsabet{code="0040" emotion="stricken"}: We're not going where you think we are.
+</choice>
+<choice id="wakeNobody" label="Leave them under">
+@vesna{code="0050" emotion="wry"}: Cheapest crew is the one still asleep.
+</choice>
+</branch>

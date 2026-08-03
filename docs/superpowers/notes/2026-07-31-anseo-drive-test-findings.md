@@ -956,3 +956,650 @@ after they have left (T2.4), the second while holding the state that refutes it.
 An author gets the exit right by having read the correct page first, or by
 compiling and diffing the JSON — and gets no help at all in finding out they got
 the staging wrong.
+
+### T3 — The shed clock as declared state
+
+Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`. One scene added:
+`scenes/cryobank.lute`, `anseo.s01ep02` — the project's first `<branch>`, its first
+`::set`, its first `::assert`, and the route ancestor of everything downstream.
+
+The scene carries a design claim: **Lute has no engine clock.** `run.shedPressure` is
+the shed schedule, and it advances only where an author wrote `::set`. T3.1 is the
+proof; T3.2 is what happens when the author writes one that is quietly wrong.
+
+#### T3.1 — the counter is the natural form, and there is no clock behind it — WORKED WELL
+
+- **Intent** — waking crew costs clock. Cracking a pod draws power the Purser bills
+  against the shed schedule; the engineer costs more than the navigator, and leaving
+  both under costs nothing. Three choices, two of which move a number.
+- **Attempt** — the form I reached for first, unmodified, inside the choice bodies:
+  ```lute
+  <choice id="wakeToma" label="Wake the engineer">
+  ::set{run.shedPressure += 2}
+  ```
+  Nothing was substituted to make this compile. It is what a counter looks like.
+- **Result** — `check-project docs/examples/anseo` → `ok: … (2 file(s), 0 project-wide warning(s))`,
+  exit 0, first try. The artifact carries the increments as state-write commands,
+  one per arm, at addresses *inside* the arm:
+  ```json
+  {"kind":"set","addr":"001-0600","path":"run.shedPressure","op":"+=","value":"2","expr":{"lit":2.0}}
+  {"kind":"set","addr":"001-1100","path":"run.shedPressure","op":"+=","value":"1","expr":{"lit":1.0}}
+  ```
+  Both the surface form (`op: "+="`, `value: "2"`) and the parsed form (`expr`) are
+  emitted, so a consumer can round-trip the author's text or evaluate the tree.
+- **The no-clock claim, with its negative control.** The whole command inventory of
+  the compiled scene is `{sprite: 2, line: 5, choice: 1, set: 2, assert: 4, jump: 3}`
+  — no tick, no timer, no time-driven kind, and the strings `tick`/`timer`/`clock`/
+  `elapsed`/`narrativeTime` appear nowhere in the artifact. Executed against the
+  reference runtime with each arm forced:
+  ```console
+  $ lute run /tmp/t3-cryobank.json --mock ok_wakeToma.yaml      # choose: { whoWakes: wakeToma }
+    001-0600  set    run.shedPressure = 2      -> final run.shedPressure = 2
+  $ lute run … --mock ok_wakeIlsabet.yaml      -> final run.shedPressure = 1
+  $ lute run … --mock ok_wakeNobody.yaml       -> final run.shedPressure = 0
+  ```
+  The third is the control that matters: the `wakeNobody` arm contains no `::set`, so
+  no `set` command exists on that path and the schedule **does not move**. Nothing in
+  the engine advances it on its own. The language also refuses to let you invent a
+  clock: declaring `run.clock: { type: narrativeTime }` is rejected, and
+  `facts-and-datalog.md` states the one narrative-time anchor an author may write is
+  `quest.<id>.activatedAt`. So "the schedule advances only because an author wrote
+  `::set`" is not a convention this example adopts — it is the only thing available.
+- **A rule the scene silently depends on, and it is enforced.** `+=` reads the old
+  value first, so a compound assignment needs the path to be already-assigned.
+  `run.shedPressure` carries `default: 0`, which is why the bare `+=` is legal.
+  Removing the default from `world.schema.yaml` and re-checking:
+  ```
+  error [E-MAYBE-UNSET] state path `run.shedPressure` may be read before it is set
+  (no default, no dominating `::set`, no guard) (dsl §9.4)
+  ```
+  `state-model.md` states this rule in one sentence and the checker enforces it
+  exactly. (Schema restored; the probe was on a scratch copy.)
+- **Resolution** — none needed; the first form written is the committed form.
+- **Verdict** — worked well. The natural expression *is* the working expression, the
+  increment survives to the artifact unmodified, and the design claim the scene
+  carries is demonstrable rather than asserted.
+
+#### T3.2 — a `::set` right-hand side is not typed against the path it writes; the runtime then eats it — TOOL-DEFECT
+
+This is T3's most serious finding, and it is the failure mode a counter cannot survive.
+
+- **Intent** — none authorial. It fell out of asking the assignment's question "does
+  anything tell you a `::set` target is a state path you declared?" — the answer for
+  the *target* is an excellent yes (T3.4). So I asked the same question of the
+  *value*, because a number that silently fails to increment is the single worst thing
+  that can happen to this scene.
+- **Attempt** — three writes to `run.shedPressure`, declared `{ type: number, default: 0 }`:
+  ```lute
+  ::set{run.shedPressure += "two"}                    # string into a number
+  ::set{run.shedPressure = true}                      # bool into a number
+  ::set{run.shedPressure += (run.shedPressure > 0) * 3}   # bool arithmetic
+  ```
+- **Result — all three check clean at the strictest setting:**
+  ```console
+  $ lute check … --deny-warnings
+  ok: /tmp/t3/anseo/scenes/c_strnum.lute  (0 warning(s))    # exit 0
+  ok: /tmp/t3/anseo/scenes/c_boolnum.lute (0 warning(s))    # exit 0
+  ok: /tmp/t3/anseo/scenes/c_paren.lute   (0 warning(s))    # exit 0
+  ```
+  All three compile, and the reference runtime — `lute run`, described by its own help
+  as "the reference consumer of the runtime contract" — carries them through without a
+  word:
+  ```console
+  $ lute run strnum.json     001-0100  set  run.shedPressure = 0      -> final = 0
+  $ lute run boolnum.json    001-0100  set  run.shedPressure = true   -> final = true
+  $ lute run paren.json      001-0100  set  run.shedPressure = 0      -> final = 0
+  ```
+  Exit 0 on all three. `0 += "two"` is silently **0** — the counter does not advance
+  and nothing anywhere says so. `= true` is worse: the reference runtime writes a
+  boolean into a path the schema declares `number`, and the final-state dump prints
+  `run.shedPressure = true`. The `type:` in the schema is not enforced at either end.
+- **The asymmetry is the point, and it is inside one construct of each other.** The
+  same schema, the same path, the same compiler run:
+  - **Relation arguments are typed to the member.** `::assert{awake(nobody)}` →
+    `E-FACT-DOMAIN`, naming the entity kind and the argument index (T3.4).
+  - **`into=`/`value=` is typed to the path.** `<choice … into="run.shedPressure">`
+    without a `value` → `E-INTO-VALUE`: *"`value` is required for `run.shedPressure`
+    (only a `bool` path defaults to `true`)"*. That diagnostic can only exist because
+    the checker knows this path is a `number` at that moment.
+  - **`::set`'s value is typed to nothing.** One construct away, holding the same
+    knowledge, it accepts a string.
+- **Resolution** — `NONE — nothing to resolve; the committed scene writes integer
+  literals and is correct by construction, not by verification.` I have no way to make
+  the toolchain confirm the difference.
+- **Verdict** — `TOOL-DEFECT`, taking the table in order.
+  - Not `LANGUAGE-GAP`: the counter is perfectly expressible, and T3.1 expresses it.
+  - Not `ERGONOMIC`: the working form is not more awkward, it is *unverified*.
+  - Not `DOC-GAP`: `state-model.md` is unambiguous — state is "a set of **typed** paths
+    (`number`, `bool`, `string`, `enum`)", every path "MUST be declared with a `type`".
+    No page's absence caused this and no page could fix it.
+  - Not `AUTHOR-ERROR`: I did not miss a documented rule; the tool accepted a write the
+    documentation says is ill-typed.
+
+  That leaves `TOOL-DEFECT`, in the criterion's own words: the language and its docs
+  are fine, and the tool is "lying about its own contract" — a declared type that
+  binds nothing. It is also the protocol's *silence* case in the form that costs most.
+  A mistyped `emotion` is caught instantly (`E-BAD-ENUM`, T1.4); a mistyped *number*
+  reaches the player as a counter that stopped counting, through a green
+  `--deny-warnings`, a green compile, and a green reference run. For a work whose
+  central mechanic is a schedule that advances, this is the bug you would ship.
+
+#### T3.3 — `::assert` inside a `<choice>` scopes to the arm and reaches a downstream gate — WORKED WELL
+
+Recorded prominently because Task 4's quest gate depends on it, and because a
+negative here would have been load-bearing for the next task.
+
+- **Intent** — waking a crew member should be a durable fact about the run, not a
+  scene-local flag: Task 4 must be able to ask "is Toma awake, and does he know the
+  shed sequence?" from a different document, in a different episode.
+- **Attempt** — the assertions written where the waking happens, inside the arm:
+  ```lute
+  <choice id="wakeToma" label="Wake the engineer">
+  ::set{run.shedPressure += 2}
+  ::assert{awake(toma)}
+  ::assert{knows(toma, shed_sequence)}
+  ```
+- **Result** — the facts land inside the arm, before its jump to the converge point,
+  so they are conditional on the selection rather than unconditional in the scene:
+  ```json
+  {"kind":"choice","addr":"001-0500","branchId":"whoWakes","recordKey":"scene.choices.whoWakes",
+   "options":[{"id":"wakeToma",…,"target":"001-0600"},{"id":"wakeIlsabet",…,"target":"001-1100"},
+              {"id":"wakeNobody",…,"target":"001-1600"}],"converge":"001-1800"}
+  {"kind":"set",   "addr":"001-0600","path":"run.shedPressure","op":"+=","value":"2"}
+  {"kind":"assert","addr":"001-0700","relation":"awake","args":["toma"]}
+  {"kind":"assert","addr":"001-0800","relation":"knows","args":["toma","shed_sequence"]}
+  {"kind":"line",  "addr":"001-0900",…,"speaker":"toma"}
+  {"kind":"jump",  "addr":"001-1000","target":"001-1800"}
+  ```
+  Four `assert` records total, two per waking arm; the `wakeNobody` arm has none.
+- **The full chain to Task 4's gate, verified end to end.** A scratch scene asserts in
+  a choice arm, then queries the *derived* relation in a later shot:
+  ```lute
+  @vesna{code="0030" emotion="level" when="holds(can_halt(toma))"}: Then you can stop the shed.
+  @vesna{code="0040" emotion="hollowed" when="!holds(can_halt(toma))"}: Nobody here can stop it.
+  ```
+  `check --deny-warnings` clean; the guards lower to `match` records carrying the
+  compiled predicate:
+  ```json
+  {"kind":"match","addr":"002-0100","subject":"holds(can_halt(toma))","arms":[{"test":"(holds(can_halt(toma)))",…}]}
+  ```
+  So `::assert{awake(toma)}` + `::assert{knows(toma, shed_sequence)}` in a choice arm
+  → the `world.schema.yaml` rule `can_halt(C) :- awake(C), knows(C, shed_sequence)` →
+  a `holds()` guard in a later document. The whole path Task 4 needs is live. Both
+  base relations are `tier: run`, so they survive to the next episode, which
+  `scene.choices.whoWakes` explicitly does not (`choices-and-hubs.md`: that path
+  "clears at episode end").
+- **Verdict** — worked well, without qualification. This is the single most important
+  thing T3 needed to be true and it was true first try.
+- **One documentation wrinkle, and it fits no verdict in the table — flagging for the
+  controller rather than inventing one.** `language/directives.md` §"Reserved
+  directives" — the canonical list of built-in `::` directives, and the page you would
+  read to learn which exist — says: *"Two `::`-directives are built-in rather than
+  staging vocabulary: `::set` … and `::use` …. **Quest documents** additionally use
+  `::assert` / `::retract` to mutate facts."* Read plainly, that scopes `::assert` to
+  quest documents; it works in scenes, inside `<choice>` bodies, which is what this
+  entry demonstrates. `state/facts-and-datalog.md` states the unscoped truth —
+  "**Content** writes deltas with the leaf directives `::assert` and `::retract`" — so
+  the `DOC-GAP` bar is genuinely not met: I did not read Rust, a proposal, or a test,
+  and a working author who lands on the facts page gets the right answer. But an
+  author who lands on `directives.md` first is told the construct is not for them.
+  Not a gap, not a tool: one clause on one page that is narrower than the language.
+
+#### T3.4 — the relational and state-path diagnostics are the best surface measured so far — WORKED WELL
+
+This is the direct answer to "does declaring `entities:` earn its keep?", so it gets
+the full transcript. Every probe is one scratch scene, one deliberate mistake.
+
+```
+::set{run.shedPresure += 2}
+  10:7:  error [E-UNDECLARED] `::set` target `run.shedPresure` is not declared in the
+         `state:` schema (dsl §7.3.4) — did you mean `run.shedPressure`?
+
+::assert{knows(toma)}                              # wrong arity
+  10:1:  error [E-RELATION-ARITY] relation `knows` expected 2 argument(s), got 1
+
+::assert{awake(nobody)}                            # non-member
+  10:1:  error [E-FACT-DOMAIN] `nobody` is not a declared member of entity kind `crew`
+         (relation `awake` argument 0, dsl 0.3.0 §3.1)
+
+::assert{awak(toma)}                               # typo'd relation
+  10:1:  error [E-RELATION-UNKNOWN] unknown relation `awak` (dsl 0.3.0 §4)
+
+::assert{knows(shed_sequence, toma)}               # arguments transposed
+  10:1:  error [E-FACT-DOMAIN] `shed_sequence` is not a declared member of entity kind
+         `crew` (relation `knows` argument 0, dsl 0.3.0 §3.1)
+  10:1:  error [E-FACT-DOMAIN] `toma` is not a declared member of entity kind `topic`
+         (relation `knows` argument 1, dsl 0.3.0 §3.1)
+
+::assert{can_halt(toma)}                           # writing a derived relation
+  10:1:  error [E-DERIVED-WRITE] relation `can_halt` is `derive: true`: it is computed
+         by `rules:` and MUST NOT be asserted or retracted by content (dsl 0.3.0 §5)
+
+<choice … when="run.vesnaTrst > 0">
+  11:32: error [E-UNDECLARED] state path `run.vesnaTrst` is not declared in `state:`
+         (dsl §9.4) — did you mean `run.vesnaTrust`?
+```
+
+- **Why this is the answer to the maturity question.** Six distinct failure modes, six
+  distinct codes, and every one of them names the fix. The transposed-arguments case is
+  the standout: a two-argument relation over two different entity kinds catches a swap
+  that no amount of naming discipline would, and it reports **per argument index**, so
+  the author is told which slot is wrong rather than that the fact "is invalid". This
+  is exactly the value that `entities: { crew: …, topic: … }` buys, and it is
+  unavailable in any design where `awake` is a string key.
+- **Did-you-mean is on every state-path read and write**, including inside a `when=`
+  guard and inside a `{{…}}` interpolation, so a typo'd path is a two-second fix
+  wherever it appears.
+- **The one blemish, small:** relation diagnostics all land at `10:1`, the start of the
+  directive, never on the offending argument — including the transposition case, where
+  two errors share one span. `::set` and `when=` are column-exact by contrast (`10:7`,
+  `11:32`). The message body carries the argument index, so nothing is lost; it is one
+  span computation short of perfect.
+- **Verdict** — worked well, and it is the strongest counterweight in this log to T3.2.
+  The relational layer's arguments are typed to the *member*. The scalar layer's
+  `::set` value is typed to *nothing*. Same file, same compiler run, same author.
+
+#### T3.5 — conditional availability works, is guarded against emptiness, and was discoverable — WORKED WELL
+
+- **Intent** — a natural instinct on this beat: "waking the engineer should only be
+  offered if Vesna trusts you", and separately "a pod already cracked cannot be cracked
+  again". Both are conditional availability of a choice.
+- **Attempt** — `when=` on `<choice>`, reached for by analogy with the content-line
+  `when=` in `docs/examples/investigation/scenes/confrontation.lute`:
+  ```lute
+  <choice id="wakeToma" label="Wake the engineer" when="run.vesnaTrust > 0">
+  <choice id="a" label="Wake the engineer" when="!holds(awake(toma))">
+  ```
+- **Result** — both check clean and both reach the artifact with the guard compiled to
+  a tree beside its source text:
+  ```json
+  {"id":"wakeToma","label":"Wake the engineer","when":"run.vesnaTrust > 0",
+   "expr":{"op":">","l":{"path":"run.vesnaTrust"},"r":{"lit":0.0}},"target":"001-0300"}
+  {"id":"a","label":"Wake the engineer","when":"!holds(awake(toma))","target":"001-0200"}
+  ```
+  Scalar guards and relational-fact guards both work in choice position, which is what
+  the "already cracked" instinct needed.
+- **And the obvious way to break it is a hard error.** Guarding every choice:
+  ```
+  error [E-BRANCH-ALL-GUARDED] `<branch id="bAll">` has no unguarded `<choice>`; every
+  choice carries a `when`, so the menu could be empty — a branch must contain at least
+  one unguarded choice (dsl §11.1)
+  ```
+  That rule is why the committed scene's `wakeNobody` is unguarded, and the message
+  explains the *reason* rather than just the rule. Neighbouring structural checks are
+  equally pointed: `E-CHOICE-DUP` on a repeated choice id within a branch;
+  `E-INTO-VALUE` (*"`value` is required for `run.shedPressure` (only a `bool` path
+  defaults to `true`)"*) and `E-INTO-TARGET` (*"`into="awake(toma)"` must name a
+  `run.<path>` fact"*) when `into=` is misused.
+- **`into=`/`value=`: yes, discoverable, and I would have found it.** The assignment
+  asks this directly. `language/branch-match-when.md` is the page you reach for when
+  you write your first `<branch>` — its title is the construct — and it closes the
+  `<branch>` section with: *"Choice mechanics — `when` guards, the `into=` run-record
+  sugar, and revisit `<hub>`s — are covered in [Choices & hubs]."* All three of the
+  things I wanted, named, in one sentence, with a link, on the page I was already on.
+  `choices-and-hubs.md` then gives `into=`/`value=` a worked example and the exact rule
+  I would have needed (`value` defaults to `true` only for a `bool` path). This is what
+  the T1.6/T1.7 findings were complaining about the *absence* of, and here it is
+  present. Worth saying plainly: the language docs did the job the tooling did not.
+- **Why the committed scene uses `::assert` and not `into=` anyway** — not a
+  workaround, a modelling choice the docs support. `into=` records a *scalar* into a
+  `run.*` path; what Anseo needs downstream is a *relation* between a crew member and a
+  topic, which `into=` cannot name (`E-INTO-TARGET` says so). The branch already
+  records its own selection into `scene.choices.whoWakes` for free — visible in the
+  artifact as `recordKey` and in `lute context` as
+  `scene.choices.whoWakes: enum [wakeToma, wakeIlsabet, wakeNobody, unset]` — so the
+  intra-episode half needs no author action at all.
+- **Also checked, and reasonable:** an empty `<choice>` body compiles to a bare jump to
+  the converge point while still recording the selection. A "say nothing, but remember
+  it" option is expressible without a filler line.
+- **Verdict** — worked well. Every conditional-availability idea I had was expressible
+  in the form I first reached for.
+
+#### T3.6 — reaching for a guard on `::set` misdirects, and the suggested fix does not parse — TOOL-DEFECT
+
+- **Intent** — "waking the engineer costs more the later you do it": the increment
+  should depend on how far the schedule has already advanced.
+- **Attempt** — the first form I reached for was a guard on the write itself, by
+  analogy with `when=` on lines and on choices, which is the only guard spelling the
+  language has shown me:
+  ```lute
+  ::set{run.shedPressure += 3 when="run.shedPressure > 0"}
+  ```
+- **Result** — a diagnostic about the wrong thing entirely:
+  ```
+  10:33: error [E-CEL-PARSE] `=` assigns; comparison is `==` — did you mean
+         `3 when=="run.shedPressure > 0"`? (dsl 0.4 §8.1)
+  ```
+  My `when=` was swallowed into the CEL expression on the right of `+=`, so the parser
+  saw a stray `=` and offered the `==` fix it offers for `if (x = 1)`. The real problem
+  is that `::set` has no attribute surface at all — it is `::set{path op celExpr}` and
+  nothing else. Nothing in the message hints at that.
+- **And the suggestion is not merely unhelpful, it is invalid.** Applying it verbatim:
+  ```lute
+  ::set{run.shedPressure += 3 when=="run.shedPressure > 0"}
+  ```
+  ```
+  10:29: error [E-CEL-PARSE] not a valid condition expression:
+         `3 when=="run.shedPressure > 0"` (dsl 0.4 §8.1)
+  ```
+  The tool proposed a repair and its own next run rejects it. An author who trusts the
+  did-you-mean — and T3.4 shows did-you-mean is usually excellent here — is walked one
+  step further from the answer.
+- **Resolution — the intent is fully expressible, twice over, and neither form is
+  worse than what I wanted.** The right-hand side is a complete CEL expression, so the
+  scaling cost is a ternary:
+  ```lute
+  ::set{run.shedPressure += run.shedPressure > 0 ? 3 : 2}     # ok, exit 0
+  ```
+  and a genuinely guarded write is a `<match>`, which is the construct the language
+  designates for state dispatch:
+  ```lute
+  <match on="run.shedPressure">
+  <when test="$ > 0">
+  ::set{run.shedPressure += 3}
+  </when>
+  <otherwise>
+  ::set{run.shedPressure += 2}
+  </otherwise>
+  </match>                                                     # ok, exit 0
+  ```
+  The committed scene keeps the flat `+= 2` / `+= 1` because the beat wants a fixed
+  price per pod, not a rising one — that is an authorial choice made after confirming
+  the alternative works, not a substitution made to avoid finding out.
+- **Verdict** — `TOOL-DEFECT`, and it is filed for the misdirection, not the missing
+  attribute. There is no `LANGUAGE-GAP`: the intent is expressible two ways. There is
+  no `DOC-GAP`: `state-model.md` gives the grammar as `::set{path <op> celExpr}` and
+  `branch-match-when.md` gives `<match>`; both are on the shipped site. What fails is
+  a diagnostic that names the wrong construct and then emits a repair that does not
+  compile — the protocol's highest-priority category, "it said X, the real problem was
+  Y", with the added cost that following its advice loses you a second round trip.
+  A parse failure *inside a `::set` body* has enough context to say the useful thing:
+  "`::set` takes no attributes; guard a write with `<match>`/`<when>`."
+
+#### T3.7 — `lute context` says "directives (9)" and omits all four built-in `::`-directives — TOOL-DEFECT
+
+- **Intent** — before writing the first branching scene, ask the tool what may go in
+  it. T1.6 already established that `context` ships vocabulary and not grammar, so this
+  entry is deliberately *not* that complaint: it is about an item that belongs to the
+  vocabulary half, in a list `context` does emit, under a header that counts it.
+- **Attempt** — `lute context docs/examples/anseo/scenes/cryobank.lute`, and `--json`.
+- **Result** — both renderings list exactly nine directives:
+  `auto, bg, camera, cut, end, music, sfx, vfx, video`.
+  The four `::`-directives this scene is built on, or that any stateful scene is built
+  on, are absent from both: **`::set`, `::assert`, `::retract`, `::use`.**
+  `language/directives.md` names them explicitly as directives — its §"Reserved
+  directives" opens *"Two `::`-directives are built-in rather than staging
+  vocabulary"* — so this is not a category quibble about what the word means. Note
+  that `::end` **is** in the list, and `::end` is core control flow, not staging
+  vocabulary; so the list is not "staging directives only" either. It is nine of
+  thirteen with no rule connecting them and a count that implies completeness.
+- **What `context` does get right here, and it is a lot** — recorded so the entry is
+  not one-sided. With `world.schema.yaml` in scope it renders the entities, the
+  relations *with arity and argument kinds* (`knows/2(crew, topic)`), the derived
+  marker (`can_halt/1(crew) [derive]`), the rule text, and the state schema — including
+  `scene.choices.whoWakes: enum [wakeToma, wakeIlsabet, wakeNobody, unset]`, the
+  reserved path my own `<branch>` had just brought into existence. For the relational
+  layer, `context` is genuinely the best surface in the toolchain.
+- **Resolution** — wrote the scene from the brief and the website. From `context` alone
+  I could not have learned that `::set` or `::assert` exist.
+- **Verdict** — `TOOL-DEFECT`, on the same criterion as T1.6 but for a different
+  reason, and it is worth keeping the two apart. T1.6's missing items (the content-line
+  form, frontmatter, headings, `code`) are *grammar*, which the docs deliberately own —
+  `dialogue-and-cast.md` says so from the other side. A directive name is not grammar;
+  it is the exact kind of project-resolved vocabulary this output exists to enumerate,
+  it sits in a section headed `directives (N)`, and the parenthesised count asserts
+  the list is whole. An AI harness pointed at `--json` — which the `--help` text
+  invites — will never emit a `::set`, and nothing in the output signals an omission.
+
+#### T3.8 — a single-brace `{run.shedPressure}` in a choice label is silently literal text — TOOL-DEFECT
+
+- **Intent** — make the price visible on the button: "Wake the engineer (schedule 4)".
+  `choices-and-hubs.md` says a label "may interpolate" and gives no syntax on that page,
+  so I guessed.
+- **Attempt** — the three spellings a working author would try, in the order I tried
+  them. Single braces first, because `{…}` is the attribute-block delimiter everywhere
+  else in Lute (`@vesna{…}`, `::set{…}`), so it is the most Lute-shaped guess:
+  ```lute
+  <choice id="a" label="Wake the engineer (schedule {run.shedPressure})">
+  <choice id="a" label="Wake the engineer (schedule ${run.shedPressure})">
+  <choice id="a" label="Wake the engineer (schedule {{run.shedPressure}})">
+  ```
+- **Result — all three `ok`, exit 0 under `--deny-warnings`, and only one of them
+  means anything:**
+  ```json
+  {run.shedPressure}    -> "label":"Wake the engineer (schedule {run.shedPressure})"
+  ${run.shedPressure}   -> "label":"Wake the engineer (schedule ${run.shedPressure})"
+  {{run.shedPressure}}  -> "label":"Wake the engineer (schedule {{run.shedPressure}})",
+                           "placeholders":[{"kind":"path","path":"run.shedPressure"}]
+  ```
+  Two of the three reach the artifact as literal text a player will read off a button.
+  Three mutually exclusive syntaxes, one diagnostic between them: none.
+- **The checker is not blind here — it is looking one character too narrowly.** Inside
+  the *correct* delimiter, a typo is caught with a suggestion:
+  ```
+  label="… {{run.shedPresure}}"
+  11:1: error [E-UNDECLARED] state path `run.shedPresure` is not declared in `state:`
+        (dsl §9.4) — did you mean `run.shedPressure`?
+  ```
+  Inside single braces, the identical typo is silent, because the whole span is text.
+  So the resolver, the path table, and the did-you-mean machinery are all present and
+  correct at that exact position; they are simply never asked.
+- **Resolution** — the committed scene's labels are plain text, which is what the beat
+  wanted anyway. The finding is the near-miss, not the label.
+- **Verdict** — `TOOL-DEFECT`, filed small and with its counterargument stated.
+  Not `DOC-GAP`: `dialogue-and-cast.md` documents the form plainly — "Content `Text`
+  (and a `<choice>` label) may embed **`{{…}}`** interpolations" — so a working author
+  who reads that page is fine, and I found it on the shipped site, not in Rust.
+  The tool's side is a false green: a document is `ok` while carrying a UI string that
+  will ship a state path to a player verbatim. **The honest counterargument** is that
+  literal braces in prose are legitimate and a blanket warning would be noise. That is
+  why the scoping matters and why this is filable rather than a wish: the precise,
+  low-noise rule is *single braces wrapping a string that resolves to a declared state
+  path* — the checker already has the path table open at that span, and a `W-` code
+  there would fire on essentially nothing else. The precedent is `W-INJECT-CONFLICT`
+  (T2.1), whose entire job is "this thing you wrote is not doing what you think".
+  One sentence on `choices-and-hubs.md` linking to the interpolation section would
+  close the other half; today that page says "may interpolate" and stops.
+
+#### T3.9 — a broken state schema is reported as a count with no message, and the obvious way to look closer misparses it as a scene — TOOL-DEFECT
+
+Found while probing whether an author may declare their own clock (T3.1). This scene
+is the first in the project to `uses:` `world.schema.yaml`, so every later task's
+schema edit lands on this diagnostic.
+
+- **Intent** — declare `run.clock: { type: narrativeTime }` and find out whether the
+  language lets an author invent a time axis.
+- **Attempt** — one line added to a scratch `world.schema.yaml`, then `lute check` on a
+  scene that imports it.
+- **Result** — rejected, correctly, and unusably:
+  ```
+  scenes/g_clock.lute:1:1: error [E-USES-PARSE] schema import
+  `/private/tmp/t3/anseo/world.schema.yaml` has parse/frontmatter errors (1 issue(s))
+  ```
+  A count. Not the issue. The message names the file and the number of problems in it
+  and never the problem, and `--json` carries exactly the same single diagnostic with
+  nothing nested inside it. A *hard YAML syntax error* in the same file produces the
+  byte-identical shape — `(1 issue(s))` — so the author cannot even tell a typo'd type
+  name from unbalanced brackets.
+- **Every other way to look closer, and what each does:**
+  - `lute check-project` — repeats the same count-only line once per importing
+    document. In this project that is 32 identical lines saying nothing.
+  - `lute doctor <project>` — **exit 0**, and prints
+    `✓ content documents: 32 .lute file(s)` plus the vocabulary summary. It reports the
+    project healthy while the state schema is broken.
+  - `lute context <schema>` — exit 0, emits a surface with `stateSchema (0):`. Zero
+    declared paths is exactly what an *empty* schema looks like, so the one output that
+    could have shown the damage renders it as absence.
+  - `lute check world.schema.yaml` — the natural next move, and the worst outcome. It
+    parses the YAML schema **as a scene document**:
+    ```
+    world.schema.yaml:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is
+      missing; every root document must declare `kind: scene` or `kind: quest`
+    world.schema.yaml:1:1: error [E-META-MISSING] required meta key `character` is missing
+    world.schema.yaml:1:1: error [E-META-MISSING] required meta key `season` is missing
+    world.schema.yaml:1:1: error [E-META-MISSING] required meta key `episode` is missing
+    world.schema.yaml:2:3: error [E-UNCLASSIFIED] unrecognized line
+    … one E-UNCLASSIFIED per line of the schema
+    ```
+    This is not a bad error, it is a *wrong* one: it is the same flood for a perfectly
+    valid schema file, it never mentions the actual defect, and an author who follows
+    its advice adds `kind: scene` to their state schema and destroys it.
+  - There is no `lute explain`; `lute --help` lists no subcommand that opens a schema.
+- **Resolution** — I recovered only because I had just typed the offending line and
+  could bisect it out. An author who edits a schema and comes back an hour later has
+  a count and a file.
+- **Verdict** — `TOOL-DEFECT`, and the strongest sub-case is the misdirect, which the
+  protocol ranks above almost everything: the one command whose name promises to check
+  a file tells you your state schema is missing `kind:`, `character:`, `season:` and
+  `episode:`. The information plainly exists — something produced the count `1`, so the
+  underlying issue list is in hand and is discarded at the reporting boundary. That is
+  the `TOOL-DEFECT` criterion word for word: "the information exists, but the tool that
+  promised to hand it to you did not." Related to T1.9 and T1.10 in kind — this
+  toolchain's project-level diagnostics repeatedly lose either their location (T1.9's
+  `0:0`, T1.10's manifest with no path) or, here, their body.
+- **Confirmed in passing:** `type: narrativeTime` is not author-declarable, which is
+  the T3.1 claim's other half. The rule is stated on `facts-and-datalog.md`
+  (`E-TEMPORAL-ARG`); the diagnostic that enforces it is the one above.
+
+#### T3.10 — an unknown key in a mock file is silently ignored by both `trace` and `run` — TOOL-DEFECT
+
+- **Intent** — drive each arm of the branch to prove the counter moves (T3.1's
+  verification). Writing the mock from memory rather than the page, I guessed the key.
+- **Attempt** —
+  ```yaml
+  state:
+    run.shedPressure: 0
+  selections:
+    whoWakes: wakeToma
+  ```
+- **Result** — `lute run artifact.json --mock that.yaml` accepts the file, makes no
+  selection, and stops:
+  ```
+  001-0500  choice [whoWakes] -> (none)
+  -- final state --
+    run.shedPressure = 0
+    scene.choices.whoWakes = unset
+  run incomplete
+  ```
+  Exit 3. Nothing says the mock contained a key it did not understand; "incomplete" is
+  also what you get from a mock that is simply missing the selection, so the two are
+  indistinguishable. I initially read this as "`--mock` does not carry selections to
+  `run` at all" — which would have been a much bigger and entirely false finding — and
+  only caught it by reading `tooling/tracing.md`, where the key is `choose:`.
+  With `choose: { whoWakes: wakeToma }` it works perfectly and exits 0 (T3.1).
+  `lute trace --mock` with the same bogus keys (`selections:`, `chose:`) is exit **0**
+  and walks the scene as if no mock had been supplied.
+- **Resolution** — used the documented key. The mock format is on the page, correctly,
+  with all five surfaces in one YAML block.
+- **Verdict** — `TOOL-DEFECT`. Not `AUTHOR-ERROR` — or rather, it began as one, and it
+  is recorded because the diagnostic pointed nowhere, which the table says is exactly
+  when to record one. The contract being broken is explicit: `trace --help` says it
+  "refuses (exit 1) a document with check errors OR **invalid mocks**", and
+  `tracing.md` enumerates six `E-TRACE-MOCK-*`/`E-TRACE-*` refusals — every one of them
+  for a bad *value* (undeclared path, wrong literal type, unknown relation, ineligible
+  choice). An unrecognised *key* is not among them and is not refused. A mock whose
+  selection key is misspelled is an invalid mock; both tools read it, silently discard
+  half of it, and report a result. `trace`'s header does whisper the truth —
+  `(seeds: 1 paths, 0 facts; 0 selections)` — which is the only tell in either tool,
+  and it is a count you have to already suspect. This compounds T1.9: mocks are the one
+  part of a Lute project with no checker over them, and now with no key validation
+  inside the tools that do read them.
+
+#### T3.11 — the route-ancestor chain is verified project-wide, with did-you-mean — WORKED WELL
+
+- **Intent** — this scene is the ancestor of everything downstream, so `after:` is
+  load-bearing in a way it was not for `wake.lute`. Find out whether a wrong scene key
+  is caught, or whether the eleven-scene graph can quietly come apart.
+- **Attempt** — `after: 'visited("anseo.s01ep01")'` as committed, plus two deliberate
+  breakages: a wrong episode (`anseo.s01ep99`) and a misspelled character
+  (`anso.s01ep01`).
+- **Result** — both caught at project level, both with a suggestion:
+  ```
+  scenes/a_typo.lute:7:1: error [E-CONN-UNKNOWN-NODE] unknown node: no scene resolves to
+    key `anseo.s01ep99` (`visited`, dsl §2.3/§4.1) — did you mean `anseo.s01ep01`?
+  scenes/a_bad.lute:7:1:  error [E-CONN-UNKNOWN-NODE] unknown node: no scene resolves to
+    key `anso.s01ep01`  (`visited`, dsl §2.3/§4.1) — did you mean `anseo.s01ep01`?
+  ```
+  And `lute scenario` reports the resulting graph directly, which is the readback the
+  eleven-scene structure will need:
+  ```console
+  $ lute scenario docs/examples/anseo
+    topological layers:
+      layer 0: scene(anseo.s01ep01)
+      layer 1: scene(anseo.s01ep02)
+    edges (prerequisite -> dependent) [atom kind(s)]:
+      scene(anseo.s01ep01) -> scene(anseo.s01ep02) [visited]
+  ```
+- **Verdict** — worked well. `lute scenario` is the tool T2.5 wished for and did not
+  have: a rendering that shows the structural fact rather than making you infer it.
+- **One caveat later tasks must carry**, not a defect — the subcommand help states it:
+  the per-file `lute check` on a scene whose `after:` names a nonexistent scene prints
+  `ok: … (0 warning(s))`, exit 0. `E-CONN-UNKNOWN-NODE` is a *project-wide* diagnostic
+  and only `check-project` computes it. Checking one file is not enough to know the
+  route is intact.
+
+#### T3.12 — `trace` and `run` render branching honestly — WORKED WELL
+
+- **Attempt** — read the committed scene back through both preview tools.
+- **Result** — `lute trace` shows the construct, the eligible set, the winning arm, and
+  every effect inside it:
+  ```
+  <branch whoWakes>   eligible: wakeToma, wakeIlsabet, wakeNobody   -> wakeToma (auto)
+    ::set  run.shedPressure = 2
+    ::assert  awake(toma)
+    ::assert  knows(toma, shed_sequence)
+    @toma  How long have I been under?
+  trace complete: 1 decision; choices 1/3 (whoWakes)
+  ```
+  `lute run` does the same over the artifact, with addresses and a final-state dump.
+- **Verdict** — worked well, and it is the direct contrast to T2.5, where the same two
+  tools discarded the one bit that said a character had left. For branching, state, and
+  facts they discard nothing: eligibility, selection, both effect kinds, and the
+  coverage summary are all there.
+- **One readback nuance, noted rather than complained about:** trace renders `+= 2` as
+  `::set run.shedPressure = 2`, i.e. the resolved post-value, not the delta. Seeded
+  with `--state run.shedPressure=7` the same line prints `= 9`. That is arguably the
+  more useful number — it is the state after — but for a scene whose subject is *how
+  much each choice costs*, the price the author wrote is the thing that is no longer on
+  screen. `= 9 (+= 2)` would carry both.
+
+#### T3 summary
+
+Twelve entries: six *worked well*, six `TOOL-DEFECT`, no `LANGUAGE-GAP`, no `DOC-GAP`,
+no `AUTHOR-ERROR`. Nothing this scene wanted was inexpressible, and — the part that
+matters for the authoring rule — nothing was substituted. The counter, the branch, the
+per-arm facts, the conditional availability, and the scaling cost were each written in
+the form I first reached for, and each of them worked.
+
+**The design claim holds and is now demonstrated, not asserted.** The compiled scene
+contains `{sprite: 2, line: 5, choice: 1, set: 2, assert: 4, jump: 3}` and no
+time-driven command of any kind; the reference runtime moves `run.shedPressure` to 2,
+to 1, or not at all, strictly according to which `::set` an author placed in which arm;
+and the language refuses to let an author declare a clock of their own. There is no
+engine clock.
+
+**The split in the findings is sharp and it is not about the language.** Everything
+*declared* is checked superbly: relation arity, per-argument entity domains, derived-
+relation writes, undeclared and misspelled state paths in every position including
+inside `{{…}}`, `E-BRANCH-ALL-GUARDED`, `E-INTO-VALUE`/`E-INTO-TARGET`,
+`E-MAYBE-UNSET`, `E-CONN-UNKNOWN-NODE`. T3.4 is the answer to whether `entities:` earns
+its keep — a transposed `knows(shed_sequence, toma)` is caught per argument index, and
+no string-keyed design could do that.
+
+Set against it, **T3.2 is the finding to act on**: the declared `type:` of a state path
+constrains `into=`/`value=` and constrains nothing about `::set`. `::set{run.shedPressure += "two"}`
+on a `number` path is `ok` under `--deny-warnings`, compiles, and is silently evaluated
+to `0` by the reference runtime; `::set{run.shedPressure = true}` writes a boolean into
+it. For a work whose central mechanic is a schedule that advances, that is a counter
+that stops counting with every gate green.
+
+The remaining five defects are the same shape T1 and T2 found, in new places: tools
+that lose information they hold. `context` omits four directives from a list that
+counts itself (T3.7); `E-CEL-PARSE` names the wrong construct and proposes a repair
+that does not parse (T3.6); a single-brace near-miss ships a state path to a player
+(T3.8); a broken state schema is reported as an integer while the command you would
+run next misparses the schema as a scene (T3.9); a mock key typo is discarded by both
+tools that read mocks (T3.10). Four of the six turn on the same missing habit —
+*say what you found, not how much of it there was* — and T3.9 is the one to fix first,
+because it is the only one where the tool's advice actively damages the file.
+
