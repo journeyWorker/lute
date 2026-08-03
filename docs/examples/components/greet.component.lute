@@ -2,8 +2,13 @@
 # Reusable content component (dsl §13). A component FILE declares `component:`
 # (its name) + optional `params:` (typed exactly like a scene `defs` param,
 # §8.1). The body is a PRESENTATIONAL template: lines + staging directives +
-# `@param` refs only — no state read/write and no logic blocks. It is imported
-# by a scene via `components: [..]` and expanded inline by `::use`.
+# `@param` refs — no state read/write, and no logic block EXCEPT a param-scoped
+# `<match on="@param">`, which dsl 0.4.0 §6.2 admits (dispatching on an
+# invocation argument reads no ambient state and records nothing; see
+# `reaction.component.lute`). `<branch>`/`<hub>` stay forbidden on principle —
+# presenting a menu records the selection into `scene.choices.*`, a state write.
+# It is imported by a scene via `components: [..]` and expanded inline by
+# `::use`.
 component: greet
 params:
   who: string
