@@ -577,3 +577,187 @@ That is a better reading of 0.9.0 than the first pass gave — the language and 
 docs are in better shape than the tools that describe them — and a worse one for
 anyone trusting a tool's own account of itself. One thing must not be carried
 forward from the first pass: T1.10's original "nearest manifest wins" is wrong.
+
+### T2 — The exits proof
+
+Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`. One beat added
+to `scenes/wake.lute`: Vesna decides to take the second pod, and goes back under.
+
+#### T2.1 — the natural position for an exit is accepted, preserved, and inert — DOC-GAP
+
+- **Intent** — Vesna says she is taking the second pod, and returns to cryo. One
+  beat: the line, and the character leaving on it.
+- **Attempt** — the departure written where the departure happens, on the line
+  that *is* the departure:
+  ```lute
+  @vesna{code="0030" emotion="hollowed" action="go-under"}: If the second pod's intact, I'm taking it.
+  ```
+  Nothing about this form is speculative. `action` is a documented **line**
+  attribute — `language/dialogue-and-cast.md`, "Line attributes": `code`,
+  `emotion`, `variant`, **`action`**, `dialogMotion`, `as` — and `go-under` is a
+  declared member of the `action` domain, declared in its `exits:`.
+- **Result — silence, at every gate I could reach:**
+  ```console
+  $ lute check docs/examples/anseo/scenes/wake.lute --project docs/examples/anseo
+  ok: … (0 warning(s))                                           # exit 0
+  $ lute check … --deny-warnings
+  ok: … (0 warning(s))                                           # exit 0
+  $ lute check-project docs/examples/anseo
+  ok: docs/examples/anseo (1 file(s), 0 project-wide warning(s))  # exit 0
+  $ lute compile … -o /tmp/t2-probe.json                          # exit 0
+  ```
+  The artifact keeps the attribute and drops the meaning:
+  ```json
+  {"kind":"line","addr":"001-0500","role":"dialogue","speaker":"vesna",
+   "text":"If the second pod's intact, I'm taking it.","emotion":"hollowed",
+   "action":"go-under","lineId":"anseo.s01ep01.vesna_0030","voiceKey":"vesna-0030"}
+  ```
+  `[c for c in commands if c.get('exit')]` → `[]`. Vesna never leaves, and she is
+  still on stage for the rest of the scene: the only two callers of
+  `is_declared_exit` are both on `::auto`'s `action`, and the one that removes a
+  character from `StageState.on_stage` (`inject.rs:192`) is never reached from a
+  content line.
+- **Is there ANY signal that separates the two positions?** Every surface a
+  working author has:
+  - `lute check --json` — `"diagnostics": []`, and `resolved.commands_preview`
+    renders the whole run as `["::auto", ":vesna", ":vesna", ":vesna"]`. No exit,
+    and no way to see one is missing.
+  - `lute context` (human) — `auto: character, anchor, action`. Content lines are
+    absent from the output entirely (T1.6), so it lists `action` as an `::auto`
+    attribute and never mentions the line position. Nothing says either position
+    ends a presence.
+  - `lute context --json` — **the one place in the toolchain where the fact
+    exists.** The `auto` entry carries
+    `"semantics": ["reads.onStage","usesAnchor","mayExitCharacter","writes.characterState"]`.
+    `mayExitCharacter` is the machine-readable statement that `::auto` is the
+    construct that can end a presence. It is dropped from the human rendering of
+    the same command, and it appears **nowhere** in
+    `packages/website/src/content/docs/` — no hit across the shipped site. The
+    only files in the repo that name it are `crates/`, `docs/architecture.md`,
+    `docs/plugin-system.md`, and two proposals.
+  - `lute trace` and `lute run` — both render every sprite record with no action
+    and no exit marker (`<auto>` and `sprite` respectively), so neither preview
+    would have shown me the beat was missing.
+
+  Nothing the author reads tells them, and nothing they run tells them.
+- **And the checker already warns about this exact shape elsewhere.**
+  `check-project docs/examples` emits, twice, over other examples:
+  ```
+  warning [W-INJECT-CONFLICT] `bianca` is shown with an explicit `anchor="center"` that `auto-anchor-on-show` would otherwise inject
+  ```
+  A `W-` code whose entire job is "this staging attribute you wrote is not doing
+  what you think it is doing". So the precedent exists. So does the information:
+  the resolved `action` domain is demonstrably in hand at the content-line check —
+  T1.4 has it enumerating all seven members in an `E-BAD-ENUM` on a line's
+  `action=` — and `is_declared_exit` is `pub` for exactly this reason. The warning
+  is simply not written.
+- **Resolution** — staged the departure as its own directive, i.e. the beat
+  written as two events instead of one:
+  ```lute
+  @vesna{code="0030" emotion="hollowed"}: If the second pod's intact, I'm taking it.
+  ::auto{character="vesna" action="go-under"}
+  ```
+- **Verdict** — `DOC-GAP`, and the scope needs to be precise, because the obvious
+  over-claim is available here and it is wrong.
+
+  What the website *does* say, plainly, checked before assigning this:
+  `language/directives.md` — "Character staging lives on `::auto` with an action
+  id (there is no `::sprite`/`::char`) … a character exit is
+  `::auto{action="fade-out-down"}`"; and `language/vocabulary.md` — an `exits:`
+  member "lowers to a `sprite` record carrying `exit: true`". Read together those
+  two sentences give the right answer, and an author who read `directives.md`
+  first would have written the `::auto`. This is **not** a claim that the rule is
+  unstated or that any page is wrong.
+
+  The hole is narrower and it is real: **the website never says what a content
+  line's `action` attribute does.** `dialogue-and-cast.md` offers it as one of six
+  line attributes and then says only that their *domains* are project vocabulary;
+  it assigns `action` no semantics, does not mention `::auto`, and does not
+  cross-reference `directives.md`. `tooling/runtime-contract.md` never lists
+  `action` among a `line` record's fields. So the attribute is handed to authors
+  on one page, its one plausible meaning is assigned to a different construct on
+  another, and neither page points at the other. I established what `line.action`
+  actually is — a pass-through that nothing reads — by compiling the probe and
+  then reading `crates/lute-compile/src/lower.rs:178-198` and
+  `crates/lute-check/src/inject.rs:192,432`. That is the harsh bar, met: I read
+  Rust to learn what a documented attribute means.
+
+  It is also the protocol's *silence* case in its expensive form. The document is
+  green, the string survives into the artifact where a reader will see
+  `"action":"go-under"` on the line and assume it means something, and the beat is
+  simply absent. A one-sentence addition to `dialogue-and-cast.md` — what
+  `action` on a line is for, and that a character exit is `::auto` — closes the
+  documentation half of it.
+
+#### T2.2 — the proof, and its negative control — WORKED WELL
+
+- **Attempt** — brief Steps 2 and 3, the second run as a real control rather than
+  a formality: change nothing but the member, `go-under` → `drift`. Both are
+  declared members of the same `action` domain; both are equally opaque strings;
+  only one is in `exits:`.
+- **Result** — the two artifacts differ in exactly one key, at the same address:
+  ```json
+  go-under: {"kind":"sprite","addr":"001-0600","character":"vesna","action":"go-under","exit":true}
+  drift   : {"kind":"sprite","addr":"001-0600","character":"vesna","action":"drift"}
+  ```
+  Positive: `[c for c in commands if c.get('exit')]` → exactly one record.
+  Negative: `[]`. `check --deny-warnings` is clean in both directions, which is
+  the point — `drift` is not an error, it is simply not an exit.
+- **Verdict** — worked well, and it is the strongest single thing measured so far.
+  `exit` is derived from one declared list, in one file, by one function both the
+  checker and the compiler call, and it is `Option<bool>` set to `Some(true)` or
+  `None` — so a non-exit omits the key entirely rather than serializing
+  `"exit": false`, and a consumer cannot confuse "not an exit" with "unset".
+  Nothing in this vocabulary would have survived the deleted
+  `fade-out*`/`exit*`/`hide` heuristic: `go-under` and `step-out` would both have
+  been missed, and `drift` would have been correctly ignored only by accident.
+  That is the whole argument for the declaration, demonstrated rather than
+  asserted.
+
+#### T2.3 — the finished source cannot tell you which `::auto` is the exit — ERGONOMIC
+
+- **Intent** — read the shot back as an author who did not write it.
+- **Attempt** — the committed scene, in full:
+  ```lute
+  ## Cold Wake
+  ::auto{character="vesna" anchor="port" action="brace"}
+  @vesna{code="0010" emotion="clipped"}: Cryo's gone. We don't go back under.
+  @vesna{code="0020" emotion="level"}: So we walk.
+  @vesna{code="0030" emotion="hollowed"}: If the second pod's intact, I'm taking it.
+  ::auto{character="vesna" action="go-under"}
+  ```
+- **Result** — the entrance and the exit are the same construct with the same
+  attribute names, and the entire difference between "Vesna is now on stage" and
+  "Vesna is gone" is which of `brace` and `go-under` appears in a list in
+  `../vocabulary.schema.yaml`. Position is a hint, not a rule: the exit happens to
+  be last here, but nothing requires that, and I verified the compiler does not
+  mind — a scene that exits, keeps speaking, and exits again is
+  `ok: … (0 warning(s))` under `--deny-warnings` and emits two `exit: true`
+  records with a `@vesna` line between them. No author-facing surface annotates
+  the difference in place: `lute trace` prints both directives as `<auto>`,
+  `lute run` prints both records as `sprite`.
+- **Resolution** — none; the source stands as written, and the adjacent
+  line/directive pair reads acceptably here only because the line carries
+  `emotion=` and the directive carries `action=`. Had the beat wanted both, the
+  two adjacent lines would be genuinely ambiguous to a reader. The one command
+  that helps is `lute doctor`, which prints the resolved semantics on one line:
+  `• vocabulary slots declared: emotion, action (exits: step-out/go-under), anchor (default: center), …`
+- **Verdict** — `ERGONOMIC`. This is the deliberate 0.9.0 trade and the entry is
+  not an argument against it: a declared list beats a name prefix precisely
+  *because* `go-under` is unguessable. But the cost is real and it lands on the
+  reader rather than the writer — staging semantics are now non-local, and the
+  three tools that render a scene for a human (`trace`, `run`, `context`'s human
+  mode) each discard the one bit that says a character left. `trace` printing
+  `<auto exit>`, or `context` keeping the `semantics` flags its own `--json`
+  already carries, would close it without touching the language.
+
+#### T2 summary
+
+Three entries: one `DOC-GAP`, one `ERGONOMIC`, one *worked well*. The mechanism
+under test is sound — the negative control is clean, the field is absent rather
+than false, and the declaration does exactly the work the heuristic used to guess
+at. Everything that went wrong is on the *approach* to it: the position that
+carries the meaning is stated on one page, the position that does not is offered
+on another with no semantics at all, no diagnostic separates them, and no preview
+tool shows the difference in the result. An author gets this right by having read
+the correct page first, or by compiling and diffing the JSON.
