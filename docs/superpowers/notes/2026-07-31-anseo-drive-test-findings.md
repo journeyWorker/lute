@@ -3684,7 +3684,7 @@ noticing, and the line you retype in every file.
   delivery flag beside `{mono}`/`{os}`/`{vo}` — "this line begins before the previous one
   ends" — would at least let the source say what the em-dash is doing.
 
-#### T7.2 — two clips that touch are an overlap; two clips at the same instant are not — TOOL-DEFECT
+#### T7.2 — two clips that touch are rejected as an overlap, because the track cursor's float sum overshoots the boundary the author wrote — TOOL-DEFECT
 
 - **Intent** — the shed effect plays, and the pressure drop begins the moment it finishes.
   One channel, two clips, hand-off at the boundary. `::vfx{type="shed" at="0.8" duration="0.4"}`
@@ -3700,44 +3700,113 @@ noticing, and the line you retype in every file.
   ```
   spine-a.lute:38:5: error [E-CLIP-OVERLAP] clip at 1.2 overlaps another clip in track `#vfx`
   ```
-  `docs/runtime/timeline-semantics.md` specifies the rule as "two clips in the **same** track
-  whose `[at, at+duration)` **half-open** intervals overlap". `[0.8, 1.2)` and `[1.2, …)` do
-  not overlap under that definition. The implemented test is closed on the first clip's end.
-- **Probed until the rule was exact.** Five one-clip-pair variants, each checked on its own:
+  Both normative sources make this hand-off legal, and they agree.
+  `docs/proposals/scenario-dsl/0.1.0.md` §11.4:
 
-  | clips in one track | result |
-  |---|---|
-  | `at=0.8 duration=0.4` + `at=1.2 duration=0.1` | **E-CLIP-OVERLAP** |
-  | `at=0.8 duration=0.4` + `at=1.19 duration=0.1` | **E-CLIP-OVERLAP** |
-  | `at=0.8 duration=0.4` + `at=1.2000001 duration=0.1` | `ok` |
-  | `at=0.8 duration=0.4` + `at=1.3 duration=0.1` | `ok` |
-  | `at=0.8 duration=0.4` + `at=0.8` *(no duration)* | **`ok`** |
-  | `at=0.8` + `at=0.8` *(neither has a duration)* | **`ok`** |
+  > - a clip's **resolved end** = its start + `duration` (or its start, if it carries no
+  >   `duration`).
+  > - clips within one track MUST NOT overlap: a clip whose start precedes the previous clip's
+  >   resolved end is **`E-CLIP-OVERLAP`**.
 
-  So the check requires `next.at > prev.at + prev.duration` **strictly** — and a clip with no
-  resolvable `duration` is exempt from the analysis entirely, in both directions.
-- **Why the second half is the worse half.** The invariant this code exists to enforce is
-  stated in the same document: "within one track, at most one clip is active at any instant —
-  a track is a single sequential writer", and that is the premise the engine contract's
-  concurrent-execution option is built on. The last two rows are two clips scheduled at
-  **literally the same instant on the same track** and they pass. The first two rows are
-  clips that are *never* simultaneous and they fail. The check is inverted at exactly the
-  boundary it is about.
+  `1.2` does not *precede* `1.2`. `docs/runtime/timeline-semantics.md` states the same rule in
+  interval form — "two clips in the **same** track whose `[at, at+duration)` **half-open**
+  intervals overlap" — and `[0.8, 1.2)` and `[1.2, …)` are disjoint. The clip is legal under
+  both spellings of the rule and is rejected.
+- **Probed until the rule was exact.** One clip pair per run, each checked on its own, and the
+  last four rows added on the re-check that produced the retraction below:
+
+  | clips in one track | result | matches §11.4? |
+  |---|---|---|
+  | `at=0.8 duration=0.4` + `at=1.2 duration=0.1` | **E-CLIP-OVERLAP** | **no — this is the defect** |
+  | `at=0.8 duration=0.4` + `at=1.19 duration=0.1` | **E-CLIP-OVERLAP** | yes |
+  | `at=0.8 duration=0.4` + `at=1.2000001 duration=0.1` | `ok` | yes |
+  | `at=0.8 duration=0.4` + `at=1.3 duration=0.1` | `ok` | yes |
+  | `at=0.8 duration=0.4` + `at=0.8` *(no duration)* | `ok` | **yes** |
+  | `at=0.8` + `at=0.8` *(neither has a duration)* | `ok` | **yes** |
+  | `at=0.8 duration=0.4` + `at=0.8 duration=0.1` | **E-CLIP-OVERLAP** | yes |
+  | `at=0.8 duration=0.4` + `at=0.8 duration=0.4` | **E-CLIP-OVERLAP** | yes |
+  | `at=0.8` *(no duration)* + `at=0.8 duration=0.1` | `ok` | yes |
+  | `at=0.8 duration=0.4` + `at=0.9` *(no duration)* | **E-CLIP-OVERLAP** | yes |
+
+- **RETRACTION — the second half of this entry, as first written, was wrong.** The original entry
+  claimed `E-CLIP-OVERLAP` is a "wrong answer in both directions": restrictive at the boundary
+  **and** permissive for "two clips at the same instant on one track", which it called "the worse
+  half" and "the only thing the invariant exists to prevent". It also claimed "a clip with no
+  resolvable `duration` is exempt from the analysis entirely, in both directions". Neither claim
+  survives, and the error was mine, not the checker's: **both accepted same-instant probes omit
+  `duration`.** §11.4 defines a clip's resolved end as "its start, if it carries no `duration`",
+  so each of those clips resolves to the degenerate interval `[0.8, 0.8)` — a span that contains
+  no instant and therefore cannot be simultaneous with anything, including itself. The rule
+  raises `E-CLIP-OVERLAP` only when a start *precedes* a previous resolved end, and `0.8` does
+  not precede `0.8`. `timeline-semantics.md` also specifies what happens to genuinely
+  same-instant records — clips are emitted in "`(at, track index)` order … stable on ties so
+  same-`(at, track)` clips keep document order" — so a same-instant pair is ordered, not raced.
+  Accepting those two probes is **correct behaviour**, and the zero-duration probes did not test
+  what I read them as testing: they measured the rule's treatment of empty intervals, not its
+  treatment of simultaneity.
+
+  Re-probed with `duration` present on both clips (rows 7–8 above), the checker **rejects**
+  same-instant clips exactly as it should. The exemption claim is refuted too: row 10 is a
+  no-`duration` clip *inside* a preceding clip's span and it is correctly rejected, so a clip
+  with no `duration` participates fully in the analysis as a zero-width point. **The checker is
+  right in the permissive direction. The defect is not bidirectional; there is one defect here,
+  at the boundary.**
+- **The mechanism is float accumulation, not the comparison operator** — which is the other
+  thing the original entry got wrong. It concluded "the check requires
+  `next.at > prev.at + prev.duration` **strictly**". It does not. `timeline.rs` tests
+  `if at < o_end && o_at < end` — a textbook half-open intersection, symmetric, against every
+  earlier clip in the track. Written out, no-error requires `at >= prev.at + prev.duration`,
+  which is *non*-strict and is precisely what §11.4 asks for. The comparison is already correct.
+  What is wrong is the right-hand side: `0.8 + 0.4` in IEEE-754 binary is
+  `1.2000000000000002`, so `1.2 < 1.2000000000000002` holds and a hand-off the author spelled
+  exactly on the boundary lands one ULP inside the previous clip.
+
+  Confirmed by choosing boundaries that are exactly representable in binary, where the same
+  hand-off shape passes:
+
+  | hand-off | `at + duration` computes to | result |
+  |---|---|---|
+  | `at=0.5 duration=0.25` + `at=0.75` | `0.75` (exact) | `ok` |
+  | `at=1.0 duration=0.5` + `at=1.5` | `1.5` (exact) | `ok` |
+  | `at=0.25 duration=0.5` + `at=0.75` | `0.75` (exact) | `ok` |
+  | `at=0.8 duration=0.4` + `at=1.2` | `1.2000000000000002` | **E-CLIP-OVERLAP** |
+  | `at=0.1 duration=0.2` + `at=0.3` | `0.30000000000000004` | **E-CLIP-OVERLAP** |
+  | `at=0.2 duration=0.4` + `at=0.6` | `0.6000000000000001` | **E-CLIP-OVERLAP** |
+
+  So boundary hand-off is not broken in general — it is broken for the boundaries authors
+  actually type. `0.75` and `1.5` work; every tenth that is not a negative power of two does
+  not. That is worse than a uniformly broken rule, because the failure looks arbitrary from the
+  author's chair: the same construct, same shape, works at `0.5 + 0.25` and fails at
+  `0.8 + 0.4`, with a diagnostic that prints `clip at 1.2` and names no discrepancy.
+- **The float leak is also visible in an author-facing message, and it is the same bug.**
+  `E-TIMELINE-DURATION` (correctly raised when I set `<timeline duration="0.5">` over a clip
+  ending at 1.2) renders the bound as:
+  ```
+  error [E-TIMELINE-DURATION] timeline duration 0.5 is below the max resolved clip end
+  1.2000000000000002; a timeline may not truncate its own content (dsl §11.4)
+  ```
+  The original entry filed this "in passing" as a cosmetic complaint about float accumulation
+  leaking into a message. It is not cosmetic: it is the same `0.8 + 0.4` the overlap check
+  compares against, printed. The evidence for the root cause was in the entry from the start
+  and I read it as a separate, smaller finding.
 - **Resolution** — the shed's `duration` is `0.35` in the committed scene. I did not want
   `0.35`; I wanted `0.4` and a hand-off. The number in the file is an artifact of the
   diagnostic, and this is the small silent kind of substitution T7 exists to count: nobody
   reading `spine-a.lute` will ever know why the shed is 350ms.
-- **Also, in passing** — `E-TIMELINE-DURATION` (correctly raised when I set
-  `<timeline duration="0.5">` over a clip ending at 1.2) renders the bound as
-  `max resolved clip end 1.2000000000000002`. Float accumulation leaking into an
-  author-facing message; the same `0.8 + 0.4` that the overlap check is comparing.
-- **Verdict** — `TOOL-DEFECT`. The language is fine, the docs are fine and *specify the
-  correct rule*, and the diagnostic's span and wording are good. The implementation
-  contradicts its own written contract in the permissive direction for the case that matters
-  and the restrictive direction for the case authors write. Boundary hand-off is the normal
-  way to sequence two effects on one channel; an author who hits this learns to sprinkle
-  epsilons, and never learns that the invariant they are being protected by is not being
-  enforced.
+- **Verdict** — `TOOL-DEFECT`, and it stands on the boundary case alone. The language is fine,
+  the docs are fine and *specify the correct rule* in two places that agree, the diagnostic's
+  span and wording are good, and the interval logic is right. One float comparison against an
+  accumulated sum contradicts the written contract in the restrictive direction, for the case
+  authors write most: boundary hand-off is the normal way to sequence two effects on one
+  channel. An author who hits it learns to sprinkle epsilons — `1.2000001` passes — and carries
+  that superstition into every timeline afterwards.
+
+  The fix is **not** a comparison operator, which is what this entry originally proposed. It is
+  either an epsilon tolerance on the interval test (compare `at + EPS < o_end`, with `EPS` well
+  below any authorable resolution) or, better, quantising timeline time to integer milliseconds
+  at parse and doing all cursor arithmetic in that domain — which removes the class rather than
+  the instance, and incidentally stops `E-TIMELINE-DURATION` printing
+  `1.2000000000000002` at an author.
 
 #### T7.3 — a timeline's tracks do not exist in the artifact, and one engine option in the runtime contract cannot be implemented — SPEC-WRONG
 
@@ -3786,10 +3855,15 @@ noticing, and the line you retype in every file.
   treat them as one writer — the exact fight the feature prevents.
 - **The spec is internally consistent about it, which is why the verdict is `SPEC-WRONG`.**
   The same page's "What the IR carries" section lists the `Stamp` fields — `timeline`, `at`,
-  `duration`, `delay` — and `track` is correctly absent from that list. Nothing is
-  undocumented and no tool is lying; the compiler emits precisely what the IR schema
-  specifies. Two clauses of one document disagree, and the one that governs the wire format
-  won.
+  `duration`, `delay` — and `track` is correctly absent from that list. *On the question of the
+  missing `track` field* nothing is undocumented and no tool is lying: the compiler emits
+  precisely what the IR schema specifies. Two clauses of one document disagree, and the one
+  that governs the wire format won.
+
+  Scoping that sentence tightly, because as first written it was broader than the evidence and
+  false: I cited that four-item list approvingly without checking the content of its items, and
+  the `timeline` bullet in the very list I was praising *is* wrong about the field it describes.
+  See T7.16.
 - **Proposed alternative** — add `track` (the resolved track key string, exactly the one
   `E-DUP-TRACK` and `E-CLIP-OVERLAP` already compute and print — `#vfx`, `vesna.pos`,
   `camera`) to `Stamp`, beside `timeline`. It is one field, it is already in hand at
@@ -3801,9 +3875,13 @@ noticing, and the line you retype in every file.
 - **What worked, and it is the cleanest first-use since T5.1.** Six tracks written in one
   pass, three keyed by `channel=`, one by `subject=`, two as property tracks on a single
   subject, with deliberately overlapping cross-track offsets (`camera` 0.35–0.85 straddles
-  `vesna.pos` at 0.4). It checked clean on the second attempt and both errors on the first
-  attempt were real. The cursor math is right (an omitted `at` on the track's first clip
-  starts at 0.0; `::sfx` with `duration="0.6"` and no `at` lands at 0.0), the sort is right,
+  `vesna.pos` at 0.4). It checked clean on the second attempt; of the two errors on the first
+  attempt one was real (`E-TIMELINE-CONTENT`, T7.1) and one was the false positive filed as
+  T7.2 — corrected here, because this bullet originally called both of them real and T7.15's
+  own accounting says otherwise. The cursor math is right *as specified* (an omitted `at` on the
+  track's first clip starts at 0.0; `::sfx` with `duration="0.6"` and no `at` lands at 0.0) —
+  T7.2 is a defect in how that arithmetic is *carried*, in binary floating point, not in the
+  rule it implements. The sort is right,
   the barrier lands on the explicit `duration` (1.6) rather than the content maximum (1.2),
   and `E-AT-CONTEXT` — *"`at` is valid only on a `<track>` clip; `::vfx` here is not a
   timeline clip (dsl §7.5)"* — is the most precisely-scoped diagnostic I hit in this task.
@@ -3823,7 +3901,7 @@ noticing, and the line you retype in every file.
   distinguish them. `timeline-and-property-tracks.md` does, in its first sentence
   ("bounded, non-interactive choreography unit"). It is doing real work there.
 
-#### T7.5 — `lute context`'s per-directive attribute lists omit the timing attrs, and the checker accepts them
+#### T7.5 — `lute context`'s per-directive attribute lists omit the timing attrs, and the checker accepts them — recurrence of T1.6/T3.7
 
 - **Intent** — write `::sfx{sound="klaxon-two-tone" duration="0.6"}` and check the attribute
   is legal before compiling.
@@ -4196,7 +4274,9 @@ the way once, outside the entries above.
   construct, the directive and the clause. `E-MATCH-RELATION-SUBJECT` states its rationale
   (T7.6 disputes the rationale, not the message). `E-NONEXHAUSTIVE`, `E-TIMELINE-CONTENT`,
   `E-CLIP-OVERLAP`, `E-UNKNOWN-ATTR` and `E-TIMELINE-DURATION` all landed on the right span with
-  the right words. The four scenes' first drafts drew **six** diagnostics in total —
+  the right words — bar the raw `1.2000000000000002` in `E-TIMELINE-DURATION`'s bound, which
+  T7.2 traces to the same float accumulation. The four scenes' first drafts drew **six**
+  diagnostics in total —
   `E-CLIP-OVERLAP` twice, `E-TIMELINE-CONTENT`, `E-MATCH-RELATION-SUBJECT`, and an
   `E-UNCLOSED-TAG`/`E-UNCLASSIFIED` pair from a stray line my editor left in the file rather
   than from anything I authored. Five were true; the sixth is T7.2.
@@ -4204,13 +4284,96 @@ the way once, outside the entries above.
   (`lute loc report`). The fourth scene took a fraction of the first, and none of the four
   needed a construct that had to be discovered.
 
+#### T7.16 — the `timeline` stamp is documented as a 0-based ordinal and is emitted 1-based — DOC-WRONG
+
+Noticed while writing T7.3, which read the artifact's `timeline` stamps closely, and *not
+classified there* — the observation sat in the entry as an unexamined detail while the same entry
+asserted that nothing on the page was undocumented and no tool was lying. Filing it now.
+
+- **Intent** — n/a authorially. T7.3 needed to know which records belonged to `spine-a`'s one
+  timeline, so it read the stamp.
+- **What the doc says.** `docs/runtime/timeline-semantics.md`, "What the IR carries", first
+  bullet of the four:
+
+  > - `timeline` — the 0-based **timeline ordinal** (`u32`) this record belongs to;
+
+- **What is emitted.** `spine-a.lute` has exactly one `<timeline>` — the corpus's second ever —
+  and every stamped record in it, plus the barrier, carries `timeline: 1`. The union of ordinals
+  over the whole artifact is `{1}`; there is no `0`.
+- **Confirmed stable, not a one-off.** Three ways:
+  1. `lute compile docs/examples/property-tracks.lute --project docs/examples` — a second
+     document, unrelated to Anseo, whose first and only timeline also emits ordinal `1` and no
+     `0`.
+  2. A two-timeline probe document emits `[('vfx', 1), ('barrier', 1), ('sfx', 2), ('barrier', 2)]`
+     — consecutive, document-order, and 1-based. So it is an off-by-one in the base, not noise.
+  3. `crates/lute-compile/src/stage.rs` increments before assigning:
+     ```rust
+     cx.timelines += 1;
+     let ordinal = cx.timelines;
+     ```
+     A counter starting at `0` and pre-incremented can never hand out `0`. The doc's "0-based"
+     is unreachable by construction.
+- **Which side is wrong — the doc, and it is not a close call.** The temptation is to call this a
+  `TOOL-DEFECT` and renumber the compiler, since the doc is the normative page for this field.
+  Two things argue the other way.
+
+  First, `0` is not reserved. `ir.rs::Stamp` declares
+  `pub timeline: Option<u32>` with `skip_serializing_if = "Option::is_none"`, so "this record is
+  not in a timeline" is already spelled by *omitting the key*, not by `0`. The implementation is
+  therefore not 1-based to protect a sentinel — it is 1-based incidentally, because the counter
+  is pre-incremented. Neither base is load-bearing.
+
+  Second, and decisively: the ordinal is only ever an **opaque correlation key**. Its whole job
+  is to let a consumer group a barrier with the clips it joins, which the runtime contract
+  describes as "every clip scheduled before `barrier_at` on every track of that `timeline`
+  ordinal". Equality is the only operation the contract asks for. Nothing indexes an array by it
+  and nothing does arithmetic on it. So the base carries no meaning — which is exactly what makes
+  the doc's claim the defect: it is *gratuitous* precision, spent stating a fact the contract does
+  not need, and it happens to be false. Meanwhile changing the emitted value would silently shift
+  every artifact already produced by one, with no diagnostic and no version signal, breaking
+  precisely the consumers who *did* read the doc and hard-code a base. A wire-format change to fix
+  an adjective is the wrong trade.
+
+  **I would change the doc:** strike "0-based" and write *"`timeline` — an opaque per-document
+  timeline ordinal (`u32`), assigned in document order starting at `1`; treat it as a correlation
+  key, not an index."* That states the truth, and the added clause tells an engine author the one
+  thing they actually need — that equality is the only supported operation — which the current
+  sentence, by naming a base, actively invites them to get wrong.
+- **Resolution** — none needed authorially; T7.3 read the stamps correctly by observation.
+- **Verdict** — `DOC-WRONG`. It is the table's canonical shape: the docs are present and state a
+  behaviour that differs. Cheap, and it is the *quiet* kind — an off-by-one in a base has no
+  symptom at the surface. An engine author who trusts the page allocates or indexes one slot
+  short, and the artifact never tells them, because `1` is a perfectly plausible ordinal under
+  either reading. Ranked as `DOC-WRONG` rather than `DOC-GAP` on the table's own rule: silence
+  would have made me check the artifact, and this sentence is why I did not check it for three
+  entries.
+
 #### T7 summary
 
-Fifteen entries: three *worked well* (T7.4, T7.15, and the verified-correct envelope inside
-T7.13), three `ERGONOMIC` (T7.6, T7.12, T7.13), two `TOOL-DEFECT` (T7.2, T7.8), two `DOC-WRONG`
-(T7.7, T7.10), one `SPEC-WRONG` (T7.3), one `LANGUAGE-GAP` (T7.1), two recurrences carrying no
-new verdict (T7.5 → T1.6/T3.7, T7.11 → T3.10), one entry deliberately left without a verdict
-(T7.9), and one environment note (T7.14). No `DOC-GAP` and no `AUTHOR-ERROR`.
+Sixteen entries, audited heading-by-heading against each entry's own verdict line rather than
+carried forward from the running count: three *worked well* (T7.4, T7.15, and the
+verified-correct envelope inside T7.13), three `ERGONOMIC` (T7.6, T7.12, T7.13), three
+`DOC-WRONG` (T7.7, T7.10, T7.16), two `TOOL-DEFECT` (T7.2, T7.8), one `SPEC-WRONG` (T7.3), one
+`LANGUAGE-GAP` (T7.1), two recurrences carrying no new verdict (T7.5 → T1.6/T3.7,
+T7.11 → T3.10), one entry deliberately left without a verdict (T7.9), and one environment note
+(T7.14). No `DOC-GAP` and no `AUTHOR-ERROR`.
+
+Ten entries carry one of the seven verdicts (T7.1, T7.2, T7.3, T7.6, T7.7, T7.8, T7.10, T7.12,
+T7.13, T7.16); the other six carry exactly one non-verdict disposition the protocol asks for —
+*worked well* (T7.4, T7.15), *recurrence* of an earlier verdict (T7.5, T7.11), a declined verdict
+with its reasoning stated (T7.9), and an environment note (T7.14). No entry carries two of the
+seven and none carries a hyphenated hybrid. T7.8's `TOOL-DEFECT (silence)` is the protocol's
+silence *category*, not a second verdict, and T7.13's embedded *worked well* is a
+sub-observation inside an entry whose verdict line is singular.
+
+**Two corrections this section made to itself, recorded because a log that inflates its own
+findings is worth less than a shorter honest one.** T7.2 originally claimed `E-CLIP-OVERLAP` was
+wrong in *both* directions and called the permissive half "the worse half"; the permissive half
+does not exist, the checker is right there, and the entry now carries the retraction and the
+re-probe that refuted it. And T7.3's assertion that "nothing is undocumented and no tool is
+lying" was broader than its evidence — it praised a four-item doc list without checking the
+items, and one of them is T7.16. Both corrections moved the count of *real* defects down and the
+count of doc errors up.
 
 **The authoring rule held, and it cost the story exactly one thing.** Every beat in the brief
 was written before the Lute was, and one of them did not survive: the Purser cannot be
@@ -4233,16 +4396,20 @@ better first-draft hit rate than the log's tone to this point would predict.
 
 **`<timeline>` is the headline construct and the reading is split down the middle.** As an
 authoring surface it is the cleanest first-use since T5.1 — six tracks, three keying styles,
-overlapping cross-track offsets, correct cursor math, correct barrier, and a diagnostic
-(`E-AT-CONTEXT`) that knows exactly where it is (T7.4). As a *contract* it has two holes that
-point the same way. `E-CLIP-OVERLAP` rejects the boundary hand-off its own written spec makes
-legal and accepts two clips at the same instant on one track, which is the only thing the
-invariant exists to prevent (T7.2). And the track — the unit all three timeline invariants are
-*about* — is not in the IR at all, so the second of the two engine options the runtime contract
-offers cannot be implemented, and property tracks, whose stated purpose is telling an engine that
-one subject has two independent writers, tell it nothing (T7.3). The checker computes the
-guarantee and deletes the evidence; that is T1–T6's dominant pattern arriving in the staging
-layer.
+overlapping cross-track offsets, a correct barrier, and a diagnostic (`E-AT-CONTEXT`) that knows
+exactly where it is (T7.4). As a *contract* it has one implementation defect and two documentation
+defects, and they point the same way. `E-CLIP-OVERLAP` rejects the boundary hand-off its own
+written spec makes legal — not because the rule or the comparison is wrong, both are right, but
+because the per-track cursor accumulates `at + duration` in binary floating point and
+`0.8 + 0.4` overshoots the `1.2` the author typed (T7.2). That is the one place T7.4's praise
+for "correct cursor math" needs qualifying: the *math* is correct and the *arithmetic* is lossy,
+which is why a hand-off works at `0.5 + 0.25` and fails at `0.8 + 0.4`. Then the track — the unit
+all three timeline invariants are *about* — is not in the IR at all, so the second of the two
+engine options the runtime contract offers cannot be implemented, and property tracks, whose
+stated purpose is telling an engine that one subject has two independent writers, tell it nothing
+(T7.3). And the one `Stamp` field that *is* documented for the engine's benefit is documented with
+the wrong base (T7.16). The checker computes the guarantee and deletes the evidence; that is
+T1–T6's dominant pattern arriving in the staging layer.
 
 **Two recurrences worth naming because they are now three-and four-time offenders.** `lute
 context`'s `directives (N)` block is incomplete for the third time and in a third way (T7.5: the
@@ -4251,9 +4418,12 @@ And nothing gates stage presence: `@toma` speaks before any `::auto` stages him,
 in a scene that never stages her at all, both at exit 0 — correct in my source because both carry
 `{os}`, and unchecked either way, which is T2.4 from the other end.
 
-**What T7 would fix first.** T7.2, because it is a wrong answer in both directions on a
-correctness check and the fix is a comparison operator. Then T7.3, one field on `Stamp`. Then
-T7.7, one clause on one sentence — the cheapest item in this whole log and the one that cost this
+**What T7 would fix first.** T7.2, because a correctness check gives a wrong answer for the
+boundary authors write most, and because the repair is not the comparison operator this entry
+first proposed — the comparison is already the correct half-open test — but an epsilon tolerance,
+or quantising timeline time to integer milliseconds and removing the class. Then T7.3, one field
+on `Stamp`. Then T7.7, one clause on one sentence — the cheapest item in this whole log and the
+one that cost this
 task the most, because a page that says "exact" and "identically" and "visibly interchangeable" is
 a page you stop questioning. T7.1 is the only entry here asking for language design rather than
 repair, and the minimal version — content lines admitted in a `<track>` when they carry an
