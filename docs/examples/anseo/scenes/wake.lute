@@ -1,0 +1,12 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 1
+uses: [../vocabulary.schema.yaml]
+---
+
+## Cold Wake
+::auto{character="vesna" anchor="port" action="brace"}
+@vesna{code="0010" emotion="clipped"}: Cryo's gone. We don't go back under.
+@vesna{code="0020" emotion="level"}: So we walk.

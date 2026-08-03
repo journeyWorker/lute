@@ -1,0 +1,4 @@
+# Trace mock (dsl 0.4.0 §4.3) for scenes/opening.lute. Preview with:
+#   lute trace scenes/opening.lute --mock mocks/playthrough.yaml
+state:
+  run.greeted: false
