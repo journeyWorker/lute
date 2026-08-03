@@ -3240,6 +3240,16 @@ those above the ergonomics of the thing that produced it.
   consequence, in that order. The component's own check reports **only the consequence** — and
   reports it as `E-UNDECLARED-REF … not a declared def`, which sends the author to
   `defs:`/§8.1 for a param they declared four lines up and one character wrong.
+- **Control, added during review at `AnseoT6Rev`'s request.** The body above puts the param in
+  a `{{@pressure}}` interpolation, which T6.8 shows is independently illegal for a `string`,
+  so the split could have been an artefact of that position. It is not. Same malformed
+  `params:` with the param in an **attribute** position and no interpolation anywhere —
+  `params: who: { type: string, default: "purser" }`, body `::auto{character=@who …}` —
+  reproduces it exactly: standalone gives only
+  `attrpos.component.lute:9:18: error [E-UNDECLARED-REF] `@who` is not a declared def`, and the
+  caller gives `E-COMPONENT-PARSE` **and** the prefixed `E-UNDECLARED-REF`. The misdirection is
+  a property of the leg, not of the ref position. Minimal single-component isolate:
+  `/tmp/t6/t67`.
 - **Resolution** — read the error from the caller, not from the file that contains it.
 - **Verdict** — `TOOL-DEFECT`. The information exists — the same binary prints
   `E-COMPONENT-PARSE` for this exact file, from the other leg, one command later — and the
