@@ -1,0 +1,14 @@
+---
+kind: quest
+luteVersion: "0.9.0"
+uses: ../world.schema.yaml
+title: Hold the Spine
+---
+
+<quest id="holdTheSpine" title="Hold the Spine" start="holds(can_halt(toma))">
+<objective id="reachToma" title="Reach the spine coupling" done="run.shedPressure >= 1"/>
+<on event="questComplete">
+::set{run.vesnaTrust += 1}
+@narrator: The shed halted, one module short of the infirmary.
+</on>
+</quest>
