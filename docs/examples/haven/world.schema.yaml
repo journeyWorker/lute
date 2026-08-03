@@ -1,0 +1,13 @@
+state:
+  run.vesnaTrust:    { type: number, default: 0 }
+  run.shedPressure:  { type: number, default: 0 }
+entities:
+  crew:  { members: [vesna, toma, ilsabet, ottavio] }
+  topic: { members: [shed_sequence, true_heading, manifest] }
+relations:
+  awake:    { args: [crew], tier: run }
+  knows:    { args: [crew, topic], tier: run }
+  found:    { args: [crew], tier: run }
+  can_halt: { args: [crew], derive: true }
+rules:
+  - "can_halt(C) :- awake(C), knows(C, shed_sequence)"
