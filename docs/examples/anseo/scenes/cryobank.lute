@@ -5,12 +5,13 @@ season: 1
 episode: 2
 uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
 after: 'visited("anseo.s01ep01")'
+components: [../components/purser-interject.component.lute]
 ---
 
 ## The Cryobank
 ::auto{character="vesna" anchor="port" action="drift"}
 @vesna{code="0010" emotion="clipped"}: Every pod you crack, the Purser reads as load.
-@purser{code="0020" emotion="level" os}: Allocation notes the draw. The schedule advances.
+::use{component="purserInterject" pressure="rising"}
 
 <branch id="whoWakes">
 <choice id="wakeToma" label="Wake the engineer">
