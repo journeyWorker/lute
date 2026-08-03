@@ -2982,8 +2982,9 @@ inconvenience; it is a *semantic* one, and the difference is what a production p
   entire reason to write a component instead of eleven lines. So: establish what "the same"
   is guaranteed to mean when two scenes with different vocabularies invoke the same
   component.
-- **Attempt** — constructed in `/tmp/t6/proj`. Two vocabularies that agree on every member
-  an author can see and disagree on one thing an author cannot:
+- **Attempt** — constructed in `/tmp/t6fix/proj`. Two vocabularies that agree on every member
+  an author can see and on **every** other declaration, and disagree on exactly one thing an
+  author cannot see — `action.exits`:
   ```yaml
   # vocabA.schema.yaml            # vocabB.schema.yaml
   emotion: [level, clipped]       emotion: [level, clipped]
@@ -2991,22 +2992,34 @@ inconvenience; it is a *semantic* one, and the difference is what a production p
     members: [brace, go-under]      members: [brace, go-under]
     exits: [go-under]               exits: [brace]
   anchor: {members: [port,center],  anchor: {members: [port,center],
-           default: center}                  default: port}
+           default: port}                    default: port}
   ```
+  `diff vocabA.schema.yaml vocabB.schema.yaml` is one line, the `exits:` line. That control
+  matters and cost a re-run: the first version of this probe also gave the two vocabularies
+  different `anchor.default`s, which makes any causal claim about `exits` unsupported. It also
+  hides a second caller-dependent divergence — with both defaults set to `center`, so that the
+  component's explicit `anchor="center"` coincides with the injected default, caller B alone
+  earns `W-INJECT-CONFLICT` ("`purser` is shown with an explicit `anchor="center"` that
+  `auto-anchor-on-show` would otherwise inject") and caller A does not, because in A the sprite
+  is an exit and nothing is *shown*. The transcript below sets both defaults to `port` so that
+  interaction is out of the way and `exits` is the only live variable.
+
   One component, `uses: ../vocabA.schema.yaml`, body:
   ```lute
   ::auto{character="purser" anchor="center" action="go-under"}
   @purser{code="0010" emotion="clipped"}: The schedule advances.
   ```
   Two scenes, identical but for their `uses:`, each `::use{component="interject" pressure="rising"}`.
-- **Result** — `ok: /tmp/t6/proj (3 file(s), 0 project-wide warning(s))`, exit 0. Nothing
-  warns. Nothing mentions that two callers disagree. And the two compiled artifacts are
-  not the same artifact:
+- **Result** — `ok: . (3 file(s), 0 project-wide warning(s))`, exit 0, and **no warning on any
+  file** — not the component, not either caller. Nothing mentions that two callers disagree.
+  And the two compiled artifacts are not the same artifact:
   ```console
-  $ jq -c '.commands[]' outA.json        # caller A
+  $ jq -c '.commands[]' outA.json        # caller A — TWO commands
   {"kind":"sprite","addr":"001-0100","character":"purser","anchor":"center","action":"go-under",
    "exit":true,"source":{"component":"interject"}}
-  {"kind":"line","addr":"001-0200",…,"source":{"component":"interject"}}
+  {"kind":"line","addr":"001-0200","role":"dialogue","speaker":"purser","text":"The schedule advances.",
+   "emotion":"clipped","lineId":"probe.s01ep01.purser_0010","voiceKey":"purser-0010",
+   "source":{"component":"interject"}}
 
   $ jq -c '.commands[]' outB.json        # caller B — THREE commands
   {"kind":"sprite","addr":"001-0100","character":"purser","anchor":"center","action":"go-under",
@@ -3015,14 +3028,17 @@ inconvenience; it is a *semantic* one, and the difference is what a production p
    "provenance":{"injected":true,"by":"entry-emotion-lookahead",
      "reason":"pre-loading `purser`'s first emotion `clipped` seen ahead of the entrance"},
    "source":{"component":"interject"}}
-  {"kind":"line","addr":"001-0300",…,"source":{"component":"interject"}}
+  {"kind":"line","addr":"001-0300","role":"dialogue","speaker":"purser","text":"The schedule advances.",
+   "emotion":"clipped","lineId":"probe.s01ep02.purser_0010","voiceKey":"purser-0010",
+   "source":{"component":"interject"}}
   ```
-  In caller A the Purser **leaves the scene** on that sprite (`exit: true`) and then speaks
-  a line after having left (T2.4's defect, arriving here through a component whose author
-  wrote no exit at all). In caller B the same line is an **entrance**, so the
-  `entry-emotion-lookahead` rule fires and injects a whole extra command that exists in
+  Both compiles exit 0. In caller A the Purser **leaves the scene** on that sprite
+  (`exit: true`) and then speaks a line after having left (T2.4's defect, arriving here through
+  a component whose author wrote no exit at all). In caller B the same line is an **entrance**,
+  so the `entry-emotion-lookahead` rule fires and injects a whole extra command that exists in
   neither the component nor the scene. Two commands versus three, different addresses for
-  the same authored line, opposite staging semantics. One body. No diagnostic.
+  the same authored line, opposite staging semantics. One body, one differing enum attribute
+  that no author can see from the callsite. No diagnostic.
 - **Resolution** — for Anseo, the mitigation the docs prescribe: `purser-interject.component.lute`
   declares `uses: ../vocabulary.schema.yaml` and every caller reaches the *same* project-root
   schema, so divergence is impossible by construction. That is a discipline, not a guarantee —
@@ -3051,7 +3067,7 @@ inconvenience; it is a *semantic* one, and the difference is what a production p
   language is the one construct whose behaviour nothing in the project can pin down, and the
   doc that warns you about it under-describes what it costs.
 
-#### T6.3 — a component cannot be validated: the leg that can locate the fault cannot detect it, and the leg that detects it cannot locate it — TOOL-DEFECT
+#### T6.3 — no check is both caller-aware and able to point into the component: the fault is reported N times, in the N files that are correct, while the one file to edit reports `ok` — TOOL-DEFECT
 
 - **Intent** — a component is authored once and validated per caller. Ask the practical
   question directly: if it is correct against caller A and broken against caller B, when and
@@ -3059,44 +3075,58 @@ inconvenience; it is a *semantic* one, and the difference is what a production p
 - **Attempt** — same `/tmp/t6/proj`, now with the component pointed at `vocabB` and using a
   member only `vocabB` declares (`emotion="molten"`), with seven callers of various depths
   in the project.
-- **Result** — the component's own check **passes**, with and without `--project`:
+- **Result** — the fault **is** detected, and `check-project` **is** the command that detects
+  it: exit 1, `failed: .`. State that first, because it bounds the finding — this is not a
+  hole in coverage, it is a hole in *localisation*. What no command gives you is a check that
+  is simultaneously caller-context-aware and able to point at the component's own source span.
+  The two legs split those properties between them and neither has both.
+
+  The component's own check **passes**, with and without `--project`:
   ```console
   $ lute check components/interject.component.lute                  # ok, exit 0
   $ lute check components/interject.component.lute --project /tmp/t6/proj   # ok, exit 0
   ```
-  Every caller fails, identically, at line 1 of the wrong file:
-  ```
+  `check-project` catches it, and reports it once per caller, at line 1 of the wrong file:
+  ```console
+  $ lute check-project .                                            # exit 1
   scenes/sceneA.lute:1:1:  error [E-BAD-ENUM] component `interject` (/…/interject.component.lute):
     `molten` is not a valid value for `emotion` of `::purser` (expected one of: level, clipped)
   scenes/nest.lute:1:1:    error [E-BAD-ENUM] component `interject` (…) : (identical)
   scenes/callsite.lute:1:1: error [E-BAD-ENUM] component `interject` (…) : (identical)
   components/outer.component.lute:1:1: error [E-BAD-ENUM] component `interject` (…) : (identical)
   ok: components/interject.component.lute (0 warning(s))
+  failed: . (… 0 project-wide error(s), 0 project-wide warning(s))
   ```
   So the file the author must edit is the one file reporting `ok`, and the N files reporting
   errors are the N files that are correct. With eleven modules that is eleven identical
-  messages, all at `1:1`, none of them in the component.
+  messages, all at `1:1`, none of them in the component. The caller-context-awareness is real
+  and worth crediting — `sceneB.lute`, whose vocabulary *does* declare `molten`, correctly
+  reports `ok` in the same run. It is the position that is thrown away.
 
-  **And the position exists.** The standalone leg printed `28:1` for T6.1's `<branch>`; the
-  caller leg prints `1:1` for a fault it has located precisely enough to quote the offending
-  value and enumerate the legal alternatives. The checker knows the span inside the
-  component body and does not pass it through. There is also no way to ask the question the
-  author actually has — "check this component as caller A would" — because `--project` does
-  not change the component's resolution root (proven above): a standalone check resolves
-  against the component's own `uses:`, which is the one vocabulary that is *never* the one
-  that applies at runtime.
+  **And the position exists.** The standalone leg printed `28:1` for T6.1's `<branch>`, and in
+  the same `check-project` run above it prints `reader.component.lute:9:54` for an
+  `E-COMPONENT-STATE` inside a component body — a component-internal span, on the standalone
+  leg, in the caller-aware command. The caller leg prints `1:1` for a fault it has located
+  precisely enough to quote the offending value and enumerate the legal alternatives. The
+  checker knows the span inside the component body and does not pass it through on the one
+  fault class that needs it. There is also no way to ask the question the author actually has
+  — "check this component as caller A would" — because `--project` does not change the
+  component's resolution root (proven above): a standalone check resolves against the
+  component's own `uses:`, which is the one vocabulary that is *never* the one that applies at
+  runtime.
 - **Resolution** — none available. The working procedure is: never trust `lute check` on a
   component file, always `check-project`, and read the component path out of the message
   prefix rather than the file position.
 - **Verdict** — `TOOL-DEFECT`, on the protocol's highest-priority ground — a diagnostic that
-  misdirects. It is a *double* misdirection, and the pairing is what makes it expensive:
-  `lute check <component>` reports `ok` on a component that cannot work (not a false green —
-  it is true against the component's declared vocabulary — but a *meaningless* green, since
-  that vocabulary governs nothing), while the caller-side error points at the caller's
-  frontmatter for a fault that is N files away. The fix is two small ones on information the
-  checker already holds: forward the component-internal span into the prefixed diagnostic
-  (`…/interject.component.lute:10:34`, reported at the caller), and roll the N identical
-  caller reports into one per *problem* the way T1.3 praises `E-UNDECLARED` for doing
+  misdirects. Not "a component cannot be validated": it can, by `check-project`, which returns
+  failure. It is a *double misdirection about where*, and the pairing is what makes it
+  expensive: `lute check <component>` reports `ok` on a component that cannot work (not a
+  false green — it is true against the component's declared vocabulary — but a *meaningless*
+  green, since that vocabulary governs nothing), while the caller-side error points at the
+  caller's frontmatter for a fault that is N files away. The fix is two small ones on
+  information the checker already holds: forward the component-internal span into the prefixed
+  diagnostic (`…/interject.component.lute:10:34`, reported at the caller), and roll the N
+  identical caller reports into one per *problem* the way T1.3 praises `E-UNDECLARED` for doing
   (`(+6 more callers)`).
 
 #### T6.4 — `::set` is forbidden in a component body, and the rule is right — WORKED WELL
@@ -3301,19 +3331,13 @@ those above the ergonomics of the thing that produced it.
   **declared** state path" and says nothing about type. So the author is told it works, at
   the type the example uses, and finds out from a diagnostic.
 
-  **And I cannot report the restriction itself as sound, which is why the doc fix is not the
-  whole answer.** `{{userName}}` — the reserved, always-available interpolation that
-  `getting-started/first-scene.md` teaches on page one and `dialogue-and-cast.md` calls "the
-  always-available reserved token" — is a *string*, and it renders. So "renders only
-  number/bool/enum" is not a coherent statement about renderability; it is a whitelist that
-  excludes the type of the one value the language interpolates by default. If the intent is
-  localization safety — splicing arbitrary author text into a translatable line is a real
-  hazard — then `{{userName}}` is the counterexample and the rule needs restating, not
-  documenting. **I am flagging this to the controller rather than forcing a second verdict:**
-  the entry's own intent-attempt-result is a doc failure and `DOC-WRONG` is the honest single
-  verdict for it, but there is a live `SPEC-WRONG` candidate underneath — a whitelist whose
-  own reserved member violates it — that belongs to whoever owns §7.6 and is out of T6's
-  remit.
+  **The doc fix is not the whole answer, and the rest is now filed separately.** The
+  restriction this page fails to document is itself defective — the runtime renders strings,
+  and the language forbids the only param type that carries one. That is a different verdict
+  against a different artifact (the spec, not the page), so it is **T6.11**, filed as
+  `SPEC-WRONG` at the controller's direction rather than hyphenated onto this entry. This
+  entry's verdict stands alone: whatever §7.6 ought to say, `components-and-extends.md` states
+  the opposite of what §7.6 says *today*, one line above an example that cannot compile.
 
 #### T6.9 — provenance is carried on every surface a consumer reads, and the human renderings drop the name — WORKED WELL
 
@@ -3433,14 +3457,115 @@ localization pipeline*, and the before/after is one command.
   exit 0 — `loc export`'s own "1 lines untagged — run lute tag" precedent shows the surface
   for saying so honestly.
 
+#### T6.11 — the interpolation whitelist forbids the one param type that carries text, while the runtime renders text on the other two interpolation forms — SPEC-WRONG
+
+Escalated out of T6.8 at the controller's direction. T6.8 is the *page* being wrong about
+what §7.6 says; this is §7.6 itself being the wrong rule. Filed against the language because
+the drive test's remit **is** the language.
+
+- **Intent** — the same beat T6.8 wanted: one component whose words vary by an author-supplied
+  string — "Draw exceeds projection in {{@module}}" — so eleven modules share one block
+  instead of eleven near-duplicates. Then, separately: establish whether the restriction that
+  blocks it is a coherent rule or an accident of which grammar alternative you land in.
+- **Attempt** — three probes in `/tmp/t6fix/proj`, all against the freshly built binary.
+  (a) One component per param type, each body a single line reading `{{@who}}, the schedule
+  advances.`; (b) the same line with the reserved token `{{userName}}` instead; (c) the same
+  line reading a `string`-typed **declared state path**, `{{run.label}}`, declared
+  `run.label: { type: string, default: "nominal" }`.
+- **Result** — the whitelist binds exactly one of the three interpolation forms, and it is the
+  one a component param uses.
+  ```console
+  $ lute check components/ip-number.component.lute        # ok         (params: who: number)
+  $ lute check components/ip-bool.component.lute          # ok         (params: who: bool)
+  $ lute check components/ip-enumlowhigh.component.lute   # ok         (params: who: { enum: [low, high] })
+  $ lute check components/ip-string.component.lute        # exit 1     (params: who: string)
+  components/ip-string.component.lute:9:39: error [E-REF-TYPE] `@who` produces a
+    non-renderable type; a `{{…}}` interpolation renders only number/bool/enum (dsl §7.6)
+  ```
+  The reserved token — a string — checks clean and compiles to a placeholder the runtime
+  substitutes:
+  ```console
+  $ lute check components/ip-user.component.lute          # ok, exit 0
+  $ jq -c '.commands[]' outUser.json
+  {"kind":"line",…,"text":"{{userName}}, the schedule advances.",…,
+   "placeholders":[{"kind":"reserved","token":"userName"}],"source":{"component":"ipuser"}}
+  ```
+  And so does a `string`-typed declared state path, which is the probe that settles it:
+  ```console
+  $ lute check scenes/strpath.lute --project .            # ok, exit 0
+  $ jq -c '.commands[]' outStr.json
+  {"kind":"line",…,"text":"Draw stands at {{run.label}}.",…,
+   "placeholders":[{"kind":"path","path":"run.label"}]}
+  ```
+  So: `{{userName}}` renders a string. `{{run.label}}` renders a string. `{{@who}}` is a
+  static error *because* it is a string. Three forms of one construct, one shared runtime
+  substitution mechanism (`docs/runtime/state-lifecycle.md`: the `placeholders` list names each
+  referent — "a state `path`, an `@`-`ref`, or a `reserved` token" — and "the engine substitutes
+  these against live state"), and the type rule applies to exactly one of them.
+- **Resolution** — `NONE — intent abandoned`, same as T6.8: the shipped component varies its
+  words by writing each variant out in full under a `<match>`, which does not scale past a
+  handful and does not reach eleven module names at all.
+- **Verdict** — `SPEC-WRONG`. Nothing here is misimplemented and, unlike T6.8, nothing here is
+  a contradiction on the page either — that distinction matters and I had it wrong first time.
+
+  **What the spec says.** `docs/proposals/scenario-dsl/0.1.0.md` §7.6 gives three grammar
+  alternatives — `Interp ::= "{{" ( Path | Ref | ReservedToken ) "}}"` — and attaches the type
+  rule to precisely one: *"An interpolated `Ref` MUST resolve to a renderable type (number /
+  bool / enum, per the rendering rule below); a `@def` of any other type is a static error."*
+  `ReservedToken` gets its own bullet with no type rule at all (*"`userName` renders the
+  runtime player name"*), and the normative **Rendering** paragraph enumerates only
+  number/bool/enum. So `{{userName}}` is not a violation of the whitelist; it is *outside* it,
+  by explicit construction. **This is not a literal grammar contradiction** and should not be
+  reported as one. The `Path` case is looser still — §7.6's rendering paragraph never defines
+  how a string path renders, and the checker admits it silently.
+
+  **Why that is the wrong call.** The defect is a **capability mismatch**, not an
+  inconsistency. The rendering pipeline demonstrably renders arbitrary strings: it does not
+  interpolate at compile time at all, it emits a `placeholders` list and keeps the raw text,
+  and the engine substitutes at present time. Nothing about a `string` is unrenderable — two
+  of the three interpolation forms ship strings today. What §7.6 actually does is forbid the
+  **only param type that can carry arbitrary author text** from reaching the one position that
+  displays text, in the language's **only** content-reuse construct. The cost is not a
+  workaround; it is that varying a component's words by an argument is unreachable, which
+  removes the main reason to write a component with a param at all — and the two shipped
+  component examples both declare `string` params (`greet`'s `who`, this task's `pressure`),
+  so the spec forbids the shape its own documentation models. If the rule's motive is
+  localization safety — splicing untranslated author text into a `lineId`-keyed line is a real
+  hazard, and §7.6's `E-L10N-PLACEHOLDER` placeholder-set contract is the surface that would
+  police it — then the rule as written does not achieve it, because `{{run.label}}` splices an
+  arbitrary string into a translatable line at exit 0 and `{{userName}}` is taught on
+  getting-started page one.
+
+  **What it should say instead.** Replace the produced-type whitelist with a
+  substitution-mechanism rule, which is what the implementation already is:
+
+  1. **Admit `string` as a renderable type** and extend the normative Rendering paragraph to
+     cover it (*"a **string** → its text verbatim"*), making the sentence true of all three
+     forms rather than one. `E-REF-TYPE` then keeps its real job — a `@def` producing a
+     *structural* type (map/list) is still a static error, which is the case the rule was
+     presumably written for.
+  2. **Keep the safety story explicit** by scoping it where it belongs: every interpolation,
+     of any form, is already a placeholder in the line's translatable text, and
+     `E-L10N-PLACEHOLDER` already enforces placeholder-set equality across translations. If a
+     project wants to forbid interpolating unbounded text into translatable lines, that is a
+     lint over *all* placeholder kinds (`W-INTERP-FREE-TEXT`, say, which would fire on
+     `{{run.label}}` too), not a type ban that one grammar alternative happens to escape.
+  3. **Failing both**, if the ban is deliberate and permanent, then say so *as a rule about
+     component params* and make the diagnostic say it — `E-REF-TYPE`'s current text
+     ("a `{{…}}` interpolation renders only number/bool/enum") is a claim about interpolation
+     that the same binary falsifies twice in the transcript above.
+
 #### T6 summary
 
-Ten entries: four *worked well* (T6.1, T6.4, T6.5, T6.9), three `TOOL-DEFECT` (T6.3, T6.7,
-T6.10), one `SPEC-WRONG` (T6.2), one `DOC-WRONG` (T6.8), one `ERGONOMIC` (T6.6). No
-`LANGUAGE-GAP` and no `DOC-GAP`: everything this component wanted to *be* was expressible,
-and nothing required opening Rust, a proposal, or a test — T6.2's limitation has its own
-headed section on the shipped website, and T6.8's is the doc being wrong rather than silent.
-One escalation is filed inside T6.8 rather than forced into a verdict.
+Eleven entries: four *worked well* (T6.1, T6.4, T6.5, T6.9), three `TOOL-DEFECT` (T6.3, T6.7,
+T6.10), two `SPEC-WRONG` (T6.2, T6.11), one `DOC-WRONG` (T6.8), one `ERGONOMIC` (T6.6). Every
+entry carries exactly one verdict and no hybrids; the four *worked well* entries are the
+protocol's "what worked well" register rather than a verdict, as in T1–T5. No `LANGUAGE-GAP`
+and no `DOC-GAP`: everything this component wanted to *be* was expressible, and nothing
+required opening Rust, a proposal, or a test — T6.2's limitation has its own headed section on
+the shipped website, and T6.8's is the doc being wrong rather than silent. T6.11 was
+originally deferred inside T6.8 as an escalation; the controller ruled the language is in
+remit, and it is now filed as its own entry.
 
 **The construct is good and the surrounding toolchain is not ready for it.** That split is
 sharper here than anywhere else in this log. The body contract is the best-explained
@@ -3454,7 +3579,7 @@ a body — is, on inspection, the right call for a reason the rationale does not
 not purity, but that the number this whole prologue is about would stop being auditable by
 reading if eleven files could charge it invisibly (T6.4).
 
-**Then the two findings that decide the maturity question.** T6.2: a component's own `uses:`
+**Then the findings that decide the maturity question.** T6.2: a component's own `uses:`
 is discarded, so it has no denotation of its own — two callers took one body and produced
 two-command and three-command streams with opposite staging semantics, at exit 0, with no
 diagnostic. The docs describe this as "a scoping limit, not a checking divergence"; that
@@ -3473,15 +3598,20 @@ such fault and cannot point into the file (it reports `1:1`, N times, in the N f
 correct, while the one file to edit reports `ok`). T6.7 is the same pair on a different fault
 — the component's own check blames `@pressure` for a malformed `params:` that the caller's
 check names outright. Neither is a missing capability; both are information the same binary
-prints from the other leg, one command apart. **A component is the one document class in
-Lute that no single command can validate**, and until `lute check <component>` either
-forwards the caller-side span or refuses to claim `ok`, the honest instruction to an author
-is: never check a component file, only ever `check-project`.
+prints from the other leg, one command apart. To be exact about the cost, because the first
+draft of this section overstated it: a component **can** be validated — `check-project`
+detects the caller-relative fault and exits 1. **What no command offers is a check that is
+both caller-context-aware and able to point at the component's own source span**, so the
+author is handed N identical `1:1` reports in the N files that are correct while the one file
+to edit reports `ok`. Until `lute check <component>` either forwards the caller-side span or
+refuses to claim `ok`, the honest instruction to an author is: never check a component file,
+only ever `check-project`, and read the path out of the message prefix.
 
 **What a production would need before shipping a translated work with components.** In
 order: T6.10 (i) — `loc export` per expansion with caller-derived `lineId`s, without which
 components and localization are mutually exclusive; T6.2 (ii) —
 `W-COMPONENT-VOCAB-DIVERGENT`, which is nearly free given what `check-project` already
-resolves; T6.3 — forward the component-internal span and roll up the N caller reports. The
-first is a blocker. The other two are the difference between a construct you can use and one
-you can trust.
+resolves; T6.11 — admit `string` as a renderable type, without which a param cannot vary a
+component's words and the construct's headline feature is decorative; T6.3 — forward the
+component-internal span and roll up the N caller reports. The first is a blocker. The rest are
+the difference between a construct you can use and one you can trust.
