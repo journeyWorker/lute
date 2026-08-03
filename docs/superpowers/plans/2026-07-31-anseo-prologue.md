@@ -28,7 +28,7 @@ Every syntax form below was executed against the real binary before being writte
 | A non-exit `action=` on `::auto` emits no `exit` field at all | `lute compile`, control run |
 | `::end{reason=…}` emits `{"kind":"end","reason":…}`; content after it is `W-CODE-AFTER-END` | `lute compile`, `lute check` |
 | A component body admits a **param-scoped** `<match on="@param">` (dsl 0.4.0 §6.2) | `lute check-project` through `::use` |
-| `<branch>`/`<hub>` in a component body is `E-COMPONENT-BODY` — **but only when checked through the importing document**; a standalone `lute check` of the component file reports `ok` | both runs, see Task 10 |
+| `<branch>`/`<hub>` in a component body is `E-COMPONENT-BODY` on **both** legs — standalone and through a `::use` | `crates/lute-check/tests/component_logic_block.rs`; the standalone leg was a false green until commit `3ff3543` |
 | `<timeline>` is `<timeline duration="1.2">` wrapping `<track subject= property=>` — a sub-second choreography unit, NOT a countdown | `docs/examples/property-tracks.lute:27-36` |
 | `lute scenario` prints topological layers and a prerequisite→dependent edge list | `lute scenario` |
 | `lute init` scaffolds exactly this layout, plus `mocks/playthrough.yaml` and a README | `lute init` |
@@ -404,12 +404,13 @@ Add `components: [../components/purser-interject.component.lute]` to `cryobank.l
 ::use{component="purserInterject" pressure="rising"}
 ```
 
-- [ ] **Step 3: Verify, and see the standalone gap for yourself**
+- [ ] **Step 3: Verify**
 
 ```bash
 ./target/debug/lute check-project docs/examples/anseo   # ok, 6 files
 ```
-Then temporarily add a `<branch>` to the component body and check **the component file alone**: it reports `ok`. Check `cryobank.lute`: `E-COMPONENT-BODY`. Remove the branch. Record this in Task 10 — it is a real gap, not a quirk to work around.
+
+Then confirm the contract both ways: temporarily add a `<branch>` to the component body and check the component file **alone** — it must report `E-COMPONENT-BODY`, and so must `cryobank.lute`. Remove the branch. Until `3ff3543` the standalone leg reported `ok` here; if you see `ok`, you are on a stale binary — rebuild before trusting anything else in this plan.
 
 - [ ] **Step 4: Commit**
 
@@ -554,13 +555,16 @@ A first-class deliverable. Seed it with the ten errors found while validating th
 6. A rule head must be declared `derive: true`
 7. `rules:` is a list of quoted strings; relations need `tier:`
 8. Quests use `start=`/`fail=` expressions, not conditional existence
-9. A param-scoped `<match>` in a component **is** legal (0.4.0 §6.2 relaxed the 0.1 ban) — the `greet.component.lute` header comment still states the old blanket rule
+9. A param-scoped `<match>` in a component **is** legal (0.4.0 §6.2 relaxed the 0.1 ban)
 10. **`exit: true` is emitted on the `::auto` sprite record only**, never from a content line's `action=`
 
-Plus two gaps found in the tooling, which are the note's real value:
+Three tooling defects surfaced while validating this plan. **All three were fixed before authoring began** (commit `3ff3543`) — a broken checker would have shaped the example around itself:
 
-- **`lute check <component>.lute` is a false green.** `E-COMPONENT-BODY` is enforced in `walk_component_body`, reached only through the importing document. A component file containing `<branch>` checks `ok` standalone and fails at every call site. The author most likely to check a component alone is the one writing it.
-- **`greet.component.lute`'s header comment contradicts 0.4.0 §6.2.** It states the 0.1 blanket ban on logic blocks; param-scoped `<match>` has been admitted since 0.4.0. Reading the example teaches the wrong rule.
+- **`lute check <component>.lute` was a false green.** `E-COMPONENT-BODY` is enforced in `walk_component_body`, reached only from `validate_components` over an importing document. A component file carries no `kind:`, so it degraded to `DocKind::Scene` and walked through `Walker`, where `<branch>`/`<hub>`/`::set`/… are all legal. A component containing `<branch>` checked `ok` standalone and failed at every call site. The component root now routes through the same `walk_component_body` the `::use` leg uses.
+- **`greet.component.lute` and `stinger.component.lute` documented a dropped rule.** Both headers stated dsl §13.4's blanket ban on logic blocks; 0.4.0 §6.2 admits a param-scoped `<match>`, which `reaction.component.lute` relies on. Reading the examples taught the wrong rule.
+- **`stinger.component.lute`'s stale standalone claim.** Its header said a standalone check reports `E-META-MISSING`; it reports `E-DOMAIN-UNKNOWN`, because that file declares no `uses:` of its own and so has no vocabulary to resolve against on the standalone leg (0.9.0 §5).
+
+The note should still record all three, with the fix commit — the value is the *class*: two of the three were documentation asserting a contract the code had already stopped enforcing or had never enforced. Re-derive from the source, not from a neighbouring example.
 
 State the meta-finding plainly: ten of ten design assumptions were wrong before checking. The language's shapes are not guessable from adjacent knowledge, and the two forms that differ only by *position* (`action=` on `::auto` versus on a content line) are the sharpest edge found.
 
