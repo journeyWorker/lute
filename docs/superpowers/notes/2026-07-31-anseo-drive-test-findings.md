@@ -31,7 +31,7 @@ Every entry carries:
 - **Attempt** — the form you reached for first, verbatim.
 - **Result** — the exact diagnostic, or the silence.
 - **Resolution** — what you ended up writing, or `NONE — intent abandoned`.
-- **Verdict** — exactly one of the six below. Never invent a verdict or hyphenate a
+- **Verdict** — exactly one of the seven below. Never invent a verdict or hyphenate a
   hybrid (`AUTHOR-ERROR-adjacent` is not a verdict); if none fits, say so in the entry
   and raise it with the controller, who owns this table.
 
@@ -39,12 +39,13 @@ Every entry carries:
 
 | Verdict | Criterion |
 |---|---|
-| `LANGUAGE-GAP` | The intent cannot be expressed. You changed the story to fit the tool. |
+| `LANGUAGE-GAP` | The intent cannot be expressed. **Two sufficient shapes, either one alone qualifies:** (a) you changed the story to fit the tool, or (b) only a lossy proxy exists — the intent is reachable by encoding it as something else, but nothing in the language *means* it, so nothing can check it. Do not withhold this verdict merely because a workaround was found; say which shape applies and what the proxy costs. |
 | `ERGONOMIC` | Expressible, but the working form is materially worse than the natural one — more verbose, more indirect, or split across files for no modelling reason. |
 | `DOC-GAP` | Expressible and reasonable, but **you had to read Rust source, a proposal, or a test to find it.** The website docs and `lute context` did not get you there. |
 | `DOC-WRONG` | The docs are present and **false** — they state a restriction that does not exist, a behaviour that differs, or scope something to the wrong construct. Distinct from `DOC-GAP`, which is silence: silence makes an author search, a false statement makes them stop searching. Rank these above `DOC-GAP` by default; an author who believes a wrong doc never discovers they were lied to. |
 | `AUTHOR-ERROR` | The docs said so plainly and you missed it. Not a finding — record it only if the diagnostic pointed somewhere unhelpful. |
 | `TOOL-DEFECT` | The language and its docs are fine; a *tool* is wrong, incomplete, or lying about its own contract. A misdirecting diagnostic, a false green, a capability surface that omits something it advertises. Distinct from `DOC-GAP`: the information exists, but the tool that promised to hand it to you did not. |
+| `SPEC-WRONG` | Everything works as designed and the design is the defect. Language, docs, and every tool agree; the specified behaviour is itself the wrong call. Use this when you cannot fault any implementation and still believe an author is badly served — a severity chosen wrongly, two equivalent proofs given unequal treatment, a default that surprises. State what the spec says, why it is wrong, and what it should say instead; this verdict is worthless without a proposed alternative. |
 
 **The `DOC-GAP` bar is deliberately harsh.** A working author cannot read
 `lower.rs`. If you needed to, the language failed them even though it compiled.
@@ -2434,7 +2435,7 @@ This is T5's most serious finding.
   on a declared domain no active construct reads would close it, and the checker already
   knows the reading set — it computes `E-DOMAIN-UNKNOWN` from exactly that.
 
-#### T5.4 — nothing says two endings are one story's alternation, and nothing says one of them is the bad one; both are reachable only by mirroring the ending into declared state and saying it twice — ERGONOMIC
+#### T5.4 — nothing says two endings are one story's alternation, and nothing says one of them is the bad one; both are reachable only by mirroring the ending into declared state and saying it twice — LANGUAGE-GAP
 
 The assignment's two hardest questions, and they turn out to be one question. Both probes
 were run to a working end before this verdict was assigned.
@@ -2516,25 +2517,48 @@ were run to a working end before this verdict was assigned.
   5. **Nothing observes the join.** The quest lives in its own document; `lute run` takes
      one artifact, so no shipped tool plays the scene and the quest together. This is
      T4.7's shape exactly and is counted there, not re-filed.
-- **Verdict** — `ERGONOMIC`, for both halves. Not `LANGUAGE-GAP`, and the distinction is
-  worth stating because I went looking for one: **the story is fully expressible.** Both
-  endings are written, both play, both stop, and "the shed ending is a failure" reaches an
-  engine as a typed lifecycle transition. Nothing was substituted and no beat was dropped.
-  What is missing is a *first-class structural claim about* the endings, and the working
-  form of that claim is materially worse than the natural one — split across a schema, two
-  `::set`s, a quest document and an enum arity the story does not have, to say something
-  `::end` is one attribute away from saying itself. That is the `ERGONOMIC` criterion, and
-  the honest reading of T5 is that five tasks in, **there is still no `LANGUAGE-GAP`.**
-
-  One note for the controller, offered as wording rather than as a missing verdict.
-  `LANGUAGE-GAP`'s criterion is two sentences — "The intent cannot be expressed. You changed
-  the story to fit the tool." — and this entry is the first case in five tasks where those
-  can come apart: a claim *about* the work can be inexpressible while the work itself is
-  intact, so nothing gets substituted and no reader of the example would ever notice. I
-  resolved it against `LANGUAGE-GAP` here because a lossy-but-working proxy exists and
-  `ERGONOMIC` describes it accurately, and I do not think this entry needs a new verdict.
-  But if a later task hits the same seam with *no* proxy at all, the second sentence will
-  read as a precondition it should not be.
+- **Verdict** — `LANGUAGE-GAP`, **shape (b)**, for both halves. Nothing in the language
+  *means* either claim, so nothing can check either claim; each is reachable only by
+  encoding it as something else.
+  - **The proxy, named.** Ending identity becomes a declared enum state path —
+    `run.ending: { type: { enum: [unspecified, bridge-reached, shed-with-module] } }` — written
+    as a `::set` on the line above the `::end`. Ending polarity becomes a quest lifecycle
+    transition, `fail="run.ending == 'shed-with-module'"` reading that same mirrored path.
+    Both were driven to a working end before this verdict was assigned, and both work:
+    `<match>` exhaustiveness genuinely breaks when a third ending is added
+    (`E-NONEXHAUSTIVE` + `E-UNSET-UNCOVERED`), and `quest theWalk -> failed` is a genuine,
+    typed, engine-observable failure. The evidence stands as recorded; none of it is
+    softened by this reclassification.
+  - **What the proxy costs.** Itemised above, and the first item is the one that makes this
+    shape (b) rather than a verbose spelling: **no check connects either proxy to the
+    adjacent `::end`.** `::set{run.ending = "bridge-reached"}` and
+    `::end{reason="bridge-reached"}` are unrelated strings on consecutive lines; an
+    intentional mismatch between them checks clean, verified here and independently
+    reproduced in review. Then: the mirrored write site is itself untyped, so a misspelt
+    enum member is `ok` at exit 0 (cost 2, T3.2 re-verified for enum paths); a two-ending
+    story must declare a three-member domain because a sentinel exists only to satisfy the
+    checker (cost 3, T5.6); the `end` record — the one record whose entire purpose is to
+    tell a host how the walk ended — still says nothing about whether it ended well (cost
+    4); and no shipped tool plays the scene and the quest together, so nothing observes the
+    join (cost 5, T4.7). The corpus ships neither proxy: `docs/examples/anseo/` keeps two
+    bare `::end{reason}`s, and both claims therefore go unstated in the delivered work.
+  - **Why not `ERGONOMIC`.** `ERGONOMIC` is for a working form materially worse than the
+    natural one, which presumes the language can say the thing at all. It cannot. `::end`
+    declares one attribute (`E-UNKNOWN-ATTR`, T5.1); no frontmatter key admits the claim
+    (`E-META-UNKNOWN-KEY` on `ending`, `terminal`, `outcome`, `endings`); a declared
+    `reason` domain is accepted, advertised and inert (T5.3); and the scenario graph has no
+    notion of termination to hang it on (T5.5). What the proxy produces is not the claim
+    said awkwardly — it is a *different* claim, about a state path and a quest, which a
+    reader has to trust corresponds to the terminator beside it.
+  - **The amendment is what moved it.** This entry was first filed `ERGONOMIC`, with a note
+    to the controller rather than a forced verdict, because **the story itself is fully
+    expressible** — both endings are written, both play, both stop, nothing was substituted
+    and no beat was dropped — and the then-current criterion's second sentence ("You
+    changed the story to fit the tool") read as a precondition. The controller amended
+    `LANGUAGE-GAP` so that either shape alone qualifies. Shape (b) is precisely this case:
+    the work is intact, the claim *about* the work is not expressible, and only a lossy
+    proxy reaches it. One optional attribute on `::end` — a declared-domain `reason`, or an
+    `outcome` — would make both claims mean something, and would let something check them.
 
 #### T5.5 — `::end` is not an ending, and no tool will tell you whether a route reaches one — DOC-WRONG
 
@@ -2650,7 +2674,7 @@ Found reaching for T5.4(b)'s quest gate, on the un-defaulted ending enum.
   message, and the reason the fix is needed is invisible. Either arm closes it: run the
   same narrowing in the predicate slot, or say what is actually true in the message.
 
-#### T5.7 — content after `::end` is reported *and* shipped: to the artifact, to `loc export`, and to the production word count — no verdict fits, escalating
+#### T5.7 — content after `::end` is reported *and* shipped: to the artifact, to `loc export`, and to the production word count — SPEC-WRONG
 
 The assignment asks whether warning is the right severity for authored content that will
 never play. Here is what the severity buys and what it costs, then my answer.
@@ -2724,20 +2748,35 @@ never play. Here is what the severity buys and what it costs, then my answer.
      Reporting *and* shipping is the one combination with no defensible reading.
 - **Resolution** — probe line removed. `check-project docs/examples/anseo` back to
   `ok (5 file(s))`.
-- **Verdict** — **no verdict fits, and I am escalating rather than forcing one.** The
-  language is right (0.8.0 §3 specifies warning), the docs are right (`directives.md` says
-  warning and says how to promote it), and every tool does exactly what it was specified to
-  do — so `DOC-GAP`, `DOC-WRONG`, `AUTHOR-ERROR` and `TOOL-DEFECT` are all false, and
-  `ERGONOMIC`/`LANGUAGE-GAP` are about expressibility, which is not at issue. The table has
-  no row for **"the specified behaviour is wrong"** — a finding against the design as
-  designed, rather than against an implementation of it or a description of it. That is a
-  category a maturity assessment of a 0.9.0 language needs, because it is where the
-  remaining decisions actually live: this entry, and T5.5's homepage claim, both point at
-  choices someone made deliberately. The nearest honest label would be something like
-  `SPEC-WRONG` or `DESIGN`. Controller's call; I have stated the finding, the evidence, and
-  my recommendation, and I have not hyphenated a hybrid to make it fit.
+- **Verdict** — `SPEC-WRONG`. No implementation is at fault and the agreed design is the
+  defect. 0.8.0 §3 specifies a warning; `directives.md` documents that warning and how to
+  promote it; the checker emits exactly it, once per body, at the first dead node; and
+  `compile` and `loc export` faithfully retain a record the language told them to keep.
+  Language, docs, checker, compiler and localization all agree — which is why `DOC-GAP`,
+  `DOC-WRONG`, `AUTHOR-ERROR` and `TOOL-DEFECT` are all false, and why
+  `ERGONOMIC`/`LANGUAGE-GAP` do not apply (nothing here is about expressing anything). What
+  the spec says is that provably-dead content after a terminator is a warning. What it
+  should say is `E-CODE-AFTER-END`, an **error**, for the four reasons argued above (items
+  1–4). This entry was filed as fitting no verdict and escalated; the seventh row exists
+  for it.
+  - **The strongest single fact, and it is in the checker's own source.**
+    `W-CODE-AFTER-END` and `E-ARM-DEAD` are not two analyses that happen to agree about
+    reachability — they are reached through the **same recursive reachability walk**.
+    `crates/lute-check/src/reachability.rs` is one "§5.2/§5.3 whole-document reachability
+    pass", and its `walk_reach` calls `check_code_after_end(nodes, diags)` on entry to
+    every body it descends into, because "`nodes` is by construction exactly ONE
+    straight-line body at every call site … so the `W-CODE-AFTER-END` scan rides this
+    recursion instead of duplicating it". One walk, one PROVABLE-ONLY boundary, two
+    severities — and the permissive branch is the one that ships bytes. Confirmed
+    independently in review.
+  - **Fallback, if compatibility forbids the error immediately.** Then `compile` and `loc`
+    must at least **prune** the proven-dead content rather than shipping it: no addressed
+    command record, no `loc export` entry, no `loc report` words. This is the reviewer's
+    fallback position and item 5 above, reached separately. Reporting *and* shipping is the
+    one combination with no defensible reading — and it is, word for word, what the front
+    page promises cannot happen (T5.5).
 
-  (T5.5 is filed `DOC-WRONG` and not escalated, because there the falsehood is in prose the
+  (T5.5 is `DOC-WRONG` rather than `SPEC-WRONG` because there the falsehood is in prose the
   reference pages already contradict — a wrong sentence, not a wrong decision. This entry
   has no wrong sentence anywhere.)
 
@@ -2807,13 +2846,15 @@ never play. Here is what the severity buys and what it costs, then my answer.
 
 #### T5 summary
 
-Nine entries: one *worked well* (T5.1), one `TOOL-DEFECT` on the vocabulary surfaces
-(T5.3), one `TOOL-DEFECT` on a misdirecting diagnostic (T5.6), one `DOC-WRONG` (T5.5),
-four `ERGONOMIC` (T5.2, T5.4, T5.8, T5.9), and one entry that **fits no verdict in the
-table** (T5.7), escalated rather than forced. No `LANGUAGE-GAP` and no `DOC-GAP`. Five
-tasks in, the `LANGUAGE-GAP` column is still empty, and T5.4 is the closest anything has
-come — close enough that it argues with the criterion's wording rather than scoring
-against it.
+Nine entries: one *worked well* (T5.1), two `TOOL-DEFECT` — the vocabulary surfaces (T5.3)
+and a misdirecting diagnostic (T5.6) — one `DOC-WRONG` (T5.5), three `ERGONOMIC` (T5.2,
+T5.8, T5.9), one `LANGUAGE-GAP` (T5.4), and one `SPEC-WRONG` (T5.7). Every entry carries
+exactly one of the seven verdicts; no `DOC-GAP` and no `AUTHOR-ERROR` scored here. T5 is
+the first task to score either of the table's two newest readings, and both come from the
+same place — what `::end` is and is not. The two claims a work with endings most wants to
+make are not expressible, only proxyable (T5.4, shape (b)); and the one guarantee the
+language does make about a terminator is specified at a severity that lets it be broken at
+exit 0 (T5.7).
 
 **`::end` works. It is also not what its name, or the front page, says it is.** The
 construct itself is the cleanest first-use in this log: nine directives in `lute.core`, the
@@ -2842,7 +2883,9 @@ with no cross-check, a `::set` half that is as untyped as the `reason` it mirror
 re-verified here for enum paths), a whole quest document to carry polarity, and an `end`
 record that still tells a host nothing about whether the walk ended well. One optional
 attribute on `::end` — a declared-domain `reason`, or an `outcome` — would collapse most
-of that.
+of that. That mirroring is a lossy proxy, not a wordier spelling — nothing in the language
+means "these are the endings" or "this one is the failure", so nothing checks that the
+proxy and the terminator beside it agree. That is why T5.4 is `LANGUAGE-GAP` shape (b).
 
 **Two findings are about tools vouching for things that are not true, which is now the
 dominant pattern of this log.** T5.3: declare `enums: reason: [...]`, and `lute context`
@@ -2854,17 +2897,26 @@ flipped — `context` omitting what the project has, now inventing what it does 
 and the resulting `E-MAYBE-UNSET` says **"no guard"** while pointing five characters right
 of one. Both are cheap fixes on information the checker already has.
 
-**The one thing this task would change first is neither.** It is T5.7, which is why it is
-escalated: `W-CODE-AFTER-END` is a warning, so at exit 0 a line the checker has *proven*
+**The one thing this task would change first is neither.** It is T5.7, the task's one
+`SPEC-WRONG`: `W-CODE-AFTER-END` is a warning, so at exit 0 a line the checker has *proven*
 unreachable becomes an addressed command record, an entry in `lute loc export` ("every
 translatable content line"), and 4 words of `lute loc report`'s production budget — while
 the same reachability pass's verdict on a dead `<branch>` arm is `E-ARM-DEAD`, an error,
-which ships nothing. One proof, two severities, and the permissive one is the one that
-reaches a translator's invoice. Reported *and* quietly shipped — which is, word for word,
-what the homepage promises cannot happen (T5.5).
+which ships nothing. And it is not merely the same *kind* of proof: it is the same
+recursive walk, one function call apart — `reachability.rs`'s `walk_reach` runs the
+dead-code scan on entry to every body it recurses into rather than duplicating the
+recursion. One walk, two severities, and the permissive one is the one that reaches a
+translator's invoice. Reported *and* quietly shipped — which is, word for word, what the
+homepage promises cannot happen (T5.5). `E-CODE-AFTER-END` is the fix; failing that,
+`compile` and `loc` must prune what the checker has already proven dead.
 
 Two housekeeping notes for whoever reads the corpus next. `bridge.lute` carries a
 deliberate `W-INJECT-CONFLICT` (T5.8) — the `anchor` domain's declared `default:` is the
 one member an author may not write on purpose, there is no `--allow` and no in-source
 suppression, and the scene keeps the true statement rather than the clean output. And both
 `after:` routes here are Task 8's to repoint; the graph in T5.5 is provisional by design.
+
+One finding raised while probing T5.4's schema is deliberately **not** filed here:
+`state-model.md`'s only `enum` state declaration example does not parse. It is outside
+T5's remit (`::end`) and is **held for Task 10**, which owns the documentation gates; the
+full reproduction is in `.superpowers/sdd/anseo/task-5-report.md`.
