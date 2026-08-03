@@ -500,7 +500,7 @@ This is a writing task: the plan fixes each scene's structural contract; the dia
 
 **Files:**
 - Create: `quests/{unmoored,who-wakes,false-heading,manifest-gap,what-vesna-carries}.lute`
-- Create: `tests/reach-bridge.test.yaml`, `tests/shed-with-module.test.yaml`
+- Create: `tests/reach-bridge.test.yaml`, `tests/shed-with-module.test.yaml`, `tests/cryobank-wake-toma.test.yaml`
 
 Gates, all verified forms:
 
@@ -516,26 +516,40 @@ The first draft of this plan **omitted tests entirely**, though `lute test` exis
 
 - [ ] **Step 1: Write the five quests** — Task 4's frontmatter shape.
 
-- [ ] **Step 2: Write two scenario tests**, one per ending. Verified shape:
+- [ ] **Step 2: Write two scenario tests**, one per ending.
+
+**`lute test` traces exactly ONE scene**, so `file:` names the scene under test and every `choose:` key must be a `<branch id>` **in that scene** — verified against `docs/examples/investigation/tests/`, where `accuse-correctly.test.yaml` targets `confrontation.lute` and chooses `accuse`, the branch that scene owns. A `choose:` naming a branch in some other scene does not reach it. The plan's first draft had exactly that error.
+
+So the terminal scenes, which carry no branch, are pinned by seeding state and asserting the ending:
 
 ```yaml
 file: ../scenes/bridge.lute
 state:
-  run.shedPressure: 1
-choose:
-  whoWakes: wakeToma
+  run.vesnaTrust: 1
 expect:
   exit: complete
   transcriptContains:
     - "Whatever's left of the ship, it's steering."
-  state:
-    run.vesnaTrust: 1
 ```
+
+and the branching scene gets its own test that actually exercises the choice:
+
+```yaml
+file: ../scenes/cryobank.lute
+choose:
+  whoWakes: wakeToma
+expect:
+  exit: complete
+  state:
+    run.shedPressure: 2
+```
+
+Seed only the state the scene reads; `state:` entries are the preconditions the trace starts from, not assertions.
 
 - [ ] **Step 3: Verify**
 
 ```bash
-./target/debug/lute check-project docs/examples/anseo   # ok, 18 files
+./target/debug/lute check-project docs/examples/anseo   # ok, all files
 ./target/debug/lute test docs/examples/anseo
 ```
 Both tests must pass. A test that cannot be made to pass means the route graph or a gate is wrong — fix the content.
