@@ -583,7 +583,7 @@ forward from the first pass: T1.10's original "nearest manifest wins" is wrong.
 Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`. One beat added
 to `scenes/wake.lute`: Vesna decides to take the second pod, and goes back under.
 
-#### T2.1 — the natural position for an exit is accepted, preserved, and inert — DOC-GAP
+#### T2.1 — an exit written on the line that *is* the departure is accepted, kept, and silently not an exit — TOOL-DEFECT
 
 - **Intent** — Vesna says she is taking the second pod, and returns to cryo. One
   beat: the line, and the character leaving on it.
@@ -606,7 +606,7 @@ to `scenes/wake.lute`: Vesna decides to take the second pod, and goes back under
   ok: docs/examples/anseo (1 file(s), 0 project-wide warning(s))  # exit 0
   $ lute compile … -o /tmp/t2-probe.json                          # exit 0
   ```
-  The artifact keeps the attribute and drops the meaning:
+  The artifact keeps the attribute and drops the *exit*:
   ```json
   {"kind":"line","addr":"001-0500","role":"dialogue","speaker":"vesna",
    "text":"If the second pod's intact, I'm taking it.","emotion":"hollowed",
@@ -614,9 +614,13 @@ to `scenes/wake.lute`: Vesna decides to take the second pod, and goes back under
   ```
   `[c for c in commands if c.get('exit')]` → `[]`. Vesna never leaves, and she is
   still on stage for the rest of the scene: the only two callers of
-  `is_declared_exit` are both on `::auto`'s `action`, and the one that removes a
-  character from `StageState.on_stage` (`inject.rs:192`) is never reached from a
-  content line.
+  `is_declared_exit` (`inject.rs:193`, `lower.rs:183`) are both on `::auto`'s
+  `action`, and the one that removes a character from `StageState.on_stage`
+  (`inject.rs:191-197`) is never reached from a content line.
+
+  Scope, stated once so the rest of the entry is precise: it is the **exit**
+  reading that is inert in this position, not the attribute. A content line's
+  `action` is read, and it emits commands — see T2.2.
 - **Is there ANY signal that separates the two positions?** Every surface a
   working author has:
   - `lute check --json` — `"diagnostics": []`, and `resolved.commands_preview`
@@ -639,7 +643,7 @@ to `scenes/wake.lute`: Vesna decides to take the second pod, and goes back under
     and no exit marker (`<auto>` and `sprite` respectively), so neither preview
     would have shown me the beat was missing.
 
-  Nothing the author reads tells them, and nothing they run tells them.
+  Nothing they run tells them.
 - **And the checker already warns about this exact shape elsewhere.**
   `check-project docs/examples` emits, twice, over other examples:
   ```
@@ -657,39 +661,116 @@ to `scenes/wake.lute`: Vesna decides to take the second pod, and goes back under
   @vesna{code="0030" emotion="hollowed"}: If the second pod's intact, I'm taking it.
   ::auto{character="vesna" action="go-under"}
   ```
-- **Verdict** — `DOC-GAP`, and the scope needs to be precise, because the obvious
-  over-claim is available here and it is wrong.
+- **Verdict** — `TOOL-DEFECT`, and the `DOC-GAP` this was first filed as does not
+  survive contact with the pages.
 
   What the website *does* say, plainly, checked before assigning this:
   `language/directives.md` — "Character staging lives on `::auto` with an action
   id (there is no `::sprite`/`::char`) … a character exit is
-  `::auto{action="fade-out-down"}`"; and `language/vocabulary.md` — an `exits:`
-  member "lowers to a `sprite` record carrying `exit: true`". Read together those
-  two sentences give the right answer, and an author who read `directives.md`
-  first would have written the `::auto`. This is **not** a claim that the rule is
-  unstated or that any page is wrong.
+  `::auto{action="fade-out-down"}`"; and `language/vocabulary.md` §"Member
+  semantics" — the `exits:` members are "the members that end a character's
+  presence on stage", and such a member "lowers to a `sprite` record carrying
+  `exit: true`". A `sprite` record is what `::auto` lowers to. So the working
+  form is one sentence on the shipped site, an author who read `directives.md`
+  first would have written the `::auto`, and I did not have to open Rust, a
+  proposal, or a test to *find the form*. The `DOC-GAP` bar is not met, and
+  claiming it inflated the reading in the same way T1.6's first pass did.
 
-  The hole is narrower and it is real: **the website never says what a content
-  line's `action` attribute does.** `dialogue-and-cast.md` offers it as one of six
-  line attributes and then says only that their *domains* are project vocabulary;
-  it assigns `action` no semantics, does not mention `::auto`, and does not
-  cross-reference `directives.md`. `tooling/runtime-contract.md` never lists
-  `action` among a `line` record's fields. So the attribute is handed to authors
-  on one page, its one plausible meaning is assigned to a different construct on
-  another, and neither page points at the other. I established what `line.action`
-  actually is — a pass-through that nothing reads — by compiling the probe and
-  then reading `crates/lute-compile/src/lower.rs:178-198` and
-  `crates/lute-check/src/inject.rs:192,432`. That is the harsh bar, met: I read
-  Rust to learn what a documented attribute means.
+  What fails is a tool, and it fails in the criterion's own words — "a false
+  green". The checker holds the resolved `action` domain at the content-line
+  check (T1.4 is the proof: `E-BAD-ENUM` enumerates all seven members on a
+  line's `action=`), it has `is_declared_exit` exported for the purpose, it has
+  a precedent warning of exactly this shape in `W-INJECT-CONFLICT`, and it
+  declines to say that a declared-exit member in this position ends nothing.
 
-  It is also the protocol's *silence* case in its expensive form. The document is
+  It is the protocol's *silence* case in its expensive form. The document is
   green, the string survives into the artifact where a reader will see
-  `"action":"go-under"` on the line and assume it means something, and the beat is
-  simply absent. A one-sentence addition to `dialogue-and-cast.md` — what
-  `action` on a line is for, and that a character exit is `::auto` — closes the
-  documentation half of it.
+  `"action":"go-under"` on the line and assume it means something, and the beat
+  is simply absent. One `W-` code closes it — and separately, one sentence in
+  `dialogue-and-cast.md` would have kept an author out of the position entirely
+  (T2.2).
 
-#### T2.2 — the proof, and its negative control — WORKED WELL
+#### T2.2 — the website never says what a content line's `action` does, and it does something — DOC-GAP
+
+- **Intent** — having found the *exit* reading inert on a line (T2.1), establish
+  what `action` in that position actually is. The convenient answer — "nothing" —
+  is the one to distrust, so this is checked against the compiler rather than
+  assumed from T2.1's silence.
+- **Attempt** — read every page that offers the attribute or would carry its
+  semantics; then, finding none, read the checker and compile a probe.
+- **Result — the documentation, all four surfaces:**
+  - `language/dialogue-and-cast.md` offers `action` as one of six line attributes
+    and assigns it **no semantics** — "Their *domains* are project vocabulary,
+    not grammar". No mention of `::auto`, no cross-reference to `directives.md`.
+  - `language/directives.md` attaches "character entrance/exit/pose" to `::auto`.
+    So the one plausible meaning of the word is documented on a *different*
+    construct, on a page the first one does not point at.
+  - `tooling/runtime-contract.md` never lists `action` among a `line` record's
+    fields, although the compiler puts it there (`lower.rs:38-49`, `action:
+    get("action")`).
+  - `posReset` and `auto-pose-reset` — the things a line's `action` actually
+    causes — appear **nowhere** in `packages/website/src/content/docs/`. No hit
+    across the shipped site.
+- **Result — the source. It is read, in two places, and both matter:**
+  - `stage_bookkeeping_line` (`crates/lute-check/src/inject.rs:390-397`) writes it
+    to the speaker's `SpriteState.pose`;
+  - `line_is_stateful` (`inject.rs:405-412`) counts `action` among the four
+    sprite-affecting slots, so such a line marks the speaker `dirty`, and a
+    *later plain line* from that speaker gets an injected `posReset` under rule
+    `auto-pose-reset` (`inject.rs:311-341`).
+
+  This is artifact-visible, and the two scratch scenes differ in exactly one
+  attribute. Probe (`/tmp/t2fix/anseo/scenes/pose.lute`):
+  ```lute
+  ## Cold Wake
+  ::auto{character="vesna" anchor="port" action="brace"}
+  @vesna{code="0010" action="drift"}: A.
+  @vesna{code="0020"}: B.
+  ```
+  ```console
+  $ ./target/debug/lute compile /tmp/t2fix/anseo/scenes/pose.lute \
+      --project /tmp/t2fix/anseo -o /tmp/t2fix/pose.json          # exit 0
+  ```
+  ```json
+  {"kind":"sprite","addr":"001-0100","character":"vesna","anchor":"port","action":"brace"}
+  {"kind":"line","addr":"001-0200","role":"dialogue","speaker":"vesna","text":"A.","action":"drift", …}
+  {"kind":"sprite","addr":"001-0300","character":"vesna","posReset":true,
+   "provenance":{"injected":true,"by":"auto-pose-reset",
+    "reason":"`vesna` had a dirty pose before a plain line; resetting to neutral"}}
+  {"kind":"line","addr":"001-0400","role":"dialogue","speaker":"vesna","text":"B.", …}
+  ```
+  Control (`ctrl.lute`), identical but for dropping `action="drift"` from line
+  `0010`: three records, no `posReset`, nothing injected. So a content line's
+  `action` emits a command the author did not write, one address later.
+  (`emotion` also trips `line_is_stateful`; the `SpriteState.pose` write at
+  `inject.rs:395-397` is `action`'s alone, and the control here carries no
+  attributes at all, so `action` is the only variable.)
+- **Resolution** — none available to an author: this entry *is* the missing
+  documentation. `::auto` remains the way to write an exit (T2.1).
+- **Verdict** — `DOC-GAP`, and it stands on its own precisely because it is not
+  T2.1. T2.1 is about a tool that stays quiet; this is about a page that does not
+  exist. What is **not** claimed here is that the exit rule is unstated — it is
+  stated, on `directives.md`, and T2.1 turns on that fact. The hole is narrower
+  and it is real: the site hands authors an attribute on one page, assigns its
+  one plausible meaning to a different construct on another, lists neither in the
+  runtime contract's `line` record, and documents the semantics the attribute
+  *actually* has — pose state, statefulness, an injected `posReset` — on no page
+  at all. I learned them by compiling the probe above and reading `inject.rs`.
+  That is the harsh bar met in its literal form: a working author cannot read
+  `inject.rs`, and here there is nowhere else to look. Two sentences in
+  `dialogue-and-cast.md` close it — what `action` on a line is for, and that a
+  character exit is `::auto`.
+
+  **Correction to this entry's first pass**, recorded rather than quietly edited,
+  because the protocol's whole value is that its entries are true. The first pass
+  asserted that `line.action` is "a pass-through that nothing reads", citing
+  `lower.rs:178-198` and `inject.rs:192,432`. All three citations are the
+  `::auto` path — `lower.rs:178-198` is the `"auto"` arm of `lower_directive`,
+  `inject.rs:192` is `lower_auto`'s exit branch, `inject.rs:432` is
+  `is_declared_exit` itself. None of them is the line path, and the assertion
+  they were offered for is false.
+
+#### T2.3 — the proof, and its negative control — WORKED WELL
 
 - **Attempt** — brief Steps 2 and 3, the second run as a real control rather than
   a formality: change nothing but the member, `go-under` → `drift`. Both are
@@ -705,16 +786,125 @@ to `scenes/wake.lute`: Vesna decides to take the second pod, and goes back under
   the point — `drift` is not an error, it is simply not an exit.
 - **Verdict** — worked well, and it is the strongest single thing measured so far.
   `exit` is derived from one declared list, in one file, by one function both the
-  checker and the compiler call, and it is `Option<bool>` set to `Some(true)` or
-  `None` — so a non-exit omits the key entirely rather than serializing
-  `"exit": false`, and a consumer cannot confuse "not an exit" with "unset".
+  checker and the compiler call — `is_declared_exit` (`inject.rs:432`), whose only
+  two callers are `inject.rs:193` and `lower.rs:183`. It is `Option<bool>`, set to
+  `Some(true)` or `None`, so a non-exit omits the key entirely rather than
+  serializing `"exit": false`.
+
+  State that guarantee correctly, because this entry's first pass had it exactly
+  backwards. `Option<bool>` does **not** let a consumer tell "not an exit" from
+  "unset" — those are the *same* absent field, and the encoding collapses the
+  distinction rather than preserving it. What the design actually buys is that
+  there is nothing left to distinguish: the compiler writes `exit` for precisely
+  the declared-exit members and never writes `false`, so absence is total and the
+  consumer's rule is one line — **no `exit` key means not an exit.** The negative
+  control above is what makes that rule checkable rather than asserted, and it is
+  a real guarantee; it is just not the one first claimed.
+
   Nothing in this vocabulary would have survived the deleted
   `fade-out*`/`exit*`/`hide` heuristic: `go-under` and `step-out` would both have
   been missed, and `drift` would have been correctly ignored only by accident.
   That is the whole argument for the declaration, demonstrated rather than
   asserted.
 
-#### T2.3 — the finished source cannot tell you which `::auto` is the exit — ERGONOMIC
+#### T2.4 — a character exits, keeps speaking, and exits again: `ok`, zero warnings, two `exit: true` — TOOL-DEFECT
+
+- **Intent** — in the committed scene the exit is last, and reading it back
+  (T2.5) position is doing all the work of telling a reader that Vesna is gone.
+  Find out whether position is doing the *checker's* work too: is "a character
+  who left does not speak" a rule the toolchain enforces, or a property my scene
+  happens to have?
+- **Attempt** — scratch copy of the example so nothing committed moves —
+  `cp -R docs/examples/anseo /tmp/t2fix/anseo` — plus one added scene,
+  `/tmp/t2fix/anseo/scenes/stage_state.lute`, verbatim:
+  ```lute
+  ---
+  kind: scene
+  character: anseo
+  season: 1
+  episode: 2
+  uses: [../vocabulary.schema.yaml]
+  ---
+
+  ## Cold Wake
+  ::auto{character="vesna" anchor="port" action="brace"}
+  @vesna{code="0010" emotion="clipped"}: Cryo's gone. We don't go back under.
+  ::auto{character="vesna" action="go-under"}
+  @vesna{code="0020" emotion="level"}: So we walk.
+  ::auto{character="vesna" action="go-under"}
+  ```
+  A declared exit; then an ordinary dialogue line from a character who is no
+  longer on stage; then a second exit for a character who already left. Three
+  things that cannot all be true of one performance.
+- **Result — clean, at the strictest setting the CLI offers:**
+  ```console
+  $ ./target/debug/lute check /tmp/t2fix/anseo/scenes/stage_state.lute \
+      --project /tmp/t2fix/anseo --deny-warnings
+  ok: /tmp/t2fix/anseo/scenes/stage_state.lute (0 warning(s))       # exit 0
+  $ ./target/debug/lute check-project /tmp/t2fix/anseo
+  ok: /tmp/t2fix/anseo/scenes/stage_state.lute (0 warning(s))
+  ok: /tmp/t2fix/anseo/scenes/wake.lute (0 warning(s))
+  ok: /tmp/t2fix/anseo (2 file(s), 0 project-wide warning(s))       # exit 0
+  $ ./target/debug/lute compile /tmp/t2fix/anseo/scenes/stage_state.lute \
+      --project /tmp/t2fix/anseo -o /tmp/t2fix/stage_state.json     # exit 0
+  ```
+  Zero diagnostics of any severity, and the artifact carries the contradiction
+  straight through:
+  ```json
+  {"kind":"sprite","addr":"001-0100","character":"vesna","anchor":"port","action":"brace"}
+  {"kind":"sprite","addr":"001-0200","character":"vesna","preload":true,"emotion":"clipped", …}
+  {"kind":"line","addr":"001-0300","role":"dialogue","speaker":"vesna","text":"Cryo's gone. We don't go back under.", …}
+  {"kind":"sprite","addr":"001-0400","character":"vesna","action":"go-under","exit":true}
+  {"kind":"line","addr":"001-0500","role":"dialogue","speaker":"vesna","text":"So we walk.", …}
+  {"kind":"sprite","addr":"001-0600","character":"vesna","action":"go-under","exit":true}
+  ```
+  `[c for c in commands if c.get('exit')]` → **two** records. A runtime is told to
+  hide the sprite, then to play a line from it, then to hide it again.
+- **This is not a missing analysis. The state exists, it is correct, and it is
+  read on the very next node.**
+  - The checker removes the character on the first declared exit — `lower_auto`'s
+    exit branch calls `state.on_stage.remove(&character)` (`inject.rs:191-197`).
+    So at line `0020` the reducer already knows Vesna is off stage.
+  - It then *consults* that knowledge, for a different purpose, on that exact
+    line. `auto-pose-reset`'s guard is
+    `!stateful && state.dirty.contains(speaker) && state.on_stage.contains_key(speaker)`
+    (`inject.rs:319`). The third conjunct is false; the only consequence is that
+    an injection is skipped. Absence is used as "nothing to reset" and never as
+    "the author staged something impossible".
+  - The second `::auto` never tests presence at all: the exit branch fires on
+    `is_declared_exit` alone, and its `remove` is a no-op on an absent key
+    (`inject.rs:191-197`).
+- **Resolution** — `NONE — nothing to resolve; the probe is the finding.` The
+  committed scene is correct by construction, not by verification, and I have no
+  way to make the toolchain confirm the difference.
+- **Verdict** — `TOOL-DEFECT`, taking the table in order.
+  - Not `LANGUAGE-GAP`: nothing is inexpressible. The correct scene and the
+    incoherent one are both writable; the story never had to change.
+  - Not `ERGONOMIC`: the working form is not more verbose or more indirect, it is
+    *unverified*. The cost lands on a scene that is wrong rather than one that is
+    awkward, which is a different kind of cost.
+  - Not `DOC-GAP`: no page's absence caused this, and no page could fix it. There
+    is nothing for `directives.md` to say — "a character who has exited cannot
+    speak" is not knowledge an author lacks.
+  - Not `AUTHOR-ERROR`: I did not miss a documented rule; I wrote a scene that
+    contradicts itself and the tool called it `ok`.
+
+  That leaves `TOOL-DEFECT`, and the criterion fits word for word: the language
+  and its docs are fine, and the tool is "lying about its own contract" — this is
+  the "false green" the table names explicitly.
+
+  **Weight.** This is the most serious thing T2 found, and it is more serious than
+  T2.1, which is the same silence over a shape the checker has no state for.
+  Here the checker has the state, has it correct, and reads it one conjunct away
+  from the diagnostic. `--deny-warnings` is the strongest promise the CLI makes;
+  an author or a CI harness that trusts it ships staging that no runtime can
+  perform, with no diagnostic, no warning, and an artifact that looks deliberate.
+  The precedent is already in the codebase — `W-INJECT-CONFLICT` (T2.1) exists to
+  say "this staging attribute is not doing what you think it is doing", so the
+  severity tier and the reporting path are settled. What is missing is a
+  `contains_key` on the line arm and one on the exit branch.
+
+#### T2.5 — the finished source cannot tell you which `::auto` is the exit — ERGONOMIC
 
 - **Intent** — read the shot back as an author who did not write it.
 - **Attempt** — the committed scene, in full:
@@ -730,34 +920,39 @@ to `scenes/wake.lute`: Vesna decides to take the second pod, and goes back under
   attribute names, and the entire difference between "Vesna is now on stage" and
   "Vesna is gone" is which of `brace` and `go-under` appears in a list in
   `../vocabulary.schema.yaml`. Position is a hint, not a rule: the exit happens to
-  be last here, but nothing requires that, and I verified the compiler does not
-  mind — a scene that exits, keeps speaking, and exits again is
-  `ok: … (0 warning(s))` under `--deny-warnings` and emits two `exit: true`
-  records with a `@vesna` line between them. No author-facing surface annotates
-  the difference in place: `lute trace` prints both directives as `<auto>`,
-  `lute run` prints both records as `sprite`.
+  be last here, nothing requires that, and nothing checks it — see **T2.4**, where
+  a scene that exits, keeps speaking, and exits again is `ok: … (0 warning(s))`
+  under `--deny-warnings`. No author-facing surface annotates the difference in
+  place: `lute trace` prints both directives as `<auto>`, `lute run` prints both
+  records as `sprite`.
 - **Resolution** — none; the source stands as written, and the adjacent
   line/directive pair reads acceptably here only because the line carries
   `emotion=` and the directive carries `action=`. Had the beat wanted both, the
   two adjacent lines would be genuinely ambiguous to a reader. The one command
   that helps is `lute doctor`, which prints the resolved semantics on one line:
   `• vocabulary slots declared: emotion, action (exits: step-out/go-under), anchor (default: center), …`
-- **Verdict** — `ERGONOMIC`. This is the deliberate 0.9.0 trade and the entry is
-  not an argument against it: a declared list beats a name prefix precisely
-  *because* `go-under` is unguessable. But the cost is real and it lands on the
-  reader rather than the writer — staging semantics are now non-local, and the
-  three tools that render a scene for a human (`trace`, `run`, `context`'s human
-  mode) each discard the one bit that says a character left. `trace` printing
-  `<auto exit>`, or `context` keeping the `semantics` flags its own `--json`
-  already carries, would close it without touching the language.
+- **Verdict** — `ERGONOMIC`, and scoped to readability alone now that the
+  unchecked-staging half of it is T2.4. This is the deliberate 0.9.0 trade and the
+  entry is not an argument against it: a declared list beats a name prefix
+  precisely *because* `go-under` is unguessable. But the cost is real and it lands
+  on the reader rather than the writer — staging semantics are now non-local, and
+  the three tools that render a scene for a human (`trace`, `run`, `context`'s
+  human mode) each discard the one bit that says a character left. `trace`
+  printing `<auto exit>`, or `context` keeping the `semantics` flags its own
+  `--json` already carries, would close it without touching the language.
 
 #### T2 summary
 
-Three entries: one `DOC-GAP`, one `ERGONOMIC`, one *worked well*. The mechanism
-under test is sound — the negative control is clean, the field is absent rather
-than false, and the declaration does exactly the work the heuristic used to guess
-at. Everything that went wrong is on the *approach* to it: the position that
-carries the meaning is stated on one page, the position that does not is offered
-on another with no semantics at all, no diagnostic separates them, and no preview
-tool shows the difference in the result. An author gets this right by having read
-the correct page first, or by compiling and diffing the JSON.
+Five entries: two `TOOL-DEFECT`, one `DOC-GAP`, one `ERGONOMIC`, one *worked
+well*. The mechanism under test is sound — the negative control is clean, the
+field is absent rather than false, and the declaration does exactly the work the
+heuristic used to guess at. Everything that went wrong is on the *approach* to it
+and on the *verification* of it. On the approach: the position that carries the
+exit is stated on one page, the position that does not is offered on another with
+no semantics at all even though it has them, and no preview tool shows the
+difference in the result. On the verification: the checker accepts a declared-exit
+member on a content line without a word (T2.1) and accepts a character speaking
+after they have left (T2.4), the second while holding the state that refutes it.
+An author gets the exit right by having read the correct page first, or by
+compiling and diffing the JSON — and gets no help at all in finding out they got
+the staging wrong.
