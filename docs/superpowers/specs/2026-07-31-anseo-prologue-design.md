@@ -104,8 +104,15 @@ enums:
 ```
 
 `go-under` — returning to cryo — is the argument for `exits:` being **declared** rather than
-inferred. No naming heuristic recovers it. `lower.rs:182` is the single reader for both crates,
-setting `exit: true` on the sprite record.
+inferred. No naming heuristic recovers it: `drift` and `go-under` are equally opaque strings,
+and only the schema distinguishes them.
+
+**Position matters, and it is the sharpest edge in the language.** `lower.rs:178-185` is the
+single reader of `exits:` for both crates, and it lives in the `"auto"` arm: `exit: true` is
+emitted onto the **sprite** record produced by `::auto{action="go-under"}`. The same attribute
+on a content line — `@vesna{action="go-under"}` — lowers to `line.action` and carries no
+`exit` field at all. Verified by compiling both forms. The example must stage the departure
+with `::auto`; an author who writes it on the dialogue line gets silence, not a diagnostic.
 
 ## The countdown, stated accurately
 
@@ -176,7 +183,13 @@ docs/examples/anseo/
   scenes/       11 files
   quests/       6 files
   components/   shared Purser interjections
+  tests/        2 scenario tests, one per ending
+  mocks/        playthrough.yaml
 ```
+
+`lute init` scaffolds this layout exactly — project file, both schemas, `scenes/`, `mocks/`,
+README. The example uses the scaffolder rather than hand-writing it, which dogfoods the tool
+the docs tell every new author to run first.
 
 ## Scope and risk
 

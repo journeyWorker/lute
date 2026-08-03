@@ -2,53 +2,75 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Author a showcase-scale Lute example — eleven scenes and six quests aboard a generation ship shedding modules — that exercises `::end`, `identity:`, and the relational layer, all of which the current example corpus barely covers.
+**Goal:** Author a showcase-scale Lute example — eleven scenes and six quests aboard a generation ship shedding modules — exercising `::end`, `identity:`, and the relational layer, which the current corpus barely covers.
 
-**Architecture:** A new project root `docs/examples/anseo/` with its own `lute.project.yaml`, a `vocabulary.schema.yaml` carrying the 0.9.0 content vocabulary, a `world.schema.yaml` carrying state plus the entity/relation/rule layer, and scene and quest documents under `scenes/` and `quests/`. Scenes are ordered by `after:` routes; quests gate on relational queries. The root is gated by `lute check-project` like every other example root.
+**Architecture:** A project root at `docs/examples/anseo/`, scaffolded by `lute init`, then filled in. Scenes are ordered by `after:` routes; quests gate on relational queries; scenario tests pin the endings.
 
 **Tech Stack:** Lute 0.9.0 (`./target/debug/lute`). No Rust changes. Content is `.lute` and YAML only.
 
+## Provenance of this plan
+
+Every syntax form below was executed against the real binary before being written down. The first draft of this plan was **wrong in ten places** because it was designed from adjacent-language intuition and only validated afterward. The corrections are in Task 10's findings note. Two consequences for you:
+
+1. **Do not substitute forms from memory**, including from other examples — several corrections came from forms that are correct in one position and wrong in another (see the `exit:` rule below).
+2. When something does not check, **read the source or the proposal, not another example**. `docs/proposals/scenario-dsl/*.md` is normative; the examples are not.
+
+## Verified facts this plan depends on
+
+| Fact | Verified how |
+|---|---|
+| `identity:` is a `lute.project.yaml` key. In scene frontmatter it is `E-META-UNKNOWN-KEY`. | `lute check` |
+| Identity tokens are exactly `{prefix}`, `{speaker}`, `{code}`; `prefix` = `{character}.s{season}ep{episode}` | compiled `lineId` = `anseo.s01ep01.vesna_0010` |
+| `kind: quest` frontmatter takes `kind`/`luteVersion`/`uses`/`title` only — `character`/`season`/`episode` are `E-META-UNKNOWN-KEY` | `lute check` |
+| A rule's head relation must be declared `derive: true`, no `tier:`; otherwise `E-RELATION-UNKNOWN` | `lute check-project` |
+| `rules:` is a YAML list of quoted strings; non-derived relations carry `tier:` | `lute check-project` |
+| **`exit: true` is emitted on the `::auto` sprite record ONLY.** An `action=` on a content line lowers to `line.action` and never carries `exit`. | `lute compile` + `lower.rs:178-185` |
+| A non-exit `action=` on `::auto` emits no `exit` field at all | `lute compile`, control run |
+| `::end{reason=…}` emits `{"kind":"end","reason":…}`; content after it is `W-CODE-AFTER-END` | `lute compile`, `lute check` |
+| A component body admits a **param-scoped** `<match on="@param">` (dsl 0.4.0 §6.2) | `lute check-project` through `::use` |
+| `<branch>`/`<hub>` in a component body is `E-COMPONENT-BODY` — **but only when checked through the importing document**; a standalone `lute check` of the component file reports `ok` | both runs, see Task 10 |
+| `<timeline>` is `<timeline duration="1.2">` wrapping `<track subject= property=>` — a sub-second choreography unit, NOT a countdown | `docs/examples/property-tracks.lute:27-36` |
+| `lute scenario` prints topological layers and a prerequisite→dependent edge list | `lute scenario` |
+| `lute init` scaffolds exactly this layout, plus `mocks/playthrough.yaml` and a README | `lute init` |
+
 ## Global Constraints
 
-- **Every syntax form below was verified against the real binary before this plan was written.** Do not substitute forms from memory or from other examples without re-checking.
-- `identity:` lives in `lute.project.yaml`, **never** in scene frontmatter — a scene-level `identity:` is `E-META-UNKNOWN-KEY`.
-- `IDENTITY_TOKENS` is exactly `{prefix}`, `{speaker}`, `{code}`. Any other token is rejected at project load. `prefix` derives as `{character}.s{season}ep{episode}`.
-- `kind: quest` documents take `kind`, `luteVersion`, `uses`, `title` only. `character`/`season`/`episode` are scene-only and are `E-META-UNKNOWN-KEY` in a quest.
-- A rule's head relation MUST also be declared, with `derive: true` and no `tier:`. An underived head is `E-RELATION-UNKNOWN`.
-- `rules:` is a YAML list of quoted strings. Non-derived relations carry `tier: run`.
-- `<timeline>` is choreography with a sub-second local clock. It is **not** a countdown. The shed clock is the declared scalar `run.shedPressure`, moved by `::set` and read by `when=` / `done=`.
-- `<on>` is a quest lifecycle hook: `<on event="questComplete">` / `<on event="questFailed">`.
-- Tags are line-oriented: an opener, children on their own lines, then the closer. A single-line `<tag>body</tag>` is `E-TAG-INLINE-BODY`.
-- Every content-line vocabulary attribute must be declared in `vocabulary.schema.yaml` or checking fails with `E-DOMAIN-UNKNOWN`.
+- Tags are line-oriented: opener, children on their own lines, closer. A single-line `<tag>body</tag>` is `E-TAG-INLINE-BODY`.
+- Every content-line vocabulary attribute must be a declared member, or `E-DOMAIN-UNKNOWN`.
 - `lute check-project docs/examples` must exit 0 at the end of every task.
-- NEVER run repo-wide `cargo fmt`. No Rust source changes at all in this plan.
-- Branch `example/anseo-prologue` is already checked out. Commit there.
+- No Rust source changes. NEVER run repo-wide `cargo fmt`.
+- Branch `example/anseo-prologue` is checked out. Commit there.
 
 ---
 
-### Task 1: Project root, vocabulary, and world schema
+### Task 1: Scaffold and declare
 
 **Files:**
-- Create: `docs/examples/anseo/lute.project.yaml`
-- Create: `docs/examples/anseo/vocabulary.schema.yaml`
-- Create: `docs/examples/anseo/world.schema.yaml`
-- Create: `docs/examples/anseo/scenes/wake.lute`
+- Create (via `lute init`): `docs/examples/anseo/{lute.project.yaml,vocabulary.schema.yaml,world.schema.yaml,scenes/opening.lute,mocks/playthrough.yaml,README.md}`
+- Modify: the three YAML files and delete the placeholder scene
 
 **Interfaces:**
-- Produces: the vocabulary every later scene imports via `uses: [../vocabulary.schema.yaml]`; the state and relations every later quest imports via `uses: ../world.schema.yaml`; the `identity:` templates that fix every `lineId` in the project.
+- Produces: the vocabulary every scene imports; the state/relations every quest imports; the `identity:` templates fixing every `lineId`.
 
-- [ ] **Step 1: Write the project file**
+- [ ] **Step 1: Scaffold with the tool, not by hand**
+
+```bash
+./target/debug/lute init docs/examples/anseo
+```
+
+Dogfooding the scaffolder in the flagship example is the point; it also gets the `mocks/` layout right for free.
+
+- [ ] **Step 2: Set the identity templates in `lute.project.yaml`**
 
 ```yaml
-defaultProfile: main
-profiles:
-  main: {}
 identity:
   lineId: "{prefix}.{speaker}_{code}"
   voiceKey: "{speaker}-{code}"
 ```
 
-- [ ] **Step 2: Write the vocabulary**
+Only `{prefix}`/`{speaker}`/`{code}` exist. Any other token is rejected at project load.
+
+- [ ] **Step 3: Replace `vocabulary.schema.yaml`**
 
 ```yaml
 enums:
@@ -63,7 +85,7 @@ enums:
   vfxType: [shed, klaxon, pressure-drop, frost]
 ```
 
-- [ ] **Step 3: Write the world schema**
+- [ ] **Step 4: Replace `world.schema.yaml`**
 
 ```yaml
 state:
@@ -81,9 +103,7 @@ rules:
   - "can_halt(C) :- awake(C), knows(C, shed_sequence)"
 ```
 
-`can_halt` carries `derive: true` and no `tier:`. Omitting the declaration is `E-RELATION-UNKNOWN` at every use site.
-
-- [ ] **Step 4: Write the opening scene**
+- [ ] **Step 5: Replace the placeholder scene with `scenes/wake.lute`**
 
 ```lute
 ---
@@ -94,69 +114,73 @@ episode: 1
 uses: [../vocabulary.schema.yaml]
 ---
 
-## Cold Wake.
+## Cold Wake
 ::auto{character="vesna" anchor="port" action="brace"}
 @vesna{code="0010" emotion="clipped"}: Cryo's gone. We don't go back under.
 @vesna{code="0020" emotion="level"}: So we walk.
 ```
 
-- [ ] **Step 5: Verify it checks clean**
+Delete `scenes/opening.lute`.
 
-Run: `./target/debug/lute check-project docs/examples/anseo`
-Expected: `ok: docs/examples/anseo (1 file(s), 0 project-wide warning(s))`
-
-- [ ] **Step 6: Verify the identity template took effect**
-
-Run: `./target/debug/lute compile docs/examples/anseo/scenes/wake.lute -o /tmp/anseo-t1.json && grep -o '"lineId": *"[^"]*"' /tmp/anseo-t1.json | head -2`
-Expected: `anseo.s01ep01.vesna_0010` and `anseo.s01ep01.vesna_0020`
-
-- [ ] **Step 7: Verify the whole examples tree still passes**
-
-Run: `./target/debug/lute check-project docs/examples`
-Expected: exit 0
-
-- [ ] **Step 8: Commit**
+- [ ] **Step 6: Verify**
 
 ```bash
+./target/debug/lute check-project docs/examples/anseo   # ok, 1 file
+./target/debug/lute compile docs/examples/anseo/scenes/wake.lute -o /tmp/t1.json
+grep -o '"lineId": *"[^"]*"' /tmp/t1.json | head -2
+```
+Expected: `anseo.s01ep01.vesna_0010`, `anseo.s01ep01.vesna_0020`
+
+- [ ] **Step 7: Verify the whole tree, then commit**
+
+```bash
+./target/debug/lute check-project docs/examples
 git add docs/examples/anseo
 git commit -m "feat(example): Anseo project root, vocabulary, and world schema"
 ```
 
 ---
 
-### Task 2: The exits proof — a departure that only `exits:` explains
+### Task 2: The exits proof
 
 **Files:**
 - Modify: `docs/examples/anseo/scenes/wake.lute`
 
 **Interfaces:**
 - Consumes: the `action` domain and its `exits:` list from Task 1.
-- Produces: the first artifact in the corpus where a declared exit member marks a sprite record `exit: true`.
+- Produces: the corpus's demonstration that a declared exit member sets `exit: true`.
 
-- [ ] **Step 1: Add a line whose action is a declared exit**
+**Read this before writing anything.** `exit: true` is emitted by the `"auto"` lowering arm (`lower.rs:178-185`) onto the **sprite** record. Putting `action="go-under"` on a `@vesna{…}` content line produces `{"kind":"line", …, "action":"go-under"}` with **no `exit` field**. The first draft of this plan got this backwards and its verification step would have failed. The exit must be staged with `::auto`.
 
-Append inside the shot:
+- [ ] **Step 1: Stage the departure**
+
+Append to the shot:
 
 ```lute
-@vesna{code="0030" emotion="hollowed" action="go-under"}: If the second pod's intact, I'm taking it.
+@vesna{code="0030" emotion="hollowed"}: If the second pod's intact, I'm taking it.
+::auto{character="vesna" action="go-under"}
 ```
 
-- [ ] **Step 2: Compile and inspect the sprite record**
+- [ ] **Step 2: Prove it**
 
-Run: `./target/debug/lute compile docs/examples/anseo/scenes/wake.lute -o /tmp/anseo-t2.json && grep -o '"exit": *true' /tmp/anseo-t2.json | wc -l`
-Expected: `1`
+```bash
+./target/debug/lute compile docs/examples/anseo/scenes/wake.lute -o /tmp/t2.json
+python3 -c "
+import json;d=json.load(open('/tmp/t2.json'))
+print([c for c in d['commands'] if c.get('exit')])"
+```
+Expected: exactly one sprite record with `'exit': True`.
 
-- [ ] **Step 3: Prove a non-exit action does not set it**
+- [ ] **Step 3: Prove the negative**
 
-Temporarily change `action="go-under"` to `action="drift"`, recompile, and confirm the count is `0`. Restore `go-under`.
+Change `action="go-under"` to `action="drift"` on that `::auto`, recompile, and confirm **no** command carries `exit`. Restore `go-under`.
 
-This is the demonstration the example exists to carry: `go-under` means "returns to cryo", which no naming heuristic recovers. The compiler knows only because `vocabulary.schema.yaml` declares it.
+This is the demonstration the example exists to carry: `go-under` means "returns to cryo", which no naming heuristic recovers — `drift` and `go-under` are equally opaque strings. The compiler knows only because `vocabulary.schema.yaml` declares one of them in `exits:`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add docs/examples/anseo/scenes/wake.lute
-git commit -m "feat(example): a cryo return that only declared exits can explain"
+git commit -am "feat(example): a cryo return that only declared exits can explain"
 ```
 
 ---
@@ -167,10 +191,10 @@ git commit -m "feat(example): a cryo return that only declared exits can explain
 - Create: `docs/examples/anseo/scenes/cryobank.lute`
 
 **Interfaces:**
-- Consumes: `run.shedPressure` from Task 1's world schema.
-- Produces: the `after:` route target that Task 4's scenes chain from.
+- Consumes: `run.shedPressure`, `awake`, `knows` from Task 1.
+- Produces: `anseo.s01ep02`, the route ancestor of everything downstream.
 
-- [ ] **Step 1: Write the scene, with a choice that costs clock**
+- [ ] **Step 1: Write the scene**
 
 ```lute
 ---
@@ -182,7 +206,7 @@ uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
 after: 'visited("anseo.s01ep01")'
 ---
 
-## The Cryobank.
+## The Cryobank
 ::auto{character="vesna" anchor="port" action="drift"}
 @vesna{code="0010" emotion="clipped"}: Every pod you crack, the Purser reads as load.
 @purser{code="0020" emotion="level" os}: Allocation notes the draw. The schedule advances.
@@ -206,17 +230,15 @@ after: 'visited("anseo.s01ep01")'
 </branch>
 ```
 
-Note the tags: opener, children on their own lines, closer. A single-line `<choice …>…</choice>` is `E-TAG-INLINE-BODY`.
-
 - [ ] **Step 2: Verify**
 
-Run: `./target/debug/lute check-project docs/examples/anseo`
-Expected: `ok`, 2 files
+```bash
+./target/debug/lute check-project docs/examples/anseo   # ok, 2 files
+```
 
-- [ ] **Step 3: Confirm the clock is authored state, not a timer**
+- [ ] **Step 3: Confirm the clock is authored, not a timer**
 
-Run: `./target/debug/lute compile docs/examples/anseo/scenes/cryobank.lute -o /tmp/anseo-t3.json && grep -c 'shedPressure' /tmp/anseo-t3.json`
-Expected: a non-zero count — the increments are `setState` records in the artifact, which is exactly the point: the engine executes authored mutations, it does not run a clock.
+Compile and confirm the increments appear as state-write commands. There is no engine clock: the schedule advances only because an author wrote `::set`. That is the design claim this scene carries.
 
 - [ ] **Step 4: Commit**
 
@@ -232,11 +254,7 @@ git commit -m "feat(example): the cryobank, where waking crew costs clock"
 **Files:**
 - Create: `docs/examples/anseo/quests/hold-the-spine.lute`
 
-**Interfaces:**
-- Consumes: `can_halt`, `awake`, `knows` from Task 1; `run.shedPressure` from Task 1; the `::assert` facts written in Task 3.
-- Produces: the pattern every later quest follows.
-
-- [ ] **Step 1: Write the quest**
+- [ ] **Step 1: Write it**
 
 ```lute
 ---
@@ -255,39 +273,39 @@ title: Hold the Spine
 </quest>
 ```
 
-The frontmatter has no `character`/`season`/`episode` — those are scene-only keys and are `E-META-UNKNOWN-KEY` here.
+No `character`/`season`/`episode` — scene-only keys, `E-META-UNKNOWN-KEY` here.
 
 - [ ] **Step 2: Verify**
 
-Run: `./target/debug/lute check-project docs/examples/anseo`
-Expected: `ok`, 3 files
+```bash
+./target/debug/lute check-project docs/examples/anseo   # ok, 3 files
+```
 
-- [ ] **Step 3: Prove the gate is a query, not a flag**
+- [ ] **Step 3: Prove the gate is typed**
 
-Temporarily change `start="holds(can_halt(toma))"` to `start="holds(can_halt(vesna))"` and re-check: it still passes, because the checker validates the query's shape, not its runtime truth. Then change it to `holds(can_halt(nobody))` and confirm it FAILS — `nobody` is not a `crew` member. Restore `toma`.
+Change `holds(can_halt(toma))` to `holds(can_halt(nobody))` and confirm it FAILS — `nobody` is not a `crew` member. Then try `holds(can_halt(vesna))` and observe it PASSES: the checker validates the query's shape and its argument's domain membership, not its runtime truth. Restore `toma`.
 
-This is what a closed entity domain buys: a typo in a gate is a check-time error.
+A typo in a gate is a check-time error. That is what a closed entity domain buys, and it is the reason to declare `crew` rather than use bare strings.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add docs/examples/anseo/quests/hold-the-spine.lute
+git add docs/examples/anseo/quests
 git commit -m "feat(example): gate a quest on a derived relation, not a flag"
 ```
 
 ---
 
-### Task 5: The terminator
+### Task 5: The terminators
 
 **Files:**
-- Create: `docs/examples/anseo/scenes/bridge.lute`
-- Create: `docs/examples/anseo/scenes/shed.lute`
+- Create: `docs/examples/anseo/scenes/bridge.lute` (episode 10)
+- Create: `docs/examples/anseo/scenes/shed.lute` (episode 11)
 
 **Interfaces:**
-- Consumes: the `after:` chain from Tasks 1 and 3.
-- Produces: the corpus's first two `::end` uses, with distinct reasons.
+- Produces: the corpus's first two `::end` uses, with distinct reasons. Both `after:` routes are provisional and get repointed in Task 8.
 
-- [ ] **Step 1: Write the success terminal**
+- [ ] **Step 1: The success terminal**
 
 ```lute
 ---
@@ -299,13 +317,13 @@ uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
 after: 'visited("anseo.s01ep02")'
 ---
 
-## The Bridge.
+## The Bridge
 ::auto{character="vesna" anchor="center" action="brace"}
 @vesna{code="0010" emotion="level"}: Whatever's left of the ship, it's steering.
 ::end{reason="bridge-reached"}
 ```
 
-- [ ] **Step 2: Write the failure terminal**
+- [ ] **Step 2: The failure terminal**
 
 ```lute
 ---
@@ -317,29 +335,28 @@ uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
 after: 'visited("anseo.s01ep02")'
 ---
 
-## Shed.
+## Shed
 @purser{code="0010" emotion="level" os}: Module released. Allocation is satisfied.
 ::end{reason="shed-with-module"}
 ```
 
-- [ ] **Step 3: Verify both check clean**
-
-Run: `./target/debug/lute check-project docs/examples/anseo`
-Expected: `ok`, 5 files
-
-- [ ] **Step 4: Prove `::end` terminates the walk**
-
-Add a line after `::end` in `shed.lute`, re-check, and confirm `W-CODE-AFTER-END`. Remove it.
-
-- [ ] **Step 5: Confirm both reasons reach the artifact**
-
-Run: `./target/debug/lute compile docs/examples/anseo/scenes/bridge.lute -o /tmp/anseo-b.json && grep -o '"reason": *"[^"]*"' /tmp/anseo-b.json`
-Expected: `"reason": "bridge-reached"`
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Verify and probe**
 
 ```bash
-git add docs/examples/anseo/scenes/bridge.lute docs/examples/anseo/scenes/shed.lute
+./target/debug/lute check-project docs/examples/anseo   # ok, 5 files
+```
+Add a content line after `::end` in `shed.lute`, re-check, confirm `W-CODE-AFTER-END`, remove it.
+
+```bash
+./target/debug/lute compile docs/examples/anseo/scenes/bridge.lute -o /tmp/t5.json
+grep -o '"reason": *"bridge-reached"' /tmp/t5.json
+```
+Note: the artifact also carries an injected `reason` on the auto-preload sprite (`entry-emotion-lookahead` provenance). Match the `end` record specifically, not the first `reason` in the file.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add docs/examples/anseo/scenes
 git commit -m "feat(example): two terminals, two end reasons"
 ```
 
@@ -349,12 +366,12 @@ git commit -m "feat(example): two terminals, two end reasons"
 
 **Files:**
 - Create: `docs/examples/anseo/components/purser-interject.component.lute`
-- Modify: `docs/examples/anseo/scenes/cryobank.lute` (add `components:` and one `::use`)
+- Modify: `docs/examples/anseo/scenes/cryobank.lute`
 
 **Interfaces:**
-- Produces: a reusable interjection every later scene invokes with `::use{component="purserInterject" …}`, so the Purser's voice is authored once.
+- Produces: a reusable interjection later scenes invoke with `::use`.
 
-The Purser speaks in every module. Authoring that inline eleven times is the duplication components exist to remove.
+A component body is presentational: content lines, staging directives, `@param` refs, `::use`, and — per dsl 0.4.0 §6.2 — a **param-scoped** `<match on="@param">`. `<branch>`/`<hub>` are forbidden on principle (presenting a menu writes `scene.choices.*`), and `::set`/`::assert`/`::retract`/`<timeline>`/`<on>`/`<objective>` are `E-COMPONENT-BODY`.
 
 - [ ] **Step 1: Write the component**
 
@@ -362,26 +379,24 @@ The Purser speaks in every module. Authoring that inline eleven times is the dup
 ---
 component: purserInterject
 params:
-  pressure: { enum: [low, rising, critical] }
+  pressure: string
+uses: ../vocabulary.schema.yaml
 ---
 
-## Interjection.
+## Interjection
 <match on="@pressure">
-<when is="low">
-@purser{code="0010" emotion="level" os}: Allocation is nominal.
-</when>
 <when is="rising">
 @purser{code="0020" emotion="level" os}: Draw exceeds projection. The schedule advances.
 </when>
-<when is="critical">
-@purser{code="0030" emotion="clipped" os}: Release is imminent. Clear the module.
-</when>
+<otherwise>
+@purser{code="0010" emotion="level" os}: Allocation is nominal.
+</otherwise>
 </match>
 ```
 
-A component body resolves vocabulary against the IMPORTING document, so the scene that uses it must import `vocabulary.schema.yaml` — the component's own `uses:` is discarded at parse. This is the documented limitation from the 0.9.0 release notes, and the example is a good place to exercise it.
+The `uses:` makes a standalone check resolve `emotion=`; through `::use` the **importing** document's vocabulary is what applies (0.9.0 §5, known limitation), so both sides declare it.
 
-- [ ] **Step 2: Invoke it from the cryobank**
+- [ ] **Step 2: Invoke it**
 
 Add `components: [../components/purser-interject.component.lute]` to `cryobank.lute`'s frontmatter and replace its inline Purser line with:
 
@@ -389,10 +404,12 @@ Add `components: [../components/purser-interject.component.lute]` to `cryobank.l
 ::use{component="purserInterject" pressure="rising"}
 ```
 
-- [ ] **Step 3: Verify**
+- [ ] **Step 3: Verify, and see the standalone gap for yourself**
 
-Run: `./target/debug/lute check-project docs/examples/anseo`
-Expected: `ok`, 5 files
+```bash
+./target/debug/lute check-project docs/examples/anseo   # ok, 6 files
+```
+Then temporarily add a `<branch>` to the component body and check **the component file alone**: it reports `ok`. Check `cryobank.lute`: `E-COMPONENT-BODY`. Remove the branch. Record this in Task 10 — it is a real gap, not a quirk to work around.
 
 - [ ] **Step 4: Commit**
 
@@ -406,98 +423,66 @@ git commit -m "feat(example): the Purser speaks through a component"
 ### Task 7: The branch scenes
 
 **Files:**
-- Create: `docs/examples/anseo/scenes/spine-a.lute` (episode 3)
-- Create: `docs/examples/anseo/scenes/hydroponics.lute` (episode 4)
-- Create: `docs/examples/anseo/scenes/machine-deck.lute` (episode 5)
-- Create: `docs/examples/anseo/scenes/stowaway.lute` (episode 6)
+- Create: `scenes/spine-a.lute` (ep3), `scenes/hydroponics.lute` (ep4), `scenes/machine-deck.lute` (ep5), `scenes/stowaway.lute` (ep6)
 
-**Interfaces:**
-- Consumes: everything from Tasks 1-6.
-- Produces: `anseo.s01ep06` as the join point Task 8's `spine-b` routes from.
+This is a writing task: the plan fixes each scene's structural contract; the dialogue is the deliverable produced while executing it.
 
-This is a writing task: the plan fixes each scene's structural contract, and the dialogue is the deliverable produced while executing it. Every scene takes the frontmatter shape from Task 3 — `character: anseo`, its episode number, `uses:` both schemas, `components:` where it invokes the Purser, and an `after:` naming its predecessor.
+- **spine-a** (after ep02) — the first shed, on screen. The example's only `<timeline>`. Real shape:
 
-- **spine-a** (after ep02) — the first shed, on screen. This is where `<timeline>` belongs and the only place in the example it appears: a bounded choreography beat with a camera track and a `brace` track and a `shed` vfx, durations in fractions of a second. It is NOT the countdown.
-- **hydroponics** (after ep03) — Vesna's scene. `::set{run.vesnaTrust += 1}` on the honest branch, so Task 9's `what-vesna-carries` becomes reachable.
-- **machine-deck** (after ep03) — the alternative route. If `holds(awake(toma))` the coupling is saved; otherwise `::set{run.shedPressure += 1}`.
+```lute
+<timeline duration="1.2">
+  <track subject="camera">
+    ::camera{shake="0.4" duration="0.3" at="0.7"}
+  </track>
+  <track subject="vesna" property="pos">
+    ::auto{character="vesna" anchor="port" action="brace"}
+  </track>
+</timeline>
+```
+  Sub-second offsets. It is choreography, not the countdown.
+- **hydroponics** (after ep03) — Vesna. `::set{run.vesnaTrust += 1}` on the honest branch, so Task 9's `what-vesna-carries` is reachable.
+- **machine-deck** (after ep03) — if `holds(awake(toma))` the coupling is saved; else `::set{run.shedPressure += 1}`.
 - **stowaway** (after ep04 or ep05) — Ottavio. `::assert{found(ottavio)}`.
 
 - [ ] **Step 1: Write the four scenes**
-
-Every vocabulary attribute must be a declared member of `vocabulary.schema.yaml`; anything else is `E-DOMAIN-UNKNOWN`. Tags are line-oriented — opener, children on their own lines, closer.
-
-- [ ] **Step 2: Verify**
-
-Run: `./target/debug/lute check-project docs/examples/anseo`
-Expected: `ok`, 9 files
-
-- [ ] **Step 3: Confirm the timeline is choreography-shaped**
-
-Run: `./target/debug/lute compile docs/examples/anseo/scenes/spine-a.lute -o /tmp/anseo-t7.json`
-Inspect the timeline's records: durations must be sub-second and the block must carry concurrent tracks. A `duration` of tens of seconds means it is being used as a countdown, which is the misreading this example exists partly to correct.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add docs/examples/anseo/scenes
-git commit -m "feat(example): the branch scenes and the first shed"
-```
+- [ ] **Step 2: Verify** — `./target/debug/lute check-project docs/examples/anseo` → ok, 10 files
+- [ ] **Step 3: Commit** — `git commit -m "feat(example): the branch scenes and the first shed"`
 
 ---
 
 ### Task 8: The convergence scenes
 
 **Files:**
-- Create: `docs/examples/anseo/scenes/spine-b.lute` (episode 7)
-- Create: `docs/examples/anseo/scenes/archive.lute` (episode 8)
-- Create: `docs/examples/anseo/scenes/purser.lute` (episode 9)
-- Modify: `docs/examples/anseo/scenes/bridge.lute` (repoint `after:`)
-- Modify: `docs/examples/anseo/scenes/shed.lute` (repoint `after:`)
+- Create: `scenes/spine-b.lute` (ep7), `scenes/archive.lute` (ep8), `scenes/purser.lute` (ep9)
+- Modify: `scenes/bridge.lute`, `scenes/shed.lute` (repoint `after:`)
 
-**Interfaces:**
-- Consumes: Task 7's branch scenes.
-- Produces: the complete eleven-scene graph with both terminals reachable.
-
-- **spine-b** (after ep06) — the second shed. The branches converge.
-- **archive** (after ep07) — the manifest. `::assert{knows(vesna, manifest)}`.
-- **purser** (after ep07 or ep08) — the confrontation. What can be said depends on who is awake, via `when=` guards reading the relational facts.
+- **spine-b** (after ep06) — the second shed; branches converge.
+- **archive** (after ep07) — `::assert{knows(vesna, manifest)}`.
+- **purser** (after ep07 or ep08) — what can be said depends on who is awake, via `when=` guards over the relational facts.
 
 - [ ] **Step 1: Write the three scenes**
 
 - [ ] **Step 2: Repoint the terminals**
 
-`bridge.lute`'s `after:` becomes `'visited("anseo.s01ep09")'`; `shed.lute`'s becomes `'visited("anseo.s01ep07")'`.
+`bridge.lute` → `after: 'visited("anseo.s01ep09")'`; `shed.lute` → `after: 'visited("anseo.s01ep07")'`.
 
-- [ ] **Step 3: Verify the whole project**
-
-Run: `./target/debug/lute check-project docs/examples/anseo`
-Expected: `ok`, 12 files (11 scenes + 1 quest)
-
-- [ ] **Step 4: Verify both terminals are reachable**
-
-Run: `./target/debug/lute scenario docs/examples/anseo`
-Expected: both `bridge` and `shed` reachable. If either is not, the `after:` graph is wrong — fix the routes, not the expectation. Record the output in the commit body.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Verify the graph**
 
 ```bash
-git add docs/examples/anseo/scenes
-git commit -m "feat(example): the convergence scenes and both terminals"
+./target/debug/lute check-project docs/examples/anseo   # ok, 13 files
+./target/debug/lute scenario docs/examples/anseo
 ```
+`scenario` prints topological layers and a prerequisite→dependent edge list. Expected: eleven scenes across multiple layers with `wake` alone in layer 0, and both terminals present as dependents. **If every scene sits in layer 0, the `after:` routes are not wired** — that was the shape of the empty two-scene run during planning. Fix the routes, not the expectation.
+
+- [ ] **Step 4: Commit** — record the `scenario` output in the commit body.
 
 ---
 
-### Task 9: The remaining five quests
+### Task 9: The remaining five quests, and the tests
 
 **Files:**
-- Create: `docs/examples/anseo/quests/unmoored.lute`
-- Create: `docs/examples/anseo/quests/who-wakes.lute`
-- Create: `docs/examples/anseo/quests/false-heading.lute`
-- Create: `docs/examples/anseo/quests/manifest-gap.lute`
-- Create: `docs/examples/anseo/quests/what-vesna-carries.lute`
-
-**Interfaces:**
-- Consumes: the relations and state from Task 1; the pattern from Task 4.
+- Create: `quests/{unmoored,who-wakes,false-heading,manifest-gap,what-vesna-carries}.lute`
+- Create: `tests/reach-bridge.test.yaml`, `tests/shed-with-module.test.yaml`
 
 Gates, all verified forms:
 
@@ -509,70 +494,84 @@ Gates, all verified forms:
 | `manifest-gap` | `holds(found(ottavio))` |
 | `what-vesna-carries` | `run.vesnaTrust >= 2` |
 
-- [ ] **Step 1: Write all five**
+The first draft of this plan **omitted tests entirely**, though `lute test` exists and `docs/examples/investigation/tests/` carries three. An example with two endings and no test pinning either is not a finished example.
 
-Each uses the Task 4 frontmatter shape — `kind`, `luteVersion`, `uses`, `title` only.
+- [ ] **Step 1: Write the five quests** — Task 4's frontmatter shape.
 
-- [ ] **Step 2: Verify**
+- [ ] **Step 2: Write two scenario tests**, one per ending. Verified shape:
 
-Run: `./target/debug/lute check-project docs/examples/anseo`
-Expected: `ok`, 17 files
+```yaml
+file: ../scenes/bridge.lute
+state:
+  run.shedPressure: 1
+choose:
+  whoWakes: wakeToma
+expect:
+  exit: complete
+  transcriptContains:
+    - "Whatever's left of the ship, it's steering."
+  state:
+    run.vesnaTrust: 1
+```
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Verify**
 
 ```bash
-git add docs/examples/anseo/quests
-git commit -m "feat(example): five more quests, three gated on relations"
+./target/debug/lute check-project docs/examples/anseo   # ok, 18 files
+./target/debug/lute test docs/examples/anseo
 ```
+Both tests must pass. A test that cannot be made to pass means the route graph or a gate is wrong — fix the content.
+
+- [ ] **Step 4: Commit**
 
 ---
 
-### Task 10: Wire into the gates and write the findings
+### Task 10: README, findings, and the gates
 
 **Files:**
-- Create: `docs/examples/anseo/README.md`
-- Modify: `scripts/check-docs-consistency.py` (the example-roots list, if the new root needs registering — check first)
+- Modify: `docs/examples/anseo/README.md` (replace the `lute init` stub)
 - Create: `docs/superpowers/notes/2026-07-31-anseo-authoring-findings.md`
 
-- [ ] **Step 1: Check whether the new root needs registering**
+- [ ] **Step 1: Confirm CI coverage rather than assuming it**
 
-Run: `python3 scripts/check-docs-consistency.py`
-It prints the example roots CI checks. If `docs/examples/anseo` is covered by the existing `docs/examples` root, nothing to add — confirm rather than assume.
+```bash
+python3 scripts/check-docs-consistency.py
+python3 scripts/check-doc-snippets.py
+```
+Both print the roots they cover. If `docs/examples/anseo` is not covered by the existing `docs/examples` root, register it. Confirm; do not assume.
 
-- [ ] **Step 2: Write the README**
-
-Explain what the example demonstrates and, specifically, which constructs it is the corpus's first or only coverage of: `::end`, `identity:`, and derived relations.
+- [ ] **Step 2: Write the README** — what the example demonstrates, and specifically that it is the corpus's first coverage of `::end`, `identity:`, and derived relations.
 
 - [ ] **Step 3: Write the findings note**
 
-This is a first-class deliverable, not a postscript. Record every rough edge hit while authoring eleven scenes: diagnostics that misdirected, syntax that had to be looked up rather than guessed, anything that needed a source read. The 0.9.0 release came out of exactly this kind of note.
+A first-class deliverable. Seed it with the ten errors found while validating this plan, all real, all caught before content was written:
 
-Seed it with the eight errors found while validating this plan — all real, all caught before a line of content was written:
-
-1. `<timeline>` is choreography, not a countdown
+1. `<timeline>` is sub-second choreography, not a countdown
 2. `<on>` is a quest lifecycle hook, not a reactive trigger
 3. `identity:` is a project key, not scene frontmatter
-4. `IDENTITY_TOKENS` is only `{prefix}`/`{speaker}`/`{code}`
-5. Quests do not take `character`/`season`/`episode`
-6. A rule head must be declared with `derive: true`
+4. Identity tokens are only `{prefix}`/`{speaker}`/`{code}`
+5. Quests reject `character`/`season`/`episode`
+6. A rule head must be declared `derive: true`
 7. `rules:` is a list of quoted strings; relations need `tier:`
-8. Quests use `start=`/`fail=` expressions rather than conditional existence
+8. Quests use `start=`/`fail=` expressions, not conditional existence
+9. A param-scoped `<match>` in a component **is** legal (0.4.0 §6.2 relaxed the 0.1 ban) — the `greet.component.lute` header comment still states the old blanket rule
+10. **`exit: true` is emitted on the `::auto` sprite record only**, never from a content line's `action=`
 
-That eight of eight design assumptions were wrong before checking is itself the finding: the language's shapes are not guessable from adjacent knowledge, which is worth saying out loud in the note.
+Plus two gaps found in the tooling, which are the note's real value:
+
+- **`lute check <component>.lute` is a false green.** `E-COMPONENT-BODY` is enforced in `walk_component_body`, reached only through the importing document. A component file containing `<branch>` checks `ok` standalone and fails at every call site. The author most likely to check a component alone is the one writing it.
+- **`greet.component.lute`'s header comment contradicts 0.4.0 §6.2.** It states the 0.1 blanket ban on logic blocks; param-scoped `<match>` has been admitted since 0.4.0. Reading the example teaches the wrong rule.
+
+State the meta-finding plainly: ten of ten design assumptions were wrong before checking. The language's shapes are not guessable from adjacent knowledge, and the two forms that differ only by *position* (`action=` on `::auto` versus on a content line) are the sharpest edge found.
 
 - [ ] **Step 4: Full verification**
 
 ```bash
 ./target/debug/lute check-project docs/examples
+./target/debug/lute test docs/examples/anseo
 cargo test --workspace --no-fail-fast
 python3 scripts/check-docs-consistency.py
 python3 scripts/check-doc-snippets.py
 ```
-Expected: all clean, 0 test failures.
 
 - [ ] **Step 5: Commit**
-
-```bash
-git add docs/examples/anseo/README.md docs/superpowers/notes
-git commit -m "docs(example): Anseo README and authoring findings"
-```
