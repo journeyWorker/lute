@@ -31,7 +31,7 @@ Every entry carries:
 - **Attempt** — the form you reached for first, verbatim.
 - **Result** — the exact diagnostic, or the silence.
 - **Resolution** — what you ended up writing, or `NONE — intent abandoned`.
-- **Verdict** — exactly one of the five below. Never invent a verdict or hyphenate a
+- **Verdict** — exactly one of the six below. Never invent a verdict or hyphenate a
   hybrid (`AUTHOR-ERROR-adjacent` is not a verdict); if none fits, say so in the entry
   and raise it with the controller, who owns this table.
 
@@ -42,6 +42,7 @@ Every entry carries:
 | `LANGUAGE-GAP` | The intent cannot be expressed. You changed the story to fit the tool. |
 | `ERGONOMIC` | Expressible, but the working form is materially worse than the natural one — more verbose, more indirect, or split across files for no modelling reason. |
 | `DOC-GAP` | Expressible and reasonable, but **you had to read Rust source, a proposal, or a test to find it.** The website docs and `lute context` did not get you there. |
+| `DOC-WRONG` | The docs are present and **false** — they state a restriction that does not exist, a behaviour that differs, or scope something to the wrong construct. Distinct from `DOC-GAP`, which is silence: silence makes an author search, a false statement makes them stop searching. Rank these above `DOC-GAP` by default; an author who believes a wrong doc never discovers they were lied to. |
 | `AUTHOR-ERROR` | The docs said so plainly and you missed it. Not a finding — record it only if the diagnostic pointed somewhere unhelpful. |
 | `TOOL-DEFECT` | The language and its docs are fine; a *tool* is wrong, incomplete, or lying about its own contract. A misdirecting diagnostic, a false green, a capability surface that omits something it advertises. Distinct from `DOC-GAP`: the information exists, but the tool that promised to hand it to you did not. |
 
@@ -1131,19 +1132,11 @@ negative here would have been load-bearing for the next task.
   "clears at episode end").
 - **Verdict** — worked well, without qualification. This is the single most important
   thing T3 needed to be true and it was true first try.
-- **One documentation wrinkle, and it fits no verdict in the table — flagging for the
-  controller rather than inventing one.** `language/directives.md` §"Reserved
-  directives" — the canonical list of built-in `::` directives, and the page you would
-  read to learn which exist — says: *"Two `::`-directives are built-in rather than
-  staging vocabulary: `::set` … and `::use` …. **Quest documents** additionally use
-  `::assert` / `::retract` to mutate facts."* Read plainly, that scopes `::assert` to
-  quest documents; it works in scenes, inside `<choice>` bodies, which is what this
-  entry demonstrates. `state/facts-and-datalog.md` states the unscoped truth —
-  "**Content** writes deltas with the leaf directives `::assert` and `::retract`" — so
-  the `DOC-GAP` bar is genuinely not met: I did not read Rust, a proposal, or a test,
-  and a working author who lands on the facts page gets the right answer. But an
-  author who lands on `directives.md` first is told the construct is not for them.
-  Not a gap, not a tool: one clause on one page that is narrower than the language.
+- **One documentation wrinkle, filed separately.** The page that enumerates the
+  built-in `::`-directives scopes `::assert` / `::retract` to quest documents, which
+  is false in exactly the way this entry demonstrates. It is now its own entry —
+  **T3.13**, `DOC-WRONG` — because it is a defect in the docs, not in the construct.
+  The verdict here is unaffected: the construct itself worked first try.
 
 #### T3.4 — the relational and state-path diagnostics are the best surface measured so far — WORKED WELL
 
@@ -1351,7 +1344,7 @@ the full transcript. Every probe is one scratch scene, one deliberate mistake.
   the list is whole. An AI harness pointed at `--json` — which the `--help` text
   invites — will never emit a `::set`, and nothing in the output signals an omission.
 
-#### T3.8 — a single-brace `{run.shedPressure}` in a choice label is silently literal text — TOOL-DEFECT
+#### T3.8 — a single-brace `{run.shedPressure}` in a choice label is silently literal text — AUTHOR-ERROR
 
 - **Intent** — make the price visible on the button: "Wake the engineer (schedule 4)".
   `choices-and-hubs.md` says a label "may interpolate" and gives no syntax on that page,
@@ -1386,20 +1379,32 @@ the full transcript. Every probe is one scratch scene, one deliberate mistake.
   correct at that exact position; they are simply never asked.
 - **Resolution** — the committed scene's labels are plain text, which is what the beat
   wanted anyway. The finding is the near-miss, not the label.
-- **Verdict** — `TOOL-DEFECT`, filed small and with its counterargument stated.
-  Not `DOC-GAP`: `dialogue-and-cast.md` documents the form plainly — "Content `Text`
-  (and a `<choice>` label) may embed **`{{…}}`** interpolations" — so a working author
-  who reads that page is fine, and I found it on the shipped site, not in Rust.
-  The tool's side is a false green: a document is `ok` while carrying a UI string that
-  will ship a state path to a player verbatim. **The honest counterargument** is that
-  literal braces in prose are legitimate and a blanket warning would be noise. That is
-  why the scoping matters and why this is filable rather than a wish: the precise,
-  low-noise rule is *single braces wrapping a string that resolves to a declared state
-  path* — the checker already has the path table open at that span, and a `W-` code
-  there would fire on essentially nothing else. The precedent is `W-INJECT-CONFLICT`
-  (T2.1), whose entire job is "this thing you wrote is not doing what you think".
-  One sentence on `choices-and-hubs.md` linking to the interpolation section would
-  close the other half; today that page says "may interpolate" and stops.
+- **Verdict** — `AUTHOR-ERROR`. The docs say so plainly and I did not read them before
+  guessing: `dialogue-and-cast.md` states the form — "Content `Text` (and a `<choice>`
+  label) may embed **`{{…}}`** interpolations" — on the shipped site, not in Rust. Given
+  that, `check` treating `{run.shedPressure}` as literal text is the *correct*
+  behaviour, not a violated contract: single braces are ordinary prose, Lute never
+  claimed them as an interpolation delimiter, and a tool that faithfully reproduces
+  characters the language does not reserve is doing its job. The `W-` code I argued for
+  below would be a **new lint heuristic**, i.e. a feature request — and a feature that
+  does not exist cannot be a tool lying about its own contract. Downgraded from
+  `TOOL-DEFECT` on that reasoning.
+- **Why it is kept rather than deleted, stated plainly.** The `AUTHOR-ERROR` criterion
+  admits an entry only "if the diagnostic pointed somewhere unhelpful", and **that
+  clause does not apply here — there was no diagnostic at all.** It is kept under the
+  other standing rule instead, *Also record, always → Silence*: I wrote something
+  plausible, nothing complained, and it did not do what I meant. All three spellings
+  are `ok` under `--deny-warnings` and two of them ship a state path to a player's
+  button. That is the entry's whole value, and it is an observation about silence, not
+  a claim of defect.
+- **The wish, recorded as a wish.** The low-noise rule would be *single braces wrapping
+  a string that resolves to a declared state path* — the checker already has the path
+  table open at that span (it fires `E-UNDECLARED` with did-you-mean one character
+  over), so a `W-` code there would hit essentially nothing else, with
+  `W-INJECT-CONFLICT` (T2.1) as precedent. Separately, one sentence on
+  `choices-and-hubs.md` linking to the interpolation section would have prevented the
+  guess entirely; today that page says "may interpolate" and stops. Neither is a
+  finding against 0.9.0 as shipped.
 
 #### T3.9 — a broken state schema is reported as a count with no message, and the obvious way to look closer misparses it as a scene — TOOL-DEFECT
 
@@ -1563,11 +1568,61 @@ schema edit lands on this diagnostic.
   much each choice costs*, the price the author wrote is the thing that is no longer on
   screen. `= 9 (+= 2)` would carry both.
 
+#### T3.13 — `directives.md` scopes `::assert`/`::retract` to "Quest documents"; they work in scenes — DOC-WRONG
+
+Split out of T3.3, where it was found. T3.3 records that the construct worked; this
+records that the page telling you whether you may reach for it is false.
+
+- **Intent** — before writing per-arm facts, ask the docs the prior question: may a
+  *scene* assert a fact at all, or is fact mutation reserved to quest documents? The
+  natural place to look is the canonical enumeration of built-in `::`-directives.
+- **Attempt** — read `packages/website/src/content/docs/language/directives.md`
+  §"Reserved directives". Lines 124–127, verbatim:
+  > Two `::`-directives are built-in rather than staging vocabulary: `::set` writes
+  > declared state (see [State model](/state/state-model/)) and `::use` expands a
+  > reusable content component (see
+  > [Components & extends](/language/components-and-extends/)). **Quest documents
+  > additionally use `::assert` / `::retract` to mutate facts** (see
+  > [Facts & Datalog](/state/facts-and-datalog/)).
+
+  The false clause is the third sentence, `directives.md:126–127`.
+- **Result — false as written, and this task depends on it being false.**
+  `docs/examples/anseo/scenes/cryobank.lute` is `kind: scene` (line 2), and four
+  `::assert` directives sit inside `<choice>` bodies (lines 18, 19, 24, 25). The
+  checker accepts them without qualification —
+  `ok: docs/examples/anseo/scenes/cryobank.lute (0 warning(s))`, and
+  `lute check-project docs/examples` exits 0 — they lower to real `assert` records
+  (`{"kind":"assert","addr":"001-0700","relation":"awake","args":["toma"]}`, T3.3),
+  and the facts they write reach a `holds()` guard in a later document. Read plainly,
+  the page says the construct is not for the document kind in which it demonstrably
+  works. No restriction of the stated shape exists.
+- **The docs contradict each other, and that is worse, not better.**
+  `packages/website/src/content/docs/state/facts-and-datalog.md:25` states the
+  unscoped truth: "Content writes **deltas** with the leaf directives `::assert` and
+  `::retract`". So the right answer *is* on the shipped site — which is precisely why
+  this is not `DOC-GAP`: nothing is silent, I read no Rust, no proposal, no test. But
+  an author asking "which `::`-directives exist and where may I use them?" lands on
+  `directives.md` first, because that is the page named after the question. Being told
+  the construct belongs to another document kind is a *terminating* answer: they stop
+  looking, and never reach the facts page that would have corrected them. A second
+  page holding the truth only helps the author who keeps searching, and a false
+  statement is exactly the thing that stops them searching.
+- **Resolution** — the asserts were written in the scene anyway, and worked (T3.3).
+  Resolution for the *doc*: the clause should read that content documents generally —
+  scenes included — use `::assert` / `::retract`, or simply drop "Quest documents" and
+  say "Content additionally uses", matching `facts-and-datalog.md`.
+- **Verdict** — `DOC-WRONG`. Present and false: it scopes a construct to the wrong
+  document kind. Ranked above a `DOC-GAP` per the table — an author who believes it
+  never discovers they were lied to, and in this project's case would have hand-rolled
+  a state flag for something the language already does, losing the Datalog derivation
+  (`can_halt(C) :- awake(C), knows(C, shed_sequence)`) that Task 4's gate depends on.
+
 #### T3 summary
 
-Twelve entries: six *worked well*, six `TOOL-DEFECT`, no `LANGUAGE-GAP`, no `DOC-GAP`,
-no `AUTHOR-ERROR`. Nothing this scene wanted was inexpressible, and — the part that
-matters for the authoring rule — nothing was substituted. The counter, the branch, the
+Thirteen entries: six *worked well*, five `TOOL-DEFECT`, one `DOC-WRONG`, one
+`AUTHOR-ERROR`, no `LANGUAGE-GAP`, no `DOC-GAP`. Nothing this scene wanted was
+inexpressible, and — the part that matters for the authoring rule — nothing was
+substituted. The counter, the branch, the
 per-arm facts, the conditional availability, and the scaling cost were each written in
 the form I first reached for, and each of them worked.
 
@@ -1593,13 +1648,22 @@ to `0` by the reference runtime; `::set{run.shedPressure = true}` writes a boole
 it. For a work whose central mechanic is a schedule that advances, that is a counter
 that stops counting with every gate green.
 
-The remaining five defects are the same shape T1 and T2 found, in new places: tools
+The remaining four defects are the same shape T1 and T2 found, in new places: tools
 that lose information they hold. `context` omits four directives from a list that
 counts itself (T3.7); `E-CEL-PARSE` names the wrong construct and proposes a repair
-that does not parse (T3.6); a single-brace near-miss ships a state path to a player
-(T3.8); a broken state schema is reported as an integer while the command you would
-run next misparses the schema as a scene (T3.9); a mock key typo is discarded by both
-tools that read mocks (T3.10). Four of the six turn on the same missing habit —
-*say what you found, not how much of it there was* — and T3.9 is the one to fix first,
-because it is the only one where the tool's advice actively damages the file.
+that does not parse (T3.6); a broken state schema is reported as an integer while the
+command you would run next misparses the schema as a scene (T3.9); a mock key typo is
+discarded by both tools that read mocks (T3.10). Two of the five report a count where
+the content was in hand — *say what you found, not how much of it there was* (T3.7,
+T3.9) — and two more discard information silently (T3.2's untyped `::set` right-hand
+side, T3.10's mock key). T3.9 is the one to fix first, because it is the only one
+where the tool's advice actively damages the file.
+
+Outside that shape sit the two reclassified entries. **T3.13 is the finding a reader
+of these logs is most likely to hit themselves**: `directives.md` tells authors that
+`::assert` / `::retract` are for quest documents, this scene uses them in a `<choice>`
+body, and the checker is perfectly happy. One clause, one page, and it is the page
+named after the question. T3.8, by contrast, is now an `AUTHOR-ERROR` kept only for
+its silence: the shipped docs specify `{{…}}` plainly and single braces are legitimate
+prose, so `check` reading them as text is correct behaviour, not a defect.
 
