@@ -1820,10 +1820,11 @@ This is the strongest single thing T4 measured and it deserves the transcript.
   every wrong arity is a build break (T4.6); every well-formed question is accepted and
   honestly labelled unproven.
 
-#### T4.4 — `W-UNPROVEN-RELATIONAL` names one tool, and that tool cannot do the job it is named for — TOOL-DEFECT
+#### T4.4 — `W-UNPROVEN-RELATIONAL` names two verification routes, and the tool one cannot do the job — TOOL-DEFECT
 
 The assignment asks whether this warning is actionable or a shrug the author learns to
-ignore. It is neither, and the real answer is worse than a shrug.
+ignore. It is neither: it is a referral, and it names two routes — `lute trace` seeds
+**or human review**. The tool route is the one this entry measures, and it does not work.
 
 - **The warning, in full:**
   ```
@@ -1834,8 +1835,8 @@ ignore. It is neither, and the real answer is worse than a shrug.
   ```
   As prose this is close to a model diagnostic: it quotes the offending attribute, names
   the relation, cites the clause, states the limit precisely ("neither proves nor
-  refutes"), and — unusually for a `W-` code — **names the remedy**. It is not a shrug.
-  It is a referral.
+  refutes"), and — unusually for a `W-` code — **names remedies**, two of them. It is not
+  a shrug. It is a referral.
 - **Following the referral.** `lute trace` on the quest is genuinely good at the first
   step — it stops at the gate and hands you the exact flag:
   ```console
@@ -1853,23 +1854,30 @@ ignore. It is neither, and the real answer is worse than a shrug.
   ```
   This is documented, in a parenthetical — `tracing.md`: a `--fact` is "a *supplied
   answer*, so it may name a `derive:`/`reserved:` relation" — so it is design, not
-  defect. But the consequence is that the only verification route the warning offers
+  defect. But the consequence is that the only **tool-assisted** route the warning offers
   requires you to **assert the conclusion**, and the rule
   `can_halt(C) :- awake(C), knows(C, shed_sequence)` — the thing the whole quest rests
   on, and the only part of the chain a human could plausibly get wrong — is never
   evaluated by any command an author can run.
 - **(b) And when you do supply the conclusion, trace tells you it proves nothing.**
   ```console
-  $ lute trace … --fact "can_halt(toma)"
+  $ lute trace quests/hold-the-spine.lute --project docs/examples/anseo --fact "can_halt(toma)"
+  trace: … (seeds: 0 paths, 1 facts; 0 selections)
   note: W-TRACE-MOCK-UNPRODUCIBLE — mock fact over relation `can_halt` is not producible
   (no `facts:` seed, no reachable `::assert`, not `reserved`) — the supplied answer can
   never arise from authored producers, so a complete walk seeded with it proves nothing
   about reachable play (§4)
     <quest holdTheSpine>   -> active (holds(can_halt(toma)))
-  trace complete: 4 decisions                                              # exit 0
+    <objective reachToma>   -> pending (run.shedPressure >= 1)
+  trace complete: 2 decisions                                              # exit 0
   ```
-  The referral closes the loop back onto itself: `check-project` says "verify with
-  `lute trace` seeds", and `lute trace` says the seed proves nothing.
+  The referral's tool-assisted half closes the loop back onto itself: `check-project` says
+  "verify with `lute trace` seeds", and `lute trace` says the seed proves nothing.
+  *(Correction of record. The first pass logged `trace complete: 4 decisions` against this
+  command. The committed one-objective quest emits **2** — one quest decision, one
+  objective — and the transcript above is the re-run, verbatim. The 4 is T4.1's richer
+  three-objective scratch form, re-confirmed on a rebuilt scratch copy: quest +
+  `reachToma` + `cutCoupling` + `pullManifest`. Everything else in this entry reproduced.)*
 - **(c) The two tools contradict each other about the same word, and trace is the one
   that is wrong.** `W-TRACE-MOCK-UNPRODUCIBLE` asserts `can_halt` "is not producible
   (no reachable `::assert`)". `check-project`, in the same project, with the same
@@ -1889,6 +1897,15 @@ ignore. It is neither, and the real answer is worse than a shrug.
   `trace`'s `producible()` is **document-local**; `check-project`'s is **project-wide**.
   Both print the same three-clause justification, so nothing in either output hints that
   they are answering different questions.
+- **The other named route is human review, and nothing here shows it is impossible.** The
+  warning says "Verify with `lute trace` seeds **or human review**", and only the first of
+  the two is a tool. Human review is in fact what discharged this gate: T3.3 compiled the
+  artifact, read the `assert` records out of it, and checked the rule by hand. So the
+  claim this entry proves is the narrow one — **the tool-assisted route is unusable** —
+  and the offered fallback is unassisted manual work over a compiled artifact, on the one
+  link in the chain (`can_halt(C) :- awake(C), knows(C, shed_sequence)`) that the
+  toolchain has already reasoned about, correctly and at relation level, and renders
+  nowhere (T4.7).
 - **Resolution** — `NONE — nothing to resolve; the committed gate is correct by T3.3's
   end-to-end verification, which was done by reading the compiled artifact, not by any
   command that claims to verify gates.`
@@ -1905,15 +1922,18 @@ ignore. It is neither, and the real answer is worse than a shrug.
   - Not `AUTHOR-ERROR`: I followed the diagnostic's own instruction.
 
   That leaves `TOOL-DEFECT` on the criterion's own words — a tool "lying about its own
-  contract". Two separate lies, and they compound: a warning that refers you to a tool,
-  and a tool that answers the referral with a false claim about your project. **On the
-  assignment's question:** the warning is *not* a noise floor that trains people to
-  ignore warnings — it fires on exactly the correct usages, but it fires with a specific,
-  honest, quotable statement of an analysis boundary, which is the right thing for a
-  checker to do when it cannot decide. Five such warnings already sit on other examples
-  and `check-project docs/examples` still exits 0 with all six. What trains people to
-  ignore it is not the warning; it is that discharging it is impossible, so the only
-  available response *is* to ignore it.
+  contract". The false claim is (c): `trace` reports a **document-local** `producible()`
+  verdict in project-wide language, contradicting `check-project` on the same word, in the
+  same project, under the same `--project` root. (b) is not a second, independent lie —
+  it is that same one closing the loop, the referral's tool half answered by a false claim
+  about your project. **On the assignment's question:** the warning is *not* a noise floor
+  that trains people to ignore warnings — it fires on exactly the correct usages, but it
+  fires with a specific, honest, quotable statement of an analysis boundary, which is the
+  right thing for a checker to do when it cannot decide. Five such warnings already sit on
+  other examples and `check-project docs/examples` still exits 0 with all six. What erodes
+  it is narrower than "undischargeable": of the two routes the warning names, the one an
+  author reaches for first — the tool it names by command — cannot be completed, so every
+  firing falls back on unassisted review of a compiled artifact.
 
 #### T4.5 — a `start=` gate on an unproducible relation is silent, and `scenario reach` calls the quest Reachable — TOOL-DEFECT
 
@@ -2084,7 +2104,8 @@ attribute over.
   because the brief specifies the committed file: giving each quest an `after=` costs one
   attribute and buys a graph node, a real edge, the full envelope table instead of the
   defaults-only one, and a `scenario` rendering an author can read. `hold-the-spine.lute`
-  as committed has no `after=`, matching the brief.
+  as committed has no `after=`, matching the brief. **Adopted** — see *T4 controller
+  decision* below for the ruling and for why T4 stays the no-`after=` control.
 
 #### T4.8 — the quest's relational gate reaches the artifact as an unparsed string — DOC-WRONG
 
@@ -2133,39 +2154,105 @@ attribute over.
   gate silently evaluates undefined. One clause on line 22 ("every CEL guard *except*
   relational fact queries, which carry `raw` only") closes it.
 
-#### T4.9 — small things, recorded once
+#### T4.9 — a quest document's frontmatter and its identity chain both behave — WORKED WELL
 
-- **Scene-only frontmatter keys are rejected per key, exactly as the brief predicted —
-  worked well.** `character`/`season`/`episode` in a quest document:
+Two observations, one disposition, one verdict.
+
+- **Intent** — get a `kind: quest` document's header and its localisable strings right in
+  a project whose only prior documents are scenes, and find out what a quest's identity is
+  built from when the scene keys that build `{prefix}` are unavailable.
+- **Attempt** — (i) the scene header pasted verbatim into the quest, `character`/`season`/
+  `episode` and all; (ii) the committed quest compiled, and its identity fields read back
+  out of the artifact.
+- **Result** — both behaved:
+  - **Scene-only frontmatter keys are rejected per key, exactly as the brief predicted:**
+    ```
+    1:1: error [E-META-UNKNOWN-KEY] unknown top-level meta key `character` (not a core key
+         and not owned by an active plugin)
+    ```
+    Three errors for three keys, not one roll-up (exit 1), so pasting a scene header into
+    a quest is a single-pass fix. The message's "not owned by an active plugin" clause is
+    the useful half — it says *why* the key is unknown rather than just that it is.
+  - **Quest identity is derived from the quest id, and titles are addressable.** With no
+    `character`/`season`/`episode` to build `{prefix}` from, the `<on>` arm's narration
+    lands on `"lineId": "holdTheSpine.narrator_0010"`, and both the quest title and each
+    objective title carry a `titleLineId` (`holdTheSpine.title`, `holdTheSpine.reachToma`)
+    — so quest-log strings are localisable on the same footing as dialogue.
+- **Resolution** — the committed frontmatter carries `kind`/`luteVersion`/`uses`/`title`
+  only. Nothing was worked around.
+- **Verdict** — worked well. One caveat, deliberately **not** scored here: neither the
+  quest `{prefix}` derivation nor `titleLineId` is mentioned by `lute context` or on the
+  identity docs. That is T1.7's existing `DOC-GAP` extended to quests — cross-referenced,
+  not counted a second time.
+
+#### T4.10 — `scenario envelope` describes the author's project in compiler-internal vocabulary — TOOL-DEFECT
+
+- **Intent** — read the envelope as an author would, to learn what state is safe to read
+  when the quest activates. Part of the T4.7 sweep, split out because it is a defect in
+  the output rather than a limit of the surface.
+- **Attempt** — `lute scenario docs/examples/anseo envelope quest:holdTheSpine`.
+- **Result** — the `Possible \ Guaranteed` table is annotated:
   ```
-  1:1: error [E-META-UNKNOWN-KEY] unknown top-level meta key `character` (not a core key
-       and not owned by an active plugin)
+  Possible \ Guaranteed -- inventory only (paths set on SOME but not every declared route
+  reaching this quest, dsl §4.4). This is NOT the T11 warning-grade read-site class --
+  quest read diagnostics are `check_quest_guard_defassign`'s separate territory (that
+  class is scene-only, see the scene envelope's own section)
   ```
-  Three errors for three keys, not one roll-up, so pasting a scene header into a quest is
-  a single-pass fix. The message's "not owned by an active plugin" clause is the useful
-  half — it says *why* the key is unknown rather than just that it is.
-- **Quest identity is derived from the quest id, and titles are addressable — worked
-  well.** With no `character`/`season`/`episode` to build `{prefix}` from, the `<on>`
-  arm's narration lands on `"lineId": "holdTheSpine.narrator_0010"`, and both the quest
-  title and each objective title get a `titleLineId` (`holdTheSpine.title`,
-  `holdTheSpine.reachToma`) — so quest-log strings are localisable on the same footing as
-  dialogue. Neither is mentioned by `lute context` or on the identity docs (cf. T1.7).
-- **`scenario envelope` leaks internal vocabulary into author-facing output.** The table
-  is annotated: *"This is NOT the T11 warning-grade read-site class -- quest read
-  diagnostics are `check_quest_guard_defassign`'s separate territory (that class is
-  scene-only, see the scene envelope's own section)"*. `check_quest_guard_defassign` is a
-  Rust function name and "T11" is an internal task label; neither appears anywhere on the
-  website. Trivial in cost and the surrounding output is good, but it is the same habit
-  as T1.4's fabricated `::narrator` — CLI output describing the author's project in terms
-  only the compiler's authors can resolve.
+  `check_quest_guard_defassign` is a Rust function name and "T11" is an internal task
+  label; neither appears anywhere on the website. The sentence is addressed to a reader
+  with the compiler's source and its task tracker open, and it is printed to an author.
+- **Resolution** — `NONE — nothing to resolve; the table itself is correct and the
+  committed project is unaffected.`
+- **Verdict** — `TOOL-DEFECT`, and the smallest of T4's three by a wide margin. Not
+  `LANGUAGE-GAP` or `ERGONOMIC` — nothing about the authored form is at issue. Not
+  `DOC-GAP` or `DOC-WRONG`: no page is silent or false, and no page *could* fix this, since
+  the two terms are absent from the docs precisely because they are not public API. Not
+  `AUTHOR-ERROR`. That leaves the criterion's own words — a tool wrong about its own
+  contract, where the contract of author-facing output is that an author can resolve it.
+  Same habit as T1.4's fabricated `::narrator`; cosmetic in cost, recorded because the
+  habit is now four tasks old.
+
+#### T4 controller decision — Task 9's quests carry `after=`; this one deliberately does not
+
+Recorded in the durable log rather than left in scratch, because a future reader comparing
+`hold-the-spine.lute` with Task 9's five quests will otherwise read the difference as an
+oversight. The implementer asked whether quests should carry `after=`. The decision, taken
+on the reviewer's recommendation and independently verified by them:
+
+> **The five Task 9 quests carry explicit `after=` prerequisites. `hold-the-spine.lute` is
+> not retrofitted.**
+
+The reasoning is T4.7's measurement, and both halves reproduce on the committed project:
+
+- Without `after=`, a quest is absent from the `lute scenario` graph *entirely* — no node,
+  no layer, no edge — and `envelope quest:holdTheSpine` returns the **defaults-only `D`
+  table**, closing with its own note that declaring `after` "would enrich this table".
+- With `after="visited('anseo.s01ep02')"`, `quest(holdTheSpine)` appears at **layer 2**
+  with a real `scene(anseo.s01ep02) -> quest(holdTheSpine) [visited]` edge, and the
+  defaults-only note disappears — the envelope is now the project-resolved one.
+
+So `after=` costs one attribute and buys the reachability surface that Task 9's
+eleven-scene, six-quest shape needs, on all five of its new quests.
+
+Keeping T4 as the **no-`after=` control is deliberate**, not an inconsistency. It leaves
+the blind spot visible in a shipped example: a quest that is genuinely reachable,
+genuinely checked project-wide (T4.2), and invisible to the one tool an author would ask
+about reachability (T4.7) — while `scenario reach` on the committed tree still answers
+*"Reachable — a plain quest with no declared `after` prerequisite"*. That visibility is
+worth more than uniformity across the two tasks, and it keeps T4.5's `reach` probe one
+attribute away from the committed tree rather than requiring the `after=` line be stripped
+again first.
 
 #### T4 summary
 
-Nine entries: four *worked well*, two `TOOL-DEFECT`, two `ERGONOMIC`, one `DOC-WRONG`.
-No `LANGUAGE-GAP`, no `DOC-GAP`, no `AUTHOR-ERROR`. Nothing this quest wanted was
-inexpressible and nothing was substituted — the sequenced objective, the optional
-objective, the independent failure condition and the derived-relation gate were each
-written in the form first reached for, and each worked (T4.1).
+Ten entries: four *worked well* (T4.1, T4.2, T4.3, T4.9), three `TOOL-DEFECT` (T4.4, T4.5,
+T4.10), two `ERGONOMIC` (T4.6, T4.7), one `DOC-WRONG` (T4.8) — every entry carrying
+exactly one verdict. No `LANGUAGE-GAP`, no `DOC-GAP`, no `AUTHOR-ERROR` scored here; the
+one `DOC-GAP`-shaped observation T4 turned up (quest identity is undocumented) extends
+T1.7 and is counted there. Nothing this quest wanted was inexpressible and nothing was
+substituted — the sequenced objective, the optional objective, the independent failure
+condition and the derived-relation gate were each written in the form first reached for,
+and each worked (T4.1).
 
 **The declared relational layer pays for itself, and the receipt is T4.2.** A quest in
 its own file, with its own `uses:`, gated on a Datalog head whose base facts are asserted
@@ -2189,19 +2276,25 @@ its absence makes a dead quest quieter than a live one.
 
 T4.4 is second and it is the more demoralising, because it is what an author hits *doing
 everything right*. `W-UNPROVEN-RELATIONAL` is a well-written warning that states a real
-boundary and names a remedy — and the remedy cannot be performed: `lute trace` will not
-run the rule the gate depends on (documented), and when you seed the conclusion instead
-it declares the seed unproducible using a document-local judgement that contradicts the
-project-wide one in the warning that sent you there. On the assignment's question, then:
-the warning is not a shrug and it does not train people to ignore warnings by being
-noisy — it trains them by being undischargeable. Six of them now sit on
-`check-project docs/examples`, and every one marks a correct, deliberate gate.
+boundary and names two remedies — `lute trace` seeds **or human review** — and the tool
+one cannot be performed: `lute trace` will not run the rule the gate depends on
+(documented), and when you seed the conclusion instead it declares that seed unproducible
+on a document-local judgement that contradicts the project-wide one in the warning that
+sent you there. The human-review fallback does stand, and it is what actually discharged
+this gate (T3.3) — but discharging it means reading a compiled artifact by hand, every
+time the warning fires, for a producer→consumer join the checker already computed and
+renders nowhere (T4.7). On the assignment's question, then: the warning is not a shrug and
+it does not train people to ignore warnings by being noisy. The route an author reaches
+for first is simply closed. Six of them now sit on `check-project docs/examples`, and
+every one marks a correct, deliberate gate.
 
-The remaining three are cheaper: no did-you-mean on relation names, alone among the
+The remaining four are cheaper: no did-you-mean on relation names, alone among the
 identifier classes that have a closed declared set (T4.6); a quest that is invisible to
 `lute scenario` until an author hand-writes an `after=` the checker has already inferred
-the substance of (T4.7); and a runtime-contract table promising an `expr` AST for "every
-CEL guard" while relational gates ship as `raw` strings (T4.8).
+the substance of (T4.7, and see the controller decision above); a runtime-contract table
+promising an `expr` AST for "every CEL guard" while relational gates ship as `raw` strings
+(T4.8); and `scenario envelope` annotating an author-facing table with a Rust function
+name and an internal task label (T4.10).
 
 One thing later tasks must carry forward: **`lute check <file>` is not enough for a
 quest.** `E-OBJECTIVE-UNSATISFIABLE`, `W-UNPROVEN-RELATIONAL` and `W-QUEST-REF-UNKNOWN`
