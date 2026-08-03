@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Author a showcase-scale Lute example — eleven scenes and six quests aboard a generation ship shedding modules — exercising `::end`, `identity:`, and the relational layer, which the current corpus barely covers.
+**Goal: measure whether Lute 0.9.0 is mature enough to author a real work in.** The eleven-scene, six-quest Anseo prologue is the *instrument*, not the deliverable. The deliverable is `docs/superpowers/notes/2026-07-31-anseo-drive-test-findings.md` — a running log of everything the language could not express, expressed badly, or expressed only after reading its own source.
+
+This inverts the usual success condition. **A clean example with an empty findings log is a failed task**, because the only way to get one is to write what you already know compiles. Anyone can make `check-project` exit 0 by avoiding hard things; that measures nothing. The example exists to be pushed until it breaks, and the breaks are the product.
 
 **Architecture:** A project root at `docs/examples/anseo/`, scaffolded by `lute init`, then filled in. Scenes are ordered by `after:` routes; quests gate on relational queries; scenario tests pin the endings.
 
@@ -34,6 +36,21 @@ Every syntax form below was executed against the real binary before being writte
 | `lute init` scaffolds exactly this layout, plus `mocks/playthrough.yaml` and a README | `lute init` |
 
 ## Global Constraints
+
+**The findings protocol binds every task.** Read
+`docs/superpowers/notes/2026-07-31-anseo-drive-test-findings.md` before starting and append to it
+*as you go*, never reconstructed at the end.
+
+- **Write what the beat needs, then find out whether Lute can express it.** Never pick the content
+  to fit the forms you already know work. If a beat wants something, attempt it verbatim and record
+  what happened — a substitution made silently is the one failure this whole exercise cannot detect.
+- **If you had to read Rust source, a proposal, or a test to write a scene, that is a `DOC-GAP`
+  finding.** A working author cannot read `lower.rs`. Log it even though your scene now compiles.
+- **Log silence.** Something you wrote was accepted and did nothing. Check the compiled artifact
+  contains the beat you wrote, not just that the file checked clean.
+- **Log misdirecting diagnostics** — the error named X, the real cause was Y.
+- **Log what worked well**, with the reason. An assessment that is only complaints is not one.
+- Do NOT fix the toolchain. Record, work around, move on; the controller triages.
 
 - Tags are line-oriented: opener, children on their own lines, closer. A single-line `<tag>body</tag>` is `E-TAG-INLINE-BODY`.
 - Every content-line vocabulary attribute must be a declared member, or `E-DOMAIN-UNKNOWN`.
