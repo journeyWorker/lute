@@ -4,7 +4,7 @@ character: anseo
 season: 1
 episode: 11
 uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
-after: 'visited("anseo.s01ep02")'
+after: 'visited("anseo.s01ep07")'
 ---
 
 ## Shed

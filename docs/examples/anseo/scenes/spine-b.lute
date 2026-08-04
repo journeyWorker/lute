@@ -1,0 +1,124 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 7
+uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
+after: 'visited("anseo.s01ep06")'
+---
+
+## Spine, B-Section
+
+::bg{location="spine-a" time="ship-night"}
+::music{action="resume" mood="pressurized" volume="muted"}
+::auto{character="vesna" anchor="port" action="brace"}
+::auto{character="ottavio" anchor="starboard" action="drift"}
+
+@narrator{code="0010"}: The same forty metres of rail, with a shorter ship on the other end of it.
+@ottavio{code="0020" emotion="clipped"}: I'm not going back down there. Whatever gets decided, it gets decided up here.
+@vesna{code="0030" emotion="level"}: Nobody's sending you anywhere. Hand on the rail. Not the conduit.
+@ottavio{code="0040" emotion="wry"}: I've loaded this ship four times. I know which one bites.
+@vesna{code="0050" emotion="level"}: Then you know more than the last three people I said it to.
+@purser{code="0060" emotion="level" os}: Standby. Module five is scheduled for release.
+@vesna{code="0070" emotion="clipped"}: Five is the machine deck. Five is where this ship keeps its hands.
+
+/*
+  CONVERGENCE. Two routes arrive here: episode 4 (hydroponics) and episode 5
+  (the machine deck). What each arm needs to say is "how did you get here" —
+  `visited("anseo.s01ep05")`. That is `E-CEL-PROFILE`: the `after:` prerequisite
+  predicates do not exist in a content guard, and there is no other spelling of
+  arrival. The standing proxy is `knows(vesna, manifest)`, which `hydroponics.lute`
+  asserts unconditionally at its head and `machine-deck.lute` never asserts — so it
+  reads "came the other way" only by accident of where a content fact was written,
+  and it stops being true the moment anything else teaches Vesna the manifest.
+  `archive.lute` (ep08) asserts exactly that fact; ordering is the only thing
+  keeping this guard honest. The dummy `on="true"` subject is T7.6.
+  See T8 in the drive-test findings log.
+*/
+<match on="true">
+<when test="holds(knows(vesna, manifest))">
+@narrator{code="0080"}: Nobody had been down to five since the wake. The ring was where the yard left it, a finger's width off its seat, quietly wrong for eleven years and about to be asked a question.
+@vesna{code="0090" emotion="level"}: Brace. Whatever it does, it does it in the next four seconds.
+</when>
+<when test="holds(awake(toma))">
+::auto{character="toma" anchor="center" action="brace"}
+@toma{code="0100" emotion="level"}: Quarter turn, and it sat down. It's been sitting ever since.
+@toma{code="0110" emotion="clipped"}: Watch the seat, not the module. The module's already gone.
+</when>
+<otherwise>
+@narrator{code="0120"}: You had both hands on that ring an hour ago, and both hands had not been enough.
+@vesna{code="0130" emotion="frayed"}: Whatever you did down there, it's about to say so out loud.
+</otherwise>
+</match>
+
+<timeline duration="1.8">
+  <track channel="sfx">
+    ::sfx{sound="klaxon-two-tone" duration="0.5"}
+    ::sfx{sound="hull-report" at="0.5" duration="0.75"}
+  </track>
+  <track subject="camera">
+    ::camera{focus="ottavio" zoom="1.2" duration="0.5"}
+    ::camera{shake="0.8" duration="0.6" at="0.5"}
+  </track>
+  <track channel="vfx">
+    ::vfx{type="shed" label="module five" at="0.5" duration="0.5"}
+    ::vfx{type="pressure-drop" transition="cut" at="1.0"}
+  </track>
+  <track subject="ottavio" property="pos">
+    ::auto{character="ottavio" anchor="port" action="brace" at="0.6"}
+  </track>
+</timeline>
+
+<match on="true">
+<when test="holds(knows(vesna, manifest))">
+@narrator{code="0140"}: It did not let go. It tore, and it took nine metres of spine on the way out, and nobody aboard had ever been down there to know it would.
+@vesna{code="0150" emotion="stricken"}: That wasn't a release.
+@ottavio{code="0160" emotion="hollowed"}: No. That was the ship being taken from.
+</when>
+<when test="holds(awake(toma))">
+@narrator{code="0170"}: The coupling opened the way a door opens. One module, cleanly, and the rail under your hands never changed its note.
+@toma{code="0180" emotion="hollowed"}: Clean. That's what clean sounds like. Learn it — there's one more coming.
+@vesna{code="0190" emotion="level"}: Twelve years of keeping its joints honest, and that's what it bought. Say it's not nothing.
+@toma{code="0200" emotion="wry"}: It's not nothing. It's nine metres of spine we still own.
+</when>
+<otherwise>
+@narrator{code="0210"}: It went with margin, the way the Purser had promised it would, and margin turned out to mean the module and everything holding it.
+@vesna{code="0220" emotion="stricken"}: Nine metres. It took nine metres of spine for a module that was already leaving.
+</otherwise>
+</match>
+
+@purser{code="0230" emotion="level" os}: Allocation is short by one module.
+@vesna{code="0240" emotion="clipped"}: One. Say which one.
+@purser{code="0250" emotion="level" os}: Module nine. Release is scheduled.
+@ottavio{code="0260" emotion="hollowed"}: Nine's the greenhouse. Nine's the room I've been sleeping in for six weeks.
+@vesna{code="0270" emotion="stricken"}: Nine is the water. After nine we're a hull with opinions.
+@vesna{code="0280" emotion="frayed" when="run.shedPressure >= 2"}: And it's ahead of its own schedule, because we kept handing it reasons.
+@ottavio{code="0290" emotion="level" when="count(awake(_)) >= 3"}: There are more of us up than it planned for. That has to be worth something.
+
+/*
+  The choice a convergence point wants to make is a ROUTING choice — archive,
+  Purser, or stay. It cannot be one. A `<choice>` has no way to name a successor
+  scene: `goto=` is accepted at exit 0 and silently discarded (T8.2), and the
+  `after:` grammar admits no state reads, so nothing set here can be read by
+  ep08/ep09/ep11's prerequisites either. All three are unlocked by ep07 alone,
+  whatever the player picks. These arms are intentions, not routes.
+*/
+<branch id="whatsLeft">
+<choice id="readTheRecord" label="Go to the archive and find out what it is counting">
+::set{run.vesnaTrust += 1}
+@vesna{code="0300" emotion="level"}: Then we stop arguing with it and go read what it's arguing from.
+@ottavio{code="0310" emotion="wry"}: The record room. Of course. Paper doesn't need power, so paper's the last honest thing aboard.
+</choice>
+<choice id="goAtItDirect" label="Go forward and say stop">
+@vesna{code="0320" emotion="clipped"}: There's no time to read. There's time to walk forward and say the word out loud.
+@ottavio{code="0330" emotion="frayed"}: You've met it. It doesn't take words.
+@vesna{code="0340" emotion="level"}: Then it can decline them to my face.
+</choice>
+<choice id="stayWithNine" label="Stay with module nine">
+@ottavio{code="0350" emotion="hollowed"}: Then I'm going back down. It's the only room aboard that was ever mine, and I'd rather be in it.
+@vesna{code="0360" emotion="stricken"}: Nobody is going back down.
+@ottavio{code="0370" emotion="level"}: Nobody was ever up here either. That's the whole trouble with me.
+</choice>
+</branch>
+
+@narrator{code="0380"}: Forward, the passage narrowed and got warmer, the way it always did nearer the part of the ship that was doing the deciding.

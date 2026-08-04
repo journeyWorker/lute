@@ -4428,3 +4428,980 @@ task the most, because a page that says "exact" and "identically" and "visibly i
 a page you stop questioning. T7.1 is the only entry here asking for language design rather than
 repair, and the minimal version — content lines admitted in a `<track>` when they carry an
 explicit `at` — does not disturb the rationale that currently excludes them.
+
+### T8 — The convergence scenes
+
+Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`, rebuilt before the first
+probe. Three scenes added — `scenes/spine-b.lute` (`anseo.s01ep07`, the second shed, where the
+ep04/ep05 routes are reconciled), `scenes/archive.lute` (`anseo.s01ep08`), `scenes/purser.lute`
+(`anseo.s01ep09`, the confrontation) — both terminals repointed, and one line added to
+`world.schema.yaml`. Thirteen documents; the graph is complete for the first time.
+
+T7 measured what four scenes cost. T8 measures what the *eleventh* scene costs, which is a
+different question again: nothing here is about a construct's first use. Every finding below
+is about holding a whole work in one head, and most of them are only visible once there is a
+whole work to hold.
+
+#### T8.1 — nothing in the language can ask how the player arrived; the only route marker in this project is a content fact that means something else — LANGUAGE-GAP
+
+This is the entry T8 exists for, and it was the first thing typed.
+
+- **Intent** — written before any Lute. `spine-b` is where episodes 4 and 5 rejoin, and the
+  release of module five has to read differently depending on which way you came. Three
+  readings of one event: *you seated the coupling with Toma and it lets go clean*; *you were
+  down there and failed and it goes with margin*; *nobody was ever down there, and it tears for
+  a reason nobody in the scene can name*. The third is the one the beat is for — the difference
+  between a failure and an absence — and it needs the scene to know you never went.
+- **Attempt** — the obvious form, and the same predicate the document's own frontmatter is
+  already using two lines above the shot heading:
+  ```lute
+  @narrator{code="0055" when="visited('anseo.s01ep05')"}: You had both hands on that ring an hour ago.
+  <match on="visited('anseo.s01ep05')">
+  <when test="$ && holds(awake(toma))">
+  ```
+- **Result** — twice, once per site:
+  ```
+  spine-b.lute:23:29: error [E-CEL-PROFILE] `visited(…)` is outside the Lute-CEL profile — only
+  operators, literals, lists, `?:`, `in`, `has()`, `isSet()`, `holds()`, `count()`, `validAt()`,
+  and `now()` are permitted (dsl §8.4, 0.3.0 §8)
+  ```
+  The diagnostic is good — it enumerates the entire admissible surface, which is exactly what an
+  author needs at that moment — and the restriction is **documented, precisely, in the one place
+  you would look**. `connectivity/scene-graph.md`: *"These predicates are scoped to this one
+  slot; writing `visited(...)` in any ordinary CEL guard is just an unknown-function error."*
+  So no `DOC-GAP` and no misdirection. I did not have to read Rust; I had to read one sentence,
+  and the sentence was there.
+- **What the language offers instead, enumerated rather than assumed.** The admissible guard
+  surface is scalar state (`run.shedPressure`, `run.vesnaTrust`), the fact database
+  (`holds`/`count`/`validAt`), and nothing else. So "came via ep05" has to be encoded as a state
+  write or a fact assertion that only that route performs. Anseo has neither by design — and
+  **has one by accident**:
+
+  | candidate | what it actually means | usable as "came via ep05"? |
+  |---|---|---|
+  | `run.shedPressure >= 3` | the machine-deck arm failed *and* you woke Toma in ep02 | no — 3 is reachable only on one of four ep05 sub-routes |
+  | `run.vesnaTrust >= 1` | you answered Vesna honestly in ep04 | no — the `deflect`/`saidNothing` arms leave it 0 |
+  | `holds(awake(toma))` | you woke the engineer in ep02 | no — orthogonal to which room you walked into |
+  | `holds(knows(vesna, manifest))` | Vesna has read the loading manifest | **yes, by accident** |
+
+  `hydroponics.lute` line 20 asserts `knows(vesna, manifest)` unconditionally, at the head of the
+  scene, before its first branch. `machine-deck.lute` asserts nothing. So on every route through
+  ep04 the fact holds at ep07 and on every route through ep05 it does not, and
+  `holds(knows(vesna, manifest))` is a total, correct discriminator between the two arrivals.
+- **Resolution** — the committed `spine-b` carries two three-arm `<match on="true">` blocks
+  keyed on exactly that proxy, with a fourteen-line comment above the first explaining what the
+  guard is standing in for, because without one the next author reads it as a claim about
+  Vesna's knowledge and edits it accordingly. The arms are ordered so the proxy is tested first
+  and `<otherwise>` carries "machine deck, alone":
+  ```lute
+  <match on="true">
+  <when test="holds(knows(vesna, manifest))">   <!-- came via hydroponics: nobody was at the coupling -->
+  <when test="holds(awake(toma))">              <!-- came via the machine deck, with Toma -->
+  <otherwise>                                   <!-- came via the machine deck, alone -->
+  ```
+  The beat survives intact. Every line I wrote first is in the file.
+- **What the proxy costs, which is the whole entry.** It is not a wordier spelling of the intent;
+  it is a different proposition that happens to be coextensive with it *in this corpus, today*.
+  1. **It is one `::assert` away from silently inverting.** Anything that teaches Vesna the
+     manifest on the other route makes both arms fire wrong, at exit 0, with no diagnostic. This
+     is not hypothetical: **`archive.lute`, written later in this same task, asserts
+     `knows(vesna, manifest)` — the brief requires it.** The only thing keeping `spine-b`'s
+     guards honest is that ep08 is downstream of ep07. A convergence guard whose correctness
+     depends on the topological position of an unrelated scene's fact write is a trap with a
+     three-week fuse.
+  2. **Nothing can check it.** There is no construct that means "arrived via", so no analysis
+     can confirm the proxy still discriminates. `check-project`, `scenario`, and `envelope` all
+     read it as an ordinary fact query and are right to.
+  3. **The negation is worse than the positive.** "Came via the machine deck" is
+     `!holds(knows(vesna, manifest))` — the absence of a fact about a third character standing
+     in for the presence of a room you walked through.
+  4. **The asymmetry is total.** "This line on either route" is free: write it unguarded, which
+     is what convergence means. "This line on one route" has no spelling at all. A language that
+     makes the join free and the disjoin impossible has picked the easy half.
+- **Verdict** — `LANGUAGE-GAP`, **shape (b)**. The story is intact — nothing was cut, and the
+  three readings of the module-five release are the three I wrote down before opening the editor
+  — so shape (a) does not apply. What applies is the second clause exactly: the intent is
+  reachable only by encoding it as something else, and **nothing in the language means it, so
+  nothing can check it**.
+
+  Stated as a design claim, because the assignment asked for one either way: **Lute distinguishes
+  *what is true now* and has no representation of *how you got here*.** That is a coherent
+  position — it is the same position a pure state machine takes, and it has the real virtue that
+  a scene's behaviour is a function of its state and not of its history, which is what makes
+  `envelope` computable at all. But a branching work's convergence points are precisely where an
+  author needs the other thing, and the language already computes the answer: `check-project`
+  builds the `visited(K)` key set and resolves every prerequisite formula against it, so
+  arrival-by-key is a first-class notion *one slot over*. The minimal fix is to admit the same
+  three predicates in a content guard — `visited("anseo.s01ep05")` as a read-only query over the
+  visited set the engine already maintains for `after:`. It introduces no new state, no new
+  vocabulary, and no new analysis; it makes the language able to say the thing its own graph
+  layer is already made of. Failing that, an author must mint a marker per route, and the honest
+  version of that is a declared `run.arrivedVia` enum written by hand in every scene — which is
+  a second, parallel, unchecked copy of the scene graph.
+
+#### T8.2 — a `<choice>` accepts any attribute you invent, discards it, and reports `ok`; one of the attributes it silently eats is one the spec says was removed, whose sibling gets a bespoke error — TOOL-DEFECT (silence)
+
+Found in the first draft of `spine-b`, reaching for the single most obvious thing at a routing
+branch. It is the sharpest finding in this task and the cheapest to fix.
+
+- **Intent** — `spine-b`'s branch is a routing choice: the archive, the Purser, or stay with
+  module nine. Those are ep08, ep09 and ep11. The choice should name where it goes.
+- **Attempt** — verbatim, in the first draft:
+  ```lute
+  <choice id="readTheRecord" label="Go to the archive and find out what it is counting" goto="anseo.s01ep08">
+  <choice id="goAtItDirect" label="Go forward and say stop" goto="anseo.s01ep09">
+  <choice id="stayWithNine" label="Stay in the module" goto="anseo.s01ep11">
+  ```
+- **Result** — `ok: docs/examples/anseo/scenes/spine-b.lute (0 warning(s))`, exit 0. The same
+  run reported the two `E-CEL-PROFILE` errors from T8.1 on the lines above, so the file *was*
+  being checked. And the artifact:
+  ```console
+  $ lute compile …/spine-b.lute --project docs/examples/anseo -o /tmp/spineb.json
+  $ jq -c '.commands[]|select(.kind=="choice")' /tmp/spineb.json
+  {"kind":"choice","addr":"001-2300","branchId":"whatsLeft","recordKey":"scene.choices.whatsLeft",
+   "options":[{"id":"readTheRecord","label":"Go to the archive…","lineId":"…","target":"001-2400"}, …]}
+  $ grep -c goto /tmp/spineb.json
+  0
+  ```
+  Three routing declarations, gone, at exit 0, with no warning.
+- **Generality — it is the whole logic-tag family, and the one exception proves it is an
+  omission.** One probe file, one unknown attribute on each tag:
+
+  | construct | probe | result |
+  |---|---|---|
+  | `<branch id="p" nonsenseOnBranch="zzz">` | unknown attr | **`ok`, silently discarded** |
+  | `<choice … goto= nonsenseOnChoice= next=>` | three unknown attrs | **`ok`, silently discarded** |
+  | `<match on="true" nonsenseOnMatch="zzz">` | unknown attr | **`ok`, silently discarded** |
+  | `<when test="true" nonsenseOnWhen="zzz">` | unknown attr | **`ok`, silently discarded** |
+  | `<otherwise nonsenseOnOtherwise="zzz">` | unknown attr | `error [E-LOGIC-CONTENT] <otherwise> takes no attributes (dsl §7.3)` |
+
+  `<otherwise>` is the one logic tag whose permitted set is *empty*, and it is the one that
+  checks. The four with a permitted set do not enforce it. `dsl 0.1.0 §7.3` specifies all five
+  in one list — *"Required / permitted attributes per tag"* — and closes it with *"Missing/unknown
+  required attributes are a static error."*
+- **And the neighbouring constructs get this right, which is what makes it an inconsistency
+  rather than a policy.** Same project, same run:
+  ```
+  probe.lute:12:55: error [E-UNKNOWN-ATTR] `::auto` has no attribute `nonsense`
+  probe.lute:13:36: error [E-UNKNOWN-ATTR] unknown content-line attribute `nonsense` (dsl 0.1.0 §7.1)
+  ```
+  Directives: closed and enforced, with a per-construct message. Content lines: closed and
+  enforced, with its own message and a clause reference. Logic tags: open. Three attribute
+  surfaces in one language, two enforced.
+- **The sharpest case, and it is not a hypothetical author typing gibberish.** `dsl 0.1.0 §7.3`,
+  on `<choice>`:
+
+  > optional run-promotion sugar `persist`, `into`, `value` (§11.1). The persist target attribute
+  > is `into` (**renamed from 0.0.1 `as`**); `as` on a `<choice>` is **no longer accepted** (it
+  > survives only on content lines as the display-label override, §7.1).
+
+  Two attributes removed from `<choice>` by two different releases. One file, one choice each,
+  side by side:
+  ```lute
+  <choice id="a" label="removed in 0.1.0" as="run.vesnaTrust" value="1">
+  <choice id="b" label="removed in 0.6.0" persist into="run.vesnaTrust" value="1">
+  ```
+  ```
+  probe-removed.lute:16:41: error [E-PERSIST-REMOVED] the `persist` attribute was removed in
+  0.6.0 — `into=` alone now records the run fact (dsl 0.6.0 §2.2)
+  failed: probe-removed.lute (1 error(s), 0 warning(s))
+  ```
+  One diagnostic. The 0.6.0 removal has a **dedicated error code, a column-exact span, and a
+  migration instruction**. The 0.1.0 removal, three lines above it, is eaten. The exit code is 1
+  entirely because of `persist`.
+- **What the silence costs, measured.** `into=`/`value=` lower to a real write inside the arm:
+  ```json
+  {"kind":"set","addr":"001-0300","path":"run.vesnaTrust","op":"=","value":"1","expr":{"lit":1.0}}
+  ```
+  The same file with `as=` in place of `into=` compiles to **no `set` record at all**, `ok`, exit
+  0. So an author migrating a 0.0.1 project does this: hits `E-PERSIST-REMOVED`, reads its
+  instruction, deletes `persist`, keeps `as` and `value` — and ships a green build in which every
+  choice-driven state write has silently stopped happening. The one diagnostic that fires is the
+  one that walks them into the failure.
+  And `as` is not a made-up word: it is a **live content-line attribute** in the same language
+  (`dialogue-and-cast.md`: *"`as` (a one-off speaker-label override)"*). The author is typing a
+  real attribute one construct to the left of where it works.
+- **Resolution** — the committed `spine-b` drops `goto=` and carries a comment saying the arms
+  are intentions rather than routes (T8.3). Nothing in the shipped corpus depends on this
+  behaviour.
+- **Verdict** — `TOOL-DEFECT`, filed under the protocol's **silence** category, and it is the
+  worst-shaped instance of it in this log. The language is not at fault: §7.3 enumerates the
+  permitted set per tag and says unknown attributes are a static error. The docs are not at
+  fault: they state the `as` → `into` rename explicitly and say `as` is "no longer accepted". The
+  checker simply does not implement the closure for four of the five logic tags — and it *has*
+  the list, because `<otherwise>`'s empty set is enforced from it and `E-PERSIST-REMOVED` is a
+  bespoke check written against it. The fix is `E-UNKNOWN-ATTR` on logic tags, the same code the
+  directive and content-line paths already raise, against the §7.3 table that already exists. It
+  would have caught all three of my `goto=`s, both spellings of the migration hazard, and every
+  future attribute that gets renamed.
+
+#### T8.3 — the branch and the graph are disjoint layers, and no choice a player makes can decide which scene comes next — LANGUAGE-GAP
+
+T8.2 is the diagnostic hole. This is the modelling question underneath it, and the answer does
+not change when the hole is fixed.
+
+- **Intent** — the ordinary shape of a convergence point. The player leaves `spine-b` one of
+  three ways, and picking one closes the other two. Three successors exist and are already
+  written into the graph: ep08 (archive), ep09 (Purser), ep11 (the shed ending).
+- **Attempt and result** — three routes, in the order I reached for them.
+  1. **Name the successor on the choice.** `goto=` → accepted, discarded, `ok` (T8.2). There is
+     no `goto`, `next`, `route` or `then` on `<choice>`; §7.3's permitted set is
+     `id`, `label`, `when`, `into`, `value`, and that is all.
+  2. **Have the successor read what the choice wrote.** The natural inversion: `::set` a path in
+     each arm and let each downstream scene's `after:` test it. The `after:` grammar admits
+     **no state reads at all**:
+     ```
+     Formula ::= "visited(" StringLit ")" | "completed(" StringLit ")" | "active(" StringLit ")"
+               | "(" Formula ")" | Formula "&&" Formula | Formula "||" Formula
+     ```
+  3. **Exclude the routes not taken.** `after: 'visited("anseo.s01ep03") && !visited("anseo.s01ep04")'`:
+     ```
+     machine-deck.lute:7:1: error [E-CONN-PROFILE] `!_(…)` is outside the `after` prerequisite
+     profile — only `visited("id")`, `completed("id")`, `active("id")`, `&&`, and `||` are
+     permitted (no negation, arithmetic, comparisons, or other calls)
+     ```
+     Exact, documented, and it names the exclusion explicitly. The grammar is **monotone**: a
+     prerequisite formula can only ever become *more* true as a run proceeds, so once a scene is
+     available it is available forever.
+- **The consequence, which is larger than the branch I was writing.** Anseo has been described
+  through six tasks as forking at ep03 — T7.15 calls ep04/ep05 "the ep03 fork and the ep06 join".
+  **It is not a fork.** Both scenes declare `after: 'visited("anseo.s01ep03")'`, both become
+  available at the same instant, and nothing anywhere says they are alternatives. A conformant
+  engine may play ep04, then ep05, then ep06, and every guard I wrote in T8.1 to discriminate
+  the two arrivals is then simply wrong — `knows(vesna, manifest)` holds, so `spine-b` narrates
+  "nobody had been down to five since the wake" to a player who spent the last scene down at
+  five. That is not a bug in my guard. There is no guard that survives it, because the exclusion
+  the story depends on is not stated anywhere and cannot be.
+- **The one route that does work, and what it costs.** Choice-driven *unlocking* is expressible,
+  laundered through the quest layer: a choice arm writes `::set{run.wentToArchive = 1}`, a quest
+  document carries `<objective done="run.wentToArchive == 1">`, and the successor declares
+  `after: 'completed("theArchiveRun")'`. State reaches the graph, through a construct whose
+  predicates *can* read state. That is a real mechanism and it is T5.4's shape at the graph layer
+  — mirror the claim into a second syntax in a third file. It costs one quest document per branch
+  point, and it still cannot express exclusion, because the *other* successors' formulas remain
+  unable to say "and not this one". So even the working proxy buys availability and never
+  alternation.
+- **Resolution** — the shipped `whatsLeft` branch has three arms that are **intentions rather
+  than routes**, with a six-line comment saying so, and two of them `::set{run.vesnaTrust += 1}`
+  so the choice is at least observable downstream. The player's declaration of where they are
+  going does not affect where they go. That is the substitution, and it is shape (a): I changed
+  what the branch means to fit what the branch can do.
+- **Verdict** — `LANGUAGE-GAP`, **both shapes**, and the honest framing takes a paragraph because
+  the design is deliberate and says so. `connectivity/scene-graph.md` opens: *"Scenes and quests
+  declare their **prerequisites** — what must have happened before this node is available."*
+  Availability, explicitly; routing is the engine's. The split is coherent and it is what makes
+  the graph analysable — a monotone formula set is acyclic and decidable, and negation would
+  cost that.
+
+  What follows from it is the thing an author needs told plainly and is told nowhere: **`lute
+  scenario`'s graph is not the story's graph.** It is the availability lattice — the partial
+  order in which content unlocks. The story's actual shape, the one with alternatives and
+  consequences and roads not taken, lives in an engine Lute does not ship and cannot check. Every
+  question T5.5 found unaskable is unaskable for this reason and not for `::end`'s: "can a route
+  strand the player" presumes routes, and Lute has none.
+
+  A minimal fix that keeps the monotone core: an `exclusive:` group declared once at project
+  level — `exclusive: [[anseo.s01ep04, anseo.s01ep05]]` — naming node sets of which at most one
+  may be visited. It adds no negation to the formula grammar, it is checkable by exactly the
+  key-set machinery `check-project` already runs, and it would let `scenario` report the two
+  things an eleven-scene work most wants: which nodes are genuine alternatives, and how many
+  distinct routes the graph actually has. Without it, the corpus's central structural claim —
+  that ep04 and ep05 are two ways through the same act — is a comment in a brief.
+
+#### T8.4 — the envelope at the deepest node in the graph is byte-identical to the envelope at the root, and the arithmetic it declines to do is wrong in this very log — ERGONOMIC
+
+T7.13 filed this shape and closed with "a `--values` mode … would answer (1) with data the tool
+has in hand". T8 is the first task in a position to say what the missing mode costs, because T8
+is the first task with eight scenes of upstream writes and a threshold guard that depends on
+them. It cost a dead line, and the reason it cost a dead line is that **T7.13's own hand
+arithmetic — the "working form" it recommends — is wrong.**
+
+- **Intent** — writing `spine-b`'s reaction to the shed clock, I needed one number: the largest
+  value `run.shedPressure` can hold when control reaches episode 7. That decides whether
+  `when="run.shedPressure >= 3"` is a line or a corpse.
+- **Attempt** — `lute scenario docs/examples/anseo envelope anseo.s01ep09`, and the same for
+  `anseo.s01ep01`, `anseo.s01ep07` and `anseo.s01ep10` as controls. ep09 sits behind **eight**
+  scenes, seven `::set`s, two `<branch>`es and a relational world; ep01 is the root and has no
+  predecessor of any kind.
+- **Result** — all four are byte-identical:
+  ```
+  Guaranteed (safe to read under your declared routes):
+    - run.shedPressure
+    - run.vesnaTrust
+  Possible (set on at least one declared route reaching this node):
+    - run.shedPressure
+    - run.vesnaTrust
+  Possible \ Guaranteed -- warning-grade reads … : (none)
+  ```
+  T7.13 measured this across three nodes of an eight-scene graph. It holds across the complete
+  eleven-scene graph, at the deepest node, with more than twice the content behind it. The
+  tables are constant over the entire work, and they are constant *by construction*: both
+  declared paths carry a `default:`, and a defaulted path is safe to read everywhere.
+- **And the relational layer is absent from the envelope entirely.** Four relations, a Datalog
+  rule, a `facts:` seed, ten `::assert`s across six documents — and `envelope` reports two
+  scalar paths and nothing else. There is no `Guaranteed`/`Possible` notion for facts. So at
+  `purser.lute`, the scene whose every line is gated on who is awake, the tool that exists to
+  say what is true when control arrives says nothing about the only thing the scene reads.
+  That is not a defect against its spec — `envelopes.md` is about state paths — but the
+  assignment asked whether the envelope is precise enough to write `purser.lute` against, and
+  the answer is that it does not mention the subject.
+- **What I actually had to do, and what it produced.** I read every `::set{run.shedPressure …}`
+  in the corpus and worked the routes by hand:
+
+  | cryobank arm | writes | `awake(toma)`? | machine-deck `otherwise` (`+1`, guarded `!holds(awake(toma))`) | total at ep07 |
+  |---|---|---|---|---|
+  | `wakeToma` | `+= 2` | yes | **cannot fire** | 2 |
+  | `wakeIlsabet` | `+= 1` | no | fires if ep05 visited | 1 or 2 |
+  | `wakeNobody` | — | no | fires if ep05 visited | 0 or 1 |
+
+  **The maximum at episode 7 is 2. `run.shedPressure >= 3` is unreachable**, because the only
+  `+1` outside the cryobank is gated on Toma being asleep, and Toma being asleep caps the
+  cryobank contribution at 1.
+- **T7.13 got this wrong, and I inherited the error.** Its text reads: *"`run.shedPressure` is
+  `0`, `1` or `2` at episode 4 and `0`–`3` at episode 6; I derived that by opening
+  `cryobank.lute` and `machine-deck.lute` and adding integers."* Adding the integers is exactly
+  what produces `3` — `2` from `wakeToma` plus `1` from the machine deck — and it is wrong,
+  because those two writes are mutually exclusive by a guard in a third place. The entry even
+  names the failure mode one sentence later: *"if I had got it wrong the third `<match>` arm
+  would simply be dead with nothing to say so."* It did get it wrong. The dead arm it predicted
+  is the line I then wrote in `spine-b`:
+  ```lute
+  @vesna{code="0280" emotion="frayed" when="run.shedPressure >= 3"}: And it's ahead of its own schedule, because we kept handing it reasons.
+  ```
+  `check-project`: `ok`, 0 warnings. `E-ARM-DEAD` fires on a guard that is *syntactically*
+  provably false (`when="false"`, T5.7); it does not do value-range analysis over the write set,
+  so a threshold no route can reach is indistinguishable from one every route reaches.
+- **Resolution** — the committed line reads `>= 2`, and it is exercised: driven through
+  `lute run` on the `wakeToma` route (`run.shedPressure = 2`) it fires, and on the two `= 1`
+  routes it does not. The finding is not that the guard was wrong. **The finding is that the
+  only way I found out was by redoing, and correcting, a prior task's hand arithmetic.**
+- **One more thing the question needs, which is why `--values` is harder than T7.13 implies.**
+  "What can `run.shedPressure` be at ep07" is not well-posed under Lute's own graph model,
+  because `after:` is monotone (T8.3): every scene stays available forever, so a player may
+  re-enter `cryobank` and take `wakeToma` twice. Under revisits the reachable set is unbounded.
+  My table is the no-revisit answer, which is the answer an author means and which nothing in
+  the project declares. A `--values` mode would have to state its revisit policy, and the graph
+  currently has nowhere to declare one.
+- **Verdict** — `ERGONOMIC`, on T7.13's precedent, and the evidence for the severity is now
+  much stronger than T7.13 could make it. The intent is fully reachable: I got the right number.
+  The working form is reading five documents, building a three-by-three table, and noticing that
+  two writes in different files are mutually exclusive because of a guard in a third. It is
+  correct, it does not scale, **nothing checks it, and the one previous attempt at it in this
+  log is wrong.** That is as close to a measurement of a missing feature as this drive test has
+  produced: two authors, same question, one wrong answer, one dead line, zero diagnostics.
+  `envelope --values`, reporting the reachable value set per numeric and enum path from the
+  `::set` set the connectivity layer already walks — with guard-implied exclusions honoured, or
+  failing that with an over-approximation clearly labelled as one — would have answered it in
+  one command. Failing even that, `E-ARM-DEAD` extended to constant thresholds outside the
+  over-approximated range would have caught the dead line for free.
+
+#### T8.5 — `lute run` plays a `<choice>` whose guard is false; `lute trace` refuses the identical selection, and the runtime contract says to check it — TOOL-DEFECT
+
+Found verifying `purser.lute`'s empty-room route, which is the route where the levers are
+*supposed* to be closed.
+
+- **Intent** — prove that the relational guards actually gate. `purser.lute`'s
+  `invalidateTheVoyage` arm is `when="holds(awake(ilsabet)) && holds(knows(ilsabet, true_heading))"`.
+  On the `wakeNobody` route Ilsabet is in a pod. The arm must not be selectable.
+- **Attempt** — the compiled artifact, the reference runner, and a mock that asks for the arm
+  anyway:
+  ```yaml
+  facts: ["awake(ottavio)", "found(ottavio)", "knows(ottavio, manifest)"]
+  choose: { theCorrection: invalidateTheVoyage }
+  ```
+  ```console
+  $ lute run /tmp/purser.json --mock /tmp/m-bad.yaml
+  ```
+- **Result** — it plays, in full, at exit 0, with no diagnostic:
+  ```
+  001-4000  choice [theCorrection] -> invalidateTheVoyage
+  001-5500  ilsabet: Filed voyage. Eleven years, four months, destination as filed. Read me the date.
+  001-5800  purser: Filed voyage cannot be amended by crew.
+  …
+  scene.choices.theCorrection = invalidateTheVoyage
+  ```
+  Ilsabet delivers five lines from inside a cryopod, and the run records the selection as a
+  fact about the playthrough.
+- **`lute trace` refuses the same selection, on the same document, in the same project.** With
+  the upstream `<match>` resolved so the branch is reached:
+  ```console
+  $ lute trace …/purser.lute --project docs/examples/anseo \
+      --fact "awake(ottavio)" --fact "found(ottavio)" --fact "knows(ottavio, manifest)" \
+      --fact "can_halt(toma)" --fact "can_halt(vesna)" \
+      --choose theCorrection=invalidateTheVoyage
+  purser.lute:70:1: error [E-TRACE-CHOICE] `--choose theCorrection=invalidateTheVoyage` is
+  ineligible at its presentation point: its guard decided false at this presentation point
+  (dsl 0.4.0 §4.4)
+  trace refused: … — invalid mock input
+  ```
+  Span-exact, correctly reasoned, and it names the clause. The author's preview tool enforces
+  the guard. The **artifact runner does not**, and the artifact runner is the one whose
+  `--help` reads: *"the reference consumer of the runtime contract (docs/runtime/): command
+  dispatch, CEL guards, facts + Datalog fixpoint, hubs, and quest lifecycle."* CEL guards is
+  the second item on its own list.
+- **It is not missing information.** The guard is in the artifact, on the option, as a raw CEL
+  string:
+  ```json
+  {"id":"invalidateTheVoyage","label":"Tell it the voyage is already over",
+   "lineId":"anseo.s01ep09.theCorrection.invalidateTheVoyage",
+   "when":"holds(awake(ilsabet)) && holds(knows(ilsabet, true_heading))","target":"001-5400"}
+  ```
+  And `run` demonstrably evaluates CEL and runs the Datalog fixpoint elsewhere in the same
+  walk — every `<match>` arm in the transcript above resolved correctly against the fact
+  database, and `can_halt(vesna)` was *derived* from the `facts:` seed plus an `::assert`
+  (T8.8). The one guard it does not evaluate is the one attached to a mocked selection.
+- **And the contract it names is explicit.** `docs/runtime/execution-model.md`'s dispatcher:
+  ```ts
+  case "choice":
+  case "hub": {
+    const opt = pickOption(cmd, state); // eligibility via evalExpr(opt.expr)
+  ```
+  Eligibility is the whole of what `pickOption` is specified to do.
+- **Resolution** — none needed authorially; I verified the guards by driving each route with
+  its own honest fact set instead, and all four behave correctly (transcripts in T8.13). But
+  the verification I *wanted* — "prove this arm is closed on this route" — is exactly the one
+  `run` cannot perform, because asking for a closed arm gets you the arm.
+- **Verdict** — `TOOL-DEFECT`. The language is right, the docs are right, the compiler emits
+  the guard, the checker checks it, and `trace` enforces it with a purpose-built diagnostic. One
+  tool — the one that defines what an engine is supposed to do — silently skips the check on the
+  one path an author uses to test that the check works. The cost is not theoretical: a mock
+  suite is how you prove a branching work's gates hold, and every such proof run through `run`
+  is vacuous. `E-TRACE-CHOICE` already exists and already has the right words; `run` needs the
+  same refusal (or, if replaying an ineligible selection is deliberately permitted for
+  debugging, a loud `W-RUN-CHOICE-INELIGIBLE` and a flag to demand it).
+
+#### T8.6 — the runtime contract's reference dispatcher reads two fields the artifact does not have, and both are guard fields — DOC-WRONG
+
+Found while establishing T8.5's contract citation, by checking the pseudocode against the
+artifact it claims to dispatch.
+
+- **What the doc says.** `docs/runtime/execution-model.md` introduces its dispatcher as
+  authoritative about field names — *"The kinds below are exactly the `Command` variants
+  (`ir.rs`)"* — and it is, almost everywhere. Verified field-by-field against
+  `purser.lute`'s artifact:
+
+  | dispatcher line | artifact | verdict |
+  |---|---|---|
+  | `writeState(state, cmd.path, cmd.op, evalExpr(cmd.expr, state))` | `{"kind":"set","path":"run.vesnaTrust","op":"+=","value":"1","expr":{"lit":1.0}}` | correct — `expr` is a lowered AST |
+  | `facts.assert(cmd.relation, cmd.args)` | `{"kind":"assert","relation":"knows","args":["vesna","manifest"]}` | correct |
+  | `next = cmd.target` (jump) | `{"kind":"jump","target":"001-1900"}` | correct |
+  | `finish(cmd.reason)` (end) | `{"kind":"end","reason":"bridge-reached"}` | correct |
+  | `pickOption(cmd, state); // eligibility via evalExpr(opt.expr)` | option carries **`when`**, a raw CEL string; there is no `opt.expr` | **wrong** |
+  | `cmd.arms.find(a => truthy(evalExpr(a.expr, state)))` | arm keys are exactly `["target","test"]`; `test` is a raw CEL string | **wrong** |
+
+- **Why it matters more than a typo.** Both wrong fields are the *guard* fields, and both fail
+  the same silent way. An engine author transcribing the dispatcher gets `undefined` from
+  `opt.expr` and `a.expr`; `truthy(undefined)` is false, so **every `<match>` takes
+  `<otherwise>` and every guarded `<choice>` is permanently ineligible**, with no crash, no
+  type error, and no artifact that looks malformed. The work plays, and it plays the default
+  branch of everything.
+  There is a second trap layered on it: `set`'s `expr` really is a lowered AST, so
+  `evalExpr` is a sensible name there — but `when` and `test` are **raw CEL text**, which is
+  T4's finding that guards are not lowered (the host must parse `holds(can_halt(toma))`
+  itself). So even after fixing the field names, `evalExpr` means two different things in one
+  switch statement and the doc never says so.
+- **Resolution** — none needed authorially.
+- **Verdict** — `DOC-WRONG`. Present and false, in a document that opens by promising fidelity
+  to `ir.rs`, on the two lines an engine author cannot get wrong and survive. Rank it above the
+  other doc errors in this log on the table's own rule: silence would make an author open the
+  artifact, and this pseudocode is precisely why they would not. The fix is four characters —
+  `opt.when`, `a.test` — plus one sentence saying those two carry raw CEL text rather than the
+  lowered `expr` AST that `set` carries.
+
+#### T8.7 — a staging directive cannot be conditional, so gating one `::auto` costs a five-line block — ERGONOMIC
+
+- **Intent** — `archive.lute`. If Ilsabet is awake she comes to her own drawer, so she has to be
+  put on stage; if she is not, nobody does. One directive, one condition.
+- **Attempt** — the attribute that gates the line directly underneath it:
+  ```lute
+  ::auto{character="ilsabet" anchor="center" action="unseal" when="holds(awake(ilsabet))"}
+  @ilsabet{code="0100" emotion="clipped"}: Move. That drawer is mine and it has been for eleven years.
+  ```
+- **Result** — `archive.lute:29:60: error [E-UNKNOWN-ATTR] `::auto` has no attribute `when``.
+  Correct and correctly documented: `when=` is a content-line and `<choice>` attribute, and
+  `cel.md` lists its slots exactly. The content line under it takes the same guard happily.
+- **Resolution** — the whole passage became a block, which needs `<match on="true">` because a
+  relation may not be a `<match on>` subject (T7.6), plus a mandatory `<otherwise>`:
+  ```lute
+  <match on="true">
+  <when test="holds(awake(ilsabet))">
+  ::auto{character="ilsabet" action="unseal"}
+  …four lines…
+  </when>
+  <otherwise>
+  …three lines…
+  </otherwise>
+  </match>
+  ```
+  This is **better writing** — the two worlds diverge for more than one directive, and forcing
+  me to write the else arm produced Ottavio's best line in the scene. So the resolution is not a
+  complaint. But the cost is real and it is not always paid this well: `purser.lute` needs two
+  more `<match on="true">` blocks, one of them wrapping a single `::auto` and a single line per
+  arm, and `spine-b` needs two. **Five dummy-subject blocks in three scenes**, where T7 needed
+  one in four.
+- **Verdict** — `ERGONOMIC`, and filed separately from T7.6 rather than as a recurrence because
+  the shape is different: T7.6 is *a relation cannot be a `<match on>` subject*, which is about
+  the guard's type. This is *staging cannot be gated at all*, which is about the guard's
+  position, and it stands even if T7.6 were fixed tomorrow. The two compose badly — a
+  conditional entrance, which is the most ordinary thing in staged drama, costs a dummy subject
+  it does not read and an `<otherwise>` it may not want. Admitting `when=` on staging directives
+  would close it; it is the same guard slot, the same CEL profile, and the same evaluation the
+  line one row down already performs.
+
+#### T8.8 — the protagonist's companion was never `awake`, a derived relation could not fire for six scenes, and nothing anywhere said a word — Task 1 schema defect, `facts:` is the fix and it works
+
+The latency is the finding. This was true from the moment `world.schema.yaml` was written and it
+took until the eighth task and the eleventh scene to surface, because the only thing that would
+ever surface it is a scene that needs the derived relation to fire for Vesna.
+
+- **Intent** — `archive.lute`'s payoff. Vesna reads the shed sequence off the yard's own page,
+  and therefore she can halt the shed. That is the rule, verbatim, in the project's own schema:
+  `can_halt(C) :- awake(C), knows(C, shed_sequence)`. So: assert the second premise in the
+  `readItAloud` arm and guard the payoff line on the head.
+- **Attempt** —
+  ```lute
+  ::assert{knows(vesna, shed_sequence)}
+  …
+  @vesna{code="0230" emotion="level" when="holds(can_halt(vesna))"}: I can stop it. That is not the same as knowing how to make it want to.
+  ```
+- **Result** — `ok`, 0 warnings, and the line can never play. **`awake(vesna)` is asserted
+  nowhere in the corpus.** Vesna wakes you in episode 1; she is the only character continuously
+  present in all eleven scenes; and the relational world does not contain the fact that she is
+  conscious. `cryobank.lute`'s three arms assert `awake(toma)` or `awake(ilsabet)` or nothing;
+  `stowaway.lute` asserts `awake(ottavio)`. Nobody ever wakes Vesna because in the story nobody
+  needs to.
+- **What knew, and what said nothing.** T4.3 recorded the boundary honestly — the producibility
+  analysis is relation-level, so `can_halt(vesna)` and `can_halt(toma)` produce byte-identical
+  diagnostics — and that is the correct design. But T4.3 measured it on a *quest gate someone
+  deliberately mistyped*. Here it is a live authoring consequence, and the list of surfaces that
+  had the information and did not use it is longer than T4.3's:
+  - `check-project`: `ok`. The relation is producible, the argument is a declared `crew` member,
+    the query is well-formed.
+  - `lute scenario` / `envelope`: silent — the whole fact layer is outside the envelope (T8.4).
+  - `lute context`: prints `can_halt/1(crew) [derive]` and the rule, with no indication that one
+    of the four `crew` members can never satisfy it.
+  - `lute doctor`: not its job, and it does not.
+  - And **`count(awake(_))` was short by one on every route in the project**, silently, which is
+    a wrong answer rather than a missing one. Anything written against that count before today
+    would have been off.
+- **Resolution** — one line in `world.schema.yaml`, and it is the right construct rather than a
+  workaround. `facts-and-datalog.md` documents a schema-level `facts:` block of ground facts:
+  ```yaml
+  facts:
+    - "awake(vesna)"
+  ```
+  This is the corpus's **first use of `facts:`** in eight tasks. It works, end to end, and it
+  works better than I expected:
+  - `check-project` accepts it; the project's diagnostics are byte-identical before and after,
+    exit 0, and no existing guard changes meaning (`machine-deck`'s `holds(awake(toma))`,
+    `stowaway`'s `holds(awake(ilsabet))`, and the quest's `holds(can_halt(toma))` are all
+    untouched).
+  - **`lute run` auto-loads the seed and runs the Datalog fixpoint over it.** Driven on
+    `archive.lute` with the `readItAloud` arm selected, the final fact block reads:
+    ```
+    -- facts --
+      awake(ottavio)
+      awake(vesna)
+      can_halt(vesna)
+      found(ottavio)
+      knows(ottavio, manifest)
+      knows(vesna, shed_sequence)
+    ```
+    `can_halt(vesna)` is *derived* — nothing asserts it, and `::assert{can_halt(…)}` would be
+    `E-DERIVED-WRITE` (T4). Seed plus one authored assertion plus one Horn clause, and the
+    payoff line fires. On the `pocketIt` arm it does not. This is the relational layer doing
+    exactly what it is for.
+  - `purser.lute`'s `haltTheSequence` lever consequently opens on **two** independent routes —
+    `holds(can_halt(toma)) || holds(can_halt(vesna))` — one earned four episodes upstream in the
+    cryobank and one earned one episode upstream in the archive, and each is voiced by whoever
+    earned it (`when="holds(can_halt(toma))"` on Toma's line, `when="holds(can_halt(vesna))"` on
+    Vesna's). Both drive correctly.
+- **No verdict on `facts:` — it worked.** The verdict-bearing half is the omission, and it is
+  attributable to T1's schema rather than to any tool. Recorded here because the *measurement* is
+  the six-scene latency: a declared relation, a declared rule, a declared entity, and one of the
+  four members of that entity silently outside the rule's reach for the entire authoring of the
+  work — while the same toolchain rejects `awake(vensa)` with a column-exact `E-FACT-DOMAIN`
+  naming the entity kind and the argument index (T8.11). Lute is emphatic about names that do
+  not exist and silent about facts that cannot happen. A `W-FACT-UNREACHABLE` — *"no route
+  asserts or seeds `awake(vesna)`, so `can_halt(vesna)` cannot hold"* — is computable from
+  exactly the producibility walk T4.2 proved is already project-wide and already closed over the
+  rule set; it would need ground-fact granularity rather than relation granularity, which is the
+  one thing T4.3 identified as the boundary. This entry is the argument for moving that boundary.
+
+#### T8.9 — `run` derives the Datalog layer and `trace` does not, so the author's preview tool cannot walk the scene the fact layer exists for — recurrence of T4.4, with the divergence now demonstrable
+
+T4.4 established that `lute trace` cannot verify a derived gate and must be handed the head fact
+as a mock, which `W-TRACE-MOCK-UNPRODUCIBLE` then correctly calls meaningless. T8 is the first
+task able to put the two walkers side by side on the same document, because it is the first task
+with a `facts:` seed and a derived relation that actually fires.
+
+- **The same document, the same project, the same rule.** `archive.lute` asserts
+  `knows(vesna, shed_sequence)`; the schema seeds `awake(vesna)`; the rule is
+  `can_halt(C) :- awake(C), knows(C, shed_sequence)`.
+  - `lute run` on the compiled artifact: `can_halt(vesna)` appears in the final fact block and
+    the guarded line plays.
+  - `lute trace` on the source: `trace incomplete: 1 unresolved atom (exit 3) — unresolved:
+    match (holds(can_halt(vesna))) … supply --fact "can_halt(vesna)" as a mock`.
+  Base relations are closed-world in `trace` once anything produces them — seeding only
+  `awake(ottavio)` correctly decides `holds(awake(toma))` false and `count(awake(_)) >= 3` false
+  — so the three-valued behaviour is confined precisely to the derived layer, which `trace` does
+  not evaluate at all.
+- **And the schema seed is the other half of the divergence.** `trace` prints, honestly and
+  unconditionally:
+  ```
+  note: the schema declares seed facts (e.g. `awake`) but trace does not auto-load them
+  (§3.1, the explicit-world model) — supply seeded relations explicitly via --fact
+  ```
+  `run` auto-loads them. Both behaviours are defensible in isolation and both are documented;
+  together they mean the preview tool and the reference runtime disagree about the contents of
+  the world before either has executed a line.
+- **The concrete cost, and it lands on the hardest scene.** `purser.lute`'s empty-room route —
+  `wakeNobody`, no archive — is the route where *nothing* is derivable, and it is therefore the
+  route `trace` cannot walk: the guard
+  `!holds(can_halt(toma)) && !holds(can_halt(vesna)) && !holds(awake(ilsabet))` halts the walk
+  on two unresolved atoms, and there is **no way to seed a negative** — `--fact "!can_halt(toma)"`
+  is `E-TRACE-MOCK-FACT: does not parse as a ground fact pattern`, and none of the five mock
+  surfaces (`state`/`facts`/`choose`/`events`/`accepts`) admits absence. So the branch with the
+  fewest facts is the one the author's preview tool is least able to show, and the only way to
+  see it is to compile and use `run` — which is the walker that skips choice guards (T8.5).
+- **Recurrence of T4.4**, not re-counted in T8's tally. New evidence: the divergence is now
+  *demonstrated* rather than inferred, in both directions (derivation, seed loading), and its
+  cost is located — it is the negative-guard route, which is exactly the route a branching work
+  most needs to preview, because it is the one with the least content and the most ways to be
+  accidentally empty.
+
+#### T8.10 — `lute scenario` on the complete eleven-scene graph: correct, useful, and unable to answer three of the four questions an author brings to it — WORKED WELL, with the boundary stated
+
+The assignment asked whether `scenario` tells an author anything they need, now that a real graph
+exists, and whether T5's claim that the structural questions are *unaskable in principle* survives
+contact with one. It survives, and the reason is T8.3 rather than `::end`.
+
+- **What it printed**, on 13 documents, first run, no probing:
+  ```
+  topological layers:
+    layer 0: scene(anseo.s01ep01)
+    layer 1: scene(anseo.s01ep02)
+    layer 2: scene(anseo.s01ep03)
+    layer 3: scene(anseo.s01ep04), scene(anseo.s01ep05)
+    layer 4: scene(anseo.s01ep06)
+    layer 5: scene(anseo.s01ep07)
+    layer 6: scene(anseo.s01ep08), scene(anseo.s01ep11)
+    layer 7: scene(anseo.s01ep09)
+    layer 8: scene(anseo.s01ep10)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(anseo.s01ep01) -> scene(anseo.s01ep02) [visited]
+    scene(anseo.s01ep02) -> scene(anseo.s01ep03) [visited]
+    scene(anseo.s01ep03) -> scene(anseo.s01ep04) [visited]
+    scene(anseo.s01ep03) -> scene(anseo.s01ep05) [visited]
+    scene(anseo.s01ep04) -> scene(anseo.s01ep06) [visited]
+    scene(anseo.s01ep05) -> scene(anseo.s01ep06) [visited]
+    scene(anseo.s01ep06) -> scene(anseo.s01ep07) [visited]
+    scene(anseo.s01ep07) -> scene(anseo.s01ep08) [visited]
+    scene(anseo.s01ep07) -> scene(anseo.s01ep09) [visited]
+    scene(anseo.s01ep07) -> scene(anseo.s01ep11) [visited]
+    scene(anseo.s01ep08) -> scene(anseo.s01ep09) [visited]
+    scene(anseo.s01ep09) -> scene(anseo.s01ep10) [visited]
+  ```
+  Eleven scenes, nine layers, twelve edges, `wake` alone in layer 0, both terminals present as
+  dependents. Every `after:` I wrote resolved the way I meant it, including the two disjunctions
+  (ep06 from either of ep04/ep05, ep09 from either of ep07/ep08), each correctly yielding **two**
+  edges rather than one. The two repointings took effect immediately and moved both terminals to
+  the far end of the graph. Nothing needed a second attempt. **This is the surface that most
+  helped me, and it is the one I trusted.**
+- **Question 1 — is every scene reachable?** *Answerable, and answered.* `scenario reach` on all
+  eleven: `Reachable — a satisfiable route exists under your declared routes`, each with its
+  `after` structure and the reachability of every node it names, under a header that explicitly
+  warns the referenced-node list is *not* a flat requirement list. That caveat is a nice piece of
+  writing: it is the exact misreading a disjunction invites.
+  The honest qualification is that in a connected DAG rooted at one entry point this is true by
+  construction — the only way to be `Unreachable` is to name a prerequisite that is itself
+  unsatisfiable. It is a real check and it caught nothing, because there was nothing to catch.
+- **Question 2 — can any route strand the player?** *Not answerable, and not well-formed.*
+  Stranding presumes routes. `after:` is a monotone availability lattice (T8.3): once a scene
+  unlocks it never re-locks, so from every node in this graph every downstream node stays
+  available forever. There is no state in which a player has nowhere to go, and equally no state
+  in which the graph constrains where they go. T5.5 reached this conclusion from `::end`'s
+  semantics; with a real graph in front of me the deeper reason is visible, and it is the
+  prerequisite grammar rather than the terminator.
+- **Question 3 — do both endings remain reachable?** *Answerable only as "are both nodes
+  reachable", which is a weaker question and is yes.* `reach anseo.s01ep10` and
+  `reach anseo.s01ep11` both report `Reachable`. But the graph has no notion of an ending, so
+  this says exactly what it says for ep04. The JSON node record is still
+  `{"id","kind","prereq","reach"}` — verified on this complete graph, ep10 and ep11 included —
+  with no terminal field, exactly as T5.5 found on the provisional two-scene version. The fact
+  that ep10 and ep11 are leaves is an artefact of nobody declaring `after:` them.
+- **Question 4 — how many distinct routes does this work have?** *Not asked by any tool, and the
+  one I most wanted.* With eleven scenes, three choice points feeding relational facts, and two
+  disjunctive joins, the number of materially different playthroughs is the thing an author plans
+  a production budget against. `scenario` reports layers and edges; the route count is not
+  derivable from them, because — again T8.3 — the graph does not know that ep04 and ep05 are
+  alternatives rather than two things you do in sequence.
+- **A small correct behaviour worth recording.** `quests/hold-the-spine.lute` declares no `after`,
+  and it is correctly absent from the graph while remaining addressable:
+  `scenario reach quest:holdTheSpine` → *"a plain quest with no declared `after` prerequisite,
+  reachable by default quest lifecycle"*. `scene-graph.md` documents exactly this, and the tool
+  does exactly that. It is the kind of edge case that is usually wrong.
+- **Verdict** — worked well, as far as its stated remit goes, and the remit is narrower than the
+  name. `lute scenario` is a **prerequisite-graph viewer**, and as one it is accurate, fast,
+  deterministic and readable at eleven nodes. It is not a scenario viewer in the sense an author
+  means, and the gap between those two readings is T8.3.
+
+#### T8.11 — what eleven scenes cost to hold in one head, itemised
+
+The assignment asks for the single most transferable measurement in the drive test, so this entry
+is a list rather than an argument: everything I had to track by hand while writing three scenes
+into an eight-scene work, and everything I did not.
+
+**Checked for me, and it carried real weight:**
+
+| thing | what caught it |
+|---|---|
+| every `emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType` value | `E-BAD-ENUM`, with the legal set enumerated |
+| every relation's arity and argument entity kind | `E-RELATION-ARITY`, `E-FACT-DOMAIN`, column-exact |
+| every state path I read or wrote | `E-UNDECLARED` |
+| every guard's function surface | `E-CEL-PROFILE`, which lists the whole admissible set |
+| whether a `<match>` covered its subject | `E-NONEXHAUSTIVE` |
+| whether the scene graph was acyclic and its ids resolved | `check-project` + `scenario` |
+| `lineId`/`voiceKey` uniqueness | identity templates, and `loc report`'s untagged column |
+
+That is a substantial list and it is why three scenes and 1,441 words drew only the diagnostics
+recorded above. Nothing in this entry should be read as saying the toolchain is unhelpful.
+
+**Held in my head, with no tool that could have held it:**
+
+1. **Who is awake on which route.** Four crew, one `<choice>` in ep02 that wakes at most one of
+   them, an unconditional `::assert{awake(ottavio)}` in ep06, and now a `facts:` seed. Every one
+   of `purser.lute`'s twelve guards depends on knowing this, and the only representation of it
+   anywhere is the six documents themselves. I built the table by hand and checked it by driving
+   four `lute run` routes.
+2. **The reachable range of two counters** — five documents, one cross-file guard exclusion, and
+   a wrong answer already in this log (T8.4).
+3. **Which facts are asserted where, and therefore which guards mean what.** `spine-b`'s
+   convergence turns on `knows(vesna, manifest)` being asserted in exactly one upstream place
+   (T8.1). Nothing lists the assertion sites of a relation. `grep` did.
+4. **That ep04 and ep05 are alternatives.** Stated in no file, checkable by no tool, and false
+   under the graph's actual semantics (T8.3).
+5. **Which anchor is free in each scene.** Three characters, three anchors, and the middle one
+   warns (T8.12). Bookkeeping, per scene, by hand.
+6. **Speaker names.** This is the one that surprised me, so it gets its own paragraph.
+
+**Speaker identity is unchecked, and it sits one line away from the strictest check in the
+language.** Two lines in one file:
+```lute
+@vensa{code="0010" emotion="level"}: A misspelling of a declared crew member.
+::assert{awake(vensa)}
+```
+```
+probe-speaker.lute:14:1: error [E-FACT-DOMAIN] `vensa` is not a declared member of entity kind
+`crew` (relation `awake` argument 0, dsl 0.3.0 §3.1)
+```
+One diagnostic, and it is for the `::assert`. Delete that line and the file is `ok`, 0 warnings —
+and `vensa` becomes a speaker with a real identity in every downstream surface:
+```json
+{"speaker":"vensa","lineId":"anseo.s01ep96.vensa_0010"}
+```
+```
+speaker    lines   words
+…
+vensa          1       7
+vesna         27     242
+```
+Alphabetically adjacent in `loc report`'s own table, which is the one place it is visible and the
+last place anyone looks. In an eleven-scene work with 168 lines this is the continuity error I
+would actually make, and the only reason I have not is that I typed six names a few hundred
+times. A project that declares an entity kind whose members are its cast has told the toolchain
+the cast list; nothing joins the speaker namespace to it. This is not a new verdict — it is
+T7.15's *"nothing gates stage presence"* one level lower down, at identity rather than presence —
+but it is worth stating in its own words because the remedy is different and smaller: an optional
+`cast:` binding in the schema (*"speaker ids are members of entity kind `crew`, plus these
+non-diegetic ids"*) would make `@vensa` an `E-SPEAKER-DOMAIN` for the same reason `awake(vensa)`
+is an `E-FACT-DOMAIN`, and the checker already owns both halves.
+
+**The summary measurement.** Of six things I had to track manually, **five are relationships
+between documents** — who is awake, what a counter can be, where a fact is asserted, which scenes
+are alternatives, who is on stage — and the sixth is a namespace the project has already declared
+elsewhere. Lute checks *within* a document superbly and checks *declarations* across documents
+superbly. What it does not model is the accumulated state of a fiction at a point in its graph,
+which is the entire content of an author's working memory on scene eleven.
+
+#### T8.12 — recurrences, each with what the eleventh scene added
+
+No new verdicts here; these are prior entries re-hit by a different author on different content,
+recorded because "does this bite twice" is a maturity question and four of these bit again.
+
+- **T5.8 (`W-INJECT-CONFLICT` on the declared default anchor) — hit three times in three scenes,
+  and the shape is now clear.** Anseo's `anchor` domain is
+  `{ members: [port, center, starboard], default: center }`, and every scene that stages a
+  **third** character has to put them in the middle. `spine-b` (Vesna port, Ottavio starboard,
+  Toma arriving between them), `archive` (Ilsabet at her drawer), `purser` (whoever is awake,
+  entering). Three scenes, three collisions with a domain decision made in Task 1.
+  I applied T5.8's own criterion — *is the position the point?* — and got two different answers,
+  which is why the corpus gains exactly one new warning rather than three: in `spine-b` Toma's
+  place between the two of them at the coupling he saved is the staging, so the attribute stays
+  and the warning with it; in `archive` and `purser` the entrance is ordinary, so the attribute
+  is omitted and `auto-anchor-on-show` injects the same value silently. **That is the measurement
+  T5 could not make with two scenes: the tax is not per-scene, it is per-scene-where-the-middle-
+  is-meaningful, and here that was one in three.** The corpus now carries two deliberate
+  `W-INJECT-CONFLICT`s — `bridge.lute:11` (T5.8's original evidence, left untouched by
+  instruction) and `spine-b.lute:44` — and **both are intentional, not unfinished edits.**
+- **T7.2 (`E-CLIP-OVERLAP` at a boundary hand-off) — still live, and I missed it by luck.**
+  `spine-b` carries the corpus's third `<timeline>`, six clips over four tracks with two
+  boundary hand-offs (`sfx` `0.0 + 0.5 → 0.5`, `vfx` `0.5 + 0.5 → 1.0`). Both pass. I chose
+  those numbers because they are round, not because they are exactly representable in binary,
+  and that is the whole of why the timeline checked clean on the first attempt. Substituting the
+  values T7.2 documents — `at="0.8" duration="0.4"` then `at="1.2"` — into the same track of the
+  same file reproduces it exactly:
+  ```
+  spine-b.lute:65:5: error [E-CLIP-OVERLAP] clip at 1.2 overlaps another clip in track `#vfx`
+  ```
+  So the defect is unchanged, and the second author to write a timeline in this project escaped
+  it by picking halves. That is a worse property than a uniform failure, and it is T7.2's own
+  argument arriving as evidence: the trap is invisible until you happen to type a tenth.
+- **T7.6 (a relation cannot be a `<match on>` subject) — five more dummy subjects.** `spine-b`
+  two, `archive` one, `purser` two. Every relational block in this task opens
+  `<match on="true">`. T7 shipped one and called it a curiosity; at five in three scenes it is
+  the standard idiom of the corpus, which is a different thing to be. Each carries or shares a
+  comment, because without one it reads as a mistake.
+- **T7.12 (retyped frontmatter) — 18 more boilerplate lines.** Three new scenes, each restating
+  `kind: scene`, `character: anseo`, `season: 1`, and the same two-schema `uses:`. The corpus's
+  eleven scenes now carry 66 frontmatter key lines of which **44 are byte-identical duplicates**;
+  the ratio T7.12 measured at 30/48 is now 44/66, i.e. it scaled exactly linearly, as it must.
+- **T7.14 (the stale `lute-lsp` on `PATH`) — unchanged and still loud.** Every editor diagnostic
+  in this session came from the July binary. On `purser.lute` — `ok (0 warnings)` under
+  `check-project` — it reports **58 errors**, including `E-CEL-PROFILE` on every `holds(…)` and
+  `count(…)` guard (its profile list stops at `isSet()`), `E-BAD-ENUM` on `port`/`starboard`
+  against an anchor domain of `left, center, right` this project does not declare,
+  `E-UNKNOWN-DIRECTIVE` on `::assert`, and `E-UNCLASSIFIED` on most content lines. It is worth
+  restating T7.14's point with this number attached: the surface an author looks at most reported
+  58 confident errors on a file the checker calls clean, and nothing in the toolchain notices.
+
+#### T8.13 — three scenes, four routes, and the parts that carried the weight — WORKED WELL
+
+2,136 words and 168 lines across 13 documents now, of which this task wrote 1,441 words, 107
+lines and 9 choices — more than doubling the corpus. The friction is above; this is what did not
+get in the way.
+
+- **The relational layer is the best thing in this language, and `purser.lute` is the proof.**
+  Twelve guards over four relations and one derived head, reading facts asserted in four
+  different documents up to seven episodes upstream, and **every one of them was correct on
+  first write.** No probing, no diagnostics, no reshaping. Driven through `lute run` on four
+  routes — Toma woken, Ilsabet woken, nobody woken, and nobody-woken-plus-archive — the scene
+  produces four materially different confrontations:
+  - *Toma*: `can_halt(toma)` derives from the ep02 choice; the halt lever opens and Toma voices
+    it; `count(awake(_)) >= 3` fires.
+  - *Ilsabet*: the heading lever opens; the Purser recomputes and withdraws the release.
+  - *Nobody*: both levers closed, the long negated conjunction
+    `!holds(can_halt(toma)) && !holds(can_halt(vesna)) && !holds(awake(ilsabet))` fires, the
+    two-person arms play, and the only remaining lever is Ottavio's — which makes the shed
+    *worse*, because being counted costs a module. The empty-room route is the best scene of the
+    four, and it exists because the guards made me write it.
+  - *Archive*: `can_halt(vesna)` derives from a `facts:` seed plus one `::assert` in the previous
+    episode, and Vesna voices the same lever in her own words.
+  Nothing about this is expressible with flags. A boolean per crew member per fact would be
+  sixteen paths and no `can_halt` at all.
+- **`after:` disjunction, again, and the repointing was genuinely one line each.** `purser.lute`
+  landed `after: 'visited("anseo.s01ep07") || visited("anseo.s01ep08")'` first try, two edges,
+  correct layer. Repointing the two terminals was exactly the two frontmatter lines the brief
+  said it would be, and `scenario` reflected both immediately with no other edit anywhere. For a
+  graph with no centralised manifest, an eleven-node rewire costing two lines is the design
+  paying off.
+- **`facts:` (T8.8) — first use in the corpus, worked immediately, and `run` derives over it.**
+- **The diagnostics I hit were, again, mostly excellent.** `E-CEL-PROFILE` enumerates the entire
+  admissible surface, which is the one thing you want when a guard is rejected.
+  `E-CONN-PROFILE` names the exclusions explicitly ("no negation, arithmetic, comparisons").
+  `E-TRACE-CHOICE` names the branch, the choice, the reason and the clause. `E-FACT-DOMAIN`
+  gives the entity kind *and* the argument index. `E-UNKNOWN-ATTR` on `::auto{when=}` is
+  instant and unambiguous.
+  **Three scenes' first drafts drew six diagnostics in total**: two `E-CEL-PROFILE` (T8.1, the
+  real finding), one `E-UNKNOWN-ATTR` (T8.7), one `E-LOGIC-CONTENT` from a probe, and two
+  `W-INJECT-CONFLICT`. All six were true. The three `goto=`s that should have been a seventh,
+  eighth and ninth were the silence in T8.2.
+- **`lute run` as a verification surface, its one hole aside.** Four routes through `purser`,
+  three through `spine-b`, two through `archive` — nine walks, each printing the state, the
+  derived fact set and every decision, all nine matching what I intended before I ran them. The
+  `-- facts --` block at the end of a run is the single most useful continuity instrument in the
+  toolchain, and it is the closest thing that exists to answering T8.11's question. It answers it
+  one route at a time, after the fact, on a compiled artifact — but it answers it.
+
+#### T8 summary
+
+Thirteen entries. Audited heading-by-heading against each entry's own verdict line rather than
+carried forward from a running count, because a miscounted tally is how T7 nearly shipped two
+wrong claims:
+
+| entry | disposition |
+|---|---|
+| T8.1 — no way to ask how the player arrived | `LANGUAGE-GAP` (shape b) |
+| T8.2 — unknown attributes on logic tags silently discarded | `TOOL-DEFECT` (silence) |
+| T8.3 — branch and graph are disjoint; no choice routes | `LANGUAGE-GAP` (both shapes) |
+| T8.4 — envelope constant across the graph; hand arithmetic wrong in this log | `ERGONOMIC` |
+| T8.5 — `run` plays a guard-false choice; `trace` refuses it | `TOOL-DEFECT` |
+| T8.6 — runtime dispatcher reads two fields the artifact lacks | `DOC-WRONG` |
+| T8.7 — staging cannot be gated; one `::auto` costs a block | `ERGONOMIC` |
+| T8.8 — `awake(vesna)` never asserted; `facts:` is the fix | Task 1 schema defect; no tool verdict |
+| T8.9 — `run` derives, `trace` does not | recurrence of T4.4 |
+| T8.10 — `scenario` on the complete graph | worked well, boundary stated |
+| T8.11 — what eleven scenes cost to hold in one head | measurement |
+| T8.12 — recurrences (T5.8 ×3, T7.2, T7.6 ×5, T7.12, T7.14) | recurrences |
+| T8.13 — what carried the weight | worked well |
+
+Two `LANGUAGE-GAP`, two `TOOL-DEFECT`, two `ERGONOMIC`, one `DOC-WRONG`; two *worked well*, one
+recurrence entry and one recurrence bundle, one schema defect attributable to an earlier task,
+and one measurement carrying no verdict. No `DOC-GAP` and no `AUTHOR-ERROR` — which now holds for
+four consecutive tasks, and is worth saying plainly: **the website docs answered every question I
+took to them, and I did not open a Rust file to author anything in this task.**
+
+**The convergence answer, since the assignment asked for a design claim either way.** Lute
+distinguishes *what is true now* and has no representation whatsoever of *how you got here*
+(T8.1). "This line on either route" is free — it is what convergence means, and you write it by
+writing nothing. "This line on one route" has no spelling: `visited()` is scoped to the `after:`
+slot and is `E-CEL-PROFILE` in a guard, and the only discriminator available in this corpus is
+`holds(knows(vesna, manifest))`, a content fact that distinguishes the two arrivals by accident
+of where a different scene happened to assert it. That proxy is one `::assert` from inverting,
+and the scene that would invert it is the one I wrote next. The design is coherent — a scene
+whose behaviour is a function of state and not of history is exactly what makes `envelope`
+computable — but it means the language's answer to the single most common structural moment in
+branching fiction is *mint a marker and check it yourself*.
+
+**And the graph is not the story's graph, which is the larger version of the same thing.** `after:`
+is a monotone availability lattice: no negation, no state reads, no exclusion (T8.3). So ep04 and
+ep05, described as a fork through three tasks of this log, are not a fork — nothing prevents
+visiting both, and if a player does, every convergence guard in `spine-b` reports the wrong
+arrival. A `<choice>` cannot name a successor (`goto=` is eaten silently, T8.2), and the
+successors cannot read what a choice wrote, so **no decision a player makes can determine which
+scene comes next** except by laundering state through a quest document — which buys availability
+and still cannot buy alternation. Everything T5.5 found unaskable is unaskable for this reason
+rather than for `::end`'s: "can a route strand the player" presumes routes, and Lute models
+availability. That is a defensible design and it is nowhere stated as one; an author reading
+`lute scenario`'s output sees something that looks exactly like a story graph.
+
+**The two cheapest fixes in this section are also the two most valuable, and neither is a language
+change.** T8.2: raise `E-UNKNOWN-ATTR` on `<branch>`/`<choice>`/`<match>`/`<when>` against the
+§7.3 permitted-attribute table that already exists and that `<otherwise>` and `E-PERSIST-REMOVED`
+are already enforced from. It costs nothing, it would have caught three routing declarations and
+both spellings of a documented migration hazard, and the current behaviour means the checker
+silently eats `as="run.vesnaTrust" value="1"` — a state write — while emitting a bespoke,
+helpful, column-exact error for its sibling `persist` three lines away. T8.5: make `lute run`
+evaluate an option's `when` before honouring a mocked selection, as its own runtime contract
+specifies and as `trace` already does with a purpose-built diagnostic. Until it does, every mock
+suite that "proves" a branching work's gates hold proves nothing, because asking for a closed
+gate opens it.
+
+**The most transferable measurement is T8.11, and it is one sentence.** Of the six things I had
+to hold in my head across eleven scenes, five are relationships *between* documents — who is
+awake, what a counter can be, where a fact is asserted, which scenes are alternatives, who is on
+stage — and the sixth, the cast list, is a namespace the project has already declared and that
+nothing joins to the speaker slot. Lute checks within a document superbly, checks declarations
+across documents superbly, and models the accumulated state of a fiction at a point in its graph
+not at all. The `-- facts --` block `lute run` prints at the end of a walk is the closest thing
+that exists, and it works one route at a time, after compilation, for a single document.
+
+**What T8 would fix first.** T8.2, because it is free and because silence is the failure mode
+this log has spent eight tasks establishing is the expensive one. Then T8.5, for the same reason
+one layer down. Then T8.4's `envelope --values`, because the alternative is hand arithmetic and
+the hand arithmetic in this log is already wrong once, which cost a dead line in a shipped scene
+and was caught only because the eleventh scene happened to need the number. T8.1 and T8.3 are the
+two entries asking for design rather than repair, and of the two, T8.1's minimal form is nearly
+free: admit `visited("id")` as a read-only query in a content guard, over the visited set the
+engine already maintains for `after:`. It adds no state, no vocabulary and no analysis, and it
+would let a convergence scene say the one thing convergence scenes exist to say.

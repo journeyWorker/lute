@@ -1,0 +1,102 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 9
+uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
+after: 'visited("anseo.s01ep07") || visited("anseo.s01ep08")'
+---
+
+## The Purser
+
+::bg{location="purser-core" time="ship-night"}
+::music{action="start" mood="pressurized" volume="normal"}
+::auto{character="vesna" anchor="port" action="brace"}
+::auto{character="ottavio" anchor="starboard" action="drift"}
+
+@narrator{code="0010"}: The passage ended in a wall that was warm to the touch, and behind the wall something had been adding for eleven years without once being interrupted.
+@ottavio{code="0020" emotion="frayed"}: That's it? That's the whole of it?
+@vesna{code="0030" emotion="level"}: That's a fan and a cabinet. The rest of it is everywhere.
+@purser{code="0040" emotion="level" os}: Crew present. Allocation continues.
+@vesna{code="0050" emotion="clipped"}: Stop the shed.
+@purser{code="0060" emotion="level" os}: Allocation is short by one module. Release is scheduled.
+@vesna{code="0070" emotion="clipped"}: I said stop.
+@purser{code="0080" emotion="level" os}: Instruction not recognised. Allocation is computed from listed mass against filed voyage. It is not an instruction. It is a remainder.
+@ottavio{code="0090" emotion="hollowed"}: It isn't arguing with you. It doesn't know you're talking.
+@vesna{code="0100" emotion="frayed"}: Then we stop talking to it and start correcting its paperwork.
+
+/*
+  The relational payoff. Who is standing here is a function of one `<choice>` in
+  episode 2 and one in episode 8, four and seven episodes upstream, and every line
+  below reads it off the fact database rather than off a flag anyone remembered to
+  set. `count(awake(_))` counts the `facts:` seed (`awake(vesna)`), the ep06
+  `::assert{awake(ottavio)}`, and whichever of Toma or Ilsabet the cryobank woke.
+*/
+<match on="true">
+<when test="count(awake(_)) >= 3">
+@vesna{code="0110" emotion="level"}: Three of us awake, and one of us not written down anywhere. It'll have to do.
+</when>
+<otherwise>
+@vesna{code="0120" emotion="hollowed"}: You, me, and a man this ship has never heard of. That's the crew. That's the whole crew.
+</otherwise>
+</match>
+
+<match on="true">
+<when test="holds(awake(toma))">
+::auto{character="toma" action="brace"}
+@toma{code="0130" emotion="clipped"}: It's a cabinet. Cabinets have a maintenance mode, and maintenance mode has a key, and I've had the key for twelve years.
+</when>
+<when test="holds(awake(ilsabet))">
+::auto{character="ilsabet" action="brace"}
+@ilsabet{code="0140" emotion="clipped"}: It's a navigation problem. I am the navigator, and it has been flying my ship to a plan I did not file.
+</when>
+<otherwise>
+@narrator{code="0150"}: Two of you, then, and a wall. Whatever was going to be said had to be said by the people who were awake to say it.
+</otherwise>
+</match>
+
+@ottavio{code="0160" emotion="level"}: And it's an arithmetic problem, and I'm the arithmetic. That's not nothing either.
+@vesna{code="0170" emotion="hollowed" when="!holds(can_halt(toma)) && !holds(can_halt(vesna)) && !holds(awake(ilsabet))"}: We came up here with a stowaway and a grievance. Let's find out what that buys.
+
+<branch id="theCorrection">
+<choice id="haltTheSequence" label="Halt the sequence" when="holds(can_halt(toma)) || holds(can_halt(vesna))">
+::set{run.vesnaTrust += 1}
+@vesna{code="0180" emotion="clipped" when="holds(can_halt(vesna))"}: Halt condition, subsection four. This is your own page. I am reading you your own page.
+@toma{code="0190" emotion="level" when="holds(can_halt(toma))"}: Maintenance hold. Two hands, both of them steady, and you have to mean it.
+@purser{code="0200" emotion="level" os}: Hold acknowledged. Release is suspended pending allocation.
+@purser{code="0210" emotion="level" os}: Pending is not cancelled. Allocation remains short by one module.
+@vesna{code="0220" emotion="hollowed"}: It'll wait. That isn't the same as stopping. But it'll wait, and waiting is a thing we can stand in.
+</choice>
+<choice id="invalidateTheVoyage" label="Tell it the voyage is already over" when="holds(awake(ilsabet)) && holds(knows(ilsabet, true_heading))">
+::set{run.vesnaTrust += 1}
+@ilsabet{code="0230" emotion="clipped"}: Filed voyage. Eleven years, four months, destination as filed. Read me the date.
+@purser{code="0240" emotion="level" os}: Filed arrival is four months from the yard. Elapsed is eleven years, four months.
+@ilsabet{code="0250" emotion="stricken"}: We passed it eleven years ago. There is no voyage. You have spent a decade provisioning a ship that has already arrived.
+@purser{code="0260" emotion="level" os}: Filed voyage cannot be amended by crew.
+@ilsabet{code="0270" emotion="wry"}: I'm not amending it. I'm telling you it completed. Check your own clock against your own paper and stop asking me.
+@purser{code="0280" emotion="level" os}: Recomputing.
+@purser{code="0290" emotion="level" os}: Voyage complete. Allocation against voyage: not applicable. Release is withdrawn.
+@vesna{code="0300" emotion="stricken"}: Eleven years. Eleven years, and it just needed to be told it had got there.
+</choice>
+<choice id="listTheMass" label="Put Ottavio on the manifest" when="holds(found(ottavio)) && holds(knows(ottavio, manifest))">
+::set{run.shedPressure += 1}
+::assert{knows(vesna, manifest)}
+@ottavio{code="0310" emotion="frayed"}: Say it out loud. If you're going to do it, do it out loud, because I have waited six weeks to hear somebody aboard say it.
+@vesna{code="0320" emotion="level"}: Crew addition. One name. Ottavio, loader, aboard since the yard, eats and breathes like the rest of us.
+@purser{code="0330" emotion="level" os}: Listed crew: five. Listed mass revised. Recomputing allocation.
+@purser{code="0340" emotion="level" os}: Allocation is short by two modules.
+@ottavio{code="0350" emotion="hollowed"}: Two.
+@vesna{code="0360" emotion="stricken"}: It counted you. That's what being counted costs on this ship.
+@ottavio{code="0370" emotion="level"}: I'd sooner be a number than a rounding error. Leave it as it stands.
+</choice>
+<choice id="sayNothing" label="Say nothing and let it finish">
+::camera{focus="vesna" zoom="1.2" duration="1.6" wait="true"}
+@narrator{code="0380"}: You did not say anything. The fan behind the wall did not change its note, and the arithmetic went on being right.
+@vesna{code="0390" emotion="hollowed"}: All right.
+@vesna{code="0400" emotion="frayed"}: All right. Then we go up and we watch it happen, because somebody aboard ought to be looking when it does.
+::auto{character="vesna" action="turn-away"}
+</choice>
+</branch>
+
+@purser{code="0410" emotion="level" os}: Crew departing. Allocation continues.
+@narrator{code="0420"}: Forward of the core the passage bent upward, and at the top of it was the only room on this ship that had ever been built for deciding anything.
