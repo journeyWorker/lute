@@ -26,11 +26,13 @@ after: 'visited("anseo.s01ep07") || visited("anseo.s01ep08")'
 @vesna{code="0100" emotion="frayed"}: Then we stop talking to it and start correcting its paperwork.
 
 /*
-  The relational payoff. Who is standing here is a function of one `<choice>` in
-  episode 2 and one in episode 8, four and seven episodes upstream, and every line
-  below reads it off the fact database rather than off a flag anyone remembered to
-  set. `count(awake(_))` counts the `facts:` seed (`awake(vesna)`), the ep06
-  `::assert{awake(ottavio)}`, and whichever of Toma or Ilsabet the cryobank woke.
+  The relational payoff. Who is standing here is a function of the one `<choice>`
+  in episode 2 — seven episodes upstream — and nothing else; the `<choice>` in
+  episode 8, one episode upstream, decides which LEVER is open rather than who is
+  in the room. Every line below reads both off the fact database rather than off a
+  flag anyone remembered to set. `count(awake(_))` counts the `facts:` seed
+  (`awake(vesna)`), the ep06 `::assert{awake(ottavio)}`, and whichever of Toma or
+  Ilsabet the cryobank woke.
 */
 <match on="true">
 <when test="count(awake(_)) >= 3">

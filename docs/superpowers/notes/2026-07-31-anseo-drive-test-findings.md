@@ -4434,8 +4434,9 @@ explicit `at` — does not disturb the rationale that currently excludes them.
 Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`, rebuilt before the first
 probe. Three scenes added — `scenes/spine-b.lute` (`anseo.s01ep07`, the second shed, where the
 ep04/ep05 routes are reconciled), `scenes/archive.lute` (`anseo.s01ep08`), `scenes/purser.lute`
-(`anseo.s01ep09`, the confrontation) — both terminals repointed, and one line added to
-`world.schema.yaml`. Thirteen documents; the graph is complete for the first time.
+(`anseo.s01ep09`, the confrontation) — both terminals repointed, and a two-line `facts:` block
+(one ground fact) added to `world.schema.yaml`. Thirteen documents; the graph is complete for
+the first time.
 
 T7 measured what four scenes cost. T8 measures what the *eleventh* scene costs, which is a
 different question again: nothing here is about a construct's first use. Every finding below
@@ -4489,7 +4490,7 @@ This is the entry T8 exists for, and it was the first thing typed.
   ep04 the fact holds at ep07 and on every route through ep05 it does not, and
   `holds(knows(vesna, manifest))` is a total, correct discriminator between the two arrivals.
 - **Resolution** — the committed `spine-b` carries two three-arm `<match on="true">` blocks
-  keyed on exactly that proxy, with a fourteen-line comment above the first explaining what the
+  keyed on exactly that proxy, with a thirteen-line comment above the first explaining what the
   guard is standing in for, because without one the next author reads it as a claim about
   Vesna's knowledge and edits it accordingly. The arms are ordered so the proxy is tested first
   and `<otherwise>` carries "machine deck, alone":
@@ -4573,12 +4574,16 @@ branch. It is the sharpest finding in this task and the cheapest to fix.
   | `<choice … goto= nonsenseOnChoice= next=>` | three unknown attrs | **`ok`, silently discarded** |
   | `<match on="true" nonsenseOnMatch="zzz">` | unknown attr | **`ok`, silently discarded** |
   | `<when test="true" nonsenseOnWhen="zzz">` | unknown attr | **`ok`, silently discarded** |
+  | `<hub id="h" nonsenseOnHub="zzz">` | unknown attr | **`ok`, silently discarded** |
+  | `<choice … nonsenseOnHubChoice="zzz">`, *inside a `<hub>`* | unknown attr | **`ok`, silently discarded** |
   | `<otherwise nonsenseOnOtherwise="zzz">` | unknown attr | `error [E-LOGIC-CONTENT] <otherwise> takes no attributes (dsl §7.3)` |
 
-  `<otherwise>` is the one logic tag whose permitted set is *empty*, and it is the one that
-  checks. The four with a permitted set do not enforce it. `dsl 0.1.0 §7.3` specifies all five
-  in one list — *"Required / permitted attributes per tag"* — and closes it with *"Missing/unknown
-  required attributes are a static error."*
+  Six constructs, **five of six open, one enforced.** `<otherwise>` is the one logic tag whose
+  permitted set is *empty*, and it is the one that checks. The five with a permitted set do not
+  enforce it — and `<choice>` is open in *both* of its positions, under `<branch>` and under
+  `<hub>`, which rules out "hub choices go down a different path". `dsl 0.1.0 §7.3` specifies
+  them in one list — *"Required / permitted attributes per tag"* — and closes it with
+  *"Missing/unknown required attributes are a static error."*
 - **And the neighbouring constructs get this right, which is what makes it an inconsistency
   rather than a policy.** Same project, same run:
   ```
@@ -4588,8 +4593,8 @@ branch. It is the sharpest finding in this task and the cheapest to fix.
   Directives: closed and enforced, with a per-construct message. Content lines: closed and
   enforced, with its own message and a clause reference. Logic tags: open. Three attribute
   surfaces in one language, two enforced.
-- **The sharpest case, and it is not a hypothetical author typing gibberish.** `dsl 0.1.0 §7.3`,
-  on `<choice>`:
+- **The documented-removal case, and it is not a hypothetical author typing gibberish.**
+  `dsl 0.1.0 §7.3`, on `<choice>`:
 
   > optional run-promotion sugar `persist`, `into`, `value` (§11.1). The persist target attribute
   > is `into` (**renamed from 0.0.1 `as`**); `as` on a `<choice>` is **no longer accepted** (it
@@ -4614,10 +4619,25 @@ branch. It is the sharpest finding in this task and the cheapest to fix.
   {"kind":"set","addr":"001-0300","path":"run.vesnaTrust","op":"=","value":"1","expr":{"lit":1.0}}
   ```
   The same file with `as=` in place of `into=` compiles to **no `set` record at all**, `ok`, exit
-  0. So an author migrating a 0.0.1 project does this: hits `E-PERSIST-REMOVED`, reads its
-  instruction, deletes `persist`, keeps `as` and `value` — and ships a green build in which every
-  choice-driven state write has silently stopped happening. The one diagnostic that fires is the
-  one that walks them into the failure.
+  0. The severity rests on that silence and not on a migration story, because **`lute fix`
+  migrates the rename.** Its `--help` says so — *"`<choice>`/`<hub>` choice `as="…"` →
+  `into="…"` (dsl §7.3)"* — and it does it, on a probe carrying two such choices:
+  ```console
+  $ lute check probe-fix.lute --project docs/examples/anseo
+  ok: probe-fix.lute (0 warning(s))
+  $ lute fix probe-fix.lute
+  lute: migrated 2 edit(s) to 0.2.2
+  $ grep -c 'into="run\.' probe-fix.lute
+  2
+  ```
+  So an author migrating a 0.0.1 project who *runs `lute fix`* is safe, and the first draft of
+  this entry rested the severity on a migration narrative — hits `E-PERSIST-REMOVED`, deletes
+  `persist`, keeps `as`, ships a green build with every choice-driven state write gone — that
+  the toolchain in fact mitigates. The narrative is not the finding. What survives it, exactly,
+  is the silence: `lute fix` is **opt-in**, `lute check` reports `ok` on the unmigrated file,
+  and nothing in the toolchain tells an author the file needs fixing. The migration hazard is
+  the sharpest *illustration* of the silence; the silence is the defect, and it eats a state
+  write on any file nobody thought to run `fix` over.
   And `as` is not a made-up word: it is a **live content-line attribute** in the same language
   (`dialogue-and-cast.md`: *"`as` (a one-off speaker-label override)"*). The author is typing a
   real attribute one construct to the left of where it works.
@@ -4628,7 +4648,7 @@ branch. It is the sharpest finding in this task and the cheapest to fix.
   worst-shaped instance of it in this log. The language is not at fault: §7.3 enumerates the
   permitted set per tag and says unknown attributes are a static error. The docs are not at
   fault: they state the `as` → `into` rename explicitly and say `as` is "no longer accepted". The
-  checker simply does not implement the closure for four of the five logic tags — and it *has*
+  checker simply does not implement the closure for five of the six logic constructs — and it *has*
   the list, because `<otherwise>`'s empty set is enforced from it and `E-PERSIST-REMOVED` is a
   bespoke check written against it. The fix is `E-UNKNOWN-ATTR` on logic tags, the same code the
   directive and content-line paths already raise, against the §7.3 table that already exists. It
@@ -4682,7 +4702,7 @@ not change when the hole is fixed.
   unable to say "and not this one". So even the working proxy buys availability and never
   alternation.
 - **Resolution** — the shipped `whatsLeft` branch has three arms that are **intentions rather
-  than routes**, with a six-line comment saying so, and two of them `::set{run.vesnaTrust += 1}`
+  than routes**, with a six-line comment saying so, and one of them `::set{run.vesnaTrust += 1}`
   so the choice is at least observable downstream. The player's declaration of where they are
   going does not affect where they go. That is the substitution, and it is shape (a): I changed
   what the branch means to fit what the branch can do.
@@ -4713,16 +4733,20 @@ not change when the hole is fixed.
 T7.13 filed this shape and closed with "a `--values` mode … would answer (1) with data the tool
 has in hand". T8 is the first task in a position to say what the missing mode costs, because T8
 is the first task with eight scenes of upstream writes and a threshold guard that depends on
-them. It cost a dead line, and the reason it cost a dead line is that **T7.13's own hand
-arithmetic — the "working form" it recommends — is wrong.**
+them. It cost a dead line — written, then caught and corrected to `>= 2` before the commit, so
+nothing dead shipped — and the reason it cost one is that **T7.13's own hand arithmetic — the
+"working form" it recommends — is wrong.**
 
 - **Intent** — writing `spine-b`'s reaction to the shed clock, I needed one number: the largest
   value `run.shedPressure` can hold when control reaches episode 7. That decides whether
   `when="run.shedPressure >= 3"` is a line or a corpse.
 - **Attempt** — `lute scenario docs/examples/anseo envelope anseo.s01ep09`, and the same for
   `anseo.s01ep01`, `anseo.s01ep07` and `anseo.s01ep10` as controls. ep09 sits behind **eight**
-  scenes, seven `::set`s, two `<branch>`es and a relational world; ep01 is the root and has no
-  predecessor of any kind.
+  scenes (ep01–ep08; ep11 is a sibling leaf, not a predecessor), **six** `::set`s and **four**
+  `<branch>`es — recounted from source rather than carried forward: `cryobank` 2 sets / 1 branch,
+  `hydroponics` 1/1, `machine-deck` 1/0, `spine-b` 1/1, `archive` 1/1, and nothing in `wake`,
+  `spine-a` or `stowaway` — plus a relational world. ep01 is the root and has no predecessor of
+  any kind.
 - **Result** — all four are byte-identical:
   ```
   Guaranteed (safe to read under your declared routes):
@@ -4737,9 +4761,11 @@ arithmetic — the "working form" it recommends — is wrong.**
   eleven-scene graph, at the deepest node, with more than twice the content behind it. The
   tables are constant over the entire work, and they are constant *by construction*: both
   declared paths carry a `default:`, and a defaulted path is safe to read everywhere.
-- **And the relational layer is absent from the envelope entirely.** Four relations, a Datalog
-  rule, a `facts:` seed, ten `::assert`s across six documents — and `envelope` reports two
-  scalar paths and nothing else. There is no `Guaranteed`/`Possible` notion for facts. So at
+- **And the relational layer is absent from the envelope entirely.** Four declared relations (one
+  of them the derived `can_halt`), a Datalog rule, a `facts:` seed, **eleven** `::assert`s across
+  **five** documents (`cryobank` 4, `stowaway` 3, `archive` 2, `hydroponics` 1, `purser` 1) — and
+  `envelope` reports two scalar paths and nothing else. There is no `Guaranteed`/`Possible`
+  notion for facts. So at
   `purser.lute`, the scene whose every line is gated on who is awake, the tool that exists to
   say what is true when control arrives says nothing about the only thing the scene reads.
   That is not a defect against its spec — `envelopes.md` is about state paths — but the
@@ -4768,9 +4794,24 @@ arithmetic — the "working form" it recommends — is wrong.**
   ```lute
   @vesna{code="0280" emotion="frayed" when="run.shedPressure >= 3"}: And it's ahead of its own schedule, because we kept handing it reasons.
   ```
-  `check-project`: `ok`, 0 warnings. `E-ARM-DEAD` fires on a guard that is *syntactically*
-  provably false (`when="false"`, T5.7); it does not do value-range analysis over the write set,
-  so a threshold no route can reach is indistinguishable from one every route reaches.
+  `check-project`: `ok`, 0 warnings. **And the checker does implement dead-gated-line analysis on
+  exactly this construct**, with a message written for it, one attribute away from the guard it
+  declines to judge. Four content lines, one probe file, same project:
+  ```console
+  $ lute check probe-dead.lute --project docs/examples/anseo
+  probe-dead.lute:11:42: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard
+    is provably false (dsl 0.4 §7.2, §5.2)                      # when="false"
+  probe-dead.lute:13:42: error [E-ARM-DEAD] … (same message)     # when="1 == 2"
+  probe-dead.lute:14:42: error [E-ARM-DEAD] … (same message)     # when="run.shedPressure >= 0 && false"
+  failed: probe-dead.lute (3 error(s), 0 warning(s))
+  ```
+  Line 12 — `when="run.shedPressure >= 99"`, a threshold no route can reach — draws **nothing**.
+  So the analysis is not "syntactically `when="false"`", which is what T5.7's evidence suggested:
+  it is `decide()`, the checker's constant folder, and it folds comparisons and conjunctions
+  happily. What it does not do is read the write set. The author-visible consequence is that one
+  error code, one message and one column serve two different proofs, and the diagnostic never
+  says which one it just performed: `1 == 2` is caught, `>= 99` is not, and the second is the
+  one an eleven-scene work actually produces.
 - **Resolution** — the committed line reads `>= 2`, and it is exercised: driven through
   `lute run` on the `wakeToma` route (`run.shedPressure = 2`) it fires, and on the two `= 1`
   routes it does not. The finding is not that the guard was wrong. **The finding is that the
@@ -4782,6 +4823,17 @@ arithmetic — the "working form" it recommends — is wrong.**
   My table is the no-revisit answer, which is the answer an author means and which nothing in
   the project declares. A `--values` mode would have to state its revisit policy, and the graph
   currently has nowhere to declare one.
+- **Which verdict this half belongs to, argued rather than assumed.** The log's `TOOL-DEFECT`
+  (silence) shape requires a promise the tool breaks — that is what T8.2 turns on. There is no
+  such promise here, and I looked for one: 0.4.0 §5.2 states the reachability analysis is "LOCAL
+  to one construct … no cross-construct graph"; the connectivity design restates it (*"0.4.0 §5
+  reachability … is explicitly local to one construct"*, and *"cross-document reachability is a
+  genuinely new analysis, not an extension of `decide()`"*); and the pass's own test suite pins
+  the boundary by name — `undecided_guard_is_never_flagged`, `test="run.n > 1"` → clean. A
+  value-range threshold is undecidable *by that construct alone*: it needs the write set of eight
+  upstream documents plus a revisit policy the graph has nowhere to declare. So the dead-guard
+  half is a missing feature behind a documented boundary, not a check lying about its own
+  contract — which is why the verdict below is the one it always was.
 - **Verdict** — `ERGONOMIC`, on T7.13's precedent, and the evidence for the severity is now
   much stronger than T7.13 could make it. The intent is fully reachable: I got the right number.
   The working form is reading five documents, building a three-by-three table, and noticing that
@@ -4812,16 +4864,24 @@ Found verifying `purser.lute`'s empty-room route, which is the route where the l
   ```console
   $ lute run /tmp/purser.json --mock /tmp/m-bad.yaml
   ```
-- **Result** — it plays, in full, at exit 0, with no diagnostic:
+- **Result** — it plays, in full, at exit 0, with no diagnostic. Re-run for this correction;
+  `[…]` marks four elided middle lines of the arm and nothing else is trimmed:
   ```
   001-4000  choice [theCorrection] -> invalidateTheVoyage
+  001-5400  set    run.vesnaTrust = 1
   001-5500  ilsabet: Filed voyage. Eleven years, four months, destination as filed. Read me the date.
-  001-5800  purser: Filed voyage cannot be amended by crew.
-  …
-  scene.choices.theCorrection = invalidateTheVoyage
+  001-5600  purser: Filed arrival is four months from the yard. Elapsed is eleven years, four months.
+  […]
+  001-6200  vesna: Eleven years. Eleven years, and it just needed to be told it had got there.
+  001-8100  purser: Crew departing. Allocation continues.
+  -- final state --
+    run.shedPressure = 0
+    run.vesnaTrust = 1
+    scene.choices.theCorrection = invalidateTheVoyage
   ```
-  Ilsabet delivers five lines from inside a cryopod, and the run records the selection as a
-  fact about the playthrough.
+  Ilsabet delivers **three** lines from inside a cryopod — the arm holds nine records: one
+  `::set`, three `@ilsabet`, four `@purser`, one `@vesna` — the arm's state write runs, and the
+  run records the selection as a fact about the playthrough.
 - **`lute trace` refuses the same selection, on the same document, in the same project.** With
   the upstream `<match>` resolved so the branch is reached:
   ```console
@@ -4834,11 +4894,35 @@ Found verifying `purser.lute`'s empty-room route, which is the route where the l
   (dsl 0.4.0 §4.4)
   trace refused: … — invalid mock input
   ```
-  Span-exact, correctly reasoned, and it names the clause. The author's preview tool enforces
+  Line-exact on the `<choice>` it refused (`70:1` is the tag's start rather than the `when=`
+  span), correctly reasoned, and it names the clause. The author's preview tool enforces
   the guard. The **artifact runner does not**, and the artifact runner is the one whose
   `--help` reads: *"the reference consumer of the runtime contract (docs/runtime/): command
   dispatch, CEL guards, facts + Datalog fixpoint, hubs, and quest lifecycle."* CEL guards is
   the second item on its own list.
+- **And `lute test` refuses it too, because `lute test` is `trace`-based — which is the
+  correction this entry most needed.** An earlier draft escalated from "`run` skips the check"
+  to "a mock suite is how you prove a branching work's gates hold, and every such proof run
+  through `run` is vacuous". **That is false, and one `--help` disproves it:** `lute test`'s
+  reads *"every `*.test.yaml` under `dir` **traces** its scene against the declared mocks and
+  asserts the declared expectations (transcript, state, quest status)"*. Traces. Verified with a
+  matched pair on `purser.lute` — identical five-fact seeds, one asking for the guard-false
+  option, one for the guard-true option:
+  ```console
+  $ lute test /tmp/t85
+  FAIL  /tmp/t85/tests/guard-false-choice.test.yaml  (…/anseo/scenes/purser.lute)
+        trace refused: invalid mock input
+  PASS  /tmp/t85/tests/guard-true-choice.test.yaml   (…/anseo/scenes/purser.lute)
+
+  1 passed, 1 failed
+  ```
+  Exit 1, and `--json` records the failing case as `"exit": "refused"`,
+  `"refusal": "trace refused: invalid mock input"`, `"expectations": []` — the walk never began.
+  The positive control passes on the same seeds, so the refusal is the guard and not the
+  harness. **The hole is therefore exactly one tool wide.** `check` proves the guard is emitted,
+  `trace` enforces it, `test` inherits that enforcement, and only `run` — hand-driven, on a
+  compiled artifact — does not. The correct claim: **hand-rolled `lute run` verification of an
+  artifact is not guard-enforcing; `lute test` and `lute trace` are.**
 - **It is not missing information.** The guard is in the artifact, on the option, as a raw CEL
   string:
   ```json
@@ -4857,18 +4941,35 @@ Found verifying `purser.lute`'s empty-room route, which is the route where the l
     const opt = pickOption(cmd, state); // eligibility via evalExpr(opt.expr)
   ```
   Eligibility is the whole of what `pickOption` is specified to do.
+- **Task 9's scenario tests are not undermined.** They are `*.test.yaml` under `lute test`, and
+  the matched pair above is the proof that that path refuses an ineligible selection rather than
+  playing it. Nothing in this entry asks Task 9 to re-verify anything.
 - **Resolution** — none needed authorially; I verified the guards by driving each route with
   its own honest fact set instead, and all four behave correctly (transcripts in T8.13). But
-  the verification I *wanted* — "prove this arm is closed on this route" — is exactly the one
-  `run` cannot perform, because asking for a closed arm gets you the arm.
-- **Verdict** — `TOOL-DEFECT`. The language is right, the docs are right, the compiler emits
-  the guard, the checker checks it, and `trace` enforces it with a purpose-built diagnostic. One
-  tool — the one that defines what an engine is supposed to do — silently skips the check on the
-  one path an author uses to test that the check works. The cost is not theoretical: a mock
-  suite is how you prove a branching work's gates hold, and every such proof run through `run`
-  is vacuous. `E-TRACE-CHOICE` already exists and already has the right words; `run` needs the
-  same refusal (or, if replaying an ineligible selection is deliberately permitted for
-  debugging, a loud `W-RUN-CHOICE-INELIGIBLE` and a flag to demand it).
+  the verification I *wanted* — "prove this arm is closed on this route" — is the one `run`
+  cannot perform, because asking for a closed arm gets you the arm. The way to perform it is
+  `lute test` or `lute trace`, and both do it correctly.
+- **Verdict** — `TOOL-DEFECT`, with the severity **narrower than the first draft of this entry
+  claimed.** What is defective is real and unambiguous. `run --help` advertises "CEL guards" as
+  the second item on its own list; `run` evaluates CEL everywhere else in the same walk — every
+  `<match>` arm resolved correctly, content-line `when=` honoured, `can_halt(vesna)` derived
+  through the Datalog fixpoint; the guard is in the artifact as `option.when`; and the one guard
+  it skips is the one attached to a mocked selection. The reference consumer of the runtime
+  contract does not implement one clause of the contract it names. `E-TRACE-CHOICE` already
+  exists and already has the right words; `run` needs the same refusal, or — if replaying an
+  ineligible selection is deliberately permitted for debugging — a loud
+  `W-RUN-CHOICE-INELIGIBLE` and a flag to demand it.
+  What this is **not** is a hole under every mock suite in the language. `lute test` traces, and
+  the matched pair above shows it refusing the identical selection with a passing control. The
+  cost is confined to hand-driven `run` verification of an artifact — which is what this task
+  reached for, which is why the defect surfaced here, and which is the only place the claim can
+  honestly be made.
+  **The commit body (`7dbd8a2`) cannot be edited.** On this entry it is accurate — it says
+  *"`lute run` plays a choice whose guard is false where `lute trace` refuses it"*, with no
+  mock-suite escalation. What it does carry pre-correction is T8.11/T8.13's superseded count,
+  "twelve relational guards over awake/knows/found and the derived can_halt": read **nine** guard
+  expressions over **four** relations, one of which is the derived head — see T8.11's counting
+  rule.
 
 #### T8.6 — the runtime contract's reference dispatcher reads two fields the artifact does not have, and both are guard fields — DOC-WRONG
 
@@ -4905,8 +5006,18 @@ artifact it claims to dispatch.
   to `ir.rs`, on the two lines an engine author cannot get wrong and survive. Rank it above the
   other doc errors in this log on the table's own rule: silence would make an author open the
   artifact, and this pseudocode is precisely why they would not. The fix is four characters —
-  `opt.when`, `a.test` — plus one sentence saying those two carry raw CEL text rather than the
-  lowered `expr` AST that `set` carries.
+  `opt.when`, `a.test` — **and one retraction the first draft of this entry missed.**
+  `execution-model.md:190`, the prose immediately under the dispatcher, reads: *"`evalExpr` walks
+  the portable `expr` AST (IR A7) carried alongside every guard"*. That sentence is also false,
+  and it is the load-bearing one — it is what makes a reader believe `opt.expr` and `a.expr` are
+  real field names rather than typos, because it asserts as a *general rule* the thing those two
+  lines assume. No guard carries an `expr` AST. Verified again on `purser.lute`'s artifact:
+  `arms[0]`'s keys are exactly `["target","test"]`, and the option carries
+  `"when":"holds(awake(ilsabet)) && holds(knows(ilsabet, true_heading))"` — raw CEL text in both
+  slots. Only `set` carries `expr` (`{"path":"run.vesnaTrust","op":"+=","expr":{"lit":1.0}}`),
+  and `set` is not a guard. So the fix is three things: the two field names, the **retraction of
+  line 190**, and one sentence saying `evalExpr` means two different operations in one switch —
+  a lowered-AST walk for `set.expr`, a host CEL parse for `option.when` and `arm.test`.
 
 #### T8.7 — a staging directive cannot be conditional, so gating one `::auto` costs a five-line block — ERGONOMIC
 
@@ -4984,8 +5095,9 @@ ever surface it is a scene that needs the derived relation to fire for Vesna.
   - And **`count(awake(_))` was short by one on every route in the project**, silently, which is
     a wrong answer rather than a missing one. Anything written against that count before today
     would have been off.
-- **Resolution** — one line in `world.schema.yaml`, and it is the right construct rather than a
-  workaround. `facts-and-datalog.md` documents a schema-level `facts:` block of ground facts:
+- **Resolution** — a two-line `facts:` block in `world.schema.yaml` carrying one ground fact, and
+  it is the right construct rather than a workaround. `facts-and-datalog.md` documents a
+  schema-level `facts:` block of ground facts:
   ```yaml
   facts:
     - "awake(vesna)"
@@ -4997,7 +5109,8 @@ ever surface it is a scene that needs the derived relation to fire for Vesna.
     `stowaway`'s `holds(awake(ilsabet))`, and the quest's `holds(can_halt(toma))` are all
     untouched).
   - **`lute run` auto-loads the seed and runs the Datalog fixpoint over it.** Driven on
-    `archive.lute` with the `readItAloud` arm selected, the final fact block reads:
+    `archive.lute` with `facts: ["awake(ottavio)", "found(ottavio)", "knows(ottavio, manifest)"]`
+    and `choose: { theSequence: readItAloud }`, the final fact block reads — verbatim, re-run:
     ```
     -- facts --
       awake(ottavio)
@@ -5005,23 +5118,31 @@ ever surface it is a scene that needs the derived relation to fire for Vesna.
       can_halt(vesna)
       found(ottavio)
       knows(ottavio, manifest)
+      knows(vesna, manifest)
       knows(vesna, shed_sequence)
     ```
     `can_halt(vesna)` is *derived* — nothing asserts it, and `::assert{can_halt(…)}` would be
     `E-DERIVED-WRITE` (T4). Seed plus one authored assertion plus one Horn clause, and the
     payoff line fires. On the `pocketIt` arm it does not. This is the relational layer doing
     exactly what it is for.
+    **Seven facts — and an earlier draft of this entry printed six.** It dropped
+    `knows(vesna, manifest)`, which `archive.lute:21` asserts **unconditionally**, above the
+    `<match>` and above the branch, so it is on every walk of this document whatever the arm or
+    the seed. The block as printed was therefore not reproducible. The conclusion is unaffected:
+    the missing fact is an authored `::assert`, and the claim being made is about the derived
+    head.
   - `purser.lute`'s `haltTheSequence` lever consequently opens on **two** independent routes —
-    `holds(can_halt(toma)) || holds(can_halt(vesna))` — one earned four episodes upstream in the
-    cryobank and one earned one episode upstream in the archive, and each is voiced by whoever
-    earned it (`when="holds(can_halt(toma))"` on Toma's line, `when="holds(can_halt(vesna))"` on
-    Vesna's). Both drive correctly.
+    `holds(can_halt(toma)) || holds(can_halt(vesna))` — one earned **seven** episodes upstream in
+    the cryobank (ep02) and one earned **one** episode upstream in the archive (ep08), and each
+    is voiced by whoever earned it (`when="holds(can_halt(toma))"` on Toma's line,
+    `when="holds(can_halt(vesna))"` on Vesna's). Both drive correctly.
 - **No verdict on `facts:` — it worked.** The verdict-bearing half is the omission, and it is
   attributable to T1's schema rather than to any tool. Recorded here because the *measurement* is
   the six-scene latency: a declared relation, a declared rule, a declared entity, and one of the
   four members of that entity silently outside the rule's reach for the entire authoring of the
-  work — while the same toolchain rejects `awake(vensa)` with a column-exact `E-FACT-DOMAIN`
-  naming the entity kind and the argument index (T8.11). Lute is emphatic about names that do
+  work — while the same toolchain rejects `awake(vensa)` with an `E-FACT-DOMAIN` naming the
+  entity kind and the argument index (T8.11 — it is *not* column-exact; it reports the
+  directive's start column). Lute is emphatic about names that do
   not exist and silent about facts that cannot happen. A `W-FACT-UNREACHABLE` — *"no route
   asserts or seeds `awake(vesna)`, so `can_halt(vesna)` cannot hold"* — is computable from
   exactly the producibility walk T4.2 proved is already project-wide and already closed over the
@@ -5157,23 +5278,38 @@ into an eight-scene work, and everything I did not.
 | thing | what caught it |
 |---|---|
 | every `emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType` value | `E-BAD-ENUM`, with the legal set enumerated |
-| every relation's arity and argument entity kind | `E-RELATION-ARITY`, `E-FACT-DOMAIN`, column-exact |
+| every relation's arity and argument entity kind | `E-RELATION-ARITY`, `E-FACT-DOMAIN` — the latter naming the entity kind *and* the argument index. **Neither is column-exact:** both report the directive's start (probed at `12:1` unindented and `13:6` on the same directive indented five spaces) |
 | every state path I read or wrote | `E-UNDECLARED` |
 | every guard's function surface | `E-CEL-PROFILE`, which lists the whole admissible set |
 | whether a `<match>` covered its subject | `E-NONEXHAUSTIVE` |
 | whether the scene graph was acyclic and its ids resolved | `check-project` + `scenario` |
 | `lineId`/`voiceKey` uniqueness | identity templates, and `loc report`'s untagged column |
 
-That is a substantial list and it is why three scenes and 1,441 words drew only the diagnostics
+That is a substantial list and it is why three scenes and 1,494 words drew only the diagnostics
 recorded above. Nothing in this entry should be read as saying the toolchain is unhelpful.
 
 **Held in my head, with no tool that could have held it:**
 
 1. **Who is awake on which route.** Four crew, one `<choice>` in ep02 that wakes at most one of
-   them, an unconditional `::assert{awake(ottavio)}` in ep06, and now a `facts:` seed. Every one
-   of `purser.lute`'s twelve guards depends on knowing this, and the only representation of it
-   anywhere is the six documents themselves. I built the table by hand and checked it by driving
-   four `lute run` routes.
+   them, an unconditional `::assert{awake(ottavio)}` in ep06, and now a `facts:` seed. All
+   **nine** of `purser.lute`'s guard expressions depend on knowing this, and the only
+   representation of it anywhere is the six documents themselves. I built the table by hand and
+   checked it by driving four `lute run` routes.
+
+   **The counting rule, stated once here and used everywhere in T8, because an earlier draft
+   said "twelve" in three places and twelve is not any of these numbers.** Counted from
+   `purser.lute` source:
+   - **9 guard expressions** — 3 `<when test=>` (lines 36, 45, 49) plus 6 `when=` attributes
+     (59 on a content line, 62/70/81 on `<choice>`es, 64/65 on content lines inside an arm).
+   - **11 guarded constructs** — the 9 above plus the 2 `<match on="true">` dummy subjects,
+     which occupy a guard position the scene does not read (T7.6).
+   - **14 relational reads** — 13 `holds(…)` plus 1 `count(awake(_))`, because one expression can
+     read three facts (line 59 reads `can_halt(toma)`, `can_halt(vesna)` and `awake(ilsabet)`).
+
+   Reproduce: `grep -c 'when test=' purser.lute` → 3; `grep -o 'when="[^"]*"' … | wc -l` → 6;
+   `grep -c '<match on="true">' …` → 2; `grep -o 'holds(' … | wc -l` → 13. (`grep -o 'count('`
+   returns 2 — one of them is inside a comment.) **"Nine" is the number T8 uses**, because the
+   guard expression is the unit an author writes and the unit a diagnostic points at.
 2. **The reachable range of two counters** — five documents, one cross-file guard exclusion, and
    a wrong answer already in this log (T8.4).
 3. **Which facts are asserted where, and therefore which guards mean what.** `spine-b`'s
@@ -5207,7 +5343,7 @@ vensa          1       7
 vesna         27     242
 ```
 Alphabetically adjacent in `loc report`'s own table, which is the one place it is visible and the
-last place anyone looks. In an eleven-scene work with 168 lines this is the continuity error I
+last place anyone looks. In an eleven-scene work with 170 lines this is the continuity error I
 would actually make, and the only reason I have not is that I typed six names a few hundred
 times. A project that declares an entity kind whose members are its cast has told the toolchain
 the cast list; nothing joins the speaker namespace to it. This is not a new verdict — it is
@@ -5245,10 +5381,12 @@ recorded because "does this bite twice" is a maturity question and four of these
   `W-INJECT-CONFLICT`s — `bridge.lute:11` (T5.8's original evidence, left untouched by
   instruction) and `spine-b.lute:44` — and **both are intentional, not unfinished edits.**
 - **T7.2 (`E-CLIP-OVERLAP` at a boundary hand-off) — still live, and I missed it by luck.**
-  `spine-b` carries the corpus's third `<timeline>`, six clips over four tracks with two
-  boundary hand-offs (`sfx` `0.0 + 0.5 → 0.5`, `vfx` `0.5 + 0.5 → 1.0`). Both pass. I chose
-  those numbers because they are round, not because they are exactly representable in binary,
-  and that is the whole of why the timeline checked clean on the first attempt. Substituting the
+  `spine-b` carries the corpus's **second** `<timeline>` — `spine-a` has the other, and
+  `grep -rn '<timeline'` over the project finds no third — **seven** clips over four tracks with
+  **three** boundary hand-offs: `sfx` `0.0 + 0.5 → 0.5`, `camera` `0.0 + 0.5 → 0.5`, and `vfx`
+  `0.5 + 0.5 → 1.0`. All three pass. I chose those numbers because they are round, not because
+  they are exactly representable in binary, and that is the whole of why the timeline checked
+  clean on the first attempt. Substituting the
   values T7.2 documents — `at="0.8" duration="0.4"` then `at="1.2"` — into the same track of the
   same file reproduces it exactly:
   ```
@@ -5264,8 +5402,18 @@ recorded because "does this bite twice" is a maturity question and four of these
   comment, because without one it reads as a mistake.
 - **T7.12 (retyped frontmatter) — 18 more boilerplate lines.** Three new scenes, each restating
   `kind: scene`, `character: anseo`, `season: 1`, and the same two-schema `uses:`. The corpus's
-  eleven scenes now carry 66 frontmatter key lines of which **44 are byte-identical duplicates**;
-  the ratio T7.12 measured at 30/48 is now 44/66, i.e. it scaled exactly linearly, as it must.
+  eleven scenes now carry **66** frontmatter key lines of which **41 are byte-identical
+  duplicates**. T7.12's own counting rule — total lines minus *distinct* lines — and it is
+  restated here because the ratio was previously quoted without it. 66 total, **25 distinct**:
+  `kind: scene`, `character: anseo`, `season: 1`, one `components:`, two `uses:` spellings
+  (`wake` imports one schema, the other ten import two), 11 distinct `episode:` lines, and 8
+  distinct `after:` formulas — `visited("anseo.s01ep03")` is shared by `hydroponics` and
+  `machine-deck`, `visited("anseo.s01ep07")` by `archive` and `shed`. 66 − 25 = 41. The same rule
+  reproduces T7.12's 48 − 18 = 30 exactly. **So it did not scale linearly:** 41/66 (62.1%)
+  against 30/48 (62.5%), and the shortfall is the four extra distinct `after:` formulas an
+  eleven-node graph needs. Boilerplate share is asymptotically flat rather than growing — a
+  weaker claim than "44/66, exactly linear", and T7.12's complaint survives it unchanged: three
+  of the six lines at the top of every file are still noise.
 - **T7.14 (the stale `lute-lsp` on `PATH`) — unchanged and still loud.** Every editor diagnostic
   in this session came from the July binary. On `purser.lute` — `ok (0 warnings)` under
   `check-project` — it reports **58 errors**, including `E-CEL-PROFILE` on every `holds(…)` and
@@ -5277,14 +5425,20 @@ recorded because "does this bite twice" is a maturity question and four of these
 
 #### T8.13 — three scenes, four routes, and the parts that carried the weight — WORKED WELL
 
-2,136 words and 168 lines across 13 documents now, of which this task wrote 1,441 words, 107
-lines and 9 choices — more than doubling the corpus. The friction is above; this is what did not
+2,189 words and 170 lines across 13 documents now, of which this task wrote 1,494 words, 109
+lines and 9 choices — more than doubling the corpus. (`lute loc report docs/examples/anseo`,
+re-run after the correction pass, which added two lines to `archive.lute` to close a dropped
+thread; as first committed the figures were 2,136/168 and 1,441/107.) The friction is above;
+this is what did not
 get in the way.
 
 - **The relational layer is the best thing in this language, and `purser.lute` is the proof.**
-  Twelve guards over four relations and one derived head, reading facts asserted in four
-  different documents up to seven episodes upstream, and **every one of them was correct on
-  first write.** No probing, no diagnostics, no reshaping. Driven through `lute run` on four
+  **Nine** guard expressions — T8.11's counting rule; 11 guarded constructs, 14 relational reads
+  — over **all four** declared relations: `awake`, `knows`, `found`, and the derived `can_halt`,
+  which **is one of the four** rather than a fifth head beside them. They read facts asserted in
+  four different documents — `cryobank` (ep02), `stowaway` (ep06), `archive` (ep08) and
+  `world.schema.yaml`'s seed — up to seven episodes upstream, and **every one of them was correct
+  on first write.** No probing, no diagnostics, no reshaping. Driven through `lute run` on four
   routes — Toma woken, Ilsabet woken, nobody woken, and nobody-woken-plus-archive — the scene
   produces four materially different confrontations:
   - *Toma*: `can_halt(toma)` derives from the ep02 choice; the halt lever opens and Toma voices
@@ -5345,9 +5499,15 @@ wrong claims:
 | T8.12 — recurrences (T5.8 ×3, T7.2, T7.6 ×5, T7.12, T7.14) | recurrences |
 | T8.13 — what carried the weight | worked well |
 
-Two `LANGUAGE-GAP`, two `TOOL-DEFECT`, two `ERGONOMIC`, one `DOC-WRONG`; two *worked well*, one
-recurrence entry and one recurrence bundle, one schema defect attributable to an earlier task,
-and one measurement carrying no verdict. No `DOC-GAP` and no `AUTHOR-ERROR` — which now holds for
+Seven of the thirteen entries are verdict-bearing, and each carries **exactly one** of the seven:
+T8.1 and T8.3 `LANGUAGE-GAP`, T8.2 and T8.5 `TOOL-DEFECT`, T8.4 and T8.7 `ERGONOMIC`, T8.6
+`DOC-WRONG`. The other six carry none by the protocol's own provisions rather than by omission —
+T8.10 and T8.13 are *what worked well*, T8.11 is a measurement, T8.9 is a recurrence of T4.4 and
+T8.12 a recurrence bundle (both explicitly not re-counted, on T7.11's precedent), and T8.8's
+defect is attributable to Task 1's schema while `facts:`, the fix, carries no verdict because it
+worked. Re-audited heading by heading after the T8.5 rescope, and **no verdict class moved**: the
+rescope narrows T8.5's blast radius, not its category, because `run --help` still advertises a
+clause `run` does not implement. No `DOC-GAP` and no `AUTHOR-ERROR` — which now holds for
 four consecutive tasks, and is worth saying plainly: **the website docs answered every question I
 took to them, and I did not open a Rust file to author anything in this task.**
 
@@ -5376,16 +5536,21 @@ availability. That is a defensible design and it is nowhere stated as one; an au
 `lute scenario`'s output sees something that looks exactly like a story graph.
 
 **The two cheapest fixes in this section are also the two most valuable, and neither is a language
-change.** T8.2: raise `E-UNKNOWN-ATTR` on `<branch>`/`<choice>`/`<match>`/`<when>` against the
+change.** T8.2: raise `E-UNKNOWN-ATTR` on `<branch>`/`<choice>`/`<match>`/`<when>`/`<hub>` against the
 §7.3 permitted-attribute table that already exists and that `<otherwise>` and `E-PERSIST-REMOVED`
 are already enforced from. It costs nothing, it would have caught three routing declarations and
 both spellings of a documented migration hazard, and the current behaviour means the checker
 silently eats `as="run.vesnaTrust" value="1"` — a state write — while emitting a bespoke,
 helpful, column-exact error for its sibling `persist` three lines away. T8.5: make `lute run`
 evaluate an option's `when` before honouring a mocked selection, as its own runtime contract
-specifies and as `trace` already does with a purpose-built diagnostic. Until it does, every mock
-suite that "proves" a branching work's gates hold proves nothing, because asking for a closed
-gate opens it.
+specifies and as `trace` already does with a purpose-built diagnostic. **Scope, corrected:**
+this is not a hole under every mock suite in the language. `lute test` is `trace`-based — its
+`--help` says it *"traces"* each `*.test.yaml` against the declared mocks — and a matched pair on
+`purser.lute` confirms it refuses the guard-false selection (`FAIL … trace refused: invalid mock
+input`, exit 1) while passing the guard-true control on the identical seeds. The vacuous
+verification is specifically hand-driven `lute run` against a compiled artifact; `lute test` and
+`lute trace` enforce the guard, and **Task 9's scenario tests are `lute test`, and are therefore
+sound.**
 
 **The most transferable measurement is T8.11, and it is one sentence.** Of the six things I had
 to hold in my head across eleven scenes, five are relationships *between* documents — who is
@@ -5399,9 +5564,10 @@ that exists, and it works one route at a time, after compilation, for a single d
 **What T8 would fix first.** T8.2, because it is free and because silence is the failure mode
 this log has spent eight tasks establishing is the expensive one. Then T8.5, for the same reason
 one layer down. Then T8.4's `envelope --values`, because the alternative is hand arithmetic and
-the hand arithmetic in this log is already wrong once, which cost a dead line in a shipped scene
-and was caught only because the eleventh scene happened to need the number. T8.1 and T8.3 are the
-two entries asking for design rather than repair, and of the two, T8.1's minimal form is nearly
-free: admit `visited("id")` as a read-only query in a content guard, over the visited set the
-engine already maintains for `after:`. It adds no state, no vocabulary and no analysis, and it
-would let a convergence scene say the one thing convergence scenes exist to say.
+the hand arithmetic in this log is already wrong once, which cost a dead line *written into a
+scene* — caught and corrected to `>= 2` before the commit, as T8.4's own body records, so nothing
+dead shipped — and it was caught only because the eleventh scene happened to need the number.
+T8.1 and T8.3 are the two entries asking for design rather than repair, and of the two, T8.1's
+minimal form is nearly free: admit `visited("id")` as a read-only query in a content guard, over
+the visited set the engine already maintains for `after:`. It adds no state, no vocabulary and no
+analysis, and it would let a convergence scene say the one thing convergence scenes exist to say.

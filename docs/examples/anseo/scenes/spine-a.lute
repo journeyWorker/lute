@@ -42,5 +42,14 @@ after: 'visited("anseo.s01ep02")'
 @narrator{code="0100"}: The rail went cold under your hands, and forty metres of ship stopped being ship.
 @vesna{code="0110" emotion="frayed"}: Four was water reclaim.
 @vesna{code="0120" emotion="hollowed"}: We were drinking that an hour ago.
-@purser{code="0130" emotion="level" os}: Allocation is short by three modules.
+/*
+  SHORTFALL LEDGER. The Purser's arithmetic is load-bearing and nothing checks it,
+  so it is written down once, here, at the first release. Module four goes in this
+  scene and leaves the allocation short by TWO; module five goes in ep07 and leaves
+  it short by ONE (`spine-b` 0230, and `purser` 0060/0210 restate that one); module
+  nine goes in ep11 and satisfies it (`shed`). Listing Ottavio in ep09 adds a body
+  to the listed mass and puts it back to TWO (`purser` 0340). Change any of these
+  five numbers and change all of them.
+*/
+@purser{code="0130" emotion="level" os}: Allocation is short by two modules.
 @vesna{code="0140" emotion="clipped"}: It says that like it's the weather.

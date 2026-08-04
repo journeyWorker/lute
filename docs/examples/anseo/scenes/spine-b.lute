@@ -46,7 +46,7 @@ after: 'visited("anseo.s01ep06")'
 @toma{code="0110" emotion="clipped"}: Watch the seat, not the module. The module's already gone.
 </when>
 <otherwise>
-@narrator{code="0120"}: You had both hands on that ring an hour ago, and both hands had not been enough.
+@narrator{code="0120"}: You had both hands on that shim an hour ago, and both hands were not the thing the ring wanted.
 @vesna{code="0130" emotion="frayed"}: Whatever you did down there, it's about to say so out loud.
 </otherwise>
 </match>
