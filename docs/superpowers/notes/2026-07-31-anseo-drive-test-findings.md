@@ -1,5 +1,9 @@
 # Anseo drive-test — running findings log
 
+> **Looking for what to fix?** This file is evidence. The deduplicated, prioritised work
+> plan derived from it — 38 issues, every verdict-bearing entry accounted for — is
+> [`2026-07-31-lute-0.9.0-improvement-backlog.md`](./2026-07-31-lute-0.9.0-improvement-backlog.md).
+
 **This file is the primary deliverable.** The Anseo example is the instrument; this
 log is the measurement. A task that produces a clean example and an empty section
 here has not been executed — it has been evaded.
