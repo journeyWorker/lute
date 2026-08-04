@@ -5822,10 +5822,12 @@ over five new quests, recounted from the committed files.
   contradictory-pair case in particular is a handful of lines beside machinery that
   already does far harder work.
 
-#### T9.7 — a derived relation has exactly one expressible mock value, and the false side of every rule in the project is untestable — TOOL-DEFECT
+#### T9.7 — two evaluators disagree about derived relations, and `--coverage` is computed by the half that cannot see them — SPEC-WRONG
 
 This is the largest single obstacle the test suite hit, and it shaped six of the
-31 test files.
+31 test files. **It is also the entry this task got most wrong, and the corrections
+are recorded below rather than quietly folded in, because the retracted claims are
+the sort a reader would have carried forward.**
 
 - **Intent** — the assignment's question, and the right one for a relational work:
   *does a relational gate open only after the fact that licenses it?* Two tests per
@@ -5844,43 +5846,163 @@ This is the largest single obstacle the test suite hit, and it shaped six of the
   trace incomplete: 1 unresolved atom (exit 3)
     unresolved: match `(!holds(can_halt(toma)) && !holds(can_halt(vesna)) && !holds(awake(ilsabet)))` — supply --fact "can_halt(toma)", --fact "can_halt(vesna)" as a mock
   ```
-  **Base relations are closed-world in the trace evaluator — absent means false —
-  but `derive: true` relations are UNKNOWN when absent, and unknown halts the
-  walk.** So `can_halt` has exactly one expressible value, `true`, and the hint the
-  tool prints is the only move available: assert the conclusion of the project's
-  one rule.
-- **Three consequences, all of them in the committed suite.**
-  1. **`purser.lute:61` is dead to the harness.** Its guard is true only when
-     `can_halt(toma)`, `can_halt(vesna)` and `awake(ilsabet)` are all *false* —
-     three facts, none of which has a false. `lute test --coverage` reports it and
-     cannot be satisfied: `match !holds(can_halt(toma)) && …: 1/2 arm(s) executed; 1 unexecuted`,
-     permanently, and the same for `holds(can_halt(toma))` and `holds(can_halt(vesna))`.
-     Three of the fifteen coverage rows are structurally unreachable.
-  2. **A test must over-seed to trace one arm.** `haltTheSequence` carries two
-     alternative lines — 0180 guarded on `can_halt(vesna)`, 0190 on
-     `can_halt(toma)` — and leaving either unseeded halts the walk. So the only
-     traceable version of that arm is one where **Vesna and Toma can both halt the
-     shed simultaneously**, a world state no route in the story produces. The
-     `<choice>` is testable; the alternation inside it is not, and the passing test
-     documents a world that cannot happen.
-  3. **The seed is not time-varying.** `archive-read-it-aloud.test.yaml` seeds
-     `can_halt(vesna)` from line 1, including across the branch that *earns* it;
-     `archive-with-navigator.test.yaml` has to seed it on a route that pockets the
-     page and never learns the sequence, making line 0230 play when the story says
-     it must not. Both files say so in a comment.
+  Base relations are closed-world in the **trace** evaluator — absent means false —
+  but `derive: true` relations are UNKNOWN when absent, and unknown halts the walk.
+  Inside `lute trace`, and therefore inside `lute test`, `can_halt` has exactly one
+  expressible value, `true`, and the hint the tool prints is the only move
+  available: assert the conclusion of the project's one rule.
+
+**The claim this entry originally made, and why it is false.** The first draft
+titled this *"the false side of every rule in the project is untestable"* and closed
+*"any work whose interesting guards are derived can test the yes and not the no"*.
+Both are wrong, and the counter-example is one command away. `lute run` — the
+reference consumer of the runtime contract — **does** run the Datalog fixpoint, so
+every derived relation has a proper closed-world false there. Compile
+`scenes/purser.lute` and run it with only the world seed:
+
+```
+$ lute compile --project . scenes/purser.lute -o purser.artifact.json
+$ cat m1.yaml
+facts: ["awake(vesna)"]
+choose: { theCorrection: sayNothing }
+$ lute run purser.artifact.json --mock m1.yaml
+  …
+  001-3600  match  -> arm 1
+  001-3700  vesna: We came up here with a stowaway and a grievance. Let's find out what that buys.
+  …
+run complete
+```
+
+Line 0170 — the one whose guard is three negations, the exact atom `trace` could not
+resolve — **executes**, because `can_halt(toma)` and `can_halt(vesna)` are absent
+from the least fixpoint and therefore false. And the positive direction discriminates
+too. Seed only the rule *body* for Toma:
+
+```
+$ cat m2.yaml
+facts: ["awake(toma)", "knows(toma, shed_sequence)"]
+choose: { theCorrection: haltTheSequence }
+$ lute run purser.artifact.json --mock m2.yaml
+  001-4000  choice [theCorrection] -> haltTheSequence
+  001-4200  match  -> otherwise          ← 0180, `holds(can_halt(vesna))`: correctly suppressed
+  001-4600  match  -> arm 1              ← 0190, `holds(can_halt(toma))`
+  001-4700  toma: Maintenance hold. Two hands, both of them steady, and you have to mean it.
+  …
+-- facts --
+  awake(toma) / awake(vesna) / can_halt(toma) / knows(toma, shed_sequence)
+```
+
+`can_halt(toma)` was **derived**, not seeded; the lever opened on it; 0190 played and
+0180 was correctly suppressed. That is the whole negative control the entry claimed
+was inexpressible, and it is expressible today, in a shipped tool, with no new
+feature. The general claim is retracted.
+
+**The true claim, which is sharper.** Two evaluators in one toolchain disagree about
+what a derived relation is worth, and the assertion machinery is bolted to the half
+that cannot see them.
+
+| | derived relation absent from seeds | 0170 (`!can_halt(toma) && !can_halt(vesna) && !awake(ilsabet)`) |
+|---|---|---|
+| `lute run` (artifact, runtime contract) | **false** — least fixpoint over seeds ∪ asserts ∪ rules | executes |
+| `lute trace` / `lute test` (source preview) | **unknown** — halts the walk | unresolved atom, exit 3 |
+
+Same document, same seed, opposite outcomes. Neither tool is misimplemented: dsl
+0.4.0 §4.2 rule 3 is explicit — *"`trace` MUST NOT execute engine machinery. It runs
+no Datalog fixpoint (a `derive: true` relation is never computed)"* — and
+`docs/runtime/cel-and-facts.md` is equally explicit that the engine, which `lute run`
+stands in for, *"runs the least-fixpoint over `seedFacts` ∪ asserted facts ∪ `rules`"*.
+Both do exactly what they are told.
+
+**And the consequence is that `--coverage` is computed by the blind half.** `lute test`
+walks `trace`, so every coverage number this project can produce is a statement about
+an evaluator that cannot compute the one rule the work turns on. That is not a
+rounding error in the report; it is three permanently red rows and one arm that can
+never be exercised, all of them artefacts of the evaluator choice rather than of the
+content:
+
+1. **`purser.lute:61` is dead to the harness.** Its guard is true only when
+   `can_halt(toma)`, `can_halt(vesna)` and `awake(ilsabet)` are all *false* — and
+   two of those three have no false inside `trace`. `lute test --coverage` reports
+   it and it cannot be satisfied:
+   `match !holds(can_halt(toma)) && …: 1/2 arm(s) executed; 1 unexecuted`,
+   permanently, and the same for `holds(can_halt(toma))` and `holds(can_halt(vesna))`.
+   Recounted from the committed tree: `--coverage` renders **15** rows (5 branch/hub,
+   10 match) and **exactly 3** of them are structurally incomplete. All three go green
+   under `lute run`, which walks 0170 on the first mock above.
+2. **A test must over-seed to trace one arm.** `haltTheSequence` carries two
+   alternative lines — 0180 guarded on `can_halt(vesna)`, 0190 on `can_halt(toma)` —
+   and leaving either unseeded halts the walk, so the only traceable version of that
+   arm is one where both hold. **The original entry called that "a world state no
+   route in the story produces" and said the passing test "documents a world that
+   cannot happen". That is false and it is retracted.** It is the ordinary maximal
+   route: `wake` → `cryobank:wakeToma` (asserts `awake(toma)`,
+   `knows(toma, shed_sequence)`) → `spine-a` → `hydroponics`/`machine-deck` →
+   `stowaway` → `spine-b` → `archive:readItAloud` (asserts
+   `knows(vesna, shed_sequence)`) → `purser`, with `awake(vesna)` from the world seed.
+   `archive.lute`'s `after:` is `visited("anseo.s01ep07")` and carries no dependency
+   on which pod the cryobank opened, so nothing forces a choice between the two
+   halters. `lute run` on the accumulated route facts derives **both** `can_halt(toma)`
+   and `can_halt(vesna)` and plays both 0180 and 0190. The committed test documents
+   the game's most-travelled route, which is the right thing for it to document.
+   What is genuinely lost is narrower: the *alternation* — a world where exactly one
+   of the two can halt — is real, is walked correctly by `lute run` (m2 above), and
+   cannot be traced, because the unseeded half is unknown rather than false. The
+   shipped test's comment carried the false sentence verbatim and has been corrected.
+3. **The seed is not time-varying.** `archive-read-it-aloud.test.yaml` seeds
+   `can_halt(vesna)` from line 1, including across the branch that *earns* it;
+   `archive-with-navigator.test.yaml` has to seed it on a route that pockets the
+   page and never learns the sequence, making line 0230 play when the story says
+   it must not. Both files say so in a comment. This one is unaffected by the
+   correction: `run`'s fixpoint is recomputed per delta, so it would get both right.
+- **And there is no negative mock surface, which is the part that stands.** All three
+  spellings an author reaches for are rejected identically:
+  `--fact "!can_halt(toma)"`, `--fact "not can_halt(toma)"` and
+  `--fact "can_halt(toma)=false"` each draw `E-TRACE-MOCK-FACT`. Inside `trace` a
+  derived relation has exactly one expressible value.
 - **Resolution** — six tests seed a `can_halt(…)` they should have derived, each
   with the reason written into the file. No content was changed: the gates are
-  right, the harness cannot express their negation.
-- **Verdict** — `TOOL-DEFECT`. The language's closed-world base relations have a
-  false and the harness honours it correctly; the derived layer does not, because
-  `trace` declines to run the rules (T4.4/T8.9, documented) and the mock surface
-  offers assertion only. Two small additions close it independently: a negative
-  mock (`--no-fact` / `notFacts:`) so a derived relation can be pinned false, or
-  running the Datalog fixpoint over the seeded base facts, which `lute run` already
-  does. Until then, **any work whose interesting guards are derived can test the
-  yes and not the no** — which is half of what a gate is for.
+  right, and the harness the project's `lute test` suite runs on cannot derive them.
+- **Verdict** — `SPEC-WRONG`, corrected from this entry's first-draft `TOOL-DEFECT`.
+  Nothing here is misimplemented and nothing here is undocumented. `trace`'s refusal
+  to run rules is *normative* (dsl 0.4.0 §4.2, the D1 quarantine, restated in 0.5.0
+  §3 and cited by this log twice already at T4.4 and T8.9); `run`'s fixpoint is
+  normative; `lute test --help` says plainly that it "traces". Language, docs and
+  both tools agree with each other. The design is the defect, and the criterion in
+  the table fits exactly: *two equivalent proofs given unequal treatment.*
 
-#### T9.8 — `expect:` silently ignores every key it does not recognise, and a test that asserts nothing passes — TOOL-DEFECT (silence)
+  **What the spec says.** D1 quarantines all runtime evaluation behind the artifact,
+  so the source-preview tool is forbidden the fixpoint. That is a defensible
+  boundary for `trace`, whose job is to preview *one document* before it compiles.
+
+  **Why it is the wrong call for `lute test`.** 0.4.0 §4.2 was written when `trace`
+  was the only evaluator; `lute test` inherited the quarantine by being built on
+  `trace`, not by anyone deciding a *test harness* should be forbidden the engine's
+  answer. A scenario test is not a preview. It has a compiled artifact available, it
+  is run in CI, and the single question it exists to answer for a relational work —
+  *does this gate open only after the fact that licenses it?* — is exactly the
+  question the quarantine removes. The result is that the project's verification
+  story is strictly weaker than a tool already in the box.
+
+  **What it should say instead**, in preference order:
+  1. **`lute test` should walk the artifact, not the source** — i.e. be a `lute run`
+     harness. D1 is untouched (the fixpoint stays engine-side; `run` *is* the
+     reference engine consumer), the three permanently red coverage rows go green,
+     the six over-seeded tests drop their seeds, and the alternation in item 2
+     becomes testable. This is not a feature request: `lute run --mock` already
+     accepts the same `facts:`/`choose:`/`state:` surface these test files declare.
+     T9.17 and this task's summary both listed "run the fixpoint `lute run` already
+     runs" as a *fix to be made*, which understated it — for the negative controls
+     themselves it is an **available workflow today**, just not one `lute test`,
+     `--coverage`, or any assertion in `expect:` can reach. What is missing is
+     wiring, not capability.
+  2. Failing that, a **negative mock** (`--no-fact` / `notFacts:`) so a derived
+     relation can be pinned false inside the quarantine. Cheap, and it makes
+     `trace` honest about the closed world its base relations already live in.
+  3. At minimum, `trace`'s unresolved-atom hint should stop printing only
+     `--fact "can_halt(toma)"`. It names the one move that biases every suite built
+     on it toward the positive case, and it should name `lute run` beside it.
+
+#### T9.8 — the silence is not confined to `expect:`, and a mis-keyed `choose:` passes while exercising the opposite arm — TOOL-DEFECT (silence)
 
 - **Intent** — none authorial; asked the moment the third test file was written,
   because a test harness that fails open is worse than no harness.
@@ -5922,13 +6044,79 @@ This is the largest single obstacle the test suite hit, and it shaped six of the
   reads *"…asserts the declared expectations (transcript, state, **quest status**)"*.
   An author following the tool's own help writes a `questStatus:` block, gets a
   green test, and believes a quest was asserted.
-- **Verdict** — `TOOL-DEFECT`, and the worst thing T9 found. This is T3.10 and
-  T7.11's "unknown mock key silently discarded" recurring one layer up, where it is
-  categorically more expensive: a discarded *mock* key makes a test behave oddly and
-  usually fail confusingly; a discarded *expectation* key makes it pass. The suite
-  that exists to catch regressions is itself the thing with no check on it, and the
-  cheapest fix is the one T3.10 already asked for — reject unknown keys — plus a
-  refusal to green a test with zero expectations.
+
+**The worse half, found on re-examination: the silence is not confined to `expect:`.**
+A **top-level** key typo is dropped in exactly the same way, and for `choose:` the
+result is qualitatively worse than a test that asserts nothing — it is a test that
+asserts the *wrong arm's* outcome and passes.
+
+```yaml
+# z-typo-choose.test.yaml — `chooses:`, one letter off `choose:`
+file: ../scenes/cryobank.lute
+chooses:
+  whoWakes: wakeNobody
+expect:
+  state:
+    run.shedPressure: 2
+  transcriptContains:
+    - "How long have I been under?"
+```
+```
+PASS  ./tests/z-typo-choose.test.yaml
+
+1 passed, 0 failed
+```
+
+Read what that test believes and what it did. It names `wakeNobody`, the one arm in
+the corpus that writes nothing. The selection is dropped, so no selection survives —
+and `lute trace` then **auto-picks the first eligible arm**:
+```
+<branch whoWakes>   eligible: wakeToma, wakeIlsabet, wakeNobody   -> wakeToma (auto)
+```
+so the walk runs `wakeToma`, which sets `run.shedPressure += 2` and speaks Toma's
+line. The expectations in the file are `wakeToma`'s outcome, asserted verbatim
+against a file that says `wakeNobody`. Green.
+
+The control settles it. Fix the one letter and change nothing else:
+```
+FAIL  ./tests/z2-correct-choose.test.yaml
+      transcriptContains "How long have I been under?": absent (expected present)
+      state run.shedPressure: expected "2", got "<never written>"
+```
+The typo is the only reason the test is green. Two silences compose here — an
+ignored top-level key and an auto-picked default — and between them they turn a
+false assertion into a passing one. Not every top-level typo lands this way: a
+`factss:` typo is dropped just as silently but happens to go red, because the walk
+then hits an unresolved atom. Whether a dropped key is caught is luck, and `choose:`
+is the unluckiest one, because the harness has a default for it.
+
+- **This punctures T9.11 / T9.16.5's "scenario tests do not rot silently".** That
+  claim stands for the three rot modes it was tested against and fails for a fourth,
+  measured side by side in one run:
+
+  | rot mode | result |
+  |---|---|
+  | `choose:` names a deleted choice id (`wakeTomaTYPO`) | FAIL |
+  | `choose:` names a deleted branch id (`whoWakesTYPO`) | FAIL |
+  | `state:` names a path deleted from the schema | FAIL |
+  | **`choose:` itself is mis-keyed (`chooses:`)** | **PASS** |
+
+  The distinction is exact and worth keeping: a stale *value inside* a recognised
+  key fails closed, because it is validated against the document. A stale or
+  mistyped *key* fails open, because it is never looked at. T9.11's opening and
+  T9.16.5 are corrected in place to say so.
+- **Verdict** — `TOOL-DEFECT`, and the worst thing T9 found — more so with this half
+  than without it. This is T3.10 and T7.11's "unknown mock key silently discarded"
+  recurring one layer up, where it is categorically more expensive: a discarded
+  *mock* key makes a test behave oddly and usually fail confusingly; a discarded
+  *expectation* key makes it pass; a discarded `choose:` key makes it pass while
+  running the branch the author was trying to rule out. The suite that exists to
+  catch regressions is itself the thing with no check on it, and the cheapest fix is
+  the one T3.10 already asked for — reject unknown keys, at *both* levels of the
+  test file, not just inside `expect:` — plus a refusal to green a test with zero
+  expectations. A fourth, independent of unknown-key rejection: `lute test` should
+  not accept an auto-picked branch silently. `trace` prints `(auto)`; the harness
+  should either report it or require the test to opt in.
 
 #### T9.9 — a never-written state path fails against its own rendered value — TOOL-DEFECT (misdirecting diagnostic)
 
@@ -6015,12 +6203,17 @@ exotic:
 
 #### T9.11 — a refused test prints four words where `trace` prints the code, the key and the fix — TOOL-DEFECT
 
-- **What works, and it is worth saying first.** A scenario test **does not rot
-  silently**, unlike a mock file (T1.9, T3.10). Three separate rot modes were probed
-  against a copy of the project and all three fail the suite: a `choose:` naming a
-  choice id that no longer exists, a `choose:` naming a branch id that no longer
-  exists, and a `state:` naming a path deleted from the schema. `lute test` treats a
-  refused trace as a test failure, so a stale suite goes red.
+- **What works, and it is worth saying first — with one correction.** A scenario
+  test does not rot silently *when the rot is inside a key the harness reads*,
+  unlike a mock file (T1.9, T3.10). Three separate rot modes were probed against a
+  copy of the project and all three fail the suite: a `choose:` naming a choice id
+  that no longer exists, a `choose:` naming a branch id that no longer exists, and a
+  `state:` naming a path deleted from the schema. `lute test` treats a refused trace
+  as a test failure, so a stale suite goes red. **The unqualified form of that claim
+  — "a scenario test does not rot silently" — is wrong and is withdrawn:** a
+  mis-keyed `choose:` (`chooses:`) is dropped without a word, `trace` auto-picks the
+  first eligible arm, and the test passes while running the branch it was written to
+  exclude (T9.8). Stale *values* fail closed; stale or mistyped *keys* fail open.
 - **Attempt** — read the failure and fix it.
 - **Result** — all three produce the identical line:
   ```
@@ -6225,13 +6418,19 @@ counted from the committed tree.
 
 Five things, each load-bearing in the committed suite.
 
-1. **`lute test` enforces choice eligibility.** A `choose:` naming a guard-false
-   option is refused, not silently played. This is the single reason the relational
-   gate tests mean anything: `purser-invalidate-the-voyage.test.yaml` passes only
-   because seeding `awake(ilsabet)` and `knows(ilsabet, true_heading)` genuinely
-   opens the lever, and removing either turns the test red rather than wrong. Set
-   against T8.5 — `lute run` plays a guard-false choice — the *test* harness is the
-   one that got this right, which is the right way round.
+1. **`lute test` enforces choice eligibility — in one direction.** A `choose:`
+   naming a guard-false option is refused, not silently played.
+   `purser-invalidate-the-voyage.test.yaml` passes only because seeding
+   `awake(ilsabet)` and `knows(ilsabet, true_heading)` genuinely opens the lever,
+   and removing either turns the test red rather than wrong. Set against T8.5 —
+   `lute run` plays a guard-false choice — the *test* harness is the one that got
+   this right, which is the right way round. **The first draft called this "the
+   single reason the relational gate tests mean anything"; that is half true and the
+   half it omits is the dangerous one.** Enforcement proves the test's chosen option
+   was *permitted*; it says nothing about what else was. T9.18 measures the
+   consequence by mutation: delete the `when=` from that same lever and all 31 tests
+   still pass. What eligibility enforcement catches is a gate that is too *narrow*.
+   A gate that is too *wide* is invisible to it.
 2. **`fail=` is a real independent axis, and the failure path is walkable.**
    `quest-false-heading-fails.test.yaml` completes all three objectives and still
    ends `failed`, firing `<on event="questFailed">`. T4.1 established the grammar
@@ -6246,9 +6445,13 @@ Five things, each load-bearing in the committed suite.
    the five quests use it (`whoWakes.knowTheExchange`, `falseHeading.findThePaper`,
    `manifestGap.listHim`) and it composes with `optional` on the third. No mirror
    flag, no new construct.
-5. **Scenario tests do not rot silently.** Three separate rot modes all go red
-   (T9.11). After eight tasks of mocks and attributes being discarded without a
-   word, a surface that fails closed is worth naming.
+5. **Scenario tests do not rot silently — when the rot is in a value.** Three
+   separate rot modes all go red (T9.11): a stale choice id, a stale branch id, a
+   deleted state path. After eight tasks of mocks and attributes being discarded
+   without a word, a surface that fails closed is worth naming. **Corrected:** the
+   unqualified claim does not hold. A mistyped *key* — `chooses:` for `choose:` —
+   is dropped in silence and the test passes on an auto-picked arm (T9.8). What
+   fails closed is validation of values inside keys the harness recognises.
 
 #### T9.17 — recurrences, not re-counted
 
@@ -6274,19 +6477,206 @@ Five things, each load-bearing in the committed suite.
   `--coverage` as a `<match>` arm — the sugar the docs describe as "exact sugar for
   a `<match>` that does not compile" is visible in the coverage numbers, where 11
   guarded lines occupy 8 of the 15 rows.
-- **T3.10 / T7.11.** Unknown-key silence, now on the assertion surface (T9.8).
+- **T3.10 / T7.11.** Unknown-key silence, now on the assertion surface *and* on the
+  test file's top level, where it is worse than either earlier instance: a mistyped
+  `choose:` greens a test that runs the opposite arm (T9.8).
+
+#### T9.18 — mutation-tested: 31 passing tests and a clean `check-project` cannot see a gate that opens when it should not — TOOL-DEFECT
+
+T9.13 counted what the suite *touches*. This entry measures what it would *catch*,
+because those are different questions and only the second is what a test suite is
+for. Method: mutate one guard in a copy of the committed tree, re-run
+`check-project docs/examples` and `lute test docs/examples/anseo --coverage`, and
+diff all three outputs — verdict, warning set, and every coverage row — against the
+unmutated baseline (47 files, 18 project-wide warnings; 31 passed, 0 failed;
+15 coverage rows).
+
+| # | mutation | `check-project` | `lute test` | `--coverage` |
+|---|---|---|---|---|
+| M1 | delete `when=` from `haltTheSequence`, the **ending-deciding** lever | ok, warnings byte-identical | **31 passed** | **identical** |
+| M2 | weaken `invalidateTheVoyage` from `awake(ilsabet) && knows(ilsabet, true_heading)` to `awake(ilsabet)` | ok, identical | **31 passed** | **identical** |
+| M3 | widen a content-line guard, `run.shedPressure >= 2` → `>= 0` (`stowaway.lute:26`; same result at `spine-b.lute:95`) | ok, identical | **31 passed** | one row changes |
+| C1 | *control* — flip `holds(awake(toma))` to `holds(awake(vesna))` | ok, identical | 28 passed, **3 failed** | identical |
+| C2 | *control* — `<match>` arm `$ >= 2` → `$ >= 1` in `hydroponics.lute` | ok, identical | 30 passed, **1 failed** | one row changes |
+| C3 | *control* — narrow `haltTheSequence` to `can_halt(toma) && awake(ilsabet)` | ok, identical | 30 passed, **1 failed** (`trace refused`) | two rows change |
+
+**M1 is the finding.** `haltTheSequence` is one of the two levers that decide which
+ending the prologue reaches. Deleting its guard entirely — so the lever is offered
+to a crew with nobody who can halt anything — changes *nothing observable anywhere
+in the toolchain*: the same `ok`, the same eighteen warnings, the same 31 green
+tests, and a byte-identical coverage block including
+`branch/hub theCorrection: 4/4 chosen`. M2 is the same shape on the other lever:
+drop half a conjunction from the guard on the *other* ending's lever and the suite
+does not move.
+
+**M3 needs a qualification the first framing of this finding did not have.** The
+run is still 31/31 and `check-project` is still ok, so the mutation ships. But the
+coverage block is not quite identical: a new row appears reading
+`match run.shedPressure >= 0: 1/2 arm(s) executed; 1 unexecuted`, because an
+always-true guard starves its own `<otherwise>`. So there *is* a signal, in the one
+output nothing gates on, keyed on the mutated text (T9.13) so it appears as a new
+row rather than as a changed one. Calling M3 "completely invisible" would be
+overstating it; calling 31/31 a pass is not.
+
+**The structural rule, and it is exact.** `lute test`'s one piece of non-authored
+enforcement is that a `choose:` must name an *eligible* option. That checks
+`chosen ⊆ eligible`. Nothing anywhere checks `eligible ⊆ intended`. So:
+
+- **Over-restriction is caught** (C3): narrowing a guard makes some test's `choose:`
+  ineligible, the trace is refused, the suite goes red. The mechanism is the
+  eligibility enforcement T9.16.1 credits.
+- **Under-restriction is not** (M1, M2): widening a guard makes *more* options
+  eligible, every existing `choose:` stays legal, every transcript is unchanged, and
+  there is nothing to fail.
+
+The two controls that do fire, fire for the same reason as each other and neither is
+eligibility. C1 changes *which lines play*, so positive `transcriptContains`
+assertions go absent. C2 is the interesting one: `$ >= 2` → `$ >= 1` widens arm 1,
+but arms in a `<match>` are exclusive, so widening one **starves** the next, and it
+is the starved arm's positive assertion going absent that fails the test. That is
+worth stating precisely, because it bounds exactly how much a `<match>` protects
+you: a widened guard is caught only where widening it takes something away from a
+sibling that a test asserts. A bare content-line `when=` (M3) and a `<choice when=>`
+(M1, M2) starve nothing. They are the two guard forms with no sibling to rob, and
+they are the two the suite cannot see.
+
+**Which direction actually ships a broken work.** Over-restriction is loud in play:
+the lever the designer wanted is missing, and the first person to walk the route
+notices. Under-restriction is a lever that opens for a crew that has not earned it —
+the halt available with nobody who can halt, the navigator's argument available from
+a navigator who does not know the true heading. That is the bug that reaches
+players, and it is the one nothing in this toolchain can see.
+
+**What the suite actually is, stated plainly.** It is a good regression harness for
+**authored text and state deltas**: change a line, change a `::set`, delete a
+`<choice>` id, rename a state path, and it goes red immediately and reliably (C1,
+C2, C3, and the three rot modes in T9.11). It is a **poor specification of the
+work's logic**: the guards that decide which of two endings a run reaches can be
+deleted outright and it stays green. Anyone reading `31 passed` as *the branching is
+correct* is misled. The honest reading of `31 passed` is *the eleven scenes still
+say what they said, and every arm we force is still reachable.*
+
+- **Verdict** — `TOOL-DEFECT`. This is the measurement behind T9.10 item 3, which
+  ranked "which options the player was offered" as the most valuable missing
+  assertion; this entry is why. The eligibility set is **computed** — every
+  `<branch>` decision in a trace report carries `eligible[]`, `lute trace` prints it
+  (`<branch theCorrection>   eligible: invalidateTheVoyage, sayNothing`), and
+  `--coverage` already aggregates it well enough to say *"1 never seen eligible in
+  any traced path"* under C3. It is rendered, it is in `decisions[]`, and `expect:`
+  has no key for it. That is the criterion exactly: the information exists and the
+  tool that computed it will not let you assert it. One key closes M1 and M2 both:
+  ```yaml
+  expect:
+    eligible: { theCorrection: [haltTheSequence, sayNothing] }   # exact set
+  ```
+  With that one line in the four `purser-*.test.yaml` files, M1 and M2 both go red.
+  Nothing new is computed; a vector already in the report gets an assertion slot.
+
+#### T9.19 — a warning class a finished, correct, fully-tested work triggers thirteen times, with no discharge path — SPEC-WRONG
+
+Recorded in this task's report as an observation with no verdict; it needs one.
+`W-UNPROVEN-RELATIONAL` went from **1** to **13** on this project — the pre-existing
+one is `hold-the-spine.lute:8`, the twelve new ones are one per relational predicate
+across the five new quests. Four things were checked before filing, because three of
+the four could have made this an author problem instead.
+
+1. **Every one marks a correct gate.** The thirteen are `awake`×2, `knows`×5,
+   `found`×3, `can_halt`×3 across six quest documents. Each is a deliberate
+   relational predicate on a quest `start=` or objective `done=` — precisely the
+   construct T4 established as the language's strength.
+2. **Every relation is genuinely producible, and the checker really does
+   distinguish.** Negative control: delete the one rule from `world.schema.yaml`
+   (`rules: []`, nothing else changed). The count drops 13 → 10 and **exactly two**
+   of the three `can_halt` sites become hard errors:
+   ```
+   quests/unmoored.lute:21:1: error [E-OBJECTIVE-UNSATISFIABLE] `done` predicate
+     `count(can_halt(_)) >= 1` queries relation(s) `can_halt`, which is unreachable
+     under your declared routes …
+   quests/what-vesna-carries.lute:21:1: error [E-OBJECTIVE-UNSATISFIABLE] `done`
+     predicate `holds(can_halt(vesna))` …
+   failed: (18 file(s), 2 project-wide error(s), 10 project-wide warning(s))
+   ```
+   So the warning is not a blanket "relations are hard"; it is the *residue* after a
+   real analysis, and the analysis has teeth. (The third `can_halt` site,
+   `hold-the-spine.lute:8`, is a quest `start=` and simply goes silent — there is no
+   error-grade counterpart for that slot, which is T4.4's "no not-producible branch"
+   observed from the other side.)
+3. **Twelve of the thirteen are demonstrated satisfiable by a passing test.** The
+   six quest tests between them seed every warned relation and show the quest
+   reaching `complete` (or, for `false-heading`, `failed`). The exception is
+   `who-wakes.lute:19`, `theFifthBody`, `done="holds(found(ottavio))"`: it is marked
+   `optional`, its test leaves it `-> pending`, and the quest completes anyway. One
+   warned site out of thirteen has no test showing it satisfied — worth knowing, and
+   not a defence of the other twelve.
+4. **None of them is dischargeable.** `scan_objective_liveness`
+   (`crates/lute-check/src/producible.rs:190-216`) emits on every quest `start`/`fail`
+   slot and walks every objective, with no gate but "is the relation producible".
+   `check-project` takes `--json`, `--providers`, `--deny` and `--deny-warnings` and
+   nothing else — **no seed surface, no mock surface**, so the "verify with `lute
+   trace` seeds" half of the warning's own remedy cannot be fed back to the tool that
+   raised it. There is no per-site suppression construct in the language, and there
+   is no `--allow`: dsl 0.6.1 §6 lists *"No `--allow` demotion"* as an explicit
+   non-goal. An author who has done everything right — correct gates, producible
+   relations, a passing test per predicate — has exactly one lever, `--deny`, and it
+   points the wrong way.
+
+  So the question the observation left open answers itself. This is not misuse: the
+  gates are right, the relations are real, and the work is tested. Nor is it a bug:
+  every component behaves as specified.
+
+- **Verdict** — `SPEC-WRONG`. Nothing is misimplemented and nothing is
+  undocumented. dsl 0.6.1 §2 specifies the warning, `producible.rs` emits exactly
+  it, the message is one of the better-written in the toolchain (it names the
+  relation, cites its clause, and proposes two remedies), and §6's refusal of
+  `--allow` is a deliberate, reasoned decision.
+
+  **What the spec says.** A relational gate is a region static reachability "neither
+  proves nor refutes", so the checker declines to claim satisfiability and refers the
+  author to `lute trace` seeds or human review. **Why it is the wrong call.** The
+  severity is chosen for the wrong population. As specified, the warning fires on the
+  *presence of the feature*, not on any property of the author's use of it: `awake`
+  and `knows` are producible in this project because scenes assert them, which is the
+  language working. So the class scales one-for-one with adoption of relational
+  quests — six quests give thirteen, a twelve-quest work gives twenty-six — and it is
+  unclearable at every size. A warning class whose count is a function of how much of
+  the language you use, with no discharge path, is not a signal; it teaches authors to
+  read past the project-wide block, which is where `W-QUEST-REF-UNKNOWN` and
+  `E-OBJECTIVE-UNSATISFIABLE`'s relational cause also live (T4.2, this log's strongest
+  finding). That is the cost: it is a noise floor over the checker's best output.
+
+  **What it should say instead.** Any one of these fixes it; the first is the real
+  one.
+  1. **Let evidence discharge it.** The two remedies the message names are both real
+     work an author can do, and neither is reportable back. If a `*.test.yaml` in the
+     project traces the document and shows the predicate satisfied, that predicate's
+     warning should not fire — `lute test` already computes exactly this, and T9.7's
+     proposal (walk the artifact under `lute run`, which *does* run the fixpoint)
+     would make it a proof rather than a hint. A warning that names a remedy should
+     accept its completion.
+  2. **Site-level acknowledgement.** An attribute — `unproven="reviewed"`, or the
+     existing comment convention promoted to a recognised marker — so "human review"
+     is a state the file can record. This is the cheap version.
+  3. **Report it once, not thirteen times.** Demote the per-site warning to a
+     single project-wide note with a count and a `--verbose` list. Cheapest of all
+     and it keeps the signal while removing the flood.
 
 #### T9 summary
 
-Fourteen entries carrying a verdict: **one `DOC-GAP`** (T9.1), **two
-`LANGUAGE-GAP`** (T9.3, T9.4), **two `ERGONOMIC`** (T9.5, T9.14), and **nine
-`TOOL-DEFECT`** (T9.6, T9.7, T9.8, T9.9, T9.10, T9.11, T9.12, T9.13, T9.15) —
-1 + 2 + 2 + 9 = 14, one verdict per entry, no hybrids. Three further entries carry
-no verdict: T9.2 and T9.16 record what worked, T9.17 rolls up recurrences already
-counted in earlier tasks. **Nine of the fourteen are
-`TOOL-DEFECT`** — the highest concentration in this log, which is what you would
-expect from the first task to point a testing tool at the work rather than a
-checker.
+Sixteen entries carrying a verdict: **one `DOC-GAP`** (T9.1), **two
+`LANGUAGE-GAP`** (T9.3, T9.4), **two `ERGONOMIC`** (T9.5, T9.14), **nine
+`TOOL-DEFECT`** (T9.6, T9.8, T9.9, T9.10, T9.11, T9.12, T9.13, T9.15, T9.18), and
+**two `SPEC-WRONG`** (T9.7, T9.19) — 1 + 2 + 2 + 9 + 2 = 16, one verdict per entry,
+no hybrids. Three further entries carry no verdict: T9.2 and T9.16 record what
+worked, T9.17 rolls up recurrences already counted in earlier tasks. Nineteen
+entries in all. **Nine of the sixteen are `TOOL-DEFECT`** — the highest
+concentration in this log, which is what you would expect from the first task to
+point a testing tool at the work rather than a checker.
+
+*This tally is post-correction. As first written the section had fourteen
+verdict-bearing entries and nine `TOOL-DEFECT`; T9.7 was reclassified `SPEC-WRONG`
+(the two evaluators are each doing what the spec tells them — see the entry, which
+also retracts two false factual claims), and T9.18 (`TOOL-DEFECT`) and T9.19
+(`SPEC-WRONG`) were added.*
 
 **The quest layer of the language is in good shape and the quest layer of the tools
 is not.** Everything a real goal machine wants was there and worked at five
@@ -6300,19 +6690,33 @@ second is the one to fix — the form an author reaches for compiles clean and
 completes instantly, which is silence, which this log has spent nine tasks
 establishing is the expensive failure.
 
-**The testing story exists, runs, and fails open.** 31 tests, 17 of 18 documents,
-15 of 15 choices — that suite is buildable in an afternoon and it caught real things
-while being written. But `expect:` recognises three keys and silently ignores every
-other, a test with no expectations is green, and the one key `--help` advertises
-that does not exist (`questStatus`) is the one an author would most want (T9.8).
-Ranked by what it costs an author: **T9.8 first** — a verification tool that greens a
-typo'd assertion is worse than none, and the fix is the same unknown-key rejection
-T3.10 asked for two hundred entries ago. **T9.7 second**, because it removes half of
-every relational gate's testability and the two independent fixes (a negative mock,
-or running the fixpoint `lute run` already runs) are both small. **T9.13 third**, for
-keying coverage on guard text: six distinct blocks reporting one `3/3` row is a false
-green in the one output an author reads to decide they are done. **T9.11 fourth**,
-because it is printing a vector the code already holds.
+**The testing story exists, runs, and fails open — in both directions.** 31 tests,
+17 of 18 documents, 15 of 15 choices — that suite is buildable in an afternoon and
+it caught real things while being written. But `expect:` recognises three keys and
+silently ignores every other, a *top-level* key is dropped just as silently, a test
+with no expectations is green, and the one key `--help` advertises that does not
+exist (`questStatus`) is the one an author would most want (T9.8). And what the
+suite does assert is narrower than it looks: deleting the guard from an
+ending-deciding lever leaves all 31 green and `check-project` byte-identical
+(T9.18). Ranked by what it costs an author:
+
+1. **T9.8** — a verification tool that greens a typo'd assertion is worse than none,
+   and a mis-keyed `choose:` is worse still: it greens a test that runs the arm the
+   author was excluding. The fix is the same unknown-key rejection T3.10 asked for
+   two hundred entries ago, applied at both levels of the file.
+2. **T9.18** — the suite cannot see an over-permissive gate, which is the failure
+   mode that ships a broken branching work. One `expect: eligible:` key over a
+   vector the trace report already carries closes it.
+3. **T9.7** — the harness `lute test` walks cannot compute the project's one rule,
+   so three coverage rows are permanently red and six tests seed a conclusion they
+   should have derived. Correction to this entry's first draft, which matters for
+   how it is prioritised: the negative controls it called impossible are **already
+   available**, in `lute run`, which runs the fixpoint. So the work is wiring
+   `lute test` to the artifact — not inventing a capability.
+4. **T9.13** — keying coverage on guard text: six distinct blocks reporting one
+   `3/3` row is a false green in the one output an author reads to decide they are
+   done.
+5. **T9.11** — because it is printing a vector the code already holds.
 
 **The measurement the assignment asked for, stated plainly.** After 31 passing tests
 covering every choice in the work, *no tool in this toolchain can tell an author what
@@ -6324,4 +6728,17 @@ question a two-ending work most needs answered — *is every ending still reacha
 cannot be put to the test harness at all. `lute scenario` answers the graph half
 knowing nothing of guards, `lute test` answers the guard half one scene at a time,
 and nothing joins them. That gap is not a missing assertion or a wrong key; it is the
-shape of the tool, and it is the last thing this drive test found.
+shape of the tool.
+
+**And one measurement the assignment did not ask for, added on review, because it
+reframes the rest.** *What is untested* turns out to be the smaller question. The
+larger one is what the tested part would catch, and T9.18 answers it by mutation:
+`lute test` is a good regression harness for **authored text and state deltas** and
+a poor specification of the **work's logic**. Change a line, a `::set`, a choice id
+or a state path and it goes red at once. Delete the `when=` from either of the two
+levers that decide which ending the prologue reaches and it stays green, 31 of 31,
+with `check-project` byte-identical and every coverage row unchanged. The
+enforcement the suite rests on — a `choose:` must name an eligible option — proves
+only that a gate is not too narrow; nothing anywhere proves it is not too wide, and
+too wide is the direction that ships. That is the last thing this drive test found,
+and it is the one an author is most likely to read backwards.

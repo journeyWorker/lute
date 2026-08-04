@@ -3,13 +3,25 @@
 # rule. `lute test` enforces choice eligibility, so this test passing IS the proof
 # that the guard opened.
 #
-# BOTH halters are seeded, and no route in the story ever produces both. The arm
-# carries two alternative lines — 0180 guarded on `can_halt(vesna)`, 0190 on
-# `can_halt(toma)` — and a derived relation left unseeded evaluates to UNKNOWN,
-# which halts the walk rather than skipping the line. So the only traceable
-# version of this arm is the one where Vesna and Toma are simultaneously able to
-# halt the shed, and both lines play. The `<choice>` is testable; the alternation
-# inside it is not. See T9.7.
+# BOTH halters are seeded. That is NOT an impossible world — an earlier revision of
+# this comment said so and it was wrong. It is the world the ordinary maximal route
+# produces: `wake` -> `cryobank:wakeToma` (asserts `awake(toma)`,
+# `knows(toma, shed_sequence)`) -> `spine-a` -> `hydroponics`/`machine-deck` ->
+# `stowaway` -> `spine-b` -> `archive:readItAloud` (asserts
+# `knows(vesna, shed_sequence)`) -> `purser`, with `awake(vesna)` from the world
+# seed. `archive`'s `after=` is `visited("anseo.s01ep07")` and depends on nothing
+# the cryobank branch decided, so both conjunctions close and the rule derives
+# `can_halt(toma)` AND `can_halt(vesna)`. `lute run` confirms it: both 0180 and
+# 0190 play. This test documents that route.
+#
+# The seeds are here because `lute trace` — which is what `lute test` walks — runs
+# no Datalog fixpoint (dsl 0.4.0 §4.2, D1), so a `derive: true` relation left
+# unseeded is UNKNOWN and halts the walk rather than reading false. The cost is
+# that the ALTERNATION inside the arm is not exercisable from this harness: a world
+# where exactly one of the two can halt is a real world (`lute run` walks it and
+# suppresses 0180 correctly) and cannot be traced, because the unseeded half is
+# unknown rather than false. The `<choice>` is testable here; the alternation is
+# testable only in `lute run`. See T9.7.
 file: ../scenes/purser.lute
 facts:
   - "awake(vesna)"
