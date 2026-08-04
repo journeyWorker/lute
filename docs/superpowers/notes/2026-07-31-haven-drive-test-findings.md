@@ -2057,6 +2057,19 @@ This is the strongest single thing T4 measured and it deserves the transcript.
   Change one relation to one the story *does* produce — `holds(knows(toma, manifest))`,
   where `knows` is asserted in `scenes/cryobank.lute`'s choice arms — and the error
   becomes `W-UNPROVEN-RELATIONAL`, exit 0.
+- **Stale at HEAD — the transcripts no longer reproduce; the capability does.** Both were
+  correct on the task-time corpus, where `found` was declared and asserted nowhere and `knows`
+  was asserted only in `cryobank.lute`. Tasks 6 and 8 moved both: `scenes/stowaway.lute:19` now
+  carries `::assert{found(ottavio)}`, so at HEAD `done="holds(found(toma))"` draws
+  `W-UNPROVEN-RELATIONAL` at exit 0 rather than the error above, and `knows` is now asserted at
+  six sites in five documents, so deleting `cryobank.lute`'s two no longer makes it
+  unproducible. **This is not a retraction — the capability is confirmed at HEAD.** Deleting the
+  one `::assert{found(ottavio)}` line from `scenes/stowaway.lute` reproduces the error above
+  verbatim — same relation, same reason, same clause — from an edit in a file the quest does not
+  name; deleting all six `::assert{knows(…)}` sites does the same for
+  `holds(knows(toma, manifest))`. Only the corpus moved under the probe. T4.5's transcript went
+  stale the same way; the re-probe on a relation that is dead on the finished corpus is in the
+  backlog at **#12**.
 - **And the difference really is the other document.** The negative control, run in the
   scratch copy: delete the two `::assert{knows(…)}` lines from `cryobank.lute` and
   re-check, changing nothing in the quest.
@@ -2259,6 +2272,19 @@ attribute over.
   Zero diagnostics of any severity. Note the count: the **correct** gate
   (`holds(can_halt(toma))`) yields one project-wide warning; the gate that can never open
   yields none. The louder signal is the working code.
+- **Stale at HEAD — the transcript no longer reproduces; the defect does.** The probe was
+  correct on the task-time corpus, where `found` was declared in `world.schema.yaml` and
+  asserted by no document. Tasks 6 and 8 added `::assert{found(ottavio)}` at
+  `scenes/stowaway.lute:19`, so `found` is producible on the shipped corpus and this exact
+  command now emits `W-UNPROVEN-RELATIONAL` at `quests/hold-the-spine.lute:30:56`, exit 0 — a
+  warning, not the silence above. (`8:56` at task time; the `<quest>` element moved to line 30
+  when the file gained the comment documenting its missing `after=`.) Re-probed on a relation
+  that *is* dead on the finished corpus — a `sealed: { args: [crew], tier: run }` declared in
+  `world.schema.yaml` and asserted nowhere — every number here returns: zero diagnostics on the
+  file, the project-wide count *falling* 13 → 12, and `scenario reach` still printing
+  **Reachable**. The re-probe, and the
+  regression guard that a fixed checker must **not** error on `found`, are in the backlog at
+  **#12**.
 - **The machinery exists, is wired to this exact slot, and has the diagnostic class
   already.** Three facts from the same command:
   1. `start=` *does* run producibility — that is what emits `W-UNPROVEN-RELATIONAL` when
@@ -6877,8 +6903,9 @@ say what they said, and every arm we force is still reachable.*
 
 Recorded in this task's report as an observation with no verdict; it needs one.
 `W-UNPROVEN-RELATIONAL` went from **1** to **13** on this project — the pre-existing
-one is `hold-the-spine.lute:8`, the twelve new ones are one per relational predicate
-across the five new quests. Four things were checked before filing, because three of
+one is `hold-the-spine.lute:8` (`:30` at HEAD — see the note at item 2), the twelve new ones
+are one per relational predicate across the five new quests. Four things were checked before
+filing, because three of
 the four could have made this an author problem instead.
 
 1. **Every one marks a correct gate.** The thirteen are `awake`×2, `knows`×5,
@@ -6899,7 +6926,8 @@ the four could have made this an author problem instead.
    ```
    So the warning is not a blanket "relations are hard"; it is the *residue* after a
    real analysis, and the analysis has teeth. (The third `can_halt` site,
-   `hold-the-spine.lute:8`, is a quest `start=` and simply goes silent — there is no
+   `hold-the-spine.lute:8` — `:30` at HEAD, the file having since gained the comment that
+   documents its missing `after=` — is a quest `start=` and simply goes silent; there is no
    error-grade counterpart for that slot, which is T4.4's "no not-producible branch"
    observed from the other side.)
 3. **Twelve of the thirteen are demonstrated satisfiable by a passing test.** The
