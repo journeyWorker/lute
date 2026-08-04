@@ -87,9 +87,15 @@ jobs:
       # not provide" — so the suites are registered here rather than left as
       # decoration. One root, the same one `check-project` uses: `lute test`
       # recurses, picking up docs/examples/anseo (31) and
-      # docs/examples/investigation (3).
+      # docs/examples/investigation (3), so this step prints `34 passed`.
       #
-      # Read `31 passed` for what it is. Anseo's suite is a regression harness
+      # This is the DOC-side half only: `paths:` above covers content and not
+      # `crates/**`, so on this trigger alone the suites would run when the
+      # tests moved and never when the binary that runs them moved. The same
+      # step is therefore also in `.github/workflows/test.yml`, which triggers
+      # on `crates/**` — the same both-halves split the two doc scripts use.
+      #
+      # Read `34 passed` for what it is. Anseo's suite is a regression harness
       # for authored text and state deltas, not a proof of the work's logic:
       # deleting the `when=` from either lever that decides which ending the
       # prologue reaches leaves every test green (see T9.18 in

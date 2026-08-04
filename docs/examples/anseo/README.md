@@ -8,7 +8,7 @@ Anseo exists to be a **whole small work** rather than a feature demo. Every othe
 example under `docs/examples/` isolates one construct; this one carries a story
 across eighteen documents and asks whether the constructs still hold when they
 have to coexist. It was written as the instrument of a drive test, and the
-measurement — 107 entries, 71 of them carrying a verdict — is
+measurement — 111 entries, 74 of them carrying a verdict — is
 [`docs/superpowers/notes/2026-07-31-anseo-drive-test-findings.md`](../../superpowers/notes/2026-07-31-anseo-drive-test-findings.md).
 Read that file if you want to know what 0.9.0 costs an author. Read this one if
 you want to know what is in the tree.
@@ -72,8 +72,8 @@ lute check-project docs/examples/anseo
 lute test docs/examples/anseo
 lute test docs/examples/anseo --coverage    # 15 rows; three are permanently red
 
-# The prerequisite graph: 11 scenes over 9 topological layers, and 20 edges —
-# 12 scene-to-scene, 6 from a scene to one of the five quests that declare
+# The prerequisite graph: 11 scenes over 9 topological layers, and 19 edges —
+# 12 scene-to-scene, 5 from a scene to one of the five quests that declare
 # `after=`, and 2 quest-to-quest (`whoWakes` gates two siblings, one on
 # `active` and one on `completed`).
 lute scenario docs/examples/anseo

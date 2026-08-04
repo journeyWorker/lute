@@ -110,9 +110,9 @@ computes more than it will tell you, and occasionally tells you the opposite.
 
 Ranked by cost to the person writing the work — probability of being hit, times damage
 when hit, times how long it takes to notice — not by verdict class. Verdict labels are
-given, and they do not drive the order: two `DOC-WRONG`s outrank a `LANGUAGE-GAP` below,
-and the log's single most consequential entry class is *silence*, which is not a verdict
-at all.
+given, and they do not drive the order: the four `DOC-WRONG`s at rank 6 outrank a
+`LANGUAGE-GAP` below them, and the log's single most consequential entry class is
+*silence*, which is not a verdict at all.
 
 1. **`::set` is not typed against the path it writes (T3.2, `TOOL-DEFECT`).** The single
    most expensive defect measured. `::set{run.shedPressure += "two"}` on a `number` path
@@ -120,8 +120,12 @@ at all.
    reference runtime; `= true` writes a boolean into it. Ranked first because the cost
    is *shipped wrongness* and the trigger is a typo in the most common write in the
    language, on a mechanic every work has. The asymmetry is what makes it damning:
-   `<choice into="run.shedPressure">` without a value gets `E-INTO-VALUE` naming the
-   path's type, one construct away, in the same compiler run. The checker knows.
+   `<choice into="run.shedPressure">` without a value gets `E-INTO-VALUE` — *"`value` is
+   required for `run.shedPressure` (only a `bool` path defaults to `true`)"* — one
+   construct away, in the same compiler run. It never prints `number`: it names the path
+   and the single type that may omit a value, which is exactly T3.2's own reading — the
+   diagnostic can only exist because the checker knows this path is not a `bool` at that
+   moment. The checker knows.
 2. **The test suite cannot see an over-permissive gate (T9.18, `TOOL-DEFECT`), and a
    mis-keyed test file passes while running the arm it excludes (T9.8, `TOOL-DEFECT`).**
    Second because these bound everything else: a defect your tests cannot catch has
@@ -160,8 +164,8 @@ at all.
    title card, at exit 0, zero diagnostics. Ranked here rather than lower because it is
    silence attached to an extremely common goal shape, and because the failure looks like
    success.
-6. **The documentation errors that stop a search (T7.7, T3.13, T10.1, T8.6 — all
-   `DOC-WRONG`).** Ranked as a cluster and above two `LANGUAGE-GAP`s, because a gap you
+6. **The documentation errors that stop a search (T7.7, T3.13, T10.1, T8.6 — four, all
+   `DOC-WRONG`).** Ranked as a cluster and above a `LANGUAGE-GAP`, because a gap you
    can see costs a workaround and a false sentence costs rounds you do not know you are
    spending. `branch-match-when.md` calls the content-line `when=` "exact sugar" for a
    `<match>` that does not compile for the guard class a real scene reaches for — and
@@ -177,15 +181,24 @@ at all.
    `scenario reach` prints `Reachable` for a quest that can never activate, having proved
    in the same run that it cannot. The analysis, the slot, the diagnostic class and the
    spec clause all exist; one branch is missing.
-8. **`::end` is not an ending (T5.5, `DOC-WRONG`; T5.4, `LANGUAGE-GAP`).** It is `break`
-   with a label — exactly equivalent to falling off the end of the command array — so
-   "which nodes are terminals", "does every route reach one" and "can a route dead-end"
-   are not unanswered but *unaskable*. Ranked eighth, not higher, for a reason worth
-   stating: the finding is a false sentence on the homepage, and the condition it names
-   costs an author modelling honesty rather than correctness. Note also that T8.10 and
-   T8.3 relocate the cause — the structural questions are unaskable because of the
-   prerequisite grammar (#4), not because of `::end`. Ranked as its own item because the
-   *claim about endings* — a set, a polarity — is separately unstatable and reachable
+8. **`::end` is not an ending (T5.5, `DOC-WRONG`; T5.4, `LANGUAGE-GAP`; T5.7,
+   `SPEC-WRONG`).** It is `break` with a label — exactly equivalent to falling off the end
+   of the command array — so "which nodes are terminals", "does every route reach one" and
+   "can a route dead-end" are not unanswered but *unaskable*. Ranked eighth, not higher,
+   for a reason worth stating: the finding is a false sentence on the homepage, and the
+   condition it names costs an author modelling honesty rather than correctness —
+   **everywhere except T5.7, which is the one item in this cluster whose cost is money.**
+   Provably-dead content after a terminator is a *warning*, while the same reachability
+   walk calls provably-dead gated content an error and emits no artifact at all
+   (`E-ARM-DEAD`); so the dead line is reported *and then shipped* — an addressed command
+   record in the artifact, an entry in `loc export`, and, re-measured on Anseo's shed
+   terminal, +1 line and +4 words of the production word count (177/2,302 → 178/2,306) at
+   exit 0. That is a correctness-and-invoice cost, not a modelling one, and it is the
+   carve-out from the sentence above rather than a qualification of it: the demotion to
+   rank 8 holds for the cluster and does not hold for T5.7's half of it. Note also that
+   T8.10 and T8.3 relocate the cause — the structural questions are unaskable because of
+   the prerequisite grammar (#4), not because of `::end`. Ranked as its own item because
+   the *claim about endings* — a set, a polarity — is separately unstatable and reachable
    only by mirroring each ending into declared state and saying it twice, with nothing
    checking that the two agree.
 9. **Nothing tells you what a counter can be, and the hand arithmetic is already wrong in
@@ -214,7 +227,7 @@ count where the content was in hand (T3.9, T1.10).
 
 ### What worked, and it is not a courtesy paragraph
 
-**26 of the 110 entries are *worked well*** — the single largest disposition after
+**26 of the 111 entries are *worked well*** — the single largest disposition after
 `TOOL-DEFECT`. Four things earned it repeatedly.
 
 - **The relational layer is the best thing in this language, and it is the reason to
@@ -264,13 +277,14 @@ first use with no probing (T5.1).
 
 ### The count, and why the retractions are the reason to trust it
 
-**110 numbered entries. 73 carry one of the seven verdicts.** Recounted heading by heading
+**111 numbered entries. 74 carry one of the seven verdicts.** Recounted heading by heading
 from the entries themselves; every per-task tally in this log reproduced exactly, with one
-wording note recorded below.
+wording note recorded below. The 111th (T10.4) was filed in T10's fix pass, and every
+figure in this section and in `docs/examples/anseo/README.md` was re-derived after it.
 
 | verdict | count | entries |
 |---|---|---|
-| `TOOL-DEFECT` | **32** | T1.4, T1.6, T1.10, T2.1, T2.4, T3.2, T3.6, T3.7, T3.9, T3.10, T4.4, T4.5, T4.10, T5.3, T5.6, T6.3, T6.7, T6.10, T7.2, T7.8, T8.2, T8.5, T9.6, T9.8, T9.9, T9.10, T9.11, T9.12, T9.13, T9.15, T9.18, T10.2 |
+| `TOOL-DEFECT` | **33** | T1.4, T1.6, T1.10, T2.1, T2.4, T3.2, T3.6, T3.7, T3.9, T3.10, T4.4, T4.5, T4.10, T5.3, T5.6, T6.3, T6.7, T6.10, T7.2, T7.8, T8.2, T8.5, T9.6, T9.8, T9.9, T9.10, T9.11, T9.12, T9.13, T9.15, T9.18, T10.2, T10.4 |
 | `ERGONOMIC` | **16** | T1.5, T1.9, T2.5, T4.6, T4.7, T5.2, T5.8, T5.9, T6.6, T7.6, T7.12, T7.13, T8.4, T8.7, T9.5, T9.14 |
 | `DOC-WRONG` | **9** | T3.13, T4.8, T5.5, T6.8, T7.7, T7.10, T7.16, T8.6, T10.1 |
 | `LANGUAGE-GAP` | **6** | T5.4, T7.1, T8.1, T8.3, T9.3, T9.4 |
@@ -281,14 +295,14 @@ wording note recorded below.
 The other 37 entries carry the protocol's non-verdict dispositions: **26 *worked well***,
 **3 recurrences** of an earlier verdict, explicitly not re-counted (T7.5, T7.11, T8.9),
 **2 declined verdicts** with the reasoning stated (T7.9, T8.8), and **6 notes or
-measurements** (T1.11, T7.14, T8.11, T8.12, T9.17, T10.3). 73 + 37 = 110.
+measurements** (T1.11, T7.14, T8.11, T8.12, T9.17, T10.3). 74 + 37 = 111.
 
 **One recount note.** T7's summary claims "three *worked well*"; I count two *entries*
 (T7.4, T7.15), because its third is an embedded observation inside T7.13, whose own
 verdict line is `ERGONOMIC`. T7's summary says so itself. The two numbers describe
 different things and neither is wrong; this table counts entries.
 
-**Read `TOOL-DEFECT` 32 correctly.** It is not 32 broken features. The criterion is "the
+**Read `TOOL-DEFECT` 33 correctly.** It is not 33 broken features. The criterion is "the
 language and its docs are fine, and a tool is wrong about its own contract", so a high
 count here is a *specific* reading, and it is the log's central one: the analysis
 overwhelmingly exists and the reporting layer loses it. `E-BAD-ENUM` renders a speaker as
@@ -300,7 +314,7 @@ and most are cheap to fix; the pattern is what matters.
 
 #### The retractions
 
-**28 of the 110 entries carry an explicit self-correction, and 7 of those changed a
+**28 of the 111 entries carry an explicit self-correction, and 7 of those changed a
 verdict.** That is roughly one entry in four revised against itself, and it is the main
 reason this log should be trusted over its own first drafts. Every correction moved in the
 direction of a *weaker* claim.
@@ -7032,7 +7046,9 @@ Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`, rebuilt befo
 first probe. No content added: this task closes the two items earlier tasks deferred
 here, replaces `docs/examples/anseo/README.md`, and registers the one CI surface that
 turned out not to exist. Both deferred items are re-derived from scratch below rather
-than transcribed from the reports that raised them.
+than transcribed from the reports that raised them. T10.4 was added in the fix pass: the
+scaffolded README this task overwrote had rotted, and overwriting it without an entry was
+a fix that deleted its own measurement.
 
 #### T10.1 — the page that owns state declaration carries one `enum` example, and it does not parse — DOC-WRONG
 
@@ -7083,11 +7099,20 @@ Reproduced here from a fresh `lute init` tree, not from T5's transcript.
     app.rating: enum [teen, adult]
   ```
 - **The counts, both directions, from the source tree only (no `dist/`, no
-  `node_modules/`).** The working spelling is used in **six shipped example files** that
-  `check-project docs/examples` walks green — `affinity-reaction.lute`,
-  `choice-persist.lute`, `investigation/world.schema.yaml`, `showcase/when-is-demo.lute`,
-  `showcase/schema/base.schema.yaml`, and the `idola-project`/`showcase` plugin manifests
-  — and on the website in `getting-started/build-an-investigation.mdx:46–48`. The broken
+  `node_modules/`).** Two criteria, stated because they give different numbers and this
+  entry's first draft quoted neither. Under the criterion that matches the page being
+  wrong — **an author's state declaration**, which is what `state-model.md`'s block is —
+  the working spelling is used in **five shipped example files, ten occurrences**, all
+  reached green by `check-project docs/examples`: `affinity-reaction.lute` (a `state:`
+  path and a `defs:` param), `choice-persist.lute`, `investigation/world.schema.yaml`
+  (three paths), `showcase/schema/base.schema.yaml` (three paths), and
+  `showcase/when-is-demo.lute`. Counting **every** `type: { enum: … }` under
+  `docs/examples` regardless of construct gives **eleven files, sixteen occurrences**: the
+  other six files are the two plugin packs' manifests (`idola.minigame` and
+  `showcase.pack`, each declaring it once in `plugin.yaml` `options:`, once in a `bridge/`
+  return shape and once in `state/shapes.yaml`), which are plugin export schemas rather
+  than author state. Neither number is six. On the website the working spelling appears in
+  `getting-started/build-an-investigation.mdx:46–48`. The broken
   spelling appears **four times, and none of them parses**:
   `state/state-model.md:26`; `packages/website/public/llms-full.txt:1879`, which is the
   same line in the bundle the repo ships *for machine consumption*; and
@@ -7220,11 +7245,23 @@ conclusions are only as good as the surfaces that hold them in place.
   job: *"`docs/**` is in the trigger paths below, so it has to be a root here too — a
   trigger that fires on files nothing reads advertises coverage it does not provide."*
   The principle was written down and the test suites were added afterwards.
-- **Resolution — registered.** One step in the `examples` job of
-  `.github/workflows/docs.yml`, on the same root and the same already-built binary as the
-  `check-project` step: `cargo run -q -p lute-cli -- test docs/examples`. `lute test`
-  recurses, so one root covers both suites — verified at `34 passed, 0 failed`, exit 0.
-  The step's comment states what a green run does and does not prove, citing T9.18,
+- **Resolution — registered, in both workflows.**
+  `cargo run -q -p lute-cli -- test docs/examples`, on the same root and the same
+  already-built binary as the neighbouring steps: the `examples` job of
+  `.github/workflows/docs.yml`, and the `offline` job of `.github/workflows/test.yml`.
+  `lute test` recurses, so one root covers both suites — verified at `34 passed, 0 failed`,
+  exit 0, and at exit 1 / `33 passed, 1 failed` when one expected state value is
+  perturbed, in both invocation forms (bare `./target/debug/lute test docs/examples` and
+  `cargo run -q -p lute-cli -- test docs/examples`).
+- **Both workflows, not one, on this entry's own argument.** `docs.yml`'s `paths:` cover
+  content and two named crate files, not `crates/**`; `test.yml`'s cover `crates/**` and
+  not `docs/**`. In `docs.yml` alone, 34 tests whose every assertion the binary *produces*
+  would run when the TESTS moved and never when the RUNNER moved — a PR touching
+  `crates/lute-trace` could not fail them. That is this entry's own omission pointed the
+  other way, and `test.yml`'s header already states the rule: "`docs.yml` fires when a DOC
+  moves, this job fires when the BINARY the doc quotes moves." Both doc scripts run in
+  both workflows on exactly that argument; the scenario suites now do too.
+  Each step's comment states what a green run does and does not prove, citing T9.18,
   because a gate that is read as stronger than it is would be a worse outcome than no
   gate.
 - **No verdict.** Nothing here is a property of Lute 0.9.0. It is filed under the
@@ -7233,17 +7270,108 @@ conclusions are only as good as the surfaces that hold them in place.
   eight tasks that description fit this repository's own CI as squarely as it fits
   `lute test`'s `expect:` block (T9.8).
 
+#### T10.4 — `lute init`'s README names the placeholder scene, and nine tasks of green `check-project` never said so — TOOL-DEFECT
+
+Filed in this task's fix pass, out of order, and the lateness is part of the finding: the
+rot was *fixed* in Step 2 — the README this task wrote replaced it — and nothing was
+logged. That is exactly the move the capture protocol forbids ("when a beat does not
+appear in the artifact, log it before fixing it"), because a fix without an entry deletes
+the measurement. Re-derived below from a fresh scaffold and from git, not from memory.
+
+- **Intent** — none authorial. Step 2 replaces `docs/examples/anseo/README.md`. Read what
+  was there before overwriting it.
+- **Result — it was still the scaffolder's, byte for byte.**
+  ```console
+  $ git show 0050e16^:docs/examples/anseo/README.md > /tmp/pre.md
+  $ lute init /tmp/t10d/proj --template minimal
+  $ diff /tmp/pre.md /tmp/t10d/proj/README.md && echo IDENTICAL
+  IDENTICAL
+  ```
+  Nine task sections of authoring — eighteen documents, both schemas replaced, thirty-one
+  test files — and the project's front door was still the template's, naming the scene
+  T1.3 calls the placeholder and deleted ("deleted `scenes/opening.lute` per Step 5") in
+  two of its seven commands:
+  ```sh
+  # Check one document:
+  lute check scenes/opening.lute
+
+  # Preview a scene against the trace mock:
+  lute trace scenes/opening.lute --mock mocks/playthrough.yaml
+  ```
+  Both, run on the finished corpus:
+  ```console
+  $ lute check docs/examples/anseo/scenes/opening.lute --project docs/examples/anseo
+  lute: cannot read docs/examples/anseo/scenes/opening.lute: No such file or directory (os error 2)
+  # exit 2 — and the same line, same exit, for the `trace` command
+  ```
+  And `check-project` never mentioned it, at any task boundary. On the finished corpus:
+  `ok: docs/examples/anseo (18 file(s), 13 project-wide warning(s))`, exit 0.
+- **Nothing in this repository read it either, and it was inside a scanned root.**
+  `check-project` walks `.lute` documents. `scripts/check-doc-snippets.py` takes `docs` as
+  a first-class snippet root over `.md`, excluding only `docs/proposals` and
+  `docs/superpowers` — so this file was **in scope** — but its unit of verification is a
+  fence whose info word is `lute` (`extract_blocks` returns "the ```lute subset"), and the
+  only fence here is a `sh` one. `scripts/check-docs-consistency.py` scans the same tree
+  for links and version claims; `scenes/opening.lute` inside a shell fence is neither.
+  Three gates over the file's own directory, exit 0 from all three, and the first command
+  a human would have copied out of it cannot run.
+- **The `init`-side fact that makes this a tool defect rather than an authoring lapse.**
+  `lute init` emits its next steps **twice**, and only one copy can rot. To stdout:
+  ```console
+  $ lute init /tmp/t10f --template minimal
+  Next steps:
+    lute check-project /tmp/t10f
+    lute scenario /tmp/t10f
+    lute new scene <name> --dir /tmp/t10f
+  ```
+  Three commands, every one root-scoped or placeholder-shaped, every path resolved,
+  nothing that can go stale. To disk, in `README.md`, it adds the two per-file commands
+  above, hard-coded to `scenes/opening.lute` — the one file the scaffold's own last
+  content line invites you to replace (*"Edit this scene, then run `lute check-project`"*).
+  The rot-free phrasing existed three lines away, in the same tool's own output, at the
+  same moment.
+- **Resolution** — the file is gone: Step 2 replaced it with a README that names no path
+  it does not also list, and every number it quotes is re-derived from the tools. The
+  *class* is not closed: the next `lute init` writes the same two lines.
+- **Verdict** — `TOOL-DEFECT`, argued against the table, and the argument matters because
+  the sibling entry chose differently.
+  - Not `DOC-WRONG`: no page on the website is false, and no page edit fixes it. The false
+    document is *generated*; correcting one instance leaves the generator intact.
+  - Not `DOC-GAP`: nothing was missing to search for.
+  - Not `AUTHOR-ERROR`: the criterion is "the docs said so plainly and you missed it".
+    Nothing anywhere states that the scaffold README is the author's to maintain, and for
+    nine tasks no tool, gate or diagnostic said so either.
+  - Not `SPEC-WRONG`: nothing is specified about a scaffold README's contents, so there is
+    no design decision to fault and nothing to propose an alternative *spec* for.
+  - Not `ERGONOMIC`, and this is the split with **T1.9**, which filed the sibling rot in
+    `mocks/playthrough.yaml` — same scaffolder, same deleted scene, same silence — as
+    `ERGONOMIC` shading toward silence. There the rotting file is typed data the language
+    *could* validate, and T1.9's own remedy is a checker feature (`W-MOCK-ORPHANED`, or a
+    `check-project` pass over `mocks/*.yaml`): a closable gap, which reads as a cost. A
+    README is prose, and no Lute checker can ever be responsible for it, so no gate closes
+    this one. The only place the defect can live is in what `init` chose to write, which is
+    a tool being wrong about its own output — `TOOL-DEFECT`'s criterion, and the clause
+    under which this log already files three tools that hand an author something they
+    should not (T4.10, T9.12, T10.2). Same class of rot as T1.9, a **new artifact class**,
+    and the verdicts differ because the remedies live in different places.
+- **What it should write instead.** Either drop the two per-file commands from the
+  generated README, or write them the way the same block already writes `lute new scene
+  <name>`: `lute check scenes/<your-scene>.lute`, a template rather than a claim about a
+  file. Strictly better, and free: do not write the README's "Next steps" section at all.
+  `init` already printed it — resolved, correct, and unable to rot.
+
 #### T10 summary
 
-Three entries: one `DOC-WRONG` (T10.1), one `TOOL-DEFECT` (T10.2), and one closed
+Four entries: one `DOC-WRONG` (T10.1), two `TOOL-DEFECT`s (T10.2, T10.4), and one closed
 infrastructure gap carrying no verdict (T10.3). No content was written, so there is no
-`LANGUAGE-GAP` or `ERGONOMIC` here by construction — this task authored a README and a CI
-step, not a scene.
+`LANGUAGE-GAP` or `ERGONOMIC` here by construction — this task authored a README and two
+CI steps, not a scene.
 
 Both deferred findings landed where the tasks that deferred them predicted, and both are
 instances of patterns this log had already named rather than new classes. T10.1 is T3.13
 — a reference page contradicting the corpus — with the recovery path narrower, because
-the correct spelling exists in six example files and no prose. T10.2 is T4.10 and T9.12 a
+the correct spelling exists in five example files' state declarations and no prose. T10.2
+is T4.10 and T9.12 a
 third time: compiler internals in author-facing output. The one genuinely new observation
 is the compounding in T10.1, and it is worth stating on its own because it is what an
 author actually experiences. Three defects this log filed separately, in three different
@@ -7257,3 +7385,18 @@ typo and an afternoon.
 T10.3 is not a Lute finding and is recorded anyway, because the shape is the log's own:
 34 test files that fire CI and are read by nothing, in a repository whose workflow header
 had already written down the rule they violate. It is closed.
+
+T10.3's own resolution needed a second half before this task could close. The gate was
+first registered in `docs.yml` alone, whose `paths:` cover content and not `crates/**`, so
+the 34 tests would have run when the TESTS moved and never when the binary that runs them
+moved — the same omission the entry filed, pointed the other way. It is now in both
+workflows, which is where both doc scripts already were, for the reason `test.yml`'s
+header had already written down.
+
+T10.4 was not on the assignment and is the entry this task most nearly lost. The scaffold
+README overwritten in Step 2 had named a scene deleted in Task 1 for nine tasks; replacing
+it without logging it would have deleted the measurement, which is the protocol's own rule
+broken by the task whose deliverable is the log. It is T1.9's class — a scaffolded
+artifact rotting in silence — on a new artifact class, and its verdict splits from T1.9's
+`ERGONOMIC` precisely because prose is the one artifact no checker can ever be made
+responsible for: the only place the remedy can live is in what `lute init` writes.

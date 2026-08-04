@@ -27,19 +27,28 @@ name: Test
 #
 # `offline` also owns the CRATES-SIDE half of the documentation contract. The
 # docs quote real CLI output — capability hashes, `lute context` transcripts,
-# diagnostic text — and `.github/workflows/docs.yml` cannot own that half: its
-# `paths:` names only `crates/lute-check/src/lib.rs` and
-# `crates/lute-compile/src/lib.rs`, and widening it to `crates/**` would run a
-# full Astro website build on every Rust change. So the two doc checks ride
-# here, where `crates/**` is already in the trigger set and `target/debug/lute`
-# is already built. This is not duplicated coverage: `docs.yml` fires when a
-# DOC moves, this job fires when the BINARY the doc quotes moves.
+# diagnostic text — and the `*.test.yaml` scenario suites under `docs/examples`
+# are executed BY the binary rather than merely quoted from it.
+# `.github/workflows/docs.yml` cannot own that half: its `paths:` names only
+# `crates/lute-check/src/lib.rs` and `crates/lute-compile/src/lib.rs`, and
+# widening it to `crates/**` would run a full Astro website build on every Rust
+# change. So the two doc checks and `lute test docs/examples` ride here, where
+# `crates/**` is already in the trigger set and `target/debug/lute` is already
+# built. This is not duplicated coverage: `docs.yml` fires when a DOC moves,
+# this job fires when the BINARY the doc quotes — or runs — moves.
+#
+# The scenario gate needs both halves and for one commit had only the DOC one.
+# Registered in `docs.yml` alone it fired when the CONTENT moved and never when
+# the RUNNER moved: a PR touching `crates/lute-trace` could not fail 34 tests
+# whose every assertion that binary produces. That is the mirror image of the
+# omission the gate was added to close, so it is registered in both.
 #
 # Deliberately NOT added to the trigger set: `docs/**`,
 # `packages/website/**`, or the two script paths. Those are the doc-side
 # inputs, `docs.yml` already triggers on all of them and runs the same two
-# scripts, and firing a full `cargo test --workspace` for a prose edit would
-# be pure cost. The one input this job uniquely covers is `crates/**`.
+# scripts and the same scenario suites, and firing a full
+# `cargo test --workspace` for a prose edit would be pure cost. The one input
+# this job uniquely covers is `crates/**`.
 
 on:
   pull_request:
@@ -123,6 +132,22 @@ jobs:
       # sentence. Before that pin existed the same reword passed at exit 0.
       - name: Doc snippet + pinned-capability gate (docs vs this binary)
         run: python3 scripts/check-doc-snippets.py --lute ./target/debug/lute
+
+      # The crates-side half of the scenario-suite gate whose doc-side half
+      # lives in `docs.yml`. Same root and same recursion: `lute test` picks up
+      # docs/examples/anseo (31) and docs/examples/investigation (3), 34 total.
+      # Every assertion in them is produced by the binary built above — the
+      # trace walk, the state deltas, the transcript text — so `crates/**` is
+      # the trigger set that uniquely moves what this step measures.
+      #
+      # Read `34 passed` for what it is. Anseo's suite is a regression harness
+      # for authored text and state deltas, not a proof of the work's logic:
+      # deleting the `when=` from either lever that decides which ending the
+      # prologue reaches leaves every test green (see T9.18 in
+      # docs/superpowers/notes/2026-07-31-anseo-drive-test-findings.md). This
+      # step catches the former class and is honestly blind to the latter.
+      - name: Scenario suite gate (docs/examples tests vs this binary)
+        run: cargo run -q -p lute-cli -- test docs/examples
 
       # Its crate inputs today are only the two version consts `docs.yml`
       # already triggers on, so this is redundancy — but it is a stdlib-python
