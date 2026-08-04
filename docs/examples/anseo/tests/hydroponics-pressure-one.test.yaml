@@ -1,0 +1,16 @@
+# THRESHOLD GATE, the middle arm. `run.shedPressure: 1` is the wakeIlsabet outcome,
+# and it is the only seed that reaches the `$ == 1` arm of BOTH of this scene's
+# `<match on="run.shedPressure">` blocks — the second one lives inside the `ownIt`
+# choice, so the arm and the choice have to be forced together.
+file: ../scenes/hydroponics.lute
+state:
+  run.shedPressure: 1
+choose:
+  thePlainAnswer: ownIt
+expect:
+  exit: complete
+  transcriptContains:
+    - "It moved once while you were in the bank. I was counting."
+    - "One. All right. One I can carry."
+  state:
+    run.vesnaTrust: 1

@@ -1,0 +1,27 @@
+# ENDING-DECIDING LEVER 3 — put Ottavio on the manifest. Guarded by
+# `holds(found(ottavio)) && holds(knows(ottavio, manifest))`, both asserted
+# unconditionally by episode 6, so this is the one lever whose licence is a route
+# rather than a choice.
+#
+# `can_halt(vesna)` is seeded only to resolve line 0170's negated guard — nothing
+# in this arm reads it. That is the cost of a derived relation having no false:
+# a test for one choice must take a position on a fact belonging to another.
+file: ../scenes/purser.lute
+facts:
+  - "awake(vesna)"
+  - "awake(ottavio)"
+  - "found(ottavio)"
+  - "knows(ottavio, manifest)"
+  - "knows(vesna, shed_sequence)"
+  - "can_halt(vesna)"
+choose:
+  theCorrection: listTheMass
+expect:
+  exit: complete
+  transcriptContains:
+    - "Two of you, then, and a wall. Whatever was going to be said had to be said by the people who were awake to say it."
+    - "Crew addition. One name. Ottavio, loader, aboard since the yard, eats and breathes like the rest of us."
+    - "Listed crew: five. Listed mass revised. Recomputing allocation."
+    - "Allocation is short by two modules."
+  state:
+    run.shedPressure: 1

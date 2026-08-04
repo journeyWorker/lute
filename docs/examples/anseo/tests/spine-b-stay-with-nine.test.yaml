@@ -1,0 +1,18 @@
+# The convergence scene, hydroponics arm — `holds(knows(vesna, manifest))`, the
+# route proxy T8.1 records — and the third `<choice>`. The pair with
+# spine-b-clean-release.test.yaml and spine-b-margin.test.yaml covers all three
+# arms of both blocks and all three choices.
+file: ../scenes/spine-b.lute
+state:
+  run.shedPressure: 2
+facts:
+  - "awake(vesna)"
+  - "knows(vesna, manifest)"
+choose:
+  whatsLeft: stayWithNine
+expect:
+  exit: complete
+  transcriptContains:
+    - "Nobody had been down to five since the wake."
+    - "It did not let go. It tore, and it took nine metres of spine on the way out, and nobody aboard had ever been down there to know it would."
+    - "Then I'm going back down. It's the only room aboard that was ever mine, and I'd rather be in it."

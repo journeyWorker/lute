@@ -1,0 +1,12 @@
+# ENDING B — module nine goes. The other terminal, pinned the same way.
+# NOTE: `::end{reason="shed-with-module"}` is NOT observable from a test. The
+# trace transcript renders the terminator as a bare `<end>` with no payload, and
+# `expect:` has no key for it — so "which ending" is carried by `file:` alone.
+# See T9.9.
+file: ../scenes/shed.lute
+state:
+  run.shedPressure: 1
+expect:
+  exit: complete
+  transcriptContains:
+    - "Module released. Allocation is satisfied."

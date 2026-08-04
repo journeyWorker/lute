@@ -1,0 +1,11 @@
+# Episode 1, the root of the graph. No branch, no guard, no state — the whole
+# scene is four lines and two staging directives, so the only claim available is
+# that it walks clean. Written anyway: it is the one document in the corpus that
+# imports only the vocabulary schema, and a regression that broke single-schema
+# resolution would show here first.
+file: ../scenes/wake.lute
+expect:
+  exit: complete
+  transcriptContains:
+    - "Cryo's gone. We don't go back under."
+    - "If the second pod's intact, I'm taking it."

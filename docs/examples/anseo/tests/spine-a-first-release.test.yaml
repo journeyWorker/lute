@@ -1,0 +1,12 @@
+# Episode 3, the first release, and the project's first `<timeline>`. Nothing
+# here is conditional and nothing is chosen — this test exists to pin the
+# SHORTFALL LEDGER the scene's own comment declares: module four leaves the
+# allocation short by two, and every other number in the corpus is written
+# against that one. No tool checks the arithmetic; this substring is the only
+# thing that will notice if somebody edits it.
+file: ../scenes/spine-a.lute
+expect:
+  exit: complete
+  transcriptContains:
+    - "The rail went cold under your hands, and forty metres of ship stopped being ship."
+    - "Allocation is short by two modules."

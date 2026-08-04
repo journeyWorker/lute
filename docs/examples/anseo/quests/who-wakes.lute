@@ -1,0 +1,23 @@
+---
+kind: quest
+luteVersion: "0.9.0"
+uses: ../world.schema.yaml
+title: Who Wakes
+---
+
+/*
+  The exchange rate. Vesna states it in the first line of the cryobank — "Every
+  pod you crack, the Purser reads as load" — so the quest becomes available the
+  moment the cold wake ends and you are walking toward the bank.
+
+  `after=` is a `<quest>` ATTRIBUTE, not a frontmatter key (see T9.1); this is
+  the earliest node in the route graph from which the question can be asked.
+*/
+<quest id="whoWakes" title="Who Wakes" start="true" after="visited('anseo.s01ep01')">
+<objective id="bringSomebodyUp" title="Bring somebody up out of the bank" done="count(awake(_)) >= 2"/>
+<objective id="knowTheExchange" title="Learn what a body costs the schedule" done="run.shedPressure >= 1" when="quest.whoWakes.objectives.bringSomebodyUp.done"/>
+<objective id="theFifthBody" title="Find the one the ship never counted" done="holds(found(ottavio))" optional/>
+<on event="questComplete">
+@narrator: Two of you up, and a schedule that had already read the bill.
+</on>
+</quest>

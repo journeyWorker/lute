@@ -1,0 +1,30 @@
+---
+kind: quest
+luteVersion: "0.9.0"
+uses: ../world.schema.yaml
+title: The Manifest Gap
+---
+
+/*
+  Ottavio. The `after=` conjunction is the one piece of quest sequencing in this
+  project that is load-bearing rather than decorative: the gap in the manifest
+  only means anything to a player who has already learned, through `whoWakes`,
+  that a body on this ship is a line of arithmetic. `lute scenario` renders it as
+  `quest(whoWakes) -> quest(manifestGap) [completed]`.
+
+  `listHim` wanted to read "the Purser recomputed the allocation with his name in
+  it" — the ep09 `listTheMass` arm. Nothing in the world records that: the arm's
+  only writes are `run.shedPressure += 1` and an `::assert{knows(vesna, manifest)}`
+  that three other places already make. The objective ships as the shed-pressure
+  proxy, marked `optional` because the proxy is also satisfied by routes that
+  never list him. See T9.5.
+*/
+<quest id="manifestGap" title="The Manifest Gap" start="holds(found(ottavio))" after="visited('anseo.s01ep06') && completed('whoWakes')">
+<objective id="hearHisArithmetic" title="Hear what being unlisted costs a man" done="holds(knows(ottavio, manifest))"/>
+<objective id="readItYourself" title="Read the listed crew and count the bunks" done="holds(knows(vesna, manifest))"/>
+<objective id="listHim" title="Let the ship count him" done="run.shedPressure >= 3" when="quest.manifestGap.objectives.readItYourself.done" optional/>
+<on event="questComplete">
+::set{run.vesnaTrust += 1}
+@narrator: Four names, five bunks, and one of the two people who knew it was the one it was about.
+</on>
+</quest>

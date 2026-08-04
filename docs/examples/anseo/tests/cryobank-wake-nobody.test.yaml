@@ -1,0 +1,12 @@
+# The branching scene, arm 3: leave them under. The only arm of the only branch in
+# the corpus that writes NOTHING — no `::set`, no `::assert` — so there is nothing
+# to assert but the line and the walk. `expect: state:` cannot say
+# "run.shedPressure was not written"; a path that is never `::set` reports
+# `<never written>` and there is no expectation form that matches it. See T9.8.
+file: ../scenes/cryobank.lute
+choose:
+  whoWakes: wakeNobody
+expect:
+  exit: complete
+  transcriptContains:
+    - "Cheapest crew is the one still asleep."

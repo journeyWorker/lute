@@ -1,0 +1,15 @@
+# The frame quest, and the only objective in the project that counts over a
+# DERIVED relation (`count(can_halt(_)) >= 1`). The seed asserts the rule's
+# conclusion directly for the reason every other test in this suite does:
+# `lute trace` does not run the rule.
+file: ../quests/unmoored.lute
+state:
+  run.vesnaTrust: 1
+  run.shedPressure: 1
+facts:
+  - "can_halt(vesna)"
+  - "knows(vesna, manifest)"
+expect:
+  exit: complete
+  transcriptContains:
+    - "A hand that could reach the coupling, and somebody willing to stand next to it."

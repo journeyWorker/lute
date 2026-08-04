@@ -1,0 +1,30 @@
+---
+kind: quest
+luteVersion: "0.9.0"
+uses: ../world.schema.yaml
+title: Unmoored
+---
+
+/*
+  The frame quest. It becomes available at the first release — episode 3, where
+  forty metres of ship stop being ship — because that is where "the ship is
+  coming apart" stops being a warning and becomes a measurement.
+
+  What this quest WANTED to say and cannot: "and the shed is still short of the
+  greenhouse when the story ends". Every `done=` is evaluated continuously, so a
+  hold-the-line objective (`run.shedPressure < 2`) is satisfied at activation and
+  the quest completes before the player has done anything. There is no end-of-run
+  evaluation point in the language, so the goal is written in its positive form
+  instead — get a hand onto the coupling — and the losing side is `fail=`. See T9.4.
+*/
+<quest id="unmoored" title="Unmoored" start="true" fail="run.shedPressure >= 4" after="visited('anseo.s01ep03')">
+<objective id="aHandAtTheCoupling" title="Have somebody aboard who can stop the shed" done="count(can_halt(_)) >= 1"/>
+<objective id="somebodyToWalkWith" title="Give Vesna a reason to work with you" done="run.vesnaTrust >= 1"/>
+<objective id="theOrderOnPaper" title="Get the order of release onto paper you have read" done="holds(knows(vesna, manifest))" optional/>
+<on event="questComplete">
+@narrator: A hand that could reach the coupling, and somebody willing to stand next to it.
+</on>
+<on event="questFailed">
+@narrator: The schedule ran out ahead of the crew, and the ship went on subtracting itself.
+</on>
+</quest>

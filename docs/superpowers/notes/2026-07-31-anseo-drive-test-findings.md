@@ -5571,3 +5571,757 @@ T8.1 and T8.3 are the two entries asking for design rather than repair, and of t
 minimal form is nearly free: admit `visited("id")` as a read-only query in a content guard, over
 the visited set the engine already maintains for `after:`. It adds no state, no vocabulary and no
 analysis, and it would let a convergence scene say the one thing convergence scenes exist to say.
+
+### T9 — The quests and the tests
+
+Toolchain 0.9.0 / language 0.9.0 / IR 0.9.0, `./target/debug/lute`. Five quest
+documents added (`unmoored`, `who-wakes`, `false-heading`, `manifest-gap`,
+`what-vesna-carries`) and **31** `*.test.yaml` scenario tests, the project's first.
+Final state: 18 `.lute` documents, `check-project docs/examples/anseo` ok with 13
+project-wide warnings, `lute test docs/examples/anseo` 31 passed / 0 failed.
+
+This is the first task to write tests, so most of what follows measures `lute test`
+rather than the language. That is the right place to spend a last task: a branching
+work with two endings is exactly the thing whose correctness cannot be read off the
+source, and a verification story either exists or it does not.
+
+#### T9.1 — a quest's `after` is an attribute, not a frontmatter key, and the page that owns `after:` says the opposite — DOC-GAP
+
+- **Intent** — give each of the five quests the `after=` prerequisite the T4
+  controller decision requires, so each lands as a node in `lute scenario`.
+- **Attempt** — the form the decision's own prose and the scene documents both
+  suggest, written into the quest frontmatter beside `uses:` and `title:`:
+  ```lute
+  ---
+  kind: quest
+  luteVersion: "0.9.0"
+  uses: ../world.schema.yaml
+  title: Probe
+  after: 'visited("anseo.s01ep03")'
+  ---
+  ```
+- **Result** — exit 1:
+  ```
+  quests/probe.lute:1:1: error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key and not owned by an active plugin)
+  ```
+  No did-you-mean, and there are two available: `after` **is** a core frontmatter
+  key on the sibling document kind, and it **is** a legal attribute two lines below
+  in the same file. The span is the whole meta block (`1:1`), not the offending key.
+- **Resolution** — `after=` on the `<quest>` element:
+  ```lute
+  <quest id="whoWakes" title="Who Wakes" start="true" after="visited('anseo.s01ep01')">
+  ```
+  Checks clean, and produces the node and edge (T9.2). Found by experiment in a
+  scratch copy, not from documentation.
+- **Why the docs did not get me there.** `language/quests-and-scenes.md` is the page
+  that owns both constructs, and its heading is *"Scenes and `after:`"*: "Scenes are
+  *sequenced* with the frontmatter key **`after:`**, which declares the routes the
+  scene may be entered from." Its quest half never mentions `after` at all. So the
+  one page covering both document kinds states the scene spelling as *the*
+  spelling, and an author who reads it carefully — as I did — writes the wrong
+  thing. The tool that recommends the attribute does not say where it goes either:
+  `scenario envelope` closes a defaults-only quest table with "declaring `after`
+  would enrich this table", naming the key and not the slot.
+- **Verdict** — `DOC-GAP`. I did not have to open Rust, but I did have to discover a
+  construct by probing, which is the same failure the bar exists to catch: the
+  website and `lute context` between them do not tell you that a quest can carry
+  `after`, or how. The fix is two sentences on an existing page and one did-you-mean
+  on an existing diagnostic.
+
+#### T9.2 — five quests, five layers, and two quest-to-quest edges — WORKED WELL
+
+- **Intent** — the controller decision's stated payoff: `after=` buys the
+  reachability surface. Test whether it holds at five, and whether the graph can
+  express "this quest only matters once that one has happened".
+- **Attempt** — each quest's prerequisite chosen where its subject matter begins,
+  not uniformly: the cryobank question is posed in the last line of the cold wake,
+  the navigator names the false heading in episode 2, the ship is measurably
+  shorter after episode 3's release, Vesna first prices an answer in episode 4, and
+  Ottavio does not exist until episode 6. Two carry a second conjunct naming
+  another quest.
+- **Result** — every one lands, on five distinct layers, each with a real edge:
+  ```
+    layer 1: scene(anseo.s01ep02), quest(whoWakes)
+    layer 2: scene(anseo.s01ep03), quest(falseHeading)
+    layer 3: scene(anseo.s01ep04), scene(anseo.s01ep05), quest(unmoored)
+    layer 4: scene(anseo.s01ep06), quest(whatVesnaCarries)
+    layer 5: scene(anseo.s01ep07), quest(manifestGap)
+    …
+    quest(whoWakes) -> quest(falseHeading) [active]
+    quest(whoWakes) -> quest(manifestGap) [completed]
+  ```
+  The edge kind is carried through to the label, so the two quest-to-quest edges
+  read differently and correctly: `falseHeading` needs `whoWakes` *live*,
+  `manifestGap` needs it *finished*. That answers the assignment's question
+  directly — **yes, one quest's completion can gate another's start**, and it is
+  visible in the graph rather than buried in a predicate.
+- **Verdict** — worked well. This is the single cheapest thing in the whole
+  exercise: one attribute per file, and the six-quest, eleven-scene project has a
+  reachability graph an author can read. T4's decision to leave `hold-the-spine`
+  without one is the right control and the contrast is stark — that quest is a
+  full participant in `check-project` and simply absent from the picture above.
+
+#### T9.3 — `after=` speaks the route graph; `done=` cannot say a word of it — LANGUAGE-GAP
+
+- **Intent** — `unmoored` is the frame quest. The obvious objective is the one the
+  whole prologue is about: **get to the bridge.** Write it.
+- **Attempt** —
+  ```lute
+  <objective id="arrive" title="Arrive at the bridge" done="visited('anseo.s01ep10')"/>
+  ```
+- **Result** —
+  ```
+  quests/probe.lute:10:59: error [E-CEL-PROFILE] `visited(…)` is outside the Lute-CEL profile — only operators, literals, lists, `?:`, `in`, `has()`, `isSet()`, `holds()`, `count()`, `validAt()`, and `now()` are permitted (dsl §8.4, 0.3.0 §8)
+  ```
+  A good diagnostic — it enumerates the whole permitted set — attached to a
+  restriction that is very hard to defend **in this file**. Nine lines above the
+  error, the same document says `after="visited('anseo.s01ep10')"` and it compiles.
+  One parser, one document, two slots, and the predicate vocabulary is disjoint:
+  `after=` admits `visited`/`completed`/`active` and nothing else (no negation, no
+  arithmetic, no state); `done=` admits everything else and none of those three.
+- **Resolution** — every one of the 15 objectives across the five quests is a
+  proxy over declared state or the fact database. `unmoored`'s arrival objective
+  became `count(can_halt(_)) >= 1` — "somebody aboard can stop the shed" — which is
+  a *good* objective and is not the one I wrote first.
+- **Verdict** — `LANGUAGE-GAP`, shape (b). The intent is reachable only by encoding
+  it as something else, and nothing in the language *means* "the player got here",
+  so nothing can check it. This is T8.1's gap one layer up, and the quest layer
+  makes it much harder to read as a design choice: T8.1 could be explained by
+  "content guards evaluate inside a scene, where arrival is trivially true". A
+  quest is a whole-run object whose *other* predicate slot already reads the
+  visited set the engine maintains. The minimal fix is the same one T8.1 asks for
+  and it is smaller here: admit `visited("id")` in `done=`, read-only, over a set
+  the same file's `after=` is already querying.
+
+#### T9.4 — nothing is evaluated at the end of a run, so a hold-the-line objective completes before the player moves — LANGUAGE-GAP
+
+- **Intent** — `unmoored`'s second objective, written before checking anything: *the
+  ship is coming apart, and the win condition is that you did not hand the schedule
+  new reasons.* In the corpus's own terms: `run.shedPressure` never got past one.
+- **Attempt** —
+  ```lute
+  <objective id="noNewReasons" title="Give the schedule no new reasons" done="run.shedPressure < 2"/>
+  ```
+- **Result** — **silence.** `ok`, zero diagnostics, and completely wrong.
+  `run.shedPressure` is declared `default: 0`, objectives are evaluated
+  continuously, and derived completion fires as soon as every non-`optional`
+  objective is `done` — so the quest activates and completes in the same tick, at
+  episode 3, before the player has made a single choice that could violate it. The
+  trace shows it plainly: `<quest unmoored> -> active`, three objectives `-> done`,
+  `<quest unmoored> -> complete`, all before any content runs.
+- **What I looked for and did not find.** A terminal evaluation point of any kind:
+  an `at="end"`/`evaluateAt=` on `<objective>`, an `<on event="runComplete">`, a
+  `::end`-scoped hook, a "never became true" negative objective. `::end` exists and
+  is the only end-of-run construct in the language, and T5.5 already establishes it
+  is a *scene* terminator with no story-level meaning; nothing binds a quest to it.
+  `fail=` is the nearest thing and it is the inverse: it fires the moment the bad
+  condition becomes true, which is correct behaviour and not the same statement.
+- **Resolution** — the objective was rewritten in its positive form
+  (`aHandAtTheCoupling`, `somebodyToWalkWith`) and the losing side moved to
+  `fail="run.shedPressure >= 4"`. The story survives; the sentence I set out to
+  write does not exist in the shipped file. The reasoning is recorded in the
+  document's own comment so the next author does not re-derive it.
+- **Verdict** — `LANGUAGE-GAP`, shape (a): I changed the story to fit the tool. The
+  cost is not the one objective. It is that **every "you got through it without X"
+  goal in any work is silently unwritable** — the form you reach for compiles,
+  passes `check-project --deny-warnings`, and completes instantly, which is the
+  most expensive failure mode this log has (T2.1, T8.2, T7.8). An author who writes
+  `done="run.corpses == 0"` on a survival quest ships a quest that completes at the
+  title card.
+
+#### T9.5 — five quests at once: what the repetition actually measured — ERGONOMIC
+
+T7.12 measured frontmatter duplication over four new scenes. The same measurement
+over five new quests, recounted from the committed files.
+
+- **Frontmatter.** **20** key lines across the five documents, **8** distinct — so
+  **12** are byte-identical duplicates of a line in another file.
+
+  | line | files carrying it verbatim |
+  |---|---|
+  | `kind: quest` | 5 / 5 |
+  | `luteVersion: "0.9.0"` | 5 / 5 |
+  | `uses: ../world.schema.yaml` | 5 / 5 |
+  | `title: <the quest's title>` | 5 / 5, all different |
+
+  Worse than T7.12's scenes proportionally: there, two of six keys carried
+  per-file information; here **one of four** does. And that one is duplicated
+  *within* each file — every quest states its title twice, once in frontmatter and
+  once as `<quest title="…">`. Verified: deleting the frontmatter `title:` leaves
+  the document `ok`, and setting the two to different strings is also `ok`. So the
+  frontmatter copy is optional, unchecked against the attribute, and present in all
+  five files because the scaffolded shape has it.
+
+- **Objective predicates.** **15** objectives, **12** distinct `done=` strings. The
+  repeat is `holds(knows(vesna, manifest))`, written **four** times across four
+  different quests — `falseHeading.findThePaper`, `unmoored.theOrderOnPaper`,
+  `manifestGap.readItYourself`, `whatVesnaCarries.sheHasThePaper`. Four quests
+  reaching for the same fact is not itself a smell; four quests naming it in four
+  places, with four different titles, and no way to say "the manifest has been
+  read" once, is.
+- **Predicate shapes.** All 15 are one of three: `holds(…)` ground query (8),
+  `<scalar> >= n` (5), `count(…) >= n` (2). A world with two scalars and four
+  relations does not give five goal machines much room, and the language offers
+  nothing to factor the shared part: no named predicate, no macro, no shared
+  objective library, no `extends:` for documents (it composes *schemas* only —
+  checked, T7.12 has the same finding from the other side).
+- **What the language could have offered instead.** Two things, both with existing
+  precedent in this project. (1) A **named derived predicate** — the `rules:` block
+  already gives exactly this for facts (`can_halt(C) :- awake(C), knows(C, shed_sequence)`),
+  and `holds(can_halt(vesna))` is used as an objective in `whatVesnaCarries`. There
+  is no scalar-side equivalent, so `run.vesnaTrust >= 2` cannot become
+  `trusted()`. (2) A **`defaults:` block in `lute.project.yaml`**, T7.12's proposal,
+  which would take the five quests' frontmatter from 20 lines to 5.
+- **Verdict** — `ERGONOMIC`. Nothing is at risk and nothing is inexpressible; the
+  cost is that the fifth quest reads like the first with the nouns changed, and the
+  one thing a reader most needs to see — how these five goal machines differ — is
+  buried under three identical lines and four identical predicates.
+
+#### T9.6 — an objective on a scalar gets no satisfiability analysis at all, while the same slot on a relation gets a project-wide fixpoint — TOOL-DEFECT
+
+- **Intent** — none authorial. T4.2 is this log's strongest single finding: a
+  relational `done=` gate is proved dead *across documents*, naming the relation.
+  With five new quests and 15 objectives I wanted to know whether the same care
+  covers the scalar half, because that is the half authors write most.
+- **Attempt** — one scratch quest in a copy of the committed project, three
+  objectives:
+  ```lute
+  <quest id="deadQuest" title="Dead" start="true" after="visited('anseo.s01ep01')">
+  <objective id="tooHigh" title="Beyond the corpus maximum" done="run.shedPressure >= 99"/>
+  <objective id="alsoLow" title="Contradicts the one above" done="run.shedPressure <= 0"/>
+  <objective id="never"   title="Literally false"           done="false"/>
+  </quest>
+  ```
+- **Result** — exactly one diagnostic, for the literal:
+  ```
+  quests/dead.lute:11:1: error [E-OBJECTIVE-UNSATISFIABLE] `done` predicate `false` is provably false: the objective can never complete on any run; the objective — and, being required, the quest — can never complete (dsl 0.4 §5.3)
+  ```
+  `tooHigh` and `alsoLow` draw **nothing**. And they are two separate failures:
+  - `run.shedPressure >= 99` is unreachable in this corpus — the maximum any route
+    can produce is **4** (cryobank `wakeToma` +2, machine-deck `<otherwise>` +1,
+    purser `listTheMass` +1), and every write is a literal-delta `::set` the
+    checker already reads. This needs range analysis and I would not call its
+    absence a defect on its own.
+  - `tooHigh` **and** `alsoLow` together is a different thing entirely. Two
+    required objectives on one path with disjoint solution sets: the quest can
+    never complete, and deciding it needs no corpus knowledge, no route walk and no
+    range propagation — just the two literals. Nothing reports it.
+- **And `scenario reach` still says Reachable.** With the file failing `check-project`
+  on `E-OBJECTIVE-UNSATISFIABLE`:
+  ```
+  reach quest(deadQuest):
+    verdict: Reachable — a satisfiable route exists under your declared routes.
+  ```
+  Same shape as T4.5, now on a quest whose own document is a hard error rather than
+  a silent one.
+- **Verdict** — `TOOL-DEFECT`. The check exists, is named, cites its spec clause,
+  and states its conclusion in absolute terms ("can never complete on any run") —
+  and it covers constant-folded literals and a cross-document relational fixpoint
+  while dropping the one case an author produces by accident. `E-OBJECTIVE-UNSATISFIABLE`'s
+  own existence is the advertisement; incompleteness against it is the defect. The
+  contradictory-pair case in particular is a handful of lines beside machinery that
+  already does far harder work.
+
+#### T9.7 — a derived relation has exactly one expressible mock value, and the false side of every rule in the project is untestable — TOOL-DEFECT
+
+This is the largest single obstacle the test suite hit, and it shaped six of the
+31 test files.
+
+- **Intent** — the assignment's question, and the right one for a relational work:
+  *does a relational gate open only after the fact that licenses it?* Two tests per
+  gate, one with the licensing fact and one without.
+- **Attempt** — the negative control for `purser.lute`'s `theCorrection` branch:
+  nobody awake but Vesna, nobody who can halt the shed, so `sayNothing` should be
+  the only eligible arm.
+  ```yaml
+  file: ../scenes/purser.lute
+  facts: ["awake(vesna)"]
+  choose: { theCorrection: sayNothing }
+  expect: { exit: complete }
+  ```
+- **Result** — `exit: incomplete`. The walk stops dead:
+  ```
+  trace incomplete: 1 unresolved atom (exit 3)
+    unresolved: match `(!holds(can_halt(toma)) && !holds(can_halt(vesna)) && !holds(awake(ilsabet)))` — supply --fact "can_halt(toma)", --fact "can_halt(vesna)" as a mock
+  ```
+  **Base relations are closed-world in the trace evaluator — absent means false —
+  but `derive: true` relations are UNKNOWN when absent, and unknown halts the
+  walk.** So `can_halt` has exactly one expressible value, `true`, and the hint the
+  tool prints is the only move available: assert the conclusion of the project's
+  one rule.
+- **Three consequences, all of them in the committed suite.**
+  1. **`purser.lute:61` is dead to the harness.** Its guard is true only when
+     `can_halt(toma)`, `can_halt(vesna)` and `awake(ilsabet)` are all *false* —
+     three facts, none of which has a false. `lute test --coverage` reports it and
+     cannot be satisfied: `match !holds(can_halt(toma)) && …: 1/2 arm(s) executed; 1 unexecuted`,
+     permanently, and the same for `holds(can_halt(toma))` and `holds(can_halt(vesna))`.
+     Three of the fifteen coverage rows are structurally unreachable.
+  2. **A test must over-seed to trace one arm.** `haltTheSequence` carries two
+     alternative lines — 0180 guarded on `can_halt(vesna)`, 0190 on
+     `can_halt(toma)` — and leaving either unseeded halts the walk. So the only
+     traceable version of that arm is one where **Vesna and Toma can both halt the
+     shed simultaneously**, a world state no route in the story produces. The
+     `<choice>` is testable; the alternation inside it is not, and the passing test
+     documents a world that cannot happen.
+  3. **The seed is not time-varying.** `archive-read-it-aloud.test.yaml` seeds
+     `can_halt(vesna)` from line 1, including across the branch that *earns* it;
+     `archive-with-navigator.test.yaml` has to seed it on a route that pockets the
+     page and never learns the sequence, making line 0230 play when the story says
+     it must not. Both files say so in a comment.
+- **Resolution** — six tests seed a `can_halt(…)` they should have derived, each
+  with the reason written into the file. No content was changed: the gates are
+  right, the harness cannot express their negation.
+- **Verdict** — `TOOL-DEFECT`. The language's closed-world base relations have a
+  false and the harness honours it correctly; the derived layer does not, because
+  `trace` declines to run the rules (T4.4/T8.9, documented) and the mock surface
+  offers assertion only. Two small additions close it independently: a negative
+  mock (`--no-fact` / `notFacts:`) so a derived relation can be pinned false, or
+  running the Datalog fixpoint over the seeded base facts, which `lute run` already
+  does. Until then, **any work whose interesting guards are derived can test the
+  yes and not the no** — which is half of what a gate is for.
+
+#### T9.8 — `expect:` silently ignores every key it does not recognise, and a test that asserts nothing passes — TOOL-DEFECT (silence)
+
+- **Intent** — none authorial; asked the moment the third test file was written,
+  because a test harness that fails open is worse than no harness.
+- **Attempt** — four probe files in a scratch copy of the project, run through
+  `lute test`:
+  ```yaml
+  # a-no-expect.test.yaml — no `expect:` block at all
+  file: ../scenes/cryobank.lute
+  choose: { whoWakes: wakeToma }
+  ```
+  ```yaml
+  # b-empty-expect.test.yaml
+  file: ../scenes/cryobank.lute
+  choose: { whoWakes: wakeToma }
+  expect: {}
+  ```
+  ```yaml
+  # c-typo-key.test.yaml — four wrong keys, every assertion false
+  file: ../scenes/cryobank.lute
+  choose: { whoWakes: wakeToma }
+  expect:
+    transcriptContain: ["THIS TEXT IS NOWHERE IN THE CORPUS"]
+    states: { run.shedPressure: 999 }
+    exits: incomplete
+    questStatus: { whoWakes: complete }
+  ```
+- **Result** — all three **PASS**.
+  ```
+  PASS  /tmp/t9probe/tests/a-no-expect.test.yaml
+  PASS  /tmp/t9probe/tests/b-empty-expect.test.yaml
+  PASS  /tmp/t9probe/tests/c-typo-key.test.yaml
+  ```
+  The verdict is `expectations.iter().all(|e| e.passed)` over a vector that is empty
+  when no key is recognised, and `all()` on empty is `true`. `expect:` knows exactly
+  three keys — `exit`, `transcriptContains`, `state` — and every other key, however
+  plausibly misspelled, is dropped without a word.
+- **Two aggravations.** `transcriptContain` (singular) is the natural typo and the
+  most common assertion. And `questStatus` is not an invention: `lute test --help`
+  reads *"…asserts the declared expectations (transcript, state, **quest status**)"*.
+  An author following the tool's own help writes a `questStatus:` block, gets a
+  green test, and believes a quest was asserted.
+- **Verdict** — `TOOL-DEFECT`, and the worst thing T9 found. This is T3.10 and
+  T7.11's "unknown mock key silently discarded" recurring one layer up, where it is
+  categorically more expensive: a discarded *mock* key makes a test behave oddly and
+  usually fail confusingly; a discarded *expectation* key makes it pass. The suite
+  that exists to catch regressions is itself the thing with no check on it, and the
+  cheapest fix is the one T3.10 already asked for — reject unknown keys — plus a
+  refusal to green a test with zero expectations.
+
+#### T9.9 — a never-written state path fails against its own rendered value — TOOL-DEFECT (misdirecting diagnostic)
+
+- **Intent** — the honest question behind `cryobank-wake-nobody.test.yaml`: the
+  `wakeNobody` arm is the only branch arm in the corpus that writes nothing. Assert
+  that `run.shedPressure` was not written.
+- **Attempt** — `expect:` compares against the *final written* state, and an
+  unwritten path renders as `<never written>` in the miss line, so:
+  ```yaml
+  expect:
+    state:
+      run.shedPressure: "<never written>"
+  ```
+- **Result** — FAIL, with:
+  ```
+  state run.shedPressure: expected "<never written>", got "<never written>"
+  ```
+  A mismatch line whose two sides are byte-identical. The comparison is
+  `Option<String>` against `Some(want)` and the sentinel is a *rendering* applied
+  only to the actual side, so `None` never equals the string it prints as.
+- **Resolution** — the intent is abandoned; the test asserts the transcript only,
+  and says so in a comment.
+- **Verdict** — `TOOL-DEFECT`. Small, but it is the protocol's highest-priority
+  category — a diagnostic that says X when the problem is Y — in its purest
+  available form: it says the two values differ and then prints them equal. An
+  author sees this and looks for whitespace, for quoting, for YAML coercion. The
+  underlying gap (there is no way to assert that a path was not written) is T9.10's;
+  this entry is only about the message.
+
+#### T9.10 — what `expect:` cannot say — TOOL-DEFECT
+
+The assignment asked what a test cannot express. The full list, each verified
+against the committed suite. `expect:` has three keys, and the missing ones are not
+exotic:
+
+1. **That a line did NOT play.** There is no `transcriptOmits`/`not:`. Every
+   negative in the suite is implied by a positive: `hydroponics-pressure-none`
+   asserts the `<otherwise>` arm's line is present and *infers* that the `$ >= 2`
+   arm's is not. A refactor that made both play would keep the test green.
+2. **That a state path was untouched.** T9.9. `expect: state:` reads only the last
+   `::set` per path across the walk, so seeds are unassertable too — the
+   preconditions a test declares can never be checked as postconditions.
+3. **Which options the player was offered.** The report *has* this. Every
+   `<branch>` decision carries an `eligible[]` list, `lute trace` prints it
+   (`<branch theCorrection>   eligible: invalidateTheVoyage, sayNothing`), and
+   `--coverage` aggregates it across runs. There is no `expect:` key for it. For a
+   branching work this is the single most valuable assertion available and it is
+   computed, rendered, and not offered. What saves the suite is indirect and worth
+   stating: `lute test` **enforces** eligibility, so a `choose:` naming a
+   guard-false option is refused outright — the gate is proved by the test
+   *running*, not by anything it says.
+4. **That a particular ending was reached.** `::end{reason="shed-with-module"}`
+   renders in the transcript as a bare `<end>` with no payload (T5.9), and `expect:`
+   has no key for it. `exit: complete` means "the walk finished", nothing more —
+   both terminals and all nine non-terminal scenes report it. Which ending a test
+   pins is carried entirely by `file:`, and if the two terminal scenes ever shared a
+   line of dialogue the two ending tests would be indistinguishable.
+5. **Anything about a quest.** `lute test` traces a quest document fully — the
+   activation predicate, every objective's `done`/`pending`, derived completion, the
+   `<on>` handler — and reports all of it in `decisions[]`:
+   ```
+     <quest whoWakes>   -> active (true)
+     <objective bringSomebodyUp>   -> done (count(awake(_)) >= 2)
+     <objective theFifthBody>   -> pending (holds(found(ottavio)))
+     <quest whoWakes>   -> complete
+   ```
+   None of it is assertable, and `--help` says it is. The **only** channel is a side
+   effect: `quest-who-wakes-completes.test.yaml` proves completion by asserting the
+   `<on event="questComplete">` narrator line, and `quest-manifest-gap-completes.test.yaml`
+   proves it in state because that quest's handler happens to carry a `::set`. To
+   make a quest testable at all, an author must give it a side effect it did not
+   otherwise need.
+6. **That a fact holds.** `facts:` is an input surface only; there is no
+   `expect: facts:`. The suite asserts `::assert` sites by their downstream visible
+   effects, never directly, even though the trace's `steps[]` records each one.
+
+- **Verdict** — `TOOL-DEFECT`. Items 3, 4, 5 and 6 are all *computed and rendered by
+  the same tool in the same run* and simply have no expectation slot; item 5 is
+  additionally promised in `--help`. That is the criterion exactly: the information
+  exists, and the tool that promised to hand it to you did not. Items 1 and 2 are
+  the design half — a `transcriptOmits` and a `state: { path: unset }` would close
+  both — and I would rank 3 first, because "was this choice offered" is the question
+  a branching work exists to make you ask.
+
+#### T9.11 — a refused test prints four words where `trace` prints the code, the key and the fix — TOOL-DEFECT
+
+- **What works, and it is worth saying first.** A scenario test **does not rot
+  silently**, unlike a mock file (T1.9, T3.10). Three separate rot modes were probed
+  against a copy of the project and all three fail the suite: a `choose:` naming a
+  choice id that no longer exists, a `choose:` naming a branch id that no longer
+  exists, and a `state:` naming a path deleted from the schema. `lute test` treats a
+  refused trace as a test failure, so a stale suite goes red.
+- **Attempt** — read the failure and fix it.
+- **Result** — all three produce the identical line:
+  ```
+  FAIL  tests/stale.test.yaml   trace refused: invalid mock input
+  FAIL  tests/stale2.test.yaml  trace refused: invalid mock input
+  FAIL  tests/stale3.test.yaml  trace refused: invalid mock input
+  ```
+  `lute trace`, on the same three inputs, prints:
+  ```
+  error [E-TRACE-CHOICE] `--choose whoWakes=wakeTomaTYPO` names an unknown choice id `wakeTomaTYPO` for `<branch/hub id="whoWakes">` (dsl 0.4.0 §4.3)
+  error [E-TRACE-CHOICE] `--choose whoWakesTYPO=…` names an unknown branch/hub id `whoWakesTYPO` (dsl 0.4.0 §4.3)
+  error [E-TRACE-MOCK-UNDECLARED] `--state run.deletedPath=…` names a state path not declared in the resolved schema (state-by-typo MUST fail in mocks exactly as in documents, dsl 0.4.0 §4.3, 0.1 §11.1.1)
+  ```
+  The harness **has** those diagnostics — it holds them in `TraceExit::Refused(diags)`
+  and inspects their codes to choose between two canned strings — and then discards
+  the vector.
+- **Verdict** — `TOOL-DEFECT`. On a 31-file suite this is the difference between a
+  one-second fix and a bisect: the message names neither the key, nor the value, nor
+  the code, and is identical for faults in three different mock surfaces. The fix is
+  to print the vector already in hand. (Minor, noted in passing: those messages
+  render CLI flag spellings — `--choose`, `--state` — for input that came from YAML
+  keys, so even printed they would point at the wrong syntax.)
+
+#### T9.12 — the one document kind that cannot be tested is the one built for reuse — TOOL-DEFECT
+
+- **Intent** — cover all 18 documents. The last one is
+  `components/purser-interject.component.lute`.
+- **Attempt** — `lute trace docs/examples/anseo/components/purser-interject.component.lute`.
+- **Result** —
+  ```
+  components/purser-interject.component.lute:19:12: error [E-COMPILE-EXPAND] `@pressure` names no known def body (gate should have caught this)
+  trace refused: … has check error(s) — run `lute check` first
+  ```
+  The advice is impossible to follow: `lute check` on that exact file, with
+  `--project`, reports **`ok` (0 warning(s))**, and so does `check-project`. Two
+  tools disagree about whether the same document has check errors, and the message
+  telling you to consult the one that says `ok` is the one that refuses. Note also
+  the parenthetical — *"(gate should have caught this)"* — an internal invariant
+  assertion shipped in an author-facing diagnostic.
+- **The coverage consequence.** The component's body is a `<match on="@pressure">`
+  with two arms. It is invoked from exactly one site in the project
+  (`cryobank.lute:14`, `pressure="rising"`), so its `<otherwise>` arm
+  (`Allocation is nominal.`) is dead in this work — and **nothing says so**.
+  `check-project` is clean, and `lute test --coverage` has no row for it at all:
+  component-internal matches never appear in a traced report, so the three cryobank
+  tests that expand the component contribute zero coverage information about it.
+- **Resolution** — the suite covers **17 of 18** documents. The eighteenth is
+  recorded in `quest-hold-the-spine-completes.test.yaml`'s comment.
+- **Verdict** — `TOOL-DEFECT`. Two tools, opposite verdicts, same file — the same
+  shape as T6.3 and T6.7, now on the testing surface. A component is the one
+  construct in the language explicitly for reuse across callers, which makes it the
+  construct where an arm most easily goes dead, and it is the only one with no test
+  and no coverage.
+
+#### T9.13 — coverage, honestly: what 31 tests actually exercise and what no tool will tell you — TOOL-DEFECT
+
+`lute test --coverage` is real and is the best answer to "what is untested" that
+exists in this toolchain. It is also keyed on the wrong thing. Every number below is
+counted from the committed tree.
+
+**What the suite covers, and this part is good.**
+
+- **Choices: 15 / 15.** Five `<branch>`es — `whoWakes` (3), `thePlainAnswer` (3),
+  `theSequence` (2), `whatsLeft` (3), `theCorrection` (4) — every arm of every one
+  forced by at least one test.
+- **Documents: 17 / 18.** All 11 scenes, all 6 quests; the component cannot be
+  named (T9.12).
+- **Arms: 12 of 15 reported rows complete.** The three that are not are
+  `!holds(can_halt(toma)) && …`, `holds(can_halt(toma))` and `holds(can_halt(vesna))`
+  — all three structurally unreachable for T9.7's reason, not for want of a test.
+- The header wording is honest and worth crediting: *"coverage over 31 traced
+  path(s)"*, never a whole-space claim. Its own module comment says so
+  ("never a whole-space coverage claim"), and it holds to it.
+
+**Where the number stops meaning what it says.** The coverage key is the guard's
+**text**, not the construct's identity.
+
+- The scenes hold **8** `<match on=…>` blocks and **11** guarded content lines —
+  **19** distinct guarded constructs. `--coverage` renders them as **10** rows.
+- **Six** of the eight blocks open `<match on="true">` — T7.6's dummy subject, the
+  workaround the language *forces* because a relation may not be a `<match on>`
+  subject. They live in `archive.lute:35` (2 arms), `machine-deck.lute:26` (2),
+  `purser.lute:37` (2), `purser.lute:46` (3), `spine-b.lute:38` (3),
+  `spine-b.lute:72` (3) — **15 arms across four files** — and they collapse into one
+  row that reads:
+  ```
+  match `true`: 3/3 arm(s) executed [arm 1, arm 2, otherwise]
+  ```
+  A full-green row, over a bucket whose members it cannot name, whose largest member
+  has three arms and whose total is fifteen. The two `<match on="run.shedPressure">`
+  blocks in `hydroponics.lute` (3 arms each) collapse the same way into a `3/3` row.
+- The same happens to line guards across documents: `holds(can_halt(vesna))` is one
+  row covering `archive.lute:70` and `purser.lute:66`, in different scenes.
+- So the tool's only false statement is also its most reassuring one. **A row reading
+  `3/3` is the output an author scans for and stops at**, and here it certifies a set
+  of six blocks that no single traced path ever visited together.
+
+**What nothing answers at all.**
+
+- **Untested documents are invisible.** Coverage is accumulated only from reports
+  that ran, so a scene with no test contributes no row and generates no complaint.
+  Delete `wake-cold-open.test.yaml` and nothing anywhere says `wake.lute` is
+  untested. The 17/18 figure above is one I computed by hand from `file:` keys; no
+  tool produces it.
+- **No line coverage.** 167 content lines across the eleven scenes, and nothing
+  reports which ever played. `loc export` knows every line; `trace` knows which
+  played; nothing joins them.
+- **No route coverage.** The suite traces **one scene at a time** by construction
+  (`file:` is singular), so "does every ending remain reachable?" is not a question
+  the harness can be asked. `reach-bridge.test.yaml` proves episode 10 *runs*, not
+  that any route arrives at it; `lute scenario` proves the graph reaches it, but
+  knows nothing about guards. The two halves of that question live in two tools and
+  are never joined.
+- **`<choice when=>` guards get no row.** Three of them (`purser.lute:64`, `:72`,
+  `:83`) fold into their branch's eligibility and are never reported as covered or
+  not.
+- **Verdict** — `TOOL-DEFECT`. The keying is a one-line change (key on document +
+  span, which every `Decision` already carries; render the guard text as a label),
+  and until it is made the tool reports full coverage of things it has not covered.
+  The missing document-level report is the bigger design hole and the honest summary
+  of this entry: **an author shipping this work still has no way to ask what is
+  untested — only what, among the things they happened to test, they tested
+  incompletely.**
+
+#### T9.14 — five quests over one world, and the only coupling the toolchain can see is the one you declared by hand — ERGONOMIC
+
+- **Intent** — the assignment's question. Five quests now share two scalars and four
+  relations. What does anything notice?
+- **What is seen, and it is exactly the declared part.** `after=` produces
+  `quest(whoWakes) -> quest(falseHeading) [active]` and
+  `quest(whoWakes) -> quest(manifestGap) [completed]` (T9.2), and
+  `quest.<id>.objectives.<oid>.done` cross-references are checked project-wide —
+  T4's `W-QUEST-REF-UNKNOWN` fires with distinct messages for an unknown quest and
+  for a known quest missing that objective, verified again here.
+- **What is not seen, and it is live in the committed project.**
+  `manifest-gap.lute`'s `<on event="questComplete">` runs `::set{run.vesnaTrust += 1}`.
+  `what-vesna-carries.lute` activates on `run.vesnaTrust >= 2` and completes on
+  `>= 3`. **One quest's completion advances another quest's activation threshold**,
+  across two files, and nothing reports the edge: `lute scenario` shows only
+  declared `after=` edges, and `scenario envelope quest:whatVesnaCarries` lists
+  ```
+    Guaranteed (safe to read under your declared routes):
+      - run.shedPressure
+      - run.vesnaTrust
+  ```
+  with no provenance for either — no writer list, no note that one of the writers is
+  a sibling quest's completion handler. The one real inter-quest coupling in the
+  project is the one no tool draws.
+- **Two quests that can never both complete** — probed and not detected; that is
+  T9.6, and it holds a fortiori across documents, since the intra-document case
+  already draws nothing.
+- **A quest satisfied by another quest's side effect** — not detected, and the
+  example above is exactly it: `whatVesnaCarries.sheWillWorkWithYours`
+  (`run.vesnaTrust >= 3`) is satisfiable by `manifestGap` completing plus two
+  choices, and an author reading `what-vesna-carries.lute` alone cannot know that.
+- **Verdict** — `ERGONOMIC`. Nothing is wrong and nothing is at risk; the analysis
+  simply stops at the declaration layer. The envelope already computes which paths
+  are written on which routes — it is one join away from naming the writers, and at
+  six quests over two scalars the writer list is the thing an author needs.
+
+#### T9.15 — a quest's own lifecycle state is the one reserved path you cannot read, and the surface that would have said so is empty — TOOL-DEFECT
+
+- **Intent** — gate one quest on another's completion in the predicate, not just in
+  the graph: `start="quest.holdTheSpine.state == 'complete'"`.
+- **Result** —
+  ```
+  quests/probe.lute:8:45: error [E-MAYBE-UNSET] state path `quest.holdTheSpine.state` may be read before it is set (no default, no dominating `::set`, no guard) (dsl §9.4)
+  ```
+  The path is *declared* — `lute context` on a quest document prints it —
+  ```
+    quest.probeQuest.activatedAt: narrativeTime
+    quest.probeQuest.objectives.arrive.done: bool
+    quest.probeQuest.state: enum [active, complete, failed]
+  ```
+  — and its sibling reads fine: `start="quest.probeQuest.objectives.arrive.done"`
+  checks clean, because `bool` carries a default and the `enum` does not. So the
+  compiler-declared, three-valued lifecycle state of a quest is the one reserved
+  path an author may not consult, while the derived per-objective flag beside it is
+  free. An author wanting "after that quest finished" must either use `after=`
+  (graph only) or read an objective flag and hope it means completion.
+- **And the authoring surface hides all of it.**
+  - `lute context --json` has a top-level key **`reservedQuestPaths`** and it is
+    `[]` — on a quest document that prints three of them in its own human output,
+    and on the shipped `docs/examples/investigation` quest too. The JSON
+    `stateSchema` has no `quest.*` key either. Human and machine renderings of the
+    same surface disagree.
+  - `lute context` on a **scene** lists **zero** quest paths, in a project declaring
+    six quests — although a scene may legally guard on one. Verified: adding
+    `when="quest.probeQuest.objectives.arrive.done"` to a `purser.lute` content line
+    checks clean project-wide, and nothing in that scene's authoring surface would
+    have told you the path exists.
+- **Verdict** — `TOOL-DEFECT`, and a direct recurrence of T1.6's shape: the tool
+  whose stated job is to emit the authoring surface omits part of it, with no signal
+  that anything is missing. New here is the *empty declared key* — `reservedQuestPaths`
+  is not an omission an author can miss, it is a promise the output makes and then
+  answers with `[]`. The `E-MAYBE-UNSET` on `quest.<id>.state` is the smaller half
+  and may well be deliberate; if so it needs a message saying "read
+  `quest.<id>.objectives.<oid>.done`, or use `after="completed(…)"`", because the
+  current one describes a definite-assignment problem the author cannot fix.
+
+#### T9.16 — what carried real weight — WORKED WELL
+
+Five things, each load-bearing in the committed suite.
+
+1. **`lute test` enforces choice eligibility.** A `choose:` naming a guard-false
+   option is refused, not silently played. This is the single reason the relational
+   gate tests mean anything: `purser-invalidate-the-voyage.test.yaml` passes only
+   because seeding `awake(ilsabet)` and `knows(ilsabet, true_heading)` genuinely
+   opens the lever, and removing either turns the test red rather than wrong. Set
+   against T8.5 — `lute run` plays a guard-false choice — the *test* harness is the
+   one that got this right, which is the right way round.
+2. **`fail=` is a real independent axis, and the failure path is walkable.**
+   `quest-false-heading-fails.test.yaml` completes all three objectives and still
+   ends `failed`, firing `<on event="questFailed">`. T4.1 established the grammar
+   accepts this; this is the first time it was executed.
+3. **The three-value objective report.** `<objective theFifthBody> -> pending` is
+   exactly the right rendering — done / pending / unresolved, each with the
+   predicate that decided it, in both the human transcript and `decisions[]`. The
+   quest walk is fully computed and well presented; only the assertion slot is
+   missing (T9.10).
+4. **The sequenced objective, in shipped content.** T4.1 verified
+   `when="quest.<id>.objectives.<oid>.done"` and deferred it to this task; three of
+   the five quests use it (`whoWakes.knowTheExchange`, `falseHeading.findThePaper`,
+   `manifestGap.listHim`) and it composes with `optional` on the third. No mirror
+   flag, no new construct.
+5. **Scenario tests do not rot silently.** Three separate rot modes all go red
+   (T9.11). After eight tasks of mocks and attributes being discarded without a
+   word, a surface that fails closed is worth naming.
+
+#### T9.17 — recurrences, not re-counted
+
+- **T4.4 / T8.9, from inside the harness.** Every quest test seeds facts, and every
+  seed of a relation the quest document does not itself `::assert` draws
+  `W-TRACE-MOCK-UNPRODUCIBLE — … the supplied answer can never arise from authored
+  producers, so a complete walk seeded with it proves nothing about reachable play`.
+  Producibility is judged document-locally, so on a quest file — which contains no
+  `::assert` at all — *every* seeded relation is "unproducible", including `knows`,
+  which the project-wide `W-UNPROVEN-RELATIONAL` on the very same line calls
+  "producible relation(s) `knows`". Two warnings, one project, opposite adjectives,
+  same relation. And `lute test` **prints neither**: the notes are dropped, so a
+  green suite silently carries the "proves nothing" warning on six of its files.
+- **T4.5.** `scenario reach` reports `Reachable` for a quest whose own document
+  fails `check-project` on `E-OBJECTIVE-UNSATISFIABLE` (T9.6).
+- **T5.4 / T5.9.** The ending is not assertable; `<end>` renders without its
+  `reason` (T9.10, item 4). `manifestGap.listHim` wanted to read "the Purser
+  recomputed with his name in it" and there is nothing to read — the `listTheMass`
+  arm's only writes are a `run.shedPressure += 1` three other things also produce
+  and an `::assert{knows(vesna, manifest)}` three other places also make. It ships
+  as a shed-pressure proxy, marked `optional`, with the reason in the file.
+- **T7.7.** A content-line `when=` is reported by `trace` and counted by
+  `--coverage` as a `<match>` arm — the sugar the docs describe as "exact sugar for
+  a `<match>` that does not compile" is visible in the coverage numbers, where 11
+  guarded lines occupy 8 of the 15 rows.
+- **T3.10 / T7.11.** Unknown-key silence, now on the assertion surface (T9.8).
+
+#### T9 summary
+
+Fourteen entries carrying a verdict: **one `DOC-GAP`** (T9.1), **two
+`LANGUAGE-GAP`** (T9.3, T9.4), **two `ERGONOMIC`** (T9.5, T9.14), and **nine
+`TOOL-DEFECT`** (T9.6, T9.7, T9.8, T9.9, T9.10, T9.11, T9.12, T9.13, T9.15) —
+1 + 2 + 2 + 9 = 14, one verdict per entry, no hybrids. Three further entries carry
+no verdict: T9.2 and T9.16 record what worked, T9.17 rolls up recurrences already
+counted in earlier tasks. **Nine of the fourteen are
+`TOOL-DEFECT`** — the highest concentration in this log, which is what you would
+expect from the first task to point a testing tool at the work rather than a
+checker.
+
+**The quest layer of the language is in good shape and the quest layer of the tools
+is not.** Everything a real goal machine wants was there and worked at five
+instances: `after=` nodes and quest-to-quest edges (T9.2), `fail=` as an independent
+axis executed end to end (T9.16.2), `optional`, sequenced objectives via the
+compiler's own reserved paths (T9.16.4), derived relations as objective predicates,
+and a per-objective done/pending/unresolved report (T9.16.3). Two real language
+holes were found and both are about *time*: a quest cannot say "the player got here"
+(T9.3) and nothing in the language is evaluated at the end of a run (T9.4). The
+second is the one to fix — the form an author reaches for compiles clean and
+completes instantly, which is silence, which this log has spent nine tasks
+establishing is the expensive failure.
+
+**The testing story exists, runs, and fails open.** 31 tests, 17 of 18 documents,
+15 of 15 choices — that suite is buildable in an afternoon and it caught real things
+while being written. But `expect:` recognises three keys and silently ignores every
+other, a test with no expectations is green, and the one key `--help` advertises
+that does not exist (`questStatus`) is the one an author would most want (T9.8).
+Ranked by what it costs an author: **T9.8 first** — a verification tool that greens a
+typo'd assertion is worse than none, and the fix is the same unknown-key rejection
+T3.10 asked for two hundred entries ago. **T9.7 second**, because it removes half of
+every relational gate's testability and the two independent fixes (a negative mock,
+or running the fixpoint `lute run` already runs) are both small. **T9.13 third**, for
+keying coverage on guard text: six distinct blocks reporting one `3/3` row is a false
+green in the one output an author reads to decide they are done. **T9.11 fourth**,
+because it is printing a vector the code already holds.
+
+**The measurement the assignment asked for, stated plainly.** After 31 passing tests
+covering every choice in the work, *no tool in this toolchain can tell an author what
+is untested.* Coverage is accumulated only over documents that were traced, so an
+untested scene is not a gap in the report — it is absent from it. There is no line
+coverage, no route coverage, and no document-level report; the 17/18 figure in T9.13
+was counted by hand out of the `file:` keys. And because `file:` is singular, the
+question a two-ending work most needs answered — *is every ending still reachable?* —
+cannot be put to the test harness at all. `lute scenario` answers the graph half
+knowing nothing of guards, `lute test` answers the guard half one scene at a time,
+and nothing joins them. That gap is not a missing assertion or a wrong key; it is the
+shape of the tool, and it is the last thing this drive test found.
