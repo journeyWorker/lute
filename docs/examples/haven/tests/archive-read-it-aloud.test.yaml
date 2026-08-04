@@ -1,0 +1,26 @@
+# The archive branch, and the scene where the project's one Datalog rule gets its
+# second premise: `readItAloud` asserts `knows(vesna, shed_sequence)`, which with
+# `awake(vesna)` is exactly the body of
+# `can_halt(C) :- awake(C), knows(C, shed_sequence)`.
+#
+# `can_halt(vesna)` is seeded DIRECTLY, and that is a compromise, not a choice.
+# `lute trace` does not run the rule (T4.4/T8.9), and a derived relation with no
+# seed evaluates to UNKNOWN rather than false — so line 0230's
+# `when="holds(can_halt(vesna))"` halts the walk at `exit: incomplete` unless the
+# rule's CONCLUSION is asserted as a mock. The seed is also not time-varying: it
+# is true from the first line, including before the branch that earns it. See T9.6.
+file: ../scenes/archive.lute
+facts:
+  - "awake(vesna)"
+  - "knows(vesna, shed_sequence)"
+  - "can_halt(vesna)"
+choose:
+  theSequence: readItAloud
+expect:
+  exit: complete
+  transcriptContains:
+    - "The heading was in the second drawer, in a navigator's shorthand, and there was nobody awake aboard who could read it."
+    - "Halt condition. Allocation satisfied, or allocation invalidated. Those are the only two."
+    - "I can stop it. That is not the same as knowing how to make it want to."
+  state:
+    run.vesnaTrust: 1

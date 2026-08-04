@@ -1,0 +1,11 @@
+# The branching scene, arm 1: wake the engineer. Two modules of schedule pressure
+# and the two facts that make `can_halt(toma)` derivable.
+file: ../scenes/cryobank.lute
+choose:
+  whoWakes: wakeToma
+expect:
+  exit: complete
+  transcriptContains:
+    - "How long have I been under?"
+  state:
+    run.shedPressure: 2

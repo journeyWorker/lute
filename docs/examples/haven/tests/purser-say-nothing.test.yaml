@@ -1,0 +1,24 @@
+# The lever was open and the player let the arithmetic finish. Same seeds as
+# purser-halt-the-sequence.test.yaml, one different `choose:` value — the pair is
+# the suite's cleanest same-document contrast.
+#
+# What this test WANTED to be is a negative control: nobody who can halt, nobody
+# awake but Vesna, `sayNothing` the only eligible arm. That test cannot be
+# written. `can_halt` is `derive: true`, so with no seed it is UNKNOWN, not false,
+# and the walk halts on line 0170's
+# `!holds(can_halt(toma)) && !holds(can_halt(vesna)) && !holds(awake(ilsabet))`.
+# There is no mock surface for "this fact does not hold", so that line — and the
+# whole no-lever route — is unreachable from the test harness. See T9.7.
+file: ../scenes/purser.lute
+facts:
+  - "awake(vesna)"
+  - "knows(vesna, shed_sequence)"
+  - "can_halt(vesna)"
+choose:
+  theCorrection: sayNothing
+expect:
+  exit: complete
+  transcriptContains:
+    - "You, me, and a man this ship has never heard of. That's the crew. That's the whole crew."
+    - "Two of you, then, and a wall. Whatever was going to be said had to be said by the people who were awake to say it."
+    - "You did not say anything. The fan behind the wall did not change its note, and the arithmetic went on being right."

@@ -1,0 +1,19 @@
+# A QUEST document under test. `lute test` traces one of these exactly as it
+# traces a scene: activation predicate, every objective, derived completion, and
+# the `<on event="questComplete">` body.
+#
+# None of that is directly assertable. `expect:` has three keys — `exit`,
+# `transcriptContains`, `state` — and no key for quest or objective status,
+# although `lute test --help` advertises one ("transcript, state, quest status").
+# The only observable proof that this quest completed is that its completion
+# handler emitted a line. See T9.10.
+file: ../quests/who-wakes.lute
+state:
+  run.shedPressure: 2
+facts:
+  - "awake(vesna)"
+  - "awake(toma)"
+expect:
+  exit: complete
+  transcriptContains:
+    - "Two of you up, and a schedule that had already read the bill."

@@ -1,0 +1,32 @@
+# ENDING-DECIDING LEVER 1 — the halt. Guarded by
+# `holds(can_halt(toma)) || holds(can_halt(vesna))`, the head of the project's one
+# rule. `lute test` enforces choice eligibility, so this test passing IS the proof
+# that the guard opened.
+#
+# BOTH halters are seeded, and no route in the story ever produces both. The arm
+# carries two alternative lines — 0180 guarded on `can_halt(vesna)`, 0190 on
+# `can_halt(toma)` — and a derived relation left unseeded evaluates to UNKNOWN,
+# which halts the walk rather than skipping the line. So the only traceable
+# version of this arm is the one where Vesna and Toma are simultaneously able to
+# halt the shed, and both lines play. The `<choice>` is testable; the alternation
+# inside it is not. See T9.7.
+file: ../scenes/purser.lute
+facts:
+  - "awake(vesna)"
+  - "awake(toma)"
+  - "knows(vesna, shed_sequence)"
+  - "knows(toma, shed_sequence)"
+  - "can_halt(vesna)"
+  - "can_halt(toma)"
+choose:
+  theCorrection: haltTheSequence
+expect:
+  exit: complete
+  transcriptContains:
+    - "It's a cabinet. Cabinets have a maintenance mode, and maintenance mode has a key, and I've had the key for twelve years."
+    - "Halt condition, subsection four. This is your own page. I am reading you your own page."
+    - "Maintenance hold. Two hands, both of them steady, and you have to mean it."
+    - "Hold acknowledged. Release is suspended pending allocation."
+    - "Pending is not cancelled. Allocation remains short by one module."
+  state:
+    run.vesnaTrust: 1

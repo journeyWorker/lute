@@ -1,0 +1,19 @@
+# The convergence scene, third arm: neither the manifest nor the engineer, so both
+# `<match on="true">` blocks fall to `<otherwise>` and module five goes "with
+# margin". Two awake bodies and one unit of pressure also put BOTH of this scene's
+# content-line guards on their negative side, which no other test in the suite
+# does.
+file: ../scenes/spine-b.lute
+state:
+  run.shedPressure: 1
+facts:
+  - "awake(vesna)"
+  - "awake(ottavio)"
+choose:
+  whatsLeft: goAtItDirect
+expect:
+  exit: complete
+  transcriptContains:
+    - "You had both hands on that shim an hour ago, and both hands were not the thing the ring wanted."
+    - "It went with margin, the way the Purser had promised it would, and margin turned out to mean the module and everything holding it."
+    - "There's no time to read. There's time to walk forward and say the word out loud."

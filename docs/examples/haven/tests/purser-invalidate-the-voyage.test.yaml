@@ -1,0 +1,24 @@
+# THE RELATIONAL CHOICE GATE, positive. `invalidateTheVoyage` is guarded by
+# `holds(awake(ilsabet)) && holds(knows(ilsabet, true_heading))` — both asserted by
+# the ep02 `wakeIlsabet` arm, seven episodes upstream. Seed exactly those two and
+# the lever opens.
+#
+# `lute test` is trace-based and DOES enforce choice eligibility: drop either fact
+# and this test does not merely assert wrongly, it is refused outright with
+# `trace refused: invalid mock input`. That refusal is the gate proof, and it is
+# why purser-no-lever.test.yaml is the honest negative control rather than a
+# `choose:` that "should fail".
+file: ../scenes/purser.lute
+facts:
+  - "awake(vesna)"
+  - "awake(ilsabet)"
+  - "knows(ilsabet, true_heading)"
+choose:
+  theCorrection: invalidateTheVoyage
+expect:
+  exit: complete
+  transcriptContains:
+    - "It's a navigation problem. I am the navigator, and it has been flying my ship to a plan I did not file."
+    - "Voyage complete. Allocation against voyage: not applicable. Release is withdrawn."
+  state:
+    run.vesnaTrust: 1
