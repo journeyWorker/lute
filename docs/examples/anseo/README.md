@@ -18,7 +18,7 @@ you want to know what is in the tree.
 | | count | |
 |---|---|---|
 | `scenes/` | 11 | episodes 1–11, one connected graph |
-| `quests/` | 6 | five with `after=`, one deliberately without |
+| `quests/` | 6 | five with `after=`; `hold-the-spine.lute` deliberately without — see "Deliberate imperfections" |
 | `components/` | 1 | the Purser's interjection, the only reuse construct in the language |
 | `tests/` | 31 | `*.test.yaml` scenario tests, run by `lute test` |
 | `world.schema.yaml` | | scalar state, four relations, one Datalog rule, one seed fact |
@@ -32,9 +32,11 @@ you want to know what is in the tree.
 Three of these are genuinely first; the fourth is a matter of degree, and the
 distinction is kept because a README that oversells is worse than no README.
 
-- **`::end` — first, and still the only.** `grep -rl '::end' docs/examples`
-  returns `bridge.lute` and `shed.lute` and nothing else. Before Anseo, no
-  document under `docs/examples/` had ever terminated a walk. Read
+- **`::end` — first, and still the only.**
+  `grep -rl --include='*.lute' '::end' docs/examples` returns `bridge.lute` and
+  `shed.lute` and nothing else. (The `--include` is load-bearing: without it the
+  same grep also matches `tests/shed-with-module.test.yaml` and this README.)
+  Before Anseo, no document under `docs/examples/` had ever terminated a walk. Read
   [T5.1 and T5.5](../../superpowers/notes/2026-07-31-anseo-drive-test-findings.md)
   before you read `::end` as an *ending*: it is `break` with a label, exactly
   equivalent to falling off the end of the command array, and the two terminals
@@ -90,7 +92,7 @@ tests plus `investigation`'s three.
 
 ## Deliberate imperfections
 
-Four things in this tree are wrong on purpose. They are evidence for named
+Five things in this tree are wrong on purpose. They are evidence for named
 findings, and a reader who "fixes" one deletes the evidence.
 
 1. **`scenes/bridge.lute:11` — `W-INJECT-CONFLICT`.** Vesna is staged
@@ -122,6 +124,22 @@ findings, and a reader who "fixes" one deletes the evidence.
    one command over — `lute trace … --mock mocks/playthrough.yaml` reports
    `E-TRACE-MOCK-UNDECLARED` — but nothing pairs them automatically. This is how
    a `mocks/` directory quietly becomes fiction (**T1.9**).
+5. **`quests/hold-the-spine.lute` — the one quest with no `after=`.** Its five
+   siblings all declare one; this one does not, and the file now says so in a
+   comment. What the omission costs, from `lute scenario docs/examples/anseo`:
+   the quest is absent from the graph **entirely** — no topological layer, no
+   edge. The graph lists five quests, not six, because `after=` is the only thing
+   that puts a quest into it. `scenario envelope quest:holdTheSpine` therefore
+   degrades to the defaults-only `D` table plus a note offering the
+   project-resolved one if `after` were declared, while `scenario reach
+   quest:holdTheSpine` — which resolves by id, so it still answers — reports
+   `after: (none declared) — this node is an entry point`. That invisibility is
+   the point: it leaves a blind spot visible in a shipped example, a quest that
+   is genuinely reachable and genuinely checked project-wide yet missing from the
+   one tool an author would ask about reachability. It is also honest about the
+   story — the coupling can be held the moment somebody who can halt the shed is
+   awake, which `start="holds(can_halt(toma))"` already says, so there is no
+   route prerequisite to declare (**T4.7**, and the *T4 controller decision*).
 
 Separately, the 13 project-wide `W-UNPROVEN-RELATIONAL` warnings are neither
 deliberate nor removable. Each marks a correct relational gate on a producible
@@ -135,13 +153,16 @@ about it (**T9.19**).
 
 `scenes/wake.lute` (ep01) is the entry point and has no `after:`. From there the
 graph is: cryobank (02) → spine-a (03) → {hydroponics (04) | machine-deck (05)} →
-stowaway (06) → spine-b (07) → {archive (08), shed (11)} → purser (09) →
-bridge (10).
+stowaway (06) → spine-b (07) → archive (08) → purser (09) → bridge (10), with
+shed (11) hanging off spine-b (07) as a leaf that gates nothing.
 
-Two cautions about that sentence. The `{a | b}` is a lie the language cannot
+Three cautions about that sentence. The `{a | b}` is a lie the language cannot
 correct: `after:` is a **monotone availability lattice**, so ep04 and ep05 both
 unlock at the same instant and nothing prevents visiting both. They are
 alternatives in the story and siblings in the graph (**T8.3**). And no choice a
 player makes decides which scene comes next — `spine-b`'s three-arm branch is
 labelled with intentions, not routes, and says so in a comment (**T8.2**).
+And the `archive (08) → purser (09)` arrow overstates: `purser`'s `after:` is
+`visited("anseo.s01ep07") || visited("anseo.s01ep08")`, so ep09 unlocks the instant
+ep07 is visited and the archive is optional on the way.
 `lute scenario`'s output is the availability lattice, not the story's graph.
