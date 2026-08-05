@@ -306,7 +306,10 @@ impl Backend {
                     // aside). Fixits stay empty either way:
                     // no source-accurate fixit edit is recoverable from a
                     // decoded-offset translation.
-                    let t = translate_cel_parse(raw, span, &e);
+                    // The `defs:` `cel:` declaration path is a condition body
+                    // and never a `::set` (dsl 0.10.0 §12.1).
+                    let t =
+                        translate_cel_parse(raw, span, &e, lute_syntax::ast::CelKind::Condition);
                     let cel_span = find_def_cel_value_span(&snapshot.text, name).unwrap_or(span);
                     diags.push(Diagnostic {
                         code: "E-CEL-PARSE".to_string(),
