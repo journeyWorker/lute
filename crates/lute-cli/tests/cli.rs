@@ -1163,3 +1163,38 @@ fn doctor_reports_a_broken_project_manifest_once_as_a_check() {
         "a ✗ carries a remedy hint: {v}"
     );
 }
+
+/// #25 / T9.11: a refused test held a diagnostic vector and printed four
+/// words over it. Three different mock faults produced the identical line;
+/// the harness even INSPECTED the codes to choose between two canned
+/// strings, then discarded them.
+#[test]
+fn refused_test_prints_the_held_diagnostics_not_a_canned_string() {
+    let dir = temp_dir("test-refusal-vector");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" label=\"A\">\n@narrator: a.\n\
+         </choice>\n<choice id=\"b\" label=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
+    );
+    write_at(
+        &dir,
+        "stale.test.yaml",
+        "file: s.lute\nchoose:\n  pick: noSuchArm\nexpect:\n  exit: complete\n",
+    );
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+
+    assert!(text.contains("E-TRACE-CHOICE"), "the held code must print: {text}");
+    assert!(text.contains("noSuchArm"), "the offending value must print: {text}");
+    assert!(
+        !text.contains("invalid mock input"),
+        "the canned string is what this issue deletes: {text}"
+    );
+    // T9.11's second half: the diagnostic renders a CLI flag spelling for
+    // input that came from a YAML key, so even printed it points at the
+    // wrong syntax.
+    assert!(!text.contains("--choose"), "render the YAML key, not the flag: {text}");
+    assert!(text.contains("choose:"), "the YAML key must appear: {text}");
+}
