@@ -95,18 +95,6 @@ tests plus `investigation`'s three.
 Five things in this tree are wrong on purpose. They are evidence for named
 findings, and a reader who "fixes" one deletes the evidence.
 
-1. **`scenes/bridge.lute:11` — `W-INJECT-CONFLICT`.** Vesna is staged
-   `anchor="center"`, which is the `anchor` domain's declared `default:`, and
-   that is the one value an author may not write on purpose: agreement warns,
-   disagreement is silent, omission is silent. There is no `--allow` and no
-   in-source suppression, so the scene keeps the true statement about the staging
-   rather than the clean output (**T5.8**).
-2. **`scenes/spine-b.lute:44` — `W-INJECT-CONFLICT`.** The same collision, kept
-   for the same reason: Toma's place between the other two at the coupling he
-   saved *is* the staging. The other two scenes that stage a third character omit
-   the attribute instead, because there the entrance is ordinary — the tax is not
-   per-scene, it is per-scene-where-the-middle-is-meaningful, and here that was
-   one in three (**T8.12**).
 3. **`components/purser-interject.component.lute` — a dead `<otherwise>` arm.**
    The component's body is a param-scoped `<match on="@pressure">` with two arms,
    and it is invoked from exactly one site (`cryobank.lute:14`, `pressure="rising"`).

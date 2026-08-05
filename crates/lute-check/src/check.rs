@@ -12,7 +12,7 @@
 //!   -> fold <branch>/<hub> decls      -> folded schema (scene.choices.* + scene.visited.*) + E-DUP-BRANCH
 //!   -> per-node walk                  -> directive/cel-slot/set/match/timeline diags
 //!   -> document-level defassign       -> E-UNDECLARED / E-MAYBE-UNSET (whole stream)
-//!   -> injection fold (lower_node)    -> InjectedCommand[] + W-INJECT-CONFLICT
+//!   -> injection fold (lower_node)    -> InjectedCommand[] + E-DOMAIN-UNKNOWN
 //!   -> suppress / dedup / normalize / sort
 //! ```
 //!
@@ -3223,14 +3223,15 @@ fn fold_injections(
 /// attrs), Task 7c's (duplicate line codes) and Task 7e's (reachability):
 /// [`fold_injections`] had exactly ONE callsite — `check()` step 7, over the
 /// ROOT document's shots — and a `::use` folded as an ordinary unknown
-/// directive, so its body was never entered. A `::auto` whose explicit
-/// `anchor` equals the `anchor` domain's declared `default:` therefore checked
-/// CLEAN through a `::use` while the identical directive warned
-/// `W-INJECT-CONFLICT` at scene level AND when that same component file was
-/// checked STANDALONE. `lute compile`'s own CFG walk DID derive it (it folds
-/// the NORMALIZED tree, body already inlined) but discarded it — see the
-/// `state.diags.clear()` comment in `lute-compile/src/lib.rs` — so the
-/// warning was reported by no tool at all.
+/// directive, so its body was never entered. An `::auto` whose implicit
+/// `anchor`-domain read has nothing to read therefore checked CLEAN through a
+/// `::use` while the identical directive reported `E-DOMAIN-UNKNOWN` at scene
+/// level AND when that same component file was checked STANDALONE.
+/// `lute compile`'s own CFG walk DID derive it (it folds the NORMALIZED tree,
+/// body already inlined) but discarded it — see the `state.diags.clear()`
+/// comment in `lute-compile/src/lib.rs` — so the diagnostic was reported by no
+/// tool at all. (The original instance was `W-INJECT-CONFLICT`, removed in
+/// 0.10.0 §12.3; the seam is structural and outlives the code.)
 ///
 /// THE SEAM (the one decision here): the body folds IN DOCUMENT POSITION,
 /// against the `StageState` INHERITED at this `::use` — the same reducer, the
@@ -3240,7 +3241,7 @@ fn fold_injections(
 /// their passes are position-independent) would be wrong HERE: the reducer's
 /// entrance rules are stage-state dependent — `lower_auto` returns early when
 /// the character is already on stage — so an empty entry state would INVENT
-/// conflicts that do not exist in context, trading an old divergence for a
+/// diagnostics that do not exist in context, trading an old divergence for a
 /// new one.
 ///
 /// Body diagnostics are re-anchored the way every other component-body
