@@ -540,6 +540,7 @@ dependencies = [
  "lute-syntax",
  "lute-test-vocab",
  "serde",
+ "serde_json",
  "serde_yaml",
 ]
 
