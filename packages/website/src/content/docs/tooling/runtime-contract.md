@@ -19,11 +19,19 @@ and the machine-checkable shape is
 | ------------------- | ---------------- |
 | Statically check the document; refuse to emit on any error. | Trust the artifact — it compiled clean. |
 | Fold the state schema into an init/type table. | Initialize state from that table; own the tier lifetimes. |
-| Lower every CEL guard to a portable `expr` AST. | **Evaluate** guards against live state. |
+| Lower every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST; leave the rest as raw CEL. | **Evaluate** guards against live state. |
 | Emit facts, `assert`/`retract` deltas, and Datalog rules as **data**; prove the rules are stratified and safe. | **Compute the minimal model** (least fixpoint) over the fact store. |
 | Emit quests, objectives, and `<on>` handlers as **declarations**. | **Derive** the quest lifecycle from `start`/`fail`/objective completion. |
 | Resolve plugin bridge calls and their state-write bindings. | **Make the call** and apply the effects. |
 | Schedule timeline clips and prove no write races. | Replay the schedule (or run tracks concurrently) and honor the barrier. |
+
+`holds()` and `count()` are inside the §8.4 CEL profile that authors may write
+and are deliberately **absent** from the `expr` AST, so a guard that queries
+facts reaches the engine as its raw CEL text alone (`option.when`, `arm.test`,
+`set.value`) with no `expr` sibling — and an engine MUST therefore have a CEL
+evaluator, not merely an AST walker. `lute run`'s module doc says the same:
+it resolves every slot from the raw CEL "including the `holds`/`count`
+fact-query functions the structured `expr` AST deliberately omits".
 
 The through-line: Lute proves *shape and structure*; the engine supplies
 *evaluation and effect*. Lute's static analyses are also honest about their
@@ -175,6 +183,12 @@ The `commands` array is already in execution order. Control-flow fields —
 program counter over an `addr → index` map, dispatching on `kind`:
 
 ```ts
+// Every CEL slot carries its verbatim source under its own key — `option.when`,
+// `arm.test`, `set.value` — and the lowered `expr` AST ONLY when that CEL is
+// inside the closed §8.4 profile. A relational fact query carries raw text alone.
+const evalSlot = (raw, expr, state, facts) =>
+  expr !== undefined ? evalExpr(expr, state) : evalCel(raw, state, facts);
+
 const index = new Map(artifact.commands.map((c, i) => [c.addr, i]));
 let pc = 0;
 while (pc < artifact.commands.length) {
@@ -189,18 +203,18 @@ while (pc < artifact.commands.length) {
       stage(cmd); break;
 
     // state & facts
-    case "set":     writeState(state, cmd.path, cmd.op, evalExpr(cmd.expr, state)); break;
+    case "set":     writeState(state, cmd.path, cmd.op, evalSlot(cmd.value, cmd.expr, state, facts)); break;
     case "assert":  facts.assert(cmd.relation, cmd.args); break;
     case "retract": facts.retract(cmd.relation, cmd.args); break;
 
     // control flow
     case "choice":
     case "hub": {
-      const opt = pickOption(cmd, state);          // eligibility via evalExpr(opt.expr)
+      const opt = pickOption(cmd, state);   // per option: evalSlot(o.when, o.expr, …)
       next = opt ? opt.target : cmd.converge; break;
     }
     case "match": {
-      const arm = cmd.arms.find(a => truthy(evalExpr(a.expr, state)));
+      const arm = cmd.arms.find(a => truthy(evalSlot(a.test, a.expr, state, facts)));
       next = arm ? arm.target : (cmd.otherwise ?? cmd.converge); break;
     }
     case "jump":    next = cmd.target; break;

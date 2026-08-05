@@ -123,5 +123,8 @@ also the honest version signal — an engine that does not implement the IR mino
 
 Two `::`-directives are built-in rather than staging vocabulary: `::set` writes declared state (see
 [State model](/state/state-model/)) and `::use` expands a reusable content component (see
-[Components & extends](/language/components-and-extends/)). Quest documents additionally use
-`::assert` / `::retract` to mutate facts (see [Facts & Datalog](/state/facts-and-datalog/)).
+[Components & extends](/language/components-and-extends/)). Content additionally uses
+`::assert` / `::retract` to mutate facts (see [Facts & Datalog](/state/facts-and-datalog/)) — in
+scenes as well as quests. `docs/examples/anseo/scenes/cryobank.lute` is `kind: scene` and carries
+four `::assert` directives inside `<choice>` bodies; `lute check` on it reports
+`ok … (0 warning(s))`.

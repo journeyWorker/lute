@@ -34,6 +34,13 @@ A parameter is referenced as `@<param>` in ref and attribute positions, and insi
 `{{@param}}` interpolation. `@who` binds to the invocation argument at expansion time — it is legal
 in the `character` position only because that attribute is `string`-typed.
 
+Not every param type is renderable. A `{{…}}` interpolation renders **number, bool or enum** only
+(§7.6); a `string` param inside content text is `E-REF-TYPE` — *"`@who` produces a non-renderable
+type; a `{{…}}` interpolation renders only number/bool/enum"*. So `who: string` above is usable as
+the `character=` argument it is written for and **not** as `{{@who}}` in a line. That restriction
+is under review; until it changes, pass renderable text through the calling document rather than
+through a `string` param.
+
 The `uses:` line is the component's own [content vocabulary](/language/vocabulary/) import — since
 `0.9.0` `action="fade-in-up"` resolves against a declared `action` domain, and a component file has
 to reach one to check on its own. Through `::use` it is the **importing** document's vocabulary that

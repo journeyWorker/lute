@@ -123,6 +123,14 @@ must halt with an error.
 ```ts
 type Addr = string;
 
+// Every CEL slot carries its verbatim source under its own key — `option.when`,
+// `arm.test`, `set.value` — and the lowered portable `expr` AST (IR A7) ONLY
+// when that CEL is inside the closed §8.4 profile. A relational fact query
+// (`holds()`/`count()`) is outside it and carries raw text alone, so this
+// two-way read is mandatory, not an optimisation.
+const evalSlot = (raw, expr, state, facts) =>
+  expr !== undefined ? evalExpr(expr, state) : evalCel(raw, state, facts);
+
 function run(artifact: Artifact, state: StateStore, facts: FactStore) {
   assertVersionCompatible(artifact.irVersion); // major.minor gate
 
@@ -151,19 +159,19 @@ function run(artifact: Artifact, state: StateStore, facts: FactStore) {
       case "video":      stageVideo(cmd); break;
 
       // ── state & facts ──
-      case "set":     writeState(state, cmd.path, cmd.op, evalExpr(cmd.expr, state)); break;
+      case "set":     writeState(state, cmd.path, cmd.op, evalSlot(cmd.value, cmd.expr, state, facts)); break;
       case "assert":  facts.assert(cmd.relation, cmd.args); break;   // positive delta
       case "retract": facts.retract(cmd.relation, cmd.args); break;  // negative delta (args may be "_")
 
       // ── control flow ──
       case "choice":
       case "hub": {
-        const opt = pickOption(cmd, state); // eligibility via evalExpr(opt.expr)
+        const opt = pickOption(cmd, state); // per option: evalSlot(o.when, o.expr, …)
         next = opt ? opt.target : cmd.converge;
         break;
       }
       case "match": {
-        const arm = cmd.arms.find(a => truthy(evalExpr(a.expr, state)));
+        const arm = cmd.arms.find(a => truthy(evalSlot(a.test, a.expr, state, facts)));
         next = arm ? arm.target : (cmd.otherwise ?? cmd.converge);
         break;
       }
@@ -187,8 +195,20 @@ function run(artifact: Artifact, state: StateStore, facts: FactStore) {
 }
 ```
 
-`evalExpr` walks the portable `expr` AST (IR A7) carried alongside every guard;
-`facts` is your Datalog store; `callBridgeAndApplyEffects` is the host bridge.
-Each is specified in its own document here. Nothing above evaluates anything at
-*compile* time — the artifact is inert data, and this loop is where behavior
-lives.
+`evalExpr` walks the portable `expr` AST (IR A7) — but that AST is **not**
+carried alongside every guard, and a dispatcher that reads only it plays the
+default branch of everything. Each CEL slot carries its verbatim source under
+its own key (`option.when`, `arm.test`, `set.value`) and the lowered `expr`
+**only when that CEL is inside the closed §8.4 profile**. Anything outside it —
+a `holds()`/`count()` fact query above all, and those are the guards a
+relational work is made of — omits `expr` entirely rather than emitting a
+half-tree. Measured on `docs/examples/anseo/scenes/purser.lute`, every
+`option.when` and every `arm.test` in the artifact is raw CEL with **no**
+`expr` sibling. So `evalSlot` is two operations behind one name: walk the
+`expr` when it is there, and otherwise parse and evaluate the raw text
+yourself. An engine that cannot do the second needs a CEL evaluator, not a
+fallback; `lute run` resolves *every* slot from the raw text for exactly that
+reason (`crates/lute-cli/src/runner.rs`). `facts` is your Datalog store;
+`callBridgeAndApplyEffects` is the host bridge. Each is specified in its own
+document here. Nothing above evaluates anything at *compile* time — the
+artifact is inert data, and this loop is where behavior lives.

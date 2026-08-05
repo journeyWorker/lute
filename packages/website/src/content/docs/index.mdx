@@ -250,8 +250,10 @@ choice unlocks because `holds(found(ledger))` already holds.
 <CardGrid stagger>
   <Card title="Total, not Turing-complete" icon="approve-check">
     Every scenario provably terminates — no infinite loops, no unbounded
-    recursion — and <code>::end</code> makes an ending explicit, so anything
-    written after it is reported as dead rather than quietly shipped.
+    recursion — and <code>::end</code> names the ending it reached, so a
+    preview or a host can tell which of several endings a run arrived at.
+    Code after it in the same straight-line body is reported as dead
+    (<code>W-CODE-AFTER-END</code>).
   </Card>
   <Card title="Typed plugin capabilities" icon="puzzle">
     Directives and providers are declared with typed manifests, so the

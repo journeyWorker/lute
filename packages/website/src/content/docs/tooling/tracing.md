@@ -40,13 +40,16 @@ The human form is an indented, ordered transcript: emitted content lines (interp
 
 ```console
 $ lute trace docs/examples/choice-persist.lute --choose sofaHelp=help
-trace: choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
+trace: docs/examples/choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## Recording the Choice
-  <branch sofaHelp>   eligible: help, warmly, tip   → help (--choose)
-    ::set     run.metHelpfully = true          (into sugar)
+    @narrator  Sofia had slipped on the wet step. You could help — or walk on.
+  <branch sofaHelp>   eligible: help, warmly, tip   -> help
+    @sofia  Thank you. I won't forget this.
+    ::set  run.metHelpfully = true  (into sugar)
   ## Reading It Back
-  <match run.metHelpfully>   = true → arm 1 ($ == true)
-trace complete: 2 decisions; choices 1/3, arms 1/2
+  <match run.metHelpfully>   -> arm 1 (run.metHelpfully == true)
+    @sofia  You helped me back then. I've been meaning to thank you again.
+trace complete: 2 decisions; choices 1/3 (sofaHelp), arms 1/2 (run.metHelpfully @45:1)
 ```
 
 An `unknown` guard halts the walk at that construct (exit 3) and reports the unresolved atoms — which paths or facts a mock would need. Trace never guesses past unknown eligibility; forcing past an unknown guard via `--choose` is the documented escape hatch. Reserved quest reads (`quest.<id>.state`, `…objectives.<oid>.done`) resolve to their defaults (`unset` / `false`) unless mocked, each carrying an "existence unverified" note (only `check-project` validates a foreign quest id).

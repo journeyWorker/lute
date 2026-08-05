@@ -106,8 +106,9 @@ Why Lute
 ## Built for scenarios you can trust
 
     Every scenario provably terminates — no infinite loops, no unbounded
-    recursion — and ::end makes an ending explicit, so anything written
-    after it is reported as dead rather than quietly shipped.
+    recursion — and ::end names the ending it reached, so a preview or a
+    host can tell which of several endings a run arrived at. Code after it
+    in the same straight-line body is reported as dead (W-CODE-AFTER-END).
     Directives and providers are declared with typed manifests, so the
     checker knows exactly what each plugin can emit and consume — and rejects
     a manifest that mistypes an option or claims a name the core owns.
@@ -810,6 +811,42 @@ A top-level key that is neither a core key nor owned by an active plugin is a st
 Plugins may contribute additional frontmatter keys through their manifest (for example, `cast:` is
 owned by the character/cast capability).
 
+## `identity:` — the id shapes a project compiles to
+
+`episodeId` above is one input to a larger machine, and the machine is declared
+once per project rather than per document. In `lute.project.yaml`:
+
+```yaml
+identity:
+  lineId: "{prefix}.{speaker}_{code}"
+  voiceKey: "{speaker}-{code}"
+```
+
+Both values above are the **defaults** — a project that declares no `identity:`
+block compiles exactly as if it had declared this one, and a project that
+declares one of the two keys leaves the other at its default.
+
+`{prefix}` is derived, not authored: it is `{character}.{episodeId}`, and
+`episodeId` itself defaults to `s{season:02}ep{episode:02}` as described above.
+So `character: anseo`, `season: 1`, `episode: 2` gives the prefix
+`anseo.s01ep02`, and a line `@purser{code="0020"}` compiles to
+`lineId: "anseo.s01ep02.purser_0020"` and `voiceKey: "purser-0020"`. Pinning
+`episodeId: pilot` on that same scene gives `anseo.pilot.purser_0020`.
+
+The two templates govern **spoken content lines only**. Two other ids in the
+artifact are also called `lineId`/`titleLineId` and are *not* templated:
+
+- a branch option's `lineId` is always `{prefix}.{branch id}.{choice id}`;
+- a quest's `titleLineId` is always `{quest id}.title`, and an objective's is
+  `{quest id}.{objective id}` — a quest has no `{prefix}` at all.
+
+The token set is closed — `{prefix}`, `{speaker}`, `{code}` — and
+`E-IDENTITY-TEMPLATE` enumerates it on any mistake:
+
+```
+lute: E-IDENTITY-TEMPLATE: unknown token `{character}` in identity template `lineId`; valid tokens are {prefix}, {speaker}, {code}
+```
+
 ## Profiles & plugins
 
 Lute's authoring vocabulary — which directives, attributes, enums, and events are legal — is
@@ -994,6 +1031,18 @@ declare them — inline in this document's `enums:` frontmatter, in a project sc
 list the members in scope. None of the attributes is required; a missing `code` is back-filled
 deterministically at compile time and can be persisted with `lute tag`.
 
+`action=` is the one line attribute with a **stage** consequence, and it is a
+small one: it sets the speaker's pose for that line and marks them dirty, so
+the next plain line from the same speaker gets a `posReset` injected ahead of
+it (`provenance.by: "auto-pose-reset"`). That is the whole of it — it is a
+delivery detail, not staging. **A character's entrance and exit are `::auto`**,
+and only `::auto` can end a presence (see
+[Core directives](/language/directives/); `lute context` lists
+`mayExitCharacter` among `auto`'s semantics for exactly this reason). Writing a
+member of the `action` domain's `exits:` list on a content line is
+`W-EXIT-INERT`: the pose is honoured, the character stays on stage, and the
+artifact gets no `exit` record.
+
 ```lute
 @bianca{as="???"}: ...who's there?
 ```
@@ -1165,8 +1214,11 @@ also the honest version signal — an engine that does not implement the IR mino
 
 Two `::`-directives are built-in rather than staging vocabulary: `::set` writes declared state (see
 [State model](/state/state-model/)) and `::use` expands a reusable content component (see
-[Components & extends](/language/components-and-extends/)). Quest documents additionally use
-`::assert` / `::retract` to mutate facts (see [Facts & Datalog](/state/facts-and-datalog/)).
+[Components & extends](/language/components-and-extends/)). Content additionally uses
+`::assert` / `::retract` to mutate facts (see [Facts & Datalog](/state/facts-and-datalog/)) — in
+scenes as well as quests. `docs/examples/anseo/scenes/cryobank.lute` is `kind: scene` and carries
+four `::assert` directives inside `<choice>` bodies; `lute check` on it reports
+`ok … (0 warning(s))`.
 
 ---
 
@@ -1266,8 +1318,12 @@ A single content line may carry a `when="G"` guard directly: the line is emitted
 
 *(From [`docs/examples/gated-line.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/gated-line.lute).)*
 
-This is exact sugar for a one-arm match — `<match on="G"><when test="$">…</when><otherwise/></match>`
-— and lowers to that record identically, leaving the line's `code`/`lineId`/`voiceKey` unchanged.
+This is exact sugar for a one-arm match **wherever the guard is a legal `<match>` subject** —
+`<match on="G"><when test="$">…</when><otherwise/></match>` — and lowers to that record
+identically, leaving the line's `code`/`lineId`/`voiceKey` unchanged. A **relational** guard is the
+exception: `@sofia{when="holds(awake(toma))"}: …` checks clean on a content line, while
+`<match on="holds(awake(toma))">` is `E-MATCH-RELATION-SUBJECT` (§8). Where the guard queries
+facts, the line form is the only form.
 
 ---
 
@@ -1450,6 +1506,20 @@ Within a `<timeline>` the local clock starts at `0`. For each track:
 - clips lower to the same flat command records, sorted by resolved time, with a final barrier at
   `duration` (or the maximum resolved end).
 
+A `<timeline duration="1.2">` with **no tracks at all** is legal, and it is the only beat primitive
+the language has: it lowers to that final barrier and nothing else, holding the content after it for
+its duration. Use it when the pause is the point.
+
+```lute
+<timeline duration="1.2">
+</timeline>
+@narrator: after the beat.
+```
+
+```json
+{ "kind": "barrier", "addr": "001-0100", "timeline": 1, "at": 1.2 }
+```
+
 ## Constraints
 
 Tracks are **staging-only and non-interactive**: they hold `::` staging leaves (plus `::set` for
@@ -1490,7 +1560,10 @@ params:
 
 A parameter is referenced as `@<param>` in ref and attribute positions, and inside content text via
 `{{@param}}` interpolation. `@who` binds to the invocation argument at expansion time — it is legal
-in the `character` position only because that attribute is `string`-typed.
+in the `character` position only because that attribute is `string`-typed. Not every param type is
+renderable: a `{{…}}` interpolation renders **number, bool or enum** only (§7.6), and a `string`
+param inside content text is `E-REF-TYPE`. That restriction is under review; until it changes,
+pass renderable text through the calling document rather than through a `string` param.
 
 A scene imports components via a `components:` frontmatter key (canonicalized, cycle-checked, and
 diamond-deduped like `uses:` — see [Imports](/language/imports/)), then invokes one with the
@@ -1714,6 +1787,25 @@ optional predicates are CEL strings: **`start`** transitions the quest `unset` �
 holds; **`fail`** transitions `active` → `failed`. `fail` takes precedence over completion — if
 both hold in the same state, the quest fails (a deterministic tie-break).
 
+A quest declares its own prerequisite as an **attribute** on the element, not as
+a frontmatter key — the one place this page's opening heading, "Scenes and
+`after:`", does not apply:
+
+```lute
+<quest id="manifestGap" title="The Manifest Gap" start="true" after="visited('anseo.s01ep06') && completed('whoWakes')">
+  <objective id="reconcile" title="Reconcile the count" done="true"/>
+</quest>
+```
+
+`after=` takes the same restricted prerequisite profile as a scene's `after:`
+key — `visited("id")`, `completed("id")`, `active("id")`, `&&`, `||`, and
+nothing else (`E-CONN-PROFILE`). Writing `after:` in a quest's *frontmatter* is
+`E-META-UNKNOWN-KEY`, and the diagnostic names the attribute form:
+
+```
+error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key and not owned by an active plugin) — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, not a frontmatter key (dsl §4.1)
+```
+
 ### `<objective>`
 
 An `<objective id done>` requires a `done` completion predicate over declared state. `when` gates
@@ -1876,10 +1968,10 @@ state:
   scene.affect.sofia: { type: number, default: 0 }
   run.choseHelp:      { type: bool,   default: false }
   user.level:         { type: number, default: 1 }
-  app.rating:         { type: enum, values: [teen, adult], default: teen }
+  app.rating:         { type: { enum: [teen, adult] }, default: teen }
 ```
 
-Author `state:` is **scalar-only** — `number`, `bool`, `string`, or `enum`, and nothing else. A declaration whose `type` is `list`, `record`, or `map` is `E-STATE-COLLECTION`, and the declaration is *not installed*: a later read of that path reports a plain `E-UNDECLARED` rather than resolving against a phantom collection-typed slot.
+Author `state:` is **scalar-only** — `number`, `bool`, `string`, or `enum`, and nothing else. An `enum` path nests its members inside `type:` — `{ type: { enum: [teen, adult] } }`. A sibling `values:` key is not a declaration key at all: `{ type: enum, values: [teen, adult] }` is `E-STATE-DECL` on the schema, and a document that `uses:` that schema fails with `E-USES-PARSE` carrying the `E-STATE-DECL` beneath it. `docs/examples/showcase/schema/base.schema.yaml:9` is the same declaration, written correctly. A declaration whose `type` is `list`, `record`, or `map` is `E-STATE-COLLECTION`, and the declaration is *not installed*: a later read of that path reports a plain `E-UNDECLARED` rather than resolving against a phantom collection-typed slot.
 
 Enforcement is new in 0.8.0, but it removes an ambiguity rather than adding a restriction: the normative text always said scalar, while the shape validator accepted the whole type union and the runtime documentation described `list<…>` / `map<…>` / `record` as valid. All three now agree. Collections were always meant to be modelled **relationally** — an inventory is `ownsItem(item)`, not a `list<string>` — so reach for [`relations:`](/state/facts-and-datalog/) instead. Collection-shaped entry types still reach the compiled artifact, but only through a plugin `state_shapes` expansion, never from an author's `state:` block. This is the one case where a 0.7.0-clean document may newly fail.
 
@@ -2059,6 +2151,29 @@ Formula ::= "visited(" StringLit ")" | "completed(" StringLit ")" | "active(" St
 At `check-project` time the tooling walks every document's frontmatter, computes each episode's canonical key into a project-wide **set**, and resolves each `visited(K)` / `completed(K)` / `active(K)` by exact string equality — never by decomposing the key. From each formula it derives a **topological-precedence DAG**: an edge `p → n` for every node `p` referenced anywhere in `n`'s formula, regardless of `&&`/`||` position and regardless of which atom named it. This over-approximating edge set is used for cycle detection and as the traversal order for the reachability and envelope passes.
 
 The checker's claims are entirely **graph-structural** — is the edge set acyclic, do referenced ids exist, is there a satisfiable route, what does the graph guarantee. The formula's truth at a play session is a runtime question the engine evaluates, exactly as it evaluates `<quest start>`; Lute never runs it.
+
+### It is an availability lattice, not a route graph
+
+An edge says a node *becomes available* once its prerequisite holds. It does not say a player went
+that way, and nothing in the language records which way they went. Two scenes written as
+alternatives are simply two edges out of the same prerequisite — both land in the same topological
+layer, and both are `Reachable`:
+
+```console
+$ lute scenario .
+project root: .
+  topological layers:
+    layer 0: scene(x.s01ep01)
+    layer 1: scene(x.s01ep02), scene(x.s01ep03)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(x.s01ep01) -> scene(x.s01ep02) [visited]
+    scene(x.s01ep01) -> scene(x.s01ep03) [visited]
+```
+
+Availability is also monotone by construction: the grammar above admits no negation, so no formula
+can say "unless", and nothing an author can write takes an unlocked node back. Two alternatives both
+unlock, and both stay unlocked. If your story needs the *choice* to matter, that belongs in state a
+`<branch>` writes and a guard reads — not in `after:`.
 
 ## Viewing the graph
 
@@ -2404,7 +2519,7 @@ Print the three independent version axes ([versioning](https://github.com/journe
 
 `lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.9.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.9.schema.json) (JSON Schema draft 2020-12).
 
-Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard to a portable `expr` AST, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. The engine trusts the artifact, initializes state and owns the tier lifetimes, **evaluates** guards, **computes the minimal model** over the fact store, **derives** the quest lifecycle, **makes** the bridge call, and honors the timeline barrier.
+Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST and leaves the rest as raw CEL, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. `holds()`/`count()` are inside the §8.4 profile authors may write and deliberately absent from the `expr` AST, so a relational guard reaches the engine as raw CEL text alone and an engine MUST have a CEL evaluator, not merely an AST walker. The engine trusts the artifact.
 
 ## The envelope
 
@@ -2486,13 +2601,16 @@ The human form is an indented, ordered transcript: emitted content lines (interp
 
 ```console
 $ lute trace docs/examples/choice-persist.lute --choose sofaHelp=help
-trace: choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
+trace: docs/examples/choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## Recording the Choice
-  <branch sofaHelp>   eligible: help, warmly, tip   → help (--choose)
-    ::set     run.metHelpfully = true          (into sugar)
+    @narrator  Sofia had slipped on the wet step. You could help — or walk on.
+  <branch sofaHelp>   eligible: help, warmly, tip   -> help
+    @sofia  Thank you. I won't forget this.
+    ::set  run.metHelpfully = true  (into sugar)
   ## Reading It Back
-  <match run.metHelpfully>   = true → arm 1 ($ == true)
-trace complete: 2 decisions; choices 1/3, arms 1/2
+  <match run.metHelpfully>   -> arm 1 (run.metHelpfully == true)
+    @sofia  You helped me back then. I've been meaning to thank you again.
+trace complete: 2 decisions; choices 1/3 (sofaHelp), arms 1/2 (run.metHelpfully @45:1)
 ```
 
 An `unknown` guard halts the walk at that construct (exit 3) and reports the unresolved atoms — which paths or facts a mock would need. Trace never guesses past unknown eligibility; forcing past an unknown guard via `--choose` is the documented escape hatch. Reserved quest reads (`quest.<id>.state`, `…objectives.<oid>.done`) resolve to their defaults (`unset` / `false`) unless mocked, each carrying an "existence unverified" note (only `check-project` validates a foreign quest id).

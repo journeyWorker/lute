@@ -103,7 +103,7 @@ A single content line may carry a `when="G"` guard directly: the line is emitted
 
 *(From [`docs/examples/gated-line.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/gated-line.lute).)*
 
-This is exact sugar for a one-arm match, and lowers to that record identically, leaving the line's
+This is exact sugar for a one-arm match **wherever the guard is a legal `<match>` subject**, and lowers to that record identically, leaving the line's
 `code`/`lineId`/`voiceKey` unchanged. Written out it is the explicit twin below — every tag takes a
 line of its own, because there is no inline `<when>…</when>` form:
 
@@ -118,3 +118,10 @@ line of its own, because there is no inline `<when>…</when>` form:
 ```
 
 *(That file keeps both forms, one shot each, so they stay visibly interchangeable.)*
+
+A **relational** guard is the exception. `@sofia{when="holds(awake(toma))"}: …` checks clean on a
+content line; the same guard as a subject — `<match on="holds(awake(toma))">` — is
+`E-MATCH-RELATION-SUBJECT`, *"relations are guard-only; a `<match on>` subject must stay
+enum/bool/scalar so exhaustiveness stays decidable"* (§8). Where the guard queries facts, the line
+form is the only form, and the two are interchangeable only for the scalar and enum subjects a
+`<match>` can take — which is why the file above uses one.

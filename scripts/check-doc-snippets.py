@@ -87,6 +87,38 @@ unverified with reasons, K unmarked, F fragments. A check that quietly skips is
 the thing being fixed here.
 
 
+DECLARATION BLOCKS (```yaml WITH A TOP-LEVEL `state:`)
+------------------------------------------------------
+
+Backlog #10 row c shipped a non-parsing `state:` declaration on the reference
+page FOR state declarations — `app.rating: { type: enum, values: [...] }`,
+which is not the language's shape — and nothing here caught it, because the
+extractor above only ever read ```lute fences. A declaration block became
+compile-checkable the moment `lute check` learned to read a `.yaml` target as a
+schema instead of parsing it as a scene (#21/T3.9), so it is gated now: the
+body is written to a scratch `*.schema.yaml` and `lute check` is run over it.
+
+Admission is deliberately narrow, because a ```yaml fence in these docs is one
+of four different documents. Only a SCHEMA is checkable as one, so a fence
+qualifies only when every top-level key it declares is in `SCHEMA_DOC_KEYS`
+(the mirror of `UNIVERSAL_KEYS` in `crates/lute-check/src/meta.rs`). That
+excludes, measured against the current tree:
+
+  * `--mock` playthroughs (`tracing.md`, `build-an-investigation.mdx`), which
+    carry `choose:`/`events:`/`accepts:` beside `state:`;
+  * `*.test.yaml` scenario tests (`cli.md`, `investigation/README.md`), which
+    carry `file:`/`expect:`;
+  * document frontmatter shown as YAML (`frontmatter-and-profiles.md`), which
+    carries `kind:`/`character:`/`season:`.
+
+All three check as schemas only by accident, and admitting them would have
+reported five failures on a correct tree — the false-failure trap that made
+checkability a DECLARED property everywhere else in this script. The same
+`expect="<CODE>"` / `unverified="<reason>"` fence meta applies here as it does
+to a ```lute fence, so a page that deliberately shows a broken declaration can
+still say so.
+
+
 PINNED CAPABILITY HASH
 ----------------------
 
@@ -379,6 +411,42 @@ PROJECT_DIAG_RE = re.compile(r"^lute: ([A-Z][A-Z0-9-]+): ", re.MULTILINE)
 # Verified blocks may only grow. Quietly deleting a marker fails instead.
 MIN_VERIFIED_BLOCKS = 18
 
+# A top-level key at column 0 of a fence body.
+TOP_KEY_RE = re.compile(r"^([A-Za-z_][\w.-]*):")
+
+# The keys a `*.schema.yaml` declaration map may carry — a mirror of
+# `UNIVERSAL_KEYS` in `crates/lute-check/src/meta.rs`, which is what
+# `lute check <file>.yaml` validates a bare YAML target against. A ```yaml
+# fence declaring `state:` is admitted as a schema only when EVERY top-level
+# key it declares is in here; see the module docstring for the three document
+# kinds this excludes and why admitting them reports failures on a correct
+# tree. `kind:` is deliberately absent (meta.rs handles it separately, and it
+# is exactly what marks a fence as document frontmatter rather than a schema).
+SCHEMA_DOC_KEYS = frozenset(
+    (
+        "mode",
+        "title",
+        "luteVersion",
+        "contentLang",
+        "profile",
+        "plugins",
+        "uses",
+        "extends",
+        "state",
+        "defs",
+        "enums",
+        "entities",
+        "relations",
+        "facts",
+        "rules",
+        "components",
+    )
+)
+
+# Gated declaration blocks may only grow, for the same reason as the line
+# above: deleting the `state:` from a fence to dodge a failure fails instead.
+MIN_STATE_BLOCKS = 14
+
 # ---------------------------------------------------------------------------
 # Quoted diagnostic text. See the module docstring for the full rationale.
 # ---------------------------------------------------------------------------
@@ -527,6 +595,68 @@ def extract_blocks(fences: list[dict]) -> list[dict]:
         for f in fences
         if f["info"] == "lute"
     ]
+
+
+def extract_state_blocks(fences: list[dict]) -> list[dict]:
+    """The ```yaml subset that is a state-schema declaration map.
+
+    Backlog #10 row c shipped a non-parsing `state:` declaration on the
+    reference page for state declarations, and nothing caught it because the
+    gate only read ```lute fences. A declaration block is compile-checkable the
+    moment `lute check` recognises a `.yaml` schema (#21/T3.9), so it is gated
+    here.
+
+    Admitted only when the fence declares a top-level `state:` AND every other
+    top-level key is a schema-document key. A mock playthrough, a
+    `*.test.yaml`, and a document's frontmatter all declare `state:` too and
+    are not schemas; see the module docstring.
+    """
+    out = []
+    for f in fences:
+        if f["info"] not in ("yaml", "yml"):
+            continue
+        body = "\n".join(f["body"])
+        keys = {m.group(1) for m in (TOP_KEY_RE.match(l) for l in body.splitlines()) if m}
+        if "state" not in keys or not keys <= SCHEMA_DOC_KEYS:
+            continue
+        out.append({"line": f["line"], "meta": f["meta"], "body": body})
+    return out
+
+
+def run_state_block(lute: str, body: str) -> tuple[int, str]:
+    """`lute check` over `body` written as a scratch `*.schema.yaml`."""
+    with tempfile.TemporaryDirectory() as tmp:
+        target = pathlib.Path(tmp) / "doc.schema.yaml"
+        target.write_text(body.rstrip("\n") + "\n", encoding="utf-8")
+        rc, out = run_lute(lute, ["check", str(target)])
+        out = out.replace(str(target), "<block>")
+    REAL_OUTPUT.append(out)
+    return rc, out
+
+
+def check_state_block(
+    lute: str, body: str, where: str, expect: set[str] | None = None
+) -> None:
+    """Gate one declaration block, clean by default or against `expect`."""
+    rc, out = run_state_block(lute, body)
+    if expect is None:
+        if rc != 0:
+            ERRORS.append(
+                f"{where}: ```yaml declaration block does not check clean as a "
+                f"schema (exit {rc}):\n{indent(out)}"
+            )
+        return
+    got = error_codes(out)
+    if rc == 0:
+        ERRORS.append(
+            f"{where}: declaration block expected {','.join(sorted(expect))} "
+            f"but checks clean as a schema"
+        )
+    elif got != expect:
+        ERRORS.append(
+            f"{where}: declaration block expected {','.join(sorted(expect))}, "
+            f"got {','.join(sorted(got)) or '(none)'}:\n{indent(out)}"
+        )
 
 
 def classify(body: str) -> str:
@@ -1269,6 +1399,8 @@ def main() -> int:
     pinned: list[str] = []
     diag_opted_out: list[tuple[str, str]] = []
     unmarked_diags: list[str] = []
+    state_blocks: list[str] = []
+    state_opted_out: list[tuple[str, str]] = []
 
     for root in SNIPPET_ROOTS:
         pages = root.pages()
@@ -1343,6 +1475,35 @@ def main() -> int:
                     root_unmarked.append(where)
                 else:
                     fragments += 1
+            for b in extract_state_blocks(fences):
+                where = f"{rel_page}:{b['line']}"
+                marks, other = parse_meta(b["meta"])
+                if other:
+                    other_meta.append((where, " ".join(other)))
+                if "unverified" in marks:
+                    why = (marks["unverified"] or "").strip()
+                    if not why:
+                        ERRORS.append(
+                            f'{where}: `unverified` needs a reason — write '
+                            f'unverified="why this block cannot be checked"'
+                        )
+                        continue
+                    state_opted_out.append((where, why))
+                    continue
+                expect: set[str] | None = None
+                if "expect" in marks:
+                    expect = {
+                        c.strip() for c in (marks["expect"] or "").split(",") if c.strip()
+                    }
+                    if not expect:
+                        ERRORS.append(
+                            f'{where}: `expect` needs at least one diagnostic code — '
+                            f'write expect="E-STATE-DECL"'
+                        )
+                        continue
+                check_state_block(lute, b["body"], where, expect)
+                how = f"expects {','.join(sorted(expect))}" if expect else "clean"
+                state_blocks.append(f"{where}  (as a schema, {how})")
         unmarked_whole += root_unmarked
         if len(root_unmarked) > root.max_unmarked_whole:
             ERRORS.append(
@@ -1395,6 +1556,14 @@ def main() -> int:
             f"script with a reason."
         )
 
+    if len(state_blocks) < MIN_STATE_BLOCKS:
+        ERRORS.append(
+            f"declaration-block coverage dropped: {len(state_blocks)} gated "
+            f"```yaml block(s), floor is {MIN_STATE_BLOCKS}. A `state:` fence "
+            f"was reshaped out of admission rather than fixed. Restore it, or "
+            f"lower MIN_STATE_BLOCKS in this script with a reason."
+        )
+
     if len(pinned) < MIN_PINNED_DIAGNOSTICS:
         ERRORS.append(
             f"quoted-diagnostic coverage dropped: {len(pinned)} pinned "
@@ -1416,6 +1585,14 @@ def main() -> int:
     print(f"check-doc-snippets: {len(verified)} block(s) verified:")
     for v in verified:
         print(f"  ✓ {v}")
+    print(
+        f"check-doc-snippets: {len(state_blocks)} ```yaml declaration block(s) "
+        f"compile-checked as schemas (floor {MIN_STATE_BLOCKS}):"
+    )
+    for v in state_blocks:
+        print(f"  ✓ {v}")
+    for where, why in state_opted_out:
+        print(f"  – {where}  unverified: {why}")
     print(
         f"check-doc-snippets: {len(opted_out)} block(s) explicitly unverified, "
         f"{len(unmarked_whole)} whole document(s) unmarked, "

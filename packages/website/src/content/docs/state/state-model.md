@@ -23,10 +23,10 @@ state:
   scene.affect.sofia: { type: number, default: 0 }
   run.choseHelp:      { type: bool,   default: false }
   user.level:         { type: number, default: 1 }
-  app.rating:         { type: enum, values: [teen, adult], default: teen }
+  app.rating:         { type: { enum: [teen, adult] }, default: teen }
 ```
 
-Author `state:` is **scalar-only** — `number`, `bool`, `string`, or `enum`, and nothing else. A declaration whose `type` is `list`, `record`, or `map` is `E-STATE-COLLECTION`, and the declaration is *not installed*: a later read of that path reports a plain `E-UNDECLARED` rather than resolving against a phantom collection-typed slot.
+Author `state:` is **scalar-only** — `number`, `bool`, `string`, or `enum`, and nothing else. An `enum` path nests its members inside `type:` — `{ type: { enum: [teen, adult] } }`. A sibling `values:` key is not a declaration key at all: `{ type: enum, values: [teen, adult] }` is `E-STATE-DECL` on the schema, and a document that `uses:` that schema fails with `E-USES-PARSE` carrying the `E-STATE-DECL` beneath it. [`docs/examples/showcase/schema/base.schema.yaml:9`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/schema/base.schema.yaml) is the same declaration, written correctly. A declaration whose `type` is `list`, `record`, or `map` is `E-STATE-COLLECTION`, and the declaration is *not installed*: a later read of that path reports a plain `E-UNDECLARED` rather than resolving against a phantom collection-typed slot.
 
 Enforcement is new in 0.8.0, but it removes an ambiguity rather than adding a restriction. The normative text always said scalar, but the shape validator accepted the whole type union and the runtime documentation described `list<…>` / `map<…>` / `record` as valid entry types — three sources, three answers. All three now agree. Collections were always meant to be modelled **relationally**: an inventory is `ownsItem(item)`, not a `list<string>`, so reach for [`relations:`](/state/facts-and-datalog/) instead. Collection-shaped entry types do still reach the compiled artifact, but only through a plugin `state_shapes` expansion — never from an author's `state:` block.
 
