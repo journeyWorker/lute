@@ -2035,6 +2035,34 @@ fn validate_components(
             d.code != "E-UNDECLARED" && d.code != crate::rel_schema::E_RELATION_UNKNOWN
         });
         for mut d in body_diags {
+            // dsl 0.10.0 §9 rule 1: the primary anchor stays at the caller with
+            // the component prefix (0.9.0 §5) — for the injection case it is the
+            // honest anchor, because the verdict depends on state inherited
+            // there — but the position INSIDE the component is preserved as a
+            // secondary location. `RelatedDiagnostic` is the codebase's only
+            // cross-file attribution and it already renders as an indented
+            // sub-line (`lute-cli`'s `render_diagnostics`), so this needs no new
+            // surface. 0.9.0 §6.2 named the collapse a known limitation; this
+            // narrows it rather than removing it, because `Diagnostic` still has
+            // no file field of its own.
+            //
+            // The line/column ARE the component's own: these diagnostics were
+            // produced against `def.body`, parsed from the component file's text
+            // by `component_import`, so the parser's positions are already
+            // component-relative — and `check()`'s `normalize_spans` walks
+            // `d.span` and `d.fixits` only, never `related`, so nothing later
+            // re-derives them against the importing document's `TextIndex`.
+            let inner = Diagnostic {
+                code: d.code.clone(),
+                severity: d.severity,
+                message: d.message.clone(),
+                span: d.span,
+                layer: d.layer,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            };
             d.message = format!("component `{name}` ({}): {}", def.src.display(), d.message);
             d.span = at;
             // T13: a CEL-parse fixit's edit span (if any) is in the COMPONENT
@@ -2043,6 +2071,10 @@ fn validate_components(
             // `at` above), so it is dropped rather than shipped pointing at
             // the wrong document.
             d.fixits.clear();
+            d.related.push(lute_core_span::RelatedDiagnostic {
+                file: def.src.display().to_string(),
+                diagnostic: inner,
+            });
             out.push((def.src.clone(), d));
         }
     }
