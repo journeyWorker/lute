@@ -751,17 +751,16 @@ mod tests {
     #[test]
     fn lang_and_ir_version_stamps() {
         // 0.10.0 axis alignment (docs/versioning.md): a release re-aligns the
-        // visible numbers to that release's number. IR reads 0.10.0 here; the
-        // IR bump is EARNED, not a restamp — `Provenance.reason` became
-        // `Provenance.explanation` (#36), and `lute-ir-0.10.schema.json` is
-        // the published contract. `LUTE_LANG_VERSION` still reads 0.9.0: it
-        // moves in the Release phase with the corpus restamp, because bumping
-        // it fires `W-LUTE-VERSION-STALE` on every `luteVersion: "0.9.0"`
-        // document in `docs/examples`. The two stamps are independently
-        // tracked pins (T13), and this is the release where they diverge
-        // mid-flight.
+        // visible numbers to that release's number, and here all three earned
+        // it. The IR bump is NOT a restamp — `Provenance.reason` became
+        // `Provenance.explanation` (#36, Appendix B), and
+        // `lute-ir-0.10.schema.json` is the published contract. The language
+        // moved last, in the Release phase, together with the corpus restamp,
+        // because bumping it fires `W-LUTE-VERSION-STALE` on every stamped
+        // document in `docs/examples`. The two remain independently tracked
+        // pins (T13); they simply agree on this release.
         assert_eq!(super::LUTE_IR_VERSION, "0.10.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.9.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.10.0");
     }
 
     #[test]
@@ -770,7 +769,7 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.9.0");
+        assert_eq!(v["lute"], "0.10.0");
         assert_eq!(v["irVersion"], "0.10.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);

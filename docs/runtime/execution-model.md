@@ -61,13 +61,18 @@ Gate parsing on `irVersion` by **major.minor** (spec §4.1, A9):
 gate. `capabilityVersion` lets you refuse an artifact compiled against a plugin
 snapshot you do not match.
 
-**IR `0.9.0` is shape-identical to IR `0.8.0`** — no field added, renamed, or
-moved, and no new command `kind`. The number re-aligned with the release
-([`docs/versioning.md`](../versioning.md)), and `schemas/lute-ir-0.8.schema.json`
-was renamed to `schemas/lute-ir-0.9.schema.json` with only its own version
-strings edited. The gate above is still normative, so an engine implementing
-`0.8` **refuses** a `0.9.0` artifact until it accepts `0.9` — widening the gate
-is the whole migration, with no parser or behaviour change behind it.
+**IR `0.10.0` changes the shape** — one field rename, the first since `0.8.0`.
+The injection provenance stamp's `reason` becomes **`explanation`**:
+`{ injected: true, by: "auto-pose-reset", explanation: "…" }`. The old name
+collided with `end.reason`, which is an opaque author token you dispatch on,
+while this field is human-readable English the compiler wrote and nothing
+dispatches on. Nothing else moves — no field added or retyped, no new command
+`kind`, and `Provenance.injected` is retained but is now constant-`true`, so do
+not read a `true` as distinguishing anything. The schema is
+`schemas/lute-ir-0.10.schema.json`. The gate above is still normative, so an
+engine implementing `0.9` **refuses** a `0.10.0` artifact until it accepts
+`0.10` — and if it reads the provenance stamp, that rename is the only edit
+beyond the gate.
 
 ## Addressing and control flow
 
