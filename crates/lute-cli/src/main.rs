@@ -503,7 +503,7 @@ fn parse_choose_flag(raw: &str) -> Result<(String, Vec<String>), String> {
 /// (denying a code `check` never emits merely protects nothing); a MISSING code
 /// is the only defect, and that test guards exactly it. Sorted for readability.
 const DENIABLE_CODES: &[&str] = &[
-    "E-AGE-GATE", "E-APP-READONLY", "E-ARM-DEAD", "E-ASSET-DECOMPOSE",
+    "E-AGE-GATE", "E-APP-READONLY", "E-ARM-DEAD", "E-AS-REMOVED", "E-ASSET-DECOMPOSE",
     "E-ASSET-SEGMENT", "E-ASSET-UNKNOWN-ID", "E-AT-CONTEXT", "E-ATTR-TYPE",
     "E-BAD-ENUM", "E-BRANCH-ALL-GUARDED", "E-BRANCH-EMPTY", "E-CEL-PARSE",
     "E-CEL-PROFILE", "E-CHOICE-DUP", "E-CHOICE-ID-RESERVED", "E-CHOICELOG-READ",

@@ -415,3 +415,135 @@ fn fix_rule_round_trips_persist_into_to_bare_into() {
         res.diagnostics
     );
 }
+
+// --- dsl 0.10.0 §4 / D-L: `as=` is a RENAMED attribute, not an unknown one --
+
+/// `as=` on a branch choice is `E-AS-REMOVED`, anchored column-exact at the
+/// attribute's own key — mirroring `E-PERSIST-REMOVED` in severity, layer, span
+/// behaviour and kind.
+#[test]
+fn as_on_branch_choice_is_as_removed() {
+    let t = format!(
+        "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"L\" as=\"run.x\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    let res = diagnose(&t);
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-AS-REMOVED")
+        .unwrap_or_else(|| panic!("expected E-AS-REMOVED: {:?}", res.diagnostics));
+    assert_eq!(d.severity, lute_core_span::Severity::Error);
+    assert_eq!(d.layer, lute_core_span::Layer::Logic);
+    assert_eq!(&t[d.span.byte_start..d.span.byte_end], "as=\"run.x\"");
+    assert!(!res.ok, "an error flips the verdict: {:?}", res.diagnostics);
+    // §4's fourth column: the closure rule must NOT also claim it.
+    assert!(
+        !res.diagnostics.iter().any(|x| x.code == "E-UNKNOWN-ATTR"),
+        "each removal is reported once, by its own code: {:?}",
+        res.diagnostics
+    );
+}
+
+/// `as=` on a HUB choice is the same error — §4's table lists it in both
+/// positions, and `check_choice_record` is reached from both walkers.
+#[test]
+fn as_on_hub_choice_is_as_removed() {
+    let t = format!(
+        "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
+         <hub id=\"h\">\n\
+         <choice id=\"c\" label=\"L\" as=\"run.x\" exit>\n\
+         </choice>\n\
+         </hub>\n"
+    );
+    assert!(codes(&t).contains(&"E-AS-REMOVED".to_string()), "{:?}", codes(&t));
+}
+
+/// The fixit is a 2→4 byte KEY REPLACEMENT with NO widening. This is where it
+/// differs from `E-PERSIST-REMOVED`, whose edit is a deletion widened by
+/// `widen_attr_delete` to swallow one adjacent separating space; reusing that
+/// helper here would eat the space before `as` and produce `label="L"into=…`.
+#[test]
+fn as_removed_fixit_replaces_only_the_key() {
+    let t = format!(
+        "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"L\" as=\"run.x\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    let res = diagnose(&t);
+    let d = res.diagnostics.iter().find(|d| d.code == "E-AS-REMOVED").unwrap();
+    assert_eq!(d.fixits.len(), 1, "exactly one migrate fixit; got {:?}", d.fixits);
+    let fx = &d.fixits[0];
+    assert_eq!(fx.kind, "migrate");
+    assert_eq!(fx.confidence, 100);
+    assert_eq!(fx.edit.len(), 1);
+    let e = &fx.edit[0];
+    assert_eq!(
+        e.span.byte_end - e.span.byte_start,
+        2,
+        "the edit spans exactly the two bytes of `as`, never a widened region"
+    );
+    assert_eq!(e.new_text, "into");
+    let mut spliced = t.clone();
+    spliced.replace_range(e.span.byte_start..e.span.byte_end, &e.new_text);
+    assert!(
+        spliced.contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
+        "got:\n{spliced}"
+    );
+}
+
+/// The LSP fixit and `lute fix` are TWO INDEPENDENT implementations —
+/// `lute fix` never reads `Diagnostic.fixits` (`lute-lsp/src/code_action.rs:7`),
+/// so `fix.rs:134-135` and the fixit above can drift silently. This test is the
+/// only thing holding them byte-identical, and it is the hazard
+/// `check.rs:2758-2759` already records for `persist`.
+#[test]
+fn lsp_fixit_and_lute_fix_agree_byte_for_byte() {
+    let before = format!(
+        "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"L\" as=\"run.x\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    let d = diagnose(&before)
+        .diagnostics
+        .into_iter()
+        .find(|d| d.code == "E-AS-REMOVED")
+        .expect("expected E-AS-REMOVED");
+    let e = &d.fixits[0].edit[0];
+    let mut via_lsp = before.clone();
+    via_lsp.replace_range(e.span.byte_start..e.span.byte_end, &e.new_text);
+
+    let via_fix = fix_document(&before);
+    assert_eq!(
+        via_fix.text, via_lsp,
+        "`lute fix` and the LSP fixit MUST produce identical bytes"
+    );
+    let res = diagnose(&via_lsp);
+    assert!(
+        !res.diagnostics.iter().any(|x| x.code == "E-AS-REMOVED"),
+        "the migrated document must be clean of the code: {:?}",
+        res.diagnostics
+    );
+}
+
+/// The migration is what restores the `set` record the document was silently
+/// losing: with `into=`, the record sugar validates; with `as=`, nothing did.
+#[test]
+fn migrated_as_records_the_run_fact() {
+    let after = format!(
+        "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
+         <branch id=\"b\">\n\
+         <choice id=\"c\" label=\"L\" into=\"run.x\">\n\
+         </choice>\n\
+         </branch>\n"
+    );
+    let res = diagnose(&after);
+    assert!(res.diagnostics.is_empty(), "got {:?}", res.diagnostics);
+}
