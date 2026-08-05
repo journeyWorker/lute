@@ -143,3 +143,68 @@ pub fn report_and_gate(verdicts: &[ManifestVerdict]) -> bool {
     }
     invalid
 }
+
+/// 0.10.0 §7 / D-S: a nested `lute.project.yaml` under the invoked root that
+/// does NOT govern, **and** that would have resolved a different capability
+/// snapshot or different `identity:` templates than the invoked root's.
+///
+/// Both disjuncts are evaluated and the capability one is the one that fires:
+/// measured over `docs/examples`, three of six descendants resolve a
+/// different snapshot (`showcase/`, `plugindef-project/`, `idola-project/` —
+/// each declares a `pluginsDir` and activates a plugin the outer root's
+/// `core` profile does not), while `anseo/`'s two `identity:` templates are
+/// the defaults verbatim. The narrowing takes six candidates to three, and
+/// that is what makes it a signal rather than noise.
+pub const W_PROJECT_INERT: &str = "W-PROJECT-INERT";
+
+/// What a manifest resolves ON ITS OWN — no document profile, no scene-local
+/// plugins. That is the comparison D-S names: two MANIFESTS, not two
+/// documents. Resolving with a document's frontmatter instead would fold in
+/// scene-local plugin options and measure the wrong thing.
+fn manifest_surface(
+    cfg: Option<&ProjectConfig>,
+) -> (String, lute_manifest::project::IdentityTemplates) {
+    let (snapshot, _) = lute_manifest::project::resolve_document_snapshot(
+        cfg,
+        None,
+        &std::collections::BTreeMap::new(),
+    );
+    let identity = cfg.map(|c| c.identity.clone()).unwrap_or_default();
+    (snapshot.version, identity)
+}
+
+/// Push `W-PROJECT-INERT` onto every verdict whose manifest is not
+/// `governing` and would have resolved differently. Call ONLY from a forced
+/// single-root command; under nearest-root resolution every manifest governs
+/// and the warning is unreachable by construction.
+pub fn mark_inert_under(verdicts: &mut [ManifestVerdict], governing: &Path) {
+    let Some(root) = verdicts.iter().find(|v| v.dir == governing) else {
+        // The invoked root has no manifest of its own; nothing to compare to.
+        return;
+    };
+    let (root_version, root_identity) = manifest_surface(root.config.as_ref());
+    for v in verdicts.iter_mut() {
+        if v.dir == governing || v.config.is_none() {
+            continue;
+        }
+        let (version, identity) = manifest_surface(v.config.as_ref());
+        let differs = version != root_version || identity != root_identity;
+        if !differs {
+            continue;
+        }
+        let why = if version != root_version {
+            "a different capability snapshot"
+        } else {
+            "different `identity:` templates"
+        };
+        v.diags.push(as_diagnostic(
+            W_PROJECT_INERT,
+            format!(
+                "this manifest does not govern under `--project {}` and would have resolved \
+                 {why}; its settings are not applied to any document. Invoke this root \
+                 directly to use them (0.10.0 §7)",
+                governing.display()
+            ),
+        ));
+    }
+}
