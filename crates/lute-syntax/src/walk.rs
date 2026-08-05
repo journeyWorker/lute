@@ -406,14 +406,17 @@ mod tests {
             // Match: subject s10; When (test s11, body Set s12); Otherwise (body Directive ref s13).
             Node::Match(Match {
                 subject: slot("s10"),
+                attrs: Vec::new(),
                 arms: vec![
                     Arm::When {
+                        attrs: Vec::new(),
                         is: None,
                         test: slot("s11"),
                         body: vec![set_node("scene.c", "s12")],
                         span: span(),
                     },
                     Arm::Otherwise {
+                        attrs: Vec::new(),
                         body: vec![Node::Directive(Directive {
                             tag: "fx".to_string(),
                             attrs: vec![ref_attr("k", "s13")],

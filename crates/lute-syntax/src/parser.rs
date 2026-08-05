@@ -1163,6 +1163,42 @@ mod tests {
     }
 
     #[test]
+    fn match_when_otherwise_retain_residual_attrs() {
+        // dsl 0.10.0 §4 / D-J's precondition: the three logic tags that used to
+        // DROP their residual attributes now carry them. The parser still says
+        // nothing about them — the checker's closure rule (Task 3) is the reader.
+        let src = "## Shot 1.\n<match on=\"app.rating\" bogus=\"x\">\n\
+                   <when test=\"true\" nonsense=\"y\">\n@narrator: a.\n</when>\n\
+                   <otherwise junk=\"z\">\n@narrator: b.\n</otherwise>\n\
+                   </match>\n";
+        let (doc, _) = parse(src);
+        let Node::Match(m) = &doc.shots[0].body[0] else {
+            panic!("expected a <match>: {:?}", doc.shots[0].body[0]);
+        };
+        assert_eq!(
+            m.attrs.iter().map(|a| a.key.as_str()).collect::<Vec<_>>(),
+            vec!["bogus"],
+            "`on` is extracted into `subject`; every other key stays in `attrs`"
+        );
+        let Arm::When { attrs, .. } = &m.arms[0] else {
+            panic!("expected a <when> arm: {:?}", m.arms[0]);
+        };
+        assert_eq!(
+            attrs.iter().map(|a| a.key.as_str()).collect::<Vec<_>>(),
+            vec!["nonsense"],
+            "`is`/`test` are extracted; every other key stays in `attrs`"
+        );
+        let Arm::Otherwise { attrs, .. } = &m.arms[1] else {
+            panic!("expected an <otherwise> arm: {:?}", m.arms[1]);
+        };
+        assert_eq!(
+            attrs.iter().map(|a| a.key.as_str()).collect::<Vec<_>>(),
+            vec!["junk"],
+            "<otherwise> extracts nothing, so every key stays in `attrs`"
+        );
+    }
+
+    #[test]
     fn attr_quote_protects_structural_chars() {
         let (doc, _) =
             parse("---\ncharacter: x\n---\n## Shot 1.\n::sfx{sound=\"a } b\" name=\"n\"}\n");
