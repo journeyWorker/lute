@@ -125,8 +125,10 @@ uses:
         File {
             rel: "mocks/playthrough.yaml",
             content: "\
-# Trace mock (dsl 0.4.0 §4.3) for scenes/opening.lute. Preview with:
+# Trace mock (dsl 0.4.0 §4.3). `file:` names the document this mock previews,
+# resolved against this file. Preview with:
 #   lute trace scenes/opening.lute --mock mocks/playthrough.yaml
+file: ../scenes/opening.lute
 state:
   run.greeted: false
 "
@@ -267,8 +269,10 @@ title: Identify the Killer
         File {
             rel: "mocks/playthrough.yaml",
             content: "\
-# Trace mock (dsl 0.4.0 §4.3) for scenes/interview.lute. Preview with:
+# Trace mock (dsl 0.4.0 §4.3). `file:` names the document this mock previews,
+# resolved against this file. Preview with:
 #   lute trace scenes/interview.lute --mock mocks/playthrough.yaml
+file: ../scenes/interview.lute
 facts:
   - \"foundClue(ledger)\"
 choose:
