@@ -1,0 +1,23 @@
+# Episode 6, the fact-writing scene: three `::assert`s with no branch around them,
+# so `found(ottavio)`, `awake(ottavio)` and `knows(ottavio, manifest)` are
+# unconditional on every route that reaches here. Those three are the `start=` gate
+# of `manifest-gap.lute` and two of its three objectives.
+#
+# Both conditional lines are exercised at once: the scalar threshold
+# (`run.shedPressure >= 2`, seeded) and the relational guard
+# (`holds(awake(ilsabet))`, seeded). Note that a content-line `when=` is reported
+# by the trace as a `<match>` arm and counted in coverage as one — the sugar T7.7
+# describes is visible in the coverage numbers.
+file: ../scenes/stowaway.lute
+state:
+  run.shedPressure: 2
+facts:
+  - "awake(vesna)"
+  - "awake(ilsabet)"
+expect:
+  exit: complete
+  transcriptContains:
+    - "Ottavio. I load ships. I have loaded this one four times and never once been aboard it."
+    - "Only the schedule's running at twice the rate I planned for, and I've been doing arithmetic I don't enjoy."
+    - "He's lying about one thing. Ask him who altered the heading."
+    - "So. You're the first person aboard who knows I'm here. Do something useful with that."

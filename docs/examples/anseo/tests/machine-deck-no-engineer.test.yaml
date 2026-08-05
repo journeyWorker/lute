@@ -1,0 +1,11 @@
+# RELATIONAL GATE, negative. No facts seeded, so `holds(awake(toma))` is false and
+# the block falls to `<otherwise>`: you get the shim wrong and the schedule takes
+# a module with margin. The `::set` in the otherwise arm is the assertion.
+file: ../scenes/machine-deck.lute
+expect:
+  exit: complete
+  transcriptContains:
+    - "There was nobody down here to tell you which of the four handles was the one."
+    - "Coupling five-six remains outside tolerance. Release will be executed with margin. The schedule advances."
+  state:
+    run.shedPressure: 1

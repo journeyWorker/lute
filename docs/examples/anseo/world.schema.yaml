@@ -1,0 +1,19 @@
+state:
+  run.vesnaTrust:    { type: number, default: 0 }
+  run.shedPressure:  { type: number, default: 0 }
+entities:
+  crew:  { members: [vesna, toma, ilsabet, ottavio] }
+  topic: { members: [shed_sequence, true_heading, manifest] }
+relations:
+  awake:    { args: [crew], tier: run }
+  knows:    { args: [crew, topic], tier: run }
+  found:    { args: [crew], tier: run }
+  can_halt: { args: [crew], derive: true }
+# Ground facts true before the first scene (dsl §3.1). Vesna is awake in episode 1
+# — she is the one who wakes you — but nothing in the corpus ever ASSERTS it, so
+# until this line `can_halt(vesna)` could not derive and `count(awake(_))` was short
+# by one on every route. A premise of the work belongs in the world, not in a scene.
+facts:
+  - "awake(vesna)"
+rules:
+  - "can_halt(C) :- awake(C), knows(C, shed_sequence)"

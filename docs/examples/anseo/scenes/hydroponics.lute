@@ -1,0 +1,66 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 4
+uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
+after: 'visited("anseo.s01ep03")'
+---
+
+## Hydroponics
+
+::bg{location="hydroponics" time="ship-night"}
+::music{action="start" mood="quiet" volume="muted"}
+::auto{character="vesna" anchor="starboard" action="drift"}
+
+@vesna{code="0010" emotion="level"}: Careful. The mats are the only thing aboard still doing the job it was built for.
+@vesna{code="0020" emotion="wry"}: Nine trays of lettuce, outperforming the entire crew.
+@narrator{code="0030"}: Condensation stood on the inside of the hull. Behind it, nothing at all.
+
+::assert{knows(vesna, manifest)}
+@vesna{code="0040" emotion="clipped"}: I pulled the manifest while you were walking. Hydroponics is module nine.
+@vesna{code="0050" emotion="level"}: The schedule goes in order, and it does not skip.
+
+<match on="run.shedPressure">
+<when test="$ >= 2">
+@vesna{code="0060" emotion="stricken"}: It moved twice while you were in the bank. I was counting.
+</when>
+<when test="$ == 1">
+@vesna{code="0070" emotion="frayed"}: It moved once while you were in the bank. I was counting.
+</when>
+<otherwise>
+@vesna{code="0080" emotion="level"}: It hasn't moved since the bank. That's the first good news today.
+</otherwise>
+</match>
+
+@vesna{code="0090" emotion="level"}: So say it plain. What did you do down there?
+
+<branch id="thePlainAnswer">
+<choice id="ownIt" label="Tell her exactly what you did">
+::set{run.vesnaTrust += 1}
+<match on="run.shedPressure">
+<when test="$ >= 2">
+@vesna{code="0100" emotion="stricken"}: Two pods, two modules. Now you know the exchange rate.
+</when>
+<when test="$ == 1">
+@vesna{code="0110" emotion="frayed"}: One. All right. One I can carry.
+</when>
+<otherwise>
+@vesna{code="0120" emotion="wry"}: Nothing. A room full of sleeping people and you picked nothing.
+</otherwise>
+</match>
+@vesna{code="0130" emotion="level"}: Doesn't make it right. Makes it yours. I can work with yours.
+</choice>
+<choice id="deflect" label="Tell her the schedule was already running">
+@vesna{code="0140" emotion="clipped"}: It was. That isn't what I asked.
+@vesna{code="0150" emotion="hollowed"}: Keep it, then. Everyone aboard is carrying something.
+::auto{character="vesna" action="turn-away"}
+</choice>
+<choice id="saidNothing" label="Say nothing">
+::camera{focus="vesna" zoom="1.15" duration="1.4" wait="true"}
+@vesna{code="0160" emotion="hollowed"}: That's an answer too.
+::auto{character="vesna" action="turn-away"}
+</choice>
+</branch>
+
+@vesna{code="0170" emotion="level"}: Nine trays. When it takes this module, we stop pretending we're a crew and start being cargo.

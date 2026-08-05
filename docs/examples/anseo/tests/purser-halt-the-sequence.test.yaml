@@ -1,0 +1,44 @@
+# ENDING-DECIDING LEVER 1 — the halt. Guarded by
+# `holds(can_halt(toma)) || holds(can_halt(vesna))`, the head of the project's one
+# rule. `lute test` enforces choice eligibility, so this test passing IS the proof
+# that the guard opened.
+#
+# BOTH halters are seeded. That is NOT an impossible world — an earlier revision of
+# this comment said so and it was wrong. It is the world the ordinary maximal route
+# produces: `wake` -> `cryobank:wakeToma` (asserts `awake(toma)`,
+# `knows(toma, shed_sequence)`) -> `spine-a` -> `hydroponics`/`machine-deck` ->
+# `stowaway` -> `spine-b` -> `archive:readItAloud` (asserts
+# `knows(vesna, shed_sequence)`) -> `purser`, with `awake(vesna)` from the world
+# seed. `archive`'s `after=` is `visited("anseo.s01ep07")` and depends on nothing
+# the cryobank branch decided, so both conjunctions close and the rule derives
+# `can_halt(toma)` AND `can_halt(vesna)`. `lute run` confirms it: both 0180 and
+# 0190 play. This test documents that route.
+#
+# The seeds are here because `lute trace` — which is what `lute test` walks — runs
+# no Datalog fixpoint (dsl 0.4.0 §4.2, D1), so a `derive: true` relation left
+# unseeded is UNKNOWN and halts the walk rather than reading false. The cost is
+# that the ALTERNATION inside the arm is not exercisable from this harness: a world
+# where exactly one of the two can halt is a real world (`lute run` walks it and
+# suppresses 0180 correctly) and cannot be traced, because the unseeded half is
+# unknown rather than false. The `<choice>` is testable here; the alternation is
+# testable only in `lute run`. See T9.7.
+file: ../scenes/purser.lute
+facts:
+  - "awake(vesna)"
+  - "awake(toma)"
+  - "knows(vesna, shed_sequence)"
+  - "knows(toma, shed_sequence)"
+  - "can_halt(vesna)"
+  - "can_halt(toma)"
+choose:
+  theCorrection: haltTheSequence
+expect:
+  exit: complete
+  transcriptContains:
+    - "It's a cabinet. Cabinets have a maintenance mode, and maintenance mode has a key, and I've had the key for twelve years."
+    - "Halt condition, subsection four. This is your own page. I am reading you your own page."
+    - "Maintenance hold. Two hands, both of them steady, and you have to mean it."
+    - "Hold acknowledged. Release is suspended pending allocation."
+    - "Pending is not cancelled. Allocation remains short by one module."
+  state:
+    run.vesnaTrust: 1

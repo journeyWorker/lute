@@ -1,0 +1,26 @@
+---
+# The Purser interjects in every module of the prologue, at a different
+# pressure. Component (dsl §13) because the beat is the same beat: a
+# ship-voice line, over the announcement channel, reading the crew's draw
+# against the shed schedule. The body is presentational — content lines and a
+# param-scoped `<match on="@pressure">` (dsl 0.4.0 §6.2), which is the only
+# logic block a component body admits.
+component: purserInterject
+params:
+  pressure: string
+# The component's own vocabulary import (dsl 0.9.0). It makes a STANDALONE
+# `lute check` of this file resolve `emotion=`; through `::use` the IMPORTING
+# document's vocabulary applies and this line is discarded at parse (0.9.0 §5,
+# the known vocabulary-scope limitation), so BOTH sides must declare it.
+uses: ../vocabulary.schema.yaml
+---
+
+## Interjection
+<match on="@pressure">
+<when is="rising">
+@purser{code="0020" emotion="level" os}: Draw exceeds projection. The schedule advances.
+</when>
+<otherwise>
+@purser{code="0010" emotion="level" os}: Allocation is nominal.
+</otherwise>
+</match>

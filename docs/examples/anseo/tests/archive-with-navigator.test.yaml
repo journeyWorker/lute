@@ -1,0 +1,24 @@
+# Same scene, the navigator awake, the other `<branch>` arm. Ilsabet's block is a
+# `<match on="true">` whose only real test is `holds(awake(ilsabet))` — the dummy
+# subject T7.6 records — so this test is what proves that workaround routes on the
+# fact rather than on the subject.
+#
+# `can_halt(vesna)` is seeded for the reason archive-read-it-aloud.test.yaml gives,
+# and here it is actively WRONG for the story: this route pockets the page, so
+# Vesna never learns the sequence and line 0230 should not play. It plays, because
+# a derived relation's only expressible mock value is `true`. The transcript
+# assertions below therefore stay off that line. See T9.6.
+file: ../scenes/archive.lute
+facts:
+  - "awake(vesna)"
+  - "awake(ilsabet)"
+  - "can_halt(vesna)"
+choose:
+  theSequence: pocketIt
+expect:
+  exit: complete
+  transcriptContains:
+    - "Move. That drawer is mine and it has been for eleven years."
+    - "Filed heading. And it is not the heading we are flying."
+    - "Suit yourself. Some things are easier to carry than to say out loud."
+    - "And now there are two of us aboard who aren't written down anywhere."

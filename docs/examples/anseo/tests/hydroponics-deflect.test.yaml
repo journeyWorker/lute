@@ -1,0 +1,11 @@
+# The refusal arm. `deflect` writes no state at all, so the whole assertion is a
+# transcript one — and the trust the `ownIt` tests measure is absent here only in
+# the sense that nothing wrote it.
+file: ../scenes/hydroponics.lute
+choose:
+  thePlainAnswer: deflect
+expect:
+  exit: complete
+  transcriptContains:
+    - "It was. That isn't what I asked."
+    - "Keep it, then. Everyone aboard is carrying something."

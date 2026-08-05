@@ -1,0 +1,72 @@
+---
+kind: scene
+character: anseo
+season: 1
+episode: 8
+uses: [../vocabulary.schema.yaml, ../world.schema.yaml]
+after: 'visited("anseo.s01ep07")'
+---
+
+## The Archive
+
+::bg{location="archive" time="ship-night"}
+::music{action="fade-out"}
+::auto{character="vesna" anchor="port" action="unseal"}
+::auto{character="ottavio" anchor="starboard" action="drift"}
+
+@narrator{code="0010"}: Nine hundred kilograms of paper, kept because paper is the only record aboard that does not need the ship's permission to be read.
+@vesna{code="0020" emotion="wry"}: Somebody in the yard was very proud of this room.
+@ottavio{code="0030" emotion="level"}: Somebody in the yard was covering themselves. Same room either way.
+
+::assert{knows(vesna, manifest)}
+@vesna{code="0040" emotion="clipped"}: Loading manifest. Twenty-nine modules, listed mass, listed crew.
+@vesna{code="0050" emotion="level"}: Four names.
+@ottavio{code="0060" emotion="wry"}: Count the bunks sometime. There are five.
+@ottavio{code="0070" emotion="frayed"}: I'm not a stowaway. A stowaway hides. I was loaded, and I was signed for.
+@ottavio{code="0080" emotion="hollowed"}: Somebody took money to leave a line blank, and the line was me.
+@vesna{code="0090" emotion="stricken"}: And the Purser has been doing arithmetic against that blank for eleven years.
+
+/*
+  `when=` is a content-line and `<choice>` attribute only — `::auto{… when="…"}` is
+  `E-UNKNOWN-ATTR`, so staging cannot be gated in place and a single conditional
+  `::auto` costs a whole block. `on="true"` is T7.6's dummy subject: a relation may
+  not be a `<match on>` subject but is admitted in `<when test>`. See T8.
+*/
+<match on="true">
+<when test="holds(awake(ilsabet))">
+::auto{character="ilsabet" action="unseal"}
+@ilsabet{code="0100" emotion="clipped"}: Move. That drawer is mine and it has been for eleven years.
+@ilsabet{code="0110" emotion="stricken"}: Filed heading. And it is not the heading we are flying.
+@vesna{code="0120" emotion="clipped"}: Where, then.
+@ilsabet{code="0130" emotion="hollowed"}: Nowhere with a name. A point, and a date we went past eleven years ago.
+@ilsabet{code="0132" emotion="clipped"}: Yard type, yard date, filed before either of us was loaded. Whoever bent this heading did it before you ever came up the ramp, loader. I told them to ask you. Consider yourself asked, and answered.
+@ottavio{code="0134" emotion="level"}: I'll take it. It's the first thing anybody aboard has struck off my account.
+@ottavio{code="0135" emotion="wry"}: Eleven years. That's a long time to be early for something.
+</when>
+<otherwise>
+@narrator{code="0140"}: The heading was in the second drawer, in a navigator's shorthand, and there was nobody awake aboard who could read it.
+@vesna{code="0150" emotion="frayed"}: Twelve pages of somebody else's handwriting. It may as well be the hull.
+@ottavio{code="0155" emotion="level"}: I can tell you what it weighs. That's the whole of what I ever needed to know about a page.
+</otherwise>
+</match>
+
+@narrator{code="0160"}: And in the last drawer, on one page, in the yard's own type: the shed sequence.
+@vesna{code="0170" emotion="level"}: Order of release. Condition of release. And the condition for stopping it.
+
+<branch id="theSequence">
+<choice id="readItAloud" label="Read the sequence aloud">
+::assert{knows(vesna, shed_sequence)}
+::set{run.vesnaTrust += 1}
+@vesna{code="0180" emotion="clipped"}: Read it with me. If I'm the only one who knows it and I have it wrong, we all die very politely.
+@vesna{code="0190" emotion="level"}: Halt condition. Allocation satisfied, or allocation invalidated. Those are the only two.
+@vesna{code="0200" emotion="hollowed"}: So it will stop. It just won't stop for being asked.
+</choice>
+<choice id="pocketIt" label="Fold the page and put it in your pocket">
+@vesna{code="0210" emotion="frayed"}: Suit yourself. Some things are easier to carry than to say out loud.
+@ottavio{code="0220" emotion="wry"}: And now there are two of us aboard who aren't written down anywhere.
+</choice>
+</branch>
+
+@vesna{code="0230" emotion="level" when="holds(can_halt(vesna))"}: I can stop it. That is not the same as knowing how to make it want to.
+@vesna{code="0240" emotion="clipped"}: Listed mass and a filed voyage. That's the whole of what it counts, and both of them are wrong, and nobody has ever once gone forward and said so.
+@narrator{code="0250"}: Forward, then, with the paper.

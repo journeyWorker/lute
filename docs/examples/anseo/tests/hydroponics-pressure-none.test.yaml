@@ -1,0 +1,18 @@
+# THRESHOLD GATE, negative control. Same scene, same forced choice, NO seed — so
+# `run.shedPressure` sits at its declared default of 0 and both blocks must fall
+# to `<otherwise>`. Paired with hydroponics-pressure-two.test.yaml this is the
+# "fires when it should, and not when it shouldn't" pair.
+#
+# What this test CANNOT say: that the `>= 2` arm did not play. `expect:` has
+# `transcriptContains` and no negative form, so the absence of the wrong arm is
+# only implied by the presence of the right one. See T9.8.
+file: ../scenes/hydroponics.lute
+choose:
+  thePlainAnswer: ownIt
+expect:
+  exit: complete
+  transcriptContains:
+    - "It hasn't moved since the bank. That's the first good news today."
+    - "Nothing. A room full of sleeping people and you picked nothing."
+  state:
+    run.vesnaTrust: 1

@@ -1,0 +1,26 @@
+---
+kind: quest
+luteVersion: "0.9.0"
+uses: ../world.schema.yaml
+title: What Vesna Carries
+---
+
+/*
+  The only quest in the project whose `start=` is a scalar threshold. It opens at
+  hydroponics — episode 4, the first scene that asks the player to say something
+  true and prices the answer — because that is where Vesna stops being the person
+  giving instructions and starts being a person deciding what you are worth.
+
+  `sheCanStopIt` is `holds(can_halt(vesna))`, the head of the project's one rule:
+  awake AND knows the sequence. Vesna is awake from the world seed, so this
+  objective is exactly "she read the sequence aloud in the archive" — the derived
+  relation doing the work a mirror flag would otherwise be doing by hand.
+*/
+<quest id="whatVesnaCarries" title="What Vesna Carries" start="run.vesnaTrust >= 2" after="visited('anseo.s01ep04')">
+<objective id="sheWillWorkWithYours" title="Be somebody she can work with" done="run.vesnaTrust >= 3"/>
+<objective id="sheCanStopIt" title="Have her know the halt condition well enough to use it" done="holds(can_halt(vesna))"/>
+<objective id="sheHasThePaper" title="Have her holding the manifest when it matters" done="holds(knows(vesna, manifest))" optional/>
+<on event="questComplete">
+@narrator: She had the page, she had the condition, and she had somebody she could say both to out loud.
+</on>
+</quest>

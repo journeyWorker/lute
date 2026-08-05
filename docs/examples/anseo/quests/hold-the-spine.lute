@@ -1,0 +1,36 @@
+---
+kind: quest
+luteVersion: "0.9.0"
+uses: ../world.schema.yaml
+title: Hold the Spine
+---
+
+/*
+  The one quest in this tree with NO `after=`, and the omission is DELIBERATE — the
+  corpus's only worked example of what the connectivity layer does with a bare quest,
+  so a reader who "fixes" it deletes the evidence (see T4.7, and the "T4 controller
+  decision" that ruled this file is not retrofitted while Task 9's five siblings all
+  carry `after=`). See the README's "Deliberate imperfections".
+
+  What it costs, verified with `lute scenario docs/examples/anseo`: this quest appears
+  in NO topological layer and on NO edge. The graph lists five quests, not six —
+  `after=` is the ONLY thing that puts a quest into it, so a quest without one is
+  absent from the project graph entirely, and no amount of `start=`/`done=` work will
+  place it. Two knock-ons: `scenario envelope quest:holdTheSpine` degrades to the
+  defaults-only `D` table (dsl §4.4) plus a note offering the full project-resolved
+  envelope if `after` were declared, and `scenario reach quest:holdTheSpine` — which
+  resolves by id, so it still answers — reports `after: (none declared) — this node is
+  an entry point`, i.e. available from the first instant of the work.
+
+  Story-wise that is also true: the coupling can be held from the moment somebody who
+  can halt the shed is awake, which `start="holds(can_halt(toma))"` already says. The
+  gate is the fact, not the route. `after=` would add a route prerequisite the story
+  does not have — so the honest declaration is the one that costs graph membership.
+*/
+<quest id="holdTheSpine" title="Hold the Spine" start="holds(can_halt(toma))">
+<objective id="reachToma" title="Reach the spine coupling" done="run.shedPressure >= 1"/>
+<on event="questComplete">
+::set{run.vesnaTrust += 1}
+@narrator: The shed halted, one module short of the infirmary.
+</on>
+</quest>

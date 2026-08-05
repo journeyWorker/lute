@@ -1,0 +1,32 @@
+---
+kind: quest
+luteVersion: "0.9.0"
+uses: ../world.schema.yaml
+title: The False Heading
+---
+
+/*
+  Ilsabet's quest. It cannot begin before she is awake, which is why `start=` is
+  a fact query rather than `"true"`, and it has nothing to say on a route that
+  never wakes her.
+
+  The `after=` conjunction carries a quest -> quest edge: the navigator only
+  becomes a question once you are in the business of waking people, so the
+  prerequisite is the cryobank AND `whoWakes` being live. `lute scenario` renders
+  this as `quest(whoWakes) -> quest(falseHeading) [active]`.
+
+  `fail=` is the shed getting there first: at three the schedule is running far
+  enough ahead that a filed heading eleven years stale stops being the problem
+  in the room.
+*/
+<quest id="falseHeading" title="The False Heading" start="holds(awake(ilsabet))" fail="run.shedPressure >= 3" after="visited('anseo.s01ep02') && active('whoWakes')">
+<objective id="hearTheNavigator" title="Hear where the ship is actually going" done="holds(knows(ilsabet, true_heading))"/>
+<objective id="findThePaper" title="Put the filed voyage in front of somebody who can read it" done="holds(knows(vesna, manifest))" when="quest.falseHeading.objectives.hearTheNavigator.done"/>
+<objective id="countTheYears" title="Be trusted enough to be believed about it" done="run.vesnaTrust >= 2" optional/>
+<on event="questComplete">
+@narrator: A destination, a date, and eleven years of the ship being right about the wrong thing.
+</on>
+<on event="questFailed">
+@narrator: The schedule got far enough ahead that where the ship was going stopped being the question.
+</on>
+</quest>

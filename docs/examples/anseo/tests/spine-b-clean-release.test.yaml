@@ -1,0 +1,23 @@
+# The convergence scene, machine-deck arm. `knows(vesna, manifest)` is the proxy
+# T8.1 records for "came via hydroponics"; withholding it and seeding
+# `awake(toma)` instead is the only way to reach the second arm of both blocks.
+# Three awake bodies also unlock the `count(awake(_)) >= 3` line, and the seeded
+# `run.shedPressure: 2` unlocks the one above it.
+file: ../scenes/spine-b.lute
+state:
+  run.shedPressure: 2
+facts:
+  - "awake(vesna)"
+  - "awake(toma)"
+  - "awake(ottavio)"
+choose:
+  whatsLeft: readTheRecord
+expect:
+  exit: complete
+  transcriptContains:
+    - "Quarter turn, and it sat down. It's been sitting ever since."
+    - "Clean. That's what clean sounds like. Learn it \u2014 there's one more coming."
+    - "And it's ahead of its own schedule, because we kept handing it reasons."
+    - "There are more of us up than it planned for. That has to be worth something."
+  state:
+    run.vesnaTrust: 1

@@ -1,0 +1,15 @@
+# THRESHOLD GATE, positive. `hydroponics` opens two `<match on="run.shedPressure">`
+# blocks with arms at `$ >= 2`, `$ == 1` and `<otherwise>`. Seed the bank at two —
+# the wakeToma outcome — and both blocks must take the `>= 2` arm.
+file: ../scenes/hydroponics.lute
+state:
+  run.shedPressure: 2
+choose:
+  thePlainAnswer: ownIt
+expect:
+  exit: complete
+  transcriptContains:
+    - "It moved twice while you were in the bank. I was counting."
+    - "Two pods, two modules. Now you know the exchange rate."
+  state:
+    run.vesnaTrust: 1

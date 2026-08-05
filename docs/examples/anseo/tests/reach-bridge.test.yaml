@@ -1,0 +1,13 @@
+# ENDING A — the bridge. Episode 10 is the deepest node in the graph and carries
+# no `<branch>`, so there is nothing to force: reaching it at all is the claim.
+# `run.vesnaTrust` is seeded because the route that arrives here has spent at
+# least one trust write on the way (`hydroponics: ownIt`, `spine-b: readTheRecord`,
+# `archive: readItAloud`, `purser: haltTheSequence`/`invalidateTheVoyage`) — the
+# seed is a PRECONDITION, not an assertion.
+file: ../scenes/bridge.lute
+state:
+  run.vesnaTrust: 1
+expect:
+  exit: complete
+  transcriptContains:
+    - "Whatever's left of the ship, it's steering."

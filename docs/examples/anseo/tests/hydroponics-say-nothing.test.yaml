@@ -1,0 +1,10 @@
+# The silence arm — the one that carries a `::camera{wait="true"}` beat before the
+# line. Third of three, so with hydroponics-pressure-two and hydroponics-deflect
+# this scene's branch is fully covered.
+file: ../scenes/hydroponics.lute
+choose:
+  thePlainAnswer: saidNothing
+expect:
+  exit: complete
+  transcriptContains:
+    - "That's an answer too."
