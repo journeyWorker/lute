@@ -29,7 +29,7 @@
 //!    - [`stage_bookkeeping`] — thread `on_stage`/`dirty`/`bg`/`music`, and
 //!      auto-hide sprites left on stage across a scene change (`::bg`), the one
 //!      implicit command this rule emits (`by = "stage-bookkeeping"`);
-//! 4. [`Provenance`] `{ injected, by, reason }` on every injected command.
+//! 4. [`Provenance`] `{ injected, by, explanation }` on every injected command.
 //!
 //! ## Implicit vocabulary reads are CHECKED reads
 //! A rule that consults a domain's declared semantics when the corresponding
@@ -104,16 +104,20 @@ pub struct StageState {
 
 /// Provenance stamp on every injected command (arch doc §5): *which* named rule
 /// inserted it and *why*. Surfaced in the resolved/injection view so injection
-/// is visible, not silent magic. `injected == false` marks a command the author
-/// wrote that a rule *would* have injected (a conflict).
+/// is visible, not silent magic.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Provenance {
-    /// `true` when the compiler inserted this command.
+    /// Always `true`. The field is retained for IR compatibility, but with
+    /// `W-INJECT-CONFLICT` removed in 0.10.0 (§12.3, D-AA) nothing constructs a
+    /// `false`, and a consumer MUST NOT read a `true` as distinguishing
+    /// anything. Removing it is an IR break, deferred to a future cycle.
     pub injected: bool,
     /// The named rule responsible (e.g. `"auto-anchor-on-show"`).
     pub by: String,
     /// Human-readable justification, surfaced in the LSP injection view.
-    pub reason: String,
+    /// Named `explanation`, not `reason`: `end.reason` is an opaque author
+    /// token a host dispatches on, and these two share no contract (#36, D-AE).
+    pub explanation: String,
 }
 
 /// The concrete implicit command a rule injects.
@@ -248,7 +252,7 @@ fn auto_anchor_on_show(
                 provenance: Provenance {
                     injected: true,
                     by: "auto-anchor-on-show".to_string(),
-                    reason: format!(
+                    explanation: format!(
                         "`{character}` shown without an explicit anchor; defaulting to `{default}`"
                     ),
                 },
@@ -300,7 +304,7 @@ fn entry_emotion_lookahead(
         provenance: Provenance {
             injected: true,
             by: "entry-emotion-lookahead".to_string(),
-            reason: format!(
+            explanation: format!(
                 "pre-loading `{character}`'s first emotion `{emotion}` seen ahead of the entrance"
             ),
         },
@@ -324,7 +328,7 @@ fn lower_line(state: &mut StageState, line: &Line, emit: &mut Vec<InjectedComman
             provenance: Provenance {
                 injected: true,
                 by: "auto-pose-reset".to_string(),
-                reason: format!(
+                explanation: format!(
                     "`{speaker}` had a dirty pose before a plain line; resetting to neutral"
                 ),
             },
@@ -352,7 +356,7 @@ fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<In
             provenance: Provenance {
                 injected: true,
                 by: "stage-bookkeeping".to_string(),
-                reason: format!("auto-hiding `{character}` left on stage across a scene change"),
+                explanation: format!("auto-hiding `{character}` left on stage across a scene change"),
             },
         });
     }

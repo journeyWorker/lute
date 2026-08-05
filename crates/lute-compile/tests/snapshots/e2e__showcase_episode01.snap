@@ -146,7 +146,7 @@ expression: json
       "provenance": {
         "injected": true,
         "by": "auto-anchor-on-show",
-        "reason": "`bianca` shown without an explicit anchor; defaulting to `center`"
+        "explanation": "`bianca` shown without an explicit anchor; defaulting to `center`"
       }
     },
     {
@@ -158,7 +158,7 @@ expression: json
       "provenance": {
         "injected": true,
         "by": "entry-emotion-lookahead",
-        "reason": "pre-loading `bianca`'s first emotion `delighted` seen ahead of the entrance"
+        "explanation": "pre-loading `bianca`'s first emotion `delighted` seen ahead of the entrance"
       }
     },
     {

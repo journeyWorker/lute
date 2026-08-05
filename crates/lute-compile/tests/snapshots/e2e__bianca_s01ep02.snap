@@ -188,7 +188,7 @@ expression: json
       "provenance": {
         "injected": true,
         "by": "entry-emotion-lookahead",
-        "reason": "pre-loading `bianca`'s first emotion `surprised` seen ahead of the entrance"
+        "explanation": "pre-loading `bianca`'s first emotion `surprised` seen ahead of the entrance"
       }
     },
     {
@@ -688,7 +688,7 @@ expression: json
       "provenance": {
         "injected": true,
         "by": "entry-emotion-lookahead",
-        "reason": "pre-loading `takeru`'s first emotion `neutral` seen ahead of the entrance"
+        "explanation": "pre-loading `takeru`'s first emotion `neutral` seen ahead of the entrance"
       }
     },
     {

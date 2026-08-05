@@ -120,7 +120,7 @@ expression: json
       "provenance": {
         "injected": true,
         "by": "auto-anchor-on-show",
-        "reason": "`bianca` shown without an explicit anchor; defaulting to `center`"
+        "explanation": "`bianca` shown without an explicit anchor; defaulting to `center`"
       },
       "source": {
         "component": "greet"
