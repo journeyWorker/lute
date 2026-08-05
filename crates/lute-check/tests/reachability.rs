@@ -1013,3 +1013,167 @@ fn on_when_sentinel_flags_unset_literal() {
         "an <on when> sentinel comparison must flag E-UNSET-LITERAL: {cs:?}"
     );
 }
+
+// --- dsl 0.10.0 §5.2 (D-G, D-O): E-OBJECTIVE-CONTRADICTION ------------------
+
+const QHDR: &str = "---\nkind: quest\nstate:\n  \
+    run.n: { type: number, default: 0 }\n  \
+    run.m: { type: number, default: 0 }\n  \
+    run.pick: { type: { enum: [a, b, c] }, default: a }\n  \
+    run.note: { type: string, default: \"\" }\n---\n";
+
+fn quest_codes(body: &str) -> Vec<String> {
+    codes(&format!("{QHDR}<quest id=\"q\">\n{body}</quest>\n"))
+}
+
+/// T9.6: two required objectives with disjoint solution sets over the same
+/// declared `number` path.
+#[test]
+fn disjoint_number_intervals_contradict() {
+    let cs = quest_codes(
+        "<objective id=\"high\" done=\"run.n >= 99\"/>\n\
+         <objective id=\"low\" done=\"run.n <= 0\"/>\n",
+    );
+    assert!(cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{cs:?}");
+}
+
+/// Reported ONCE per pair, anchored at the SECOND objective, naming both ids
+/// and the path — and carrying `REQUIRED_QUEST_NOTE` verbatim (D-O), never a
+/// second `E-QUEST-UNREACHABLE`.
+#[test]
+fn contradiction_message_and_anchor() {
+    let text = format!(
+        "{QHDR}<quest id=\"q\">\n\
+         <objective id=\"high\" done=\"run.n >= 99\"/>\n\
+         <objective id=\"low\" done=\"run.n <= 0\"/>\n\
+         </quest>\n"
+    );
+    let res = run(&text);
+    let ds: Vec<_> = res
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E-OBJECTIVE-CONTRADICTION")
+        .collect();
+    assert_eq!(ds.len(), 1, "once per pair: {:?}", res.diagnostics);
+    let d = ds[0];
+    assert!(d.message.contains("`high`") && d.message.contains("`low`"), "{}", d.message);
+    assert!(d.message.contains("run.n"), "{}", d.message);
+    assert!(
+        d.message.contains("being required, the quest"),
+        "reuses REQUIRED_QUEST_NOTE verbatim: {}",
+        d.message
+    );
+    assert!(
+        res.diagnostics.iter().all(|x| x.code != "E-QUEST-UNREACHABLE"),
+        "C4: the consequence rides as a note, never a second code: {:?}",
+        res.diagnostics
+    );
+    assert!(
+        res.diagnostics.iter().all(|x| x.code != "E-OBJECTIVE-UNSATISFIABLE"),
+        "neither objective is individually dead: {:?}",
+        res.diagnostics
+    );
+    let second = text.find("<objective id=\"low\"").unwrap();
+    assert!(
+        d.span.byte_start >= second,
+        "anchored at the second objective, not the first"
+    );
+}
+
+/// **The `number` domain is the REALS, not the integers.** `run.n > 1` and
+/// `run.n < 2` intersect. Reading them as disjoint would produce a false
+/// contradiction on a legal pair, which is the one outcome §5.2 may not
+/// produce.
+#[test]
+fn open_intervals_over_reals_intersect() {
+    let cs = quest_codes(
+        "<objective id=\"gt\" done=\"run.n > 1\"/>\n\
+         <objective id=\"lt\" done=\"run.n < 2\"/>\n",
+    );
+    assert!(!cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{cs:?}");
+}
+
+/// Different paths never pair.
+#[test]
+fn different_paths_never_pair() {
+    let cs = quest_codes(
+        "<objective id=\"a\" done=\"run.n >= 99\"/>\n\
+         <objective id=\"b\" done=\"run.m <= 0\"/>\n",
+    );
+    assert!(!cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{cs:?}");
+}
+
+/// An OPTIONAL objective never participates: the quest can still complete
+/// without it, so a pair including one is not a contradiction about the quest.
+#[test]
+fn optional_objectives_never_participate() {
+    let cs = quest_codes(
+        "<objective id=\"high\" done=\"run.n >= 99\"/>\n\
+         <objective id=\"low\" done=\"run.n <= 0\" optional/>\n",
+    );
+    assert!(!cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{cs:?}");
+}
+
+/// Out of domain: an `&&`, an `||`, a `!`, a fact query, a `@ref`, a second
+/// path, or anything else. An out-of-domain predicate participates in no pair.
+#[test]
+fn out_of_domain_predicates_never_pair() {
+    for body in [
+        "<objective id=\"a\" done=\"run.n >= 99 && run.m > 0\"/>\n\
+         <objective id=\"b\" done=\"run.n <= 0\"/>\n",
+        "<objective id=\"a\" done=\"run.n >= run.m\"/>\n\
+         <objective id=\"b\" done=\"run.n <= 0\"/>\n",
+        "<objective id=\"a\" done=\"!(run.n >= 99)\"/>\n\
+         <objective id=\"b\" done=\"run.n <= 0\"/>\n",
+    ] {
+        let cs = quest_codes(body);
+        assert!(
+            !cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
+            "out of domain must not pair: {cs:?}"
+        );
+    }
+}
+
+/// Finite domains: `enum` and `bool` use the member set. Two different
+/// equalities on one enum path are disjoint; `== a` beside `!= b` is not.
+#[test]
+fn enum_equality_pairs() {
+    let bad = quest_codes(
+        "<objective id=\"x\" done=\"run.pick == 'a'\"/>\n\
+         <objective id=\"y\" done=\"run.pick == 'b'\"/>\n",
+    );
+    assert!(bad.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{bad:?}");
+    let ok = quest_codes(
+        "<objective id=\"x\" done=\"run.pick == 'a'\"/>\n\
+         <objective id=\"y\" done=\"run.pick != 'b'\"/>\n",
+    );
+    assert!(!ok.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{ok:?}");
+}
+
+/// `string` supports equality/inequality only; a relational operator on a
+/// string path is out of domain, and two `!=`s over an infinite domain always
+/// share a value.
+#[test]
+fn string_equality_pairs_only() {
+    let bad = quest_codes(
+        "<objective id=\"x\" done=\"run.note == 'p'\"/>\n\
+         <objective id=\"y\" done=\"run.note == 'q'\"/>\n",
+    );
+    assert!(bad.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{bad:?}");
+    let ok = quest_codes(
+        "<objective id=\"x\" done=\"run.note != 'p'\"/>\n\
+         <objective id=\"y\" done=\"run.note != 'q'\"/>\n",
+    );
+    assert!(!ok.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{ok:?}");
+}
+
+/// The Anseo shape: at most one in-domain scalar `done=` per quest, so nothing
+/// pairs.
+#[test]
+fn one_scalar_gate_per_quest_is_clean() {
+    let cs = quest_codes(
+        "<objective id=\"a\" done=\"run.n >= 1\"/>\n\
+         <objective id=\"b\" done=\"run.pick == 'a'\"/>\n",
+    );
+    assert!(!cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{cs:?}");
+}
