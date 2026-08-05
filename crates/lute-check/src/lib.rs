@@ -89,5 +89,6 @@ pub use time::{
     fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS,
 };
 pub use timeline::{
-    resolve_timeline, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING, E_TIMELINE_DURATION,
+    resolve_timeline, time_resolution_diag, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING,
+    E_TIMELINE_DURATION, E_TIME_RESOLUTION,
 };

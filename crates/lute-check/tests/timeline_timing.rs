@@ -102,3 +102,91 @@ fn use_directive_at_outside_track_rejected() {
         "expected E-AT-CONTEXT for `at` on a ::use outside a track; got {cs:?}"
     );
 }
+
+/// 0.10.0 §10.1: a time value finer than a millisecond is an error naming the
+/// resolution limit. No rounding — a timeline the author cannot see the
+/// difference in is a timeline whose diagnostics they cannot predict.
+#[test]
+fn clip_at_finer_than_a_millisecond_is_rejected() {
+    let t = format!(
+        "{HDR}<timeline>\n<track channel=\"vfx\">\n\
+         ::vfx{{type=\"shed\" at=\"1.2000001\"}}\n\
+         </track>\n</timeline>\n"
+    );
+    let cs = codes(&t);
+    assert!(
+        cs.iter().any(|c| c == "E-TIME-RESOLUTION"),
+        "expected E-TIME-RESOLUTION for at=\"1.2000001\"; got {cs:?}"
+    );
+}
+
+#[test]
+fn duration_finer_than_a_millisecond_is_rejected() {
+    let t = format!(
+        "{HDR}<timeline>\n<track subject=\"camera\">\n\
+         ::camera{{focus=\"x\" duration=\"0.12345\"}}\n\
+         </track>\n</timeline>\n"
+    );
+    let cs = codes(&t);
+    assert!(
+        cs.iter().any(|c| c == "E-TIME-RESOLUTION"),
+        "expected E-TIME-RESOLUTION for duration=\"0.12345\"; got {cs:?}"
+    );
+}
+
+#[test]
+fn delay_finer_than_a_millisecond_is_rejected() {
+    let t = format!("{HDR}::camera{{focus=\"x\" delay=\"0.00005\"}}\n");
+    let cs = codes(&t);
+    assert!(
+        cs.iter().any(|c| c == "E-TIME-RESOLUTION"),
+        "expected E-TIME-RESOLUTION for delay=\"0.00005\"; got {cs:?}"
+    );
+}
+
+#[test]
+fn timeline_duration_finer_than_a_millisecond_is_rejected() {
+    let t = format!(
+        "{HDR}<timeline duration=\"1.23456\">\n<track subject=\"camera\">\n\
+         ::camera{{focus=\"x\" duration=\"0.5\"}}\n\
+         </track>\n</timeline>\n"
+    );
+    let cs = codes(&t);
+    assert!(
+        cs.iter().any(|c| c == "E-TIME-RESOLUTION"),
+        "expected E-TIME-RESOLUTION for <timeline duration=\"1.23456\">; got {cs:?}"
+    );
+}
+
+/// Three fractional digits are exactly legal — the boundary, not one side of it.
+#[test]
+fn three_fractional_digits_are_legal() {
+    let t = format!(
+        "{HDR}<timeline>\n<track channel=\"vfx\">\n\
+         ::vfx{{type=\"shed\" at=\"1.005\" duration=\"0.125\"}}\n\
+         </track>\n</timeline>\n"
+    );
+    let cs = codes(&t);
+    assert!(
+        !cs.iter().any(|c| c == "E-TIME-RESOLUTION"),
+        "1 ms is the limit, not 0.1 ms; got {cs:?}"
+    );
+}
+
+/// §10.2's last paragraph: a value that does not parse as a decimal at all
+/// keeps its CURRENT behaviour (a clip `at` is treated as absent). That is
+/// pre-existing and underspecified; #26 does not change it, and it must not
+/// become `E-TIME-RESOLUTION`.
+#[test]
+fn a_non_numeric_time_is_not_a_resolution_error() {
+    let t = format!(
+        "{HDR}<timeline>\n<track channel=\"vfx\">\n\
+         ::vfx{{type=\"shed\" at=\"soon\"}}\n\
+         </track>\n</timeline>\n"
+    );
+    let cs = codes(&t);
+    assert!(
+        !cs.iter().any(|c| c == "E-TIME-RESOLUTION"),
+        "an unparseable value keeps its pre-existing fallback (§10.2); got {cs:?}"
+    );
+}
