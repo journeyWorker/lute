@@ -900,3 +900,30 @@ fn scenario_reach_accepts_an_active_prerequisite() {
         "the declared `after` structure must round-trip the `active` atom: {out_text}"
     );
 }
+
+/// dsl 0.10.0 §5.1: a `<quest start>` gated on a never-producible relation now
+/// reads `Unreachable` in `scenario reach`, where it used to read `Reachable`.
+/// The verdict text for the lifecycle cause already existed; the branch is what
+/// makes it reachable. This test also pins the diagnostic's ANCHOR: it passes
+/// only when the diagnostic carries `quest.span`, because
+/// `unreachable_quest_ids` matches on exactly that.
+#[test]
+fn dead_relation_start_reads_unreachable() {
+    let dir = temp_dir("reach_dead_start");
+    write(&dir, "lute.project.yaml", &core_only_project_yaml());
+    write(
+        &dir,
+        "q.lute",
+        "---\nkind: quest\nentities:\n  crew: { members: [toma] }\nrelations:\n  \
+         sealed: { args: [crew], tier: run }\nstate:\n  run.n: { type: number, default: 0 }\n\
+         ---\n<quest id=\"deadStart\" start=\"holds(sealed(toma))\">\n\
+         <objective id=\"o\" done=\"run.n >= 1\"/>\n</quest>\n",
+    );
+
+    let out = run(&["scenario", dir.to_str().unwrap(), "reach", "quest:deadStart"]);
+    let text = stdout(&out);
+    assert!(
+        text.contains("verdict: Unreachable"),
+        "a start gated on a never-producible relation must read Unreachable: {text}"
+    );
+}

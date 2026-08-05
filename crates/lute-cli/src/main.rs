@@ -1224,6 +1224,9 @@ fn compute_conn_fixpoint(
         lute_check::connectivity::unreachable_quest_ids(group, file_results);
     let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
     let mut unreachable_quests = lifecycle_unreachable_quests.clone();
+    // dsl 0.10.0 §5.1 (D-N): grows inside the loop like `newly_dead`, and is
+    // tracked separately so the two derived causes keep distinct verdict text.
+    let mut dead_start_quests: BTreeSet<String> = BTreeSet::new();
     loop {
         let (reach, reach_diags) = lute_check::connectivity::check_reachability(
             conn_graph,
@@ -1238,6 +1241,15 @@ fn compute_conn_fixpoint(
             &lifecycle_unreachable_quests,
         );
         let mut newly_dead: BTreeSet<String> = BTreeSet::new();
+        // dsl 0.10.0 §5.1 (D-N): a quest whose `start=` is relationally dead
+        // can never activate. `scan_objective_liveness` says so as a
+        // diagnostic, but that diagnostic lands in `project_diags` and NEVER
+        // in `file_results`, so `unreachable_quest_ids` — which scans the
+        // per-file `check()` output — cannot see it. Connectivity reads the
+        // FACT from `dead_start_quests` instead, exactly as it already reads
+        // `dead_required_objective_quests` rather than the diagnostic that
+        // cause emits.
+        let mut newly_dead_start: BTreeSet<String> = BTreeSet::new();
         for (_path, doc, folded) in group_full {
             let producible_map =
                 lute_check::producible::producible(&folded.env.rel_vocab, &live_asserts);
@@ -1257,12 +1269,31 @@ fn compute_conn_fixpoint(
                 &defs,
                 &ctx,
             ));
+            newly_dead_start.extend(lute_check::producible::dead_start_quests(
+                doc,
+                &producible_map,
+                ambiguous_quests,
+                &defs,
+                &ctx,
+            ));
         }
-        let grown: BTreeSet<String> =
-            lifecycle_unreachable_quests.iter().cloned().chain(newly_dead).collect();
+        // Both derived sets are relational consequences and both only ever
+        // GROW, so the fixpoint argument in this function's doc is unchanged.
+        dead_start_quests.extend(newly_dead_start);
+        let grown: BTreeSet<String> = lifecycle_unreachable_quests
+            .iter()
+            .cloned()
+            .chain(dead_start_quests.iter().cloned())
+            .chain(newly_dead)
+            .collect();
         if grown == unreachable_quests {
+            // A dead-`start` quest is a LIFECYCLE cause, not a dead-objective
+            // one: it must reach `reach_verdict_text`'s `E-QUEST-UNREACHABLE`
+            // branch, not the `E-OBJECTIVE-UNSATISFIABLE` one that is checked
+            // first. Subtract it here so the two causes keep their own text.
             let dead_required_objective_quests: BTreeSet<String> = unreachable_quests
                 .difference(&lifecycle_unreachable_quests)
+                .filter(|id| !dead_start_quests.contains(*id))
                 .cloned()
                 .collect();
             return ConnFixpoint {
