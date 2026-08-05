@@ -1,0 +1,12 @@
+# Lute project manifest — core-only profile (no plugins). Every document under
+# this directory resolves against the built-in `lute.core` capability snapshot.
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+
+# Identity templates (dsl §10). `{prefix}` derives as `{character}.s{season}ep{episode}`
+# from each scene's frontmatter; `{speaker}` and `{code}` come from the line itself.
+identity:
+  lineId: "{prefix}.{speaker}_{code}"
+  voiceKey: "{speaker}-{code}"

@@ -1,0 +1,22 @@
+# The Task 4 quest — the one deliberately left without an `after=` (see the T4
+# controller decision). That omission is invisible from here: `lute test` traces a
+# quest document identically whether or not it is a node in the scenario graph, so
+# the test suite cannot tell you the thing `lute scenario` can.
+#
+# With this file the suite covers 17 of the project's 18 documents. The eighteenth
+# is `components/purser-interject.component.lute`, which no test can name: tracing
+# a component standalone is refused with `E-COMPILE-EXPAND` even though
+# `check-project` reports it `ok`. See T9.11.
+file: ../quests/hold-the-spine.lute
+state:
+  run.shedPressure: 2
+facts:
+  - "awake(toma)"
+  - "knows(toma, shed_sequence)"
+  - "can_halt(toma)"
+expect:
+  exit: complete
+  transcriptContains:
+    - "The shed halted, one module short of the infirmary."
+  state:
+    run.vesnaTrust: 1

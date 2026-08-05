@@ -1,9 +1,14 @@
 ---
 # Reusable content component (dsl §13): a named, parameterized block of lines +
 # staging expanded inline by `::use`. Presentational only — `@cue` is the sole
-# ref namespace (a param), bound to the invocation arg at expansion time. Like a
-# schema doc, a component file declares no scene keys, so a STANDALONE
-# `lute check` reports `E-META-MISSING`; the episode validates it transitively.
+# ref namespace (a param), bound to the invocation arg at expansion time.
+#
+# This file declares no `uses:`, so a STANDALONE `lute check` of it reports
+# `E-DOMAIN-UNKNOWN` for `musicAction`/`vfxType`: through a `::use` the
+# IMPORTING episode's vocabulary applies, but standalone there is nothing to
+# resolve against (0.9.0 §5, the known vocabulary-scope limitation — contrast
+# `components/greet.component.lute`, which declares its own `uses:` so both
+# legs resolve). The episode validates it transitively.
 component: stinger
 params:
   cue: string
@@ -19,7 +24,8 @@ params:
    MEMBERSHIP is checked for authored literals only. So `mood=@cue` is checked
    for neither type nor membership: the `::use` arg is judged against the param's
    `string` type, and `cue` reaches `::music` unvalidated. A component body
-   carries no state read/write and no logic block (§13.4). */
+   carries no state read/write, and no logic block other than a param-scoped
+   `<match on="@param">` (dsl 0.4.0 §6.2, which relaxed §13.4's blanket ban). */
 ::music{action="change" mood=@cue}
 ::vfx{type="whiteOut" label=@cue transition="fade"}
 @narrator: A beat of silence, then the moment lands.

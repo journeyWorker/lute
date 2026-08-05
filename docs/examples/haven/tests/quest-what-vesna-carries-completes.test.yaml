@@ -1,0 +1,14 @@
+# The scalar-threshold quest. `start="run.vesnaTrust >= 2"` and
+# `sheWillWorkWithYours` at `>= 3` are the project's only two-stage scalar gate:
+# the quest opens at one value and completes at a higher one, which is the closest
+# thing the language has to "and then it got worse".
+file: ../quests/what-vesna-carries.lute
+state:
+  run.vesnaTrust: 3
+facts:
+  - "can_halt(vesna)"
+  - "knows(vesna, manifest)"
+expect:
+  exit: complete
+  transcriptContains:
+    - "She had the page, she had the condition, and she had somebody she could say both to out loud."

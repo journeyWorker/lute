@@ -1,0 +1,17 @@
+# The FAILURE side of a quest, which is the half `lute run`/`lute trace` examples
+# usually skip. All three objectives are `done` and the quest still ends `failed`,
+# because `fail=` is evaluated independently of completion — T4.1's "a failure
+# condition genuinely does not have to mention the success condition", now
+# exercised rather than asserted.
+file: ../quests/false-heading.lute
+state:
+  run.shedPressure: 3
+  run.vesnaTrust: 2
+facts:
+  - "awake(ilsabet)"
+  - "knows(ilsabet, true_heading)"
+  - "knows(vesna, manifest)"
+expect:
+  exit: complete
+  transcriptContains:
+    - "The schedule got far enough ahead that where the ship was going stopped being the question."

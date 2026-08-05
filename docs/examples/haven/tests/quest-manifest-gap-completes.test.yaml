@@ -1,0 +1,20 @@
+# The one quest whose completion is observable in STATE rather than only in the
+# transcript, because its `<on event="questComplete">` carries a `::set`. That is
+# the whole trick: to make quest completion assertable at all, the author has to
+# give the quest a side effect it did not otherwise need.
+#
+# `run.shedPressure: 3` also satisfies the `optional` `listHim` objective, so this
+# path is the fully-completed one.
+file: ../quests/manifest-gap.lute
+state:
+  run.shedPressure: 3
+facts:
+  - "found(ottavio)"
+  - "knows(ottavio, manifest)"
+  - "knows(vesna, manifest)"
+expect:
+  exit: complete
+  transcriptContains:
+    - "Four names, five bunks, and one of the two people who knew it was the one it was about."
+  state:
+    run.vesnaTrust: 1

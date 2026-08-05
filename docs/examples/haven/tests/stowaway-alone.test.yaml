@@ -1,0 +1,12 @@
+# Episode 6 with nobody but Vesna up and the schedule unpressured — the negative
+# side of both of this scene's content-line guards. Paired with
+# stowaway-under-pressure.test.yaml it is the suite's only complete both-sides
+# cover of a `when=` on a line.
+file: ../scenes/stowaway.lute
+facts:
+  - "awake(vesna)"
+expect:
+  exit: complete
+  transcriptContains:
+    - "I'm not on the manifest. That isn't an accident, that's a career."
+    - "When it takes this module it won't subtract me from the total. It'll just take me."

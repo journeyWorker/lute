@@ -1,0 +1,13 @@
+# Same scene, arm 2: wake the navigator. HALF the pressure of arm 1 and a
+# different pair of facts — the contrast with cryobank-wake-toma.test.yaml is the
+# point, and it is the only place in the suite where two tests differ by one
+# `choose:` value alone.
+file: ../scenes/cryobank.lute
+choose:
+  whoWakes: wakeIlsabet
+expect:
+  exit: complete
+  transcriptContains:
+    - "We're not going where you think we are."
+  state:
+    run.shedPressure: 1

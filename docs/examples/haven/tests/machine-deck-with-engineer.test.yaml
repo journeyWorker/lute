@@ -1,0 +1,13 @@
+# RELATIONAL GATE, positive. One seeded fact flips a line guard, a whole
+# `<match>` block AND the Purser's verdict. Note that `lute trace` does not
+# auto-load the schema `facts:` seed, so every fact a test depends on must be
+# restated here even when the world already declares it.
+file: ../scenes/machine-deck.lute
+facts:
+  - "awake(toma)"
+expect:
+  exit: complete
+  transcriptContains:
+    - "Don't put a hand on that ring. It'll take the arm and thank you for it."
+    - "Quarter turn. Stop when it stops arguing with you."
+    - "Coupling five-six is within tolerance. Schedule unchanged."

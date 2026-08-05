@@ -23,6 +23,40 @@ substantively — this changelog is where you learn which ones did. See
 [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Fixed
+
+- **A component file checked standalone now enforces the presentational-body
+  contract (dsl 0.4.0 §6.2).** `lute check some.component.lute` reported `ok`
+  for a body containing `<branch>`, `<hub>`, `<timeline>`, `<on>`,
+  `<objective>`, `::set`, `::assert`, or `::retract` — every one of which fails
+  with `E-COMPONENT-BODY` the moment the component is reached through a
+  `::use`. A component file carries no `kind:`, so it degrades to
+  `DocKind::Scene` and walked through the ordinary scene `Walker`, where all of
+  those constructs are legal; `walk_component_body`, which owns the
+  prohibition, was reached only from `validate_components` over an *importing*
+  document's component table. The standalone leg is the one a component author
+  is most likely to run, and it was a false green. The component root now walks
+  through the same `walk_component_body` the `::use` leg uses — one
+  implementation of the contract, not two. This is the mirror of the earlier
+  fix that made the standalone leg no longer too *strict* about a component
+  file's own `<quest>`.
+
+  A `<hub>` additionally draws `E-HUB-NO-EXIT` on the standalone leg only,
+  because the branch-folding pre-pass runs over any root document; that
+  residual is deliberate and documented in
+  `crates/lute-check/tests/component_logic_block.rs`.
+
+- **`docs/examples/components/greet.component.lute` and
+  `showcase/components/stinger.component.lute` documented a rule the language
+  dropped.** Both header comments stated dsl §13.4's blanket ban on logic
+  blocks in a component body; 0.4.0 §6.2 has admitted a param-scoped
+  `<match on="@param">` since then, which `reaction.component.lute` relies on.
+  Reading the examples taught the wrong rule. `stinger`'s claim that a
+  standalone check reports `E-META-MISSING` was also stale — it reports
+  `E-DOMAIN-UNKNOWN`, because that file declares no `uses:` of its own.
+
 ## [0.9.0] - 2026-07-29
 
 **Language `0.9.0` — vocabulary ownership: the core declares slots, the project
