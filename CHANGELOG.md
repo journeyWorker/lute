@@ -173,7 +173,32 @@ time the shape **moved** — see the IR bullet under *Changed*.
   anchored inside the component. A fault holding at only some sites is
   caller-specific and stays with `check-project`, where the caller is visible.
   With **no** caller in scope the verdict is `W-COMPONENT-UNVERIFIED`, not `ok`
-  — refusing to claim a check it did not perform.
+  — refusing to claim a check it did not perform. "No caller in scope" covers
+  both of its disjuncts, including the one an author actually types: `lute
+  check c.component.lute` with **no** `--project` (there is no manifest
+  auto-discovery). The two disjuncts do not share a message — "no project
+  resolved" means the tool could not look, "no document imports this" means it
+  looked and found nothing.
+- **`lute check` runs the compile gate, so it stops being greener than
+  `trace`.** `normalize` + `expand` run after the `check` gate in both
+  `lute compile` and `lute trace`, and `lute check` ran neither: a scene whose
+  `defs:` bodies form a cycle reported `ok: … (0 warning(s))` while `lute trace`
+  on the same file printed `E-COMPILE-EXPAND … def expansion cycle: a -> b -> a`
+  and then *"has check error(s) — run `lute check` first"*. That advice was
+  unfollowable by construction for the whole `E-COMPILE-*` class. `lute check`
+  now runs the same two passes, in the same order, past the same gate, and
+  reports what they find; `E-COMPILE-COMPONENT`, `E-COMPILE-EXPAND`,
+  `E-COMPILE-INTERNAL` and `E-WHEN-UNSET-SUBJECT` join the `--deny` universe
+  accordingly.
+- **A component is not a root document.** `lute trace`/`lute compile` on a
+  `*.component.lute` used to fail with the expander's own internal invariant
+  assertion — `` `@pressure` names no known def body (gate should have caught
+  this) `` — and blame `check`, which reported that exact file `ok`. A
+  component's `params:` are bound at each `::use`, so it has no standalone
+  compiled form and no standalone walk; both commands now refuse the invocation
+  for that reason and point at an importing document. On the `check` side the
+  gate binds the params as a call site would, so a component's own body faults
+  are reported while the absence of a caller is not mistaken for one.
 - **`&&` narrowing runs in every CEL slot.** `<quest start|fail>` and
   `<objective done|when>` were the four slots where an intra-expression
   `x != unset && x > 3` did not discharge `E-MAYBE-UNSET`, as it already did
