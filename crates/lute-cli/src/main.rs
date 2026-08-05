@@ -498,8 +498,9 @@ fn parse_choose_flag(raw: &str) -> Result<(String, Vec<String>), String> {
 /// scattered across the checker crates), so this curated list IS that registry,
 /// kept in ONE place. Assembled by grepping every `"[EW]-…"` code literal in the
 /// crates whose diagnostics `check`/`check-project` surface (`lute-check`,
-/// `lute-syntax`, `lute-cel`, `lute-manifest`, `lute-core-span`, and — since
-/// 0.10.0 §8 put the mock pass under `check-project` — `lute-trace`); the
+/// `lute-syntax`, `lute-cel`, `lute-manifest`, `lute-core-span`; since
+/// 0.10.0 §8 put the mock pass under `check-project`, `lute-trace`; and since
+/// §9:962 put the compile gate under `lute check`, `lute-compile`); the
 /// `every_check_emitted_code_is_deniable` test, a `#[cfg(test)]` unit test at
 /// the bottom of THIS file, rescans those crates and fails if any emitted
 /// code is missing here, so a newly-added code cannot silently fall outside
@@ -511,7 +512,8 @@ const DENIABLE_CODES: &[&str] = &[
     "E-ASSET-SEGMENT", "E-ASSET-UNKNOWN-ID", "E-AT-CONTEXT", "E-ATTR-TYPE",
     "E-BAD-ENUM", "E-BRANCH-ALL-GUARDED", "E-BRANCH-EMPTY", "E-CEL-PARSE",
     "E-CEL-PROFILE", "E-CHOICE-DUP", "E-CHOICE-ID-RESERVED", "E-CHOICELOG-READ",
-    "E-CLIP-OVERLAP", "E-CLIP-TIMING", "E-COMMENT-UNTERMINATED", "E-COMPONENT-ARG",
+    "E-CLIP-OVERLAP", "E-CLIP-TIMING", "E-COMMENT-UNTERMINATED",
+    "E-COMPILE-COMPONENT", "E-COMPILE-EXPAND", "E-COMPILE-INTERNAL", "E-COMPONENT-ARG",
     "E-COMPONENT-BODY", "E-COMPONENT-CYCLE", "E-COMPONENT-DUP", "E-COMPONENT-PARSE",
     "E-COMPONENT-STATE", "E-COMPONENT-UNDECLARED", "E-CONN-CYCLE", "E-CONN-EPISODE-ID-DUP",
     "E-CONN-FORMULA-TOO-COMPLEX", "E-CONN-PROFILE", "E-CONN-UNKNOWN-NODE", "E-CONN-UNREACHABLE",
@@ -557,7 +559,8 @@ const DENIABLE_CODES: &[&str] = &[
     "E-UNKNOWN-EVENT", "E-UNKNOWN-ID", "E-UNKNOWN-KIND", "E-UNSET-LITERAL",
     "E-UNSET-UNCOVERED", "E-USES-CYCLE", "E-USES-DUP-DEF", "E-USES-DUP-RELATION",
     "E-USES-DUP-STATE", "E-USES-NOT-FOUND", "E-USES-PARSE", "E-VALIDAT-DERIVED",
-    "E-WHEN-LITERAL-DOMAIN", "E-WHEN-PATTERN", "E-WRITE-CONFLICT", "W-ASSET-PLACEHOLDER",
+    "E-WHEN-LITERAL-DOMAIN", "E-WHEN-PATTERN", "E-WHEN-UNSET-SUBJECT", "E-WRITE-CONFLICT",
+    "W-ASSET-PLACEHOLDER",
     "W-CATALOG-STALE", "W-CODE-AFTER-END", "W-COMPONENT-UNVERIFIED", "W-DERIVE-NO-RULES",
     "W-DOMAIN-UNREAD",
     "W-EXIT-INERT",
@@ -1026,6 +1029,94 @@ fn component_name_of(file: &Path) -> Option<(String, Span)> {
     typed.component.map(|name| (name, doc.meta.span))
 }
 
+/// The diagnostics `lute compile` and `lute trace` produce AFTER the `check`
+/// gate: `normalize_document` then `expand_document`, the same pair in the same
+/// order both of them run (`lute_compile::compile_with_check` passes 2–3,
+/// `lute_trace::trace_with_check` step 4).
+///
+/// `check()` runs neither. That is T9.12's root cause, and it is not confined to
+/// components: on ANY document an `E-COMPILE-*` fault was invisible to
+/// `lute check` and fatal to everything downstream of it. A scene whose `defs:`
+/// bodies form a cycle reported `ok: … (0 warning(s))`, while `lute trace` on
+/// the same file printed `E-COMPILE-EXPAND … def expansion cycle: a -> b -> a`
+/// and then *"has check error(s) — run `lute check` first"*. `check` cannot emit
+/// a code it never computes, so that advice was unfollowable **by
+/// construction** for the whole class. Running the pass here is what makes it
+/// followable — the false green is closed at the leg that was green, not by
+/// quietening the leg that was right.
+///
+/// A COMPONENT's own `params:` are bound to a placeholder first, exactly as
+/// `::use` binds them at a call site. `check` registers a component's params as
+/// **bodiless markers** (`defs`/`def_types`/`def_params`, deliberately never
+/// `def_bodies` — the D3 marker path `decide()` resolves them through), a shape
+/// the expander has no notion of: it looks up `bodies` alone and calls any miss
+/// `"names no known def body"`. Expanding a component AS A ROOT would therefore
+/// report the absence of a call site as a fault of the component, which it is
+/// not — `<match on="@p">` over a declared param is the one logic block a
+/// component body admits (dsl 0.4.0 §6.2). Binding first measures the body,
+/// which is the only thing this leg can decide.
+fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
+    let (mut doc, _parse_diags) = lute_syntax::parse(&input.text);
+    let mut arena = lute_cel::CelArena::default();
+    let _ = lute_cel::fill_document(&mut arena, &mut doc);
+    let (folded, _, _) = fold_env(&doc, input);
+    let mut diags =
+        lute_compile::normalize::normalize_document(&mut doc, &input.components, &folded.env.state);
+    let bodies = if folded.typed.component.is_some() {
+        let mut bodies = folded.def_bodies.clone();
+        for p in &folded.typed.params {
+            // The param's own name: what a `::use` splices is the caller's
+            // argument text, and any `@`/`$`-free stand-in measures the same
+            // body. `or_insert` so a real def never loses its body to a param
+            // that shadows its name.
+            bodies.entry(p.name.clone()).or_insert_with(|| p.name.clone());
+        }
+        std::borrow::Cow::Owned(bodies)
+    } else {
+        std::borrow::Cow::Borrowed(&folded.def_bodies)
+    };
+    let table = lute_check::DefTable {
+        bodies: &bodies,
+        params: &folded.env.def_params,
+    };
+    diags.extend(lute_compile::expand::expand_document(&mut doc, &table));
+    diags
+}
+
+/// `lute compile`/`lute trace` refusing a component file, at its frontmatter.
+///
+/// A component is not a root document. Its `params:` are bound at each `::use`,
+/// so there is no standalone artifact to emit and no standalone walk to take —
+/// binding a stand-in and walking anyway makes the trace FABRICATE a decision
+/// (measured: `purser-interject.component.lute` reports
+/// `trace complete: 1 decision; arms 1/2`, picking `<otherwise>` for a `@pressure`
+/// no caller supplied), which is a false green in `trace` traded for a false
+/// green in `check`.
+///
+/// So the invocation is refused, and refused for the reason that is true.
+/// Before, the refusal leaked the expander's own internal invariant assertion
+/// — `` `@pressure` names no known def body (gate should have caught this) `` —
+/// and attributed it to `check`, which reported the same file `ok`. That is
+/// T9.12: advice pointing at a tool that contradicted it.
+fn component_root_diag(component: &str, at: Span) -> Diagnostic {
+    Diagnostic {
+        code: "E-COMPILE-COMPONENT".to_string(),
+        severity: Severity::Error,
+        message: format!(
+            "`{component}` is a component (dsl §13): its `params:` are bound at each `::use`, so \
+             it has no standalone compiled form — compile or trace a document that imports it. \
+             `lute check` on this file gives the component's own verdict and `check-project` is \
+             the deciding leg (dsl 0.10.0 §9)"
+        ),
+        span: at,
+        layer: lute_core_span::Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
 /// Every diagnostic that holds at EVERY call site, re-anchored inside the
 /// component (dsl 0.10.0 §9 rule 4).
 ///
@@ -1194,6 +1285,37 @@ fn run_check(
         return ExitCode::from(1);
     }
     let mut result = check(&input);
+
+    // dsl 0.10.0 §9:962: *"`lute trace` on a component and `lute check` on the
+    // same file stop disagreeing"*. They disagreed because `check` stopped one
+    // pass short of where `trace` and `compile` stop, so `trace` refused over a
+    // fault and then told the author to run the one tool that could not see it.
+    // `check` now runs that pass — see [`compile_gate_diags`].
+    //
+    // Only on a clean check, mirroring both downstream pipelines exactly: they
+    // gate on `result.ok` first and reach `normalize`/`expand` only past it, and
+    // the expander's `"gate should have caught this"` arms are written on that
+    // assumption. Running it on a red document would report consequences of the
+    // errors already printed.
+    if result.ok {
+        let gate = compile_gate_diags(&input);
+        if !gate.is_empty() {
+            result.diagnostics.extend(gate);
+            // `check` hands back document order (`(byte_start, code)`); the gate
+            // diagnostics are appended out of it. Same key, so the merged list
+            // reads like one run rather than two concatenated ones.
+            result.diagnostics.sort_by(|a, b| {
+                a.span
+                    .byte_start
+                    .cmp(&b.span.byte_start)
+                    .then_with(|| a.code.cmp(&b.code))
+            });
+            result.ok = !result
+                .diagnostics
+                .iter()
+                .any(|d| d.severity == Severity::Error);
+        }
+    }
 
     // dsl 0.10.0 §9 rule 4 (**D-W**): a standalone component check either
     // forwards the caller-resolved verdict or refuses to claim `ok`. Until
@@ -4141,7 +4263,7 @@ fn run_compile(
     // scene keeps `IdentityTemplates::default()`, i.e. 0.7.0's pair. A project
     // that fails to load already printed its error in `build_input`; falling
     // back to the default here matches that core-only degradation.
-    let compiled = match project {
+    let (gate, identity) = match project {
         Some(dir) => {
             let identity = load_project(dir)
                 .ok()
@@ -4149,11 +4271,19 @@ fn run_compile(
                 .map(|p| p.identity)
                 .unwrap_or_default();
             match project_gate_result(file, dir, providers) {
-                Ok(gate) => lute_compile::compile_with_check(&input, gate, &identity),
+                Ok(gate) => (gate, identity),
                 Err(code) => return code,
             }
         }
-        None => lute_compile::compile(&input),
+        None => (check(&input), Default::default()),
+    };
+
+    // A component is not a root document (see [`component_root_diag`]): there is
+    // no standalone artifact to emit. Refused AFTER the gate, so a component
+    // with real check errors still reports them.
+    let compiled = match component_name_of(file).filter(|_| gate.ok) {
+        Some((component, at)) => Err(vec![component_root_diag(&component, at)]),
+        None => lute_compile::compile_with_check(&input, gate, &identity),
     };
     match compiled {
         Ok(mut artifact) => {
@@ -4383,13 +4513,41 @@ fn run_trace(
     // verdict; WITHOUT it, the standalone single-file `check` gate, unchanged.
     // The D1 quarantine holds — reconciliation is pure graph math, never
     // CEL/Datalog evaluation.
-    let (report, exit) = match project {
+    let gate = match project {
         Some(dir) => match project_gate_result(file, dir, providers) {
-            Ok(gate) => lute_trace::trace_with_check(&input, gate, mocks),
+            Ok(gate) => gate,
             Err(code) => return code,
         },
-        None => lute_trace::trace_document(&input, mocks),
+        None => check(&input),
     };
+
+    // A component is not a root document (see [`component_root_diag`]). Refused
+    // AFTER the gate above, so a component carrying real check errors still
+    // reports them first — the kind refusal is what replaces the bare `ok`
+    // path, not the diagnostic path.
+    if gate.ok {
+        if let Some((component, at)) = component_name_of(file) {
+            let diag = component_root_diag(&component, at);
+            if json {
+                match serde_json::to_string_pretty(&[&diag]) {
+                    Ok(s) => println!("{s}"),
+                    Err(e) => {
+                        eprintln!("lute: failed to serialize diagnostics: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            } else {
+                print_diagnostics(file, std::slice::from_ref(&diag), &DenyPolicy::default());
+                println!(
+                    "trace refused: {} is a component — trace a document that `::use`s it",
+                    file.display()
+                );
+            }
+            return ExitCode::from(1);
+        }
+    }
+
+    let (report, exit) = lute_trace::trace_with_check(&input, gate, mocks);
 
     match exit {
         TraceExit::Complete => {
@@ -4769,6 +4927,10 @@ mod tests {
             // 0.10.0 §8: `check-project` now emits `lute-trace`'s mock codes,
             // so they are inside the deny universe and inside this guard.
             "../lute-trace/src",
+            // dsl 0.10.0 §9:962: `lute check` now runs the compile gate
+            // (`normalize` + `expand`) that `trace`/`compile` run, so
+            // `lute-compile`'s codes are ones `check` surfaces.
+            "../lute-compile/src",
         ];
         let is_code = |c: &str| {
             let mut parts = c.splitn(2, '-');
