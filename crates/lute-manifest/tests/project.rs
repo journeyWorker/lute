@@ -248,3 +248,153 @@ fn identity_renderer_is_total() {
     // No tokens at all -> the literal, unchanged.
     assert_eq!(render_identity_template("fixed", "p", "s", "c"), "fixed");
 }
+
+// ── 0.10.0 §6: `defaults:` (backlog #34, D-F/D-P/D-Q) ──────────────────
+
+fn write_manifest(tag: &str, body: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("lute-defaults-{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("lute.project.yaml"), body).unwrap();
+    dir
+}
+
+/// The closed defaultable set (§6.1, D-P) loads and is readable per key.
+#[test]
+fn defaults_block_loads_the_closed_key_set() {
+    let dir = write_manifest(
+        "ok",
+        "defaultProfile: core\ndefaults:\n  kind: scene\n  character: anseo\n  season: 1\n",
+    );
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
+    assert_eq!(
+        proj.defaults.get("character").and_then(|v| v.as_str()),
+        Some("anseo")
+    );
+    assert_eq!(proj.defaults.get("season").and_then(|v| v.as_i64()), Some(1));
+}
+
+/// A key outside the closed set is `E-DEFAULTS-KEY` at project load, with a
+/// did-you-mean over the set (§6.1). The project still resolves — a bad
+/// `defaults:` must not collapse the whole manifest to core-only, exactly as
+/// a bad `identity:` template does not.
+#[test]
+fn defaults_unknown_key_is_e_defaults_key_with_a_suggestion() {
+    let dir = write_manifest("typo", "defaultProfile: core\ndefaults:\n  charater: anseo\n");
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
+    let d = &proj.defaults_diags[0];
+    assert_eq!(d.code, "E-DEFAULTS-KEY");
+    assert!(d.message.contains("charater"), "names the offending key: {}", d.message);
+    assert!(d.message.contains("character"), "did-you-mean over the set: {}", d.message);
+    assert_eq!(proj.graph.default_profile, "core", "the project still resolves");
+    assert!(proj.defaults.get("charater").is_none(), "a rejected key is not applied");
+}
+
+/// `mode:` is a legal core frontmatter key that NOTHING reads — the analysis
+/// mode comes from the check invocation. A defaultable key that changes
+/// nothing is a trap in a block whose whole purpose is to change many
+/// documents at once, so D-P excludes it rather than shipping a no-op.
+#[test]
+fn defaults_rejects_inert_and_excluded_keys() {
+    for key in ["mode", "episodeId", "title", "after", "profile", "plugins", "state", "component"] {
+        let dir = write_manifest(
+            &format!("excl-{key}"),
+            &format!("defaultProfile: core\ndefaults:\n  {key}: x\n"),
+        );
+        let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+        assert!(
+            proj.defaults_diags.iter().any(|d| d.code == "E-DEFAULTS-KEY"),
+            "`{key}` is not defaultable (§6.1): {:?}",
+            proj.defaults_diags
+        );
+    }
+}
+
+/// A `defaults:` value whose SHAPE cannot inhabit its key's core type is
+/// decidable without a document, so it is reported once at the manifest —
+/// the only anchoring a spanless `ResolveDiag` can offer (D-Z).
+#[test]
+fn defaults_value_shape_is_checked_at_the_manifest() {
+    let dir = write_manifest("shape", "defaultProfile: core\ndefaults:\n  season: not-a-number\n  kind: sausage\n");
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    let codes: Vec<&str> = proj.defaults_diags.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["E-DEFAULTS-KEY", "E-DEFAULTS-KEY"], "{:?}", proj.defaults_diags);
+    assert!(proj.defaults_diags.iter().any(|d| d.message.contains("season")));
+    assert!(proj.defaults_diags.iter().any(|d| d.message.contains("kind")));
+    assert!(proj.defaults.get("season").is_none(), "an ill-shaped default is not applied");
+}
+
+/// Present-but-empty is PRESENT (§6.2). `uses: []` in the manifest is a real
+/// default meaning "no imports", not an absent key.
+#[test]
+fn defaults_empty_list_is_a_present_value() {
+    let dir = write_manifest("empty", "defaultProfile: core\ndefaults:\n  uses: []\n");
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
+    assert!(proj.defaults.get("uses").is_some(), "`uses: []` is a present key");
+}
+
+/// D-Q, verified rather than assumed: `RawProject` has no
+/// `deny_unknown_fields`, so a manifest with NO `defaults:` is unchanged and
+/// a pre-0.10.0 binary silently ignores one that has it.
+#[test]
+fn a_manifest_without_defaults_has_an_empty_block() {
+    let dir = write_manifest("none", "defaultProfile: core\n");
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert!(proj.defaults.is_empty());
+    assert!(proj.defaults_diags.is_empty());
+}
+
+/// 0.10.0 §6.5: `defaults:` is per project ROOT. A nested root's block
+/// **replaces** an outer root's entirely — no inheritance, no merge. Written
+/// as a two-manifest fixture on disk, because "it cannot inherit" is a claim
+/// about what the loader does NOT read, and that is only observable when there
+/// is something above it to read.
+#[test]
+fn a_nested_roots_defaults_replaces_the_outer_roots_entirely() {
+    let outer = write_manifest(
+        "nest-outer",
+        "defaultProfile: core\ndefaults:\n  contentLang: en\n  character: outer\n",
+    );
+    let inner = outer.join("inner");
+    std::fs::create_dir_all(&inner).unwrap();
+    std::fs::write(
+        inner.join("lute.project.yaml"),
+        "defaultProfile: core\ndefaults:\n  pov: third\n",
+    )
+    .unwrap();
+
+    let proj = lute_manifest::project::load_project(&inner).unwrap().unwrap();
+    // REPLACES: exactly the nested root's key set, in full.
+    assert_eq!(proj.defaults.keys().collect::<Vec<_>>(), vec!["pov"]);
+    // A merge would carry these two along. Named individually so the failure
+    // says which rule broke rather than only that a count moved.
+    assert!(proj.defaults.get("contentLang").is_none(), "no inheritance across roots (§6.5)");
+    assert!(proj.defaults.get("character").is_none(), "no inheritance across roots (§6.5)");
+
+    // And the outer root still resolves its own, unaffected by the nested one.
+    let up = lute_manifest::project::load_project(&outer).unwrap().unwrap();
+    assert_eq!(up.defaults.keys().collect::<Vec<_>>(), vec!["character", "contentLang"]);
+    assert!(up.defaults.get("pov").is_none(), "a nested root does not leak upward either");
+}
+
+/// 0.10.0 §6.5: there is **no `extends:` between manifests.** `RawProject` has
+/// no `deny_unknown_fields`, so a manifest-level `extends:` is silently
+/// discarded — the correct behaviour, and unpinned until this test. It reads
+/// nothing: not the named file, not the parent root.
+#[test]
+fn a_manifest_level_extends_inherits_nothing() {
+    let outer = write_manifest("ext-outer", "defaultProfile: core\ndefaults:\n  character: outer\n");
+    let inner = outer.join("inner");
+    std::fs::create_dir_all(&inner).unwrap();
+    std::fs::write(
+        inner.join("lute.project.yaml"),
+        "defaultProfile: core\nextends: ../lute.project.yaml\n",
+    )
+    .unwrap();
+
+    let proj = lute_manifest::project::load_project(&inner).unwrap().unwrap();
+    assert!(proj.defaults.is_empty(), "`extends:` between manifests inherits nothing (§6.5)");
+    assert!(proj.defaults_diags.is_empty(), "and it is not an error either: {:?}", proj.defaults_diags);
+}
