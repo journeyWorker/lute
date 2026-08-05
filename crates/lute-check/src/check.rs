@@ -996,6 +996,43 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // author's logic is wrong on top of their parse error.
     suppress_unparsed_child_list_verdicts(&mut diags);
 
+    // dsl 0.10.0 §9 rule 3: the STANDALONE leg reports its own malformed
+    // `params:`. `component_import.rs` already does this for the IMPORTER and
+    // `TypedMeta.params_malformed` is the very same fact — the standalone leg
+    // simply never asked, so all it ever printed was the consequence. The
+    // consequence is mechanical: the `defs`/`def_types`/`def_params` seeding
+    // above registers `typed.params`, `get_params` drops every entry it cannot
+    // deserialize, and so each `@param` in the body resolves against an empty
+    // namespace. Reporting only that sends the author to `defs:` for a param
+    // they declared four lines up, which is why the suppression is part of the
+    // same rule and not a separate nicety.
+    //
+    // Scoped to THIS document's own `params:`. An IMPORTING document can carry
+    // `E-COMPONENT-PARSE` for a component it imports while having a genuine
+    // `E-UNDECLARED-REF` of its own — a file the malformed `params:` says
+    // nothing about — so keying the `retain` on the code alone would lose a real
+    // error.
+    //
+    // The message is `component_import.rs`'s, minus the file name: here the
+    // offending file IS the document being checked. Same code, same
+    // `Layer::Content`, so `--deny`/layer filters see one thing.
+    if folded.typed.component.is_some() && folded.typed.params_malformed {
+        diags.retain(|d| d.code != "E-UNDECLARED-REF");
+        diags.push(Diagnostic {
+            code: "E-COMPONENT-PARSE".to_string(),
+            severity: Severity::Error,
+            message: "this component has a malformed `params:` — each entry must be \
+                      `name: <type>` (dsl §13)"
+                .to_string(),
+            span: doc.meta.span,
+            layer: Layer::Content,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        });
+    }
+
     // Dedup overlapping `E-UNDECLARED` (carry-forward #4) BEFORE the sort.
     let mut diags = dedup_undeclared(diags);
 

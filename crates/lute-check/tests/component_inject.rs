@@ -470,3 +470,91 @@ fn component_body_injections_reach_the_resolved_view() {
         "the body's injections must match the same content at scene level"
     );
 }
+
+// --- dsl 0.10.0 §9: a component check that does not contradict itself -------
+//
+// §9's thesis is this suite's thesis one rule wider: the two legs split
+// caller-awareness from span-precision and neither has both. The helpers above
+// already run all three legs, so the four rules land here rather than in a
+// fifth fixture file.
+
+/// A standalone component check with an explicit frontmatter body, so a fixture
+/// can declare `params:` — [`standalone_diags`]'s header deliberately has none.
+fn standalone_with_meta(meta: &str, body: &str) -> Vec<Diagnostic> {
+    result_for(
+        format!("---\n{meta}---\n## Scene 1.\n{body}"),
+        Default::default(),
+    )
+    .diagnostics
+}
+
+/// A `<match on="@who">` — the shape the corpus's own component uses, and the
+/// one that produces `E-UNDECLARED-REF` when `@who` resolves against nothing.
+const MATCH_ON_WHO: &str =
+    "<match on=\"@who\">\n<when is=\"a\">\n@bianca: Hi.\n</when>\n<otherwise>\n@bianca: Ho.\n</otherwise>\n</match>\n";
+
+/// 0.10.0 §9 rule 3: a malformed `params:` is `E-COMPONENT-PARSE` on the
+/// STANDALONE leg too, and it suppresses the `E-UNDECLARED-REF` it causes.
+/// Reporting only the consequence sends the author to `defs:` for a param they
+/// declared four lines up.
+#[test]
+fn standalone_component_reports_its_own_malformed_params() {
+    let diags = standalone_with_meta("component: c\nparams:\n  who: [not, a, type]\n", MATCH_ON_WHO);
+    let cs = codes(&diags);
+    assert!(
+        cs.iter().any(|c| c == "E-COMPONENT-PARSE"),
+        "the standalone leg must report the CAUSE; got {cs:?}"
+    );
+    assert!(
+        !cs.iter().any(|c| c == "E-UNDECLARED-REF"),
+        "the consequence must be suppressed — `@who` IS declared, two lines up; got {cs:?}"
+    );
+}
+
+/// The suppression is scoped to the malformed-`params:` case. A genuinely
+/// unknown `@ref` in a well-formed component is still `E-UNDECLARED-REF`.
+#[test]
+fn standalone_component_still_reports_a_genuinely_unknown_ref() {
+    let diags = standalone_with_meta(
+        "component: c\nparams:\n  who: string\n",
+        &MATCH_ON_WHO.replace("@who", "@nobody"),
+    );
+    let cs = codes(&diags);
+    assert!(
+        cs.iter().any(|c| c == "E-UNDECLARED-REF"),
+        "`@nobody` is declared nowhere; got {cs:?}"
+    );
+    assert!(
+        !cs.iter().any(|c| c == "E-COMPONENT-PARSE"),
+        "`params:` is well-formed; got {cs:?}"
+    );
+}
+
+/// The scope guard, from the other side: an IMPORTER carrying
+/// `E-COMPONENT-PARSE` for a component it imports keeps its OWN
+/// `E-UNDECLARED-REF`. Suppressing there would lose a real error in a file the
+/// malformed `params:` says nothing about.
+#[test]
+fn an_importers_own_undeclared_ref_survives_a_components_parse_failure() {
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
+## Shot 1.\n::use{component=\"c\"}\n<match on=\"@mine\">\n<when is=\"a\">\n@bianca: Hi.\n</when>\n\
+<otherwise>\n@bianca: Ho.\n</otherwise>\n</match>\n";
+    let diags = check_with_components(
+        scene,
+        &[(
+            "c.lute",
+            "---\ncomponent: c\nparams:\n  who: [not, a, type]\n---\n## Scene 1.\n@bianca: Hi.\n"
+                .to_string(),
+        )],
+    )
+    .diagnostics;
+    let cs = codes(&diags);
+    assert!(
+        cs.iter().any(|c| c == "E-COMPONENT-PARSE"),
+        "the importer still reports the component's malformed params:; got {cs:?}"
+    );
+    assert!(
+        cs.iter().any(|c| c == "E-UNDECLARED-REF"),
+        "the importer's OWN `@mine` is a real error; got {cs:?}"
+    );
+}
