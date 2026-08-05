@@ -624,14 +624,41 @@ fn check_read(
         return;
     }
     reads.push((path.to_string(), span));
-    diags.push(diag(
-        "E-MAYBE-UNSET",
-        format!(
-            "state path `{path}` may be read before it is set \
-             (no default, no dominating `::set`, no guard) (dsl §9.4)"
-        ),
-        span,
-    ));
+    diags.push(diag("E-MAYBE-UNSET", maybe_unset_message(path), span));
+}
+
+/// The `E-MAYBE-UNSET` advice for `path`.
+///
+/// dsl 0.10.0 §12.2 (#17): `quest.<id>.state` is **engine-populated and not
+/// author-writable**, so two of the generic message's three remedies — add a
+/// schema `default:`, add a dominating `::set` — cannot be performed for it,
+/// and the third reads as if the author simply forgot a guard. Name the two
+/// forms that actually work instead. Same code, same severity, same span: this
+/// is a message correction, not a rule change.
+fn maybe_unset_message(path: &str) -> String {
+    if is_quest_state_path(path) {
+        return format!(
+            "state path `{path}` is engine-populated and cannot be `::set` by an author; \
+             read `quest.<id>.objectives.<oid>.done` for a specific objective, or gate with \
+             `after=\"completed(<id>)\"` (dsl 0.10.0 §12.2)"
+        );
+    }
+    format!(
+        "state path `{path}` may be read before it is set \
+         (no default, no dominating `::set`, no guard) (dsl §9.4)"
+    )
+}
+
+/// `quest.<id>.state` exactly — three dot-separated segments, `quest` then an
+/// id then `state`. Deliberately not a prefix match:
+/// `quest.<id>.objectives.<oid>.done` is the REMEDY, not the defect, and must
+/// keep the ordinary message if it ever reaches this branch.
+fn is_quest_state_path(path: &str) -> bool {
+    let mut parts = path.split('.');
+    parts.next() == Some("quest")
+        && parts.next().is_some_and(|id| !id.is_empty())
+        && parts.next() == Some("state")
+        && parts.next().is_none()
 }
 
 /// Reconstruct a slot's path uses by re-parsing its raw CEL into a fresh arena.
@@ -814,6 +841,53 @@ mod tests {
             diags.is_empty(),
             "`isSet(p) && …` is ok in every slot as of §12.2; got {:?}",
             diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+    }
+
+    /// 0.10.0 §12.2: `quest.<id>.state` is engine-populated and not
+    /// author-writable, so the generic message names two remedies that cannot
+    /// exist for it. Same code, same severity — different advice.
+    #[test]
+    fn quest_state_read_names_the_two_forms_that_work() {
+        let schema = StateSchema::default();
+        let slot = condition_slot("quest.q.state == 'active'");
+        let diags = check_quest_guard_defassign(&slot, &schema);
+        let d = diags
+            .iter()
+            .find(|d| d.code == "E-MAYBE-UNSET")
+            .unwrap_or_else(|| panic!("expected E-MAYBE-UNSET; got {diags:?}"));
+        assert!(
+            d.message.contains("objectives.<oid>.done"),
+            "the message must name the objective-completion read; got {}",
+            d.message
+        );
+        assert!(
+            d.message.contains("completed("),
+            "the message must name the `after=` gate; got {}",
+            d.message
+        );
+        assert!(
+            !d.message.contains("no dominating `::set`"),
+            "there is no `::set` an author can write for this path; got {}",
+            d.message
+        );
+    }
+
+    /// The correction is scoped to `quest.<id>.state`. An ordinary state path
+    /// keeps the definite-assignment message, which is correct there.
+    #[test]
+    fn ordinary_path_keeps_the_definite_assignment_message() {
+        let schema = schema_with_undefaulted("run.ending");
+        let slot = condition_slot("run.ending == 'a'");
+        let diags = check_quest_guard_defassign(&slot, &schema);
+        let d = diags
+            .iter()
+            .find(|d| d.code == "E-MAYBE-UNSET")
+            .expect("one");
+        assert!(
+            d.message.contains("no dominating `::set`"),
+            "got {}",
+            d.message
         );
     }
 
