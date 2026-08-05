@@ -1148,6 +1148,34 @@ pub fn live_assert_relations(
     out
 }
 
+/// Every `::assert{R(…)}` relation name, per document — the producer half of
+/// the producer→consumer edge `check-project` already computes for
+/// `W-UNPROVEN-RELATIONAL` and renders nowhere (#15, T4.7).
+///
+/// Unlike [`live_assert_relations`] this applies NO reachability gate: it
+/// answers "which file writes this relation", a question about the source
+/// rather than about the route, so an assert on a currently-dead route is
+/// still the answer to "where do I go to change this". Callers MUST pre-scope
+/// `docs` to one resolved root.
+pub fn assert_relations_per_doc(
+    docs: &[(PathBuf, Document)],
+) -> BTreeMap<PathBuf, BTreeSet<String>> {
+    let mut out = BTreeMap::new();
+    for (path, doc) in docs {
+        let mut rels = BTreeSet::new();
+        for shot in &doc.shots {
+            collect_assert_relations(&shot.body, &mut rels);
+        }
+        for quest in &doc.quests {
+            collect_assert_relations(&quest.body, &mut rels);
+        }
+        if !rels.is_empty() {
+            out.insert(path.clone(), rels);
+        }
+    }
+    out
+}
+
 /// See [`live_assert_relations`]: `None` (identity/graph unresolvable — a
 /// malformed scene triad, or a node absent from a cyclic graph's `reach`
 /// map) counts as live, exactly like `Some(Reachability::Unknown)` — only a

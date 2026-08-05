@@ -2422,6 +2422,16 @@ struct RootScenario {
     /// envelope printing needs the `&Quest` struct itself
     /// ([`envelope::quest_envelope`]'s signature), never re-parsed here.
     docs: Vec<(PathBuf, lute_syntax::ast::Document)>,
+    /// T8/T9's per-document write sets, KEPT rather than consumed. Inverting
+    /// `per_doc.scene` names the WRITERS of a path (#15, T9.14); the envelope
+    /// already computed it and dropped it on the floor.
+    per_doc: envelope::PerDocEffects,
+    /// The root's relational vocabulary — declared relations, their arity and
+    /// `derive` flag, the `facts:` seeds and the rules. The envelope tables
+    /// are scalar-only, so at the scene whose every line is gated on who is
+    /// awake the tool that exists to say what is true on arrival did not
+    /// mention the subject (#15, T4.7).
+    rel_vocab: lute_check::RelVocab,
 }
 
 /// Assemble [`RootScenario`] for one resolved root's docs — mirrors
@@ -2451,8 +2461,15 @@ fn assemble_root_scenario(
     let mut per_doc = envelope::PerDocEffects::default();
     let mut envelope_d: BTreeSet<String> = BTreeSet::new();
     let mut reads_per_scene: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
+    let mut rel_vocab = lute_check::RelVocab::default();
     for (_path, doc, folded) in group_full {
         envelope_d.extend(envelope::schema_defaults(&folded.env.state));
+        // Every doc in one resolved root folds the SAME imported vocabulary;
+        // taking the last non-empty one matches how `check-project`'s own
+        // project-wide relational passes read it.
+        if !folded.env.rel_vocab.relations.is_empty() {
+            rel_vocab = (*folded.env.rel_vocab).clone();
+        }
         for quest in &doc.quests {
             if quest.id.is_empty() || ambiguous_quests.contains(&quest.id) {
                 continue;
@@ -2507,6 +2524,8 @@ fn assemble_root_scenario(
         dead_required_objective_quests,
         envelope_d,
         docs,
+        per_doc,
+        rel_vocab,
     }
 }
 
@@ -2861,6 +2880,181 @@ fn print_path_set(set: &BTreeSet<String>) {
     }
 }
 
+/// Every node from which `node` is transitively reachable in the prerequisite
+/// graph — the writers whose writes provably happen BEFORE control reaches
+/// it, which is the only thing a PRE-ENTRY envelope may claim. `g.edges` is
+/// keyed `prerequisite -> dependent`, so this is a reverse walk.
+///
+/// `node` itself is excluded unless a cycle puts it upstream of itself; that
+/// is deliberate — the tables are explicitly "before its own writes".
+fn ancestors_of(
+    g: &lute_check::connectivity::ConnGraph,
+    node: &lute_check::connectivity::NodeId,
+) -> BTreeSet<lute_check::connectivity::NodeId> {
+    let mut rev: BTreeMap<&lute_check::connectivity::NodeId, Vec<&lute_check::connectivity::NodeId>> =
+        BTreeMap::new();
+    for (prereq, deps) in &g.edges {
+        for dep in deps {
+            rev.entry(dep).or_default().push(prereq);
+        }
+    }
+    let mut seen: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
+    let mut stack: Vec<&lute_check::connectivity::NodeId> =
+        rev.get(node).cloned().unwrap_or_default();
+    while let Some(n) = stack.pop() {
+        if !seen.insert(n.clone()) {
+            continue;
+        }
+        if let Some(ps) = rev.get(n) {
+            stack.extend(ps.iter().copied());
+        }
+    }
+    seen
+}
+
+/// Invert `PerDocEffects` into `path -> (writers upstream of `node`, the
+/// rest)`. A scene contributes its own `possible_writes`; a quest contributes
+/// its `writesOnComplete`, which is what draws manifest-gap.lute's completion
+/// handler as a writer of `run.vesnaTrust` — the edge nobody could see,
+/// though what-vesna-carries activates on exactly that path (#15, T9.14).
+///
+/// The split is load-bearing, and the plan asked for the join UNSPLIT. A flat
+/// project-wide list names `scene(anseo.s01ep09)` as a writer in
+/// `anseo.s01ep01`'s PRE-ENTRY envelope, which is false — eight scenes
+/// separate them — and, being project-wide, it renders identically at every
+/// node, which is the very defect #15 opens with. Dropping the non-upstream
+/// half instead loses `quest(manifestGap)` from `quest:whatVesnaCarries`,
+/// #15's own last verify bullet, because a no-`after` quest is never a graph
+/// node and manifestGap is not upstream of it in any case. Both halves are
+/// reported, each labelled with what is actually known about it: a
+/// non-upstream writer may be downstream, unordered, or ungraphed, so the
+/// second label claims only that its write is NOT provably before this node.
+type WriterSplit = BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>;
+
+fn writers_of(
+    scenario: &RootScenario,
+    node: &lute_check::connectivity::NodeId,
+) -> WriterSplit {
+    let upstream = ancestors_of(&scenario.graph, node);
+    let mut out: WriterSplit = BTreeMap::new();
+    let mut record = |path: &String, id: lute_check::connectivity::NodeId, label: String| {
+        let entry = out.entry(path.clone()).or_default();
+        if upstream.contains(&id) {
+            entry.0.insert(label);
+        } else {
+            entry.1.insert(label);
+        }
+    };
+    for (key, (_guaranteed, possible)) in &scenario.per_doc.scene {
+        for path in possible {
+            record(
+                path,
+                lute_check::connectivity::NodeId::Scene(key.clone()),
+                format!("scene({key})"),
+            );
+        }
+    }
+    for (id, writes) in &scenario.per_doc.quest_writes_on_complete {
+        for path in writes {
+            record(
+                path,
+                lute_check::connectivity::NodeId::Quest(id.clone()),
+                format!("quest({id}) on completion"),
+            );
+        }
+    }
+    out
+}
+
+fn join(set: &BTreeSet<String>) -> String {
+    set.iter().cloned().collect::<Vec<_>>().join(", ")
+}
+
+/// Print a path set with each path's writers named beside it. The plain
+/// [`print_path_set`] stays for the sets where a writer column is
+/// meaningless.
+fn print_path_set_with_writers(paths: &BTreeSet<String>, writers: &WriterSplit) {
+    if paths.is_empty() {
+        println!("    (none)");
+        return;
+    }
+    for path in paths {
+        let (upstream, other) = match writers.get(path) {
+            Some(w) => (&w.0, &w.1),
+            None => (&BTreeSet::new(), &BTreeSet::new()),
+        };
+        // A path in the envelope that nothing upstream writes got there from
+        // the schema-default floor `D`. Saying so is the answer to "why is
+        // this readable"; a blank column would read as a missing join.
+        let head = if upstream.is_empty() {
+            "(nothing on a declared route reaching here — schema default only)".to_string()
+        } else {
+            join(upstream)
+        };
+        let tail = if other.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "; also written, but not provably before this node: {}",
+                join(other)
+            )
+        };
+        println!("    - {path}   written by: {head}{tail}");
+    }
+}
+
+/// The relational layer the scalar envelope tables cannot show: every
+/// declared relation, whether static analysis can produce it, and which
+/// documents assert it. `producible` and `live_assert_relations` are the SAME
+/// functions `check-project` runs to decide `W-UNPROVEN-RELATIONAL`; this
+/// renders what they already computed rather than deciding anything (#15,
+/// T4.7).
+fn print_facts_section(scenario: &RootScenario, root: &Path) {
+    let vocab = &scenario.rel_vocab;
+    if vocab.relations.is_empty() {
+        return;
+    }
+    let live = lute_check::connectivity::live_assert_relations(
+        &scenario.docs,
+        &scenario.reach,
+        &scenario.ambiguous_quests,
+        &scenario.unreachable_quests,
+    );
+    let producible = lute_check::producible::producible(vocab, &live);
+    let per_doc = lute_check::connectivity::assert_relations_per_doc(&scenario.docs);
+    let seeded: BTreeSet<&str> = vocab.facts.iter().map(|f| f.fact.relation.as_str()).collect();
+
+    println!("  Facts (the relational layer — declared relations, how each becomes true):");
+    for (name, decl) in &vocab.relations {
+        let kind = if decl.derive { "derived" } else { "asserted" };
+        let prod = if producible.get(name).copied().unwrap_or(false) {
+            "producible"
+        } else {
+            "NOT producible by any declared route"
+        };
+        let mut writers: Vec<String> = per_doc
+            .iter()
+            .filter(|(_, rels)| rels.contains(name))
+            .map(|(p, _)| p.strip_prefix(root).unwrap_or(p).display().to_string())
+            .collect();
+        if seeded.contains(name.as_str()) {
+            writers.push("facts: seed".to_string());
+        }
+        let by = if writers.is_empty() {
+            String::new()
+        } else {
+            format!("   asserted by: {}", writers.join(", "))
+        };
+        println!("    - {name}/{} ({kind}, {prod}){by}", decl.args.len());
+    }
+    if !vocab.rules.is_empty() {
+        println!("  Rules:");
+        for r in &vocab.rules {
+            println!("    - {}", r.raw);
+        }
+    }
+}
+
 /// True when the project's prerequisite graph contains a cycle (`E-CONN-CYCLE`,
 /// dsl §2.4/§4.1 §A). Kahn's algorithm in `assemble_graph` emits every node
 /// EXCEPT the cycle members and everything transitively downstream of one, so
@@ -2909,7 +3103,7 @@ fn print_cycle_envelope_note() {
 /// to `key` so every returned diagnostic necessarily belongs to this node,
 /// and keeps the warning grade instead. Never a second classification pass
 /// — `check_envelope` is reused verbatim, never re-implemented.
-fn print_scene_envelope(scenario: &RootScenario, key: &str) {
+fn print_scene_envelope(scenario: &RootScenario, key: &str, root: &Path) {
     let node_id = lute_check::connectivity::NodeId::Scene(key.to_string());
     println!(
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
@@ -2929,10 +3123,11 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str) {
         guaranteed: scenario.envelope_d.clone(),
         possible: scenario.envelope_d.clone(),
     });
+    let writers = writers_of(scenario, &node_id);
     println!("  Guaranteed (safe to read under your declared routes):");
-    print_path_set(&env.guaranteed);
+    print_path_set_with_writers(&env.guaranteed, &writers);
     println!("  Possible (set on at least one declared route reaching this node):");
-    print_path_set(&env.possible);
+    print_path_set_with_writers(&env.possible, &writers);
 
     let mut single: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
     if let Some(reads) = scenario.reads_per_scene.get(key) {
@@ -2955,6 +3150,7 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str) {
     if !any {
         println!("    (none)");
     }
+    print_facts_section(scenario, root);
 }
 
 /// Print a quest node's envelope (T12 [`envelope::quest_envelope`]) — full
@@ -2965,7 +3161,12 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str) {
 /// `check_quest_guard_defassign`'s territory), so this is NEVER labeled
 /// as the T11 warning-grade read-site class (Main review) — there is no
 /// read-SITE list for a quest at all, only the plain set difference.
-fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::ast::Quest) {
+fn print_quest_envelope(
+    scenario: &RootScenario,
+    id: &str,
+    quest: &lute_syntax::ast::Quest,
+    root: &Path,
+) {
     let node_id = lute_check::connectivity::NodeId::Quest(id.to_string());
     println!(
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
@@ -2985,10 +3186,11 @@ fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::
     }
     let qe =
         envelope::quest_envelope(quest, &scenario.graph, &scenario.envs, &scenario.envelope_d);
+    let writers = writers_of(scenario, &node_id);
     println!("  Guaranteed (safe to read under your declared routes):");
-    print_path_set(&qe.env.guaranteed);
+    print_path_set_with_writers(&qe.env.guaranteed, &writers);
     println!("  Possible (set on at least one declared route reaching this node):");
-    print_path_set(&qe.env.possible);
+    print_path_set_with_writers(&qe.env.possible, &writers);
     let warn: BTreeSet<String> =
         qe.env.possible.difference(&qe.env.guaranteed).cloned().collect();
     // #33 / T4.10: this sentence named `T11` (an internal task label) and
@@ -3012,6 +3214,7 @@ fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::
              with the full project-resolved envelope."
         );
     }
+    print_facts_section(scenario, root);
 }
 
 fn run_scenario_envelope(
@@ -3032,7 +3235,7 @@ fn run_scenario_envelope(
         return ExitCode::SUCCESS;
     }
     match &node_ref {
-        NodeRef::Scene(key) => print_scene_envelope(&scenario, key),
+        NodeRef::Scene(key) => print_scene_envelope(&scenario, key, root),
         NodeRef::Quest(id) => {
             let Some(quest) =
                 scenario.docs.iter().flat_map(|(_, d)| d.quests.iter()).find(|q| &q.id == id)
@@ -3040,7 +3243,7 @@ fn run_scenario_envelope(
                 eprintln!("lute: internal error: quest `{id}` resolved but no declaration found");
                 return ExitCode::from(2);
             };
-            print_quest_envelope(&scenario, id, quest);
+            print_quest_envelope(&scenario, id, quest, root);
         }
     }
     ExitCode::SUCCESS
