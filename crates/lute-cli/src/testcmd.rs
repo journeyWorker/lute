@@ -52,9 +52,11 @@ struct TestResult {
     exit: String,
     passed: bool,
     expectations: Vec<ExpectResult>,
-    /// Populated only when a test cannot produce a report (a refused trace) —
-    /// a single fatal reason rendered instead of per-expectation lines.
-    refusal: Option<String>,
+    /// Populated only when a test cannot produce a report (a refused trace):
+    /// one rendered line per diagnostic the refusal is holding, in the order
+    /// `lute trace` would print them. Never a canned summary — three
+    /// different faults used to render the same four words (#25, T9.11).
+    refusal: Option<Vec<String>>,
 }
 
 /// Coverage accumulated across every traced path in the run. Names come from
@@ -193,20 +195,32 @@ fn run_one_test(
     let (report, exit) = trace_document(&input, mocks);
 
     // A refused trace (document check errors or invalid mocks) cannot be
-    // asserted against — mark the whole test failed with the reason.
+    // asserted against — mark the whole test failed and print every
+    // diagnostic the refusal is holding. The harness used to inspect these
+    // codes only to choose between two canned strings and then drop the
+    // vector, so a stale `choose:` id, a stale branch id and a stale
+    // `state:` path were indistinguishable (#25, T9.11).
     if let TraceExit::Refused(diags) = &exit {
-        let reason = if diags.iter().any(|d| !d.code.starts_with("E-TRACE-")) {
-            "trace refused: document has check error(s) — run `lute check` first".to_string()
-        } else {
-            "trace refused: invalid mock input".to_string()
-        };
+        let lines: Vec<String> = diags
+            .iter()
+            .map(|d| {
+                format!(
+                    "{}:{}:{}: error [{}] {}",
+                    lute_display,
+                    d.span.line,
+                    d.span.column,
+                    d.code,
+                    yaml_key_spelling(&d.message)
+                )
+            })
+            .collect();
         return Ok(TestResult {
             test_file: test_file.to_path_buf(),
             lute_file: lute_display,
             exit: "refused".to_string(),
             passed: false,
             expectations: Vec::new(),
-            refusal: Some(reason),
+            refusal: Some(lines),
         });
     }
 
@@ -299,6 +313,27 @@ fn final_state(report: &TraceReport) -> BTreeMap<String, String> {
     out
 }
 
+/// T9.11's second half. `lute-trace` composes its mock diagnostics for
+/// `lute trace`'s command line (`--choose id=arm`, `--state path=value`,
+/// `--fact`, `--event`, `--accept`), but in a `*.test.yaml` the same input
+/// arrived as a YAML KEY. Printing the message verbatim names a syntax the
+/// file cannot use. This rewrites the flag spelling to the key spelling and
+/// nothing else — the codes, ids, values and clause citations are
+/// `lute-trace`'s and stay exactly as written.
+fn yaml_key_spelling(message: &str) -> String {
+    let mut out = message.to_string();
+    for (flag, key) in [
+        ("--choose ", "choose: "),
+        ("--state ", "state: "),
+        ("--fact ", "facts: "),
+        ("--event ", "events: "),
+        ("--accept ", "accepts: "),
+    ] {
+        out = out.replace(flag, key);
+    }
+    out
+}
+
 /// Fold one report's decisions + coverage counts into the run accumulator.
 fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
     cov.paths += 1;
@@ -373,8 +408,11 @@ fn print_human(dir: &Path, results: &[TestResult], cov: Option<&CoverageAccum>) 
     for r in results {
         let mark = if r.passed { "PASS" } else { "FAIL" };
         println!("{mark}  {}  ({})", r.test_file.display(), r.lute_file);
-        if let Some(reason) = &r.refusal {
-            println!("      {reason}");
+        if let Some(lines) = &r.refusal {
+            println!("      trace refused:");
+            for line in lines {
+                println!("        {line}");
+            }
             continue;
         }
         if !r.passed {
