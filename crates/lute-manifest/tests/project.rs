@@ -398,3 +398,44 @@ fn a_manifest_level_extends_inherits_nothing() {
     assert!(proj.defaults.is_empty(), "`extends:` between manifests inherits nothing (§6.5)");
     assert!(proj.defaults_diags.is_empty(), "and it is not an error either: {:?}", proj.defaults_diags);
 }
+
+/// D-Y/D-Z: a path written in `defaults:` resolves against the MANIFEST's
+/// directory, and is canonicalised at load so the single-`base_dir` import
+/// resolvers never have to know that.
+#[test]
+fn defaults_paths_canonicalise_against_the_manifest() {
+    let dir = write_manifest("paths", "defaultProfile: core\ndefaults:\n  uses: [world.schema.yaml]\n");
+    std::fs::write(dir.join("world.schema.yaml"), "state:\n  run.k: { type: number, default: 0 }\n")
+        .unwrap();
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
+    let resolved = proj.defaults.get("uses").unwrap().as_sequence().unwrap();
+    let got = std::path::PathBuf::from(resolved[0].as_str().unwrap());
+    assert!(got.is_absolute(), "a defaulted path is pre-resolved (D-Z): {got:?}");
+    assert_eq!(got, std::fs::canonicalize(dir.join("world.schema.yaml")).unwrap());
+}
+
+/// D-Z: canonicalisation is I/O and can fail. A bad path fails ONCE, at the
+/// manifest, naming the `defaults:` key — never once per inheriting document.
+#[test]
+fn defaults_bad_path_fails_at_the_manifest() {
+    let dir = write_manifest("badpath", "defaultProfile: core\ndefaults:\n  uses: [nope.schema.yaml]\n");
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
+    assert_eq!(proj.defaults_diags[0].code, "E-DEFAULTS-KEY");
+    assert!(proj.defaults_diags[0].message.contains("nope.schema.yaml"));
+    assert!(proj.defaults_diags[0].message.contains("uses"));
+    assert!(proj.defaults.get("uses").is_none(), "an unresolvable default is not applied");
+}
+
+/// A single string, not a sequence, is the other authored `uses:` shape and
+/// canonicalises the same way.
+#[test]
+fn defaults_scalar_path_canonicalises_too() {
+    let dir = write_manifest("scalarpath", "defaultProfile: core\ndefaults:\n  extends: base.schema.yaml\n");
+    std::fs::write(dir.join("base.schema.yaml"), "state: {}\n").unwrap();
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
+    let got = proj.defaults.get("extends").unwrap().as_str().unwrap();
+    assert!(std::path::Path::new(got).is_absolute(), "{got}");
+}
