@@ -174,6 +174,54 @@ pub fn default_key_legal_on(key: &str, kind: MetaKind) -> bool {
         || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
 }
 
+/// The advisory tail on `E-META-UNKNOWN-KEY` (dsl 0.5.0 §2.2's "did you mean",
+/// generalised): empty when nothing is close, because a wrong suggestion is
+/// worse than none.
+///
+/// `after` is the one special case (0.10.0 backlog #11, T9.1). It is a CORE key
+/// on the sibling kind and a legal ATTRIBUTE in this one, so the generic
+/// edit-distance suggestion has no candidate to land on and the author is told
+/// only that the key is unknown — while `after=` is legal two lines below in
+/// the same file. Name the attribute form instead.
+///
+/// The candidate set mirrors the unknown-key loop's own `core_key` predicate
+/// exactly, so the suggestion can never name a key that would itself be
+/// rejected on this kind. Slice order is source order, which makes
+/// [`lute_manifest::suggest::nearest`]'s first-wins tie-break deterministic.
+fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> String {
+    if key == "after" && kind == MetaKind::Quest {
+        return " — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, \
+                not a frontmatter key (dsl §4.1)"
+            .to_string();
+    }
+    let candidates = UNIVERSAL_KEYS
+        .iter()
+        .copied()
+        .chain(
+            matches!(kind, MetaKind::Scene | MetaKind::Quest)
+                .then_some("kind")
+                .into_iter(),
+        )
+        .chain(
+            (kind == MetaKind::Scene)
+                .then_some(SCENE_KEYS)
+                .unwrap_or(&[])
+                .iter()
+                .copied(),
+        )
+        .chain(
+            component_key_allowed
+                .then_some(COMPONENT_ONLY_KEYS)
+                .unwrap_or(&[])
+                .iter()
+                .copied(),
+        );
+    match lute_manifest::suggest::nearest(key, candidates, 2) {
+        Some(sugg) => format!(" — did you mean `{sugg}`?"),
+        None => String::new(),
+    }
+}
+
 const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 
 /// Which document kind's frontmatter is being parsed. A `Schema` doc (imported
@@ -508,7 +556,10 @@ pub fn parse_meta_kind_with_defaults(
         let Some(ty) = snapshot.frontmatter.get(key) else {
             diags.push(err(
                 "E-META-UNKNOWN-KEY",
-                format!("unknown top-level meta key `{key}` (not a core key and not owned by an active plugin)"),
+                format!(
+                    "unknown top-level meta key `{key}` (not a core key and not owned by an active plugin){}",
+                    unknown_key_hint(key, kind, component_key_allowed)
+                ),
             ));
             continue;
         };

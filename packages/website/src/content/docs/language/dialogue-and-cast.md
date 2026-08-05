@@ -35,6 +35,18 @@ vocabulary, not grammar — run `lute context <file>` to list the legal `emotion
 for your project. None is required; a missing `code` is back-filled deterministically at compile
 time and can be persisted with `lute tag`.
 
+`action=` is the one line attribute with a **stage** consequence, and it is a
+small one: it sets the speaker's pose for that line and marks them dirty, so
+the next plain line from the same speaker gets a `posReset` injected ahead of
+it (`provenance.by: "auto-pose-reset"`). That is the whole of it — it is a
+delivery detail, not staging. **A character's entrance and exit are `::auto`**,
+and only `::auto` can end a presence (see
+[Core directives](/language/directives/); `lute context` lists
+`mayExitCharacter` among `auto`'s semantics for exactly this reason). Writing a
+member of the `action` domain's `exits:` list on a content line is
+`W-EXIT-INERT`: the pose is honoured, the character stays on stage, and the
+artifact gets no `exit` record.
+
 ```lute
 @bianca{as="???"}: ...who's there?
 ```

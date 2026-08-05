@@ -35,6 +35,29 @@ At `check-project` time the tooling walks every document's frontmatter, computes
 
 The checker's claims are entirely **graph-structural** — is the edge set acyclic, do referenced ids exist, is there a satisfiable route, what does the graph guarantee. The formula's truth at a play session is a runtime question the engine evaluates, exactly as it evaluates `<quest start>`; Lute never runs it.
 
+### It is an availability lattice, not a route graph
+
+An edge says a node *becomes available* once its prerequisite holds. It does not say a player went
+that way, and nothing in the language records which way they went. Two scenes written as
+alternatives are simply two edges out of the same prerequisite — both land in the same topological
+layer, and both are `Reachable`:
+
+```console
+$ lute scenario .
+project root: .
+  topological layers:
+    layer 0: scene(x.s01ep01)
+    layer 1: scene(x.s01ep02), scene(x.s01ep03)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(x.s01ep01) -> scene(x.s01ep02) [visited]
+    scene(x.s01ep01) -> scene(x.s01ep03) [visited]
+```
+
+Availability is also monotone by construction: the grammar above admits no negation, so no formula
+can say "unless", and nothing an author can write takes an unlocked node back. Two alternatives both
+unlock, and both stay unlocked. If your story needs the *choice* to matter, that belongs in state a
+`<branch>` writes and a guard reads — not in `after:`.
+
 ## Viewing the graph
 
 `lute scenario <dir>` prints the assembled node/edge graph as deterministic topological waves, per resolved project root — the whole-graph view, without any centralized edge-manifest file to keep in sync with frontmatter.
