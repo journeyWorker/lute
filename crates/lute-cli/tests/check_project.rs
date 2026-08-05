@@ -1359,3 +1359,134 @@ fn dead_required_objective_never_drops_a_sibling_optional_objectives_live_assert
         "the ONE flagged objective must be `deadReq` (done=\"false\"), never `checkLive`: {v}"
     );
 }
+
+/// 0.10.0 §7 (#30, T1.10): `compile --all --project <dir>` walks a tree of
+/// documents, so it MUST open every `lute.project.yaml` under that tree and
+/// MUST fail on an invalid one. Before 0.10.0 it opened only the invoked root
+/// and exited 0 over a nested manifest `check-project` refused to proceed past.
+#[test]
+fn compile_all_validates_nested_manifests() {
+    let dir = temp_dir("nested-manifest-compile");
+    let inner = dir.join("inner/scenes");
+    std::fs::create_dir_all(&inner).unwrap();
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("inner/lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         identity:\n  lineId: \"{prefix}.{bogus}_{code}\"\n",
+    )
+    .unwrap();
+    let scene = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n";
+    std::fs::write(dir.join("scenes/outer.lute"), scene).unwrap();
+    std::fs::write(inner.join("in.lute"), scene).unwrap();
+
+    let out = std::process::Command::new(BIN)
+        .args([
+            "compile",
+            "--all",
+            "--project",
+            dir.to_str().unwrap(),
+            "-o",
+            dir.join("out").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(1), "nested manifest must fail the build:\n{text}");
+    assert!(
+        text.contains("E-IDENTITY-TEMPLATE"),
+        "the inner manifest's own diagnostic must surface:\n{text}"
+    );
+    assert!(
+        text.contains("inner/lute.project.yaml"),
+        "a manifest diagnostic MUST carry the manifest's path (§7):\n{text}"
+    );
+}
+
+/// 0.10.0 §7: the same diagnostic from `check-project` must also carry the
+/// manifest's path. At HEAD both the inner and the outer run printed a
+/// byte-identical, pathless `lute: E-IDENTITY-TEMPLATE: …`.
+#[test]
+fn check_project_manifest_diagnostic_names_the_manifest() {
+    let dir = temp_dir("nested-manifest-check");
+    let inner = dir.join("inner/scenes");
+    std::fs::create_dir_all(&inner).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("inner/lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         identity:\n  lineId: \"{prefix}.{bogus}_{code}\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        inner.join("in.lute"),
+        "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n\n## S\n\n@b: hi\n",
+    )
+    .unwrap();
+
+    let out = std::process::Command::new(BIN)
+        .args(["check-project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(
+        text.contains("inner/lute.project.yaml") && text.contains("E-IDENTITY-TEMPLATE"),
+        "the diagnostic must name the manifest it is about:\n{text}"
+    );
+}
+
+/// 0.10.0 §7: a manifest that fails to LOAD must fail the build. At HEAD a
+/// malformed governing manifest printed a `lute:` line and still exited 0,
+/// and one in a directory holding no `.lute` files was never opened at all.
+#[test]
+fn check_project_fails_on_an_unloadable_manifest_anywhere_under_the_tree() {
+    let dir = temp_dir("broken-manifest");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::create_dir_all(dir.join("empty")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    )
+    .unwrap();
+    // No `.lute` lives under `empty/`, so nothing ever resolved this manifest.
+    std::fs::write(dir.join("empty/lute.project.yaml"), "defaultProfile: core\nprofiles: [not, a, map]\n")
+        .unwrap();
+    std::fs::write(
+        dir.join("scenes/s.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n",
+    )
+    .unwrap();
+
+    let out = std::process::Command::new(BIN)
+        .args(["check-project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(1), "an unloadable manifest must fail the build:\n{text}");
+    assert!(
+        text.contains("empty/lute.project.yaml"),
+        "the manifest nothing resolves must still be validated:\n{text}"
+    );
+}

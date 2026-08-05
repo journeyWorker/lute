@@ -61,6 +61,7 @@ use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
 mod compile_all;
 mod doctor;
 mod loc;
+mod manifests;
 mod runner;
 mod scaffold;
 mod scenario_fmt;
@@ -1613,6 +1614,20 @@ fn run_check_project(
     providers: Option<&Path>,
     policy: &DenyPolicy,
 ) -> ExitCode {
+    // 0.10.0 §7 (D-D): validate EVERY manifest under the tree, once each,
+    // before any document work. Anchored at the manifest's own path, which
+    // the per-document `lute:` replay never carried.
+    let manifest_invalid = match manifests::validate_manifests_under(dir) {
+        Ok(verdicts) => manifests::report_and_gate(&verdicts),
+        Err(e) => {
+            eprintln!("lute: cannot walk {} for manifests: {e}", dir.display());
+            return ExitCode::from(2);
+        }
+    };
+    if manifest_invalid {
+        return ExitCode::FAILURE;
+    }
+
     let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
         Ok(v) => v,
         Err(code) => return code,
@@ -1687,6 +1702,12 @@ fn run_check_project(
             println!("project-wide diagnostics:");
             for (path, d) in &project_diags {
                 let denied = policy.denied(d);
+                if d.span.line == 0 && d.span.column == 0 {
+                    // A right file with no right line (D-Z for manifests, D-AB
+                    // for mocks): print no position rather than claiming `0:0`.
+                    println!("{}", manifests::spanless_line(path, d, denied));
+                    continue;
+                }
                 let marker = if denied { " [denied]" } else { "" };
                 println!(
                     "{}:{}:{}: {} [{}]{marker} {}",
