@@ -35,6 +35,7 @@ fn input_for(path: &str, project_dir: Option<&str>) -> CheckInput {
         mode: Mode::Ci,
         imports,
         components,
+        defaults: Default::default(),
     }
 }
 

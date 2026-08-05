@@ -63,6 +63,7 @@ fn check_codes(
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     sorted(check(&input).diagnostics.into_iter().map(|d| d.code))
 }
@@ -251,6 +252,7 @@ fn nested_match_arm_line_is_checked() {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     let cs = sorted(check(&input).diagnostics.into_iter().map(|d| d.code));
     assert!(

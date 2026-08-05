@@ -20,6 +20,7 @@ fn run(text: &str) -> CheckResult {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
 }
@@ -217,6 +218,7 @@ fn component_body_cel_parse_is_translated_and_reanchored() {
         mode: Mode::Ci,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     let diags = check(&input).diagnostics;
     let d = diags

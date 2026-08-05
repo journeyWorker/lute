@@ -19,6 +19,7 @@ fn codes(text: &str) -> Vec<String> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
         .diagnostics
@@ -40,6 +41,7 @@ fn codes_with_imports(text: &str, imports: SchemaImports) -> Vec<String> {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
         .diagnostics
@@ -165,6 +167,7 @@ fn check_codes(text: &str, snap: CapabilitySnapshot) -> Vec<String> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
         .diagnostics

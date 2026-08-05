@@ -20,6 +20,7 @@ fn check_codes(text: &str, imports: SchemaImports) -> Vec<String> {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
         .diagnostics

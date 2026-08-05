@@ -52,6 +52,7 @@ fn input_for(text: &str) -> CheckInput {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     }
 }
 
@@ -277,6 +278,7 @@ fn divergence_holds_under_plugin_project() {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let res = check(&input);
 
@@ -392,6 +394,7 @@ fn divergence_holds_under_plugin_defs() {
             mode: Mode::Author,
             imports: SchemaImports::default(),
             components: Default::default(),
+            defaults: Default::default(),
         })
     };
 
@@ -486,6 +489,7 @@ fn divergence_holds_under_uses_import() {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let res = check(&input);
     assert!(
@@ -531,6 +535,7 @@ fn divergence_holds_under_uses_import() {
         mode: Mode::Author,
         imports: bimports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let bres = check(&binput);
     assert!(
@@ -674,6 +679,7 @@ fn divergence_holds_under_components() {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     let res = check(&input);
     assert!(
@@ -719,6 +725,7 @@ fn divergence_holds_under_components() {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: bcomponents,
+        defaults: Default::default(),
     };
     let bres = check(&binput);
     assert!(

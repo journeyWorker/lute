@@ -24,6 +24,7 @@ fn input_for(text: &str) -> CheckInput {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     }
 }
 

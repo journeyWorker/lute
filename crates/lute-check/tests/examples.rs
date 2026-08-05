@@ -27,6 +27,7 @@ fn input_for(text: &str) -> CheckInput {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     }
 }
 
@@ -41,6 +42,7 @@ fn bianca_example_checks_clean() {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     let res = check(&input);
     let errors: Vec<_> = res

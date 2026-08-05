@@ -55,6 +55,7 @@ fn check_codes(text: String, components: ComponentSet, snapshot: CapabilitySnaps
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     let mut v: Vec<String> = check(&input).diagnostics.into_iter().map(|d| d.code).collect();
     v.sort();

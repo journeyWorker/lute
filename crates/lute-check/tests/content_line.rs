@@ -19,6 +19,7 @@ fn codes_with(text: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input).diagnostics.into_iter().map(|d| d.code).collect()
 }

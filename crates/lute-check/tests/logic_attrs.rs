@@ -14,6 +14,7 @@ fn run(text: &str) -> CheckResult {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
 }

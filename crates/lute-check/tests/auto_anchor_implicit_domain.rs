@@ -44,6 +44,7 @@ fn error_codes(text: &str) -> Vec<String> {
         mode: Mode::Author,
         imports: Default::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     let mut codes: Vec<String> = check(&input)
         .diagnostics

@@ -39,6 +39,7 @@ fn input_for(text: &str, uri: &str, base: &Path) -> CheckInput {
         mode: Mode::Ci,
         imports,
         components,
+        defaults: Default::default(),
     }
 }
 

@@ -160,6 +160,20 @@ const SCENE_KEYS: &[&str] = &["character", "season", "episode", "episodeId", "po
 /// In a scene or schema doc these are unknown top-level keys.
 const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params"];
 
+/// 0.10.0 §6.3: is a `defaults:` key legal on `kind`? A default whose key is
+/// not legal on a document's resolved kind is NOT applied to that document,
+/// and that is not an error — `character:` is scene-only, and a quest under a
+/// root defaulting it simply does not receive it.
+///
+/// The predicate is the same one the unknown-key loop uses below, minus the
+/// component-only and plugin-owned arms:
+/// [`lute_manifest::project::DEFAULTABLE_KEYS`] holds neither.
+pub fn default_key_legal_on(key: &str, kind: MetaKind) -> bool {
+    UNIVERSAL_KEYS.contains(&key)
+        || (key == "kind" && matches!(kind, MetaKind::Scene | MetaKind::Quest))
+        || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
+}
+
 const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 
 /// Which document kind's frontmatter is being parsed. A `Schema` doc (imported
@@ -262,6 +276,26 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
     }
 }
 
+/// [`resolve_doc_kind`] with the manifest's `defaults:` consulted when the
+/// document declares no `kind:` (0.10.0 §6.3). `E-KIND-MISSING` now means
+/// "neither the document nor the manifest says".
+pub fn resolve_doc_kind_with_defaults(
+    meta: &Meta,
+    defaults: &lute_manifest::project::MetaDefaults,
+) -> (Option<DocKind>, Vec<Diagnostic>) {
+    let (kind, diags) = resolve_doc_kind(meta);
+    if kind.is_some() || defaults.is_empty() {
+        return (kind, diags);
+    }
+    match defaults.get("kind").and_then(|v| v.as_str()) {
+        // `defaults_shape_ok` already rejected anything but these two, so a
+        // manifest can never route a document to an unknown kind here.
+        Some("scene") => (Some(DocKind::Scene), Vec::new()),
+        Some("quest") => (Some(DocKind::Quest), Vec::new()),
+        _ => (kind, diags),
+    }
+}
+
 /// The `episodeId` component of the canonical scene identity key (dsl §2.3,
 /// connectivity layer T3): `episode_id` is the raw authored `episodeId:`
 /// frontmatter value (if any); a non-empty authored value is used verbatim,
@@ -314,6 +348,33 @@ pub fn parse_meta_kind(
     meta: &Meta,
     snapshot: &CapabilitySnapshot,
     kind: MetaKind,
+) -> (TypedMeta, Vec<Diagnostic>) {
+    parse_meta_kind_with_defaults(
+        meta,
+        snapshot,
+        kind,
+        &lute_manifest::project::MetaDefaults::default(),
+    )
+}
+
+/// [`parse_meta_kind`] with the governing manifest's `defaults:` applied
+/// (0.10.0 §6.2).
+///
+/// The merge happens on the frontmatter MAPPING, before any frontmatter rule
+/// runs, which is what makes §6.2's last two bullets free: required-key
+/// checking, unknown-key checking, type checking and every lift below all see
+/// the resolved map, and a defaulted value draws exactly the diagnostic an
+/// authored one would because it IS an authored one by the time they run.
+///
+/// Per key, whole-value (D-P): a key the document contains AT ALL wins
+/// entire. `Mapping::contains_key` is exactly that test, so a present null or
+/// an empty sequence is a present key — §6.2's "present-but-empty counts as
+/// present", with no special case.
+pub fn parse_meta_kind_with_defaults(
+    meta: &Meta,
+    snapshot: &CapabilitySnapshot,
+    kind: MetaKind,
+    defaults: &lute_manifest::project::MetaDefaults,
 ) -> (TypedMeta, Vec<Diagnostic>) {
     let span = meta.span;
     let mut diags = Vec::new();
@@ -382,6 +443,29 @@ pub fn parse_meta_kind(
             return (TypedMeta::default(), diags);
         }
     };
+
+    // 0.10.0 §6.2/§6.3: overlay the governing manifest's `defaults:`, filtered
+    // to keys legal on THIS kind. Borrowed when there is nothing to overlay,
+    // which is every project written before 0.10.0 — no allocation on the
+    // path every existing document takes.
+    let map: std::borrow::Cow<'_, serde_yaml::Mapping> = if defaults.is_empty() {
+        std::borrow::Cow::Borrowed(map)
+    } else {
+        let mut merged = map.clone();
+        for key in defaults.keys() {
+            if !default_key_legal_on(key, kind) {
+                continue;
+            }
+            if merged.contains_key(yaml_key(key)) {
+                continue;
+            }
+            if let Some(v) = defaults.get(key) {
+                merged.insert(yaml_key(key), v.clone());
+            }
+        }
+        std::borrow::Cow::Owned(merged)
+    };
+    let map = map.as_ref();
 
     let mut typed = TypedMeta::default();
 

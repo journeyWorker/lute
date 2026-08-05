@@ -192,6 +192,10 @@ pub struct CheckInput {
     /// when the scene has no `components:` (or on a surface that cannot resolve
     /// files); validated against `::use` invocations in [`check`].
     pub components: ComponentSet,
+    /// The governing manifest's `defaults:` (0.10.0 §6): frontmatter this
+    /// document did not have to retype. Empty for a loose document, for a
+    /// project with no `defaults:` block, and on any surface with no manifest.
+    pub defaults: lute_manifest::project::MetaDefaults,
 }
 
 /// The result of one `check()`: every diagnostic (deduped, byte-sorted) plus the
@@ -283,7 +287,8 @@ pub fn fold_env(
     //    `Scene` — the degrade-safe path — when unresolved (missing/unknown
     //    `kind:`), so a mis-kinded doc still gets the scene-triad required-key
     //    treatment it had pre-0.2.0.
-    let (resolved_kind, kind_diags) = crate::meta::resolve_doc_kind(&doc.meta);
+    let (resolved_kind, kind_diags) =
+        crate::meta::resolve_doc_kind_with_defaults(&doc.meta, &input.defaults);
     let has_body = !doc.shots.is_empty() || !doc.quests.is_empty();
     let (doc_kind, meta_kind, kind_diags) = match resolved_kind {
         Some(crate::meta::DocKind::Scene) => {
@@ -305,7 +310,12 @@ pub fn fold_env(
     // 3b. Typed frontmatter + inline state schema, dispatched by the resolved
     //     kind (dsl 0.2.0 §3.1, §6.1): a Quest doc carries none of the scene
     //     triad and rejects it as an unknown key.
-    let (typed, mut fold_diags) = crate::meta::parse_meta_kind(&doc.meta, &input.snapshot, meta_kind);
+    let (typed, mut fold_diags) = crate::meta::parse_meta_kind_with_defaults(
+        &doc.meta,
+        &input.snapshot,
+        meta_kind,
+        &input.defaults,
+    );
     fold_diags.splice(0..0, kind_diags);
 
     // 3c. The FULL merged domain vocabulary (data-catalog foundation A4):

@@ -1562,3 +1562,187 @@ fn a_canonical_defaults_path_never_reaches_a_serialised_surface() {
         "capabilityVersion must not depend on where the project lives on disk (D-Z)"
     );
 }
+
+/// 0.10.0 §6.2: the resolved frontmatter — authored keys plus defaults — is
+/// what required-key checking sees. A scene omitting `character:` under a
+/// root that defaults it is COMPLETE, not E-META-MISSING.
+#[test]
+fn defaults_satisfy_required_frontmatter_keys() {
+    let dir = temp_dir("defaults-required");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  kind: scene\n  character: anseo\n  season: 1\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("scenes/s.lute"),
+        "---\nepisode: 4\n---\n\n## S\n\n@anseo: hi\n",
+    )
+    .unwrap();
+    let out = std::process::Command::new(BIN)
+        .args(["check-project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(!text.contains("E-META-MISSING"), "{text}");
+    assert!(!text.contains("E-KIND-MISSING"), "`kind:` is defaultable (§6.3):\n{text}");
+}
+
+/// §6.2: whole-value override, no merging. A document declaring `uses:`
+/// resolves to ITS list entire — not to the union with the default's.
+#[test]
+fn a_documents_own_key_overrides_the_default_entire() {
+    let dir = temp_dir("defaults-override");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  uses: [world.schema.yaml]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  run.world: { type: number, default: 0 }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("wake.schema.yaml"),
+        "state:\n  run.wake: { type: number, default: 0 }\n",
+    )
+    .unwrap();
+    // Declares its own `uses:`, so it gets `run.wake` and NOT `run.world`.
+    std::fs::write(
+        dir.join("scenes/own.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nuses: [../wake.schema.yaml]\n---\n\
+         \n## S\n\n::set{ run.world = 1 }\n@a: hi\n",
+    )
+    .unwrap();
+    let out = std::process::Command::new(BIN)
+        .args(["check-project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(1), "concatenation would have made this green:\n{text}");
+    assert!(text.contains("E-UNDECLARED"), "{text}");
+}
+
+/// §6.2: present-but-empty counts as present. `uses: []` means NO imports,
+/// not "inherit". There is no "unset me" spelling and none is added.
+#[test]
+fn an_empty_authored_value_overrides_the_default() {
+    let dir = temp_dir("defaults-empty");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  uses: [world.schema.yaml]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  run.world: { type: number, default: 0 }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("scenes/empty.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nuses: []\n---\n\
+         \n## S\n\n::set{ run.world = 1 }\n@a: hi\n",
+    )
+    .unwrap();
+    let out = std::process::Command::new(BIN)
+        .args(["check-project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(1), "`uses: []` means no imports:\n{text}");
+    assert!(text.contains("E-UNDECLARED"), "{text}");
+}
+
+/// §6.3: a default whose key is not legal on a document's RESOLVED kind is
+/// not applied to that document, and that is not an error. Without this rule
+/// `defaults:` is unusable in any root holding more than one kind of
+/// document — which is every real root.
+#[test]
+fn a_scene_only_default_does_not_reach_a_quest() {
+    let dir = temp_dir("defaults-mixed-root");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::create_dir_all(dir.join("quests")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  character: anseo\n  season: 1\n  episode: 1\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("scenes/s.lute"),
+        "---\nkind: scene\n---\n\n## S\n\n@anseo: hi\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("quests/q.lute"),
+        "---\nkind: quest\n---\n\n<quest id=\"q\" title=\"Q\" start=\"true\">\n\
+         \x20 <objective id=\"o\" title=\"O\" done=\"true\"/>\n</quest>\n",
+    )
+    .unwrap();
+    let out = std::process::Command::new(BIN)
+        .args(["check-project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(
+        !text.contains("E-META-UNKNOWN-KEY"),
+        "a quest under a root defaulting `character:` simply does not receive it (§6.3):\n{text}"
+    );
+}
+
+/// §6.4: defaults resolve BEFORE identity rendering, so a defaulted
+/// `character:` participates in `{prefix}` identically to an authored one —
+/// #34's own motivation, the manifest that consumes these keys can now
+/// supply them.
+#[test]
+fn a_defaulted_character_reaches_the_line_id_prefix() {
+    let dir = temp_dir("defaults-identity");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  kind: scene\n  character: anseo\n  season: 1\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("scenes/s.lute"), "---\nepisode: 7\n---\n\n## S\n\n@vesna: hi\n").unwrap();
+    let out = std::process::Command::new(BIN)
+        .args([
+            "compile",
+            dir.join("scenes/s.lute").to_str().unwrap(),
+            "--json",
+            "--project",
+            dir.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(
+        text.contains("anseo.s01ep07.vesna_0010"),
+        "the defaulted character/season must reach {{prefix}} (§6.4):\n{text}"
+    );
+}

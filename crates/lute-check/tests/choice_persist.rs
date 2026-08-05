@@ -19,6 +19,7 @@ fn codes(text: &str) -> Vec<String> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
         .diagnostics
@@ -38,6 +39,7 @@ fn diagnose(text: &str) -> CheckResult {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
 }
