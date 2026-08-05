@@ -2,23 +2,23 @@
 //! `lib.rs`'s `state.diags.clear()`.
 //!
 //! `compile()`'s own CFG walk folds the NORMALIZED tree, so an imported
-//! component body's staging is already inlined and its `W-INJECT-CONFLICT`
-//! IS derived there. The walk's `StageState.diags` is nonetheless cleared:
-//! `check()` is the single diagnostic surface (D6), and warnings never gate,
-//! so `compile()` has no `Ok`-path channel to carry one anyway.
+//! component body's staging is already inlined and whatever the injection
+//! fold raises for it IS derived there. The walk's `StageState.diags` is
+//! nonetheless cleared: `check()` is the single diagnostic surface (D6).
 //!
 //! Until Task 7g that clear was justified by a premise that was FALSE for a
-//! component body — `check()` did NOT re-derive the body's conflict, because
-//! `fold_injections` treated a `::use` as opaque — so the warning was
+//! component body — `check()` did NOT re-derive the body's diagnostics,
+//! because `fold_injections` treated a `::use` as opaque — so they were
 //! reported by no tool at all. `check()` now folds through the `::use` with
 //! the stage state inherited at that site, which is exactly the context this
 //! walk folds it in, and the clear is honest again.
 //!
-//! What these tests pin, observable from outside: a real `compile()` emits NO
-//! diagnostics of its own for either shape (so the scene-level conflict
-//! `check()` reports can never become two identical warnings), while the
-//! ARTIFACT stays correct — the author's explicit anchor is honored and no
-//! second anchor is injected beside it.
+//! dsl 0.10.0 §12.3 (**D-U**) removed `W-INJECT-CONFLICT`, the code this suite
+//! was written around. The explicit-anchor shape below is now SILENT, which
+//! makes the observable property stronger rather than weaker: a real
+//! `compile()` emits no diagnostics of its own for either shape, `check()`
+//! emits none either, and the ARTIFACT stays correct — the author's explicit
+//! anchor is honoured and no second anchor is injected beside it.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -63,7 +63,8 @@ fn input_for(dir: &Path, scene_text: &str) -> CheckInput {
 }
 
 /// `::auto` whose explicit `anchor` equals the `anchor` domain's declared
-/// `default:` — the one shape `auto-anchor-on-show` warns about.
+/// `default:` — until 0.10.0 §12.3 the one shape `auto-anchor-on-show` warned
+/// about, and now silent on every leg.
 const CONFLICT_BODY: &str = "::auto{character=\"bianca\" anchor=\"center\"}\n@bianca: Hello.\n";
 
 const SCENE_INLINE: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
@@ -84,11 +85,11 @@ fn sprite_records(artifact: &lute_compile::Artifact) -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// Both shapes: `check()` reports the conflict exactly once and `compile()`
-/// succeeds having emitted NOTHING — no second copy of the warning, and the
-/// author's anchor is the only anchor in the artifact.
+/// Both shapes: `check()` reports NOTHING (0.10.0 §12.3) and `compile()`
+/// succeeds having emitted nothing of its own, with the author's anchor the
+/// only anchor in the artifact.
 #[test]
-fn compile_adds_no_second_copy_of_the_conflict_warning() {
+fn compile_adds_no_diagnostics_of_its_own_for_an_explicit_anchor() {
     let dir = unique_dir();
     std::fs::write(
         dir.join("c.lute"),
@@ -99,21 +100,15 @@ fn compile_adds_no_second_copy_of_the_conflict_warning() {
     for (label, text) in [("scene level", SCENE_INLINE), ("via ::use", SCENE_USE)] {
         let input = input_for(&dir, text);
         let res = check(&input);
-        let reported: Vec<&str> = res
-            .diagnostics
-            .iter()
-            .filter(|d| d.code == "W-INJECT-CONFLICT")
-            .map(|d| d.message.as_str())
-            .collect();
-        assert_eq!(
-            reported.len(),
-            1,
-            "{label}: check() is the surface and reports it once: {:#?}",
+        assert!(
+            res.diagnostics.is_empty(),
+            "{label}: an explicit anchor equal to the declared default is silent \
+             as of 0.10.0 §12.3: {:#?}",
             res.diagnostics
         );
 
         let artifact = compile(&input)
-            .unwrap_or_else(|e| panic!("{label}: a warning must never gate: {e:#?}"));
+            .unwrap_or_else(|e| panic!("{label}: this shape must never gate: {e:#?}"));
         let sprites = sprite_records(&artifact);
         assert_eq!(
             sprites.len(),

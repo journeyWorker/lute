@@ -6,9 +6,9 @@
 //! never wrote (auto-anchor a fresh entrance, `posReset` a dirty pose, pre-load a
 //! sprite's first emotion, auto-hide lingering sprites on a scene change). The
 //! arch doc frames this as a **deterministic compile-time GC** for stage
-//! entities: the named rules are the collector, [`Provenance`] is the visible
-//! free-list, and conflicts (author-written vs would-be-injected) surface as
-//! warnings instead of silent double-injection.
+//! entities: the named rules are the collector and [`Provenance`] is the visible
+//! free-list. An explicit value the author wrote always wins and is never
+//! double-injected (0.10.0 §12.3, D-U).
 //!
 //! This module implements that as the arch doc prescribes:
 //! 1. an explicit typed [`StageState`] threaded through — *one value passed
@@ -57,13 +57,14 @@
 //! `is_*`/tag checks below for `semantics`-flag lookups is a mechanical follow-up
 //! once the resolver consumes a `CapabilitySnapshot`.
 //!
-//! ## Conflict channel
+//! ## Diagnostic channel
 //! The fixed reducer signature returns only `(StageState, Vec<InjectedCommand>)`,
-//! so the `W-INJECT-CONFLICT` [`Diagnostic`] rides on the threaded state's
-//! [`StageState::diags`] accumulator — the pure-reducer analogue of a third
-//! return value. The four semantic fields the contract lists (`on_stage`,
-//! `dirty`, `bg`, `music`) are present verbatim; `diags` is the additive
-//! diagnostic channel the T4.9 `Resolved` view reads alongside the injections.
+//! so a [`Diagnostic`] rides on the threaded state's [`StageState::diags`]
+//! accumulator — the pure-reducer analogue of a third return value. The four
+//! semantic fields the contract lists (`on_stage`, `dirty`, `bg`, `music`) are
+//! present verbatim; `diags` is the additive diagnostic channel the T4.9
+//! `Resolved` view reads alongside the injections. As of 0.10.0 §12.3 the only
+//! code it carries is `E-DOMAIN-UNKNOWN` from [`missing_anchor_domain_diag`].
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -227,10 +228,23 @@ fn lower_auto(
 
 /// Rule `auto-anchor-on-show`: a character shown with **no** explicit anchor
 /// gets an injected anchor command, at the `anchor` domain's DECLARED
-/// `default:`. If the author wrote an anchor equal to what this rule would
-/// inject, that is the author-written-vs-would-inject case →
-/// `W-INJECT-CONFLICT` (warn, no double injection). A *different* explicit
-/// anchor is a deliberate override, honored silently.
+/// `default:`. An anchor the author DID write is honoured verbatim and nothing
+/// is injected.
+///
+/// 0.10.0 §12.3 (**D-U**) removed `W-INJECT-CONFLICT` from the explicit arm.
+/// Injection happens only in the no-attribute arm below, so "the author wrote
+/// X and the rule would have injected Y ≠ X" cannot arise; the code's only
+/// emission condition was the author writing a value EQUAL to the default —
+/// agreement, never a conflict. `--deny-warnings` in CI could not express
+/// "centre, on purpose" (`0.6.1 §6` refuses an `--allow`, and that refusal is
+/// untouched), so the code was removed rather than narrowed.
+///
+/// **The information is dropped, not migrated** (**D-AA**). This was the only
+/// record anywhere in the toolchain that an author wrote what a rule would have
+/// injected. There is no `injected: false` provenance entry and none is built:
+/// `lute-compile`'s `inject_cmd` turns every `InjectedCommand` into a `sprite`
+/// record, so one would plant a spurious anchor command in the artifact beside
+/// the author's own.
 ///
 /// The no-attribute arm makes the `anchor` domain an **implicit dependency of
 /// the `::auto` itself**, and therefore a CHECKED one: see
@@ -242,47 +256,35 @@ fn auto_anchor_on_show(
     emit: &mut Vec<InjectedCommand>,
     domains: &BTreeMap<String, Domain>,
 ) {
-    let Some(anchor_attr) = d.attrs.iter().find(|a| a.key == "anchor") else {
-        match default_anchor(domains) {
-            Some(default) => emit.push(InjectedCommand {
-                kind: InjectKind::Anchor {
-                    character: character.to_string(),
-                    anchor: default.to_string(),
-                },
-                provenance: Provenance {
-                    injected: true,
-                    by: "auto-anchor-on-show".to_string(),
-                    explanation: format!(
-                        "`{character}` shown without an explicit anchor; defaulting to `{default}`"
-                    ),
-                },
-            }),
-            // No `anchor` domain at all: the implicit read has nothing to read,
-            // and nobody else will say so (see `missing_anchor_domain_diag`).
-            None if !domains.contains_key("anchor") => state
-                .diags
-                .push(missing_anchor_domain_diag(character, d.span)),
-            // DECLARED but with no `default:` — already `E-ENUM-MISSING-SEMANTICS`
-            // at the declaration (dsl 0.9.0 D-D makes `default:` mandatory for
-            // the `anchor` slot), so this arm stays silent instead of piling a
-            // second diagnostic onto one mistake.
-            None => {}
-        }
-        return;
-    };
     // An AUTHORED `anchor` names the domain, so `check_domain_member` already
-    // validated it — both its membership and the domain's very existence. This
-    // arm only decides whether the author pre-empted the injection.
-    if let Some(default) = default_anchor(domains) {
-        if attr_value_str(&anchor_attr.value).as_deref() == Some(default) {
-            state.diags.push(conflict_diag(
-                format!(
-                    "`{character}` is shown with an explicit `anchor=\"{default}\"` that \
-                     `auto-anchor-on-show` would otherwise inject"
+    // validated both its membership and the domain's existence. Nothing to do.
+    if d.attrs.iter().any(|a| a.key == "anchor") {
+        return;
+    }
+    match default_anchor(domains) {
+        Some(default) => emit.push(InjectedCommand {
+            kind: InjectKind::Anchor {
+                character: character.to_string(),
+                anchor: default.to_string(),
+            },
+            provenance: Provenance {
+                injected: true,
+                by: "auto-anchor-on-show".to_string(),
+                explanation: format!(
+                    "`{character}` shown without an explicit anchor; defaulting to `{default}`"
                 ),
-                anchor_attr.value_span,
-            ));
-        }
+            },
+        }),
+        // No `anchor` domain at all: the implicit read has nothing to read,
+        // and nobody else will say so (see `missing_anchor_domain_diag`).
+        None if !domains.contains_key("anchor") => state
+            .diags
+            .push(missing_anchor_domain_diag(character, d.span)),
+        // DECLARED but with no `default:` — already `E-ENUM-MISSING-SEMANTICS`
+        // at the declaration (dsl 0.9.0 D-D makes `default:` mandatory for
+        // the `anchor` slot), so this arm stays silent instead of piling a
+        // second diagnostic onto one mistake.
+        None => {}
     }
 }
 
@@ -461,21 +463,6 @@ fn attr_value_str(value: &AttrValue) -> Option<String> {
         AttrValue::Str(s) => Some(s.clone()),
         AttrValue::Ref(slot) => Some(slot.raw.clone()),
         AttrValue::BoolTrue => None,
-    }
-}
-
-/// Build the `W-INJECT-CONFLICT` staging-layer warning.
-fn conflict_diag(message: String, span: Span) -> Diagnostic {
-    Diagnostic {
-        code: "W-INJECT-CONFLICT".to_string(),
-        severity: Severity::Warning,
-        message,
-        span,
-        layer: Layer::Staging,
-        fixits: Vec::new(),
-        provenance: None,
-        covered: Vec::new(),
-        related: Vec::new(),
     }
 }
 
@@ -677,22 +664,33 @@ mod tests {
         assert_eq!(st2.bg.as_deref(), Some("cafe"));
     }
 
-    // --- W-INJECT-CONFLICT: author wrote the anchor the rule would inject ---
+    // --- 0.10.0 §12.3 (D-U): an explicit anchor equal to the declared default
+    // is SILENT. `auto-anchor-on-show` injects only in the no-attribute arm, so
+    // "author wrote X, rule would inject Y ≠ X" cannot arise; the only shape the
+    // removed `W-INJECT-CONFLICT` fired on was agreement. ---
     #[test]
-    fn explicit_default_anchor_warns_inject_conflict() {
+    fn explicit_default_anchor_is_silent() {
         let doms = anchor_domain("center");
         let st = StageState::default();
         let show = auto(vec![attr("character", "bianca"), attr("anchor", "center")]);
-        let (st2, injected) = lower_node(st, &show, &[], &doms);
-        // Author wrote what the rule would inject → warn, don't double-inject.
-        assert!(!injected
-            .iter()
-            .any(|c| c.provenance.by == "auto-anchor-on-show"));
-        assert!(st2.diags.iter().any(|d| d.code == "W-INJECT-CONFLICT"
-            && d.severity == Severity::Warning
-            && d.layer == Layer::Staging));
-        // The character is still staged, at the author's anchor.
-        assert_eq!(st2.on_stage["bianca"].anchor.as_deref(), Some("center"));
+        let (st2, emitted) = lower_node(st, &show, &[], &doms);
+        assert!(
+            !emitted
+                .iter()
+                .any(|c| c.provenance.by == "auto-anchor-on-show"),
+            "an explicit anchor injects nothing; got {emitted:?}"
+        );
+        assert!(
+            st2.diags.is_empty(),
+            "an explicit anchor equal to the declared default is silent as of 0.10.0 \
+             §12.3 (D-U); got {:?}",
+            st2.diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            st2.on_stage.get("bianca").and_then(|s| s.anchor.as_deref()),
+            Some("center"),
+            "the character is still staged, at the author's anchor"
+        );
     }
 
     #[test]

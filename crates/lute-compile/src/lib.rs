@@ -158,20 +158,20 @@ pub fn compile_with_check(
             // `check()` is the diagnostic surface, the artifact is ours (plan
             // note 8): whatever this walk re-derives on `StageState::diags` is
             // dropped rather than reported a second time. Since dsl 0.9.0 D-D
-            // that channel is no longer warning-only — besides the
-            // `W-INJECT-CONFLICT`s, `auto-anchor-on-show` pushes
-            // `E-DOMAIN-UNKNOWN` (an Error) for an `::auto` that relies on an
-            // undeclared `anchor` domain's `default:`. So the drop needs an
-            // argument that covers an Error, not the old one about warnings
-            // never gating.
+            // that channel is no longer warning-only — `auto-anchor-on-show`
+            // pushes `E-DOMAIN-UNKNOWN` (an Error) for an `::auto` that relies
+            // on an undeclared `anchor` domain's `default:`. So the drop needs
+            // an argument that covers an Error, not the old one about warnings
+            // never gating. (dsl 0.10.0 §12.3 removed `W-INJECT-CONFLICT`, so
+            // `E-DOMAIN-UNKNOWN` is now the channel's only code.)
             //
             // The argument: the D6 gate at the top of this function already
             // returned `Err(result.diagnostics)` unless `check()` was clean, so
             // reaching this line PROVES `check()` derived no Error. The drop is
             // lossless exactly insofar as `check()` derives every Error this
-            // walk can — and it does, for both codes, because both sides run
-            // the one `lute_check::inject` reducer over one threaded
-            // `StageState`, folded in document position:
+            // walk can — and it does, because both sides run the one
+            // `lute_check::inject` reducer over one threaded `StageState`,
+            // folded in document position:
             //
             //   * `E-DOMAIN-UNKNOWN` turns on attribute-KEY presence (a
             //     `character` attr, no `anchor` attr) plus one document-wide
@@ -181,15 +181,16 @@ pub fn compile_with_check(
             //     `::auto` nor adds or removes an attr key, so the trigger is
             //     invariant under everything separating this tree from the one
             //     `check()` folds.
-            //   * `W-INJECT-CONFLICT` is the divergence Task 7g closed: until
-            //     then `check()`'s `fold_injections` treated a `::use` as an
-            //     opaque leaf while THIS walk runs after `normalize_document`
-            //     has inlined the body, so a body conflict was derived only
-            //     here and discarded here, i.e. reported by no tool at all.
-            //     `check()` now folds THROUGH the `::use` with the stage state
-            //     inherited at that site (see `lute_check`'s `fold_use`), which
-            //     is exactly the context this walk folds the inlined body in,
-            //     so both sides agree by construction.
+            //   * The component-body divergence Task 7g closed is structural,
+            //     not code-specific: until then `check()`'s `fold_injections`
+            //     treated a `::use` as an opaque leaf while THIS walk runs
+            //     after `normalize_document` has inlined the body, so a body
+            //     diagnostic was derived only here and discarded here, i.e.
+            //     reported by no tool at all. `check()` now folds THROUGH the
+            //     `::use` with the stage state inherited at that site (see
+            //     `lute_check`'s `fold_use`), which is exactly the context this
+            //     walk folds the inlined body in, so both sides agree by
+            //     construction.
             //
             // Residual, deliberate, and warning-only: this walk folds the
             // EXPANDED tree, so it can see a conflict that only exists once a

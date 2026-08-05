@@ -359,7 +359,7 @@ title: Cut gate
 #[test]
 fn injection_warnings_do_not_gate_and_output_is_byte_stable() {
     // The ::auto has no anchor => an anchor is INJECTED (a warning-free case);
-    // W-INJECT-CONFLICT-class warnings never gate (only Errors do, D6).
+    // warnings never gate at all (only Errors do, D6).
     let a1 = compile(&input(SCENE)).expect("ok");
     let a2 = compile(&input(SCENE)).expect("ok");
     let s1 = serde_json::to_string_pretty(&a1).unwrap();
