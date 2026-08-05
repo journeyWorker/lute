@@ -65,7 +65,8 @@
 //! present verbatim; `diags` is the additive diagnostic channel the T4.9
 //! `Resolved` view reads alongside the injections. It carries
 //! `E-DOMAIN-UNKNOWN` from [`missing_anchor_domain_diag`] and, as of 0.10.0
-//! §11.2, [`W_EXIT_INERT`] from [`exit_inert_diag`].
+//! §11.2, [`W_EXIT_INERT`] from [`exit_inert_diag`] and [`W_STAGE_ABSENT`] from
+//! [`stage_absent_diag`].
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -94,6 +95,19 @@ pub struct StageState {
     pub on_stage: BTreeMap<String, SpriteState>,
     /// Characters whose pose changed and hasn't been reset yet.
     pub dirty: BTreeSet<String>,
+    /// Characters removed by an **explicit declared exit** and not re-shown
+    /// since (dsl 0.10.0 §11.2, **D-X**).
+    ///
+    /// `on_stage` cannot answer this on its own: a character who has never been
+    /// shown and one who has left are both simply absent from it, and only the
+    /// second is a staging impossibility. `W-STAGE-ABSENT` fires only for a
+    /// member of this set, which is what keeps a character's FIRST line — an
+    /// implicit entrance, and the overwhelmingly common shape — silent.
+    ///
+    /// Cleared per character on a re-show ([`stage_bookkeeping_show`]) and
+    /// wholesale on a scene change ([`stage_bookkeeping_bg`], which clears the
+    /// stage itself).
+    pub exited: BTreeSet<String>,
     /// Current background (`::bg` location / assetId).
     pub bg: Option<String>,
     /// Current music (`::music` mood / action).
@@ -198,8 +212,20 @@ fn lower_auto(
         .as_deref()
         .is_some_and(|a| is_declared_exit(a, domains))
     {
+        // §11.2 position 2 (**D-X**): a declared exit for a character the
+        // threaded state already records as gone. Only after an EXPLICIT
+        // earlier exit — `exited`, never `!on_stage` — so a first-ever `::auto`
+        // exit for a character nothing staged is not the finding and is silent.
+        if state.exited.contains(&character) {
+            state.diags.push(stage_absent_diag(
+                &character,
+                "another declared exit",
+                d.span,
+            ));
+        }
         state.on_stage.remove(&character);
         state.dirty.remove(&character);
+        state.exited.insert(character);
         return;
     }
 
@@ -353,6 +379,14 @@ fn lower_line(
         }
     }
 
+    // §11.2 position 1 (**D-X**): a spoken line whose speaker was removed by a
+    // declared exit earlier in the walk, with no intervening show.
+    if state.exited.contains(speaker) {
+        state
+            .diags
+            .push(stage_absent_diag(speaker, "a spoken line", line.span));
+    }
+
     if !stateful && state.dirty.contains(speaker) && state.on_stage.contains_key(speaker) {
         emit.push(InjectedCommand {
             kind: InjectKind::PosReset {
@@ -395,6 +429,9 @@ fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<In
     }
     state.on_stage.clear();
     state.dirty.clear();
+    // A `::bg` is a scene change: every sprite is auto-hidden above, so no
+    // earlier exit constrains what follows (§11.2).
+    state.exited.clear();
     state.bg = attr_str(&d.attrs, "location").or_else(|| attr_str(&d.attrs, "assetId"));
 }
 
@@ -411,6 +448,8 @@ fn stage_bookkeeping_show(
 ) {
     let anchor =
         attr_str(&d.attrs, "anchor").or_else(|| default_anchor(domains).map(str::to_string));
+    // A re-show ends the absence §11.2 warns about.
+    state.exited.remove(character);
     state.on_stage.insert(
         character.to_string(),
         SpriteState {
@@ -554,6 +593,35 @@ fn exit_inert_diag(speaker: &str, action: &str, span: Span) -> Diagnostic {
              `::auto{{character=\"{speaker}\" action=\"{action}\"}}`), or, if `{action}` is a \
              pose rather than a departure, remove it from the `action` domain's `exits:` \
              (dsl 0.10.0 §11.2)"
+        ),
+        span,
+        layer: Layer::Staging,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// `W-STAGE-ABSENT`: a staging event for a character the threaded stage state
+/// records as off stage after an explicit declared exit (dsl 0.10.0 §11.2,
+/// **D-X**).
+pub const W_STAGE_ABSENT: &str = "W-STAGE-ABSENT";
+
+/// Build the `W-STAGE-ABSENT` staging-layer warning. `what` names the event —
+/// `"a spoken line"` or `"another declared exit"`.
+///
+/// **D-X** keeps this separate from [`W_EXIT_INERT`]: they are different
+/// claims. One says an attribute does not do what it looks like; this one says
+/// the staging is impossible. `--deny <CODE>` must be able to separate them.
+fn stage_absent_diag(character: &str, what: &str, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: W_STAGE_ABSENT.to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "`{character}` left the stage on an earlier declared exit and has not been shown \
+             again, so {what} here stages someone who is not present. Show them again with an \
+             `::auto` before this point, or remove the earlier exit (dsl 0.10.0 §11.2)"
         ),
         span,
         layer: Layer::Staging,
@@ -1164,6 +1232,134 @@ mod tests {
         assert!(
             st2.diags.iter().any(|d| d.code == "W-EXIT-INERT"),
             "`go-under` here is a pose, not a departure; got {:?}",
+            st2.diags
+        );
+    }
+
+    // --- 0.10.0 §11.2 (D-X): a staging event for a character the threaded
+    // stage state records as OFF stage, after an explicit declared exit. ---
+
+    fn auto_with_action(character: &str, action: &str) -> Node {
+        auto(vec![attr("character", character), attr("action", action)])
+    }
+
+    fn plain_line(speaker: &str) -> Node {
+        line(speaker, vec![])
+    }
+
+    /// Position 1: a spoken content line whose speaker was removed by a declared
+    /// exit earlier in the walk, with no intervening show.
+    #[test]
+    fn line_after_a_declared_exit_warns_absent() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let (st, _) = lower_node(
+            staged("vesna"),
+            &auto_with_action("vesna", "go-under"),
+            &[],
+            &doms,
+        );
+        assert!(!st.on_stage.contains_key("vesna"), "the exit removed them");
+        let (st2, _) = lower_node(st, &plain_line("vesna"), &[], &doms);
+        assert!(
+            st2.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"),
+            "a line after a declared exit is impossible staging; got {:?}",
+            st2.diags
+        );
+    }
+
+    /// Position 2: an `::auto` whose `action` is a declared exit member, for a
+    /// character already off stage — the double exit T2.4 measured.
+    #[test]
+    fn second_declared_exit_warns_absent() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let (st, _) = lower_node(
+            staged("vesna"),
+            &auto_with_action("vesna", "go-under"),
+            &[],
+            &doms,
+        );
+        let (st2, _) = lower_node(st, &auto_with_action("vesna", "go-under"), &[], &doms);
+        assert!(
+            st2.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"),
+            "two exits with nothing between them; got {:?}",
+            st2.diags
+        );
+    }
+
+    /// **D-X's restriction, and the reason `exited` exists.** A character who
+    /// has simply not been shown yet is put on stage by their first line, as
+    /// today. That is not the finding and MUST NOT warn — `on_stage` alone
+    /// cannot tell the two absences apart.
+    #[test]
+    fn a_never_shown_character_speaking_is_silent() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let (st2, _) = lower_node(StageState::default(), &plain_line("vesna"), &[], &doms);
+        assert!(
+            st2.diags.is_empty(),
+            "a first line is an implicit entrance, not impossible staging; got {:?}",
+            st2.diags
+        );
+    }
+
+    /// The same restriction on the `::auto` half: a first-ever declared exit for
+    /// a character nothing ever staged is absent-but-never-departed, so it is
+    /// silent too. Only a SECOND exit is impossible.
+    #[test]
+    fn a_first_declared_exit_for_a_never_shown_character_is_silent() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let (st2, _) = lower_node(
+            StageState::default(),
+            &auto_with_action("vesna", "go-under"),
+            &[],
+            &doms,
+        );
+        assert!(
+            !st2.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"),
+            "never shown is not the same as departed; got {:?}",
+            st2.diags
+        );
+    }
+
+    /// A re-show clears it: exit, show again, speak — silent.
+    #[test]
+    fn a_re_show_clears_the_exited_mark() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let (st, _) = lower_node(
+            staged("vesna"),
+            &auto_with_action("vesna", "go-under"),
+            &[],
+            &doms,
+        );
+        let (st, _) = lower_node(st, &auto_with_action("vesna", "brace"), &[], &doms);
+        let (st2, _) = lower_node(st, &plain_line("vesna"), &[], &doms);
+        assert!(
+            !st2.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"),
+            "the character is back on stage; got {:?}",
+            st2.diags
+        );
+    }
+
+    /// A `::bg` is a scene change: the stage is cleared and every exit mark goes
+    /// with it, so a line after the scene change is a fresh implicit entrance.
+    #[test]
+    fn a_scene_change_clears_the_exited_mark() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let (st, _) = lower_node(
+            staged("vesna"),
+            &auto_with_action("vesna", "go-under"),
+            &[],
+            &doms,
+        );
+        let bg = Node::Directive(Directive {
+            tag: "bg".to_string(),
+            attrs: vec![attr("location", "hold")],
+            span: span(),
+        });
+        let (st, _) = lower_node(st, &bg, &[], &doms);
+        let (st2, _) = lower_node(st, &plain_line("vesna"), &[], &doms);
+        assert!(
+            !st2.diags.iter().any(|d| d.code == "W-STAGE-ABSENT"),
+            "a scene change resets the stage; got {:?}",
             st2.diags
         );
     }
