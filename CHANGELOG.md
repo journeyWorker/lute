@@ -8,24 +8,321 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.9.0`, the grammar and semantics the checker
+- **Language** — currently `0.10.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.9.0`) and gated on by consuming engines.
+  artifact (currently `0.10.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
-release presents one number and nobody has to reconcile three. `0.9.0` keeps
-that alignment: the language and the toolchain both advance, and the IR number
-moves with them even though **IR `0.9.0` is shape-identical to IR `0.8.0`**.
-Alignment is a presentation guarantee, not a claim that every axis changed
-substantively — this changelog is where you learn which ones did. See
-[`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
+release presents one number and nobody has to reconcile three. Alignment is a
+presentation guarantee, not a claim that every axis changed substantively — this
+changelog is where you learn which ones did. `0.10.0` is the first release in a
+while where **all three earned it**: the language restricts what a document may
+be (six `LANG` changes, plus seven `LANG-SOFT` that cannot redden a green
+document), the toolchain carries the other thirteen of the twenty-six backlog
+issues this release took, and the IR shape genuinely changes for the first time
+since `0.8.0` (one field rename).
+See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.10.0] - 2026-08-06
+
+**The toolchain says what it knows.** Every entry below is a place where the
+tool already held the answer and did not use it: it resolved a type and did not
+apply it, held a permitted-attribute table and enforced one row of it, proved a
+relation dead and reported that in one slot and nothing in another, computed a
+layer and rendered none. Once, it said the opposite of what it knew.
+
+`0.10.0` was scoped from a drive test: eighteen documents written *in* Lute on
+purpose, producing a 111-entry findings log and a 38-issue backlog, of which
+this release takes twenty-six. Specs:
+[`scenario-dsl/0.10.0.md`](docs/proposals/scenario-dsl/0.10.0.md) — thirteen
+language changes, six `LANG` and seven `LANG-SOFT`. `LUTE_LANG_VERSION`,
+`LUTE_IR_VERSION` and the toolchain version all read `0.10.0`; the IR schema is
+[`schemas/lute-ir-0.10.schema.json`](schemas/lute-ir-0.10.schema.json) and this
+time the shape **moved** — see the IR bullet under *Changed*.
+
+### Changed
+
+- **BREAKING (IR) — `provenance.reason` is now `provenance.explanation`.** On
+  the injection provenance stamp an artifact carries for every command the
+  compiler synthesized:
+  `{ "injected": true, "by": "auto-pose-reset", "explanation": "…" }`. The old
+  name was a **collision, not a synonym**. `end.reason` is an opaque author
+  token a host dispatches on — the author writes it and your engine branches on
+  it. This field is human-readable English the compiler wrote to say why a
+  record you did not author exists, and nothing dispatches on it. Two keys
+  sharing a name with nothing else in common is exactly what a rename removes.
+  An engine gated on IR `0.9` **must widen to `0.10`**, because the runtime
+  contract requires refusing a newer major.minor; **the rename is the only edit
+  it needs** beyond that. `provenance.injected` is retained but is now
+  constant-`true` — with `W-INJECT-CONFLICT` gone nothing can construct a
+  `false`, so do not read a `true` as distinguishing anything. Removing the
+  field would be a second IR break and is deferred.
+- **BREAKING (documents) — `::set` now checks the value it writes against the
+  path it writes to.** `::set{run.shedPressure += "two"}` where the schema
+  declares `{ type: number }` is `E-SET-TYPE`, at the right-hand side's own
+  span. Every report is a write the runtime was already discarding: `+= "two"`
+  on a number left the path at `0`. The checker had resolved the target's
+  declared type all along — it used it to diagnose a *different* construct in
+  the same run, on the same path, and never applied it to the write. It remains
+  a proof obligation, never a guess: an expression whose type cannot be decided
+  is accepted silently rather than guessed at.
+- **BREAKING (documents) — an attribute the logic tags do not accept is now an
+  error.** `<branch>`, `<choice>`, `<match>`, `<when>`, `<otherwise>` and
+  `<hub>` all close their attribute sets, and a name outside the set is
+  `E-UNKNOWN-ATTR` at the attribute's own column. It was already being
+  discarded — silently, which is why a typo'd `when=` on a `<choice>` produced
+  an unguarded choice and no complaint. Only `<otherwise>`'s empty set was
+  enforced before, out of the same table the other five never consulted.
+  `<choice>`'s set is **position-dependent**: `once` and `exit` are hub-choice
+  only, so `exit` on a branch choice, which the hub reducer is the only reader
+  of, no longer passes in silence. And `as=` on a `<choice>` is its own
+  `E-AS-REMOVED` rather than "unknown", because it is not unknown — it was
+  renamed to `into=` in `0.1.0`, `lute fix` performs the rename, and doing so
+  restores the `set` record the document was losing.
+- **BREAKING (documents) — a quest gate that can never open is an error.** A
+  `<quest start=>` querying a relation nothing can ever produce is
+  `E-QUEST-UNREACHABLE`, naming the relation and the declared routes. The
+  producibility fixpoint already proved it: it reported the identical fact in
+  `done=` as a project-wide error and in `start=` as nothing at all, after
+  which `scenario reach` printed **Reachable** for the silent one. It fires on
+  `start=` only, never on `fail=` — a `fail` that can never hold means the
+  quest cannot fail, which is not a defect.
+- **BREAKING (documents) — two required objectives that cannot both hold are an
+  error.** `done="run.shedPressure >= 99"` and `done="run.shedPressure <= 0"`
+  on one quest is `E-OBJECTIVE-CONTRADICTION`, naming both ids and the path.
+  The diagnostic names both because it cannot know which one is wrong. Scoped to
+  path-versus-literal scalar comparisons, and it carries the "this quest can
+  never complete" consequence as a note rather than escalating to a second
+  diagnostic.
+- **BREAKING (mocks) — `mocks/*.yaml` requires a `file:` key, and is now
+  checked.** `file:` names the document the mock previews, resolved **relative
+  to the mock**; a mock without one is `E-MOCK-SUBJECT`. There is no
+  subject-less mode. This is what makes the rest possible: `check-project` now
+  validates every `mocks/*.yaml` it walks, so a mock seeding an undeclared path
+  or naming a choice id that no longer exists is reported by the ordinary
+  project check instead of only when someone happens to run `lute trace`. Mock
+  diagnostics anchor at the mock file and name the offending key in the message
+  — no line and column, because spanned YAML is not in scope. When
+  `lute trace <doc> --mock m.yaml` disagrees with `file:`, the command line wins
+  and the disagreement is the error.
+- **BREAKING (`*.test.yaml`) — the key set is closed, and a test that asserts
+  nothing fails.** Unknown keys were dropped at both nesting levels, so a file
+  spelling `chooses:` lost its selection, `trace` auto-picked the first
+  eligible arm, and the assertions written for the arm the file *names* were
+  checked against the arm it excluded — green. Both levels now close with the
+  same edit-distance did-you-mean four checker codes already use
+  (`E-TEST-KEY`). And the verdict was `all()` over an empty vector, so a test
+  with no recognised expectations reported **PASS**; that is now
+  `E-TEST-NO-EXPECT`. Auto-picking a branch stays legal and stops being silent:
+  every auto-picked branch is named along with the arm it took.
+- **BREAKING (`lute run`) — a forced selection whose guard decided false is
+  refused.** Asking for a choice arm whose `when=` evaluates false played it in
+  full at exit `0` — in the drive test, a character delivered four lines from
+  inside a cryopod. `lute trace` refused the same selection on the same
+  document in the same project, and `lute test`, being trace-based, inherited
+  the refusal: one question, three tools, two answers. The guard was already in
+  the artifact as `option.when` and this walk already evaluated CEL everywhere
+  else in it. Hard refusal, exit `2`, no opt-in flag — a flag to keep the old
+  behaviour would re-create the disagreement under another name. Covered on both
+  dispatch sites; a hub option that a prior visit's `::set` enabled still plays,
+  because the hub evaluates per visit.
+- **BREAKING (`loc export`) — a component's lines are exported once per call
+  site, under the caller's id.** Adopting the language's only reuse mechanism
+  used to remove a line from the localization pipeline with no diagnostic
+  saying so: the export keyed a component's lines to the *component* file with
+  `lineId` null, because `{prefix}` derives from the importing document's
+  frontmatter and a component has none. Everything downstream keys on `lineId`,
+  so `loc import` skipped the row at exit `0`, `lute tag` answered "already
+  tagged" (the lines *do* carry a `code=`), and `compile --locales` then emitted
+  `W-L10N-MISSING` for a caller-derived id that appeared in no export the
+  translator ever saw — and shipped English at exit `0`. The export now
+  normalizes first, the same pass `trace` and `compile` run, so each line is
+  extracted once per call site with the caller's prefix and its `@params` bound.
+  A new `source` field carries the component file and line so a TMS can dedupe
+  identical text. `{{…}}` interpolation is deliberately left intact — that is
+  what a translator must see.
+- **Timeline time is integer milliseconds.** `at`, `duration` and `delay` are
+  authored exactly as before, and the checker now converts each by **shifting
+  the authored decimal**, never by multiplying a parsed float, so overlap and
+  duration comparisons are exact. A boundary hand-off — `at="0.8"
+  duration="0.4"` then `at="1.2"` — is legal, as the spec always said and
+  floating-point accumulation denied; the epsilon and the shortened-duration
+  workarounds authors wrote to dodge `E-CLIP-OVERLAP` can be deleted. A value
+  finer than a millisecond is `E-TIME-RESOLUTION`. `E-CLIP-OVERLAP` and
+  `E-TIMELINE-DURATION` print the **authored** decimal, never a reconstructed
+  float. **The artifact keeps seconds** under the same names and JSON type — a
+  cursor-derived `1.2` simply stops serializing as `1.2000000000000002`.
+  Renaming them to milliseconds would place every effect 1000× late in an engine
+  that did not notice.
+- **A standalone component check no longer contradicts the project one.**
+  `lute check c.component.lute --project P` said `ok` for a component that
+  cannot work with *any* of its callers, while `check-project` reported the
+  fault once per caller at line 1 of the wrong file and `lute trace` refused
+  with "run `lute check` first" — advice that could not be followed. Four
+  changes, one contract: a component-body diagnostic keeps its
+  component-internal line and column as a secondary location instead of
+  collapsing onto the importer's frontmatter span; identical reports across N
+  callers roll up to one, with `(+N more callers)`; a malformed `params:` is
+  reported as `E-COMPONENT-PARSE` on the standalone leg and the
+  `E-UNDECLARED-REF` it *causes* is suppressed, so the author is no longer sent
+  to `defs:` for a param they declared four lines up; and with at least one
+  caller in scope the standalone leg reports what holds at **every** call site,
+  anchored inside the component. A fault holding at only some sites is
+  caller-specific and stays with `check-project`, where the caller is visible.
+  With **no** caller in scope the verdict is `W-COMPONENT-UNVERIFIED`, not `ok`
+  — refusing to claim a check it did not perform.
+- **`&&` narrowing runs in every CEL slot.** `<quest start|fail>` and
+  `<objective done|when>` were the four slots where an intra-expression
+  `x != unset && x > 3` did not discharge `E-MAYBE-UNSET`, as it already did
+  everywhere else.
+- **A component param may be declared `{ type: X }`.** Accepted as a synonym
+  for the short form, so the long form authors reach for by analogy with
+  `state:` and `defs:` no longer fails.
+- **`--coverage` keys a `<match>` on its position, not on its guard text.** Six
+  blocks opening `<match on="true">` across four files collapsed into one row
+  reading `3/3 arm(s) executed` — the tool's only false statement, and its most
+  reassuring one, certifying a set of six blocks no single traced path ever
+  visited together. A `<match>` is now keyed on file plus line/column with the
+  guard text riding along as a label (a `<branch>`/`<hub>` keeps its declared
+  id, which is document-unique). The same run over the drive-test corpus renders
+  19 match rows where it rendered 10. Coverage also used to accumulate only
+  from reports that *ran*, so deleting a test made its scene invisible rather
+  than untested; `--coverage` now lists every testable document no
+  `*.test.yaml` names.
+- **`E-CEL-PARSE` inside a `::set` body names `::set`'s own attribute surface**
+  and drops the `'=' assigns; comparison is '=='` suggestion, which is advice
+  for a guard and wrong for an assignment.
+- **`E-MAYBE-UNSET` on `quest.<id>.state` names a remedy that exists.** It used
+  to prescribe definite assignment, which is not reachable for a reserved
+  quest path; it now names the two forms that do work.
+- **`E-LOGIC-CONTENT` loses its attribute arm.** An attribute on `<otherwise>`
+  is now `E-UNKNOWN-ATTR`. The code is unchanged for its three body-shape
+  rules. This is the one message change on a construct that already enforced.
+- **A nested `lute.project.yaml` is validated by every command that walks it.**
+  `compile` and `compile --all` reached nested manifests and never validated
+  them, so a broken one that `check` rejected compiled at exit `0`;
+  `E-IDENTITY-TEMPLATE` and its siblings now fire from `compile` too and carry
+  the manifest's own path, which they did not before. A nested manifest that the
+  invoked root does **not** govern draws `W-PROJECT-INERT` — but only when it
+  would have resolved a different capability snapshot or different identity
+  templates, because an unconditional warning fires on manifests whose presence
+  changes nothing.
+
+### Added
+
+- **`defaults:` in `lute.project.yaml`.** Hoist frontmatter every document in a
+  root repeats — `character`, `season`, `profile`'s neighbours, `uses:`,
+  `extends:` and the rest of a closed defaultable set — into the manifest, and
+  let a document override any of them. Purely additive; nothing requires it.
+  Override is **whole-value per key**, never merged, so a document that names a
+  key owns that key outright. A key outside the set is `E-DEFAULTS-KEY`: schema
+  keys already compose through `uses:`/`extends:`, `profile` and `plugins`
+  already have manifest routes, and `title`/`episodeId`/`after` are per-document
+  by nature. `mode` is excluded because it is inert — a legal key nothing reads,
+  and a defaultable key that changes nothing is a trap in a block whose whole
+  purpose is changing many documents at once. A `uses:`/`extends:` path in
+  `defaults:` resolves relative to the **manifest**; the same key in a document
+  resolves relative to the **document**. The rest of the manifest stays open;
+  only the `defaults:` mapping is closed.
+- **`W-DOMAIN-UNREAD` — a declared domain nothing reads.** Project-wide only
+  (`check-project`, never single-document `lute check`), because a domain
+  declared in a shared schema is read by *some* document and warning on the
+  scene that happens not to read it would be a false positive on the most
+  common layout in the language.
+- **`W-EXIT-INERT` and `W-STAGE-ABSENT` — stage state the reducer already
+  held.** A content-line `action=` naming a member of the `action` domain's
+  declared `exits:` looks like it removes the character and does not — only
+  `::auto` does — so it is `W-EXIT-INERT`, and the message names both discharge
+  paths: split it into the two-event form, or stop declaring that member an
+  exit. A staging event on a character already removed by an explicit declared
+  exit is `W-STAGE-ABSENT`, firing only after such an exit and only until a
+  re-show, so a character's first line — which legitimately puts them on stage
+  — never warns. Two codes rather than one, because they are different claims
+  and `--deny <CODE>` must be able to separate them.
+- **`E-RELATION-UNKNOWN` suggests the nearest declared relation.** State paths,
+  `after:` scene keys, `::set` targets and enum members all offered a spelling
+  suggestion; relation names were the one class that did not, against a
+  `relations:` block that is the cheapest closed set in the language to compare
+  against. In one drive-test run `run.shedPresure` got its suggestion and
+  `can_hlat`, two lines up, got nothing. Deterministic tie-break; the
+  entity-kind hint keeps precedence, so a name that *is* a declared kind still
+  gets the categorical explanation rather than a spelling guess.
+- **`E-META-UNKNOWN-KEY` suggests the nearest known frontmatter key.**
+- **`lute trace` renders the exit, the ending, and the heading.** An exit was
+  invisible: an entrance and an exit are the same construct with the same
+  attribute names, and the entire difference is which value appears in the
+  `action` domain's declared `exits:` — `trace` printed both as `<auto>`, and
+  now prints `<auto exit>`, read from the resolved domain, never inferred. A
+  terminator was unlabelled: `reason` is `::end`'s entire payload, the only
+  thing distinguishing it from falling off the end of the document, and a
+  project with several endings previewed them all as an identical `<end>`;
+  it now prints `<end reason=bridge-reached>`. `TraceReport` gains `disposition`
+  and `endReason` as additive keys, so a harness can finally tell a terminated
+  walk from a spent one.
+- **`scenario envelope` reports the computed layer, not the declared one.** The
+  join existed and was rendered nowhere: the assembly pass built per-scene write
+  sets and per-quest completion writes, handed them to propagation, and dropped
+  them. Inverting that names the **writers** of every path — the edge nobody
+  could draw. Scoped to graph ancestors rather than project-wide, because a
+  project-wide list renders identically at every node and would name a scene
+  eight scenes downstream as a writer in an earlier scene's pre-entry envelope.
+  Both halves are reported and each is labelled with what is actually known:
+  writers on a declared route reaching the node, and writers whose write is not
+  provably before it.
 
 ### Fixed
+
+- **A refused test prints the diagnostics it is holding.** A `choose:` naming a
+  deleted choice id, one naming a deleted branch id, and a `state:` naming a
+  deleted path all produced the same single line, `trace refused: invalid mock
+  input`. The harness was holding the diagnostic vector, *inspecting the codes
+  in it* to pick between two canned strings, and then discarding it. On a
+  31-file suite that is the difference between a one-second fix and a bisect.
+  Flag spellings are rewritten to key spellings on the way out, because a
+  `*.test.yaml` cannot use `--choose`.
+- **A malformed imported state declaration is named instead of counted.**
+  `E-USES-PARSE` reported `(1 issue(s))` and nothing else — the author's total
+  information about a four-word mistake in a schema. It now carries the
+  import's own diagnostics as `related`, positioned against the imported file,
+  through the renderer that already walks `related`; the count is computed from
+  that same vector so the two cannot disagree. And `lute check world.schema.yaml`
+  — the obvious next command — used to parse the YAML schema **as a scene** and
+  tell the author to add `kind: scene`, which destroys it; a `.yaml`/`.yml`
+  target now takes the same schema lift it gets when reached through `uses:`.
+- **A content-line enum error names the line, not an invented directive.** The
+  enum-member check hardcoded the `::` directive sigil and content lines passed
+  it the *speaker*, so every content-line enum error named a `::narrator` that
+  exists in no document, no grammar, and no `lute context` listing. Directives
+  render `::auto`; content lines render `@narrator`. `E-ATTR-TYPE` had the same
+  defect through the same call path and is fixed with it. Separately,
+  `scenario envelope` on a quest annotated an author-facing table with an
+  internal task label and a Rust function name; the distinction it draws is real
+  and kept, in the author's vocabulary.
+- **Nine false documentation statements, rewritten from what the binary
+  prints.** Among them: `when=` was described as unqualified sugar for a one-arm
+  `<match>`, when a relational guard is legal on a line and
+  `E-MATCH-RELATION-SUBJECT` as a subject — where the guard queries facts the
+  line form is the *only* form; "quest documents additionally use
+  `::assert`/`::retract`", which a scene in the corpus disproves; and
+  `{ type: enum, values: [...] }`, copied into three files, which is
+  `E-STATE-DECL`. A gap you can see costs a workaround; a false sentence costs
+  rounds you do not know you are spending.
+- **Three documentation silences broken**, each anchored in runnable output
+  rather than written from a plan: a worked `identity:` block naming the two
+  templates *as* the defaults a project gets without declaring them and stating
+  the two id classes they do not govern; what a content line's `action=`
+  actually does (it sets the pose and marks the speaker dirty, so the next plain
+  line gets an injected pose reset) and that an entrance and an exit are
+  `::auto`; and that a quest's `after` is an **attribute** on `<quest>`, said on
+  the page that owns both document kinds.
+- **The `--deny` code registry documented its own guard in the wrong place.**
+  Three documents named `crates/lute-cli/tests/deny.rs`, following a doc comment
+  in `main.rs`; the drift guard is a unit test inside `main.rs` itself. The
+  comment and all three documents are corrected — the misdirection had already
+  misled two independent readers.
 
 - **A component file checked standalone now enforces the presentational-body
   contract (dsl 0.4.0 §6.2).** `lute check some.component.lute` reported `ok`
@@ -56,6 +353,29 @@ table.
   Reading the examples taught the wrong rule. `stinger`'s claim that a
   standalone check reports `E-META-MISSING` was also stale — it reports
   `E-DOMAIN-UNKNOWN`, because that file declares no `uses:` of its own.
+
+### Removed
+
+- **`W-INJECT-CONFLICT`.** The first removal in this series, and the case that
+  gives the release its second clause: **the toolchain said the opposite of what
+  it knew.** The warning fired on `anchor="center"` where `center` is the
+  declared default — and *only* there. Writing a different anchor was silent;
+  writing none was silent. The one authored shape it complained about was
+  **agreement**. The injecting rule only injects in the no-anchor arm, so a real
+  conflict is structurally impossible; narrowing the code to "and the values
+  differ" makes it unsatisfiable, which is why this is a removal and not a
+  narrowing.
+
+  **The information it carried is dropped, not migrated.** It was the only
+  record that an author wrote what a rule would have injected, and there is no
+  `injected: false` provenance surface to fall back on — no such surface has
+  ever existed, and building one would plant a spurious anchor record in the
+  artifact. An earlier draft of the spec claimed otherwise; that claim is
+  retracted. If you were consuming this warning, it is gone and nothing replaces
+  it.
+
+  `--deny W-INJECT-CONFLICT` is now a usage error, exit `2`, because the code
+  left the deniable registry with it.
 
 ## [0.9.0] - 2026-07-29
 
