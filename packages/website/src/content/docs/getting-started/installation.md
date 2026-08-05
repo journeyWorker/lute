@@ -4,7 +4,7 @@ description: Install the Lute CLI with bunx, a global bun install, or from Rust 
 ---
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.9.0**.
+compiles, traces, and inspects them. The current language version is **0.10.0**.
 
 ## Quick start with `bunx`
 
@@ -60,9 +60,9 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.9.0
-language      0.9.0
-IR schema     0.9.0
+lute toolchain 0.10.0
+language      0.10.0
+IR schema     0.10.0
 ```
 
 Those are three independent axes, and you will see all three again elsewhere: the **toolchain**
@@ -71,19 +71,19 @@ and the **IR schema** version is what `lute compile` stamps into every artifact 
 They mean different things, but a release always **re-aligns all three visible numbers** to that
 release's number, so you never reconcile three
 ([versioning policy](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)).
-What actually moved at `0.9.0` is the **language** — content-vocabulary members became the
-project's to declare. The IR is **shape-identical** to `0.8.0`: no artifact field was added,
-renamed, or moved. Engines still gate on `irVersion` by major.minor, so an engine implementing IR
-`0.8` must widen its gate to accept `0.9` — and change nothing else.
+At `0.10.0` all three moved substantively. The IR **shape changes** for the first time since
+`0.8.0`: the injection provenance stamp's `reason` becomes `explanation`. Engines still gate on
+`irVersion` by major.minor, so an engine implementing IR `0.9` must widen its gate to accept
+`0.10` — and, if it reads that stamp, rename the one field.
 
 For scripts and CI, `--json` prints the same three axes as one object:
 
 ```
 $ lute version --json
-{"toolchain":"0.9.0","language":"0.9.0","ir":"0.9.0"}
+{"toolchain":"0.10.0","language":"0.10.0","ir":"0.10.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.9.0` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.10.0` — the toolchain axis alone.)
 
 ## Next
 

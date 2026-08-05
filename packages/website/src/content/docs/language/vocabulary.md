@@ -170,9 +170,9 @@ you own and edit.
 ```
 $ lute init demo && lute doctor demo
 lute doctor — demo
-  • toolchain version: 0.9.0
-  • language version: 0.9.0
-  • IR schema version: 0.9.0
+  • toolchain version: 0.10.0
+  • language version: 0.10.0
+  • IR schema version: 0.10.0
   ✓ lute.project.yaml: found at demo/lute.project.yaml
   ✓ content documents: 1 `.lute` file(s) under demo
   • provider snapshots: no providers/ directory (core-only project)
@@ -186,8 +186,9 @@ For a project that declares inline or through `uses:`/`extends:`, the compiled a
 array becomes populated — the artifact is self-describing about the vocabulary it was compiled
 against. A plugin-supplied vocabulary does **not** appear there; it is capability surface, and shows
 up in `capabilityVersion` and `lute context --json`'s `enums` instead. Either way this is an
-artifact-*content* change only: no IR field was added, renamed, or moved. (`irVersion` reads
-`"0.9.0"` because a release re-aligns every version axis, not because the shape moved.)
+artifact-*content* change only: the vocabulary work added, renamed, and moved no IR field.
+(`irVersion` reads `"0.10.0"`; the shape change that number carries is a single
+provenance-field rename, unrelated to vocabulary.)
 
 ## Known limitation: a component body resolves against the importing document
 

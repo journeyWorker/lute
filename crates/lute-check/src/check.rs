@@ -3838,4 +3838,15 @@ mod lute_version_tests {
         let typed = crate::meta::TypedMeta::default();
         assert!(check_lute_version_stale(&typed, &meta("")).is_none());
     }
+
+    /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
+    /// half-land: the language constant this check compares against and the
+    /// workspace (toolchain) version must both read the release number. IR is
+    /// pinned separately in `lute-compile` (it moved first — Appendix B's
+    /// `Provenance.reason` → `Provenance.explanation` earned it).
+    #[test]
+    fn language_ir_and_toolchain_are_aligned_at_0_10_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.10.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.10.0");
+    }
 }

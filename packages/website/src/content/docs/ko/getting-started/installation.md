@@ -5,7 +5,7 @@ description: bunx, 전역 bun 설치, 또는 Rust 소스로 Lute CLI를 설치�
 
 Lute는 단일 명령줄 도구 `lute` 하나로 제공됩니다. 이 도구는 `.lute` 시나리오 파일을 읽어
 검사(check), 컴파일(compile), 트레이스(trace)하고 그 내용을 살펴봅니다. 현재 언어 버전은
-**0.9.0**입니다.
+**0.10.0**입니다.
 
 ## `bunx`로 빠르게 시작하기
 
@@ -61,30 +61,29 @@ cargo install --path crates/lute-cli
 
 ```
 $ lute version
-lute toolchain 0.9.0
-language      0.9.0
-IR schema     0.9.0
+lute toolchain 0.10.0
+language      0.10.0
+IR schema     0.10.0
 ```
 
 이 셋은 서로 독립적인 축이며, 다른 곳에서도 다시 마주치게 됩니다: **toolchain** 버전은 이 CLI
 자체이고, **language** 버전은 체커가 강제하는 문법과 의미론이며, **IR schema** 버전은
 `lute compile`이 모든 산출물에 `irVersion`으로 새겨 넣는 값입니다. 축은 의미상 독립적이지만,
-**릴리스는 언제나 세 축의 보이는 숫자를 그 릴리스 번호로 맞춥니다** — 그래서 셋 다 `0.9.0`입니다
+**릴리스는 언제나 세 축의 보이는 숫자를 그 릴리스 번호로 맞춥니다** — 그래서 셋 다 `0.10.0`입니다
 ([버전 정책](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)).
-`0.9.0`에서 실제로 바뀐 것은 **language**입니다 — 콘텐츠 어휘의 멤버가 프로젝트의 소유가
-되었죠. IR은 `0.8.0`과 **모양이 완전히 동일합니다**: 필드가 추가되거나 이름이 바뀌거나 이동한
-것이 하나도 없습니다. 다만 엔진은 `irVersion`을 major.minor로 게이팅하므로, IR `0.8`을 구현한
-엔진은 게이트를 `0.9`까지 넓히기 전까지 `0.9.0` 산출물을 거부합니다 — 넓히는 것 외에 바꿀 것은
-없습니다.
+`0.10.0`에서는 세 축 모두 실질적으로 움직였습니다. IR **모양**은 `0.8.0` 이후 처음으로
+바뀝니다: 주입(injection) 프로버넌스 스탬프의 `reason`이 `explanation`으로 이름이 바뀌었습니다.
+엔진은 `irVersion`을 major.minor로 게이팅하므로, IR `0.9`를 구현한 엔진은 게이트를 `0.10`까지
+넓혀야 하고 — 그 스탬프를 읽는다면 — 그 필드 하나의 이름도 함께 바꿔야 합니다.
 
 스크립트와 CI에서는 `--json`이 같은 세 축을 하나의 객체로 출력합니다:
 
 ```
 $ lute version --json
-{"toolchain":"0.9.0","language":"0.9.0","ir":"0.9.0"}
+{"toolchain":"0.10.0","language":"0.10.0","ir":"0.10.0"}
 ```
 
-(`lute --version`도 동작하며 `lute 0.9.0`만 출력합니다 — toolchain 축 하나뿐입니다.)
+(`lute --version`도 동작하며 `lute 0.10.0`만 출력합니다 — toolchain 축 하나뿐입니다.)
 
 ## 다음
 
