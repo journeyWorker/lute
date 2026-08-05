@@ -1746,3 +1746,145 @@ fn a_defaulted_character_reaches_the_line_id_prefix() {
         "the defaulted character/season must reach {{prefix}} (§6.4):\n{text}"
     );
 }
+
+/// 0.10.0 §8 / §13.5: the reds are SEQUENTIAL. Run 1 reports only
+/// `E-MOCK-SUBJECT` — with no subject there is no resolved schema, so the
+/// schema rules have nothing to decide and are suppressed. Run 2, after the
+/// author adds `file:`, surfaces the undeclared seed.
+#[test]
+fn a_subject_less_mock_is_reported_once_then_its_seed_is_caught() {
+    let dir = temp_dir("mock-pass-ordering");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::create_dir_all(dir.join("mocks")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  run.pressure: { type: number, default: 0 }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("scenes/s.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nuses: [../world.schema.yaml]\n---\n\
+         \n## S\n\n::set{ run.pressure = 1 }\n@a: hi\n",
+    )
+    .unwrap();
+    let mock = dir.join("mocks/play.yaml");
+    // Run 1: no `file:`, and a seed that is ALSO wrong. Only the subject is
+    // reported.
+    std::fs::write(&mock, "state:\n  run.greeted: false\n").unwrap();
+    let run = || {
+        let out = std::process::Command::new(BIN)
+            .args(["check-project", dir.to_str().unwrap()])
+            .output()
+            .unwrap();
+        (
+            out.status.code(),
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            ),
+        )
+    };
+    let (code, text) = run();
+    assert_eq!(code, Some(1), "{text}");
+    assert!(text.contains("E-MOCK-SUBJECT"), "{text}");
+    assert!(
+        !text.contains("E-TRACE-MOCK-UNDECLARED"),
+        "E-MOCK-SUBJECT suppresses the schema rules for that file (§8):\n{text}"
+    );
+    assert!(
+        text.contains("mocks/play.yaml") && !text.contains("mocks/play.yaml:0:0"),
+        "anchored at the mock, with no fabricated position (D-AB):\n{text}"
+    );
+
+    // Run 2: the author supplies `file:`. The schema is now knowable and the
+    // seed is caught.
+    std::fs::write(&mock, "file: ../scenes/s.lute\nstate:\n  run.greeted: false\n").unwrap();
+    let (code, text) = run();
+    assert_eq!(code, Some(1), "{text}");
+    assert!(!text.contains("E-MOCK-SUBJECT"), "{text}");
+    assert!(text.contains("E-TRACE-MOCK-UNDECLARED"), "{text}");
+    assert!(text.contains("mocks/play.yaml"), "still anchored at the mock:\n{text}");
+
+    // Run 3: the author corrects the seed. Green.
+    std::fs::write(&mock, "file: ../scenes/s.lute\nstate:\n  run.pressure: 1\n").unwrap();
+    let (code, text) = run();
+    assert_eq!(code, Some(0), "{text}");
+}
+
+/// §8: a `file:` naming a path that does not exist is `E-MOCK-SUBJECT` —
+/// D-E's "a mock naming a deleted scene", which was uncheckable while the
+/// Anseo mock named its subject in a YAML comment.
+#[test]
+fn a_mock_naming_a_deleted_scene_is_e_mock_subject() {
+    let dir = temp_dir("mock-deleted-subject");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::create_dir_all(dir.join("mocks")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("scenes/s.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("mocks/play.yaml"), "file: ../scenes/opening.lute\n").unwrap();
+    let out = std::process::Command::new(BIN)
+        .args(["check-project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(text.contains("E-MOCK-SUBJECT") && text.contains("opening.lute"), "{text}");
+}
+
+/// §8's glob boundary is CHOSEN, not incidental. A `*.test.yaml` already
+/// carries a required `file:` read by the same parser and is already
+/// validated when `lute test` runs it; a `conformance/*/mock.yaml` is a
+/// fixture whose whole purpose is to pin behaviour, including behaviour this
+/// pass would call wrong.
+#[test]
+fn the_pass_reaches_mocks_yaml_and_nothing_else() {
+    let dir = temp_dir("mock-pass-glob");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::create_dir_all(dir.join("mocks")).unwrap();
+    std::fs::create_dir_all(dir.join("conformance/fx")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("scenes/s.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n",
+    )
+    .unwrap();
+    // Neither of these is `mocks/*.yaml`; neither may be reported.
+    std::fs::write(dir.join("conformance/fx/mock.yaml"), "choose:\n  path: left\n").unwrap();
+    std::fs::write(dir.join("mocks/a.test.yaml"), "file: ../scenes/s.lute\nexpect: {}\n").unwrap();
+    // This one is, and it is sound.
+    std::fs::write(dir.join("mocks/ok.yaml"), "file: ../scenes/s.lute\n").unwrap();
+
+    let out = std::process::Command::new(BIN)
+        .args(["check-project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(!text.contains("E-MOCK-SUBJECT"), "{text}");
+}

@@ -62,6 +62,7 @@ mod compile_all;
 mod doctor;
 mod loc;
 mod manifests;
+mod mockcheck;
 mod runner;
 mod scaffold;
 mod scenario_fmt;
@@ -497,10 +498,12 @@ fn parse_choose_flag(raw: &str) -> Result<(String, Vec<String>), String> {
 /// scattered across the checker crates), so this curated list IS that registry,
 /// kept in ONE place. Assembled by grepping every `"[EW]-…"` code literal in the
 /// crates whose diagnostics `check`/`check-project` surface (`lute-check`,
-/// `lute-syntax`, `lute-cel`, `lute-manifest`, `lute-core-span`); the
-/// `every_check_emitted_code_is_deniable` test (tests/deny.rs) rescans those
-/// crates and fails if any emitted code is missing here, so a newly-added code
-/// cannot silently fall outside the deny universe. A SUPERSET is harmless
+/// `lute-syntax`, `lute-cel`, `lute-manifest`, `lute-core-span`, and — since
+/// 0.10.0 §8 put the mock pass under `check-project` — `lute-trace`); the
+/// `every_check_emitted_code_is_deniable` test, a `#[cfg(test)]` unit test at
+/// the bottom of THIS file, rescans those crates and fails if any emitted
+/// code is missing here, so a newly-added code cannot silently fall outside
+/// the deny universe. A SUPERSET is harmless
 /// (denying a code `check` never emits merely protects nothing); a MISSING code
 /// is the only defect, and that test guards exactly it. Sorted for readability.
 const DENIABLE_CODES: &[&str] = &[
@@ -529,7 +532,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-LOWER-RECORD-UNKNOWN",
     "E-MATCH-DUP-OTHERWISE", "E-MATCH-RELATION-SUBJECT",
     "E-MAYBE-UNSET", "E-META-MISSING", "E-META-PARSE", "E-META-UNKNOWN-KEY",
-    "E-MISSING-ATTR", "E-NONEXHAUSTIVE", "E-OBJECTIVE-CONTRADICTION", "E-OBJECTIVE-ID-DUP", "E-OBJECTIVE-ID-MISSING",
+    "E-MISSING-ATTR", "E-MOCK-SUBJECT", "E-NONEXHAUSTIVE", "E-OBJECTIVE-CONTRADICTION", "E-OBJECTIVE-ID-DUP", "E-OBJECTIVE-ID-MISSING",
     "E-OBJECTIVE-MISSING-DONE", "E-OBJECTIVE-UNSATISFIABLE", "E-ON-NO-EVENT", "E-PATH-IDENT",
     "E-PERSIST-REMOVED", "E-PLUGIN-DUP-ACROSS", "E-PLUGIN-DUP-ID", "E-PLUGIN-INVALID-DIRECTIVE",
     "E-PLUGIN-IO", "E-PLUGIN-MANIFEST", "E-PLUGIN-MISSING-ACTIVE", "E-PLUGIN-MISSING-EXPORT",
@@ -545,7 +548,9 @@ const DENIABLE_CODES: &[&str] = &[
     "E-STATE-NAMESPACE", "E-STATE-REDECLARE", "E-STATE-SHAPE-CYCLE", "E-STRING-ESCAPE",
     "E-TAG-INLINE-BODY", "E-TAG-NOT-ONE-LINE", "E-TEMPORAL-ARG", "E-TIMELINE-CONTENT",
     "E-TIMELINE-DURATION",
-    "E-TITLE-PLACEMENT", "E-TRACK-KEY", "E-UNCLASSIFIED", "E-UNCLOSED-TAG",
+    "E-TITLE-PLACEMENT", "E-TRACE-ACCEPT", "E-TRACE-CHOICE", "E-TRACE-EVENT",
+    "E-TRACE-MOCK-FACT", "E-TRACE-MOCK-PARSE", "E-TRACE-MOCK-TYPE", "E-TRACE-MOCK-UNDECLARED",
+    "E-TRACK-KEY", "E-UNCLASSIFIED", "E-UNCLOSED-TAG",
     "E-UNDECLARED", "E-UNDECLARED-REF", "E-UNKNOWN-ATTR", "E-UNKNOWN-DIRECTIVE",
     "E-UNKNOWN-EVENT", "E-UNKNOWN-ID", "E-UNKNOWN-KIND", "E-UNSET-LITERAL",
     "E-UNSET-UNCOVERED", "E-USES-CYCLE", "E-USES-DUP-DEF", "E-USES-DUP-RELATION",
@@ -555,7 +560,7 @@ const DENIABLE_CODES: &[&str] = &[
     "W-INTO-SET-DUP", "W-L10N-MISSING", "W-LUTE-VERSION-STALE", "W-OBJECTIVE-HIDDEN",
     "W-OTHERWISE-DEAD",
     "W-OVERLAP-ARMS", "W-PROJECT-INERT", "W-QUEST-REF-UNKNOWN", "W-TIMELINE-CLIPS", "W-TIMELINE-TOTAL",
-    "W-TIMELINE-TRACKS", "W-UNPROVEN-RELATIONAL",
+    "W-TIMELINE-TRACKS", "W-TRACE-MOCK-UNPRODUCIBLE", "W-UNPROVEN-RELATIONAL",
 ];
 
 /// clap `value_parser` for `--deny <CODE>`: accept only a code in the known
@@ -1058,8 +1063,8 @@ fn project_root_for(file: &Path, walk_root: &Path) -> PathBuf {
 /// One resolved project root's docs, each paired with its parsed
 /// `Document` and `fold_env`'s `FoldedEnv` — the per-root unit
 /// `check-project` and `lute scenario` (T14) both group by.
-type DocGroup = Vec<(PathBuf, lute_syntax::ast::Document, lute_check::FoldedEnv)>;
-type ByRoot = BTreeMap<PathBuf, DocGroup>;
+pub(crate) type DocGroup = Vec<(PathBuf, lute_syntax::ast::Document, lute_check::FoldedEnv)>;
+pub(crate) type ByRoot = BTreeMap<PathBuf, DocGroup>;
 
 /// Walk `dir` for `.lute` files ([`find_lute_files`]), `check()` +
 /// `fold_env` each one, and group the parsed docs by resolved project root
@@ -1650,8 +1655,20 @@ fn run_check_project(
         Ok(v) => v,
         Err(code) => return code,
     };
-    let (file_results, project_diags, _nodes_by_path) =
+    let (file_results, mut project_diags, _nodes_by_path) =
         reconcile_collected(file_results, &by_root);
+
+    // 0.10.0 §8 (#31, D-E): every `mocks/*.yaml` under the root, validated
+    // against the schema resolved for its `file:` subject. Anchored at the
+    // mock, which is the file at fault — not at the subject scene, which is
+    // where these diagnostics rendered before, at `:0:0`.
+    match mockcheck::check_mocks_under(dir, &by_root) {
+        Ok(diags) => project_diags.extend(diags),
+        Err(e) => {
+            eprintln!("lute: cannot walk {} for mocks: {e}", dir.display());
+            return ExitCode::from(2);
+        }
+    }
 
     // §5 verdict: a promoted (denied) diagnostic — in a per-file result OR the
     // project-wide set — fails an otherwise-clean project.
@@ -4099,6 +4116,9 @@ mod tests {
             "../lute-cel/src",
             "../lute-manifest/src",
             "../lute-core-span/src",
+            // 0.10.0 §8: `check-project` now emits `lute-trace`'s mock codes,
+            // so they are inside the deny universe and inside this guard.
+            "../lute-trace/src",
         ];
         let is_code = |c: &str| {
             let mut parts = c.splitn(2, '-');

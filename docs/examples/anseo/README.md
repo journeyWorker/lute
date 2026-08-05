@@ -117,13 +117,6 @@ findings, and a reader who "fixes" one deletes the evidence.
    matches never appear in a traced report. The arm stays because a one-armed
    component is not a component, and because it is the corpus's only example of
    the one document kind that cannot be tested (**T9.12**).
-4. **`mocks/playthrough.yaml` — a rotting scaffold mock.** It is still exactly
-   what `lute init` wrote: it names `scenes/opening.lute`, deleted in the first
-   task, and seeds `run.greeted`, a path no longer in the schema. `check-project`
-   is green through it, because mocks are not in its walk. The error does exist
-   one command over — `lute trace … --mock mocks/playthrough.yaml` reports
-   `E-TRACE-MOCK-UNDECLARED` — but nothing pairs them automatically. This is how
-   a `mocks/` directory quietly becomes fiction (**T1.9**).
 5. **`quests/hold-the-spine.lute` — the one quest with no `after=`.** Its five
    siblings all declare one; this one does not, and the file now says so in a
    comment. What the omission costs, from `lute scenario docs/examples/anseo`:
