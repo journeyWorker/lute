@@ -198,6 +198,49 @@ pub struct CheckInput {
     pub defaults: lute_manifest::project::MetaDefaults,
 }
 
+/// Project-wide domain-read accounting (dsl 0.10.0 §11.1, **D-V**).
+///
+/// `check()` computes both halves per document, from ITS resolved snapshot and
+/// ITS merged vocabulary; `check-project` unions them across the root and
+/// reports the difference. Split this way because the question is only
+/// answerable project-wide: a domain declared in a shared schema is read by
+/// SOME document, so a single-document verdict would be a false positive on the
+/// most common layout in the language.
+///
+/// The field carrying this is `#[serde(skip)]`: it is analysis input for the
+/// project pass, not part of the `check --json` contract, and adding it must
+/// not move a golden.
+#[derive(Clone, Debug)]
+pub struct DomainUse {
+    /// Every domain name this document resolves — inline `enums:`, imported
+    /// schema, plugin, and the snapshot baseline.
+    pub declared: std::collections::BTreeSet<String>,
+    /// Every domain name some active construct in the resolved snapshot reads.
+    pub read: std::collections::BTreeSet<String>,
+    /// This document's frontmatter span, where a project-wide domain diagnostic
+    /// anchors when this is the first document to declare an unread domain.
+    pub at: Span,
+}
+
+/// Hand-written rather than derived: [`Span`] carries no `Default`, and adding
+/// one to a foundation type for this field's benefit would be a wider change
+/// than the field is worth.
+impl Default for DomainUse {
+    fn default() -> Self {
+        Self {
+            declared: std::collections::BTreeSet::new(),
+            read: std::collections::BTreeSet::new(),
+            at: Span {
+                byte_start: 0,
+                byte_end: 0,
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            },
+        }
+    }
+}
+
 /// The result of one `check()`: every diagnostic (deduped, byte-sorted) plus the
 /// best-effort resolved view when the document is structurally intact.
 #[derive(Clone, Debug, serde::Serialize)]
@@ -209,6 +252,10 @@ pub struct CheckResult {
     pub diagnostics: Vec<Diagnostic>,
     /// The resolved view; `None` when a structural parse error corrupts the tree.
     pub resolved: Option<Resolved>,
+    /// dsl 0.10.0 §11.1: this document's half of the project-wide domain-read
+    /// question. Not serialized — see [`DomainUse`].
+    #[serde(skip)]
+    pub domain_use: DomainUse,
 }
 
 /// The LSP-facing resolved view (arch "resolved view"): the compiler's
@@ -990,6 +1037,21 @@ pub fn check(input: &CheckInput) -> CheckResult {
         ok,
         diagnostics: diags,
         resolved,
+        // dsl 0.10.0 §11.1 (**D-V**): both halves of the project-wide
+        // domain-read question, computed from THIS document's merged vocabulary
+        // and THIS document's resolved snapshot. `check()` draws no conclusion
+        // from them — `check-project` unions them across the root.
+        domain_use: DomainUse {
+            declared: domains.keys().cloned().collect(),
+            read: {
+                let mut read = crate::project_check::domain_reading_set(&input.snapshot);
+                read.extend(crate::project_check::domain_reads_from_relations(
+                    &env.rel_vocab,
+                ));
+                read
+            },
+            at: doc.meta.span,
+        },
     }
 }
 

@@ -51,7 +51,10 @@ pub use cel_resolve::{
     check_cel_slot, check_rule_guards, E_CEL_PROFILE, E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT,
     E_VALIDAT_DERIVED,
 };
-pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved, W_LUTE_VERSION_STALE};
+pub use check::{
+    check, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved,
+    W_LUTE_VERSION_STALE,
+};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use datalog_check::{
@@ -75,8 +78,8 @@ pub use meta::{
 };
 pub use on::{check_on_event, E_ON_NO_EVENT, E_UNKNOWN_EVENT};
 pub use project_check::{
-    check_project_quest_ids, check_project_quest_refs, colliding_occurrences,
-    W_QUEST_REF_UNKNOWN,
+    check_project_domain_reads, check_project_quest_ids, check_project_quest_refs,
+    colliding_occurrences, domain_reading_set, W_DOMAIN_UNREAD, W_QUEST_REF_UNKNOWN,
 };
 pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
 pub use producible::W_UNPROVEN_RELATIONAL;
