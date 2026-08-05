@@ -383,11 +383,57 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
     }
 }
 
+/// Canonicalise one `defaults:` path entry against the manifest's directory
+/// (D-Y: a path resolves relative to the file that contains it; D-Z:
+/// pre-resolved at load, so the import resolvers keep their single
+/// `base_dir` and are not touched).
+///
+/// Documents under one root sit at different depths — `scenes/`, `quests/`,
+/// a nested subdirectory — so a manifest default resolved document-relative
+/// would be correct only while every consumer shared a depth, and would
+/// break when a single file moved. That is worse than the boilerplate §6
+/// exists to delete.
+fn canonical_default_path(manifest_dir: &Path, rel: &str) -> Result<String, String> {
+    match std::fs::canonicalize(manifest_dir.join(rel)) {
+        Ok(p) => Ok(p.display().to_string()),
+        Err(e) => Err(format!("`{rel}` does not resolve against {}: {e}", manifest_dir.display())),
+    }
+}
+
+/// Canonicalise every path inside one `defaults:` value, preserving its
+/// authored shape (a scalar stays a scalar, a sequence stays a sequence).
+/// The FIRST failure is reported and the whole entry is dropped: a partly
+/// resolved import list is worse than none, because it silently changes what
+/// a document imports.
+fn canonicalise_entry(
+    manifest_dir: &Path,
+    v: &serde_yaml::Value,
+) -> Result<serde_yaml::Value, String> {
+    match v {
+        serde_yaml::Value::Null => Ok(v.clone()),
+        serde_yaml::Value::String(s) => {
+            Ok(serde_yaml::Value::String(canonical_default_path(manifest_dir, s)?))
+        }
+        serde_yaml::Value::Sequence(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                let s = item.as_str().expect("shape already checked by defaults_shape_ok");
+                out.push(serde_yaml::Value::String(canonical_default_path(manifest_dir, s)?));
+            }
+            Ok(serde_yaml::Value::Sequence(out))
+        }
+        _ => unreachable!("shape already checked by defaults_shape_ok"),
+    }
+}
+
 /// Resolve `defaults:` (0.10.0 §6.1): reject every key outside the closed
 /// set with a did-you-mean, reject every value whose shape cannot inhabit
 /// its key, and keep the rest. A rejected entry is NOT applied — a default
 /// nobody can act on must not silently reach a document.
-fn resolve_defaults(raw: Option<serde_yaml::Mapping>) -> (MetaDefaults, Vec<ResolveDiag>) {
+fn resolve_defaults(
+    manifest_dir: &Path,
+    raw: Option<serde_yaml::Mapping>,
+) -> (MetaDefaults, Vec<ResolveDiag>) {
     let mut out = MetaDefaults::default();
     let mut diags = Vec::new();
     let Some(raw) = raw else { return (out, diags) };
@@ -419,6 +465,18 @@ fn resolve_defaults(raw: Option<serde_yaml::Mapping>) -> (MetaDefaults, Vec<Reso
                 code: E_DEFAULTS_KEY.to_string(),
                 message: format!("`defaults.{key}` must be {want} (0.10.0 §6.1)"),
             });
+            continue;
+        }
+        if DEFAULTABLE_PATH_KEYS.contains(&key) {
+            match canonicalise_entry(manifest_dir, &v) {
+                Ok(resolved) => {
+                    out.entries.insert(key.to_string(), resolved);
+                }
+                Err(why) => diags.push(ResolveDiag {
+                    code: E_DEFAULTS_KEY.to_string(),
+                    message: format!("`defaults.{key}`: {why} (0.10.0 §6.1, D-Z)"),
+                }),
+            }
             continue;
         }
         out.entries.insert(key.to_string(), v);
@@ -471,7 +529,7 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
     let plugins_dir = project_dir.join(raw.plugins_dir.as_deref().unwrap_or("plugins/"));
     let catalog_dir = project_dir.join(raw.catalog_dir.as_deref().unwrap_or("catalog/"));
     let (identity, identity_diags) = resolve_identity(raw.identity);
-    let (defaults, defaults_diags) = resolve_defaults(raw.defaults);
+    let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults);
 
     Ok(Some(ProjectConfig {
         graph,

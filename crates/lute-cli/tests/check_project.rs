@@ -1490,3 +1490,75 @@ fn check_project_fails_on_an_unloadable_manifest_anywhere_under_the_tree() {
         "the manifest nothing resolves must still be validated:\n{text}"
     );
 }
+
+/// D-Z, prophylactic: a canonical `defaults:` path is absolute and
+/// machine-specific and MUST NOT reach any serialised surface — not the
+/// capability snapshot, not `capabilityVersion`, not a compiled artifact,
+/// not `lute context --json`. Pre-resolution is for resolution only.
+#[test]
+fn a_canonical_defaults_path_never_reaches_a_serialised_surface() {
+    let dir = temp_dir("defaults-no-leak");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  uses: [world.schema.yaml]\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  run.k: { type: number, default: 0 }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("scenes/s.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n::set{ run.k = 1 }\n@a: hi\n",
+    )
+    .unwrap();
+    // The canonical form of the project dir is what the loader stores, and on
+    // macOS it differs from the authored one (/tmp -> /private/tmp), so this
+    // needle is sharp.
+    let canonical = std::fs::canonicalize(&dir).unwrap().display().to_string();
+
+    for args in [
+        vec!["context", dir.join("scenes/s.lute").to_str().unwrap(), "--json",
+             "--project", dir.to_str().unwrap()],
+        vec!["compile", dir.join("scenes/s.lute").to_str().unwrap(), "--json",
+             "--project", dir.to_str().unwrap()],
+    ] {
+        let out = std::process::Command::new(BIN).args(&args).output().unwrap();
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        assert!(
+            !text.contains(&canonical),
+            "`{}` leaked a canonical defaults path into a serialised surface (D-Z):\n{text}",
+            args[0]
+        );
+    }
+
+    // And the stamp itself: the SAME project resolved from two different
+    // absolute locations must compute the SAME capabilityVersion.
+    let twin = temp_dir("defaults-no-leak-twin");
+    std::fs::create_dir_all(twin.join("scenes")).unwrap();
+    for f in ["lute.project.yaml", "world.schema.yaml", "scenes/s.lute"] {
+        std::fs::copy(dir.join(f), twin.join(f)).unwrap();
+    }
+    let version = |root: &std::path::Path| {
+        let out = std::process::Command::new(BIN)
+            .args([
+                "context",
+                root.join("scenes/s.lute").to_str().unwrap(),
+                "--json",
+                "--project",
+                root.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        v["capabilityVersion"].as_str().unwrap().to_string()
+    };
+    assert_eq!(
+        version(&dir),
+        version(&twin),
+        "capabilityVersion must not depend on where the project lives on disk (D-Z)"
+    );
+}
