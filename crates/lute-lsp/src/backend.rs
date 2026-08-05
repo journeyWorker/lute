@@ -120,6 +120,7 @@ impl Backend {
             mode: Mode::Author,
             imports,
             components,
+            defaults: self.defaults_for(&uri),
         };
         let result = check(&input);
         // Task 15: retain the ORIGINAL diagnostics (fixits/covered intact)
@@ -337,6 +338,24 @@ impl Backend {
             .await;
     }
 
+    /// The governing manifest's `defaults:` for `uri` (0.10.0 §6), discovered
+    /// exactly as [`snapshot_for`](Self::snapshot_for) discovers the project.
+    ///
+    /// The CLI applies these to a document's frontmatter before any
+    /// frontmatter rule runs, so the LSP must too or the two surfaces disagree
+    /// on what a document declares — which is precisely what
+    /// `lute-lsp/tests/divergence.rs` exists to catch.
+    fn defaults_for(&self, uri: &Uri) -> lute_manifest::project::MetaDefaults {
+        uri_to_path(uri)
+            .and_then(|p| find_project_root(&p))
+            .and_then(|root| match lute_manifest::project::load_project(&root) {
+                Ok(p) => p,
+                Err(_) => None,
+            })
+            .map(|p| p.defaults)
+            .unwrap_or_default()
+    }
+
     /// Resolve a document's `uses:` schema imports (dsl §9.2) relative to its
     /// directory — the SINGLE resolver shared by [`analyze`](Self::analyze) and
     /// the four editor-feature handlers, so the diagnostics surface and the
@@ -345,9 +364,11 @@ impl Backend {
     /// any I/O/parse/cycle failure degrades to a best-effort result, never panics.
     fn imports_for(&self, uri: &Uri, text: &str) -> lute_check::SchemaImports {
         let (doc, _) = lute_syntax::parse(text);
-        let (meta0, _) = lute_check::parse_meta(
+        let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
             &doc.meta,
             &lute_manifest::snapshot::CapabilitySnapshot::default(),
+            lute_check::meta::MetaKind::Scene,
+            &self.defaults_for(uri),
         );
         uri_to_path(uri)
             .and_then(|p| {
@@ -366,9 +387,11 @@ impl Backend {
     /// to a best-effort result, never panics.
     fn components_for(&self, uri: &Uri, text: &str) -> lute_check::ComponentSet {
         let (doc, _) = lute_syntax::parse(text);
-        let (meta0, _) = lute_check::parse_meta(
+        let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
             &doc.meta,
             &lute_manifest::snapshot::CapabilitySnapshot::default(),
+            lute_check::meta::MetaKind::Scene,
+            &self.defaults_for(uri),
         );
         uri_to_path(uri)
             .and_then(|p| {
@@ -405,9 +428,11 @@ impl Backend {
         Vec<lute_manifest::project::ResolveDiag>,
     ) {
         let (doc, _) = lute_syntax::parse(text);
-        let (meta0, _) = lute_check::parse_meta(
+        let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
             &doc.meta,
             &lute_manifest::snapshot::CapabilitySnapshot::default(),
+            lute_check::meta::MetaKind::Scene,
+            &self.defaults_for(uri),
         );
         let project = uri_to_path(uri)
             .and_then(|p| find_project_root(&p))

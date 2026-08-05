@@ -58,6 +58,7 @@ fn input_for(dir: &Path, scene_text: &str) -> CheckInput {
         mode: Mode::Ci,
         imports,
         components,
+        defaults: Default::default(),
     }
 }
 

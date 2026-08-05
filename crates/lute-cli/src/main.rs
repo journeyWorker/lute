@@ -797,6 +797,9 @@ pub(crate) struct BuiltInput {
     /// (`TypedMeta::domains`), which `merge_domains` needs alongside
     /// `input.imports` — see `doctor::resolved_domains`.
     pub meta: lute_check::TypedMeta,
+    /// The governing manifest's `defaults:` (0.10.0 §6), as applied to this
+    /// document's frontmatter.
+    pub defaults: lute_manifest::project::MetaDefaults,
 }
 
 impl BuiltInput {
@@ -853,10 +856,23 @@ fn build_input(
         None => lute_manifest::project::project_providers(project.as_ref()),
     };
 
+    // 0.10.0 §6: the governing manifest's `defaults:`, already canonicalised
+    // at load (D-Z). Lifted BEFORE the frontmatter parse, because a defaulted
+    // `uses:` has to reach `resolve_imports` below.
+    let defaults = project
+        .as_ref()
+        .map(|p| p.defaults.clone())
+        .unwrap_or_default();
+
     // Lift the scene's frontmatter `profile`/`plugins` — both built-in keys, so a
     // default snapshot suffices to type them (they are not capability-gated).
     let (doc, _) = lute_syntax::parse(&text);
-    let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
+    let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
+        &doc.meta,
+        &CapabilitySnapshot::default(),
+        lute_check::meta::MetaKind::Scene,
+        &defaults,
+    );
 
     let (snapshot, rdiags) =
         resolve_document_snapshot(project.as_ref(), meta0.profile.as_deref(), &meta0.plugins);
@@ -890,10 +906,12 @@ fn build_input(
             mode: Mode::Ci,
             imports,
             components,
+            defaults: defaults.clone(),
         },
         resolve_error,
         project_diags,
         meta: meta0,
+        defaults,
     })
 }
 

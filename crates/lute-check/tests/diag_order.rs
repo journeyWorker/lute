@@ -75,6 +75,7 @@ fn import_extends_type_diag_precedes_inline_state_merge_at_same_span() {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let diags = check(&input).diagnostics;
 

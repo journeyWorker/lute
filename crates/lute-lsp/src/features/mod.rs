@@ -1458,6 +1458,7 @@ mod tests {
             mode: lute_check::Mode::Author,
             imports: lute_check::SchemaImports::default(),
             components: Default::default(),
+            defaults: Default::default(),
         };
         let codes: Vec<String> = lute_check::check(&input)
             .diagnostics

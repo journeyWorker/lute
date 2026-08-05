@@ -44,6 +44,7 @@ fn compile_in(dir: &Path, text: &str) -> serde_json::Value {
         mode: Mode::Ci,
         imports,
         components,
+        defaults: Default::default(),
     };
     let artifact =
         compile(&input).unwrap_or_else(|e| panic!("scene compiles clean: {e:#?}\n{text}"));

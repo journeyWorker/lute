@@ -47,6 +47,7 @@ fn folded_and_doc(text: &str, uri: &str, base: &Path) -> (FoldedEnv, Document) {
         mode: Mode::Ci,
         imports,
         components,
+        defaults: Default::default(),
     };
     let (folded, fd1, fd2) = lute_check::fold_env(&doc, &input);
     assert!(fd1.is_empty() && fd2.is_empty(), "fixture must fold clean: {fd1:?} {fd2:?}");

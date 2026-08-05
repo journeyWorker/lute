@@ -248,6 +248,7 @@ fn scene_uses_enum_schema_checks_clean_and_domain_is_merged() {
         mode: Mode::Author,
         imports: imports.clone(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     let result = check(&input);
     assert!(
@@ -681,6 +682,7 @@ fn scene_codes(dir: &Path, text: &str, snapshot: CapabilitySnapshot) -> Vec<Stri
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let mut codes: Vec<String> =
         check(&input).diagnostics.iter().map(|d| d.code.clone()).collect();

@@ -79,6 +79,7 @@ fn result_for(text: String, components: ComponentSet) -> lute_check::CheckResult
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     check(&input)
 }

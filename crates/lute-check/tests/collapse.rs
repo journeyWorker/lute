@@ -32,6 +32,7 @@ fn diagnose(text: &str) -> Vec<Diagnostic> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input).diagnostics
 }
@@ -187,6 +188,7 @@ fn missing_uses_suppresses_dependents() {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let diags = check(&input).diagnostics;
     let errors: Vec<&Diagnostic> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
@@ -220,6 +222,7 @@ fn component_parse_suppresses_undeclared_component() {
         mode: Mode::Ci,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     let diags = check(&input).diagnostics;
     let errors: Vec<&Diagnostic> = diags.iter().filter(|d| d.severity == Severity::Error).collect();

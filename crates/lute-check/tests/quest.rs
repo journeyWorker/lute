@@ -17,6 +17,7 @@ fn run(text: &str) -> CheckResult {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
 }
@@ -334,6 +335,7 @@ fn codes_with(text: &str, snap: lute_manifest::snapshot::CapabilitySnapshot) -> 
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input).diagnostics.into_iter().map(|d| d.code).collect()
 }
@@ -472,6 +474,7 @@ fn codes_with_imports(text: &str, imports: SchemaImports) -> Vec<String> {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input).diagnostics.into_iter().map(|d| d.code).collect()
 }

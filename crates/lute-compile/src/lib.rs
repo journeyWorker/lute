@@ -742,6 +742,7 @@ mod tests {
             mode: Mode::Ci,
             imports: Default::default(),
             components: Default::default(),
+            defaults: Default::default(),
         }
     }
 

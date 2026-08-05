@@ -24,6 +24,7 @@ fn codes(text: &str) -> Vec<String> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
         .diagnostics
@@ -154,6 +155,7 @@ fn component_codes(dir: &Path, scene: &str) -> Vec<String> {
         mode: Mode::Ci,
         imports: Default::default(),
         components,
+        defaults: Default::default(),
     };
     check(&input)
         .diagnostics

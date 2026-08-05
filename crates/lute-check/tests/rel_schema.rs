@@ -10,6 +10,7 @@ fn codes(text: &str) -> Vec<String> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input).diagnostics.into_iter().map(|d| d.code).collect()
 }
@@ -137,6 +138,7 @@ fn inline_redeclaring_imported_relation_needs_matching_sig() {
         mode: lute_check::Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let c: Vec<String> = lute_check::check(&input).diagnostics.into_iter().map(|d| d.code).collect();
     assert!(c.contains(&"E-EXTENDS-RELATION-SIG".to_string()), "{c:?}");
