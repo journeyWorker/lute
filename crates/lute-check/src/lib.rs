@@ -30,6 +30,7 @@ pub mod set_op;
 pub mod set_type;
 pub mod tag;
 pub mod temporal;
+pub mod time;
 pub mod timeline;
 
 /// The canonical Lute language-version string (dsl 0.6.1 §3, Appendix B).
@@ -84,6 +85,9 @@ pub use schema_import::{resolve_imports, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner};
 pub use tag::{tag_document, TagOutcome};
 pub use temporal::{check_temporal, E_TEMPORAL_ARG};
+pub use time::{
+    fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS,
+};
 pub use timeline::{
     resolve_timeline, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING, E_TIMELINE_DURATION,
 };
