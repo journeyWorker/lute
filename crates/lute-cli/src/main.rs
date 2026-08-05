@@ -3667,6 +3667,32 @@ fn run_trace(
                     return ExitCode::from(2);
                 }
             };
+            // D-AC: the command line supplies the subject and it wins. A
+            // `file:` that names a DIFFERENT document is the error — the two
+            // ways of saying what a mock is for must not disagree in silence.
+            match lute_trace::mock_subject(&text) {
+                Ok(Some(rel)) => {
+                    let base = path.parent().unwrap_or_else(|| Path::new("."));
+                    let named = std::fs::canonicalize(base.join(&rel)).ok();
+                    let target = std::fs::canonicalize(file).ok();
+                    if named.is_none() || named != target {
+                        eprintln!(
+                            "lute: {}: [{}] `file: {rel}` names a different document than the one \
+                             traced ({}) — the mock's subject and the command line must agree \
+                             (0.10.0 §8)",
+                            path.display(),
+                            lute_trace::E_MOCK_SUBJECT,
+                            file.display()
+                        );
+                        return ExitCode::from(2);
+                    }
+                }
+                Ok(None) => {}
+                Err(d) => {
+                    eprintln!("lute: {}: [{}] {}", path.display(), d.code, d.message);
+                    return ExitCode::from(2);
+                }
+            }
             match parse_mock_yaml(&text) {
                 Ok(m) => m,
                 Err(d) => {

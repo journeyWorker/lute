@@ -520,3 +520,39 @@ fn local_quest_state_mock_unset_admitted_when_document_references_it() {
     let diags = validate(&mocks, &folded, &doc);
     assert!(diags.is_empty(), "{diags:?}");
 }
+
+// ── 0.10.0 §8 / D-AC: the mock's subject key ───────────────────────────
+
+/// The subject is `file:`, the same spelling and the same base rule
+/// `*.test.yaml` has carried since 0.4.0 — not a second one.
+#[test]
+fn mock_subject_reads_the_file_key() {
+    let text = "file: ../scenes/cryobank.lute\nstate:\n  run.shedPressure: 1\n";
+    assert_eq!(
+        lute_trace::mock_subject(text).unwrap(),
+        Some("../scenes/cryobank.lute".to_string())
+    );
+}
+
+/// Absent is `Ok(None)`, not an error: `lute trace <doc> --mock m.yaml`
+/// supplies the subject on the command line, and required-ness belongs to
+/// `check-project`'s pass over `mocks/*.yaml`, not to the grammar.
+#[test]
+fn mock_subject_is_absent_not_an_error() {
+    assert_eq!(lute_trace::mock_subject("choose:\n  path: left\n").unwrap(), None);
+}
+
+/// A `file:` that is present but not a string is a malformed mock.
+#[test]
+fn mock_subject_must_be_a_string() {
+    let d = lute_trace::mock_subject("file: [a, b]\n").unwrap_err();
+    assert_eq!(d.code, lute_trace::E_TRACE_MOCK_PARSE);
+}
+
+/// The grammar stays OPEN, so `file:` does not disturb the four surfaces
+/// `parse_mock_yaml` already reads.
+#[test]
+fn file_key_does_not_disturb_the_other_surfaces() {
+    let m = lute_trace::parse_mock_yaml("file: x.lute\nchoose:\n  path: left\n").unwrap();
+    assert_eq!(m.choose.get("path").map(|v| v.as_slice()), Some(&["left".to_string()][..]));
+}
