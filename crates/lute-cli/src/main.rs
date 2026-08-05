@@ -557,7 +557,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-UNSET-UNCOVERED", "E-USES-CYCLE", "E-USES-DUP-DEF", "E-USES-DUP-RELATION",
     "E-USES-DUP-STATE", "E-USES-NOT-FOUND", "E-USES-PARSE", "E-VALIDAT-DERIVED",
     "E-WHEN-LITERAL-DOMAIN", "E-WHEN-PATTERN", "E-WRITE-CONFLICT", "W-ASSET-PLACEHOLDER",
-    "W-CATALOG-STALE", "W-CODE-AFTER-END", "W-DERIVE-NO-RULES",
+    "W-CATALOG-STALE", "W-CODE-AFTER-END", "W-DERIVE-NO-RULES", "W-DOMAIN-UNREAD",
     "W-INTO-SET-DUP", "W-L10N-MISSING", "W-LUTE-VERSION-STALE", "W-OBJECTIVE-HIDDEN",
     "W-OTHERWISE-DEAD",
     "W-OVERLAP-ARMS", "W-PROJECT-INERT", "W-QUEST-REF-UNKNOWN", "W-TIMELINE-CLIPS", "W-TIMELINE-TOTAL",
@@ -1658,6 +1658,24 @@ fn run_check_project(
     };
     let (file_results, mut project_diags, _nodes_by_path) =
         reconcile_collected(file_results, &by_root);
+
+    // dsl 0.10.0 §11.1 (**D-V**): `W-DOMAIN-UNREAD` is project-wide only. The
+    // per-document halves ride on each `CheckResult`; the union and the
+    // difference happen here, once, over the whole walk.
+    //
+    // Deliberately NOT inside `reconcile_collected`: `gate_for_doc` merges every
+    // project-wide diagnostic anchored on a file INTO that file's single-document
+    // verdict, so a `W-DOMAIN-UNREAD` produced there would surface from
+    // `lute check <file> --project <dir>` and break D-V outright. Span
+    // normalization is not needed either — the anchor is the frontmatter span the
+    // parser produced, which already carries a real line/column.
+    {
+        let per_file: Vec<(PathBuf, &lute_check::DomainUse)> = file_results
+            .iter()
+            .map(|(p, r)| (p.clone(), &r.domain_use))
+            .collect();
+        project_diags.extend(lute_check::check_project_domain_reads(&per_file));
+    }
 
     // 0.10.0 §8 (#31, D-E): every `mocks/*.yaml` under the root, validated
     // against the schema resolved for its `file:` subject. Anchored at the

@@ -26,6 +26,14 @@ pub const KNOWN_ATTRS: &[&str] = &[
     "code", "emotion", "variant", "action", "dialogMotion", "mono", "os", "vo", "as",
 ];
 
+/// The two DOMAIN-typed content-line attributes (dsl 0.9.0 D-C). They are not
+/// directive `AttrDecl`s — a content line is not a directive — so §11.1's
+/// reading set has to name them explicitly. Single-sourced here, beside the
+/// arms that consume them (the `"emotion"` and `"action"` arms of
+/// `check_content_line_attrs` below), so the reading set and the enforcement
+/// cannot drift apart.
+pub const CONTENT_LINE_DOMAIN_SLOTS: &[&str] = &["emotion", "action"];
+
 /// The mutually-exclusive delivery bare flags (dsl 0.2.2 §D7): at most one
 /// may be set per content line.
 const DELIVERY_FLAGS: &[&str] = &["mono", "os", "vo"];
