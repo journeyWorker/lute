@@ -130,6 +130,30 @@ pub fn check_directive(
         if attr.key == "at" {
             continue;
         }
+
+        // dsl 0.10.0 §10.1: the two cross-cutting TIME attrs carry a resolution
+        // limit their `Type::Number` typing does not express. Checked here,
+        // before the decl lookup, so a directive that DECLARES `duration`
+        // (core camera/video) and one that relies on `universal_timing_decl`
+        // are held to the same limit. Plugins are FORBIDDEN from declaring
+        // these names (assembly-time E-PLUGIN-RESERVED-NAME, plugin §10), so
+        // `duration` and `delay` are always time magnitudes here and never a
+        // plugin's own unrelated attribute.
+        //
+        // Additive: `check_attr_value` still runs below and still reports
+        // `E-ATTR-TYPE` for a non-number, so a value that is neither loses
+        // nothing.
+        if matches!(attr.key.as_str(), "duration" | "delay") {
+            if let AttrValue::Str(raw) = &attr.value {
+                if crate::time::parse_time_ms(raw) == crate::time::TimeParse::TooFine {
+                    diags.push(crate::timeline::time_resolution_diag(
+                        &format!("`{}` of `::{}`", attr.key, dir.tag),
+                        raw,
+                        attr.value_span,
+                    ));
+                }
+            }
+        }
         let Some(adecl) = decl.attrs.iter().find(|a| a.name == attr.key) else {
             // dsl §7.5: `duration`/`delay`/`wait` are cross-cutting reserved
             // timing keys valid on ANY directive (core or plugin) even when

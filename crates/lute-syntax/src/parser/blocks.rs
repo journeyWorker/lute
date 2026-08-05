@@ -605,15 +605,22 @@ fn arm_end(a: &Arm) -> usize {
     }
 }
 
-/// Take (remove) the `at="…"` clip-position attr as an `f64` (§7.4, §11.4).
-fn take_at(attrs: &mut Vec<Attr>) -> Option<f64> {
+/// Take (remove) the `at="…"` clip-position attr, keeping its text and the
+/// value's own span (dsl §7.4, §11.4). dsl 0.10.0 §10.2: no `f64` is parsed
+/// here — the checker converts by shifting the decimal, and diagnoses a
+/// sub-millisecond value at the span this returns.
+fn take_at(attrs: &mut Vec<Attr>) -> Option<ClipAt> {
     let pos = attrs.iter().position(|a| a.key == "at")?;
-    let val = match &attrs[pos].value {
-        AttrValue::Str(s) => s.parse::<f64>().ok(),
+    let attr = attrs.remove(pos);
+    match attr.value {
+        AttrValue::Str(raw) => Some(ClipAt {
+            raw,
+            span: attr.value_span,
+        }),
+        // A bare ident or an `@ref` is not a literal position; the clip behaves
+        // as if `at` were absent, exactly as before.
         _ => None,
-    };
-    attrs.remove(pos);
-    val
+    }
 }
 
 #[cfg(test)]

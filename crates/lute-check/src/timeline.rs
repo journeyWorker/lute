@@ -51,6 +51,7 @@ use lute_manifest::types::PathSegment;
 use lute_syntax::ast::{AttrValue, ClipNode, Timeline, TrackKey};
 
 use crate::ctx::Ctx;
+use crate::time::{ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS};
 
 /// `E-CLIP-TIMING`: a single `<track>` clip carrying BOTH `at` (an absolute
 /// timeline position) and `delay` (a relative nudge) — mutually exclusive on one
@@ -61,6 +62,30 @@ pub const E_CLIP_TIMING: &str = "E-CLIP-TIMING";
 /// maximum resolved clip end across all tracks — a timeline may not truncate its
 /// own content (dsl §11.4).
 pub const E_TIMELINE_DURATION: &str = "E-TIMELINE-DURATION";
+
+/// `E-TIME-RESOLUTION`: an authored time value carrying more fractional
+/// precision than a millisecond (dsl 0.10.0 §10.1). There is no rounding —
+/// a timeline the author cannot see the difference in is a timeline whose
+/// diagnostics they cannot predict, and `1.2000001` (the epsilon superstition
+/// T7.2 measured an author acquiring) must be rejected rather than quietly
+/// honoured.
+pub const E_TIME_RESOLUTION: &str = "E-TIME-RESOLUTION";
+
+/// The one `E-TIME-RESOLUTION` message, shared by all four authorable time
+/// surfaces (clip `at`, `duration`, `delay`, `<timeline duration>`) so they
+/// cannot drift. `what` names the surface; `raw` is the authored text verbatim.
+pub fn time_resolution_diag(what: &str, raw: &str, span: Span) -> Diagnostic {
+    diag(
+        E_TIME_RESOLUTION,
+        Severity::Error,
+        format!(
+            "{what} `{raw}` is finer than a millisecond; a time value is a decimal number of \
+             seconds with at most {TIME_MAX_FRACTIONAL_DIGITS} fractional digits \
+             (dsl 0.10.0 §10.1)"
+        ),
+        span,
+    )
+}
 
 /// One resolved clip: its absolute start, the subject it drives, a short
 /// human-readable summary, and its duration (seconds, best-effort).
@@ -171,7 +196,26 @@ pub fn resolve_timeline(
         let mut track_ivals: Vec<(f64, f64)> = Vec::new();
         let mut cursor = 0.0_f64;
         for clip in &track.clips {
-            let at = clip.at.unwrap_or(cursor);
+            // dsl 0.10.0 §10.1/§10.2: the parser hands over the authored TEXT,
+            // so the conversion (shift the decimal, never multiply a parsed
+            // f64) and the resolution diagnostic both live here, at the
+            // attribute value's own column. `explicit_at` is `None` for a value
+            // that is not a decimal at all — §10.2 keeps that clip's
+            // pre-existing "treated as absent" behaviour, INCLUDING for
+            // E-CLIP-TIMING below, which today keys off whether the `at`
+            // resolved to a position rather than off the attribute's presence.
+            let explicit_at = match &clip.at {
+                Some(a) => match parse_time_ms(&a.raw) {
+                    TimeParse::Ms(ms) => Some(ms_to_seconds(ms)),
+                    TimeParse::TooFine => {
+                        diags.push(time_resolution_diag("clip `at`", &a.raw, a.span));
+                        None
+                    }
+                    TimeParse::NotANumber => None,
+                },
+                None => None,
+            };
+            let at = explicit_at.unwrap_or(cursor);
             let duration = clip_duration(&clip.node);
             let end = at + duration;
 
@@ -190,7 +234,7 @@ pub fn resolve_timeline(
 
             // E-CLIP-TIMING (dsl §7.5, §11.4): `at` (absolute position) and
             // `delay` (relative nudge) are mutually exclusive on one clip.
-            if clip.at.is_some() && clip_has_delay(&clip.node) {
+            if explicit_at.is_some() && clip_has_delay(&clip.node) {
                 diags.push(diag(
                     E_CLIP_TIMING,
                     Severity::Error,
@@ -242,6 +286,19 @@ pub fn resolve_timeline(
                     ));
                 }
             }
+        }
+    }
+
+    // dsl 0.10.0 §10.1: the timeline's own `duration` is a time value like any
+    // other. Diagnosed here rather than at the `check_cel_slot` call in
+    // `check.rs`, so all four surfaces share `time_resolution_diag`.
+    if let Some(slot) = tl.duration.as_ref() {
+        if parse_time_ms(&slot.raw) == TimeParse::TooFine {
+            diags.push(time_resolution_diag(
+                "`<timeline duration>`",
+                &slot.raw,
+                slot.span,
+            ));
         }
     }
 
@@ -471,7 +528,7 @@ mod tests {
     };
     use lute_manifest::types::{FromAttr, Literal, PathSegment, Type};
     use lute_syntax::ast::Set;
-    use lute_syntax::ast::{Attr, Clip, Directive, Track};
+    use lute_syntax::ast::{Attr, Clip, ClipAt, Directive, Track};
     use std::sync::LazyLock;
 
     fn span() -> Span {
@@ -506,10 +563,13 @@ mod tests {
         }
     }
 
-    fn clip(at: Option<f64>, duration: &str) -> Clip {
+    fn clip(at: Option<&str>, duration: &str) -> Clip {
         Clip {
             node: ClipNode::Directive(dir("camera", duration)),
-            at,
+            at: at.map(|raw| ClipAt {
+                raw: raw.to_string(),
+                span: span(),
+            }),
             span: span(),
         }
     }
@@ -911,7 +971,10 @@ mod tests {
                         }],
                         span: span(),
                     }),
-                    at: Some(1.0),
+                    at: Some(ClipAt {
+                        raw: "1".to_string(),
+                        span: span(),
+                    }),
                     span: span(),
                 }],
                 span: span(),

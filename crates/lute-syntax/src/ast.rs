@@ -318,10 +318,24 @@ pub enum TrackKey {
     Property { subject: String, property: String },
 }
 
+/// A clip's authored `at="…"` (dsl §7.4, §11.4): the decimal text **verbatim**
+/// plus the attribute value's own span.
+///
+/// dsl 0.10.0 §10.2: the text is deliberately NOT parsed here. Milliseconds are
+/// obtained by shifting the authored decimal three places
+/// (`lute_check::parse_time_ms`), never by multiplying a parsed `f64`, and a
+/// value finer than a millisecond is `E-TIME-RESOLUTION` at this span. Keeping
+/// the string is what lets the checker own both.
+#[derive(Clone, Debug)]
+pub struct ClipAt {
+    pub raw: String,
+    pub span: Span,
+}
+
 #[derive(Clone, Debug)]
 pub struct Clip {
     pub node: ClipNode,
-    pub at: Option<f64>,
+    pub at: Option<ClipAt>,
     pub span: Span,
 }
 
