@@ -1198,3 +1198,132 @@ fn refused_test_prints_the_held_diagnostics_not_a_canned_string() {
     assert!(!text.contains("--choose"), "render the YAML key, not the flag: {text}");
     assert!(text.contains("choose:"), "the YAML key must appear: {text}");
 }
+
+/// #2(a) / T9.8, T3.10: `expect:` knew three keys and silently discarded
+/// every other, at BOTH levels. Reproduced at HEAD: a file spelling
+/// `chooses:` and asserting a bogus `transcriptContain:` returned
+/// "1 passed, 0 failed" — the selection was dropped, trace auto-picked the
+/// first eligible arm, and the assertions written for the arm the file names
+/// were checked against the arm it excluded.
+#[test]
+fn test_file_with_a_typoed_top_level_key_fails_and_suggests_the_real_one() {
+    let dir = temp_dir("test-closed-keys-top");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" label=\"A\">\n@narrator: a.\n\
+         </choice>\n<choice id=\"b\" label=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
+    );
+    write_at(
+        &dir,
+        "typo.test.yaml",
+        "file: s.lute\nchooses:\n  pick: b\nexpect:\n  transcriptContains: [\"b.\"]\n",
+    );
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(1), "a mis-keyed test must not pass: {text}");
+    assert!(text.contains("E-TEST-KEY"), "{text}");
+    assert!(text.contains("`chooses`"), "{text}");
+    assert!(text.contains("did you mean `choose`"), "{text}");
+}
+
+/// The same closure at the `expect:` level. T9.8's own control: the
+/// one-letter-corrected twin must still FAIL on the assertion, which is what
+/// proves the typo was the only reason it was green.
+#[test]
+fn test_file_with_a_typoed_expect_key_fails_and_its_corrected_twin_still_fails() {
+    let dir = temp_dir("test-closed-keys-expect");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n@narrator: a.\n",
+    );
+    write_at(&dir, "typo.test.yaml", "file: s.lute\nexpect:\n  transcriptContain: [\"nope\"]\n");
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(text.contains("E-TEST-KEY"), "{text}");
+    assert!(text.contains("did you mean `transcriptContains`"), "{text}");
+
+    let dir2 = temp_dir("test-closed-keys-expect-fixed");
+    write_at(
+        &dir2,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n@narrator: a.\n",
+    );
+    write_at(&dir2, "fixed.test.yaml", "file: s.lute\nexpect:\n  transcriptContains: [\"nope\"]\n");
+    let out2 = Command::new(BIN).args(["test", dir2.to_str().unwrap()]).output().unwrap();
+    let text2 = String::from_utf8_lossy(&out2.stdout).to_string();
+    assert_eq!(
+        out2.status.code(),
+        Some(1),
+        "the corrected twin must fail on the ASSERTION: {text2}"
+    );
+    assert!(!text2.contains("E-TEST-KEY"), "{text2}");
+    assert!(text2.contains("transcriptContains"), "{text2}");
+}
+
+/// #2(d), first half: a test with zero RECOGNISED expectations reported PASS,
+/// because the verdict is `all()` over an empty vector.
+#[test]
+fn test_with_zero_expectations_is_an_error_not_a_pass() {
+    let dir = temp_dir("test-no-expect");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n@narrator: a.\n",
+    );
+    write_at(&dir, "empty.test.yaml", "file: s.lute\nexpect: {}\n");
+    write_at(&dir, "absent.test.yaml", "file: s.lute\n");
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert_eq!(
+        text.matches("E-TEST-NO-EXPECT").count(),
+        2,
+        "both files, not just one: {text}"
+    );
+}
+
+/// #2(d), second half: when no supplied selection survives, the walk
+/// auto-picks the first eligible arm in document order. That is legal and
+/// deliberate — but silent, and it is exactly what turned the `chooses:` typo
+/// into a green run against the wrong arm. Report it.
+#[test]
+fn autopicked_branch_is_reported_not_silent() {
+    let dir = temp_dir("test-autopick");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" label=\"A\">\n@narrator: a.\n\
+         </choice>\n<choice id=\"b\" label=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
+    );
+    write_at(&dir, "auto.test.yaml", "file: s.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(0), "auto-picking is legal, not a failure: {text}");
+    assert!(text.contains("auto-picked"), "{text}");
+    assert!(text.contains("pick"), "the branch id must be named: {text}");
+    assert!(text.contains("-> a"), "the arm actually taken must be named: {text}");
+}
+
+/// A `*.test.yaml` and a `mocks/*.yaml` both key their subject on `file:`,
+/// and both resolve it relative to THE FILE THAT CONTAINS IT (D-AC, D-Y).
+/// One key, one meaning, one base rule — pinned here so the two cannot drift
+/// into two once plan 02's mock work lands.
+#[test]
+fn test_file_key_resolves_relative_to_the_test_file_not_the_cwd() {
+    let dir = temp_dir("test-file-base");
+    write_at(
+        &dir,
+        "scenes/s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n@narrator: a.\n",
+    );
+    write_at(&dir, "tests/t.test.yaml", "file: ../scenes/s.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("1 passed, 0 failed"), "{text}");
+}

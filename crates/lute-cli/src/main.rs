@@ -546,7 +546,8 @@ const DENIABLE_CODES: &[&str] = &[
     "E-RETRACT-WILDCARD-ASSERT", "E-SET-OP-TYPE", "E-SET-TYPE", "E-STATE-COLLECTION", "E-STATE-DECL",
     "E-STATE-MAYBE-UNAVAILABLE",
     "E-STATE-NAMESPACE", "E-STATE-REDECLARE", "E-STATE-SHAPE-CYCLE", "E-STRING-ESCAPE",
-    "E-TAG-INLINE-BODY", "E-TAG-NOT-ONE-LINE", "E-TEMPORAL-ARG", "E-TIME-RESOLUTION",
+    "E-TAG-INLINE-BODY", "E-TAG-NOT-ONE-LINE", "E-TEMPORAL-ARG", "E-TEST-KEY",
+    "E-TEST-NO-EXPECT", "E-TIME-RESOLUTION",
     "E-TIMELINE-CONTENT",
     "E-TIMELINE-DURATION",
     "E-TITLE-PLACEMENT", "E-TRACE-ACCEPT", "E-TRACE-CHOICE", "E-TRACE-EVENT",
@@ -4411,6 +4412,24 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.as_slice(), DENIABLE_CODES, "DENIABLE_CODES must be sorted and deduped");
+    }
+
+    /// The drift guard below scans the five CHECK crates; `lute-cli/src` is
+    /// deliberately not among them (`testcmd.rs` holds the literal
+    /// `"E-TRACE-"` — a prefix, not a code — which the shape test would
+    /// accept). So the two codes `lute test` emits from
+    /// [`crate::testcmd`] are registered by hand, and a hand registration
+    /// needs a hand guard: dropping either one is otherwise silent, since
+    /// sortedness still holds without it.
+    #[test]
+    fn the_harness_own_codes_are_deniable() {
+        for code in ["E-TEST-KEY", "E-TEST-NO-EXPECT"] {
+            assert!(
+                DENIABLE_CODES.contains(&code),
+                "{code} is emitted by crates/lute-cli/src/testcmd.rs and MUST be deniable; \
+                 the drift guard does not scan this crate"
+            );
+        }
     }
 
     /// Drift guard (spec §5): every `"[EW]-…"` diagnostic-code literal in the
