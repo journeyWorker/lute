@@ -558,3 +558,79 @@ fn an_importers_own_undeclared_ref_survives_a_components_parse_failure() {
         "the importer's OWN `@mine` is a real error; got {cs:?}"
     );
 }
+
+/// A component body carrying an `E-BAD-ENUM` on a content-line `emotion=`, plus
+/// the scene that imports it — the case §9 is about, and the one whose position
+/// `0.9.0 §6.2` named as collapsed.
+const BAD_ENUM_BODY: &str =
+    "---\ncomponent: c\n---\n## Scene 1.\n@bianca{emotion=\"smug\"}: Hello.\n";
+
+fn importer_of_bad_component() -> lute_check::CheckResult {
+    check_with_components(USE_SCENE, &[("c.lute", BAD_ENUM_BODY.to_string())])
+}
+
+/// 0.10.0 §9 rule 1: a component-body diagnostic keeps being reported AT THE
+/// CALLER with the component prefix (0.9.0 §5 settled that, and for the
+/// injection case it is the honest anchor), and gains the position INSIDE the
+/// component as a secondary location. 0.9.0 §6.2 named the collapse to the
+/// importer's frontmatter span a known limitation; this narrows it.
+#[test]
+fn a_component_body_diagnostic_carries_its_internal_position() {
+    let res = importer_of_bad_component();
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.message.starts_with("component `"))
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a component-body diagnostic; got {:?}",
+                codes(&res.diagnostics)
+            )
+        });
+    assert_eq!(
+        d.related.len(),
+        1,
+        "exactly one secondary location, the component-internal position; got {:?}",
+        d.related
+    );
+    let r = &d.related[0];
+    assert!(
+        r.file.ends_with("c.lute"),
+        "the secondary location names the COMPONENT file; got {}",
+        r.file
+    );
+    assert_eq!(
+        r.diagnostic.code, d.code,
+        "the secondary location is the SAME diagnostic, relocated"
+    );
+    assert!(
+        !r.diagnostic.message.starts_with("component `"),
+        "the secondary location carries the UNPREFIXED message — the prefix names \
+         the component for a reader who is looking at the caller, and this line is \
+         already in the component; got {}",
+        r.diagnostic.message
+    );
+    // T13 Step 4's open question, settled empirically: the spans are
+    // component-relative and their line/column are already resolved against the
+    // COMPONENT's own source, not the scene's. `check()`'s `normalize_spans`
+    // walks `d.span` and `d.fixits` only, never `related`, so nothing re-derives
+    // them against the importing document's `TextIndex`. Both halves are pinned
+    // here: the byte range must index the component's own text, AND the
+    // line/column must be the real position in it (line 5 is
+    // `@bianca{emotion="smug"}: Hello.`, and `smug` opens at column 18).
+    let inner = BAD_ENUM_BODY
+        .get(r.diagnostic.span.byte_start..r.diagnostic.span.byte_end)
+        .unwrap_or("<out of range>");
+    assert_eq!(
+        inner, "smug",
+        "the byte range must index the COMPONENT's own text; got {:?} for {:?}",
+        inner, r.diagnostic.span
+    );
+    assert_eq!(
+        (r.diagnostic.span.line, r.diagnostic.span.column),
+        (5, 18),
+        "line/column are the component-internal position, resolved against the \
+         component's own source; got {:?}",
+        r.diagnostic.span
+    );
+}
