@@ -1626,6 +1626,83 @@ fn reconcile_collected(
     (file_results, project_diags, nodes_by_path)
 }
 
+/// dsl 0.10.0 §9 rule 2: fold identical component-body diagnostics across
+/// callers into one, keeping the first in byte-sorted path order and
+/// summarising the rest.
+///
+/// `validate_components` runs once per importing document, so N callers of one
+/// broken component produce N separate `check()` runs and N identical
+/// diagnostics — eleven modules, eleven identical messages, at line 1 column 1
+/// of eleven files that are all correct. The roll-up belongs here because this
+/// is the first place those runs meet.
+///
+/// The key is `(code, message)`. After §9 rule 1 a component-body message reads
+/// ``component `{name}` ({src}): {original}``, which is byte-identical across
+/// callers exactly when the problem is caller-INDEPENDENT and different when it
+/// is not — `E-BAD-ENUM` enumerates the resolved domain, so two callers with
+/// different vocabularies differ in the message itself. That is rule 2's
+/// boundary precisely, and it needs no marker field: a caller-specific fault
+/// stays with its own caller, where the caller is visible.
+fn rollup_component_body_diags(file_results: &mut [(PathBuf, lute_check::CheckResult)]) {
+    use std::collections::BTreeMap;
+
+    // Pass 1: count, in byte-sorted path order, which is `collect_project_docs`'
+    // own order — so "the first" is deterministic without re-sorting.
+    let mut counts: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for (path, result) in file_results.iter() {
+        for d in &result.diagnostics {
+            if is_component_body_diag(d, path) {
+                *counts
+                    .entry((d.code.clone(), d.message.clone()))
+                    .or_insert(0) += 1;
+            }
+        }
+    }
+
+    // Pass 2: keep the first of each group, annotate it, drop the rest.
+    let mut seen: std::collections::BTreeSet<(String, String)> = Default::default();
+    for (path, result) in file_results.iter_mut() {
+        let mut kept = Vec::with_capacity(result.diagnostics.len());
+        for mut d in std::mem::take(&mut result.diagnostics) {
+            if !is_component_body_diag(&d, path) {
+                kept.push(d);
+                continue;
+            }
+            let key = (d.code.clone(), d.message.clone());
+            if !seen.insert(key.clone()) {
+                continue; // a later caller reporting the same problem
+            }
+            let others = counts.get(&key).copied().unwrap_or(1).saturating_sub(1);
+            if others > 0 {
+                d.message = format!("{} (+{others} more caller{})", d.message, plural(others));
+            }
+            kept.push(d);
+        }
+        result.diagnostics = kept;
+        result.ok = !result
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error);
+    }
+}
+
+/// A diagnostic surfaced from ANOTHER file: it carries a `related` entry whose
+/// `file` is not the document it is reported on (§9 rule 1's cross-file
+/// attribution). That is what distinguishes a component-body report from an
+/// ordinary local diagnostic, without a new marker field.
+fn is_component_body_diag(d: &Diagnostic, path: &Path) -> bool {
+    let here = path.display().to_string();
+    d.related.iter().any(|r| r.file != here)
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 {
+        ""
+    } else {
+        "s"
+    }
+}
+
 /// Recursively `check` every `*.lute` under `dir` ([`collect_project_docs`],
 /// nested per-file root resolution — each file resolves against its OWN
 /// nearest ancestor `lute.project.yaml`, bounded below by `dir`), reconcile
@@ -1658,8 +1735,11 @@ fn run_check_project(
         Ok(v) => v,
         Err(code) => return code,
     };
-    let (file_results, mut project_diags, _nodes_by_path) =
+    let (mut file_results, mut project_diags, _nodes_by_path) =
         reconcile_collected(file_results, &by_root);
+
+    // dsl 0.10.0 §9 rule 2.
+    rollup_component_body_diags(&mut file_results);
 
     // dsl 0.10.0 §11.1 (**D-V**): `W-DOMAIN-UNREAD` is project-wide only. The
     // per-document halves ride on each `CheckResult`; the union and the
