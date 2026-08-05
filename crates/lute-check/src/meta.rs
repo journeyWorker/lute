@@ -1161,6 +1161,14 @@ fn get_sub_map(map: &serde_yaml::Mapping, key: &str) -> BTreeMap<String, serde_y
 /// spelling as a def's `params:` (dsl §8.1). Each value deserializes to a
 /// manifest [`Type`] via the same serde path `Type` uses.
 ///
+/// dsl 0.10.0 §12.4: the LONG form `{ type: X }` is accepted as a synonym for
+/// `X`, for every spelling `X` the shared deserializer admits — that is how
+/// `state:` and `defs:` entries are written, and `components-and-extends.md`
+/// says a component param is typed exactly like a def param. The wrapper takes
+/// no other key: `{ type: string, default: … }` stays malformed, because a
+/// param default would need a rule for how it interacts with
+/// `E-COMPONENT-ARG`, which the issue explicitly does not ask for.
+///
 /// Returns the valid `(name, type)` pairs plus a `malformed` flag that is `true`
 /// when `params:` is PRESENT but any part of it is invalid — not a mapping, a
 /// non-string key, or a value that fails `Type` deserialization. The caller
@@ -1181,6 +1189,7 @@ fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, bool) {
             malformed = true; // non-string key
             continue;
         };
+        let tv = unwrap_long_form(tv).unwrap_or(tv);
         match serde_yaml::from_value::<Type>(tv.clone()) {
             Ok(ty) => params.push(DefParam {
                 name: name.to_string(),
@@ -1190,6 +1199,22 @@ fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, bool) {
         }
     }
     (params, malformed)
+}
+
+/// dsl 0.10.0 §12.4: unwrap the long form `{ type: X }` to `X`. `None` for
+/// anything else, including a `type:` wrapper carrying a second key — the
+/// caller then hands the ORIGINAL value to the `Type` deserializer, which
+/// rejects it, so an unwrap miss is never a silent acceptance.
+///
+/// There is no ambiguity to resolve: `Type` has no `type` variant
+/// (`lute-manifest/src/types.rs`), so `{ type: … }` is not already a legal
+/// spelling and this cannot shadow one.
+fn unwrap_long_form(tv: &serde_yaml::Value) -> Option<&serde_yaml::Value> {
+    let m = tv.as_mapping()?;
+    if m.len() != 1 {
+        return None;
+    }
+    m.get(yaml_key("type"))
 }
 
 #[cfg(test)]
@@ -1208,6 +1233,59 @@ mod tests {
             },
         };
         parse_meta(&meta, &CapabilitySnapshot::default())
+    }
+
+    /// 0.10.0 §12.4: `{ type: X }` is a synonym for `X`, for every spelling the
+    /// shared `Type` deserializer admits — the same long form `state:`, `defs:`
+    /// and a domain declaration already use.
+    #[test]
+    fn component_params_accept_the_long_form() {
+        let (meta, _d) = parse_meta_str(
+            "component: greet\nparams:\n  a: { type: string }\n  \
+             b: { type: { enum: [steady, rising] } }\n  \
+             c: { type: { providerRef: cast } }\n  d: number\n",
+        );
+        assert!(!meta.params_malformed, "the long form is legal (§12.4)");
+        assert_eq!(
+            meta.params
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b", "c", "d"],
+            "source order is preserved and no param is silently dropped"
+        );
+        assert_eq!(meta.params[0].ty, Type::Str);
+        assert_eq!(
+            meta.params[1].ty,
+            Type::Enum(vec!["steady".to_string(), "rising".to_string()])
+        );
+        assert_eq!(meta.params[2].ty, Type::ProviderRef("cast".to_string()));
+        assert_eq!(meta.params[3].ty, Type::Number);
+    }
+
+    /// §12.4: the wrapper takes NO other key. A `default:` beside `type:` stays
+    /// malformed — param defaults are not added, because a default would need a
+    /// rule for how it interacts with `E-COMPONENT-ARG`, which is a separate
+    /// design the issue does not ask for.
+    #[test]
+    fn component_params_reject_a_long_form_with_extra_keys() {
+        let (meta, _d) = parse_meta_str(
+            "component: greet\nparams:\n  a: { type: string, default: \"steady\" }\n",
+        );
+        assert!(
+            meta.params_malformed,
+            "`{{ type: X, default: … }}` is still E-COMPONENT-PARSE (§12.4)"
+        );
+    }
+
+    /// §12.4 relaxes `type`, not "any wrapper".
+    #[test]
+    fn component_params_reject_an_unknown_wrapper_key() {
+        let (meta, _d) = parse_meta_str("component: greet\nparams:\n  a: { kind: string }\n");
+        assert!(
+            meta.params_malformed,
+            "`{{ kind: X }}` is not a Type spelling"
+        );
     }
 
     #[test]
