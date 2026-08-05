@@ -180,3 +180,188 @@ fn a_caller_specific_fault_is_not_rolled_up() {
         "two different problems are not one problem; got {hits:#?}"
     );
 }
+
+// --- 0.10.0 §9 rule 4 and D-W ----------------------------------------------
+
+/// One caller whose vocabulary rejects the body's `emotion` — `/tmp/l9`'s shape,
+/// i.e. T6.3's: the component's own `uses:` admits `smug`, the caller's does not.
+fn write_component_bad_for_its_caller(tag: &str) -> (PathBuf, PathBuf) {
+    let dir = write_project(
+        tag,
+        &[("vocab-a.yaml", VOCAB_A)],
+        &[("a.lute", scene(1, "../vocab-a.yaml"))],
+    );
+    (dir.clone(), dir.join(COMPONENT_REL))
+}
+
+/// The same component with NO caller: the project's one scene does not `::use` it.
+fn write_component_with_no_caller(tag: &str) -> (PathBuf, PathBuf) {
+    let dir = write_project(tag, &[("vocab-a.yaml", VOCAB_A)], &[]);
+    std::fs::write(
+        dir.join("scenes").join("a.lute"),
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@x: hi\n",
+    )
+    .unwrap();
+    (dir.clone(), dir.join(COMPONENT_REL))
+}
+
+/// Any minimal scene in its own project root.
+fn write_plain_scene(tag: &str) -> (PathBuf, PathBuf) {
+    let dir = temp_dir(tag);
+    let scene = dir.join("plain.lute");
+    std::fs::write(
+        &scene,
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@x: hi\n",
+    )
+    .unwrap();
+    (dir, scene)
+}
+
+/// 0.10.0 §9 rule 4: a standalone component check WITH a caller in the resolved
+/// project runs the caller-resolved check and reports what holds at every call
+/// site, anchored inside the component. This is what makes `lute trace`'s
+/// "run `lute check` first" followable: the two legs stop disagreeing.
+#[test]
+fn standalone_component_with_a_caller_reports_the_caller_resolved_fault() {
+    let (dir, component) = write_component_bad_for_its_caller("rule4");
+    let out = run(&[
+        "check",
+        component.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("E-BAD-ENUM"),
+        "the standalone leg must not report `ok` for a component that cannot work \
+         with any of its callers; got:\n{text}"
+    );
+    assert_eq!(out.status.code(), Some(1), "and it must gate; got:\n{text}");
+    assert!(
+        !text.contains("W-COMPONENT-UNVERIFIED"),
+        "a caller IS in scope, so the verdict is not unverified; got:\n{text}"
+    );
+    // Anchored INSIDE the component, at the offending line, without the
+    // `component `x` (path):` prefix — here the component IS the document.
+    assert!(
+        text.contains(&format!("{}:6:", component.display())),
+        "the fault is anchored at the component's own line 6; got:\n{text}"
+    );
+    assert!(
+        !text.contains("component `interject` ("),
+        "the caller-facing prefix is redundant here; got:\n{text}"
+    );
+}
+
+/// **D-W**: with NO caller in scope, the check must not report a bare `ok`.
+#[test]
+fn standalone_component_with_no_caller_is_unverified_not_ok() {
+    let (dir, component) = write_component_with_no_caller("dw");
+    let out = run(&[
+        "check",
+        component.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("W-COMPONENT-UNVERIFIED"),
+        "no caller in scope must not be a bare `ok`; got:\n{text}"
+    );
+    assert!(
+        text.contains("check-project"),
+        "the message must name the deciding leg; got:\n{text}"
+    );
+    assert!(
+        text.contains("::use"),
+        "the message must say the component's own imports are discarded at `::use`; got:\n{text}"
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "it is a WARNING, not an error; got:\n{text}"
+    );
+}
+
+/// A non-component document is untouched: `W-COMPONENT-UNVERIFIED` is about the
+/// one document kind whose declared vocabulary never applies at runtime.
+#[test]
+fn a_scene_never_reports_component_unverified() {
+    let (dir, scene) = write_plain_scene("plain");
+    let out = run(&[
+        "check",
+        scene.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(!text.contains("W-COMPONENT-UNVERIFIED"), "got:\n{text}");
+}
+
+/// §9 rule 4 says *"every diagnostic that holds at **every** call site"*. That
+/// is an INTERSECTION — and with one caller an intersection and a union are the
+/// same set, so none of the three tests above can tell a correct implementation
+/// from one that unions: they all use one caller.
+///
+/// This is the discriminating case. `write_two_callers_one_specific` gives one
+/// component two callers whose vocabularies differ, so the component-body
+/// message differs between them and **neither problem holds at both sites**. The
+/// intersection is therefore empty and rule 4 reports nothing; a union reports
+/// both. Nothing is lost either way — `check-project` still reports both, which
+/// is exactly what rule 4 means by *"stays with `check-project`, where the caller
+/// is visible"*.
+#[test]
+fn rule_4_reports_only_what_holds_at_every_call_site() {
+    // Two callers, two DIFFERENT problems: the intersection is empty.
+    let dir = write_two_callers_one_specific("rule4-intersect");
+    let component = dir.join(COMPONENT_REL);
+    let out = run(&[
+        "check",
+        component.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !text.contains("E-BAD-ENUM"),
+        "neither fault holds at EVERY call site, so rule 4 reports neither — a \
+         union would report both, and with one caller no other test can tell \
+         the difference; got:\n{text}"
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "an empty intersection is not an error; got:\n{text}"
+    );
+    assert!(
+        !text.contains("W-COMPONENT-UNVERIFIED"),
+        "two callers ARE in scope and the caller-resolved check DID run — the \
+         verdict is not unverified, it is that both faults are caller-specific; \
+         got:\n{text}"
+    );
+
+    // And nothing was swallowed: the deciding leg still reports both.
+    assert_eq!(
+        caller_diags(&dir, "E-BAD-ENUM").len(),
+        2,
+        "a caller-specific fault stays with `check-project`, one per caller"
+    );
+
+    // The other direction, so an implementation that returns Vec::new() and
+    // calls it an intersection does not pass: the three-caller fixture is ONE
+    // problem at three sites, so the intersection is non-empty.
+    let dir = write_three_callers("rule4-common");
+    let component = dir.join(COMPONENT_REL);
+    let out = run(&[
+        "check",
+        component.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("E-BAD-ENUM"),
+        "one problem at three call sites DOES hold at every call site; got:\n{text}"
+    );
+    assert_eq!(out.status.code(), Some(1), "and it gates; got:\n{text}");
+}

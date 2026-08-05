@@ -557,7 +557,8 @@ const DENIABLE_CODES: &[&str] = &[
     "E-UNSET-UNCOVERED", "E-USES-CYCLE", "E-USES-DUP-DEF", "E-USES-DUP-RELATION",
     "E-USES-DUP-STATE", "E-USES-NOT-FOUND", "E-USES-PARSE", "E-VALIDAT-DERIVED",
     "E-WHEN-LITERAL-DOMAIN", "E-WHEN-PATTERN", "E-WRITE-CONFLICT", "W-ASSET-PLACEHOLDER",
-    "W-CATALOG-STALE", "W-CODE-AFTER-END", "W-DERIVE-NO-RULES", "W-DOMAIN-UNREAD",
+    "W-CATALOG-STALE", "W-CODE-AFTER-END", "W-COMPONENT-UNVERIFIED", "W-DERIVE-NO-RULES",
+    "W-DOMAIN-UNREAD",
     "W-EXIT-INERT",
     "W-INTO-SET-DUP", "W-L10N-MISSING", "W-LUTE-VERSION-STALE", "W-OBJECTIVE-HIDDEN",
     "W-OTHERWISE-DEAD",
@@ -923,6 +924,183 @@ fn build_input(
     })
 }
 
+/// Every document under `root` whose `::use` names component `name`
+/// (dsl 0.10.0 §9 rule 4).
+///
+/// Reuses [`find_lute_files`] — the same walk `collect_project_docs` performs at
+/// its own first line — so "in the resolved project" means exactly what it
+/// means for `check-project`, including its symlink canonicalization and
+/// deduplication. Parses each candidate rather than running `check()` on it: at
+/// this point only the `::use` graph matters, and a full check per file would
+/// make the standalone leg quadratic in the project.
+///
+/// Byte-sorted, for a deterministic "first caller".
+fn callers_of_component(root: &Path, name: &str) -> Vec<PathBuf> {
+    let Ok(files) = find_lute_files(root) else {
+        return Vec::new();
+    };
+    let mut out: Vec<PathBuf> = Vec::new();
+    for file in &files {
+        let Ok(text) = std::fs::read_to_string(file) else {
+            continue;
+        };
+        let (doc, _diags) = lute_syntax::parse(&text);
+        if document_uses_component(&doc, name) {
+            out.push(file.clone());
+        }
+    }
+    out.sort();
+    out
+}
+
+/// True when any `::use` anywhere in `doc` names component `name`. Reads the
+/// same attribute `lute_check`'s `fold_use` reads.
+fn document_uses_component(doc: &lute_syntax::ast::Document, name: &str) -> bool {
+    doc.shots
+        .iter()
+        .any(|shot| nodes_use_component(&shot.body, name))
+        || doc
+            .quests
+            .iter()
+            .any(|quest| nodes_use_component(&quest.body, name))
+}
+
+/// Whether `d` is a `::use` of `name`.
+fn directive_uses_component(d: &lute_syntax::ast::Directive, name: &str) -> bool {
+    d.tag == "use"
+        && d.attrs.iter().any(|a| {
+            a.key == "component"
+                && matches!(&a.value, lute_syntax::ast::AttrValue::Str(s) if s == name)
+        })
+}
+
+/// The recursion. Every node kind that can CONTAIN a `::use`, mirroring the node
+/// set `lute-check`'s own walks recurse. Exhaustive on purpose: the next node
+/// kind that can hold a `::use` must not be silently missed.
+fn nodes_use_component(nodes: &[lute_syntax::ast::Node], name: &str) -> bool {
+    use lute_syntax::ast::{Arm, ClipNode, Node};
+    nodes.iter().any(|node| match node {
+        Node::Directive(d) => directive_uses_component(d, name),
+        Node::Branch(b) => b.choices.iter().any(|c| nodes_use_component(&c.body, name)),
+        Node::Hub(h) => h.choices.iter().any(|c| nodes_use_component(&c.body, name)),
+        Node::On(o) => nodes_use_component(&o.body, name),
+        Node::Objective(o) => nodes_use_component(&o.body, name),
+        Node::Match(m) => m.arms.iter().any(|arm| match arm {
+            Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                nodes_use_component(body, name)
+            }
+        }),
+        Node::Timeline(t) => t.tracks.iter().any(|track| {
+            track.clips.iter().any(|clip| match &clip.node {
+                ClipNode::Directive(d) => directive_uses_component(d, name),
+                ClipNode::Set(_) => false,
+            })
+        }),
+        Node::Line(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => false,
+    })
+}
+
+/// The `component:` name a document declares, with its frontmatter span, or
+/// `None` when it is not a component file.
+///
+/// Read through `lute_check`'s own frontmatter reader, never a filename
+/// convention — a component is a document KIND, not a `.component.lute` suffix,
+/// and `component_import.rs` treats a missing `component:` name as
+/// `E-COMPONENT-PARSE` for exactly that reason. `TypedMeta.component` is `None`
+/// for every other document kind, which makes it the discriminator rather than
+/// something to compare a `kind:` against.
+///
+/// The default snapshot suffices: `component:` is a built-in key and is not
+/// capability-gated, the same reason `build_input` types `profile`/`plugins`
+/// against `CapabilitySnapshot::default()`. The diagnostics are discarded here —
+/// `check()` reports them through its own run.
+fn component_name_of(file: &Path) -> Option<(String, Span)> {
+    let text = std::fs::read_to_string(file).ok()?;
+    let (doc, _diags) = lute_syntax::parse(&text);
+    let (typed, _mdiags) = lute_check::parse_meta_kind(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+        lute_check::MetaKind::Component,
+    );
+    typed.component.map(|name| (name, doc.meta.span))
+}
+
+/// Every diagnostic that holds at EVERY call site, re-anchored inside the
+/// component (dsl 0.10.0 §9 rule 4).
+///
+/// Runs `check()` once per caller — the same run `check-project` performs — and
+/// INTERSECTS the component-body diagnostics by `(code, message)`, the same key
+/// §9 rule 2's roll-up uses, and for the same reason: that string is
+/// byte-identical across callers exactly when the problem is caller-independent.
+/// A diagnostic present at only some callers drops out of the intersection and
+/// stays with `check-project`, where the caller is visible.
+///
+/// The surviving diagnostics are then re-anchored from §9 rule 1's secondary
+/// location onto the primary one, because HERE the component IS the document
+/// being reported on, so its own position is representable and the
+/// ``component `x` (path):`` prefix is redundant. Rule 1 measured those
+/// line/columns as already resolved against the component's own source, so no
+/// re-normalisation is needed.
+fn caller_resolved_common(
+    callers: &[PathBuf],
+    component_file: &Path,
+    providers: Option<&Path>,
+    root: &Path,
+) -> Vec<Diagnostic> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    // `related[].file` is `def.src.display().to_string()` and `def.src` is
+    // CANONICAL (`resolve_components` canonicalises), while `component_file` is
+    // whatever the user typed on the command line. Without this the intersection
+    // is always empty and rule 4 silently does nothing.
+    let component_file =
+        std::fs::canonicalize(component_file).unwrap_or_else(|_| component_file.to_path_buf());
+
+    let mut per_caller: Vec<BTreeSet<(String, String)>> = Vec::new();
+    let mut sample: BTreeMap<(String, String), Diagnostic> = BTreeMap::new();
+    for caller in callers {
+        let Some(built) = build_input(caller, providers, Some(root)) else {
+            continue;
+        };
+        let res = check(&built.input);
+        let mut here: BTreeSet<(String, String)> = BTreeSet::new();
+        for d in &res.diagnostics {
+            // A component-body diagnostic for THIS component: §9 rule 1's
+            // `related` entry names the component's source file.
+            if !d
+                .related
+                .iter()
+                .any(|r| Path::new(&r.file) == component_file)
+            {
+                continue;
+            }
+            let key = (d.code.clone(), d.message.clone());
+            here.insert(key.clone());
+            sample.entry(key).or_insert_with(|| d.clone());
+        }
+        per_caller.push(here);
+    }
+    let Some(first) = per_caller.first().cloned() else {
+        return Vec::new();
+    };
+    let common: BTreeSet<(String, String)> = per_caller
+        .iter()
+        .skip(1)
+        .fold(first, |acc, s| acc.intersection(s).cloned().collect());
+    common
+        .into_iter()
+        .filter_map(|key| sample.remove(&key))
+        .map(|mut d| {
+            if let Some(r) = d.related.first() {
+                d.span = r.diagnostic.span;
+                d.message = r.diagnostic.message.clone();
+            }
+            d.related.clear();
+            d
+        })
+        .collect()
+}
+
 /// Run `check` over one file and print its result. Exit `0` clean / `1` on an
 /// error diagnostic (native OR `--deny`-promoted, spec §5) / `2` on an I/O
 /// failure.
@@ -946,7 +1124,34 @@ fn run_check(
     if resolve_error {
         return ExitCode::from(1);
     }
-    let result = check(&input);
+    let mut result = check(&input);
+
+    // dsl 0.10.0 §9 rule 4 (**D-W**): a standalone component check either
+    // forwards the caller-resolved verdict or refuses to claim `ok`. Until
+    // 0.10.0 it did neither: a component that cannot work with ANY of its
+    // callers reported `ok`, `check-project` reported the fault once per caller
+    // at line 1 of the wrong file, and `lute trace` refused with advice that
+    // could not be followed. This is what makes that advice followable.
+    if let (Some((component, at)), Some(root)) = (component_name_of(file), project) {
+        let callers = callers_of_component(root, &component);
+        if callers.is_empty() {
+            result
+                .diagnostics
+                .push(lute_check::component_unverified_diag(&component, at));
+        } else {
+            // Report only what holds at EVERY call site: a diagnostic holding at
+            // some but not all callers is caller-specific and stays with
+            // `check-project`, where the caller is visible. Anchored inside the
+            // component — that is the whole point of running it here.
+            result
+                .diagnostics
+                .extend(caller_resolved_common(&callers, file, providers, root));
+        }
+        result.ok = !result
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error);
+    }
     // §5 verdict: a promoted (denied) diagnostic fails an otherwise-clean run.
     let ok = result.ok && !policy.any_denied(&result.diagnostics);
 
