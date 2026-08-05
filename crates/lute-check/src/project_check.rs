@@ -319,6 +319,37 @@ pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
     out
 }
 
+/// `W-COMPONENT-UNVERIFIED`: a standalone component check with no caller in
+/// scope (dsl 0.10.0 §9 rule 4, **D-W**).
+pub const W_COMPONENT_UNVERIFIED: &str = "W-COMPONENT-UNVERIFIED";
+
+/// Build the `W-COMPONENT-UNVERIFIED` warning.
+///
+/// **D-W**: `#23`'s own fix list says the standalone leg must "either forward
+/// the caller-side verdict or refuse to claim `ok`". With a caller in scope it
+/// forwards; with none it refuses, and says exactly what the verdict does and
+/// does not cover. A bare `ok` here is the contradiction being closed: the
+/// component's own `uses:` is the one vocabulary that NEVER applies at runtime
+/// (`0.9.0 §6.1`), because it is discarded at `::use`.
+pub fn component_unverified_diag(component: &str, at: Span) -> Diagnostic {
+    Diagnostic {
+        code: W_COMPONENT_UNVERIFIED.to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "no document in the resolved project imports component `{component}`, so this \
+             verdict covers only its own frontmatter and body against its OWN `uses:` — the one \
+             vocabulary that is discarded at `::use` and never applies at runtime \
+             (dsl 0.9.0 §6.1). `check-project` is the deciding leg (dsl 0.10.0 §9, D-W)"
+        ),
+        span: at,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
 /// `W-DOMAIN-UNREAD`: a domain the project declares that no active construct
 /// reads (dsl 0.10.0 §11.1). Project-wide only (**D-V**).
 pub const W_DOMAIN_UNREAD: &str = "W-DOMAIN-UNREAD";
