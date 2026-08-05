@@ -387,6 +387,7 @@ impl Parser<'_> {
         let end_o = self.consume_close("match", &open, last_end);
         Match {
             subject,
+            attrs,
             arms,
             span: self.span_o(open.start_o, end_o),
         }
@@ -413,6 +414,7 @@ impl Parser<'_> {
         Arm::When {
             is,
             test,
+            attrs,
             body,
             span: self.span_o(open.start_o, end_o),
         }
@@ -432,6 +434,7 @@ impl Parser<'_> {
         }
         let (body, end_o) = self.parse_block_body("otherwise", &open);
         Arm::Otherwise {
+            attrs: open.attrs,
             body,
             span: self.span_o(open.start_o, end_o),
         }

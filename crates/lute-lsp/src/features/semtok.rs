@@ -207,7 +207,7 @@ fn walk_nodes(nodes: &[Node], src: &str, out: &mut Vec<RawTok>) {
                             );
                             walk_nodes(body, src, out);
                         }
-                        Arm::Otherwise { body, span } => {
+                        Arm::Otherwise { body, span, .. } => {
                             // `<otherwise` open keyword.
                             push(
                                 out,

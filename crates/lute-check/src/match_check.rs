@@ -1408,6 +1408,7 @@ mod tests {
 
     fn when_arm(test: &str) -> Arm {
         Arm::When {
+            attrs: Vec::new(),
             is: None,
             test: CelSlot {
                 kind: CelKind::Condition,
@@ -1430,11 +1431,13 @@ mod tests {
             .collect();
         if has_otherwise {
             arms.push(Arm::Otherwise {
+                attrs: Vec::new(),
                 body: Vec::new(),
                 span: span(),
             });
         }
         Match {
+            attrs: Vec::new(),
             subject: subject_slot("run.rank"),
             arms,
             span: span(),
@@ -1504,6 +1507,7 @@ mod tests {
 
     fn match_with(subject: &str, arms: Vec<Arm>) -> Match {
         Match {
+            attrs: Vec::new(),
             subject: subject_slot(subject),
             arms,
             span: span(),
@@ -1564,6 +1568,7 @@ mod tests {
             vec![
                 when_arm("$ == 1"),
                 Arm::Otherwise {
+                    attrs: Vec::new(),
                     body: Vec::new(),
                     span: span(),
                 },
@@ -2049,10 +2054,12 @@ mod tests {
             "run.rank",
             vec![
                 Arm::Otherwise {
+                    attrs: Vec::new(),
                     body: Vec::new(),
                     span: span(),
                 },
                 Arm::Otherwise {
+                    attrs: Vec::new(),
                     body: Vec::new(),
                     span: second_sp,
                 },
@@ -2080,6 +2087,7 @@ mod tests {
             vec![
                 when_arm("$ == 'gold'"),
                 Arm::Otherwise {
+                    attrs: Vec::new(),
                     body: Vec::new(),
                     span: span(),
                 },
@@ -2248,6 +2256,7 @@ mod tests {
     /// (empty `test` = absent, mirroring the parser's empty-slot default).
     fn when_is(is_raw: Option<&str>, test_raw: &str) -> Arm {
         Arm::When {
+            attrs: Vec::new(),
             is: is_raw.map(|r| IsPattern {
                 raw: r.trim().to_string(),
                 span: span(),
@@ -2347,6 +2356,7 @@ mod tests {
             vec![
                 when_is(None, ""),
                 Arm::Otherwise {
+                    attrs: Vec::new(),
                     body: Vec::new(),
                     span: span(),
                 },

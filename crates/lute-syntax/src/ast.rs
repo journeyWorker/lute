@@ -108,9 +108,15 @@ pub struct Choice {
     pub span: Span,
 }
 
+/// `<match on> When+ Otherwise? "</match>"` (dsl §7.3, §11.2). `attrs` is the
+/// residual (post-`on`-extraction) list, mirroring [`Branch`]/[`Hub`]. It is
+/// retained rather than dropped so the checker's per-tag attribute closure
+/// (dsl 0.10.0 §4, D-J) has something to close over: a rule about attributes
+/// the checker never receives is not a rule. Normally empty.
 #[derive(Clone, Debug)]
 pub struct Match {
     pub subject: CelSlot,
+    pub attrs: Vec<Attr>,
     pub arms: Vec<Arm>,
     pub span: Span,
 }
@@ -269,10 +275,23 @@ pub enum Arm {
         /// Literal `is="…"` pattern (dsl §7.3.1), preserved verbatim; `None` when absent.
         is: Option<IsPattern>,
         test: CelSlot,
+        /// Residual (post-`is`/`test`-extraction) attrs — see [`Match::attrs`].
+        /// A `@ref`-valued entry here is NOT visited by
+        /// [`crate::walk::for_each_cel_slot`] and therefore keeps
+        /// `ast: None`/`id: StableId(0)`: every key that can reach this list is
+        /// outside `<when>`'s permitted set and is already `E-UNKNOWN-ATTR`
+        /// (dsl 0.10.0 §4), so parsing its value would stack a second
+        /// diagnostic on an attribute that must not exist — and adding slots to
+        /// the pre-order would renumber every `StableId` downstream of them.
+        attrs: Vec<Attr>,
         body: Vec<Node>,
         span: Span,
     },
     Otherwise {
+        /// Residual attrs — see [`Arm::When`]'s `attrs`. `<otherwise>` extracts
+        /// nothing, so every authored key lands here. Its permitted set is
+        /// EMPTY (dsl 0.10.0 §4), so any entry is `E-UNKNOWN-ATTR`.
+        attrs: Vec<Attr>,
         body: Vec<Node>,
         span: Span,
     },
