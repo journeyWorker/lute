@@ -119,7 +119,19 @@ pub const W_TRACE_MOCK_UNPRODUCIBLE: &str = "W-TRACE-MOCK-UNPRODUCIBLE";
 /// (Task 21) renders it exactly like the four structural mock codes on the
 /// Refused (exit 1) path, so it is still a plain `Diagnostic`, just not one
 /// of the four the Task 18 interface names.
-const E_TRACE_MOCK_PARSE: &str = "E-TRACE-MOCK-PARSE";
+pub const E_TRACE_MOCK_PARSE: &str = "E-TRACE-MOCK-PARSE";
+
+/// 0.10.0 §8 (#31, D-AC): a `mocks/*.yaml` with no `file:`, a `file:` naming
+/// a path that does not exist, or a `file:` that disagrees with the document
+/// named on a `lute trace` command line.
+///
+/// Anchored at the mock file and naming the offending key in its message,
+/// never at a line and column: `parse_mock_yaml` deserializes into
+/// `serde_yaml::Value`, which retains no position; every mock entry carries
+/// the all-zeros [`synthetic_span`]; and `Diagnostic` has no file field at
+/// all, so fixing the first two would put a correct position in the wrong
+/// file (D-AB).
+pub const E_MOCK_SUBJECT: &str = "E-MOCK-SUBJECT";
 
 /// Build a `Layer::Logic` error diagnostic — mock validation is a
 /// schema/graph-level property of the resolved document, the same layer
@@ -314,6 +326,34 @@ pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
     }
 
     Ok(mocks)
+}
+
+/// The document a mock previews, from its `file:` key (0.10.0 §8, D-AC) —
+/// the SAME key, spelling and base rule a `*.test.yaml` has carried since
+/// 0.4.0 (`lute-cli/src/testcmd.rs`), resolved by the caller against the
+/// mock's own parent directory.
+///
+/// `Ok(None)` when the key is absent. Required-ness is NOT enforced here:
+/// `lute trace <doc> --mock m.yaml` supplies the subject on the command line
+/// and that wins, and the six `conformance/*/mock.yaml` acceptance fixtures
+/// legitimately carry none. `check-project`'s pass over `mocks/*.yaml` is
+/// where the key is required.
+pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
+    let span = synthetic_span();
+    let value: serde_yaml::Value = serde_yaml::from_str(text)
+        .map_err(|e| diag(E_TRACE_MOCK_PARSE, format!("malformed mock YAML: {e}"), span))?;
+    let Some(top) = value.as_mapping() else { return Ok(None) };
+    match top.get("file") {
+        None => Ok(None),
+        Some(serde_yaml::Value::String(s)) => Ok(Some(s.clone())),
+        Some(_) => Err(diag(
+            E_TRACE_MOCK_PARSE,
+            "`file:` must be a path to the document this mock previews, relative to this file \
+             (0.10.0 §8)"
+                .to_string(),
+            span,
+        )),
+    }
 }
 
 /// Compose a `--mock <file.yaml>`'s [`MockSet`] with the CLI's own

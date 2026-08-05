@@ -158,13 +158,17 @@ fn run_one_test(
             return Err(ExitCode::from(2));
         }
     };
-    let rel = match map.get("file").and_then(|v| v.as_str()) {
-        Some(s) => s.to_string(),
-        None => {
+    let rel = match lute_trace::mock_subject(&text) {
+        Ok(Some(s)) => s,
+        Ok(None) => {
             eprintln!(
                 "lute: {}: missing required `file:` (path to the `.lute` under test)",
                 test_file.display()
             );
+            return Err(ExitCode::from(2));
+        }
+        Err(d) => {
+            eprintln!("lute: {}: [{}] {}", test_file.display(), d.code, d.message);
             return Err(ExitCode::from(2));
         }
     };

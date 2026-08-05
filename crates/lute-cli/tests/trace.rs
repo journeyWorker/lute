@@ -240,3 +240,81 @@ fn component_expansion_transcript_has_no_sentinel_leak() {
         "the component boundary itself should still be signposted, just cleanly: {stdout}"
     );
 }
+
+// ── 0.10.0 §8 / D-AC: the mock's subject key on a trace command line ───
+
+/// A fresh unique temp dir (matches `check_project.rs`'s own helper — each
+/// integration test binary is compiled separately, so this is intentionally
+/// duplicated rather than shared).
+fn temp_dir(tag: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// D-AC's third rule: `lute trace <doc> --mock m.yaml` supplies the subject
+/// on the command line and THAT wins. A `file:` naming a different document
+/// is `E-MOCK-SUBJECT` — the two ways of saying what a mock is for must not
+/// be able to disagree in silence.
+#[test]
+fn trace_refuses_a_mock_whose_file_names_a_different_document() {
+    let dir = temp_dir("mock-subject-disagree");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    let scene = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n";
+    std::fs::write(dir.join("scenes/one.lute"), scene).unwrap();
+    std::fs::write(dir.join("scenes/two.lute"), scene).unwrap();
+    std::fs::write(dir.join("m.yaml"), "file: scenes/two.lute\n").unwrap();
+
+    let out = std::process::Command::new(BIN)
+        .args([
+            "trace",
+            dir.join("scenes/one.lute").to_str().unwrap(),
+            "--mock",
+            dir.join("m.yaml").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(2), "a mock naming the wrong subject is an input error:\n{text}");
+    assert!(text.contains("E-MOCK-SUBJECT"), "{text}");
+}
+
+/// The agreeing case, and the absent case, both run.
+#[test]
+fn trace_accepts_an_agreeing_or_absent_file_key() {
+    let dir = temp_dir("mock-subject-agree");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("scenes/one.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("agree.yaml"), "file: scenes/one.lute\n").unwrap();
+    std::fs::write(dir.join("absent.yaml"), "state: {}\n").unwrap();
+    for m in ["agree.yaml", "absent.yaml"] {
+        let out = std::process::Command::new(BIN)
+            .args([
+                "trace",
+                dir.join("scenes/one.lute").to_str().unwrap(),
+                "--mock",
+                dir.join(m).to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{m}: {}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
