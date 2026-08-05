@@ -1436,3 +1436,23 @@ fn untested_denominator_excludes_component_documents() {
     );
     assert!(text.contains("1 untested document"), "exactly one, not two: {text}");
 }
+
+/// #32 / T2.5: `lute context`'s human mode dropped the `semantics` flags its
+/// own --json already carries. `mayExitCharacter` is the machine-readable
+/// statement that `::auto` is the construct that ends a presence, and it is
+/// on no page of the shipped website.
+#[test]
+fn context_human_mode_keeps_the_semantics_flags_json_already_carries() {
+    let out = Command::new(BIN)
+        .args([
+            "context",
+            "../../docs/examples/anseo/scenes/wake.lute",
+            "--project",
+            "../../docs/examples/anseo",
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let auto = text.lines().find(|l| l.trim_start().starts_with("auto")).expect("auto row");
+    assert!(auto.contains("mayExitCharacter"), "{text}");
+}

@@ -318,3 +318,62 @@ fn trace_accepts_an_agreeing_or_absent_file_key() {
         );
     }
 }
+
+/// #32 / T2.5: the entrance and the exit are the same construct with the same
+/// attribute names, and the entire difference is which of `brace` and
+/// `go-under` appears in a list in another file. `trace` printed both as
+/// `<auto>`. wake.lute's LAST line is the corpus's single declared exit.
+#[test]
+fn trace_marks_an_exiting_auto_as_an_exit() {
+    let out = trace(&["../../docs/examples/anseo/scenes/wake.lute", "--project", "../../docs/examples/anseo"]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(text.contains("<auto exit>"), "the exit must be marked: {text}");
+    assert!(
+        text.lines().any(|l| l.trim() == "<auto>"),
+        "the entrance must NOT be marked: {text}"
+    );
+}
+
+/// #32 / T5.9: `reason` is not one attribute among several — it is the
+/// terminator's entire payload, the only thing distinguishing `::end` from
+/// falling off the end of the document. A project with several endings
+/// previewed them all as an identical `<end>`.
+#[test]
+fn trace_renders_the_end_reason_and_reports_a_disposition() {
+    let out = trace(&["../../docs/examples/anseo/scenes/bridge.lute", "--project", "../../docs/examples/anseo"]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(text.contains("<end reason=bridge-reached>"), "{text}");
+
+    let out = trace(&[
+        "../../docs/examples/anseo/scenes/bridge.lute",
+        "--project",
+        "../../docs/examples/anseo",
+        "--json",
+    ]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("trace --json");
+    assert_eq!(v["disposition"], "ended", "a harness must tell a terminated walk from a spent one");
+    assert_eq!(v["endReason"], "bridge-reached", "{v:#?}");
+
+    // A scene that runs out of nodes is `complete`, not `ended`, and carries
+    // no reason — that is the distinction the field exists for.
+    let out = trace(&[
+        "../../docs/examples/anseo/scenes/wake.lute",
+        "--project",
+        "../../docs/examples/anseo",
+        "--json",
+    ]);
+    let vw: serde_json::Value = serde_json::from_slice(&out.stdout).expect("trace --json");
+    assert_eq!(vw["disposition"], "complete");
+    assert!(vw["endReason"].is_null(), "{vw:#?}");
+}
+
+/// #10 row h: the shipped binary printed `## Shot 1.` on the doc page's own
+/// file and command, while the heading sat in the IR
+/// (`"shots":[{"shot":1,"heading":"Hydroponics"}]`). Doing the tool fix
+/// retires the docs row.
+#[test]
+fn trace_prints_the_shot_heading_it_is_holding() {
+    let out = trace(&["../../docs/examples/anseo/scenes/hydroponics.lute", "--project", "../../docs/examples/anseo"]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(text.contains("## Hydroponics"), "{text}");
+}
