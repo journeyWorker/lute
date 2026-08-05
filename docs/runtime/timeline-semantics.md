@@ -12,7 +12,10 @@ the compiler has already done the scheduling math.
 Records emitted inside a timeline carry the cross-cutting `Stamp` fields
 (`ir.rs::Stamp`, flattened onto the record):
 
-- `timeline` — the 0-based **timeline ordinal** (`u32`) this record belongs to;
+- `timeline` — an opaque per-document **timeline ordinal** (`u32`), assigned in
+  document order starting at `1`; treat it as a correlation key, not an index
+  (`stage.rs` pre-increments the counter, so `0` is unreachable by
+  construction);
 - `at` — the record's **absolute start time** on the timeline's local clock
   (seconds);
 - `duration` — the record's resolved duration, when known;
