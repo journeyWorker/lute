@@ -34,6 +34,69 @@ use std::process::ExitCode;
 
 use lute_trace::{parse_mock_yaml, trace_document, Step, TraceExit, TraceReport};
 
+/// The complete legal top-level key set of a `*.test.yaml` (module docs).
+/// `file:`/`expect:` are the harness's own; the other five are the mock
+/// surfaces `parse_mock_yaml` reads (`accept`/`accepts` are two spellings of
+/// one key). CLOSED as of 0.10.0 (#2(a), D-B): the grammar being open is what
+/// let a `chooses:` typo drop a selection and green a test against the arm
+/// the file excluded.
+const TEST_TOP_KEYS: &[&str] =
+    &["accept", "accepts", "choose", "events", "expect", "facts", "file", "state"];
+
+/// The complete legal key set inside `expect:`. Also CLOSED. (b)/(c)'s new
+/// expectation kinds — endings, quest lifecycle, `facts:` as an output — are
+/// deferred with #19 (D-B); when they land they are added HERE, which is the
+/// point of a closed set.
+const TEST_EXPECT_KEYS: &[&str] = &["exit", "state", "transcriptContains"];
+
+/// One `E-TEST-KEY` line for an unrecognised key, with the same
+/// edit-distance did-you-mean four checker codes already use (dsl 0.5.0
+/// §2.2), over the workspace's ONE suggestion helper. `where_` names the
+/// level so a top-level typo and an `expect:`-level typo are
+/// distinguishable.
+fn unknown_key_line(where_: &str, key: &str, allowed: &[&str]) -> String {
+    let sugg = lute_manifest::suggest::nearest(key, allowed.iter().copied(), 2)
+        .map(|k| format!(" — did you mean `{k}`?"))
+        .unwrap_or_default();
+    format!(
+        "error [E-TEST-KEY] unknown {where_} key `{key}` in a `*.test.yaml`{sugg} (legal: {})",
+        allowed.join(", ")
+    )
+}
+
+/// Every closed-key violation in one test file, both levels, in document
+/// order. Empty when the file is well-keyed.
+fn closed_key_violations(map: &serde_yaml::Mapping) -> Vec<String> {
+    let mut out = Vec::new();
+    for (k, v) in map {
+        let Some(key) = k.as_str() else {
+            out.push(
+                "error [E-TEST-KEY] a top-level key must be a string in a `*.test.yaml`".to_string(),
+            );
+            continue;
+        };
+        if !TEST_TOP_KEYS.contains(&key) {
+            out.push(unknown_key_line("top-level", key, TEST_TOP_KEYS));
+            continue;
+        }
+        if key == "expect" {
+            if let Some(em) = v.as_mapping() {
+                for (ek, _) in em {
+                    match ek.as_str() {
+                        Some(ekey) if TEST_EXPECT_KEYS.contains(&ekey) => {}
+                        Some(ekey) => {
+                            out.push(unknown_key_line("`expect:`", ekey, TEST_EXPECT_KEYS))
+                        }
+                        None => out
+                            .push("error [E-TEST-KEY] an `expect:` key must be a string".to_string()),
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 /// One declared expectation's verdict, carrying enough to render both the
 /// human miss line and the `--json` entry.
 struct ExpectResult {
@@ -52,6 +115,11 @@ struct TestResult {
     exit: String,
     passed: bool,
     expectations: Vec<ExpectResult>,
+    /// Every branch/hub the walk auto-picked because no supplied selection
+    /// named it, rendered `"<id> -> <arm>"`. Legal and deliberate (§4.4), but
+    /// silent — and silence is what turned a `chooses:` typo into a green run
+    /// against the arm the file excluded (#2(d), T9.8).
+    autopicked: Vec<String>,
     /// Populated only when a test cannot produce a report (a refused trace):
     /// one rendered line per diagnostic the refusal is holding, in the order
     /// `lute trace` would print them. Never a canned summary — three
@@ -160,6 +228,23 @@ fn run_one_test(
             return Err(ExitCode::from(2));
         }
     };
+
+    // #2(a) / D-B: the key set is closed at BOTH levels. A violation is a
+    // per-test FAILURE (exit 1), not an I/O error (exit 2) — every offending
+    // file must be named in one run, and the suite must keep going. T9.8's
+    // acceptance test asks for exit 1 by name.
+    let key_violations = closed_key_violations(map);
+    if !key_violations.is_empty() {
+        return Ok(TestResult {
+            test_file: test_file.to_path_buf(),
+            lute_file: String::new(),
+            exit: "invalid".to_string(),
+            passed: false,
+            expectations: Vec::new(),
+            autopicked: Vec::new(),
+            refusal: Some(key_violations),
+        });
+    }
     let rel = match lute_trace::mock_subject(&text) {
         Ok(Some(s)) => s,
         Ok(None) => {
@@ -220,6 +305,7 @@ fn run_one_test(
             exit: "refused".to_string(),
             passed: false,
             expectations: Vec::new(),
+            autopicked: Vec::new(),
             refusal: Some(lines),
         });
     }
@@ -233,6 +319,16 @@ fn run_one_test(
     if let Some(cov) = cov {
         accumulate_coverage(cov, &report);
     }
+
+    // §4.4's auto-pick is legal and deliberate, but it was silent — and
+    // silence is what let a dropped selection green a test against the arm
+    // the file excluded (#2(d), T9.8).
+    let autopicked: Vec<String> = report
+        .decisions
+        .iter()
+        .filter(|d| d.auto && matches!(d.construct.as_str(), "branch" | "hub"))
+        .map(|d| format!("{} -> {}", d.id, d.outcome))
+        .collect();
 
     let expect = map.get("expect").and_then(|v| v.as_mapping());
     let mut expectations = Vec::new();
@@ -287,6 +383,25 @@ fn run_one_test(
         }
     }
 
+    // #2(d) / D-B: `all()` over an empty vector is `true`, so a test that
+    // recognised no expectation reported PASS. A test that asserts nothing is
+    // not a passing test.
+    if expectations.is_empty() {
+        return Ok(TestResult {
+            test_file: test_file.to_path_buf(),
+            lute_file: lute_display,
+            exit: exit_str.to_string(),
+            passed: false,
+            expectations: Vec::new(),
+            autopicked,
+            refusal: Some(vec![format!(
+                "error [E-TEST-NO-EXPECT] this test declares no recognised expectation \
+                 (legal `expect:` keys: {}); a test that asserts nothing cannot pass",
+                TEST_EXPECT_KEYS.join(", ")
+            )]),
+        });
+    }
+
     let passed = expectations.iter().all(|e| e.passed);
 
     Ok(TestResult {
@@ -295,6 +410,7 @@ fn run_one_test(
         exit: exit_str.to_string(),
         passed,
         expectations,
+        autopicked,
         refusal: None,
     })
 }
@@ -409,9 +525,17 @@ fn print_human(dir: &Path, results: &[TestResult], cov: Option<&CoverageAccum>) 
         let mark = if r.passed { "PASS" } else { "FAIL" };
         println!("{mark}  {}  ({})", r.test_file.display(), r.lute_file);
         if let Some(lines) = &r.refusal {
-            println!("      trace refused:");
+            // The vector carries either the trace's own held diagnostics
+            // (#25) or the harness's own `E-TEST-*` refusals (#2). Only the
+            // first is a *trace* refusal, so only it gets that header.
+            if r.exit == "refused" {
+                println!("      trace refused:");
+            }
             for line in lines {
                 println!("        {line}");
+            }
+            for a in &r.autopicked {
+                println!("      auto-picked (no selection supplied): {a}");
             }
             continue;
         }
@@ -433,6 +557,9 @@ fn print_human(dir: &Path, results: &[TestResult], cov: Option<&CoverageAccum>) 
                     _ => {}
                 }
             }
+        }
+        for a in &r.autopicked {
+            println!("      auto-picked (no selection supplied): {a}");
         }
     }
 
@@ -522,6 +649,7 @@ fn print_json(results: &[TestResult], cov: Option<&CoverageAccum>) {
                 "exit": r.exit,
                 "passed": r.passed,
                 "refusal": r.refusal,
+                "autopicked": r.autopicked.clone(),
                 "expectations": expectations,
             })
         })
