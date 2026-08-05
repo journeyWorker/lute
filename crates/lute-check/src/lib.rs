@@ -79,7 +79,7 @@ pub use meta::{
 pub use on::{check_on_event, E_ON_NO_EVENT, E_UNKNOWN_EVENT};
 pub use project_check::{
     check_project_domain_reads, check_project_quest_ids, check_project_quest_refs,
-    colliding_occurrences, component_unverified_diag, domain_reading_set,
+    colliding_occurrences, component_unverified_diag, domain_reading_set, ComponentScope,
     W_COMPONENT_UNVERIFIED, W_DOMAIN_UNREAD, W_QUEST_REF_UNKNOWN,
 };
 pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};

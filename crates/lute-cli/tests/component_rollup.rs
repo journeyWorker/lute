@@ -365,3 +365,149 @@ fn rule_4_reports_only_what_holds_at_every_call_site() {
     );
     assert_eq!(out.status.code(), Some(1), "and it gates; got:\n{text}");
 }
+
+/// The one `W-COMPONENT-UNVERIFIED` message a `lute check` run printed, or
+/// `None`. Read from `--json` so the assertion sees the message the builder
+/// produced, not a line-wrapped rendering of it.
+fn unverified_message(args: &[&str]) -> Option<String> {
+    let mut argv = vec!["check"];
+    argv.extend_from_slice(args);
+    argv.push("--json");
+    let out = run(&argv);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
+    v["diagnostics"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|d| d["code"] == "W-COMPONENT-UNVERIFIED")
+        .map(|d| d["message"].as_str().unwrap_or_default().to_string())
+}
+
+/// **D-W**, second disjunct: *"With no caller in scope — **no project
+/// resolved**, or no document in the project imports this component — the check
+/// MUST NOT report a bare `ok`."*
+///
+/// The fixture is deliberately the one that DOES have a caller
+/// (`write_component_bad_for_its_caller`): with `--project` this same file
+/// reports `E-BAD-ENUM` and gates. Drop the flag and nothing is resolved, so
+/// nothing can be concluded — and this is the invocation an author actually
+/// types, there being no manifest auto-discovery.
+#[test]
+fn standalone_component_with_no_project_is_unverified_not_ok() {
+    let (_dir, component) = write_component_bad_for_its_caller("dw-noproject");
+    let out = run(&["check", component.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("W-COMPONENT-UNVERIFIED"),
+        "no project resolved must not be a bare `ok`; got:\n{text}"
+    );
+    assert!(
+        text.contains("::use") && text.contains("check-project"),
+        "the message must still say what the verdict covers, that the component's \
+         own imports are discarded at `::use`, and who decides; got:\n{text}"
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "it is a WARNING, not an error; got:\n{text}"
+    );
+}
+
+/// The two disjuncts are two different situations and MUST NOT share a message.
+///
+/// This is the discriminating test. Wiring the no-project leg to the existing
+/// no-importer message satisfies every `contains("W-COMPONENT-UNVERIFIED")`
+/// assertion above while telling an author who merely forgot `--project` that
+/// their component is unused — a false claim about a search that never ran. So
+/// the assertion is on the DIFFERENCE, on one component, with only the flag
+/// changing.
+#[test]
+fn the_two_no_caller_disjuncts_do_not_share_a_message() {
+    let (dir, component) = write_component_with_no_caller("dw-disjuncts");
+    let file = component.to_str().unwrap().to_string();
+    let root = dir.to_str().unwrap().to_string();
+
+    let no_project = unverified_message(&[&file]).expect("no project resolved must warn");
+    let no_importer =
+        unverified_message(&[&file, "--project", &root]).expect("no importer must warn");
+
+    assert_ne!(
+        no_project, no_importer,
+        "the tool could not look, versus the tool looked and found nothing — \
+         one message for both is a false claim in whichever case it does not describe"
+    );
+    assert!(
+        no_project.contains("--project"),
+        "the no-project leg must name the missing flag, which is the author's \
+         next step; got:\n{no_project}"
+    );
+    assert!(
+        !no_project.contains("searched") && !no_project.contains("unused"),
+        "nothing was searched, so the message must not claim a search or an \
+         unused component; got:\n{no_project}"
+    );
+    assert!(
+        no_importer.contains("searched"),
+        "the no-importer leg DID search the project and must say so, because \
+         that is what makes `unused` a supported claim; got:\n{no_importer}"
+    );
+}
+
+/// Rule 4's three cases on one component, in one place: the two no-caller
+/// disjuncts warn, and a real importer stays silent. The third row is the
+/// control — an implementation that warns whenever the document is a component
+/// passes both rows above and fails here.
+#[test]
+fn rule_4_three_case_matrix() {
+    // (1) no `--project` at all.
+    let (with_caller_dir, component) = write_component_bad_for_its_caller("dw-matrix");
+    assert!(
+        unverified_message(&[component.to_str().unwrap()]).is_some(),
+        "no project resolved: unverified"
+    );
+
+    // (2) `--project` resolves and nothing under it imports the component.
+    let (no_caller_dir, no_caller_component) = write_component_with_no_caller("dw-matrix-none");
+    assert!(
+        unverified_message(&[
+            no_caller_component.to_str().unwrap(),
+            "--project",
+            no_caller_dir.to_str().unwrap(),
+        ])
+        .is_some(),
+        "project resolved, no importer: unverified"
+    );
+
+    // (3) `--project` resolves and a document under it DOES `::use` it. Rule 4
+    //     ran the caller-resolved check, so the verdict is computed and the
+    //     warning must not fire — the fault it reports instead is the proof the
+    //     caller enumeration actually found the caller.
+    let out = run(&[
+        "check",
+        component.to_str().unwrap(),
+        "--project",
+        with_caller_dir.to_str().unwrap(),
+    ]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !text.contains("W-COMPONENT-UNVERIFIED"),
+        "a caller IS in scope; got:\n{text}"
+    );
+    assert!(
+        text.contains("E-BAD-ENUM"),
+        "and the caller-resolved leg is what ran; got:\n{text}"
+    );
+}
+
+/// The no-project leg is scoped to components, exactly as the `--project` leg
+/// is: a scene checked with no project resolved is the single most common
+/// invocation in the toolchain and must be untouched.
+#[test]
+fn a_scene_with_no_project_never_reports_component_unverified() {
+    let (_dir, scene) = write_plain_scene("plain-noproject");
+    let out = run(&["check", scene.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(!text.contains("W-COMPONENT-UNVERIFIED"), "got:\n{text}");
+    assert_eq!(out.status.code(), Some(0), "got:\n{text}");
+}
