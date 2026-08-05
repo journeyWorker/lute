@@ -162,8 +162,9 @@ pub fn compile_with_check(
             // pushes `E-DOMAIN-UNKNOWN` (an Error) for an `::auto` that relies
             // on an undeclared `anchor` domain's `default:`. So the drop needs
             // an argument that covers an Error, not the old one about warnings
-            // never gating. (dsl 0.10.0 §12.3 removed `W-INJECT-CONFLICT`, so
-            // `E-DOMAIN-UNKNOWN` is now the channel's only code.)
+            // never gating. (dsl 0.10.0 §12.3 removed `W-INJECT-CONFLICT`;
+            // §11.2 added `W-EXIT-INERT` and `W-STAGE-ABSENT`, so the channel
+            // now carries one Error and two warnings.)
             //
             // The argument: the D6 gate at the top of this function already
             // returned `Err(result.diagnostics)` unless `check()` was clean, so
@@ -193,15 +194,15 @@ pub fn compile_with_check(
             //     construction.
             //
             // Residual, deliberate, and warning-only: this walk folds the
-            // EXPANDED tree, so it can see a conflict that only exists once a
-            // `@param` is bound to a literal at the `::use` site. That one is a
-            // VALUE comparison (the authored `anchor` against the domain
-            // `default:`), which is why it is param-sensitive and why the
-            // key-presence Error above is not. `check()` is a pre-expansion
-            // surface and is blind to that shape — identically so whether the
-            // component is reached through a `::use` or checked STANDALONE, so
-            // no route disagrees with another; it is a precision boundary, not
-            // the divergence Task 7g closed.
+            // EXPANDED tree, so a §11.2 warning can turn on a value a `@param`
+            // only acquires at the `::use` site — `is_declared_exit` compares
+            // the resolved `action` against declared `exits:`, and an `action`
+            // written `@ref` in a component body is a raw CEL path pre-expansion
+            // and a literal member after. `check()` is a pre-expansion surface
+            // and is blind to that shape — identically so whether the component
+            // is reached through a `::use` or checked STANDALONE, so no route
+            // disagrees with another; it is a precision boundary, not the
+            // divergence Task 7g closed.
             state.diags.clear();
             let (commands, addr_diags) = address::assign_addresses(shots, identity);
             (ArtifactMeta::Scene(meta), commands, addr_diags)
