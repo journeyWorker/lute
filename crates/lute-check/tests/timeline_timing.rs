@@ -6,12 +6,12 @@
 //!   resolved clip end.
 //! Fed through the assembled `check()` over inline `state:` frontmatter so the
 //! parser's `at`-stripping (track context) and the walker are both exercised.
-use lute_check::{check, CheckInput, Mode, SchemaImports};
+use lute_check::{check, CheckInput, CheckResult, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
 
-fn codes(text: &str) -> Vec<String> {
+fn check_str(text: &str) -> CheckResult {
     let input = CheckInput {
         text: text.to_string(),
         uri: "timeline_timing".into(),
@@ -23,6 +23,10 @@ fn codes(text: &str) -> Vec<String> {
         defaults: Default::default(),
     };
     check(&input)
+}
+
+fn codes(text: &str) -> Vec<String> {
+    check_str(text)
         .diagnostics
         .into_iter()
         .map(|d| d.code)
@@ -188,5 +192,83 @@ fn a_non_numeric_time_is_not_a_resolution_error() {
     assert!(
         !cs.iter().any(|c| c == "E-TIME-RESOLUTION"),
         "an unparseable value keeps its pre-existing fallback (§10.2); got {cs:?}"
+    );
+}
+
+/// 0.10.0 §10.2 (#26): a clip handed off at exactly the previous clip's
+/// resolved end does not overlap it. §11.4 says a clip whose start PRECEDES the
+/// previous resolved end is the error, and 1.2 does not precede 1.2 — the
+/// comparison was always right; `0.8 + 0.4` in IEEE-754 was not.
+#[test]
+fn boundary_handoff_is_not_an_overlap() {
+    let t = format!(
+        "{HDR}<timeline>\n<track channel=\"vfx\">\n\
+         ::vfx{{type=\"shed\" at=\"0.8\" duration=\"0.4\"}}\n\
+         ::vfx{{type=\"drop\" at=\"1.2\"}}\n\
+         </track>\n</timeline>\n"
+    );
+    let cs = codes(&t);
+    assert!(
+        !cs.iter().any(|c| c == "E-CLIP-OVERLAP"),
+        "0.8 + 0.4 hands off exactly at 1.2; got {cs:?}"
+    );
+}
+
+/// The other two accumulations the finding named. `0.5 + 0.25 -> 0.75` always
+/// passed; these did not.
+#[test]
+fn the_other_leaking_handoffs_are_not_overlaps() {
+    for (at, dur, next) in [("0.1", "0.2", "0.3"), ("0.2", "0.4", "0.6")] {
+        let t = format!(
+            "{HDR}<timeline>\n<track channel=\"vfx\">\n\
+             ::vfx{{type=\"shed\" at=\"{at}\" duration=\"{dur}\"}}\n\
+             ::vfx{{type=\"drop\" at=\"{next}\"}}\n\
+             </track>\n</timeline>\n"
+        );
+        let cs = codes(&t);
+        assert!(
+            !cs.iter().any(|c| c == "E-CLIP-OVERLAP"),
+            "{at} + {dur} hands off exactly at {next}; got {cs:?}"
+        );
+    }
+}
+
+/// The check is not blinded: a clip that genuinely starts INSIDE the previous
+/// one is still `E-CLIP-OVERLAP`, by one millisecond.
+#[test]
+fn a_one_millisecond_overlap_is_still_an_overlap() {
+    let t = format!(
+        "{HDR}<timeline>\n<track channel=\"vfx\">\n\
+         ::vfx{{type=\"shed\" at=\"0.8\" duration=\"0.4\"}}\n\
+         ::vfx{{type=\"drop\" at=\"1.199\"}}\n\
+         </track>\n</timeline>\n"
+    );
+    let cs = codes(&t);
+    assert!(
+        cs.iter().any(|c| c == "E-CLIP-OVERLAP"),
+        "1.199 precedes the resolved end 1.2; got {cs:?}"
+    );
+}
+
+/// §10.2: `E-TIMELINE-DURATION` compares integers and MUST print the authored
+/// decimal, not a reconstructed float. The message used to read "below the max
+/// resolved clip end 1.2000000000000002".
+#[test]
+fn timeline_duration_message_prints_the_authored_decimal() {
+    let t = format!(
+        "{HDR}<timeline duration=\"1.0\">\n<track channel=\"vfx\">\n\
+         ::vfx{{type=\"shed\" at=\"0.8\" duration=\"0.4\"}}\n\
+         </track>\n</timeline>\n"
+    );
+    let res = check_str(&t);
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-TIMELINE-DURATION")
+        .unwrap_or_else(|| panic!("expected E-TIMELINE-DURATION; got {:?}", res.diagnostics));
+    assert!(
+        d.message.contains("1.2") && !d.message.contains("1.2000000000000002"),
+        "the message must name the authored decimal; got {}",
+        d.message
     );
 }
