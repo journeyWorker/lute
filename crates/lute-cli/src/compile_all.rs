@@ -98,6 +98,21 @@ pub fn run(
     bundle: Option<&LocaleBundle>,
     policy: &DenyPolicy,
 ) -> ExitCode {
+    // 0.10.0 §7 (D-D): `compile` aligns to `check`. `--all` forces every
+    // document onto the invoked root, so before this it opened NO nested
+    // manifest — T1.10: an inner `identity:` block quietly not applied on a
+    // project whose whole localization pipeline is keyed on `lineId`.
+    match crate::manifests::validate_manifests_under(project) {
+        Ok(verdicts) => {
+            if crate::manifests::report_and_gate(&verdicts) {
+                return ExitCode::from(1);
+            }
+        }
+        Err(e) => {
+            eprintln!("lute: cannot walk {} for manifests: {e}", project.display());
+            return ExitCode::from(2);
+        }
+    }
     // ONE project reconciliation for every document (module doc).
     let reconciled = match reconciled_project_results(project, providers) {
         Ok(r) => r,
