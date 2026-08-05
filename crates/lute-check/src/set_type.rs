@@ -36,7 +36,7 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::Set;
 
-use crate::cel_paths::{levenshtein, select_path};
+use crate::cel_paths::select_path;
 use crate::cel_resolve::compatible;
 use crate::ctx::ExpectedType;
 use crate::meta::StateSchema;
@@ -332,12 +332,7 @@ fn op_spelling(func_name: &str) -> Option<&'static str> {
 /// and the same `min_by_key` tie-break `cel_paths::nearest_declared_path` uses
 /// for `E-UNDECLARED`'s did-you-mean, so the two suggestions behave alike.
 fn nearest_member<'m>(got: &str, members: &'m [String]) -> Option<&'m str> {
-    members
-        .iter()
-        .map(|m| (m.as_str(), levenshtein(got, m)))
-        .filter(|&(_, d)| d > 0 && d <= 2)
-        .min_by_key(|&(_, d)| d)
-        .map(|(m, _)| m)
+    lute_manifest::suggest::nearest(got, members.iter().map(|m| m.as_str()), 2)
 }
 
 /// The author-facing type name §3.2's table and §3.4's message use. Distinct

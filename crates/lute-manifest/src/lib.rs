@@ -9,6 +9,7 @@ pub mod relations;
 pub mod resolve;
 pub mod schema;
 pub mod snapshot;
+pub mod suggest;
 pub mod types;
 pub mod validate;
 pub use types::*;

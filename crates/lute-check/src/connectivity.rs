@@ -213,11 +213,7 @@ fn nearest_match<'a>(
     candidates: impl Iterator<Item = &'a str>,
     max_dist: usize,
 ) -> Option<&'a str> {
-    candidates
-        .map(|k| (k, crate::cel_paths::levenshtein(needle, k)))
-        .filter(|&(_, d)| d > 0 && d <= max_dist)
-        .min_by_key(|&(_, d)| d)
-        .map(|(k, _)| k)
+    lute_manifest::suggest::nearest(needle, candidates, max_dist)
 }
 
 /// Exact-lookup every atom flattened out of `formula` (T1 [`atoms`]) against

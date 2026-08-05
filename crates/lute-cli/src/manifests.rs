@@ -108,6 +108,7 @@ pub fn validate_manifests_under(dir: &Path) -> std::io::Result<Vec<ManifestVerdi
             .map(|c| {
                 c.identity_diags
                     .iter()
+                    .chain(c.defaults_diags.iter())
                     .map(|d| as_diagnostic(&d.code, d.message.clone()))
                     .collect::<Vec<_>>()
             })
