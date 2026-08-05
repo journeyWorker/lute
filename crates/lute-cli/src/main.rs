@@ -3548,12 +3548,13 @@ fn literal_json(l: &Literal) -> serde_json::Value {
 }
 
 /// A compact human outline of the authoring surface (non-`--json` mode): the
-/// capabilityVersion, directive names + attr keys, enum names WITH their
-/// members, state paths (with enum domains), the referenced reserved quest
-/// paths (dsl 0.5.1 §2), the relational vocabulary (entity kinds, relations
-/// w/ arity+domains+`derive`, seed facts, rules, project-level enums), the
-/// fixed delivery-flag vocabulary (dsl 0.5.1 §3), and component names.
-/// `--json` is the machine surface; this is a short at-a-glance view.
+/// capabilityVersion, directive names + attr keys + semantics flags, enum
+/// names WITH their members, state paths (with enum domains), the referenced
+/// reserved quest paths (dsl 0.5.1 §2), the relational vocabulary (entity
+/// kinds, relations w/ arity+domains+`derive`, seed facts, rules,
+/// project-level enums), the fixed delivery-flag vocabulary (dsl 0.5.1 §3),
+/// and component names. `--json` is the machine surface; this is a short
+/// at-a-glance view.
 fn context_outline(surface: &serde_json::Value) -> String {
     let mut out = String::new();
     let _ = writeln!(
@@ -3573,7 +3574,20 @@ fn context_outline(surface: &serde_json::Value) -> String {
                 .as_array()
                 .map(|a| a.iter().filter_map(|x| x["name"].as_str()).collect())
                 .unwrap_or_default();
-            let _ = writeln!(out, "  {name}{layer}: {}", attrs.join(", "));
+            // #32 / T2.5: `--json` has always carried these and the human
+            // outline dropped them. `mayExitCharacter` is the machine-readable
+            // statement that `::auto` is the construct that ends a presence,
+            // and it is on no page of the shipped website.
+            let semantics: Vec<&str> = d["semantics"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                .unwrap_or_default();
+            let sem = if semantics.is_empty() {
+                String::new()
+            } else {
+                format!("   [{}]", semantics.join(" "))
+            };
+            let _ = writeln!(out, "  {name}{layer}: {}{sem}", attrs.join(", "));
         }
     }
     if let Some(enums) = surface["enums"].as_object() {
