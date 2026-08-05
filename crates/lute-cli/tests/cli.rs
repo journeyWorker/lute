@@ -1456,3 +1456,44 @@ fn context_human_mode_keeps_the_semantics_flags_json_already_carries() {
     let auto = text.lines().find(|l| l.trim_start().starts_with("auto")).expect("auto row");
     assert!(auto.contains("mayExitCharacter"), "{text}");
 }
+
+/// #21 / T3.9: `lute check world.schema.yaml` — the obvious next command —
+/// parsed the YAML schema AS A SCENE and told the author to add `kind:
+/// scene`, which destroys it. A VALID schema must check clean.
+#[test]
+fn check_on_a_yaml_schema_checks_it_as_a_schema_not_as_a_scene() {
+    let dir = temp_dir("check-schema-kind");
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  run.trust: { type: number, default: 0 }\n",
+    )
+    .unwrap();
+    let out = Command::new(BIN)
+        .args(["check", dir.join("world.schema.yaml").to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "a valid schema must check clean: {text}");
+    assert!(!text.contains("E-KIND-MISSING"), "{text}");
+    assert!(!text.contains("E-META-MISSING"), "{text}");
+    assert!(!text.contains("E-UNCLASSIFIED"), "{text}");
+
+    std::fs::write(
+        dir.join("bad.schema.yaml"),
+        "state:\n  app.rating: { type: enum, values: [teen, adult], default: teen }\n",
+    )
+    .unwrap();
+    let bad = Command::new(BIN)
+        .args(["check", dir.join("bad.schema.yaml").to_str().unwrap()])
+        .output()
+        .unwrap();
+    let btext = String::from_utf8_lossy(&bad.stdout).to_string();
+    assert_eq!(bad.status.code(), Some(1), "{btext}");
+    assert!(btext.contains("E-STATE-DECL"), "the REAL defect, named: {btext}");
+    assert!(!btext.contains("E-KIND-MISSING"), "{btext}");
+    // The key's own line, not the whole file at 1:1.
+    assert!(
+        btext.contains("bad.schema.yaml:2:3:"),
+        "anchored at `app.rating`'s own line and column: {btext}"
+    );
+}

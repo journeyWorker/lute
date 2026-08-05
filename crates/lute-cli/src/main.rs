@@ -1102,6 +1102,61 @@ fn caller_resolved_common(
         .collect()
 }
 
+/// Check a `.yaml`/`.yml` state-schema declaration file as a SCHEMA: no
+/// `kind:`, no frontmatter envelope, no body. The whole file IS the
+/// frontmatter, wrapped in a synthetic `Meta` and fed through
+/// `MetaKind::Schema` — byte-for-byte the lift `schema_import::read_and_parse`
+/// performs on the same file kind when it is reached through `uses:`, so the
+/// two surfaces cannot disagree about whether a schema is valid (#21, T3.9).
+///
+/// Rendering, counting and the exit code all go through the same
+/// `CheckResult` path `run_check` uses, so `--json` and the human summary read
+/// identically for a schema and for a scene.
+fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCode {
+    let text = match std::fs::read_to_string(file) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("lute: cannot read {}: {e}", file.display());
+            return ExitCode::from(2);
+        }
+    };
+    let byte_end = text.len();
+    let meta = lute_syntax::ast::Meta {
+        raw_yaml: text,
+        span: Span {
+            byte_start: 0,
+            byte_end,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        },
+    };
+    let (_tm, mut diagnostics) = lute_check::parse_meta_kind(
+        &meta,
+        &CapabilitySnapshot::default(),
+        lute_check::MetaKind::Schema,
+    );
+    // The house zero-then-normalize convention: `meta_key_span` emits byte
+    // offsets and leaves `line`/`column` at zero for `check`'s own pass, which
+    // this surface bypasses.
+    let idx = lute_core_span::TextIndex::new(&meta.raw_yaml);
+    for d in &mut diagnostics {
+        let start = d.span.byte_start.min(byte_end);
+        let end = d.span.byte_end.min(byte_end).max(start);
+        d.span = Span::from_bytes(&idx, start, end);
+    }
+    diagnostics.sort_by(|a, b| {
+        (a.span.byte_start, &a.code).cmp(&(b.span.byte_start, &b.code))
+    });
+    let result = lute_check::CheckResult {
+        ok: !diagnostics.iter().any(|d| d.severity == Severity::Error),
+        diagnostics,
+        resolved: None,
+        domain_use: lute_check::DomainUse::default(),
+    };
+    render_check_result(file, &result, json, policy)
+}
+
 /// Run `check` over one file and print its result. Exit `0` clean / `1` on an
 /// error diagnostic (native OR `--deny`-promoted, spec §5) / `2` on an I/O
 /// failure.
@@ -1112,6 +1167,19 @@ fn run_check(
     project: Option<&Path>,
     policy: &DenyPolicy,
 ) -> ExitCode {
+    // #21 / T3.9: `lute check world.schema.yaml` is the obvious next command
+    // after an E-USES-PARSE, and it parsed the YAML schema AS A SCENE:
+    // E-KIND-MISSING, three E-META-MISSING, and one E-UNCLASSIFIED per line —
+    // the same flood for a perfectly VALID schema, never mentioning the real
+    // defect. An author who follows that advice adds `kind: scene` to their
+    // state schema and destroys it. A `.yaml`/`.yml` target is a pure
+    // declaration map (data-catalog foundation B2) and is checked as one.
+    if matches!(
+        file.extension().and_then(|e| e.to_str()),
+        Some("yaml") | Some("yml")
+    ) {
+        return run_check_schema_yaml(file, json, policy);
+    }
     let Some(built) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
@@ -1153,6 +1221,19 @@ fn run_check(
             .iter()
             .any(|d| d.severity == Severity::Error);
     }
+    render_check_result(file, &result, json, policy)
+}
+
+/// Render one `CheckResult` (`--json` or human) and derive the exit code: `0`
+/// clean, `1` on a native OR `--deny`-promoted error. Shared by `run_check`
+/// and `run_check_schema_yaml` so a schema and a scene cannot drift in
+/// wording, JSON shape or verdict.
+fn render_check_result(
+    file: &Path,
+    result: &lute_check::CheckResult,
+    json: bool,
+    policy: &DenyPolicy,
+) -> ExitCode {
     // §5 verdict: a promoted (denied) diagnostic fails an otherwise-clean run.
     let ok = result.ok && !policy.any_denied(&result.diagnostics);
 
@@ -1160,7 +1241,7 @@ fn run_check(
         // Wrap the promotion at the CLI layer (spec §5): serialize lute-check's
         // own `CheckResult` shape, then overlay `severity: "error"` +
         // `denied: true` on each promoted diagnostic and the promoted `ok`.
-        let mut value = match serde_json::to_value(&result) {
+        let mut value = match serde_json::to_value(result) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("lute: failed to serialize result: {e}");
@@ -1183,7 +1264,7 @@ fn run_check(
             }
         }
     } else {
-        print_human(file, &result, policy);
+        print_human(file, result, policy);
     }
 
     if ok {

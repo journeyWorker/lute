@@ -869,9 +869,23 @@ pub fn parse_meta_kind_with_defaults(
                                 },
                             );
                         }
-                        Err(e) => diags.push(err(
+                        // dsl 0.5.0 §2.2 / #21 T10.2: this arm forwarded
+                        // `serde_yaml`'s own error — "invalid type: unit
+                        // variant, expected newtype variant", or "expected
+                        // struct StateDeclRaw". Neither "unit variant" nor
+                        // "newtype variant" nor `StateDeclRaw` occurs
+                        // anywhere in the docs, the language or YAML, and
+                        // none of them names the wrong key, the missing key,
+                        // the legal shape, or the one nesting level at issue.
+                        // The neighbour `E_STATE_COLLECTION` above already
+                        // writes its message for the author; so does this
+                        // one, through the same `err_at`/`meta_key_span`
+                        // pair, so it anchors at the offending key rather
+                        // than at the whole meta block.
+                        Err(_) => diags.push(err_at(
                             "E-STATE-DECL",
-                            format!("invalid state declaration for `{path}`: {e}"),
+                            state_decl_message(path, decl_val),
+                            meta_key_span(meta, path),
                         )),
                     }
                 }
@@ -884,6 +898,112 @@ pub fn parse_meta_kind_with_defaults(
     }
 
     (typed, diags)
+}
+
+/// `E-STATE-DECL`'s whole message (#21, T10.2): what is wrong with this
+/// declaration and what the legal shape is, written from the YAML the author
+/// typed rather than from `serde_yaml`'s report of how it failed to
+/// deserialize into `StateDeclRaw`.
+///
+/// The library error cannot be forwarded and cannot be replaced by one fixed
+/// sentence either. It says "invalid type: unit variant, expected newtype
+/// variant" for BOTH the nesting mistake (`{ type: enum, values: [...] }`) and
+/// a bare `type: enum`; "missing field `type`" for a declaration without one;
+/// "unknown variant `nonsense`" followed by the entire internal `Type` union
+/// for a bad name; and "expected struct StateDeclRaw" — a Rust type name —
+/// for a non-mapping. One sentence blaming `values:` would be FALSE for four
+/// of those five, which is worse than the serde text it replaces. So the
+/// shape is classified here, from the value the author wrote.
+///
+/// Each arm returns the message WHOLE, as a single `format!` literal, because
+/// `scripts/check-doc-snippets.py` pins every quoted diagnostic against the
+/// scraped literals in `crates/*/src` and measures that they still reproduce
+/// real output. A message assembled from shared `const` fragments resolves to
+/// no literal and drops that floor.
+fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String {
+    let Some(map) = decl.as_mapping() else {
+        return format!(
+            "invalid state declaration for `{path}`: a declaration is a mapping with a \
+             `type:` key — `{{ type: number, default: 0 }}` — but this is {} \
+             (dsl 0.8.0 §4)",
+            yaml_shape(decl)
+        );
+    };
+    let Some(ty) = map.get(yaml_key("type")) else {
+        return format!(
+            "invalid state declaration for `{path}`: the declaration has no `type:` key; \
+             author state is scalar, as `{{ type: number, default: 0 }}`, and an `enum` \
+             NESTS its members inside `type:`, as `{{ type: {{ enum: [...] }} }}` \
+             (dsl 0.8.0 §4)"
+        );
+    };
+    let Some(name) = ty.as_str() else {
+        return format!(
+            "invalid state declaration for `{path}`: the `type:` value is malformed; author \
+             state is scalar, as `{{ type: number, default: 0 }}`, and an `enum` NESTS its \
+             members inside `type:`, as `{{ type: {{ enum: [...] }} }}` (dsl 0.8.0 §4)"
+        );
+    };
+    // `type: enum` is the one scalar type that is INCOMPLETE as a bare name —
+    // its members nest one level inside `type:`. Hoisting them to a sibling
+    // key is the four-word mistake copied straight out of `state-model.md`,
+    // and that one nesting level is the whole of what this diagnostic exists
+    // to say.
+    if name == "enum" {
+        return match ["values", "members", "options"]
+            .into_iter()
+            .find(|k| map.contains_key(yaml_key(k)))
+        {
+            Some(k) => format!(
+                "invalid state declaration for `{path}`: `type: enum` is not complete on its \
+                 own, and a top-level `{k}:` is not a declaration key — an `enum` NESTS its \
+                 members inside `type:`, as `{{ type: {{ enum: [...] }} }}` (dsl 0.8.0 §4)"
+            ),
+            None => format!(
+                "invalid state declaration for `{path}`: `type: enum` declares no members — \
+                 an `enum` NESTS them inside `type:`, as \
+                 `{{ type: {{ enum: [teen, adult] }}, default: teen }}` (dsl 0.8.0 §4)"
+            ),
+        };
+    }
+    // `list`/`record`/`map` name real types, so "unknown type" would be a lie.
+    // They are incomplete as bare names AND barred from author state anyway;
+    // the well-formed spelling lands on `E-STATE-COLLECTION`, whose remedy
+    // this arm repeats verbatim so the two read as one rule.
+    if matches!(name, "list" | "record" | "map") {
+        return format!(
+            "invalid state declaration for `{path}`: `type: {name}` is an incomplete \
+             collection type, and author state cannot declare a collection type in any \
+             case; it is scalar (number|bool|string|enum) — model collections as \
+             `relations:` (dsl 0.3.0 §3) or a plugin `state_shapes` slot"
+        );
+    }
+    if matches!(name, "bool" | "number" | "string") {
+        return format!(
+            "invalid state declaration for `{path}`: `type: {name}` is a valid type, so the \
+             rest of the declaration is what is malformed; a declaration is \
+             `{{ type: {name}, default: ... }}` and nothing else (dsl 0.8.0 §4)"
+        );
+    }
+    format!(
+        "invalid state declaration for `{path}`: unknown type `{name}`; author state is \
+         scalar — `number`, `bool`, `string`, or `enum`, and an `enum` NESTS its members \
+         inside `type:`, as `{{ type: {{ enum: [...] }} }}` (dsl 0.8.0 §4)"
+    )
+}
+
+/// The YAML shape of `v`, for the "but this is …" half of
+/// [`state_decl_message`].
+fn yaml_shape(v: &serde_yaml::Value) -> &'static str {
+    match v {
+        serde_yaml::Value::Null => "an empty value",
+        serde_yaml::Value::Bool(_) => "a boolean",
+        serde_yaml::Value::Number(_) => "a number",
+        serde_yaml::Value::String(_) => "a bare string",
+        serde_yaml::Value::Sequence(_) => "a list",
+        serde_yaml::Value::Tagged(_) => "a tagged value",
+        serde_yaml::Value::Mapping(_) => "a mapping",
+    }
 }
 
 /// Infer the import-role kind of a KIND-LESS root document from its frontmatter
@@ -940,11 +1060,21 @@ fn unrepresentable_yaml(v: &serde_yaml::Value) -> &'static str {
 /// when no key line matches. `line`/`column`/`utf16` are left zeroed —
 /// [`crate::check`]'s `normalize_spans` recomputes them from the byte offsets.
 pub(crate) fn meta_key_span(meta: &Meta, needle: &str) -> Span {
-    // `raw_yaml` is the frontmatter interior sliced verbatim after the 4-byte
-    // `"---\n"` opener (itself included in `meta.span`); a `raw_yaml` offset maps
-    // to the document by adding `meta.span.byte_start + 4`.
+    // `raw_yaml` is usually the frontmatter interior sliced verbatim after the
+    // 4-byte `"---\n"` opener (itself included in `meta.span`), so a `raw_yaml`
+    // offset maps to the document by adding `meta.span.byte_start + 4`.
+    //
+    // A bare `.yaml`/`.yml` state schema (data-catalog foundation B2) has NO
+    // envelope: `schema_import::read_and_parse` and `lute check <schema.yaml>`
+    // both wrap the whole file in a synthetic `Meta` whose `raw_yaml` IS the
+    // span. Adding a delimiter that is not there shifted every key span four
+    // bytes right — a wrong column, and on a short first line a wrong LINE —
+    // so "anchored at the offending key" was only ever true for `.lute` (#21,
+    // T10.2). The two cases are told apart exactly: a real frontmatter span
+    // covers at least `"---\n"` + `"---"` more bytes than its interior.
     const OPENER_LEN: usize = 4; // "---\n"
-    let base = meta.span.byte_start + OPENER_LEN;
+    let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != meta.raw_yaml.len();
+    let base = meta.span.byte_start + if enveloped { OPENER_LEN } else { 0 };
     let at = |start: usize| Span {
         byte_start: start,
         byte_end: start + needle.len(),
@@ -1504,9 +1634,13 @@ mod tests {
         );
         assert_eq!(hits[0].severity, Severity::Error);
         // The span points at the offending KEY, not the whole frontmatter.
+        // `parse_with_snapshot` wraps the YAML in a synthetic whole-file
+        // `Meta` with no `---` envelope, so the offset is direct: until #21
+        // T10.2 `meta_key_span` added the four bytes of an opener that is not
+        // there, and this assertion subtracted them back out.
         assert_eq!(
             &format!("{SCENE_HEAD}difficulty: hard\n")
-                [hits[0].span.byte_start - 4..hits[0].span.byte_end - 4],
+                [hits[0].span.byte_start..hits[0].span.byte_end],
             "difficulty"
         );
         // A schema violation is NOT also an unknown key.
