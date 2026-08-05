@@ -639,3 +639,193 @@ fn single_imported_quest_id_is_recorded_without_a_dup() {
         "expected `q` -> x.lute, got {origin:?}"
     );
 }
+
+// --- #21 (T3.9, T10.2) — a malformed state schema can be diagnosed ---
+
+/// Every diagnostic `check` produced for `text`, spans already normalized.
+fn check_diags(text: &str) -> Vec<lute_core_span::Diagnostic> {
+    let input = CheckInput {
+        text: text.into(),
+        uri: "t".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+        defaults: Default::default(),
+    };
+    check(&input).diagnostics
+}
+
+/// #21 / T3.9: `(1 issue(s))` is a NUMBER, not the issue. The information
+/// plainly exists — something produced the count — and the tree already
+/// carries the precedent: E-COMPONENT-PARSE folds the import's own
+/// diagnostics onto the parent as `related`, and the human renderer already
+/// walks them.
+#[test]
+fn uses_parse_carries_the_imports_own_diagnostics_not_only_a_count() {
+    let dir = unique_dir();
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        // state-model.md:26 verbatim — #10 row c's bug, tested together with
+        // this one exactly as the entry asks.
+        "state:\n  app.rating: { type: enum, values: [teen, adult], default: teen }\n",
+    )
+    .unwrap();
+    let res = resolve_imports(
+        &dir,
+        &["world.schema.yaml".to_string()],
+        &[],
+        zero_span(),
+    );
+    let parent = res
+        .diags
+        .iter()
+        .find(|d| d.code == "E-USES-PARSE")
+        .expect("a malformed import is E-USES-PARSE");
+    assert!(
+        !parent.related.is_empty(),
+        "the vector must not be discarded: {parent:#?}"
+    );
+    assert!(
+        parent
+            .related
+            .iter()
+            .any(|r| r.diagnostic.code == "E-STATE-DECL"),
+        "the child's own code must ride along: {parent:#?}"
+    );
+    assert!(
+        parent
+            .related
+            .iter()
+            .any(|r| r.file.contains("world.schema.yaml")),
+        "the child must be attributed to the IMPORT, not the importer: {parent:#?}"
+    );
+    assert!(
+        parent
+            .message
+            .contains(&format!("({} issue(s))", parent.related.len())),
+        "the count and related.len() must agree: {parent:#?}"
+    );
+}
+
+/// #21 / T10.2: E-STATE-DECL forwarded a serde library error. "Unit variant"
+/// and "newtype variant" occur nowhere in the docs, the language, or YAML.
+/// Its neighbour E-STATE-COLLECTION already writes the message for the
+/// author; this one must too, and must anchor at the offending key rather
+/// than at the whole meta block.
+#[test]
+fn state_decl_names_the_path_the_legal_shape_and_the_nesting_level() {
+    let diags = check_diags(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         state:\n  scene.rating: { type: enum, values: [teen, adult], default: teen }\n---\n\
+         \n## One\n\n@narrator: hi.\n",
+    );
+    let d = diags
+        .iter()
+        .find(|d| d.code == "E-STATE-DECL")
+        .expect("a malformed declaration is E-STATE-DECL");
+    assert!(d.message.contains("scene.rating"), "{}", d.message);
+    assert!(
+        d.message.contains("{ type: { enum: [...] } }"),
+        "the legal shape: {}",
+        d.message
+    );
+    assert!(
+        !d.message.contains("newtype variant"),
+        "serde's vocabulary must not lead: {}",
+        d.message
+    );
+    assert!(
+        d.message.contains("`values:` is not a declaration key"),
+        "the wrong key, named: {}",
+        d.message
+    );
+    assert_eq!(
+        d.span.line, 7,
+        "anchor at the offending key's own line, not the whole meta block at 1:1"
+    );
+}
+
+/// `serde_yaml` says "invalid type: unit variant, expected newtype variant"
+/// for the nesting mistake AND for a bare `type: enum`, "missing field
+/// `type`" for a declaration without one, and "expected struct StateDeclRaw"
+/// — a Rust type name — for a non-mapping. One fixed sentence blaming
+/// `values:` would be FALSE for three of those four, so the message must be
+/// derived from the shape the author actually wrote.
+#[test]
+fn state_decl_advice_matches_the_shape_the_author_wrote() {
+    let msg = |decl: &str| {
+        let text = format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+             state:\n  scene.x: {decl}\n---\n\n## One\n\n@narrator: hi.\n"
+        );
+        let diags = check_diags(&text);
+        let d = diags
+            .iter()
+            .find(|d| d.code == "E-STATE-DECL")
+            .unwrap_or_else(|| panic!("E-STATE-DECL for `{decl}`: {diags:#?}"));
+        assert!(
+            !d.message.contains("variant") && !d.message.contains("StateDeclRaw"),
+            "serde vocabulary leaked for `{decl}`: {}",
+            d.message
+        );
+        d.message.clone()
+    };
+    assert!(msg("5").contains("this is a number"), "{}", msg("5"));
+    assert!(
+        msg("{ default: 3 }").contains("no `type:` key"),
+        "{}",
+        msg("{ default: 3 }")
+    );
+    assert!(
+        msg("{ type: nonsense }").contains("unknown type `nonsense`"),
+        "{}",
+        msg("{ type: nonsense }")
+    );
+    assert!(
+        msg("{ type: enum }").contains("declares no members"),
+        "{}",
+        msg("{ type: enum }")
+    );
+    // `list` NAMES a real type, so "unknown type `list`" would be a lie — and
+    // that is what a single fixed sentence, or a `type:`-name blocklist that
+    // knew only the four scalars, would have printed.
+    let bare_list = msg("{ type: list }");
+    assert!(
+        bare_list.contains("incomplete collection type") && !bare_list.contains("unknown type"),
+        "{bare_list}"
+    );
+}
+
+/// The span fix the two above depend on: `meta_key_span` unconditionally
+/// added the 4 bytes of a `---\n` opener, which a synthetic whole-file
+/// `Meta` (a bare `.yaml` schema, which has no opener) does not have. Off by
+/// four is a wrong column and, on a short first line, a wrong line — so the
+/// "anchored at the offending key" claim was only true for `.lute`.
+#[test]
+fn a_bare_yaml_schemas_key_span_is_not_shifted_by_a_missing_opener() {
+    let dir = unique_dir();
+    std::fs::write(
+        dir.join("w.yaml"),
+        "state:\n  app.rating: { type: enum, values: [teen, adult], default: teen }\n",
+    )
+    .unwrap();
+    let res = resolve_imports(&dir, &["w.yaml".to_string()], &[], zero_span());
+    let parent = res
+        .diags
+        .iter()
+        .find(|d| d.code == "E-USES-PARSE")
+        .expect("E-USES-PARSE");
+    let child = parent
+        .related
+        .iter()
+        .find(|r| r.diagnostic.code == "E-STATE-DECL")
+        .expect("the child diagnostic");
+    // `  app.rating` starts at byte 9: "state:\n" is 7, then two spaces.
+    assert_eq!(
+        child.diagnostic.span.byte_start, 9,
+        "the key's own offset in the imported file: {:#?}",
+        child.diagnostic.span
+    );
+}
