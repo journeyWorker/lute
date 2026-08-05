@@ -558,6 +558,14 @@ fn scenario_envelope_labels_scene_and_quest_possible_guaranteed_differently() {
     assert!(out_quest.status.success(), "{text_quest}");
     assert!(!text_quest.contains("warning-grade reads"), "{text_quest}");
     assert!(text_quest.contains("inventory only"), "{text_quest}");
+    // #33 / T4.10: author-facing output must name nothing the author cannot
+    // look up. `T11` is an internal task label and
+    // `check_quest_guard_defassign` is a Rust function; neither appears
+    // anywhere on the website. The DOC COMMENT above the printer keeps both
+    // deliberately — that reader has the source open, which is exactly the
+    // audience this message was wrongly addressed to.
+    assert!(!text_quest.contains("T11"), "{text_quest}");
+    assert!(!text_quest.contains("check_quest_guard_defassign"), "{text_quest}");
 }
 
 #[test]

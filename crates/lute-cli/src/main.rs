@@ -2603,11 +2603,18 @@ fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::
     print_path_set(&qe.env.possible);
     let warn: BTreeSet<String> =
         qe.env.possible.difference(&qe.env.guaranteed).cloned().collect();
+    // #33 / T4.10: this sentence named `T11` (an internal task label) and
+    // `check_quest_guard_defassign` (a Rust function) at an AUTHOR. Neither
+    // appears anywhere on the website, so neither is lookupable. The
+    // distinction the sentence exists to draw is real and is kept; only the
+    // vocabulary changes. The doc comment above keeps both terms — that reader
+    // has the source open, which is exactly the audience this message was
+    // wrongly addressed to.
     println!(
         "  Possible \\ Guaranteed -- inventory only (paths set on SOME but not every declared \
-         route reaching this quest, dsl §4.4). This is NOT the T11 warning-grade read-site \
-         class -- quest read diagnostics are `check_quest_guard_defassign`'s separate \
-         territory (that class is scene-only, see the scene envelope's own section):"
+         route reaching this quest, dsl §4.4). Unlike a scene's, this list is not a set of \
+         warned read sites: a quest's guard reads are checked where they are written, not \
+         against this table:"
     );
     print_path_set(&warn);
     if qe.enrichment_note {
