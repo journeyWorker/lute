@@ -113,13 +113,13 @@ const E_CEL_PARSE: &str = "E-CEL-PARSE";
 /// slots), so zipping the two same-order sequences pairs each error with its
 /// own slot 1:1.
 fn cel_parse_diagnostics(doc: &Document, cel_errors: Vec<CelParseError>) -> Vec<Diagnostic> {
-    let mut failed: Vec<(&str, Span)> = Vec::new();
+    let mut failed: Vec<(&str, Span, CelKind)> = Vec::new();
     for_each_cel_slot(doc, &mut |slot| {
         if slot.raw.trim().is_empty() {
             return;
         }
         if slot.ast.is_none() {
-            failed.push((slot.raw.as_str(), slot.span));
+            failed.push((slot.raw.as_str(), slot.span, slot.kind));
         }
     });
     debug_assert_eq!(
@@ -131,8 +131,8 @@ fn cel_parse_diagnostics(doc: &Document, cel_errors: Vec<CelParseError>) -> Vec<
     failed
         .into_iter()
         .zip(cel_errors)
-        .map(|((raw, slot_span), err)| {
-            let t = translate_cel_parse(raw, slot_span, &err);
+        .map(|((raw, slot_span, kind), err)| {
+            let t = translate_cel_parse(raw, slot_span, &err, kind);
             Diagnostic {
                 code: E_CEL_PARSE.to_string(),
                 severity: Severity::Error,
