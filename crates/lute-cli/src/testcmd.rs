@@ -127,19 +127,34 @@ struct TestResult {
     refusal: Option<Vec<String>>,
 }
 
-/// Coverage accumulated across every traced path in the run. Names come from
-/// what the reports actually expose (decision outcomes, decision `eligible`
-/// lists); the totals come from each report's own `coverage` counts. Nothing
-/// here is presented as whole-space coverage — only "what these N paths
-/// touched" (D1: trace explains, it never proves).
+/// Coverage accumulated across every traced path in the run, keyed by the
+/// construct's whole-project identity — `"{file}:{id}"` for a branch/hub,
+/// `"{file}:{line}:{column}"` for a match (#24, T9.13). Before 0.10.0 the key
+/// was the guard TEXT, so six `<match on="true">` blocks across four files
+/// rendered as one row reading `3/3`. Nothing here is presented as
+/// whole-space coverage — only "what these N paths touched" (D1: trace
+/// explains, it never proves).
 #[derive(Default)]
 struct CoverageAccum {
-    /// branch/hub id -> (chosen choice ids, choice ids seen eligible, total).
-    choices: BTreeMap<String, (BTreeSet<String>, BTreeSet<String>, usize)>,
-    /// match subject -> (chosen arm outcomes, total arms).
-    arms: BTreeMap<String, (BTreeSet<String>, usize)>,
+    /// key -> (label, chosen choice ids, choice ids seen eligible, total).
+    choices: BTreeMap<String, (String, BTreeSet<String>, BTreeSet<String>, usize)>,
+    /// key -> (label, chosen arm outcomes, total arms).
+    arms: BTreeMap<String, (String, BTreeSet<String>, usize)>,
     /// Number of documents that produced a report (a non-refused trace).
     paths: usize,
+    /// Canonicalised path of every `.lute` that produced a report, so the
+    /// untested set is `walk(dir) \ this \ components` (#24's second half).
+    traced_files: BTreeSet<String>,
+}
+
+/// A path in the one spelling both sides of the untested-set difference can
+/// agree on. `TraceReport.file` comes from `base.join(&rel)` — for
+/// `tests/../scenes/wake.lute` that is NOT what `find_lute_files` yields — so
+/// the difference would report every document as untested without this.
+/// Canonical paths are absolute and machine-specific and are used for the
+/// comparison ONLY; the printed list keeps the walk's own display paths.
+fn canonical_key(p: &std::path::Path) -> String {
+    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()).display().to_string()
 }
 
 /// Run every `*.test.yaml` scenario test under `dir`. See [`crate::Command::Test`].
@@ -168,10 +183,42 @@ pub fn run_test(dir: &Path, json: bool, providers: Option<&Path>, coverage: bool
     let passed = results.iter().filter(|r| r.passed).count();
     let failed = results.len() - passed;
 
-    if json {
-        print_json(&results, coverage.then_some(&cov));
+    // #24's denominator: every `.lute` under this root that no test traced,
+    // MINUS the component documents. `find_lute_files` is the SAME
+    // byte-sorted, symlink-deduped walk `check-project` uses, so the two
+    // surfaces agree about what a document is. Compared on canonical paths,
+    // printed as the walk spelled them.
+    //
+    // A component is filtered out because it is UNTESTABLE, not untested: it
+    // is reached only by `::use` from an importer, it is never the `file:` of
+    // a `*.test.yaml`, and it produces no artifact anyone can execute
+    // (`compile_all::is_component_file`'s own doc makes the identical call for
+    // `--all`). Listing it would print a line no author can ever discharge,
+    // which is the exact shape of the wound this release exists to close. The
+    // component case already has its own honest surface, and it is not this
+    // one: `W-COMPONENT-UNVERIFIED` (dsl 0.10.0 §9 rule 4, D-W) says the
+    // component's contract was not verified, and says who decides.
+    let untested: Vec<String> = if coverage {
+        match crate::find_lute_files(dir) {
+            Ok(all) => all
+                .iter()
+                .filter(|p| !cov.traced_files.contains(&canonical_key(p)))
+                .filter(|p| !crate::compile_all::is_component_file(p))
+                .map(|p| p.display().to_string())
+                .collect(),
+            Err(e) => {
+                eprintln!("lute: cannot walk {} for the untested set: {e}", dir.display());
+                Vec::new()
+            }
+        }
     } else {
-        print_human(dir, &results, coverage.then_some(&cov));
+        Vec::new()
+    };
+
+    if json {
+        print_json(&results, coverage.then_some(&cov), &untested);
+    } else {
+        print_human(dir, &results, coverage.then_some(&cov), &untested);
     }
 
     if failed > 0 {
@@ -453,28 +500,41 @@ fn yaml_key_spelling(message: &str) -> String {
 /// Fold one report's decisions + coverage counts into the run accumulator.
 fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
     cov.paths += 1;
+    cov.traced_files.insert(canonical_key(std::path::Path::new(&report.file)));
     for d in &report.decisions {
         match d.construct.as_str() {
             "branch" | "hub" => {
-                let entry = cov.choices.entry(d.id.clone()).or_default();
-                entry.0.insert(d.outcome.clone());
+                let key = format!("{}:{}", report.file, d.id);
+                let entry = cov
+                    .choices
+                    .entry(key)
+                    .or_insert_with(|| (d.id.clone(), BTreeSet::new(), BTreeSet::new(), 0));
+                entry.1.insert(d.outcome.clone());
                 for e in &d.eligible {
-                    entry.1.insert(e.clone());
+                    entry.2.insert(e.clone());
                 }
             }
             "match" => {
-                cov.arms.entry(d.id.clone()).or_default().0.insert(d.outcome.clone());
+                let key = format!("{}:{}:{}", report.file, d.span.line, d.span.column);
+                let entry =
+                    cov.arms.entry(key).or_insert_with(|| (d.id.clone(), BTreeSet::new(), 0));
+                entry.1.insert(d.outcome.clone());
             }
             _ => {}
         }
     }
-    for (id, c) in &report.coverage.choices {
-        let entry = cov.choices.entry(id.clone()).or_default();
-        entry.2 = entry.2.max(c.total);
+    for c in report.coverage.choices.values() {
+        let key = format!("{}:{}", report.file, c.label);
+        let entry = cov
+            .choices
+            .entry(key)
+            .or_insert_with(|| (c.label.clone(), BTreeSet::new(), BTreeSet::new(), 0));
+        entry.3 = entry.3.max(c.total);
     }
-    for (id, c) in &report.coverage.arms {
-        let entry = cov.arms.entry(id.clone()).or_default();
-        entry.1 = entry.1.max(c.total);
+    for (site, c) in &report.coverage.arms {
+        let key = format!("{}:{site}", report.file);
+        let entry = cov.arms.entry(key).or_insert_with(|| (c.label.clone(), BTreeSet::new(), 0));
+        entry.2 = entry.2.max(c.total);
     }
 }
 
@@ -517,7 +577,12 @@ fn find_test_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 
 /// Human report: one block per test with per-expectation pass/fail lines on a
 /// miss, then a `N passed, M failed` summary and (optional) coverage.
-fn print_human(dir: &Path, results: &[TestResult], cov: Option<&CoverageAccum>) {
+fn print_human(
+    dir: &Path,
+    results: &[TestResult],
+    cov: Option<&CoverageAccum>,
+    untested: &[String],
+) {
     if results.is_empty() {
         println!("no *.test.yaml files under {}", dir.display());
     }
@@ -568,30 +633,26 @@ fn print_human(dir: &Path, results: &[TestResult], cov: Option<&CoverageAccum>) 
     println!("\n{passed} passed, {failed} failed");
 
     if let Some(cov) = cov {
-        print_coverage_human(cov);
+        print_coverage_human(cov, untested);
     }
 }
 
 /// Human coverage view — honest header, chosen/never-chosen names where the
-/// reports expose them, counts where they do not.
-fn print_coverage_human(cov: &CoverageAccum) {
+/// reports expose them, counts where they do not. Every row names its
+/// construct's own file and site; the guard text rides along as a label
+/// (#24, T9.13). `untested` is already filtered to TESTABLE documents by the
+/// caller — components are not in it, and the strings below say so.
+fn print_coverage_human(cov: &CoverageAccum, untested: &[String]) {
     println!("\ncoverage over {} traced path(s):", cov.paths);
     if cov.choices.is_empty() && cov.arms.is_empty() {
         println!("  (no branch/hub or match constructs traced)");
-        return;
     }
-    for (id, (chosen, eligible_seen, total)) in &cov.choices {
+    for (key, (label, chosen, eligible_seen, total)) in &cov.choices {
         let never_named: Vec<&String> = eligible_seen.difference(chosen).collect();
-        let mut line = format!(
-            "  branch/hub {id}: {}/{} chosen",
-            chosen.len().min(*total),
-            total
-        );
+        let mut line =
+            format!("  branch/hub {label} ({key}): {}/{} chosen", chosen.len().min(*total), total);
         if !chosen.is_empty() {
-            line.push_str(&format!(
-                " [{}]",
-                chosen.iter().cloned().collect::<Vec<_>>().join(", ")
-            ));
+            line.push_str(&format!(" [{}]", chosen.iter().cloned().collect::<Vec<_>>().join(", ")));
         }
         if !never_named.is_empty() {
             line.push_str(&format!(
@@ -606,25 +667,39 @@ fn print_coverage_human(cov: &CoverageAccum) {
         }
         println!("{line}");
     }
-    for (id, (chosen, total)) in &cov.arms {
+    for (key, (label, chosen, total)) in &cov.arms {
         let unexecuted = total.saturating_sub(chosen.len());
-        let mut line = format!("  match `{id}`: {}/{} arm(s) executed", chosen.len().min(*total), total);
+        let mut line = format!(
+            "  match `{label}` ({key}): {}/{} arm(s) executed",
+            chosen.len().min(*total),
+            total
+        );
         if !chosen.is_empty() {
-            line.push_str(&format!(
-                " [{}]",
-                chosen.iter().cloned().collect::<Vec<_>>().join(", ")
-            ));
+            line.push_str(&format!(" [{}]", chosen.iter().cloned().collect::<Vec<_>>().join(", ")));
         }
         if unexecuted > 0 {
             line.push_str(&format!("; {unexecuted} unexecuted"));
         }
         println!("{line}");
     }
+    // T9.13's real design hole: coverage accumulated only from reports that
+    // RAN, so deleting a test made its scene invisible rather than untested.
+    // Both strings say "testable", because component documents are out of the
+    // denominator and claiming otherwise is the false-reassurance this whole
+    // task is about.
+    if untested.is_empty() {
+        println!("  every testable document under this root is named by at least one test");
+    } else {
+        println!("  {} untested document(s) — no *.test.yaml names them:", untested.len());
+        for f in untested {
+            println!("    {f}");
+        }
+    }
 }
 
 /// Machine report: per-test verdicts + expectations, the summary, and
 /// (optional) coverage — stable-keyed JSON.
-fn print_json(results: &[TestResult], cov: Option<&CoverageAccum>) {
+fn print_json(results: &[TestResult], cov: Option<&CoverageAccum>, untested: &[String]) {
     use serde_json::{json, Value};
 
     let tests: Vec<Value> = results
@@ -667,12 +742,13 @@ fn print_json(results: &[TestResult], cov: Option<&CoverageAccum>) {
         let choices: serde_json::Map<String, Value> = cov
             .choices
             .iter()
-            .map(|(id, (chosen, eligible_seen, total))| {
+            .map(|(key, (label, chosen, eligible_seen, total))| {
                 let never_named: Vec<&String> = eligible_seen.difference(chosen).collect();
                 let unseen = total.saturating_sub(chosen.len() + never_named.len());
                 (
-                    id.clone(),
+                    key.clone(),
                     json!({
+                        "label": label,
                         "total": total,
                         "chosen": chosen.iter().cloned().collect::<Vec<_>>(),
                         "neverChosen": never_named.iter().map(|s| (*s).clone()).collect::<Vec<_>>(),
@@ -684,10 +760,11 @@ fn print_json(results: &[TestResult], cov: Option<&CoverageAccum>) {
         let arms: serde_json::Map<String, Value> = cov
             .arms
             .iter()
-            .map(|(id, (chosen, total))| {
+            .map(|(key, (label, chosen, total))| {
                 (
-                    id.clone(),
+                    key.clone(),
                     json!({
+                        "label": label,
                         "total": total,
                         "executed": chosen.iter().cloned().collect::<Vec<_>>(),
                         "unexecuted": total.saturating_sub(chosen.len()),
@@ -699,6 +776,7 @@ fn print_json(results: &[TestResult], cov: Option<&CoverageAccum>) {
             "tracedPaths": cov.paths,
             "choices": Value::Object(choices),
             "arms": Value::Object(arms),
+            "untested": untested,
         });
     }
 

@@ -143,22 +143,36 @@ pub struct UnresolvedEntry {
 }
 
 /// Visited/total counts for one construct (§4.6: `"choices visited 1/3
-/// (sofaHelp), arms 1/2 (match run.metHelpfully)"`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
+/// (sofaHelp), arms 1/2 (match run.metHelpfully)"`), plus the construct's
+/// authored LABEL. The label is not the identity — that is the whole point of
+/// #24/T9.13: six `<match on="true">` blocks share a label and are six
+/// constructs.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct CoverageCount {
     pub visited: usize,
     pub total: usize,
+    /// A `<branch>`/`<hub>`'s declared `id`, or a `<match>` subject's raw
+    /// (post-expand) CEL text. Rendered beside the site; never keyed on.
+    pub label: String,
 }
 
-/// Coverage counters per construct (§4.4's own text): `choices` keys a
-/// `<branch>`/`<hub>` by its declared `id`; `arms` keys a `<match>` by its
-/// subject's raw (post-expand) CEL text — the only stable label a `<match>`
-/// carries, since it has no `id` attribute. `BTreeMap` (deterministic key
-/// order, §4.5).
+/// Coverage counters per construct. `choices` keys a `<branch>`/`<hub>` by its
+/// declared `id`, which is document-unique by `E-DUP-BRANCH`. `arms` keys a
+/// `<match>` by its own SITE — `"{line}:{column}"` of its span — because a
+/// `<match>` has no id at all, and keying on the subject's TEXT is what made
+/// eight blocks render as three rows, with `3/3` certifying a set of six
+/// blocks no traced path ever visited together (#24, T9.13). A string key
+/// keeps `render_json` total and the order deterministic (§4.5).
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Coverage {
     pub choices: BTreeMap<String, CoverageCount>,
     pub arms: BTreeMap<String, CoverageCount>,
+}
+
+/// The site key for a construct's span: `"{line}:{column}"`. Document-unique
+/// by construction — no two constructs open at one position.
+pub fn site_key(span: &Span) -> String {
+    format!("{}:{}", span.line, span.column)
 }
 
 /// The §4.5 output contract. Field order (declaration order = serde
@@ -260,11 +274,11 @@ impl TraceReport {
         }
         if !self.coverage.choices.is_empty() || !self.coverage.arms.is_empty() {
             let mut parts = Vec::new();
-            for (id, c) in &self.coverage.choices {
-                parts.push(format!("choices {}/{} ({id})", c.visited, c.total));
+            for c in self.coverage.choices.values() {
+                parts.push(format!("choices {}/{} ({})", c.visited, c.total, c.label));
             }
-            for (id, c) in &self.coverage.arms {
-                parts.push(format!("arms {}/{} ({id})", c.visited, c.total));
+            for (site, c) in &self.coverage.arms {
+                parts.push(format!("arms {}/{} ({} @{site})", c.visited, c.total, c.label));
             }
             out.push_str(&format!("; {}", parts.join(", ")));
         }

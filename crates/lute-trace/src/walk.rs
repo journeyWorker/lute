@@ -130,12 +130,19 @@ impl<'a> Walk<'a> {
         self.coverage_choices
             .entry(id.to_string())
             .and_modify(|c| c.visited += 1)
-            .or_insert(CoverageCount { visited: 1, total });
+            .or_insert(CoverageCount { visited: 1, total, label: id.to_string() });
     }
 
     fn record_match_decision(&mut self, id: &str, span: Span, outcome: String, guard: Option<String>, total: usize) {
         self.push_decision("match", id, span, outcome, guard, false, false, Vec::new());
-        self.coverage_arms.insert(id.to_string(), CoverageCount { visited: 1, total });
+        // Keyed on the SITE, not the subject text. `record_choice_decision`
+        // above keeps the branch/hub id: its `span` is the CHOSEN CHOICE's
+        // (`walk_branch`/`walk_hub` pass the choice span), so keying on it
+        // would split one branch into one row per arm.
+        self.coverage_arms.insert(
+            crate::report::site_key(&span),
+            CoverageCount { visited: 1, total, label: id.to_string() },
+        );
     }
 
     /// §3.2 de-duplication: the unresolved set MUST report a byte-identical
@@ -548,8 +555,12 @@ fn walk_match(m: &Match, w: &mut Walk<'_>) -> Flow {
                         let expr = render_guard_text(is.as_ref(), &test.raw).unwrap_or_default();
                         w.record_unresolved("match", &subject_raw, m.span, expr, atoms);
                         w.coverage_arms
-                            .entry(subject_raw.clone())
-                            .or_insert(CoverageCount { visited: 0, total: total_arms });
+                            .entry(crate::report::site_key(&m.span))
+                            .or_insert(CoverageCount {
+                                visited: 0,
+                                total: total_arms,
+                                label: subject_raw.clone(),
+                            });
                         return Flow::Incomplete;
                     }
                 }
@@ -557,9 +568,11 @@ fn walk_match(m: &Match, w: &mut Walk<'_>) -> Flow {
         }
     }
     w.push_decision("match", &subject_raw, m.span, "no arm".to_string(), None, false, false, Vec::new());
-    w.coverage_arms
-        .entry(subject_raw)
-        .or_insert(CoverageCount { visited: 0, total: total_arms });
+    w.coverage_arms.entry(crate::report::site_key(&m.span)).or_insert(CoverageCount {
+        visited: 0,
+        total: total_arms,
+        label: subject_raw,
+    });
     Flow::Continue
 }
 
@@ -619,7 +632,7 @@ fn walk_branch(b: &Branch, w: &mut Walk<'_>) -> Flow {
         w.record_unresolved("branch", &b.id, b.span, "eligibility".to_string(), atoms);
         w.coverage_choices
             .entry(b.id.clone())
-            .or_insert(CoverageCount { visited: 0, total });
+            .or_insert(CoverageCount { visited: 0, total, label: b.id.clone() });
         return Flow::Incomplete;
     };
 
@@ -734,7 +747,7 @@ fn walk_hub(h: &Hub, w: &mut Walk<'_>) -> Flow {
             w.record_unresolved("hub", &id, h.span, "exit eligibility".to_string(), unknown_atoms);
             w.coverage_choices
                 .entry(id.clone())
-                .or_insert(CoverageCount { visited: 0, total });
+                .or_insert(CoverageCount { visited: 0, total, label: id.clone() });
             Flow::Incomplete
         }
     }

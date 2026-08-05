@@ -72,7 +72,8 @@ lute check-project docs/examples/anseo
 
 # The 31 scenario tests. Exits 0, 31 passed.
 lute test docs/examples/anseo
-lute test docs/examples/anseo --coverage    # 15 rows; three are permanently red
+lute test docs/examples/anseo --coverage    # 24 rows (5 branch/hub, 19 match);
+                                            # 5 match rows have an unexecuted arm
 
 # The prerequisite graph: 11 scenes over 9 topological layers, and 19 edges —
 # 12 scene-to-scene, 5 from a scene to one of the five quests that declare

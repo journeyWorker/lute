@@ -50,7 +50,7 @@ const INDEX_FILE: &str = "project.index.json";
 ///
 /// Schema documents need no rule at all — they are `*.schema.yaml`, and
 /// [`crate::find_lute_files`] only ever yields `*.lute`.
-fn is_component_file(path: &Path) -> bool {
+pub(crate) fn is_component_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|n| n.to_str())
         .is_some_and(|n| n.ends_with(".component.lute"))
