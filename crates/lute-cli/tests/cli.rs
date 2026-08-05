@@ -1327,3 +1327,112 @@ fn test_file_key_resolves_relative_to_the_test_file_not_the_cwd() {
     assert_eq!(out.status.code(), Some(0), "{text}");
     assert!(text.contains("1 passed, 0 failed"), "{text}");
 }
+
+/// #24 / T9.13: the coverage key was the guard's TEXT, not the construct's
+/// identity, so two `<match on="true">` blocks in one document collapsed into
+/// one row reading `3/3` — the tool's only false statement, and its most
+/// reassuring one.
+#[test]
+fn coverage_keys_on_the_construct_not_on_the_guard_text() {
+    let dir = temp_dir("coverage-per-site");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+         \n## One\n\n\
+         <match on=\"true\">\n<when is=\"true\">\n@narrator: first.\n</when>\n\
+         <otherwise>\n@narrator: first-else.\n</otherwise>\n</match>\n\
+         <match on=\"true\">\n<when is=\"true\">\n@narrator: second.\n</when>\n\
+         <otherwise>\n@narrator: second-else.\n</otherwise>\n</match>\n",
+    );
+    write_at(&dir, "t.test.yaml", "file: s.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN)
+        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "{text}");
+
+    let rows: Vec<&str> = text.lines().filter(|l| l.trim_start().starts_with("match ")).collect();
+    assert_eq!(rows.len(), 2, "two blocks, two rows — not one collapsed row: {text}");
+    assert_ne!(rows[0], rows[1], "the two rows must be distinguishable: {text}");
+    assert!(
+        rows.iter().all(|r| r.contains("`true`")),
+        "the guard text survives as a LABEL: {text}"
+    );
+}
+
+/// #24's second half, which T9.13 names as the real design hole: coverage
+/// accumulated only from reports that RAN, so deleting a test made its scene
+/// silently invisible rather than untested. `lute test` walks the project, so
+/// the denominator was already in hand.
+#[test]
+fn coverage_reports_documents_with_no_test_at_all() {
+    let dir = temp_dir("coverage-denominator");
+    write_at(
+        &dir,
+        "tested.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n@narrator: a.\n",
+    );
+    write_at(
+        &dir,
+        "untested.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 2\n---\n\n## One\n\n@narrator: b.\n",
+    );
+    write_at(&dir, "t.test.yaml", "file: tested.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN)
+        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "{text}");
+    assert!(text.contains("untested document"), "{text}");
+    assert!(text.contains("untested.lute"), "{text}");
+}
+
+/// The denominator's other half, and the one that decides whether the list is
+/// worth printing: a component document is **untestable**, not untested. It is
+/// reached only by `::use`, it is never a `*.test.yaml`'s `file:`, and it
+/// emits no artifact — `compile_all::is_component_file` already makes exactly
+/// this call for `--all`. An entry no author can discharge is not a finding,
+/// it is noise that trains the reader to ignore the list; and the component
+/// case is already covered, honestly, by `W-COMPONENT-UNVERIFIED`.
+#[test]
+fn untested_denominator_excludes_component_documents() {
+    let dir = temp_dir("coverage-denominator-components");
+    write_at(
+        &dir,
+        "tested.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         components: [greet.component.lute]\n---\n\n## One\n\n\
+         ::use{component=\"greet\" who=\"x\"}\n",
+    );
+    write_at(
+        &dir,
+        "greet.component.lute",
+        "---\ncomponent: greet\nparams:\n  who: string\n---\n\n## Body\n\n@narrator: hi.\n",
+    );
+    write_at(
+        &dir,
+        "untested.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 2\n---\n\n## One\n\n@narrator: b.\n",
+    );
+    write_at(&dir, "t.test.yaml", "file: tested.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN)
+        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "{text}");
+    // The scene no test names is listed — the filter must not swallow it.
+    assert!(text.contains("untested.lute"), "{text}");
+    // The component is NOT, although no test names it either. `::use`d, not
+    // named: there is no `*.test.yaml` an author could write to discharge it.
+    assert!(
+        !text.contains("greet.component.lute"),
+        "a component is untestABLE, not untested — listing it prints a line no \
+         author can discharge; W-COMPONENT-UNVERIFIED is that document's \
+         surface. Got:\n{text}"
+    );
+    assert!(text.contains("1 untested document"), "exactly one, not two: {text}");
+}

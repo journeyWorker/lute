@@ -72,6 +72,19 @@ fn assert_refused(exit: &TraceExit) -> &[lute_core_span::Diagnostic] {
     }
 }
 
+/// `Coverage.arms` is keyed on the `<match>`'s SITE as of 0.10.0 (#24,
+/// T9.13) — the subject text is a LABEL now, and two blocks sharing one
+/// subject are two entries. Look the row up by label and assert the label is
+/// unambiguous in this report, which is the property the re-keying bought.
+fn arms_cov_for(
+    report: &lute_trace::TraceReport,
+    label: &str,
+) -> lute_trace::CoverageCount {
+    let hits: Vec<_> = report.coverage.arms.values().filter(|c| c.label == label).collect();
+    assert_eq!(hits.len(), 1, "expected exactly one `{label}` match site: {:?}", report.coverage.arms);
+    hits[0].clone()
+}
+
 // ---------------------------------------------------------------------
 // 1. auto_pick_and_forced_pick — §4.6 worked example, both selection modes.
 // ---------------------------------------------------------------------
@@ -114,7 +127,7 @@ fn auto_pick_and_forced_pick() {
     assert_eq!(m.outcome, "arm 1");
     let choices_cov = report.coverage.choices.get("sofaHelp").expect("branch coverage entry");
     assert_eq!((choices_cov.visited, choices_cov.total), (1, 3));
-    let arms_cov = report.coverage.arms.get("run.metHelpfully").expect("match coverage entry");
+    let arms_cov = arms_cov_for(&report, "run.metHelpfully");
     assert_eq!((arms_cov.visited, arms_cov.total), (1, 2));
 }
 
@@ -288,7 +301,7 @@ fn no_arm_match_reports_and_continues() {
     );
 
     // (c) coverage: no arm was visited out of the 2 declared.
-    let arms_cov = report.coverage.arms.get("run.flag").expect("match coverage entry");
+    let arms_cov = arms_cov_for(&report, "run.flag");
     assert_eq!((arms_cov.visited, arms_cov.total), (0, 2));
 }
 
@@ -545,7 +558,7 @@ fn unmocked_quest_state_match_fires_unset_arm_not_no_arm() {
     assert_eq!(d.outcome, "arm 4", "{d:?}"); // "unset" is the 4th `<when>`
     assert_eq!(d.guard.as_deref(), Some("is=\"unset\""), "{d:?}");
 
-    let arms_cov = report.coverage.arms.get("quest.foo.state").expect("match coverage entry");
+    let arms_cov = arms_cov_for(&report, "quest.foo.state");
     assert_eq!((arms_cov.visited, arms_cov.total), (1, 4));
 
     assert!(
@@ -571,7 +584,7 @@ fn unmocked_objective_done_match_fires_false_arm_not_no_arm() {
     assert_eq!(d.outcome, "arm 2", "{d:?}"); // "false" is the 2nd `<when>`
     assert_eq!(d.guard.as_deref(), Some("is=\"false\""), "{d:?}");
 
-    let arms_cov = report.coverage.arms.get("quest.foo.objectives.bar.done").expect("match coverage entry");
+    let arms_cov = arms_cov_for(&report, "quest.foo.objectives.bar.done");
     assert_eq!((arms_cov.visited, arms_cov.total), (1, 2));
 
     assert!(
