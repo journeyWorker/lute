@@ -322,7 +322,7 @@ mod tests {
         Artifact {
             kind: DocKind::Scene,
             lute: "0.9.0".to_string(),
-            ir_version: "0.9.0".to_string(),
+            ir_version: "0.10.0".to_string(),
             capability_version: capability.to_string(),
             meta: ArtifactMeta::Scene(SceneMeta {
                 character: character.to_string(),

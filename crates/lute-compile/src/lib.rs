@@ -48,15 +48,17 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// IR schema version stamped into the envelope's `irVersion` field (spec §4.1,
 /// A9). Tracked as its own axis from [`LUTE_LANG_VERSION`] — the two are
 /// separate pins (T13) — but per `docs/versioning.md` a release RE-ALIGNS every
-/// visible number to that release's number, so 0.9.0 stamps 0.9.0 here.
+/// visible number to that release's number, so 0.10.0 stamps 0.10.0 here.
 ///
-/// IR 0.9.0 is **shape-identical** to 0.8.0: no artifact field was added,
-/// renamed, moved, or retyped, and `schemas/lute-ir-0.9.schema.json` is the
-/// 0.8 schema renamed. Because engines gate by major.minor and MUST refuse a
-/// newer one (`docs/runtime/execution-model.md`), a 0.8 engine will refuse a
-/// 0.9.0 artifact until it widens its gate — and widening the gate is the
-/// ONLY change it needs.
-pub const LUTE_IR_VERSION: &str = "0.9.0";
+/// IR 0.10.0 is a REAL shape change, not a restamp: `Provenance.reason` is
+/// renamed to `Provenance.explanation` (#36, Appendix B), and
+/// `schemas/lute-ir-0.10.schema.json` is the published contract. Because
+/// engines gate by major.minor and MUST refuse a newer one
+/// (`docs/runtime/execution-model.md`), a 0.9 engine will refuse a 0.10.0
+/// artifact until it widens its gate — and the provenance rename is the only
+/// other edit it needs. `schemas/lute-ir-0.9.schema.json` is kept for engines
+/// still on 0.9.
+pub const LUTE_IR_VERSION: &str = "0.10.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -745,13 +747,17 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.9.0 axis alignment (docs/versioning.md): a release re-aligns the
-        // visible numbers to that release's number, so LANGUAGE and IR both
-        // read 0.9.0. The IR bump is a PURE RESTAMP — no artifact field was
-        // added, renamed, or moved, and lute-ir-0.9.schema.json is the 0.8
-        // schema renamed. The two stamps stay independently tracked pins
-        // (T13); this release simply lands them on the same number.
-        assert_eq!(super::LUTE_IR_VERSION, "0.9.0");
+        // 0.10.0 axis alignment (docs/versioning.md): a release re-aligns the
+        // visible numbers to that release's number. IR reads 0.10.0 here; the
+        // IR bump is EARNED, not a restamp — `Provenance.reason` became
+        // `Provenance.explanation` (#36), and `lute-ir-0.10.schema.json` is
+        // the published contract. `LUTE_LANG_VERSION` still reads 0.9.0: it
+        // moves in the Release phase with the corpus restamp, because bumping
+        // it fires `W-LUTE-VERSION-STALE` on every `luteVersion: "0.9.0"`
+        // document in `docs/examples`. The two stamps are independently
+        // tracked pins (T13), and this is the release where they diverge
+        // mid-flight.
+        assert_eq!(super::LUTE_IR_VERSION, "0.10.0");
         assert_eq!(super::LUTE_LANG_VERSION, "0.9.0");
     }
 
@@ -762,7 +768,7 @@ mod tests {
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
         assert_eq!(v["lute"], "0.9.0");
-        assert_eq!(v["irVersion"], "0.9.0");
+        assert_eq!(v["irVersion"], "0.10.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

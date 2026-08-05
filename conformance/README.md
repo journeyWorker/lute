@@ -44,7 +44,7 @@ a plain `diff`.
 ```json
 {
   "kind":       "scene" | "quest",
-  "irVersion":  "0.9",                 // the major.minor line the engine gated on
+  "irVersion":  "0.10",                // the major.minor line the engine gated on
   "exit":       "complete" | "incomplete",
   "commands":   [ /* executed records, in execution order */ ],
   "state":      { "<path>": <value>, ... },   // final scalar state, key-sorted
