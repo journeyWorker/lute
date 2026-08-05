@@ -63,8 +63,9 @@
 //! accumulator — the pure-reducer analogue of a third return value. The four
 //! semantic fields the contract lists (`on_stage`, `dirty`, `bg`, `music`) are
 //! present verbatim; `diags` is the additive diagnostic channel the T4.9
-//! `Resolved` view reads alongside the injections. As of 0.10.0 §12.3 the only
-//! code it carries is `E-DOMAIN-UNKNOWN` from [`missing_anchor_domain_diag`].
+//! `Resolved` view reads alongside the injections. It carries
+//! `E-DOMAIN-UNKNOWN` from [`missing_anchor_domain_diag`] and, as of 0.10.0
+//! §11.2, [`W_EXIT_INERT`] from [`exit_inert_diag`].
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -169,7 +170,7 @@ pub fn lower_node(
             // Bookkeeping only: no implicit command.
             state.music = attr_str(&d.attrs, "mood").or_else(|| attr_str(&d.attrs, "action"));
         }
-        Node::Line(l) => lower_line(&mut state, l, &mut emit),
+        Node::Line(l) => lower_line(&mut state, l, lookahead, &mut emit, domains),
         // Other leaf directives (sfx/vfx/cut/video/camera) and Set/Branch/Match/
         // Timeline don't participate in stage-entity lifetime here.
         _ => {}
@@ -318,9 +319,39 @@ fn entry_emotion_lookahead(
 /// plain, non-stateful `:line` (no pose/emotion/variant override) gets an
 /// injected `posReset` first, restoring the neutral pose; the dirty flag clears.
 /// A stateful line instead applies its own sprite state and (re)marks dirty.
-fn lower_line(state: &mut StageState, line: &Line, emit: &mut Vec<InjectedCommand>) {
+///
+/// dsl 0.10.0 §11.2 (**D-X**): also the site of [`W_EXIT_INERT`]. The resolved
+/// `action` domain is demonstrably in hand here — `content_line.rs` already
+/// enumerates its members on this exact attribute for `E-BAD-ENUM` — and the
+/// reducer already consults `exits:` one construct away, in [`lower_auto`]. The
+/// missing piece was only ever a lookup.
+fn lower_line(
+    state: &mut StageState,
+    line: &Line,
+    lookahead: &[Node],
+    emit: &mut Vec<InjectedCommand>,
+    domains: &BTreeMap<String, Domain>,
+) {
     let speaker = &line.speaker;
     let stateful = line_is_stateful(line);
+
+    // §11.2: a content-line `action=` naming a declared exit member. The
+    // attribute IS honoured as an action — the sprite's pose changes below —
+    // and it does NOT remove the character from the stage; the artifact gets no
+    // `exit` record. That gap is the whole finding. Silent when the author
+    // already wrote the two-event form, which is remedy 1 (see
+    // [`exit_is_written_next`]).
+    if let Some(a) = line.attrs.iter().find(|a| a.key == "action") {
+        if let Some(action) = attr_value_str(&a.value) {
+            if is_declared_exit(&action, domains)
+                && !exit_is_written_next(speaker, lookahead, domains)
+            {
+                state
+                    .diags
+                    .push(exit_inert_diag(speaker, &action, a.value_span));
+            }
+        }
+    }
 
     if !stateful && state.dirty.contains(speaker) && state.on_stage.contains_key(speaker) {
         emit.push(InjectedCommand {
@@ -463,6 +494,73 @@ fn attr_value_str(value: &AttrValue) -> Option<String> {
         AttrValue::Str(s) => Some(s.clone()),
         AttrValue::Ref(slot) => Some(slot.raw.clone()),
         AttrValue::BoolTrue => None,
+    }
+}
+
+/// Whether the **two-event form** is written for `speaker` at this point:
+/// scanning forward, the first node that concerns that character's stage
+/// presence is an `::auto` whose `action` is a declared exit member.
+///
+/// This lookahead is not an optimisation. Spec §11.2 remedy 1 (**D-AD**) says
+/// in as many words that writing the departure where it happens *discharges*
+/// [`W_EXIT_INERT`] — so without this the message would name a remedy that does
+/// not work, which is the exact defect §12.3 removes a code for. Anything else
+/// the character does first (speaking again, being re-posed, or a `::bg` scene
+/// change that auto-hides the whole stage) means the later exit is not this
+/// line's departure, and the value on this line really is a pose.
+fn exit_is_written_next(
+    speaker: &str,
+    lookahead: &[Node],
+    domains: &BTreeMap<String, Domain>,
+) -> bool {
+    for node in lookahead {
+        match node {
+            Node::Directive(d) if d.tag == "bg" => return false,
+            Node::Directive(d) if d.tag == "auto" => {
+                if attr_str(&d.attrs, "character").as_deref() == Some(speaker) {
+                    return attr_str(&d.attrs, "action")
+                        .is_some_and(|a| is_declared_exit(&a, domains));
+                }
+            }
+            Node::Line(l) if l.speaker == speaker => return false,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// `W-EXIT-INERT`: a content-line `action=` whose value is a member of the
+/// resolved `action` domain's `exits:` (dsl 0.10.0 §11.2, **D-X**).
+pub const W_EXIT_INERT: &str = "W-EXIT-INERT";
+
+/// Build the `W-EXIT-INERT` staging-layer warning.
+///
+/// **D-AD**: the message names BOTH remedies, in as many words. §12.3 removes
+/// `W-INJECT-CONFLICT` in this same release for having no expressible remedy —
+/// there is no `--allow` and no in-source acknowledgement (`0.6.1 §6`,
+/// untouched) — so a warning added here must not repeat that defect. The
+/// second remedy is also the argument for keeping the warning at all: if a
+/// project declares `go-under` an exit, then in that project `go-under` MEANS
+/// exit, and a pose sharing the name is ambiguous by construction. The
+/// ambiguity lives in the vocabulary, which is where it is fixed.
+fn exit_inert_diag(speaker: &str, action: &str, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: W_EXIT_INERT.to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "`{action}` is a declared exit of the `action` domain, but on a content line it is \
+             honoured as an action and does NOT remove `{speaker}` from the stage — the artifact \
+             gets no `exit` record. Either write the two-event form (keep this line, then \
+             `::auto{{character=\"{speaker}\" action=\"{action}\"}}`), or, if `{action}` is a \
+             pose rather than a departure, remove it from the `action` domain's `exits:` \
+             (dsl 0.10.0 §11.2)"
+        ),
+        span,
+        layer: Layer::Staging,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
     }
 }
 
@@ -926,5 +1024,147 @@ mod tests {
             st.diags
         );
         assert_eq!(st.on_stage["bianca"].anchor.as_deref(), Some("center"));
+    }
+
+    // --- 0.10.0 §11.2 (D-X): a declared-exit member in content-line `action=` ---
+
+    fn action_domain_with_exits(exits: &[&str]) -> BTreeMap<String, Domain> {
+        let mut m = BTreeMap::new();
+        m.insert(
+            "action".to_string(),
+            Domain {
+                members: vec!["brace".into(), "drift".into(), "go-under".into()],
+                open: false,
+                default: None,
+                exits: exits.iter().map(|s| (*s).to_string()).collect(),
+            },
+        );
+        m
+    }
+
+    fn line_with_action(speaker: &str, action: &str) -> Node {
+        line(speaker, vec![attr("action", action)])
+    }
+
+    fn staged(character: &str) -> StageState {
+        let mut st = StageState::default();
+        st.on_stage
+            .insert(character.to_string(), SpriteState::default());
+        st
+    }
+
+    /// The attribute is honoured as an action and does NOT remove the character
+    /// from the stage. The two-event form is what does.
+    #[test]
+    fn content_line_exit_action_warns_inert() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let line = line_with_action("vesna", "go-under");
+        let (st2, _emit) = lower_node(staged("vesna"), &line, &[], &doms);
+        let d = st2
+            .diags
+            .iter()
+            .find(|d| d.code == "W-EXIT-INERT")
+            .unwrap_or_else(|| panic!("expected W-EXIT-INERT; got {:?}", st2.diags));
+        assert_eq!(d.severity, Severity::Warning);
+        assert_eq!(d.layer, Layer::Staging);
+        assert!(
+            st2.on_stage.contains_key("vesna"),
+            "the attribute is honoured as an ACTION; it does not remove the character"
+        );
+    }
+
+    /// **D-AD**: the message names BOTH remedies. A warning whose remedy exists
+    /// but is undocumented is `W-UNPROVEN-RELATIONAL` again by another route,
+    /// and §12.3 removes a code in this same release for exactly that defect.
+    #[test]
+    fn exit_inert_message_names_both_remedies() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let line = line_with_action("vesna", "go-under");
+        let (st2, _emit) = lower_node(staged("vesna"), &line, &[], &doms);
+        let m = &st2
+            .diags
+            .iter()
+            .find(|d| d.code == "W-EXIT-INERT")
+            .unwrap()
+            .message;
+        assert!(
+            m.contains("::auto{"),
+            "remedy 1, the two-event form, must be written out; got {m}"
+        );
+        assert!(
+            m.contains("exits:"),
+            "remedy 2, stop declaring that member an exit, must be named; got {m}"
+        );
+    }
+
+    /// An ordinary (non-exit) action member on a content line is silent — that
+    /// is the overwhelmingly common case and it is not the finding.
+    #[test]
+    fn content_line_non_exit_action_is_silent() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let line = line_with_action("vesna", "brace");
+        let (st2, _emit) = lower_node(staged("vesna"), &line, &[], &doms);
+        assert!(
+            !st2.diags.iter().any(|d| d.code == "W-EXIT-INERT"),
+            "`brace` is not in `exits:`; got {:?}",
+            st2.diags
+        );
+    }
+
+    /// A project that declares no `exits:` at all cannot produce this warning.
+    #[test]
+    fn no_declared_exits_means_no_warning() {
+        let doms = action_domain_with_exits(&[]);
+        let line = line_with_action("vesna", "go-under");
+        let (st2, _emit) = lower_node(staged("vesna"), &line, &[], &doms);
+        assert!(st2.diags.is_empty(), "got {:?}", st2.diags);
+    }
+
+    /// **D-AD remedy 1**, which spec §11.2 says *discharges* the warning: keep
+    /// the line and follow it with the `::auto` that actually leaves. The
+    /// message names this remedy, so the remedy must work.
+    #[test]
+    fn exit_inert_discharged_by_the_two_event_form() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let look = [auto(vec![
+            attr("character", "vesna"),
+            attr("action", "go-under"),
+        ])];
+        let (st2, _emit) = lower_node(
+            staged("vesna"),
+            &line_with_action("vesna", "go-under"),
+            &look,
+            &doms,
+        );
+        assert!(
+            st2.diags.is_empty(),
+            "the two-event form discharges it (§11.2 remedy 1); got {:?}",
+            st2.diags
+        );
+    }
+
+    /// The pose case is still the finding: the character keeps speaking, so the
+    /// exit written later is not this line's departure.
+    #[test]
+    fn exit_inert_still_fires_when_the_speaker_carries_on() {
+        let doms = action_domain_with_exits(&["go-under"]);
+        let look = [
+            line("vesna", vec![]),
+            auto(vec![
+                attr("character", "vesna"),
+                attr("action", "go-under"),
+            ]),
+        ];
+        let (st2, _emit) = lower_node(
+            staged("vesna"),
+            &line_with_action("vesna", "go-under"),
+            &look,
+            &doms,
+        );
+        assert!(
+            st2.diags.iter().any(|d| d.code == "W-EXIT-INERT"),
+            "`go-under` here is a pose, not a departure; got {:?}",
+            st2.diags
+        );
     }
 }
