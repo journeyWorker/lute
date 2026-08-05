@@ -26,6 +26,7 @@ pub mod reachability;
 pub mod rel_schema;
 pub mod schema_import;
 pub mod set_op;
+pub mod set_type;
 pub mod tag;
 pub mod temporal;
 pub mod timeline;

@@ -1109,6 +1109,13 @@ impl Walker<'_> {
                 }
                 Node::Set(s) => {
                     self.diags.extend(check_set(s, &ctx.env.state, ctx));
+                    // dsl 0.10.0 §3: the RHS half `set_op` explicitly does not
+                    // do (`set_op.rs:27-29`).
+                    self.diags.extend(crate::set_type::check_set_type(
+                        s,
+                        self.arena,
+                        &ctx.env.state,
+                    ));
                     let expected = resolve_type(&s.path, &ctx.env.state)
                         .cloned()
                         .map(ExpectedType::Ty);
@@ -1254,6 +1261,11 @@ impl Walker<'_> {
                                 }
                                 ClipNode::Set(s) => {
                                     self.diags.extend(check_set(s, &ctx.env.state, ctx));
+                                    self.diags.extend(crate::set_type::check_set_type(
+                                        s,
+                                        self.arena,
+                                        &ctx.env.state,
+                                    ));
                                     let expected = resolve_type(&s.path, &ctx.env.state)
                                         .cloned()
                                         .map(ExpectedType::Ty);
