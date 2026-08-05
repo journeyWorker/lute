@@ -24,6 +24,23 @@ fn codes_with(text: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
     check(&input).diagnostics.into_iter().map(|d| d.code).collect()
 }
 
+/// `codes_with` with the message kept, against the same shared vocabulary —
+/// the owner-rendering assertions below are about wording, not about which
+/// code fired.
+fn diagnostics(text: &str) -> Vec<lute_core_span::Diagnostic> {
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "t".into(),
+        snapshot: lute_test_vocab::vocab_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+        defaults: Default::default(),
+    };
+    check(&input).diagnostics
+}
+
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
 
 #[test]
@@ -114,4 +131,34 @@ fn declared_action_domain_is_membership_checked() {
     assert!(!clean.iter().any(|c| c == "E-BAD-ENUM"), "{clean:?}");
     let bad = codes(&format!("{HDR}@x{{action=\"zzz\"}}: hi\n"));
     assert!(bad.contains(&"E-BAD-ENUM".to_string()), "{bad:?}");
+}
+
+/// #33 / T1.4: `::` is the DIRECTIVE sigil. A content line's owner is
+/// `@speaker`, and rendering `::narrator` invents a construct that exists in
+/// no document, no grammar, and no `lute context` listing. Both probes are
+/// the entry's own: one bad enum on a content line, one on a directive.
+#[test]
+fn bad_enum_names_the_owning_construct_with_its_real_sigil() {
+    let line = diagnostics(&format!("{HDR}@narrator{{emotion=\"zzz\"}}: hi\n"));
+    let d = line
+        .iter()
+        .find(|d| d.code == "E-BAD-ENUM")
+        .expect("a non-member emotion on a content line is E-BAD-ENUM");
+    assert!(
+        d.message.contains("of `@narrator`"),
+        "a content line's owner renders `@speaker`, never `::speaker`: {}",
+        d.message
+    );
+    assert!(!d.message.contains("::narrator"), "{}", d.message);
+
+    let dir = diagnostics(&format!("{HDR}::auto{{character=\"vesna\" action=\"zzz\"}}\n"));
+    let d = dir
+        .iter()
+        .find(|d| d.code == "E-BAD-ENUM")
+        .expect("a non-member action on ::auto is E-BAD-ENUM");
+    assert!(
+        d.message.contains("of `::auto`"),
+        "a directive's owner keeps the `::` sigil: {}",
+        d.message
+    );
 }

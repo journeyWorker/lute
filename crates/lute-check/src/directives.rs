@@ -119,6 +119,11 @@ pub fn check_directive(
         diags.push(d);
     }
 
+    // #33 / T1.4: the owning construct as the AUTHOR wrote it. The shared attr
+    // checkers take an already-rendered owner precisely so a content line does
+    // not inherit the directive sigil (`crate::content_line`).
+    let owner = format!("::{}", dir.tag);
+
     // Per-attribute validation.
     for attr in &dir.attrs {
         // `at` is handled above (E-AT-CONTEXT); never E-UNKNOWN-ATTR here.
@@ -137,7 +142,7 @@ pub fn check_directive(
             // never reaches this branch -- the `find` above already matched.
             if let Some(universal) = universal_timing_decl(&attr.key) {
                 check_attr_value(
-                    &dir.tag, &universal, attr, snapshot, providers, domains, &mut diags,
+                    &owner, &universal, attr, snapshot, providers, domains, &mut diags,
                 );
                 continue;
             }
@@ -151,7 +156,7 @@ pub fn check_directive(
             // `E-ATTR-TYPE`/`E-BAD-ENUM` behave identically on both surfaces.
             if let Some(sdecl) = snapshot.stamp_attrs.get(&attr.key) {
                 check_attr_value(
-                    &dir.tag, sdecl, attr, snapshot, providers, domains, &mut diags,
+                    &owner, sdecl, attr, snapshot, providers, domains, &mut diags,
                 );
                 continue;
             }
@@ -163,7 +168,7 @@ pub fn check_directive(
             ));
             continue;
         };
-        check_attr_value(&dir.tag, adecl, attr, snapshot, providers, domains, &mut diags);
+        check_attr_value(&owner, adecl, attr, snapshot, providers, domains, &mut diags);
     }
 
     // Missing required attributes (dsl §7.2).
@@ -208,7 +213,7 @@ fn universal_timing_decl(key: &str) -> Option<AttrDecl> {
 /// A `Ref` (CEL `@expr`) value is left untyped here — CEL type/scope resolution
 /// is Task 4.3's job — so only literal `Str`/`BoolTrue` values are checked.
 pub(crate) fn check_attr_value(
-    tag: &str,
+    owner: &str,
     adecl: &AttrDecl,
     attr: &Attr,
     snapshot: &CapabilitySnapshot,
@@ -223,20 +228,20 @@ pub(crate) fn check_attr_value(
 
     match &adecl.ty {
         Type::Enum(members) => {
-            check_enum_member(tag, &attr.key, members, attr, diags);
+            check_enum_member(owner, &attr.key, members, attr, diags);
         }
         Type::EnumFromOption(opt) => {
             // Owning plugin/option unresolvable from the snapshot API: skip
             // rather than emit a false E-BAD-ENUM (see module docs).
             if let Some(members) = resolve_option_domain(snapshot, opt) {
-                check_enum_member(tag, &attr.key, &members, attr, diags);
+                check_enum_member(owner, &attr.key, &members, attr, diags);
             }
         }
         Type::ProviderRef(provider) => {
             check_provider_ref(provider, attr, providers, diags);
         }
         Type::Domain(name) => {
-            check_domain_member(tag, name, attr, domains, snapshot, providers, diags);
+            check_domain_member(owner, name, attr, domains, snapshot, providers, diags);
         }
         Type::AssetKind(kind) => check_asset_id(kind, attr, snapshot, providers, diags),
         ty => {
@@ -246,7 +251,7 @@ pub(crate) fn check_attr_value(
                         "E-ATTR-TYPE",
                         Severity::Error,
                         format!(
-                            "attribute `{}` of `::{tag}` expects {}",
+                            "attribute `{}` of `{owner}` expects {}",
                             attr.key,
                             describe(ty)
                         ),
@@ -258,7 +263,7 @@ pub(crate) fn check_attr_value(
                     "E-ATTR-TYPE",
                     Severity::Error,
                     format!(
-                        "attribute `{}` of `::{tag}` expects {}",
+                        "attribute `{}` of `{owner}` expects {}",
                         attr.key,
                         describe(ty)
                     ),
@@ -270,8 +275,12 @@ pub(crate) fn check_attr_value(
 }
 
 /// Enum-membership check shared by `Type::Enum` and resolved `EnumFromOption`.
+/// `owner` is the ALREADY-RENDERED owning construct — `"::auto"` for a
+/// directive, `"@narrator"` for a content line. The sigil belongs to the
+/// caller, never to this function: hardcoding `::` here is what made every
+/// content-line enum error name a directive that does not exist (#33, T1.4).
 fn check_enum_member(
-    tag: &str,
+    owner: &str,
     key: &str,
     members: &[String],
     attr: &Attr,
@@ -293,7 +302,7 @@ fn check_enum_member(
             "E-BAD-ENUM",
             Severity::Error,
             format!(
-                "`{got}` is not a valid value for `{key}` of `::{tag}` (expected one of: {})",
+                "`{got}` is not a valid value for `{key}` of `{owner}` (expected one of: {})",
                 members.join(", ")
             ),
             attr.value_span,
@@ -367,7 +376,7 @@ fn check_provider_ref(
 /// `{domain: X}`-typed directive attr uses, rather than a bespoke second
 /// membership check.
 pub(crate) fn check_domain_member(
-    tag: &str,
+    owner: &str,
     name: &str,
     attr: &Attr,
     domains: &BTreeMap<String, Domain>,
@@ -391,7 +400,7 @@ pub(crate) fn check_domain_member(
         // Step 1: a CLOSED domain's own membership wins — even over a
         // same-named provider (foundation A4 order; A5 reuses this resolver
         // for content-line `emotion`/`action`).
-        check_enum_member(tag, &attr.key, &dom.members, attr, diags);
+        check_enum_member(owner, &attr.key, &dom.members, attr, diags);
     } else if snapshot.providers.contains_key(name) {
         // Step 2: provider-backed (OPEN/registry-backed entity names, or a
         // name outside `domains` entirely that is a provider reference).

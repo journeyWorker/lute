@@ -66,6 +66,12 @@ pub fn check_content_line_attrs(
     domains: &BTreeMap<String, Domain>,
     diags: &mut Vec<Diagnostic>,
 ) {
+    // #33 / T1.4: a content line's owning construct is `@speaker`. The shared
+    // attr checkers take an already-rendered owner precisely so this surface
+    // does not inherit the `::` DIRECTIVE sigil — rendering `::narrator` named
+    // a construct that exists in no document, no grammar, and no `lute
+    // context` listing.
+    let owner = format!("@{}", line.speaker);
     let mut delivery_flags: Vec<&Attr> = Vec::new();
     for attr in &line.attrs {
         if !KNOWN_ATTRS.contains(&attr.key.as_str()) {
@@ -81,7 +87,7 @@ pub fn check_content_line_attrs(
             if let Some(sdecl) = snapshot.stamp_attrs.get(&attr.key) {
                 let mut scratch = Vec::new();
                 check_attr_value(
-                    &line.speaker,
+                    &owner,
                     sdecl,
                     attr,
                     snapshot,
@@ -148,7 +154,7 @@ pub fn check_content_line_attrs(
             // collect into a scratch vec and re-layer before folding into `diags`.
             "emotion" => {
                 let mut scratch = Vec::new();
-                check_domain_member(&line.speaker, "emotion", attr, domains, snapshot, providers, &mut scratch);
+                check_domain_member(&owner, "emotion", attr, domains, snapshot, providers, &mut scratch);
                 for mut d in scratch {
                     d.layer = Layer::Content;
                     diags.push(d);
@@ -161,7 +167,7 @@ pub fn check_content_line_attrs(
             // from the shared resolver's step 4.
             "action" => {
                 let mut scratch = Vec::new();
-                check_domain_member(&line.speaker, "action", attr, domains, snapshot, providers, &mut scratch);
+                check_domain_member(&owner, "action", attr, domains, snapshot, providers, &mut scratch);
                 for mut d in scratch {
                     d.layer = Layer::Content;
                     diags.push(d);
