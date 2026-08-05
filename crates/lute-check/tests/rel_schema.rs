@@ -15,6 +15,31 @@ fn codes(text: &str) -> Vec<String> {
     check(&input).diagnostics.into_iter().map(|d| d.code).collect()
 }
 
+/// `codes` with the message kept — the did-you-mean assertions below are
+/// about wording, not about which code fired.
+fn messages(text: &str) -> Vec<(String, String)> {
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "t".into(),
+        snapshot: lute_manifest::core::load_core_snapshot(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+        defaults: Default::default(),
+    };
+    check(&input).diagnostics.into_iter().map(|d| (d.code, d.message)).collect()
+}
+
+/// The one diagnostic with `code`, or a panic naming everything that fired.
+fn only(text: &str, code: &str) -> String {
+    let all = messages(text);
+    all.iter()
+        .find(|(c, _)| c == code)
+        .map(|(_, m)| m.clone())
+        .unwrap_or_else(|| panic!("no {code} in {all:?}"))
+}
+
 const HDR_TAIL: &str = "---\n## Shot 1.\n@narrator: hi\n";
 
 fn scene_with(front_extra: &str) -> String {
@@ -142,4 +167,49 @@ fn inline_redeclaring_imported_relation_needs_matching_sig() {
     };
     let c: Vec<String> = lute_check::check(&input).diagnostics.into_iter().map(|d| d.code).collect();
     assert!(c.contains(&"E-EXTENDS-RELATION-SIG".to_string()), "{c:?}");
+}
+
+/// dsl 0.5.0 §2.2 "did you mean": `can_hlat` is one transposition away from
+/// the declared `can_halt`. State paths, `after:` scene keys, `::set` targets
+/// and enum members all suggest; relation names were the one identifier class
+/// with a closed declared set and no suggestion (#35, T4.6).
+#[test]
+fn unknown_relation_near_a_declared_one_suggests_it() {
+    let m = only(
+        &scene_with(
+            "entities:\n  crew: { members: [toma] }\nrelations:\n  can_halt: { args: [crew] }\nfacts:\n  - \"can_hlat(toma)\"\n",
+        ),
+        "E-RELATION-UNKNOWN",
+    );
+    assert!(m.contains("did you mean `can_halt`"), "a one-edit-away declared relation must be suggested: {m}");
+}
+
+/// The suggestion is advisory and MUST NOT fire on a name nothing is close to
+/// — a wrong suggestion is worse than none.
+#[test]
+fn unknown_relation_far_from_every_declared_one_suggests_nothing() {
+    let m = only(
+        &scene_with(
+            "entities:\n  crew: { members: [toma] }\nrelations:\n  can_halt: { args: [crew] }\nfacts:\n  - \"zzzzzzzz(toma)\"\n",
+        ),
+        "E-RELATION-UNKNOWN",
+    );
+    assert!(!m.contains("did you mean"), "{m}");
+}
+
+/// The entity-kind hint keeps precedence: a name that IS a declared kind gets
+/// the categorical explanation, not a spelling guess, because that author's
+/// mistake is not a typo. `crew` is a declared kind AND two edits from the
+/// declared relation `crow`, so both branches are reachable and only one may
+/// win.
+#[test]
+fn a_declared_kind_used_as_a_fact_gets_the_categorical_hint_not_a_guess() {
+    let m = only(
+        &scene_with(
+            "entities:\n  crew: { members: [toma] }\nrelations:\n  crow: { args: [crew] }\nfacts:\n  - \"crew(toma)\"\n",
+        ),
+        "E-RELATION-UNKNOWN",
+    );
+    assert!(m.contains("an entity kind is a rule-body predicate"), "{m}");
+    assert!(!m.contains("did you mean"), "a declared kind is not a misspelling: {m}");
 }
