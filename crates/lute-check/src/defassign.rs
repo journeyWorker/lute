@@ -197,23 +197,33 @@ fn collect_exhaustive_spans(nodes: &[Node], schema: &StateSchema, spans: &mut Ve
 }
 
 /// Definite-assignment for a quest's `start`/`fail` CEL guard (dsl 0.2.0 §6.3,
-/// §9.4). These are evaluated at QUEST ENTRY — nothing dominates them (they are
-/// the first thing the engine evaluates for the quest), so the assigned set
-/// starts EMPTY, exactly like a fresh [`check_definite_assignment`] call. They
-/// get the SAME read-role treatment a `<match on>` SUBJECT gets ([`walk_match`]
-/// via [`check_reads`]): a value-read check only — `has(p)`/`isSet(p)` here
-/// proves nothing (there is no guarded body for a quest-entry predicate to
-/// prove into), so [`check_reads`], not [`apply_condition`], is reused. Quest
-/// guards stay OUTSIDE the envelope's read-collection (connectivity T11, dsl
-/// §4.4): only the diagnostics are returned — a quest guard's fall-back-to-
-/// entry-state read set is never an envelope concern (Main clarification:
-/// `E-STATE-MAYBE-UNAVAILABLE` classifies SCENE-node reads only; quest reads
-/// stay this function's existing territory, unchanged).
+/// §9.4). These are evaluated at QUEST
+/// ENTRY — nothing dominates them (they are the first thing the engine
+/// evaluates), so the assigned set starts EMPTY, exactly like a fresh
+/// [`check_definite_assignment`] call.
+///
+/// dsl 0.10.0 §12.2: intra-expression narrowing DOES run here. Until 0.10.0
+/// this reused [`check_reads`], on the argument that `has(p)`/`isSet(p)` in a
+/// quest-entry predicate "proves nothing, because there is no guarded body to
+/// prove into". That conflated two different guarantees. There is indeed no
+/// body — nothing here may leak into a caller's lattice, and nothing does: the
+/// `Assigned` below is local and dropped on return. But `isSet(p) && p == 'x'`
+/// short-circuits, so the guard dominates the read **inside the expression**,
+/// which is a property of the expression and holds in every slot the language
+/// has. [`apply_condition`] already implements exactly that, positionally, and
+/// is what a content line's `when=` and an `<objective when>` have always used.
+///
+/// [`walk_objective`] applies the same narrowing to an `<objective done>`
+/// inline rather than through this helper, because `done=` inherits the
+/// enclosing flow's assigned set and must keep inheriting it.
+///
+/// Quest guards stay OUTSIDE the envelope's read-collection (connectivity T11,
+/// dsl §4.4): only the diagnostics are returned.
 pub fn check_quest_guard_defassign(slot: &CelSlot, schema: &StateSchema) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    let assigned = Assigned::new();
+    let mut assigned = Assigned::new();
     let mut reads = Vec::new();
-    check_reads(slot, schema, &assigned, &mut diags, &mut reads);
+    apply_condition(slot, schema, &mut assigned, &mut diags, &mut reads);
     diags
 }
 
@@ -435,7 +445,19 @@ fn walk_objective(
     reads: &mut Vec<(String, Span)>,
 ) {
     let mut arm = flow.clone();
-    check_reads(&o.done, schema, &arm.available, diags, reads);
+    // dsl 0.10.0 §12.2: `done=` is a quest-entry-shaped predicate like
+    // `<quest start|fail>` — no body to prove into, but `isSet(p) && …`
+    // short-circuits inside the expression, so the same intra-expression
+    // narrowing applies. The narrowing is slot-LOCAL: `apply_condition` runs
+    // against a CLONE of the inherited set, which is dropped here and never
+    // reaches `arm.available` below.
+    //
+    // The clone starts from `arm.available` rather than from empty, which is
+    // what keeps this a relaxation: a `::set` dominating the objective still
+    // proves the read, exactly as `check_reads(&o.done, …, &arm.available, …)`
+    // did before.
+    let mut done_assigned = arm.available.clone();
+    apply_condition(&o.done, schema, &mut done_assigned, diags, reads);
     if let Some(cond) = &o.when {
         apply_condition(cond, schema, &mut arm.available, diags, reads);
     }
@@ -751,6 +773,74 @@ mod tests {
             .map(|s| s.body)
             .unwrap_or_default();
         (nodes, meta.state)
+    }
+    /// A `StateSchema` declaring exactly `path`, typed and WITHOUT a default —
+    /// the shape `E-MAYBE-UNSET` exists for.
+    fn schema_with_undefaulted(path: &str) -> StateSchema {
+        let src = format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+             {path}: {{ type: string }}\n---\n## Shot 1.\n"
+        );
+        fixture(&src).1
+    }
+
+    /// A condition [`CelSlot`] over `raw`. `slot_uses` re-parses from `raw`, so
+    /// the slot needs nothing but its text and its span.
+    fn condition_slot(raw: &str) -> CelSlot {
+        CelSlot::raw(
+            lute_syntax::ast::CelKind::Condition,
+            raw.to_string(),
+            lute_core_span::Span {
+                byte_start: 0,
+                byte_end: raw.len(),
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            },
+        )
+    }
+
+    /// 0.10.0 §12.2: intra-expression `&&` narrowing runs in EVERY CEL slot.
+    /// A quest-entry predicate has no guarded body to prove into — that is why
+    /// `check_reads` was chosen over `apply_condition` — but a guard to the LEFT
+    /// of `&&` in the SAME expression dominates the read to its right, and that
+    /// is a property of the expression, not of the slot.
+    #[test]
+    fn quest_guard_narrows_within_the_expression() {
+        let schema = schema_with_undefaulted("run.ending");
+        let slot = condition_slot("isSet(run.ending) && run.ending == 'a'");
+        let diags = check_quest_guard_defassign(&slot, &schema);
+        assert!(
+            diags.is_empty(),
+            "`isSet(p) && …` is ok in every slot as of §12.2; got {:?}",
+            diags.iter().map(|d| &d.code).collect::<Vec<_>>()
+        );
+    }
+
+    /// §12.2 relaxes; it does not blind. An UNGUARDED read in the same slot is
+    /// still `E-MAYBE-UNSET`.
+    #[test]
+    fn quest_guard_still_reports_an_unguarded_read() {
+        let schema = schema_with_undefaulted("run.ending");
+        let slot = condition_slot("run.ending == 'a'");
+        let diags = check_quest_guard_defassign(&slot, &schema);
+        assert!(
+            diags.iter().any(|d| d.code == "E-MAYBE-UNSET"),
+            "an unguarded read is unchanged; got {diags:?}"
+        );
+    }
+
+    /// A presence test under `||` proves nothing and must stay a `WeakGuard`:
+    /// this is short-circuit narrowing, not "any isSet anywhere in the slot".
+    #[test]
+    fn quest_guard_does_not_narrow_under_or() {
+        let schema = schema_with_undefaulted("run.ending");
+        let slot = condition_slot("isSet(run.ending) || run.ending == 'a'");
+        let diags = check_quest_guard_defassign(&slot, &schema);
+        assert!(
+            diags.iter().any(|d| d.code == "E-MAYBE-UNSET"),
+            "`||` does not dominate its right operand; got {diags:?}"
+        );
     }
 
 
