@@ -1201,20 +1201,40 @@ fn run_check(
     // callers reported `ok`, `check-project` reported the fault once per caller
     // at line 1 of the wrong file, and `lute trace` refused with advice that
     // could not be followed. This is what makes that advice followable.
-    if let (Some((component, at)), Some(root)) = (component_name_of(file), project) {
-        let callers = callers_of_component(root, &component);
-        if callers.is_empty() {
-            result
-                .diagnostics
-                .push(lute_check::component_unverified_diag(&component, at));
-        } else {
+    //
+    // "With no caller in scope" is a DISJUNCTION — *"no project resolved, or no
+    // document in the project imports this component"* — and only the second
+    // disjunct was built: the whole block hung off `Some(root)`, so
+    // `lute check some.component.lute` with no `--project`, which is the
+    // invocation an author actually types, fell straight through to the bare
+    // `ok` the clause forbids. There is no manifest auto-discovery
+    // (`build_input` resolves a project only from the flag), so that leg is not
+    // a rare one.
+    //
+    // Both disjuncts now reach the same reporting point. They do NOT share a
+    // message, because they are not the same situation: "no project resolved"
+    // means the tool could not look, "no document imports this" means it looked
+    // and found nothing. The next step differs — supply a project, versus
+    // discover the component is unused — so the verdict names which one it is.
+    if let Some((component, at)) = component_name_of(file) {
+        match project.map(|root| (root, callers_of_component(root, &component))) {
             // Report only what holds at EVERY call site: a diagnostic holding at
             // some but not all callers is caller-specific and stays with
             // `check-project`, where the caller is visible. Anchored inside the
             // component — that is the whole point of running it here.
-            result
+            Some((root, callers)) if !callers.is_empty() => result
                 .diagnostics
-                .extend(caller_resolved_common(&callers, file, providers, root));
+                .extend(caller_resolved_common(&callers, file, providers, root)),
+            Some(_) => result.diagnostics.push(lute_check::component_unverified_diag(
+                &component,
+                at,
+                lute_check::ComponentScope::NoImporter,
+            )),
+            None => result.diagnostics.push(lute_check::component_unverified_diag(
+                &component,
+                at,
+                lute_check::ComponentScope::NoProject,
+            )),
         }
         result.ok = !result
             .diagnostics
