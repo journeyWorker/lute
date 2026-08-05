@@ -2580,6 +2580,11 @@ fn dfs_use_cycle(
 /// (dsl 0.6.0 §2). `into=` alone records; the `persist=` attribute was REMOVED
 /// in 0.6.0 (`E-PERSIST-REMOVED`, §2.2), carrying a machine-applicable deletion.
 const E_PERSIST_REMOVED: &str = "E-PERSIST-REMOVED";
+/// `E-AS-REMOVED` (dsl 0.10.0 §4, D-L): the `as=` record-target attribute was
+/// renamed to `into=` in `0.1.0`. Mirrors [`E_PERSIST_REMOVED`] in severity,
+/// layer, span behaviour and kind — and NOT in its edit; see
+/// [`as_removed_diag`].
+const E_AS_REMOVED: &str = "E-AS-REMOVED";
 const E_INTO_TARGET: &str = "E-INTO-TARGET";
 const E_INTO_UNDECLARED: &str = "E-INTO-UNDECLARED";
 const E_INTO_VALUE: &str = "E-INTO-VALUE";
@@ -2604,6 +2609,14 @@ fn check_choice_record(choice: &Choice, ctx: &Ctx<'_>, src: &str, diags: &mut Ve
     // unknown-attr report) keeps `E-PERSIST-REMOVED` the sole report for it.
     if let Some(persist) = choice.attrs.iter().find(|a| a.key == "persist") {
         diags.push(persist_removed_diag(persist, src));
+    }
+    // §4 (D-L): `as=` was RENAMED to `into=` in 0.1.0, and `lute fix` already
+    // performs the rename. Recognizing it here — beside `persist`, for the same
+    // reason and by the same mechanism — keeps `E-AS-REMOVED` the sole report
+    // for it and keeps the §4 closure rule out of it (`logic_attrs.rs`'s
+    // `CHOICE_REMOVED_ATTRS`).
+    if let Some(as_attr) = choice.attrs.iter().find(|a| a.key == "as") {
+        diags.push(as_removed_diag(as_attr));
     }
     // The record sugar is driven by `into=` alone (§2.1). A `<choice>` with no
     // `into=` records nothing and is untouched.
@@ -2810,6 +2823,52 @@ fn persist_removed_diag(persist_attr: &Attr, src: &str) -> Diagnostic {
             edit: vec![TextEdit {
                 span: zeroed_span(start, end),
                 new_text: String::new(),
+            }],
+            confidence: 100,
+        }],
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// Build the `E-AS-REMOVED` diagnostic (dsl 0.10.0 §4, D-L) for a `<choice>`
+/// carrying an `as=` attr — renamed to `into=` in 0.1.0. ONE `"migrate"` fixit,
+/// `confidence` 100.
+///
+/// **The edit is deliberately NOT [`persist_removed_diag`]'s.** That one is a
+/// DELETION widened by [`widen_attr_delete`] to swallow one adjacent separating
+/// space so no stray double space is left behind. This is a two-byte-to-
+/// four-byte KEY REPLACEMENT with no widening at all: `Attr::span` starts at the
+/// key's first byte (`scan_attrs` builds it as `span(key_start, …)`), so the key
+/// occupies `[byte_start, byte_start + key.len())` and the value is untouched.
+/// Reusing the deletion helper would eat the separator before `as` and emit
+/// `label="L"into="…"`. It therefore takes no `src`, because it needs to read
+/// none.
+///
+/// Mirrors `fix.rs:134-135`'s own `as` -> `into` edit exactly. `lute fix` never
+/// reads `Diagnostic.fixits` (`lute-lsp/src/code_action.rs:7`), so these are two
+/// independent implementations that MUST stay byte-identical — the same hazard
+/// [`persist_removed_diag`]'s doc records, and
+/// `tests/choice_persist.rs::lsp_fixit_and_lute_fix_agree_byte_for_byte` is what
+/// holds them together.
+fn as_removed_diag(as_attr: &Attr) -> Diagnostic {
+    let start = as_attr.span.byte_start;
+    let end = start + as_attr.key.len();
+    Diagnostic {
+        code: E_AS_REMOVED.to_string(),
+        severity: Severity::Error,
+        message: "the `as` attribute was renamed to `into` in 0.1.0 — `into=` names the run \
+                  fact this choice records (dsl 0.10.0 §4); `lute fix` performs the rename"
+            .to_string(),
+        span: as_attr.span,
+        layer: Layer::Logic,
+        fixits: vec![Fixit {
+            title: "rename as= to into=".to_string(),
+            kind: "migrate".to_string(),
+            edit: vec![TextEdit {
+                span: zeroed_span(start, end),
+                new_text: "into".to_string(),
             }],
             confidence: 100,
         }],
