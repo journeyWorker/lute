@@ -16,6 +16,7 @@ pub mod envelope;
 pub mod fact_write;
 pub mod fix;
 pub mod inject;
+pub mod logic_attrs;
 pub mod match_check;
 pub mod meta;
 pub mod on;

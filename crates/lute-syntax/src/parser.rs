@@ -1154,12 +1154,22 @@ mod tests {
     }
 
     #[test]
-    fn otherwise_with_attrs_is_parse_error() {
+    fn otherwise_attrs_are_retained_not_a_parse_error() {
+        // dsl 0.10.0 §4 (D-J): the parser retains the attribute and says
+        // nothing; the checker's closure rule reports it as `E-UNKNOWN-ATTR` at
+        // the attribute's own column, uniformly with every other logic tag.
         let src = "## Shot 1.\n<match on=\"app.rating\">\n<when test=\"$ == 'teen'\">\n@narrator: a.\n</when>\n<otherwise foo=\"bar\">\n@narrator: b.\n</otherwise>\n</match>\n";
-        let (_, diags) = parse(src);
-        assert!(diags
-            .iter()
-            .any(|d| d.code == "E-LOGIC-CONTENT" && d.message.contains("otherwise")));
+        let (doc, diags) = parse(src);
+        assert!(
+            !diags.iter().any(|d| d.code == "E-LOGIC-CONTENT"),
+            "the attribute arm is the checker's now: {diags:?}"
+        );
+        let Node::Match(m) = &doc.shots[0].body[0] else { panic!() };
+        let Arm::Otherwise { attrs, .. } = &m.arms[1] else { panic!() };
+        assert_eq!(
+            attrs.iter().map(|a| a.key.as_str()).collect::<Vec<_>>(),
+            vec!["foo"]
+        );
     }
 
     #[test]

@@ -421,17 +421,13 @@ impl Parser<'_> {
     }
 
     /// `Otherwise ::= "<otherwise>" Node* "</otherwise>"` (§7.3, §11.2).
+    /// Attribute closure moved to the checker in 0.10.0 (§4, D-J): the residual
+    /// list rides on the arm and `E-UNKNOWN-ATTR` reports it at the attribute's
+    /// own column, uniformly with every other logic tag. `E-LOGIC-CONTENT`
+    /// survives here for its three BODY-SHAPE rules (`:178`, `:309`, `:378`)
+    /// and only those.
     fn parse_otherwise(&mut self) -> Arm {
         let open = self.parse_open_tag();
-        if !open.attrs.is_empty() {
-            self.emit_o(
-                E_LOGIC_CONTENT,
-                "<otherwise> takes no attributes (dsl §7.3)".to_string(),
-                open.start_o,
-                open.end_o,
-                Layer::Logic,
-            );
-        }
         let (body, end_o) = self.parse_block_body("otherwise", &open);
         Arm::Otherwise {
             attrs: open.attrs,

@@ -1126,8 +1126,14 @@ impl Walker<'_> {
                     // `E-DUP-BRANCH` + decl folding happened in the pre-pass; here
                     // we only validate the branch's own attrs and recurse.
                     self.check_attr_refs(&b.attrs, ctx, None);
+                    crate::logic_attrs::check_branch_attrs(b, &mut self.diags);
                     for choice in &b.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
+                        crate::logic_attrs::check_choice_attrs(
+                            choice,
+                            crate::logic_attrs::ChoicePos::Branch,
+                            &mut self.diags,
+                        );
                         check_choice_record(choice, ctx, self.src, &mut self.diags);
                         // §7.6: a `<choice label>` string MAY embed `{{…}}`
                         // interpolations. Labels are String attrs, so their interps
@@ -1151,6 +1157,10 @@ impl Walker<'_> {
                     }
                 }
                 Node::Match(m) => {
+                    crate::logic_attrs::check_match_attrs(m, &mut self.diags);
+                    for arm in &m.arms {
+                        crate::logic_attrs::check_arm_attrs(arm, &mut self.diags);
+                    }
                     // The subject expression is evaluated OUTSIDE match scope: `$`
                     // is only valid in a `<when test>` (dsl §8.2), never in `on=`.
                     // Force `in_match=false` so a nested `<match on="$">` (whose
@@ -1288,8 +1298,14 @@ impl Walker<'_> {
                     // (attrs, record sugar, `when` guard, body) so the B1–B5
                     // node checks apply inside hub arms too (dsl §7.3.2).
                     self.check_attr_refs(&h.attrs, ctx, None);
+                    crate::logic_attrs::check_hub_attrs(h, &mut self.diags);
                     for choice in &h.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
+                        crate::logic_attrs::check_choice_attrs(
+                            choice,
+                            crate::logic_attrs::ChoicePos::Hub,
+                            &mut self.diags,
+                        );
                         check_choice_record(choice, ctx, self.src, &mut self.diags);
                         // §7.6: hub choice labels carry `{{…}}` interpolations too
                         // (same as branch choices) — validate their referents.
@@ -2273,6 +2289,10 @@ fn walk_component_body(
                 b.span,
             )),
             Node::Match(m) => {
+                crate::logic_attrs::check_match_attrs(m, diags);
+                for arm in &m.arms {
+                    crate::logic_attrs::check_arm_attrs(arm, diags);
+                }
                 // Subject-slot CEL validation happens OUTSIDE match scope
                 // (dsl §8.2, mirrors the scene-level `Walker`): resolved
                 // against the SAME component `@param` env every other slot
