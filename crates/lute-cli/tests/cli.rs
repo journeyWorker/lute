@@ -939,6 +939,66 @@ fn init_scaffolds_a_checkable_vocabulary() {
     );
 }
 
+/// T10.4 / #31 / D-E: the generated README's "Next steps" hard-coded
+/// `scenes/opening.lute` into `lute check` and `lute trace`, the one file the
+/// scaffold exists to have you replace. Replace it and the README's own
+/// instructions answer `cannot read scenes/opening.lute` at exit 2 — scaffold
+/// rot re-shipped by every `lute init`. §8's mock pass cannot reach a README,
+/// so the README must be unable to rot.
+///
+/// Both halves are asserted, and neither is sufficient alone: a README that
+/// simply lost its command block would satisfy the second, and a README that
+/// kept the hard-coded paths would satisfy the first.
+#[test]
+fn init_readme_names_no_document_that_can_rot() {
+    for template in ["minimal", "investigation"] {
+        let dir = temp_dir(&format!("init-readme-{template}"));
+        let proj = dir.join("proj");
+        let out = Command::new(BIN)
+            .args(["init", proj.to_str().unwrap(), "--template", template])
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "init failed: {out:?}");
+        let readme = std::fs::read_to_string(proj.join("README.md")).unwrap();
+
+        // Every `lute …` line inside the fenced block.
+        let cmds: Vec<&str> =
+            readme.lines().map(str::trim).filter(|l| l.starts_with("lute ")).collect();
+        assert!(cmds.len() >= 4, "{template}: the command block is still there:\n{readme}");
+
+        // 1. No command names a real document. `.lute`/`.yaml` may only ever
+        //    appear behind a `<placeholder>`.
+        for c in &cmds {
+            let names_a_file = c.contains(".lute") || c.contains(".yaml");
+            assert!(
+                !names_a_file || c.contains('<'),
+                "{template}: `{c}` hard-codes a document the author is invited to \
+                 replace — that is exactly T10.4:\n{readme}"
+            );
+        }
+
+        // 2. Every command that is runnable AS WRITTEN (no placeholder) must
+        //    actually run green in the project just scaffolded. Otherwise
+        //    rule 1 could be satisfied by writing nonsense.
+        let runnable: Vec<&&str> = cmds.iter().filter(|c| !c.contains('<')).collect();
+        assert!(
+            runnable.len() >= 2,
+            "{template}: templating must not have swallowed every runnable line:\n{readme}"
+        );
+        for c in runnable {
+            let args: Vec<&str> = c.split_whitespace().skip(1).collect();
+            let out = Command::new(BIN).args(&args).current_dir(&proj).output().unwrap();
+            assert_eq!(
+                out.status.code(),
+                Some(0),
+                "{template}: the README tells the author to run `{c}` and it fails:\n{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+}
+
 /// `lute doctor` reports the seven vocabulary slots against what the project
 /// actually resolves: every slot declared for a fresh scaffold, and every slot
 /// missing once the declaration is deleted.
@@ -1161,5 +1221,434 @@ fn doctor_reports_a_broken_project_manifest_once_as_a_check() {
     assert!(
         entry["hint"].is_string(),
         "a ✗ carries a remedy hint: {v}"
+    );
+}
+
+/// #25 / T9.11: a refused test held a diagnostic vector and printed four
+/// words over it. Three different mock faults produced the identical line;
+/// the harness even INSPECTED the codes to choose between two canned
+/// strings, then discarded them.
+#[test]
+fn refused_test_prints_the_held_diagnostics_not_a_canned_string() {
+    let dir = temp_dir("test-refusal-vector");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" label=\"A\">\n@narrator: a.\n\
+         </choice>\n<choice id=\"b\" label=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
+    );
+    write_at(
+        &dir,
+        "stale.test.yaml",
+        "file: s.lute\nchoose:\n  pick: noSuchArm\nexpect:\n  exit: complete\n",
+    );
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+
+    assert!(text.contains("E-TRACE-CHOICE"), "the held code must print: {text}");
+    assert!(text.contains("noSuchArm"), "the offending value must print: {text}");
+    assert!(
+        !text.contains("invalid mock input"),
+        "the canned string is what this issue deletes: {text}"
+    );
+    // T9.11's second half: the diagnostic renders a CLI flag spelling for
+    // input that came from a YAML key, so even printed it points at the
+    // wrong syntax.
+    assert!(!text.contains("--choose"), "render the YAML key, not the flag: {text}");
+    assert!(text.contains("choose:"), "the YAML key must appear: {text}");
+}
+
+/// #2(a) / T9.8, T3.10: `expect:` knew three keys and silently discarded
+/// every other, at BOTH levels. Reproduced at HEAD: a file spelling
+/// `chooses:` and asserting a bogus `transcriptContain:` returned
+/// "1 passed, 0 failed" — the selection was dropped, trace auto-picked the
+/// first eligible arm, and the assertions written for the arm the file names
+/// were checked against the arm it excluded.
+#[test]
+fn test_file_with_a_typoed_top_level_key_fails_and_suggests_the_real_one() {
+    let dir = temp_dir("test-closed-keys-top");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" label=\"A\">\n@narrator: a.\n\
+         </choice>\n<choice id=\"b\" label=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
+    );
+    write_at(
+        &dir,
+        "typo.test.yaml",
+        "file: s.lute\nchooses:\n  pick: b\nexpect:\n  transcriptContains: [\"b.\"]\n",
+    );
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(1), "a mis-keyed test must not pass: {text}");
+    assert!(text.contains("E-TEST-KEY"), "{text}");
+    assert!(text.contains("`chooses`"), "{text}");
+    assert!(text.contains("did you mean `choose`"), "{text}");
+}
+
+/// The same closure at the `expect:` level. T9.8's own control: the
+/// one-letter-corrected twin must still FAIL on the assertion, which is what
+/// proves the typo was the only reason it was green.
+#[test]
+fn test_file_with_a_typoed_expect_key_fails_and_its_corrected_twin_still_fails() {
+    let dir = temp_dir("test-closed-keys-expect");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n@narrator: a.\n",
+    );
+    write_at(&dir, "typo.test.yaml", "file: s.lute\nexpect:\n  transcriptContain: [\"nope\"]\n");
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(text.contains("E-TEST-KEY"), "{text}");
+    assert!(text.contains("did you mean `transcriptContains`"), "{text}");
+
+    let dir2 = temp_dir("test-closed-keys-expect-fixed");
+    write_at(
+        &dir2,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n@narrator: a.\n",
+    );
+    write_at(&dir2, "fixed.test.yaml", "file: s.lute\nexpect:\n  transcriptContains: [\"nope\"]\n");
+    let out2 = Command::new(BIN).args(["test", dir2.to_str().unwrap()]).output().unwrap();
+    let text2 = String::from_utf8_lossy(&out2.stdout).to_string();
+    assert_eq!(
+        out2.status.code(),
+        Some(1),
+        "the corrected twin must fail on the ASSERTION: {text2}"
+    );
+    assert!(!text2.contains("E-TEST-KEY"), "{text2}");
+    assert!(text2.contains("transcriptContains"), "{text2}");
+}
+
+/// #2(d), first half: a test with zero RECOGNISED expectations reported PASS,
+/// because the verdict is `all()` over an empty vector.
+#[test]
+fn test_with_zero_expectations_is_an_error_not_a_pass() {
+    let dir = temp_dir("test-no-expect");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n@narrator: a.\n",
+    );
+    write_at(&dir, "empty.test.yaml", "file: s.lute\nexpect: {}\n");
+    write_at(&dir, "absent.test.yaml", "file: s.lute\n");
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert_eq!(
+        text.matches("E-TEST-NO-EXPECT").count(),
+        2,
+        "both files, not just one: {text}"
+    );
+}
+
+/// #2(d), second half: when no supplied selection survives, the walk
+/// auto-picks the first eligible arm in document order. That is legal and
+/// deliberate — but silent, and it is exactly what turned the `chooses:` typo
+/// into a green run against the wrong arm. Report it.
+#[test]
+fn autopicked_branch_is_reported_not_silent() {
+    let dir = temp_dir("test-autopick");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" label=\"A\">\n@narrator: a.\n\
+         </choice>\n<choice id=\"b\" label=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
+    );
+    write_at(&dir, "auto.test.yaml", "file: s.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(0), "auto-picking is legal, not a failure: {text}");
+    assert!(text.contains("auto-picked"), "{text}");
+    assert!(text.contains("pick"), "the branch id must be named: {text}");
+    assert!(text.contains("-> a"), "the arm actually taken must be named: {text}");
+}
+
+/// T9.9 / #2: `<never written>` is how the report DISPLAYS an absent state
+/// path. It was substituted for the absent value BEFORE the miss line was
+/// built, so a test expecting that text produced
+/// `state run.x: expected "<never written>", got "<never written>"` — a
+/// difference whose two sides were byte-identical, at `0 passed, 1 failed`.
+#[test]
+fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
+    let dir = temp_dir("test-never-written");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+         run.written: { type: number, default: 0 }\n  run.unwritten: { type: number, default: 0 }\n\
+         ---\n\n## One\n\n::set{ run.written = 2 }\n@narrator: a.\n",
+    );
+    let run = |name: &str, body: &str| {
+        let d = temp_dir(name);
+        write_at(
+            &d,
+            "s.lute",
+            &std::fs::read_to_string(dir.join("s.lute")).unwrap(),
+        );
+        write_at(&d, "t.test.yaml", body);
+        let out = Command::new(BIN).args(["test", d.to_str().unwrap()]).output().unwrap();
+        (out.status.code(), String::from_utf8_lossy(&out.stdout).to_string())
+    };
+
+    // The reported case: the sentinel's own text, expected against a path the
+    // walk never wrote.
+    let (code, text) = run(
+        "never-written-sentinel",
+        "file: s.lute\nexpect:\n  state:\n    run.unwritten: \"<never written>\"\n",
+    );
+    assert_eq!(code, Some(1), "a sentinel is not a value and cannot match: {text}");
+    let miss = text
+        .lines()
+        .find(|l| l.contains("state run.unwritten:"))
+        .unwrap_or_else(|| panic!("no miss line in:\n{text}"));
+    assert!(
+        miss.contains("never written"),
+        "the absence must still be stated: {miss}"
+    );
+    assert!(
+        !miss.contains("got"),
+        "there is no observed value to report as `got`: {miss}"
+    );
+    // The defect in one assertion: the two sides of a declared difference
+    // must never be the same text. This is what fails on the old renderer.
+    let (before, after) = miss.split_once("expected ").expect("miss line names the expectation");
+    let _ = before;
+    assert!(
+        !after.contains("\"<never written>\", got \"<never written>\""),
+        "a difference whose two sides are identical: {miss}"
+    );
+    // #19, named rather than invented: there is no `expect:` spelling for
+    // "never written", and the note must say so instead of minting one.
+    assert!(text.contains("#19"), "the deferred gap must be named: {text}");
+
+    // Control 1 — a WRITTEN path that genuinely differs still reports both
+    // sides, so the fix did not blanket-suppress the `got` half.
+    let (code, text) = run(
+        "never-written-control-written",
+        "file: s.lute\nexpect:\n  state:\n    run.written: 9\n",
+    );
+    assert_eq!(code, Some(1), "{text}");
+    assert!(
+        text.contains("expected \"9\", got \"2\""),
+        "a real value miss still names both sides: {text}"
+    );
+
+    // Control 2 — a path written to the sentinel's literal TEXT matches an
+    // expectation spelling that text. The sentinel is not equal to an absent
+    // value, and it is not specially unequal to a written one either.
+    let d = temp_dir("never-written-control-literal");
+    write_at(
+        &d,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+         run.label: { type: string, default: \"\" }\n---\n\n## One\n\n\
+         ::set{ run.label = \"<never written>\" }\n@narrator: a.\n",
+    );
+    write_at(
+        &d,
+        "t.test.yaml",
+        "file: s.lute\nexpect:\n  state:\n    run.label: \"<never written>\"\n",
+    );
+    let out = Command::new(BIN).args(["test", d.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a path actually written to that string matches it: {text}"
+    );
+}
+
+/// A `*.test.yaml` and a `mocks/*.yaml` both key their subject on `file:`,
+/// and both resolve it relative to THE FILE THAT CONTAINS IT (D-AC, D-Y).
+/// One key, one meaning, one base rule — pinned here so the two cannot drift
+/// into two once plan 02's mock work lands.
+#[test]
+fn test_file_key_resolves_relative_to_the_test_file_not_the_cwd() {
+    let dir = temp_dir("test-file-base");
+    write_at(
+        &dir,
+        "scenes/s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n@narrator: a.\n",
+    );
+    write_at(&dir, "tests/t.test.yaml", "file: ../scenes/s.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN).args(["test", dir.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("1 passed, 0 failed"), "{text}");
+}
+
+/// #24 / T9.13: the coverage key was the guard's TEXT, not the construct's
+/// identity, so two `<match on="true">` blocks in one document collapsed into
+/// one row reading `3/3` — the tool's only false statement, and its most
+/// reassuring one.
+#[test]
+fn coverage_keys_on_the_construct_not_on_the_guard_text() {
+    let dir = temp_dir("coverage-per-site");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
+         \n## One\n\n\
+         <match on=\"true\">\n<when is=\"true\">\n@narrator: first.\n</when>\n\
+         <otherwise>\n@narrator: first-else.\n</otherwise>\n</match>\n\
+         <match on=\"true\">\n<when is=\"true\">\n@narrator: second.\n</when>\n\
+         <otherwise>\n@narrator: second-else.\n</otherwise>\n</match>\n",
+    );
+    write_at(&dir, "t.test.yaml", "file: s.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN)
+        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "{text}");
+
+    let rows: Vec<&str> = text.lines().filter(|l| l.trim_start().starts_with("match ")).collect();
+    assert_eq!(rows.len(), 2, "two blocks, two rows — not one collapsed row: {text}");
+    assert_ne!(rows[0], rows[1], "the two rows must be distinguishable: {text}");
+    assert!(
+        rows.iter().all(|r| r.contains("`true`")),
+        "the guard text survives as a LABEL: {text}"
+    );
+}
+
+/// #24's second half, which T9.13 names as the real design hole: coverage
+/// accumulated only from reports that RAN, so deleting a test made its scene
+/// silently invisible rather than untested. `lute test` walks the project, so
+/// the denominator was already in hand.
+#[test]
+fn coverage_reports_documents_with_no_test_at_all() {
+    let dir = temp_dir("coverage-denominator");
+    write_at(
+        &dir,
+        "tested.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n@narrator: a.\n",
+    );
+    write_at(
+        &dir,
+        "untested.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 2\n---\n\n## One\n\n@narrator: b.\n",
+    );
+    write_at(&dir, "t.test.yaml", "file: tested.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN)
+        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "{text}");
+    assert!(text.contains("untested document"), "{text}");
+    assert!(text.contains("untested.lute"), "{text}");
+}
+
+/// The denominator's other half, and the one that decides whether the list is
+/// worth printing: a component document is **untestable**, not untested. It is
+/// reached only by `::use`, it is never a `*.test.yaml`'s `file:`, and it
+/// emits no artifact — `compile_all::is_component_file` already makes exactly
+/// this call for `--all`. An entry no author can discharge is not a finding,
+/// it is noise that trains the reader to ignore the list; and the component
+/// case is already covered, honestly, by `W-COMPONENT-UNVERIFIED`.
+#[test]
+fn untested_denominator_excludes_component_documents() {
+    let dir = temp_dir("coverage-denominator-components");
+    write_at(
+        &dir,
+        "tested.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         components: [greet.component.lute]\n---\n\n## One\n\n\
+         ::use{component=\"greet\" who=\"x\"}\n",
+    );
+    write_at(
+        &dir,
+        "greet.component.lute",
+        "---\ncomponent: greet\nparams:\n  who: string\n---\n\n## Body\n\n@narrator: hi.\n",
+    );
+    write_at(
+        &dir,
+        "untested.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 2\n---\n\n## One\n\n@narrator: b.\n",
+    );
+    write_at(&dir, "t.test.yaml", "file: tested.lute\nexpect:\n  exit: complete\n");
+    let out = Command::new(BIN)
+        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "{text}");
+    // The scene no test names is listed — the filter must not swallow it.
+    assert!(text.contains("untested.lute"), "{text}");
+    // The component is NOT, although no test names it either. `::use`d, not
+    // named: there is no `*.test.yaml` an author could write to discharge it.
+    assert!(
+        !text.contains("greet.component.lute"),
+        "a component is untestABLE, not untested — listing it prints a line no \
+         author can discharge; W-COMPONENT-UNVERIFIED is that document's \
+         surface. Got:\n{text}"
+    );
+    assert!(text.contains("1 untested document"), "exactly one, not two: {text}");
+}
+
+/// #32 / T2.5: `lute context`'s human mode dropped the `semantics` flags its
+/// own --json already carries. `mayExitCharacter` is the machine-readable
+/// statement that `::auto` is the construct that ends a presence, and it is
+/// on no page of the shipped website.
+#[test]
+fn context_human_mode_keeps_the_semantics_flags_json_already_carries() {
+    let out = Command::new(BIN)
+        .args([
+            "context",
+            "../../docs/examples/anseo/scenes/wake.lute",
+            "--project",
+            "../../docs/examples/anseo",
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let auto = text.lines().find(|l| l.trim_start().starts_with("auto")).expect("auto row");
+    assert!(auto.contains("mayExitCharacter"), "{text}");
+}
+
+/// #21 / T3.9: `lute check world.schema.yaml` — the obvious next command —
+/// parsed the YAML schema AS A SCENE and told the author to add `kind:
+/// scene`, which destroys it. A VALID schema must check clean.
+#[test]
+fn check_on_a_yaml_schema_checks_it_as_a_schema_not_as_a_scene() {
+    let dir = temp_dir("check-schema-kind");
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  run.trust: { type: number, default: 0 }\n",
+    )
+    .unwrap();
+    let out = Command::new(BIN)
+        .args(["check", dir.join("world.schema.yaml").to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(out.status.success(), "a valid schema must check clean: {text}");
+    assert!(!text.contains("E-KIND-MISSING"), "{text}");
+    assert!(!text.contains("E-META-MISSING"), "{text}");
+    assert!(!text.contains("E-UNCLASSIFIED"), "{text}");
+
+    std::fs::write(
+        dir.join("bad.schema.yaml"),
+        "state:\n  app.rating: { type: enum, values: [teen, adult], default: teen }\n",
+    )
+    .unwrap();
+    let bad = Command::new(BIN)
+        .args(["check", dir.join("bad.schema.yaml").to_str().unwrap()])
+        .output()
+        .unwrap();
+    let btext = String::from_utf8_lossy(&bad.stdout).to_string();
+    assert_eq!(bad.status.code(), Some(1), "{btext}");
+    assert!(btext.contains("E-STATE-DECL"), "the REAL defect, named: {btext}");
+    assert!(!btext.contains("E-KIND-MISSING"), "{btext}");
+    // The key's own line, not the whole file at 1:1.
+    assert!(
+        btext.contains("bad.schema.yaml:2:3:"),
+        "anchored at `app.rating`'s own line and column: {btext}"
     );
 }

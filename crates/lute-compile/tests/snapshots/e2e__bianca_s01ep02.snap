@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.9.0",
-  "irVersion": "0.9.0",
+  "lute": "0.10.0",
+  "irVersion": "0.10.0",
   "capabilityVersion": "0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07",
   "meta": {
     "character": "bianca",
@@ -188,7 +188,7 @@ expression: json
       "provenance": {
         "injected": true,
         "by": "entry-emotion-lookahead",
-        "reason": "pre-loading `bianca`'s first emotion `surprised` seen ahead of the entrance"
+        "explanation": "pre-loading `bianca`'s first emotion `surprised` seen ahead of the entrance"
       }
     },
     {
@@ -688,7 +688,7 @@ expression: json
       "provenance": {
         "injected": true,
         "by": "entry-emotion-lookahead",
-        "reason": "pre-loading `takeru`'s first emotion `neutral` seen ahead of the entrance"
+        "explanation": "pre-loading `takeru`'s first emotion `neutral` seen ahead of the entrance"
       }
     },
     {

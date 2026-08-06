@@ -66,6 +66,26 @@ optional predicates are CEL strings: **`start`** transitions the quest `unset` �
 holds; **`fail`** transitions `active` → `failed`. `fail` takes precedence over completion — if
 both hold in the same state, the quest fails (a deterministic tie-break).
 
+A quest declares its own prerequisite as an **attribute** on the element, not as
+a frontmatter key — the one place this page's opening heading, "Scenes and
+`after:`", does not apply:
+
+```lute
+<quest id="manifestGap" title="The Manifest Gap" start="true" after="visited('anseo.s01ep06') && completed('whoWakes')">
+  <objective id="reconcile" title="Reconcile the count" done="true"/>
+</quest>
+```
+
+`after=` takes the same restricted prerequisite profile as a scene's `after:`
+key — `visited("id")`, `completed("id")`, `active("id")`, `&&`, `||`, and
+nothing else (`E-CONN-PROFILE`). Writing `after:` in a quest's *frontmatter* is
+`E-META-UNKNOWN-KEY`, and the diagnostic names the attribute form:
+
+<!-- lute-diagnostics -->
+```
+error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key and not owned by an active plugin) — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, not a frontmatter key (dsl §4.1)
+```
+
 ### `<objective>`
 
 An `<objective id done>` requires a `done` completion predicate over declared state. `when` gates

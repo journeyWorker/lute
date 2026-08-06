@@ -34,7 +34,7 @@ after: 'visited("anseo.s01ep02")'
     ::auto{character="vesna" action="seal" at="0.9"}
   </track>
   <track channel="vfx">
-    ::vfx{type="shed" label="module four" at="0.8" duration="0.35"}
+    ::vfx{type="shed" label="module four" at="0.8" duration="0.4"}
     ::vfx{type="pressure-drop" transition="cut" at="1.2"}
   </track>
 </timeline>

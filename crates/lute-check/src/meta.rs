@@ -160,6 +160,68 @@ const SCENE_KEYS: &[&str] = &["character", "season", "episode", "episodeId", "po
 /// In a scene or schema doc these are unknown top-level keys.
 const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params"];
 
+/// 0.10.0 §6.3: is a `defaults:` key legal on `kind`? A default whose key is
+/// not legal on a document's resolved kind is NOT applied to that document,
+/// and that is not an error — `character:` is scene-only, and a quest under a
+/// root defaulting it simply does not receive it.
+///
+/// The predicate is the same one the unknown-key loop uses below, minus the
+/// component-only and plugin-owned arms:
+/// [`lute_manifest::project::DEFAULTABLE_KEYS`] holds neither.
+pub fn default_key_legal_on(key: &str, kind: MetaKind) -> bool {
+    UNIVERSAL_KEYS.contains(&key)
+        || (key == "kind" && matches!(kind, MetaKind::Scene | MetaKind::Quest))
+        || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
+}
+
+/// The advisory tail on `E-META-UNKNOWN-KEY` (dsl 0.5.0 §2.2's "did you mean",
+/// generalised): empty when nothing is close, because a wrong suggestion is
+/// worse than none.
+///
+/// `after` is the one special case (0.10.0 backlog #11, T9.1). It is a CORE key
+/// on the sibling kind and a legal ATTRIBUTE in this one, so the generic
+/// edit-distance suggestion has no candidate to land on and the author is told
+/// only that the key is unknown — while `after=` is legal two lines below in
+/// the same file. Name the attribute form instead.
+///
+/// The candidate set mirrors the unknown-key loop's own `core_key` predicate
+/// exactly, so the suggestion can never name a key that would itself be
+/// rejected on this kind. Slice order is source order, which makes
+/// [`lute_manifest::suggest::nearest`]'s first-wins tie-break deterministic.
+fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> String {
+    if key == "after" && kind == MetaKind::Quest {
+        return " — a quest's prerequisite is the `after=` ATTRIBUTE on its `<quest>` element, \
+                not a frontmatter key (dsl §4.1)"
+            .to_string();
+    }
+    let candidates = UNIVERSAL_KEYS
+        .iter()
+        .copied()
+        .chain(
+            matches!(kind, MetaKind::Scene | MetaKind::Quest)
+                .then_some("kind")
+                .into_iter(),
+        )
+        .chain(
+            (kind == MetaKind::Scene)
+                .then_some(SCENE_KEYS)
+                .unwrap_or(&[])
+                .iter()
+                .copied(),
+        )
+        .chain(
+            component_key_allowed
+                .then_some(COMPONENT_ONLY_KEYS)
+                .unwrap_or(&[])
+                .iter()
+                .copied(),
+        );
+    match lute_manifest::suggest::nearest(key, candidates, 2) {
+        Some(sugg) => format!(" — did you mean `{sugg}`?"),
+        None => String::new(),
+    }
+}
+
 const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 
 /// Which document kind's frontmatter is being parsed. A `Schema` doc (imported
@@ -262,6 +324,26 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
     }
 }
 
+/// [`resolve_doc_kind`] with the manifest's `defaults:` consulted when the
+/// document declares no `kind:` (0.10.0 §6.3). `E-KIND-MISSING` now means
+/// "neither the document nor the manifest says".
+pub fn resolve_doc_kind_with_defaults(
+    meta: &Meta,
+    defaults: &lute_manifest::project::MetaDefaults,
+) -> (Option<DocKind>, Vec<Diagnostic>) {
+    let (kind, diags) = resolve_doc_kind(meta);
+    if kind.is_some() || defaults.is_empty() {
+        return (kind, diags);
+    }
+    match defaults.get("kind").and_then(|v| v.as_str()) {
+        // `defaults_shape_ok` already rejected anything but these two, so a
+        // manifest can never route a document to an unknown kind here.
+        Some("scene") => (Some(DocKind::Scene), Vec::new()),
+        Some("quest") => (Some(DocKind::Quest), Vec::new()),
+        _ => (kind, diags),
+    }
+}
+
 /// The `episodeId` component of the canonical scene identity key (dsl §2.3,
 /// connectivity layer T3): `episode_id` is the raw authored `episodeId:`
 /// frontmatter value (if any); a non-empty authored value is used verbatim,
@@ -314,6 +396,33 @@ pub fn parse_meta_kind(
     meta: &Meta,
     snapshot: &CapabilitySnapshot,
     kind: MetaKind,
+) -> (TypedMeta, Vec<Diagnostic>) {
+    parse_meta_kind_with_defaults(
+        meta,
+        snapshot,
+        kind,
+        &lute_manifest::project::MetaDefaults::default(),
+    )
+}
+
+/// [`parse_meta_kind`] with the governing manifest's `defaults:` applied
+/// (0.10.0 §6.2).
+///
+/// The merge happens on the frontmatter MAPPING, before any frontmatter rule
+/// runs, which is what makes §6.2's last two bullets free: required-key
+/// checking, unknown-key checking, type checking and every lift below all see
+/// the resolved map, and a defaulted value draws exactly the diagnostic an
+/// authored one would because it IS an authored one by the time they run.
+///
+/// Per key, whole-value (D-P): a key the document contains AT ALL wins
+/// entire. `Mapping::contains_key` is exactly that test, so a present null or
+/// an empty sequence is a present key — §6.2's "present-but-empty counts as
+/// present", with no special case.
+pub fn parse_meta_kind_with_defaults(
+    meta: &Meta,
+    snapshot: &CapabilitySnapshot,
+    kind: MetaKind,
+    defaults: &lute_manifest::project::MetaDefaults,
 ) -> (TypedMeta, Vec<Diagnostic>) {
     let span = meta.span;
     let mut diags = Vec::new();
@@ -383,6 +492,29 @@ pub fn parse_meta_kind(
         }
     };
 
+    // 0.10.0 §6.2/§6.3: overlay the governing manifest's `defaults:`, filtered
+    // to keys legal on THIS kind. Borrowed when there is nothing to overlay,
+    // which is every project written before 0.10.0 — no allocation on the
+    // path every existing document takes.
+    let map: std::borrow::Cow<'_, serde_yaml::Mapping> = if defaults.is_empty() {
+        std::borrow::Cow::Borrowed(map)
+    } else {
+        let mut merged = map.clone();
+        for key in defaults.keys() {
+            if !default_key_legal_on(key, kind) {
+                continue;
+            }
+            if merged.contains_key(yaml_key(key)) {
+                continue;
+            }
+            if let Some(v) = defaults.get(key) {
+                merged.insert(yaml_key(key), v.clone());
+            }
+        }
+        std::borrow::Cow::Owned(merged)
+    };
+    let map = map.as_ref();
+
     let mut typed = TypedMeta::default();
 
     // Required-key check (dsl §6.1); only scenes carry required core keys.
@@ -424,7 +556,10 @@ pub fn parse_meta_kind(
         let Some(ty) = snapshot.frontmatter.get(key) else {
             diags.push(err(
                 "E-META-UNKNOWN-KEY",
-                format!("unknown top-level meta key `{key}` (not a core key and not owned by an active plugin)"),
+                format!(
+                    "unknown top-level meta key `{key}` (not a core key and not owned by an active plugin){}",
+                    unknown_key_hint(key, kind, component_key_allowed)
+                ),
             ));
             continue;
         };
@@ -785,9 +920,23 @@ pub fn parse_meta_kind(
                                 },
                             );
                         }
-                        Err(e) => diags.push(err(
+                        // dsl 0.5.0 §2.2 / #21 T10.2: this arm forwarded
+                        // `serde_yaml`'s own error — "invalid type: unit
+                        // variant, expected newtype variant", or "expected
+                        // struct StateDeclRaw". Neither "unit variant" nor
+                        // "newtype variant" nor `StateDeclRaw` occurs
+                        // anywhere in the docs, the language or YAML, and
+                        // none of them names the wrong key, the missing key,
+                        // the legal shape, or the one nesting level at issue.
+                        // The neighbour `E_STATE_COLLECTION` above already
+                        // writes its message for the author; so does this
+                        // one, through the same `err_at`/`meta_key_span`
+                        // pair, so it anchors at the offending key rather
+                        // than at the whole meta block.
+                        Err(_) => diags.push(err_at(
                             "E-STATE-DECL",
-                            format!("invalid state declaration for `{path}`: {e}"),
+                            state_decl_message(path, decl_val),
+                            meta_key_span(meta, path),
                         )),
                     }
                 }
@@ -800,6 +949,112 @@ pub fn parse_meta_kind(
     }
 
     (typed, diags)
+}
+
+/// `E-STATE-DECL`'s whole message (#21, T10.2): what is wrong with this
+/// declaration and what the legal shape is, written from the YAML the author
+/// typed rather than from `serde_yaml`'s report of how it failed to
+/// deserialize into `StateDeclRaw`.
+///
+/// The library error cannot be forwarded and cannot be replaced by one fixed
+/// sentence either. It says "invalid type: unit variant, expected newtype
+/// variant" for BOTH the nesting mistake (`{ type: enum, values: [...] }`) and
+/// a bare `type: enum`; "missing field `type`" for a declaration without one;
+/// "unknown variant `nonsense`" followed by the entire internal `Type` union
+/// for a bad name; and "expected struct StateDeclRaw" — a Rust type name —
+/// for a non-mapping. One sentence blaming `values:` would be FALSE for four
+/// of those five, which is worse than the serde text it replaces. So the
+/// shape is classified here, from the value the author wrote.
+///
+/// Each arm returns the message WHOLE, as a single `format!` literal, because
+/// `scripts/check-doc-snippets.py` pins every quoted diagnostic against the
+/// scraped literals in `crates/*/src` and measures that they still reproduce
+/// real output. A message assembled from shared `const` fragments resolves to
+/// no literal and drops that floor.
+fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String {
+    let Some(map) = decl.as_mapping() else {
+        return format!(
+            "invalid state declaration for `{path}`: a declaration is a mapping with a \
+             `type:` key — `{{ type: number, default: 0 }}` — but this is {} \
+             (dsl 0.8.0 §4)",
+            yaml_shape(decl)
+        );
+    };
+    let Some(ty) = map.get(yaml_key("type")) else {
+        return format!(
+            "invalid state declaration for `{path}`: the declaration has no `type:` key; \
+             author state is scalar, as `{{ type: number, default: 0 }}`, and an `enum` \
+             NESTS its members inside `type:`, as `{{ type: {{ enum: [...] }} }}` \
+             (dsl 0.8.0 §4)"
+        );
+    };
+    let Some(name) = ty.as_str() else {
+        return format!(
+            "invalid state declaration for `{path}`: the `type:` value is malformed; author \
+             state is scalar, as `{{ type: number, default: 0 }}`, and an `enum` NESTS its \
+             members inside `type:`, as `{{ type: {{ enum: [...] }} }}` (dsl 0.8.0 §4)"
+        );
+    };
+    // `type: enum` is the one scalar type that is INCOMPLETE as a bare name —
+    // its members nest one level inside `type:`. Hoisting them to a sibling
+    // key is the four-word mistake copied straight out of `state-model.md`,
+    // and that one nesting level is the whole of what this diagnostic exists
+    // to say.
+    if name == "enum" {
+        return match ["values", "members", "options"]
+            .into_iter()
+            .find(|k| map.contains_key(yaml_key(k)))
+        {
+            Some(k) => format!(
+                "invalid state declaration for `{path}`: `type: enum` is not complete on its \
+                 own, and a top-level `{k}:` is not a declaration key — an `enum` NESTS its \
+                 members inside `type:`, as `{{ type: {{ enum: [...] }} }}` (dsl 0.8.0 §4)"
+            ),
+            None => format!(
+                "invalid state declaration for `{path}`: `type: enum` declares no members — \
+                 an `enum` NESTS them inside `type:`, as \
+                 `{{ type: {{ enum: [teen, adult] }}, default: teen }}` (dsl 0.8.0 §4)"
+            ),
+        };
+    }
+    // `list`/`record`/`map` name real types, so "unknown type" would be a lie.
+    // They are incomplete as bare names AND barred from author state anyway;
+    // the well-formed spelling lands on `E-STATE-COLLECTION`, whose remedy
+    // this arm repeats verbatim so the two read as one rule.
+    if matches!(name, "list" | "record" | "map") {
+        return format!(
+            "invalid state declaration for `{path}`: `type: {name}` is an incomplete \
+             collection type, and author state cannot declare a collection type in any \
+             case; it is scalar (number|bool|string|enum) — model collections as \
+             `relations:` (dsl 0.3.0 §3) or a plugin `state_shapes` slot"
+        );
+    }
+    if matches!(name, "bool" | "number" | "string") {
+        return format!(
+            "invalid state declaration for `{path}`: `type: {name}` is a valid type, so the \
+             rest of the declaration is what is malformed; a declaration is \
+             `{{ type: {name}, default: ... }}` and nothing else (dsl 0.8.0 §4)"
+        );
+    }
+    format!(
+        "invalid state declaration for `{path}`: unknown type `{name}`; author state is \
+         scalar — `number`, `bool`, `string`, or `enum`, and an `enum` NESTS its members \
+         inside `type:`, as `{{ type: {{ enum: [...] }} }}` (dsl 0.8.0 §4)"
+    )
+}
+
+/// The YAML shape of `v`, for the "but this is …" half of
+/// [`state_decl_message`].
+fn yaml_shape(v: &serde_yaml::Value) -> &'static str {
+    match v {
+        serde_yaml::Value::Null => "an empty value",
+        serde_yaml::Value::Bool(_) => "a boolean",
+        serde_yaml::Value::Number(_) => "a number",
+        serde_yaml::Value::String(_) => "a bare string",
+        serde_yaml::Value::Sequence(_) => "a list",
+        serde_yaml::Value::Tagged(_) => "a tagged value",
+        serde_yaml::Value::Mapping(_) => "a mapping",
+    }
 }
 
 /// Infer the import-role kind of a KIND-LESS root document from its frontmatter
@@ -856,11 +1111,21 @@ fn unrepresentable_yaml(v: &serde_yaml::Value) -> &'static str {
 /// when no key line matches. `line`/`column`/`utf16` are left zeroed —
 /// [`crate::check`]'s `normalize_spans` recomputes them from the byte offsets.
 pub(crate) fn meta_key_span(meta: &Meta, needle: &str) -> Span {
-    // `raw_yaml` is the frontmatter interior sliced verbatim after the 4-byte
-    // `"---\n"` opener (itself included in `meta.span`); a `raw_yaml` offset maps
-    // to the document by adding `meta.span.byte_start + 4`.
+    // `raw_yaml` is usually the frontmatter interior sliced verbatim after the
+    // 4-byte `"---\n"` opener (itself included in `meta.span`), so a `raw_yaml`
+    // offset maps to the document by adding `meta.span.byte_start + 4`.
+    //
+    // A bare `.yaml`/`.yml` state schema (data-catalog foundation B2) has NO
+    // envelope: `schema_import::read_and_parse` and `lute check <schema.yaml>`
+    // both wrap the whole file in a synthetic `Meta` whose `raw_yaml` IS the
+    // span. Adding a delimiter that is not there shifted every key span four
+    // bytes right — a wrong column, and on a short first line a wrong LINE —
+    // so "anchored at the offending key" was only ever true for `.lute` (#21,
+    // T10.2). The two cases are told apart exactly: a real frontmatter span
+    // covers at least `"---\n"` + `"---"` more bytes than its interior.
     const OPENER_LEN: usize = 4; // "---\n"
-    let base = meta.span.byte_start + OPENER_LEN;
+    let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != meta.raw_yaml.len();
+    let base = meta.span.byte_start + if enveloped { OPENER_LEN } else { 0 };
     let at = |start: usize| Span {
         byte_start: start,
         byte_end: start + needle.len(),
@@ -1077,6 +1342,14 @@ fn get_sub_map(map: &serde_yaml::Mapping, key: &str) -> BTreeMap<String, serde_y
 /// spelling as a def's `params:` (dsl §8.1). Each value deserializes to a
 /// manifest [`Type`] via the same serde path `Type` uses.
 ///
+/// dsl 0.10.0 §12.4: the LONG form `{ type: X }` is accepted as a synonym for
+/// `X`, for every spelling `X` the shared deserializer admits — that is how
+/// `state:` and `defs:` entries are written, and `components-and-extends.md`
+/// says a component param is typed exactly like a def param. The wrapper takes
+/// no other key: `{ type: string, default: … }` stays malformed, because a
+/// param default would need a rule for how it interacts with
+/// `E-COMPONENT-ARG`, which the issue explicitly does not ask for.
+///
 /// Returns the valid `(name, type)` pairs plus a `malformed` flag that is `true`
 /// when `params:` is PRESENT but any part of it is invalid — not a mapping, a
 /// non-string key, or a value that fails `Type` deserialization. The caller
@@ -1097,6 +1370,7 @@ fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, bool) {
             malformed = true; // non-string key
             continue;
         };
+        let tv = unwrap_long_form(tv).unwrap_or(tv);
         match serde_yaml::from_value::<Type>(tv.clone()) {
             Ok(ty) => params.push(DefParam {
                 name: name.to_string(),
@@ -1106,6 +1380,22 @@ fn get_params(map: &serde_yaml::Mapping, key: &str) -> (Vec<DefParam>, bool) {
         }
     }
     (params, malformed)
+}
+
+/// dsl 0.10.0 §12.4: unwrap the long form `{ type: X }` to `X`. `None` for
+/// anything else, including a `type:` wrapper carrying a second key — the
+/// caller then hands the ORIGINAL value to the `Type` deserializer, which
+/// rejects it, so an unwrap miss is never a silent acceptance.
+///
+/// There is no ambiguity to resolve: `Type` has no `type` variant
+/// (`lute-manifest/src/types.rs`), so `{ type: … }` is not already a legal
+/// spelling and this cannot shadow one.
+fn unwrap_long_form(tv: &serde_yaml::Value) -> Option<&serde_yaml::Value> {
+    let m = tv.as_mapping()?;
+    if m.len() != 1 {
+        return None;
+    }
+    m.get(yaml_key("type"))
 }
 
 #[cfg(test)]
@@ -1124,6 +1414,59 @@ mod tests {
             },
         };
         parse_meta(&meta, &CapabilitySnapshot::default())
+    }
+
+    /// 0.10.0 §12.4: `{ type: X }` is a synonym for `X`, for every spelling the
+    /// shared `Type` deserializer admits — the same long form `state:`, `defs:`
+    /// and a domain declaration already use.
+    #[test]
+    fn component_params_accept_the_long_form() {
+        let (meta, _d) = parse_meta_str(
+            "component: greet\nparams:\n  a: { type: string }\n  \
+             b: { type: { enum: [steady, rising] } }\n  \
+             c: { type: { providerRef: cast } }\n  d: number\n",
+        );
+        assert!(!meta.params_malformed, "the long form is legal (§12.4)");
+        assert_eq!(
+            meta.params
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a", "b", "c", "d"],
+            "source order is preserved and no param is silently dropped"
+        );
+        assert_eq!(meta.params[0].ty, Type::Str);
+        assert_eq!(
+            meta.params[1].ty,
+            Type::Enum(vec!["steady".to_string(), "rising".to_string()])
+        );
+        assert_eq!(meta.params[2].ty, Type::ProviderRef("cast".to_string()));
+        assert_eq!(meta.params[3].ty, Type::Number);
+    }
+
+    /// §12.4: the wrapper takes NO other key. A `default:` beside `type:` stays
+    /// malformed — param defaults are not added, because a default would need a
+    /// rule for how it interacts with `E-COMPONENT-ARG`, which is a separate
+    /// design the issue does not ask for.
+    #[test]
+    fn component_params_reject_a_long_form_with_extra_keys() {
+        let (meta, _d) = parse_meta_str(
+            "component: greet\nparams:\n  a: { type: string, default: \"steady\" }\n",
+        );
+        assert!(
+            meta.params_malformed,
+            "`{{ type: X, default: … }}` is still E-COMPONENT-PARSE (§12.4)"
+        );
+    }
+
+    /// §12.4 relaxes `type`, not "any wrapper".
+    #[test]
+    fn component_params_reject_an_unknown_wrapper_key() {
+        let (meta, _d) = parse_meta_str("component: greet\nparams:\n  a: { kind: string }\n");
+        assert!(
+            meta.params_malformed,
+            "`{{ kind: X }}` is not a Type spelling"
+        );
     }
 
     #[test]
@@ -1342,9 +1685,13 @@ mod tests {
         );
         assert_eq!(hits[0].severity, Severity::Error);
         // The span points at the offending KEY, not the whole frontmatter.
+        // `parse_with_snapshot` wraps the YAML in a synthetic whole-file
+        // `Meta` with no `---` envelope, so the offset is direct: until #21
+        // T10.2 `meta_key_span` added the four bytes of an opener that is not
+        // there, and this assertion subtracted them back out.
         assert_eq!(
             &format!("{SCENE_HEAD}difficulty: hard\n")
-                [hits[0].span.byte_start - 4..hits[0].span.byte_end - 4],
+                [hits[0].span.byte_start..hits[0].span.byte_end],
             "difficulty"
         );
         // A schema violation is NOT also an unknown key.

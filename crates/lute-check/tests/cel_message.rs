@@ -20,6 +20,7 @@ fn run(text: &str) -> CheckResult {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
 }
@@ -57,6 +58,54 @@ fn cel_parse_diag(raw: &str) -> Diagnostic {
         .into_iter()
         .find(|d| d.code == "E-CEL-PARSE")
         .unwrap_or_else(|| panic!("expected E-CEL-PARSE for {raw:?}"))
+}
+
+/// 0.10.0 §12.1: a CEL parse failure inside a `::set` BODY says that `::set`
+/// has no attribute surface, and suppresses the `==` suggestion — which does
+/// not parse when applied, because the `when=` was swallowed into the
+/// expression in the first place.
+#[test]
+fn set_body_parse_failure_names_the_empty_attribute_surface() {
+    let text = format!("{FM_STR}## Shot 1.\n::set{{run.s += 3 when=\"run.s > 0\"}}\n");
+    let res = run(&text);
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-CEL-PARSE")
+        .unwrap_or_else(|| panic!("expected E-CEL-PARSE; got {:?}", res.diagnostics));
+    assert!(
+        d.message.contains("`::set` takes no attributes"),
+        "the message must name the real problem; got {}",
+        d.message
+    );
+    assert!(
+        d.message.contains("<match>") || d.message.contains("<when>"),
+        "the message must name the remedy; got {}",
+        d.message
+    );
+    assert!(
+        !d.message.contains("did you mean"),
+        "a suggestion that does not parse is worse than none; got {}",
+        d.message
+    );
+    assert!(
+        d.fixits.is_empty(),
+        "the suppressed suggestion must not survive as a fixit; got {:?}",
+        d.fixits
+    );
+}
+
+/// §12.1 is scoped to the `::set` body. A bare `=` in a CONDITION slot keeps
+/// rule 4's suggestion, which is correct there and which the LSP code-action
+/// suite depends on.
+#[test]
+fn condition_slot_keeps_the_equals_suggestion() {
+    let d = cel_parse_diag("run.s = 1");
+    assert!(
+        d.message.contains("did you mean `run.s == 1`"),
+        "rule 4 is unchanged outside a `::set` body; got {}",
+        d.message
+    );
 }
 
 #[test]
@@ -217,6 +266,7 @@ fn component_body_cel_parse_is_translated_and_reanchored() {
         mode: Mode::Ci,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     let diags = check(&input).diagnostics;
     let d = diags

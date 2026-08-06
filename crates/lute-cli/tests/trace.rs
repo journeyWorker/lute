@@ -240,3 +240,194 @@ fn component_expansion_transcript_has_no_sentinel_leak() {
         "the component boundary itself should still be signposted, just cleanly: {stdout}"
     );
 }
+
+// ── 0.10.0 §8 / D-AC: the mock's subject key on a trace command line ───
+
+/// A fresh unique temp dir (matches `check_project.rs`'s own helper — each
+/// integration test binary is compiled separately, so this is intentionally
+/// duplicated rather than shared).
+fn temp_dir(tag: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// D-AC's third rule: `lute trace <doc> --mock m.yaml` supplies the subject
+/// on the command line and THAT wins. A `file:` naming a different document
+/// is `E-MOCK-SUBJECT` — the two ways of saying what a mock is for must not
+/// be able to disagree in silence.
+#[test]
+fn trace_refuses_a_mock_whose_file_names_a_different_document() {
+    let dir = temp_dir("mock-subject-disagree");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    let scene = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n";
+    std::fs::write(dir.join("scenes/one.lute"), scene).unwrap();
+    std::fs::write(dir.join("scenes/two.lute"), scene).unwrap();
+    std::fs::write(dir.join("m.yaml"), "file: scenes/two.lute\n").unwrap();
+
+    let out = std::process::Command::new(BIN)
+        .args([
+            "trace",
+            dir.join("scenes/one.lute").to_str().unwrap(),
+            "--mock",
+            dir.join("m.yaml").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(2), "a mock naming the wrong subject is an input error:\n{text}");
+    assert!(text.contains("E-MOCK-SUBJECT"), "{text}");
+}
+
+/// The agreeing case, and the absent case, both run.
+#[test]
+fn trace_accepts_an_agreeing_or_absent_file_key() {
+    let dir = temp_dir("mock-subject-agree");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("scenes/one.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("agree.yaml"), "file: scenes/one.lute\n").unwrap();
+    std::fs::write(dir.join("absent.yaml"), "state: {}\n").unwrap();
+    for m in ["agree.yaml", "absent.yaml"] {
+        let out = std::process::Command::new(BIN)
+            .args([
+                "trace",
+                dir.join("scenes/one.lute").to_str().unwrap(),
+                "--mock",
+                dir.join(m).to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{m}: {}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+/// #32 / T2.5: the entrance and the exit are the same construct with the same
+/// attribute names, and the entire difference is which of `brace` and
+/// `go-under` appears in a list in another file. `trace` printed both as
+/// `<auto>`. wake.lute's LAST line is the corpus's single declared exit.
+#[test]
+fn trace_marks_an_exiting_auto_as_an_exit() {
+    let out = trace(&["../../docs/examples/anseo/scenes/wake.lute", "--project", "../../docs/examples/anseo"]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(text.contains("<auto exit>"), "the exit must be marked: {text}");
+    assert!(
+        text.lines().any(|l| l.trim() == "<auto>"),
+        "the entrance must NOT be marked: {text}"
+    );
+}
+
+/// #32 / T5.9: `reason` is not one attribute among several — it is the
+/// terminator's entire payload, the only thing distinguishing `::end` from
+/// falling off the end of the document. A project with several endings
+/// previewed them all as an identical `<end>`.
+#[test]
+fn trace_renders_the_end_reason_and_reports_a_disposition() {
+    let out = trace(&["../../docs/examples/anseo/scenes/bridge.lute", "--project", "../../docs/examples/anseo"]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(text.contains("<end reason=bridge-reached>"), "{text}");
+
+    let out = trace(&[
+        "../../docs/examples/anseo/scenes/bridge.lute",
+        "--project",
+        "../../docs/examples/anseo",
+        "--json",
+    ]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("trace --json");
+    assert_eq!(v["disposition"], "ended", "a harness must tell a terminated walk from a spent one");
+    assert_eq!(v["endReason"], "bridge-reached", "{v:#?}");
+
+    // A scene that runs out of nodes is `complete`, not `ended`, and carries
+    // no reason — that is the distinction the field exists for.
+    let out = trace(&[
+        "../../docs/examples/anseo/scenes/wake.lute",
+        "--project",
+        "../../docs/examples/anseo",
+        "--json",
+    ]);
+    let vw: serde_json::Value = serde_json::from_slice(&out.stdout).expect("trace --json");
+    assert_eq!(vw["disposition"], "complete");
+    assert!(vw["endReason"].is_null(), "{vw:#?}");
+}
+
+/// #10 row h: the shipped binary printed `## Shot 1.` on the doc page's own
+/// file and command, while the heading sat in the IR
+/// (`"shots":[{"shot":1,"heading":"Hydroponics"}]`). Doing the tool fix
+/// retires the docs row.
+#[test]
+fn trace_prints_the_shot_heading_it_is_holding() {
+    let out = trace(&["../../docs/examples/anseo/scenes/hydroponics.lute", "--project", "../../docs/examples/anseo"]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(text.contains("## Hydroponics"), "{text}");
+}
+
+/// T3.10: a mis-keyed `choose:` used to be dropped in silence, and the walk
+/// then auto-picked the FIRST eligible arm — the one the file excluded — and
+/// exited 0. The mock family's key set is closed as of 0.10.0 §8, so the
+/// typo is now an input error and the excluded arm is never reached.
+#[test]
+fn trace_refuses_a_mock_that_mis_keys_a_surface() {
+    let dir = temp_dir("mock-closed-keys");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("scenes/one.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n\
+         <branch id=\"pick\">\n\
+         <choice id=\"left\" label=\"L\">\n@a: left\n</choice>\n\
+         <choice id=\"right\" label=\"R\">\n@a: right\n</choice>\n\
+         </branch>\n",
+    )
+    .unwrap();
+    let scene = dir.join("scenes/one.lute");
+    let run = |mock: &str| {
+        std::fs::write(dir.join("m.yaml"), mock).unwrap();
+        let out = std::process::Command::new(BIN)
+            .args([
+                "trace",
+                scene.to_str().unwrap(),
+                "--mock",
+                dir.join("m.yaml").to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        (
+            out.status.code(),
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            ),
+        )
+    };
+
+    // Control: the correctly keyed file still runs, and picks `right` — so a
+    // gate that refused every mock could not pass this test.
+    let (code, text) = run("choose:\n  pick: right\n");
+    assert_eq!(code, Some(0), "{text}");
+    assert!(text.contains("-> right"), "the supplied selection is taken:\n{text}");
+
+    let (code, text) = run("selections:\n  pick: right\n");
+    assert_eq!(code, Some(2), "a mis-keyed mock surface is an input error:\n{text}");
+    assert!(text.contains("E-TRACE-MOCK-PARSE") && text.contains("`selections`"), "{text}");
+    assert!(
+        !text.contains("(auto)"),
+        "the excluded arm must never be reached — that was the whole defect:\n{text}"
+    );
+}

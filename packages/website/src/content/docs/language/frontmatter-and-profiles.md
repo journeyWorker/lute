@@ -56,6 +56,43 @@ A top-level key that is neither a core key nor owned by an active plugin is a st
 Plugins may contribute additional frontmatter keys through their manifest (for example, `cast:` is
 owned by the character/cast capability).
 
+## `identity:` — the id shapes a project compiles to
+
+`episodeId` above is one input to a larger machine, and the machine is declared
+once per project rather than per document. In `lute.project.yaml`:
+
+```yaml
+identity:
+  lineId: "{prefix}.{speaker}_{code}"
+  voiceKey: "{speaker}-{code}"
+```
+
+Both values above are the **defaults** — a project that declares no `identity:`
+block compiles exactly as if it had declared this one, and a project that
+declares one of the two keys leaves the other at its default.
+
+`{prefix}` is derived, not authored: it is `{character}.{episodeId}`, and
+`episodeId` itself defaults to `s{season:02}ep{episode:02}` as described above.
+So `character: anseo`, `season: 1`, `episode: 2` gives the prefix
+`anseo.s01ep02`, and a line `@purser{code="0020"}` compiles to
+`lineId: "anseo.s01ep02.purser_0020"` and `voiceKey: "purser-0020"`. Pinning
+`episodeId: pilot` on that same scene gives `anseo.pilot.purser_0020`.
+
+The two templates govern **spoken content lines only**. Two other ids in the
+artifact are also called `lineId`/`titleLineId` and are *not* templated:
+
+- a branch option's `lineId` is always `{prefix}.{branch id}.{choice id}`;
+- a quest's `titleLineId` is always `{quest id}.title`, and an objective's is
+  `{quest id}.{objective id}` — a quest has no `{prefix}` at all.
+
+The token set is closed — `{prefix}`, `{speaker}`, `{code}` — and
+`E-IDENTITY-TEMPLATE` enumerates it on any mistake:
+
+<!-- lute-diagnostics -->
+```
+lute: E-IDENTITY-TEMPLATE: unknown token `{character}` in identity template `lineId`; valid tokens are {prefix}, {speaker}, {code}
+```
+
 ## Profiles & plugins
 
 Lute's authoring vocabulary — which directives, attributes, enums, and events are legal — is

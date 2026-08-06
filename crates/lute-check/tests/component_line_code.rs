@@ -68,6 +68,7 @@ fn check_text(text: String, components: ComponentSet) -> Vec<Diagnostic> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     check(&input).diagnostics
 }

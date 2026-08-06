@@ -1,12 +1,12 @@
 ---
 title: Current specification
-description: The consolidated index of what the Lute language enforces today at version 0.9.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
+description: The consolidated index of what the Lute language enforces today at version 0.10.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
 ---
 
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.9.0**:
+the consolidated **index** of what is *current* at language version **0.10.0**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -16,7 +16,7 @@ full cumulative history (including the pre-implementation `0.0.1` draft and the
 capability proposals), see the [specification index](/spec/).
 :::
 
-## What is current at 0.9.0
+## What is current at 0.10.0
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -33,10 +33,10 @@ capability proposals), see the [specification index](/spec/).
 | Timeline & property tracks | 0.1.0 | 0.1.0 | [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
 | Connectivity & `after:` sequencing | 0.2.0 (`after:` scene sequencing) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
-| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.9.0 (**IR shape unchanged — `0.9.0` is shape-identical to `0.8.0`**; `irVersion` re-aligns to `0.9.0` and artifact *content* moves — `enums` becomes populated from the project's own declaration, and `capabilityVersion` changes) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
-| Warning-severity diagnostics (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`) | 0.6.1 | 0.9.0 (`W-CODE-AFTER-END` and `W-INJECT-CONFLICT` now reachable inside an imported component body, anchored at the `::use` site) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
+| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.10.0 (**IR shape changes** — `provenance.reason` becomes `provenance.explanation`, the first shape change since `0.8.0`; `schemas/lute-ir-0.10.schema.json`, so an engine gated on IR `0.9` must widen to `0.10`. Timing values become exact, and `capabilityVersion` changes) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
+| Warning-severity diagnostics (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`) | 0.6.1 | 0.10.0 (four new warnings — `W-COMPONENT-UNVERIFIED`, `W-DOMAIN-UNREAD`, `W-EXIT-INERT`, `W-STAGE-ABSENT` — plus `W-PROJECT-INERT`; and `W-INJECT-CONFLICT` is **removed**, the first removal in the series, because equality with the declared default was its only trigger) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
 | Deny promotion (`--deny` / `--deny-warnings`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.9.0 (all three axes read `0.9.0` — toolchain, language, and IR — because a release re-aligns every visible number; the IR shape is untouched, so an engine gated on `0.8` widens to `0.9` and changes nothing else) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.10.0 (all three axes read `0.10.0` — toolchain, language, and IR — because a release re-aligns every visible number; unlike `0.9.0`, the IR number is **earned** here, so an engine gated on `0.9` must widen to `0.10` *and* read the renamed provenance field) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
 
 ## Notes on the boundaries
 
@@ -75,10 +75,10 @@ capability proposals), see the [specification index](/spec/).
   — a bare sequence is shorthand for `{ members: [...] }` — but a declaration of
   `action` MUST now supply `exits:` and one of `anchor` MUST supply `default:`,
   because those are the two places the compiler branches on *which* member, and
-  it no longer infers them from a name prefix. **The IR shape does not move**:
-  no field is added, renamed, or moved, and `irVersion` reads `"0.9.0"` only
-  because a release re-aligns every axis — an engine gated on IR `0.8` must
-  widen its gate to `0.9` and change nothing else. The
+  it no longer infers them from a name prefix. **The IR shape did not move in
+  that release**: no field was added, renamed, or moved, and `irVersion` read
+  `"0.9.0"` only because a release re-aligns every axis — an engine gated on IR
+  `0.8` had only to widen its gate to `0.9`. The
   artifact's *content* does move — `enums` becomes populated for a project that
   declares inline or through `uses:`, and `capabilityVersion` shifts. The
   authoring side is written up at [Content vocabulary](/language/vocabulary/).
@@ -93,6 +93,21 @@ capability proposals), see the [specification index](/spec/).
   dropped. What a component body still does **not** get is its own vocabulary
   scope: its `uses:` and its own inline `enums:` are both discarded at parse, so
   the body resolves vocabulary against the **importing** document.
+- **`0.10.0` — the toolchain says what it knows — reddens documents, mocks, and
+  the IR shape.** Thirteen language changes, and the through-line is that every
+  one of them is a place the checker already held the answer. Three of them can
+  redden a document that checks clean today: `::set` now types its right-hand
+  side against the path it writes (`E-SET-TYPE`), the six logic tags close their
+  attribute sets (`E-UNKNOWN-ATTR`, and `E-AS-REMOVED` for `as=` on a
+  `<choice>`), and a `<quest start>` gate that can never open is
+  `E-QUEST-UNREACHABLE` where it used to be silent. `mocks/*.yaml` is validated
+  for the first time and its `file:` key is **required** — a mock without one is
+  `E-MOCK-SUBJECT`. And the IR **shape** moves for the first time since
+  `0.8.0`: `provenance.reason` becomes `provenance.explanation`, so an engine
+  gated on IR `0.9` must widen to `0.10` and rename the one field it reads.
+  `W-INJECT-CONFLICT` is **removed** rather than narrowed, and the information
+  it carried is dropped, not migrated — agreement with the declared default was
+  its only trigger, so there was nothing left to warn about.
 - **The `0.6.1` coverage warnings are honesty, not errors.** They name the exact
   edge of what static analysis can prove — a relational fact query it can neither
   prove nor refute, a stale `luteVersion` stamp, an unproducible trace mock — and

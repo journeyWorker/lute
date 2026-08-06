@@ -257,7 +257,7 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
             }
             for arm in &m.arms {
                 match arm {
-                    Arm::When { is, test, body, span } if span_contains(*span, off) => {
+                    Arm::When { is, test, body, span, .. } if span_contains(*span, off) => {
                         // Check `is` FIRST: an `is=`-only `<when>` gives `test` an
                         // empty slot spanning the WHOLE open tag (parser
                         // blocks.rs), which would otherwise swallow the `is=`
@@ -278,7 +278,7 @@ fn resolve_node(node: &Node, off: usize) -> Option<Cursor<'_>> {
                         }
                         return resolve_nodes(body, off);
                     }
-                    Arm::Otherwise { body, span } if span_contains(*span, off) => {
+                    Arm::Otherwise { body, span, .. } if span_contains(*span, off) => {
                         return resolve_nodes(body, off);
                     }
                     _ => {}
@@ -739,7 +739,7 @@ pub(crate) fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
                 Node::Match(m) => {
                     for arm in &m.arms {
                         let (body, span) = match arm {
-                            Arm::When { body, span, .. } | Arm::Otherwise { body, span } => {
+                            Arm::When { body, span, .. } | Arm::Otherwise { body, span, .. } => {
                                 (body, *span)
                             }
                         };
@@ -1458,6 +1458,7 @@ mod tests {
             mode: lute_check::Mode::Author,
             imports: lute_check::SchemaImports::default(),
             components: Default::default(),
+            defaults: Default::default(),
         };
         let codes: Vec<String> = lute_check::check(&input)
             .diagnostics

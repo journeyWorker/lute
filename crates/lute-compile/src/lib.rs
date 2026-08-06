@@ -48,15 +48,17 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// IR schema version stamped into the envelope's `irVersion` field (spec §4.1,
 /// A9). Tracked as its own axis from [`LUTE_LANG_VERSION`] — the two are
 /// separate pins (T13) — but per `docs/versioning.md` a release RE-ALIGNS every
-/// visible number to that release's number, so 0.9.0 stamps 0.9.0 here.
+/// visible number to that release's number, so 0.10.0 stamps 0.10.0 here.
 ///
-/// IR 0.9.0 is **shape-identical** to 0.8.0: no artifact field was added,
-/// renamed, moved, or retyped, and `schemas/lute-ir-0.9.schema.json` is the
-/// 0.8 schema renamed. Because engines gate by major.minor and MUST refuse a
-/// newer one (`docs/runtime/execution-model.md`), a 0.8 engine will refuse a
-/// 0.9.0 artifact until it widens its gate — and widening the gate is the
-/// ONLY change it needs.
-pub const LUTE_IR_VERSION: &str = "0.9.0";
+/// IR 0.10.0 is a REAL shape change, not a restamp: `Provenance.reason` is
+/// renamed to `Provenance.explanation` (#36, Appendix B), and
+/// `schemas/lute-ir-0.10.schema.json` is the published contract. Because
+/// engines gate by major.minor and MUST refuse a newer one
+/// (`docs/runtime/execution-model.md`), a 0.9 engine will refuse a 0.10.0
+/// artifact until it widens its gate — and the provenance rename is the only
+/// other edit it needs. `schemas/lute-ir-0.9.schema.json` is kept for engines
+/// still on 0.9.
+pub const LUTE_IR_VERSION: &str = "0.10.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -156,20 +158,21 @@ pub fn compile_with_check(
             // `check()` is the diagnostic surface, the artifact is ours (plan
             // note 8): whatever this walk re-derives on `StageState::diags` is
             // dropped rather than reported a second time. Since dsl 0.9.0 D-D
-            // that channel is no longer warning-only — besides the
-            // `W-INJECT-CONFLICT`s, `auto-anchor-on-show` pushes
-            // `E-DOMAIN-UNKNOWN` (an Error) for an `::auto` that relies on an
-            // undeclared `anchor` domain's `default:`. So the drop needs an
-            // argument that covers an Error, not the old one about warnings
-            // never gating.
+            // that channel is no longer warning-only — `auto-anchor-on-show`
+            // pushes `E-DOMAIN-UNKNOWN` (an Error) for an `::auto` that relies
+            // on an undeclared `anchor` domain's `default:`. So the drop needs
+            // an argument that covers an Error, not the old one about warnings
+            // never gating. (dsl 0.10.0 §12.3 removed `W-INJECT-CONFLICT`;
+            // §11.2 added `W-EXIT-INERT` and `W-STAGE-ABSENT`, so the channel
+            // now carries one Error and two warnings.)
             //
             // The argument: the D6 gate at the top of this function already
             // returned `Err(result.diagnostics)` unless `check()` was clean, so
             // reaching this line PROVES `check()` derived no Error. The drop is
             // lossless exactly insofar as `check()` derives every Error this
-            // walk can — and it does, for both codes, because both sides run
-            // the one `lute_check::inject` reducer over one threaded
-            // `StageState`, folded in document position:
+            // walk can — and it does, because both sides run the one
+            // `lute_check::inject` reducer over one threaded `StageState`,
+            // folded in document position:
             //
             //   * `E-DOMAIN-UNKNOWN` turns on attribute-KEY presence (a
             //     `character` attr, no `anchor` attr) plus one document-wide
@@ -179,26 +182,27 @@ pub fn compile_with_check(
             //     `::auto` nor adds or removes an attr key, so the trigger is
             //     invariant under everything separating this tree from the one
             //     `check()` folds.
-            //   * `W-INJECT-CONFLICT` is the divergence Task 7g closed: until
-            //     then `check()`'s `fold_injections` treated a `::use` as an
-            //     opaque leaf while THIS walk runs after `normalize_document`
-            //     has inlined the body, so a body conflict was derived only
-            //     here and discarded here, i.e. reported by no tool at all.
-            //     `check()` now folds THROUGH the `::use` with the stage state
-            //     inherited at that site (see `lute_check`'s `fold_use`), which
-            //     is exactly the context this walk folds the inlined body in,
-            //     so both sides agree by construction.
+            //   * The component-body divergence Task 7g closed is structural,
+            //     not code-specific: until then `check()`'s `fold_injections`
+            //     treated a `::use` as an opaque leaf while THIS walk runs
+            //     after `normalize_document` has inlined the body, so a body
+            //     diagnostic was derived only here and discarded here, i.e.
+            //     reported by no tool at all. `check()` now folds THROUGH the
+            //     `::use` with the stage state inherited at that site (see
+            //     `lute_check`'s `fold_use`), which is exactly the context this
+            //     walk folds the inlined body in, so both sides agree by
+            //     construction.
             //
             // Residual, deliberate, and warning-only: this walk folds the
-            // EXPANDED tree, so it can see a conflict that only exists once a
-            // `@param` is bound to a literal at the `::use` site. That one is a
-            // VALUE comparison (the authored `anchor` against the domain
-            // `default:`), which is why it is param-sensitive and why the
-            // key-presence Error above is not. `check()` is a pre-expansion
-            // surface and is blind to that shape — identically so whether the
-            // component is reached through a `::use` or checked STANDALONE, so
-            // no route disagrees with another; it is a precision boundary, not
-            // the divergence Task 7g closed.
+            // EXPANDED tree, so a §11.2 warning can turn on a value a `@param`
+            // only acquires at the `::use` site — `is_declared_exit` compares
+            // the resolved `action` against declared `exits:`, and an `action`
+            // written `@ref` in a component body is a raw CEL path pre-expansion
+            // and a literal member after. `check()` is a pre-expansion surface
+            // and is blind to that shape — identically so whether the component
+            // is reached through a `::use` or checked STANDALONE, so no route
+            // disagrees with another; it is a precision boundary, not the
+            // divergence Task 7g closed.
             state.diags.clear();
             let (commands, addr_diags) = address::assign_addresses(shots, identity);
             (ArtifactMeta::Scene(meta), commands, addr_diags)
@@ -740,19 +744,23 @@ mod tests {
             mode: Mode::Ci,
             imports: Default::default(),
             components: Default::default(),
+            defaults: Default::default(),
         }
     }
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.9.0 axis alignment (docs/versioning.md): a release re-aligns the
-        // visible numbers to that release's number, so LANGUAGE and IR both
-        // read 0.9.0. The IR bump is a PURE RESTAMP — no artifact field was
-        // added, renamed, or moved, and lute-ir-0.9.schema.json is the 0.8
-        // schema renamed. The two stamps stay independently tracked pins
-        // (T13); this release simply lands them on the same number.
-        assert_eq!(super::LUTE_IR_VERSION, "0.9.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.9.0");
+        // 0.10.0 axis alignment (docs/versioning.md): a release re-aligns the
+        // visible numbers to that release's number, and here all three earned
+        // it. The IR bump is NOT a restamp — `Provenance.reason` became
+        // `Provenance.explanation` (#36, Appendix B), and
+        // `lute-ir-0.10.schema.json` is the published contract. The language
+        // moved last, in the Release phase, together with the corpus restamp,
+        // because bumping it fires `W-LUTE-VERSION-STALE` on every stamped
+        // document in `docs/examples`. The two remain independently tracked
+        // pins (T13); they simply agree on this release.
+        assert_eq!(super::LUTE_IR_VERSION, "0.10.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.10.0");
     }
 
     #[test]
@@ -761,8 +769,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.9.0");
-        assert_eq!(v["irVersion"], "0.9.0");
+        assert_eq!(v["lute"], "0.10.0");
+        assert_eq!(v["irVersion"], "0.10.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

@@ -201,6 +201,42 @@ pub fn scan_objective_liveness(
         // traversal shape.
         for (label, slot) in [("start", &quest.start), ("fail", &quest.fail)] {
             let Some(slot) = slot else { continue };
+            // dsl 0.10.0 §5.1 (D-N): a `start` predicate that decides FALSE
+            // once every fact query over a never-producible relation is
+            // substituted — where that substitution is LOAD-BEARING — means
+            // the quest never activates. That is `E-QUEST-UNREACHABLE`'s
+            // existing dead-`start` cause (0.4.0 §5.3 rule 2, D21), reached
+            // through the branch the producibility fixpoint never had.
+            //
+            // `start` ONLY. A `fail` gated on a never-producible relation
+            // means the quest can never FAIL, which is not a defect and MUST
+            // NOT fire; `fail` keeps `W-UNPROVEN-RELATIONAL` for the
+            // producible case, unchanged. The loop is SHARED and the analysis
+            // is symmetric — the verdict is not, and this filter is the whole
+            // of the asymmetry.
+            //
+            // `dead_guard`'s two existing gates ARE §5.1's other two bounds:
+            // gate (b) (`:438`) keeps an already-false `start` with the
+            // pre-existing scalar cause rather than double-reporting it, and
+            // `substitute_dead_fact_queries` folds only
+            // `producible[R] == false`, so a producible relation can never
+            // reach here.
+            if label == "start" {
+                let mut dead_relations = BTreeSet::new();
+                if dead_guard(&slot.raw, producible, defs, ctx, &mut dead_relations) {
+                    out.push(diag(
+                        crate::reachability::E_QUEST_UNREACHABLE,
+                        dead_start_message(&slot.raw, &dead_relations),
+                        // The QUEST's span, never the slot's:
+                        // `connectivity::unreachable_quest_ids` matches
+                        // `d.span == quest.span` (`connectivity.rs:1076-1079`),
+                        // and that match is what makes `scenario reach` read
+                        // the lifecycle instead of printing `Reachable`.
+                        quest.span,
+                    ));
+                    continue;
+                }
+            }
             let relations = unproven_relations(&slot.raw, producible, defs, ctx);
             if !relations.is_empty() {
                 out.push(warn_diag(
@@ -268,6 +304,45 @@ pub fn dead_required_objective_quests(
             continue;
         }
         if has_dead_required_objective(&quest.body, producible, defs, ctx) {
+            out.insert(quest.id.clone());
+        }
+    }
+    out
+}
+
+/// Every `<quest id>` in `doc` whose `start=` predicate is RELATIONALLY DEAD
+/// (dsl 0.10.0 §5.1, D-N) — the structured, boolean twin of the
+/// `E-QUEST-UNREACHABLE` [`scan_objective_liveness`] emits for the same cause,
+/// computed by the same [`dead_guard`] and therefore never able to disagree
+/// with it.
+///
+/// It exists for exactly the reason [`dead_required_objective_quests`] does:
+/// this cause is decided by the PROJECT-WIDE producibility pass, so its
+/// diagnostic lands in `lute-cli`'s `project_diags` and NEVER in the per-file
+/// `check()` results that `crate::connectivity::unreachable_quest_ids` scans.
+/// A connectivity consumer that needs the FACT — `completed(Q)` must be
+/// `false` for a quest that can never activate, and `scenario reach` must stop
+/// printing `Reachable` for it — has to read it from here, as structured data,
+/// not by re-inspecting a diagnostic it cannot see.
+///
+/// `start` ONLY, never `fail` (D-N), and an ambiguous or empty quest id is
+/// skipped on the same provable-only grounds
+/// [`dead_required_objective_quests`] skips it.
+pub fn dead_start_quests(
+    doc: &Document,
+    producible: &BTreeMap<String, bool>,
+    ambiguous_quest_ids: &BTreeSet<String>,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for quest in &doc.quests {
+        if quest.id.is_empty() || ambiguous_quest_ids.contains(&quest.id) {
+            continue;
+        }
+        let Some(slot) = &quest.start else { continue };
+        let mut dead_relations = BTreeSet::new();
+        if dead_guard(&slot.raw, producible, defs, ctx, &mut dead_relations) {
             out.insert(quest.id.clone());
         }
     }
@@ -564,6 +639,25 @@ fn dead_relation_message(required: bool, raw: &str, dead_relations: &BTreeSet<St
         msg.push_str(" (dsl 0.4.0 §4.2/§5.3)");
     }
     msg
+}
+
+/// The `E-QUEST-UNREACHABLE` message for the dead-`start`-relation cause (dsl
+/// 0.10.0 §5.1). Opens with `quest_unreachable_message`'s own phrase so the
+/// lifecycle causes read alike whichever pass found them, quotes the predicate,
+/// names every relation the substitution folded (deterministic `BTreeSet`
+/// order), and carries the verbatim "under your declared routes" hedge that
+/// [`dead_relation_message`] already carries — "dead" means dead given the
+/// DECLARED assert/rule graph, never an unconditional claim about play.
+fn dead_start_message(raw: &str, dead_relations: &BTreeSet<String>) -> String {
+    let relations: Vec<&str> = dead_relations.iter().map(String::as_str).collect();
+    format!(
+        "quest can never complete: `start=\"{}\"` queries relation(s) `{}`, which is \
+         unreachable under your declared routes: no `facts:` seed, no `reserved` tier, and no \
+         rule closure over already-producible relations can ever populate it, so the quest \
+         never activates (dsl 0.10.0 §5.1)",
+        raw.trim(),
+        relations.join("`, `")
+    )
 }
 
 /// Build a `Layer::Logic` error diagnostic (a §4.2 project-wide reachability
@@ -1139,5 +1233,107 @@ mod tests {
         assert_eq!(w.len(), 2, "one W for start, one for fail");
         assert!(w.iter().any(|d| d.message.contains("start=\"")), "labels start");
         assert!(w.iter().any(|d| d.message.contains("fail=\"")), "labels fail");
+    }
+
+    /// dsl 0.10.0 §5.1 (D-N): a `<quest start>` gated on a NEVER-producible
+    /// relation means the quest can never activate — the existing dead-`start`
+    /// cause of the existing `E-QUEST-UNREACHABLE`.
+    #[test]
+    fn dead_relation_start_is_quest_unreachable() {
+        let doc = quest_doc_lifecycle("q", Some("holds(deadRel(\"x\"))"), None);
+        let mut producible_map = BTreeMap::new();
+        producible_map.insert("deadRel".to_string(), false);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
+        let e: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.code == crate::reachability::E_QUEST_UNREACHABLE)
+            .collect();
+        assert_eq!(e.len(), 1, "exactly one E-QUEST-UNREACHABLE; got {diags:?}");
+        assert_eq!(e[0].severity, Severity::Error);
+        assert_eq!(e[0].layer, Layer::Logic);
+        assert!(e[0].message.contains("deadRel"), "names the relation: {}", e[0].message);
+        assert!(
+            e[0].message.contains("under your declared routes"),
+            "carries the verbatim hedge: {}",
+            e[0].message
+        );
+        // The anchor is the QUEST's span, not the slot's:
+        // `connectivity::unreachable_quest_ids` matches on `d.span == quest.span`
+        // and that match is what makes `scenario reach` read the lifecycle.
+        assert_eq!(e[0].span, doc.quests[0].span, "anchored at the quest");
+        assert!(
+            diags.iter().all(|d| d.code != W_UNPROVEN_RELATIONAL),
+            "never also the coverage warning: {diags:?}"
+        );
+    }
+
+    /// D-N: `start=` ONLY, never `fail=`. A `fail` gated on a never-producible
+    /// relation means the quest can never FAIL — not a defect. The loop is
+    /// shared; the verdict is not.
+    #[test]
+    fn dead_relation_fail_is_not_quest_unreachable() {
+        let doc = quest_doc_lifecycle("q", None, Some("holds(deadRel(\"x\"))"));
+        let mut producible_map = BTreeMap::new();
+        producible_map.insert("deadRel".to_string(), false);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
+        assert!(
+            diags.iter().all(|d| d.code != crate::reachability::E_QUEST_UNREACHABLE),
+            "a fail that can never hold is not a defect: {diags:?}"
+        );
+    }
+
+    /// §5.1 bound 1, load-bearing only: a `start` that was ALREADY false before
+    /// substitution stays `reachability.rs`'s scalar cause and this pass adds
+    /// nothing. `dead_guard`'s gate (b) is what enforces it.
+    #[test]
+    fn scalar_dead_start_is_not_double_reported() {
+        let doc = quest_doc_lifecycle("q", Some("false && holds(deadRel(\"x\"))"), None);
+        let mut producible_map = BTreeMap::new();
+        producible_map.insert("deadRel".to_string(), false);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
+        assert!(
+            diags.iter().all(|d| d.code != crate::reachability::E_QUEST_UNREACHABLE),
+            "the literal `false` is the load-bearing cause, not the relation: {diags:?}"
+        );
+    }
+
+    /// §5.1 bound 3, producible is producible: the Anseo regression guard.
+    /// `start="holds(found(toma))"` MUST NOT error, because `found` IS asserted.
+    /// A false positive on this layer is worse than the silence — it is the
+    /// layer the release exists to defend.
+    #[test]
+    fn producible_start_never_errors() {
+        let doc = quest_doc_lifecycle("q", Some("holds(liveRel(\"x\"))"), None);
+        let mut producible_map = BTreeMap::new();
+        producible_map.insert("liveRel".to_string(), true);
+        let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
+        let defs = DefTable { bodies: &bodies, params: &params };
+        let schema = crate::meta::StateSchema::default();
+        let ctx_params = BTreeMap::new();
+        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
+        assert!(
+            diags.iter().all(|d| d.code != crate::reachability::E_QUEST_UNREACHABLE),
+            "a producible gate is a review region, not a dead one: {diags:?}"
+        );
+        assert!(
+            diags.iter().any(|d| d.code == W_UNPROVEN_RELATIONAL),
+            "it keeps its coverage warning: {diags:?}"
+        );
     }
 }

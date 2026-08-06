@@ -61,13 +61,18 @@ Gate parsing on `irVersion` by **major.minor** (spec §4.1, A9):
 gate. `capabilityVersion` lets you refuse an artifact compiled against a plugin
 snapshot you do not match.
 
-**IR `0.9.0` is shape-identical to IR `0.8.0`** — no field added, renamed, or
-moved, and no new command `kind`. The number re-aligned with the release
-([`docs/versioning.md`](../versioning.md)), and `schemas/lute-ir-0.8.schema.json`
-was renamed to `schemas/lute-ir-0.9.schema.json` with only its own version
-strings edited. The gate above is still normative, so an engine implementing
-`0.8` **refuses** a `0.9.0` artifact until it accepts `0.9` — widening the gate
-is the whole migration, with no parser or behaviour change behind it.
+**IR `0.10.0` changes the shape** — one field rename, the first since `0.8.0`.
+The injection provenance stamp's `reason` becomes **`explanation`**:
+`{ injected: true, by: "auto-pose-reset", explanation: "…" }`. The old name
+collided with `end.reason`, which is an opaque author token you dispatch on,
+while this field is human-readable English the compiler wrote and nothing
+dispatches on. Nothing else moves — no field added or retyped, no new command
+`kind`, and `Provenance.injected` is retained but is now constant-`true`, so do
+not read a `true` as distinguishing anything. The schema is
+`schemas/lute-ir-0.10.schema.json`. The gate above is still normative, so an
+engine implementing `0.9` **refuses** a `0.10.0` artifact until it accepts
+`0.10` — and if it reads the provenance stamp, that rename is the only edit
+beyond the gate.
 
 ## Addressing and control flow
 
@@ -123,6 +128,14 @@ must halt with an error.
 ```ts
 type Addr = string;
 
+// Every CEL slot carries its verbatim source under its own key — `option.when`,
+// `arm.test`, `set.value` — and the lowered portable `expr` AST (IR A7) ONLY
+// when that CEL is inside the closed §8.4 profile. A relational fact query
+// (`holds()`/`count()`) is outside it and carries raw text alone, so this
+// two-way read is mandatory, not an optimisation.
+const evalSlot = (raw, expr, state, facts) =>
+  expr !== undefined ? evalExpr(expr, state) : evalCel(raw, state, facts);
+
 function run(artifact: Artifact, state: StateStore, facts: FactStore) {
   assertVersionCompatible(artifact.irVersion); // major.minor gate
 
@@ -151,19 +164,19 @@ function run(artifact: Artifact, state: StateStore, facts: FactStore) {
       case "video":      stageVideo(cmd); break;
 
       // ── state & facts ──
-      case "set":     writeState(state, cmd.path, cmd.op, evalExpr(cmd.expr, state)); break;
+      case "set":     writeState(state, cmd.path, cmd.op, evalSlot(cmd.value, cmd.expr, state, facts)); break;
       case "assert":  facts.assert(cmd.relation, cmd.args); break;   // positive delta
       case "retract": facts.retract(cmd.relation, cmd.args); break;  // negative delta (args may be "_")
 
       // ── control flow ──
       case "choice":
       case "hub": {
-        const opt = pickOption(cmd, state); // eligibility via evalExpr(opt.expr)
+        const opt = pickOption(cmd, state); // per option: evalSlot(o.when, o.expr, …)
         next = opt ? opt.target : cmd.converge;
         break;
       }
       case "match": {
-        const arm = cmd.arms.find(a => truthy(evalExpr(a.expr, state)));
+        const arm = cmd.arms.find(a => truthy(evalSlot(a.test, a.expr, state, facts)));
         next = arm ? arm.target : (cmd.otherwise ?? cmd.converge);
         break;
       }
@@ -187,8 +200,20 @@ function run(artifact: Artifact, state: StateStore, facts: FactStore) {
 }
 ```
 
-`evalExpr` walks the portable `expr` AST (IR A7) carried alongside every guard;
-`facts` is your Datalog store; `callBridgeAndApplyEffects` is the host bridge.
-Each is specified in its own document here. Nothing above evaluates anything at
-*compile* time — the artifact is inert data, and this loop is where behavior
-lives.
+`evalExpr` walks the portable `expr` AST (IR A7) — but that AST is **not**
+carried alongside every guard, and a dispatcher that reads only it plays the
+default branch of everything. Each CEL slot carries its verbatim source under
+its own key (`option.when`, `arm.test`, `set.value`) and the lowered `expr`
+**only when that CEL is inside the closed §8.4 profile**. Anything outside it —
+a `holds()`/`count()` fact query above all, and those are the guards a
+relational work is made of — omits `expr` entirely rather than emitting a
+half-tree. Measured on `docs/examples/anseo/scenes/purser.lute`, every
+`option.when` and every `arm.test` in the artifact is raw CEL with **no**
+`expr` sibling. So `evalSlot` is two operations behind one name: walk the
+`expr` when it is there, and otherwise parse and evaluate the raw text
+yourself. An engine that cannot do the second needs a CEL evaluator, not a
+fallback; `lute run` resolves *every* slot from the raw text for exactly that
+reason (`crates/lute-cli/src/runner.rs`). `facts` is your Datalog store;
+`callBridgeAndApplyEffects` is the host bridge. Each is specified in its own
+document here. Nothing above evaluates anything at *compile* time — the
+artifact is inert data, and this loop is where behavior lives.

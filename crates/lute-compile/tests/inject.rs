@@ -313,3 +313,24 @@ fn join_unions_dirty_but_only_over_carried_characters() {
     assert!(!joined.on_stage.contains_key("takeru"));
     assert!(!joined.dirty.contains("takeru"));
 }
+
+/// IR 0.10.0 (#36, D-AE): the human-readable justification serializes as
+/// `explanation`. `reason` is `end.reason`'s key — an opaque author token a
+/// host dispatches on — and the two share no contract.
+#[test]
+fn provenance_serializes_explanation_not_reason() {
+    let p = lute_check::Provenance {
+        injected: true,
+        by: "auto-pose-reset".into(),
+        explanation: "resetting to neutral".into(),
+    };
+    let v = serde_json::to_value(&p).expect("provenance serializes");
+    assert_eq!(
+        v["explanation"], "resetting to neutral",
+        "the human-readable justification is `explanation` as of IR 0.10.0 (#36, D-AE)"
+    );
+    assert!(
+        v.get("reason").is_none(),
+        "`reason` is `end.reason`'s key and must not appear on provenance: {v:#?}"
+    );
+}

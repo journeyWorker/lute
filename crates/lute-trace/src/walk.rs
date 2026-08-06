@@ -82,6 +82,11 @@ struct Walk<'a> {
     unresolved: Vec<UnresolvedEntry>,
     coverage_choices: BTreeMap<String, CoverageCount>,
     coverage_arms: BTreeMap<String, CoverageCount>,
+    /// The merged domain view (`fold_env`'s `.domains`) — needed to answer
+    /// whether an `::auto{action=…}` value is in the `action` domain's
+    /// `exits:`, which is the whole difference between an entrance and an
+    /// exit (#32, T2.5).
+    domains: &'a BTreeMap<String, lute_manifest::snapshot::Domain>,
 }
 
 impl<'a> Walk<'a> {
@@ -130,12 +135,19 @@ impl<'a> Walk<'a> {
         self.coverage_choices
             .entry(id.to_string())
             .and_modify(|c| c.visited += 1)
-            .or_insert(CoverageCount { visited: 1, total });
+            .or_insert(CoverageCount { visited: 1, total, label: id.to_string() });
     }
 
     fn record_match_decision(&mut self, id: &str, span: Span, outcome: String, guard: Option<String>, total: usize) {
         self.push_decision("match", id, span, outcome, guard, false, false, Vec::new());
-        self.coverage_arms.insert(id.to_string(), CoverageCount { visited: 1, total });
+        // Keyed on the SITE, not the subject text. `record_choice_decision`
+        // above keeps the branch/hub id: its `span` is the CHOSEN CHOICE's
+        // (`walk_branch`/`walk_hub` pass the choice span), so keying on it
+        // would split one branch into one row per arm.
+        self.coverage_arms.insert(
+            crate::report::site_key(&span),
+            CoverageCount { visited: 1, total, label: id.to_string() },
+        );
     }
 
     /// §3.2 de-duplication: the unresolved set MUST report a byte-identical
@@ -443,7 +455,31 @@ fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
     } else {
         None
     };
-    w.steps.push(Step::Directive { tag: d.tag.clone(), component_boundary: boundary });
+    // #32 / T2.5: an `::auto` whose `action=` names a declared exit member
+    // ENDS a presence. Declared, never inferred — `Domain.exits` is the same
+    // list `lute-check::inject` and `lute-compile::lower` read (dsl 0.9.0
+    // D-D), which replaced three private prefix heuristics.
+    let exit = d.tag == "auto"
+        && d.attrs.iter().any(|a| {
+            a.key == "action"
+                && matches!(&a.value, lute_syntax::ast::AttrValue::Str(s)
+                    if w.domains.get("action").is_some_and(|dom| dom.exits.iter().any(|e| e == s)))
+        });
+    // #32 / T5.9: `reason` is `::end`'s entire payload.
+    let reason = if d.tag == lute_manifest::core::END_DIRECTIVE {
+        d.attrs.iter().find(|a| a.key == "reason").and_then(|a| match &a.value {
+            lute_syntax::ast::AttrValue::Str(s) => Some(s.clone()),
+            _ => None,
+        })
+    } else {
+        None
+    };
+    w.steps.push(Step::Directive {
+        tag: d.tag.clone(),
+        component_boundary: boundary,
+        exit,
+        reason,
+    });
     if d.tag == lute_manifest::core::END_DIRECTIVE {
         Flow::Ended
     } else {
@@ -548,8 +584,12 @@ fn walk_match(m: &Match, w: &mut Walk<'_>) -> Flow {
                         let expr = render_guard_text(is.as_ref(), &test.raw).unwrap_or_default();
                         w.record_unresolved("match", &subject_raw, m.span, expr, atoms);
                         w.coverage_arms
-                            .entry(subject_raw.clone())
-                            .or_insert(CoverageCount { visited: 0, total: total_arms });
+                            .entry(crate::report::site_key(&m.span))
+                            .or_insert(CoverageCount {
+                                visited: 0,
+                                total: total_arms,
+                                label: subject_raw.clone(),
+                            });
                         return Flow::Incomplete;
                     }
                 }
@@ -557,9 +597,11 @@ fn walk_match(m: &Match, w: &mut Walk<'_>) -> Flow {
         }
     }
     w.push_decision("match", &subject_raw, m.span, "no arm".to_string(), None, false, false, Vec::new());
-    w.coverage_arms
-        .entry(subject_raw)
-        .or_insert(CoverageCount { visited: 0, total: total_arms });
+    w.coverage_arms.entry(crate::report::site_key(&m.span)).or_insert(CoverageCount {
+        visited: 0,
+        total: total_arms,
+        label: subject_raw,
+    });
     Flow::Continue
 }
 
@@ -619,7 +661,7 @@ fn walk_branch(b: &Branch, w: &mut Walk<'_>) -> Flow {
         w.record_unresolved("branch", &b.id, b.span, "eligibility".to_string(), atoms);
         w.coverage_choices
             .entry(b.id.clone())
-            .or_insert(CoverageCount { visited: 0, total });
+            .or_insert(CoverageCount { visited: 0, total, label: b.id.clone() });
         return Flow::Incomplete;
     };
 
@@ -734,7 +776,7 @@ fn walk_hub(h: &Hub, w: &mut Walk<'_>) -> Flow {
             w.record_unresolved("hub", &id, h.span, "exit eligibility".to_string(), unknown_atoms);
             w.coverage_choices
                 .entry(id.clone())
-                .or_insert(CoverageCount { visited: 0, total });
+                .or_insert(CoverageCount { visited: 0, total, label: id.clone() });
             Flow::Incomplete
         }
     }
@@ -805,7 +847,7 @@ fn walk_document(doc: &Document, w: &mut Walk<'_>) -> Flow {
     for (i, shot) in doc.shots.iter().enumerate() {
         // 0.6.0 §3.2: a shot's number is its 1-based document position;
         // authored numbers and the monotone guard are removed.
-        w.steps.push(Step::Shot { number: i as i64 + 1 });
+        w.steps.push(Step::Shot { number: i as i64 + 1, heading: shot.heading.clone() });
         let flow = walk_nodes(&shot.body, w, None);
         if !matches!(flow, Flow::Continue) {
             return flow;
@@ -1469,6 +1511,8 @@ fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
         unresolved: Vec::new(),
         coverage: Coverage::default(),
         notes: Vec::new(),
+        disposition: "refused".to_string(),
+        end_reason: None,
     }
 }
 
@@ -1544,6 +1588,7 @@ pub fn trace_with_check(
         unresolved: Vec::new(),
         coverage_choices: BTreeMap::new(),
         coverage_arms: BTreeMap::new(),
+        domains: &folded.domains,
     };
 
     let mut flow = walk_document(&doc, &mut w);
@@ -1556,15 +1601,15 @@ pub fn trace_with_check(
     notes.extend(reserved_quest_notes(&mocks, &w.state.reserved_reads(), &doc_quest_ids));
     notes.extend(unmatched_event_notes(&doc, &mocks.events));
     notes.extend(mock_unproducible_notes(&mocks, &folded, &doc));
-    let report = TraceReport {
-        file: input.uri.clone(),
-        seeds: seeds_summary(&mocks),
-        steps: w.steps,
-        decisions: w.decisions,
-        unresolved: w.unresolved,
-        coverage: Coverage { choices: w.coverage_choices, arms: w.coverage_arms },
-        notes,
-    };
+    // #32 / T5.9: `Ended` and `Complete` are the same EXIT CODE (see below)
+    // and were therefore indistinguishable to a harness. `disposition` is the
+    // additive key that separates a walk an author terminated from one that
+    // ran out of nodes; `endReason` recovers which ending it was.
+    let ended = matches!(flow, Flow::Ended);
+    let end_reason = w.steps.iter().rev().find_map(|s| match s {
+        Step::Directive { reason: Some(r), .. } => Some(r.clone()),
+        _ => None,
+    });
     // An objective/quest-`start` `unknown` (Task 20) records an unresolved
     // atom WITHOUT returning `Flow::Incomplete` (it never halts the walk,
     // unlike an unknown `<match>` guard) — so `Incomplete` is driven by
@@ -1576,10 +1621,32 @@ pub fn trace_with_check(
     // only thing it changes is that the nodes after it were never visited.
     // An unresolved atom recorded BEFORE the terminator still downgrades it
     // to exit 3, exactly as it would for a walk that ran to the last node.
+    let unresolved_empty = w.unresolved.is_empty();
     let exit = match flow {
-        Flow::Continue | Flow::Ended if report.unresolved.is_empty() => TraceExit::Complete,
+        Flow::Continue | Flow::Ended if unresolved_empty => TraceExit::Complete,
         Flow::Continue | Flow::Ended | Flow::Incomplete => TraceExit::Incomplete,
         Flow::Refused(ds) => TraceExit::Refused(ds),
+    };
+    // ...which is exactly why `disposition` exists: it is the ONE place the
+    // `Ended`/`Complete` distinction the exit code deliberately erases stays
+    // legible.
+    let disposition = match &exit {
+        TraceExit::Complete if ended => "ended",
+        TraceExit::Complete => "complete",
+        TraceExit::Incomplete => "incomplete",
+        TraceExit::Refused(_) => "refused",
+    }
+    .to_string();
+    let report = TraceReport {
+        file: input.uri.clone(),
+        seeds: seeds_summary(&mocks),
+        steps: w.steps,
+        decisions: w.decisions,
+        unresolved: w.unresolved,
+        coverage: Coverage { choices: w.coverage_choices, arms: w.coverage_arms },
+        notes,
+        disposition,
+        end_reason,
     };
     (report, exit)
 }

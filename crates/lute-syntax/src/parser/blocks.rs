@@ -387,6 +387,7 @@ impl Parser<'_> {
         let end_o = self.consume_close("match", &open, last_end);
         Match {
             subject,
+            attrs,
             arms,
             span: self.span_o(open.start_o, end_o),
         }
@@ -413,25 +414,23 @@ impl Parser<'_> {
         Arm::When {
             is,
             test,
+            attrs,
             body,
             span: self.span_o(open.start_o, end_o),
         }
     }
 
     /// `Otherwise ::= "<otherwise>" Node* "</otherwise>"` (§7.3, §11.2).
+    /// Attribute closure moved to the checker in 0.10.0 (§4, D-J): the residual
+    /// list rides on the arm and `E-UNKNOWN-ATTR` reports it at the attribute's
+    /// own column, uniformly with every other logic tag. `E-LOGIC-CONTENT`
+    /// survives here for its three BODY-SHAPE rules (`:178`, `:309`, `:378`)
+    /// and only those.
     fn parse_otherwise(&mut self) -> Arm {
         let open = self.parse_open_tag();
-        if !open.attrs.is_empty() {
-            self.emit_o(
-                E_LOGIC_CONTENT,
-                "<otherwise> takes no attributes (dsl §7.3)".to_string(),
-                open.start_o,
-                open.end_o,
-                Layer::Logic,
-            );
-        }
         let (body, end_o) = self.parse_block_body("otherwise", &open);
         Arm::Otherwise {
+            attrs: open.attrs,
             body,
             span: self.span_o(open.start_o, end_o),
         }
@@ -606,15 +605,22 @@ fn arm_end(a: &Arm) -> usize {
     }
 }
 
-/// Take (remove) the `at="…"` clip-position attr as an `f64` (§7.4, §11.4).
-fn take_at(attrs: &mut Vec<Attr>) -> Option<f64> {
+/// Take (remove) the `at="…"` clip-position attr, keeping its text and the
+/// value's own span (dsl §7.4, §11.4). dsl 0.10.0 §10.2: no `f64` is parsed
+/// here — the checker converts by shifting the decimal, and diagnoses a
+/// sub-millisecond value at the span this returns.
+fn take_at(attrs: &mut Vec<Attr>) -> Option<ClipAt> {
     let pos = attrs.iter().position(|a| a.key == "at")?;
-    let val = match &attrs[pos].value {
-        AttrValue::Str(s) => s.parse::<f64>().ok(),
+    let attr = attrs.remove(pos);
+    match attr.value {
+        AttrValue::Str(raw) => Some(ClipAt {
+            raw,
+            span: attr.value_span,
+        }),
+        // A bare ident or an `@ref` is not a literal position; the clip behaves
+        // as if `at` were absent, exactly as before.
         _ => None,
-    };
-    attrs.remove(pos);
-    val
+    }
 }
 
 #[cfg(test)]

@@ -76,6 +76,20 @@ Within a `<timeline>` the local clock starts at `0`. For each track:
 - clips lower to the same flat command records, sorted by resolved time, with a final barrier at
   `duration` (or the maximum resolved end).
 
+A `<timeline duration="1.2">` with **no tracks at all** is legal, and it is the only beat primitive
+the language has: it lowers to that final barrier and nothing else, holding the content after it for
+its duration. Use it when the pause is the point.
+
+```lute
+<timeline duration="1.2">
+</timeline>
+@narrator: after the beat.
+```
+
+```json
+{ "kind": "barrier", "addr": "001-0100", "timeline": 1, "at": 1.2 }
+```
+
 ## Constraints
 
 Tracks are **staging-only and non-interactive**: they hold `::` staging leaves (plus `::set` for

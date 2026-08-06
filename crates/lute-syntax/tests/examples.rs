@@ -54,9 +54,13 @@ fn bianca_block_assembly_is_correct() {
     assert_eq!(timeline.tracks.len(), 4);
     assert!(matches!(&timeline.tracks[0].key, TrackKey::Subject(s) if s == "camera"));
     assert!(matches!(&timeline.tracks[1].key, TrackKey::Channel(c) if c == "fg"));
-    // First camera clip omits `at`; the second carries at="0.5".
-    assert_eq!(timeline.tracks[0].clips[0].at, None);
-    assert_eq!(timeline.tracks[0].clips[1].at, Some(0.5));
+    // First camera clip omits `at`; the second carries at="0.5". dsl 0.10.0
+    // §10.2: `Clip.at` keeps the authored TEXT, not a parsed `f64`.
+    assert!(timeline.tracks[0].clips[0].at.is_none());
+    assert_eq!(
+        timeline.tracks[0].clips[1].at.as_ref().map(|a| a.raw.as_str()),
+        Some("0.5")
+    );
     // `at` is lifted onto the Clip, not left on the directive attrs.
     if let ClipNode::Directive(d) = &timeline.tracks[0].clips[1].node {
         assert!(

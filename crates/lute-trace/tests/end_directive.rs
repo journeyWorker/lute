@@ -30,6 +30,7 @@ fn input_for(text: &str) -> CheckInput {
         mode: Mode::Ci,
         imports: lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span),
         components: lute_check::resolve_components(base, &meta0.components, doc.meta.span),
+        defaults: Default::default(),
     }
 }
 

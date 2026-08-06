@@ -134,8 +134,12 @@ pub fn lower_directive(
     let decl = snapshot.directive(&dir.tag);
     let stamp = Stamp {
         wait: effective_wait(dir, snapshot),
-        duration: get_f64("duration"),
-        delay: get_f64("delay"),
+        // dsl 0.10.0 §10.3 (**D-T**): a time value's seconds are derived from
+        // its milliseconds, never from a bare `f64::from_str`. That also makes
+        // the artifact agree with the checker on `1.5s`/`250ms`, which
+        // `attr_f64` silently dropped while the timeline resolver accepted them.
+        duration: time_attr_seconds(&dir.attrs, "duration"),
+        delay: time_attr_seconds(&dir.attrs, "delay"),
         // plugin §14.1: cross-cutting `stampAttrs` ride the stamp on EVERY
         // directive, core and plugin alike. A key the directive DECLARES
         // itself stays the record's own field — the same precedence the
@@ -494,6 +498,17 @@ pub(crate) fn attr_string(attrs: &[Attr], key: &str) -> Option<String> {
 
 fn attr_f64(attrs: &[Attr], key: &str) -> Option<f64> {
     attr_string(attrs, key).and_then(|s| s.parse::<f64>().ok())
+}
+
+/// A cross-cutting time attr as SECONDS, derived from its milliseconds
+/// (dsl 0.10.0 §10.3, **D-T**). `None` when absent, unparseable, or finer than
+/// a millisecond — the last of which is already `E-TIME-RESOLUTION` at the
+/// checker, and `compile` does not gate on it.
+fn time_attr_seconds(attrs: &[Attr], key: &str) -> Option<f64> {
+    match lute_check::parse_time_ms(attr_string(attrs, key)?.as_str()) {
+        lute_check::TimeParse::Ms(ms) => Some(lute_check::ms_to_seconds(ms)),
+        lute_check::TimeParse::TooFine | lute_check::TimeParse::NotANumber => None,
+    }
 }
 
 pub(crate) fn attr_bool(attrs: &[Attr], key: &str) -> Option<bool> {

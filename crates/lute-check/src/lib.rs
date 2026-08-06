@@ -16,6 +16,7 @@ pub mod envelope;
 pub mod fact_write;
 pub mod fix;
 pub mod inject;
+pub mod logic_attrs;
 pub mod match_check;
 pub mod meta;
 pub mod on;
@@ -26,8 +27,10 @@ pub mod reachability;
 pub mod rel_schema;
 pub mod schema_import;
 pub mod set_op;
+pub mod set_type;
 pub mod tag;
 pub mod temporal;
+pub mod time;
 pub mod timeline;
 
 /// The canonical Lute language-version string (dsl 0.6.1 §3, Appendix B).
@@ -37,7 +40,7 @@ pub mod timeline;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.9.0";
+pub const LUTE_LANG_VERSION: &str = "0.10.0";
 
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_paths::E_PATH_IDENT;
@@ -48,7 +51,10 @@ pub use cel_resolve::{
     check_cel_slot, check_rule_guards, E_CEL_PROFILE, E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT,
     E_VALIDAT_DERIVED,
 };
-pub use check::{check, fold_env, CheckInput, CheckResult, FoldedEnv, Resolved, W_LUTE_VERSION_STALE};
+pub use check::{
+    check, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved,
+    W_LUTE_VERSION_STALE,
+};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
 pub use datalog_check::{
@@ -72,8 +78,9 @@ pub use meta::{
 };
 pub use on::{check_on_event, E_ON_NO_EVENT, E_UNKNOWN_EVENT};
 pub use project_check::{
-    check_project_quest_ids, check_project_quest_refs, colliding_occurrences,
-    W_QUEST_REF_UNKNOWN,
+    check_project_domain_reads, check_project_quest_ids, check_project_quest_refs,
+    colliding_occurrences, component_unverified_diag, domain_reading_set, ComponentScope,
+    W_COMPONENT_UNVERIFIED, W_DOMAIN_UNREAD, W_QUEST_REF_UNKNOWN,
 };
 pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
 pub use producible::W_UNPROVEN_RELATIONAL;
@@ -82,6 +89,10 @@ pub use schema_import::{resolve_imports, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner};
 pub use tag::{tag_document, TagOutcome};
 pub use temporal::{check_temporal, E_TEMPORAL_ARG};
+pub use time::{
+    fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS,
+};
 pub use timeline::{
-    resolve_timeline, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING, E_TIMELINE_DURATION,
+    resolve_timeline, time_resolution_diag, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING,
+    E_TIMELINE_DURATION, E_TIME_RESOLUTION,
 };

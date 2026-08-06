@@ -110,3 +110,158 @@ fn a_walk_without_end_is_untouched() {
     assert_eq!(kinds(&v), ["line", "line"]);
     assert_eq!(v["exit"], "complete");
 }
+
+/// #20 / T8.5's matched pair, which is the acceptance test: the guard-false
+/// mock must be refused and the guard-true mock with identical seeds must
+/// still play. `lute trace` refuses the identical selection on the same
+/// document; `run` played it in full at exit 0.
+#[test]
+fn run_refuses_a_selection_whose_guard_is_false_and_plays_the_true_one() {
+    let dir = temp_dir("run-ineligible");
+    let src = dir.join("s.lute");
+    let art = dir.join("s.json");
+    std::fs::write(
+        &src,
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         state:\n  run.open: { type: bool, default: false }\n---\n\
+         \n## One\n\n<branch id=\"pick\">\n\
+         <choice id=\"gated\" label=\"Gated\" when=\"run.open\">\n@narrator: gated.\n</choice>\n\
+         <choice id=\"free\" label=\"Free\">\n@narrator: free.\n</choice>\n</branch>\n",
+    )
+    .unwrap();
+    let c = Command::new(BIN)
+        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(c.status.success(), "{}", String::from_utf8_lossy(&c.stderr));
+
+    let bad = dir.join("false.yaml");
+    std::fs::write(&bad, "state:\n  run.open: false\nchoose:\n  pick: gated\n").unwrap();
+    let out = Command::new(BIN)
+        .args(["run", art.to_str().unwrap(), "--mock", bad.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_ne!(out.status.code(), Some(0), "an ineligible selection must not play: {combined}");
+    assert!(combined.contains("E-TRACE-CHOICE"), "{combined}");
+    assert!(combined.contains("gated"), "the refused option must be named: {combined}");
+    assert!(!combined.contains("narrator: gated."), "the arm must not have played: {combined}");
+
+    let good = dir.join("true.yaml");
+    std::fs::write(&good, "state:\n  run.open: true\nchoose:\n  pick: gated\n").unwrap();
+    let ok = Command::new(BIN)
+        .args(["run", art.to_str().unwrap(), "--mock", good.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let oktext = String::from_utf8_lossy(&ok.stdout).to_string();
+    assert_eq!(ok.status.code(), Some(0), "the guard-true twin must still play: {oktext}");
+    assert!(oktext.contains("gated."), "{oktext}");
+}
+
+/// An UNDECIDED guard is not a false guard. `run` computes a real Datalog
+/// fixpoint and evaluates CEL over live state, so `Value::Unknown` here means
+/// the guard read something with no mock surface — `runner.rs`'s module doc
+/// names `now()`/`validAt(...)` — and refusing on that would refuse a legal
+/// replay. Only a DECIDED false refuses.
+#[test]
+fn run_does_not_refuse_a_selection_whose_guard_is_undecided() {
+    let dir = temp_dir("run-unknown-guard");
+    let src = dir.join("s.lute");
+    let art = dir.join("s.json");
+    // `now() > 0` is E-TEMPORAL-ARG at check time, so the undecided guard is
+    // a `validAt(...)` point-in-time query instead — the other member of the
+    // no-mock-surface class the runner's own module doc names.
+    std::fs::write(
+        &src,
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         entities:\n  crew: { members: [vesna] }\n\
+         relations:\n  awake: { args: [crew], tier: run }\n---\n\
+         \n## One\n\n<branch id=\"pick\">\n\
+         <choice id=\"timed\" label=\"Timed\" when=\"validAt(awake(vesna), now())\">\n\
+         @narrator: timed.\n</choice>\n\
+         <choice id=\"free\" label=\"Free\">\n@narrator: free.\n</choice>\n</branch>\n",
+    )
+    .unwrap();
+    let c = Command::new(BIN)
+        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(c.status.success(), "{}", String::from_utf8_lossy(&c.stderr));
+    let m = dir.join("m.yaml");
+    std::fs::write(&m, "choose:\n  pick: timed\n").unwrap();
+    let out = Command::new(BIN)
+        .args(["run", art.to_str().unwrap(), "--mock", m.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0), "an undecided guard is not a false one: {text}");
+    assert!(text.contains("timed."), "{text}");
+}
+
+/// `do_hub` is the SECOND dispatch site the refusal lands on, and it is not
+/// covered by the `<branch>` pair above: a hub replays an ordered visit
+/// sequence, so the guard is evaluated per visit against live state. Both
+/// halves are pinned here — a guard false at the first visit refuses, and the
+/// SAME option played after an earlier option's `::set` flipped it plays,
+/// which is precisely what a hub is for. Without the second half a refusal
+/// hoisted out of the loop would look correct (#20, T8.5, D-C).
+#[test]
+fn run_refuses_an_ineligible_hub_visit_but_not_one_an_earlier_visit_enabled() {
+    let dir = temp_dir("run-ineligible-hub");
+    let src = dir.join("h.lute");
+    let art = dir.join("h.json");
+    std::fs::write(
+        &src,
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+         state:\n  run.open: { type: bool, default: false }\n---\n\
+         \n## One\n\n<hub id=\"desk\">\n\
+         <choice id=\"unlock\" label=\"Unlock\" once>\n@narrator: unlocked.\n\
+         ::set{run.open = true}\n</choice>\n\
+         <choice id=\"gated\" label=\"Gated\" when=\"run.open\">\n@narrator: gated.\n</choice>\n\
+         <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: leave.\n</choice>\n</hub>\n",
+    )
+    .unwrap();
+    let c = Command::new(BIN)
+        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(c.status.success(), "{}", String::from_utf8_lossy(&c.stderr));
+
+    let bad = dir.join("bad.yaml");
+    std::fs::write(&bad, "choose:\n  desk: [gated, leave]\n").unwrap();
+    let out = Command::new(BIN)
+        .args(["run", art.to_str().unwrap(), "--mock", bad.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_ne!(out.status.code(), Some(0), "the hub leg must refuse too: {combined}");
+    assert!(combined.contains("E-TRACE-CHOICE"), "{combined}");
+    assert!(combined.contains("desk: gated"), "the hub and option must be named: {combined}");
+    assert!(!combined.contains("narrator: gated."), "the arm must not have played: {combined}");
+
+    let good = dir.join("good.yaml");
+    std::fs::write(&good, "choose:\n  desk: [unlock, gated, leave]\n").unwrap();
+    let ok = Command::new(BIN)
+        .args(["run", art.to_str().unwrap(), "--mock", good.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let oktext = String::from_utf8_lossy(&ok.stdout).to_string();
+    assert_eq!(
+        ok.status.code(),
+        Some(0),
+        "an option a PRIOR visit enabled is eligible; the guard is re-read per visit: {oktext}"
+    );
+    assert!(oktext.contains("narrator: gated."), "{oktext}");
+}

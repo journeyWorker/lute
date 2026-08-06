@@ -558,6 +558,14 @@ fn scenario_envelope_labels_scene_and_quest_possible_guaranteed_differently() {
     assert!(out_quest.status.success(), "{text_quest}");
     assert!(!text_quest.contains("warning-grade reads"), "{text_quest}");
     assert!(text_quest.contains("inventory only"), "{text_quest}");
+    // #33 / T4.10: author-facing output must name nothing the author cannot
+    // look up. `T11` is an internal task label and
+    // `check_quest_guard_defassign` is a Rust function; neither appears
+    // anywhere on the website. The DOC COMMENT above the printer keeps both
+    // deliberately — that reader has the source open, which is exactly the
+    // audience this message was wrongly addressed to.
+    assert!(!text_quest.contains("T11"), "{text_quest}");
+    assert!(!text_quest.contains("check_quest_guard_defassign"), "{text_quest}");
 }
 
 #[test]
@@ -898,5 +906,145 @@ fn scenario_reach_accepts_an_active_prerequisite() {
     assert!(
         out_text.contains("active(\"gate\")"),
         "the declared `after` structure must round-trip the `active` atom: {out_text}"
+    );
+}
+
+/// dsl 0.10.0 §5.1: a `<quest start>` gated on a never-producible relation now
+/// reads `Unreachable` in `scenario reach`, where it used to read `Reachable`.
+/// The verdict text for the lifecycle cause already existed; the branch is what
+/// makes it reachable. This test also pins the diagnostic's ANCHOR: it passes
+/// only when the diagnostic carries `quest.span`, because
+/// `unreachable_quest_ids` matches on exactly that.
+#[test]
+fn dead_relation_start_reads_unreachable() {
+    let dir = temp_dir("reach_dead_start");
+    write(&dir, "lute.project.yaml", &core_only_project_yaml());
+    write(
+        &dir,
+        "q.lute",
+        "---\nkind: quest\nentities:\n  crew: { members: [toma] }\nrelations:\n  \
+         sealed: { args: [crew], tier: run }\nstate:\n  run.n: { type: number, default: 0 }\n\
+         ---\n<quest id=\"deadStart\" start=\"holds(sealed(toma))\">\n\
+         <objective id=\"o\" done=\"run.n >= 1\"/>\n</quest>\n",
+    );
+
+    let out = run(&["scenario", dir.to_str().unwrap(), "reach", "quest:deadStart"]);
+    let text = stdout(&out);
+    assert!(
+        text.contains("verdict: Unreachable"),
+        "a start gated on a never-producible relation must read Unreachable: {text}"
+    );
+}
+
+// --- #15 (T7.13, T8.4, T4.7, T9.14) — the envelope reports the COMPUTED
+// layer. `--values` and T8.4's E-ARM-DEAD floor defer with #7 per D-A.
+
+fn anseo() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/anseo")
+}
+
+/// #15 / T9.14: the envelope already computes which paths are written on
+/// which routes and reports only the SET. Naming the writers is one join over
+/// PerDocEffects, which `assemble_root_scenario` builds and drops.
+#[test]
+fn scene_envelope_names_the_writers_of_each_path() {
+    let dir = temp_dir("envelope-writers");
+    write(&dir, "lute.project.yaml", &core_only_project_yaml());
+    write(&dir, "a.lute", &scene_sets_run_a("a"));
+    write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
+    let text = stdout(&run(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]));
+    assert!(text.contains("written by"), "{text}");
+    assert!(text.contains("a.s01ep01"), "the writing scene must be named: {text}");
+}
+
+/// #15 / T9.14's last verify bullet, the edge nobody could draw:
+/// manifest-gap.lute's `<on event="questComplete">` runs
+/// `::set{run.vesnaTrust += 1}` and what-vesna-carries.lute activates on
+/// `run.vesnaTrust >= 2`. `writesOnComplete` is computed and dropped.
+#[test]
+fn quest_envelope_names_a_completion_handler_as_a_writer() {
+    let root = anseo();
+    let text = stdout(&run(&[
+        "scenario",
+        root.to_str().unwrap(),
+        "envelope",
+        "quest:whatVesnaCarries",
+    ]));
+    let line = text
+        .lines()
+        .find(|l| l.contains("run.vesnaTrust"))
+        .unwrap_or_else(|| panic!("no run.vesnaTrust row: {text}"));
+    assert!(
+        line.contains("quest(manifestGap)"),
+        "the completion handler must be named as a writer: {line}"
+    );
+}
+
+/// #15 / T4.7: at purser.lute, the scene whose every line is gated on who is
+/// awake, the tool that exists to say what is true on arrival did not mention
+/// the subject. Four declared relations, a Datalog rule, a `facts:` seed and
+/// eleven ::asserts, and the envelope reported two scalar paths.
+#[test]
+fn envelope_reports_the_relational_layer_not_only_the_scalar_one() {
+    let root = anseo();
+    let text = stdout(&run(&["scenario", root.to_str().unwrap(), "envelope", "anseo.s01ep06"]));
+    assert!(text.contains("Facts"), "{text}");
+    for rel in ["awake", "knows", "found", "can_halt"] {
+        assert!(text.contains(rel), "every declared relation must be listed ({rel}): {text}");
+    }
+    let derived = text
+        .lines()
+        .find(|l| l.contains("can_halt"))
+        .unwrap_or_else(|| panic!("no can_halt row: {text}"));
+    assert!(derived.contains("derived"), "a `derive: true` relation must say so: {derived}");
+    // `awake` is BOTH `facts:`-seeded and ::asserted in the corpus; both
+    // producers must be drawn or the section is decorative.
+    let awake = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("- awake"))
+        .unwrap_or_else(|| panic!("no awake row: {text}"));
+    assert!(awake.contains("asserted by"), "the producer edge must be drawn: {awake}");
+    assert!(awake.contains("facts: seed"), "the seed is a producer too: {awake}");
+    assert!(awake.contains(".lute"), "the asserting document must be named: {awake}");
+    assert!(
+        text.contains("can_halt(C) :- awake(C), knows(C, shed_sequence)"),
+        "the rule that makes the derived relation true must be printed: {text}"
+    );
+}
+
+/// #15: the two envelopes were byte-identical over an eleven-scene work. The
+/// whole point is that the report renders what the checker COMPUTED.
+#[test]
+fn envelope_at_the_root_and_at_the_leaf_are_no_longer_identical() {
+    let root = anseo();
+    let first = stdout(&run(&["scenario", root.to_str().unwrap(), "envelope", "anseo.s01ep01"]));
+    let last = stdout(&run(&["scenario", root.to_str().unwrap(), "envelope", "anseo.s01ep09"]));
+    let strip = |s: &str| s.replace("anseo.s01ep01", "N").replace("anseo.s01ep09", "N");
+    assert_ne!(strip(&first), strip(&last), "still byte-identical:\n{first}");
+    // Inequality alone would be satisfied by any per-node noise. What must
+    // hold is the PRE-ENTRY claim: at the root nothing has run yet, and a
+    // project-wide writer join — which is what the plan specified — would
+    // have named scene(anseo.s01ep09), eight scenes later, as a writer of a
+    // path readable on arrival at anseo.s01ep01.
+    let head = |s: &str| {
+        s.split_once("Possible (")
+            .unwrap_or_else(|| panic!("no Possible heading: {s}"))
+            .0
+            .to_string()
+    };
+    assert!(
+        head(&first).contains("nothing on a declared route reaching here"),
+        "the root has no predecessor, so nothing can have written to it:\n{}",
+        head(&first)
+    );
+    assert!(
+        !head(&first).contains("written by: scene(anseo.s01ep09)"),
+        "a scene eight later cannot have written before the root:\n{}",
+        head(&first)
+    );
+    assert!(
+        head(&last).contains("written by: scene(anseo.s01ep02)"),
+        "a real upstream writer must be named at the leaf:\n{}",
+        head(&last)
     );
 }

@@ -69,7 +69,7 @@ stage-state model), but mechanically a **deterministic, inspectable, build-time 
 closer to RAII/lifetime-inference than a runtime collector. The stage is the heap; show = alloc,
 hide = free, "hide whoever's no longer speaking" = collecting an unreachable entity. GC's failure
 modes map to the checks this needs: *leak* (never auto-hidden) and *use-after-free* (auto-hidden
-then spoken) are caught by determinism + provenance (`{injected, by, reason}`) + LSP-visible
+then spoken) are caught by determinism + provenance (`{injected, by, explanation}`) + LSP-visible
 resolved view + conflict warnings. See **Compiler — stateful resolution** below.
 
 ### Implementation language (open)

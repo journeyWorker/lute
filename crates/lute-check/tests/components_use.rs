@@ -40,6 +40,7 @@ fn codes(dir: &Path, scene: &str) -> Vec<String> {
         mode: Mode::Ci,
         imports: Default::default(),
         components,
+        defaults: Default::default(),
     };
     check(&input)
         .diagnostics

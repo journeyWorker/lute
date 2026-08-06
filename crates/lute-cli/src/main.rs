@@ -61,6 +61,8 @@ use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
 mod compile_all;
 mod doctor;
 mod loc;
+mod manifests;
+mod mockcheck;
 mod runner;
 mod scaffold;
 mod scenario_fmt;
@@ -496,23 +498,27 @@ fn parse_choose_flag(raw: &str) -> Result<(String, Vec<String>), String> {
 /// scattered across the checker crates), so this curated list IS that registry,
 /// kept in ONE place. Assembled by grepping every `"[EW]-…"` code literal in the
 /// crates whose diagnostics `check`/`check-project` surface (`lute-check`,
-/// `lute-syntax`, `lute-cel`, `lute-manifest`, `lute-core-span`); the
-/// `every_check_emitted_code_is_deniable` test (tests/deny.rs) rescans those
-/// crates and fails if any emitted code is missing here, so a newly-added code
-/// cannot silently fall outside the deny universe. A SUPERSET is harmless
+/// `lute-syntax`, `lute-cel`, `lute-manifest`, `lute-core-span`; since
+/// 0.10.0 §8 put the mock pass under `check-project`, `lute-trace`; and since
+/// §9:962 put the compile gate under `lute check`, `lute-compile`); the
+/// `every_check_emitted_code_is_deniable` test, a `#[cfg(test)]` unit test at
+/// the bottom of THIS file, rescans those crates and fails if any emitted
+/// code is missing here, so a newly-added code cannot silently fall outside
+/// the deny universe. A SUPERSET is harmless
 /// (denying a code `check` never emits merely protects nothing); a MISSING code
 /// is the only defect, and that test guards exactly it. Sorted for readability.
 const DENIABLE_CODES: &[&str] = &[
-    "E-AGE-GATE", "E-APP-READONLY", "E-ARM-DEAD", "E-ASSET-DECOMPOSE",
+    "E-AGE-GATE", "E-APP-READONLY", "E-ARM-DEAD", "E-AS-REMOVED", "E-ASSET-DECOMPOSE",
     "E-ASSET-SEGMENT", "E-ASSET-UNKNOWN-ID", "E-AT-CONTEXT", "E-ATTR-TYPE",
     "E-BAD-ENUM", "E-BRANCH-ALL-GUARDED", "E-BRANCH-EMPTY", "E-CEL-PARSE",
     "E-CEL-PROFILE", "E-CHOICE-DUP", "E-CHOICE-ID-RESERVED", "E-CHOICELOG-READ",
-    "E-CLIP-OVERLAP", "E-CLIP-TIMING", "E-COMMENT-UNTERMINATED", "E-COMPONENT-ARG",
+    "E-CLIP-OVERLAP", "E-CLIP-TIMING", "E-COMMENT-UNTERMINATED",
+    "E-COMPILE-COMPONENT", "E-COMPILE-EXPAND", "E-COMPILE-INTERNAL", "E-COMPONENT-ARG",
     "E-COMPONENT-BODY", "E-COMPONENT-CYCLE", "E-COMPONENT-DUP", "E-COMPONENT-PARSE",
     "E-COMPONENT-STATE", "E-COMPONENT-UNDECLARED", "E-CONN-CYCLE", "E-CONN-EPISODE-ID-DUP",
     "E-CONN-FORMULA-TOO-COMPLEX", "E-CONN-PROFILE", "E-CONN-UNKNOWN-NODE", "E-CONN-UNREACHABLE",
     "E-CONTENT-LINE-BRACKET", "E-CONTENT-OUTSIDE-SHOT", "E-DATALOG-FUNCTION", "E-DATALOG-GUARD-FACT",
-    "E-DATALOG-PARSE", "E-DATALOG-UNSAFE", "E-DATALOG-UNSTRATIFIED", "E-DELIVERY-CONFLICT",
+    "E-DATALOG-PARSE", "E-DATALOG-UNSAFE", "E-DATALOG-UNSTRATIFIED", "E-DEFAULTS-KEY", "E-DELIVERY-CONFLICT",
     "E-DELIVERY-FLAG-VALUE", "E-DELIVERY-NARRATOR", "E-DEPENDS-CYCLE", "E-DEPENDS-UNRESOLVED",
     "E-DEPENDS-VERSION", "E-DERIVE-TIER", "E-DERIVE-UNDECLARED", "E-DERIVED-WRITE",
     "E-DOLLAR-OUTSIDE-MATCH", "E-DOMAIN-DUP", "E-DOMAIN-UNKNOWN", "E-DUP-BRANCH",
@@ -528,7 +534,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-LOWER-RECORD-UNKNOWN",
     "E-MATCH-DUP-OTHERWISE", "E-MATCH-RELATION-SUBJECT",
     "E-MAYBE-UNSET", "E-META-MISSING", "E-META-PARSE", "E-META-UNKNOWN-KEY",
-    "E-MISSING-ATTR", "E-NONEXHAUSTIVE", "E-OBJECTIVE-ID-DUP", "E-OBJECTIVE-ID-MISSING",
+    "E-MISSING-ATTR", "E-MOCK-SUBJECT", "E-NONEXHAUSTIVE", "E-OBJECTIVE-CONTRADICTION", "E-OBJECTIVE-ID-DUP", "E-OBJECTIVE-ID-MISSING",
     "E-OBJECTIVE-MISSING-DONE", "E-OBJECTIVE-UNSATISFIABLE", "E-ON-NO-EVENT", "E-PATH-IDENT",
     "E-PERSIST-REMOVED", "E-PLUGIN-DUP-ACROSS", "E-PLUGIN-DUP-ID", "E-PLUGIN-INVALID-DIRECTIVE",
     "E-PLUGIN-IO", "E-PLUGIN-MANIFEST", "E-PLUGIN-MISSING-ACTIVE", "E-PLUGIN-MISSING-EXPORT",
@@ -539,22 +545,30 @@ const DENIABLE_CODES: &[&str] = &[
     "E-QUEST-RESERVED-DECL", "E-QUEST-RESERVED-WRITE", "E-QUEST-UNREACHABLE", "E-REF-ARG-TYPE",
     "E-REF-ARITY", "E-REF-TYPE", "E-RELATION-ARITY", "E-RELATION-DOMAIN",
     "E-RELATION-DUP", "E-RELATION-EMPTY", "E-RELATION-RESERVED-WRITE", "E-RELATION-UNKNOWN",
-    "E-RETRACT-WILDCARD-ASSERT", "E-SET-OP-TYPE", "E-STATE-COLLECTION", "E-STATE-DECL",
+    "E-RETRACT-WILDCARD-ASSERT", "E-SET-OP-TYPE", "E-SET-TYPE", "E-STATE-COLLECTION", "E-STATE-DECL",
     "E-STATE-MAYBE-UNAVAILABLE",
     "E-STATE-NAMESPACE", "E-STATE-REDECLARE", "E-STATE-SHAPE-CYCLE", "E-STRING-ESCAPE",
-    "E-TAG-INLINE-BODY", "E-TAG-NOT-ONE-LINE", "E-TEMPORAL-ARG", "E-TIMELINE-CONTENT",
+    "E-TAG-INLINE-BODY", "E-TAG-NOT-ONE-LINE", "E-TEMPORAL-ARG", "E-TEST-KEY",
+    "E-TEST-NO-EXPECT", "E-TIME-RESOLUTION",
+    "E-TIMELINE-CONTENT",
     "E-TIMELINE-DURATION",
-    "E-TITLE-PLACEMENT", "E-TRACK-KEY", "E-UNCLASSIFIED", "E-UNCLOSED-TAG",
+    "E-TITLE-PLACEMENT", "E-TRACE-ACCEPT", "E-TRACE-CHOICE", "E-TRACE-EVENT",
+    "E-TRACE-MOCK-FACT", "E-TRACE-MOCK-PARSE", "E-TRACE-MOCK-TYPE", "E-TRACE-MOCK-UNDECLARED",
+    "E-TRACK-KEY", "E-UNCLASSIFIED", "E-UNCLOSED-TAG",
     "E-UNDECLARED", "E-UNDECLARED-REF", "E-UNKNOWN-ATTR", "E-UNKNOWN-DIRECTIVE",
     "E-UNKNOWN-EVENT", "E-UNKNOWN-ID", "E-UNKNOWN-KIND", "E-UNSET-LITERAL",
     "E-UNSET-UNCOVERED", "E-USES-CYCLE", "E-USES-DUP-DEF", "E-USES-DUP-RELATION",
     "E-USES-DUP-STATE", "E-USES-NOT-FOUND", "E-USES-PARSE", "E-VALIDAT-DERIVED",
-    "E-WHEN-LITERAL-DOMAIN", "E-WHEN-PATTERN", "E-WRITE-CONFLICT", "W-ASSET-PLACEHOLDER",
-    "W-CATALOG-STALE", "W-CODE-AFTER-END", "W-DERIVE-NO-RULES", "W-INJECT-CONFLICT",
+    "E-WHEN-LITERAL-DOMAIN", "E-WHEN-PATTERN", "E-WHEN-UNSET-SUBJECT", "E-WRITE-CONFLICT",
+    "W-ASSET-PLACEHOLDER",
+    "W-CATALOG-STALE", "W-CODE-AFTER-END", "W-COMPONENT-UNVERIFIED", "W-DERIVE-NO-RULES",
+    "W-DOMAIN-UNREAD",
+    "W-EXIT-INERT",
     "W-INTO-SET-DUP", "W-L10N-MISSING", "W-LUTE-VERSION-STALE", "W-OBJECTIVE-HIDDEN",
     "W-OTHERWISE-DEAD",
-    "W-OVERLAP-ARMS", "W-QUEST-REF-UNKNOWN", "W-TIMELINE-CLIPS", "W-TIMELINE-TOTAL",
-    "W-TIMELINE-TRACKS", "W-UNPROVEN-RELATIONAL",
+    "W-OVERLAP-ARMS", "W-PROJECT-INERT", "W-QUEST-REF-UNKNOWN", "W-STAGE-ABSENT",
+    "W-TIMELINE-CLIPS", "W-TIMELINE-TOTAL",
+    "W-TIMELINE-TRACKS", "W-TRACE-MOCK-UNPRODUCIBLE", "W-UNPROVEN-RELATIONAL",
 ];
 
 /// clap `value_parser` for `--deny <CODE>`: accept only a code in the known
@@ -796,6 +810,9 @@ pub(crate) struct BuiltInput {
     /// (`TypedMeta::domains`), which `merge_domains` needs alongside
     /// `input.imports` — see `doctor::resolved_domains`.
     pub meta: lute_check::TypedMeta,
+    /// The governing manifest's `defaults:` (0.10.0 §6), as applied to this
+    /// document's frontmatter.
+    pub defaults: lute_manifest::project::MetaDefaults,
 }
 
 impl BuiltInput {
@@ -852,10 +869,23 @@ fn build_input(
         None => lute_manifest::project::project_providers(project.as_ref()),
     };
 
+    // 0.10.0 §6: the governing manifest's `defaults:`, already canonicalised
+    // at load (D-Z). Lifted BEFORE the frontmatter parse, because a defaulted
+    // `uses:` has to reach `resolve_imports` below.
+    let defaults = project
+        .as_ref()
+        .map(|p| p.defaults.clone())
+        .unwrap_or_default();
+
     // Lift the scene's frontmatter `profile`/`plugins` — both built-in keys, so a
     // default snapshot suffices to type them (they are not capability-gated).
     let (doc, _) = lute_syntax::parse(&text);
-    let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
+    let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
+        &doc.meta,
+        &CapabilitySnapshot::default(),
+        lute_check::meta::MetaKind::Scene,
+        &defaults,
+    );
 
     let (snapshot, rdiags) =
         resolve_document_snapshot(project.as_ref(), meta0.profile.as_deref(), &meta0.plugins);
@@ -889,11 +919,333 @@ fn build_input(
             mode: Mode::Ci,
             imports,
             components,
+            defaults: defaults.clone(),
         },
         resolve_error,
         project_diags,
         meta: meta0,
+        defaults,
     })
+}
+
+/// Every document under `root` whose `::use` names component `name`
+/// (dsl 0.10.0 §9 rule 4).
+///
+/// Reuses [`find_lute_files`] — the same walk `collect_project_docs` performs at
+/// its own first line — so "in the resolved project" means exactly what it
+/// means for `check-project`, including its symlink canonicalization and
+/// deduplication. Parses each candidate rather than running `check()` on it: at
+/// this point only the `::use` graph matters, and a full check per file would
+/// make the standalone leg quadratic in the project.
+///
+/// Byte-sorted, for a deterministic "first caller".
+fn callers_of_component(root: &Path, name: &str) -> Vec<PathBuf> {
+    let Ok(files) = find_lute_files(root) else {
+        return Vec::new();
+    };
+    let mut out: Vec<PathBuf> = Vec::new();
+    for file in &files {
+        let Ok(text) = std::fs::read_to_string(file) else {
+            continue;
+        };
+        let (doc, _diags) = lute_syntax::parse(&text);
+        if document_uses_component(&doc, name) {
+            out.push(file.clone());
+        }
+    }
+    out.sort();
+    out
+}
+
+/// True when any `::use` anywhere in `doc` names component `name`. Reads the
+/// same attribute `lute_check`'s `fold_use` reads.
+fn document_uses_component(doc: &lute_syntax::ast::Document, name: &str) -> bool {
+    doc.shots
+        .iter()
+        .any(|shot| nodes_use_component(&shot.body, name))
+        || doc
+            .quests
+            .iter()
+            .any(|quest| nodes_use_component(&quest.body, name))
+}
+
+/// Whether `d` is a `::use` of `name`.
+fn directive_uses_component(d: &lute_syntax::ast::Directive, name: &str) -> bool {
+    d.tag == "use"
+        && d.attrs.iter().any(|a| {
+            a.key == "component"
+                && matches!(&a.value, lute_syntax::ast::AttrValue::Str(s) if s == name)
+        })
+}
+
+/// The recursion. Every node kind that can CONTAIN a `::use`, mirroring the node
+/// set `lute-check`'s own walks recurse. Exhaustive on purpose: the next node
+/// kind that can hold a `::use` must not be silently missed.
+fn nodes_use_component(nodes: &[lute_syntax::ast::Node], name: &str) -> bool {
+    use lute_syntax::ast::{Arm, ClipNode, Node};
+    nodes.iter().any(|node| match node {
+        Node::Directive(d) => directive_uses_component(d, name),
+        Node::Branch(b) => b.choices.iter().any(|c| nodes_use_component(&c.body, name)),
+        Node::Hub(h) => h.choices.iter().any(|c| nodes_use_component(&c.body, name)),
+        Node::On(o) => nodes_use_component(&o.body, name),
+        Node::Objective(o) => nodes_use_component(&o.body, name),
+        Node::Match(m) => m.arms.iter().any(|arm| match arm {
+            Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                nodes_use_component(body, name)
+            }
+        }),
+        Node::Timeline(t) => t.tracks.iter().any(|track| {
+            track.clips.iter().any(|clip| match &clip.node {
+                ClipNode::Directive(d) => directive_uses_component(d, name),
+                ClipNode::Set(_) => false,
+            })
+        }),
+        Node::Line(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => false,
+    })
+}
+
+/// The `component:` name a document declares, with its frontmatter span, or
+/// `None` when it is not a component file.
+///
+/// Read through `lute_check`'s own frontmatter reader, never a filename
+/// convention — a component is a document KIND, not a `.component.lute` suffix,
+/// and `component_import.rs` treats a missing `component:` name as
+/// `E-COMPONENT-PARSE` for exactly that reason. `TypedMeta.component` is `None`
+/// for every other document kind, which makes it the discriminator rather than
+/// something to compare a `kind:` against.
+///
+/// The default snapshot suffices: `component:` is a built-in key and is not
+/// capability-gated, the same reason `build_input` types `profile`/`plugins`
+/// against `CapabilitySnapshot::default()`. The diagnostics are discarded here —
+/// `check()` reports them through its own run.
+fn component_name_of(file: &Path) -> Option<(String, Span)> {
+    let text = std::fs::read_to_string(file).ok()?;
+    let (doc, _diags) = lute_syntax::parse(&text);
+    let (typed, _mdiags) = lute_check::parse_meta_kind(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+        lute_check::MetaKind::Component,
+    );
+    typed.component.map(|name| (name, doc.meta.span))
+}
+
+/// The diagnostics `lute compile` and `lute trace` produce AFTER the `check`
+/// gate: `normalize_document` then `expand_document`, the same pair in the same
+/// order both of them run (`lute_compile::compile_with_check` passes 2–3,
+/// `lute_trace::trace_with_check` step 4).
+///
+/// `check()` runs neither. That is T9.12's root cause, and it is not confined to
+/// components: on ANY document an `E-COMPILE-*` fault was invisible to
+/// `lute check` and fatal to everything downstream of it. A scene whose `defs:`
+/// bodies form a cycle reported `ok: … (0 warning(s))`, while `lute trace` on
+/// the same file printed `E-COMPILE-EXPAND … def expansion cycle: a -> b -> a`
+/// and then *"has check error(s) — run `lute check` first"*. `check` cannot emit
+/// a code it never computes, so that advice was unfollowable **by
+/// construction** for the whole class. Running the pass here is what makes it
+/// followable — the false green is closed at the leg that was green, not by
+/// quietening the leg that was right.
+///
+/// A COMPONENT's own `params:` are bound to a placeholder first, exactly as
+/// `::use` binds them at a call site. `check` registers a component's params as
+/// **bodiless markers** (`defs`/`def_types`/`def_params`, deliberately never
+/// `def_bodies` — the D3 marker path `decide()` resolves them through), a shape
+/// the expander has no notion of: it looks up `bodies` alone and calls any miss
+/// `"names no known def body"`. Expanding a component AS A ROOT would therefore
+/// report the absence of a call site as a fault of the component, which it is
+/// not — `<match on="@p">` over a declared param is the one logic block a
+/// component body admits (dsl 0.4.0 §6.2). Binding first measures the body,
+/// which is the only thing this leg can decide.
+fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
+    let (mut doc, _parse_diags) = lute_syntax::parse(&input.text);
+    let mut arena = lute_cel::CelArena::default();
+    let _ = lute_cel::fill_document(&mut arena, &mut doc);
+    let (folded, _, _) = fold_env(&doc, input);
+    let mut diags =
+        lute_compile::normalize::normalize_document(&mut doc, &input.components, &folded.env.state);
+    let bodies = if folded.typed.component.is_some() {
+        let mut bodies = folded.def_bodies.clone();
+        for p in &folded.typed.params {
+            // The param's own name: what a `::use` splices is the caller's
+            // argument text, and any `@`/`$`-free stand-in measures the same
+            // body. `or_insert` so a real def never loses its body to a param
+            // that shadows its name.
+            bodies.entry(p.name.clone()).or_insert_with(|| p.name.clone());
+        }
+        std::borrow::Cow::Owned(bodies)
+    } else {
+        std::borrow::Cow::Borrowed(&folded.def_bodies)
+    };
+    let table = lute_check::DefTable {
+        bodies: &bodies,
+        params: &folded.env.def_params,
+    };
+    diags.extend(lute_compile::expand::expand_document(&mut doc, &table));
+    diags
+}
+
+/// `lute compile`/`lute trace` refusing a component file, at its frontmatter.
+///
+/// A component is not a root document. Its `params:` are bound at each `::use`,
+/// so there is no standalone artifact to emit and no standalone walk to take —
+/// binding a stand-in and walking anyway makes the trace FABRICATE a decision
+/// (measured: `purser-interject.component.lute` reports
+/// `trace complete: 1 decision; arms 1/2`, picking `<otherwise>` for a `@pressure`
+/// no caller supplied), which is a false green in `trace` traded for a false
+/// green in `check`.
+///
+/// So the invocation is refused, and refused for the reason that is true.
+/// Before, the refusal leaked the expander's own internal invariant assertion
+/// — `` `@pressure` names no known def body (gate should have caught this) `` —
+/// and attributed it to `check`, which reported the same file `ok`. That is
+/// T9.12: advice pointing at a tool that contradicted it.
+fn component_root_diag(component: &str, at: Span) -> Diagnostic {
+    Diagnostic {
+        code: "E-COMPILE-COMPONENT".to_string(),
+        severity: Severity::Error,
+        message: format!(
+            "`{component}` is a component (dsl §13): its `params:` are bound at each `::use`, so \
+             it has no standalone compiled form — compile or trace a document that imports it. \
+             `lute check` on this file gives the component's own verdict and `check-project` is \
+             the deciding leg (dsl 0.10.0 §9)"
+        ),
+        span: at,
+        layer: lute_core_span::Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// Every diagnostic that holds at EVERY call site, re-anchored inside the
+/// component (dsl 0.10.0 §9 rule 4).
+///
+/// Runs `check()` once per caller — the same run `check-project` performs — and
+/// INTERSECTS the component-body diagnostics by `(code, message)`, the same key
+/// §9 rule 2's roll-up uses, and for the same reason: that string is
+/// byte-identical across callers exactly when the problem is caller-independent.
+/// A diagnostic present at only some callers drops out of the intersection and
+/// stays with `check-project`, where the caller is visible.
+///
+/// The surviving diagnostics are then re-anchored from §9 rule 1's secondary
+/// location onto the primary one, because HERE the component IS the document
+/// being reported on, so its own position is representable and the
+/// ``component `x` (path):`` prefix is redundant. Rule 1 measured those
+/// line/columns as already resolved against the component's own source, so no
+/// re-normalisation is needed.
+fn caller_resolved_common(
+    callers: &[PathBuf],
+    component_file: &Path,
+    providers: Option<&Path>,
+    root: &Path,
+) -> Vec<Diagnostic> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    // `related[].file` is `def.src.display().to_string()` and `def.src` is
+    // CANONICAL (`resolve_components` canonicalises), while `component_file` is
+    // whatever the user typed on the command line. Without this the intersection
+    // is always empty and rule 4 silently does nothing.
+    let component_file =
+        std::fs::canonicalize(component_file).unwrap_or_else(|_| component_file.to_path_buf());
+
+    let mut per_caller: Vec<BTreeSet<(String, String)>> = Vec::new();
+    let mut sample: BTreeMap<(String, String), Diagnostic> = BTreeMap::new();
+    for caller in callers {
+        let Some(built) = build_input(caller, providers, Some(root)) else {
+            continue;
+        };
+        let res = check(&built.input);
+        let mut here: BTreeSet<(String, String)> = BTreeSet::new();
+        for d in &res.diagnostics {
+            // A component-body diagnostic for THIS component: §9 rule 1's
+            // `related` entry names the component's source file.
+            if !d
+                .related
+                .iter()
+                .any(|r| Path::new(&r.file) == component_file)
+            {
+                continue;
+            }
+            let key = (d.code.clone(), d.message.clone());
+            here.insert(key.clone());
+            sample.entry(key).or_insert_with(|| d.clone());
+        }
+        per_caller.push(here);
+    }
+    let Some(first) = per_caller.first().cloned() else {
+        return Vec::new();
+    };
+    let common: BTreeSet<(String, String)> = per_caller
+        .iter()
+        .skip(1)
+        .fold(first, |acc, s| acc.intersection(s).cloned().collect());
+    common
+        .into_iter()
+        .filter_map(|key| sample.remove(&key))
+        .map(|mut d| {
+            if let Some(r) = d.related.first() {
+                d.span = r.diagnostic.span;
+                d.message = r.diagnostic.message.clone();
+            }
+            d.related.clear();
+            d
+        })
+        .collect()
+}
+
+/// Check a `.yaml`/`.yml` state-schema declaration file as a SCHEMA: no
+/// `kind:`, no frontmatter envelope, no body. The whole file IS the
+/// frontmatter, wrapped in a synthetic `Meta` and fed through
+/// `MetaKind::Schema` — byte-for-byte the lift `schema_import::read_and_parse`
+/// performs on the same file kind when it is reached through `uses:`, so the
+/// two surfaces cannot disagree about whether a schema is valid (#21, T3.9).
+///
+/// Rendering, counting and the exit code all go through the same
+/// `CheckResult` path `run_check` uses, so `--json` and the human summary read
+/// identically for a schema and for a scene.
+fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCode {
+    let text = match std::fs::read_to_string(file) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("lute: cannot read {}: {e}", file.display());
+            return ExitCode::from(2);
+        }
+    };
+    let byte_end = text.len();
+    let meta = lute_syntax::ast::Meta {
+        raw_yaml: text,
+        span: Span {
+            byte_start: 0,
+            byte_end,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        },
+    };
+    let (_tm, mut diagnostics) = lute_check::parse_meta_kind(
+        &meta,
+        &CapabilitySnapshot::default(),
+        lute_check::MetaKind::Schema,
+    );
+    // The house zero-then-normalize convention: `meta_key_span` emits byte
+    // offsets and leaves `line`/`column` at zero for `check`'s own pass, which
+    // this surface bypasses.
+    let idx = lute_core_span::TextIndex::new(&meta.raw_yaml);
+    for d in &mut diagnostics {
+        let start = d.span.byte_start.min(byte_end);
+        let end = d.span.byte_end.min(byte_end).max(start);
+        d.span = Span::from_bytes(&idx, start, end);
+    }
+    diagnostics.sort_by(|a, b| {
+        (a.span.byte_start, &a.code).cmp(&(b.span.byte_start, &b.code))
+    });
+    let result = lute_check::CheckResult {
+        ok: !diagnostics.iter().any(|d| d.severity == Severity::Error),
+        diagnostics,
+        resolved: None,
+        domain_use: lute_check::DomainUse::default(),
+    };
+    render_check_result(file, &result, json, policy)
 }
 
 /// Run `check` over one file and print its result. Exit `0` clean / `1` on an
@@ -906,6 +1258,19 @@ fn run_check(
     project: Option<&Path>,
     policy: &DenyPolicy,
 ) -> ExitCode {
+    // #21 / T3.9: `lute check world.schema.yaml` is the obvious next command
+    // after an E-USES-PARSE, and it parsed the YAML schema AS A SCENE:
+    // E-KIND-MISSING, three E-META-MISSING, and one E-UNCLASSIFIED per line —
+    // the same flood for a perfectly VALID schema, never mentioning the real
+    // defect. An author who follows that advice adds `kind: scene` to their
+    // state schema and destroys it. A `.yaml`/`.yml` target is a pure
+    // declaration map (data-catalog foundation B2) and is checked as one.
+    if matches!(
+        file.extension().and_then(|e| e.to_str()),
+        Some("yaml") | Some("yml")
+    ) {
+        return run_check_schema_yaml(file, json, policy);
+    }
     let Some(built) = build_input(file, providers, project) else {
         return ExitCode::from(2);
     };
@@ -919,7 +1284,98 @@ fn run_check(
     if resolve_error {
         return ExitCode::from(1);
     }
-    let result = check(&input);
+    let mut result = check(&input);
+
+    // dsl 0.10.0 §9:962: *"`lute trace` on a component and `lute check` on the
+    // same file stop disagreeing"*. They disagreed because `check` stopped one
+    // pass short of where `trace` and `compile` stop, so `trace` refused over a
+    // fault and then told the author to run the one tool that could not see it.
+    // `check` now runs that pass — see [`compile_gate_diags`].
+    //
+    // Only on a clean check, mirroring both downstream pipelines exactly: they
+    // gate on `result.ok` first and reach `normalize`/`expand` only past it, and
+    // the expander's `"gate should have caught this"` arms are written on that
+    // assumption. Running it on a red document would report consequences of the
+    // errors already printed.
+    if result.ok {
+        let gate = compile_gate_diags(&input);
+        if !gate.is_empty() {
+            result.diagnostics.extend(gate);
+            // `check` hands back document order (`(byte_start, code)`); the gate
+            // diagnostics are appended out of it. Same key, so the merged list
+            // reads like one run rather than two concatenated ones.
+            result.diagnostics.sort_by(|a, b| {
+                a.span
+                    .byte_start
+                    .cmp(&b.span.byte_start)
+                    .then_with(|| a.code.cmp(&b.code))
+            });
+            result.ok = !result
+                .diagnostics
+                .iter()
+                .any(|d| d.severity == Severity::Error);
+        }
+    }
+
+    // dsl 0.10.0 §9 rule 4 (**D-W**): a standalone component check either
+    // forwards the caller-resolved verdict or refuses to claim `ok`. Until
+    // 0.10.0 it did neither: a component that cannot work with ANY of its
+    // callers reported `ok`, `check-project` reported the fault once per caller
+    // at line 1 of the wrong file, and `lute trace` refused with advice that
+    // could not be followed. This is what makes that advice followable.
+    //
+    // "With no caller in scope" is a DISJUNCTION — *"no project resolved, or no
+    // document in the project imports this component"* — and only the second
+    // disjunct was built: the whole block hung off `Some(root)`, so
+    // `lute check some.component.lute` with no `--project`, which is the
+    // invocation an author actually types, fell straight through to the bare
+    // `ok` the clause forbids. There is no manifest auto-discovery
+    // (`build_input` resolves a project only from the flag), so that leg is not
+    // a rare one.
+    //
+    // Both disjuncts now reach the same reporting point. They do NOT share a
+    // message, because they are not the same situation: "no project resolved"
+    // means the tool could not look, "no document imports this" means it looked
+    // and found nothing. The next step differs — supply a project, versus
+    // discover the component is unused — so the verdict names which one it is.
+    if let Some((component, at)) = component_name_of(file) {
+        match project.map(|root| (root, callers_of_component(root, &component))) {
+            // Report only what holds at EVERY call site: a diagnostic holding at
+            // some but not all callers is caller-specific and stays with
+            // `check-project`, where the caller is visible. Anchored inside the
+            // component — that is the whole point of running it here.
+            Some((root, callers)) if !callers.is_empty() => result
+                .diagnostics
+                .extend(caller_resolved_common(&callers, file, providers, root)),
+            Some(_) => result.diagnostics.push(lute_check::component_unverified_diag(
+                &component,
+                at,
+                lute_check::ComponentScope::NoImporter,
+            )),
+            None => result.diagnostics.push(lute_check::component_unverified_diag(
+                &component,
+                at,
+                lute_check::ComponentScope::NoProject,
+            )),
+        }
+        result.ok = !result
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error);
+    }
+    render_check_result(file, &result, json, policy)
+}
+
+/// Render one `CheckResult` (`--json` or human) and derive the exit code: `0`
+/// clean, `1` on a native OR `--deny`-promoted error. Shared by `run_check`
+/// and `run_check_schema_yaml` so a schema and a scene cannot drift in
+/// wording, JSON shape or verdict.
+fn render_check_result(
+    file: &Path,
+    result: &lute_check::CheckResult,
+    json: bool,
+    policy: &DenyPolicy,
+) -> ExitCode {
     // §5 verdict: a promoted (denied) diagnostic fails an otherwise-clean run.
     let ok = result.ok && !policy.any_denied(&result.diagnostics);
 
@@ -927,7 +1383,7 @@ fn run_check(
         // Wrap the promotion at the CLI layer (spec §5): serialize lute-check's
         // own `CheckResult` shape, then overlay `severity: "error"` +
         // `denied: true` on each promoted diagnostic and the promoted `ok`.
-        let mut value = match serde_json::to_value(&result) {
+        let mut value = match serde_json::to_value(result) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("lute: failed to serialize result: {e}");
@@ -950,7 +1406,7 @@ fn run_check(
             }
         }
     } else {
-        print_human(file, &result, policy);
+        print_human(file, result, policy);
     }
 
     if ok {
@@ -1039,8 +1495,8 @@ fn project_root_for(file: &Path, walk_root: &Path) -> PathBuf {
 /// One resolved project root's docs, each paired with its parsed
 /// `Document` and `fold_env`'s `FoldedEnv` — the per-root unit
 /// `check-project` and `lute scenario` (T14) both group by.
-type DocGroup = Vec<(PathBuf, lute_syntax::ast::Document, lute_check::FoldedEnv)>;
-type ByRoot = BTreeMap<PathBuf, DocGroup>;
+pub(crate) type DocGroup = Vec<(PathBuf, lute_syntax::ast::Document, lute_check::FoldedEnv)>;
+pub(crate) type ByRoot = BTreeMap<PathBuf, DocGroup>;
 
 /// Walk `dir` for `.lute` files ([`find_lute_files`]), `check()` +
 /// `fold_env` each one, and group the parsed docs by resolved project root
@@ -1224,6 +1680,9 @@ fn compute_conn_fixpoint(
         lute_check::connectivity::unreachable_quest_ids(group, file_results);
     let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
     let mut unreachable_quests = lifecycle_unreachable_quests.clone();
+    // dsl 0.10.0 §5.1 (D-N): grows inside the loop like `newly_dead`, and is
+    // tracked separately so the two derived causes keep distinct verdict text.
+    let mut dead_start_quests: BTreeSet<String> = BTreeSet::new();
     loop {
         let (reach, reach_diags) = lute_check::connectivity::check_reachability(
             conn_graph,
@@ -1238,6 +1697,15 @@ fn compute_conn_fixpoint(
             &lifecycle_unreachable_quests,
         );
         let mut newly_dead: BTreeSet<String> = BTreeSet::new();
+        // dsl 0.10.0 §5.1 (D-N): a quest whose `start=` is relationally dead
+        // can never activate. `scan_objective_liveness` says so as a
+        // diagnostic, but that diagnostic lands in `project_diags` and NEVER
+        // in `file_results`, so `unreachable_quest_ids` — which scans the
+        // per-file `check()` output — cannot see it. Connectivity reads the
+        // FACT from `dead_start_quests` instead, exactly as it already reads
+        // `dead_required_objective_quests` rather than the diagnostic that
+        // cause emits.
+        let mut newly_dead_start: BTreeSet<String> = BTreeSet::new();
         for (_path, doc, folded) in group_full {
             let producible_map =
                 lute_check::producible::producible(&folded.env.rel_vocab, &live_asserts);
@@ -1257,12 +1725,31 @@ fn compute_conn_fixpoint(
                 &defs,
                 &ctx,
             ));
+            newly_dead_start.extend(lute_check::producible::dead_start_quests(
+                doc,
+                &producible_map,
+                ambiguous_quests,
+                &defs,
+                &ctx,
+            ));
         }
-        let grown: BTreeSet<String> =
-            lifecycle_unreachable_quests.iter().cloned().chain(newly_dead).collect();
+        // Both derived sets are relational consequences and both only ever
+        // GROW, so the fixpoint argument in this function's doc is unchanged.
+        dead_start_quests.extend(newly_dead_start);
+        let grown: BTreeSet<String> = lifecycle_unreachable_quests
+            .iter()
+            .cloned()
+            .chain(dead_start_quests.iter().cloned())
+            .chain(newly_dead)
+            .collect();
         if grown == unreachable_quests {
+            // A dead-`start` quest is a LIFECYCLE cause, not a dead-objective
+            // one: it must reach `reach_verdict_text`'s `E-QUEST-UNREACHABLE`
+            // branch, not the `E-OBJECTIVE-UNSATISFIABLE` one that is checked
+            // first. Subtract it here so the two causes keep their own text.
             let dead_required_objective_quests: BTreeSet<String> = unreachable_quests
                 .difference(&lifecycle_unreachable_quests)
+                .filter(|id| !dead_start_quests.contains(*id))
                 .cloned()
                 .collect();
             return ConnFixpoint {
@@ -1568,6 +2055,83 @@ fn reconcile_collected(
     (file_results, project_diags, nodes_by_path)
 }
 
+/// dsl 0.10.0 §9 rule 2: fold identical component-body diagnostics across
+/// callers into one, keeping the first in byte-sorted path order and
+/// summarising the rest.
+///
+/// `validate_components` runs once per importing document, so N callers of one
+/// broken component produce N separate `check()` runs and N identical
+/// diagnostics — eleven modules, eleven identical messages, at line 1 column 1
+/// of eleven files that are all correct. The roll-up belongs here because this
+/// is the first place those runs meet.
+///
+/// The key is `(code, message)`. After §9 rule 1 a component-body message reads
+/// ``component `{name}` ({src}): {original}``, which is byte-identical across
+/// callers exactly when the problem is caller-INDEPENDENT and different when it
+/// is not — `E-BAD-ENUM` enumerates the resolved domain, so two callers with
+/// different vocabularies differ in the message itself. That is rule 2's
+/// boundary precisely, and it needs no marker field: a caller-specific fault
+/// stays with its own caller, where the caller is visible.
+fn rollup_component_body_diags(file_results: &mut [(PathBuf, lute_check::CheckResult)]) {
+    use std::collections::BTreeMap;
+
+    // Pass 1: count, in byte-sorted path order, which is `collect_project_docs`'
+    // own order — so "the first" is deterministic without re-sorting.
+    let mut counts: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for (path, result) in file_results.iter() {
+        for d in &result.diagnostics {
+            if is_component_body_diag(d, path) {
+                *counts
+                    .entry((d.code.clone(), d.message.clone()))
+                    .or_insert(0) += 1;
+            }
+        }
+    }
+
+    // Pass 2: keep the first of each group, annotate it, drop the rest.
+    let mut seen: std::collections::BTreeSet<(String, String)> = Default::default();
+    for (path, result) in file_results.iter_mut() {
+        let mut kept = Vec::with_capacity(result.diagnostics.len());
+        for mut d in std::mem::take(&mut result.diagnostics) {
+            if !is_component_body_diag(&d, path) {
+                kept.push(d);
+                continue;
+            }
+            let key = (d.code.clone(), d.message.clone());
+            if !seen.insert(key.clone()) {
+                continue; // a later caller reporting the same problem
+            }
+            let others = counts.get(&key).copied().unwrap_or(1).saturating_sub(1);
+            if others > 0 {
+                d.message = format!("{} (+{others} more caller{})", d.message, plural(others));
+            }
+            kept.push(d);
+        }
+        result.diagnostics = kept;
+        result.ok = !result
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error);
+    }
+}
+
+/// A diagnostic surfaced from ANOTHER file: it carries a `related` entry whose
+/// `file` is not the document it is reported on (§9 rule 1's cross-file
+/// attribution). That is what distinguishes a component-body report from an
+/// ordinary local diagnostic, without a new marker field.
+fn is_component_body_diag(d: &Diagnostic, path: &Path) -> bool {
+    let here = path.display().to_string();
+    d.related.iter().any(|r| r.file != here)
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 {
+        ""
+    } else {
+        "s"
+    }
+}
+
 /// Recursively `check` every `*.lute` under `dir` ([`collect_project_docs`],
 /// nested per-file root resolution — each file resolves against its OWN
 /// nearest ancestor `lute.project.yaml`, bounded below by `dir`), reconcile
@@ -1582,12 +2146,59 @@ fn run_check_project(
     providers: Option<&Path>,
     policy: &DenyPolicy,
 ) -> ExitCode {
+    // 0.10.0 §7 (D-D): validate EVERY manifest under the tree, once each,
+    // before any document work. Anchored at the manifest's own path, which
+    // the per-document `lute:` replay never carried.
+    let manifest_invalid = match manifests::validate_manifests_under(dir) {
+        Ok(verdicts) => manifests::report_and_gate(&verdicts),
+        Err(e) => {
+            eprintln!("lute: cannot walk {} for manifests: {e}", dir.display());
+            return ExitCode::from(2);
+        }
+    };
+    if manifest_invalid {
+        return ExitCode::FAILURE;
+    }
+
     let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
         Ok(v) => v,
         Err(code) => return code,
     };
-    let (file_results, project_diags, _nodes_by_path) =
+    let (mut file_results, mut project_diags, _nodes_by_path) =
         reconcile_collected(file_results, &by_root);
+
+    // dsl 0.10.0 §9 rule 2.
+    rollup_component_body_diags(&mut file_results);
+
+    // dsl 0.10.0 §11.1 (**D-V**): `W-DOMAIN-UNREAD` is project-wide only. The
+    // per-document halves ride on each `CheckResult`; the union and the
+    // difference happen here, once, over the whole walk.
+    //
+    // Deliberately NOT inside `reconcile_collected`: `gate_for_doc` merges every
+    // project-wide diagnostic anchored on a file INTO that file's single-document
+    // verdict, so a `W-DOMAIN-UNREAD` produced there would surface from
+    // `lute check <file> --project <dir>` and break D-V outright. Span
+    // normalization is not needed either — the anchor is the frontmatter span the
+    // parser produced, which already carries a real line/column.
+    {
+        let per_file: Vec<(PathBuf, &lute_check::DomainUse)> = file_results
+            .iter()
+            .map(|(p, r)| (p.clone(), &r.domain_use))
+            .collect();
+        project_diags.extend(lute_check::check_project_domain_reads(&per_file));
+    }
+
+    // 0.10.0 §8 (#31, D-E): every `mocks/*.yaml` under the root, validated
+    // against the schema resolved for its `file:` subject. Anchored at the
+    // mock, which is the file at fault — not at the subject scene, which is
+    // where these diagnostics rendered before, at `:0:0`.
+    match mockcheck::check_mocks_under(dir, &by_root) {
+        Ok(diags) => project_diags.extend(diags),
+        Err(e) => {
+            eprintln!("lute: cannot walk {} for mocks: {e}", dir.display());
+            return ExitCode::from(2);
+        }
+    }
 
     // §5 verdict: a promoted (denied) diagnostic — in a per-file result OR the
     // project-wide set — fails an otherwise-clean project.
@@ -1656,6 +2267,12 @@ fn run_check_project(
             println!("project-wide diagnostics:");
             for (path, d) in &project_diags {
                 let denied = policy.denied(d);
+                if d.span.line == 0 && d.span.column == 0 {
+                    // A right file with no right line (D-Z for manifests, D-AB
+                    // for mocks): print no position rather than claiming `0:0`.
+                    println!("{}", manifests::spanless_line(path, d, denied));
+                    continue;
+                }
                 let marker = if denied { " [denied]" } else { "" };
                 println!(
                     "{}:{}:{}: {} [{}]{marker} {}",
@@ -1947,6 +2564,16 @@ struct RootScenario {
     /// envelope printing needs the `&Quest` struct itself
     /// ([`envelope::quest_envelope`]'s signature), never re-parsed here.
     docs: Vec<(PathBuf, lute_syntax::ast::Document)>,
+    /// T8/T9's per-document write sets, KEPT rather than consumed. Inverting
+    /// `per_doc.scene` names the WRITERS of a path (#15, T9.14); the envelope
+    /// already computed it and dropped it on the floor.
+    per_doc: envelope::PerDocEffects,
+    /// The root's relational vocabulary — declared relations, their arity and
+    /// `derive` flag, the `facts:` seeds and the rules. The envelope tables
+    /// are scalar-only, so at the scene whose every line is gated on who is
+    /// awake the tool that exists to say what is true on arrival did not
+    /// mention the subject (#15, T4.7).
+    rel_vocab: lute_check::RelVocab,
 }
 
 /// Assemble [`RootScenario`] for one resolved root's docs — mirrors
@@ -1976,8 +2603,15 @@ fn assemble_root_scenario(
     let mut per_doc = envelope::PerDocEffects::default();
     let mut envelope_d: BTreeSet<String> = BTreeSet::new();
     let mut reads_per_scene: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
+    let mut rel_vocab = lute_check::RelVocab::default();
     for (_path, doc, folded) in group_full {
         envelope_d.extend(envelope::schema_defaults(&folded.env.state));
+        // Every doc in one resolved root folds the SAME imported vocabulary;
+        // taking the last non-empty one matches how `check-project`'s own
+        // project-wide relational passes read it.
+        if !folded.env.rel_vocab.relations.is_empty() {
+            rel_vocab = (*folded.env.rel_vocab).clone();
+        }
         for quest in &doc.quests {
             if quest.id.is_empty() || ambiguous_quests.contains(&quest.id) {
                 continue;
@@ -2032,6 +2666,8 @@ fn assemble_root_scenario(
         dead_required_objective_quests,
         envelope_d,
         docs,
+        per_doc,
+        rel_vocab,
     }
 }
 
@@ -2386,6 +3022,181 @@ fn print_path_set(set: &BTreeSet<String>) {
     }
 }
 
+/// Every node from which `node` is transitively reachable in the prerequisite
+/// graph — the writers whose writes provably happen BEFORE control reaches
+/// it, which is the only thing a PRE-ENTRY envelope may claim. `g.edges` is
+/// keyed `prerequisite -> dependent`, so this is a reverse walk.
+///
+/// `node` itself is excluded unless a cycle puts it upstream of itself; that
+/// is deliberate — the tables are explicitly "before its own writes".
+fn ancestors_of(
+    g: &lute_check::connectivity::ConnGraph,
+    node: &lute_check::connectivity::NodeId,
+) -> BTreeSet<lute_check::connectivity::NodeId> {
+    let mut rev: BTreeMap<&lute_check::connectivity::NodeId, Vec<&lute_check::connectivity::NodeId>> =
+        BTreeMap::new();
+    for (prereq, deps) in &g.edges {
+        for dep in deps {
+            rev.entry(dep).or_default().push(prereq);
+        }
+    }
+    let mut seen: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
+    let mut stack: Vec<&lute_check::connectivity::NodeId> =
+        rev.get(node).cloned().unwrap_or_default();
+    while let Some(n) = stack.pop() {
+        if !seen.insert(n.clone()) {
+            continue;
+        }
+        if let Some(ps) = rev.get(n) {
+            stack.extend(ps.iter().copied());
+        }
+    }
+    seen
+}
+
+/// Invert `PerDocEffects` into `path -> (writers upstream of `node`, the
+/// rest)`. A scene contributes its own `possible_writes`; a quest contributes
+/// its `writesOnComplete`, which is what draws manifest-gap.lute's completion
+/// handler as a writer of `run.vesnaTrust` — the edge nobody could see,
+/// though what-vesna-carries activates on exactly that path (#15, T9.14).
+///
+/// The split is load-bearing, and the plan asked for the join UNSPLIT. A flat
+/// project-wide list names `scene(anseo.s01ep09)` as a writer in
+/// `anseo.s01ep01`'s PRE-ENTRY envelope, which is false — eight scenes
+/// separate them — and, being project-wide, it renders identically at every
+/// node, which is the very defect #15 opens with. Dropping the non-upstream
+/// half instead loses `quest(manifestGap)` from `quest:whatVesnaCarries`,
+/// #15's own last verify bullet, because a no-`after` quest is never a graph
+/// node and manifestGap is not upstream of it in any case. Both halves are
+/// reported, each labelled with what is actually known about it: a
+/// non-upstream writer may be downstream, unordered, or ungraphed, so the
+/// second label claims only that its write is NOT provably before this node.
+type WriterSplit = BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>;
+
+fn writers_of(
+    scenario: &RootScenario,
+    node: &lute_check::connectivity::NodeId,
+) -> WriterSplit {
+    let upstream = ancestors_of(&scenario.graph, node);
+    let mut out: WriterSplit = BTreeMap::new();
+    let mut record = |path: &String, id: lute_check::connectivity::NodeId, label: String| {
+        let entry = out.entry(path.clone()).or_default();
+        if upstream.contains(&id) {
+            entry.0.insert(label);
+        } else {
+            entry.1.insert(label);
+        }
+    };
+    for (key, (_guaranteed, possible)) in &scenario.per_doc.scene {
+        for path in possible {
+            record(
+                path,
+                lute_check::connectivity::NodeId::Scene(key.clone()),
+                format!("scene({key})"),
+            );
+        }
+    }
+    for (id, writes) in &scenario.per_doc.quest_writes_on_complete {
+        for path in writes {
+            record(
+                path,
+                lute_check::connectivity::NodeId::Quest(id.clone()),
+                format!("quest({id}) on completion"),
+            );
+        }
+    }
+    out
+}
+
+fn join(set: &BTreeSet<String>) -> String {
+    set.iter().cloned().collect::<Vec<_>>().join(", ")
+}
+
+/// Print a path set with each path's writers named beside it. The plain
+/// [`print_path_set`] stays for the sets where a writer column is
+/// meaningless.
+fn print_path_set_with_writers(paths: &BTreeSet<String>, writers: &WriterSplit) {
+    if paths.is_empty() {
+        println!("    (none)");
+        return;
+    }
+    for path in paths {
+        let (upstream, other) = match writers.get(path) {
+            Some(w) => (&w.0, &w.1),
+            None => (&BTreeSet::new(), &BTreeSet::new()),
+        };
+        // A path in the envelope that nothing upstream writes got there from
+        // the schema-default floor `D`. Saying so is the answer to "why is
+        // this readable"; a blank column would read as a missing join.
+        let head = if upstream.is_empty() {
+            "(nothing on a declared route reaching here — schema default only)".to_string()
+        } else {
+            join(upstream)
+        };
+        let tail = if other.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "; also written, but not provably before this node: {}",
+                join(other)
+            )
+        };
+        println!("    - {path}   written by: {head}{tail}");
+    }
+}
+
+/// The relational layer the scalar envelope tables cannot show: every
+/// declared relation, whether static analysis can produce it, and which
+/// documents assert it. `producible` and `live_assert_relations` are the SAME
+/// functions `check-project` runs to decide `W-UNPROVEN-RELATIONAL`; this
+/// renders what they already computed rather than deciding anything (#15,
+/// T4.7).
+fn print_facts_section(scenario: &RootScenario, root: &Path) {
+    let vocab = &scenario.rel_vocab;
+    if vocab.relations.is_empty() {
+        return;
+    }
+    let live = lute_check::connectivity::live_assert_relations(
+        &scenario.docs,
+        &scenario.reach,
+        &scenario.ambiguous_quests,
+        &scenario.unreachable_quests,
+    );
+    let producible = lute_check::producible::producible(vocab, &live);
+    let per_doc = lute_check::connectivity::assert_relations_per_doc(&scenario.docs);
+    let seeded: BTreeSet<&str> = vocab.facts.iter().map(|f| f.fact.relation.as_str()).collect();
+
+    println!("  Facts (the relational layer — declared relations, how each becomes true):");
+    for (name, decl) in &vocab.relations {
+        let kind = if decl.derive { "derived" } else { "asserted" };
+        let prod = if producible.get(name).copied().unwrap_or(false) {
+            "producible"
+        } else {
+            "NOT producible by any declared route"
+        };
+        let mut writers: Vec<String> = per_doc
+            .iter()
+            .filter(|(_, rels)| rels.contains(name))
+            .map(|(p, _)| p.strip_prefix(root).unwrap_or(p).display().to_string())
+            .collect();
+        if seeded.contains(name.as_str()) {
+            writers.push("facts: seed".to_string());
+        }
+        let by = if writers.is_empty() {
+            String::new()
+        } else {
+            format!("   asserted by: {}", writers.join(", "))
+        };
+        println!("    - {name}/{} ({kind}, {prod}){by}", decl.args.len());
+    }
+    if !vocab.rules.is_empty() {
+        println!("  Rules:");
+        for r in &vocab.rules {
+            println!("    - {}", r.raw);
+        }
+    }
+}
+
 /// True when the project's prerequisite graph contains a cycle (`E-CONN-CYCLE`,
 /// dsl §2.4/§4.1 §A). Kahn's algorithm in `assemble_graph` emits every node
 /// EXCEPT the cycle members and everything transitively downstream of one, so
@@ -2434,7 +3245,7 @@ fn print_cycle_envelope_note() {
 /// to `key` so every returned diagnostic necessarily belongs to this node,
 /// and keeps the warning grade instead. Never a second classification pass
 /// — `check_envelope` is reused verbatim, never re-implemented.
-fn print_scene_envelope(scenario: &RootScenario, key: &str) {
+fn print_scene_envelope(scenario: &RootScenario, key: &str, root: &Path) {
     let node_id = lute_check::connectivity::NodeId::Scene(key.to_string());
     println!(
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
@@ -2454,10 +3265,11 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str) {
         guaranteed: scenario.envelope_d.clone(),
         possible: scenario.envelope_d.clone(),
     });
+    let writers = writers_of(scenario, &node_id);
     println!("  Guaranteed (safe to read under your declared routes):");
-    print_path_set(&env.guaranteed);
+    print_path_set_with_writers(&env.guaranteed, &writers);
     println!("  Possible (set on at least one declared route reaching this node):");
-    print_path_set(&env.possible);
+    print_path_set_with_writers(&env.possible, &writers);
 
     let mut single: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
     if let Some(reads) = scenario.reads_per_scene.get(key) {
@@ -2480,6 +3292,7 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str) {
     if !any {
         println!("    (none)");
     }
+    print_facts_section(scenario, root);
 }
 
 /// Print a quest node's envelope (T12 [`envelope::quest_envelope`]) — full
@@ -2490,7 +3303,12 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str) {
 /// `check_quest_guard_defassign`'s territory), so this is NEVER labeled
 /// as the T11 warning-grade read-site class (Main review) — there is no
 /// read-SITE list for a quest at all, only the plain set difference.
-fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::ast::Quest) {
+fn print_quest_envelope(
+    scenario: &RootScenario,
+    id: &str,
+    quest: &lute_syntax::ast::Quest,
+    root: &Path,
+) {
     let node_id = lute_check::connectivity::NodeId::Quest(id.to_string());
     println!(
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
@@ -2510,17 +3328,25 @@ fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::
     }
     let qe =
         envelope::quest_envelope(quest, &scenario.graph, &scenario.envs, &scenario.envelope_d);
+    let writers = writers_of(scenario, &node_id);
     println!("  Guaranteed (safe to read under your declared routes):");
-    print_path_set(&qe.env.guaranteed);
+    print_path_set_with_writers(&qe.env.guaranteed, &writers);
     println!("  Possible (set on at least one declared route reaching this node):");
-    print_path_set(&qe.env.possible);
+    print_path_set_with_writers(&qe.env.possible, &writers);
     let warn: BTreeSet<String> =
         qe.env.possible.difference(&qe.env.guaranteed).cloned().collect();
+    // #33 / T4.10: this sentence named `T11` (an internal task label) and
+    // `check_quest_guard_defassign` (a Rust function) at an AUTHOR. Neither
+    // appears anywhere on the website, so neither is lookupable. The
+    // distinction the sentence exists to draw is real and is kept; only the
+    // vocabulary changes. The doc comment above keeps both terms — that reader
+    // has the source open, which is exactly the audience this message was
+    // wrongly addressed to.
     println!(
         "  Possible \\ Guaranteed -- inventory only (paths set on SOME but not every declared \
-         route reaching this quest, dsl §4.4). This is NOT the T11 warning-grade read-site \
-         class -- quest read diagnostics are `check_quest_guard_defassign`'s separate \
-         territory (that class is scene-only, see the scene envelope's own section):"
+         route reaching this quest, dsl §4.4). Unlike a scene's, this list is not a set of \
+         warned read sites: a quest's guard reads are checked where they are written, not \
+         against this table:"
     );
     print_path_set(&warn);
     if qe.enrichment_note {
@@ -2530,6 +3356,7 @@ fn print_quest_envelope(scenario: &RootScenario, id: &str, quest: &lute_syntax::
              with the full project-resolved envelope."
         );
     }
+    print_facts_section(scenario, root);
 }
 
 fn run_scenario_envelope(
@@ -2550,7 +3377,7 @@ fn run_scenario_envelope(
         return ExitCode::SUCCESS;
     }
     match &node_ref {
-        NodeRef::Scene(key) => print_scene_envelope(&scenario, key),
+        NodeRef::Scene(key) => print_scene_envelope(&scenario, key, root),
         NodeRef::Quest(id) => {
             let Some(quest) =
                 scenario.docs.iter().flat_map(|(_, d)| d.quests.iter()).find(|q| &q.id == id)
@@ -2558,7 +3385,7 @@ fn run_scenario_envelope(
                 eprintln!("lute: internal error: quest `{id}` resolved but no declaration found");
                 return ExitCode::from(2);
             };
-            print_quest_envelope(&scenario, id, quest);
+            print_quest_envelope(&scenario, id, quest, root);
         }
     }
     ExitCode::SUCCESS
@@ -3147,12 +3974,13 @@ fn literal_json(l: &Literal) -> serde_json::Value {
 }
 
 /// A compact human outline of the authoring surface (non-`--json` mode): the
-/// capabilityVersion, directive names + attr keys, enum names WITH their
-/// members, state paths (with enum domains), the referenced reserved quest
-/// paths (dsl 0.5.1 §2), the relational vocabulary (entity kinds, relations
-/// w/ arity+domains+`derive`, seed facts, rules, project-level enums), the
-/// fixed delivery-flag vocabulary (dsl 0.5.1 §3), and component names.
-/// `--json` is the machine surface; this is a short at-a-glance view.
+/// capabilityVersion, directive names + attr keys + semantics flags, enum
+/// names WITH their members, state paths (with enum domains), the referenced
+/// reserved quest paths (dsl 0.5.1 §2), the relational vocabulary (entity
+/// kinds, relations w/ arity+domains+`derive`, seed facts, rules,
+/// project-level enums), the fixed delivery-flag vocabulary (dsl 0.5.1 §3),
+/// and component names. `--json` is the machine surface; this is a short
+/// at-a-glance view.
 fn context_outline(surface: &serde_json::Value) -> String {
     let mut out = String::new();
     let _ = writeln!(
@@ -3172,7 +4000,20 @@ fn context_outline(surface: &serde_json::Value) -> String {
                 .as_array()
                 .map(|a| a.iter().filter_map(|x| x["name"].as_str()).collect())
                 .unwrap_or_default();
-            let _ = writeln!(out, "  {name}{layer}: {}", attrs.join(", "));
+            // #32 / T2.5: `--json` has always carried these and the human
+            // outline dropped them. `mayExitCharacter` is the machine-readable
+            // statement that `::auto` is the construct that ends a presence,
+            // and it is on no page of the shipped website.
+            let semantics: Vec<&str> = d["semantics"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+                .unwrap_or_default();
+            let sem = if semantics.is_empty() {
+                String::new()
+            } else {
+                format!("   [{}]", semantics.join(" "))
+            };
+            let _ = writeln!(out, "  {name}{layer}: {}{sem}", attrs.join(", "));
         }
     }
     if let Some(enums) = surface["enums"].as_object() {
@@ -3422,7 +4263,7 @@ fn run_compile(
     // scene keeps `IdentityTemplates::default()`, i.e. 0.7.0's pair. A project
     // that fails to load already printed its error in `build_input`; falling
     // back to the default here matches that core-only degradation.
-    let compiled = match project {
+    let (gate, identity) = match project {
         Some(dir) => {
             let identity = load_project(dir)
                 .ok()
@@ -3430,11 +4271,19 @@ fn run_compile(
                 .map(|p| p.identity)
                 .unwrap_or_default();
             match project_gate_result(file, dir, providers) {
-                Ok(gate) => lute_compile::compile_with_check(&input, gate, &identity),
+                Ok(gate) => (gate, identity),
                 Err(code) => return code,
             }
         }
-        None => lute_compile::compile(&input),
+        None => (check(&input), Default::default()),
+    };
+
+    // A component is not a root document (see [`component_root_diag`]): there is
+    // no standalone artifact to emit. Refused AFTER the gate, so a component
+    // with real check errors still reports them.
+    let compiled = match component_name_of(file).filter(|_| gate.ok) {
+        Some((component, at)) => Err(vec![component_root_diag(&component, at)]),
+        None => lute_compile::compile_with_check(&input, gate, &identity),
     };
     match compiled {
         Ok(mut artifact) => {
@@ -3597,20 +4446,46 @@ fn run_trace(
                     return ExitCode::from(2);
                 }
             };
+            // D-AC: the command line supplies the subject and it wins. A
+            // `file:` that names a DIFFERENT document is the error — the two
+            // ways of saying what a mock is for must not disagree in silence.
+            match lute_trace::mock_subject(&text) {
+                Ok(Some(rel)) => {
+                    let base = path.parent().unwrap_or_else(|| Path::new("."));
+                    let named = std::fs::canonicalize(base.join(&rel)).ok();
+                    let target = std::fs::canonicalize(file).ok();
+                    if named.is_none() || named != target {
+                        eprintln!(
+                            "lute: {}: [{}] `file: {rel}` names a different document than the one \
+                             traced ({}) — the mock's subject and the command line must agree \
+                             (0.10.0 §8)",
+                            path.display(),
+                            lute_trace::E_MOCK_SUBJECT,
+                            file.display()
+                        );
+                        return ExitCode::from(2);
+                    }
+                }
+                Ok(None) => {}
+                Err(d) => {
+                    eprintln!("lute: {}: [{}] {}", path.display(), d.code, d.message);
+                    return ExitCode::from(2);
+                }
+            }
             match parse_mock_yaml(&text) {
                 Ok(m) => m,
                 Err(d) => {
                     // A malformed `--mock` YAML document is a file-level I/O/
                     // format failure, not a schema-validation refusal — `2`,
                     // matching `run_check`'s/`run_compile`'s read-failure tier.
-                    eprintln!(
-                        "lute: {}:{}:{}: [{}] {}",
-                        path.display(),
-                        d.span.line,
-                        d.span.column,
-                        d.code,
-                        d.message
-                    );
+                    //
+                    // Rendered WITHOUT a line:column (D-AB). Every mock
+                    // diagnostic carries `synthetic_span()`'s all-zeros, so
+                    // the old `{line}:{column}` printed `mock.yaml:0:0` — a
+                    // position that does not exist, which is the exact defect
+                    // §8 opens with. The subject arm above already renders
+                    // this way; now the grammar arm does too.
+                    eprintln!("lute: {}: [{}] {}", path.display(), d.code, d.message);
                     return ExitCode::from(2);
                 }
             }
@@ -3638,13 +4513,41 @@ fn run_trace(
     // verdict; WITHOUT it, the standalone single-file `check` gate, unchanged.
     // The D1 quarantine holds — reconciliation is pure graph math, never
     // CEL/Datalog evaluation.
-    let (report, exit) = match project {
+    let gate = match project {
         Some(dir) => match project_gate_result(file, dir, providers) {
-            Ok(gate) => lute_trace::trace_with_check(&input, gate, mocks),
+            Ok(gate) => gate,
             Err(code) => return code,
         },
-        None => lute_trace::trace_document(&input, mocks),
+        None => check(&input),
     };
+
+    // A component is not a root document (see [`component_root_diag`]). Refused
+    // AFTER the gate above, so a component carrying real check errors still
+    // reports them first — the kind refusal is what replaces the bare `ok`
+    // path, not the diagnostic path.
+    if gate.ok {
+        if let Some((component, at)) = component_name_of(file) {
+            let diag = component_root_diag(&component, at);
+            if json {
+                match serde_json::to_string_pretty(&[&diag]) {
+                    Ok(s) => println!("{s}"),
+                    Err(e) => {
+                        eprintln!("lute: failed to serialize diagnostics: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            } else {
+                print_diagnostics(file, std::slice::from_ref(&diag), &DenyPolicy::default());
+                println!(
+                    "trace refused: {} is a component — trace a document that `::use`s it",
+                    file.display()
+                );
+            }
+            return ExitCode::from(1);
+        }
+    }
+
+    let (report, exit) = lute_trace::trace_with_check(&input, gate, mocks);
 
     match exit {
         TraceExit::Complete => {
@@ -3987,6 +4890,24 @@ mod tests {
         assert_eq!(sorted.as_slice(), DENIABLE_CODES, "DENIABLE_CODES must be sorted and deduped");
     }
 
+    /// The drift guard below scans the five CHECK crates; `lute-cli/src` is
+    /// deliberately not among them (`testcmd.rs` holds the literal
+    /// `"E-TRACE-"` — a prefix, not a code — which the shape test would
+    /// accept). So the two codes `lute test` emits from
+    /// [`crate::testcmd`] are registered by hand, and a hand registration
+    /// needs a hand guard: dropping either one is otherwise silent, since
+    /// sortedness still holds without it.
+    #[test]
+    fn the_harness_own_codes_are_deniable() {
+        for code in ["E-TEST-KEY", "E-TEST-NO-EXPECT"] {
+            assert!(
+                DENIABLE_CODES.contains(&code),
+                "{code} is emitted by crates/lute-cli/src/testcmd.rs and MUST be deniable; \
+                 the drift guard does not scan this crate"
+            );
+        }
+    }
+
     /// Drift guard (spec §5): every `"[EW]-…"` diagnostic-code literal in the
     /// crates whose diagnostics `check`/`check-project` surface MUST be in
     /// [`DENIABLE_CODES`], so a newly-added code cannot silently fall outside the
@@ -4003,6 +4924,13 @@ mod tests {
             "../lute-cel/src",
             "../lute-manifest/src",
             "../lute-core-span/src",
+            // 0.10.0 §8: `check-project` now emits `lute-trace`'s mock codes,
+            // so they are inside the deny universe and inside this guard.
+            "../lute-trace/src",
+            // dsl 0.10.0 §9:962: `lute check` now runs the compile gate
+            // (`normalize` + `expand`) that `trace`/`compile` run, so
+            // `lute-compile`'s codes are ones `check` surfaces.
+            "../lute-compile/src",
         ];
         let is_code = |c: &str| {
             let mut parts = c.splitn(2, '-');

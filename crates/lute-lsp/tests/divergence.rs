@@ -52,6 +52,7 @@ fn input_for(text: &str) -> CheckInput {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     }
 }
 
@@ -189,15 +190,27 @@ fn headless_and_lsp_diagnostics_match() {
     );
 }
 
-/// Warning-bearing golden: `bianca-s01ep02.lute` is error-clean but carries a
-/// `W-INJECT-CONFLICT` warning, so the golden also covers the Warning severity
-/// round-trip. Same equality invariant. Its content vocabulary arrives through
-/// its `uses: base.schema.yaml` (dsl 0.9.0), and the injected-anchor conflict it
-/// carries is only computable once that declaration's `anchor` `default:` is in
-/// scope — so the imports must be resolved, exactly as both surfaces do.
+/// Warning-bearing golden: the same equality invariant as above, over a
+/// document that carries a Warning-severity diagnostic, so the golden covers
+/// the Warning round-trip and not only the Error one.
+///
+/// `bianca-s01ep02.lute` supplies the realistic base — its content vocabulary
+/// arrives through `uses: base.schema.yaml` (dsl 0.9.0) and its imports must be
+/// resolved exactly as both surfaces resolve them. It used to carry a
+/// `W-INJECT-CONFLICT` of its own; dsl 0.10.0 §12.3 removed that code, and no
+/// corpus document carries a per-file warning any more (the surviving 18 are
+/// project-wide `W-UNPROVEN-RELATIONAL`, which a single-document `check()`
+/// never produces). So the warning is now appended here rather than borrowed:
+/// a thirteen-clip track is `W-TIMELINE-CLIPS`, needs no vocabulary, and cannot
+/// quietly stop firing the way a borrowed corpus warning just did.
 #[test]
 fn headless_and_lsp_diagnostics_match_warning_bearing() {
-    let text = std::fs::read_to_string("../../docs/examples/bianca-s01ep02.lute").unwrap();
+    let mut text = std::fs::read_to_string("../../docs/examples/bianca-s01ep02.lute").unwrap();
+    text.push_str("\n## Shot 99.\n\n<timeline>\n<track subject=\"camera\">\n");
+    for i in 0..13 {
+        text.push_str(&format!("::camera{{focus=\"bianca\" zoom=\"1.{i}\"}}\n"));
+    }
+    text.push_str("</track>\n</timeline>\n");
     let res = check(&input_for_in(
         &text,
         std::path::Path::new("../../docs/examples"),
@@ -205,11 +218,18 @@ fn headless_and_lsp_diagnostics_match_warning_bearing() {
 
     assert!(
         !res.diagnostics.is_empty(),
-        "bianca-s01ep02.lute must produce diagnostics; an empty vector would make the golden trivially pass"
+        "the fixture must produce diagnostics; an empty vector would make the golden trivially pass"
     );
     assert!(
-        res.diagnostics.iter().any(|d| d.severity == Severity::Warning),
-        "bianca-s01ep02.lute should carry at least one warning-severity diagnostic (covers the Warning round-trip)"
+        res.diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Warning),
+        "the fixture must carry at least one warning-severity diagnostic (covers the \
+         Warning round-trip); got {:?}",
+        res.diagnostics
+            .iter()
+            .map(|d| (&d.code, d.severity))
+            .collect::<Vec<_>>()
     );
 
     let index = idx(&text);
@@ -277,6 +297,7 @@ fn divergence_holds_under_plugin_project() {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let res = check(&input);
 
@@ -392,6 +413,7 @@ fn divergence_holds_under_plugin_defs() {
             mode: Mode::Author,
             imports: SchemaImports::default(),
             components: Default::default(),
+            defaults: Default::default(),
         })
     };
 
@@ -486,6 +508,7 @@ fn divergence_holds_under_uses_import() {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let res = check(&input);
     assert!(
@@ -531,6 +554,7 @@ fn divergence_holds_under_uses_import() {
         mode: Mode::Author,
         imports: bimports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let bres = check(&binput);
     assert!(
@@ -674,6 +698,7 @@ fn divergence_holds_under_components() {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     let res = check(&input);
     assert!(
@@ -719,6 +744,7 @@ fn divergence_holds_under_components() {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: bcomponents,
+        defaults: Default::default(),
     };
     let bres = check(&binput);
     assert!(

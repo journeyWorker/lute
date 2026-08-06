@@ -107,14 +107,14 @@ fn injected_sprite_carries_provenance() {
             provenance: Some(lute_check::Provenance {
                 injected: true,
                 by: "entry-emotion-lookahead".into(),
-                reason: "pre-loading bianca's first emotion".into(),
+                explanation: "pre-loading bianca's first emotion".into(),
             }),
             ..Stamp::default()
         },
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"sprite","addr":"002-0200","character":"bianca","preload":true,"emotion":"surprised","provenance":{"injected":true,"by":"entry-emotion-lookahead","reason":"pre-loading bianca's first emotion"}}"#
+        r#"{"kind":"sprite","addr":"002-0200","character":"bianca","preload":true,"emotion":"surprised","provenance":{"injected":true,"by":"entry-emotion-lookahead","explanation":"pre-loading bianca's first emotion"}}"#
     );
 }
 

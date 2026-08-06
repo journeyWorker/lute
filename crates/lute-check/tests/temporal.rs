@@ -20,6 +20,7 @@ fn codes(text: &str) -> Vec<String> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input).diagnostics.into_iter().map(|d| d.code).collect()
 }
@@ -57,6 +58,7 @@ fn input_with_anchor(cond: &str) -> CheckInput {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     }
 }
 

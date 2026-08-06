@@ -473,3 +473,119 @@ fn deny_promotes_w_l10n_missing_and_suppresses_the_artifact() {
         assert!(stderr.contains("error [W-L10N-MISSING]"), "{flag}: got {stderr}");
     }
 }
+
+// --- #3 (T6.10) — component lines are exported once per expansion ---
+
+fn anseo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/anseo")
+}
+
+/// #3 / T6.10: `loc export` emitted a component's lines once, keyed to the
+/// COMPONENT file, with lineId null — because `{prefix}` derives from the
+/// IMPORTING document's frontmatter, which a component has none of.
+/// Everything downstream is keyed on lineId, so `loc import` skipped the row
+/// at exit 0 naming `lute tag`; `lute tag` answered "already tagged" (the
+/// lines DO carry code="0010"/"0020"); and `compile --locales` then emitted
+/// W-L10N-MISSING for a caller-derived id that appears in no export.
+///
+/// Fix (i): one row PER EXPANSION carrying the caller-derived lineId, with
+/// the component file and line retained as `source` so a TMS dedupes on
+/// identical source text and the translator still sees the string once.
+#[test]
+fn loc_export_emits_component_lines_per_expansion_with_the_callers_id() {
+    let root = anseo_root();
+    let out = run(&["loc", "export", root.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let rows: serde_json::Value = serde_json::from_str(&text).expect("export json");
+    let rows = rows.as_array().expect("array");
+
+    // A component file has no prefix, so it contributes no rows of its own —
+    // a row with no reproducible identity is what this issue is about.
+    assert!(
+        !rows
+            .iter()
+            .any(|r| r["file"].as_str().is_some_and(|f| f.ends_with(".component.lute"))),
+        "a component file must not be exported as a document in its own right"
+    );
+
+    // The expansion is exported under the CALLER's id.
+    let expanded = rows
+        .iter()
+        .find(|r| r["lineId"].as_str() == Some("anseo.s01ep02.purser_0020"))
+        .unwrap_or_else(|| panic!("the caller-derived id must be exported: {text}"));
+    assert!(
+        expanded["file"].as_str().is_some_and(|f| f.ends_with("cryobank.lute")),
+        "the row belongs to the CALLER: {expanded}"
+    );
+    assert!(
+        expanded["source"]["file"]
+            .as_str()
+            .is_some_and(|f| f.ends_with("purser-interject.component.lute")),
+        "the component file is retained as `source`: {expanded}"
+    );
+    assert!(expanded["source"]["line"].as_u64().is_some(), "{expanded}");
+
+    // Every row carries the key, null or not, so the JSON shape does not vary
+    // with authoring.
+    assert!(rows.iter().all(|r| r.get("source").is_some()), "`source` must be on every row");
+
+    // No row carrying a `code` may still have a null lineId — that is exactly
+    // the class `lute tag` can never fix, and it must be empty now.
+    let impossible: Vec<&serde_json::Value> = rows
+        .iter()
+        .filter(|r| r["lineId"].is_null() && !r["code"].is_null())
+        .collect();
+    assert!(impossible.is_empty(), "structurally un-taggable rows remain: {impossible:?}");
+
+    // The eight code-less quest rows must STILL be reported as untagged —
+    // T6.10's distinction, which the fix must sharpen, not erase.
+    let untagged = rows.iter().filter(|r| r["lineId"].is_null()).count();
+    assert_eq!(untagged, 8, "the eight code-less quest narration rows stay untagged");
+}
+
+/// The completeness claim itself, as a COUNT rather than an eyeball: every
+/// content line in the compiled artifact must have an export row under its
+/// own `lineId`. That is the property #3 broke — the component's line
+/// compiled under `anseo.s01ep02.purser_0020` and no export contained it.
+#[test]
+fn every_content_line_the_compiler_emits_has_an_export_row() {
+    let root = anseo_root();
+    let scene = root.join("scenes/cryobank.lute");
+    let dir = temp_dir("loc-completeness");
+    let artifact = dir.join("cryo.json");
+    let out = run(&[
+        "compile",
+        scene.to_str().unwrap(),
+        "--project",
+        root.to_str().unwrap(),
+        "-o",
+        artifact.to_str().unwrap(),
+    ]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let compiled = read_json(&artifact);
+    let compiled_ids: Vec<String> = compiled["commands"]
+        .as_array()
+        .expect("commands")
+        .iter()
+        .filter(|c| c["kind"] == "line")
+        .filter_map(|c| c["lineId"].as_str().map(str::to_string))
+        .collect();
+    assert!(!compiled_ids.is_empty(), "no compiled lines: {compiled}");
+
+    let export = run(&["loc", "export", root.to_str().unwrap()]);
+    let rows: serde_json::Value =
+        serde_json::from_slice(&export.stdout).expect("export json");
+    let exported: std::collections::BTreeSet<String> = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|r| r["lineId"].as_str().map(str::to_string))
+        .collect();
+    let missing: Vec<&String> = compiled_ids.iter().filter(|id| !exported.contains(*id)).collect();
+    assert!(
+        missing.is_empty(),
+        "{} of {} compiled line ids have no export row: {missing:?}",
+        missing.len(),
+        compiled_ids.len()
+    );
+}

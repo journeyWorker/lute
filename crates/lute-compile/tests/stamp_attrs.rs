@@ -64,6 +64,7 @@ fn input(text: &str, snapshot: CapabilitySnapshot) -> CheckInput {
         mode: Mode::Ci,
         imports: Default::default(),
         components: Default::default(),
+        defaults: Default::default(),
     }
 }
 

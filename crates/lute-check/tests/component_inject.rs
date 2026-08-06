@@ -1,7 +1,15 @@
 //! Task 7g — an imported component body's staging goes through the SAME
 //! injection fold (`inject::lower_node`, dsl §10.3) a scene-level directive
-//! does, so `W-INJECT-CONFLICT` is derived for a body reached through a
-//! `::use`.
+//! does, so a diagnostic the fold raises is derived identically for a body
+//! reached through a `::use`.
+//!
+//! dsl 0.10.0 §12.3 (**D-U**) removed `W-INJECT-CONFLICT`, which is the code
+//! this suite was originally built around. The invariant it defends is NOT
+//! removed — *the same authored construct reports the same diagnostics
+//! whichever leg sees it* — so the suite is retargeted onto the injection
+//! channel's one surviving code, `E-DOMAIN-UNKNOWN` from
+//! `missing_anchor_domain_diag`, and additionally pins the now-SILENT explicit
+//! anchor case on all three legs.
 //!
 //! Before this suite existed, `fold_injections` had exactly ONE callsite
 //! (`check.rs` step 7, over the ROOT document's shots) and a `::use` was
@@ -9,8 +17,8 @@
 //! never entered. Measured on the same authored construct:
 //!
 //! ```text
-//! at scene level       -> [W-INJECT-CONFLICT]
-//! component standalone -> [W-INJECT-CONFLICT]
+//! at scene level       -> [<the fold's diagnostic>]
+//! component standalone -> [<the fold's diagnostic>]
 //! via ::use            -> []                    <-- the gap
 //! ```
 //!
@@ -66,44 +74,82 @@ const USE_SCENE: &str =
 ## Shot 1.\n::use{component=\"c\"}\n";
 
 /// `::auto` whose explicit `anchor` EQUALS the `anchor` domain's declared
-/// `default:` (`center`, `lute_test_vocab::test_domains`) — the one authored
-/// shape `auto-anchor-on-show` reports `W-INJECT-CONFLICT` for.
-const CONFLICT_BODY: &str = "::auto{character=\"bianca\" anchor=\"center\"}\n@bianca: Hello.\n";
+/// `default:` (`center`, `lute_test_vocab::test_domains`). Until 0.10.0 §12.3
+/// this was the one authored shape `W-INJECT-CONFLICT` fired on; it is now
+/// SILENT, and [`explicit_default_anchor_is_silent_on_all_three_legs`] pins
+/// that it is silent on every leg rather than on one.
+const EXPLICIT_ANCHOR_BODY: &str =
+    "::auto{character=\"bianca\" anchor=\"center\"}\n@bianca: Hello.\n";
+
+/// `::auto` with NO explicit anchor, checked against a snapshot that declares
+/// no `anchor` domain — the injection fold's own implicit vocabulary read, and
+/// as of 0.10.0 §12.3 the only diagnostic `StageState::diags` still carries.
+/// This is what keeps every three-way test below a real test rather than an
+/// assertion that nothing happens twice.
+const NO_ANCHOR_DOMAIN_BODY: &str = "::auto{character=\"bianca\"}\n@bianca: Hello.\n";
+
+/// [`vocab_snapshot`] minus the `anchor` domain, re-stamped the way
+/// `vocab_snapshot` re-stamps: `enums` is folded into the content hash, so a
+/// snapshot whose `enums` we edited must not present the old version.
+fn no_anchor_domain_snapshot() -> CapabilitySnapshot {
+    let mut snap = vocab_snapshot();
+    snap.domains.remove("anchor");
+    snap.enums.remove("anchor");
+    snap.version = lute_manifest::snapshot::capability_version(&snap);
+    snap
+}
 
 fn result_for(text: String, components: ComponentSet) -> lute_check::CheckResult {
+    result_with(text, components, vocab_snapshot())
+}
+
+/// `result_for` with an explicit snapshot, so a fixture can withdraw a domain
+/// and exercise the fold's implicit vocabulary read.
+fn result_with(
+    text: String,
+    components: ComponentSet,
+    snapshot: CapabilitySnapshot,
+) -> lute_check::CheckResult {
     let input = CheckInput {
         text,
         uri: "scene".into(),
-        snapshot: vocab_snapshot(),
+        snapshot,
         providers: ProviderSet::default(),
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components,
+        defaults: Default::default(),
     };
     check(&input)
 }
 
-fn check_text(text: String, components: ComponentSet) -> Vec<Diagnostic> {
-    result_for(text, components).diagnostics
-}
-
 /// `body` sitting directly in a scene body — the reference behaviour.
-fn scene_diags(body: &str) -> Vec<Diagnostic> {
-    check_text(format!("{HDR}{body}"), Default::default())
+fn scene_diags(body: &str, snapshot: CapabilitySnapshot) -> Vec<Diagnostic> {
+    result_with(format!("{HDR}{body}"), Default::default(), snapshot).diagnostics
 }
 
 /// `body` in a paramless component file checked STANDALONE (no importing scene
 /// at all) — the component document folded as its own root.
-fn standalone_diags(body: &str) -> Vec<Diagnostic> {
-    check_text(
+fn standalone_diags(body: &str, snapshot: CapabilitySnapshot) -> Vec<Diagnostic> {
+    result_with(
         format!("---\ncomponent: c\n---\n## Scene 1.\n{body}"),
         Default::default(),
+        snapshot,
     )
+    .diagnostics
 }
 
 /// Resolve `files` (name -> full text) in a fresh temp dir and check `scene`
 /// against them.
 fn check_with_components(scene: &str, files: &[(&str, String)]) -> lute_check::CheckResult {
+    check_with_components_snap(scene, files, vocab_snapshot())
+}
+
+fn check_with_components_snap(
+    scene: &str,
+    files: &[(&str, String)],
+    snapshot: CapabilitySnapshot,
+) -> lute_check::CheckResult {
     let dir = unique_dir();
     for (name, text) in files {
         std::fs::write(dir.join(name), text).unwrap();
@@ -112,15 +158,16 @@ fn check_with_components(scene: &str, files: &[(&str, String)]) -> lute_check::C
     let (doc, _) = lute_syntax::parse(&text);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let components = resolve_components(&dir, &meta0.components, doc.meta.span);
-    result_for(text, components)
+    result_with(text, components, snapshot)
 }
 
 /// The SAME `body` in a paramless component body, reached through a `::use`
 /// from a scene — i.e. the imported-component path.
-fn component_diags(body: &str) -> Vec<Diagnostic> {
-    check_with_components(
+fn component_diags(body: &str, snapshot: CapabilitySnapshot) -> Vec<Diagnostic> {
+    check_with_components_snap(
         USE_SCENE,
         &[("c.lute", format!("---\ncomponent: c\n---\n## Scene 1.\n{body}"))],
+        snapshot,
     )
     .diagnostics
 }
@@ -131,20 +178,34 @@ fn codes(diags: &[Diagnostic]) -> Vec<String> {
     v
 }
 
-fn conflicts(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
-    diags.iter().filter(|d| d.code == "W-INJECT-CONFLICT").collect()
+/// 0.10.0 §12.3 (**D-U**): the code this suite was built around is gone. The
+/// invariant it defends is not — the same authored construct must report the
+/// SAME diagnostics whichever leg sees it — so the filter now names the
+/// injection channel's one surviving code, `E-DOMAIN-UNKNOWN` from the fold's
+/// implicit `anchor`-domain read.
+fn fold_diags(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
+    diags
+        .iter()
+        .filter(|d| d.code == "E-DOMAIN-UNKNOWN")
+        .collect()
 }
 
 /// The load-bearing invariant: the same authored construct reports the same
 /// code on all three paths.
 #[test]
-fn inject_conflict_three_way_parity() {
-    let scene = codes(&scene_diags(CONFLICT_BODY));
-    let standalone = codes(&standalone_diags(CONFLICT_BODY));
-    let component = codes(&component_diags(CONFLICT_BODY));
+fn injection_fold_three_way_parity() {
+    let scene = codes(&scene_diags(NO_ANCHOR_DOMAIN_BODY, no_anchor_domain_snapshot()));
+    let standalone = codes(&standalone_diags(
+        NO_ANCHOR_DOMAIN_BODY,
+        no_anchor_domain_snapshot(),
+    ));
+    let component = codes(&component_diags(
+        NO_ANCHOR_DOMAIN_BODY,
+        no_anchor_domain_snapshot(),
+    ));
     assert_eq!(
         scene,
-        vec!["W-INJECT-CONFLICT".to_string()],
+        vec!["E-DOMAIN-UNKNOWN".to_string()],
         "scene-level reference behaviour"
     );
     assert_eq!(scene, standalone, "standalone component must match scene level");
@@ -154,25 +215,51 @@ fn inject_conflict_three_way_parity() {
     );
 }
 
-/// Reached through a `::use`, EXACTLY ONE `W-INJECT-CONFLICT`, re-anchored the
+/// 0.10.0 §12.3 (**D-U**): an explicit anchor EQUAL to the declared default is
+/// silent — and silent on every leg, which is a stronger statement of the same
+/// parity property than the warning ever made.
+#[test]
+fn explicit_default_anchor_is_silent_on_all_three_legs() {
+    for (leg, diags) in [
+        ("scene", scene_diags(EXPLICIT_ANCHOR_BODY, vocab_snapshot())),
+        (
+            "standalone",
+            standalone_diags(EXPLICIT_ANCHOR_BODY, vocab_snapshot()),
+        ),
+        (
+            "via ::use",
+            component_diags(EXPLICIT_ANCHOR_BODY, vocab_snapshot()),
+        ),
+    ] {
+        assert!(
+            diags.is_empty(),
+            "{leg}: an explicit anchor equal to the declared default is silent \
+             as of 0.10.0 §12.3; got {:?}",
+            codes(&diags)
+        );
+    }
+}
+
+/// Reached through a `::use`, EXACTLY ONE fold diagnostic, re-anchored the
 /// way every other component-body diagnostic is (component name + source path
 /// prefix) — but at the `::use` DIRECTIVE's span, not the scene frontmatter's:
-/// the conflict is a property of THIS invocation site (it depends on the stage
+/// the verdict is a property of THIS invocation site (it depends on the stage
 /// state inherited there), so the site is the only honest anchor.
 #[test]
-fn inject_conflict_in_component_body_reported_once() {
-    let diags = component_diags(CONFLICT_BODY);
-    let cs = conflicts(&diags);
-    assert_eq!(cs.len(), 1, "exactly one conflict: {diags:#?}");
+fn fold_diag_in_component_body_reported_once() {
+    let diags = component_diags(NO_ANCHOR_DOMAIN_BODY, no_anchor_domain_snapshot());
+    let cs = fold_diags(&diags);
+    assert_eq!(cs.len(), 1, "exactly one fold diagnostic: {diags:#?}");
     let d = cs[0];
-    assert_eq!(d.severity, Severity::Warning);
+    assert_eq!(d.severity, Severity::Error);
     assert!(
         d.message.starts_with("component `c` (") && d.message.contains("c.lute): "),
         "re-anchored message must name the component and its source: {}",
         d.message
     );
     assert!(
-        d.message.contains("`bianca` is shown with an explicit `anchor=\"center\"`"),
+        d.message
+            .contains("`bianca` is shown without an explicit `anchor`"),
         "the reducer's own wording must survive the prefix: {}",
         d.message
     );
@@ -185,28 +272,36 @@ fn inject_conflict_in_component_body_reported_once() {
     );
 }
 
-/// A scene-level conflict must NOT become two identical warnings: with no
+/// A scene-level fold diagnostic must NOT become two identical reports: with no
 /// component in play at all the count stays one, and a scene carrying BOTH a
-/// root-level conflict and a component-body one reports each exactly once.
+/// root-level one and a component-body one reports each exactly once.
 #[test]
-fn scene_level_conflict_is_not_duplicated() {
-    assert_eq!(conflicts(&scene_diags(CONFLICT_BODY)).len(), 1);
+fn scene_level_fold_diag_is_not_duplicated() {
+    assert_eq!(
+        fold_diags(&scene_diags(
+            NO_ANCHOR_DOMAIN_BODY,
+            no_anchor_domain_snapshot()
+        ))
+        .len(),
+        1
+    );
 
-    // Root conflict on `takeru`, body conflict on `bianca`: two distinct sites,
-    // one warning each.
+    // Root site on `takeru`, body site on `bianca`: two distinct sites, one
+    // diagnostic each.
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                  components: [c.lute]\n---\n## Shot 1.\n\
-                 ::auto{character=\"takeru\" anchor=\"center\"}\n\
+                 ::auto{character=\"takeru\"}\n\
                  ::use{component=\"c\"}\n";
-    let diags = check_with_components(
+    let diags = check_with_components_snap(
         scene,
         &[(
             "c.lute",
-            format!("---\ncomponent: c\n---\n## Scene 1.\n{CONFLICT_BODY}"),
+            format!("---\ncomponent: c\n---\n## Scene 1.\n{NO_ANCHOR_DOMAIN_BODY}"),
         )],
+        no_anchor_domain_snapshot(),
     )
     .diagnostics;
-    let cs = conflicts(&diags);
+    let cs = fold_diags(&diags);
     assert_eq!(cs.len(), 2, "one per site, never a duplicate: {diags:#?}");
     assert!(
         !cs[0].message.starts_with("component `"),
@@ -226,57 +321,67 @@ fn scene_level_conflict_is_not_duplicated() {
 
 /// The seam, pinned: the body folds against the stage state INHERITED at the
 /// `::use` site. `bianca` is already on stage when the `::use` runs, so
-/// `lower_auto` takes its already-staged early return and there is NO
-/// conflict — the exact false positive a per-body fold against a fresh
+/// `lower_auto` takes its already-staged early return and the body contributes
+/// NOTHING — the exact false positive a per-body fold against a fresh
 /// `StageState` would invent.
 #[test]
-fn use_site_inherits_stage_state_no_invented_conflict() {
+fn use_site_inherits_stage_state_no_invented_diag() {
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                  components: [c.lute]\n---\n## Shot 1.\n\
-                 ::auto{character=\"bianca\" anchor=\"left\"}\n\
+                 ::auto{character=\"bianca\"}\n\
                  ::use{component=\"c\"}\n";
-    let diags = check_with_components(
+    let diags = check_with_components_snap(
         scene,
         &[(
             "c.lute",
-            format!("---\ncomponent: c\n---\n## Scene 1.\n{CONFLICT_BODY}"),
+            format!("---\ncomponent: c\n---\n## Scene 1.\n{NO_ANCHOR_DOMAIN_BODY}"),
         )],
+        no_anchor_domain_snapshot(),
     )
     .diagnostics;
+    let cs = fold_diags(&diags);
+    assert_eq!(
+        cs.len(),
+        1,
+        "the ROOT `::auto` raises it once; the body's re-show of an already-staged \
+         character raises nothing: {diags:#?}"
+    );
     assert!(
-        conflicts(&diags).is_empty(),
-        "an already-staged character re-shown inside the body is not a conflict: {diags:#?}"
+        !cs[0].message.starts_with("component `"),
+        "and the surviving one is the root-level site, not the body's: {}",
+        cs[0].message
     );
 }
 
-/// The same threading in the other direction: `::use`ing the SAME conflicting
-/// component twice warns ONCE — the first invocation stages `bianca`, so the
-/// second takes the already-staged path, exactly as `lute compile`'s walk over
-/// the normalized tree does.
+/// The same threading in the other direction: `::use`ing the SAME component
+/// twice reports ONCE — the first invocation stages `bianca`, so the second
+/// takes the already-staged path, exactly as `lute compile`'s walk over the
+/// normalized tree does.
 #[test]
-fn second_use_of_the_same_component_does_not_re_warn() {
+fn second_use_of_the_same_component_does_not_re_report() {
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                  components: [c.lute]\n---\n## Shot 1.\n\
                  ::use{component=\"c\"}\n::use{component=\"c\"}\n";
-    let diags = check_with_components(
+    let diags = check_with_components_snap(
         scene,
         &[(
             "c.lute",
-            format!("---\ncomponent: c\n---\n## Scene 1.\n{CONFLICT_BODY}"),
+            format!("---\ncomponent: c\n---\n## Scene 1.\n{NO_ANCHOR_DOMAIN_BODY}"),
         )],
+        no_anchor_domain_snapshot(),
     )
     .diagnostics;
-    assert_eq!(conflicts(&diags).len(), 1, "{diags:#?}");
+    assert_eq!(fold_diags(&diags).len(), 1, "{diags:#?}");
 }
 
 /// A nested `::use` (dsl 0.4.0 §6.1 admits one inside a component body) is
 /// entered too, and the message names the whole invocation path.
 #[test]
-fn nested_use_body_conflict_is_reported() {
+fn nested_use_body_fold_diag_is_reported() {
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                  components: [outer.lute, inner.lute]\n---\n## Shot 1.\n\
                  ::use{component=\"outer\"}\n";
-    let diags = check_with_components(
+    let diags = check_with_components_snap(
         scene,
         &[
             (
@@ -285,12 +390,13 @@ fn nested_use_body_conflict_is_reported() {
             ),
             (
                 "inner.lute",
-                format!("---\ncomponent: inner\n---\n## Scene 1.\n{CONFLICT_BODY}"),
+                format!("---\ncomponent: inner\n---\n## Scene 1.\n{NO_ANCHOR_DOMAIN_BODY}"),
             ),
         ],
+        no_anchor_domain_snapshot(),
     )
     .diagnostics;
-    let cs = conflicts(&diags);
+    let cs = fold_diags(&diags);
     assert_eq!(cs.len(), 1, "{diags:#?}");
     assert!(
         cs[0].message.starts_with("component `outer` (")
@@ -362,5 +468,169 @@ fn component_body_injections_reach_the_resolved_view() {
     assert_eq!(
         by, scene_by,
         "the body's injections must match the same content at scene level"
+    );
+}
+
+// --- dsl 0.10.0 §9: a component check that does not contradict itself -------
+//
+// §9's thesis is this suite's thesis one rule wider: the two legs split
+// caller-awareness from span-precision and neither has both. The helpers above
+// already run all three legs, so the four rules land here rather than in a
+// fifth fixture file.
+
+/// A standalone component check with an explicit frontmatter body, so a fixture
+/// can declare `params:` — [`standalone_diags`]'s header deliberately has none.
+fn standalone_with_meta(meta: &str, body: &str) -> Vec<Diagnostic> {
+    result_for(
+        format!("---\n{meta}---\n## Scene 1.\n{body}"),
+        Default::default(),
+    )
+    .diagnostics
+}
+
+/// A `<match on="@who">` — the shape the corpus's own component uses, and the
+/// one that produces `E-UNDECLARED-REF` when `@who` resolves against nothing.
+const MATCH_ON_WHO: &str =
+    "<match on=\"@who\">\n<when is=\"a\">\n@bianca: Hi.\n</when>\n<otherwise>\n@bianca: Ho.\n</otherwise>\n</match>\n";
+
+/// 0.10.0 §9 rule 3: a malformed `params:` is `E-COMPONENT-PARSE` on the
+/// STANDALONE leg too, and it suppresses the `E-UNDECLARED-REF` it causes.
+/// Reporting only the consequence sends the author to `defs:` for a param they
+/// declared four lines up.
+#[test]
+fn standalone_component_reports_its_own_malformed_params() {
+    let diags = standalone_with_meta("component: c\nparams:\n  who: [not, a, type]\n", MATCH_ON_WHO);
+    let cs = codes(&diags);
+    assert!(
+        cs.iter().any(|c| c == "E-COMPONENT-PARSE"),
+        "the standalone leg must report the CAUSE; got {cs:?}"
+    );
+    assert!(
+        !cs.iter().any(|c| c == "E-UNDECLARED-REF"),
+        "the consequence must be suppressed — `@who` IS declared, two lines up; got {cs:?}"
+    );
+}
+
+/// The suppression is scoped to the malformed-`params:` case. A genuinely
+/// unknown `@ref` in a well-formed component is still `E-UNDECLARED-REF`.
+#[test]
+fn standalone_component_still_reports_a_genuinely_unknown_ref() {
+    let diags = standalone_with_meta(
+        "component: c\nparams:\n  who: string\n",
+        &MATCH_ON_WHO.replace("@who", "@nobody"),
+    );
+    let cs = codes(&diags);
+    assert!(
+        cs.iter().any(|c| c == "E-UNDECLARED-REF"),
+        "`@nobody` is declared nowhere; got {cs:?}"
+    );
+    assert!(
+        !cs.iter().any(|c| c == "E-COMPONENT-PARSE"),
+        "`params:` is well-formed; got {cs:?}"
+    );
+}
+
+/// The scope guard, from the other side: an IMPORTER carrying
+/// `E-COMPONENT-PARSE` for a component it imports keeps its OWN
+/// `E-UNDECLARED-REF`. Suppressing there would lose a real error in a file the
+/// malformed `params:` says nothing about.
+#[test]
+fn an_importers_own_undeclared_ref_survives_a_components_parse_failure() {
+    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
+## Shot 1.\n::use{component=\"c\"}\n<match on=\"@mine\">\n<when is=\"a\">\n@bianca: Hi.\n</when>\n\
+<otherwise>\n@bianca: Ho.\n</otherwise>\n</match>\n";
+    let diags = check_with_components(
+        scene,
+        &[(
+            "c.lute",
+            "---\ncomponent: c\nparams:\n  who: [not, a, type]\n---\n## Scene 1.\n@bianca: Hi.\n"
+                .to_string(),
+        )],
+    )
+    .diagnostics;
+    let cs = codes(&diags);
+    assert!(
+        cs.iter().any(|c| c == "E-COMPONENT-PARSE"),
+        "the importer still reports the component's malformed params:; got {cs:?}"
+    );
+    assert!(
+        cs.iter().any(|c| c == "E-UNDECLARED-REF"),
+        "the importer's OWN `@mine` is a real error; got {cs:?}"
+    );
+}
+
+/// A component body carrying an `E-BAD-ENUM` on a content-line `emotion=`, plus
+/// the scene that imports it — the case §9 is about, and the one whose position
+/// `0.9.0 §6.2` named as collapsed.
+const BAD_ENUM_BODY: &str =
+    "---\ncomponent: c\n---\n## Scene 1.\n@bianca{emotion=\"smug\"}: Hello.\n";
+
+fn importer_of_bad_component() -> lute_check::CheckResult {
+    check_with_components(USE_SCENE, &[("c.lute", BAD_ENUM_BODY.to_string())])
+}
+
+/// 0.10.0 §9 rule 1: a component-body diagnostic keeps being reported AT THE
+/// CALLER with the component prefix (0.9.0 §5 settled that, and for the
+/// injection case it is the honest anchor), and gains the position INSIDE the
+/// component as a secondary location. 0.9.0 §6.2 named the collapse to the
+/// importer's frontmatter span a known limitation; this narrows it.
+#[test]
+fn a_component_body_diagnostic_carries_its_internal_position() {
+    let res = importer_of_bad_component();
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.message.starts_with("component `"))
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a component-body diagnostic; got {:?}",
+                codes(&res.diagnostics)
+            )
+        });
+    assert_eq!(
+        d.related.len(),
+        1,
+        "exactly one secondary location, the component-internal position; got {:?}",
+        d.related
+    );
+    let r = &d.related[0];
+    assert!(
+        r.file.ends_with("c.lute"),
+        "the secondary location names the COMPONENT file; got {}",
+        r.file
+    );
+    assert_eq!(
+        r.diagnostic.code, d.code,
+        "the secondary location is the SAME diagnostic, relocated"
+    );
+    assert!(
+        !r.diagnostic.message.starts_with("component `"),
+        "the secondary location carries the UNPREFIXED message — the prefix names \
+         the component for a reader who is looking at the caller, and this line is \
+         already in the component; got {}",
+        r.diagnostic.message
+    );
+    // T13 Step 4's open question, settled empirically: the spans are
+    // component-relative and their line/column are already resolved against the
+    // COMPONENT's own source, not the scene's. `check()`'s `normalize_spans`
+    // walks `d.span` and `d.fixits` only, never `related`, so nothing re-derives
+    // them against the importing document's `TextIndex`. Both halves are pinned
+    // here: the byte range must index the component's own text, AND the
+    // line/column must be the real position in it (line 5 is
+    // `@bianca{emotion="smug"}: Hello.`, and `smug` opens at column 18).
+    let inner = BAD_ENUM_BODY
+        .get(r.diagnostic.span.byte_start..r.diagnostic.span.byte_end)
+        .unwrap_or("<out of range>");
+    assert_eq!(
+        inner, "smug",
+        "the byte range must index the COMPONENT's own text; got {:?} for {:?}",
+        inner, r.diagnostic.span
+    );
+    assert_eq!(
+        (r.diagnostic.span.line, r.diagnostic.span.column),
+        (5, 18),
+        "line/column are the component-internal position, resolved against the \
+         component's own source; got {:?}",
+        r.diagnostic.span
     );
 }

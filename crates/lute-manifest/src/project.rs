@@ -47,6 +47,17 @@ pub struct ProjectConfig {
     /// to core-only; [`resolve_document_snapshot`] replays them so BOTH the
     /// CLI and the LSP report them (the no-divergence invariant).
     pub identity_diags: Vec<ResolveDiag>,
+    /// The manifest's resolved `defaults:` block (0.10.0 §6). Empty when the
+    /// manifest supplies none, which is every manifest written before this
+    /// release.
+    pub defaults: MetaDefaults,
+    /// `E-DEFAULTS-KEY` diagnostics raised while resolving `defaults:`. Held
+    /// on the config rather than failing the load — same treatment as
+    /// `identity_diags`, for the same reason: a bad `defaults:` must not
+    /// collapse the project to core-only. Reported ONCE per manifest by
+    /// `lute-cli`'s manifest pass (0.10.0 §7), never once per inheriting
+    /// document (D-Z).
+    pub defaults_diags: Vec<ResolveDiag>,
 }
 
 /// A resolution diagnostic surfaced to the caller (folded into the check
@@ -73,6 +84,8 @@ struct RawProject {
     profiles: BTreeMap<String, RawProfile>,
     #[serde(default)]
     identity: Option<RawIdentity>,
+    #[serde(default)]
+    defaults: Option<serde_yaml::Mapping>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -109,6 +122,65 @@ pub const DEFAULT_VOICE_KEY_TEMPLATE: &str = "{speaker}-{code}";
 /// The COMPLETE identity-template token set. Any other `{token}` is
 /// [`E_IDENTITY_TEMPLATE`] at project load.
 pub const IDENTITY_TOKENS: [&str; 3] = ["prefix", "speaker", "code"];
+
+/// 0.10.0 §6.1 (D-P): the CLOSED set of frontmatter keys `defaults:` may
+/// supply. Sorted, so `E-DEFAULTS-KEY`'s did-you-mean and its "one of …"
+/// listing are both deterministic.
+///
+/// Everything else is excluded with a reason. `episodeId` is derived
+/// identity — defaulting it gives every scene under the root the same
+/// `{prefix}` and a silent `lineId` collision. `mode` is a legal core key
+/// that nothing reads (the analysis mode comes from the check invocation),
+/// and a defaultable key that changes nothing is a trap. `title`/`after` are
+/// per-document content and routing. `enums`/`state`/`entities`/`relations`/
+/// `facts`/`rules`/`defs` already have a composition mechanism — hoist them
+/// into a schema and default `uses:`. `profile`/`plugins` are already
+/// project-level. `component`/`params` are per-file identity.
+pub const DEFAULTABLE_KEYS: [&str; 10] = [
+    "character", "components", "contentLang", "episode", "extends", "kind", "luteVersion",
+    "pov", "season", "uses",
+];
+
+/// The three defaultable keys holding PATHS. A path in a manifest is not a
+/// path in a document (D-Y): these resolve against the MANIFEST's directory,
+/// and Task 4 canonicalises them here at load time (D-Z).
+pub const DEFAULTABLE_PATH_KEYS: [&str; 3] = ["components", "extends", "uses"];
+
+/// A `defaults:` key outside [`DEFAULTABLE_KEYS`], or a value whose shape
+/// cannot inhabit that key's core type (0.10.0 §6.1). Spanless and anchored
+/// at the manifest: `ResolveDiag` has no span and spanned YAML parsing is not
+/// in scope for one diagnostic (D-Z).
+pub const E_DEFAULTS_KEY: &str = "E-DEFAULTS-KEY";
+
+/// A manifest's resolved `defaults:` block (0.10.0 §6): frontmatter every
+/// document under the root would otherwise retype.
+///
+/// **Not `Serialize`, deliberately.** After Task 4 the `uses`/`extends`/
+/// `components` entries hold CANONICAL absolute paths, which are
+/// machine-specific. An absolute path in a stamp means two developers on one
+/// commit compute different versions and the drift guard fires on nothing.
+/// Pre-resolution is for resolution only; anything that renders or hashes
+/// keeps the authored string (D-Z).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MetaDefaults {
+    entries: std::collections::BTreeMap<String, serde_yaml::Value>,
+}
+
+impl MetaDefaults {
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+    /// The default for `key`, or `None` when the manifest supplies none.
+    /// A key present with an empty or null value IS present and returns
+    /// `Some` — §6.2's "present-but-empty counts as present".
+    pub fn get(&self, key: &str) -> Option<&serde_yaml::Value> {
+        self.entries.get(key)
+    }
+    /// Every supplied key, sorted.
+    pub fn keys(&self) -> impl Iterator<Item = &str> {
+        self.entries.keys().map(|k| k.as_str())
+    }
+}
 
 /// Raw `identity:` block — both keys optional, each defaulting to its 0.7.0
 /// shape independently (a project may retemplate `lineId` alone).
@@ -275,6 +347,143 @@ fn resolve_identity(raw: Option<RawIdentity>) -> (IdentityTemplates, Vec<Resolve
     (resolved, diags)
 }
 
+/// Which core type a defaultable key's value must be able to inhabit. This
+/// is the subset of frontmatter typing that is decidable WITHOUT a document,
+/// and it is the only shape check `defaults:` can make at the manifest.
+///
+/// The rest — per-kind legality, required keys, plugin-declared schemas —
+/// happens where it already happens, at the document, because a defaulted
+/// value flows through the identical `parse_meta_kind` path as an authored
+/// one (§6.2, Task 5).
+fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static str> {
+    match key {
+        "season" | "episode" => v.as_i64().map(|_| ()).ok_or("an integer"),
+        "kind" => match v.as_str() {
+            Some("scene") | Some("quest") => Ok(()),
+            _ => Err("`scene` or `quest`"),
+        },
+        "character" | "pov" | "luteVersion" | "contentLang" => {
+            v.as_str().map(|_| ()).ok_or("a string")
+        }
+        // `uses`/`extends`/`components` take one string or a sequence of
+        // strings, exactly as authored frontmatter does. A null or empty
+        // sequence is a PRESENT value meaning "none" (§6.2) and is legal.
+        "uses" | "extends" | "components" => match v {
+            serde_yaml::Value::Null | serde_yaml::Value::String(_) => Ok(()),
+            serde_yaml::Value::Sequence(items) => {
+                if items.iter().all(|i| i.is_string()) {
+                    Ok(())
+                } else {
+                    Err("a string or a list of strings")
+                }
+            }
+            _ => Err("a string or a list of strings"),
+        },
+        _ => Ok(()),
+    }
+}
+
+/// Canonicalise one `defaults:` path entry against the manifest's directory
+/// (D-Y: a path resolves relative to the file that contains it; D-Z:
+/// pre-resolved at load, so the import resolvers keep their single
+/// `base_dir` and are not touched).
+///
+/// Documents under one root sit at different depths — `scenes/`, `quests/`,
+/// a nested subdirectory — so a manifest default resolved document-relative
+/// would be correct only while every consumer shared a depth, and would
+/// break when a single file moved. That is worse than the boilerplate §6
+/// exists to delete.
+fn canonical_default_path(manifest_dir: &Path, rel: &str) -> Result<String, String> {
+    match std::fs::canonicalize(manifest_dir.join(rel)) {
+        Ok(p) => Ok(p.display().to_string()),
+        Err(e) => Err(format!("`{rel}` does not resolve against {}: {e}", manifest_dir.display())),
+    }
+}
+
+/// Canonicalise every path inside one `defaults:` value, preserving its
+/// authored shape (a scalar stays a scalar, a sequence stays a sequence).
+/// The FIRST failure is reported and the whole entry is dropped: a partly
+/// resolved import list is worse than none, because it silently changes what
+/// a document imports.
+fn canonicalise_entry(
+    manifest_dir: &Path,
+    v: &serde_yaml::Value,
+) -> Result<serde_yaml::Value, String> {
+    match v {
+        serde_yaml::Value::Null => Ok(v.clone()),
+        serde_yaml::Value::String(s) => {
+            Ok(serde_yaml::Value::String(canonical_default_path(manifest_dir, s)?))
+        }
+        serde_yaml::Value::Sequence(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                let s = item.as_str().expect("shape already checked by defaults_shape_ok");
+                out.push(serde_yaml::Value::String(canonical_default_path(manifest_dir, s)?));
+            }
+            Ok(serde_yaml::Value::Sequence(out))
+        }
+        _ => unreachable!("shape already checked by defaults_shape_ok"),
+    }
+}
+
+/// Resolve `defaults:` (0.10.0 §6.1): reject every key outside the closed
+/// set with a did-you-mean, reject every value whose shape cannot inhabit
+/// its key, and keep the rest. A rejected entry is NOT applied — a default
+/// nobody can act on must not silently reach a document.
+fn resolve_defaults(
+    manifest_dir: &Path,
+    raw: Option<serde_yaml::Mapping>,
+) -> (MetaDefaults, Vec<ResolveDiag>) {
+    let mut out = MetaDefaults::default();
+    let mut diags = Vec::new();
+    let Some(raw) = raw else { return (out, diags) };
+    for (k, v) in raw {
+        let Some(key) = k.as_str() else {
+            diags.push(ResolveDiag {
+                code: E_DEFAULTS_KEY.to_string(),
+                message: "every `defaults:` key must be a string (0.10.0 §6.1)".to_string(),
+            });
+            continue;
+        };
+        if !DEFAULTABLE_KEYS.contains(&key) {
+            let hint = match crate::suggest::nearest(key, DEFAULTABLE_KEYS, 3) {
+                Some(near) => format!(" — did you mean `{near}`?"),
+                None => String::new(),
+            };
+            diags.push(ResolveDiag {
+                code: E_DEFAULTS_KEY.to_string(),
+                message: format!(
+                    "`defaults.{key}` is not a defaultable frontmatter key{hint} \
+                     The defaultable set is closed: {} (0.10.0 §6.1)",
+                    DEFAULTABLE_KEYS.join(", ")
+                ),
+            });
+            continue;
+        }
+        if let Err(want) = defaults_shape_ok(key, &v) {
+            diags.push(ResolveDiag {
+                code: E_DEFAULTS_KEY.to_string(),
+                message: format!("`defaults.{key}` must be {want} (0.10.0 §6.1)"),
+            });
+            continue;
+        }
+        if DEFAULTABLE_PATH_KEYS.contains(&key) {
+            match canonicalise_entry(manifest_dir, &v) {
+                Ok(resolved) => {
+                    out.entries.insert(key.to_string(), resolved);
+                }
+                Err(why) => diags.push(ResolveDiag {
+                    code: E_DEFAULTS_KEY.to_string(),
+                    message: format!("`defaults.{key}`: {why} (0.10.0 §6.1, D-Z)"),
+                }),
+            }
+            continue;
+        }
+        out.entries.insert(key.to_string(), v);
+    }
+    (out, diags)
+}
+
 /// Read `<project_dir>/lute.project.yaml` into a [`ProjectConfig`].
 ///
 /// Distinguishes an absent config from a broken one (plugin §11): a missing
@@ -320,6 +529,7 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
     let plugins_dir = project_dir.join(raw.plugins_dir.as_deref().unwrap_or("plugins/"));
     let catalog_dir = project_dir.join(raw.catalog_dir.as_deref().unwrap_or("catalog/"));
     let (identity, identity_diags) = resolve_identity(raw.identity);
+    let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults);
 
     Ok(Some(ProjectConfig {
         graph,
@@ -327,6 +537,8 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
         catalog_dir,
         identity,
         identity_diags,
+        defaults,
+        defaults_diags,
     }))
 }
 

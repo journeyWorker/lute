@@ -72,8 +72,8 @@ state:
   run.choseHelp:      { type: bool, default: false }            # carries across episodes in this run
   user.level:         { type: number, default: 1 }
   user.sawTrueEnding: { type: bool, default: false }
-  app.rating:         { type: enum, values: [teen, adult], default: teen }   # content-read-only
-  app.lang:           { type: enum, values: [ko, en] }
+  app.rating:         { type: { enum: [teen, adult] }, default: teen }      # content-read-only
+  app.lang:           { type: { enum: [ko, en] } }
 defs:
   warm:  { type: bool, cel: "run.level >= 2" }
   chose: { type: bool, params: { q: choiceRef, opt: choiceId }, cel: "scene.choices[q] == opt" }

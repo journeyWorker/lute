@@ -153,7 +153,7 @@ fn all_writes_every_artifact_and_a_unioned_index() {
     );
 
     let index = read_json(&out.join("project.index.json"));
-    assert_eq!(index["irVersion"], "0.9.0");
+    assert_eq!(index["irVersion"], "0.10.0");
     assert!(
         index["capabilityVersion"].as_str().is_some_and(|s| !s.is_empty()),
         "the index carries the project's one resolved snapshot stamp"
@@ -331,5 +331,175 @@ fn a_conflicting_cross_document_signature_exits_one_and_writes_nothing() {
     assert!(
         std::fs::read_dir(&out).unwrap().next().is_none(),
         "a conflict writes nothing"
+    );
+}
+
+/// 0.10.0 §7 / D-S: under a FORCED outer root a nested manifest does not
+/// govern. Warn when it would have mattered — a different capability
+/// snapshot or different `identity:` templates — and stay silent when it
+/// would have resolved identically. Both disjuncts, in one fixture.
+#[test]
+fn compile_all_warns_only_for_a_nested_manifest_that_would_have_mattered() {
+    let dir = temp_dir("project-inert");
+    for sub in ["scenes", "same/scenes", "differs/scenes"] {
+        std::fs::create_dir_all(dir.join(sub)).unwrap();
+    }
+    let core = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n";
+    std::fs::write(dir.join("lute.project.yaml"), core).unwrap();
+    // Byte-identical resolution to the outer root: no warning.
+    std::fs::write(dir.join("same/lute.project.yaml"), core).unwrap();
+    // Different `identity:` templates: warns on the identity disjunct alone,
+    // with no plugins on disk to install.
+    std::fs::write(
+        dir.join("differs/lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         identity:\n  lineId: \"{prefix}-{speaker}-{code}\"\n",
+    )
+    .unwrap();
+    let scene = |c: &str| {
+        format!("---\nkind: scene\ncharacter: {c}\nseason: 1\nepisode: 1\n---\n\n## S\n\n@{c}: hi\n")
+    };
+    std::fs::write(dir.join("scenes/a.lute"), scene("a")).unwrap();
+    std::fs::write(dir.join("same/scenes/b.lute"), scene("b")).unwrap();
+    std::fs::write(dir.join("differs/scenes/c.lute"), scene("c")).unwrap();
+
+    let out = std::process::Command::new(BIN)
+        .args([
+            "compile",
+            "--all",
+            "--project",
+            dir.to_str().unwrap(),
+            "-o",
+            dir.join("out").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0), "a warning must not fail the build:\n{text}");
+    assert!(
+        text.contains("W-PROJECT-INERT") && text.contains("differs/lute.project.yaml"),
+        "the manifest that would have resolved differently must warn, by path:\n{text}"
+    );
+    assert!(
+        !text.contains("same/lute.project.yaml"),
+        "a nested manifest that resolves identically is not a signal (D-S):\n{text}"
+    );
+}
+
+/// D-S's other half: `check-project` resolves each file against its OWN
+/// nearest root, so every nested manifest governs and the warning is
+/// unreachable. Same fixture, different command, zero warnings.
+#[test]
+fn check_project_never_reports_project_inert() {
+    let dir = temp_dir("project-inert-check");
+    std::fs::create_dir_all(dir.join("differs/scenes")).unwrap();
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("differs/lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         identity:\n  lineId: \"{prefix}-{speaker}-{code}\"\n",
+    )
+    .unwrap();
+    let scene = |c: &str| {
+        format!("---\nkind: scene\ncharacter: {c}\nseason: 1\nepisode: 1\n---\n\n## S\n\n@{c}: hi\n")
+    };
+    std::fs::write(dir.join("scenes/a.lute"), scene("a")).unwrap();
+    std::fs::write(dir.join("differs/scenes/c.lute"), scene("c")).unwrap();
+
+    let out = std::process::Command::new(BIN)
+        .args(["check-project", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(!text.contains("W-PROJECT-INERT"), "the nearest manifest governs:\n{text}");
+}
+
+/// T1.10's headline sentence with a third cause, found while re-investigating
+/// it: a nested manifest whose ONLY difference from the invoked root is its
+/// `defaults:` block. D-S names the capability snapshot and `identity:`; §6
+/// minted `defaults:` in the same release and none of the six manifests D-S
+/// was measured against declares one, so it was never in the sample. It is
+/// the surface where inertness costs the MOST — every `lineId` in the inner
+/// subtree changes and both commands stay at exit 0.
+#[test]
+fn compile_all_warns_for_a_nested_manifest_that_differs_only_in_defaults() {
+    let dir = temp_dir("project-inert-defaults");
+    for sub in ["scenes", "same/scenes", "differs/scenes"] {
+        std::fs::create_dir_all(dir.join(sub)).unwrap();
+    }
+    let outer = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+                 defaults:\n  kind: scene\n  character: outerguy\n  season: 9\n  episode: 9\n";
+    std::fs::write(dir.join("lute.project.yaml"), outer).unwrap();
+    // Same capability, same (absent) identity, SAME defaults: still silent.
+    std::fs::write(dir.join("same/lute.project.yaml"), outer).unwrap();
+    // Same capability, same (absent) identity, DIFFERENT defaults.
+    std::fs::write(
+        dir.join("differs/lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  kind: scene\n  character: innerguy\n  season: 1\n  episode: 1\n",
+    )
+    .unwrap();
+    // Frontmatter carrying NOTHING the manifest supplies, so the resolved
+    // key is entirely the governing root's.
+    let scene = |c: &str| format!("---\ntitle: T\n---\n\n## S\n\n@{c}{{code=\"0010\"}}: hi\n");
+    std::fs::write(dir.join("scenes/a.lute"), scene("outerguy")).unwrap();
+    std::fs::write(dir.join("same/scenes/b.lute"), scene("outerguy")).unwrap();
+    std::fs::write(dir.join("differs/scenes/c.lute"), scene("innerguy")).unwrap();
+
+    let out = std::process::Command::new(BIN)
+        .args([
+            "compile",
+            "--all",
+            "--project",
+            dir.to_str().unwrap(),
+            "-o",
+            dir.join("out").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(
+        text.contains("W-PROJECT-INERT") && text.contains("differs/lute.project.yaml"),
+        "a `defaults:`-only difference is still a difference:\n{text}"
+    );
+    assert!(
+        text.contains("`defaults:` block"),
+        "the message must name WHICH surface differs, as the other two do:\n{text}"
+    );
+    assert!(
+        !text.contains("same/lute.project.yaml"),
+        "identical `defaults:` is not a signal (D-S's narrowing survives):\n{text}"
+    );
+
+    // What the warning is ABOUT, measured: the inner document's key is the
+    // OUTER root's defaults, not its own root's. Without this the test would
+    // pass against a warning that fired for no reason.
+    let art = std::fs::read_to_string(dir.join("out/differs/scenes/c.lute.json")).unwrap();
+    assert!(
+        art.contains("outerguy.s09ep09.innerguy_0010"),
+        "the inner subtree is keyed by the outer root: {art}"
+    );
+    assert!(
+        !art.contains("innerguy.s01ep01."),
+        "its own root's defaults are not applied — that is the inertness: {art}"
     );
 }

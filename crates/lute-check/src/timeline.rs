@@ -6,13 +6,21 @@
 //! a short `summary`, and its `duration` — plus every staging diagnostic the
 //! layout produces. T4.9 renders the resolved table and surfaces the diagnostics.
 //!
-//! ## Cursor (§11.4 sequential-omission)
-//! Each track carries an independent cursor. A clip with an omitted `at` starts
-//! at `0.0` when it is the track's first clip, otherwise immediately after the
-//! previous clip's END (`prev.at + prev.duration`). An explicit `at` places the
-//! clip there and resets the cursor to that clip's end. A clip's duration comes
-//! from its directive's `duration` timing attr (§7.5), best-effort parsed;
-//! absent/non-numeric ⇒ `0.0`. `<set>` clips carry no duration ⇒ `0.0`.
+//! ## Cursor (§11.4 sequential-omission, dsl 0.10.0 §10.2)
+//! Each track carries an independent cursor, and every cursor value, clip end,
+//! maximum end and barrier inside [`resolve_timeline`] is an **integer number of
+//! milliseconds** (**D-H**). A clip with an omitted `at` starts at `0` when it is
+//! the track's first clip, otherwise immediately after the previous clip's END
+//! (`prev.at + prev.duration`). An explicit `at` places the clip there and resets
+//! the cursor to that clip's end. A clip's duration comes from its directive's
+//! `duration` timing attr (§7.5), read with
+//! [`parse_time_ms`](crate::time::parse_time_ms); absent/non-numeric ⇒ `0`.
+//! `<set>` clips carry no duration ⇒ `0`.
+//!
+//! Integers, not an epsilon: `0.8 + 0.4` in IEEE-754 is `1.2000000000000002`,
+//! so a clip handed off at the previous clip's exact end used to land one ULP
+//! inside it and draw `E-CLIP-OVERLAP`. An epsilon would have replaced one false
+//! positive with an unpredictable class of them.
 //!
 //! ## Diagnostics (all [`Layer::Staging`])
 //! - **`E-DUP-TRACK`** — two `<track>`s share the same [`TrackKey`].
@@ -24,15 +32,27 @@
 //! - **`E-TIMELINE-DURATION`** — an explicit `duration` below the max resolved
 //!   clip end (§11.4); `E-AT-CONTEXT` (`at` outside a track) is raised at the
 //!   directive site in `directives.rs`, not here.
+//! - **`E-TIME-RESOLUTION`** — an authored time value finer than a millisecond
+//!   (0.10.0 §10.1). Clip `at` and `<timeline duration>` are raised here;
+//!   `duration=`/`delay=` at the directive site in `directives.rs`.
 //! - **`W-TIMELINE-TRACKS`** — more than 8 tracks.
 //! - **`W-TIMELINE-CLIPS`** — more than 12 clips in a single track.
 //! - **`W-TIMELINE-TOTAL`** — more than 40 clips across all tracks.
 //!
-//! ## Barrier (§11.4)
+//! ## Barrier (§11.4, 0.10.0 §10.2/§10.3)
 //! `barrier_at` is the timeline's explicit `duration` when present (its
-//! [`CelSlot`](lute_syntax::ast::CelSlot) `raw` parsed best-effort as `f64`),
-//! otherwise the maximum clip end across all tracks (`0.0` for an empty
-//! timeline).
+//! [`CelSlot`](lute_syntax::ast::CelSlot) `raw` read with
+//! [`parse_time_ms`](crate::time::parse_time_ms)), otherwise the maximum clip
+//! end across all tracks (`0` for an empty timeline).
+//!
+//! ## Seconds at the boundary (**D-T**, §10.3)
+//! [`ResolvedRow::at`], [`ResolvedRow::duration`] and
+//! [`ResolvedTimeline::barrier_at`] are `f64` **seconds**, converted once with
+//! [`ms_to_seconds`](crate::time::ms_to_seconds). They are the rendered surface
+//! (`check --json`'s `resolved.timeline_tables`) and the compiler's input
+//! (`lute-compile`'s `schedule.rs` → `Stamp.at`), and the artifact keeps
+//! seconds: changing those fields to milliseconds under the same names and the
+//! same JSON type would be a break with no detection surface at all.
 //!
 //! ## `E-WRITE-CONFLICT` model
 //! Compares each clip's resolved directive `effects.writes[]` state-write
@@ -48,9 +68,12 @@ use std::collections::BTreeSet;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::PathSegment;
-use lute_syntax::ast::{AttrValue, ClipNode, Timeline, TrackKey};
+use lute_syntax::ast::{AttrValue, Clip, ClipNode, Timeline, TrackKey};
 
 use crate::ctx::Ctx;
+use crate::time::{
+    fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS,
+};
 
 /// `E-CLIP-TIMING`: a single `<track>` clip carrying BOTH `at` (an absolute
 /// timeline position) and `delay` (a relative nudge) — mutually exclusive on one
@@ -61,6 +84,30 @@ pub const E_CLIP_TIMING: &str = "E-CLIP-TIMING";
 /// maximum resolved clip end across all tracks — a timeline may not truncate its
 /// own content (dsl §11.4).
 pub const E_TIMELINE_DURATION: &str = "E-TIMELINE-DURATION";
+
+/// `E-TIME-RESOLUTION`: an authored time value carrying more fractional
+/// precision than a millisecond (dsl 0.10.0 §10.1). There is no rounding —
+/// a timeline the author cannot see the difference in is a timeline whose
+/// diagnostics they cannot predict, and `1.2000001` (the epsilon superstition
+/// T7.2 measured an author acquiring) must be rejected rather than quietly
+/// honoured.
+pub const E_TIME_RESOLUTION: &str = "E-TIME-RESOLUTION";
+
+/// The one `E-TIME-RESOLUTION` message, shared by all four authorable time
+/// surfaces (clip `at`, `duration`, `delay`, `<timeline duration>`) so they
+/// cannot drift. `what` names the surface; `raw` is the authored text verbatim.
+pub fn time_resolution_diag(what: &str, raw: &str, span: Span) -> Diagnostic {
+    diag(
+        E_TIME_RESOLUTION,
+        Severity::Error,
+        format!(
+            "{what} `{raw}` is finer than a millisecond; a time value is a decimal number of \
+             seconds with at most {TIME_MAX_FRACTIONAL_DIGITS} fractional digits \
+             (dsl 0.10.0 §10.1)"
+        ),
+        span,
+    )
+}
 
 /// One resolved clip: its absolute start, the subject it drives, a short
 /// human-readable summary, and its duration (seconds, best-effort).
@@ -139,18 +186,27 @@ pub fn resolve_timeline(
     }
 
     // Per-track resolution: sequential-omission cursor + track-local overlap.
+    //
+    // dsl 0.10.0 §10.2 (**D-H**): ALL cursor arithmetic here is integer
+    // MILLISECONDS. The comparison below was never the bug — `at < o_end &&
+    // o_at < end` is a correct symmetric half-open intersection — the bug was
+    // that `0.8 + 0.4` in IEEE-754 is `1.2000000000000002`, so a hand-off at
+    // the previous clip's exact end landed one ULP inside it. An epsilon would
+    // have replaced one false positive with an unpredictable class of them;
+    // integers remove the class.
+    //
     // `placed` records each clip's absolute interval + resolved write targets
     // for the cross-track write-conflict pass.
     struct Placed {
-        at: f64,
-        end: f64,
+        at_ms: i64,
+        end_ms: i64,
         targets: WriteTargets,
         key: String,
         span: Span,
     }
     let mut rows = Vec::new();
     let mut placed: Vec<Placed> = Vec::new();
-    let mut max_end = 0.0_f64;
+    let mut max_end_ms = 0_i64;
 
     for track in &tl.tracks {
         if track.clips.len() > 12 {
@@ -168,20 +224,28 @@ pub fn resolve_timeline(
         let subject = subject_of(&track.key);
         let canon = canon_key(&track.key);
         // Intervals placed within THIS track, for track-local overlap.
-        let mut track_ivals: Vec<(f64, f64)> = Vec::new();
-        let mut cursor = 0.0_f64;
+        let mut track_ivals: Vec<(i64, i64)> = Vec::new();
+        let mut cursor_ms = 0_i64;
         for clip in &track.clips {
-            let at = clip.at.unwrap_or(cursor);
-            let duration = clip_duration(&clip.node);
-            let end = at + duration;
+            let explicit_at_ms = clip_at_ms(clip, &mut diags);
+            let at_ms = explicit_at_ms.unwrap_or(cursor_ms);
+            let duration_ms = clip_duration_ms(&clip.node);
+            let end_ms = at_ms + duration_ms;
 
             // Track-local overlap against every earlier clip in this track.
+            // Integer comparison in the millisecond domain: two clips whose
+            // starts differ by less than a millisecond are the same instant
+            // (§10.2's resolution limit), which is also where
+            // `E-WRITE-CONFLICT`'s "same instant" is now defined.
             for &(o_at, o_end) in &track_ivals {
-                if at < o_end && o_at < end {
+                if at_ms < o_end && o_at < end_ms {
                     diags.push(diag(
                         "E-CLIP-OVERLAP",
                         Severity::Error,
-                        format!("clip at {at} overlaps another clip in track `{canon}`"),
+                        format!(
+                            "clip at {} overlaps another clip in track `{canon}`",
+                            fmt_seconds(at_ms)
+                        ),
                         clip.span,
                     ));
                     break;
@@ -189,8 +253,11 @@ pub fn resolve_timeline(
             }
 
             // E-CLIP-TIMING (dsl §7.5, §11.4): `at` (absolute position) and
-            // `delay` (relative nudge) are mutually exclusive on one clip.
-            if clip.at.is_some() && clip_has_delay(&clip.node) {
+            // `delay` (relative nudge) are mutually exclusive on one clip. Keyed
+            // off whether the `at` RESOLVED to a position: §10.2 keeps a
+            // non-decimal `at`'s pre-existing "treated as absent" behaviour, and
+            // a green document may not go red for it.
+            if explicit_at_ms.is_some() && clip_has_delay(&clip.node) {
                 diags.push(diag(
                     E_CLIP_TIMING,
                     Severity::Error,
@@ -201,24 +268,26 @@ pub fn resolve_timeline(
                 ));
             }
 
+            // §10.3 (**D-T**): the row is the RENDERED surface and the
+            // compiler's input, and both keep SECONDS. One conversion, here.
             rows.push(ResolvedRow {
-                at,
+                at: ms_to_seconds(at_ms),
                 subject: canon.clone(),
                 summary: summary_of(&clip.node),
-                duration,
+                duration: ms_to_seconds(duration_ms),
             });
             placed.push(Placed {
-                at,
-                end,
+                at_ms,
+                end_ms,
                 targets: clip_write_targets(&clip.node, snapshot, subject.as_deref()),
                 key: canon.clone(),
                 span: clip.span,
             });
-            track_ivals.push((at, end));
-            if end > max_end {
-                max_end = end;
+            track_ivals.push((at_ms, end_ms));
+            if end_ms > max_end_ms {
+                max_end_ms = end_ms;
             }
-            cursor = end;
+            cursor_ms = end_ms;
         }
     }
 
@@ -231,8 +300,8 @@ pub fn resolve_timeline(
             if a.key == b.key {
                 continue;
             }
-            // Half-open interval overlap.
-            if a.at < b.end && b.at < a.end {
+            // Half-open interval overlap, in milliseconds.
+            if a.at_ms < b.end_ms && b.at_ms < a.end_ms {
                 if let Some(target) = targets_overlap(&a.targets, &b.targets) {
                     diags.push(diag(
                         "E-WRITE-CONFLICT",
@@ -245,29 +314,79 @@ pub fn resolve_timeline(
         }
     }
 
+    // dsl 0.10.0 §10.1: the timeline's own `duration` is a time value like any
+    // other. Diagnosed here rather than at the `check_cel_slot` call in
+    // `check.rs`, so all four surfaces share `time_resolution_diag`.
+    if let Some(slot) = tl.duration.as_ref() {
+        if parse_time_ms(&slot.raw) == TimeParse::TooFine {
+            diags.push(time_resolution_diag(
+                "`<timeline duration>`",
+                &slot.raw,
+                slot.span,
+            ));
+        }
+    }
+
     // Final barrier: explicit `duration` if parseable, else max clip end. An
     // explicit duration BELOW the max resolved clip end truncates the timeline's
     // own content (dsl §11.4) → E-TIMELINE-DURATION (reported at the duration
     // slot span); the barrier still records the authored value.
-    let barrier_at = match tl.duration.as_ref().and_then(|slot| parse_f64(&slot.raw)) {
-        Some(explicit) => {
-            if explicit < max_end {
+    //
+    // §10.2: the comparison is integer and the message prints the authored
+    // decimal — it used to print `1.2000000000000002` at the author, which is
+    // the same leak in its most confusing form.
+    let explicit_barrier_ms = tl.duration.as_ref().and_then(|slot| match parse_time_ms(&slot.raw) {
+        TimeParse::Ms(ms) => Some(ms),
+        TimeParse::TooFine | TimeParse::NotANumber => None,
+    });
+    let barrier_ms = match explicit_barrier_ms {
+        Some(explicit_ms) => {
+            if explicit_ms < max_end_ms {
                 let span = tl.duration.as_ref().map_or(tl.span, |s| s.span);
                 diags.push(diag(
                     E_TIMELINE_DURATION,
                     Severity::Error,
                     format!(
-                        "timeline duration {explicit} is below the max resolved clip end {max_end}; a timeline may not truncate its own content (dsl §11.4)"
+                        "timeline duration {} is below the max resolved clip end {}; a timeline may not truncate its own content (dsl §11.4)",
+                        fmt_seconds(explicit_ms),
+                        fmt_seconds(max_end_ms)
                     ),
                     span,
                 ));
             }
-            explicit
+            explicit_ms
         }
-        None => max_end,
+        None => max_end_ms,
     };
 
-    (ResolvedTimeline { rows, barrier_at }, diags)
+    (
+        ResolvedTimeline {
+            rows,
+            barrier_at: ms_to_seconds(barrier_ms),
+        },
+        diags,
+    )
+}
+
+/// A clip's authored absolute start in milliseconds, or `None` when it has no
+/// `at` at all — or one that is not a decimal, which §10.2 keeps treating as
+/// absent. A sub-millisecond value is `E-TIME-RESOLUTION` at the attribute
+/// value's own column and also resolves to `None`, so the clip falls back to the
+/// track cursor (§11.4 sequential omission) rather than being placed at a
+/// position the author cannot express.
+///
+/// dsl 0.10.0 §10.2: the conversion shifts the authored decimal three places as
+/// TEXT. There is no `f64` on this path.
+fn clip_at_ms(clip: &Clip, diags: &mut Vec<Diagnostic>) -> Option<i64> {
+    let a = clip.at.as_ref()?;
+    match parse_time_ms(&a.raw) {
+        TimeParse::Ms(ms) => Some(ms),
+        TimeParse::TooFine => {
+            diags.push(time_resolution_diag("clip `at`", &a.raw, a.span));
+            None
+        }
+        TimeParse::NotANumber => None,
+    }
 }
 
 /// Canonical string for a [`TrackKey`], used for equality/dedup and display.
@@ -396,21 +515,30 @@ fn targets_overlap(a: &WriteTargets, b: &WriteTargets) -> Option<String> {
     None
 }
 
-/// Best-effort clip duration from a directive's `duration` timing attr (§7.5).
-/// `<set>` clips and directives without a numeric `duration` ⇒ `0.0`.
-fn clip_duration(node: &ClipNode) -> f64 {
+/// A clip's duration in milliseconds, from its directive's `duration` timing
+/// attr (§7.5). `<set>` clips and directives without a numeric `duration` ⇒ `0`.
+///
+/// §10.1's `E-TIME-RESOLUTION` for `duration=` is emitted by
+/// `directives::check_directive`, which sees every directive including these,
+/// so a sub-millisecond duration resolves to `0` here without a second, derived
+/// complaint about the layout.
+fn clip_duration_ms(node: &ClipNode) -> i64 {
     match node {
         ClipNode::Directive(d) => d
             .attrs
             .iter()
             .find(|a| a.key == "duration")
             .and_then(|a| match &a.value {
-                AttrValue::Str(s) => parse_f64(s),
-                AttrValue::Ref(slot) => parse_f64(&slot.raw),
+                AttrValue::Str(s) => Some(s.as_str()),
+                AttrValue::Ref(slot) => Some(slot.raw.as_str()),
                 AttrValue::BoolTrue => None,
             })
-            .unwrap_or(0.0),
-        ClipNode::Set(_) => 0.0,
+            .and_then(|raw| match parse_time_ms(raw) {
+                TimeParse::Ms(ms) => Some(ms),
+                TimeParse::TooFine | TimeParse::NotANumber => None,
+            })
+            .unwrap_or(0),
+        ClipNode::Set(_) => 0,
     }
 }
 
@@ -429,22 +557,6 @@ fn summary_of(node: &ClipNode) -> String {
         ClipNode::Directive(d) => format!("<{}>", d.tag),
         ClipNode::Set(s) => format!("{} {} {}", s.path, s.op, s.expr.raw),
     }
-}
-
-/// Parse a best-effort `f64` from a timing string. Accepts a bare number or a
-/// number with a trailing `s`/`ms` unit; anything else ⇒ `None`.
-fn parse_f64(raw: &str) -> Option<f64> {
-    let t = raw.trim();
-    if let Ok(v) = t.parse::<f64>() {
-        return Some(v);
-    }
-    if let Some(ms) = t.strip_suffix("ms") {
-        return ms.trim().parse::<f64>().ok().map(|v| v / 1000.0);
-    }
-    if let Some(s) = t.strip_suffix('s') {
-        return s.trim().parse::<f64>().ok();
-    }
-    None
 }
 
 /// Build a staging-layer diagnostic at `span`.
@@ -471,7 +583,7 @@ mod tests {
     };
     use lute_manifest::types::{FromAttr, Literal, PathSegment, Type};
     use lute_syntax::ast::Set;
-    use lute_syntax::ast::{Attr, Clip, Directive, Track};
+    use lute_syntax::ast::{Attr, Clip, ClipAt, Directive, Track};
     use std::sync::LazyLock;
 
     fn span() -> Span {
@@ -506,10 +618,13 @@ mod tests {
         }
     }
 
-    fn clip(at: Option<f64>, duration: &str) -> Clip {
+    fn clip(at: Option<&str>, duration: &str) -> Clip {
         Clip {
             node: ClipNode::Directive(dir("camera", duration)),
-            at,
+            at: at.map(|raw| ClipAt {
+                raw: raw.to_string(),
+                span: span(),
+            }),
             span: span(),
         }
     }
@@ -568,6 +683,29 @@ mod tests {
         let tl = timeline_camera_two_clips(); // ends at 0.8, no explicit duration
         let (res, _d) = resolve_timeline(&tl, &ctx(), &lute_manifest::core::load_core_snapshot());
         assert_eq!(res.barrier_at, 0.8);
+    }
+
+    /// §10.3, D-T: the barrier is the max resolved clip end, in SECONDS, exact.
+    #[test]
+    fn barrier_is_exact_at_a_leaking_boundary() {
+        let tl = Timeline {
+            duration: None,
+            tracks: vec![Track {
+                key: TrackKey::Channel("vfx".into()),
+                clips: vec![clip(Some("0.8"), "0.4")],
+                span: span(),
+            }],
+            span: span(),
+        };
+        let (res, diags) =
+            resolve_timeline(&tl, &ctx(), &lute_manifest::core::load_core_snapshot());
+        assert!(diags.is_empty(), "{diags:?}");
+        assert_eq!(res.barrier_at, 1.2, "0.8 + 0.4 is exactly 1.2");
+        assert_eq!(
+            serde_json::to_string(&res.barrier_at).unwrap(),
+            "1.2",
+            "and it serializes as 1.2, not 1.2000000000000002"
+        );
     }
 
     fn snapshot_with_writer() -> CapabilitySnapshot {
@@ -911,7 +1049,10 @@ mod tests {
                         }],
                         span: span(),
                     }),
-                    at: Some(1.0),
+                    at: Some(ClipAt {
+                        raw: "1".to_string(),
+                        span: span(),
+                    }),
                     span: span(),
                 }],
                 span: span(),

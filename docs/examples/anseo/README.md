@@ -25,7 +25,7 @@ you want to know what is in the tree.
 | `vocabulary.schema.yaml` | | all seven compiler-typed content-vocabulary slots |
 | `lute.project.yaml` | | the manifest, including the `identity:` block |
 
-177 content lines, 2,302 words, 15 choices (`lute loc report`).
+176 content lines, 2,299 words, 15 choices (`lute loc report docs/examples/anseo`).
 
 ## What it is the corpus's first coverage of
 
@@ -65,14 +65,16 @@ distinction is kept because a README that oversells is worse than no README.
 ## Running it
 
 ```sh
-# The checker. Exits 0. Prints 15 warnings: 13 project-wide (which is the
-# number in its own summary line) plus 2 per-file. See "Deliberate
-# imperfections" below — every one of the 15 is accounted for there.
+# The checker. Exits 0. Prints 13 warnings, all project-wide (which is the
+# number in its own summary line) and no per-file warning on any of the 18
+# files. See "Deliberate imperfections" below — every one of the 13 is
+# accounted for there.
 lute check-project docs/examples/anseo
 
 # The 31 scenario tests. Exits 0, 31 passed.
 lute test docs/examples/anseo
-lute test docs/examples/anseo --coverage    # 15 rows; three are permanently red
+lute test docs/examples/anseo --coverage    # 24 rows (5 branch/hub, 19 match);
+                                            # 5 match rows have an unexecuted arm
 
 # The prerequisite graph: 11 scenes over 9 topological layers, and 19 edges —
 # 12 scene-to-scene, 5 from a scene to one of the five quests that declare
@@ -92,39 +94,24 @@ tests plus `investigation`'s three.
 
 ## Deliberate imperfections
 
-Five things in this tree are wrong on purpose. They are evidence for named
+Two things in this tree are wrong on purpose. They are evidence for named
 findings, and a reader who "fixes" one deletes the evidence.
 
-1. **`scenes/bridge.lute:11` — `W-INJECT-CONFLICT`.** Vesna is staged
-   `anchor="center"`, which is the `anchor` domain's declared `default:`, and
-   that is the one value an author may not write on purpose: agreement warns,
-   disagreement is silent, omission is silent. There is no `--allow` and no
-   in-source suppression, so the scene keeps the true statement about the staging
-   rather than the clean output (**T5.8**).
-2. **`scenes/spine-b.lute:44` — `W-INJECT-CONFLICT`.** The same collision, kept
-   for the same reason: Toma's place between the other two at the coupling he
-   saved *is* the staging. The other two scenes that stage a third character omit
-   the attribute instead, because there the entrance is ordinary — the tax is not
-   per-scene, it is per-scene-where-the-middle-is-meaningful, and here that was
-   one in three (**T8.12**).
-3. **`components/purser-interject.component.lute` — a dead `<otherwise>` arm.**
+1. **`components/purser-interject.component.lute` — a dead `<otherwise>` arm.**
    The component's body is a param-scoped `<match on="@pressure">` with two arms,
    and it is invoked from exactly one site (`cryobank.lute:14`, `pressure="rising"`).
    `Allocation is nominal.` therefore never plays in this work. Nothing says so:
-   `check-project` is clean, the artifact correctly prunes the arm, `loc export`
-   correctly keeps it (another caller may need it translated), and
-   `lute test --coverage` has no row for it at all, because component-internal
-   matches never appear in a traced report. The arm stays because a one-armed
-   component is not a component, and because it is the corpus's only example of
-   the one document kind that cannot be tested (**T9.12**).
-4. **`mocks/playthrough.yaml` — a rotting scaffold mock.** It is still exactly
-   what `lute init` wrote: it names `scenes/opening.lute`, deleted in the first
-   task, and seeds `run.greeted`, a path no longer in the schema. `check-project`
-   is green through it, because mocks are not in its walk. The error does exist
-   one command over — `lute trace … --mock mocks/playthrough.yaml` reports
-   `E-TRACE-MOCK-UNDECLARED` — but nothing pairs them automatically. This is how
-   a `mocks/` directory quietly becomes fiction (**T1.9**).
-5. **`quests/hold-the-spine.lute` — the one quest with no `after=`.** Its five
+   `check-project` is clean; the artifact prunes the arm at expansion (compile
+   `scenes/cryobank.lute` and the sole `purser` line in it is `Draw exceeds
+   projection. …`); `loc export` prunes it too, carrying exactly one entry for
+   this component — the same line, with a `source:` naming the component file
+   and line; and `lute test --coverage` reports neither an arm row for it,
+   because component-internal matches never reach a traced report, nor an
+   untested-document entry, because the coverage walk does not treat a
+   component body as a document. The arm stays because a one-armed component
+   is not a component, and because it is the corpus's only example of the one
+   document kind that cannot be tested (**T9.12**).
+2. **`quests/hold-the-spine.lute` — the one quest with no `after=`.** Its five
    siblings all declare one; this one does not, and the file now says so in a
    comment. What the omission costs, from `lute scenario docs/examples/anseo`:
    the quest is absent from the graph **entirely** — no topological layer, no

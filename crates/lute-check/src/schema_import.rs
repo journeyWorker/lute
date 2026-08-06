@@ -26,7 +26,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 
-use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use lute_manifest::relations::{
     kinds_to_domains, EntityKindDecl, KindShape, ParsedKinds, ParsedRelations, RelationDecl,
 };
@@ -678,6 +678,25 @@ fn resolve_edges(
     out
 }
 
+/// Re-derive `line`/`column`/`utf16_range` from each diagnostic's byte offsets
+/// against the IMPORTED file's own text.
+///
+/// The house convention is zero-then-normalize: producers such as
+/// [`crate::meta::meta_key_span`] emit byte offsets and leave the position
+/// fields at zero for `check`'s `normalize_spans` to fill in. That pass runs
+/// over the IMPORTING document, and never walks `related` — so an import's
+/// folded diagnostics would print at `0:0`, which is exactly as useless to the
+/// author as the count they replace (#21, T3.9).
+fn position_in(text: &str, diags: &mut [Diagnostic]) {
+    let idx = lute_core_span::TextIndex::new(text);
+    let len = text.len();
+    for d in diags {
+        let start = d.span.byte_start.min(len);
+        let end = d.span.byte_end.min(len).max(start);
+        d.span = Span::from_bytes(&idx, start, end);
+    }
+}
+
 /// Read + parse one canonical import, reporting `E-USES-NOT-FOUND` on an I/O
 /// failure and `E-USES-PARSE` on any parse/frontmatter error. Returns the doc's
 /// declared state/defs plus its own `uses`/`extends` refs (for further traversal).
@@ -719,7 +738,7 @@ fn read_and_parse(
         canon.extension().and_then(|e| e.to_str()),
         Some("yaml") | Some("yml")
     );
-    let (tm, issues, quest_ids) = if is_yaml_decl {
+    let (tm, issue_diags, quest_ids) = if is_yaml_decl {
         let byte_end = text.len();
         let meta = Meta {
             raw_yaml: text,
@@ -731,9 +750,10 @@ fn read_and_parse(
                 utf16_range: (0, 0),
             },
         };
-        let (tm, mdiags) =
+        let (tm, mut mdiags) =
             parse_meta_kind(&meta, &CapabilitySnapshot::default(), MetaKind::Schema);
-        (tm, mdiags.len(), BTreeSet::new())
+        position_in(&meta.raw_yaml, &mut mdiags);
+        (tm, mdiags, BTreeSet::new())
     } else {
         let (doc, pdiags) = lute_syntax::parse(&text);
         let (tm, mdiags) =
@@ -749,17 +769,37 @@ fn read_and_parse(
             .map(|q| q.id.clone())
             .filter(|id| !id.is_empty())
             .collect();
-        (tm, pdiags.len() + mdiags.len(), quest_ids)
+        let mut all = pdiags;
+        all.extend(mdiags);
+        position_in(&text, &mut all);
+        (tm, all, quest_ids)
     };
-    if issues > 0 {
-        diags.push(uses_diag(
+    if !issue_diags.is_empty() {
+        // dsl 0.5.0 §2.2, mirroring `component_import.rs:260-282`: carry the
+        // import's OWN diagnostics (spans relative to the imported file) onto
+        // the importer's `E-USES-PARSE`, so `--json` — and the human
+        // renderer, which already walks `related` — surface what actually
+        // failed. `(N issue(s))` on its own is a NUMBER, not the issue, and
+        // it was the author's entire information (#21, T3.9). The count is
+        // computed from the same vector, so the two cannot disagree.
+        let file = canon.display().to_string();
+        let mut d = uses_diag(
             "E-USES-PARSE",
             format!(
-                "schema import `{}` has parse/frontmatter errors ({issues} issue(s))",
-                canon.display()
+                "schema import `{}` has parse/frontmatter errors ({} issue(s))",
+                canon.display(),
+                issue_diags.len()
             ),
             at,
-        ));
+        );
+        d.related = issue_diags
+            .into_iter()
+            .map(|diagnostic| RelatedDiagnostic {
+                file: file.clone(),
+                diagnostic,
+            })
+            .collect();
+        diags.push(d);
     }
     let state = tm.state.decls;
     let defs = tm.defs;

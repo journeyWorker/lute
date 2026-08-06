@@ -168,3 +168,18 @@ fn check_project_unknown_deny_code_is_usage_error() {
     let out = run(&["check-project", dir.to_str().unwrap(), "--deny", "NOT-A-CODE"]);
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// Every code this release adds must be nameable by `--deny`, or a promotion
+/// targeting it is a clap usage error (exit 2). `W-PROJECT-INERT` is emitted
+/// from `lute-cli`, which `every_check_emitted_code_is_deniable` does not
+/// scan, so this is the only thing standing between it and a silent gap.
+#[test]
+fn project_inert_is_deniable() {
+    let out = run(&["check-project", ".", "--deny", "W-PROJECT-INERT"]);
+    assert_ne!(
+        out.status.code(),
+        Some(2),
+        "`--deny W-PROJECT-INERT` must not be a usage error: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
