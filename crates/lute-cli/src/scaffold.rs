@@ -288,17 +288,29 @@ choose:
 }
 
 /// The generated project README with next-step commands.
+///
+/// **No command here names a concrete document** (#31, T10.4, D-E). Two of
+/// them did: `lute check scenes/opening.lute` and
+/// `lute trace scenes/opening.lute --mock mocks/playthrough.yaml`, both
+/// hard-coded to the one file the scaffold exists to have you replace. Rename
+/// or delete that scene — the first thing an author does — and the README's
+/// own instructions answer
+/// `lute: cannot read scenes/opening.lute: No such file or directory` at exit
+/// 2. That is scaffold rot in the scaffolder, and it re-shipped with every
+/// `lute init`.
+///
+/// The backlog offered two remedies: template the paths, or delete the
+/// section. **Templated**, because the defect is not that the section exists
+/// — four of its six commands (`check-project .`, `scenario .`, the three
+/// `lute new` forms) name no document, cannot rot, and are the only
+/// onboarding this scaffold ships. Deleting them to kill two bad lines costs
+/// four good ones. A `<your-scene>` placeholder cannot be pasted and cannot
+/// lie, which is strictly safer than a runnable line naming the wrong file.
+///
+/// §8's `mocks/*.yaml` pass closes the other half of #31 and cannot close
+/// this one: its glob is chosen and does not reach a README, so the README
+/// must be unable to rot rather than checked for rot.
 fn readme(template: &str) -> String {
-    let check = if template == "investigation" {
-        "scenes/crime-scene.lute"
-    } else {
-        "scenes/opening.lute"
-    };
-    let trace = if template == "investigation" {
-        "scenes/interview.lute"
-    } else {
-        "scenes/opening.lute"
-    };
     format!(
         "\
 # Lute project (`{template}` template)
@@ -308,15 +320,21 @@ checker.
 
 ## Next steps
 
+Where a command below names a document it uses a `<placeholder>` — substitute
+the one you mean. The scaffolded starting scenes are under `scenes/`; rename
+or replace them freely, these instructions stay true.
+
 ```sh
 # Validate the whole project (recursively):
 lute check-project .
 
 # Check one document:
-lute check {check}
+lute check scenes/<your-scene>.lute
 
-# Preview a scene against the trace mock:
-lute trace {trace} --mock mocks/playthrough.yaml
+# Preview a scene against a trace mock. Keep the mock's own `file:` pointed at
+# the scene you pass here — `lute check-project` reports a mock whose subject
+# does not exist, and `lute trace` refuses a mock that names a different one:
+lute trace scenes/<your-scene>.lute --mock mocks/<your-mock>.yaml
 
 # Report the scene graph / reachability:
 lute scenario .
