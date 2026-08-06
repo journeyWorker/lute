@@ -1309,6 +1309,101 @@ fn autopicked_branch_is_reported_not_silent() {
     assert!(text.contains("-> a"), "the arm actually taken must be named: {text}");
 }
 
+/// T9.9 / #2: `<never written>` is how the report DISPLAYS an absent state
+/// path. It was substituted for the absent value BEFORE the miss line was
+/// built, so a test expecting that text produced
+/// `state run.x: expected "<never written>", got "<never written>"` — a
+/// difference whose two sides were byte-identical, at `0 passed, 1 failed`.
+#[test]
+fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
+    let dir = temp_dir("test-never-written");
+    write_at(
+        &dir,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+         run.written: { type: number, default: 0 }\n  run.unwritten: { type: number, default: 0 }\n\
+         ---\n\n## One\n\n::set{ run.written = 2 }\n@narrator: a.\n",
+    );
+    let run = |name: &str, body: &str| {
+        let d = temp_dir(name);
+        write_at(
+            &d,
+            "s.lute",
+            &std::fs::read_to_string(dir.join("s.lute")).unwrap(),
+        );
+        write_at(&d, "t.test.yaml", body);
+        let out = Command::new(BIN).args(["test", d.to_str().unwrap()]).output().unwrap();
+        (out.status.code(), String::from_utf8_lossy(&out.stdout).to_string())
+    };
+
+    // The reported case: the sentinel's own text, expected against a path the
+    // walk never wrote.
+    let (code, text) = run(
+        "never-written-sentinel",
+        "file: s.lute\nexpect:\n  state:\n    run.unwritten: \"<never written>\"\n",
+    );
+    assert_eq!(code, Some(1), "a sentinel is not a value and cannot match: {text}");
+    let miss = text
+        .lines()
+        .find(|l| l.contains("state run.unwritten:"))
+        .unwrap_or_else(|| panic!("no miss line in:\n{text}"));
+    assert!(
+        miss.contains("never written"),
+        "the absence must still be stated: {miss}"
+    );
+    assert!(
+        !miss.contains("got"),
+        "there is no observed value to report as `got`: {miss}"
+    );
+    // The defect in one assertion: the two sides of a declared difference
+    // must never be the same text. This is what fails on the old renderer.
+    let (before, after) = miss.split_once("expected ").expect("miss line names the expectation");
+    let _ = before;
+    assert!(
+        !after.contains("\"<never written>\", got \"<never written>\""),
+        "a difference whose two sides are identical: {miss}"
+    );
+    // #19, named rather than invented: there is no `expect:` spelling for
+    // "never written", and the note must say so instead of minting one.
+    assert!(text.contains("#19"), "the deferred gap must be named: {text}");
+
+    // Control 1 — a WRITTEN path that genuinely differs still reports both
+    // sides, so the fix did not blanket-suppress the `got` half.
+    let (code, text) = run(
+        "never-written-control-written",
+        "file: s.lute\nexpect:\n  state:\n    run.written: 9\n",
+    );
+    assert_eq!(code, Some(1), "{text}");
+    assert!(
+        text.contains("expected \"9\", got \"2\""),
+        "a real value miss still names both sides: {text}"
+    );
+
+    // Control 2 — a path written to the sentinel's literal TEXT matches an
+    // expectation spelling that text. The sentinel is not equal to an absent
+    // value, and it is not specially unequal to a written one either.
+    let d = temp_dir("never-written-control-literal");
+    write_at(
+        &d,
+        "s.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+         run.label: { type: string, default: \"\" }\n---\n\n## One\n\n\
+         ::set{ run.label = \"<never written>\" }\n@narrator: a.\n",
+    );
+    write_at(
+        &d,
+        "t.test.yaml",
+        "file: s.lute\nexpect:\n  state:\n    run.label: \"<never written>\"\n",
+    );
+    let out = Command::new(BIN).args(["test", d.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a path actually written to that string matches it: {text}"
+    );
+}
+
 /// A `*.test.yaml` and a `mocks/*.yaml` both key their subject on `file:`,
 /// and both resolve it relative to THE FILE THAT CONTAINS IT (D-AC, D-Y).
 /// One key, one meaning, one base rule — pinned here so the two cannot drift
