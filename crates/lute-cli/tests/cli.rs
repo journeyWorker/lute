@@ -939,6 +939,66 @@ fn init_scaffolds_a_checkable_vocabulary() {
     );
 }
 
+/// T10.4 / #31 / D-E: the generated README's "Next steps" hard-coded
+/// `scenes/opening.lute` into `lute check` and `lute trace`, the one file the
+/// scaffold exists to have you replace. Replace it and the README's own
+/// instructions answer `cannot read scenes/opening.lute` at exit 2 — scaffold
+/// rot re-shipped by every `lute init`. §8's mock pass cannot reach a README,
+/// so the README must be unable to rot.
+///
+/// Both halves are asserted, and neither is sufficient alone: a README that
+/// simply lost its command block would satisfy the second, and a README that
+/// kept the hard-coded paths would satisfy the first.
+#[test]
+fn init_readme_names_no_document_that_can_rot() {
+    for template in ["minimal", "investigation"] {
+        let dir = temp_dir(&format!("init-readme-{template}"));
+        let proj = dir.join("proj");
+        let out = Command::new(BIN)
+            .args(["init", proj.to_str().unwrap(), "--template", template])
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "init failed: {out:?}");
+        let readme = std::fs::read_to_string(proj.join("README.md")).unwrap();
+
+        // Every `lute …` line inside the fenced block.
+        let cmds: Vec<&str> =
+            readme.lines().map(str::trim).filter(|l| l.starts_with("lute ")).collect();
+        assert!(cmds.len() >= 4, "{template}: the command block is still there:\n{readme}");
+
+        // 1. No command names a real document. `.lute`/`.yaml` may only ever
+        //    appear behind a `<placeholder>`.
+        for c in &cmds {
+            let names_a_file = c.contains(".lute") || c.contains(".yaml");
+            assert!(
+                !names_a_file || c.contains('<'),
+                "{template}: `{c}` hard-codes a document the author is invited to \
+                 replace — that is exactly T10.4:\n{readme}"
+            );
+        }
+
+        // 2. Every command that is runnable AS WRITTEN (no placeholder) must
+        //    actually run green in the project just scaffolded. Otherwise
+        //    rule 1 could be satisfied by writing nonsense.
+        let runnable: Vec<&&str> = cmds.iter().filter(|c| !c.contains('<')).collect();
+        assert!(
+            runnable.len() >= 2,
+            "{template}: templating must not have swallowed every runnable line:\n{readme}"
+        );
+        for c in runnable {
+            let args: Vec<&str> = c.split_whitespace().skip(1).collect();
+            let out = Command::new(BIN).args(&args).current_dir(&proj).output().unwrap();
+            assert_eq!(
+                out.status.code(),
+                Some(0),
+                "{template}: the README tells the author to run `{c}` and it fails:\n{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+}
+
 /// `lute doctor` reports the seven vocabulary slots against what the project
 /// actually resolves: every slot declared for a fresh scaffold, and every slot
 /// missing once the declaration is deleted.
