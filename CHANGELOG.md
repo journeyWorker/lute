@@ -232,9 +232,14 @@ time the shape **moved** — see the IR bullet under *Changed*.
   `E-IDENTITY-TEMPLATE` and its siblings now fire from `compile` too and carry
   the manifest's own path, which they did not before. A nested manifest that the
   invoked root does **not** govern draws `W-PROJECT-INERT` — but only when it
-  would have resolved a different capability snapshot or different identity
-  templates, because an unconditional warning fires on manifests whose presence
-  changes nothing.
+  would have resolved a different capability snapshot, different identity
+  templates, or a different `defaults:` block, because an unconditional
+  warning fires on manifests whose presence changes nothing. Those three are
+  exactly what a document resolves through its governing manifest, so a
+  nested root cannot be inert in a way that matters and stay quiet: two roots
+  supplying different `season:`/`character:` defaults rewrite every `lineId`
+  in the inner subtree with both `check-project` and `compile --all` at exit
+  `0`.
 
 ### Added
 

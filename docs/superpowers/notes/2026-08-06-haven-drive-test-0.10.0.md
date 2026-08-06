@@ -74,7 +74,7 @@ is the single worst thing in this log.
 | # | issue | claimed | re-run | evidence |
 |---|---|---|---|---|
 | 1 | `::set` writes any expression into any declared path | yes | **CONFIRMED** | T3.2 CLOSED — `E-SET-TYPE` on all three cases, `compile` refuses too |
-| 2 | the suite cannot see a gate that opens too wide | yes | **NOT CONFIRMED** | 1 of 5: T9.8 CLOSED; T3.10, T9.9, T9.10, T9.18 still reproduce |
+| 2 | the suite cannot see a gate that opens too wide | yes | **NOT CONFIRMED** | 1 of 5: T9.8 CLOSED; T3.10, T9.9, T9.10, T9.18 still reproduce. *Fixed 2026-08-06:* T3.10 (mock key set closed) and T9.9 (sentinel comparison) — T9.10/T9.18 are #2(b)(c), deferred with #19 per **D-B** |
 | 3 | component lines dropped from the localization bundle | yes | **CONFIRMED** | T6.10 CLOSED — component null-`lineId` rows 2 → 0; `lute tag` remedy works |
 | 4 | `{{@param}}` cannot render a `string` | no — deferred | reproduces (expected) | T6.11, byte-for-byte incl. the `9:39` position |
 | 5 | a component has no meaning of its own | no — deferred | reproduces (expected) | T6.2, one body → two vs three commands |
@@ -102,8 +102,8 @@ is the single worst thing in this log.
 | 27 | the track is not in the IR | no — deferred | reproduces (expected) | T7.3 — key union character-for-character identical |
 | 28 | conditional content costs a dummy `<match on="true">` | no — deferred | reproduces (expected) | T7.6, T8.7; observed incidentally under T7.7 |
 | 29 | two characters cannot speak at once | no — deferred | reproduces (expected) | T7.1 — all four constructs, plus the entry's proposed `{over}` remedy |
-| 30 | `check-project` and `compile` disagree about a nested manifest | yes | **NOT CONFIRMED** | T1.10 still reproduces — `W-PROJECT-INERT` never fires under `check-project` |
-| 31 | scaffolded artifacts rot in silence | yes | **PARTIAL** | T1.9 half CLOSED (mock validation); T10.4 half still reproduces (`lute init`'s README) |
+| 30 | `check-project` and `compile` disagree about a nested manifest | yes | **NOT CONFIRMED** | T1.10 still reproduces — `W-PROJECT-INERT` never fires under `check-project`. *Re-investigated 2026-08-06:* correctly so; the two commands never share a governance model (§7 bullet 2). The investigation did find a real gap and fixed it — **D-S** missed a `defaults:`-only difference |
+| 31 | scaffolded artifacts rot in silence | yes | **PARTIAL** | T1.9 half CLOSED (mock validation); T10.4 half still reproduces (`lute init`'s README). *Fixed 2026-08-06:* the README's paths are templated |
 | 32 | the preview tools drop the one bit that matters | yes | **PARTIAL** | T5.9 CLOSED, T2.5 closed on `trace`/`context`, open on `run`; all three of the backlog's own Verify criteria pass |
 | 33 | output names things the author cannot look up | yes | **CONFIRMED** | T1.4, T4.10 CLOSED — `@narrator` not `::narrator`; envelope in author vocabulary |
 | 34 | frontmatter is boilerplate and nothing can hoist it | yes | **NOT CONFIRMED** | `defaults:` resolves in the document pass and nowhere else — three defects, below |
@@ -458,6 +458,76 @@ surface CI runs and the website's *"what checks clean is exactly what compiles"*
 names. Secondary: single-file `compile --project <outer>` emits no `W-PROJECT-INERT` either;
 only `--all` does.
 
+#### Re-investigated 2026-08-06 — the probe is comparing two commands, and it found a third thing
+
+**Answer to "do `check-project` and `compile` disagree about inertness?": no — not under the
+same governance, because there is no invocation in which they share one.** They walk the same
+tree under two different, specified governance models, and §7's own second bullet is the
+statement of it: *"Which manifest governs is unchanged. Validating a nested manifest does not
+make it govern: under `compile --project <dir>` the invoked root still supplies identity and
+capability for every document. This is deliberate and is the backlog's own boundary —
+'nearest manifest wins' for `compile` is a different change with different consequences and is
+not made here."*
+
+`check-project <dir>` resolves each document against its OWN nearest ancestor manifest
+(`main.rs::run_check_project`, "nested per-file root resolution … bounded below by `dir`") and
+has no forced-root flag; `compile --all` requires `--project` and always forces one root.
+Measured, on the corpus itself:
+
+```
+$ lute check showcase/episode01.lute --project showcase     # nearest root
+ok: showcase/episode01.lute (0 warning(s))
+$ lute check showcase/episode01.lute --project .            # outer root FORCED
+lute: E-PROFILE-UNKNOWN: UnknownProfile("showcase")
+$ lute check-project docs/examples
+ok: docs/examples (47 file(s), 18 project-wide warning(s))          # rc=0, and that file is in the 47
+```
+
+If `check-project <outer>` forced the outer root, the three plugin subprojects could not check
+at all. It does not, so every nested manifest governs its own subtree, nothing under
+`check-project` is inert, and `W-PROJECT-INERT` is unreachable there **by construction**
+(`manifests.rs::mark_inert_under`, "Call ONLY from a forced single-root command"). Making it
+reach `check-project` would mean warning that a manifest which *is* governing is inert. The
+other direction — teaching `compile --all` nearest-root resolution — is **D-D**'s "compile
+aligns to check" read maximally, and §7 explicitly declines it as out of scope. The single-file
+pair does not disagree either: `check <f> --project <outer>` and `compile <f> --project <outer>`
+force the same root and are both silent, and neither walks a tree, which is what §7's duty is
+scoped to.
+
+**So the probe correctly still reproduces, and correctly should.** One correction to the entry
+above: on `docs/examples` no artifact is built from the outer root at all — the run refuses.
+
+```
+$ lute compile --all --project docs/examples -o /tmp/out ; echo rc=$?
+lute: E-PROFILE-UNKNOWN: UnknownProfile("showcase")   # ×3, plus date-minigame
+rc=1                                                  # nothing written
+```
+
+The "silently changes its `lineId`s" half is real, but on a tree where the forced root can
+resolve every document — the `nest3` shape, not the corpus.
+
+**What the re-investigation did find, and this one IS a gap: `W-PROJECT-INERT` misses a
+`defaults:`-only difference.** **D-S** narrowed the warning to two surfaces, capability
+snapshot and `identity:` templates, measured against six manifests that all predate
+`defaults:` — a key §6 mints in the *same* release. §6.5 makes those three the complete set of
+things a document resolves through its governing manifest, so the omission was coverage, not a
+narrowing decision. Measured at HEAD before the fix:
+
+```
+# /tmp/nest5: outer defaults {character: outerguy, season: 9, episode: 9},
+#             inner defaults {character: innerguy, season: 1, episode: 1}; nothing else differs
+$ lute check-project /tmp/nest5                                  -> ok, rc=0
+$ lute compile --all --project /tmp/nest5 -o /tmp/nest5out       -> 2 document(s), rc=0, NO warning
+$ jq -r '.commands[].lineId' /tmp/nest5out/inner/scenes/opening.lute.json
+outerguy.s09ep09.innerguy_0010          # the inner root would give innerguy.s01ep01.innerguy_0010
+```
+
+Both commands green, every `lineId` in the inner subtree rewritten, and nothing said — T1.10's
+headline sentence with a third cause and no warning at all. Fixed: `manifest_surface` now
+compares `defaults:` as well, and the message names which of the three surfaces differs. No
+manifest in `docs/examples` declares `defaults:`, so all four corpus baselines are unchanged.
+§7, the **D-S** row and the changelog are amended to the three-disjunct rule.
+
 ### 2. T3.10 — a mock's unknown key is still silently discarded · issue **2** · `TOOL-DEFECT`
 
 `0.10.0` gave `mocks/*.yaml` a required `file:` and gave `*.test.yaml` a closed key set. The
@@ -486,6 +556,24 @@ Positive controls prove both halves of the rule exist and simply do not meet: a 
 `error [E-TEST-KEY] unknown top-level key `selections` … (legal: accept, accepts, choose, events, expect, facts, file, state)`.
 The fix is mechanical — `E-TEST-KEY`'s legal-key list is the model and `E-MOCK-SUBJECT`
 proves the mock loader already has a diagnostic channel.
+
+**Fixed 2026-08-06.** The mock family's top-level key set is closed in `parse_mock_yaml`
+itself, so no consumer can skip it. The two sets differ by exactly one key, `expect:`, which
+is the harness's own and meaningless in a mock; both consts say so and a test asserts it.
+Unknown keys travel `E-TRACE-MOCK-PARSE` — the channel every other mock-grammar violation
+already uses — rather than minting a code the normative §13 table does not name.
+
+```
+$ lute trace scenes/cryobank.lute --mock mocks/bogus.yaml
+lute: mocks/bogus.yaml: [E-TRACE-MOCK-PARSE] unknown top-level key `selections` in a mock
+(legal: accept, accepts, choose, events, facts, file, state) (0.10.0 §8)
+rc=2                                            # was rc=0, "-> wakeToma (auto)"
+
+$ lute check-project .
+./mocks/bogus.yaml: error [E-TRACE-MOCK-PARSE] unknown top-level key `selections` in a mock …
+failed: . (18 file(s), 1 project-wide error(s), 13 project-wide warning(s))
+rc=1                                            # was rc=0, byte-identical to baseline
+```
 
 ### 3. T6.3 — `lute check <component>` with no project still prints a bare `ok` · issue **23** · `TOOL-DEFECT`
 
@@ -541,6 +629,22 @@ spellings for the underlying intent were probed and none exists (`unset`, `null`
 `0.10.0` shipped `E-TEST-KEY` and `E-TEST-NO-EXPECT` for #2 and did not touch the
 comparison. This is the protocol's highest-priority category — a diagnostic that says X when
 the problem is Y — and the fix is independent of everything #2 did ship.
+
+**Fixed 2026-08-06.** `ExpectResult.actual` is `Option<String>`; `None` is not in the value
+space, so it cannot compare equal to any expected literal and the sentinel is applied at
+render time only, never on a line that also prints the expected side. `--json` carries
+`"actual": null`. No grammar was invented for the underlying intent — the note names #19.
+
+```
+FAIL  probe/tests/t99.test.yaml  (probe/tests/../../scenes/cryobank.lute)
+      state run.shedPressure: expected "<never written>", but the path was never written
+      note: "<never written>" is how this report DISPLAYS an absent value, not a literal an
+      expectation can match; `expect:` has no "never written" form (legal keys: exit, state,
+      transcriptContains) — deferred with #19
+
+0 passed, 1 failed
+rc=1
+```
 
 ### 5. T9.10 — `expect:` still has exactly three keys · issue **2** · `TOOL-DEFECT`
 
@@ -649,6 +753,33 @@ still holds verbatim: *"The class is not closed: the next `lute init` writes the
 lines."* Mitigation that changes the severity and not the verdict: the sibling mock now
 errors in the same tree (`E-MOCK-SUBJECT`), so a project that has replaced the placeholder
 is no longer entirely green.
+
+**Fixed 2026-08-06 — templated, not deleted.** Four of the six commands name no document,
+cannot rot, and are the only onboarding the scaffold ships; deleting them to kill two bad
+lines costs four good ones, and a `<your-scene>` placeholder cannot be pasted and cannot lie.
+§8's `mocks/*.yaml` glob is chosen and does not reach a README, so the README has to be
+unable to rot rather than checked for rot.
+
+```
+$ grep -c 'opening.lute' README.md          # the generated one
+0
+$ sed -n '16,22p' README.md
+# Check one document:
+lute check scenes/<your-scene>.lute
+
+# Preview a scene against a trace mock. Keep the mock's own `file:` pointed at
+# the scene you pass here — `lute check-project` reports a mock whose subject
+# does not exist, and `lute trace` refuses a mock that names a different one:
+lute trace scenes/<your-scene>.lute --mock mocks/<your-mock>.yaml
+```
+
+End to end on a fresh `lute init` of both templates, then after renaming the placeholder
+scene and pointing the mock's `file:` at it: `check-project .` `ok`, `scenario .` rc=0,
+`lute check scenes/my-scene.lute` `ok`, `lute trace scenes/my-scene.lute --mock
+mocks/playthrough.yaml` `trace complete`, all rc=0. `init_readme_names_no_document_that_can_rot`
+asserts both halves over both templates: no command may name a `.lute`/`.yaml` outside a
+`<placeholder>`, and every command runnable as written must exit 0 in the project just
+scaffolded.
 
 ### 9–12. The #17 `lute context` carve-out — T1.6, T3.7, T5.3, T9.15 · all `TOOL-DEFECT`
 

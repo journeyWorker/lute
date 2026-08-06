@@ -427,3 +427,79 @@ fn check_project_never_reports_project_inert() {
     assert_eq!(out.status.code(), Some(0), "{text}");
     assert!(!text.contains("W-PROJECT-INERT"), "the nearest manifest governs:\n{text}");
 }
+
+/// T1.10's headline sentence with a third cause, found while re-investigating
+/// it: a nested manifest whose ONLY difference from the invoked root is its
+/// `defaults:` block. D-S names the capability snapshot and `identity:`; §6
+/// minted `defaults:` in the same release and none of the six manifests D-S
+/// was measured against declares one, so it was never in the sample. It is
+/// the surface where inertness costs the MOST — every `lineId` in the inner
+/// subtree changes and both commands stay at exit 0.
+#[test]
+fn compile_all_warns_for_a_nested_manifest_that_differs_only_in_defaults() {
+    let dir = temp_dir("project-inert-defaults");
+    for sub in ["scenes", "same/scenes", "differs/scenes"] {
+        std::fs::create_dir_all(dir.join(sub)).unwrap();
+    }
+    let outer = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+                 defaults:\n  kind: scene\n  character: outerguy\n  season: 9\n  episode: 9\n";
+    std::fs::write(dir.join("lute.project.yaml"), outer).unwrap();
+    // Same capability, same (absent) identity, SAME defaults: still silent.
+    std::fs::write(dir.join("same/lute.project.yaml"), outer).unwrap();
+    // Same capability, same (absent) identity, DIFFERENT defaults.
+    std::fs::write(
+        dir.join("differs/lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+         defaults:\n  kind: scene\n  character: innerguy\n  season: 1\n  episode: 1\n",
+    )
+    .unwrap();
+    // Frontmatter carrying NOTHING the manifest supplies, so the resolved
+    // key is entirely the governing root's.
+    let scene = |c: &str| format!("---\ntitle: T\n---\n\n## S\n\n@{c}{{code=\"0010\"}}: hi\n");
+    std::fs::write(dir.join("scenes/a.lute"), scene("outerguy")).unwrap();
+    std::fs::write(dir.join("same/scenes/b.lute"), scene("outerguy")).unwrap();
+    std::fs::write(dir.join("differs/scenes/c.lute"), scene("innerguy")).unwrap();
+
+    let out = std::process::Command::new(BIN)
+        .args([
+            "compile",
+            "--all",
+            "--project",
+            dir.to_str().unwrap(),
+            "-o",
+            dir.join("out").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(
+        text.contains("W-PROJECT-INERT") && text.contains("differs/lute.project.yaml"),
+        "a `defaults:`-only difference is still a difference:\n{text}"
+    );
+    assert!(
+        text.contains("`defaults:` block"),
+        "the message must name WHICH surface differs, as the other two do:\n{text}"
+    );
+    assert!(
+        !text.contains("same/lute.project.yaml"),
+        "identical `defaults:` is not a signal (D-S's narrowing survives):\n{text}"
+    );
+
+    // What the warning is ABOUT, measured: the inner document's key is the
+    // OUTER root's defaults, not its own root's. Without this the test would
+    // pass against a warning that fired for no reason.
+    let art = std::fs::read_to_string(dir.join("out/differs/scenes/c.lute.json")).unwrap();
+    assert!(
+        art.contains("outerguy.s09ep09.innerguy_0010"),
+        "the inner subtree is keyed by the outer root: {art}"
+    );
+    assert!(
+        !art.contains("innerguy.s01ep01."),
+        "its own root's defaults are not applied — that is the inertness: {art}"
+    );
+}
