@@ -101,6 +101,15 @@ fn closed_key_violations(map: &serde_yaml::Mapping) -> Vec<String> {
     out
 }
 
+/// How this report DISPLAYS a state path the walk never wrote. It is a
+/// RENDERING of "there is no value here", not a member of the value space —
+/// which is exactly what T9.9 got wrong: the sentinel was substituted for the
+/// absent value before the miss line was built, so a test expecting the
+/// sentinel's own text printed `expected "<never written>", got "<never
+/// written>"` while correctly failing. Two identical strings declared
+/// different.
+const NEVER_WRITTEN: &str = "<never written>";
+
 /// One declared expectation's verdict, carrying enough to render both the
 /// human miss line and the `--json` entry.
 struct ExpectResult {
@@ -108,7 +117,12 @@ struct ExpectResult {
     /// A stable label for the checked thing (e.g. the state path, or empty).
     subject: String,
     expected: String,
-    actual: String,
+    /// The observed value, or `None` when there is no value to observe — a
+    /// `state:` path the walk never wrote. `None` is not a string and so can
+    /// never compare equal to an expected literal, whatever that literal
+    /// spells; [`NEVER_WRITTEN`] is applied at RENDER time only, and never on
+    /// a line that also prints the expected side.
+    actual: Option<String>,
     passed: bool,
 }
 
@@ -394,7 +408,7 @@ fn run_one_test(
                 kind: "exit",
                 subject: String::new(),
                 expected: want.to_string(),
-                actual: exit_str.to_string(),
+                actual: Some(exit_str.to_string()),
                 passed: want == exit_str,
             });
         }
@@ -408,11 +422,11 @@ fn run_one_test(
                         kind: "transcriptContains",
                         subject: String::new(),
                         expected: sub.to_string(),
-                        actual: if transcript.contains(sub) {
+                        actual: Some(if transcript.contains(sub) {
                             "present".to_string()
                         } else {
                             "absent".to_string()
-                        },
+                        }),
                         passed: transcript.contains(sub),
                     });
                 }
@@ -430,8 +444,11 @@ fn run_one_test(
                     kind: "state",
                     subject: path.to_string(),
                     expected: want.clone(),
-                    actual: actual.clone().unwrap_or_else(|| "<never written>".to_string()),
+                    // T9.9: the absent case stays absent all the way to the
+                    // renderer. Substituting a display string here is what
+                    // let a miss line print its two sides identically.
                     passed: actual.as_deref() == Some(want.as_str()),
+                    actual,
                 });
             }
         }
@@ -613,19 +630,41 @@ fn print_human(
         }
         if !r.passed {
             for e in r.expectations.iter().filter(|e| !e.passed) {
-                match e.kind {
-                    "transcriptContains" => println!(
-                        "      transcriptContains {:?}: {} (expected present)",
-                        e.expected, e.actual
+                match (e.kind, e.actual.as_deref()) {
+                    ("transcriptContains", Some(actual)) => println!(
+                        "      transcriptContains {:?}: {actual} (expected present)",
+                        e.expected
                     ),
-                    "state" => println!(
+                    ("state", Some(actual)) => println!(
                         "      state {}: expected {:?}, got {:?}",
-                        e.subject, e.expected, e.actual
+                        e.subject, e.expected, actual
                     ),
-                    "exit" => println!(
-                        "      exit: expected {}, got {}",
-                        e.expected, e.actual
-                    ),
+                    // T9.9: there is no observed value to print. The old line
+                    // printed the sentinel on the `got` side, so a test whose
+                    // expected literal happened to BE the sentinel's text
+                    // rendered `expected "<never written>", got "<never
+                    // written>"` — a difference whose two sides were byte
+                    // identical.
+                    ("state", None) => {
+                        println!(
+                            "      state {}: expected {:?}, but the path was never written",
+                            e.subject, e.expected
+                        );
+                        if e.expected == NEVER_WRITTEN {
+                            // Do not invent grammar here: `expect:`'s key set
+                            // is closed and the new expectation kinds are
+                            // deferred with #19 (D-B). Name the gap instead.
+                            println!(
+                                "      note: {NEVER_WRITTEN:?} is how this report DISPLAYS an \
+                                 absent value, not a literal an expectation can match; `expect:` \
+                                 has no \"never written\" form (legal keys: {}) — deferred with #19",
+                                TEST_EXPECT_KEYS.join(", ")
+                            );
+                        }
+                    }
+                    ("exit", Some(actual)) => {
+                        println!("      exit: expected {}, got {actual}", e.expected)
+                    }
                     _ => {}
                 }
             }
