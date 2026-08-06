@@ -164,16 +164,62 @@ fn scalar_to_text(v: &serde_yaml::Value) -> Option<String> {
     }
 }
 
-/// Parse a `--mock <file.yaml>` document (dsl 0.4.0 §4.3): `state:` (a map
-/// of path -> literal), `facts:` (a list of quoted ground-fact-pattern
-/// strings, the `0.3 §4` `facts:` shape), `choose:` (a map of branch/hub id
-/// -> one choice id or a list of them), `events:` (a list of event names) —
-/// every key optional; an absent/empty/`null` document yields an empty
-/// [`MockSet`]. Every literal/pattern/id is carried as raw TEXT, never
-/// resolved against a schema here — that is [`validate`]'s job, run AFTER
-/// [`merge`]. Malformed YAML or a shape violating this contract is `Err`;
-/// this function never panics.
+/// The complete legal top-level key set of a `--mock` / `mocks/*.yaml`
+/// document — the five surfaces [`parse_mock_yaml`] reads (`accept`/`accepts`
+/// are two spellings of one key) plus `file:`, the subject key **D-AC** made
+/// required.
+///
+/// **CLOSED as of 0.10.0 (#2(a), D-B).** D-B's rationale names this exact
+/// failure — *"a mis-keyed `choose:` currently passes while running the arm it
+/// excludes"* — and 0.10.0 shipped the closed set for `*.test.yaml` only, so a
+/// mock spelling `selections:` was still dropped in silence and `lute trace`
+/// still auto-picked the arm the file excluded, at exit 0.
+///
+/// **The two families' key sets are NOT identical, and differ by exactly one
+/// key.** `*.test.yaml`'s set (`lute-cli/src/testcmd.rs::TEST_TOP_KEYS`) is
+/// this one plus `expect:`, the harness's own; `expect:` in a `mocks/*.yaml`
+/// is meaningless — nothing runs it — so it is an unknown key here. That one
+/// difference is asserted by `testcmd.rs`'s
+/// `the_test_key_set_is_the_mock_key_set_plus_expect`.
+pub const MOCK_TOP_KEYS: &[&str] =
+    &["accept", "accepts", "choose", "events", "facts", "file", "state"];
+
+/// Parse a `--mock <file.yaml>` document (dsl 0.4.0 §4.3, 0.10.0 §8):
+/// `state:` (a map of path -> literal), `facts:` (a list of quoted
+/// ground-fact-pattern strings, the `0.3 §4` `facts:` shape), `choose:` (a map
+/// of branch/hub id -> one choice id or a list of them), `events:` (a list of
+/// event names) — every key optional; an absent/empty/`null` document yields
+/// an empty [`MockSet`]. Every literal/pattern/id is carried as raw TEXT,
+/// never resolved against a schema here — that is [`validate`]'s job, run
+/// AFTER [`merge`]. Malformed YAML or a shape violating this contract is
+/// `Err`; this function never panics.
+///
+/// The top-level key set is **CLOSED** ([`MOCK_TOP_KEYS`]) — an unknown key is
+/// `E-TRACE-MOCK-PARSE`, the same channel every other mock-grammar violation
+/// already travels, so the diagnostic reaches `lute trace --mock`,
+/// `lute run --mock`, `check-project`'s `mocks/*.yaml` pass (§8) and the wasm
+/// preview without a new code and without a new wiring point. Enforcing it
+/// HERE rather than at each call site is the point: a mock document cannot be
+/// consumed anywhere without the gate.
 pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
+    parse_mock_document(text, Some(MOCK_TOP_KEYS))
+}
+
+/// [`parse_mock_yaml`]'s surfaces WITHOUT the closed-key gate.
+///
+/// One caller, and it is the reason the split exists: `lute test` reads a
+/// `*.test.yaml` through this same parser, and that family's legal set is
+/// [`MOCK_TOP_KEYS`] **plus `expect:`**. It also reports a key violation
+/// differently — a per-test FAILURE naming *every* offender in one run
+/// (`E-TEST-KEY`, exit 1, D-B), not a first-offender parse error (exit 2) —
+/// so it cannot delegate the gate here even for the keys the sets share.
+pub fn parse_mock_surfaces(text: &str) -> Result<MockSet, Diagnostic> {
+    parse_mock_document(text, None)
+}
+
+/// The one mock parser. `legal` is `Some` for the closed mock grammar and
+/// `None` for `lute test`'s open read; see the two public wrappers.
+fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Diagnostic> {
     let span = synthetic_span();
     let value: serde_yaml::Value = serde_yaml::from_str(text)
         .map_err(|e| diag(E_TRACE_MOCK_PARSE, format!("malformed `--mock` YAML: {e}"), span))?;
@@ -189,6 +235,36 @@ pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
             span,
         ));
     };
+
+    // #2(a)/D-B, extended to the mock family: an unknown top-level key is an
+    // ERROR, not a silent drop. Checked before the surfaces so that a
+    // `selections:` typo is reported as the typo it is, rather than as
+    // whatever the surviving surfaces happen to say next.
+    if let Some(legal) = legal {
+        for (k, _) in &top {
+            let Some(key) = k.as_str() else {
+                return Err(diag(
+                    E_TRACE_MOCK_PARSE,
+                    "a mock's top-level keys must be strings (dsl 0.4.0 §4.3)".to_string(),
+                    span,
+                ));
+            };
+            if legal.contains(&key) {
+                continue;
+            }
+            let sugg = lute_manifest::suggest::nearest(key, legal.iter().copied(), 2)
+                .map(|k| format!(" — did you mean `{k}`?"))
+                .unwrap_or_default();
+            return Err(diag(
+                E_TRACE_MOCK_PARSE,
+                format!(
+                    "unknown top-level key `{key}` in a mock{sugg} (legal: {}) (0.10.0 §8)",
+                    legal.join(", ")
+                ),
+                span,
+            ));
+        }
+    }
 
     let mut mocks = MockSet::default();
 

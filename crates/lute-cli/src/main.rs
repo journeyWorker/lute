@@ -4478,14 +4478,14 @@ fn run_trace(
                     // A malformed `--mock` YAML document is a file-level I/O/
                     // format failure, not a schema-validation refusal — `2`,
                     // matching `run_check`'s/`run_compile`'s read-failure tier.
-                    eprintln!(
-                        "lute: {}:{}:{}: [{}] {}",
-                        path.display(),
-                        d.span.line,
-                        d.span.column,
-                        d.code,
-                        d.message
-                    );
+                    //
+                    // Rendered WITHOUT a line:column (D-AB). Every mock
+                    // diagnostic carries `synthetic_span()`'s all-zeros, so
+                    // the old `{line}:{column}` printed `mock.yaml:0:0` — a
+                    // position that does not exist, which is the exact defect
+                    // §8 opens with. The subject arm above already renders
+                    // this way; now the grammar arm does too.
+                    eprintln!("lute: {}: [{}] {}", path.display(), d.code, d.message);
                     return ExitCode::from(2);
                 }
             }

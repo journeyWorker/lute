@@ -1888,3 +1888,53 @@ fn the_pass_reaches_mocks_yaml_and_nothing_else() {
     assert_eq!(out.status.code(), Some(0), "{text}");
     assert!(!text.contains("E-MOCK-SUBJECT"), "{text}");
 }
+
+/// T3.10 / #2(a) / D-B, extended to the mock family (0.10.0 §8): a
+/// `mocks/*.yaml` mis-keying a surface is an ERROR from `check-project`, not
+/// a silent drop. Before this, the identical file was `ok: … (N file(s), 0
+/// project-wide warning(s))` at exit 0, byte-identical to a tree with no
+/// mock in it at all.
+#[test]
+fn a_mis_keyed_mock_surface_is_reported_by_check_project() {
+    let dir = temp_dir("mock-closed-keys");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(&dir, "world.schema.yaml", "state:\n  run.pressure: { type: number, default: 0 }\n");
+    write(
+        &dir,
+        "scenes/s.lute",
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nuses: [../world.schema.yaml]\n---\n\
+         \n## S\n\n::set{ run.pressure = 1 }\n@a: hi\n",
+    );
+    std::fs::create_dir_all(dir.join("mocks")).unwrap();
+    let mock = dir.join("mocks/play.yaml");
+
+    // The good file first: this is what makes the red below mean something.
+    // A gate that reddened every mock would pass the assertions after it.
+    std::fs::write(&mock, "file: ../scenes/s.lute\nstate:\n  run.pressure: 2\n").unwrap();
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(0), "a well-keyed mock stays green:\n{text}");
+
+    // Now mis-key exactly one surface.
+    std::fs::write(&mock, "file: ../scenes/s.lute\nselections:\n  h: a\n").unwrap();
+    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(text.contains("E-TRACE-MOCK-PARSE") && text.contains("`selections`"), "{text}");
+    assert!(
+        text.contains("mocks/play.yaml") && !text.contains("mocks/play.yaml:0:0"),
+        "anchored at the mock, with no fabricated position (D-AB):\n{text}"
+    );
+}
