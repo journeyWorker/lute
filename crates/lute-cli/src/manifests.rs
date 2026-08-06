@@ -162,16 +162,33 @@ pub const W_PROJECT_INERT: &str = "W-PROJECT-INERT";
 /// plugins. That is the comparison D-S names: two MANIFESTS, not two
 /// documents. Resolving with a document's frontmatter instead would fold in
 /// scene-local plugin options and measure the wrong thing.
+///
+/// Three surfaces, because §6.5 says a document resolves exactly three things
+/// through its governing manifest — "the document, then the governing
+/// manifest, then nothing": the capability snapshot, the `identity:`
+/// templates, and the `defaults:` block. D-S names the first two; `defaults:`
+/// was minted by §6 in this same release and none of the six manifests D-S
+/// was measured against declares one, so it was never in the sample. It
+/// belongs here on D-S's own terms — the rule fires "where it would have
+/// mattered", and a nested `defaults:` matters MORE than the two named: with
+/// two roots supplying different `season:`/`character:` defaults, every
+/// `lineId` in the inner subtree changes under `--all` and BOTH commands stay
+/// at exit 0, which is T1.10's headline sentence with a third cause.
 fn manifest_surface(
     cfg: Option<&ProjectConfig>,
-) -> (String, lute_manifest::project::IdentityTemplates) {
+) -> (
+    String,
+    lute_manifest::project::IdentityTemplates,
+    lute_manifest::project::MetaDefaults,
+) {
     let (snapshot, _) = lute_manifest::project::resolve_document_snapshot(
         cfg,
         None,
         &std::collections::BTreeMap::new(),
     );
     let identity = cfg.map(|c| c.identity.clone()).unwrap_or_default();
-    (snapshot.version, identity)
+    let defaults = cfg.map(|c| c.defaults.clone()).unwrap_or_default();
+    (snapshot.version, identity, defaults)
 }
 
 /// Push `W-PROJECT-INERT` onto every verdict whose manifest is not
@@ -183,20 +200,20 @@ pub fn mark_inert_under(verdicts: &mut [ManifestVerdict], governing: &Path) {
         // The invoked root has no manifest of its own; nothing to compare to.
         return;
     };
-    let (root_version, root_identity) = manifest_surface(root.config.as_ref());
+    let (root_version, root_identity, root_defaults) = manifest_surface(root.config.as_ref());
     for v in verdicts.iter_mut() {
         if v.dir == governing || v.config.is_none() {
             continue;
         }
-        let (version, identity) = manifest_surface(v.config.as_ref());
-        let differs = version != root_version || identity != root_identity;
-        if !differs {
-            continue;
-        }
+        let (version, identity, defaults) = manifest_surface(v.config.as_ref());
         let why = if version != root_version {
             "a different capability snapshot"
-        } else {
+        } else if identity != root_identity {
             "different `identity:` templates"
+        } else if defaults != root_defaults {
+            "a different `defaults:` block"
+        } else {
+            continue;
         };
         v.diags.push(as_diagnostic(
             W_PROJECT_INERT,
