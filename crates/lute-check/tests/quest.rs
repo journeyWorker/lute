@@ -17,6 +17,7 @@ fn run(text: &str) -> CheckResult {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
 }
@@ -334,6 +335,7 @@ fn codes_with(text: &str, snap: lute_manifest::snapshot::CapabilitySnapshot) -> 
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input).diagnostics.into_iter().map(|d| d.code).collect()
 }
@@ -472,6 +474,7 @@ fn codes_with_imports(text: &str, imports: SchemaImports) -> Vec<String> {
         mode: Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input).diagnostics.into_iter().map(|d| d.code).collect()
 }
@@ -504,4 +507,112 @@ fn no_import_reachable_collision_is_clean() {
         imports,
     );
     assert!(!cs.contains(&"E-QUEST-ID-DUP".to_string()), "{cs:?}");
+}
+
+// --- 0.10.0 backlog #11 / T9.1: E-META-UNKNOWN-KEY did-you-mean ------------
+
+/// `codes()`'s sibling: the (code, message) pairs, for the tests below that
+/// assert on suggestion TEXT rather than on which code fired.
+fn diagnostics(text: &str) -> Vec<(String, String)> {
+    run(text)
+        .diagnostics
+        .into_iter()
+        .map(|d| (d.code, d.message))
+        .collect()
+}
+
+/// #11 / T9.1: `after:` in QUEST frontmatter is `E-META-UNKNOWN-KEY` spanning
+/// the whole meta block at 1:1, while `after=` is legal two lines below in the
+/// same file. The checker holds both candidates: `after` is a core key on the
+/// sibling kind, and a legal attribute in this one — so the generic
+/// edit-distance suggestion (distance 0 against a key that is not in this
+/// kind's candidate set) says nothing at all. Name the attribute form.
+#[test]
+fn meta_unknown_key_after_on_a_quest_suggests_the_attribute_form() {
+    let src = "---\nkind: quest\nafter: 'visited(\"x.s01ep01\")'\n---\n\
+               \n<quest id=\"q\" title=\"Q\" start=\"true\">\n\
+               <objective id=\"o\" title=\"O\" done=\"true\"/>\n</quest>\n";
+    let (_, msg) = diagnostics(src)
+        .into_iter()
+        .find(|(c, _)| c == "E-META-UNKNOWN-KEY")
+        .expect("`after:` is not a quest frontmatter key");
+    assert!(
+        msg.contains("`after=`"),
+        "the attribute form must be named: {}",
+        msg
+    );
+    assert!(
+        msg.contains("<quest"),
+        "and the element it goes on: {}",
+        msg
+    );
+}
+
+/// The generic case keeps the ordinary edit-distance suggestion, so the
+/// `after` arm is a special case on top of a rule, not instead of one.
+#[test]
+fn meta_unknown_key_near_a_core_key_suggests_that_key() {
+    let src = "---\nkind: quest\nplugin: [x]\n---\n\
+               \n<quest id=\"q\" title=\"Q\" start=\"true\">\n\
+               <objective id=\"o\" title=\"O\" done=\"true\"/>\n</quest>\n";
+    let (_, msg) = diagnostics(src)
+        .into_iter()
+        .find(|(c, _)| c == "E-META-UNKNOWN-KEY")
+        .expect("`plugin` is not a core key");
+    assert!(msg.contains("did you mean `plugins`"), "{}", msg);
+}
+
+/// And a scene's candidate set includes the scene-only keys, so a typo'd
+/// `episode` is suggested there.
+#[test]
+fn meta_unknown_key_near_a_scene_only_key_suggests_that_key() {
+    let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisod: 1\n---\n\
+               \n## One\n\n@narrator: hi.\n";
+    let (_, msg) = diagnostics(src)
+        .into_iter()
+        .find(|(c, _)| c == "E-META-UNKNOWN-KEY")
+        .expect("`episod` is not a core key");
+    assert!(msg.contains("did you mean `episode`"), "{}", msg);
+}
+
+/// A wrong suggestion is worse than none: a key nothing is close to draws the
+/// bare message. The suggestion is advisory, never invented.
+#[test]
+fn meta_unknown_key_far_from_every_core_key_suggests_nothing() {
+    let src = "---\nkind: quest\ncartography: 1\n---\n\
+               \n<quest id=\"q\" title=\"Q\" start=\"true\">\n\
+               <objective id=\"o\" title=\"O\" done=\"true\"/>\n</quest>\n";
+    let (_, msg) = diagnostics(src)
+        .into_iter()
+        .find(|(c, _)| c == "E-META-UNKNOWN-KEY")
+        .expect("`cartography` is not a core key");
+    assert!(
+        !msg.contains("did you mean"),
+        "nothing is within two edits of `cartography`: {}",
+        msg
+    );
+}
+
+/// The `after` arm is QUEST-only in both directions: `after:` is a legal
+/// SCENE frontmatter key and must draw no diagnostic at all there.
+#[test]
+fn after_stays_a_legal_scene_frontmatter_key() {
+    let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+               after: 'visited(\"x.s01ep01\")'\n---\n\n## One\n\n@narrator: hi.\n";
+    let cs = codes(src);
+    assert!(!cs.contains(&"E-META-UNKNOWN-KEY".to_string()), "{cs:?}");
+}
+
+/// And a scene-only key that is NOT `after` still gets the plain rejection on
+/// a quest — the arm does not leak onto its neighbours.
+#[test]
+fn meta_unknown_key_scene_triad_on_a_quest_names_no_attribute() {
+    let src = "---\nkind: quest\ncharacter: x\n---\n\
+               \n<quest id=\"q\" title=\"Q\" start=\"true\">\n\
+               <objective id=\"o\" title=\"O\" done=\"true\"/>\n</quest>\n";
+    let (_, msg) = diagnostics(src)
+        .into_iter()
+        .find(|(c, _)| c == "E-META-UNKNOWN-KEY")
+        .expect("`character` is scene-only");
+    assert!(!msg.contains("`after=`"), "{}", msg);
 }

@@ -40,12 +40,31 @@
 //! `lineId` is `null` exactly when it cannot be reproduced faithfully: a line
 //! with no authored `code` (the addressing pass BACK-FILLS one, and that
 //! back-fill is a property of the post-expansion command stream, not of the
-//! source text), or a document with no resolvable prefix (a component/schema
-//! fragment). Run `lute tag` first and those become real ids — which is exactly
-//! what the untagged-line advisory below already tells you to do.
+//! source text). Run `lute tag` first and those become real ids — which is
+//! exactly what the untagged-line advisory below already tells you to do, and
+//! it is now true of every null row without exception.
 //!
-//! The export array is sorted by (`file`, byte offset) so it is byte-identical
-//! across runs regardless of directory-iteration order. `--format json`
+//! ### `::use` is expanded before extraction (0.10.0, #3)
+//! A component has no frontmatter and therefore no `{prefix}`, so exporting
+//! its lines under their own file produced rows with `lineId: null` that
+//! carried a `code` — rows `lute tag` could never fix, which `loc import`
+//! skipped and which `compile --locales` then reported as `W-L10N-MISSING`
+//! under a caller-derived id no export contained. Adopting the language's
+//! only reuse mechanism removed a line from the localization pipeline.
+//!
+//! The walk therefore runs [`lute_compile::normalize::normalize_document`]
+//! first — the same pass `lute trace` and `lute compile` run — so a
+//! component's lines are extracted once PER CALL SITE, under the caller's
+//! prefix and with its `@param`s bound. The component FILE and line ride
+//! along in a `source` field, so a TMS dedupes identical source text and the
+//! translator still sees the string once. A `component:`-declaring file
+//! contributes no rows of its own. `expand_document` is deliberately NOT run:
+//! `{{…}}` interpolation is what a translator must see intact.
+//!
+//! The export array is sorted by (`file`, the `::use` site's byte offset in
+//! the CALLER, the unit's own byte offset) so it is byte-identical across
+//! runs regardless of directory-iteration order, and a whole expansion sorts
+//! where its invocation sits. `--format json`
 //! (default) emits a stable JSON array; `--format csv` emits an RFC-4180 file
 //! (header row, minimal quoting). An unknown format is a usage error (exit 2).
 //! `-o <FILE>` writes the export there; otherwise it goes to stdout. When any
@@ -79,7 +98,7 @@ use lute_check::meta::canonical_episode_key;
 use lute_compile::locale::LocaleBundle;
 use lute_core_span::Severity;
 use lute_manifest::project::{load_project, IdentityTemplates};
-use lute_syntax::ast::{AttrValue, Attr, Choice, Document, Node, Arm};
+use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, Document, Node};
 
 /// One translatable unit extracted from a document, carrying the byte offset
 /// used to sort the export deterministically.
@@ -88,6 +107,8 @@ enum Unit {
         file: String,
         line: u32,
         byte: usize,
+        outer_byte: usize,
+        source: Option<(String, u32)>,
         /// The compile-stable content join, or `None` when it cannot be
         /// reproduced from source alone (module doc, "`lineId`").
         line_id: Option<String>,
@@ -99,6 +120,8 @@ enum Unit {
         file: String,
         line: u32,
         byte: usize,
+        outer_byte: usize,
+        source: Option<(String, u32)>,
         line_id: Option<String>,
         key: String,
         label: String,
@@ -116,17 +139,41 @@ impl Unit {
             Unit::Line { byte, .. } | Unit::Choice { byte, .. } => *byte,
         }
     }
+    /// Primary sort key: the byte offset in the CALLER. For an authored unit
+    /// this is its own offset; for one expanded out of a component it is the
+    /// `::use` site's, so the whole expansion sorts where the invocation is
+    /// and [`Unit::byte`] — an offset into the COMPONENT file, which would
+    /// otherwise interleave nonsensically among the caller's — only breaks
+    /// ties within it.
+    fn outer_byte(&self) -> usize {
+        match self {
+            Unit::Line { outer_byte, .. } | Unit::Choice { outer_byte, .. } => *outer_byte,
+        }
+    }
+    /// The component file and line this unit was expanded out of, if any.
+    fn source(&self) -> Option<&(String, u32)> {
+        match self {
+            Unit::Line { source, .. } | Unit::Choice { source, .. } => source.as_ref(),
+        }
+    }
 }
+
+/// The component region a walk is currently inside: the component's file path
+/// and the byte offset of the `::use` site IN THE CALLER (the sentinel's own
+/// span, `normalize.rs:290-296`). `None` outside any region.
+type Region<'a> = Option<(&'a str, usize)>;
 
 /// Everything one document's walk needs to stamp a `lineId`: the display path,
 /// the identity PREFIX in force for the sub-tree being walked (`None` when the
-/// document has none — a component/schema fragment), and the project's
-/// [`IdentityTemplates`]. Carried by reference so the recursive walk allocates
-/// nothing per node.
+/// document has none — a schema fragment), the project's
+/// [`IdentityTemplates`], and the resolved component table the
+/// `__component-begin` sentinels name. Carried by reference so the recursive
+/// walk allocates nothing per node.
 struct Cx<'a> {
     file: &'a str,
     prefix: Option<&'a str>,
     templates: &'a IdentityTemplates,
+    components: &'a lute_check::ComponentSet,
 }
 
 /// A line's authored stable `code` (dsl §12), trimmed to the exact string the
@@ -157,24 +204,61 @@ fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
 /// identity is the STRUCTURAL `{prefix}.{branchOrHubId}.{optionId}` the
 /// addressing pass writes verbatim (`address.rs`'s `Choice`/`Hub` arms) — dsl
 /// 0.8.0 §9 templates the LINE join only, never this one.
-fn walk_choice(cx: &Cx<'_>, group_id: &str, choice: &Choice, out: &mut Vec<Unit>) {
+fn walk_choice<'a>(
+    cx: &Cx<'a>,
+    group_id: &str,
+    choice: &Choice,
+    region: Region<'a>,
+    out: &mut Vec<Unit>,
+) {
     let key = format!("{group_id}.{}", choice.id);
     out.push(Unit::Choice {
         file: cx.file.to_string(),
         line: choice.span.line,
         byte: choice.span.byte_start,
+        outer_byte: region.map_or(choice.span.byte_start, |(_, at)| at),
+        source: region.map(|(f, _)| (f.to_string(), choice.span.line)),
         line_id: cx.prefix.map(|p| format!("{p}.{key}")),
         key,
         label: choice.label.clone(),
     });
-    walk_nodes(cx, &choice.body, out);
+    walk_nodes(cx, &choice.body, region, out);
 }
 
 /// Recursively collect translatable units from a node stream in document order
 /// (mirrors `lute-check`'s `collect_lines` descent).
-fn walk_nodes(cx: &Cx<'_>, nodes: &[Node], out: &mut Vec<Unit>) {
+///
+/// `region` is the component expansion the stream sits inside, if any. The
+/// stream is post-`normalize_document`, so an expansion appears INLINE as
+/// `__component-begin`, the bound body, `__component-end` — siblings in this
+/// very list, and nestable, hence the local stack rather than a recursion.
+/// Every other descent forwards `region` unchanged.
+fn walk_nodes<'a>(cx: &Cx<'a>, nodes: &[Node], region: Region<'a>, out: &mut Vec<Unit>) {
+    let mut region = region;
+    let mut stack: Vec<Region<'a>> = Vec::new();
     for node in nodes {
         match node {
+            Node::Directive(d) if d.tag == lute_compile::normalize::COMPONENT_BEGIN => {
+                let name = attr_str(&d.attrs, "component").unwrap_or("");
+                // `'a`-bound, never borrowed from `nodes`: the fallback is
+                // a literal, not `name`, so the region outlives this node.
+                let src: &'a str = cx
+                    .components
+                    .table
+                    .get(name)
+                    .and_then(|def| def.src.to_str())
+                    .unwrap_or("<unresolved component>");
+                stack.push(region);
+                // The FILE is the innermost component — that is where the line
+                // is written. The OFFSET stays the outermost `::use` site,
+                // because only that one is an offset into the caller; a nested
+                // `::use`'s span points into the enclosing component file and
+                // would sort the inner expansion nowhere near its invocation.
+                region = Some((src, region.map_or(d.span.byte_start, |(_, at)| at)));
+            }
+            Node::Directive(d) if d.tag == lute_compile::normalize::COMPONENT_END => {
+                region = stack.pop().flatten();
+            }
             Node::Line(l) => {
                 let code = line_code(&l.attrs);
                 // Both halves must be known: an untagged line's code is
@@ -190,6 +274,11 @@ fn walk_nodes(cx: &Cx<'_>, nodes: &[Node], out: &mut Vec<Unit>) {
                     file: cx.file.to_string(),
                     line: l.span.line,
                     byte: l.span.byte_start,
+                    outer_byte: region.map_or(l.span.byte_start, |(_, at)| at),
+                    // The node is a CLONE of the component's own, so its span
+                    // is the component file's position — exactly the line
+                    // `source` wants.
+                    source: region.map(|(f, _)| (f.to_string(), l.span.line)),
                     line_id,
                     code,
                     speaker: l.speaker.clone(),
@@ -198,26 +287,26 @@ fn walk_nodes(cx: &Cx<'_>, nodes: &[Node], out: &mut Vec<Unit>) {
             }
             Node::Branch(b) => {
                 for choice in &b.choices {
-                    walk_choice(cx, &b.id, choice, out);
+                    walk_choice(cx, &b.id, choice, region, out);
                 }
             }
             Node::Hub(h) => {
                 let id = attr_str(&h.attrs, "id").unwrap_or("");
                 for choice in &h.choices {
-                    walk_choice(cx, id, choice, out);
+                    walk_choice(cx, id, choice, region, out);
                 }
             }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            walk_nodes(cx, body, out)
+                            walk_nodes(cx, body, region, out)
                         }
                     }
                 }
             }
-            Node::Objective(o) => walk_nodes(cx, &o.body, out),
-            Node::On(o) => walk_nodes(cx, &o.body, out),
+            Node::Objective(o) => walk_nodes(cx, &o.body, region, out),
+            Node::On(o) => walk_nodes(cx, &o.body, region, out),
             Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
             Node::Assert(_) | Node::Retract(_) => {}
         }
@@ -254,24 +343,43 @@ fn scene_prefix(doc: &Document) -> Option<String> {
 /// identity scope); each `<quest>` is its OWN scope prefixed by its id (IR
 /// addendum §4) — mirroring `address.rs`'s two `ShotRecords.prefix` callers
 /// exactly.
-fn document_units(file: &str, doc: &Document, templates: &IdentityTemplates, out: &mut Vec<Unit>) {
+fn document_units(
+    file: &str,
+    doc: &Document,
+    templates: &IdentityTemplates,
+    components: &lute_check::ComponentSet,
+    out: &mut Vec<Unit>,
+) {
     let scene = scene_prefix(doc);
     let cx = Cx {
         file,
         prefix: scene.as_deref(),
         templates,
+        components,
     };
     for shot in &doc.shots {
-        walk_nodes(&cx, &shot.body, out);
+        walk_nodes(&cx, &shot.body, None, out);
     }
     for quest in &doc.quests {
         let cx = Cx {
             file,
             prefix: Some(&quest.id),
             templates,
+            components,
         };
-        walk_nodes(&cx, &quest.body, out);
+        walk_nodes(&cx, &quest.body, None, out);
     }
+}
+
+/// A component declaration file (`component: <name>` in its frontmatter). It
+/// has no `{character}.{episodeId}` triad and therefore no identity prefix,
+/// so it is not a document for export purposes — its lines are exported once
+/// per `::use` expansion, under the caller's prefix (#3, T6.10).
+fn is_component_document(doc: &Document) -> bool {
+    serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
+        .ok()
+        .and_then(|v| v.get("component").cloned())
+        .is_some()
 }
 
 /// The `identity:` templates (dsl 0.8.0 §9) in force for `root`, loaded once
@@ -312,14 +420,20 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
     let mut units = Vec::new();
     let mut templates: BTreeMap<PathBuf, IdentityTemplates> = BTreeMap::new();
     for path in &files {
-        let text = match std::fs::read_to_string(path) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("lute loc: cannot read {}: {e}", path.display());
-                return Err(ExitCode::from(2));
-            }
+        // #3 / T6.10 fix (i): expand `::use` before extracting, so a
+        // component's lines are exported once PER CALL SITE under the
+        // caller's identity prefix — the id `compile --locales` actually
+        // merges on. This is `lute-trace`'s own pipeline (`walk.rs`'s
+        // `trace_document`), in the same order, with the same three passes;
+        // `expand_document` is deliberately NOT run, because `{{…}}`
+        // interpolation is what a translator must see intact.
+        let root = crate::project_root_for(path, dir);
+        let Some(built) = crate::build_input(path, None, Some(&root)) else {
+            eprintln!("lute loc: skipping {} — cannot resolve inputs", path.display());
+            continue;
         };
-        let (doc, diags) = lute_syntax::parse(&text);
+        let input = built.input;
+        let (mut doc, diags) = lute_syntax::parse(&input.text);
         let errors = diags.iter().filter(|d| d.severity == Severity::Error).count();
         if errors > 0 {
             eprintln!(
@@ -328,11 +442,38 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
             );
             continue;
         }
-        let root = crate::project_root_for(path, dir);
+        // A component file has no identity prefix of its own — that is the
+        // whole defect — so it is not a document here. Its lines reach the
+        // export through every caller that expands it.
+        if is_component_document(&doc) {
+            continue;
+        }
+        let mut arena = lute_cel::CelArena::default();
+        let _ = lute_cel::fill_document(&mut arena, &mut doc);
+        let (folded, _meta_diags, _cel_diags) = lute_check::fold_env(&doc, &input);
+        let _ = lute_compile::normalize::normalize_document(
+            &mut doc,
+            &input.components,
+            &folded.env.state,
+        );
         let ident = templates_for(&root, &mut templates).clone();
-        document_units(&path.display().to_string(), &doc, &ident, &mut units);
+        document_units(
+            &path.display().to_string(),
+            &doc,
+            &ident,
+            &input.components,
+            &mut units,
+        );
     }
-    units.sort_by(|a, b| a.file().cmp(b.file()).then(a.byte().cmp(&b.byte())));
+    // The primary key is the offset IN THE CALLER, so a whole expansion sorts
+    // where its `::use` sits; the unit's own offset (an offset into the
+    // component file, for an expanded unit) only orders it within that.
+    units.sort_by(|a, b| {
+        a.file()
+            .cmp(b.file())
+            .then(a.outer_byte().cmp(&b.outer_byte()))
+            .then(a.byte().cmp(&b.byte()))
+    });
     Ok(units)
 }
 
@@ -377,7 +518,14 @@ pub fn run_export(dir: &Path, format: &str, out: Option<&Path>) -> ExitCode {
 /// `serde_json`'s sorted order — deterministic). `lineId` is `null` on a row
 /// whose identity cannot be reproduced from source (module doc); every other
 /// field is verbatim.
+///
+/// `source` is present on EVERY row, `null` when the line was authored in the
+/// document itself, so the shape does not vary with authoring.
 fn render_json(units: &[Unit]) -> String {
+    let source_of = |u: &Unit| match u.source() {
+        Some((file, line)) => serde_json::json!({ "file": file, "line": line }),
+        None => serde_json::Value::Null,
+    };
     let arr: Vec<serde_json::Value> = units
         .iter()
         .map(|u| match u {
@@ -397,6 +545,7 @@ fn render_json(units: &[Unit]) -> String {
                 "code": code,
                 "speaker": speaker,
                 "text": text,
+                "source": source_of(u),
             }),
             Unit::Choice {
                 file,
@@ -412,6 +561,7 @@ fn render_json(units: &[Unit]) -> String {
                 "lineId": line_id,
                 "key": key,
                 "label": label,
+                "source": source_of(u),
             }),
         })
         .collect();
@@ -434,9 +584,20 @@ fn csv_field(s: &str) -> String {
 /// The RFC-4180 column schema, shared by [`render_csv`] and the import parser
 /// so a header rename can never desynchronize the two directions. ONE schema
 /// covers both unit kinds: a line row leaves `key` empty, a choice row leaves
-/// `code`/`speaker` empty and carries its label in `text`.
-pub(crate) const CSV_COLUMNS: [&str; 8] =
-    ["kind", "file", "line", "lineId", "code", "speaker", "key", "text"];
+/// `code`/`speaker` empty and carries its label in `text`. The two `source*`
+/// columns are empty for a line the document authored itself.
+pub(crate) const CSV_COLUMNS: [&str; 10] = [
+    "kind",
+    "file",
+    "line",
+    "lineId",
+    "code",
+    "speaker",
+    "key",
+    "text",
+    "sourceFile",
+    "sourceLine",
+];
 
 /// Serialize the export as RFC-4180 CSV over [`CSV_COLUMNS`]. `lineId` is empty
 /// on a row whose identity cannot be reproduced from source (module doc) —
@@ -446,6 +607,10 @@ fn render_csv(units: &[Unit]) -> String {
     let mut s = CSV_COLUMNS.join(",");
     s.push_str("\r\n");
     for u in units {
+        let (source_file, source_line) = match u.source() {
+            Some((file, line)) => (file.clone(), line.to_string()),
+            None => (String::new(), String::new()),
+        };
         let row = match u {
             Unit::Line {
                 file,
@@ -464,6 +629,8 @@ fn render_csv(units: &[Unit]) -> String {
                 speaker.clone(),
                 String::new(),
                 text.clone(),
+                source_file,
+                source_line,
             ],
             Unit::Choice {
                 file,
@@ -481,6 +648,8 @@ fn render_csv(units: &[Unit]) -> String {
                 String::new(),
                 key.clone(),
                 label.clone(),
+                source_file,
+                source_line,
             ],
         };
         let cells: Vec<String> = row.iter().map(|c| csv_field(c)).collect();

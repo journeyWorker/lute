@@ -70,6 +70,10 @@ pub enum ComponentBoundary {
 pub enum Step {
     Shot {
         number: i64,
+        /// The authored `## <title>` heading. Already in the IR
+        /// (`"shots":[{"shot":1,"heading":"Hydroponics"}]`); the transcript
+        /// printed an ordinal over it (#10 row h, T7.10).
+        heading: String,
     },
     Line {
         speaker: String,
@@ -92,6 +96,16 @@ pub enum Step {
     Directive {
         tag: String,
         component_boundary: Option<ComponentBoundary>,
+        /// `true` when this `::auto` ends a character's presence — its
+        /// `action=` value is in the resolved `action` domain's `exits:`.
+        /// The entrance and the exit are the same construct with the same
+        /// attribute names, and the entire difference lives in a list in
+        /// another file (#32, T2.5).
+        exit: bool,
+        /// `::end`'s `reason=`. Not one attribute among several: it is the
+        /// terminator's entire payload, the only thing distinguishing it from
+        /// falling off the end of the document (#32, T5.9).
+        reason: Option<String>,
     },
     Decision(Decision),
 }
@@ -143,29 +157,45 @@ pub struct UnresolvedEntry {
 }
 
 /// Visited/total counts for one construct (§4.6: `"choices visited 1/3
-/// (sofaHelp), arms 1/2 (match run.metHelpfully)"`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
+/// (sofaHelp), arms 1/2 (match run.metHelpfully)"`), plus the construct's
+/// authored LABEL. The label is not the identity — that is the whole point of
+/// #24/T9.13: six `<match on="true">` blocks share a label and are six
+/// constructs.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct CoverageCount {
     pub visited: usize,
     pub total: usize,
+    /// A `<branch>`/`<hub>`'s declared `id`, or a `<match>` subject's raw
+    /// (post-expand) CEL text. Rendered beside the site; never keyed on.
+    pub label: String,
 }
 
-/// Coverage counters per construct (§4.4's own text): `choices` keys a
-/// `<branch>`/`<hub>` by its declared `id`; `arms` keys a `<match>` by its
-/// subject's raw (post-expand) CEL text — the only stable label a `<match>`
-/// carries, since it has no `id` attribute. `BTreeMap` (deterministic key
-/// order, §4.5).
+/// Coverage counters per construct. `choices` keys a `<branch>`/`<hub>` by its
+/// declared `id`, which is document-unique by `E-DUP-BRANCH`. `arms` keys a
+/// `<match>` by its own SITE — `"{line}:{column}"` of its span — because a
+/// `<match>` has no id at all, and keying on the subject's TEXT is what made
+/// eight blocks render as three rows, with `3/3` certifying a set of six
+/// blocks no traced path ever visited together (#24, T9.13). A string key
+/// keeps `render_json` total and the order deterministic (§4.5).
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Coverage {
     pub choices: BTreeMap<String, CoverageCount>,
     pub arms: BTreeMap<String, CoverageCount>,
 }
 
+/// The site key for a construct's span: `"{line}:{column}"`. Document-unique
+/// by construction — no two constructs open at one position.
+pub fn site_key(span: &Span) -> String {
+    format!("{}:{}", span.line, span.column)
+}
+
 /// The §4.5 output contract. Field order (declaration order = serde
 /// serialization order) is NORMATIVE: `file`, `seeds`, `steps`,
-/// `decisions`, `unresolved`, `coverage`. `notes` is an ADDITIVE §3.1 key
-/// (0.4 §4.5: "implementations MAY add keys") — informational signage
-/// only, never consulted for the exit-code/fact-set decision.
+/// `decisions`, `unresolved`, `coverage`. `notes`, `disposition` and
+/// `endReason` are ADDITIVE §3.1 keys (0.4 §4.5: "implementations MAY add
+/// keys") and sit AFTER the six normative fields, which are unreordered.
+/// `notes` is informational signage only, never consulted for the
+/// exit-code/fact-set decision.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct TraceReport {
     pub file: String,
@@ -179,6 +209,16 @@ pub struct TraceReport {
     /// as mocks — names at least one declared-but-un-supplied relation.
     /// Empty on every other run, including a `Refused` (empty) report.
     pub notes: Vec<String>,
+    /// How the walk ENDED, as opposed to what it produced: `"complete"` (ran
+    /// out of nodes), `"ended"` (an `::end` terminated it), `"incomplete"`
+    /// (an unknown guard halted it), `"refused"`. §3.1 additive key — a
+    /// harness could not previously tell a terminated walk from a spent one
+    /// (#32, T5.9).
+    pub disposition: String,
+    /// The `reason=` of the `::end` that terminated the walk, when one did.
+    /// §3.1 additive key.
+    #[serde(rename = "endReason")]
+    pub end_reason: Option<String>,
 }
 
 /// Render a decided [`Value`] to display text; `Unknown` has no decided
@@ -260,11 +300,11 @@ impl TraceReport {
         }
         if !self.coverage.choices.is_empty() || !self.coverage.arms.is_empty() {
             let mut parts = Vec::new();
-            for (id, c) in &self.coverage.choices {
-                parts.push(format!("choices {}/{} ({id})", c.visited, c.total));
+            for c in self.coverage.choices.values() {
+                parts.push(format!("choices {}/{} ({})", c.visited, c.total, c.label));
             }
-            for (id, c) in &self.coverage.arms {
-                parts.push(format!("arms {}/{} ({id})", c.visited, c.total));
+            for (site, c) in &self.coverage.arms {
+                parts.push(format!("arms {}/{} ({} @{site})", c.visited, c.total, c.label));
             }
             out.push_str(&format!("; {}", parts.join(", ")));
         }
@@ -275,7 +315,13 @@ impl TraceReport {
 
 fn render_step(step: &Step, out: &mut String) {
     match step {
-        Step::Shot { number } => out.push_str(&format!("  ## Shot {number}.\n")),
+        Step::Shot { number, heading } => {
+            if heading.is_empty() {
+                out.push_str(&format!("  ## Shot {number}.\n"));
+            } else {
+                out.push_str(&format!("  ## {heading}\n"));
+            }
+        }
         Step::Line { speaker, text } => out.push_str(&format!("    @{speaker}  {text}\n")),
         Step::Set { path, value, sugar } => {
             let annot = if *sugar { "  (into sugar)" } else { "" };
@@ -283,7 +329,7 @@ fn render_step(step: &Step, out: &mut String) {
         }
         Step::Assert { text } => out.push_str(&format!("    ::assert  {text}\n")),
         Step::Retract { text } => out.push_str(&format!("    ::retract  {text}\n")),
-        Step::Directive { tag, component_boundary } => match component_boundary {
+        Step::Directive { tag, component_boundary, exit, reason } => match component_boundary {
             // §3.3: `tag` on a boundary step IS the internal
             // `__component-begin`/`-end` sentinel (`normalize.rs`'s
             // `COMPONENT_BEGIN`/`COMPONENT_END`) — never interpolated into
@@ -291,7 +337,14 @@ fn render_step(step: &Step, out: &mut String) {
             // and double the marker word, "begin begin"/"end end").
             Some(ComponentBoundary::Begin) => out.push_str("    -- component begin --\n"),
             Some(ComponentBoundary::End) => out.push_str("    -- component end --\n"),
-            None => out.push_str(&format!("    <{tag}>\n")),
+            None => {
+                let annot = match (exit, reason) {
+                    (true, _) => " exit".to_string(),
+                    (false, Some(r)) => format!(" reason={r}"),
+                    (false, None) => String::new(),
+                };
+                out.push_str(&format!("    <{tag}{annot}>\n"));
+            }
         },
         Step::Decision(d) => {
             let annot = if d.forced {

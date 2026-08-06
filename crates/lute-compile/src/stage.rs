@@ -485,8 +485,11 @@ fn walk_match(
 /// later `::auto` is a fresh show → anchor + preload). `dirty` survives for a
 /// carried character if ANY surviving arm exit marks it dirty (a redundant
 /// posReset beats a missing one — e.g. a `variant`/`dialogMotion`-only line
-/// dirties without changing `SpriteState`); `bg`/`music` carry only when
-/// identical across arms. Exits' diagnostics concatenate in arm order.
+/// dirties without changing `SpriteState`); `exited` (dsl 0.10.0 §11.2) survives
+/// only if EVERY arm exit marks it, since a character who left on one path is
+/// not provably absent after the join and `W-STAGE-ABSENT` must not fire on a
+/// maybe; `bg`/`music` carry only when identical across arms. Exits'
+/// diagnostics concatenate in arm order.
 pub fn join_states(entry: &StageState, mut exits: Vec<StageState>) -> StageState {
     let Some(first) = exits.first().cloned() else {
         return entry.clone();
@@ -507,6 +510,11 @@ pub fn join_states(entry: &StageState, mut exits: Vec<StageState>) -> StageState
     for ch in kept {
         if exits.iter().any(|e| e.dirty.contains(&ch)) {
             joined.dirty.insert(ch);
+        }
+    }
+    for ch in &first.exited {
+        if exits[1..].iter().all(|e| e.exited.contains(ch)) {
+            joined.exited.insert(ch.clone());
         }
     }
     joined.bg = if exits.iter().all(|e| e.bg == first.bg) {

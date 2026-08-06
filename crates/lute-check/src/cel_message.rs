@@ -24,7 +24,9 @@
 //! 1. the raw slot is whitespace-only.
 //! 2. an unbalanced (never-closed) quote.
 //! 3. `=<` / `=>` (a reversed comparison operator).
-//! 4. a bare `=` (assignment syntax where CEL wants `==`).
+//! 4. a bare `=` (assignment syntax where CEL wants `==`). Inside a
+//!    [`CelKind::SetExpr`] slot this reports `::set`'s empty attribute surface
+//!    instead, and offers no rewrite (dsl 0.10.0 §12.1).
 //! 5. a bare `&` / `|` (C-style single-character logic).
 //! 6. a whole-identifier `and` / `or` / `not` outside a member-access segment.
 //!
@@ -34,6 +36,7 @@
 
 use lute_cel::{cel_string_mask, CelParseError};
 use lute_core_span::{Fixit, Span, TextEdit};
+use lute_syntax::ast::CelKind;
 
 /// The §8.1 translation of one failed CEL slot: the writer-voiced message, any
 /// machine-applicable fixits (T2 — `kind: "refactor"`, D16), and the span the
@@ -57,8 +60,16 @@ pub struct Translation {
 /// `slot_span` = that same slot's full document-relative span (every produced
 /// span/fixit-edit is `slot_span.byte_start`-rebased from a LOCAL offset into
 /// `raw`). `backend` = lute-cel's own [`CelParseError`] for this slot, read
-/// ONLY for its `span` on the T3 fallback — never its `message`.
-pub fn translate_cel_parse(raw: &str, slot_span: Span, backend: &CelParseError) -> Translation {
+/// ONLY for its `span` on the T3 fallback — never its `message`. `kind` is the
+/// failed slot's own [`CelKind`]: dsl 0.10.0 §12.1 gives [`CelKind::SetExpr`] a
+/// dedicated rule-4 arm, because a `::set` body has no attribute surface to
+/// have mistyped.
+pub fn translate_cel_parse(
+    raw: &str,
+    slot_span: Span,
+    backend: &CelParseError,
+    kind: CelKind,
+) -> Translation {
     // Rule 1: whitespace-only. `fill_document` already filters a literally
     // whitespace-only `raw` before ever calling `parse_slot` (a structural gap,
     // not a CEL fragment — D10, dsl §8.1), so this never fires through that
@@ -104,6 +115,24 @@ pub fn translate_cel_parse(raw: &str, slot_span: Span, backend: &CelParseError) 
 
     // Rule 4: a bare `=` (not part of `==`/`!=`/`<=`/`>=`/`=<`/`=>`).
     if let Some(pos) = scan_bare_eq(raw, &mask) {
+        // dsl 0.10.0 §12.1: inside a `::set` BODY the `=` is almost never a
+        // mistyped comparison — it is an `attr="…"` the author expected `::set`
+        // to accept. `Set ::= "::set{" Path WS AssignOp WS CelExpr "}"`
+        // (0.1.0 §7.3.3): everything after the operator is expression text, so
+        // the `when=` was swallowed whole, and rule 4's rewrite is then a
+        // suggestion that does not parse when applied. Did-you-mean is usually
+        // good enough here that following it is reasonable, which is precisely
+        // what makes the wrong one expensive. Say what is actually wrong and
+        // offer no edit.
+        if kind == CelKind::SetExpr {
+            return Translation {
+                message: "`::set` takes no attributes; everything after the operator is the \
+                          expression — guard a write with `<match>`/`<when>` (dsl 0.10.0 §12.1)"
+                    .to_string(),
+                fixits: Vec::new(),
+                span: Some(rebase(slot_span, pos, pos + 1)),
+            };
+        }
         let mut corrected = raw.to_string();
         corrected.replace_range(pos..pos + 1, "==");
         return Translation {
@@ -390,7 +419,7 @@ mod tests {
 
     #[test]
     fn rule1_whitespace_only_never_leaks_backend_text() {
-        let t = translate_cel_parse("   ", slot_span(3), &backend(100, 103));
+        let t = translate_cel_parse("   ", slot_span(3), &backend(100, 103), CelKind::Condition);
         assert_eq!(t.message, "the condition is empty (dsl 0.4 §8.1)");
         assert!(t.fixits.is_empty());
         assert!(t.span.is_none());
@@ -399,7 +428,7 @@ mod tests {
     #[test]
     fn rule2_unbalanced_quote_spans_the_open_quote_to_end() {
         let raw = "'unterminated";
-        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 100 + raw.len()));
+        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 100 + raw.len()), CelKind::Condition);
         assert!(t.message.contains("unclosed quote"), "{}", t.message);
         assert!(t.fixits.is_empty());
         assert_eq!(t.span, Some(Span { byte_start: 100, byte_end: 100 + raw.len(), line: 0, column: 0, utf16_range: (0, 0) }));
@@ -415,7 +444,7 @@ mod tests {
     #[test]
     fn rule3_reversed_compare_fixit_splices_correctly() {
         let raw = "x =< 1";
-        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 100 + raw.len()));
+        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 100 + raw.len()), CelKind::Condition);
         assert!(t.message.contains("`<=`"), "{}", t.message);
         let f = &t.fixits[0];
         let mut spliced = raw.to_string();
@@ -428,7 +457,7 @@ mod tests {
     #[test]
     fn rule4_bare_eq_suggests_the_whole_corrected_slot() {
         let raw = "run.act = 1";
-        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 100 + raw.len()));
+        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 100 + raw.len()), CelKind::Condition);
         assert!(
             t.message.contains("did you mean `run.act == 1`"),
             "{}",
@@ -485,7 +514,7 @@ mod tests {
     #[test]
     fn fallback_never_repeats_backend_message() {
         let raw = "(";
-        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 101));
+        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 101), CelKind::Condition);
         assert_eq!(t.message, "not a valid condition expression: `(` (dsl 0.4 §8.1)");
         assert!(t.fixits.is_empty());
     }
@@ -494,7 +523,7 @@ mod tests {
     fn fallback_ignores_an_out_of_range_backend_span() {
         let raw = "(";
         // A backend span far outside this slot must not leak through as-is.
-        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(9_999, 10_000));
+        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(9_999, 10_000), CelKind::Condition);
         assert!(t.span.is_none());
     }
 }

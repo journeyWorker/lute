@@ -59,6 +59,7 @@ fn compile_scene(dir: &Path, scene_text: &str) -> serde_json::Value {
         mode: Mode::Ci,
         imports,
         components,
+        defaults: Default::default(),
     };
     let artifact =
         compile(&input).unwrap_or_else(|e| panic!("scene compiles clean: {e:#?}\n{scene_text}"));
@@ -338,6 +339,7 @@ fn existing_goldens_untouched() {
             mode: Mode::Ci,
             imports,
             components,
+            defaults: Default::default(),
         };
         let artifact = compile(&input).unwrap_or_else(|e| panic!("{path} compiles: {e:#?}"));
         let mut json = serde_json::to_string_pretty(&artifact).unwrap();

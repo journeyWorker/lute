@@ -12,7 +12,7 @@
 //!   -> fold <branch>/<hub> decls      -> folded schema (scene.choices.* + scene.visited.*) + E-DUP-BRANCH
 //!   -> per-node walk                  -> directive/cel-slot/set/match/timeline diags
 //!   -> document-level defassign       -> E-UNDECLARED / E-MAYBE-UNSET (whole stream)
-//!   -> injection fold (lower_node)    -> InjectedCommand[] + W-INJECT-CONFLICT
+//!   -> injection fold (lower_node)    -> InjectedCommand[] + E-DOMAIN-UNKNOWN
 //!   -> suppress / dedup / normalize / sort
 //! ```
 //!
@@ -113,13 +113,13 @@ const E_CEL_PARSE: &str = "E-CEL-PARSE";
 /// slots), so zipping the two same-order sequences pairs each error with its
 /// own slot 1:1.
 fn cel_parse_diagnostics(doc: &Document, cel_errors: Vec<CelParseError>) -> Vec<Diagnostic> {
-    let mut failed: Vec<(&str, Span)> = Vec::new();
+    let mut failed: Vec<(&str, Span, CelKind)> = Vec::new();
     for_each_cel_slot(doc, &mut |slot| {
         if slot.raw.trim().is_empty() {
             return;
         }
         if slot.ast.is_none() {
-            failed.push((slot.raw.as_str(), slot.span));
+            failed.push((slot.raw.as_str(), slot.span, slot.kind));
         }
     });
     debug_assert_eq!(
@@ -131,8 +131,8 @@ fn cel_parse_diagnostics(doc: &Document, cel_errors: Vec<CelParseError>) -> Vec<
     failed
         .into_iter()
         .zip(cel_errors)
-        .map(|((raw, slot_span), err)| {
-            let t = translate_cel_parse(raw, slot_span, &err);
+        .map(|((raw, slot_span, kind), err)| {
+            let t = translate_cel_parse(raw, slot_span, &err, kind);
             Diagnostic {
                 code: E_CEL_PARSE.to_string(),
                 severity: Severity::Error,
@@ -192,6 +192,53 @@ pub struct CheckInput {
     /// when the scene has no `components:` (or on a surface that cannot resolve
     /// files); validated against `::use` invocations in [`check`].
     pub components: ComponentSet,
+    /// The governing manifest's `defaults:` (0.10.0 §6): frontmatter this
+    /// document did not have to retype. Empty for a loose document, for a
+    /// project with no `defaults:` block, and on any surface with no manifest.
+    pub defaults: lute_manifest::project::MetaDefaults,
+}
+
+/// Project-wide domain-read accounting (dsl 0.10.0 §11.1, **D-V**).
+///
+/// `check()` computes both halves per document, from ITS resolved snapshot and
+/// ITS merged vocabulary; `check-project` unions them across the root and
+/// reports the difference. Split this way because the question is only
+/// answerable project-wide: a domain declared in a shared schema is read by
+/// SOME document, so a single-document verdict would be a false positive on the
+/// most common layout in the language.
+///
+/// The field carrying this is `#[serde(skip)]`: it is analysis input for the
+/// project pass, not part of the `check --json` contract, and adding it must
+/// not move a golden.
+#[derive(Clone, Debug)]
+pub struct DomainUse {
+    /// Every domain name this document resolves — inline `enums:`, imported
+    /// schema, plugin, and the snapshot baseline.
+    pub declared: std::collections::BTreeSet<String>,
+    /// Every domain name some active construct in the resolved snapshot reads.
+    pub read: std::collections::BTreeSet<String>,
+    /// This document's frontmatter span, where a project-wide domain diagnostic
+    /// anchors when this is the first document to declare an unread domain.
+    pub at: Span,
+}
+
+/// Hand-written rather than derived: [`Span`] carries no `Default`, and adding
+/// one to a foundation type for this field's benefit would be a wider change
+/// than the field is worth.
+impl Default for DomainUse {
+    fn default() -> Self {
+        Self {
+            declared: std::collections::BTreeSet::new(),
+            read: std::collections::BTreeSet::new(),
+            at: Span {
+                byte_start: 0,
+                byte_end: 0,
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            },
+        }
+    }
 }
 
 /// The result of one `check()`: every diagnostic (deduped, byte-sorted) plus the
@@ -205,6 +252,10 @@ pub struct CheckResult {
     pub diagnostics: Vec<Diagnostic>,
     /// The resolved view; `None` when a structural parse error corrupts the tree.
     pub resolved: Option<Resolved>,
+    /// dsl 0.10.0 §11.1: this document's half of the project-wide domain-read
+    /// question. Not serialized — see [`DomainUse`].
+    #[serde(skip)]
+    pub domain_use: DomainUse,
 }
 
 /// The LSP-facing resolved view (arch "resolved view"): the compiler's
@@ -283,7 +334,8 @@ pub fn fold_env(
     //    `Scene` — the degrade-safe path — when unresolved (missing/unknown
     //    `kind:`), so a mis-kinded doc still gets the scene-triad required-key
     //    treatment it had pre-0.2.0.
-    let (resolved_kind, kind_diags) = crate::meta::resolve_doc_kind(&doc.meta);
+    let (resolved_kind, kind_diags) =
+        crate::meta::resolve_doc_kind_with_defaults(&doc.meta, &input.defaults);
     let has_body = !doc.shots.is_empty() || !doc.quests.is_empty();
     let (doc_kind, meta_kind, kind_diags) = match resolved_kind {
         Some(crate::meta::DocKind::Scene) => {
@@ -305,7 +357,12 @@ pub fn fold_env(
     // 3b. Typed frontmatter + inline state schema, dispatched by the resolved
     //     kind (dsl 0.2.0 §3.1, §6.1): a Quest doc carries none of the scene
     //     triad and rejects it as an unknown key.
-    let (typed, mut fold_diags) = crate::meta::parse_meta_kind(&doc.meta, &input.snapshot, meta_kind);
+    let (typed, mut fold_diags) = crate::meta::parse_meta_kind_with_defaults(
+        &doc.meta,
+        &input.snapshot,
+        meta_kind,
+        &input.defaults,
+    );
     fold_diags.splice(0..0, kind_diags);
 
     // 3c. The FULL merged domain vocabulary (data-catalog foundation A4):
@@ -939,6 +996,43 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // author's logic is wrong on top of their parse error.
     suppress_unparsed_child_list_verdicts(&mut diags);
 
+    // dsl 0.10.0 §9 rule 3: the STANDALONE leg reports its own malformed
+    // `params:`. `component_import.rs` already does this for the IMPORTER and
+    // `TypedMeta.params_malformed` is the very same fact — the standalone leg
+    // simply never asked, so all it ever printed was the consequence. The
+    // consequence is mechanical: the `defs`/`def_types`/`def_params` seeding
+    // above registers `typed.params`, `get_params` drops every entry it cannot
+    // deserialize, and so each `@param` in the body resolves against an empty
+    // namespace. Reporting only that sends the author to `defs:` for a param
+    // they declared four lines up, which is why the suppression is part of the
+    // same rule and not a separate nicety.
+    //
+    // Scoped to THIS document's own `params:`. An IMPORTING document can carry
+    // `E-COMPONENT-PARSE` for a component it imports while having a genuine
+    // `E-UNDECLARED-REF` of its own — a file the malformed `params:` says
+    // nothing about — so keying the `retain` on the code alone would lose a real
+    // error.
+    //
+    // The message is `component_import.rs`'s, minus the file name: here the
+    // offending file IS the document being checked. Same code, same
+    // `Layer::Content`, so `--deny`/layer filters see one thing.
+    if folded.typed.component.is_some() && folded.typed.params_malformed {
+        diags.retain(|d| d.code != "E-UNDECLARED-REF");
+        diags.push(Diagnostic {
+            code: "E-COMPONENT-PARSE".to_string(),
+            severity: Severity::Error,
+            message: "this component has a malformed `params:` — each entry must be \
+                      `name: <type>` (dsl §13)"
+                .to_string(),
+            span: doc.meta.span,
+            layer: Layer::Content,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        });
+    }
+
     // Dedup overlapping `E-UNDECLARED` (carry-forward #4) BEFORE the sort.
     let mut diags = dedup_undeclared(diags);
 
@@ -980,6 +1074,21 @@ pub fn check(input: &CheckInput) -> CheckResult {
         ok,
         diagnostics: diags,
         resolved,
+        // dsl 0.10.0 §11.1 (**D-V**): both halves of the project-wide
+        // domain-read question, computed from THIS document's merged vocabulary
+        // and THIS document's resolved snapshot. `check()` draws no conclusion
+        // from them — `check-project` unions them across the root.
+        domain_use: DomainUse {
+            declared: domains.keys().cloned().collect(),
+            read: {
+                let mut read = crate::project_check::domain_reading_set(&input.snapshot);
+                read.extend(crate::project_check::domain_reads_from_relations(
+                    &env.rel_vocab,
+                ));
+                read
+            },
+            at: doc.meta.span,
+        },
     }
 }
 
@@ -1109,6 +1218,13 @@ impl Walker<'_> {
                 }
                 Node::Set(s) => {
                     self.diags.extend(check_set(s, &ctx.env.state, ctx));
+                    // dsl 0.10.0 §3: the RHS half `set_op` explicitly does not
+                    // do (`set_op.rs:27-29`).
+                    self.diags.extend(crate::set_type::check_set_type(
+                        s,
+                        self.arena,
+                        &ctx.env.state,
+                    ));
                     let expected = resolve_type(&s.path, &ctx.env.state)
                         .cloned()
                         .map(ExpectedType::Ty);
@@ -1119,8 +1235,14 @@ impl Walker<'_> {
                     // `E-DUP-BRANCH` + decl folding happened in the pre-pass; here
                     // we only validate the branch's own attrs and recurse.
                     self.check_attr_refs(&b.attrs, ctx, None);
+                    crate::logic_attrs::check_branch_attrs(b, &mut self.diags);
                     for choice in &b.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
+                        crate::logic_attrs::check_choice_attrs(
+                            choice,
+                            crate::logic_attrs::ChoicePos::Branch,
+                            &mut self.diags,
+                        );
                         check_choice_record(choice, ctx, self.src, &mut self.diags);
                         // §7.6: a `<choice label>` string MAY embed `{{…}}`
                         // interpolations. Labels are String attrs, so their interps
@@ -1144,6 +1266,10 @@ impl Walker<'_> {
                     }
                 }
                 Node::Match(m) => {
+                    crate::logic_attrs::check_match_attrs(m, &mut self.diags);
+                    for arm in &m.arms {
+                        crate::logic_attrs::check_arm_attrs(arm, &mut self.diags);
+                    }
                     // The subject expression is evaluated OUTSIDE match scope: `$`
                     // is only valid in a `<when test>` (dsl §8.2), never in `on=`.
                     // Force `in_match=false` so a nested `<match on="$">` (whose
@@ -1254,6 +1380,11 @@ impl Walker<'_> {
                                 }
                                 ClipNode::Set(s) => {
                                     self.diags.extend(check_set(s, &ctx.env.state, ctx));
+                                    self.diags.extend(crate::set_type::check_set_type(
+                                        s,
+                                        self.arena,
+                                        &ctx.env.state,
+                                    ));
                                     let expected = resolve_type(&s.path, &ctx.env.state)
                                         .cloned()
                                         .map(ExpectedType::Ty);
@@ -1276,8 +1407,14 @@ impl Walker<'_> {
                     // (attrs, record sugar, `when` guard, body) so the B1–B5
                     // node checks apply inside hub arms too (dsl §7.3.2).
                     self.check_attr_refs(&h.attrs, ctx, None);
+                    crate::logic_attrs::check_hub_attrs(h, &mut self.diags);
                     for choice in &h.choices {
                         self.check_attr_refs(&choice.attrs, ctx, None);
+                        crate::logic_attrs::check_choice_attrs(
+                            choice,
+                            crate::logic_attrs::ChoicePos::Hub,
+                            &mut self.diags,
+                        );
                         check_choice_record(choice, ctx, self.src, &mut self.diags);
                         // §7.6: hub choice labels carry `{{…}}` interpolations too
                         // (same as branch choices) — validate their referents.
@@ -1898,6 +2035,34 @@ fn validate_components(
             d.code != "E-UNDECLARED" && d.code != crate::rel_schema::E_RELATION_UNKNOWN
         });
         for mut d in body_diags {
+            // dsl 0.10.0 §9 rule 1: the primary anchor stays at the caller with
+            // the component prefix (0.9.0 §5) — for the injection case it is the
+            // honest anchor, because the verdict depends on state inherited
+            // there — but the position INSIDE the component is preserved as a
+            // secondary location. `RelatedDiagnostic` is the codebase's only
+            // cross-file attribution and it already renders as an indented
+            // sub-line (`lute-cli`'s `render_diagnostics`), so this needs no new
+            // surface. 0.9.0 §6.2 named the collapse a known limitation; this
+            // narrows it rather than removing it, because `Diagnostic` still has
+            // no file field of its own.
+            //
+            // The line/column ARE the component's own: these diagnostics were
+            // produced against `def.body`, parsed from the component file's text
+            // by `component_import`, so the parser's positions are already
+            // component-relative — and `check()`'s `normalize_spans` walks
+            // `d.span` and `d.fixits` only, never `related`, so nothing later
+            // re-derives them against the importing document's `TextIndex`.
+            let inner = Diagnostic {
+                code: d.code.clone(),
+                severity: d.severity,
+                message: d.message.clone(),
+                span: d.span,
+                layer: d.layer,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            };
             d.message = format!("component `{name}` ({}): {}", def.src.display(), d.message);
             d.span = at;
             // T13: a CEL-parse fixit's edit span (if any) is in the COMPONENT
@@ -1906,6 +2071,10 @@ fn validate_components(
             // `at` above), so it is dropped rather than shipped pointing at
             // the wrong document.
             d.fixits.clear();
+            d.related.push(lute_core_span::RelatedDiagnostic {
+                file: def.src.display().to_string(),
+                diagnostic: inner,
+            });
             out.push((def.src.clone(), d));
         }
     }
@@ -2261,6 +2430,10 @@ fn walk_component_body(
                 b.span,
             )),
             Node::Match(m) => {
+                crate::logic_attrs::check_match_attrs(m, diags);
+                for arm in &m.arms {
+                    crate::logic_attrs::check_arm_attrs(arm, diags);
+                }
                 // Subject-slot CEL validation happens OUTSIDE match scope
                 // (dsl §8.2, mirrors the scene-level `Walker`): resolved
                 // against the SAME component `@param` env every other slot
@@ -2548,6 +2721,11 @@ fn dfs_use_cycle(
 /// (dsl 0.6.0 §2). `into=` alone records; the `persist=` attribute was REMOVED
 /// in 0.6.0 (`E-PERSIST-REMOVED`, §2.2), carrying a machine-applicable deletion.
 const E_PERSIST_REMOVED: &str = "E-PERSIST-REMOVED";
+/// `E-AS-REMOVED` (dsl 0.10.0 §4, D-L): the `as=` record-target attribute was
+/// renamed to `into=` in `0.1.0`. Mirrors [`E_PERSIST_REMOVED`] in severity,
+/// layer, span behaviour and kind — and NOT in its edit; see
+/// [`as_removed_diag`].
+const E_AS_REMOVED: &str = "E-AS-REMOVED";
 const E_INTO_TARGET: &str = "E-INTO-TARGET";
 const E_INTO_UNDECLARED: &str = "E-INTO-UNDECLARED";
 const E_INTO_VALUE: &str = "E-INTO-VALUE";
@@ -2572,6 +2750,14 @@ fn check_choice_record(choice: &Choice, ctx: &Ctx<'_>, src: &str, diags: &mut Ve
     // unknown-attr report) keeps `E-PERSIST-REMOVED` the sole report for it.
     if let Some(persist) = choice.attrs.iter().find(|a| a.key == "persist") {
         diags.push(persist_removed_diag(persist, src));
+    }
+    // §4 (D-L): `as=` was RENAMED to `into=` in 0.1.0, and `lute fix` already
+    // performs the rename. Recognizing it here — beside `persist`, for the same
+    // reason and by the same mechanism — keeps `E-AS-REMOVED` the sole report
+    // for it and keeps the §4 closure rule out of it (`logic_attrs.rs`'s
+    // `CHOICE_REMOVED_ATTRS`).
+    if let Some(as_attr) = choice.attrs.iter().find(|a| a.key == "as") {
+        diags.push(as_removed_diag(as_attr));
     }
     // The record sugar is driven by `into=` alone (§2.1). A `<choice>` with no
     // `into=` records nothing and is untouched.
@@ -2778,6 +2964,52 @@ fn persist_removed_diag(persist_attr: &Attr, src: &str) -> Diagnostic {
             edit: vec![TextEdit {
                 span: zeroed_span(start, end),
                 new_text: String::new(),
+            }],
+            confidence: 100,
+        }],
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// Build the `E-AS-REMOVED` diagnostic (dsl 0.10.0 §4, D-L) for a `<choice>`
+/// carrying an `as=` attr — renamed to `into=` in 0.1.0. ONE `"migrate"` fixit,
+/// `confidence` 100.
+///
+/// **The edit is deliberately NOT [`persist_removed_diag`]'s.** That one is a
+/// DELETION widened by [`widen_attr_delete`] to swallow one adjacent separating
+/// space so no stray double space is left behind. This is a two-byte-to-
+/// four-byte KEY REPLACEMENT with no widening at all: `Attr::span` starts at the
+/// key's first byte (`scan_attrs` builds it as `span(key_start, …)`), so the key
+/// occupies `[byte_start, byte_start + key.len())` and the value is untouched.
+/// Reusing the deletion helper would eat the separator before `as` and emit
+/// `label="L"into="…"`. It therefore takes no `src`, because it needs to read
+/// none.
+///
+/// Mirrors `fix.rs:134-135`'s own `as` -> `into` edit exactly. `lute fix` never
+/// reads `Diagnostic.fixits` (`lute-lsp/src/code_action.rs:7`), so these are two
+/// independent implementations that MUST stay byte-identical — the same hazard
+/// [`persist_removed_diag`]'s doc records, and
+/// `tests/choice_persist.rs::lsp_fixit_and_lute_fix_agree_byte_for_byte` is what
+/// holds them together.
+fn as_removed_diag(as_attr: &Attr) -> Diagnostic {
+    let start = as_attr.span.byte_start;
+    let end = start + as_attr.key.len();
+    Diagnostic {
+        code: E_AS_REMOVED.to_string(),
+        severity: Severity::Error,
+        message: "the `as` attribute was renamed to `into` in 0.1.0 — `into=` names the run \
+                  fact this choice records (dsl 0.10.0 §4); `lute fix` performs the rename"
+            .to_string(),
+        span: as_attr.span,
+        layer: Layer::Logic,
+        fixits: vec![Fixit {
+            title: "rename as= to into=".to_string(),
+            kind: "migrate".to_string(),
+            edit: vec![TextEdit {
+                span: zeroed_span(start, end),
+                new_text: "into".to_string(),
             }],
             confidence: 100,
         }],
@@ -3122,14 +3354,15 @@ fn fold_injections(
 /// attrs), Task 7c's (duplicate line codes) and Task 7e's (reachability):
 /// [`fold_injections`] had exactly ONE callsite — `check()` step 7, over the
 /// ROOT document's shots — and a `::use` folded as an ordinary unknown
-/// directive, so its body was never entered. A `::auto` whose explicit
-/// `anchor` equals the `anchor` domain's declared `default:` therefore checked
-/// CLEAN through a `::use` while the identical directive warned
-/// `W-INJECT-CONFLICT` at scene level AND when that same component file was
-/// checked STANDALONE. `lute compile`'s own CFG walk DID derive it (it folds
-/// the NORMALIZED tree, body already inlined) but discarded it — see the
-/// `state.diags.clear()` comment in `lute-compile/src/lib.rs` — so the
-/// warning was reported by no tool at all.
+/// directive, so its body was never entered. An `::auto` whose implicit
+/// `anchor`-domain read has nothing to read therefore checked CLEAN through a
+/// `::use` while the identical directive reported `E-DOMAIN-UNKNOWN` at scene
+/// level AND when that same component file was checked STANDALONE.
+/// `lute compile`'s own CFG walk DID derive it (it folds the NORMALIZED tree,
+/// body already inlined) but discarded it — see the `state.diags.clear()`
+/// comment in `lute-compile/src/lib.rs` — so the diagnostic was reported by no
+/// tool at all. (The original instance was `W-INJECT-CONFLICT`, removed in
+/// 0.10.0 §12.3; the seam is structural and outlives the code.)
 ///
 /// THE SEAM (the one decision here): the body folds IN DOCUMENT POSITION,
 /// against the `StageState` INHERITED at this `::use` — the same reducer, the
@@ -3139,7 +3372,7 @@ fn fold_injections(
 /// their passes are position-independent) would be wrong HERE: the reducer's
 /// entrance rules are stage-state dependent — `lower_auto` returns early when
 /// the character is already on stage — so an empty entry state would INVENT
-/// conflicts that do not exist in context, trading an old divergence for a
+/// diagnostics that do not exist in context, trading an old divergence for a
 /// new one.
 ///
 /// Body diagnostics are re-anchored the way every other component-body
@@ -3604,5 +3837,16 @@ mod lute_version_tests {
     fn absent_stamp_clean() {
         let typed = crate::meta::TypedMeta::default();
         assert!(check_lute_version_stale(&typed, &meta("")).is_none());
+    }
+
+    /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
+    /// half-land: the language constant this check compares against and the
+    /// workspace (toolchain) version must both read the release number. IR is
+    /// pinned separately in `lute-compile` (it moved first — Appendix B's
+    /// `Provenance.reason` → `Provenance.explanation` earned it).
+    #[test]
+    fn language_ir_and_toolchain_are_aligned_at_0_10_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.10.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.10.0");
     }
 }

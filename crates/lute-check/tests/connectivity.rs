@@ -21,6 +21,7 @@ fn input_for(text: &str) -> CheckInput {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     }
 }
 
@@ -1002,6 +1003,7 @@ fn build_project_input(file: &PathBuf, project_dir: Option<&std::path::Path>) ->
         mode: Mode::Ci,
         imports,
         components,
+        defaults: Default::default(),
     }
 }
 

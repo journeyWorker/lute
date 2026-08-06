@@ -32,6 +32,8 @@ use std::path::{Path, PathBuf};
 
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::types::Type;
 use lute_syntax::ast::{Document, Node};
 
 use crate::cel_paths::{collect_path_uses, is_reserved_quest_path};
@@ -313,6 +315,215 @@ pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
                 ),
             }
         }
+    }
+    out
+}
+
+/// `W-COMPONENT-UNVERIFIED`: a standalone component check with no caller in
+/// scope (dsl 0.10.0 §9 rule 4, **D-W**).
+pub const W_COMPONENT_UNVERIFIED: &str = "W-COMPONENT-UNVERIFIED";
+
+/// Which of §9 rule 4's two "no caller in scope" disjuncts produced the
+/// warning. They are not the same situation and they do not have the same
+/// remedy: one says the tool could not look for a caller, the other says it
+/// looked and found none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComponentScope {
+    /// No project resolved at all — `lute check <component>` with no
+    /// `--project`. Nothing was searched; the author's next step is to name a
+    /// project.
+    NoProject,
+    /// A project resolved and no document under it `::use`s this component.
+    /// The search happened and came back empty; the author's next step is to
+    /// find out why the component is unused.
+    NoImporter,
+}
+
+/// Build the `W-COMPONENT-UNVERIFIED` warning.
+///
+/// **D-W**: `#23`'s own fix list says the standalone leg must "either forward
+/// the caller-side verdict or refuse to claim `ok`". With a caller in scope it
+/// forwards; with none it refuses, and says exactly what the verdict does and
+/// does not cover. A bare `ok` here is the contradiction being closed: the
+/// component's own `uses:` is the one vocabulary that NEVER applies at runtime
+/// (`0.9.0 §6.1`), because it is discarded at `::use`.
+///
+/// Both disjuncts state the same COVERAGE — §9 requires the verdict to say what
+/// it does cover — and differ in the one sentence that says which situation
+/// produced it and what to do about it. An author who forgot `--project` and an
+/// author whose component is genuinely unused are two different people.
+pub fn component_unverified_diag(component: &str, at: Span, scope: ComponentScope) -> Diagnostic {
+    // The two disjuncts differ in what they can HONESTLY claim to have done.
+    // `NoProject` means nothing was searched; `NoImporter` means the search ran
+    // and came back empty. Collapsing them into one string would tell the
+    // author who forgot `--project` that their component is unused.
+    let situation = match scope {
+        ComponentScope::NoProject => "no project is resolved — `--project <dir>` was not given \
+                                      and no manifest is discovered from the file's path — so no \
+                                      caller was looked for"
+            .to_string(),
+        ComponentScope::NoImporter => format!(
+            "the resolved project was searched and no document in it `::use`s component \
+             `{component}`"
+        ),
+    };
+    let next = match scope {
+        ComponentScope::NoProject => {
+            "Re-run with `--project <dir>`, or run `lute check-project <dir>` — the deciding leg."
+        }
+        ComponentScope::NoImporter => {
+            "The component is unused under this root, or its call sites live outside it. \
+             `check-project` is the deciding leg."
+        }
+    };
+    Diagnostic {
+        code: W_COMPONENT_UNVERIFIED.to_string(),
+        severity: Severity::Warning,
+        message: format!(
+            "{situation}. This verdict therefore covers only component `{component}`'s own \
+             frontmatter and body against its OWN `uses:` — the one vocabulary that is discarded \
+             at `::use` and never applies at runtime (dsl 0.9.0 §6.1). {next} (dsl 0.10.0 §9, D-W)"
+        ),
+        span: at,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// `W-DOMAIN-UNREAD`: a domain the project declares that no active construct
+/// reads (dsl 0.10.0 §11.1). Project-wide only (**D-V**).
+pub const W_DOMAIN_UNREAD: &str = "W-DOMAIN-UNREAD";
+
+/// Every domain name some active construct in `snapshot` reads.
+///
+/// dsl 0.10.0 §11.1: this is the set of domain-typed attribute slots in the
+/// RESOLVED capability snapshot, not a fixed list — a plugin directive
+/// declaring `{ domain: reason }` makes `reason` read, and the warning stops.
+/// Three sources, and they are the whole closed rule:
+///  1. every directive's own `AttrDecl`s;
+///  2. every cross-cutting `stampAttrs` decl, which is admissible on EVERY
+///     directive (plugin §14.1);
+///  3. the content line's two domain slots
+///     ([`crate::content_line::CONTENT_LINE_DOMAIN_SLOTS`]), which are not
+///     `AttrDecl`s because a content line is not a directive.
+pub fn domain_reading_set(snapshot: &CapabilitySnapshot) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for decl in snapshot.directives.values() {
+        for attr in &decl.attrs {
+            collect_domain_names(&attr.ty, &mut out);
+        }
+    }
+    for decl in snapshot.stamp_attrs.values() {
+        collect_domain_names(&decl.ty, &mut out);
+    }
+    for name in crate::content_line::CONTENT_LINE_DOMAIN_SLOTS {
+        out.insert((*name).to_string());
+    }
+    out
+}
+
+/// Every domain name a `relations:` declaration reads as an argument position
+/// (dsl 0.10.0 §11.1, relational spec §4).
+///
+/// **This is not optional, and the spec's "domain-typed attribute slots" phrasing
+/// is what makes it easy to miss.** A relation's `args: [crew]` closed-checks
+/// every `awake(…)` atom against `crew`'s membership, which is exactly as active
+/// a read as a directive attr typed `{ domain: crew }`. Leaving it out made
+/// `W-DOMAIN-UNREAD` fire six times on `docs/examples` — `character`, `clue`,
+/// `crew`, `location`, `suspect`, `topic`, every one of them an `entities:`
+/// domain read by a relation signature — i.e. a false positive on the entire
+/// relational half of the language.
+pub fn domain_reads_from_relations(vocab: &crate::rel_schema::RelVocab) -> BTreeSet<String> {
+    vocab
+        .relations
+        .values()
+        .flat_map(|r| r.args.iter())
+        .filter(|a| !a.is_empty())
+        .cloned()
+        .collect()
+}
+
+/// Every `Type::Domain(name)` reachable from `ty`, including through the
+/// container types — a `{ list: { domain: X } }` slot reads `X` as surely as a
+/// bare one does.
+fn collect_domain_names(ty: &Type, out: &mut BTreeSet<String>) {
+    match ty {
+        Type::Domain(name) => {
+            out.insert(name.clone());
+        }
+        Type::List(inner) => collect_domain_names(inner, out),
+        Type::Map { key, value } => {
+            collect_domain_names(key, out);
+            collect_domain_names(value, out);
+        }
+        Type::Record(fields) => {
+            for f in fields {
+                collect_domain_names(&f.ty, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// `W-DOMAIN-UNREAD` over a resolved project root (dsl 0.10.0 §11.1, **D-V**).
+///
+/// The declared set and the read set are both UNIONED across every document
+/// under the root before the difference is taken: a domain declared in a shared
+/// schema is read by *some* document, and warning on the scene that happens not
+/// to read it would be a false positive on the most common layout there is.
+///
+/// One diagnostic per unread DOMAIN, not per declaring document, anchored at
+/// the byte-sorted-first document that declares it, at that document's
+/// frontmatter span. The domain may in fact be declared in an imported schema
+/// rather than in the document itself; the message says so, because
+/// `Diagnostic` has no file field and inventing cross-file anchoring for one
+/// warning is exactly the retreat **D-Z** and **D-AB** already made twice in
+/// this release.
+///
+/// [`Layer::Staging`], matching `E-DOMAIN-UNKNOWN` — the same fact asked in the
+/// other direction, so the two must not land on different layers.
+pub fn check_project_domain_reads(
+    per_file: &[(PathBuf, &crate::check::DomainUse)],
+) -> Vec<(PathBuf, Diagnostic)> {
+    let mut declared: BTreeSet<&str> = BTreeSet::new();
+    let mut read: BTreeSet<&str> = BTreeSet::new();
+    for (_, u) in per_file {
+        declared.extend(u.declared.iter().map(String::as_str));
+        read.extend(u.read.iter().map(String::as_str));
+    }
+    let mut sorted: Vec<&(PathBuf, &crate::check::DomainUse)> = per_file.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut out = Vec::new();
+    for name in declared.difference(&read) {
+        let Some((path, u)) = sorted.iter().find(|(_, u)| u.declared.contains(*name)) else {
+            continue;
+        };
+        out.push((
+            path.clone(),
+            Diagnostic {
+                code: W_DOMAIN_UNREAD.to_string(),
+                severity: Severity::Warning,
+                message: format!(
+                    "domain `{name}` is declared but no active construct reads it: no directive \
+                     attribute and no content-line slot is typed `{{ domain: {name} }}`, and no \
+                     `relations:` entry takes it as an argument, so it enforces nothing and only \
+                     reaches the artifact's `enums` array. Type a slot against it, give a \
+                     relation an `args: [{name}]` position, or remove the declaration \
+                     (dsl 0.10.0 §11.1). It may be declared in a schema this document imports \
+                     rather than in the document itself"
+                ),
+                span: u.at,
+                layer: Layer::Staging,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            },
+        ));
     }
     out
 }
@@ -619,5 +830,119 @@ mod tests {
         );
         let docs = vec![(PathBuf::from("scene.lute"), scene)];
         assert!(check_project_quest_refs(&docs).is_empty(), "{docs:?}");
+    }
+
+    /// 0.10.0 §11.1: the reading set is the domain-typed attribute slots in the
+    /// RESOLVED snapshot, not a fixed list — a plugin directive declaring
+    /// `{ domain: reason }` makes `reason` read and the warning stops.
+    #[test]
+    fn reading_set_is_the_snapshots_domain_typed_slots() {
+        let snap = lute_manifest::core::load_core_snapshot();
+        let read = domain_reading_set(&snap);
+        for name in [
+            "action",
+            "anchor",
+            "emotion",
+            "mood",
+            "musicAction",
+            "vfxType",
+            "volume",
+        ] {
+            assert!(read.contains(name), "core reads `{name}`; got {read:?}");
+        }
+        assert!(
+            !read.contains("reason"),
+            "nothing core-declared reads a `reason` domain; got {read:?}"
+        );
+    }
+
+    /// §11.1: a declared domain no active construct reads is `W-DOMAIN-UNREAD`.
+    #[test]
+    fn an_unread_declared_domain_warns() {
+        let use_a = crate::check::DomainUse {
+            declared: ["emotion".to_string(), "reason".to_string()]
+                .into_iter()
+                .collect(),
+            read: ["emotion".to_string()].into_iter().collect(),
+            at: span(1),
+        };
+        let out = check_project_domain_reads(&[(PathBuf::from("a.lute"), &use_a)]);
+        assert_eq!(out.len(), 1, "one unread domain, one diagnostic; got {out:?}");
+        assert_eq!(out[0].1.code, "W-DOMAIN-UNREAD");
+        assert_eq!(out[0].1.severity, Severity::Warning);
+        assert!(
+            out[0].1.message.contains("reason"),
+            "the message must name the domain; got {}",
+            out[0].1.message
+        );
+    }
+
+    /// **D-V**, and it is the whole reason this pass is project-wide: a domain
+    /// declared in a shared schema is read by SOME document. Warning on the
+    /// scene that happens not to read it would be a false positive on the most
+    /// common layout there is.
+    #[test]
+    fn a_domain_read_by_another_document_does_not_warn() {
+        let declarer = crate::check::DomainUse {
+            declared: ["action".to_string()].into_iter().collect(),
+            read: Default::default(),
+            at: span(1),
+        };
+        let reader = crate::check::DomainUse {
+            declared: ["action".to_string()].into_iter().collect(),
+            read: ["action".to_string()].into_iter().collect(),
+            at: span(1),
+        };
+        let out = check_project_domain_reads(&[
+            (PathBuf::from("a.lute"), &declarer),
+            (PathBuf::from("b.lute"), &reader),
+        ]);
+        assert!(out.is_empty(), "the union is read; got {out:?}");
+    }
+
+    /// One diagnostic per unread DOMAIN, not per declaring document, anchored at
+    /// the first declarer in byte-sorted path order.
+    #[test]
+    fn one_diagnostic_per_domain_at_the_first_declarer() {
+        let u = crate::check::DomainUse {
+            declared: ["reason".to_string()].into_iter().collect(),
+            read: Default::default(),
+            at: span(1),
+        };
+        let out = check_project_domain_reads(&[
+            (PathBuf::from("b.lute"), &u),
+            (PathBuf::from("a.lute"), &u),
+        ]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(
+            out[0].0,
+            PathBuf::from("a.lute"),
+            "byte-sorted first declarer"
+        );
+    }
+
+    /// §11.1's "domain-typed attribute slots" is not the whole reading set: a
+    /// `relations:` entry's `args:` closed-checks every atom against that
+    /// domain's membership, which is as active a read as a directive attr.
+    /// Omitting it fired `W-DOMAIN-UNREAD` six times on `docs/examples` —
+    /// `character`, `clue`, `crew`, `location`, `suspect`, `topic`, every one an
+    /// `entities:` domain read only by a relation signature.
+    #[test]
+    fn relation_argument_positions_read_their_domain() {
+        let mut vocab = crate::rel_schema::RelVocab::default();
+        vocab.relations.insert(
+            "knows".to_string(),
+            lute_manifest::relations::RelationDecl {
+                args: vec!["crew".to_string(), "topic".to_string(), String::new()],
+                ..Default::default()
+            },
+        );
+        let read = domain_reads_from_relations(&vocab);
+        assert!(read.contains("crew"), "got {read:?}");
+        assert!(read.contains("topic"), "got {read:?}");
+        assert!(
+            !read.contains(""),
+            "a non-string YAML arg is preserved as \"\" and is not a domain; got {read:?}"
+        );
     }
 }

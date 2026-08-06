@@ -13,6 +13,7 @@ fn input(text: &str) -> CheckInput {
         mode: Mode::Ci,
         imports: Default::default(),
         components: Default::default(),
+        defaults: Default::default(),
     }
 }
 
@@ -198,8 +199,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.9.0");
-    assert_eq!(artifact.ir_version, "0.9.0");
+    assert_eq!(artifact.lute, "0.10.0");
+    assert_eq!(artifact.ir_version, "0.10.0");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
@@ -358,7 +359,7 @@ title: Cut gate
 #[test]
 fn injection_warnings_do_not_gate_and_output_is_byte_stable() {
     // The ::auto has no anchor => an anchor is INJECTED (a warning-free case);
-    // W-INJECT-CONFLICT-class warnings never gate (only Errors do, D6).
+    // warnings never gate at all (only Errors do, D6).
     let a1 = compile(&input(SCENE)).expect("ok");
     let a2 = compile(&input(SCENE)).expect("ok");
     let s1 = serde_json::to_string_pretty(&a1).unwrap();

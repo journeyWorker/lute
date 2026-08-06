@@ -176,14 +176,18 @@ fn synth_when_match(mut line: Line) -> Node {
     let test = CelSlot::raw(CelKind::Condition, "$".to_string(), span);
     Node::Match(Match {
         subject: guard,
+        // Synthesized, not authored: no residual attributes exist.
+        attrs: Vec::new(),
         arms: vec![
             Arm::When {
                 is: None,
                 test,
+                attrs: Vec::new(),
                 body: vec![Node::Line(line)],
                 span,
             },
             Arm::Otherwise {
+                attrs: Vec::new(),
                 body: Vec::new(),
                 span,
             },

@@ -42,7 +42,11 @@
 //! independently dead for another reason. `E-MAYBE-UNSET` is NOT a
 //! derivative — it stays independent (§4).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
+use cel_parser::ast::{operators as op, Expr};
+use cel_parser::reference::Val;
+use lute_manifest::types::Type;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, CelSlot, Document, Match, Node, Objective, Quest};
@@ -79,6 +83,14 @@ pub(crate) const E_QUEST_UNREACHABLE: &str = "E-QUEST-UNREACHABLE";
 /// unreachable; that consequence rides as a NOTE on this diagnostic, never
 /// as a second `E-QUEST-UNREACHABLE` (C4).
 pub(crate) const E_OBJECTIVE_UNSATISFIABLE: &str = "E-OBJECTIVE-UNSATISFIABLE";
+
+/// `E-OBJECTIVE-CONTRADICTION` (dsl 0.10.0 §5.2, D-G): two REQUIRED objectives
+/// of one `<quest>` whose in-domain `done` predicates name the same declared
+/// scalar path and whose solution sets over that path's declared type do not
+/// intersect. Neither objective is individually dead — so neither draws
+/// [`E_OBJECTIVE_UNSATISFIABLE`] — and the quest consequence rides as a note on
+/// this diagnostic (C4, D-O), never as a second [`E_QUEST_UNREACHABLE`].
+pub(crate) const E_OBJECTIVE_CONTRADICTION: &str = "E-OBJECTIVE-CONTRADICTION";
 
 /// `W-OBJECTIVE-HIDDEN` (dsl 0.4.0 §5.3): a REQUIRED (`!optional`)
 /// objective whose `when` visibility gate decides false — provably never
@@ -228,6 +240,7 @@ pub(crate) fn check_reachability_in(
     }
     for quest in &doc.quests {
         diags.extend(check_quest_reach(quest, defs, base_ctx));
+        diags.extend(check_objective_contradiction(quest, defs, base_ctx));
         walk_reach(&quest.body, defs, base_ctx, &mut diags);
     }
     diags
@@ -711,6 +724,265 @@ fn check_objective_reach(o: &Objective, defs: &DefTable<'_>, ctx: &DecideCtx<'_>
         }
     }
     diags
+}
+
+/// One in-domain `done` predicate's SOLUTION SET over its path's declared type
+/// (§5.2). Reals for `number`, the finite member set for `bool`/`enum`,
+/// equality/inequality only for `string`.
+#[derive(Clone, Debug)]
+enum SolutionSet {
+    /// A real interval. `lo`/`hi` may be infinite; `*_inc` is endpoint
+    /// inclusion. **The domain is the REALS, not the integers** — a literal is
+    /// an `f64` and the language has no integer scalar type, so `x > 1` and
+    /// `x < 2` INTERSECT and are not a contradiction.
+    Interval { lo: f64, lo_inc: bool, hi: f64, hi_inc: bool },
+    /// Every real except one (`number` `!=`).
+    NotNum(f64),
+    /// The satisfying members of a finite domain (`bool`, `enum`).
+    Members(BTreeSet<String>),
+    /// Exactly one string (`string` `==`).
+    OnlyStr(String),
+    /// Every string except one (`string` `!=`).
+    NotStr(String),
+}
+
+/// One objective that participates in pairing.
+struct Gate<'a> {
+    id: &'a str,
+    path: String,
+    raw: &'a str,
+    set: SolutionSet,
+    span: Span,
+}
+
+/// dsl 0.10.0 §5.2 (D-G): every pair of REQUIRED, in-domain, same-path `done`
+/// predicates of one quest whose solution sets do not intersect.
+///
+/// **Direct children of `quest.body` only**, mirroring `E-OBJECTIVE-ID-DUP`'s
+/// own scoping (`match_check.rs:650-651`). An objective nested in a `<match>`
+/// arm or a `<branch>` choice cannot be shown to coexist with one in a sibling
+/// arm, so pairing across them would manufacture a contradiction between
+/// objectives that never meet — the one outcome §5.2 may not produce.
+fn check_objective_contradiction(
+    quest: &Quest,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> Vec<Diagnostic> {
+    let mut gates: Vec<Gate<'_>> = Vec::new();
+    for node in &quest.body {
+        let Node::Objective(o) = node else { continue };
+        // An OPTIONAL objective never participates: the quest can still
+        // complete without it, so a pair including one is not a contradiction
+        // ABOUT THE QUEST. An id-less objective has its own diagnostic.
+        if o.optional || o.id.is_empty() {
+            continue;
+        }
+        // An individually dead `done` is `E-OBJECTIVE-UNSATISFIABLE`'s, and the
+        // two codes MUST NOT both fire for one pair. A comparison over a
+        // declared path is never `decide`-false today (a `number` path is
+        // `Domain::Infinite`, so R2 leaves it undecided), but stating the
+        // exclusion structurally is cheaper than relying on that staying true.
+        if matches!(decide_slot(&o.done.raw, defs, ctx), Some(Decided::Bool(false))) {
+            continue;
+        }
+        if let Some(g) = in_domain_gate(o, ctx) {
+            gates.push(g);
+        }
+    }
+    let mut diags = Vec::new();
+    for j in 1..gates.len() {
+        for i in 0..j {
+            if gates[i].path != gates[j].path || !disjoint(&gates[i].set, &gates[j].set) {
+                continue;
+            }
+            // Anchored at the SECOND objective, reported once per pair.
+            diags.push(diag(
+                E_OBJECTIVE_CONTRADICTION,
+                Severity::Error,
+                contradiction_message(&gates[i], &gates[j]),
+                gates[j].span,
+            ));
+        }
+    }
+    diags
+}
+
+/// §5.2's in-domain test: the predicate is, IN ITS ENTIRETY, a single
+/// comparison `<declared scalar state path> <op> <literal>` with the literal
+/// well-typed for the path's declared type. An `&&`, an `||`, a `!`, a fact
+/// query, a `@ref`, a second path, or anything else puts it out of domain.
+///
+/// Parsed through the SAME expand-then-marked-reparse pipeline `decide_slot`
+/// and `producible::dead_guard` use, so this analysis and reachability can
+/// never see different trees for the same raw text.
+fn in_domain_gate<'a>(o: &'a Objective, ctx: &DecideCtx<'_>) -> Option<Gate<'a>> {
+    let raw = o.done.raw.trim();
+    // A `@ref` anywhere puts it out of domain, and `parse_slot_marked_refs`
+    // would hide that by turning the ref into a marker ident.
+    if !lute_cel::scan_refs(raw).is_empty() {
+        return None;
+    }
+    let mut arena = lute_cel::CelArena::default();
+    let handle = lute_cel::parse_slot_marked_refs(&mut arena, raw)?;
+    let ided = arena.get(handle)?;
+    let Expr::Call(c) = &ided.expr else { return None };
+    if c.target.is_some() || c.args.len() != 2 {
+        return None;
+    }
+    // Normalise to `path <op> literal`; a `literal <op> path` form flips the
+    // operator so the solution set is always computed path-side.
+    let (path, opname, lit) = match (
+        crate::cel_paths::select_path(&c.args[0].expr),
+        &c.args[1].expr,
+        crate::cel_paths::select_path(&c.args[1].expr),
+        &c.args[0].expr,
+    ) {
+        (Some(p), Expr::Literal(v), _, _) => (p, c.func_name.as_str(), v),
+        (_, _, Some(p), Expr::Literal(v)) => (p, flip(&c.func_name)?, v),
+        _ => return None,
+    };
+    let declared = crate::set_op::resolve_type(&path, ctx.schema)?;
+    let set = solution_set(declared, opname, lit)?;
+    Some(Gate { id: &o.id, path, raw: o.done.raw.trim(), set, span: o.span })
+}
+
+/// The operator with its operands exchanged (`1 < x` is `x > 1`).
+fn flip(func_name: &str) -> Option<&'static str> {
+    Some(match func_name {
+        op::EQUALS => op::EQUALS,
+        op::NOT_EQUALS => op::NOT_EQUALS,
+        op::LESS => op::GREATER,
+        op::LESS_EQUALS => op::GREATER_EQUALS,
+        op::GREATER => op::LESS,
+        op::GREATER_EQUALS => op::LESS_EQUALS,
+        _ => return None,
+    })
+}
+
+/// The satisfying set of `path <opname> lit` over `declared`'s domain, or
+/// `None` when the pair is out of domain (a relational operator on an unordered
+/// type, a literal of the wrong type, a non-scalar declaration).
+fn solution_set(declared: &Type, opname: &str, lit: &Val) -> Option<SolutionSet> {
+    match declared {
+        Type::Number => {
+            let v = match lit {
+                Val::Int(i) => *i as f64,
+                Val::UInt(u) => *u as f64,
+                Val::Double(d) => *d,
+                _ => return None,
+            };
+            Some(match opname {
+                op::EQUALS => SolutionSet::Interval { lo: v, lo_inc: true, hi: v, hi_inc: true },
+                op::NOT_EQUALS => SolutionSet::NotNum(v),
+                op::LESS => SolutionSet::Interval {
+                    lo: f64::NEG_INFINITY,
+                    lo_inc: false,
+                    hi: v,
+                    hi_inc: false,
+                },
+                op::LESS_EQUALS => SolutionSet::Interval {
+                    lo: f64::NEG_INFINITY,
+                    lo_inc: false,
+                    hi: v,
+                    hi_inc: true,
+                },
+                op::GREATER => SolutionSet::Interval {
+                    lo: v,
+                    lo_inc: false,
+                    hi: f64::INFINITY,
+                    hi_inc: false,
+                },
+                op::GREATER_EQUALS => SolutionSet::Interval {
+                    lo: v,
+                    lo_inc: true,
+                    hi: f64::INFINITY,
+                    hi_inc: false,
+                },
+                _ => return None,
+            })
+        }
+        // Finite domains. A relational operator has no meaning over an
+        // unordered member set, so `<`/`<=`/`>`/`>=` are OUT OF DOMAIN rather
+        // than guessed at — the conservative reading, and the only one that
+        // cannot false-positive.
+        Type::Bool => {
+            let Val::Boolean(b) = lit else { return None };
+            let all = [String::from("true"), String::from("false")];
+            finite_members(&all, &b.to_string(), opname)
+        }
+        Type::Enum(members) => {
+            let Val::String(s) = lit else { return None };
+            if !members.iter().any(|m| m == s.as_str()) {
+                return None; // a foreign member is its own diagnostic's problem
+            }
+            finite_members(members, s, opname)
+        }
+        // §5.2: equality/inequality only for `string`.
+        Type::Str => {
+            let Val::String(s) = lit else { return None };
+            Some(match opname {
+                op::EQUALS => SolutionSet::OnlyStr(s.to_string()),
+                op::NOT_EQUALS => SolutionSet::NotStr(s.to_string()),
+                _ => return None,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn finite_members(all: &[String], value: &str, opname: &str) -> Option<SolutionSet> {
+    let set: BTreeSet<String> = match opname {
+        op::EQUALS => std::iter::once(value.to_string()).collect(),
+        op::NOT_EQUALS => all.iter().filter(|m| m.as_str() != value).cloned().collect(),
+        _ => return None,
+    };
+    Some(SolutionSet::Members(set))
+}
+
+/// Do the two solution sets fail to intersect? Conservative in both
+/// directions: an unrecognised combination is treated as INTERSECTING, so it
+/// draws nothing.
+fn disjoint(a: &SolutionSet, b: &SolutionSet) -> bool {
+    use SolutionSet::*;
+    match (a, b) {
+        (
+            Interval { lo: l1, lo_inc: li1, hi: h1, hi_inc: hi1 },
+            Interval { lo: l2, lo_inc: li2, hi: h2, hi_inc: hi2 },
+        ) => {
+            // Over the REALS: the intervals miss iff one ends before the other
+            // begins, or they touch at a point neither includes.
+            (h1 < l2 || (h1 == l2 && !(*hi1 && *li2)))
+                || (h2 < l1 || (h2 == l1 && !(*hi2 && *li1)))
+        }
+        // Every real except `v` misses an interval only when that interval IS
+        // the single point `v`.
+        (NotNum(v), Interval { lo, lo_inc, hi, hi_inc })
+        | (Interval { lo, lo_inc, hi, hi_inc }, NotNum(v)) => {
+            *lo == *v && *hi == *v && *lo_inc && *hi_inc
+        }
+        (NotNum(_), NotNum(_)) => false,
+        (Members(x), Members(y)) => x.is_disjoint(y),
+        (OnlyStr(x), OnlyStr(y)) => x != y,
+        (OnlyStr(x), NotStr(y)) | (NotStr(y), OnlyStr(x)) => x == y,
+        // Two `!=`s over the infinite string domain always share a value.
+        (NotStr(_), NotStr(_)) => false,
+        // Same path implies same declared type, so a cross-kind pair cannot
+        // arise; treat it as intersecting rather than guessing.
+        _ => false,
+    }
+}
+
+/// The `E-OBJECTIVE-CONTRADICTION` message: names BOTH objective ids (it cannot
+/// know which is wrong) and the path, quotes both predicates, and appends
+/// [`REQUIRED_QUEST_NOTE`] VERBATIM per D-O — the quest consequence reads
+/// identically whichever cause found it, and is never a second
+/// `E-QUEST-UNREACHABLE` (0.4.0 §8.2 rule C4).
+fn contradiction_message(first: &Gate<'_>, second: &Gate<'_>) -> String {
+    format!(
+        "required objectives `{}` and `{}` cannot both complete: `done=\"{}\"` and \
+         `done=\"{}\"` have no common value of `{}` (dsl 0.10.0 §5.2){}",
+        first.id, second.id, first.raw, second.raw, first.path, REQUIRED_QUEST_NOTE
+    )
 }
 
 /// `E-QUEST-UNREACHABLE` message (dsl 0.4.0 §5.3 rule 2, D21): joins

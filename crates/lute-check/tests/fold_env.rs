@@ -39,6 +39,7 @@ fn fold_env_exposes_folded_schema_and_def_bodies() {
         mode: Mode::Ci,
         imports: Default::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     let (doc, _) = lute_syntax::parse(&input.text);
     let (folded, fold_diags, state_merge_diags) = fold_env(&doc, &input);

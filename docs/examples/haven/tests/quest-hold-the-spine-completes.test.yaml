@@ -4,9 +4,11 @@
 # the test suite cannot tell you the thing `lute scenario` can.
 #
 # With this file the suite covers 17 of the project's 18 documents. The eighteenth
-# is `components/purser-interject.component.lute`, which no test can name: tracing
-# a component standalone is refused with `E-COMPILE-EXPAND` even though
-# `check-project` reports it `ok`. See T9.11.
+# is `components/purser-interject.component.lute`, which no test can name: a
+# component is not a root document — its `params:` are bound at each `::use` — so
+# it has no standalone trace to assert against. `lute trace` says exactly that and
+# points at an importing document; `lute check` on the file reports the
+# component's own verdict. The two no longer contradict each other (0.10.0 §9).
 file: ../quests/hold-the-spine.lute
 state:
   run.shedPressure: 2

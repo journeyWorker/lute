@@ -10,6 +10,7 @@ fn codes(text: &str) -> Vec<String> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input).diagnostics.into_iter().map(|d| d.code).collect()
 }
@@ -104,6 +105,7 @@ fn guard_tainted(text: &str) -> std::collections::BTreeSet<String> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     let (folded, _, _) = lute_check::fold_env(&doc, &input);
     folded.env.rel_vocab.guard_tainted.clone()
@@ -145,6 +147,7 @@ fn negation_cycle_spanning_two_files_is_caught_post_merge() {
         mode: lute_check::Mode::Author,
         imports,
         components: Default::default(),
+        defaults: Default::default(),
     };
     let c: Vec<String> = lute_check::check(&input).diagnostics.into_iter().map(|d| d.code).collect();
     assert!(c.contains(&"E-DATALOG-UNSTRATIFIED".to_string()), "{c:?}");

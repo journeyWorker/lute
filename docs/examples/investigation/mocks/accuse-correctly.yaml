@@ -2,6 +2,7 @@
 # Drives scenes/confrontation.lute: seed the truth, force the accusation.
 # `run.trueKiller` matches the forced `accuse` choice, so the success ending
 # fires. NOTE: one deterministic mock-driven path, not proof of all paths.
+file: ../scenes/confrontation.lute
 state:
   run.trueKiller: blake
 choose:

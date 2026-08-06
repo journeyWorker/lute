@@ -62,6 +62,7 @@ fn codes_against(text: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
         mode: Mode::Author,
         imports: SchemaImports::default(),
         components: Default::default(),
+        defaults: Default::default(),
     };
     check(&input)
         .diagnostics
@@ -72,6 +73,26 @@ fn codes_against(text: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
 
 fn codes(text: &str) -> Vec<String> {
     codes_against(text, snap())
+}
+
+/// The one `E-ATTR-TYPE` message this snapshot produces, or a panic naming
+/// every code that fired.
+fn attr_type_message(text: &str) -> String {
+    let input = CheckInput {
+        text: text.to_string(),
+        uri: "stamp_attrs".into(),
+        snapshot: snap(),
+        providers: ProviderSet::default(),
+        mode: Mode::Author,
+        imports: SchemaImports::default(),
+        components: Default::default(),
+        defaults: Default::default(),
+    };
+    let all = check(&input).diagnostics;
+    all.iter()
+        .find(|d| d.code == "E-ATTR-TYPE")
+        .map(|d| d.message.clone())
+        .unwrap_or_else(|| panic!("no E-ATTR-TYPE in {:?}", all.iter().map(|d| &d.code).collect::<Vec<_>>()))
 }
 
 #[test]
@@ -197,4 +218,25 @@ fn a_content_lines_own_attr_wins_over_a_same_named_stamp_attr() {
         !got.contains(&"E-ATTR-TYPE".to_string()) && !got.contains(&"E-UNKNOWN-ATTR".to_string()),
         "the content line's own `variant` must win over a same-named stampAttr; got {got:?}"
     );
+}
+
+/// #33 / T1.4: `E-ATTR-TYPE` reaches a content line through the SAME
+/// `check_attr_value` a directive uses, so it inherited the same defect —
+/// the hardcoded `::` sigil named a `::narrator` that exists in no document,
+/// no grammar and no `lute context` listing. This is the only content-line
+/// surface that reaches `E-ATTR-TYPE` (the built-in content attrs are not
+/// value-typed), which is why the probe is a mistyped stamp attr.
+#[test]
+fn attr_type_names_the_owning_construct_with_its_real_sigil() {
+    let line = attr_type_message(&format!("{HDR}@narrator{{bonusScore=\"nope\"}}: hi\n"));
+    assert!(
+        line.contains("of `@narrator`"),
+        "a content line's owner renders `@speaker`, never `::speaker`: {line}"
+    );
+    assert!(!line.contains("::narrator"), "{line}");
+
+    let dir = attr_type_message(&format!(
+        "{HDR}::bg{{location=\"cafe\" bonusScore=\"nope\"}}\n@narrator: hi\n"
+    ));
+    assert!(dir.contains("of `::bg`"), "a directive's owner keeps the `::` sigil: {dir}");
 }

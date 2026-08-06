@@ -64,6 +64,7 @@ fn codes_with_snapshot(dir: &Path, scene: &str, snapshot: CapabilitySnapshot) ->
         mode: Mode::Ci,
         imports: Default::default(),
         components,
+        defaults: Default::default(),
     };
     check(&input)
         .diagnostics

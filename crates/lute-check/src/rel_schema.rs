@@ -419,8 +419,25 @@ pub fn check_atom(
     let Some(decl) = vocab.relations.get(relation) else {
         let hint = if vocab.kinds.contains_key(relation) {
             " (an entity kind is a rule-body predicate, not an assertable fact — dsl 0.3.0 §3.1)"
+                .to_string()
         } else {
-            ""
+            // dsl 0.5.0 §2.2 "did you mean": `relations:` is a CLOSED declared
+            // set, so this is the cheapest suggestion in the language to
+            // compute — and it was the one identifier class without one (#35,
+            // T4.6). Advisory text only: no new code, no severity change.
+            // `lute_manifest::suggest::nearest` is the workspace's ONE
+            // Levenshtein, and `relations` is a `BTreeMap`, so the tie-break
+            // is deterministic. The entity-kind branch keeps precedence: a
+            // name that IS a declared kind gets the categorical explanation,
+            // because that author's mistake is not a typo.
+            match lute_manifest::suggest::nearest(
+                relation,
+                vocab.relations.keys().map(String::as_str),
+                2,
+            ) {
+                Some(sugg) => format!(" — did you mean `{sugg}`?"),
+                None => String::new(),
+            }
         };
         return vec![diag(
             E_RELATION_UNKNOWN,

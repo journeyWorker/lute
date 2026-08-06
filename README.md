@@ -112,14 +112,18 @@ Install the server once (`cargo install --path crates/lute-lsp`), then:
 Lute's status splits along three independent axes (see
 [`docs/versioning.md`](docs/versioning.md) for the full policy):
 
-- **Language: draft.** The grammar is at **0.9.0** — the normative surface is
+- **Language: draft.** The grammar is at **0.10.0** — the normative surface is
   the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 / 0.3.0 / 0.4.0 /
-  0.5.0–0.5.2 / 0.6.0 / 0.6.1 / 0.7.0 / 0.8.0 / 0.9.0 deltas; 0.9.0 is
-  vocabulary ownership — the compiler declares the seven content-vocabulary
-  slots and ships no members, so a project declares its own or gets
-  `E-DOMAIN-UNKNOWN`). Every release re-aligns the three visible axis numbers,
-  so the toolchain and the IR read `0.9.0` too; the IR is shape-identical to
-  `0.8.0`, and an engine gated on IR `0.8` need only widen that gate. Being
+  0.5.0–0.5.2 / 0.6.0 / 0.6.1 / 0.7.0 / 0.8.0 / 0.9.0 / 0.10.0 deltas; 0.10.0 is
+  *the toolchain says what it knows* — thirteen changes, each one closing a
+  place where the checker held the answer and did not say it: a typed `::set`
+  right-hand side, closed attribute sets on the six logic tags, a quest gate
+  that can never open, `defaults:` in `lute.project.yaml`, checked
+  `mocks/*.yaml`, integer-millisecond timeline time, and one warning
+  **removed**). Every release re-aligns the three visible axis numbers, so the
+  toolchain and the IR read `0.10.0` too — and this time the IR **earned** it:
+  `provenance.reason` became `provenance.explanation`, the first shape change
+  since `0.8.0`, so an engine gated on IR `0.9` must widen that gate. Being
   draft means the grammar may still break before 1.0; each breaking change ships
   a `lute fix` migration where the rewrite is mechanical.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver,

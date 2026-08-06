@@ -1,6 +1,6 @@
 //! `lute run` — the reference headless runner over a COMPILED artifact
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.9.schema.json`).
+//! `schemas/lute-ir-0.10.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
 //! artifact (`lute compile` output), gates on `irVersion` by **major.minor**
@@ -711,6 +711,24 @@ impl Runner {
                 return Step::Halt;
             }
         };
+        // #20 / T8.5, D-C: `lute trace` refuses a forced selection whose guard
+        // decided false, and `lute test` inherits that refusal. `run` played
+        // it in full at exit 0 — one question, three tools, two answers. The
+        // guard is in the artifact as `option.when` and this walk already
+        // evaluates CEL everywhere else in it (`do_match`). Only a DECIDED
+        // false refuses: `None` means the guard read something with no mock
+        // surface (`now()`/`validAt(...)`, a bridgeResult), and refusing on
+        // that would refuse a legal replay. No opt-in flag — a flag to keep
+        // the old behaviour re-creates the divergence under another name.
+        if let Some(when) = opt.get("when").and_then(Json::as_str) {
+            if self.truthy(when) == Some(false) {
+                self.fatal = Some(format!(
+                    "[E-TRACE-CHOICE] `choose: {branch}: {forced}` names an option whose guard \
+                     `{when}` decided false at this presentation point (dsl 0.4.0 §4.4)"
+                ));
+                return Step::Halt;
+            }
+        }
         if let Some(key) = record_key {
             self.state.insert(key, Value::Str(forced.clone()));
         }
@@ -772,6 +790,20 @@ impl Runner {
             if once && visited_once.contains(&choice_id) {
                 // A `once` option cannot be re-presented; skip a repeat force.
                 continue;
+            }
+            // Same rule as `do_choice` (#20, D-C). A hub option is presented
+            // repeatedly, so this is evaluated per visit against live state —
+            // a guard false on the first pass may be true on the third, which
+            // is precisely what a hub is for. Placed after the `once` skip: a
+            // repeat-forced `once` option is not a visit at all.
+            if let Some(when) = opt.get("when").and_then(Json::as_str) {
+                if self.truthy(when) == Some(false) {
+                    self.fatal = Some(format!(
+                        "[E-TRACE-CHOICE] `choose: {id}: {choice_id}` names an option whose guard \
+                         `{when}` decided false at this presentation point (dsl 0.4.0 §4.4)"
+                    ));
+                    return Step::Halt;
+                }
             }
             if let Some(key) = &record_key {
                 self.state.insert(key.clone(), Value::Str(choice_id.clone()));

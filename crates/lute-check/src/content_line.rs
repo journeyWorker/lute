@@ -26,6 +26,14 @@ pub const KNOWN_ATTRS: &[&str] = &[
     "code", "emotion", "variant", "action", "dialogMotion", "mono", "os", "vo", "as",
 ];
 
+/// The two DOMAIN-typed content-line attributes (dsl 0.9.0 D-C). They are not
+/// directive `AttrDecl`s — a content line is not a directive — so §11.1's
+/// reading set has to name them explicitly. Single-sourced here, beside the
+/// arms that consume them (the `"emotion"` and `"action"` arms of
+/// `check_content_line_attrs` below), so the reading set and the enforcement
+/// cannot drift apart.
+pub const CONTENT_LINE_DOMAIN_SLOTS: &[&str] = &["emotion", "action"];
+
 /// The mutually-exclusive delivery bare flags (dsl 0.2.2 §D7): at most one
 /// may be set per content line.
 const DELIVERY_FLAGS: &[&str] = &["mono", "os", "vo"];
@@ -66,6 +74,12 @@ pub fn check_content_line_attrs(
     domains: &BTreeMap<String, Domain>,
     diags: &mut Vec<Diagnostic>,
 ) {
+    // #33 / T1.4: a content line's owning construct is `@speaker`. The shared
+    // attr checkers take an already-rendered owner precisely so this surface
+    // does not inherit the `::` DIRECTIVE sigil — rendering `::narrator` named
+    // a construct that exists in no document, no grammar, and no `lute
+    // context` listing.
+    let owner = format!("@{}", line.speaker);
     let mut delivery_flags: Vec<&Attr> = Vec::new();
     for attr in &line.attrs {
         if !KNOWN_ATTRS.contains(&attr.key.as_str()) {
@@ -81,7 +95,7 @@ pub fn check_content_line_attrs(
             if let Some(sdecl) = snapshot.stamp_attrs.get(&attr.key) {
                 let mut scratch = Vec::new();
                 check_attr_value(
-                    &line.speaker,
+                    &owner,
                     sdecl,
                     attr,
                     snapshot,
@@ -148,7 +162,7 @@ pub fn check_content_line_attrs(
             // collect into a scratch vec and re-layer before folding into `diags`.
             "emotion" => {
                 let mut scratch = Vec::new();
-                check_domain_member(&line.speaker, "emotion", attr, domains, snapshot, providers, &mut scratch);
+                check_domain_member(&owner, "emotion", attr, domains, snapshot, providers, &mut scratch);
                 for mut d in scratch {
                     d.layer = Layer::Content;
                     diags.push(d);
@@ -161,7 +175,7 @@ pub fn check_content_line_attrs(
             // from the shared resolver's step 4.
             "action" => {
                 let mut scratch = Vec::new();
-                check_domain_member(&line.speaker, "action", attr, domains, snapshot, providers, &mut scratch);
+                check_domain_member(&owner, "action", attr, domains, snapshot, providers, &mut scratch);
                 for mut d in scratch {
                     d.layer = Layer::Content;
                     diags.push(d);

@@ -1,6 +1,6 @@
 ---
 title: Runtime contract
-description: What a game engine must implement to run a compiled Lute artifact — the envelope, version negotiation and the IR 0.9.0 alignment bump, the addr width invariant, and the dispatcher loop over the twenty-one command kinds.
+description: What a game engine must implement to run a compiled Lute artifact — the envelope, version negotiation and the IR 0.10.0 provenance-field rename, the addr width invariant, and the dispatcher loop over the twenty-one command kinds.
 ---
 
 Lute is a total, side-effect-free compiler. `lute compile <file>` checks a
@@ -19,11 +19,19 @@ and the machine-checkable shape is
 | ------------------- | ---------------- |
 | Statically check the document; refuse to emit on any error. | Trust the artifact — it compiled clean. |
 | Fold the state schema into an init/type table. | Initialize state from that table; own the tier lifetimes. |
-| Lower every CEL guard to a portable `expr` AST. | **Evaluate** guards against live state. |
+| Lower every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST; leave the rest as raw CEL. | **Evaluate** guards against live state. |
 | Emit facts, `assert`/`retract` deltas, and Datalog rules as **data**; prove the rules are stratified and safe. | **Compute the minimal model** (least fixpoint) over the fact store. |
 | Emit quests, objectives, and `<on>` handlers as **declarations**. | **Derive** the quest lifecycle from `start`/`fail`/objective completion. |
 | Resolve plugin bridge calls and their state-write bindings. | **Make the call** and apply the effects. |
 | Schedule timeline clips and prove no write races. | Replay the schedule (or run tracks concurrently) and honor the barrier. |
+
+`holds()` and `count()` are inside the §8.4 CEL profile that authors may write
+and are deliberately **absent** from the `expr` AST, so a guard that queries
+facts reaches the engine as its raw CEL text alone (`option.when`, `arm.test`,
+`set.value`) with no `expr` sibling — and an engine MUST therefore have a CEL
+evaluator, not merely an AST walker. `lute run`'s module doc says the same:
+it resolves every slot from the raw CEL "including the `holds`/`count`
+fact-query functions the structured `expr` AST deliberately omits".
 
 The through-line: Lute proves *shape and structure*; the engine supplies
 *evaluation and effect*. Lute's static analyses are also honest about their
@@ -63,9 +71,10 @@ them inline or through `uses:`/`extends:` emits them; a project whose members
 come from a plugin's `enums` export emits **no** `enums` at all, because a
 plugin vocabulary is capability surface (folded into `capabilityVersion`), not
 per-document data. Either way this is data an engine already unions, so nothing
-new is required of it — no field was added, renamed, or moved. `irVersion` reads
-`0.9.0` purely because the release aligns every axis, not because the shape
-changed; see [What IR 0.9.0 changed](#what-ir-090-changed). Members carrying
+new is required of it — the `enums` move added, renamed, and moved no field.
+`irVersion` reads `0.10.0`, and at `0.10.0` the shape *does* change, but only in
+one place unrelated to `enums`: a provenance-field rename. See
+[What IR 0.10.0 changed](#what-ir-0100-changed). Members carrying
 compiler semantics (`action`'s
 `exits:`, `anchor`'s `default:`) are resolved away at compile time and never
 serialized: an engine needs no member semantics at runtime.
@@ -82,50 +91,62 @@ Gate on `irVersion` by **major.minor**:
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
 
+### What IR 0.10.0 changed
+
+**One field rename — the first shape change since `0.8.0`.** The injection
+provenance stamp's `reason` becomes **`explanation`**:
+
+```json
+{ "injected": true, "by": "auto-pose-reset",
+  "explanation": "pre-loading `vesna`'s first emotion `level` seen ahead of the entrance" }
+```
+
+The old name was a collision, not a synonym. `end.reason` is an **opaque author
+token you dispatch on** — the author writes it, you branch on it. This field is
+**human-readable English the compiler wrote** to explain why a record it
+synthesized exists, and nothing dispatches on it. Two keys with the same name
+and nothing else in common is exactly the trap a renamed field removes, and
+`explanation` reads correctly beside `by`.
+
+Nothing else in the shape moves: no field added, no field retyped, no new
+command `kind`, no changed constraint. `Provenance.injected` is **retained but
+is now constant-`true`** — with `W-INJECT-CONFLICT` removed nothing can
+construct a `false`, so do not read a `true` as distinguishing anything.
+Removing the field would be a second IR break and is deferred.
+
+**The gate above is normative, and this bump costs you two edits rather than
+one.** An engine that implements IR `0.9` **must refuse** an artifact stamped
+`0.10.0`, because `0.10` is a newer major.minor. The update is:
+
+> **Widen the gate to accept `0.10`,** and if you read the injection provenance
+> stamp, **rename `reason` to `explanation`.** Nothing after that — no new
+> `kind` to dispatch, no behavioural difference.
+
+If you validate against the JSON Schema, repoint at
+`lute-ir-0.10.schema.json`; the `0.9` file is retained beside it.
+
+Artifact **content** also moves, in a way that costs nothing: clip `at`,
+`duration`, `delay` and the barrier `at` are still JSON numbers in seconds, but
+they are now computed from integer milliseconds, so a cursor-derived `1.2` stops
+serializing as `1.2000000000000002`. And `capabilityVersion` changes —
+`W-INJECT-CONFLICT` left the code set and eleven codes joined it.
+
 ### What IR 0.9.0 changed
 
-**Nothing in the shape — that is the whole answer.** IR `0.9.0` is
-**shape-identical** to IR `0.8.0`: no field added, no field renamed, no field
-moved, no field retyped, no new command `kind`, no changed constraint. The
-schema file was renamed `schemas/lute-ir-0.8.schema.json` →
-`schemas/lute-ir-0.9.schema.json`, and the whole textual diff between the two
-is four lines: the `$id`, the `title`, a note appended to the top-level
-`description`, and the example version string in `irVersion`'s own
-description. Mask those and the two files hash identically — same `required`,
-same top-level properties, same 48 `$defs`.
-
-The number moved because Lute's
+*History, retained for anyone still on the `0.9` line.* **Nothing in the shape.**
+IR `0.9.0` was shape-identical to IR `0.8.0` — no field added, renamed, moved,
+or retyped, no new command `kind`. The number moved only because Lute's
 [versioning policy](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)
-re-aligns every visible axis number on every release, so a `0.9.0` toolchain
-stamps `"irVersion": "0.9.0"`. The IR *contract* did not change; only the
-number did.
-
-**That still costs you one line of code, and we would rather say so than let
-you find out at load time.** The gate above is normative: an engine that
-implements IR `0.8` **must refuse** an artifact stamped `0.9.0`, because `0.9`
-is a newer major.minor. Every engine on the `0.8` line will therefore reject
-`0.9.0` artifacts until it is updated — and the update is exactly this, with
-nothing after it:
-
-> **Widen the gate to accept `0.9`. Change nothing else.** No parser change, no
-> new field to read, no new `kind` to dispatch, no behavioural difference.
-
-An engine that accepts both `0.8` and `0.9` is correct against both lines at
-once. Apart from the `irVersion` string itself, the bump changes no byte of any
-artifact. If you validate against the JSON Schema, repoint at
-`lute-ir-0.9.schema.json` — it replaced the `0.8` file by rename rather than
-sitting beside it.
-
-What *did* move at `0.9.0` is artifact **content**, not shape: `enums` may now
-carry the project's content-vocabulary domains (see
-[the envelope](#the-envelope)) and `capabilityVersion` changes because the
-core's vocabulary emptied. Both are new values in fields that already existed,
-and an engine already unions `enums` and already compares `capabilityVersion`.
+re-aligns every visible axis number on every release, and widening the gate to
+accept `0.9` was the entire migration. What *did* move was artifact **content**:
+`enums` began carrying the project's content-vocabulary domains (see
+[the envelope](#the-envelope)) and `capabilityVersion` changed because the core's
+vocabulary emptied — both new values in fields that already existed.
 
 ### What IR 0.8.0 changed
 
-*History, retained for anyone still on the `0.8` line — this is the last bump
-that changed the shape.* The schema file was renamed
+*History, retained for anyone still on the `0.8` line.* The schema file was
+renamed
 `schemas/lute-ir-0.7.schema.json` → `schemas/lute-ir-0.8.schema.json` along
 with the minor bump. Three deltas matter to a consumer:
 
@@ -175,6 +196,12 @@ The `commands` array is already in execution order. Control-flow fields —
 program counter over an `addr → index` map, dispatching on `kind`:
 
 ```ts
+// Every CEL slot carries its verbatim source under its own key — `option.when`,
+// `arm.test`, `set.value` — and the lowered `expr` AST ONLY when that CEL is
+// inside the closed §8.4 profile. A relational fact query carries raw text alone.
+const evalSlot = (raw, expr, state, facts) =>
+  expr !== undefined ? evalExpr(expr, state) : evalCel(raw, state, facts);
+
 const index = new Map(artifact.commands.map((c, i) => [c.addr, i]));
 let pc = 0;
 while (pc < artifact.commands.length) {
@@ -189,18 +216,18 @@ while (pc < artifact.commands.length) {
       stage(cmd); break;
 
     // state & facts
-    case "set":     writeState(state, cmd.path, cmd.op, evalExpr(cmd.expr, state)); break;
+    case "set":     writeState(state, cmd.path, cmd.op, evalSlot(cmd.value, cmd.expr, state, facts)); break;
     case "assert":  facts.assert(cmd.relation, cmd.args); break;
     case "retract": facts.retract(cmd.relation, cmd.args); break;
 
     // control flow
     case "choice":
     case "hub": {
-      const opt = pickOption(cmd, state);          // eligibility via evalExpr(opt.expr)
+      const opt = pickOption(cmd, state);   // per option: evalSlot(o.when, o.expr, …)
       next = opt ? opt.target : cmd.converge; break;
     }
     case "match": {
-      const arm = cmd.arms.find(a => truthy(evalExpr(a.expr, state)));
+      const arm = cmd.arms.find(a => truthy(evalSlot(a.test, a.expr, state, facts)));
       next = arm ? arm.target : (cmd.otherwise ?? cmd.converge); break;
     }
     case "jump":    next = cmd.target; break;

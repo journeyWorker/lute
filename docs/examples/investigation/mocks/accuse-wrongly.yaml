@@ -2,6 +2,7 @@
 # Same truth (`run.trueKiller: blake`) but a different forced `accuse` choice,
 # so `run.accused` (cass) diverges from `run.trueKiller` and the failure ending
 # fires. Contrast the transcript with accuse-correctly.yaml.
+file: ../scenes/confrontation.lute
 state:
   run.trueKiller: blake
 choose:
