@@ -377,3 +377,57 @@ fn trace_prints_the_shot_heading_it_is_holding() {
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(text.contains("## Hydroponics"), "{text}");
 }
+
+/// T3.10: a mis-keyed `choose:` used to be dropped in silence, and the walk
+/// then auto-picked the FIRST eligible arm — the one the file excluded — and
+/// exited 0. The mock family's key set is closed as of 0.10.0 §8, so the
+/// typo is now an input error and the excluded arm is never reached.
+#[test]
+fn trace_refuses_a_mock_that_mis_keys_a_surface() {
+    let dir = temp_dir("mock-closed-keys");
+    std::fs::create_dir_all(dir.join("scenes")).unwrap();
+    std::fs::write(
+        dir.join("scenes/one.lute"),
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n\
+         <branch id=\"pick\">\n\
+         <choice id=\"left\" label=\"L\">\n@a: left\n</choice>\n\
+         <choice id=\"right\" label=\"R\">\n@a: right\n</choice>\n\
+         </branch>\n",
+    )
+    .unwrap();
+    let scene = dir.join("scenes/one.lute");
+    let run = |mock: &str| {
+        std::fs::write(dir.join("m.yaml"), mock).unwrap();
+        let out = std::process::Command::new(BIN)
+            .args([
+                "trace",
+                scene.to_str().unwrap(),
+                "--mock",
+                dir.join("m.yaml").to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        (
+            out.status.code(),
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            ),
+        )
+    };
+
+    // Control: the correctly keyed file still runs, and picks `right` — so a
+    // gate that refused every mock could not pass this test.
+    let (code, text) = run("choose:\n  pick: right\n");
+    assert_eq!(code, Some(0), "{text}");
+    assert!(text.contains("-> right"), "the supplied selection is taken:\n{text}");
+
+    let (code, text) = run("selections:\n  pick: right\n");
+    assert_eq!(code, Some(2), "a mis-keyed mock surface is an input error:\n{text}");
+    assert!(text.contains("E-TRACE-MOCK-PARSE") && text.contains("`selections`"), "{text}");
+    assert!(
+        !text.contains("(auto)"),
+        "the excluded arm must never be reached — that was the whole defect:\n{text}"
+    );
+}

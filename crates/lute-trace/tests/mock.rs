@@ -556,3 +556,68 @@ fn file_key_does_not_disturb_the_other_surfaces() {
     let m = lute_trace::parse_mock_yaml("file: x.lute\nchoose:\n  path: left\n").unwrap();
     assert_eq!(m.choose.get("path").map(|v| v.as_slice()), Some(&["left".to_string()][..]));
 }
+
+// ---------------------------------------------------------------------
+// The mock grammar's CLOSED top-level key set (0.10.0 §8, #2(a)/D-B).
+// T3.10: a mock spelling `selections:` where the grammar says `choose:` was
+// dropped in silence, so `lute trace` auto-picked the arm the file excluded
+// and exited 0.
+// ---------------------------------------------------------------------
+
+#[test]
+fn parse_mock_yaml_refuses_an_unknown_top_level_key() {
+    let err = parse_mock_yaml("file: x.lute\nselections:\n  whoWakes: wakeNobody\n").unwrap_err();
+    assert_eq!(err.code, "E-TRACE-MOCK-PARSE", "{err:?}");
+    assert!(err.message.contains("`selections`"), "{}", err.message);
+    // The legal set is recited, as `E-TEST-KEY`'s does — an author who
+    // mis-keyed one surface can see every surface there is.
+    for key in lute_trace::MOCK_TOP_KEYS {
+        assert!(err.message.contains(key), "{key} missing from: {}", err.message);
+    }
+}
+
+#[test]
+fn parse_mock_yaml_offers_the_nearest_legal_key() {
+    let err = parse_mock_yaml("chooses:\n  h: a\n").unwrap_err();
+    assert!(err.message.contains("did you mean `choose`"), "{}", err.message);
+}
+
+/// The gate must not be a blanket refusal: EVERY key the mock family
+/// declares legal still parses, with its surface intact. Without this a
+/// `MOCK_TOP_KEYS` that had lost a key would still pass the test above.
+#[test]
+fn every_legal_mock_key_still_parses() {
+    let yaml = "file: x.lute\nstate:\n  run.a: 1\nfacts:\n  - \"f(a)\"\n\
+                choose:\n  h: a\nevents:\n  - e\naccept:\n  - q\n";
+    let m = parse_mock_yaml(yaml).expect("every legal key parses");
+    assert_eq!(m.state.len(), 1);
+    assert_eq!(m.facts, vec!["f(a)".to_string()]);
+    assert_eq!(m.choose.get("h").map(|v| v.as_slice()), Some(&["a".to_string()][..]));
+    assert_eq!(m.events, vec!["e".to_string()]);
+    assert_eq!(m.accepts, vec!["q".to_string()]);
+    // `accepts` is the other spelling of the same key and is legal too.
+    parse_mock_yaml("accepts:\n  - q\n").expect("`accepts:` is legal");
+}
+
+/// The one key the two families do NOT share. `expect:` in a `mocks/*.yaml`
+/// is meaningless — nothing runs it — so the closed mock grammar rejects it,
+/// while `lute test`'s open read (which then applies its OWN closed set,
+/// `TEST_TOP_KEYS`) accepts it.
+#[test]
+fn expect_is_a_test_key_and_not_a_mock_key() {
+    let err = parse_mock_yaml("file: x.lute\nexpect:\n  exit: complete\n").unwrap_err();
+    assert_eq!(err.code, "E-TRACE-MOCK-PARSE", "{err:?}");
+    assert!(err.message.contains("`expect`"), "{}", err.message);
+    lute_trace::parse_mock_surfaces("file: x.lute\nexpect:\n  exit: complete\n")
+        .expect("`lute test` reads the same document through the OPEN parser");
+}
+
+/// The open parser is open: it is the `*.test.yaml` path and must not
+/// duplicate `E-TEST-KEY`'s job at a different exit code.
+#[test]
+fn parse_mock_surfaces_keeps_the_grammar_open() {
+    let m = lute_trace::parse_mock_surfaces("selections:\n  h: a\nchoose:\n  g: b\n")
+        .expect("open");
+    assert!(m.choose.contains_key("g"));
+    assert!(!m.choose.contains_key("h"));
+}

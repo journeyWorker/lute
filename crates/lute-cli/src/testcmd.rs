@@ -32,14 +32,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_trace::{parse_mock_yaml, trace_document, Step, TraceExit, TraceReport};
+use lute_trace::{parse_mock_surfaces, trace_document, Step, TraceExit, TraceReport};
 
 /// The complete legal top-level key set of a `*.test.yaml` (module docs).
-/// `file:`/`expect:` are the harness's own; the other five are the mock
-/// surfaces `parse_mock_yaml` reads (`accept`/`accepts` are two spellings of
-/// one key). CLOSED as of 0.10.0 (#2(a), D-B): the grammar being open is what
-/// let a `chooses:` typo drop a selection and green a test against the arm
-/// the file excluded.
+/// `expect:` is the harness's own; the other seven are exactly
+/// [`lute_trace::MOCK_TOP_KEYS`], the mock family's own CLOSED set.
+/// CLOSED as of 0.10.0 (#2(a), D-B): the grammar being open is what let a
+/// `chooses:` typo drop a selection and green a test against the arm the file
+/// excluded.
+///
+/// **The two sets are not identical and differ by exactly `expect:`** —
+/// asserted by [`the_test_key_set_is_the_mock_key_set_plus_expect`], so the
+/// two cannot drift when a surface is added on either side.
 const TEST_TOP_KEYS: &[&str] =
     &["accept", "accepts", "choose", "events", "expect", "facts", "file", "state"];
 
@@ -245,9 +249,12 @@ fn run_one_test(
         }
     };
 
-    // The mock surfaces reuse `lute trace --mock`'s EXACT parser — `file:`/
-    // `expect:` are simply unknown keys it ignores, so one parse serves both.
-    let mocks = match parse_mock_yaml(&text) {
+    // The mock surfaces reuse `lute trace --mock`'s EXACT parser, in its
+    // OPEN form: this family's legal set adds `expect:`, and a key violation
+    // here is a per-test failure (exit 1, below) rather than the mock
+    // family's parse error (exit 2). `parse_mock_surfaces` therefore skips
+    // the closed-key gate and `closed_key_violations` supplies it.
+    let mocks = match parse_mock_surfaces(&text) {
         Ok(m) => m,
         Err(d) => {
             eprintln!("lute: {}: [{}] {}", test_file.display(), d.code, d.message);
@@ -781,4 +788,24 @@ fn print_json(results: &[TestResult], cov: Option<&CoverageAccum>, untested: &[S
     }
 
     println!("{}", serde_json::to_string_pretty(&root).expect("report is JSON-serializable"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TEST_TOP_KEYS;
+
+    /// The two closed key sets differ by **exactly** `expect:` — the claim
+    /// `TEST_TOP_KEYS`' and `MOCK_TOP_KEYS`' doc comments both make. A new
+    /// mock surface added on one side and not the other is the drift this
+    /// catches: adding `seed:` to `MOCK_TOP_KEYS` alone would make a
+    /// `*.test.yaml` reject a key its own mock parser reads, and adding it to
+    /// `TEST_TOP_KEYS` alone would re-open the hole T3.10 filed.
+    #[test]
+    fn the_test_key_set_is_the_mock_key_set_plus_expect() {
+        let mut want: Vec<&str> = lute_trace::MOCK_TOP_KEYS.to_vec();
+        want.push("expect");
+        want.sort_unstable();
+        assert_eq!(TEST_TOP_KEYS.to_vec(), want);
+        assert!(!lute_trace::MOCK_TOP_KEYS.contains(&"expect"));
+    }
 }
