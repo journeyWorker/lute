@@ -58,7 +58,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// artifact until it widens its gate — and the provenance rename is the only
 /// other edit it needs. `schemas/lute-ir-0.9.schema.json` is kept for engines
 /// still on 0.9.
-pub const LUTE_IR_VERSION: &str = "0.10.0";
+pub const LUTE_IR_VERSION: &str = "0.10.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -759,8 +759,8 @@ mod tests {
         // because bumping it fires `W-LUTE-VERSION-STALE` on every stamped
         // document in `docs/examples`. The two remain independently tracked
         // pins (T13); they simply agree on this release.
-        assert_eq!(super::LUTE_IR_VERSION, "0.10.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.10.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.10.1");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.10.1");
     }
 
     #[test]
@@ -769,8 +769,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.10.0");
-        assert_eq!(v["irVersion"], "0.10.0");
+        assert_eq!(v["lute"], "0.10.1");
+        assert_eq!(v["irVersion"], "0.10.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

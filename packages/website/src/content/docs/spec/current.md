@@ -1,12 +1,12 @@
 ---
 title: Current specification
-description: The consolidated index of what the Lute language enforces today at version 0.10.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
+description: The consolidated index of what the Lute language enforces today at version 0.10.1 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
 ---
 
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.10.0**:
+the consolidated **index** of what is *current* at language version **0.10.1**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -16,7 +16,7 @@ full cumulative history (including the pre-implementation `0.0.1` draft and the
 capability proposals), see the [specification index](/spec/).
 :::
 
-## What is current at 0.10.0
+## What is current at 0.10.1
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -36,7 +36,7 @@ capability proposals), see the [specification index](/spec/).
 | Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.10.0 (**IR shape changes** — `provenance.reason` becomes `provenance.explanation`, the first shape change since `0.8.0`; `schemas/lute-ir-0.10.schema.json`, so an engine gated on IR `0.9` must widen to `0.10`. Timing values become exact, and `capabilityVersion` changes) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
 | Warning-severity diagnostics (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`) | 0.6.1 | 0.10.0 (four new warnings — `W-COMPONENT-UNVERIFIED`, `W-DOMAIN-UNREAD`, `W-EXIT-INERT`, `W-STAGE-ABSENT` — plus `W-PROJECT-INERT`; and `W-INJECT-CONFLICT` is **removed**, the first removal in the series, because equality with the declared default was its only trigger) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
 | Deny promotion (`--deny` / `--deny-warnings`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.10.0 (all three axes read `0.10.0` — toolchain, language, and IR — because a release re-aligns every visible number; unlike `0.9.0`, the IR number is **earned** here, so an engine gated on `0.9` must widen to `0.10` *and* read the renamed provenance field) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.10.1 (all three axes read `0.10.1` — toolchain, language, and IR — because a release re-aligns every visible number; unlike `0.9.0`, the IR number is **earned** here, so an engine gated on `0.9` must widen to `0.10` *and* read the renamed provenance field) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
 
 ## Notes on the boundaries
 

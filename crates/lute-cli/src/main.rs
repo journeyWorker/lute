@@ -325,7 +325,12 @@ enum Command {
     },
     /// Run the project's scenario tests: every `*.test.yaml` under `dir`
     /// traces its scene against the declared mocks and asserts the declared
-    /// expectations (transcript, state, quest status).
+    /// expectations (transcript, state, quest status). Resolves each traced
+    /// document identically to `lute trace` ([`build_input`]): with
+    /// `--project`, the document's `profile:`/`plugins:` frontmatter and the
+    /// manifest's `defaults: uses:` hoist are both applied before tracing;
+    /// without it, a core-only (`lute.core`) resolution, unchanged from
+    /// before.
     Test {
         /// Directory to walk for `*.test.yaml` scenario tests (default: `.`).
         #[arg(default_value = ".")]
@@ -336,6 +341,12 @@ enum Command {
         /// Directory of pinned provider snapshots to resolve ids against.
         #[arg(long, value_name = "DIR")]
         providers: Option<PathBuf>,
+        /// Project directory (`lute.project.yaml` + `plugins/`) whose
+        /// installed plugins resolve each traced document's activated
+        /// capability snapshot (plugin §4/§11). Omit for a core-only
+        /// (`lute.core`) test.
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
         /// Also report branch/arm coverage across the tested documents.
         #[arg(long)]
         coverage: bool,
@@ -536,7 +547,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-MAYBE-UNSET", "E-META-MISSING", "E-META-PARSE", "E-META-UNKNOWN-KEY",
     "E-MISSING-ATTR", "E-MOCK-SUBJECT", "E-NONEXHAUSTIVE", "E-OBJECTIVE-CONTRADICTION", "E-OBJECTIVE-ID-DUP", "E-OBJECTIVE-ID-MISSING",
     "E-OBJECTIVE-MISSING-DONE", "E-OBJECTIVE-UNSATISFIABLE", "E-ON-NO-EVENT", "E-PATH-IDENT",
-    "E-PERSIST-REMOVED", "E-PLUGIN-DUP-ACROSS", "E-PLUGIN-DUP-ID", "E-PLUGIN-INVALID-DIRECTIVE",
+    "E-PERSIST-REMOVED", "E-PLUGIN-ASSET-SEGMENT-TYPE", "E-PLUGIN-DUP-ACROSS", "E-PLUGIN-DUP-ID", "E-PLUGIN-INVALID-DIRECTIVE",
     "E-PLUGIN-IO", "E-PLUGIN-MANIFEST", "E-PLUGIN-MISSING-ACTIVE", "E-PLUGIN-MISSING-EXPORT",
     "E-PLUGIN-OPTION-TYPE", "E-PLUGIN-OPTION-UNKNOWN",
     "E-PLUGIN-PARSE", "E-PLUGIN-RESERVED-NAME", "E-PLUGIN-RESERVED-STAMP-ATTR",
@@ -728,8 +739,9 @@ fn main() -> ExitCode {
             dir,
             json,
             providers,
+            project,
             coverage,
-        } => testcmd::run_test(&dir, json, providers.as_deref(), coverage),
+        } => testcmd::run_test(&dir, json, providers.as_deref(), project.as_deref(), coverage),
         Command::Loc(LocCommand::Export { dir, format, out }) => {
             loc::run_export(&dir, format.as_deref().unwrap_or("json"), out.as_deref())
         }

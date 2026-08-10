@@ -20,13 +20,37 @@
 //!   exit: complete                  # complete | incomplete
 //! ```
 //!
-//! Each test traces its document once ([`trace_document`], no `--project`
-//! gate — the same core-only resolution `lute trace` uses) and checks every
+//! Each test traces its document once ([`trace_document`]) and checks every
 //! declared expectation, naming actual-vs-expected on any miss. Exit `0` when
 //! all pass, `1` when any fails, `2` on an I/O failure or a malformed test
 //! yaml. `--coverage` reports chosen-vs-never-chosen choices and
 //! executed-vs-unexecuted match arms aggregated across every traced path
 //! (honest: "over N traced paths", never a whole-space coverage claim).
+//!
+//! `--project <dir>` resolves every traced document EXACTLY as `lute trace
+//! <file> --project <dir>` does — same flag, same help text, same
+//! [`crate::build_input`] call, same provider-catalog precedence (plugin
+//! §10: an explicit `--providers <dir>` wins; otherwise auto-discover
+//! through the project's pinned catalog). Before this flag existed, every
+//! test traced with a hardcoded `project: None`, so a document whose schema
+//! or directives depend on the manifest's `defaults: uses:` hoist or on a
+//! `profile:`-activated plugin failed EVERY test with `E-DOMAIN-UNKNOWN` /
+//! `E-UNDECLARED` / `E-UNKNOWN-DIRECTIVE` regardless of test content — the
+//! harness could resolve mocks and choices, but never the project the
+//! document was written against.
+//!
+//! `--project` here is unrelated to backlog #19 / T9.7 (0.9.0 improvement
+//! backlog, T9.7): that item is about `lute test` walking the *artifact*
+//! rather than the *source* and about the derived-relation (Datalog)
+//! fixpoint — it changes WHAT the harness walks. This flag changes only
+//! WHETHER the walk can see the manifest at all. The two are independent;
+//! this fix neither requires nor precludes that one.
+//!
+//! No `lute.project.yaml` is auto-discovered when `--project` is omitted —
+//! matching every other command (`build_input` resolves a project only from
+//! an explicit flag, never by walking upward from `dir`); a document whose
+//! schema depends on a manifest the caller did not name still resolves
+//! core-only, exactly as before.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -176,7 +200,13 @@ fn canonical_key(p: &std::path::Path) -> String {
 }
 
 /// Run every `*.test.yaml` scenario test under `dir`. See [`crate::Command::Test`].
-pub fn run_test(dir: &Path, json: bool, providers: Option<&Path>, coverage: bool) -> ExitCode {
+pub fn run_test(
+    dir: &Path,
+    json: bool,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+    coverage: bool,
+) -> ExitCode {
     let test_files = match find_test_files(dir) {
         Ok(f) => f,
         Err(e) => {
@@ -189,7 +219,7 @@ pub fn run_test(dir: &Path, json: bool, providers: Option<&Path>, coverage: bool
     let mut cov = CoverageAccum::default();
 
     for test_file in &test_files {
-        match run_one_test(test_file, providers, coverage.then_some(&mut cov)) {
+        match run_one_test(test_file, providers, project, coverage.then_some(&mut cov)) {
             Ok(r) => results.push(r),
             // A malformed test yaml or an unreadable referenced document is a
             // usage/I-O failure (exit 2) — never a silent skip that would let
@@ -250,9 +280,17 @@ pub fn run_test(dir: &Path, json: bool, providers: Option<&Path>, coverage: bool
 /// malformed-yaml failure (exit 2). `Ok` is a decided pass/fail verdict —
 /// including a refused trace, which is a test FAILURE (semantic), not an I/O
 /// error. When `cov` is `Some`, the produced report is folded into it.
+///
+/// `project` resolves the traced document EXACTLY as `lute trace --project`
+/// does (module docs): threaded straight into [`crate::build_input`], never
+/// substituted for `None`. A project-resolution `E-` diagnostic
+/// (`resolve_error`) is therefore a build-failing error here too — `Err(1)`,
+/// never folded into a per-test `TestResult` where a caller filtering on
+/// `passed` could mistake a broken manifest for a failing assertion.
 fn run_one_test(
     test_file: &Path,
     providers: Option<&Path>,
+    project: Option<&Path>,
     cov: Option<&mut CoverageAccum>,
 ) -> Result<TestResult, ExitCode> {
     let text = match std::fs::read_to_string(test_file) {
@@ -332,7 +370,7 @@ fn run_one_test(
     let lute_path = base.join(&rel);
     let lute_display = lute_path.display().to_string();
 
-    let Some(built) = crate::build_input(&lute_path, providers, None) else {
+    let Some(built) = crate::build_input(&lute_path, providers, project) else {
         // build_input already printed the read error.
         return Err(ExitCode::from(2));
     };

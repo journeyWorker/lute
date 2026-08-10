@@ -62,8 +62,8 @@ pub struct ProjectConfig {
 
 /// A resolution diagnostic surfaced to the caller (folded into the check
 /// result). `code` is the stable, machine-readable `E-*` code of the underlying
-/// `LoadError`/`ResolveError`/`AssembleError` (so a consumer can key on it); the
-/// message is the `Debug` form for human display.
+/// `LoadError`/`ResolveError`/`OptionError`/`AssembleError` (so a consumer can
+/// key on it); the message is that error's rendered [`std::fmt::Display`] prose.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolveDiag {
     pub code: String,
@@ -579,7 +579,7 @@ pub fn resolve_document_snapshot(
     let (registry, load_errs) = load_plugins_dir(&project.plugins_dir);
     diags.extend(load_errs.into_iter().map(|e| ResolveDiag {
         code: e.code().into(),
-        message: format!("{e:?}"),
+        message: format!("{e}"),
     }));
 
     // 2. Pick the profile: scene override, else the graph's default.
@@ -597,7 +597,7 @@ pub fn resolve_document_snapshot(
         Err(e) => {
             diags.push(ResolveDiag {
                 code: e.code().into(),
-                message: format!("{e:?}"),
+                message: format!("{e}"),
             });
             // No conforming activation → fall back to the core-only baseline so
             // the caller still gets a usable snapshot.
