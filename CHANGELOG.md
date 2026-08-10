@@ -8,23 +8,124 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.10.0`, the grammar and semantics the checker
+- **Language** — currently `0.10.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.10.0`) and gated on by consuming engines.
+  artifact (currently `0.10.1`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
 presentation guarantee, not a claim that every axis changed substantively — this
-changelog is where you learn which ones did. `0.10.0` is the first release in a
-while where **all three earned it**: the language restricts what a document may
-be (six `LANG` changes, plus seven `LANG-SOFT` that cannot redden a green
-document), the toolchain carries the other thirteen of the twenty-six backlog
-issues this release took, and the IR shape genuinely changes for the first time
-since `0.8.0` (one field rename).
+changelog is where you learn which ones did. `0.10.0` was the first release in a
+while where all three earned it; `0.10.1` is the opposite case and says so
+plainly: **the language and the IR move because the rule moves them, and neither
+contract changed.** Language `0.10.1` is byte-for-byte `0.10.0` semantics
+([`0.10.1.md`](docs/proposals/scenario-dsl/0.10.1.md)), and because the runtime
+contract gates on `irVersion` **major.minor**, an engine that accepts a `0.10.0`
+artifact accepts a `0.10.1` artifact with no edit at all.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.10.1] - 2026-08-10
+
+**A plugin is not a second-class citizen.** All three entries come from one
+adoption project — a visual-novel prototype consuming `0.10.0` artifacts — and
+all three are the same shape: a surface that works for `lute.core` and quietly
+does less, or nothing, once a plugin is involved. None of them is a language
+change; see *Not in this release* for the one that is.
+
+### Fixed
+
+- **`lute test` could not see a project at all.** The subcommand had no
+  `--project` flag and passed `None` unconditionally, so a document that reaches
+  its schema through a manifest's `defaults: uses:` or its directives through a
+  `profile:` failed **every** test on `E-DOMAIN-UNKNOWN` / `E-UNDECLARED` /
+  `E-UNKNOWN-DIRECTIVE`, no matter what the test asserted. Its sibling commands
+  — `check`, `compile`, `trace` — all resolved the same manifest correctly, so
+  `lute trace <doc> --project P` walked a document `lute test P` could not load:
+  one question, two tools, two answers, which is the class `0.10.0` spent itself
+  closing and this one missed. `lute test` now takes `--project` with `trace`'s
+  flag, resolution order and provider-catalog precedence, and a project-
+  resolution `E-` diagnostic gates the exit code instead of surfacing as a test
+  failure. There is still no manifest auto-discovery — omitting the flag keeps
+  the previous core-only resolution exactly.
+  This is **not** backlog `#19`/`T9.7`, which is about `lute test` walking the
+  source rather than the artifact and the derived-relation fixpoint. That one
+  changes *what* the harness walks; this one is whether it can see the manifest.
+  They are independent and neither blocks the other.
+- **An `assetKind` segment could declare a type that enforced nothing.**
+  `AssetSegment.ty` is the same shared `Type` enum every other typed position
+  uses, so every variant parsed in a segment position while
+  `validate_segments` enforced four of them and accepted the rest in silence.
+  Measured, one plugin, one document, two segments: a segment typed
+  `{ enum: [alpha, beta] }` given `NOPE` reported `E-ASSET-SEGMENT`; a segment
+  typed `{ domain: … }` given `NOPE` reported nothing. The plugin spec's closed
+  `Type ::=` production (plugin-system `0.0.1` §7) never admitted `domain` in a
+  segment — it was reachable through a Rust enum, not by design — so the fix is
+  to **reject the declaration** rather than to invent member validation the
+  grammar does not describe. New `E-PLUGIN-ASSET-SEGMENT-TYPE`, at plugin load,
+  naming the kind, the segment, the declared type and the four admitted ones.
+  Every other inadmissible variant is rejected with it, each for a stated
+  reason: `enumFromOption` and `slotId` are scoped "attribute types only" by the
+  production itself; `narrativeTime` is opaque and never author-declarable;
+  `list`, `record` and `map` have no serialization into the single delimited
+  token a decomposed segment is; `assetKind` inverts the relation by describing
+  a whole id rather than one token within one; and `bool`, though single-token,
+  would recreate the identical declared-but-unenforced hole for a new variant.
+  A domain used *only* as a segment also drew a spurious `W-DOMAIN-UNREAD`;
+  rejecting the declaration removes that at the source.
+- **Every plugin load and resolve error printed a Rust struct.** Both
+  diagnostic sites built their message with `format!("{e:?}")`, so
+  `E-PLUGIN-PARSE` reached the user as `Parse { file: "…", msg: "…" }` and the
+  new code above would have shipped as
+  `AssetSegmentType { file: "…", kind: "…" }`. `LoadError` and `ResolveError`
+  now implement `Display` — one sentence per variant, in the voice the checker's
+  own diagnostics use — and both sites render it. The structured fields were
+  always there; only the rendering was missing.
+- **`E-PLUGIN-ASSET-SEGMENT-TYPE` anchored at a directory.** It named the
+  `assetkinds/` export directory rather than the `.yaml` carrying the
+  declaration, because the merge callback only received the directory.
+  `read_kind` now threads the per-file path to its callers.
+- **One LSP test matched a diagnostic by its `Debug` text.**
+  `analyze_publishes_project_resolver_diagnostics` located its target with
+  `message.contains("DependsCycle")` — a substring of a Rust struct name — and
+  so broke the moment that struct gained a `Display`. It keys on the stable
+  `E-DEPENDS-CYCLE` code now, which is the doctrine the rest of the repo
+  already follows.
+
+### Changed
+
+- **All three axes read `0.10.1`, and none of them earned it.** The alignment
+  rule moves every visible axis on every release whether or not its contract
+  changed, and this is the first release since `0.7.0` where the honest report
+  is "no-op on two of three". `schemas/lute-ir-0.10.schema.json` keeps its name
+  and its `$id`: the schema file tracks the gated `major.minor`, not the release
+  number, which is why `0.7.0` renamed its schema and this release does not.
+  Documents carrying `luteVersion: "0.10.0"` now draw `W-LUTE-VERSION-STALE`;
+  restamping is the whole migration, and a `0.10.0`-clean document restamped to
+  `0.10.1` checks clean with no other edit.
+
+### Not in this release
+
+- **The staging reducer still dispatches on the literal source tag.** A plugin
+  directive declaring `lower: { record: background }` gets none of the stage
+  semantics its record implies: the core `::bg` injects a sprite exit at a scene
+  change and the plugin equivalent injects nothing, so an engine consuming the
+  second artifact leaves a character on stage. Two further rules diverge in two
+  further directions — an injection silently dropped, and a `posReset`
+  fabricated for a character no longer in the scene. It is filed rather than
+  fixed because flag-driven dispatch has already been declined twice on the
+  record (`plugin-system/0.0.3.md` §4, `scenario-dsl/0.9.0.md` §7) against a
+  semantics vocabulary that genuinely cannot drive it — `mutatesScene` is shared
+  by `::bg` and `::music`, so branching on it would make music clear the stage.
+  Closing it needs a new closed flag or record-intrinsic dispatch, and either
+  changes what the checker emits about a legal document, which puts it on the
+  language axis. Evidence, reproductions and both remedy shapes:
+  [`2026-08-10-staging-tag-dispatch.md`](docs/superpowers/notes/2026-08-10-staging-tag-dispatch.md).
+  Also filed there: `lower:`'s own grammar is written closed in
+  plugin-system `0.0.1` §8.2 and parses open, so a misspelled key — including
+  one belonging to the sibling untagged variant — is dropped in silence.
 
 ## [0.10.0] - 2026-08-06
 

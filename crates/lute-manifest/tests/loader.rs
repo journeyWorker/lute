@@ -242,3 +242,283 @@ fn loads_stamp_attrs_rejects_dup() {
     );
     fs::remove_dir_all(&tmp).ok();
 }
+
+/// Build a plugin package exporting `assetkinds/` whose single kind `CH` has
+/// a `const` prefix segment plus one `variant` segment typed by `type_yaml`
+/// (a raw `type:` value fragment, e.g. `"bool"` or `"{ domain: slotDomain }"`).
+fn write_asset_pkg_with_segment_type(root: &std::path::Path, type_yaml: &str) {
+    fs::create_dir_all(root.join("assetkinds")).unwrap();
+    fs::write(
+        root.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetkinds: assetkinds/\n",
+    )
+    .unwrap();
+    let content = format!(
+        "assetKinds:\n  - kind: CH\n    segments:\n      - {{ name: prefix, const: CH }}\n      - {{ name: variant, type: {type_yaml} }}\n"
+    );
+    fs::write(root.join("assetkinds/ch.yaml"), content).unwrap();
+}
+
+/// Assert that declaring an assetKind segment typed `type_yaml` is rejected
+/// with `LoadError::AssetSegmentType { kind: "CH", segment: "variant", .. }`,
+/// whose `found` contains `found_fragment` (the `type_str` rendering).
+fn assert_segment_type_rejected(dir_suffix: &str, type_yaml: &str, found_fragment: &str) {
+    let tmp = std::env::temp_dir().join(format!(
+        "lute_pkg_segty_{dir_suffix}_{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&tmp);
+    write_asset_pkg_with_segment_type(&tmp, type_yaml);
+    let errs = load_plugin_dir(&tmp).expect_err("inadmissible segment type must fail to load");
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            LoadError::AssetSegmentType { kind, segment, found, .. }
+                if kind == "CH" && segment == "variant" && found.contains(found_fragment)
+        )),
+        "type {type_yaml} must reject as AssetSegmentType(found~{found_fragment}), got {errs:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// The reported defect: `{ domain: slotDomain }` parses as a segment type
+/// (shared `Type` enum) and previously validated nothing. Now rejected at
+/// load — the failing test written first, per this repo's TDD convention.
+#[test]
+fn rejects_domain_segment() {
+    assert_segment_type_rejected("domain", "{ domain: slotDomain }", "domain:slotDomain");
+}
+
+#[test]
+fn rejects_bool_segment() {
+    // Structurally a single token like `number`, but nothing admits it for a
+    // segment (§6.9's own example and the four `validate_segments` enforces
+    // are exhaustive) — admitting it would reopen the same "enforces
+    // nothing" hole as `domain`, just for a different variant.
+    assert_segment_type_rejected("bool", "bool", "bool");
+}
+
+#[test]
+fn rejects_list_segment() {
+    // A segment is one delimited string token (§6.9 decompose/compose);
+    // `list` has no serialization into a single token.
+    assert_segment_type_rejected("list", "{ list: string }", "list<string>");
+}
+
+#[test]
+fn rejects_record_segment() {
+    assert_segment_type_rejected(
+        "record",
+        "{ record: [{ name: a, type: string }] }",
+        "record{a}",
+    );
+}
+
+#[test]
+fn rejects_map_segment() {
+    assert_segment_type_rejected(
+        "map",
+        "{ map: { key: string, value: string } }",
+        "map<string,string>",
+    );
+}
+
+#[test]
+fn rejects_enum_from_option_segment() {
+    // plugin-system 0.0.1 §7: "attribute types only".
+    assert_segment_type_rejected(
+        "enumfromoption",
+        "{ enumFromOption: allowedKinds }",
+        "enumFromOption:allowedKinds",
+    );
+}
+
+#[test]
+fn rejects_slot_id_segment() {
+    // plugin-system 0.0.1 §7: "attribute types only".
+    assert_segment_type_rejected("slotid", "{ slotId: { namespace: run } }", "slotId:run");
+}
+
+#[test]
+fn rejects_asset_kind_segment() {
+    // §7's own elaboration: `assetKind` validates a value AS a complete
+    // authored id decomposed against ANOTHER kind's segment grammar — the
+    // inverse of being one token WITHIN an id; nesting has no defined
+    // meaning.
+    assert_segment_type_rejected("assetkind", "{ assetKind: BG }", "assetKind:BG");
+}
+
+#[test]
+fn rejects_narrative_time_segment() {
+    // Absent from the closed `Type ::=` production entirely; opaque,
+    // "NEVER author-declarable" (`types.rs`).
+    assert_segment_type_rejected("narrativetime", "narrativeTime", "narrativeTime");
+}
+
+/// The four types a segment position actually admits — §7's own segment
+/// callout for `providerRef`, plus the unrestricted primitives `enum`,
+/// `number`, `string` (the exact set `validate_segments` enforces) — must
+/// still load cleanly side by side, proving the fix narrowed the declaration
+/// surface without disturbing legitimate segment declarations.
+#[test]
+fn admits_enum_number_string_provider_ref_segments() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_segty_admit_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(tmp.join("assetkinds")).unwrap();
+    fs::write(
+        tmp.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetkinds: assetkinds/\n",
+    )
+    .unwrap();
+    fs::write(
+        tmp.join("assetkinds/ch.yaml"),
+        "assetKinds:\n  \
+         - kind: CH\n    \
+           segments:\n      \
+           - { name: prefix, const: CH }\n      \
+           - { name: characterId, type: { providerRef: character } }\n      \
+           - { name: costume, type: string }\n      \
+           - { name: emotion, type: { enum: [neutral, sad] } }\n      \
+           - { name: variant, type: number }\n",
+    )
+    .unwrap();
+    let p = load_plugin_dir(&tmp).expect("providerRef/enum/number/string segments must load");
+    assert_eq!(p.asset_kinds[0].segments.len(), 5);
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// Second symptom, same cause (`crates/lute-check/src/project_check.rs:400-447`,
+/// `W-DOMAIN-UNREAD`'s read-set): before this fix, a domain used only as an
+/// asset segment drew a spurious `W-DOMAIN-UNREAD`, because that read-set
+/// enumerates directive attrs, stamp attrs, content-line slots, and relation
+/// arguments — never asset-kind segments — while the segment machinery
+/// silently accepted the `{ domain: … }` declaration anyway. That absence is
+/// CORRECT once the declaration is rejected: `snap.asset_kinds` is populated
+/// EXCLUSIVELY from `InstalledPlugins` (`assemble.rs`'s `merge_map` over
+/// `pkg.asset_kinds`, `crates/lute-manifest/src/assemble.rs:338-344`), and
+/// `InstalledPlugins` is populated EXCLUSIVELY from a package whose
+/// `load_plugin_dir` returned `Ok` (`load_plugins_dir`'s `Ok(loaded) => ...
+/// reg.by_id...insert`, `Err(mut e) => errs.append(...)`, no partial
+/// registration). A package with a domain-typed segment now always resolves
+/// `Err`, so it is NEVER installed and NEVER reaches
+/// `CapabilitySnapshot.asset_kinds` — there is no longer a legitimate
+/// "domain read via a segment" case for `domain_reading_set` to be missing,
+/// so it needs no change (`project_check.rs` is untouched by this fix).
+///
+/// Mirrors the positive control's shape: one plugin, one assetKind, two
+/// segments (`mood` enum-typed, `variant` domain-typed) — the same package
+/// that used to load fine and enforce nothing for `variant` now fails to
+/// load AT ALL, and is absent from the registry entirely.
+#[test]
+fn domain_segment_plugin_never_reaches_installed_registry() {
+    let root = std::env::temp_dir().join(format!("lute_plugins_domseg_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let pkg = root.join("t.plug");
+    fs::create_dir_all(pkg.join("assetkinds")).unwrap();
+    fs::write(
+        pkg.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  assetkinds: assetkinds/\n",
+    )
+    .unwrap();
+    fs::write(
+        pkg.join("assetkinds/ch.yaml"),
+        "assetKinds:\n  \
+         - kind: CH\n    \
+           segments:\n      \
+           - { name: prefix, const: CH }\n      \
+           - { name: mood, type: { enum: [alpha, beta] } }\n      \
+           - { name: variant, type: { domain: slotDomain } }\n",
+    )
+    .unwrap();
+
+    let (reg, errs) = lute_manifest::loader::load_plugins_dir(&root);
+    assert!(
+        reg.get("t.plug").is_none(),
+        "a package with a rejected segment type must not be installed at all"
+    );
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            LoadError::AssetSegmentType { kind, segment, .. }
+                if kind == "CH" && segment == "variant"
+        )),
+        "{errs:?}"
+    );
+    fs::remove_dir_all(&root).ok();
+}
+
+/// Defect 1: `AssetSegmentType`'s rendered message must be prose — the kind,
+/// the segment, the declared type, and the closed admitted set — never the
+/// `Debug` struct dump (`AssetSegmentType { file: …, kind: …, .. }`) a raw
+/// `{e:?}` format produces. Written first, failing, per this repo's TDD
+/// convention.
+#[test]
+fn asset_segment_type_message_is_prose() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_segty_msg_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_asset_pkg_with_segment_type(&tmp, "{ domain: slotDomain }");
+    let errs = load_plugin_dir(&tmp).expect_err("inadmissible segment type must fail to load");
+    let err = errs
+        .iter()
+        .find(|e| matches!(e, LoadError::AssetSegmentType { .. }))
+        .expect("AssetSegmentType error present");
+    let msg = err.to_string();
+    assert!(!msg.contains("AssetSegmentType {"), "must not be a Debug dump: {msg}");
+    assert!(msg.contains("CH"), "must name the kind: {msg}");
+    assert!(msg.contains("variant"), "must name the segment: {msg}");
+    assert!(msg.contains("domain:slotDomain"), "must name the declared type: {msg}");
+    for admitted in ["enum", "number", "string", "providerRef"] {
+        assert!(msg.contains(admitted), "must list admitted type `{admitted}`: {msg}");
+    }
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// Defect 2: `AssetSegmentType.file` must name the `.yaml` that declared the
+/// bad segment, not the `assetkinds/` export directory it was read from
+/// (which is what `check_asset_segment_types` was anchored at before). The
+/// suffix assertion keeps this host-independent (no absolute-path compare).
+#[test]
+fn asset_segment_type_file_names_the_yaml() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_segty_file_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_asset_pkg_with_segment_type(&tmp, "{ domain: slotDomain }");
+    let errs = load_plugin_dir(&tmp).expect_err("inadmissible segment type must fail to load");
+    let file = errs
+        .iter()
+        .find_map(|e| match e {
+            LoadError::AssetSegmentType { file, .. } => Some(file.clone()),
+            _ => None,
+        })
+        .expect("AssetSegmentType error present");
+    assert!(
+        file.ends_with("ch.yaml"),
+        "file must name the source .yaml, not its directory, got {file:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// Pins the `Display` rendering of a PRE-EXISTING variant (`Parse`), so the
+/// new `impl Display for LoadError` is exercised for more than just the one
+/// variant this defect report cares about. Malformed YAML syntax (not just a
+/// shape mismatch) so `serde_yaml::from_str` fails before `merge` ever runs.
+#[test]
+fn parse_error_message_is_prose() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_parsemsg_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(tmp.join("directives")).unwrap();
+    fs::write(
+        tmp.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  directives: directives/\n",
+    )
+    .unwrap();
+    fs::write(tmp.join("directives/a.yaml"), "directives: [ not valid yaml\n").unwrap();
+    let errs = load_plugin_dir(&tmp).unwrap_err();
+    let err = errs
+        .iter()
+        .find(|e| matches!(e, LoadError::Parse { .. }))
+        .expect("Parse error present");
+    let msg = err.to_string();
+    assert!(!msg.contains("Parse {"), "must not be a Debug dump: {msg}");
+    assert!(msg.contains("a.yaml"), "must name the offending file: {msg}");
+    fs::remove_dir_all(&tmp).ok();
+}

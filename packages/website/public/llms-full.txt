@@ -155,7 +155,7 @@ mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.10.0**.
+compiles, traces, and inspects them. The current language version is **0.10.1**.
 
 ## Quick start with `bunx`
 
@@ -212,7 +212,7 @@ Whichever route you took, confirm the tool is on your `PATH`:
 ```
 $ lute version
 lute toolchain 0.10.0
-language      0.10.0
+language      0.10.1
 IR schema     0.10.0
 ```
 
@@ -227,7 +227,7 @@ its gate to accept `0.9`. For scripts and CI,
 
 ```
 $ lute version --json
-{"toolchain":"0.10.0","language":"0.10.0","ir":"0.10.0"}
+{"toolchain":"0.10.1","language":"0.10.1","ir":"0.10.1"}
 ```
 
 (`lute --version` also works and prints just `lute 0.10.0` — the toolchain axis alone.)
@@ -244,7 +244,7 @@ an empty file, running `lute` at every step.
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.10.0**.
+**0.10.1**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -473,7 +473,7 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.10.0",
+  "lute": "0.10.1",
   "irVersion": "0.10.0",
   "capabilityVersion": "0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07",
   "meta": {
@@ -3177,7 +3177,7 @@ For the complete project — the plugin manifests, schemas, component, catalog, 
 
 # Current specification
 
-The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.10.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
+The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.10.1**: for each language area, which proposal introduced it, which last changed it, and the normative source.
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -3214,7 +3214,7 @@ Notes on the boundaries:
 
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.10.0**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.10.1**.
 
 ## Scenario DSL (the language)
 
@@ -3233,7 +3233,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.7.0 | Version unification — language, IR, and toolchain aligned at `0.7.0`; **no grammar, semantic, or IR shape change** (byte-for-byte `0.6.1` semantics). | [0.7.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.7.0.md) |
 | 0.8.0 | The **adoption release**: `::end` termination, `after: active()`, the reserved `quest.<id>.activatedAt` anchor, scalar-only author `state:`, `Artifact.shots`, the localization round trip, `identity:` templates, and a uniform-width `addr`; every item traces to a gap found assessing Lute against a real 777-scene / 583-quest game catalog. | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | 0.9.0 | **Vocabulary ownership**: the compiler declares the seven content-vocabulary *slots* (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) and ships **no members**, so every member is the project's, declared inline, in a schema reached through `uses:`, or by a plugin's `enums` export; the `enums:` long form's `exits:`/`default:` carries the member semantics two hardcoded name heuristics used to guess; using a slot nobody declared is `E-DOMAIN-UNKNOWN` instead of silently unchecked; and five root-only check stages now run over imported component bodies. **Breaking** for documents that use a slot. The IR re-aligned to `0.9.0` and was shape-identical to `0.8.0`. | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
-| **0.10.0** | Current tip — **the toolchain says what it knows**: thirteen changes, each closing a place where the checker held the answer and did not say it. `::set` types its right-hand side against the path it writes (`E-SET-TYPE`); the six logic tags close their attribute sets (`E-UNKNOWN-ATTR`, `E-AS-REMOVED`); a quest gate that can never open is an error and a contradictory objective pair is `E-OBJECTIVE-CONTRADICTION`; `lute.project.yaml` gains `defaults:`; nested manifests are validated by every command that walks them; `mocks/*.yaml` is checked and requires `file:`; timeline time is integer milliseconds; four new warnings land and `W-INJECT-CONFLICT` is **removed** because its only trigger was agreement. **Breaking** for documents (§§3, 4, 5) and for mocks. The **IR shape changes for the first time since `0.8.0`** — `provenance.reason` becomes `provenance.explanation`, so an engine gated on IR `0.9` must widen to `0.10`. | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
+| 0.10.0 | **the toolchain says what it knows**: thirteen changes, each closing a place where the checker held the answer and did not say it. `::set` types its right-hand side against the path it writes (`E-SET-TYPE`); the six logic tags close their attribute sets (`E-UNKNOWN-ATTR`, `E-AS-REMOVED`); a quest gate that can never open is an error and a contradictory objective pair is `E-OBJECTIVE-CONTRADICTION`; `lute.project.yaml` gains `defaults:`; nested manifests are validated by every command that walks them; `mocks/*.yaml` is checked and requires `file:`; timeline time is integer milliseconds; four new warnings land and `W-INJECT-CONFLICT` is **removed** because its only trigger was agreement. **Breaking** for documents (§§3, 4, 5) and for mocks. The **IR shape changes for the first time since `0.8.0`** — `provenance.reason` becomes `provenance.explanation`, so an engine gated on IR `0.9` must widen to `0.10`. | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
+| **0.10.1** | Current tip — **alignment only**: no grammar production, no static-semantic rule, no IR shape change; `0.10.0` semantics byte for byte. The release's two fixes are toolchain — `lute test` gains `--project` so a document that reaches its schema or its directives through a manifest can be tested at all, and an `assetKind` segment declared with a `Type` outside the closed segment production is rejected at plugin load instead of enforcing nothing. Written down because a language version absent from this stack cannot be told apart from one nobody recorded. |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals
