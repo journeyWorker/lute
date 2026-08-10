@@ -172,5 +172,18 @@ jobs:
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
 
+      # Run from INSIDE the package, not from the repo root with `-p`. Neither
+      # `typescript` nor `@types/node` hoists to the root — `@types/node` because
+      # `packages/cli` wants `^20` while a website transitive wants `^24`, and
+      # bun nests both rather than picking — so a root `bunx tsc` finds no local
+      # compiler, silently DOWNLOADS one from npm (measured: 5.4.5, against the
+      # 5.9.3 the package declares), and then that compiler cannot see
+      # `packages/cli/node_modules/@types` either. The job had therefore never
+      # typechecked the launcher: it was red on the 0.10.0 release PR and on
+      # this one, both times reporting `TS2591 Cannot find name 'node:…'`, which
+      # is the missing type tree rather than a fault in the source. From the
+      # package directory both resolve to the declared versions and the launcher
+      # checks clean.
       - name: Typecheck launcher
-        run: bunx tsc --noEmit -p packages/cli/tsconfig.json
+        working-directory: packages/cli
+        run: bunx tsc --noEmit
