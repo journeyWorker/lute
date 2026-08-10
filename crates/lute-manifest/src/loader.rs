@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use crate::schema::*;
-use crate::types::Type;
+use crate::types::{type_str, Type};
 
 #[derive(Clone, Debug)]
 pub struct LoadedPlugin {
@@ -55,12 +55,32 @@ pub enum LoadError {
     UnknownExport {
         export: String,
     },
+    /// plugin §7: an asset-kind segment (`assetkinds/*.yaml`, `AssetSegment.ty`)
+    /// declared a `Type` outside the closed set a segment position admits.
+    /// `AssetSegment.ty` is the SAME shared `Type` enum every other typed
+    /// position uses (`crates/lute-manifest/src/schema.rs`), so every `Type`
+    /// variant parses syntactically in a segment position; only four are
+    /// semantically admitted there (`enum`, `number`, `string`,
+    /// `providerRef` — the set `asset.rs::validate_segments` actually
+    /// enforces, and the only ones the plugin-system closed `Type ::=`
+    /// production (0.0.1 §7) leaves unrestricted AND representable as the
+    /// single delimited string token a decomposed segment always is). Every
+    /// other variant is rejected here, at load, before an inadmissible
+    /// declaration can reach assembly or silently validate nothing against
+    /// an authored id (see `check_asset_segment_types` for the full
+    /// per-variant reasoning).
+    AssetSegmentType {
+        file: String,
+        kind: String,
+        segment: String,
+        found: String,
+    },
 }
 
 impl LoadError {
     /// Stable, machine-readable code per variant (plugin §11); the `E-*` family
     /// mirrors the checker's diagnostic codes so a consumer (CLI/LSP) can key on
-    /// it instead of the `Debug` message.
+    /// it instead of parsing the rendered [`std::fmt::Display`] text below.
     pub fn code(&self) -> &'static str {
         match self {
             LoadError::Manifest { .. } => "E-PLUGIN-MANIFEST",
@@ -69,6 +89,50 @@ impl LoadError {
             LoadError::MissingExportDir { .. } => "E-PLUGIN-MISSING-EXPORT",
             LoadError::Io { .. } => "E-PLUGIN-IO",
             LoadError::UnknownExport { .. } => "E-PLUGIN-UNKNOWN-EXPORT",
+            LoadError::AssetSegmentType { .. } => "E-PLUGIN-ASSET-SEGMENT-TYPE",
+        }
+    }
+}
+
+impl std::fmt::Display for LoadError {
+    /// Human-readable rendering, surfaced by `project.rs` as the resolver's
+    /// `ResolveDiag` message. Mirrors [`crate::assemble::AssembleError`]'s
+    /// `Display` (`assemble.rs`), which made the identical argument when
+    /// assembly errors stopped leaking `Debug` prose: since an `E-`-severity
+    /// diagnostic here gates the CLI exit code, this text is the whole of
+    /// what a failing plugin author sees — a Rust struct dump is not an
+    /// acceptable answer (0.10.1: the toolchain says what it knows).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoadError::Manifest { dir, msg } => {
+                write!(f, "plugin package `{dir}` has no readable `plugin.yaml`: {msg}")
+            }
+            LoadError::Parse { file, msg } => write!(f, "`{file}` failed to parse: {msg}"),
+            LoadError::DuplicateId { kind, id } => {
+                write!(f, "{kind} `{id}` is declared more than once")
+            }
+            LoadError::MissingExportDir { export, path } => write!(
+                f,
+                "export `{export}` names `{path}`, which does not exist"
+            ),
+            LoadError::Io { path, msg } => write!(f, "`{path}` could not be read: {msg}"),
+            LoadError::UnknownExport { export } => write!(
+                f,
+                "export `{export}` is not one of the plugin manifest's known kinds \
+                 (directives, state, providers, bridge, defs, enums, frontmatter, docs, \
+                 assetkinds, events, stampattrs)"
+            ),
+            LoadError::AssetSegmentType {
+                file,
+                kind,
+                segment,
+                found,
+            } => write!(
+                f,
+                "`{file}`: assetKind `{kind}` segment `{segment}` declares type `{found}`, \
+                 but a segment position admits only `enum`, `number`, `string`, or \
+                 `providerRef` (plugin §7)"
+            ),
         }
     }
 }
@@ -122,11 +186,11 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
             continue;
         }
         match export.as_str() {
-            "directives" => read_kind::<DirectivesFile, _>(&path, &mut errs, |f, e| {
+            "directives" => read_kind::<DirectivesFile, _>(&path, &mut errs, |f, _file, e| {
                 merge_directives(&mut out.directives, f.directives, e)
             }),
             "state" => read_state(&path, &mut out, &mut errs),
-            "providers" => read_kind::<ProvidersFile, _>(&path, &mut errs, |f, e| {
+            "providers" => read_kind::<ProvidersFile, _>(&path, &mut errs, |f, _file, e| {
                 merge_named(
                     &mut out.providers,
                     f.providers,
@@ -135,18 +199,23 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                     e,
                 )
             }),
-            "bridge" => read_kind::<BridgeFile, _>(&path, &mut errs, |f, e| {
+            "bridge" => read_kind::<BridgeFile, _>(&path, &mut errs, |f, _file, e| {
                 merge_bridge(&mut out.bridge, f.bridge, e)
             }),
-            "defs" => read_kind::<DefsFile, _>(&path, &mut errs, |f, e| {
+            "defs" => read_kind::<DefsFile, _>(&path, &mut errs, |f, _file, e| {
                 merge_named(&mut out.defs, f.defs, "def", |d| d.name.clone(), e)
             }),
             "enums" => read_enums(&path, &mut out.enums, &mut errs),
-            "frontmatter" => read_kind::<FrontmatterFile, _>(&path, &mut errs, |f, e| {
+            "frontmatter" => read_kind::<FrontmatterFile, _>(&path, &mut errs, |f, _file, e| {
                 merge_frontmatter(&mut out.frontmatter, f.frontmatter, e)
             }),
             "docs" => { /* non-normative (plugin §6.7); skip */ }
-            "assetkinds" => read_kind::<AssetKindsFile, _>(&path, &mut errs, |f, e| {
+            // Anchored at the INDIVIDUAL declaration file `read_kind` just
+            // parsed `f` from, not the `assetkinds/` export dir `path` names
+            // — the same anchor `LoadError::Parse` already uses for a sibling
+            // failure in the same file (plugin §7 fix, defect 2).
+            "assetkinds" => read_kind::<AssetKindsFile, _>(&path, &mut errs, |f, file, e| {
+                check_asset_segment_types(&f.asset_kinds, &file.display().to_string(), e);
                 merge_named(
                     &mut out.asset_kinds,
                     f.asset_kinds,
@@ -155,10 +224,10 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                     e,
                 )
             }),
-            "events" => read_kind::<EventsFile, _>(&path, &mut errs, |f, e| {
+            "events" => read_kind::<EventsFile, _>(&path, &mut errs, |f, _file, e| {
                 merge_named(&mut out.events, f.events, "event", |ev| ev.name.clone(), e)
             }),
-            "stampattrs" => read_kind::<StampAttrsFile, _>(&path, &mut errs, |f, e| {
+            "stampattrs" => read_kind::<StampAttrsFile, _>(&path, &mut errs, |f, _file, e| {
                 merge_named(
                     &mut out.stamp_attrs,
                     f.stamp_attrs,
@@ -177,6 +246,83 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
         Ok(out)
     } else {
         Err(errs)
+    }
+}
+
+/// The `Type` variants a segment position actually enforces
+/// (`crate::asset::validate_segments`'s non-catch-all arms): `enum`
+/// (membership), `number` (parses as `f64`), `string` (accepts anything),
+/// and `providerRef` (resolved against a provider snapshot — plugin-system
+/// 0.0.1 §7 names this the asset-kind-segment case explicitly, alongside
+/// attribute and frontmatter positions). Nothing else is admitted; see
+/// [`check_asset_segment_types`] for why each remaining `Type` variant is
+/// excluded.
+fn segment_type_admitted(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Enum(_) | Type::Number | Type::Str | Type::ProviderRef(_)
+    )
+}
+
+/// Reject every asset-kind segment in `kinds` whose declared `Type` is not
+/// [`segment_type_admitted`], pushing one [`LoadError::AssetSegmentType`] per
+/// offending segment, anchored at `file` (the INDIVIDUAL `assetkinds/*.yaml`
+/// declaration file `kinds` was deserialized from — matching how
+/// [`LoadError::Parse`] anchors at the file it failed to parse; spanned YAML
+/// is not in scope here, same as there). Runs before [`merge_named`] folds
+/// `kinds` into the loaded package, so a rejected declaration still contributes its `errs` entry
+/// (which fails the whole package, `load_plugin_dir`'s `Err` path) but never
+/// reaches assembly or a document check.
+///
+/// `AssetSegment.ty` (`crate::schema::AssetSegment`) is the SAME shared
+/// `Type` enum every typed position uses, so EVERY variant parses
+/// syntactically here; the plugin-system closed `Type ::=` production
+/// (0.0.1 §7, `docs/proposals/plugin-system/0.0.1.md:379-390`) plus its own
+/// per-variant notes settle which ones are semantically legitimate in a
+/// segment position:
+///
+/// - `domain`: absent from the closed production entirely. 0.0.3 §2 later
+///   admits `{ domain: … }` only for directive attributes and content-line
+///   slots (dsl 0.9.0 §2) — never for a segment. This is the reported
+///   defect: `AssetSegment.ty` accepted it anyway, purely because it shares
+///   the general `Type` enum, and `validate_segments`'s catch-all arm then
+///   enforced nothing against it.
+/// - `enumFromOption`, `slotId`: the production itself scopes both to
+///   "attribute types only" (§7 lines 385/387) — never a segment.
+/// - `narrativeTime`: also absent from the closed production. `types.rs`
+///   documents it as opaque and "NEVER author-declarable" — no `Literal`,
+///   and by the same reasoning no segment string, ever inhabits it.
+/// - `list`, `record`, `map`: admitted by the production for SOME typed
+///   position, but structurally incompatible with a segment specifically —
+///   §6.9 defines a segment's value as the single string token produced by
+///   splitting the composed id on `sep` (`crate::asset::decompose`); there is
+///   no serialization of a compound/multi-field value into one token.
+/// - `assetKind`: the production's own elaboration (§7 lines 398-401)
+///   describes it as validating a value AS a complete authored id, itself
+///   decomposed against ANOTHER kind's segment grammar — the inverse of
+///   being one token WITHIN an id. Nesting a whole nested-kind decomposition
+///   inside a single split token has no defined meaning.
+/// - `bool`: a single token (`"true"`/`"false"`) like `number`, so not
+///   excluded by shape alone — but §6.9's own segment example
+///   (0.0.1.md:277-280, `const`/`providerRef`/`string` only) and the four
+///   types `validate_segments` actually enforces never extend to it.
+///   Admitting it here would recreate the exact "declared and enforces
+///   nothing" shape as `domain`, just for a different variant — the second
+///   hole this function exists to close.
+fn check_asset_segment_types(kinds: &[AssetKindDecl], file: &str, errs: &mut Vec<LoadError>) {
+    for kind in kinds {
+        for seg in &kind.segments {
+            if let Some(ty) = &seg.ty {
+                if !segment_type_admitted(ty) {
+                    errs.push(LoadError::AssetSegmentType {
+                        file: file.to_string(),
+                        kind: kind.kind.clone(),
+                        segment: seg.name.clone(),
+                        found: type_str(ty),
+                    });
+                }
+            }
+        }
     }
 }
 
@@ -226,7 +372,7 @@ pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<Lo
 fn read_kind<F, M>(path: &Path, errs: &mut Vec<LoadError>, mut merge: M)
 where
     F: serde::de::DeserializeOwned,
-    M: FnMut(F, &mut Vec<LoadError>),
+    M: FnMut(F, &Path, &mut Vec<LoadError>),
 {
     for file in yaml_files(path, errs) {
         let s = match std::fs::read_to_string(&file) {
@@ -240,7 +386,7 @@ where
             }
         };
         match serde_yaml::from_str::<F>(&s) {
-            Ok(f) => merge(f, errs),
+            Ok(f) => merge(f, &file, errs),
             Err(e) => errs.push(LoadError::Parse {
                 file: file.display().to_string(),
                 msg: e.to_string(),

@@ -1472,10 +1472,13 @@ mod tests {
             .and_then(|p| p.get("diagnostics").cloned())
             .and_then(|d| d.as_array().cloned())
             .expect("publish carries a diagnostics array");
+        // Keyed on the stable `E-DEPENDS-CYCLE` code, not message text: the
+        // resolver's `ResolveError::Display` now renders prose ("plugin `a.x`
+        // is part of a `depends` cycle"), not the `Debug` struct name this
+        // lookup used to grep for (`crate::resolve::ResolveError`'s `{e:?}` →
+        // `{e}` fix, mirroring `LoadError`'s identical 0.10.1 fix).
         let resolver = diags.iter().find(|d| {
-            d.get("message")
-                .and_then(|m| m.as_str())
-                .is_some_and(|m| m.contains("DependsCycle"))
+            d.get("code").and_then(|c| c.as_str()) == Some("E-DEPENDS-CYCLE")
         });
         let resolver = resolver.unwrap_or_else(|| {
             panic!("resolver DependsCycle diagnostic must be published, got {diags:?}")

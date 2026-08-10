@@ -84,6 +84,43 @@ impl ResolveError {
     }
 }
 
+impl std::fmt::Display for ResolveError {
+    /// Human-readable rendering, surfaced by `project.rs` as the resolver's
+    /// `ResolveDiag` message — the same `{e:?}` → `{e}` fix
+    /// [`crate::loader::LoadError`] got (0.10.1: the toolchain says what it
+    /// knows). This channel is reached less often than a load or option
+    /// error (it requires an unknown/cyclic profile or an unsatisfiable
+    /// `depends`), but it is exactly as user-facing when it does fire.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolveError::UnknownProfile(name) => write!(
+                f,
+                "profile `{name}` is not declared in this project's `lute.project.yaml`"
+            ),
+            ResolveError::ExtendsCycle(name) => write!(
+                f,
+                "profile `{name}`'s `extends` chain cycles back to itself"
+            ),
+            ResolveError::UnresolvedDepends { plugin, dep } => write!(
+                f,
+                "plugin `{plugin}` depends on `{dep}`, which is not installed"
+            ),
+            ResolveError::DependsVersionMismatch {
+                plugin,
+                dep,
+                need,
+                found,
+            } => write!(
+                f,
+                "plugin `{plugin}` depends on `{dep}` {need}, but the installed `{dep}` is `{found}`"
+            ),
+            ResolveError::DependsCycle(dep) => {
+                write!(f, "plugin `{dep}` is part of a `depends` cycle")
+            }
+        }
+    }
+}
+
 impl ProfileGraph {
     fn extends_chain(&self, selected: &str) -> Result<Vec<String>, ResolveError> {
         // returns parent-first chain EXCLUDING global, INCLUDING selected last
@@ -254,10 +291,8 @@ impl OptionError {
         }
     }
 
-    /// Author-facing prose. Unlike [`ResolveError`], which renders through
-    /// `Debug`, these carry a written message: the fix (a name typo, a wrong
-    /// literal shape) is only actionable with the declared set / expected type
-    /// spelled out.
+    /// Author-facing prose: the fix (a name typo, a wrong literal shape) is
+    /// only actionable with the declared set / expected type spelled out.
     pub fn message(&self) -> String {
         match self {
             OptionError::UnknownOption {
@@ -734,6 +769,33 @@ mod tests {
             resolve_activation(&graph, "s", &BTreeMap::new(), &inst),
             Err(ResolveError::UnresolvedDepends { .. })
         ));
+    }
+
+    /// Companion to `unresolved_depends_is_error`: pins the `Display`
+    /// rendering (`project.rs`'s `resolve_activation` call site switched
+    /// `{e:?}` → `{e}` alongside `LoadError`'s identical fix) so this variant
+    /// never regresses back to a `Debug` struct dump.
+    #[test]
+    fn unresolved_depends_message_is_prose() {
+        use std::collections::BTreeMap;
+        let graph = ProfileGraph {
+            profiles: BTreeMap::from([(
+                "s".to_string(),
+                Profile {
+                    extends: None,
+                    plugins: BTreeMap::from([("a.x".to_string(), BTreeMap::new())]),
+                },
+            )]),
+            default_profile: "s".to_string(),
+        };
+        let inst = installed(vec![manifest("a.x", "0.1.0", &[("a.missing", "^0.1.0")])]);
+        let err = resolve_activation(&graph, "s", &BTreeMap::new(), &inst).unwrap_err();
+        let msg = err.to_string();
+        assert!(!msg.contains("UnresolvedDepends {"), "must not be a Debug dump: {msg}");
+        assert_eq!(
+            msg,
+            "plugin `a.x` depends on `a.missing`, which is not installed"
+        );
     }
 
     #[test]
