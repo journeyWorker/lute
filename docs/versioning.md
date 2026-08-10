@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.10.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.10.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.10.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.10.schema.json`](../schemas/lute-ir-0.10.schema.json)). Consuming engines gate parsing on it. |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.10.1` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.10.1` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.10.1` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.10.schema.json`](../schemas/lute-ir-0.10.schema.json)). Consuming engines gate parsing on it. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -74,6 +74,24 @@ the one it implements, so an engine built against IR `0.9` refuses every
 is not the *entire* migration: an engine that reads the injection provenance
 stamp must also rename `reason` to `explanation`. That rename is the only edit
 beyond the gate.
+
+**`0.10.1` aligns all three axes at `0.10.1`, and none of them earned it.** That
+is the alignment rule working as written rather than a defect in it: the release
+is two toolchain fixes — `lute test` gains the `--project` resolution its
+sibling commands already had, and an `assetKind` segment declared with a `Type`
+outside the closed segment production is rejected at plugin load instead of
+enforcing nothing — and the language and IR numbers move because the rule says
+they move. Language `0.10.1` is byte-for-byte `0.10.0` semantics
+([`proposals/scenario-dsl/0.10.1.md`](proposals/scenario-dsl/0.10.1.md), written
+for the same reason `0.7.0`'s was: a language version absent from the spec stack
+cannot be told apart from one nobody recorded).
+
+**This one costs a consuming engine nothing.** The runtime contract gates on
+`irVersion` **major.minor**, and `0.10.1` shares `0.10` with `0.10.0`, so an
+engine that accepts a `0.10.0` artifact accepts a `0.10.1` artifact with no
+edit. For the same reason `schemas/lute-ir-0.10.schema.json` keeps its name and
+its `$id` — the schema file tracks the gated `major.minor`, not the release
+number, which is why `0.7.0` renamed its schema and this release does not.
 
 ## Which bump when
 
