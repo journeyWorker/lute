@@ -330,6 +330,7 @@ mod tests {
                 episode: 2,
                 episode_id: "s01ep02".to_string(),
                 title: None,
+                plugin: BTreeMap::new(),
             }),
             state: Vec::new(),
             entities: Vec::new(),

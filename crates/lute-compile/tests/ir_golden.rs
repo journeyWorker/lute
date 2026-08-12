@@ -395,6 +395,7 @@ fn envelope_serializes_with_state_entries() {
             episode: 2,
             episode_id: "s01ep02".into(),
             title: Some("T".into()),
+            plugin: BTreeMap::new(),
         }),
         state: vec![StateEntry {
             path: "scene.choices.number".into(),

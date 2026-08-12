@@ -35,7 +35,8 @@ use lute_check::{check, fold_env, CheckInput, CheckResult, DefTable, FoldedEnv, 
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::project::IdentityTemplates;
 use lute_manifest::relations::KindShape;
-use lute_manifest::types::{Literal, Type};
+use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::types::{type_accepts, Literal, Type};
 use lute_syntax::ast::{Arm, Document, Node};
 
 /// Language-version pin stamped into the artifact envelope's `lute` field (DSL
@@ -131,7 +132,7 @@ pub fn compile_with_check(
             // so every shot gets the SAME `{character}.{episodeId}` prefix
             // (byte-identical to 0.1.0's single continuous back-fill
             // counter).
-            let meta = artifact_meta(&doc, &folded);
+            let meta = artifact_meta(&doc, &folded, &input.snapshot);
             // Shared with `lute-check::connectivity::scene_key_set` (T3, DRY):
             // `meta.episode_id` is already resolved (authored or defaulted), so
             // this call always takes the `Some` branch — byte-identical to the
@@ -225,7 +226,7 @@ pub fn compile_with_check(
                 });
             }
             let (commands, addr_diags) = address::assign_addresses(shots, identity);
-            (ArtifactMeta::Quest(quest_meta(&doc)), commands, addr_diags)
+            (ArtifactMeta::Quest(quest_meta(&doc, &input.snapshot)), commands, addr_diags)
         }
     };
     diags.extend(addr_diags);
@@ -416,11 +417,13 @@ fn body_entry(l: &lute_syntax::datalog::BodyLiteral) -> BodyEntry {
     }
 }
 
-/// Envelope meta (§4.1 + A4). `character`/`season`/`episode` are §6.1 REQUIRED
-/// keys — the gate proved them present; degrade to defaults, never panic.
-/// `title` and the authored `episodeId` live only in the raw frontmatter
-/// (neither is lifted into `TypedMeta`); both are read from the mapping here.
-fn artifact_meta(doc: &Document, folded: &FoldedEnv) -> SceneMeta {
+/// Envelope meta (§4.1 + A4; plugin-owned keys per plugin-system 0.0.4 §2).
+/// `character`/`season`/`episode` are §6.1 REQUIRED keys — the gate proved
+/// them present; degrade to defaults, never panic. `title` and the authored
+/// `episodeId` live only in the raw frontmatter (neither is lifted into
+/// `TypedMeta`); both are read from the mapping here, alongside every
+/// plugin-owned top-level key ([`plugin_frontmatter`]).
+fn artifact_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) -> SceneMeta {
     let character = folded.typed.character.clone().unwrap_or_default();
     let season = folded.typed.season.unwrap_or(0);
     let episode = folded.typed.episode.unwrap_or(0);
@@ -440,13 +443,62 @@ fn artifact_meta(doc: &Document, folded: &FoldedEnv) -> SceneMeta {
     // [`canonical_episode_key`] joins onto `character` for the identity key
     // the address pass reuses for every lineId episode segment.
     let episode_id = canonical_episode_id(season, episode, lookup("episodeId").as_deref());
+    let plugin = raw
+        .as_ref()
+        .map(|m| plugin_frontmatter(m, snapshot))
+        .unwrap_or_default();
     SceneMeta {
         character,
         season,
         episode,
         episode_id,
         title,
+        plugin,
     }
+}
+
+/// plugin-system 0.0.4 §2: fold the raw frontmatter mapping's plugin-owned
+/// top-level keys into the artifact envelope's `meta.plugin`. A key counts
+/// only when it is BOTH declared by an active plugin (`snapshot.frontmatter`,
+/// plugin-system 0.0.1 §6.8 — a key present there is, by construction of
+/// snapshot resolution, owned by an active plugin) AND its authored value
+/// passes that declaration's schema — the SAME `Literal::from_yaml` +
+/// `type_accepts` predicate `lute_check::meta::parse_meta_kind_with_defaults`
+/// gates `E-FRONTMATTER-SCHEMA` on (`crates/lute-check/src/meta.rs`).
+///
+/// `compile`/`compile_with_check` only reach this point past the D6 check
+/// gate on the SAME `snapshot`, so on every ordinary call
+/// (`compile(input)` = `compile_with_check(input, check(input), _)`) this
+/// predicate already holds for every candidate key — the checker would have
+/// refused the document otherwise. The re-check here is defense in depth for
+/// the `compile_with_check` seam, where a caller supplies its OWN
+/// `CheckResult` (the project-aware CLI gate, `compile_with_check`'s own
+/// doc comment): a value the checker would reject can never leak into the
+/// artifact by construction, never by trusting the caller's `ok`. A core key,
+/// an unknown key, or a key with no active plugin owner is silently skipped
+/// rather than asserted impossible, keeping this function total regardless of
+/// which gate ran. `BTreeMap` key order is the serialized order
+/// (deterministic, plugin §11.3 "first owner wins" does not apply here — this
+/// reads the ALREADY-merged snapshot, never resolves ownership itself).
+fn plugin_frontmatter(
+    map: &serde_yaml::Mapping,
+    snapshot: &CapabilitySnapshot,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut out = BTreeMap::new();
+    for (k, v) in map.iter() {
+        let Some(key) = k.as_str() else { continue };
+        let Some(ty) = snapshot.frontmatter.get(key) else {
+            continue;
+        };
+        let Some(lit) = Literal::from_yaml(v) else {
+            continue;
+        };
+        if !type_accepts(ty, &lit) {
+            continue;
+        }
+        out.insert(key.to_string(), literal_json(&lit));
+    }
+    out
 }
 
 /// Advisory connectivity IR (connectivity spec §2.6, A-hybrid, T13): this
@@ -509,11 +561,12 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
     out
 }
 
-/// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1): `title`/
-/// `contentLang` live only in the raw frontmatter (mirrors `artifact_meta`'s
-/// `title`/`episodeId` lookup) — MAY serialize as `{}` when neither is
-/// authored (both `skip_serializing_if = "Option::is_none"`).
-fn quest_meta(doc: &Document) -> QuestMeta {
+/// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1; plugin-owned
+/// keys per plugin-system 0.0.4 §2): `title`/`contentLang` live only in the
+/// raw frontmatter (mirrors `artifact_meta`'s `title`/`episodeId` lookup) —
+/// MAY serialize as `{}` when none of title/contentLang/plugin are authored
+/// (all three carry `skip_serializing_if`).
+fn quest_meta(doc: &Document, snapshot: &CapabilitySnapshot) -> QuestMeta {
     let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
     let lookup = |key: &str| -> Option<String> {
         raw.as_ref()?
@@ -521,9 +574,14 @@ fn quest_meta(doc: &Document) -> QuestMeta {
             .as_str()
             .map(String::from)
     };
+    let plugin = raw
+        .as_ref()
+        .map(|m| plugin_frontmatter(m, snapshot))
+        .unwrap_or_default();
     QuestMeta {
         title: lookup("title"),
         content_lang: lookup("contentLang"),
+        plugin,
     }
 }
 
@@ -903,5 +961,116 @@ mod tests {
         assert_eq!(entry["provenance"], serde_json::json!("quest:q1"));
         assert!(entry.get("domain").is_none(), "opaque: no domain: {entry}");
         assert!(entry.get("default").is_none(), "engine-populated: {entry}");
+    }
+
+    /// plugin-system 0.0.1 §6.8 worked-example shape (a plugin-owned `cast`
+    /// key, `map<string, record>`): a value that passes `E-FRONTMATTER-SCHEMA`
+    /// reaches the compiled envelope verbatim as JSON (0.0.4 §2).
+    #[test]
+    fn plugin_frontmatter_passthrough_populates_meta_plugin_when_declared_and_active() {
+        let mut snap = lute_manifest::core::load_core_snapshot();
+        snap.frontmatter.insert(
+            "cast".to_string(),
+            lute_manifest::types::Type::Map {
+                key: Box::new(lute_manifest::types::Type::Str),
+                value: Box::new(lute_manifest::types::Type::Record(vec![
+                    lute_manifest::types::Field {
+                        name: "costume".to_string(),
+                        ty: lute_manifest::types::Type::Str,
+                        default: None,
+                        required: false,
+                        shape: None,
+                    },
+                ])),
+            },
+        );
+        let input = CheckInput {
+            text: "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncast:\n  ana:\n    costume: school\n---\n## Shot 1.\n@narrator: hi\n".to_string(),
+            uri: "test".into(),
+            snapshot: snap,
+            providers: Default::default(),
+            mode: Mode::Ci,
+            imports: Default::default(),
+            components: Default::default(),
+            defaults: Default::default(),
+        };
+        let art =
+            super::compile(&input).expect("compiles: plugin-owned key passes E-FRONTMATTER-SCHEMA");
+        let v = serde_json::to_value(&art).unwrap();
+        assert_eq!(
+            v["meta"]["plugin"]["cast"]["ana"]["costume"],
+            serde_json::json!("school")
+        );
+    }
+
+    /// A document that authors no plugin-owned top-level key emits no
+    /// `meta.plugin` at all — byte-identical to pre-0.0.4 output.
+    #[test]
+    fn scene_meta_omits_plugin_when_no_plugin_owned_key_authored() {
+        let art = super::compile(&test_input(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n",
+        ))
+        .unwrap();
+        let v = serde_json::to_value(&art).unwrap();
+        assert!(
+            v["meta"].get("plugin").is_none(),
+            "plugin must be skipped when empty: {}",
+            v["meta"]
+        );
+    }
+
+    /// Quest documents get the same treatment as scenes (0.0.4 §2 covers
+    /// both kinds).
+    #[test]
+    fn quest_meta_carries_plugin_owned_keys_too() {
+        let mut snap = lute_manifest::core::load_core_snapshot();
+        snap.frontmatter
+            .insert("questTier".to_string(), lute_manifest::types::Type::Number);
+        let input = CheckInput {
+            text: "---\nkind: quest\nquestTier: 2\n---\n<quest id=\"q1\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n".to_string(),
+            uri: "test".into(),
+            snapshot: snap,
+            providers: Default::default(),
+            mode: Mode::Ci,
+            imports: Default::default(),
+            components: Default::default(),
+            defaults: Default::default(),
+        };
+        let art = super::compile(&input).unwrap();
+        let v = serde_json::to_value(&art).unwrap();
+        assert_eq!(v["meta"]["plugin"]["questTier"], serde_json::json!(2));
+    }
+
+    /// Defense in depth for the `compile_with_check` seam: a caller-supplied
+    /// `CheckResult` could in principle claim `ok: true` over a document the
+    /// real checker would refuse. `plugin_frontmatter` must never trust that
+    /// claim — it re-derives ownership from `snapshot.frontmatter` itself, so
+    /// a key no active plugin owns can never reach the artifact regardless of
+    /// which gate ran.
+    #[test]
+    fn plugin_frontmatter_excludes_a_key_no_active_plugin_declares_even_if_the_check_gate_is_bypassed(
+    ) {
+        let input = test_input(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncast:\n  ana:\n    costume: school\n---\n## Shot 1.\n@narrator: hi\n",
+        );
+        let mut forced = super::check(&input);
+        assert!(
+            !forced.ok,
+            "sanity: the real checker DOES refuse `cast` here (E-META-UNKNOWN-KEY)"
+        );
+        forced.ok = true;
+        forced.diagnostics.clear();
+        let art = super::compile_with_check(
+            &input,
+            forced,
+            &lute_manifest::project::IdentityTemplates::default(),
+        )
+        .unwrap();
+        let v = serde_json::to_value(&art).unwrap();
+        assert!(
+            v["meta"].get("plugin").is_none(),
+            "an undeclared key must never leak through even with a forged ok=true result: {}",
+            v["meta"]
+        );
     }
 }
