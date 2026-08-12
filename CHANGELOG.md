@@ -8,26 +8,31 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.10.1`, the grammar and semantics the checker
+- **Language** — currently `0.10.2`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.10.1`) and gated on by consuming engines.
+  artifact (currently `0.10.2`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
 presentation guarantee, not a claim that every axis changed substantively — this
-changelog is where you learn which ones did. `0.10.0` was the first release in a
-while where all three earned it; `0.10.1` is the opposite case and says so
-plainly: **the language and the IR move because the rule moves them, and neither
-contract changed.** Language `0.10.1` is byte-for-byte `0.10.0` semantics
-([`0.10.1.md`](docs/proposals/scenario-dsl/0.10.1.md)), and because the runtime
-contract gates on `irVersion` **major.minor**, an engine that accepts a `0.10.0`
-artifact accepts a `0.10.1` artifact with no edit at all.
+changelog is where you learn which ones did. `0.10.1` was the no-op case, both
+language and IR; `0.10.2` inverts it — **the IR earns the move and the language
+does not.** Language `0.10.2` is byte-for-byte `0.10.1` (== `0.10.0`) semantics
+([`0.10.2.md`](docs/proposals/scenario-dsl/0.10.2.md)). The runtime contract
+still gates on `irVersion` **major.minor**, and `0.10.2` shares `0.10` with
+`0.10.0`/`0.10.1`, so an engine that accepts either artifact accepts a `0.10.2`
+artifact with no edit — the new field is additive.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.10.2] - 2026-08-12
+
+**A checked value stops evaporating at compile.** One change, entirely IR and
+toolchain: a plugin-owned frontmatter key the checker already validates now
+reaches the compiled artifact instead of being discarded the moment a checked
+document becomes something a runtime reads.
 
 ### Changed
 
@@ -50,15 +55,16 @@ table.
   `default:` already serializes through; nested record/map values stay
   key-sorted, so `meta.plugin` is deterministic at every depth. See
   [`plugin-system/0.0.4.md`](docs/proposals/plugin-system/0.0.4.md).
-  **IR (pending).** This is a real, additive artifact-shape change and
-  therefore an IR-axis change per `docs/versioning.md`, but `LUTE_IR_VERSION`
-  stays `0.10.1` and `schemas/lute-ir-0.10.schema.json` (whose `sceneMeta`/
-  `questMeta` still declare `additionalProperties: false`) is untouched in
-  this change — both are release-cut actions this repo performs together with
-  re-aligning every axis, and this delta ships no language or toolchain
-  change to align around. The code ships now; the version number and schema
-  catch up at the next coordinated release, the same order `0.8.0`'s `end`
-  command and `0.10.0`'s `provenance.explanation` rename both landed.
+- **All three axes read `0.10.2`, and this time the IR earned it while the
+  language did not.** `LUTE_IR_VERSION` and `schemas/lute-ir-0.10.schema.json`
+  (`sceneMeta`/`questMeta` each gain a `plugin` property) catch up to the
+  `meta.plugin` shape change in this same release, rather than lagging it —
+  the schema file keeps its name and `$id` (it tracks the gated `major.minor`,
+  which does not move) but its content does. Language `0.10.2` is
+  byte-for-byte `0.10.1` semantics
+  ([`scenario-dsl/0.10.2.md`](docs/proposals/scenario-dsl/0.10.2.md)).
+  Documents carrying `luteVersion: "0.10.1"` now draw
+  `W-LUTE-VERSION-STALE`; restamping is the whole migration.
 
 ## [0.10.1] - 2026-08-10
 

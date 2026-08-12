@@ -694,6 +694,10 @@
         },
         "title": {
           "type": "string"
+        },
+        "plugin": {
+          "type": "object",
+          "description": "plugin-system 0.0.4 §2: checker-validated, plugin-owned top-level frontmatter keys, key -> JSON value (any shape the declaring plugin's frontmatter schema admits, plugin-system 0.0.1 §6.8). Absent when the document authors no plugin-owned key."
         }
       },
       "additionalProperties": false,
@@ -713,10 +717,14 @@
         },
         "contentLang": {
           "type": "string"
+        },
+        "plugin": {
+          "type": "object",
+          "description": "plugin-system 0.0.4 §2: checker-validated, plugin-owned top-level frontmatter keys, key -> JSON value. Absent when the document authors no plugin-owned key."
         }
       },
       "additionalProperties": false,
-      "description": "Quest-kind envelope meta (dsl 0.2.0 §6.1). MAY serialize as {} when neither key is authored. Present when `kind` == \"quest\"."
+      "description": "Quest-kind envelope meta (dsl 0.2.0 §6.1). MAY serialize as {} when none of title/contentLang/plugin are authored. Present when `kind` == \"quest\"."
     },
     "stateEntry": {
       "type": "object",
