@@ -3842,13 +3842,13 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number. IR is
-    /// pinned separately in `lute-compile`; at `0.10.1` all three move and none
-    /// of them earned it on merit — the alignment rule moves an axis whether or
-    /// not its contract changed, and the changelog is where a reader learns
-    /// which ones did.
+    /// pinned separately in `lute-compile`; at `0.10.2` the IR genuinely moves
+    /// (`meta.plugin`, plugin-system `0.0.4`) while the language axis is a
+    /// pure alignment no-op (`scenario-dsl/0.10.2.md`) — the alignment rule
+    /// still moves every axis together regardless of which contract changed.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_10_1() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.10.1");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.10.1");
+    fn language_ir_and_toolchain_are_aligned_at_0_10_2() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.10.2");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.10.2");
     }
 }

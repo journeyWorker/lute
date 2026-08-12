@@ -72,9 +72,10 @@ come from a plugin's `enums` export emits **no** `enums` at all, because a
 plugin vocabulary is capability surface (folded into `capabilityVersion`), not
 per-document data. Either way this is data an engine already unions, so nothing
 new is required of it — the `enums` move added, renamed, and moved no field.
-`irVersion` reads `0.10.0`, and at `0.10.0` the shape *does* change, but only in
-one place unrelated to `enums`: a provenance-field rename. See
-[What IR 0.10.0 changed](#what-ir-0100-changed). Members carrying
+`irVersion` reads `0.10.2`. The shape *does* change at `0.10.2`, in one place
+unrelated to `enums`: a plugin-owned, checker-validated frontmatter key now
+reaches the artifact (`meta.plugin`). See
+[What IR 0.10.2 changed](#what-ir-0102-changed). Members carrying
 compiler semantics (`action`'s
 `exits:`, `anchor`'s `default:`) are resolved away at compile time and never
 serialized: an engine needs no member semantics at runtime.
@@ -91,9 +92,47 @@ Gate on `irVersion` by **major.minor**:
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
 
+### What IR 0.10.2 changed
+
+**One additive field — no field renamed, retyped, or removed.** `meta` (both
+`sceneMeta` and `questMeta`) gains `plugin`: a plugin-owned, checker-validated
+top-level frontmatter key, folded in as `{ "<key>": <json value> }`, skipped
+entirely when the document authors no plugin-owned key:
+
+```json
+{ "meta": { "character": "bianca", "season": 1, "episode": 2,
+    "episodeId": "s01ep02", "plugin": { "cast": { "ana": { "costume": "school" } } } } }
+```
+
+A key is present only when it is both declared by an active plugin and its
+authored value independently passes that plugin's declared schema — the same
+predicate the checker already gates `E-FRONTMATTER-SCHEMA` on, so a value the
+checker would reject can never reach `meta.plugin`. See [plugin-system
+0.0.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.4.md)
+for the normative membership rule.
+
+**No gate widening, by the ignore-unknown-fields rule.** `0.10.2` shares major
+minor `0.10` with `0.10.0`/`0.10.1`, and `plugin` is a genuinely new object
+key — an engine that already accepts a `0.10.x` artifact and ignores keys it
+does not read keeps working unchanged. If you validate strictly against the
+published JSON Schema rather than merely parsing, `sceneMeta`/`questMeta` in
+`lute-ir-0.10.schema.json` now admit `plugin` as a typed property (still
+`additionalProperties: false` otherwise); the file keeps its name because the
+gated major.minor did not move.
+
+### What IR 0.10.1 changed
+
+*History, retained for anyone still on the `0.10.1` line.* **Nothing in the
+shape.** IR `0.10.1` was shape-identical to IR `0.10.0` — no field added,
+renamed, moved, or retyped, no new command `kind`. The number moved only
+because a release re-aligns every visible axis; widening the gate to accept
+`0.10.1` cost nothing beyond what `0.10.0` already required, since both share
+major.minor `0.10`.
+
 ### What IR 0.10.0 changed
 
-**One field rename — the first shape change since `0.8.0`.** The injection
+*History, retained for anyone still on the `0.10.0` line.* **One field
+rename — the first shape change since `0.8.0`.** The injection
 provenance stamp's `reason` becomes **`explanation`**:
 
 ```json

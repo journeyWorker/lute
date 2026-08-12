@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.10.1"
+luteVersion: "0.10.2"
 uses: ../world.schema.yaml
 title: The False Heading
 ---

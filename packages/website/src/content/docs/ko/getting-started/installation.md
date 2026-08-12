@@ -5,7 +5,7 @@ description: bunx, 전역 bun 설치, 또는 Rust 소스로 Lute CLI를 설치�
 
 Lute는 단일 명령줄 도구 `lute` 하나로 제공됩니다. 이 도구는 `.lute` 시나리오 파일을 읽어
 검사(check), 컴파일(compile), 트레이스(trace)하고 그 내용을 살펴봅니다. 현재 언어 버전은
-**0.10.1**입니다.
+**0.10.2**입니다.
 
 ## `bunx`로 빠르게 시작하기
 
@@ -61,9 +61,9 @@ cargo install --path crates/lute-cli
 
 ```
 $ lute version
-lute toolchain 0.10.0
-language      0.10.1
-IR schema     0.10.0
+lute toolchain 0.10.2
+language      0.10.2
+IR schema     0.10.2
 ```
 
 이 셋은 서로 독립적인 축이며, 다른 곳에서도 다시 마주치게 됩니다: **toolchain** 버전은 이 CLI
@@ -80,10 +80,10 @@ IR schema     0.10.0
 
 ```
 $ lute version --json
-{"toolchain":"0.10.1","language":"0.10.1","ir":"0.10.1"}
+{"toolchain":"0.10.2","language":"0.10.2","ir":"0.10.2"}
 ```
 
-(`lute --version`도 동작하며 `lute 0.10.0`만 출력합니다 — toolchain 축 하나뿐입니다.)
+(`lute --version`도 동작하며 `lute 0.10.2`만 출력합니다 — toolchain 축 하나뿐입니다.)
 
 ## 다음
 
