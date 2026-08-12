@@ -27,6 +27,39 @@ artifact accepts a `0.10.1` artifact with no edit at all.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Changed
+
+- **A plugin-owned, checker-validated frontmatter key now reaches the compiled
+  artifact.** §6.8 (plugin-system `0.0.1`) let a plugin declare a top-level
+  `meta` key with a schema, and `0.0.2` §3 made the checker enforce it
+  (`E-FRONTMATTER-SCHEMA`) — both stopped at validation. `SceneMeta`/
+  `QuestMeta` were closed structs and `artifact_meta`/`quest_meta` never read
+  a plugin-owned key out of the raw frontmatter at all, so a document could
+  pass the checker on a value that then evaporated at the one step that turns
+  a checked document into something a runtime reads. Both envelope types gain
+  a `plugin` object (`BTreeMap<String, Value>`, skipped when empty — a
+  document authoring no plugin-owned key is byte-identical to before this
+  change): a key counts only when it is BOTH declared by an active plugin
+  (`snapshot.frontmatter`) AND its authored value independently passes that
+  declaration's schema — `lute-compile` re-derives this from the snapshot
+  itself rather than trusting a caller-supplied `CheckResult`'s `ok`, so a
+  value the checker would reject can never leak into the artifact. Value
+  conversion reuses the existing `Literal` → JSON path every `state:`
+  `default:` already serializes through; nested record/map values stay
+  key-sorted, so `meta.plugin` is deterministic at every depth. See
+  [`plugin-system/0.0.4.md`](docs/proposals/plugin-system/0.0.4.md).
+  **IR (pending).** This is a real, additive artifact-shape change and
+  therefore an IR-axis change per `docs/versioning.md`, but `LUTE_IR_VERSION`
+  stays `0.10.1` and `schemas/lute-ir-0.10.schema.json` (whose `sceneMeta`/
+  `questMeta` still declare `additionalProperties: false`) is untouched in
+  this change — both are release-cut actions this repo performs together with
+  re-aligning every axis, and this delta ships no language or toolchain
+  change to align around. The code ships now; the version number and schema
+  catch up at the next coordinated release, the same order `0.8.0`'s `end`
+  command and `0.10.0`'s `provenance.explanation` rename both landed.
+
 ## [0.10.1] - 2026-08-10
 
 **A plugin is not a second-class citizen.** All three entries come from one
