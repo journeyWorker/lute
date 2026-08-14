@@ -548,6 +548,7 @@ dependencies = [
 name = "lute-cli"
 version = "0.10.2"
 dependencies = [
+ "cel-parser",
  "clap",
  "lute-cel",
  "lute-check",
@@ -556,6 +557,7 @@ dependencies = [
  "lute-manifest",
  "lute-syntax",
  "lute-trace",
+ "serde",
  "serde_json",
  "serde_yaml",
 ]

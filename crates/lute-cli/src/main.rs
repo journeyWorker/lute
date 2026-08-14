@@ -63,6 +63,8 @@ mod doctor;
 mod loc;
 mod manifests;
 mod mockcheck;
+mod play;
+mod schedule;
 mod runner;
 mod scaffold;
 mod scenario_fmt;
@@ -319,6 +321,66 @@ enum Command {
         /// A YAML mock playthrough (same surfaces as `lute trace --mock`).
         #[arg(long, value_name = "FILE")]
         mock: Option<PathBuf>,
+        /// Emit the machine-readable transcript as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Play a scheduled route through a whole project as one chained,
+    /// reviewer-facing transcript — the reference-runtime consumer of a
+    /// `schedule.yaml` (design spec
+    /// `docs/superpowers/specs/2026-08-14-lute-schedule-and-play-design.md`
+    /// §4). Compiles the WHOLE project in memory (scene + quest kind, the
+    /// same declaration union `compile --all` writes), then walks the
+    /// schedule's user-lane placements in presentation order — re-evaluating
+    /// each event's route-guarded variants against live state, chaining
+    /// `run.*`/`user.*`/`app.*`/`quest.*` state and facts across scene
+    /// boundaries via `lute run`'s own reference evaluator, draining
+    /// overlapping world-lane events as the story clock advances. A project
+    /// with no `schedule.yaml` is a hard error (spec §2: there is no
+    /// `after:`-graph fallback — unguarded sibling route files cannot be
+    /// walked into ONE route). Exit `0` a complete walk (`::end`, the clock
+    /// exhausted, or `--steps` reached), `1` a schedule gate/runtime failure
+    /// (a bad `schedule.yaml`, a failed project compile, an unsatisfiable/
+    /// ambiguous route variant, an `after:` violated in presentation order),
+    /// `2` an I/O/usage failure, `3` an incomplete walk (an unscripted
+    /// choice/hub, or a guard/effect this reference runtime cannot resolve —
+    /// spec §4.5).
+    Play {
+        /// Project directory (`lute.project.yaml` + `schedule.yaml`) to play.
+        dir: PathBuf,
+        /// A scalar state seed (route selection): a DECLARED state path and
+        /// a literal, `<path>=<literal>` (repeatable).
+        #[arg(long = "state", value_name = "PATH=LITERAL", value_parser = parse_state_flag)]
+        state: Vec<(String, String)>,
+        /// A ground fact, valid-now, over the project's unioned relational
+        /// vocabulary (repeatable).
+        #[arg(long = "fact", value_name = "REL(ARG…)")]
+        fact: Vec<String>,
+        /// A route script (design spec §4.4): `state:`/`facts:`/`choose:`,
+        /// this module's OWN closed grammar — NOT a `lute trace --mock` file.
+        #[arg(long, value_name = "FILE")]
+        script: Option<PathBuf>,
+        /// An ad-hoc choice/hub decision, event-qualified:
+        /// `<event>/<branchOrHubId>=<choiceId>[,<choiceId>…]` (repeatable).
+        /// A bare (unqualified) id is legal only when unique across the
+        /// whole schedule.
+        #[arg(long = "choose", value_name = "EVENT/ID=CHOICEID[,CHOICEID…]", value_parser = parse_choose_flag)]
+        choose: Vec<(String, Vec<String>)>,
+        /// Unattended policy for a choice/hub the route script/`--choose`
+        /// left unscripted: `first` picks the first eligible option.
+        /// Unscripted AND unset here halts the walk incomplete (exit 3).
+        #[arg(long, value_name = "POLICY", value_parser = play::parse_auto_policy)]
+        auto: Option<String>,
+        /// Transcript scope: `user` (default — the strict player view) or
+        /// `all` (world-lane scenes annotated `· world ·`). World-lane
+        /// scenes EXECUTE either way (state must not depend on rendering);
+        /// this only gates what the transcript shows.
+        #[arg(long, value_name = "user|all", value_parser = play::parse_lanes_flag)]
+        lanes: Option<String>,
+        /// Stop after this many presented placements (user + drained world),
+        /// for a partial-playback preview.
+        #[arg(long)]
+        steps: Option<u32>,
         /// Emit the machine-readable transcript as JSON.
         #[arg(long)]
         json: bool,
@@ -735,6 +797,17 @@ fn main() -> ExitCode {
             mock,
             json,
         } => runner::run_artifact(&artifact, mock.as_deref(), json),
+        Command::Play {
+            dir,
+            state,
+            fact,
+            script,
+            choose,
+            auto,
+            lanes,
+            steps,
+            json,
+        } => play::run_play(&dir, state, fact, script.as_deref(), choose, auto, lanes, steps, json),
         Command::Test {
             dir,
             json,

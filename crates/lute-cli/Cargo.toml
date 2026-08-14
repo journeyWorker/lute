@@ -17,5 +17,7 @@ lute-compile = { path = "../lute-compile" }
 lute-trace = { path = "../lute-trace" }
 lute-cel = { path = "../lute-cel" }
 clap = { version = "4", features = ["derive"] }
+cel-parser = "0.10.1"
+serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }

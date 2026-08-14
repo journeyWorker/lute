@@ -66,7 +66,7 @@ use std::process::ExitCode;
 
 use lute_cel::CelArena;
 use lute_check::{RelVocab, StateSchema};
-use lute_trace::{eval, EffectiveState, EvalEnv, FactStore, Value};
+use lute_trace::{eval, EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value};
 use serde_json::{json, Value as Json};
 
 /// The IR major.minor line this reference runner implements, derived from
@@ -79,8 +79,11 @@ fn impl_ir_line() -> (u64, u64) {
         .expect("LUTE_IR_VERSION must carry a major.minor prefix")
 }
 
-/// A ground fact: `(relation, args)`.
-type Fact = (String, Vec<String>);
+/// A ground fact: `(relation, args)`. `pub(crate)` (design spec
+/// docs/superpowers/specs/2026-08-14-lute-schedule-and-play-design.md §4.2):
+/// `lute play`'s chained evaluator carries this shape across scene
+/// boundaries via [`RunnerOutcome`]/[`Runner::with_carryover`].
+pub(crate) type Fact = (String, Vec<String>);
 
 /// Execute a compiled artifact against a mock playthrough. See [`crate::Command::Run`].
 pub fn run_artifact(artifact: &Path, mock: Option<&Path>, json_out: bool) -> ExitCode {
@@ -221,8 +224,11 @@ enum Step {
     Halt,
 }
 
-/// The reference engine over one artifact.
-struct Runner {
+/// The reference engine over one artifact. `pub(crate)` (design spec §4.2):
+/// `lute play`'s chained evaluator (`play.rs`) drives one `Runner` per
+/// scheduled scene, threading state/facts/quest status across instances via
+/// [`RunnerOutcome`]/[`Runner::with_carryover`] — never a second dispatcher.
+pub(crate) struct Runner {
     kind: String,
     commands: Vec<Json>,
     /// `addr → index` in `commands`.
@@ -270,10 +276,44 @@ struct Runner {
     terminated: bool,
     /// An unknown command `kind` or malformed record (exit 2).
     fatal: Option<String>,
+    /// Every [`UnresolvedAtom`] any CEL evaluation this walk performed
+    /// produced ([`Runner::eval_raw`]'s one chokepoint). `lute run` never
+    /// reads this — its exit code/output are byte-identical to before this
+    /// field existed; it exists for [`RunnerOutcome`] to hand to `lute
+    /// play`'s §4.5 honesty gate.
+    unresolved: Vec<UnresolvedAtom>,
+}
+
+/// `lute play`'s per-scene carryover + transcript-reuse surface (assignment
+/// contract points b/c): everything the chained walk needs to seed the NEXT
+/// scene's [`Runner::with_carryover`], plus the machine transcript play.rs's
+/// own renderer reuses verbatim instead of re-implementing per-`kind`
+/// rendering rules a second time.
+pub(crate) struct RunnerOutcome {
+    pub state: BTreeMap<String, Value>,
+    pub base_facts: BTreeSet<Fact>,
+    pub quest_status: BTreeMap<String, String>,
+    /// dsl 0.8.0 `::end` executed: the WHOLE playthrough is over (design spec
+    /// §4.2 "`::end` terminates the whole playthrough"), not just this scene.
+    pub terminated: bool,
+    /// A `choice`/`hub` was reached with no route-script/`--auto` decision.
+    pub incomplete: bool,
+    /// See [`Runner::unresolved`] — the §4.5 honesty-gate signal.
+    pub unresolved: Vec<UnresolvedAtom>,
+    pub transcript: Vec<Json>,
 }
 
 impl Runner {
-    fn new(art: &Json, mock: lute_trace::MockSet) -> Self {
+    /// Build a Runner skeleton straight off an artifact: addr map, typed
+    /// state table (types only — NOT yet seeded with defaults; see below),
+    /// parsed Datalog rules/strata. Live `state`/`base_facts` start EMPTY
+    /// here — [`Runner::new`] (fresh `lute run` walk) seeds them from the
+    /// artifact's own `state[].default`/`seedFacts`; [`Runner::with_carryover`]
+    /// (`lute play`'s chained walk, design spec §4.2) seeds them from the
+    /// PRIOR scene's [`RunnerOutcome`] instead. Both then layer `mock`'s own
+    /// `state:`/`facts:` seeds on top via [`Runner::apply_mock_seeds`] — the
+    /// one place that override rule lives.
+    fn blank(art: &Json, mock: lute_trace::MockSet) -> Self {
         let kind = art.get("kind").and_then(Json::as_str).unwrap_or("scene").to_string();
         let commands = art.get("commands").and_then(Json::as_array).cloned().unwrap_or_default();
 
@@ -330,7 +370,7 @@ impl Runner {
         }
         let strata = compute_strata(&rules, &derived);
 
-        let mut runner = Runner {
+        Runner {
             kind,
             commands,
             addr_index,
@@ -349,24 +389,63 @@ impl Runner {
             incomplete: false,
             terminated: false,
             fatal: None,
-        };
+            unresolved: Vec::new(),
+        }
+    }
 
-        // Apply mock state seeds (override defaults), coerced by declared type.
-        let seeds: Vec<(String, String)> =
-            runner.mock.state.iter().map(|(p, lit, _)| (p.clone(), lit.clone())).collect();
-        for (path, lit) in seeds {
-            let v = runner.coerce_literal(&path, &lit);
-            runner.state.insert(path, v);
-        }
-        // Mock facts join the base set (they are supplied ground answers).
-        let mock_facts: Vec<String> = runner.mock.facts.clone();
-        for f in mock_facts {
-            if let Some(fact) = parse_ground_fact(&f) {
-                runner.base_facts.insert(fact);
-            }
-        }
+    fn new(art: &Json, mock: lute_trace::MockSet) -> Self {
+        let mut runner = Self::blank(art, mock);
+        runner.apply_mock_seeds();
         runner.recompute_facts();
         runner
+    }
+
+    /// `lute play`'s chained-evaluation constructor (design spec §4.2):
+    /// seeds live state/facts/quest status from a PRIOR scene's
+    /// [`RunnerOutcome`] instead of this artifact's own declared defaults —
+    /// `play.rs` already decided what carries forward across the scene
+    /// boundary (its own state-tier filter: `run.*`/`user.*`/`app.*`/
+    /// `quest.*` persist, `scene.*` resets); this constructor does not
+    /// re-derive that policy, only accepts its result. This scene's OWN mock
+    /// (a route-script's per-event `choose:`, if it also carries a local
+    /// seed) still layers on top afterward via [`Runner::apply_mock_seeds`],
+    /// identically to how [`Runner::new`] layers `--mock` over the artifact
+    /// defaults.
+    pub(crate) fn with_carryover(
+        art: &Json,
+        mock: lute_trace::MockSet,
+        initial_state: BTreeMap<String, Value>,
+        initial_facts: BTreeSet<Fact>,
+        initial_quests: BTreeMap<String, String>,
+    ) -> Self {
+        let mut runner = Self::blank(art, mock);
+        runner.state = initial_state;
+        runner.base_facts = initial_facts;
+        runner.quest_status = initial_quests;
+        runner.apply_mock_seeds();
+        runner.recompute_facts();
+        runner
+    }
+
+    /// Layer `self.mock`'s `state:`/`facts:` seeds over whatever live
+    /// state/facts the constructor already set (override, per path/fact —
+    /// never a reset): shared by [`Runner::new`] (over the artifact's own
+    /// defaults) and [`Runner::with_carryover`] (over the prior scene's
+    /// carryover), so the "mock wins on conflict" rule applies identically
+    /// either way.
+    fn apply_mock_seeds(&mut self) {
+        let seeds: Vec<(String, String)> =
+            self.mock.state.iter().map(|(p, lit, _)| (p.clone(), lit.clone())).collect();
+        for (path, lit) in seeds {
+            let v = self.coerce_literal(&path, &lit);
+            self.state.insert(path, v);
+        }
+        let mock_facts: Vec<String> = self.mock.facts.clone();
+        for f in mock_facts {
+            if let Some(fact) = parse_ground_fact(&f) {
+                self.base_facts.insert(fact);
+            }
+        }
     }
 
     /// Coerce a raw mock literal against a path's declared value-type.
@@ -401,7 +480,14 @@ impl Runner {
 
     /// Evaluate a `raw` CEL fragment over live state + the current fixpoint.
     /// Reuses `lute_cel` (parse) + `lute_trace::eval` (the one CEL evaluator).
-    fn eval_raw(&self, raw: &str) -> Value {
+    /// The one chokepoint every CEL evaluation in this walk funnels through,
+    /// so recording each produced [`UnresolvedAtom`] into `self.unresolved`
+    /// here (rather than at each call site) covers guards, `::set` RHS
+    /// values, and quest predicates alike with one line. `lute run` itself
+    /// never reads `self.unresolved` — its own output/exit code are
+    /// unchanged; the field exists for `lute play`'s §4.5 honesty gate
+    /// ([`RunnerOutcome::unresolved`]).
+    fn eval_raw(&mut self, raw: &str) -> Value {
         if raw.trim().is_empty() {
             return Value::Unknown;
         }
@@ -421,11 +507,13 @@ impl Runner {
         }
         let env = EvalEnv { state: &eff, facts: &fs };
         let mut unresolved = Vec::new();
-        eval(&ided.expr, &env, &mut unresolved)
+        let v = eval(&ided.expr, &env, &mut unresolved);
+        self.unresolved.extend(unresolved);
+        v
     }
 
     /// `Some(bool)` for a decided guard, `None` when unknown.
-    fn truthy(&self, raw: &str) -> Option<bool> {
+    fn truthy(&mut self, raw: &str) -> Option<bool> {
         match self.eval_raw(raw) {
             Value::Bool(b) => Some(b),
             _ => None,
@@ -448,7 +536,11 @@ impl Runner {
         self.commands.len()
     }
 
-    fn run(&mut self) -> Result<(), String> {
+    /// Drive the whole walk. See [`crate::Command::Run`] for the `lute run`
+    /// caller; `lute play` (design spec §4.2) calls this once per scheduled
+    /// scene, then [`Runner::into_outcome`] instead of [`Runner::print_json`]/
+    /// [`Runner::print_human`].
+    pub(crate) fn run(&mut self) -> Result<(), String> {
         if self.kind == "quest" {
             self.run_quest();
         } else {
@@ -457,6 +549,22 @@ impl Runner {
         match self.fatal.take() {
             Some(msg) => Err(msg),
             None => Ok(()),
+        }
+    }
+
+    /// Consume a Runner after [`Runner::run`] into `lute play`'s carryover +
+    /// transcript-reuse surface (assignment contract points b/c). Only
+    /// meaningful post-`run`; a pre-run outcome would just echo the seeds
+    /// back, which no caller has a reason to do.
+    pub(crate) fn into_outcome(self) -> RunnerOutcome {
+        RunnerOutcome {
+            state: self.state,
+            base_facts: self.base_facts,
+            quest_status: self.quest_status,
+            terminated: self.terminated,
+            incomplete: self.incomplete,
+            unresolved: self.unresolved,
+            transcript: self.transcript,
         }
     }
 

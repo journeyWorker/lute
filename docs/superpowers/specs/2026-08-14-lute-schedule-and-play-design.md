@@ -49,8 +49,19 @@ clock:
   days: 7                     # optional, default 1 — story clock = 672 ticks
 
 lanes:
-  user:  { exclusive: true }   # co-satisfiable tick overlap = error
-  world: { exclusive: false }  # overlap allowed by design
+  user:  { exclusive: true, idleThreshold: 0 }  # co-satisfiable tick overlap = error;
+                                                # idleThreshold overrides W-SCHED-IDLE's
+                                                # 24-tick default, 0 disables (a sparse
+                                                # multi-day lane is a choice, not a smell)
+  world: { exclusive: false }                   # overlap allowed by design
+
+# Route-space assumptions: static GAP/AMBIG/OVERLAP sweeps skip any enum
+# assignment under which an assumption is definitively false. This is how a
+# schedule declares an upstream contract like "inflow is always assigned
+# before scene 1" so the `none` sentinel stops producing false VARIANT-GAPs.
+# An Unknown-evaluating assumption keeps the assignment (never hides a gap).
+assume:
+  - "run.inflow != 'none'"
 
 placements:
   - event: kuhen-meeting            # event identity (matches scenes/<event>/)
