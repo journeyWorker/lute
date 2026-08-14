@@ -381,6 +381,19 @@ enum Command {
         /// for a partial-playback preview.
         #[arg(long)]
         steps: Option<u32>,
+        /// Coverage mode (design spec §4.7): replay every named route
+        /// script (repeatable — shell-expand a glob like
+        /// `routes/*.play.yaml` yourself) through the same chain executor,
+        /// per-script transcript suppressed, and report every
+        /// placement/variant/hub-choice option the corpus as a whole never
+        /// exercises — the review-gap detector. Exclusive with
+        /// `--script`/`--choose`/`--steps` (a single playthrough's own
+        /// knobs do not compose with a corpus replay). Exit `0` full
+        /// coverage, `1` a coverage gap remains, `2` an I/O/usage failure,
+        /// `3` at least one corpus script halted before completion (its
+        /// coverage contribution is partial).
+        #[arg(long = "coverage", value_name = "FILE")]
+        coverage: Vec<PathBuf>,
         /// Emit the machine-readable transcript as JSON.
         #[arg(long)]
         json: bool,
@@ -806,8 +819,9 @@ fn main() -> ExitCode {
             auto,
             lanes,
             steps,
+            coverage,
             json,
-        } => play::run_play(&dir, state, fact, script.as_deref(), choose, auto, lanes, steps, json),
+        } => play::run_play(&dir, state, fact, script.as_deref(), choose, auto, lanes, steps, coverage, json),
         Command::Test {
             dir,
             json,

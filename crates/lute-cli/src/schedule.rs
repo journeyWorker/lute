@@ -84,6 +84,13 @@ pub const E_SCHED_CLOCK_OVERFLOW: &str = "E-SCHED-CLOCK-OVERFLOW";
 /// Spec §5: a variant's `doc:` names a file that does not exist under the
 /// project root.
 pub const E_SCHED_DOC_MISSING: &str = "E-SCHED-DOC-MISSING";
+/// Review fix #8: a variant's `doc:` is authored as an absolute path, or
+/// escapes the project root via a `..`/root path component (`Variant::doc`
+/// is defined as project-relative, spec §3/§6) — checked BEFORE the
+/// filesystem is ever touched, so an existing-but-outside-the-project file
+/// never silently passes the schedule gate only to fail engine-fatal at
+/// play time.
+pub const E_SCHED_DOC_PATH: &str = "E-SCHED-DOC-PATH";
 /// Spec §5: a non-`optional` placement has no satisfiable variant for some
 /// enum-domain route assignment.
 pub const E_SCHED_VARIANT_GAP: &str = "E-SCHED-VARIANT-GAP";
@@ -166,6 +173,17 @@ impl Clock {
         (self.buckets.len() as u32)
             .saturating_mul(self.ticks_per_bucket)
             .saturating_mul(self.days)
+    }
+
+    /// Same product, checked (spec §3.3: "all arithmetic checked", review
+    /// fix #7): `None` when `buckets.len() × ticksPerBucket × days`
+    /// overflows `u32` — [`static_check`] turns that into an
+    /// [`E_SCHED_CLOCK_OVERFLOW`] diagnostic rather than silently treating
+    /// the saturated [`Clock::total_ticks`] value as the real total (which
+    /// would make every interval trivially "non-overflowing" against a
+    /// bogus total).
+    pub fn total_ticks_checked(&self) -> Option<u32> {
+        (self.buckets.len() as u32).checked_mul(self.ticks_per_bucket)?.checked_mul(self.days)
     }
 
     /// Render `tick` as `"d{day}.{bucket}+{within}"` (spec §4.6 transcript
@@ -478,8 +496,8 @@ pub fn load_schedule(project_dir: &Path) -> Result<Option<(Schedule, Vec<SchedDi
         let resolved_at: Option<u32> = match &rp.at {
             Some(raw_at) => match parse_at(raw_at, &clock) {
                 Ok(t) => Some(t),
-                Err(msg) => {
-                    diags.push(err(E_SCHED_AT_PARSE, format!("placement '{event}' (lane '{lane}'): {msg}")));
+                Err(e) => {
+                    push_at_error(&mut diags, &format!("placement '{event}' (lane '{lane}')"), e);
                     None
                 }
             },
@@ -500,7 +518,20 @@ pub fn load_schedule(project_dir: &Path) -> Result<Option<(Schedule, Vec<SchedDi
                             ));
                             None
                         } else {
-                            Some(prev_at.saturating_add(prev.base_size))
+                            match prev_at.checked_add(prev.base_size) {
+                                Some(next_at) => Some(next_at),
+                                None => {
+                                    diags.push(err(
+                                        E_SCHED_CLOCK_OVERFLOW,
+                                        format!(
+                                            "placement '{event}' (lane '{lane}'): cursor advancement \
+                                             `{prev_at} + {}` overflows u32 (review fix #7)",
+                                            prev.base_size
+                                        ),
+                                    ));
+                                    None
+                                }
+                            }
                         }
                     }
                 },
@@ -516,11 +547,8 @@ pub fn load_schedule(project_dir: &Path) -> Result<Option<(Schedule, Vec<SchedDi
             let eff_at = match rv.at {
                 Some(raw_at) => match parse_at(&raw_at, &clock) {
                     Ok(t) => Some(t),
-                    Err(msg) => {
-                        diags.push(err(
-                            E_SCHED_AT_PARSE,
-                            format!("placement '{event}' variant (doc '{}'): {msg}", rv.doc),
-                        ));
+                    Err(e) => {
+                        push_at_error(&mut diags, &format!("placement '{event}' variant (doc '{}')", rv.doc), e);
                         None
                     }
                 },
@@ -550,61 +578,142 @@ pub fn load_schedule(project_dir: &Path) -> Result<Option<(Schedule, Vec<SchedDi
     Ok(Some((schedule, diags)))
 }
 
+/// [`parse_at`]/[`parse_at_symbolic`]'s failure shape (review fix #7):
+/// distinguishes a malformed `at:` (bad shape, unknown bucket, out-of-range
+/// tick — [`E_SCHED_AT_PARSE`]) from a checked-arithmetic overflow while
+/// RESOLVING an otherwise well-formed coordinate (spec §3.3 "all arithmetic
+/// checked" — [`E_SCHED_CLOCK_OVERFLOW`]), so [`load_schedule`]'s two call
+/// sites can diagnose each under its own code instead of a saturated
+/// coordinate quietly passing every downstream overflow check.
+#[derive(Debug, Clone, PartialEq)]
+enum AtParseError {
+    Malformed(String),
+    Overflow(String),
+}
+
 /// Parse one `at:` value — `[dN.]bucket+tick` (day 1-based, `d0` rejected,
 /// tick offset must satisfy `0 <= tick < ticksPerBucket`) or a bare absolute
 /// tick integer — against `clock`. Total: every malformed shape returns a
 /// message naming exactly what is wrong, never panics (no unchecked
 /// arithmetic, no out-of-bounds index).
-fn parse_at(raw: &RawAt, clock: &Clock) -> Result<u32, String> {
+fn parse_at(raw: &RawAt, clock: &Clock) -> Result<u32, AtParseError> {
     match raw {
-        RawAt::Abs(n) => u32::try_from(*n)
-            .map_err(|_| format!("absolute tick {n} is out of range (must be a non-negative integer)")),
+        RawAt::Abs(n) => u32::try_from(*n).map_err(|_| {
+            AtParseError::Malformed(format!("absolute tick {n} is out of range (must be a non-negative integer)"))
+        }),
         RawAt::Sym(s) => parse_at_symbolic(s, clock),
     }
 }
 
-fn parse_at_symbolic(s: &str, clock: &Clock) -> Result<u32, String> {
+fn parse_at_symbolic(s: &str, clock: &Clock) -> Result<u32, AtParseError> {
     let (day, rest) = match s.split_once('.') {
         Some((day_part, rest)) => {
             let Some(day_digits) = day_part.strip_prefix('d') else {
-                return Err(format!("malformed `at: '{s}'` — expected `[dN.]bucket+tick`"));
+                return Err(AtParseError::Malformed(format!("malformed `at: '{s}'` — expected `[dN.]bucket+tick`")));
             };
             let day: u32 = day_digits
                 .parse()
-                .map_err(|_| format!("malformed `at: '{s}'` — bad day prefix 'd{day_digits}'"))?;
+                .map_err(|_| AtParseError::Malformed(format!("malformed `at: '{s}'` — bad day prefix 'd{day_digits}'")))?;
             if day == 0 {
-                return Err(format!("`at: '{s}'` — days are 1-based, `d0` is invalid"));
+                return Err(AtParseError::Malformed(format!("`at: '{s}'` — days are 1-based, `d0` is invalid")));
             }
             (day, rest)
         }
         None => (1, s),
     };
     let Some((bucket, tick_str)) = rest.split_once('+') else {
-        return Err(format!("malformed `at: '{s}'` — expected `[dN.]bucket+tick`"));
+        return Err(AtParseError::Malformed(format!("malformed `at: '{s}'` — expected `[dN.]bucket+tick`")));
     };
     let tick: u32 = tick_str
         .parse()
-        .map_err(|_| format!("malformed `at: '{s}'` — bad tick offset '{tick_str}'"))?;
+        .map_err(|_| AtParseError::Malformed(format!("malformed `at: '{s}'` — bad tick offset '{tick_str}'")))?;
     let Some(bucket_idx) = clock.buckets.iter().position(|b| b == bucket) else {
-        return Err(format!("`at: '{s}'` references unknown bucket '{bucket}'"));
+        return Err(AtParseError::Malformed(format!("`at: '{s}'` references unknown bucket '{bucket}'")));
     };
     if clock.ticks_per_bucket == 0 {
-        return Err(format!("`at: '{s}'` cannot resolve — clock.ticksPerBucket is 0"));
+        return Err(AtParseError::Malformed(format!("`at: '{s}'` cannot resolve — clock.ticksPerBucket is 0")));
     }
     if tick >= clock.ticks_per_bucket {
-        return Err(format!(
+        return Err(AtParseError::Malformed(format!(
             "`at: '{s}'` — tick offset {tick} is out of range for bucket '{bucket}' \
              (ticksPerBucket={})",
             clock.ticks_per_bucket
-        ));
+        )));
     }
-    let per_day = (clock.buckets.len() as u32).saturating_mul(clock.ticks_per_bucket);
     let day_index = day - 1;
+    let overflow = || AtParseError::Overflow(format!("`at: '{s}'` — resolved absolute tick overflows u32 arithmetic"));
+    let per_day = (clock.buckets.len() as u32).checked_mul(clock.ticks_per_bucket).ok_or_else(overflow)?;
+    let bucket_offset = (bucket_idx as u32).checked_mul(clock.ticks_per_bucket).ok_or_else(overflow)?;
     let abs = day_index
-        .saturating_mul(per_day)
-        .saturating_add((bucket_idx as u32).saturating_mul(clock.ticks_per_bucket))
-        .saturating_add(tick);
+        .checked_mul(per_day)
+        .and_then(|v| v.checked_add(bucket_offset))
+        .and_then(|v| v.checked_add(tick))
+        .ok_or_else(overflow)?;
     Ok(abs)
+}
+
+/// Turn an [`AtParseError`] into the right diagnostic code at `context`
+/// (review fix #7): a malformed shape is [`E_SCHED_AT_PARSE`], a checked-
+/// arithmetic overflow while resolving an otherwise well-formed coordinate
+/// is [`E_SCHED_CLOCK_OVERFLOW`] — never the same code for both, so an
+/// overflowing schedule cannot be misread as a shape typo.
+fn push_at_error(diags: &mut Vec<SchedDiag>, context: &str, e: AtParseError) {
+    match e {
+        AtParseError::Malformed(msg) => diags.push(err(E_SCHED_AT_PARSE, format!("{context}: {msg}"))),
+        AtParseError::Overflow(msg) => diags.push(err(E_SCHED_CLOCK_OVERFLOW, format!("{context}: {msg}"))),
+    }
+}
+
+/// [`resolve_doc_path`]'s failure shape (review fix #8).
+enum DocPathIssue {
+    /// `doc:` is absolute, escapes the project root via `..`, or (defence
+    /// in depth) canonicalizes to a target outside the canonical project
+    /// root — `E_SCHED_DOC_PATH`, never touched against the filesystem
+    /// existence check below.
+    Invalid(String),
+    /// Project-relative shape is fine but no file exists there —
+    /// `E_SCHED_DOC_MISSING`, unchanged from before this fix.
+    Missing,
+}
+
+/// Spec: `Variant::doc` is project-relative (§3, §6 naming convention).
+/// `project_dir.join(doc).is_file()` alone is not a project-relative check:
+/// `PathBuf::join` REPLACES the base entirely when the joined path is
+/// absolute, and a `..`-laden relative path resolves straight through the
+/// project root on any real filesystem — either way an existing file
+/// OUTSIDE the project previously passed validation outright (review fix
+/// #8). Reject an absolute path or a `..`/root component before ever
+/// touching the filesystem, then confirm the canonicalized target still
+/// sits under the canonicalized project root before accepting it.
+fn resolve_doc_path(project_dir: &Path, doc: &str) -> Result<PathBuf, DocPathIssue> {
+    let rel = Path::new(doc);
+    if rel.is_absolute() {
+        return Err(DocPathIssue::Invalid(format!(
+            "doc '{doc}' is an absolute path — `doc:` must be project-relative"
+        )));
+    }
+    for comp in rel.components() {
+        match comp {
+            std::path::Component::ParentDir => {
+                return Err(DocPathIssue::Invalid(format!("doc '{doc}' escapes the project root via `..`")));
+            }
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                return Err(DocPathIssue::Invalid(format!("doc '{doc}' is not project-relative")));
+            }
+            std::path::Component::CurDir | std::path::Component::Normal(_) => {}
+        }
+    }
+    let full = project_dir.join(rel);
+    if !full.is_file() {
+        return Err(DocPathIssue::Missing);
+    }
+    let (Ok(canon_root), Ok(canon_full)) = (std::fs::canonicalize(project_dir), std::fs::canonicalize(&full)) else {
+        return Err(DocPathIssue::Missing);
+    };
+    if !canon_full.starts_with(&canon_root) {
+        return Err(DocPathIssue::Invalid(format!("doc '{doc}' resolves outside the project root")));
+    }
+    Ok(canon_full)
 }
 
 /// State-independent checks (spec §5, minus the route-space codes —
@@ -640,7 +749,22 @@ pub fn static_check(s: &Schedule, project_docs: &[PathBuf], project_dir: &Path) 
         }
     }
 
-    let total = s.clock.total_ticks();
+    let total = match s.clock.total_ticks_checked() {
+        Some(t) => t,
+        None => {
+            diags.push(err(
+                E_SCHED_CLOCK_OVERFLOW,
+                format!(
+                    "clock definition overflows: buckets({}) × ticksPerBucket({}) × days({}) exceeds u32 \
+                     (review fix #7)",
+                    s.clock.buckets.len(),
+                    s.clock.ticks_per_bucket,
+                    s.clock.days
+                ),
+            ));
+            u32::MAX
+        }
+    };
 
     let mut seen_lane_event: BTreeSet<(&str, &str)> = BTreeSet::new();
     let mut referenced_canon: BTreeSet<PathBuf> = BTreeSet::new();
@@ -673,28 +797,46 @@ pub fn static_check(s: &Schedule, project_docs: &[PathBuf], project_dir: &Path) 
                 ));
             }
             if let Some(at) = v.at {
-                let end = at.saturating_add(v.size);
-                if end > total {
-                    diags.push(err(
-                        E_SCHED_CLOCK_OVERFLOW,
-                        format!(
-                            "placement '{}' variant #{vi} (doc '{}'): interval [{at}, {end}) exceeds the \
-                             story clock ({total} total ticks)",
-                            p.event, v.doc
-                        ),
-                    ));
+                match at.checked_add(v.size) {
+                    Some(end) if end > total => {
+                        diags.push(err(
+                            E_SCHED_CLOCK_OVERFLOW,
+                            format!(
+                                "placement '{}' variant #{vi} (doc '{}'): interval [{at}, {end}) exceeds the \
+                                 story clock ({total} total ticks)",
+                                p.event, v.doc
+                            ),
+                        ));
+                    }
+                    Some(_) => {}
+                    None => {
+                        diags.push(err(
+                            E_SCHED_CLOCK_OVERFLOW,
+                            format!(
+                                "placement '{}' variant #{vi} (doc '{}'): interval [{at}, {at}+{}) overflows \
+                                 u32 arithmetic (review fix #7)",
+                                p.event, v.doc, v.size
+                            ),
+                        ));
+                    }
                 }
             }
-            let full = project_dir.join(&v.doc);
-            if full.is_file() {
-                if let Ok(canon) = std::fs::canonicalize(&full) {
+            match resolve_doc_path(project_dir, &v.doc) {
+                Ok(canon) => {
                     referenced_canon.insert(canon);
                 }
-            } else {
-                diags.push(err(
-                    E_SCHED_DOC_MISSING,
-                    format!("placement '{}' variant #{vi} references missing doc '{}'", p.event, v.doc),
-                ));
+                Err(DocPathIssue::Missing) => {
+                    diags.push(err(
+                        E_SCHED_DOC_MISSING,
+                        format!("placement '{}' variant #{vi} references missing doc '{}'", p.event, v.doc),
+                    ));
+                }
+                Err(DocPathIssue::Invalid(msg)) => {
+                    diags.push(err(
+                        E_SCHED_DOC_PATH,
+                        format!("placement '{}' variant #{vi} (doc '{}'): {msg}", p.event, v.doc),
+                    ));
+                }
             }
         }
     }
@@ -1465,6 +1607,120 @@ mod tests {
         let s = sched_with(vec![placement("a", "user", 0, Some(160), 20, false, variants)], lanes_user_exclusive());
         let diags = static_check(&s, &[], &dir);
         assert!(find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).is_some(), "{diags:?}");
+    }
+
+    // -- review fix #7: checked overflow arithmetic (never saturated) ------
+
+    #[test]
+    fn static_check_total_ticks_overflow_is_diagnosed_not_saturated() {
+        // buckets(2) * ticksPerBucket(u32::MAX) already overflows before
+        // `days` is even applied — the OLD saturating `total_ticks()` would
+        // have silently clamped to `u32::MAX`, making every interval
+        // trivially "non-overflowing".
+        let dir = temp_dir("static-total-overflow");
+        let mut s = sched_with(vec![], lanes_user_exclusive());
+        s.clock = Clock { buckets: vec!["a".into(), "b".into()], ticks_per_bucket: u32::MAX, days: 2 };
+        let diags = static_check(&s, &[], &dir);
+        let d = find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).expect("expected CLOCK_OVERFLOW");
+        assert!(d.message.contains("overflow"), "{}", d.message);
+    }
+
+    #[test]
+    fn static_check_interval_end_overflow_is_diagnosed_not_saturated() {
+        // `at` near `u32::MAX` + `size` overflows the checked add — the OLD
+        // `saturating_add` clamped `end` to `u32::MAX`, which then compared
+        // FALSE against a (also-saturated) `total`, silently passing.
+        let dir = temp_dir("static-interval-overflow");
+        write_scene(&dir, "scenes/a/x.lute");
+        let variants = vec![variant("scenes/a/x.lute", None, Some(u32::MAX - 5), 20)];
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(u32::MAX - 5), 20, false, variants)],
+            lanes_user_exclusive(),
+        );
+        let diags = static_check(&s, &[], &dir);
+        let d = find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).expect("expected CLOCK_OVERFLOW");
+        assert!(d.message.contains("overflow"), "{}", d.message);
+    }
+
+    #[test]
+    fn parse_at_symbolic_overflow_reported_as_clock_overflow_not_at_parse() {
+        // A well-formed `[dN.]bucket+tick` shape whose resolved absolute
+        // tick overflows `u32` must diagnose `E_SCHED_CLOCK_OVERFLOW`, never
+        // `E_SCHED_AT_PARSE` (that code is reserved for shape errors).
+        let dir = temp_dir("at-symbolic-overflow");
+        write_scene(&dir, "scenes/a/x.lute");
+        let clock_yaml = "clock:\n  buckets: [morning]\n  ticksPerBucket: 4000000000\n  days: 2\nlanes:\n  user: { exclusive: true }\n  world: { exclusive: false }\n";
+        write_schedule(
+            &dir,
+            &format!("{clock_yaml}placements:\n  - event: a\n    lane: user\n    at: \"d2.morning+0\"\n    size: 1\n    doc: scenes/a/x.lute\n"),
+        );
+        let (_sched, diags) = load_schedule(&dir).unwrap().unwrap();
+        assert!(find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).is_some(), "{diags:?}");
+        assert!(find_diag(&diags, E_SCHED_AT_PARSE).is_none(), "{diags:?}");
+    }
+
+    #[test]
+    fn cursor_advancement_overflow_is_diagnosed_as_clock_overflow() {
+        let dir = temp_dir("cursor-overflow");
+        write_scene(&dir, "scenes/a/x.lute");
+        write_scene(&dir, "scenes/b/x.lute");
+        write_schedule(
+            &dir,
+            &format!(
+                "{YAML_HEADER}placements:\n\
+                 \x20 - event: a\n    lane: user\n    at: {}\n    size: 20\n    doc: scenes/a/x.lute\n\
+                 \x20 - event: b\n    lane: user\n    size: 3\n    doc: scenes/b/x.lute\n",
+                u32::MAX - 5
+            ),
+        );
+        let (sched, diags) = load_schedule(&dir).unwrap().unwrap();
+        assert!(find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).is_some(), "{diags:?}");
+        assert_eq!(sched.placements[1].at, None);
+    }
+
+    // -- review fix #8: project-relative `doc:` enforcement -----------------
+
+    #[test]
+    fn absolute_doc_path_is_rejected_even_when_the_file_exists() {
+        let dir = temp_dir("doc-absolute");
+        write_scene(&dir, "scenes/a/x.lute");
+        // A real file elsewhere on disk that the absolute `doc:` points at —
+        // the OLD `project_dir.join(doc)` would have replaced the project
+        // root entirely (`PathBuf::join` semantics for an absolute operand)
+        // and silently accepted it.
+        let outside = temp_dir("doc-absolute-outside");
+        let outside_file = outside.join("secret.lute");
+        std::fs::write(&outside_file, "kind: scene\n").unwrap();
+        let variants = vec![variant(outside_file.to_str().unwrap(), None, Some(0), 4)];
+        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let diags = static_check(&s, &[], &dir);
+        assert!(find_diag(&diags, E_SCHED_DOC_PATH).is_some(), "{diags:?}");
+        assert!(find_diag(&diags, E_SCHED_DOC_MISSING).is_none(), "{diags:?}");
+    }
+
+    #[test]
+    fn parent_dir_escaping_doc_path_is_rejected() {
+        let dir = temp_dir("doc-escape");
+        write_scene(&dir, "scenes/a/x.lute");
+        // Escapes the project root and lands on a real file two levels up —
+        // rejected on shape alone, never reaching the filesystem check.
+        let variants = vec![variant("scenes/../../schedule.rs", None, Some(0), 4)];
+        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let diags = static_check(&s, &[], &dir);
+        assert!(find_diag(&diags, E_SCHED_DOC_PATH).is_some(), "{diags:?}");
+    }
+
+    #[test]
+    fn ordinary_relative_missing_doc_still_reports_doc_missing() {
+        // A legitimately project-relative `doc:` that just does not exist
+        // must still be `E_SCHED_DOC_MISSING` (review fix #8 must not
+        // conflate "not project-relative" with "not found").
+        let dir = temp_dir("doc-missing-relative");
+        let variants = vec![variant("scenes/nowhere/x.lute", None, Some(0), 4)];
+        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let diags = static_check(&s, &[], &dir);
+        assert!(find_diag(&diags, E_SCHED_DOC_MISSING).is_some(), "{diags:?}");
+        assert!(find_diag(&diags, E_SCHED_DOC_PATH).is_none(), "{diags:?}");
     }
 
     #[test]

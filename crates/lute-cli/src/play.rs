@@ -712,6 +712,12 @@ enum PlayHalt {
     Fatal(String),
     UnscriptedDecision { event: String, doc: String, kind: String, id: String, options: Vec<String> },
     UnresolvedSurface { event: String, doc: String, detail: String },
+    /// Review fix #3 (design spec §4.5 honesty): a placement's variant
+    /// selection depends on an unresolved reference-runtime surface
+    /// (`now()`/`validAt(...)`, an undecided derived fact) THAT AFFECTS
+    /// which variant (if any) would be selected — never silently folded to
+    /// `false` the way a merely-decided-false guard is.
+    UnresolvedVariantGuard { event: String, detail: String },
 }
 
 impl PlayHalt {
@@ -721,7 +727,9 @@ impl PlayHalt {
                 ExitCode::from(1)
             }
             PlayHalt::Fatal(_) => ExitCode::from(2),
-            PlayHalt::UnscriptedDecision { .. } | PlayHalt::UnresolvedSurface { .. } => ExitCode::from(3),
+            PlayHalt::UnscriptedDecision { .. }
+            | PlayHalt::UnresolvedSurface { .. }
+            | PlayHalt::UnresolvedVariantGuard { .. } => ExitCode::from(3),
         }
     }
 
@@ -729,7 +737,12 @@ impl PlayHalt {
     /// [`render_json`] rather than re-deriving the tier from [`ExitCode`],
     /// which exposes no public way to inspect its wrapped value.
     fn is_incomplete(&self) -> bool {
-        matches!(self, PlayHalt::UnscriptedDecision { .. } | PlayHalt::UnresolvedSurface { .. })
+        matches!(
+            self,
+            PlayHalt::UnscriptedDecision { .. }
+                | PlayHalt::UnresolvedSurface { .. }
+                | PlayHalt::UnresolvedVariantGuard { .. }
+        )
     }
 
     fn message(&self) -> String {
@@ -753,67 +766,127 @@ impl PlayHalt {
             PlayHalt::UnresolvedSurface { event, doc, detail } => format!(
                 "incomplete: event `{event}` (`{doc}`) depends on an unresolved reference-runtime surface — {detail}"
             ),
+            PlayHalt::UnresolvedVariantGuard { event, detail } => format!(
+                "incomplete: event `{event}` has a variant guard whose selection depends on an unresolved \
+                 reference-runtime surface (design spec §4.5) — {detail}"
+            ),
         }
+    }
+}
+
+/// One `UnresolvedAtom` -> a human-readable reason (mirrors
+/// `lute_trace::walk::render_atom`'s intent, which is private to that
+/// crate — this is schedule variant selection's own small surface, never
+/// worth a cross-crate visibility change for three match arms).
+fn describe_unresolved_atom(a: &UnresolvedAtom) -> String {
+    match a {
+        UnresolvedAtom::Path(p) => format!("state path `{p}` has no effective value"),
+        UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => format!("fact `{f}` is undetermined"),
+        UnresolvedAtom::Time => "now()/validAt(...) has no reference-runtime resolution".to_string(),
     }
 }
 
 /// Resolve a placement's active variant against a (state, facts) snapshot
-/// (design spec §4.2's boundary loop): exactly one satisfiable -> that
-/// variant; zero on `optional: true` -> `Ok(None)` (skip); zero otherwise ->
-/// [`PlayHalt::VariantGap`]; two or more -> [`PlayHalt::VariantAmbig`].
+/// (design spec §4.2's boundary loop): exactly one DEFINITELY-satisfied
+/// variant -> that variant; zero on `optional: true` -> `Ok(None)` (skip);
+/// zero otherwise -> [`PlayHalt::VariantGap`]; two or more ->
+/// [`PlayHalt::VariantAmbig`].
+///
+/// Review fix #3: a guard that evaluates to neither `true` nor `false`
+/// (`now()`/`validAt(...)`, an undecided derived fact — `Value::Unknown`
+/// carrying [`UnresolvedAtom`]s) is NEVER folded to `false` the way a
+/// decided-false guard is. Its variant instead joins `maybe_true` — the
+/// unresolved guard is only IGNORED (treated as if it read false) when the
+/// boundary's verdict cannot possibly change no matter how it resolves:
+/// two or more variants are ALREADY definitely satisfied (ambiguous
+/// either way). Otherwise the unresolved surface genuinely affects
+/// selection (it could turn a gap into a play, a single pick into an
+/// ambiguity, or vice versa) and the walk halts honestly incomplete
+/// ([`PlayHalt::UnresolvedVariantGuard`], exit 3) rather than guessing.
 fn resolve_active_variant(p: &Placement, state: &BTreeMap<String, Value>, facts: &BTreeSet<Fact>) -> Result<Option<usize>, PlayHalt> {
-    let mut satisfied = Vec::new();
+    let mut definite_true = Vec::new();
+    let mut maybe_count = 0usize;
+    let mut atoms: Vec<UnresolvedAtom> = Vec::new();
     for (vi, v) in p.variants.iter().enumerate() {
-        let ok = match &v.when {
-            None => true,
-            Some(raw) => truthy_cel(raw, state, facts) == Some(true),
-        };
-        if ok {
-            satisfied.push(vi);
+        match &v.when {
+            None => {
+                definite_true.push(vi);
+                maybe_count += 1;
+            }
+            Some(raw) => match eval_cel(raw, state, facts) {
+                (Value::Bool(true), _) => {
+                    definite_true.push(vi);
+                    maybe_count += 1;
+                }
+                (Value::Bool(false), _) => {}
+                (_, unresolved) if !unresolved.is_empty() => {
+                    maybe_count += 1;
+                    atoms.extend(unresolved);
+                }
+                (_, _) => {}
+            },
         }
     }
-    match satisfied.len() {
+    if !atoms.is_empty() && definite_true.len() < 2 {
+        let mut seen = BTreeSet::new();
+        let mut reasons: Vec<String> = Vec::new();
+        for a in &atoms {
+            let d = describe_unresolved_atom(a);
+            if seen.insert(d.clone()) {
+                reasons.push(d);
+            }
+        }
+        debug_assert!(maybe_count > definite_true.len());
+        return Err(PlayHalt::UnresolvedVariantGuard { event: p.event.clone(), detail: reasons.join("; ") });
+    }
+    match definite_true.len() {
         0 if p.optional => Ok(None),
         0 => Err(PlayHalt::VariantGap { event: p.event.clone() }),
-        1 => Ok(Some(satisfied[0])),
+        1 => Ok(Some(definite_true[0])),
         _ => Err(PlayHalt::VariantAmbig {
             event: p.event.clone(),
-            docs: satisfied.iter().map(|&vi| p.variants[vi].doc.clone()).collect(),
+            docs: definite_true.iter().map(|&vi| p.variants[vi].doc.clone()).collect(),
         }),
     }
 }
 
-/// One step of the fixed presentation-ordered sequence.
-struct Step {
-    placement_idx: usize,
-}
-
-/// Compute the presentation-ordered USER-lane sequence (design spec §4.1):
-/// "variant selection + tick resolution produce a presentation-ordered
-/// execution sequence" — computed ONCE, upfront, against the SEED state
-/// (before any scene plays; route `when:` guards read route-level state like
-/// `run.inflow`, set once and stable for the whole playthrough in practice).
-/// The chain's own boundary loop RE-validates each step's guard against LIVE
-/// state as it actually plays (the runtime safety net design spec §4.2
-/// describes) — this function only fixes the ORDER, never the final
-/// decision. An `optional` placement unsatisfied at seed time is simply
-/// excluded from the order (never re-considered later).
-fn presentation_order(schedule: &Schedule, seed_state: &BTreeMap<String, Value>, seed_facts: &BTreeSet<Fact>) -> Result<Vec<Step>, PlayHalt> {
-    let mut picks: Vec<(usize, usize)> = Vec::new();
+/// Derive the NEXT user-lane placement to present (design spec §4.1/§4.2
+/// boundary loop, review fix #2): scans every not-yet-decided user
+/// placement, re-resolving its active variant against LIVE state/facts —
+/// never a seed snapshot frozen before any scene has played. An earlier
+/// scene's `::set` can flip a placement whose guard read false at seed time
+/// (an `optional` placement is therefore never permanently excluded — only
+/// "not satisfied on THIS boundary", reconsidered on every later one), and
+/// a placement whose active variant switches route mid-playthrough always
+/// sorts by THAT variant's own declared `(presentation, at, decl_index)` —
+/// itself a static, schedule.yaml-resolved number (phase 1), so the sort
+/// TUPLE stays exactly as static as the design calls for even though WHICH
+/// variant supplies it is live. Returns the smallest-keyed currently-
+/// satisfiable candidate's `(placement_idx, variant_idx)`, or `Ok(None)`
+/// when no undecided placement currently resolves to `Some` — either
+/// every user placement is decided, or every remaining one is `optional`
+/// and unsatisfied FOR NOW (never a permanent verdict by itself; the
+/// caller simply has nothing left to present this boundary).
+fn next_user_step(
+    schedule: &Schedule,
+    decided: &BTreeSet<usize>,
+    live_state: &BTreeMap<String, Value>,
+    live_facts: &BTreeSet<Fact>,
+) -> Result<Option<(usize, usize)>, PlayHalt> {
+    let mut best: Option<(u32, u32, u32, usize, usize)> = None;
     for (pi, p) in schedule.placements.iter().enumerate() {
-        if p.lane != "user" {
+        if p.lane != "user" || decided.contains(&pi) {
             continue;
         }
-        if let Some(vi) = resolve_active_variant(p, seed_state, seed_facts)? {
-            picks.push((pi, vi));
+        if let Some(vi) = resolve_active_variant(p, live_state, live_facts)? {
+            let v = &p.variants[vi];
+            let key = (v.presentation, v.at.unwrap_or(u32::MAX), p.decl_index, pi, vi);
+            if best.as_ref().map(|b| key < *b).unwrap_or(true) {
+                best = Some(key);
+            }
         }
     }
-    picks.sort_by_key(|&(pi, vi)| {
-        let p = &schedule.placements[pi];
-        let v = &p.variants[vi];
-        (v.presentation, v.at.unwrap_or(u32::MAX), p.decl_index)
-    });
-    Ok(picks.into_iter().map(|(pi, _)| Step { placement_idx: pi }).collect())
+    Ok(best.map(|(_, _, _, pi, vi)| (pi, vi)))
 }
 
 // ===========================================================================
@@ -845,6 +918,36 @@ struct OneRun {
     halt: Option<PlayHalt>,
 }
 
+/// Design spec §4.2 state-tier carryover, done right (review fix #1): a
+/// fresh state map seeded from THIS SPECIFIC SCENE's own `state[].default`
+/// (`scene_json` — never `play_json`, which swaps in the PROJECT-WIDE union
+/// for type-checking purposes and would silently carry the path-sorted-
+/// FIRST document's default/type into every OTHER document that happens to
+/// reuse the same `scene.*` path), with only the PERSISTENT
+/// `run.*`/`user.*`/`app.*`/`quest.*` tiers of `live_state` overlaid on top
+/// — `scene.*` always resets to the artifact's own declared default at
+/// every scene boundary, never inherited from a sibling document or a
+/// previous scene.
+fn scene_initial_state(scene_json: &Json, live_state: &BTreeMap<String, Value>) -> BTreeMap<String, Value> {
+    let mut state = BTreeMap::new();
+    if let Some(entries) = scene_json.get("state").and_then(Json::as_array) {
+        for e in entries {
+            let Some(path) = e.get("path").and_then(Json::as_str) else { continue };
+            if let Some(default) = e.get("default") {
+                if let Some(v) = json_to_value(default) {
+                    state.insert(path.to_string(), v);
+                }
+            }
+        }
+    }
+    for (k, v) in live_state {
+        if !k.starts_with("scene.") {
+            state.insert(k.clone(), v.clone());
+        }
+    }
+    state
+}
+
 /// Run exactly one scene (user or world lane), threading the chain's live
 /// state/facts/quest status through it. State-tier carryover (design spec
 /// §4.2): `scene.*` resets to whatever THIS scene's own artifact carries
@@ -869,7 +972,9 @@ fn run_one_scene(
     let mock = scene_mock(event, scene_json, choose, auto_first, live_state, live_facts);
     let play_json = play_artifact_json(scene_json, union);
     let state_before = live_state.clone();
-    let mut runner = Runner::with_carryover(&play_json, mock, live_state.clone(), live_facts.clone(), live_quests.clone());
+    let initial_state = scene_initial_state(scene_json, live_state);
+    let mut runner = Runner::with_carryover(&play_json, mock, initial_state, live_facts.clone(), live_quests.clone())
+        .with_auto_first(auto_first);
     let run_result = runner.run();
     let outcome = runner.into_outcome();
 
@@ -958,11 +1063,28 @@ fn run_one_scene(
     }
 }
 
-/// Drain unfired world placements whose active variant's start tick falls
-/// within `[*world_cursor, t_end)`, atomically, in `(at, decl_index)` order
-/// (design spec §4.3) — BEFORE the next user placement's guards are
-/// evaluated (enforced by the caller's own sequencing, this function is only
-/// ever called between two user-placement boundaries or at the final flush).
+/// Drain unfired world placements due in `[*world_cursor, t_end)`,
+/// atomically, one at a time in `(at, decl_index)` order (design spec §4.3)
+/// — BEFORE the next user placement's guards are evaluated (enforced by the
+/// caller's own sequencing, this function is only ever called between two
+/// user-placement boundaries or at the final flush).
+///
+/// Review fix #4 (rescan): the scan for "what's next" re-runs from scratch
+/// after EVERY fired world scene, never once upfront — a fired scene can
+/// change live state so a placement that was NOT a candidate a moment ago
+/// (guard false, or a different variant/tick active) becomes due inside
+/// THIS SAME `[world_cursor, t_end)` window; a stale one-shot candidate
+/// list would advance `world_cursor` straight past it.
+///
+/// Review fix #5 (defer): a placement's guard is resolved (and can raise
+/// `E-SCHED-VARIANT-GAP`/`-AMBIG`) ONLY once at least one of its variants'
+/// STATIC, schedule.yaml-resolved `at` falls in `[scan_from, t_end)` —
+/// never for a placement every one of whose variants is due strictly
+/// later. A non-optional world event whose guard only becomes true after a
+/// LATER user scene therefore never raises a premature gap during an
+/// EARLIER drain; its guard is examined only once its own boundary is
+/// actually reached.
+///
 /// Returns `Ok(Some(end_reason))` when a drained world scene's `::end`
 /// terminates the whole playthrough or `--steps` is exhausted mid-drain,
 /// `Ok(None)` to continue, `Err` on a runtime schedule halt.
@@ -986,48 +1108,50 @@ fn drain_world(
     presented_count: &mut u32,
     steps_limit: Option<u32>,
 ) -> Result<Option<String>, PlayHalt> {
-    let mut candidates: Vec<(u32, u32, usize)> = Vec::new();
-    for (pi, p) in world_placements.iter().enumerate() {
-        if world_fired.contains(&p.decl_index) {
-            continue;
-        }
-        if let Some(vi) = resolve_active_variant(p, live_state, live_facts)? {
-            if let Some(at) = p.variants[vi].at {
-                if at >= *world_cursor && at < t_end {
-                    candidates.push((at, p.decl_index, pi));
-                }
+    let scan_from = *world_cursor;
+    loop {
+        // Fresh scan every iteration (review fix #4): find the smallest
+        // `(at, decl_index)` among unfired placements whose LIVE-resolved
+        // variant is due in `[scan_from, t_end)` right now.
+        let mut winner: Option<(u32, u32, usize, usize)> = None; // (at, decl_index, world_placements idx, variant idx)
+        for (pi, p) in world_placements.iter().enumerate() {
+            if world_fired.contains(&p.decl_index) {
+                continue;
+            }
+            // Review fix #5: cheap, guard-free pre-filter off each
+            // variant's STATIC resolved `at` — a placement none of whose
+            // variants could possibly land in this window never has its
+            // guard evaluated here, so it can never raise a premature
+            // GAP/AMBIG for a boundary it has not reached yet.
+            let could_be_due = p.variants.iter().any(|v| v.at.map(|at| at >= scan_from && at < t_end).unwrap_or(false));
+            if !could_be_due {
+                continue;
+            }
+            let Some(vi) = resolve_active_variant(p, live_state, live_facts)? else {
+                continue;
+            };
+            let Some(at) = p.variants[vi].at else { continue };
+            if at < scan_from || at >= t_end {
+                // The LIVE-active variant is not the one(s) that made this
+                // placement pass the pre-filter — not due in this window
+                // after all; a later drain (whose range covers its actual
+                // tick) reconsiders it.
+                continue;
+            }
+            let key = (at, p.decl_index, pi, vi);
+            if winner.as_ref().map(|w| (key.0, key.1) < (w.0, w.1)).unwrap_or(true) {
+                winner = Some(key);
             }
         }
-    }
-    candidates.sort();
+        let Some((t_start, decl_index, pi, vi)) = winner else { break };
 
-    for (at, decl_index, pi) in candidates {
-        if world_fired.contains(&decl_index) {
-            continue;
-        }
         if let Some(limit) = steps_limit {
             if *presented_count >= limit {
                 return Ok(Some(format!("stopped after {limit} step(s)")));
             }
         }
         let p = world_placements[pi];
-        // Re-resolved rather than reused from the scan: an EARLIER world
-        // scene fired in THIS SAME batch may have changed live state. If
-        // this candidate is no longer eligible (or its resolved tick moved),
-        // it is simply NOT fired here — never marked in `world_fired` — so a
-        // LATER drain (a rewind resetting `world_cursor` behind its tick
-        // again) can still pick it up; only an actual firing spends it.
-        let Some(vi) = resolve_active_variant(p, live_state, live_facts)? else {
-            continue;
-        };
         let variant = &p.variants[vi];
-        let Some(t_start) = variant.at else {
-            continue;
-        };
-        if t_start != at {
-            // Guard state moved between the scan and now; re-check next pass.
-            continue;
-        }
         let t_end_v = t_start.saturating_add(variant.size);
         let Some(scene_json) = art_json.get(&variant.doc) else {
             return Err(PlayHalt::Fatal(format!("world event `{}` names an uncompiled doc `{}`", p.event, variant.doc)));
@@ -1067,6 +1191,10 @@ fn drain_world(
         if let Some(h) = halt {
             return Err(h);
         }
+        // Loop again (review fix #4): this firing may have changed live
+        // state, so rescan from `scan_from` — a placement newly due inside
+        // THIS window is picked up now rather than left behind when
+        // `world_cursor` advances to `t_end` below.
     }
     *world_cursor = t_end;
     Ok(None)
@@ -1086,11 +1214,6 @@ fn execute(
     auto_first: bool,
     steps_limit: Option<u32>,
 ) -> (Vec<SceneRun>, Result<String, PlayHalt>) {
-    let order = match presentation_order(schedule, &seed_state, &seed_facts) {
-        Ok(o) => o,
-        Err(h) => return (Vec::new(), Err(h)),
-    };
-
     let mut scenes: Vec<SceneRun> = Vec::new();
     let mut live_state = seed_state;
     let mut live_facts = seed_facts;
@@ -1098,6 +1221,12 @@ fn execute(
     let mut visited: BTreeSet<String> = BTreeSet::new();
     let completed: BTreeSet<String> = BTreeSet::new();
     let active: BTreeSet<String> = BTreeSet::new();
+    // Presented (or permanently forfeited) user placements, by
+    // `schedule.placements` index — review fix #2's `next_user_step` is
+    // re-derived fresh from LIVE state at every boundary, so this is the
+    // ONLY thing that needs to persist across iterations to keep a played
+    // placement from being reconsidered.
+    let mut decided: BTreeSet<usize> = BTreeSet::new();
 
     let mut prev_user_start: Option<u32> = None;
     let mut prev_user_end: Option<u32> = None;
@@ -1109,18 +1238,19 @@ fn execute(
 
     let world_placements: Vec<&Placement> = schedule.placements.iter().filter(|p| p.lane == "world").collect();
 
-    for step in &order {
+    loop {
         if let Some(limit) = steps_limit {
             if presented_count >= limit {
                 return (scenes, Ok(format!("stopped after {limit} step(s)")));
             }
         }
-        let placement = &schedule.placements[step.placement_idx];
-        let vi = match resolve_active_variant(placement, &live_state, &live_facts) {
-            Ok(Some(vi)) => vi,
-            Ok(None) => continue,
+        let (placement_idx, vi) = match next_user_step(schedule, &decided, &live_state, &live_facts) {
+            Ok(Some(step)) => step,
+            Ok(None) => break,
             Err(h) => return (scenes, Err(h)),
         };
+        decided.insert(placement_idx);
+        let placement = &schedule.placements[placement_idx];
         let variant = &placement.variants[vi];
         let Some(t_start) = variant.at else {
             return (
@@ -1463,6 +1593,73 @@ fn render_json(scenes: &[SceneRun], outcome: &Result<String, PlayHalt>) -> Json 
 // CLI entry point.
 // ===========================================================================
 
+/// Merge a route script's `state:`/`facts:`/`choose:` (design spec §4.4)
+/// with CLI `--state`/`--fact`/`--choose` overrides — CLI wins on a
+/// same-key conflict, facts union (the module doc's `merge()` idiom) —
+/// then resolve the project-wide seed state (declared defaults, then every
+/// override coerced against its declared type) and seed facts (the
+/// project's own `seedFacts:` union, then every parsed `--fact`/script
+/// literal). Shared by a single `--script` playthrough and each
+/// `--coverage` corpus member (design spec §4.7): one merge rule, never
+/// re-derived per script.
+fn build_seeds(
+    union: &ProjectUnion,
+    owners: &BTreeMap<String, BTreeSet<String>>,
+    route_script: RouteScript,
+    cli_state: &[(String, String)],
+    cli_fact: &[String],
+    cli_choose: &[(String, Vec<String>)],
+) -> Result<(BTreeMap<String, Value>, BTreeSet<Fact>, BTreeMap<(String, String), Vec<String>>), String> {
+    let mut state_seeds: BTreeMap<String, String> = route_script.state.into_iter().collect();
+    for (k, v) in cli_state {
+        state_seeds.insert(k.clone(), v.clone());
+    }
+    let mut fact_seeds: Vec<String> = route_script.facts;
+    for f in cli_fact {
+        if !fact_seeds.contains(f) {
+            fact_seeds.push(f.clone());
+        }
+    }
+    let mut raw_choose: BTreeMap<String, Vec<String>> = route_script.choose;
+    for (k, v) in cli_choose {
+        raw_choose.insert(k.clone(), v.clone());
+    }
+    let choose_resolved = resolve_choose_keys(&raw_choose, owners)?;
+
+    let mut seed_state: BTreeMap<String, Value> = BTreeMap::new();
+    for (path, entry) in &union.state {
+        if let Some(default) = entry.get("default") {
+            if let Some(v) = json_to_value(default) {
+                seed_state.insert(path.clone(), v);
+            }
+        }
+    }
+    for (path, lit) in &state_seeds {
+        seed_state.insert(path.clone(), coerce_literal(union, path, lit));
+    }
+    let mut seed_facts: BTreeSet<Fact> = BTreeSet::new();
+    if let Some(entries) = union.seed_facts.as_array() {
+        for e in entries {
+            let rel = e.get("relation").and_then(Json::as_str).unwrap_or("");
+            let args: Vec<String> = e
+                .get("args")
+                .and_then(Json::as_array)
+                .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                .unwrap_or_default();
+            if !rel.is_empty() {
+                seed_facts.insert((rel.to_string(), args));
+            }
+        }
+    }
+    for f in &fact_seeds {
+        if let Some(fact) = parse_ground_fact(f) {
+            seed_facts.insert(fact);
+        }
+    }
+
+    Ok((seed_state, seed_facts, choose_resolved))
+}
+
 /// See [`crate::Command::Play`].
 #[allow(clippy::too_many_arguments)]
 pub fn run_play(
@@ -1474,8 +1671,18 @@ pub fn run_play(
     auto: Option<String>,
     lanes: Option<String>,
     steps: Option<u32>,
+    coverage: Vec<PathBuf>,
     json: bool,
 ) -> ExitCode {
+    // Design spec §4.7: `--coverage` replays a whole corpus of route
+    // scripts through the chain executor with per-script transcript
+    // rendering suppressed — a single playthrough's own `--script`/
+    // `--choose`/`--steps` do not compose with that (which script's
+    // choices? which step limit, applied to every corpus member?).
+    if !coverage.is_empty() && (script.is_some() || !choose.is_empty() || steps.is_some()) {
+        eprintln!("lute play: --coverage is exclusive with --script/--choose/--steps (design spec §4.7)");
+        return ExitCode::from(2);
+    }
     let auto_first = auto.as_deref() == Some("first");
     let lanes_all = lanes.as_deref() == Some("all");
 
@@ -1523,8 +1730,17 @@ pub fn run_play(
         return ExitCode::from(1);
     }
 
-    // Route script (state:/facts:/choose:) + CLI flags. CLI wins on conflict
-    // (facts union), matching the workspace's existing `merge()` idiom.
+    // `id -> owning event names`, needed to resolve both this single
+    // playthrough's `choose:`/`--choose` and every `--coverage` corpus
+    // member's own script `choose:` — computed once here, shared by both.
+    let owners = decision_point_events(&schedule, &art_json);
+
+    if !coverage.is_empty() {
+        return run_coverage(&schedule, &art_json, &union, &owners, &coverage, &state, &fact, auto_first, json);
+    }
+
+    // Route script (state:/facts:/choose:) + CLI flags (design spec §4.4);
+    // `build_seeds` owns the merge rule, shared with `--coverage`.
     let route_script = match script {
         Some(p) => match std::fs::read_to_string(p) {
             Ok(text) => match parse_route_script(&text) {
@@ -1542,59 +1758,14 @@ pub fn run_play(
         None => RouteScript::default(),
     };
 
-    let mut state_seeds: BTreeMap<String, String> = route_script.state.into_iter().collect();
-    for (k, v) in state {
-        state_seeds.insert(k, v);
-    }
-    let mut fact_seeds: Vec<String> = route_script.facts;
-    for f in fact {
-        if !fact_seeds.contains(&f) {
-            fact_seeds.push(f);
-        }
-    }
-    let mut raw_choose: BTreeMap<String, Vec<String>> = route_script.choose;
-    for (k, v) in choose {
-        raw_choose.insert(k, v);
-    }
-    let owners = decision_point_events(&schedule, &art_json);
-    let choose_resolved = match resolve_choose_keys(&raw_choose, &owners) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("lute play: {e}");
-            return ExitCode::from(2);
-        }
-    };
-
-    let mut seed_state: BTreeMap<String, Value> = BTreeMap::new();
-    for (path, entry) in &union.state {
-        if let Some(default) = entry.get("default") {
-            if let Some(v) = json_to_value(default) {
-                seed_state.insert(path.clone(), v);
+    let (seed_state, seed_facts, choose_resolved) =
+        match build_seeds(&union, &owners, route_script, &state, &fact, &choose) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("lute play: {e}");
+                return ExitCode::from(2);
             }
-        }
-    }
-    for (path, lit) in &state_seeds {
-        seed_state.insert(path.clone(), coerce_literal(&union, path, lit));
-    }
-    let mut seed_facts: BTreeSet<Fact> = BTreeSet::new();
-    if let Some(entries) = union.seed_facts.as_array() {
-        for e in entries {
-            let rel = e.get("relation").and_then(Json::as_str).unwrap_or("");
-            let args: Vec<String> = e
-                .get("args")
-                .and_then(Json::as_array)
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
-                .unwrap_or_default();
-            if !rel.is_empty() {
-                seed_facts.insert((rel.to_string(), args));
-            }
-        }
-    }
-    for f in &fact_seeds {
-        if let Some(fact) = parse_ground_fact(f) {
-            seed_facts.insert(fact);
-        }
-    }
+        };
 
     let (scenes, outcome) =
         execute(&schedule, &art_json, &union, seed_state, seed_facts, &choose_resolved, auto_first, steps);
@@ -1610,6 +1781,332 @@ pub fn run_play(
         Ok(_) => ExitCode::SUCCESS,
         Err(h) => h.exit_code(),
     }
+}
+
+// ===========================================================================
+// Coverage (design spec §4.7): replay every `--coverage <FILE>` route
+// script through the SAME chain executor (§4.2/§4.3) a single `--script`
+// playthrough uses — never a second walker — with per-script transcript
+// rendering suppressed, and report every placement/variant/hub-choice
+// option the corpus as a whole never exercises. The review-gap detector.
+// ===========================================================================
+
+/// One `--coverage` corpus member's outcome — enough to report per-script
+/// completion without retaining its (possibly large) transcript.
+struct CoverageScript {
+    path: PathBuf,
+    scene_count: usize,
+    /// `Ok(end reason)` — the same string [`execute`] returns on a clean
+    /// stop (`::end`, clock exhaustion). `Err(halt message)` on ANY
+    /// [`PlayHalt`] (every variant, not just the incomplete-tier ones a
+    /// single playthrough maps to exit 3) — a corpus member that stops
+    /// early for ANY reason contributes only partial coverage, which is
+    /// what makes the WHOLE corpus report exit 3, regardless of which
+    /// single-play exit tier that particular halt would otherwise carry.
+    outcome: Result<String, String>,
+}
+
+/// Corpus-wide visitation, keyed by schedule coordinates — a placement's
+/// [`Placement::decl_index`] and a variant's index within it, never
+/// `event` alone (`(event, lane)`, not `event` alone, is schedule.yaml's
+/// own uniqueness key, `E_SCHED_EVENT_DUP`) — plus every hub/choice
+/// decision point actually reached by any corpus member, keyed
+/// `(event, id)` matching the route-script `choose:` key shape (design
+/// spec §4.4).
+#[derive(Default)]
+struct CoverageAgg {
+    presented: BTreeSet<u32>,
+    selected: BTreeSet<(u32, usize)>,
+    /// Every option id actually OFFERED (present on a `choice`/`hub`
+    /// transcript record's original command) across the whole corpus.
+    offered: BTreeMap<(String, String), BTreeSet<String>>,
+    /// Every option id actually CHOSEN (`chose` on that same record)
+    /// across the whole corpus — a strict subset of `offered` unless a
+    /// scene halted mid-decision (no `chose` recorded that run).
+    chosen: BTreeMap<(String, String), BTreeSet<String>>,
+}
+
+impl CoverageAgg {
+    /// Fold one presented scene's placement/variant identity and every
+    /// `choice`/`hub` transcript record's offered/chosen option ids into
+    /// the running corpus-wide aggregate.
+    fn record(
+        &mut self,
+        scene: &SceneRun,
+        lookup: &BTreeMap<(String, String), usize>,
+        schedule: &Schedule,
+        art_json: &BTreeMap<String, Json>,
+    ) {
+        if let Some(&pidx) = lookup.get(&(scene.event.clone(), scene.lane.to_string())) {
+            let placement = &schedule.placements[pidx];
+            self.presented.insert(placement.decl_index);
+            if let Some(vi) = placement.variants.iter().position(|v| v.doc == scene.doc) {
+                self.selected.insert((placement.decl_index, vi));
+            }
+        }
+
+        let cmd_by_addr: BTreeMap<&str, &Json> = art_json
+            .get(&scene.doc)
+            .and_then(Json::as_object)
+            .and_then(|o| o.get("commands"))
+            .and_then(Json::as_array)
+            .map(|arr| arr.iter().filter_map(|c| c.get("addr").and_then(Json::as_str).map(|a| (a, c))).collect())
+            .unwrap_or_default();
+        for rec in &scene.transcript {
+            let kind = rec.get("kind").and_then(Json::as_str).unwrap_or("");
+            if kind != "choice" && kind != "hub" {
+                continue;
+            }
+            let id_key = if kind == "choice" { "branch" } else { "hub" };
+            let Some(id) = rec.get(id_key).and_then(Json::as_str) else { continue };
+            let key = (scene.event.clone(), id.to_string());
+            let addr = rec.get("addr").and_then(Json::as_str).unwrap_or("");
+            if let Some(opts) = cmd_by_addr.get(addr).and_then(|c| c.get("options")).and_then(Json::as_array) {
+                let entry = self.offered.entry(key.clone()).or_default();
+                for o in opts {
+                    if let Some(oid) = o.get("id").and_then(Json::as_str) {
+                        entry.insert(oid.to_string());
+                    }
+                }
+            }
+            if let Some(chose) = rec.get("chose").and_then(Json::as_str) {
+                self.chosen.entry(key).or_default().insert(chose.to_string());
+            }
+        }
+    }
+}
+
+/// `(event, lane) -> Schedule::placements` index — schedule.yaml's own
+/// uniqueness key (`E_SCHED_EVENT_DUP`), never `event` alone (two lanes may
+/// legally share an event name).
+fn placement_lookup(schedule: &Schedule) -> BTreeMap<(String, String), usize> {
+    schedule.placements.iter().enumerate().map(|(i, p)| ((p.event.clone(), p.lane.clone()), i)).collect()
+}
+
+/// `--coverage` entry point (design spec §4.7): replay every corpus member
+/// through [`execute`] (transcript suppressed — no `render_human`/
+/// `render_json` call per member), fold each into [`CoverageAgg`], then
+/// report the corpus-wide gap. Exit `0` full coverage, `1` a gap remains,
+/// `2` an I/O/usage failure (a corpus member's file/parse error), `3` at
+/// least one corpus member halted before completion.
+#[allow(clippy::too_many_arguments)]
+fn run_coverage(
+    schedule: &Schedule,
+    art_json: &BTreeMap<String, Json>,
+    union: &ProjectUnion,
+    owners: &BTreeMap<String, BTreeSet<String>>,
+    coverage: &[PathBuf],
+    cli_state: &[(String, String)],
+    cli_fact: &[String],
+    auto_first: bool,
+    json: bool,
+) -> ExitCode {
+    let lookup = placement_lookup(schedule);
+    let mut agg = CoverageAgg::default();
+    let mut scripts: Vec<CoverageScript> = Vec::new();
+    let no_choose: Vec<(String, Vec<String>)> = Vec::new();
+
+    for path in coverage {
+        let text = match std::fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("lute play: cannot read route script {}: {e}", path.display());
+                return ExitCode::from(2);
+            }
+        };
+        let route_script = match parse_route_script(&text) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("lute play: invalid route script {}: {e}", path.display());
+                return ExitCode::from(2);
+            }
+        };
+        let (seed_state, seed_facts, choose_resolved) =
+            match build_seeds(union, owners, route_script, cli_state, cli_fact, &no_choose) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("lute play: {}: {e}", path.display());
+                    return ExitCode::from(2);
+                }
+            };
+        let (scenes, outcome) =
+            execute(schedule, art_json, union, seed_state, seed_facts, &choose_resolved, auto_first, None);
+        for scene in &scenes {
+            agg.record(scene, &lookup, schedule, art_json);
+        }
+        scripts.push(CoverageScript {
+            path: path.clone(),
+            scene_count: scenes.len(),
+            outcome: outcome.map_err(|h| h.message()),
+        });
+    }
+
+    let mut uncovered_placements: Vec<&Placement> = Vec::new();
+    let mut uncovered_variants: Vec<(&Placement, &schedule::Variant)> = Vec::new();
+    for p in &schedule.placements {
+        if !agg.presented.contains(&p.decl_index) {
+            uncovered_placements.push(p);
+        }
+        for (vi, v) in p.variants.iter().enumerate() {
+            if !agg.selected.contains(&(p.decl_index, vi)) {
+                uncovered_variants.push((p, v));
+            }
+        }
+    }
+    let mut uncovered_options: Vec<((String, String), Vec<String>)> = Vec::new();
+    for (key, offered) in &agg.offered {
+        let chosen = agg.chosen.get(key);
+        let mut missing: Vec<String> =
+            offered.iter().filter(|o| !chosen.map(|c| c.contains(*o)).unwrap_or(false)).cloned().collect();
+        if !missing.is_empty() {
+            missing.sort();
+            uncovered_options.push((key.clone(), missing));
+        }
+    }
+
+    let any_incomplete = scripts.iter().any(|s| s.outcome.is_err());
+    let any_uncovered = !uncovered_placements.is_empty() || !uncovered_variants.is_empty() || !uncovered_options.is_empty();
+    let exit = if any_incomplete {
+        ExitCode::from(3)
+    } else if any_uncovered {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    };
+
+    if json {
+        let v = render_coverage_json(schedule, &scripts, &uncovered_placements, &uncovered_variants, &uncovered_options, &agg);
+        println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
+    } else {
+        print!(
+            "{}",
+            render_coverage_human(schedule, &scripts, &uncovered_placements, &uncovered_variants, &uncovered_options, &agg)
+        );
+    }
+    exit
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_coverage_human(
+    schedule: &Schedule,
+    scripts: &[CoverageScript],
+    uncovered_placements: &[&Placement],
+    uncovered_variants: &[(&Placement, &schedule::Variant)],
+    uncovered_options: &[((String, String), Vec<String>)],
+    agg: &CoverageAgg,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("lute play coverage: {} script(s) replayed\n", scripts.len()));
+    for s in scripts {
+        match &s.outcome {
+            Ok(reason) => out.push_str(&format!("  \u{2713} {}: {reason} ({} scene(s))\n", s.path.display(), s.scene_count)),
+            Err(msg) => out.push_str(&format!(
+                "  \u{2717} {}: INCOMPLETE \u{2014} {msg} ({} scene(s) before halt)\n",
+                s.path.display(),
+                s.scene_count
+            )),
+        }
+    }
+    out.push('\n');
+
+    let total_placements = schedule.placements.len();
+    let total_variants: usize = schedule.placements.iter().map(|p| p.variants.len()).sum();
+    let total_option_instances: usize = agg.offered.values().map(BTreeSet::len).sum();
+    let uncovered_option_instances: usize = uncovered_options.iter().map(|(_, m)| m.len()).sum();
+
+    out.push_str(&format!(
+        "placements: {}/{total_placements} presented\n",
+        total_placements - uncovered_placements.len()
+    ));
+    for p in uncovered_placements {
+        out.push_str(&format!("  \u{2717} never presented: `{}` ({} lane)\n", p.event, p.lane));
+    }
+
+    out.push_str(&format!(
+        "variants: {}/{total_variants} selected\n",
+        total_variants - uncovered_variants.len()
+    ));
+    for (p, v) in uncovered_variants {
+        out.push_str(&format!("  \u{2717} never selected: `{}` variant `{}`\n", p.event, variant_label_of(&v.doc)));
+    }
+
+    out.push_str(&format!(
+        "hub/choice options: {}/{total_option_instances} chosen\n",
+        total_option_instances - uncovered_option_instances
+    ));
+    for ((event, id), missing) in uncovered_options {
+        out.push_str(&format!("  \u{2717} never chosen: `{event}/{id}` \u{2014} {}\n", missing.join(", ")));
+    }
+
+    let verdict = if scripts.iter().any(|s| s.outcome.is_err()) {
+        "INCOMPLETE \u{2014} at least one script halted before completion; its coverage contribution is partial"
+    } else if !uncovered_placements.is_empty() || !uncovered_variants.is_empty() || !uncovered_options.is_empty() {
+        "UNCOVERED \u{2014} gap(s) remain"
+    } else {
+        "COVERED"
+    };
+    out.push_str(&format!("\u{2500}\u{2500} {verdict} \u{2500}\u{2500}\n"));
+    out
+}
+
+fn render_coverage_json(
+    schedule: &Schedule,
+    scripts: &[CoverageScript],
+    uncovered_placements: &[&Placement],
+    uncovered_variants: &[(&Placement, &schedule::Variant)],
+    uncovered_options: &[((String, String), Vec<String>)],
+    agg: &CoverageAgg,
+) -> Json {
+    let total_placements = schedule.placements.len();
+    let total_variants: usize = schedule.placements.iter().map(|p| p.variants.len()).sum();
+    let total_option_instances: usize = agg.offered.values().map(BTreeSet::len).sum();
+    let uncovered_option_instances: usize = uncovered_options.iter().map(|(_, m)| m.len()).sum();
+
+    let any_incomplete = scripts.iter().any(|s| s.outcome.is_err());
+    let any_uncovered = !uncovered_placements.is_empty() || !uncovered_variants.is_empty() || !uncovered_options.is_empty();
+    let exit = if any_incomplete {
+        "incomplete"
+    } else if any_uncovered {
+        "uncovered"
+    } else {
+        "covered"
+    };
+
+    json!({
+        "scripts": scripts.iter().map(|s| json!({
+            "path": s.path.to_string_lossy(),
+            "scenes": s.scene_count,
+            "complete": s.outcome.is_ok(),
+            "outcome": match &s.outcome {
+                Ok(r) => r.clone(),
+                Err(m) => m.clone(),
+            },
+        })).collect::<Vec<_>>(),
+        "placements": {
+            "total": total_placements,
+            "presented": total_placements - uncovered_placements.len(),
+            "uncovered": uncovered_placements.iter().map(|p| json!({ "event": p.event, "lane": p.lane })).collect::<Vec<_>>(),
+        },
+        "variants": {
+            "total": total_variants,
+            "selected": total_variants - uncovered_variants.len(),
+            "uncovered": uncovered_variants.iter().map(|(p, v)| json!({
+                "event": p.event,
+                "lane": p.lane,
+                "doc": v.doc,
+            })).collect::<Vec<_>>(),
+        },
+        "options": {
+            "total": total_option_instances,
+            "chosen": total_option_instances - uncovered_option_instances,
+            "uncovered": uncovered_options.iter().map(|((event, id), missing)| json!({
+                "event": event,
+                "id": id,
+                "missing": missing,
+            })).collect::<Vec<_>>(),
+        },
+        "exit": exit,
+    })
 }
 
 /// Print every [`SchedDiag`], warnings to stderr and errors to stderr too
