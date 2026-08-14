@@ -282,6 +282,15 @@ pub(crate) struct Runner {
     /// field existed; it exists for [`RunnerOutcome`] to hand to `lute
     /// play`'s §4.5 honesty gate.
     unresolved: Vec<UnresolvedAtom>,
+    /// `lute play --auto first` (design spec §4.4, review fix #6): when a
+    /// hub's scripted `choose:` sequence is exhausted mid-walk (no more
+    /// route-script/`--choose` entries for this re-presentation) and
+    /// eligible options remain, [`Runner::do_hub`] auto-selects the FIRST
+    /// still-eligible option live rather than halting incomplete — applied
+    /// at EVERY re-presentation, not just once. `false` for `lute run`'s
+    /// own [`Runner::new`] (no `--auto` surface there); `lute play` sets it
+    /// via [`Runner::with_auto_first`].
+    auto_first: bool,
 }
 
 /// `lute play`'s per-scene carryover + transcript-reuse surface (assignment
@@ -390,6 +399,7 @@ impl Runner {
             terminated: false,
             fatal: None,
             unresolved: Vec::new(),
+            auto_first: false,
         }
     }
 
@@ -425,6 +435,16 @@ impl Runner {
         runner.apply_mock_seeds();
         runner.recompute_facts();
         runner
+    }
+
+    /// `lute play --auto first` (review fix #6): opts THIS runner's
+    /// [`Runner::do_hub`] into live per-re-presentation auto-selection once
+    /// its scripted `choose:` sequence runs out. Builder-style so
+    /// [`Runner::with_carryover`]'s own signature (already mirrored by
+    /// every call site) never needs another positional parameter.
+    pub(crate) fn with_auto_first(mut self, auto_first: bool) -> Self {
+        self.auto_first = auto_first;
+        self
     }
 
     /// Layer `self.mock`'s `state:`/`facts:` seeds over whatever live
@@ -518,6 +538,86 @@ impl Runner {
             Value::Bool(b) => Some(b),
             _ => None,
         }
+    }
+
+    /// Truthiness of an IR structured `expr` node (`lute_compile::expr::ExprNode`'s
+    /// serialized shape — `lit`/`path`/`op`/`cond`/`list`/`isSet`/`has`), the
+    /// executable surface a compiled `<when is=…>` match arm carries (IR A13).
+    /// Three-valued like [`Runner::truthy`]: `None` = unknown, never a guess.
+    fn expr_node_truthy(&mut self, node: &Json) -> Option<bool> {
+        match self.expr_node_value(node) {
+            Value::Bool(b) => Some(b),
+            _ => None,
+        }
+    }
+
+    /// Evaluate one structured expr node against live state. Total over the
+    /// `ExprNode` kind set; anything unimplementable against the runner's
+    /// state model (`isSet`/`has` set-ness tracking, an unknown operator)
+    /// evaluates `Unknown` rather than crashing or guessing — the same
+    /// honesty rule every other guard surface follows.
+    fn expr_node_value(&mut self, node: &Json) -> Value {
+        if let Some(lit) = node.get("lit") {
+            return json_to_value(lit).unwrap_or(Value::Unknown);
+        }
+        if let Some(path) = node.get("path").and_then(Json::as_str) {
+            return self.state.get(path).cloned().unwrap_or(Value::Unknown);
+        }
+        if let (Some(cond), Some(then), Some(otherwise)) = (node.get("cond"), node.get("then"), node.get("else")) {
+            return match self.expr_node_value(cond) {
+                Value::Bool(true) => self.expr_node_value(then),
+                Value::Bool(false) => self.expr_node_value(otherwise),
+                _ => Value::Unknown,
+            };
+        }
+        if let Some(op) = node.get("op").and_then(Json::as_str) {
+            let l = node.get("l").map(|n| self.expr_node_value(n)).unwrap_or(Value::Unknown);
+            let r = node.get("r").map(|n| self.expr_node_value(n));
+            return match (op, r) {
+                ("!", None) => match l {
+                    Value::Bool(b) => Value::Bool(!b),
+                    _ => Value::Unknown,
+                },
+                ("-", None) => match l {
+                    Value::Num(n) => Value::Num(-n),
+                    _ => Value::Unknown,
+                },
+                ("&&", Some(r)) => match (l, r) {
+                    (Value::Bool(false), _) | (_, Value::Bool(false)) => Value::Bool(false),
+                    (Value::Bool(true), Value::Bool(true)) => Value::Bool(true),
+                    _ => Value::Unknown,
+                },
+                ("||", Some(r)) => match (l, r) {
+                    (Value::Bool(true), _) | (_, Value::Bool(true)) => Value::Bool(true),
+                    (Value::Bool(false), Value::Bool(false)) => Value::Bool(false),
+                    _ => Value::Unknown,
+                },
+                ("==", Some(r)) => expr_node_eq(&l, &r).map(Value::Bool).unwrap_or(Value::Unknown),
+                ("!=", Some(r)) => expr_node_eq(&l, &r).map(|b| Value::Bool(!b)).unwrap_or(Value::Unknown),
+                ("<", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o == std::cmp::Ordering::Less)).unwrap_or(Value::Unknown),
+                ("<=", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o != std::cmp::Ordering::Greater)).unwrap_or(Value::Unknown),
+                (">", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o == std::cmp::Ordering::Greater)).unwrap_or(Value::Unknown),
+                (">=", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o != std::cmp::Ordering::Less)).unwrap_or(Value::Unknown),
+                ("+", Some(r)) => match (l, r) {
+                    (Value::Num(a), Value::Num(b)) => Value::Num(a + b),
+                    (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
+                    _ => Value::Unknown,
+                },
+                ("-", Some(r)) | ("*", Some(r)) | ("/", Some(r)) | ("%", Some(r)) => match (l, r) {
+                    (Value::Num(a), Value::Num(b)) => match op {
+                        "-" => Value::Num(a - b),
+                        "*" => Value::Num(a * b),
+                        "/" if b != 0.0 => Value::Num(a / b),
+                        "%" if b != 0.0 => Value::Num(a % b),
+                        _ => Value::Unknown,
+                    },
+                    _ => Value::Unknown,
+                },
+                _ => Value::Unknown,
+            };
+        }
+        // `list` / `isSet` / `has` / anything newer: no runner-side model yet.
+        Value::Unknown
     }
 
     /// Resolve a control-flow target `addr` to a command index. A `converge`
@@ -850,6 +950,17 @@ impl Runner {
         Step::Next(self.resolve(target))
     }
 
+    /// Design spec §4.4's hub re-presentation loop, done honestly (review
+    /// fix #6): a `choose:` sequence is consumed ONE decision at a time —
+    /// never the whole vector up front — so running out of scripted
+    /// decisions can be told apart from a genuine natural convergence.
+    /// Exhaustion with eligible options still standing halts incomplete
+    /// (`self.incomplete = true`, exit 3) UNLESS `self.auto_first` is set,
+    /// in which case the first still-eligible option is auto-selected —
+    /// applied at EVERY re-presentation the sequence has to fall back to,
+    /// not merely once. A bounded re-presentation count (`loop_guard`) is
+    /// the actual "loop guard" spec §4.4 implies: a hub authored with no
+    /// reachable exit option would otherwise spin `--auto first` forever.
     fn do_hub(&mut self, cmd: &Json) -> Step {
         let id = cmd.get("id").and_then(Json::as_str).unwrap_or("").to_string();
         let record_key = cmd.get("recordKey").and_then(Json::as_str).map(str::to_string);
@@ -869,9 +980,60 @@ impl Runner {
         boundaries.sort_unstable();
         boundaries.dedup();
 
-        let forced = match self.mock.choose.get(&id).cloned() {
-            Some(list) => list,
-            None => {
+        let forced: Vec<String> = self.mock.choose.get(&id).cloned().unwrap_or_default();
+        let mut forced_cursor = 0usize;
+        let loop_guard = options.len().saturating_mul(4).max(64);
+        let mut presentations = 0usize;
+
+        let mut visited_once: BTreeSet<String> = BTreeSet::new();
+        loop {
+            presentations += 1;
+            if presentations > loop_guard {
+                self.fatal = Some(format!(
+                    "hub `{id}` did not converge after {loop_guard} re-presentations under `--auto first` \
+                     (no reachable `exit` option)"
+                ));
+                return Step::Halt;
+            }
+
+            // Eligible = not an already-exhausted `once` option, and its
+            // guard does not DECIDE false right now (an unknown guard stays
+            // eligible — the same three-valued discipline `do_choice`'s
+            // guard refusal below uses).
+            let eligible: Vec<String> = options
+                .iter()
+                .filter_map(|o| {
+                    let oid = o.get("id").and_then(Json::as_str)?;
+                    let once = o.get("once").and_then(Json::as_bool).unwrap_or(false);
+                    if once && visited_once.contains(oid) {
+                        return None;
+                    }
+                    match o.get("when").and_then(Json::as_str) {
+                        Some(w) if self.truthy(w) == Some(false) => None,
+                        _ => Some(oid.to_string()),
+                    }
+                })
+                .collect();
+
+            let choice_id = if forced_cursor < forced.len() {
+                let c = forced[forced_cursor].clone();
+                forced_cursor += 1;
+                Some(c)
+            } else if self.auto_first {
+                eligible.first().cloned()
+            } else {
+                None
+            };
+
+            let Some(choice_id) = choice_id else {
+                if eligible.is_empty() {
+                    // Natural convergence: nothing left eligible to present.
+                    break;
+                }
+                // Review fix #6: the scripted sequence ran out but the hub
+                // would still be re-presented (eligible options remain) and
+                // no `--auto` policy is filling the gap — halt incomplete
+                // rather than silently converging.
                 self.incomplete = true;
                 self.transcript.push(json!({
                     "addr": addr(cmd),
@@ -881,11 +1043,8 @@ impl Runner {
                     "note": "no mock decision — incomplete",
                 }));
                 return Step::Halt;
-            }
-        };
+            };
 
-        let mut visited_once: BTreeSet<String> = BTreeSet::new();
-        for choice_id in forced {
             let opt = match options.iter().find(|o| o.get("id").and_then(Json::as_str) == Some(&choice_id)) {
                 Some(o) => o.clone(),
                 None => {
@@ -945,8 +1104,21 @@ impl Runner {
         let arms = cmd.get("arms").and_then(Json::as_array).cloned().unwrap_or_default();
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
         for (i, arm) in arms.iter().enumerate() {
-            let test = arm.get("test").and_then(Json::as_str).unwrap_or("");
-            if self.truthy(test) == Some(true) {
+            // An `is`-form arm compiles to an EMPTY `test` plus a structured
+            // `expr` (IR A13, `stage.rs::walk_match`) — the executable surface
+            // an engine must read. A `test`-form arm carries raw CEL. Prefer
+            // the structured expr whenever present; falling back to the raw
+            // `test` keeps pre-A13 artifacts working. Evaluating ONLY `test`
+            // here was a defect: every `is` arm read as empty→unknown and the
+            // whole match fell through to `otherwise`.
+            let matched = match arm.get("expr") {
+                Some(expr) => self.expr_node_truthy(expr),
+                None => {
+                    let test = arm.get("test").and_then(Json::as_str).unwrap_or("");
+                    self.truthy(test)
+                }
+            };
+            if matched == Some(true) {
                 let target = arm.get("target").and_then(Json::as_str).unwrap_or(converge);
                 self.transcript.push(json!({
                     "addr": addr(cmd),
@@ -1331,6 +1503,28 @@ impl Runner {
 }
 
 // ── free helpers ────────────────────────────────────────────────────────
+
+/// Value equality for structured-arm evaluation: same-type compares decide;
+/// an Unknown or cross-type pair is undecidable (`None`), mirroring CEL's
+/// three-valued reads rather than JS-style coercion.
+fn expr_node_eq(l: &Value, r: &Value) -> Option<bool> {
+    match (l, r) {
+        (Value::Bool(a), Value::Bool(b)) => Some(a == b),
+        (Value::Num(a), Value::Num(b)) => Some(a == b),
+        (Value::Str(a), Value::Str(b)) => Some(a == b),
+        _ => None,
+    }
+}
+
+/// Ordering for structured-arm comparison: numbers numerically, strings
+/// lexicographically; anything else undecidable.
+fn expr_node_cmp(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
+    match (l, r) {
+        (Value::Num(a), Value::Num(b)) => a.partial_cmp(b),
+        (Value::Str(a), Value::Str(b)) => Some(a.cmp(b)),
+        _ => None,
+    }
+}
 
 fn addr(cmd: &Json) -> &str {
     cmd.get("addr").and_then(Json::as_str).unwrap_or("")
