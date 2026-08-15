@@ -37,6 +37,7 @@ Each document owns one role; read the one that matches what you are doing.
 | **building the compiler / checker / LSP** | both proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
 | **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
+| **scheduling a project's routes / running `lute play`** | [`docs/superpowers/specs/2026-08-14-lute-schedule-and-play-design.md`](docs/superpowers/specs/2026-08-14-lute-schedule-and-play-design.md) — `schedule.yaml`'s tick clock, lanes, and guarded placements; `lute play`'s chained-transcript and coverage semantics | [`docs/schedule-and-play.md`](docs/schedule-and-play.md) |
 
 Worked examples:
 
@@ -93,6 +94,25 @@ profile: date-minigame
 </match>
 ```
 
+## Play a scheduled route
+
+A project with a `schedule.yaml` (a tick clock + `user`/`world` lanes + route-guarded
+placements beside `lute.project.yaml`) can be replayed end to end as one reviewer-facing
+transcript instead of read scene by scene:
+
+```sh
+lute play my-project --state run.route=iroha --auto first
+lute play my-project --script routes/iroha-a.play.yaml --lanes all --json
+lute play my-project --coverage routes/*.play.yaml   # review-gap report across a whole corpus
+```
+
+`lute play` compiles the whole project once, walks the schedule's placements in presentation
+order (never file order), re-evaluates each event's route-guarded variant against live state,
+and threads `run.*`/`user.*`/`app.*`/`quest.*` state and facts across scene boundaries — so a
+reviewer sees exactly what one route's player sees, in the order they see it. See
+[`docs/schedule-and-play.md`](docs/schedule-and-play.md) for the full `schedule.yaml` key
+reference, CLI flags, exit codes, and diagnostic table.
+
 ## Editor support
 
 Language support for `.lute` files — diagnostics, hover, completion, go-to-definition,
@@ -112,20 +132,24 @@ Install the server once (`cargo install --path crates/lute-lsp`), then:
 Lute's status splits along three independent axes (see
 [`docs/versioning.md`](docs/versioning.md) for the full policy):
 
-- **Language: draft.** The grammar is at **0.10.2** — the normative surface is
+- **Language: draft.** The grammar is at **0.11.0** — the normative surface is
   the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 / 0.3.0 / 0.4.0 /
-  0.5.0–0.5.2 / 0.6.0 / 0.6.1 / 0.7.0 / 0.8.0 / 0.9.0 / 0.10.0 deltas; 0.10.0 is
-  *the toolchain says what it knows* — thirteen changes, each one closing a
-  place where the checker held the answer and did not say it: a typed `::set`
-  right-hand side, closed attribute sets on the six logic tags, a quest gate
-  that can never open, `defaults:` in `lute.project.yaml`, checked
-  `mocks/*.yaml`, integer-millisecond timeline time, and one warning
-  **removed**). Every release re-aligns the three visible axis numbers, so the
-  toolchain and the IR read `0.10.0` too — and this time the IR **earned** it:
-  `provenance.reason` became `provenance.explanation`, the first shape change
-  since `0.8.0`, so an engine gated on IR `0.9` must widen that gate. Being
-  draft means the grammar may still break before 1.0; each breaking change ships
-  a `lute fix` migration where the rewrite is mechanical.
+  0.5.0–0.5.2 / 0.6.0 / 0.6.1 / 0.7.0 / 0.8.0 / 0.9.0 / 0.10.0 / 0.10.1 /
+  0.10.2 / 0.11.0 deltas; 0.10.0 is *the toolchain says what it knows* —
+  thirteen changes, each one closing a place where the checker held the
+  answer and did not say it. `0.10.1`, `0.10.2`, and `0.11.0` are each
+  alignment-only on this axis — byte-for-byte `0.10.0` semantics — because
+  every release re-aligns the three visible axis numbers whether or not a
+  given axis substantively changed; `0.10.2` is where the *IR* last earned
+  its move (`meta.plugin` reaching the compiled artifact). `0.11.0` is a new
+  shape for that rule: **only the toolchain** earns it this time — a
+  `schedule.yaml` project-file layer and the `lute play` command (see
+  [above](#play-a-scheduled-route)) — while the IR's `major.minor` still
+  moves, `0.10` → `0.11`, purely from alignment, so an engine gated on IR
+  `0.10` must widen that gate even though nothing inside the artifact
+  changed. Being draft means the grammar may still break before 1.0; each
+  breaking change ships a `lute fix` migration where the rewrite is
+  mechanical.
 - **Implementation: shipped.** The checker, compiler, provider/plugin resolver,
   LSP, and CLI are implemented, tested Rust crates under [`crates/`](crates)
   (`lute-syntax`, `lute-manifest`, `lute-check`, `lute-compile`, `lute-cli`,

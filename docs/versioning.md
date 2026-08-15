@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.10.2` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.10.2` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.10.2` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.10.schema.json`](../schemas/lute-ir-0.10.schema.json)). Consuming engines gate parsing on it. |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.11.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.11.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.11.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.11.schema.json`](../schemas/lute-ir-0.11.schema.json)). Consuming engines gate parsing on it. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -115,6 +115,40 @@ release number), but its CONTENT does move this release: `sceneMeta` and
 strictly against the published schema (rather than merely parsing
 permissively) now admits the field instead of rejecting it under the schema's
 `additionalProperties: false`.
+
+**`0.11.0` aligns all three axes at `0.11.0`, and only the toolchain earns
+it.** A new `schedule.yaml` project-file layer (clock, lanes, guarded
+placements, static route-space checks) and a new `lute play` command that
+chains a schedule into one reviewer-facing, whole-project transcript
+(`--coverage` for corpus review-gap reporting), plus two bug fixes in the
+shared reference runner (a compiled `<when is=…>` match arm now reads its
+structured `expr` instead of always falling through to `otherwise`; a hub
+whose scripted decisions run out with an eligible option remaining now halts
+incomplete instead of silently converging) — all toolchain, none of it
+language or IR. Language `0.11.0` is byte-for-byte `0.10.2` (== `0.10.1` ==
+`0.10.0`) semantics
+([`proposals/scenario-dsl/0.11.0.md`](proposals/scenario-dsl/0.11.0.md)).
+
+**Unlike `0.10.1`/`0.10.2`, this one is not free for a consuming engine — the
+IR's `major.minor` itself moves, even though its content does not.** The IR
+carries no shape change AND no content change: nothing about the compiled
+artifact is different from `0.10.2`. But `0.10.1` and `0.10.2` both stayed
+inside `0.10`, and `0.11.0` does not — the alignment rule moves every visible
+axis on every release, and this time that move crosses the `major.minor`
+boundary the runtime contract actually gates on. An engine implementing IR
+`0.10` **must widen its gate to `0.11`** before it will accept a `0.11.0`
+artifact at all, and that widening is the *entire* cost — there is no field
+to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
+`major.minor` move renames the schema file even with no shape change, because
+the file tracks the gated `major.minor` rather than the release number),
+`schemas/lute-ir-0.10.schema.json` is renamed to
+[`schemas/lute-ir-0.11.schema.json`](../schemas/lute-ir-0.11.schema.json)
+(`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
+`schedule.yaml` itself stays deliberately outside every one of these axes —
+no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
+real, substantive work is what moved the IR number; the number moved because
+alignment always moves it, and this file's `0.7.0`-set precedent decided long
+ago that a `major.minor` move earns a rename regardless of why it happened.
 
 ## Which bump when
 

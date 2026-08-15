@@ -8,24 +8,169 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.10.2`, the grammar and semantics the checker
+- **Language** — currently `0.11.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.10.2`) and gated on by consuming engines.
+  artifact (currently `0.11.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
 presentation guarantee, not a claim that every axis changed substantively — this
 changelog is where you learn which ones did. `0.10.1` was the no-op case, both
-language and IR; `0.10.2` inverts it — **the IR earns the move and the language
-does not.** Language `0.10.2` is byte-for-byte `0.10.1` (== `0.10.0`) semantics
-([`0.10.2.md`](docs/proposals/scenario-dsl/0.10.2.md)). The runtime contract
-still gates on `irVersion` **major.minor**, and `0.10.2` shares `0.10` with
-`0.10.0`/`0.10.1`, so an engine that accepts either artifact accepts a `0.10.2`
-artifact with no edit — the new field is additive.
+language and IR; `0.10.2` inverted it — the IR earned the move and the language
+did not. `0.11.0` is a third shape: the **toolchain** is the one that earns it
+this time (a new scheduling layer, a new command, and a bug class closed in the
+shared reference runner), while both **language** and **IR** are content
+no-ops — language `0.11.0` is byte-for-byte `0.10.2` semantics
+([`0.11.0.md`](docs/proposals/scenario-dsl/0.11.0.md)), and the IR carries no
+shape or content change at all. The one cost this release does not get to
+skip: the IR's `major.minor` still moves, `0.10` → `0.11`, purely because
+alignment re-aligns every visible number on every release — so an engine gated
+on IR `0.10` **must widen its gate to `0.11`** even though there is nothing new
+to read once it does, and `schemas/lute-ir-0.10.schema.json` is renamed to
+[`schemas/lute-ir-0.11.schema.json`](schemas/lute-ir-0.11.schema.json) (body
+unchanged) under the same precedent `0.7.0` set for a minor move with no shape
+change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.11.0] - 2026-08-15
+
+**A route through the whole project, played in the order the player sees it.**
+Everything below is toolchain: a new scheduling layer that places scenes on a
+tick clock instead of leaving order to file position, a new command that
+chains them into one reviewable transcript, and two bug fixes in the shared
+reference runner that predate this release and affect `lute run` as much as
+the new command. Language and IR are both content no-ops this time — see
+*Changed* for the one real cost that still falls out of the alignment rule.
+
+### Added
+
+- **`schedule.yaml`** — a headerless, CLI-owned project file beside
+  `lute.project.yaml` that places a project's scenes on a tick clock instead
+  of leaving reading order to file position. A `clock:` (named buckets ×
+  ticks-per-bucket × days) carries `lanes:` (`user`, single-threaded and
+  guarded against overlap by default; `world`, overlap-by-design for events
+  that do not wait for the player) and `placements:`, each an `event`
+  occupying a `[at, at+size)` interval with one satisfiable-per-route
+  `variant` (`when:` reads the same content-line CEL surface a guard already
+  does) selected at play time — plus `optional:` (legal to have no
+  satisfiable variant on some route), `presentation:` (execution order is
+  `(presentation, resolved at, declaration index)`, decoupling *when a scene
+  is presented* from *when it happens on the story clock* — a cold-open
+  flashback can present first and be story-chronological last), and a
+  variant-level `at:`/`size:`/`presentation:` override so the same event can
+  sit at a different position per route. Static checks cover clock structure,
+  malformed/dynamic `at:`, duplicate/unknown lanes and events, missing or
+  escaping `doc:` paths, unsatisfiable and ambiguous route-space assignments
+  (an `assume:` list lets a schedule assert an upstream contract like
+  "inflow is never `none`" so a sentinel route stops producing false gaps),
+  overlapping same-lane intervals, and an idle-pacing threshold — see
+  [`docs/schedule-and-play.md`](docs/schedule-and-play.md) for the full key
+  and diagnostic reference. Deliberately out of language scope: no `kind:`,
+  no `luteVersion:`, no capability fold, no language/IR version bump — a
+  future design integrates it as a real doc kind.
+- **`lute play <PROJECT_DIR>`** — plays one scheduled route through a WHOLE
+  project as one chained, reviewer-facing transcript: the whole gated project
+  compiles once (the same declaration union `compile --all` writes,
+  including quest docs, which are never placed), then walks the schedule's
+  user-lane placements in presentation order, re-evaluating each event's
+  guarded variants against LIVE state and threading `run.*`/`user.*`/
+  `app.*`/`quest.*` state and facts across scene boundaries through `lute
+  run`'s own reference evaluator (`scene.*` always resets to the entering
+  scene's own declared defaults). A scene's `after:` prerequisite is
+  re-checked against the visited/completed sets accumulated in presentation
+  order, not file order — a cold-open scene declared `presentation: 0` can
+  legitimately run before a day-one scene it is chronologically behind.
+  World-lane events interleave: after each user placement, every not-yet-fired
+  world placement whose start tick falls inside the segment just covered
+  drains atomically, in `(at, declaration index)` order, even under
+  `--lanes user` (world scenes still execute — state must not depend on
+  rendering — the flag only gates the transcript). A presentation jump
+  backward starts a new segment and is purely cinematic (no state rolls
+  back); a world event draining inside one is flagged
+  `W-SCHED-WORLD-IN-FLASHBACK`. Route selection is `--state`/`--fact` seeds,
+  a `--script <route>.play.yaml` (this module's own closed grammar — `state:`/
+  `facts:`/`choose:` with EVENT-QUALIFIED choice/hub ids, `kuhen-meeting/ask:
+  [ask-record]` — never the trace mock parser, whose top-level key set has no
+  notion of that shape), and/or ad-hoc `--choose <event>/<id>=<choiceId>`;
+  `--auto first` resolves anything left unscripted, at every hub
+  re-presentation, not just the first. Any guard or effect the reference
+  runner genuinely cannot resolve (`now()`/`validAt`, an unresolved plugin
+  `bridgeResult`) halts the walk **incomplete** naming the surface, never a
+  silent unknown. Exit `0` complete, `1` a schedule/causality violation named
+  by its `E-SCHED-*` code, `2` a usage/I/O failure (including the hard error
+  when a project has no `schedule.yaml` at all — there is no `after:`-graph
+  fallback, since sibling route files are unguarded by design), `3`
+  incomplete. `--lanes user|all`, `--steps N` (partial-playback preview),
+  and `--json` (a deterministic, byte-identical-for-the-same-seeds structured
+  transcript) round out the surface.
+- **`lute play --coverage <FILE>…`** — the review-gap detector: replays every
+  named route script through the same chain executor with per-script
+  transcript rendering suppressed, then reports every placement, variant, and
+  hub/choice option the corpus as a whole never exercised. Exit `0` full
+  coverage, `1` a gap remains, `2` a usage/I/O failure, `3` at least one
+  corpus script halted before completion. Exclusive with `--script`/
+  `--choose`/`--steps` — a single playthrough's own knobs do not compose with
+  a corpus replay.
+- **The full `E-SCHED-*`/`W-SCHED-*` diagnostic set** — fifteen static errors
+  (clock structure, duplicate buckets, unknown lanes, duplicate events,
+  malformed variant form, invalid size, unparseable/dynamic `at:`, clock
+  overflow, a missing or path-escaping `doc:`, an unsatisfiable or ambiguous
+  route assignment, an overlapping same-lane interval, and a malformed
+  guard), one runtime error (an `after:` prerequisite unsatisfied in
+  presentation order), and five warnings (an unplaced scene doc, an idle-gap
+  above the pacing threshold, a route-space enumeration too large to sweep, a
+  scene's first `::bg time=` disagreeing with its placement's bucket, and a
+  world event draining inside a rewound segment).
+
+### Fixed
+
+- **A compiled `<when is="…">` match arm always fell through to
+  `<otherwise>`, no matter which value it named.** An `is`-form arm compiles
+  to an EMPTY raw `test` string plus a structured `expr` node (IR A13) — the
+  executable surface an engine is meant to read — and the reference runner's
+  `do_match` evaluated only `test`, so every `is` arm read as unknown and the
+  match always converged on its `otherwise` branch, regardless of the actual
+  state. First observed as six onboarding routes all greeting the player with
+  the fallback line. `do_match` now prefers the compiled `expr` whenever one
+  is present, falling back to the raw `test` only for a `test=`-form arm.
+  This shipped in `lute run` (and therefore `lute trace`'s replay of a `run`)
+  since `<when is=>` existed; a project relying on a `<match>`/`<when is=>`
+  for its reference transcript should re-run it against this release.
+- **A hub whose scripted decision sequence ran out with an eligible,
+  non-`exit` option still on the table silently left the hub instead of
+  halting.** `Runner::do_hub` iterated its forced-choice vector to the end
+  and fell through to whatever came after, regardless of whether every
+  option had actually converged — so a mock's `choose:` list one entry short
+  of a full hub visit reported a clean, complete run (exit `0`) instead of
+  the incomplete walk it actually was. `do_hub` now halts incomplete, naming
+  the hub and its still-eligible options, exactly like an unscripted branch
+  choice already did. Affects any `lute run --mock`/`lute play` walk through
+  a hub with a `once`, non-`exit` option a script does not explicitly retire.
+
+### Changed
+
+- **All three axes read `0.11.0`, and only the toolchain earns it.** Language
+  `0.11.0` is byte-for-byte `0.10.2` (== `0.10.1` == `0.10.0`) semantics
+  ([`scenario-dsl/0.11.0.md`](docs/proposals/scenario-dsl/0.11.0.md)), and the
+  IR carries no shape *or* content change — genuinely nothing for a consuming
+  engine to read differently. What still moves is the number: `LUTE_IR_VERSION`
+  reads `0.11.0` because a release re-aligns every visible axis whether or not
+  its contract changed, and that number's `major.minor` component is the one
+  the runtime contract gates on. `0.10.1` and `0.10.2` both stayed inside
+  `0.10`, so neither cost a consuming engine anything; `0.11.0` does not get
+  that shelter — an engine implementing IR `0.10` **must widen its gate to
+  `0.11`** purely to keep accepting artifacts, even though the artifact it
+  receives is byte-identical in shape to the one it already reads. Per the
+  `0.7.0` precedent (a minor move with no shape change still renames the
+  schema file, because the file tracks the gated `major.minor`, not the
+  release number), `schemas/lute-ir-0.10.schema.json` is renamed to
+  `schemas/lute-ir-0.11.schema.json` (`$id` updated to match, body otherwise
+  identical). A document stamped `luteVersion: "0.10.2"` now draws
+  `W-LUTE-VERSION-STALE`; restamping to `"0.11.0"` is the whole migration.
+
 
 ## [0.10.2] - 2026-08-12
 
