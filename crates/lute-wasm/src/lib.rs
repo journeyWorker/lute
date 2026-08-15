@@ -139,7 +139,7 @@ pub fn trace_source(src: &str, mock_yaml: &str) -> String {
 }
 
 /// The three independent version axes (docs/versioning.md), matching
-/// `lute version --json`: `{"toolchain":"0.10.2","language":"0.10.2","ir":"0.10.2"}`.
+/// `lute version --json`: `{"toolchain":"0.11.0","language":"0.11.0","ir":"0.11.0"}`.
 /// The toolchain axis is this crate's workspace `CARGO_PKG_VERSION`.
 #[wasm_bindgen]
 pub fn version() -> String {

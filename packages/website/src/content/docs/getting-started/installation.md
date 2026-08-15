@@ -4,7 +4,7 @@ description: Install the Lute CLI with bunx, a global bun install, or from Rust 
 ---
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.10.2**.
+compiles, traces, and inspects them. The current language version is **0.11.0**.
 
 ## Quick start with `bunx`
 
@@ -60,9 +60,9 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.10.2
-language      0.10.2
-IR schema     0.10.2
+lute toolchain 0.11.0
+language      0.11.0
+IR schema     0.11.0
 ```
 
 Those are three independent axes, and you will see all three again elsewhere: the **toolchain**
@@ -71,19 +71,21 @@ and the **IR schema** version is what `lute compile` stamps into every artifact 
 They mean different things, but a release always **re-aligns all three visible numbers** to that
 release's number, so you never reconcile three
 ([versioning policy](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)).
-At `0.10.0` all three moved substantively. The IR **shape changes** for the first time since
-`0.8.0`: the injection provenance stamp's `reason` becomes `explanation`. Engines still gate on
-`irVersion` by major.minor, so an engine implementing IR `0.9` must widen its gate to accept
-`0.10` — and, if it reads that stamp, rename the one field.
+At `0.11.0` only the **toolchain** substantively moved — a new `schedule.yaml` layer and
+`lute play` command, plus two reference-runner fixes. The IR carries no shape or content change at
+all, but its `major.minor` still moves (`0.10` → `0.11`, because a release re-aligns every visible
+number whether or not its contract changed), and engines still gate on `irVersion` by
+major.minor — so an engine implementing IR `0.10` must widen its gate to `0.11` before it accepts
+a `0.11.0` artifact, even though nothing inside it is different.
 
 For scripts and CI, `--json` prints the same three axes as one object:
 
 ```
 $ lute version --json
-{"toolchain":"0.10.2","language":"0.10.2","ir":"0.10.2"}
+{"toolchain":"0.11.0","language":"0.11.0","ir":"0.11.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.10.2` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.11.0` — the toolchain axis alone.)
 
 ## Next
 

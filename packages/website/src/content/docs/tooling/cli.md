@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Every lute subcommand — init, new, check, check-project, compile, run, trace, test, scenario, loc, context, tag, fix, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
+description: Every lute subcommand — init, new, check, check-project, compile, run, play, trace, test, scenario, loc, context, tag, fix, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
 ---
 
 `lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot (omit for a core-only `lute.core` check).
@@ -188,6 +188,17 @@ $ lute run <artifact> [--mock <FILE>] [--json]
 ```
 
 Execute a **compiled artifact** (`lute compile` output) headlessly against a mock playthrough — the reference consumer of the [runtime contract](/tooling/runtime-contract/): command dispatch, CEL guards, the facts + Datalog fixpoint, hubs, and quest lifecycle. Distinct from `lute trace`, which previews *source*; `run` consumes the artifact an engine would. `--mock` is a YAML playthrough (the same surfaces as `lute trace --mock`); `--json` emits the machine-readable transcript. Exit **0** on a complete run, **1** refused, **2** on I/O, **3** incomplete.
+
+## play
+
+```console
+$ lute play <PROJECT_DIR> [--state P=L]… [--fact "R(A…)"]…
+            [--script <FILE>] [--choose EVENT/ID=CHOICEID[,CHOICEID…]]…
+            [--auto first] [--lanes user|all] [--steps N] [--json]
+$ lute play <PROJECT_DIR> --coverage <FILE>… [--json]
+```
+
+Play one scheduled route through a WHOLE project as one chained, reviewer-facing transcript — the reference-runtime consumer of a project's [`schedule.yaml`](/tooling/schedule-and-play/). Requires a schedule: a project with none is a hard error (exit **2**), since sibling route files are unguarded by design and there is no `after:`-graph fallback that could pick one route among them. Route selection is `--state`/`--fact` seeds, a `--script <route>.play.yaml` (this command's own closed grammar, not a `lute trace --mock` file), and/or ad-hoc `--choose <event>/<id>=<choiceId>`; `--auto first` resolves anything left unscripted. `--coverage <FILE>` (repeatable — one file per flag, no glob expansion inside it) replays a whole corpus of route scripts and reports every placement/variant/hub-choice option the corpus never exercises, exclusive with `--script`/`--choose`/`--steps`. Exit **0** complete (or full coverage), **1** a schedule/causality violation named by its `E-SCHED-*` code (or a coverage gap), **2** a usage/I/O failure, **3** incomplete (or a coverage run with an incomplete corpus script). Full key reference, transcript format, and the complete diagnostic table: [Schedule & play](/tooling/schedule-and-play/).
 
 ## test
 

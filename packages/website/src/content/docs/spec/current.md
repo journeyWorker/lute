@@ -1,12 +1,12 @@
 ---
 title: Current specification
-description: The consolidated index of what the Lute language enforces today at version 0.10.2 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
+description: The consolidated index of what the Lute language enforces today at version 0.11.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
 ---
 
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.10.2**:
+the consolidated **index** of what is *current* at language version **0.11.0**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -16,7 +16,7 @@ full cumulative history (including the pre-implementation `0.0.1` draft and the
 capability proposals), see the [specification index](/spec/).
 :::
 
-## What is current at 0.10.2
+## What is current at 0.11.0
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -36,10 +36,28 @@ capability proposals), see the [specification index](/spec/).
 | Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.10.2 (`meta.plugin` — a plugin-owned, checker-validated frontmatter key now reaches the compiled artifact instead of being discarded at compile time; plugin-system `0.0.4`, additive, no engine gate widens since `0.10.2` shares major.minor `0.10`) | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
 | Warning-severity diagnostics (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`) | 0.6.1 | 0.10.0 (four new warnings — `W-COMPONENT-UNVERIFIED`, `W-DOMAIN-UNREAD`, `W-EXIT-INERT`, `W-STAGE-ABSENT` — plus `W-PROJECT-INERT`; and `W-INJECT-CONFLICT` is **removed**, the first removal in the series, because equality with the declared default was its only trigger) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
 | Deny promotion (`--deny` / `--deny-warnings`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.10.2 (all three axes read `0.10.2` — toolchain, language, and IR — because a release re-aligns every visible number; this time the IR **earns** the move (`meta.plugin`) while the language axis is a pure alignment no-op, byte-for-byte `0.10.1`/`0.10.0`) | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.11.0 (all three axes read `0.11.0` — toolchain, language, and IR — because a release re-aligns every visible number; this time the **toolchain** earns it, alone: language `0.11.0` is byte-for-byte `0.10.2`/`0.10.1`/`0.10.0` semantics, and the IR carries no content change either — its `major.minor` moves anyway, `0.10` → `0.11`, so `schemas/lute-ir-0.10.schema.json` is renamed the same way `0.7.0`'s was) | [0.11.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.0.md) |
 
 ## Notes on the boundaries
 
+- **`0.11.0` moves the IR's `major.minor` with nothing behind it — the first
+  time this stack records that shape.** `0.10.1` stayed inside `0.10` and cost
+  nothing; `0.10.2` also stayed inside `0.10` but moved real content
+  (`meta.plugin`); `0.11.0` moves the *number itself* out of `0.10` into
+  `0.11` while carrying **zero** content or shape change — the artifact
+  `0.11.0` produces is byte-identical to `0.10.2`'s. An engine gated on IR
+  `0.10` still has to widen its gate to `0.11` to keep accepting artifacts
+  (the runtime contract gates on `major.minor`, not on whether anything
+  inside actually changed), and `schemas/lute-ir-0.10.schema.json` is renamed
+  to `schemas/lute-ir-0.11.schema.json` under the `0.7.0` precedent — a
+  `major.minor` move renames the schema file regardless of why it moved. The
+  release itself is entirely toolchain: a new `schedule.yaml` project-file
+  layer and `lute play` command
+  ([Schedule & play](/tooling/schedule-and-play/)), plus two fixes in the
+  shared reference runner (a compiled `<when is=…>` match arm now reads its
+  structured `expr` instead of always falling through to `<otherwise>`, and a
+  hub whose scripted decisions run out with an eligible option remaining now
+  halts incomplete instead of silently converging).
 - **`0.6.0` is the one breaking *grammar* revision in the current stack.** It
   removed the `persist=` attribute so `into=` alone drives the choice run-record
   sugar, and made shot headings free text. Pre-`0.6.0` documents carrying a bare
