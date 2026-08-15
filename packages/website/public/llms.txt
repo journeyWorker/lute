@@ -1,6 +1,6 @@
 # Lute
 
-> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. Language version 0.10.2.
+> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. Language version 0.11.0.
 
 Lute is deliberately non-Turing: every document is a finite, terminating artifact, so the checker can prove reachability, definite-assignment, and envelope properties instead of guessing. The CLI (`lute`) is a headless checker, compiler, and preview tool; `lute context --json` emits the project-resolved authoring surface an AI or human needs to write valid Lute, and `lute check --json` gives a machine-readable diagnostic loop. Content vocabulary is the project's, not the compiler's: since language 0.9.0 the core declares seven *slots* (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) and ships zero members, so every `emotion=`/`action=`/`::music{mood}` value must be declared by the project first — an undeclared slot is the error `E-DOMAIN-UNKNOWN`. Below, each link points to a single documentation page on <https://lute-lang.vercel.app>.
 
@@ -31,6 +31,7 @@ Lute is deliberately non-Turing: every document is a finite, terminating artifac
 - [Reachability](https://lute-lang.vercel.app/connectivity/reachability/): How Lute proves whether a node has a satisfiable route under the `after` graph — the Reachable/Unreachable/Unknown verdicts.
 - [Guaranteed / Possible envelopes](https://lute-lang.vercel.app/connectivity/envelopes/): The per-node available-state analysis — the Guaranteed and Possible tables over run/user state and the Possible-minus-Guaranteed warning.
 - [CLI reference](https://lute-lang.vercel.app/tooling/cli/): Every `lute` subcommand — init, new, check, check-project, compile (including project-wide `--all` and `--locales`), run, trace, test, scenario (with `--format json|dot`), context, tag, fix, doctor, loc export/import/report, catalog refresh, version — with flags and exit codes.
+- [Schedule & play](https://lute-lang.vercel.app/tooling/schedule-and-play/): `schedule.yaml` — the tick clock, `user`/`world` lanes, and guarded placements that place a project's scenes in reading order — and `lute play`, the whole-project chained playthrough command with `--coverage` review-gap reporting.
 - [Runtime contract](https://lute-lang.vercel.app/tooling/runtime-contract/): The engine-side contract — what Lute emits (a versioned JSON IR plus CEL) and what an engine adapter must implement to play it: the command loop, CEL evaluation, facts, quest lifecycle, `::end` termination, and typed bridges.
 - [Tracing guide](https://lute-lang.vercel.app/tooling/tracing/): Preview a scene before shipping — seeding state, facts, choices, events, and accepts via flags or a mock YAML file, and the `E-TRACE-*` refusals.
 - [Providers and catalog](https://lute-lang.vercel.app/tooling/providers-and-catalog/): Snapshot-first provider resolution, the `--providers` flag, `catalog refresh` re-stamping, and `capabilityVersion`.
@@ -43,7 +44,7 @@ Lute is deliberately non-Turing: every document is a finite, terminating artifac
 
 ## Specification
 
-- [Current specification](https://lute-lang.vercel.app/spec/current/): The consolidated index of what the language enforces today at 0.10.2 — each language area mapped to the proposal that introduced or last changed it.
+- [Current specification](https://lute-lang.vercel.app/spec/current/): The consolidated index of what the language enforces today at 0.11.0 — each language area mapped to the proposal that introduced or last changed it.
 - [Specification index](https://lute-lang.vercel.app/spec/): The versioned Lute spec stack — every scenario-DSL revision plus the plugin-system and character-cast proposals, linking the normative repository sources.
 - [Normative proposals](https://github.com/journeyWorker/lute/tree/main/docs/proposals): The repository proposal files are the normative source of truth; the website is the readable companion.
 
