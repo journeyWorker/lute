@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.10.2"
+luteVersion: "0.11.0"
 character: detective
 season: 1
 episode: 3

@@ -112,6 +112,11 @@ export default defineConfig({
           translations: { ko: "툴링" },
           items: [
             { slug: "tooling/cli" },
+            {
+              slug: "tooling/schedule-and-play",
+              label: "Schedule & play",
+              translations: { ko: "스케줄과 플레이" },
+            },
             { slug: "tooling/runtime-contract" },
             { slug: "tooling/tracing" },
             { slug: "tooling/providers-and-catalog" },

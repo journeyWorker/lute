@@ -265,3 +265,46 @@ fn run_refuses_an_ineligible_hub_visit_but_not_one_an_earlier_visit_enabled() {
     );
     assert!(oktext.contains("narrator: gated."), "{oktext}");
 }
+
+/// Regression: a `<when is="…">` arm compiles to an EMPTY raw `test` plus a
+/// structured `expr` (IR A13). The runner used to evaluate only `test`, so
+/// EVERY `is` arm read unknown and the whole match fell through to
+/// `<otherwise>` — first observed as six onboarding routes all greeting the
+/// player with the otherwise-arm line. The runner must read the compiled
+/// `expr` surface.
+#[test]
+fn match_is_arm_selects_on_compiled_expr_not_raw_test() {
+    let dir = temp_dir("match-is");
+    let src = dir.join("source.lute");
+    let art = dir.join("artifact.json");
+    std::fs::write(
+        &src,
+        "---\nkind: scene\nluteVersion: \"0.10.0\"\ncharacter: hero\nseason: 1\nepisode: 1\ntitle: T\n\
+         state:\n  run.who: { type: { enum: [a, b] }, default: a }\n---\n\n## Shot 1.\n\n\
+         <match on=\"run.who\">\n<when is=\"a\">\n@narrator: arm-a.\n</when>\n<when is=\"b\">\n@narrator: arm-b.\n</when>\n\
+         <otherwise>\n@narrator: fell-through.\n</otherwise>\n</match>\n",
+    )
+    .unwrap();
+    let out = Command::new(BIN)
+        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "compile: {}", String::from_utf8_lossy(&out.stderr));
+
+    let mock = dir.join("mock.yaml");
+    std::fs::write(&mock, "state:\n  run.who: b\n").unwrap();
+    let out = Command::new(BIN)
+        .args(["run", art.to_str().unwrap(), "--mock", mock.to_str().unwrap()])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("arm-b."), "the is=b arm must play: {text}");
+    assert!(!text.contains("fell-through."), "otherwise must not play: {text}");
+    assert!(!text.contains("arm-a."), "{text}");
+
+    // Default state (run.who=a) picks arm-a — both directions decided, never otherwise.
+    let out = Command::new(BIN).args(["run", art.to_str().unwrap()]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(text.contains("arm-a.") && !text.contains("fell-through."), "{text}");
+}

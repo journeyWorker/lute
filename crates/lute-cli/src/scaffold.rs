@@ -2,7 +2,7 @@
 //!
 //! Every generated artifact is designed to pass the checker CLEAN: `lute init`
 //! output survives `lute check-project <dir>`, and `lute new` output survives
-//! `lute check <file>`. Frontmatter stamps `luteVersion: "0.10.2"` (the current
+//! `lute check <file>`. Frontmatter stamps `luteVersion: "0.11.0"` (the current
 //! [`lute_check::LUTE_LANG_VERSION`]) so no `W-LUTE-VERSION-STALE` fires, and
 //! every read state path carries a `default:` so single-file definite
 //! assignment holds without a cross-scene envelope.

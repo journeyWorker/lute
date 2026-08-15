@@ -1,6 +1,6 @@
 //! `lute run` — the reference headless runner over a COMPILED artifact
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.10.schema.json`).
+//! `schemas/lute-ir-0.11.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
 //! artifact (`lute compile` output), gates on `irVersion` by **major.minor**
@@ -66,7 +66,7 @@ use std::process::ExitCode;
 
 use lute_cel::CelArena;
 use lute_check::{RelVocab, StateSchema};
-use lute_trace::{eval, EffectiveState, EvalEnv, FactStore, Value};
+use lute_trace::{eval, EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value};
 use serde_json::{json, Value as Json};
 
 /// The IR major.minor line this reference runner implements, derived from
@@ -79,8 +79,11 @@ fn impl_ir_line() -> (u64, u64) {
         .expect("LUTE_IR_VERSION must carry a major.minor prefix")
 }
 
-/// A ground fact: `(relation, args)`.
-type Fact = (String, Vec<String>);
+/// A ground fact: `(relation, args)`. `pub(crate)` (design spec
+/// docs/superpowers/specs/2026-08-14-lute-schedule-and-play-design.md §4.2):
+/// `lute play`'s chained evaluator carries this shape across scene
+/// boundaries via [`RunnerOutcome`]/[`Runner::with_carryover`].
+pub(crate) type Fact = (String, Vec<String>);
 
 /// Execute a compiled artifact against a mock playthrough. See [`crate::Command::Run`].
 pub fn run_artifact(artifact: &Path, mock: Option<&Path>, json_out: bool) -> ExitCode {
@@ -221,8 +224,11 @@ enum Step {
     Halt,
 }
 
-/// The reference engine over one artifact.
-struct Runner {
+/// The reference engine over one artifact. `pub(crate)` (design spec §4.2):
+/// `lute play`'s chained evaluator (`play.rs`) drives one `Runner` per
+/// scheduled scene, threading state/facts/quest status across instances via
+/// [`RunnerOutcome`]/[`Runner::with_carryover`] — never a second dispatcher.
+pub(crate) struct Runner {
     kind: String,
     commands: Vec<Json>,
     /// `addr → index` in `commands`.
@@ -270,10 +276,53 @@ struct Runner {
     terminated: bool,
     /// An unknown command `kind` or malformed record (exit 2).
     fatal: Option<String>,
+    /// Every [`UnresolvedAtom`] any CEL evaluation this walk performed
+    /// produced ([`Runner::eval_raw`]'s one chokepoint). `lute run` never
+    /// reads this — its exit code/output are byte-identical to before this
+    /// field existed; it exists for [`RunnerOutcome`] to hand to `lute
+    /// play`'s §4.5 honesty gate.
+    unresolved: Vec<UnresolvedAtom>,
+    /// `lute play --auto first` (design spec §4.4, review fix #6): when a
+    /// hub's scripted `choose:` sequence is exhausted mid-walk (no more
+    /// route-script/`--choose` entries for this re-presentation) and
+    /// eligible options remain, [`Runner::do_hub`] auto-selects the FIRST
+    /// still-eligible option live rather than halting incomplete — applied
+    /// at EVERY re-presentation, not just once. `false` for `lute run`'s
+    /// own [`Runner::new`] (no `--auto` surface there); `lute play` sets it
+    /// via [`Runner::with_auto_first`].
+    auto_first: bool,
+}
+
+/// `lute play`'s per-scene carryover + transcript-reuse surface (assignment
+/// contract points b/c): everything the chained walk needs to seed the NEXT
+/// scene's [`Runner::with_carryover`], plus the machine transcript play.rs's
+/// own renderer reuses verbatim instead of re-implementing per-`kind`
+/// rendering rules a second time.
+pub(crate) struct RunnerOutcome {
+    pub state: BTreeMap<String, Value>,
+    pub base_facts: BTreeSet<Fact>,
+    pub quest_status: BTreeMap<String, String>,
+    /// dsl 0.8.0 `::end` executed: the WHOLE playthrough is over (design spec
+    /// §4.2 "`::end` terminates the whole playthrough"), not just this scene.
+    pub terminated: bool,
+    /// A `choice`/`hub` was reached with no route-script/`--auto` decision.
+    pub incomplete: bool,
+    /// See [`Runner::unresolved`] — the §4.5 honesty-gate signal.
+    pub unresolved: Vec<UnresolvedAtom>,
+    pub transcript: Vec<Json>,
 }
 
 impl Runner {
-    fn new(art: &Json, mock: lute_trace::MockSet) -> Self {
+    /// Build a Runner skeleton straight off an artifact: addr map, typed
+    /// state table (types only — NOT yet seeded with defaults; see below),
+    /// parsed Datalog rules/strata. Live `state`/`base_facts` start EMPTY
+    /// here — [`Runner::new`] (fresh `lute run` walk) seeds them from the
+    /// artifact's own `state[].default`/`seedFacts`; [`Runner::with_carryover`]
+    /// (`lute play`'s chained walk, design spec §4.2) seeds them from the
+    /// PRIOR scene's [`RunnerOutcome`] instead. Both then layer `mock`'s own
+    /// `state:`/`facts:` seeds on top via [`Runner::apply_mock_seeds`] — the
+    /// one place that override rule lives.
+    fn blank(art: &Json, mock: lute_trace::MockSet) -> Self {
         let kind = art.get("kind").and_then(Json::as_str).unwrap_or("scene").to_string();
         let commands = art.get("commands").and_then(Json::as_array).cloned().unwrap_or_default();
 
@@ -330,7 +379,7 @@ impl Runner {
         }
         let strata = compute_strata(&rules, &derived);
 
-        let mut runner = Runner {
+        Runner {
             kind,
             commands,
             addr_index,
@@ -349,24 +398,74 @@ impl Runner {
             incomplete: false,
             terminated: false,
             fatal: None,
-        };
+            unresolved: Vec::new(),
+            auto_first: false,
+        }
+    }
 
-        // Apply mock state seeds (override defaults), coerced by declared type.
-        let seeds: Vec<(String, String)> =
-            runner.mock.state.iter().map(|(p, lit, _)| (p.clone(), lit.clone())).collect();
-        for (path, lit) in seeds {
-            let v = runner.coerce_literal(&path, &lit);
-            runner.state.insert(path, v);
-        }
-        // Mock facts join the base set (they are supplied ground answers).
-        let mock_facts: Vec<String> = runner.mock.facts.clone();
-        for f in mock_facts {
-            if let Some(fact) = parse_ground_fact(&f) {
-                runner.base_facts.insert(fact);
-            }
-        }
+    fn new(art: &Json, mock: lute_trace::MockSet) -> Self {
+        let mut runner = Self::blank(art, mock);
+        runner.apply_mock_seeds();
         runner.recompute_facts();
         runner
+    }
+
+    /// `lute play`'s chained-evaluation constructor (design spec §4.2):
+    /// seeds live state/facts/quest status from a PRIOR scene's
+    /// [`RunnerOutcome`] instead of this artifact's own declared defaults —
+    /// `play.rs` already decided what carries forward across the scene
+    /// boundary (its own state-tier filter: `run.*`/`user.*`/`app.*`/
+    /// `quest.*` persist, `scene.*` resets); this constructor does not
+    /// re-derive that policy, only accepts its result. This scene's OWN mock
+    /// (a route-script's per-event `choose:`, if it also carries a local
+    /// seed) still layers on top afterward via [`Runner::apply_mock_seeds`],
+    /// identically to how [`Runner::new`] layers `--mock` over the artifact
+    /// defaults.
+    pub(crate) fn with_carryover(
+        art: &Json,
+        mock: lute_trace::MockSet,
+        initial_state: BTreeMap<String, Value>,
+        initial_facts: BTreeSet<Fact>,
+        initial_quests: BTreeMap<String, String>,
+    ) -> Self {
+        let mut runner = Self::blank(art, mock);
+        runner.state = initial_state;
+        runner.base_facts = initial_facts;
+        runner.quest_status = initial_quests;
+        runner.apply_mock_seeds();
+        runner.recompute_facts();
+        runner
+    }
+
+    /// `lute play --auto first` (review fix #6): opts THIS runner's
+    /// [`Runner::do_hub`] into live per-re-presentation auto-selection once
+    /// its scripted `choose:` sequence runs out. Builder-style so
+    /// [`Runner::with_carryover`]'s own signature (already mirrored by
+    /// every call site) never needs another positional parameter.
+    pub(crate) fn with_auto_first(mut self, auto_first: bool) -> Self {
+        self.auto_first = auto_first;
+        self
+    }
+
+    /// Layer `self.mock`'s `state:`/`facts:` seeds over whatever live
+    /// state/facts the constructor already set (override, per path/fact —
+    /// never a reset): shared by [`Runner::new`] (over the artifact's own
+    /// defaults) and [`Runner::with_carryover`] (over the prior scene's
+    /// carryover), so the "mock wins on conflict" rule applies identically
+    /// either way.
+    fn apply_mock_seeds(&mut self) {
+        let seeds: Vec<(String, String)> =
+            self.mock.state.iter().map(|(p, lit, _)| (p.clone(), lit.clone())).collect();
+        for (path, lit) in seeds {
+            let v = self.coerce_literal(&path, &lit);
+            self.state.insert(path, v);
+        }
+        let mock_facts: Vec<String> = self.mock.facts.clone();
+        for f in mock_facts {
+            if let Some(fact) = parse_ground_fact(&f) {
+                self.base_facts.insert(fact);
+            }
+        }
     }
 
     /// Coerce a raw mock literal against a path's declared value-type.
@@ -401,7 +500,14 @@ impl Runner {
 
     /// Evaluate a `raw` CEL fragment over live state + the current fixpoint.
     /// Reuses `lute_cel` (parse) + `lute_trace::eval` (the one CEL evaluator).
-    fn eval_raw(&self, raw: &str) -> Value {
+    /// The one chokepoint every CEL evaluation in this walk funnels through,
+    /// so recording each produced [`UnresolvedAtom`] into `self.unresolved`
+    /// here (rather than at each call site) covers guards, `::set` RHS
+    /// values, and quest predicates alike with one line. `lute run` itself
+    /// never reads `self.unresolved` — its own output/exit code are
+    /// unchanged; the field exists for `lute play`'s §4.5 honesty gate
+    /// ([`RunnerOutcome::unresolved`]).
+    fn eval_raw(&mut self, raw: &str) -> Value {
         if raw.trim().is_empty() {
             return Value::Unknown;
         }
@@ -421,15 +527,97 @@ impl Runner {
         }
         let env = EvalEnv { state: &eff, facts: &fs };
         let mut unresolved = Vec::new();
-        eval(&ided.expr, &env, &mut unresolved)
+        let v = eval(&ided.expr, &env, &mut unresolved);
+        self.unresolved.extend(unresolved);
+        v
     }
 
     /// `Some(bool)` for a decided guard, `None` when unknown.
-    fn truthy(&self, raw: &str) -> Option<bool> {
+    fn truthy(&mut self, raw: &str) -> Option<bool> {
         match self.eval_raw(raw) {
             Value::Bool(b) => Some(b),
             _ => None,
         }
+    }
+
+    /// Truthiness of an IR structured `expr` node (`lute_compile::expr::ExprNode`'s
+    /// serialized shape — `lit`/`path`/`op`/`cond`/`list`/`isSet`/`has`), the
+    /// executable surface a compiled `<when is=…>` match arm carries (IR A13).
+    /// Three-valued like [`Runner::truthy`]: `None` = unknown, never a guess.
+    fn expr_node_truthy(&mut self, node: &Json) -> Option<bool> {
+        match self.expr_node_value(node) {
+            Value::Bool(b) => Some(b),
+            _ => None,
+        }
+    }
+
+    /// Evaluate one structured expr node against live state. Total over the
+    /// `ExprNode` kind set; anything unimplementable against the runner's
+    /// state model (`isSet`/`has` set-ness tracking, an unknown operator)
+    /// evaluates `Unknown` rather than crashing or guessing — the same
+    /// honesty rule every other guard surface follows.
+    fn expr_node_value(&mut self, node: &Json) -> Value {
+        if let Some(lit) = node.get("lit") {
+            return json_to_value(lit).unwrap_or(Value::Unknown);
+        }
+        if let Some(path) = node.get("path").and_then(Json::as_str) {
+            return self.state.get(path).cloned().unwrap_or(Value::Unknown);
+        }
+        if let (Some(cond), Some(then), Some(otherwise)) = (node.get("cond"), node.get("then"), node.get("else")) {
+            return match self.expr_node_value(cond) {
+                Value::Bool(true) => self.expr_node_value(then),
+                Value::Bool(false) => self.expr_node_value(otherwise),
+                _ => Value::Unknown,
+            };
+        }
+        if let Some(op) = node.get("op").and_then(Json::as_str) {
+            let l = node.get("l").map(|n| self.expr_node_value(n)).unwrap_or(Value::Unknown);
+            let r = node.get("r").map(|n| self.expr_node_value(n));
+            return match (op, r) {
+                ("!", None) => match l {
+                    Value::Bool(b) => Value::Bool(!b),
+                    _ => Value::Unknown,
+                },
+                ("-", None) => match l {
+                    Value::Num(n) => Value::Num(-n),
+                    _ => Value::Unknown,
+                },
+                ("&&", Some(r)) => match (l, r) {
+                    (Value::Bool(false), _) | (_, Value::Bool(false)) => Value::Bool(false),
+                    (Value::Bool(true), Value::Bool(true)) => Value::Bool(true),
+                    _ => Value::Unknown,
+                },
+                ("||", Some(r)) => match (l, r) {
+                    (Value::Bool(true), _) | (_, Value::Bool(true)) => Value::Bool(true),
+                    (Value::Bool(false), Value::Bool(false)) => Value::Bool(false),
+                    _ => Value::Unknown,
+                },
+                ("==", Some(r)) => expr_node_eq(&l, &r).map(Value::Bool).unwrap_or(Value::Unknown),
+                ("!=", Some(r)) => expr_node_eq(&l, &r).map(|b| Value::Bool(!b)).unwrap_or(Value::Unknown),
+                ("<", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o == std::cmp::Ordering::Less)).unwrap_or(Value::Unknown),
+                ("<=", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o != std::cmp::Ordering::Greater)).unwrap_or(Value::Unknown),
+                (">", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o == std::cmp::Ordering::Greater)).unwrap_or(Value::Unknown),
+                (">=", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o != std::cmp::Ordering::Less)).unwrap_or(Value::Unknown),
+                ("+", Some(r)) => match (l, r) {
+                    (Value::Num(a), Value::Num(b)) => Value::Num(a + b),
+                    (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
+                    _ => Value::Unknown,
+                },
+                ("-", Some(r)) | ("*", Some(r)) | ("/", Some(r)) | ("%", Some(r)) => match (l, r) {
+                    (Value::Num(a), Value::Num(b)) => match op {
+                        "-" => Value::Num(a - b),
+                        "*" => Value::Num(a * b),
+                        "/" if b != 0.0 => Value::Num(a / b),
+                        "%" if b != 0.0 => Value::Num(a % b),
+                        _ => Value::Unknown,
+                    },
+                    _ => Value::Unknown,
+                },
+                _ => Value::Unknown,
+            };
+        }
+        // `list` / `isSet` / `has` / anything newer: no runner-side model yet.
+        Value::Unknown
     }
 
     /// Resolve a control-flow target `addr` to a command index. A `converge`
@@ -448,7 +636,11 @@ impl Runner {
         self.commands.len()
     }
 
-    fn run(&mut self) -> Result<(), String> {
+    /// Drive the whole walk. See [`crate::Command::Run`] for the `lute run`
+    /// caller; `lute play` (design spec §4.2) calls this once per scheduled
+    /// scene, then [`Runner::into_outcome`] instead of [`Runner::print_json`]/
+    /// [`Runner::print_human`].
+    pub(crate) fn run(&mut self) -> Result<(), String> {
         if self.kind == "quest" {
             self.run_quest();
         } else {
@@ -457,6 +649,22 @@ impl Runner {
         match self.fatal.take() {
             Some(msg) => Err(msg),
             None => Ok(()),
+        }
+    }
+
+    /// Consume a Runner after [`Runner::run`] into `lute play`'s carryover +
+    /// transcript-reuse surface (assignment contract points b/c). Only
+    /// meaningful post-`run`; a pre-run outcome would just echo the seeds
+    /// back, which no caller has a reason to do.
+    pub(crate) fn into_outcome(self) -> RunnerOutcome {
+        RunnerOutcome {
+            state: self.state,
+            base_facts: self.base_facts,
+            quest_status: self.quest_status,
+            terminated: self.terminated,
+            incomplete: self.incomplete,
+            unresolved: self.unresolved,
+            transcript: self.transcript,
         }
     }
 
@@ -742,6 +950,17 @@ impl Runner {
         Step::Next(self.resolve(target))
     }
 
+    /// Design spec §4.4's hub re-presentation loop, done honestly (review
+    /// fix #6): a `choose:` sequence is consumed ONE decision at a time —
+    /// never the whole vector up front — so running out of scripted
+    /// decisions can be told apart from a genuine natural convergence.
+    /// Exhaustion with eligible options still standing halts incomplete
+    /// (`self.incomplete = true`, exit 3) UNLESS `self.auto_first` is set,
+    /// in which case the first still-eligible option is auto-selected —
+    /// applied at EVERY re-presentation the sequence has to fall back to,
+    /// not merely once. A bounded re-presentation count (`loop_guard`) is
+    /// the actual "loop guard" spec §4.4 implies: a hub authored with no
+    /// reachable exit option would otherwise spin `--auto first` forever.
     fn do_hub(&mut self, cmd: &Json) -> Step {
         let id = cmd.get("id").and_then(Json::as_str).unwrap_or("").to_string();
         let record_key = cmd.get("recordKey").and_then(Json::as_str).map(str::to_string);
@@ -761,9 +980,60 @@ impl Runner {
         boundaries.sort_unstable();
         boundaries.dedup();
 
-        let forced = match self.mock.choose.get(&id).cloned() {
-            Some(list) => list,
-            None => {
+        let forced: Vec<String> = self.mock.choose.get(&id).cloned().unwrap_or_default();
+        let mut forced_cursor = 0usize;
+        let loop_guard = options.len().saturating_mul(4).max(64);
+        let mut presentations = 0usize;
+
+        let mut visited_once: BTreeSet<String> = BTreeSet::new();
+        loop {
+            presentations += 1;
+            if presentations > loop_guard {
+                self.fatal = Some(format!(
+                    "hub `{id}` did not converge after {loop_guard} re-presentations under `--auto first` \
+                     (no reachable `exit` option)"
+                ));
+                return Step::Halt;
+            }
+
+            // Eligible = not an already-exhausted `once` option, and its
+            // guard does not DECIDE false right now (an unknown guard stays
+            // eligible — the same three-valued discipline `do_choice`'s
+            // guard refusal below uses).
+            let eligible: Vec<String> = options
+                .iter()
+                .filter_map(|o| {
+                    let oid = o.get("id").and_then(Json::as_str)?;
+                    let once = o.get("once").and_then(Json::as_bool).unwrap_or(false);
+                    if once && visited_once.contains(oid) {
+                        return None;
+                    }
+                    match o.get("when").and_then(Json::as_str) {
+                        Some(w) if self.truthy(w) == Some(false) => None,
+                        _ => Some(oid.to_string()),
+                    }
+                })
+                .collect();
+
+            let choice_id = if forced_cursor < forced.len() {
+                let c = forced[forced_cursor].clone();
+                forced_cursor += 1;
+                Some(c)
+            } else if self.auto_first {
+                eligible.first().cloned()
+            } else {
+                None
+            };
+
+            let Some(choice_id) = choice_id else {
+                if eligible.is_empty() {
+                    // Natural convergence: nothing left eligible to present.
+                    break;
+                }
+                // Review fix #6: the scripted sequence ran out but the hub
+                // would still be re-presented (eligible options remain) and
+                // no `--auto` policy is filling the gap — halt incomplete
+                // rather than silently converging.
                 self.incomplete = true;
                 self.transcript.push(json!({
                     "addr": addr(cmd),
@@ -773,11 +1043,8 @@ impl Runner {
                     "note": "no mock decision — incomplete",
                 }));
                 return Step::Halt;
-            }
-        };
+            };
 
-        let mut visited_once: BTreeSet<String> = BTreeSet::new();
-        for choice_id in forced {
             let opt = match options.iter().find(|o| o.get("id").and_then(Json::as_str) == Some(&choice_id)) {
                 Some(o) => o.clone(),
                 None => {
@@ -837,8 +1104,21 @@ impl Runner {
         let arms = cmd.get("arms").and_then(Json::as_array).cloned().unwrap_or_default();
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
         for (i, arm) in arms.iter().enumerate() {
-            let test = arm.get("test").and_then(Json::as_str).unwrap_or("");
-            if self.truthy(test) == Some(true) {
+            // An `is`-form arm compiles to an EMPTY `test` plus a structured
+            // `expr` (IR A13, `stage.rs::walk_match`) — the executable surface
+            // an engine must read. A `test`-form arm carries raw CEL. Prefer
+            // the structured expr whenever present; falling back to the raw
+            // `test` keeps pre-A13 artifacts working. Evaluating ONLY `test`
+            // here was a defect: every `is` arm read as empty→unknown and the
+            // whole match fell through to `otherwise`.
+            let matched = match arm.get("expr") {
+                Some(expr) => self.expr_node_truthy(expr),
+                None => {
+                    let test = arm.get("test").and_then(Json::as_str).unwrap_or("");
+                    self.truthy(test)
+                }
+            };
+            if matched == Some(true) {
                 let target = arm.get("target").and_then(Json::as_str).unwrap_or(converge);
                 self.transcript.push(json!({
                     "addr": addr(cmd),
@@ -1223,6 +1503,28 @@ impl Runner {
 }
 
 // ── free helpers ────────────────────────────────────────────────────────
+
+/// Value equality for structured-arm evaluation: same-type compares decide;
+/// an Unknown or cross-type pair is undecidable (`None`), mirroring CEL's
+/// three-valued reads rather than JS-style coercion.
+fn expr_node_eq(l: &Value, r: &Value) -> Option<bool> {
+    match (l, r) {
+        (Value::Bool(a), Value::Bool(b)) => Some(a == b),
+        (Value::Num(a), Value::Num(b)) => Some(a == b),
+        (Value::Str(a), Value::Str(b)) => Some(a == b),
+        _ => None,
+    }
+}
+
+/// Ordering for structured-arm comparison: numbers numerically, strings
+/// lexicographically; anything else undecidable.
+fn expr_node_cmp(l: &Value, r: &Value) -> Option<std::cmp::Ordering> {
+    match (l, r) {
+        (Value::Num(a), Value::Num(b)) => a.partial_cmp(b),
+        (Value::Str(a), Value::Str(b)) => Some(a.cmp(b)),
+        _ => None,
+    }
+}
 
 fn addr(cmd: &Json) -> &str {
     cmd.get("addr").and_then(Json::as_str).unwrap_or("")

@@ -155,7 +155,7 @@ mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.10.2**.
+compiles, traces, and inspects them. The current language version is **0.11.0**.
 
 ## Quick start with `bunx`
 
@@ -211,9 +211,9 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.10.2
-language      0.10.2
-IR schema     0.10.2
+lute toolchain 0.11.0
+language      0.11.0
+IR schema     0.11.0
 ```
 
 Those are three independent axes: the **toolchain** version is this CLI, the **language** version
@@ -227,10 +227,10 @@ its gate to accept `0.10`. For scripts and CI,
 
 ```
 $ lute version --json
-{"toolchain":"0.10.2","language":"0.10.2","ir":"0.10.2"}
+{"toolchain":"0.11.0","language":"0.11.0","ir":"0.11.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.10.2` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.11.0` — the toolchain axis alone.)
 
 ## Next
 
@@ -244,7 +244,7 @@ an empty file, running `lute` at every step.
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.10.2**.
+**0.11.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -473,8 +473,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.10.2",
-  "irVersion": "0.10.2",
+  "lute": "0.11.0",
+  "irVersion": "0.11.0",
   "capabilityVersion": "0678492f6996ff2d315f687e01fae26a7799c7a9d4c4ac14120cd3dc94ba3d07",
   "meta": {
     "character": "mira",
@@ -2462,6 +2462,17 @@ $ lute run <artifact> [--mock <FILE>] [--json]
 
 Execute a compiled artifact headlessly against a mock playthrough — the reference consumer of the [runtime contract](/tooling/runtime-contract/): command dispatch, CEL guards, the facts + Datalog fixpoint, hubs, and quest lifecycle. Distinct from `lute trace`, which previews *source*. `--mock` is a YAML playthrough (same surfaces as `lute trace --mock`); `--json` emits the transcript. Exit **0** complete, **1** refused, **2** I/O, **3** incomplete.
 
+## play
+
+```console
+$ lute play <PROJECT_DIR> [--state P=L]… [--fact "R(A…)"]…
+            [--script <FILE>] [--choose EVENT/ID=CHOICEID[,CHOICEID…]]…
+            [--auto first] [--lanes user|all] [--steps N] [--json]
+$ lute play <PROJECT_DIR> --coverage <FILE>… [--json]
+```
+
+Play one scheduled route through a whole project as one chained, reviewer-facing transcript — the reference-runtime consumer of a project's [`schedule.yaml`](/tooling/schedule-and-play/). Requires a schedule; a project with none is a hard error (exit **2**), since sibling route files are unguarded by design. Route selection is `--state`/`--fact` seeds, a `--script <route>.play.yaml` (this command's own closed grammar), and/or ad-hoc `--choose <event>/<id>=<choiceId>`; `--auto first` resolves anything left unscripted. `--coverage <FILE>` (repeatable, one file per flag) replays a corpus of route scripts and reports every never-exercised placement/variant/hub-choice option, exclusive with `--script`/`--choose`/`--steps`. Exit **0** complete (or full coverage), **1** an `E-SCHED-*` schedule/causality violation (or a coverage gap), **2** usage/I/O, **3** incomplete. Full reference: [Schedule & play](/tooling/schedule-and-play/).
+
 ## test
 
 ```console
@@ -2513,6 +2524,64 @@ $ lute version [--json]
 ```
 
 Print the three independent version axes ([versioning](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md)): the toolchain version, the language version, and the IR schema version. Distinct from clap's built-in `--version` (toolchain only). `--json` prints `{"toolchain":…,"language":…,"ir":…}`. Always exits **0**.
+
+---
+
+# Schedule & play
+
+`schedule.yaml` places a project's scenes on a tick clock instead of leaving reading order to file position; `lute play <PROJECT_DIR>` walks that schedule into one chained, reviewer-facing transcript — the order a player following one route actually sees. Both are toolchain-only: `schedule.yaml` carries no `kind:`, no `luteVersion:`, no capability fold, and neither the language nor the IR moved to add them. `lute play` refuses a project with no `schedule.yaml` outright (exit **2**): sibling route files are deliberately unguarded (file split *is* the route), so an `after:`-graph walk can't select one route through them.
+
+## `schedule.yaml`
+
+```yaml
+clock:
+  buckets: [dawn, morning, late_morning, afternoon, late_afternoon, evening, night, midnight]
+  ticksPerBucket: 12
+  days: 7
+
+lanes:
+  user:  { exclusive: true, idleThreshold: 0 }
+  world: { exclusive: false }
+
+assume:
+  - "run.inflow != 'none'"
+
+placements:
+  - event: kuhen
+    lane: user
+    at: d2.morning+0
+    size: 4
+    variants:
+      - when: "run.inflow == 'iroha'"
+        doc: scenes/kuhen/iroha.lute
+      - when: "run.inflow == 'reiha'"
+        doc: scenes/kuhen/reiha.lute
+        at: d2.afternoon+0
+        size: 6
+```
+
+`clock:` is `buckets` × `ticksPerBucket` × `days` (1-based, `d0` rejected). `lanes:` names any set of lanes; `exclusive: true` guards co-satisfiable placements against overlapping intervals (`E-SCHED-USER-OVERLAP`). `assume:` prunes route-space assignments the schedule can prove never occur from the static gap/ambiguity/overlap sweep — it narrows, never hides a real gap. Each `placements:` entry occupies `[at, at+size)` on one lane, either a single unguarded `doc:` or a `variants:` list (`when`/`doc`/`at?`/`size?`/`presentation?`) where at most one is satisfiable per route; `optional: true` legalizes zero satisfiable variants for some route. `presentation` (default `100`, lower first) decouples *when a scene is presented* from *when it happens on the clock* — a variant overriding its placement's `at`/`size`/`presentation` is how the same event sits at a different position per route.
+
+`at:` is `[dN.]<bucket>+<tick>` (`dN.` optional, defaults to day 1; `0 ≤ tick < ticksPerBucket`) or a bare absolute tick integer. A malformed shape is `E-SCHED-AT-PARSE`; a well-formed coordinate resolving past the clock is the different code `E-SCHED-CLOCK-OVERFLOW`. An omitted `at:` inherits the previous same-lane placement's resolved `at + size`, unless that predecessor is itself route-dependent (`E-SCHED-CURSOR-DYNAMIC`). Execution order is a later, separate sort: `(presentation, resolved at, declaration index)`.
+
+## `lute play`
+
+```console
+$ lute play <PROJECT_DIR>
+    --state run.inflow=iroha ... --fact "..." ...
+    --script routes/iroha.play.yaml --choose kuhen/coffeeOrder=recommend ...
+    --auto first --lanes user|all --steps N --coverage <FILE>... --json
+```
+
+Compiles the whole gated project once (scene *and* quest kind, the same declaration union `compile --all` writes), then walks the schedule's user-lane placements in presentation order, threading `run.*`/`user.*`/`app.*`/`quest.*` state and facts across scene boundaries through `lute run`'s own reference evaluator. Route selection is `--state`/`--fact` seeds, a `--script <route>.play.yaml` (its own closed grammar — event-qualified `choose:` ids, never the `lute trace --mock` parser), and/or ad-hoc `--choose <event>/<id>=<choiceId>`; `--auto first` resolves anything left unscripted at every hub re-presentation. A non-`optional` placement with zero satisfiable variants is `E-SCHED-VARIANT-GAP`, two or more is `E-SCHED-VARIANT-AMBIG`, an `after:` unsatisfied in presentation order is `E-SCHED-AFTER-ORDER` — all three halt exit **1**. Quest state is data-unioned project-wide but the `<quest>`/`<on>` lifecycle is never driven across scene boundaries — `completed(...)`/`active(...)` always evaluate against an empty set, so a placement causally gated on quest completion always halts `E-SCHED-AFTER-ORDER` (exit **1**), never silently passes.
+
+After a user placement completes, every not-yet-fired world placement whose start tick falls inside the segment just covered drains atomically, in `(at, declaration index)` order, even under `--lanes user` (world scenes still execute; the flag only gates the transcript). A presentation jump backward starts a new segment, purely cinematic — no state rolls back. A world placement draining inside a segment that plays "in the future" of a later-presented one is `W-SCHED-WORLD-IN-FLASHBACK`.
+
+`--coverage <FILE>` (repeatable, one file per flag — no glob expansion inside the flag itself; a shell glob passed directly is a clap usage error) replays every named route script and reports every placement/variant/hub-choice option the corpus never exercises, exclusive with `--script`/`--choose`/`--steps`. Exit **0** complete (or full coverage), **1** an `E-SCHED-*` violation (or a coverage gap), **2** usage/I/O (including no `schedule.yaml` at all), **3** incomplete — an unscripted decision with no `--auto` policy, or an unresolved reference-runtime surface (`now()`/`validAt(...)`, an unresolved plugin `bridgeResult` effect), or (for `--coverage`) at least one corpus script itself halting incomplete.
+
+Transcript headers read `── <tickLabel> (tick <N>) · <lane> · <event>/<variant> ──`; `⏩`/`⏪` mark fast-forward and cinematic rewind; `▷ choice <id>: opt1 [chosen] opt2 ← chosen: opt2` restates every offered option per decision. `--json` emits `{exit, endReason, scenes: [...]}`, deterministic — same seeds and script produce byte-identical output.
+
+**Diagnostics** — fifteen static errors (`E-SCHED-CLOCK-STRUCTURE`, `E-SCHED-BUCKET-DUP`, `E-SCHED-LANE-UNKNOWN`, `E-SCHED-EVENT-DUP`, `E-SCHED-VARIANT-FORM`, `E-SCHED-SIZE-INVALID`, `E-SCHED-AT-PARSE`, `E-SCHED-CURSOR-DYNAMIC`, `E-SCHED-CLOCK-OVERFLOW`, `E-SCHED-DOC-MISSING`, `E-SCHED-DOC-PATH`, `E-SCHED-VARIANT-GAP`, `E-SCHED-VARIANT-AMBIG`, `E-SCHED-USER-OVERLAP`, `E-SCHED-GUARD-PARSE`), one runtime error (`E-SCHED-AFTER-ORDER`), and five warnings (`W-SCHED-DOC-UNPLACED`, `W-SCHED-IDLE`, `W-SCHED-ROUTESPACE-CAP`, `W-SCHED-TIME-MISMATCH`, `W-SCHED-WORLD-IN-FLASHBACK`). Full field-by-field reference and the complete diagnostic table: [Schedule & play](/tooling/schedule-and-play/).
 
 ---
 
@@ -3177,7 +3246,7 @@ For the complete project — the plugin manifests, schemas, component, catalog, 
 
 # Current specification
 
-The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.10.2**: for each language area, which proposal introduced it, which last changed it, and the normative source.
+The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.11.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -3214,7 +3283,7 @@ Notes on the boundaries:
 
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.10.2**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.11.0**.
 
 ## Scenario DSL (the language)
 
@@ -3235,7 +3304,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.9.0 | **Vocabulary ownership**: the compiler declares the seven content-vocabulary *slots* (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) and ships **no members**, so every member is the project's, declared inline, in a schema reached through `uses:`, or by a plugin's `enums` export; the `enums:` long form's `exits:`/`default:` carries the member semantics two hardcoded name heuristics used to guess; using a slot nobody declared is `E-DOMAIN-UNKNOWN` instead of silently unchecked; and five root-only check stages now run over imported component bodies. **Breaking** for documents that use a slot. The IR re-aligned to `0.9.0` and was shape-identical to `0.8.0`. | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | 0.10.0 | **the toolchain says what it knows**: thirteen changes, each closing a place where the checker held the answer and did not say it. `::set` types its right-hand side against the path it writes (`E-SET-TYPE`); the six logic tags close their attribute sets (`E-UNKNOWN-ATTR`, `E-AS-REMOVED`); a quest gate that can never open is an error and a contradictory objective pair is `E-OBJECTIVE-CONTRADICTION`; `lute.project.yaml` gains `defaults:`; nested manifests are validated by every command that walks them; `mocks/*.yaml` is checked and requires `file:`; timeline time is integer milliseconds; four new warnings land and `W-INJECT-CONFLICT` is **removed** because its only trigger was agreement. **Breaking** for documents (§§3, 4, 5) and for mocks. The **IR shape changes for the first time since `0.8.0`** — `provenance.reason` becomes `provenance.explanation`, so an engine gated on IR `0.9` must widen to `0.10`. | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
 | 0.10.1 | **alignment only**: no grammar production, no static-semantic rule, no IR shape change; `0.10.0` semantics byte for byte. The release's two fixes are toolchain — `lute test` gains `--project` so a document that reaches its schema or its directives through a manifest can be tested at all, and an `assetKind` segment declared with a `Type` outside the closed segment production is rejected at plugin load instead of enforcing nothing. Written down because a language version absent from this stack cannot be told apart from one nobody recorded. | [0.10.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.1.md) |
-| **0.10.2** | Current tip — **alignment only on the language axis; the IR axis is not**: no grammar production, no static-semantic rule (`0.10.1`/`0.10.0` semantics byte for byte). The release is one IR/toolchain change — a plugin-owned, checker-validated frontmatter key now reaches the compiled artifact (`meta.plugin`) instead of being discarded at compile time (plugin-system `0.0.4`). Additive only: no engine gate widens, since `0.10.2` shares major.minor `0.10` with `0.10.0`/`0.10.1`. | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
+| 0.10.2 | **Alignment only on the language axis; the IR axis is not**: no grammar production, no static-semantic rule (`0.10.1`/`0.10.0` semantics byte for byte). The release is one IR/toolchain change — a plugin-owned, checker-validated frontmatter key now reaches the compiled artifact (`meta.plugin`) instead of being discarded at compile time (plugin-system `0.0.4`). Additive only: no engine gate widens, since `0.10.2` shares major.minor `0.10` with `0.10.0`/`0.10.1`. | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
+| **0.11.0** | Current tip — **alignment only, on BOTH axes**: no grammar production, no static-semantic rule, no IR shape or content change (`0.10.2`/`0.10.1`/`0.10.0` semantics byte for byte). The release is entirely toolchain — a `schedule.yaml` project-file layer and `lute play`, a whole-project chained-playthrough command with `--coverage` review-gap reporting, plus two shared-reference-runner fixes. Unlike `0.10.1`/`0.10.2`, this one is not free for a consuming engine: the IR's `major.minor` moves anyway (`0.10` → `0.11`, alignment moves every number every release), so an engine gated on IR `0.10` must widen its gate to `0.11`, and `schemas/lute-ir-0.10.schema.json` is renamed to `schemas/lute-ir-0.11.schema.json` under the `0.7.0` precedent. | [0.11.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals
