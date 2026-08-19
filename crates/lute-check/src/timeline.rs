@@ -614,6 +614,7 @@ mod tests {
                 value_span: span(),
                 span: span(),
             }],
+            when: None,
             span: span(),
         }
     }
@@ -759,6 +760,7 @@ mod tests {
                 value_span: span(),
                 span: span(),
             }],
+            when: None,
             span: span(),
         })
     }
@@ -781,6 +783,7 @@ mod tests {
         ClipNode::Directive(Directive {
             tag: tag.into(),
             attrs: vec![],
+            when: None,
             span: span(),
         })
     }
@@ -848,6 +851,7 @@ mod tests {
                         span: span(),
                     },
                 ],
+                when: None,
                 span: span(),
             }),
             at: None,
@@ -865,6 +869,7 @@ mod tests {
                     value_span: span(),
                     span: span(),
                 }],
+                when: None,
                 span: span(),
             }),
             at: None,
@@ -1047,6 +1052,7 @@ mod tests {
                             value_span: span(),
                             span: span(),
                         }],
+                        when: None,
                         span: span(),
                     }),
                     at: Some(ClipAt {

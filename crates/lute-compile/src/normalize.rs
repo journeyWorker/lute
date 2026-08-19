@@ -96,6 +96,29 @@ fn normalize_nodes(
             i += 1;
             continue;
         }
+        // dsl 0.12.0: a GUARDED `::next{to when}` desugars to a one-arm
+        // `<match>` the SAME way a gated line does (`synth_when_next_match`
+        // mirrors `synth_when_match` exactly, wrapping the directive
+        // instead of the line) — so `stage::walk_match`'s existing two-arm
+        // lowering handles both fall-through cases with zero new code.
+        let is_gated_next = matches!(
+            &nodes[i],
+            Node::Directive(d) if d.tag == lute_manifest::core::NEXT_DIRECTIVE && d.when.is_some()
+        );
+        if is_gated_next {
+            let d = match nodes.remove(i) {
+                Node::Directive(d) => d,
+                other => {
+                    // Structurally impossible (guarded above); stay total.
+                    nodes.insert(i, other);
+                    i += 1;
+                    continue;
+                }
+            };
+            nodes.insert(i, synth_when_next_match(d));
+            i += 1;
+            continue;
+        }
         match &mut nodes[i] {
             Node::Branch(b) => {
                 for c in &mut b.choices {
@@ -184,6 +207,44 @@ fn synth_when_match(mut line: Line) -> Node {
                 test,
                 attrs: Vec::new(),
                 body: vec![Node::Line(line)],
+                span,
+            },
+            Arm::Otherwise {
+                attrs: Vec::new(),
+                body: Vec::new(),
+                span,
+            },
+        ],
+        span,
+    })
+}
+
+/// dsl 0.12.0: `Node::Directive{tag:"next", when: Some(g), ..}` →
+/// `Node::Match{ subject: g, arms: [When{test: "$", body: [the next,
+/// when=None]}, Otherwise{body: []}] }` — mirrors [`synth_when_match`]
+/// EXACTLY (same hoisted subject, same synthesized `"$"` test arm, same
+/// implicit empty `<otherwise>` fall-through), so `stage::walk_match` lowers
+/// a guarded `::next` through the IDENTICAL two-arm machinery a gated line
+/// already uses — no new lowering code. `d.when` is cleared on the nested
+/// copy so a re-normalized desugared `::next` can never re-enter this
+/// rewrite (idempotent by construction, mirrors `synth_when_match`).
+fn synth_when_next_match(mut d: Directive) -> Node {
+    let guard = d
+        .when
+        .take()
+        .expect("caller guarantees `d.when.is_some()`");
+    let span = d.span;
+    let test = CelSlot::raw(CelKind::Condition, "$".to_string(), span);
+    Node::Match(Match {
+        subject: guard,
+        // Synthesized, not authored: no residual attributes exist.
+        attrs: Vec::new(),
+        arms: vec![
+            Arm::When {
+                is: None,
+                test,
+                attrs: Vec::new(),
+                body: vec![Node::Directive(d)],
                 span,
             },
             Arm::Otherwise {
@@ -296,11 +357,13 @@ fn expand_use(
             value_span: span,
             span,
         }],
+        when: None,
         span,
     });
     let end = Node::Directive(Directive {
         tag: COMPONENT_END.to_string(),
         attrs: Vec::new(),
+        when: None,
         span,
     });
     let mut out = Vec::with_capacity(body.len() + 2);

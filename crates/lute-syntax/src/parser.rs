@@ -446,6 +446,11 @@ impl Parser<'_> {
     // -- leaf nodes ------------------------------------------------------------
 
     /// `Directive ::= "::" Ident Attrs?` (§7.2). Layer = Staging.
+    ///
+    /// dsl 0.12.0 §…: `::next{to when?}`'s `when` is extracted into a typed
+    /// CEL slot the SAME way `Line.when`/`Choice.when` are (`take_cel`) —
+    /// scoped to `tag == "next"` only, so every OTHER directive's `when=`
+    /// (were one ever authored) stays an ordinary residual attr, unchanged.
     fn parse_directive(&mut self) -> Node {
         let i = self.cursor;
         let (s, e) = self.lines[i];
@@ -457,15 +462,20 @@ impl Parser<'_> {
             j += 1;
         }
         let tag = self.body[id_start..j].to_string();
-        let (attrs, end) = if j < e && b[j] == b'{' {
+        let (mut attrs, end) = if j < e && b[j] == b'{' {
             let (attrs, after) = self.scan_attrs(j + 1, b'}');
             (attrs, after)
         } else {
             (Vec::new(), j)
         };
+        let when = if tag == "next" {
+            attrs::take_cel(&mut attrs, "when", CelKind::Condition)
+        } else {
+            None
+        };
         let span = self.span(cstart, end);
         self.cursor += 1;
-        Node::Directive(Directive { tag, attrs, span })
+        Node::Directive(Directive { tag, attrs, when, span })
     }
 
     /// `Set ::= "::set{" Path WS AssignOp WS CelExpr "}"` (§7.3.4). Layer = Logic.

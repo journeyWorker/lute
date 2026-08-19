@@ -699,6 +699,7 @@ mod tests {
         Node::Directive(Directive {
             tag: "auto".to_string(),
             attrs,
+            when: None,
             span: span(),
         })
     }
@@ -818,6 +819,7 @@ mod tests {
         let bg = Node::Directive(Directive {
             tag: "bg".to_string(),
             attrs: vec![attr("location", "cafe")],
+            when: None,
             span: span(),
         });
         let (st2, injected) = lower_node(st, &bg, &[], &anchor_domain("center"));
@@ -1353,6 +1355,7 @@ mod tests {
         let bg = Node::Directive(Directive {
             tag: "bg".to_string(),
             attrs: vec![attr("location", "hold")],
+            when: None,
             span: span(),
         });
         let (st, _) = lower_node(st, &bg, &[], &doms);

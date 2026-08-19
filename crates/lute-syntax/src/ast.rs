@@ -57,6 +57,14 @@ pub struct Line {
 pub struct Directive {
     pub tag: String,
     pub attrs: Vec<Attr>,
+    /// `::next{when="COND"}` (dsl 0.12.0 §…) — a forward-jump guard,
+    /// extracted into a typed CEL slot the SAME way `Line.when`/`Choice.when`
+    /// are (`take_cel`, parser.rs), so it rides the same CEL walk /
+    /// `StableId` / `check_cel_slot` validation path a content-line guard
+    /// does. `None` for every OTHER directive tag — the parser only ever
+    /// extracts `when` when `tag == "next"`; a `when=` attr elsewhere stays
+    /// an ordinary residual `attrs` entry (`E-UNKNOWN-ATTR`, unchanged).
+    pub when: Option<CelSlot>,
     pub span: Span,
 }
 

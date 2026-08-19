@@ -10,8 +10,8 @@
 //!
 //! ## Canonical pre-order (per shot body, per node in source order)
 //! - [`Node::Line`] → `when` (if any), then each `AttrValue::Ref` slot in
-//!   `attrs` order. [`Node::Directive`] → each `AttrValue::Ref` slot in
-//!   `attrs` order.
+//!   `attrs` order. [`Node::Directive`] → `when` (if any — only ever
+//!   `::next`, dsl 0.12.0), then each `AttrValue::Ref` slot in `attrs` order.
 //! - [`Node::Set`] → `expr`.
 //! - [`Node::Branch`] → `attrs` refs; then per `choice`: `choice.when` (if any),
 //!   `choice.attrs` refs, then recurse `choice.body`.
@@ -33,8 +33,8 @@
 //! on it.
 
 use crate::ast::{
-    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Document, Hub, Line, Match, Node, Objective,
-    On, Quest, Timeline,
+    Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Directive, Document, Hub, Line, Match, Node,
+    Objective, On, Quest, Timeline,
 };
 
 /// Visit every [`CelSlot`] in `doc` in the canonical pre-order, borrowing each.
@@ -67,7 +67,7 @@ fn body<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a CelSlot)) {
 fn node<'a>(n: &'a Node, f: &mut impl FnMut(&'a CelSlot)) {
     match n {
         Node::Line(l) => line(l, f),
-        Node::Directive(d) => attrs(&d.attrs, f),
+        Node::Directive(d) => directive(d, f),
         Node::Set(s) => f(&s.expr),
         Node::Branch(b) => branch(b, f),
         Node::Match(m) => match_node(m, f),
@@ -84,6 +84,13 @@ fn line<'a>(l: &'a Line, f: &mut impl FnMut(&'a CelSlot)) {
         f(w);
     }
     attrs(&l.attrs, f);
+}
+
+fn directive<'a>(d: &'a Directive, f: &mut impl FnMut(&'a CelSlot)) {
+    if let Some(w) = &d.when {
+        f(w);
+    }
+    attrs(&d.attrs, f);
 }
 
 fn branch<'a>(b: &'a Branch, f: &mut impl FnMut(&'a CelSlot)) {
@@ -194,7 +201,7 @@ fn body_mut(nodes: &mut [Node], f: &mut impl FnMut(&mut CelSlot)) {
 fn node_mut(n: &mut Node, f: &mut impl FnMut(&mut CelSlot)) {
     match n {
         Node::Line(l) => line_mut(l, f),
-        Node::Directive(d) => attrs_mut(&mut d.attrs, f),
+        Node::Directive(d) => directive_mut(d, f),
         Node::Set(s) => f(&mut s.expr),
         Node::Branch(b) => branch_mut(b, f),
         Node::Match(m) => match_node_mut(m, f),
@@ -211,6 +218,13 @@ fn line_mut(l: &mut Line, f: &mut impl FnMut(&mut CelSlot)) {
         f(w);
     }
     attrs_mut(&mut l.attrs, f);
+}
+
+fn directive_mut(d: &mut Directive, f: &mut impl FnMut(&mut CelSlot)) {
+    if let Some(w) = &mut d.when {
+        f(w);
+    }
+    attrs_mut(&mut d.attrs, f);
 }
 
 fn branch_mut(b: &mut Branch, f: &mut impl FnMut(&mut CelSlot)) {
@@ -366,6 +380,7 @@ mod tests {
             Node::Directive(Directive {
                 tag: "camera".to_string(),
                 attrs: vec![ref_attr("cue", "s2"), str_attr("x", "y")],
+                when: None,
                 span: span(),
             }),
             // Top-level Set -> s3.
@@ -420,6 +435,7 @@ mod tests {
                         body: vec![Node::Directive(Directive {
                             tag: "fx".to_string(),
                             attrs: vec![ref_attr("k", "s13")],
+                            when: None,
                             span: span(),
                         })],
                         span: span(),
@@ -437,6 +453,7 @@ mod tests {
                             node: ClipNode::Directive(Directive {
                                 tag: "cut".to_string(),
                                 attrs: vec![ref_attr("a", "s15"), ref_attr("b", "s16")],
+                                when: None,
                                 span: span(),
                             }),
                             at: None,

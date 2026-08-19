@@ -23,6 +23,25 @@ const ENUMS: &str = include_str!("../assets/lute.core/enums.yaml");
 /// shared rather than re-spelled per crate.
 pub const END_DIRECTIVE: &str = "end";
 
+/// The `lute.core` tag of a position label (dsl 0.12.0): `::mark{id}` binds
+/// a NAMED forward-jump target to whatever record follows it (or, trailing
+/// past a shot's last record, that shot's one-past-end converge addr —
+/// mirrors an anonymous converge label, `lute-compile::cfg::Emitter::bind`).
+/// Emits NO record of its own — dispatch is by TAG
+/// (`lute-compile::lower::lower_directive`'s `mark` arm returns `None`), the
+/// SAME `terminatesWalk`-style tag dispatch [`END_DIRECTIVE`] documents.
+pub const MARK_DIRECTIVE: &str = "mark";
+
+/// The `lute.core` tag of a forward jump (dsl 0.12.0): `::next{to [when]}`.
+/// Unconditional or guarded via the SAME typed CEL `when` a content-line
+/// guard gets (`lute_syntax::ast::Directive::when`, parser-extracted only
+/// for this tag). Shared as a const for the same reason [`END_DIRECTIVE`]
+/// is: `lute-check`'s reachability/definite-assignment/label passes,
+/// `lute-compile`'s `lower_directive` (→ `Command::Jump`) and
+/// `normalize::synth_when_next_match`, and `lute-trace`'s walk all dispatch
+/// on this tag and MUST agree.
+pub const NEXT_DIRECTIVE: &str = "next";
+
 /// Build the built-in `lute.core` capability snapshot: all dsl Appendix A
 /// baseline directives (bg/music/sfx/auto/vfx/cut/video/camera) plus the 0.8.0
 /// walk terminator `::end`, stamped with a deterministic `capabilityVersion`
@@ -92,19 +111,31 @@ mod tests {
     use crate::types::Type;
 
     /// The `lute.core` baseline is CLOSED (dsl Appendix A + the 0.8.0
-    /// terminator): exactly these nine directives, no more. Asserting the
-    /// exact set — not just presence — is what makes an accidental
-    /// addition/removal in `staging.yaml` a test failure rather than a
-    /// silent vocabulary change every downstream `E-UNKNOWN-DIRECTIVE`
-    /// decision depends on.
+    /// terminator + the 0.12.0 forward-jump pair): exactly these eleven
+    /// directives, no more. Asserting the exact set — not just presence — is
+    /// what makes an accidental addition/removal in `staging.yaml` a test
+    /// failure rather than a silent vocabulary change every downstream
+    /// `E-UNKNOWN-DIRECTIVE` decision depends on.
     #[test]
     fn core_snapshot_has_baseline_directives() {
         let snap = load_core_snapshot();
         let names: Vec<&str> = snap.directives.keys().map(String::as_str).collect();
         assert_eq!(
             names,
-            ["auto", "bg", "camera", "cut", END_DIRECTIVE, "music", "sfx", "vfx", "video"],
-            "the lute.core baseline is exactly 9 directives"
+            [
+                "auto",
+                "bg",
+                "camera",
+                "cut",
+                END_DIRECTIVE,
+                MARK_DIRECTIVE,
+                "music",
+                NEXT_DIRECTIVE,
+                "sfx",
+                "vfx",
+                "video",
+            ],
+            "the lute.core baseline is exactly 11 directives"
         );
     }
 

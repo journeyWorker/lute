@@ -78,7 +78,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// major.minor `0.10` and left every engine gate untouched, this release
 /// crosses the gated major.minor line (`0.10` -> `0.11`), so
 /// `schemas/lute-ir-0.10.schema.json` is renamed to
-/// `schemas/lute-ir-0.11.schema.json` (the `0.7.0` precedent for a
+/// `schemas/lute-ir-0.12.schema.json` (the `0.7.0` precedent for a
 /// major.minor move) and an engine implementing IR `0.10` MUST widen its
 /// gate before it accepts a `0.11.0` artifact — reading no new field,
 /// because there is none.
@@ -87,9 +87,9 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// optional fields, `prompt` and `timeoutSec` (`<branch prompt=… timeout=…>`,
 /// language 0.11.1), both omitted entirely when unauthored so prompt-less
 /// artifacts stay byte-stable. The gated major.minor does not move, so
-/// `schemas/lute-ir-0.11.schema.json` keeps its name and engines already on
+/// `schemas/lute-ir-0.12.schema.json` keeps its name and engines already on
 /// IR `0.11` parse `0.11.1` artifacts unchanged.
-pub const LUTE_IR_VERSION: &str = "0.11.1";
+pub const LUTE_IR_VERSION: &str = "0.12.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -178,12 +178,13 @@ pub fn compile_with_check(
                 // position. Authored numbers and the monotone guard are removed
                 // (the quest path was already positional).
                 let shot_no = i as i64 + 1;
-                let (recs, trailing) = em.finish();
+                let (recs, trailing, trailing_named) = em.finish();
                 shots.push(address::ShotRecords {
                     shot: shot_no,
                     prefix: prefix.clone(),
                     recs,
                     trailing,
+                    trailing_named,
                 });
             }
             // `check()` is the diagnostic surface, the artifact is ours (plan
@@ -247,12 +248,13 @@ pub fn compile_with_check(
             for (i, quest) in doc.quests.iter().enumerate() {
                 let mut em = cfg::Emitter::default();
                 stage::walk_quest(&mut em, quest, &mut cx, &mut diags);
-                let (recs, trailing) = em.finish();
+                let (recs, trailing, trailing_named) = em.finish();
                 shots.push(address::ShotRecords {
                     shot: (i as i64) + 1,
                     prefix: quest.id.clone(),
                     recs,
                     trailing,
+                    trailing_named,
                 });
             }
             let (commands, addr_diags) = address::assign_addresses(shots, identity);
@@ -844,12 +846,12 @@ mod tests {
         // layer + coverage + runner fixes) — language is byte-identical to
         // `0.10.2` and the IR is a pure restamp, no field added, renamed,
         // moved, or retyped. The IR schema STILL renames
-        // (`lute-ir-0.11.schema.json`), because the release crosses the
+        // (`lute-ir-0.12.schema.json`), because the release crosses the
         // gated major.minor line (`0.10` -> `0.11`) even though the shape
         // does not move. The two remain independently tracked pins (T13);
         // they simply agree on this release.
-        assert_eq!(super::LUTE_IR_VERSION, "0.11.1");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.11.1");
+        assert_eq!(super::LUTE_IR_VERSION, "0.12.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.12.0");
     }
 
     #[test]
@@ -858,8 +860,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.11.1");
-        assert_eq!(v["irVersion"], "0.11.1");
+        assert_eq!(v["lute"], "0.12.0");
+        assert_eq!(v["irVersion"], "0.12.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

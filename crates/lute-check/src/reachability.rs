@@ -173,6 +173,35 @@ fn check_code_after_end(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
     ));
 }
 
+/// `W-CODE-AFTER-NEXT` (dsl 0.12.0): a record following an UNGUARDED
+/// `::next` in the SAME straight-line body — mirrors [`W_CODE_AFTER_END`]
+/// exactly: an unconditional forward jump leaves this body the same way
+/// `::end` does, so nothing after it in that body can ever run. A GUARDED
+/// `::next{when=}` does NOT qualify (fall-through exists; see the
+/// `Node::Directive` arm in [`walk_reach`]).
+pub(crate) const W_CODE_AFTER_NEXT: &str = "W-CODE-AFTER-NEXT";
+
+/// One `W-CODE-AFTER-NEXT` for `nodes`, mirroring [`check_code_after_end`]
+/// verbatim except the terminator predicate (unguarded `::next` — dispatch
+/// by TAG, [`lute_manifest::core::NEXT_DIRECTIVE`], AND `d.when.is_none()`).
+fn check_code_after_next(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
+    let is_unguarded_next = |n: &Node| {
+        matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::NEXT_DIRECTIVE && d.when.is_none())
+    };
+    let Some(next_at) = nodes.iter().position(is_unguarded_next) else {
+        return;
+    };
+    let Some(dead) = nodes.get(next_at + 1) else {
+        return;
+    };
+    diags.push(diag(
+        W_CODE_AFTER_NEXT,
+        Severity::Warning,
+        "unreachable content after `::next` (the walk jumps away here)".to_string(),
+        crate::admission::node_span(dead),
+    ));
+}
+
 /// §5.2/§5.3 whole-document pass. Walks `doc.shots` + `doc.quests`
 /// recursively (arm/choice/on/objective bodies, mirroring
 /// `check_admission`'s walk, admission.rs:220-296); timeline clips carry no
@@ -261,6 +290,7 @@ pub(crate) fn check_reachability_in(
 /// `W-CODE-AFTER-END` scan rides this recursion instead of duplicating it.
 fn walk_reach(nodes: &[Node], defs: &DefTable<'_>, ctx: &DecideCtx<'_>, diags: &mut Vec<Diagnostic>) {
     check_code_after_end(nodes, diags);
+    check_code_after_next(nodes, diags);
     for node in nodes {
         match node {
             Node::Match(m) => {
@@ -367,6 +397,29 @@ fn walk_reach(nodes: &[Node], defs: &DefTable<'_>, ctx: &DecideCtx<'_>, diags: &
                                     when.span,
                                 ));
                             }
+                        }
+                    }
+                }
+            }
+            // dsl 0.12.0: a guarded `::next{when=}` is a one-arm construct
+            // exactly like a gated line above — a decided-false guard makes
+            // the jump provably dead. An UNGUARDED `::next` needs no guard
+            // analysis here (that is `check_code_after_next`'s job, above).
+            Node::Directive(d) if d.when.is_some() => {
+                let when = d.when.as_ref().expect("guarded above");
+                if !when.raw.trim().is_empty() {
+                    let analysis = analyze_unset_sentinel_slot(&when.raw, defs, ctx);
+                    push_unset_literal_diags(diags, &analysis.hits, when.span);
+                    let suppress_arm_dead =
+                        !analysis.hits.is_empty() && analysis.load_bearing_for_false;
+                    if !suppress_arm_dead {
+                        if let Some(Decided::Bool(false)) = decide_slot(&when.raw, defs, ctx) {
+                            diags.push(diag(
+                                E_ARM_DEAD,
+                                Severity::Error,
+                                "this `::next` never fires: its `when` guard is provably false (dsl 0.12.0)".to_string(),
+                                when.span,
+                            ));
                         }
                     }
                 }

@@ -21,6 +21,7 @@ pub mod match_check;
 pub mod meta;
 pub mod on;
 pub mod prereq;
+pub mod next_labels;
 pub mod project_check;
 pub mod producible;
 pub mod reachability;
@@ -40,7 +41,7 @@ pub mod timeline;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.11.1";
+pub const LUTE_LANG_VERSION: &str = "0.12.0";
 
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_paths::E_PATH_IDENT;

@@ -700,6 +700,7 @@ mod tests {
                     span: span(),
                 })
                 .collect(),
+            when: None,
             span: span(),
         }
     }
@@ -715,6 +716,7 @@ mod tests {
                 value_span: span(),
                 span: span(),
             }],
+            when: None,
             span: span(),
         }
     }
@@ -860,6 +862,7 @@ mod tests {
                     span: span(),
                 },
             ],
+            when: None,
             span: span(),
         };
         let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
