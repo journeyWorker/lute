@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.11.0`, the grammar and semantics the checker
+- **Language** — currently `0.11.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.11.0`) and gated on by consuming engines.
+  artifact (currently `0.11.1`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,41 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.11.1] - 2026-08-19
+
+**A branch that asks its question out loud, and starts a clock.**
+
+The release-earning axis is the **language**: `<branch>` gains two optional
+attributes. `prompt="…"` names what the choice is ABOUT — the situation
+sentence a host UI shows above the option labels — and `timeout="N"` gives the
+pick a positive-integer seconds budget, for hosts that run a countdown and
+emit a timeout when the reader does not choose. Both are author-optional;
+every existing document is untouched.
+
+### Added
+
+- **Language 0.11.1 — `<branch prompt=… timeout=…>`** — two new optional
+  `<branch>` attributes. The checker admits them (`E-UNKNOWN-ATTR` no longer
+  fires) and validates their values: `prompt` must be a non-empty string
+  (`E-BRANCH-PROMPT`), `timeout` must parse as a positive integer
+  (`E-BRANCH-TIMEOUT`; `"0"` and non-numeric values are rejected at the
+  attribute's own span). `<hub>` is unchanged.
+- **IR 0.11.1 — `prompt` / `timeoutSec` on the choice record** — the compiled
+  choice command carries the two values when authored and omits both fields
+  entirely when not, so artifacts from prompt-less documents are byte-stable.
+  Additive-only: the schema file stays
+  [`schemas/lute-ir-0.11.schema.json`](schemas/lute-ir-0.11.schema.json) (the
+  gated `major.minor` does not move) and engines already on IR `0.11` parse
+  `0.11.1` artifacts unchanged.
+- **`lute play` shows the ask** — a prompted branch renders as
+  `▷ choice <id> "<prompt>" (<N>s): …` in playthrough transcripts.
+
+### Changed
+
+- Version re-alignment per [`docs/versioning.md`](docs/versioning.md):
+  toolchain, language, and IR all present `0.11.1`. The toolchain and IR moves
+  are consumer no-ops beyond the two optional fields above.
 
 ## [0.11.0] - 2026-08-15
 
@@ -1087,6 +1122,7 @@ Initial scoped npm release: the [`@lute-lang/lute`](https://www.npmjs.com/packag
 launcher resolving `darwin-arm64` and `linux-x64` prebuilt binaries, targeting
 language version `0.6.1`.
 
+[0.11.1]: https://github.com/journeyWorker/lute/releases/tag/v0.11.1
 [0.7.0]: https://github.com/journeyWorker/lute/releases/tag/v0.7.0
 [0.2.0]: https://github.com/journeyWorker/lute/releases/tag/v0.2.0
 [0.1.0]: https://github.com/journeyWorker/lute/releases/tag/v0.1.0

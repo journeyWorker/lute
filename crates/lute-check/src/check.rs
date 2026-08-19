@@ -3841,20 +3841,18 @@ mod lute_version_tests {
 
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
-    /// workspace (toolchain) version must both read the release number. Here
-    /// the toolchain is the only axis that earns the move — `lute play` +
-    /// the schedule layer, coverage, and runner fixes — while language
-    /// `0.11.0` is byte-for-byte `0.10.2` semantics
-    /// (`scenario-dsl/0.11.0.md`) and IR `0.11.0` is a pure restamp of
-    /// `0.10.2` (no field added, renamed, moved, or retyped). The IR schema
-    /// file still renames (`lute-ir-0.11.schema.json`), because the release
-    /// crosses the gated major.minor line (`0.10` → `0.11`) even though the
-    /// artifact shape does not move — unlike `0.10.1`/`0.10.2`, which stayed
-    /// inside `0.10` and needed no rename. The alignment rule moves every
-    /// axis together regardless of which contract changed.
+    /// workspace (toolchain) version must both read the release number. For
+    /// `0.11.1` the LANGUAGE is the axis that earns the move — `<branch>`
+    /// gains the optional `prompt=`/`timeout=` attributes with their own
+    /// value diagnostics (`E-BRANCH-PROMPT`/`E-BRANCH-TIMEOUT`) — while the
+    /// IR change is additive-only (optional `prompt`/`timeoutSec` on the
+    /// choice record; `lute-ir-0.11.schema.json` keeps its name because the
+    /// gated major.minor does not move) and the toolchain move is the
+    /// re-alignment plus the `lute play` prompt display. The alignment rule
+    /// moves every axis together regardless of which contract changed.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_11_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.11.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.11.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_11_1() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.11.1");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.11.1");
     }
 }
