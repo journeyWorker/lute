@@ -323,6 +323,7 @@ fn codes_with_domain_attr_against(
             value_span: zero_span(),
             span: zero_span(),
         }],
+        when: None,
         span: zero_span(),
     };
     check_directive(&dir, &snap, &ProviderSet::default(), domains, &ctx())

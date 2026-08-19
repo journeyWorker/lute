@@ -1,6 +1,6 @@
 //! `lute run` — the reference headless runner over a COMPILED artifact
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.11.schema.json`).
+//! `schemas/lute-ir-0.12.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
 //! artifact (`lute compile` output), gates on `irVersion` by **major.minor**

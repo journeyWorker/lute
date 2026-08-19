@@ -40,7 +40,8 @@ fn flatten(body: &str) -> (Vec<Rec>, Vec<Label>) {
         &[],
         &mut Vec::new(),
     );
-    em.finish()
+    let (recs, trailing, _) = em.finish();
+    (recs, trailing)
 }
 
 fn kind(cmd: &Command) -> &'static str {

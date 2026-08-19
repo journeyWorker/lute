@@ -977,6 +977,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // 0.4.0 T4 (§5.2 whole-document reachability pass): E-ARM-DEAD (dead
     // guard + subsumption) + W-OTHERWISE-DEAD.
     diags.extend(check_reachability(&doc, &folded));
+    // dsl 0.12.0: forward-jump labels — E-MARK-DUP / E-NEXT-UNDEFINED /
+    // E-NEXT-BACKWARD, a whole-document pass (the label namespace spans
+    // every shot/quest, unlike reachability's per-body scope above).
+    diags.extend(crate::next_labels::check_next_labels(&doc));
     diags.extend(inject_diags);
     // Table-driven grammar admission (dsl 0.2.0 §3.3, §6.7): per-kind,
     // per-context construct legality. `E-GRAMMAR-NOT-ADMITTED` is semantic, NOT
@@ -1215,6 +1219,22 @@ impl Walker<'_> {
                         ctx,
                     ));
                     self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
+                    if let Some(when) = &d.when {
+                        // dsl 0.12.0: `::next{when=}` — same "$ not in scope"
+                        // rule as a content-line `when=`/`<on when>` (D9); no
+                        // match-subject context applies to a directive.
+                        let ctx_no_dollar = Ctx {
+                            env: ctx.env,
+                            in_match: false,
+                            match_subject: None,
+                        };
+                        self.diags.extend(check_cel_slot(
+                            when,
+                            self.arena,
+                            &ctx_no_dollar,
+                            Some(&ExpectedType::Bool),
+                        ));
+                    }
                 }
                 Node::Set(s) => {
                     self.diags.extend(check_set(s, &ctx.env.state, ctx));
@@ -1364,6 +1384,32 @@ impl Walker<'_> {
                                         "`::end` terminates the walk and is not a staging leaf; \
                                          a <track> body may contain only staging directives and \
                                          ::set (dsl §7.4)"
+                                            .to_string(),
+                                        d.span,
+                                    ));
+                                }
+                                // dsl 0.12.0: `::mark`/`::next` are control-flow
+                                // constructs (a position label / a jump), not
+                                // staging leaves — mirrors the `::end` arm above
+                                // verbatim, reusing its exact diagnostic shape.
+                                ClipNode::Directive(d)
+                                    if d.tag == lute_manifest::core::MARK_DIRECTIVE =>
+                                {
+                                    self.diags.push(timeline_content_diag(
+                                        "`::mark` is a control-flow label and is not a staging \
+                                         leaf; a <track> body may contain only staging \
+                                         directives and ::set (dsl §7.4)"
+                                            .to_string(),
+                                        d.span,
+                                    ));
+                                }
+                                ClipNode::Directive(d)
+                                    if d.tag == lute_manifest::core::NEXT_DIRECTIVE =>
+                                {
+                                    self.diags.push(timeline_content_diag(
+                                        "`::next` is a control-flow jump and is not a staging \
+                                         leaf; a <track> body may contain only staging \
+                                         directives and ::set (dsl §7.4)"
                                             .to_string(),
                                         d.span,
                                     ));
@@ -3846,13 +3892,13 @@ mod lute_version_tests {
     /// gains the optional `prompt=`/`timeout=` attributes with their own
     /// value diagnostics (`E-BRANCH-PROMPT`/`E-BRANCH-TIMEOUT`) — while the
     /// IR change is additive-only (optional `prompt`/`timeoutSec` on the
-    /// choice record; `lute-ir-0.11.schema.json` keeps its name because the
+    /// choice record; `lute-ir-0.12.schema.json` keeps its name because the
     /// gated major.minor does not move) and the toolchain move is the
     /// re-alignment plus the `lute play` prompt display. The alignment rule
     /// moves every axis together regardless of which contract changed.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_11_1() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.11.1");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.11.1");
+    fn language_ir_and_toolchain_are_aligned_at_0_12_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.12.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.12.0");
     }
 }

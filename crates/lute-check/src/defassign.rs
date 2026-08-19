@@ -275,7 +275,21 @@ fn walk_nodes(
                     }
                 }
             },
-            Node::Directive(_) => {}
+            // dsl 0.12.0: `::next{when=}` is a one-arm, NON-DOMINATING
+            // construct — the SAME treatment a gated line's `when=` gets
+            // above: fork, prove THIS guard's own reads via
+            // `apply_condition`, then discard (a `::next` reads/writes no
+            // state of its own, so unlike a line there is no further body
+            // to check against the fork — no `interps` on a directive).
+            // `None` for every other directive tag (only `next` ever
+            // populates `.when`), so this is byte-identical to the old
+            // unconditional `Node::Directive(_) => {}` for everything else.
+            Node::Directive(d) => {
+                if let Some(when) = &d.when {
+                    let mut fork = flow.available.clone();
+                    apply_condition(when, schema, &mut fork, diags, reads);
+                }
+            }
             Node::On(on) => walk_on(on, schema, flow, diags, reads),
             Node::Objective(o) => walk_objective(o, schema, flow, diags, reads),
             // Fact args are ground (entity ids / bools), never `state:` paths —

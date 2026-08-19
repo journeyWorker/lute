@@ -39,12 +39,13 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
         state = walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut Vec::new());
         // dsl 0.6.0 §3.2: positional 1-based shot number.
         let shot_no = i as i64 + 1;
-        let (recs, trailing) = em.finish();
+        let (recs, trailing, trailing_named) = em.finish();
         shots.push(ShotRecords {
             shot: shot_no,
             prefix: "bianca.s01ep02".to_string(),
             recs,
             trailing,
+            trailing_named,
         });
     }
     assign_addresses(shots, &lute_manifest::project::IdentityTemplates::default())

@@ -64,3 +64,12 @@ directives:
       - { name: reason, required: false, type: string }
     semantics: [ "terminatesWalk" ]
     lower: { kind: builtin, name: end }
+  - name: mark
+    attrs:
+      - { name: id, required: true, type: string }
+    lower: { kind: builtin, name: mark }
+  - name: next
+    attrs:
+      - { name: to, required: true, type: string }
+      - { name: when, required: false, type: string }
+    lower: { kind: builtin, name: next }

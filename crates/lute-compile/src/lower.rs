@@ -232,6 +232,27 @@ pub fn lower_directive(
             reason: get("reason"),
             stamp,
         }),
+        // dsl 0.12.0: `::mark{id}` is a pure position anchor — emits NO
+        // record. `id` is consumed by `stage::walk_seq`/`walk_quest`'s own
+        // `mark` interception (`Emitter::bind_named`) BEFORE this function
+        // is ever reached for a `mark` node — this arm exists only so the
+        // generic `emit_primitive` dispatch (which calls `lower_directive`
+        // for EVERY `Node::Directive`, mark included) stays total.
+        lute_manifest::core::MARK_DIRECTIVE => return None,
+        // dsl 0.12.0: `::next{to [when]}` — an unconditional forward jump.
+        // A GUARDED `::next` is desugared by
+        // `normalize::synth_when_next_match` into a canonical one-arm
+        // `<match>` BEFORE this ever runs (mirrors the gated-line desugar),
+        // so this arm only ever sees the UNCONDITIONAL form — reuses the
+        // EXACT converge machinery branch/hub/match already lower through
+        // (`JumpCmd`, `cfg::Label`/`Emitter`): `target` here is a NAMED
+        // placeholder (`"#<id>"`), resolved to a real `addr` by
+        // `address::assign_addresses`'s document-wide named-label pass,
+        // exactly like a numeric `"@<n>"` resolves the anonymous ones.
+        lute_manifest::core::NEXT_DIRECTIVE => Command::Jump(JumpCmd {
+            addr: String::new(),
+            target: format!("#{}", get("to").unwrap_or_default()),
+        }),
         // `COMPONENT_BEGIN`/`END`: normalization sentinels → no record. `use`:
         // DEFENSIVE/unreachable — normalize.rs fail-louds a timeline-clip `::use`
         // (E-COMPILE-COMPONENT) so `compile()` aborts at the §5 diag gate before any
@@ -819,6 +840,7 @@ mod tests {
         let begin = lute_syntax::ast::Directive {
             tag: crate::normalize::COMPONENT_BEGIN.to_string(),
             attrs: Vec::new(),
+            when: None,
             span: d.span,
         };
         assert!(lower_directive(&begin, &snap(), &doms()).is_none());

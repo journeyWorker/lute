@@ -53,6 +53,16 @@ pub fn walk_seq(
             Node::Directive(d) if d.tag == COMPONENT_END => {
                 cx.components.pop();
             }
+            // dsl 0.12.0: `::mark{id}` emits NO record — bind the author's
+            // NAMED label to whatever gets pushed NEXT (or, nothing left
+            // in this body, `Emitter::finish`'s `trailing_named` — mirrors
+            // a branch/match converge's `em.bind`, keyed by the author's
+            // string instead of a fresh anonymous `Label`).
+            Node::Directive(d) if d.tag == lute_manifest::core::MARK_DIRECTIVE => {
+                if let Some(id) = attr_string(&d.attrs, "id") {
+                    em.bind_named(id);
+                }
+            }
             // Fact args are ground — nothing authored, `lower_node`'s
             // wildcard skips them; lowering to `Command::Assert`/`Retract`
             // is Task 14.
@@ -198,6 +208,7 @@ fn emit_primitive(
     let auto_first = matches!(node, Node::Directive(d) if d.tag == "auto");
     if auto_first {
         if let Some(cmd) = authored {
+            bind_line_label(em, node);
             emit_stamped(em, cmd, cx, clip);
         }
         for ic in &injected {
@@ -208,10 +219,26 @@ fn emit_primitive(
             emit_stamped(em, inject_cmd(ic), cx, clip);
         }
         if let Some(cmd) = authored {
+            bind_line_label(em, node);
             emit_stamped(em, cmd, cx, clip);
         }
     }
     next
+}
+
+/// dsl 0.12.0: a content line's `id=` (forward-jump label, mirrors
+/// `::mark`) — bound to the LINE's own emitted record specifically, so this
+/// must run immediately before its push, AFTER any preceding injected
+/// sprite record (`entry-emotion-lookahead`'s anchor/preload emits ahead of
+/// a plain line in the non-`auto_first` branch above; binding any earlier
+/// would let the label resolve to that injected record's addr instead of
+/// the authored line's own).
+fn bind_line_label(em: &mut Emitter, node: &Node) {
+    if let Node::Line(l) = node {
+        if let Some(id) = attr_string(&l.attrs, "id") {
+            em.bind_named(id);
+        }
+    }
 }
 
 fn emit_stamped(em: &mut Emitter, mut cmd: Command, cx: &WalkCx<'_>, clip: Option<ClipStamp>) {
@@ -664,6 +691,13 @@ pub fn walk_quest(
                 } else {
                     em.bind(label);
                     walk_seq(em, &on.body, StageState::default(), cx, &[], diags);
+                }
+            }
+            // dsl 0.12.0: mirrors `walk_seq`'s `mark` interception exactly
+            // — see its own comment.
+            Node::Directive(d) if d.tag == lute_manifest::core::MARK_DIRECTIVE => {
+                if let Some(id) = attr_string(&d.attrs, "id") {
+                    em.bind_named(id);
                 }
             }
             // Fact args are ground — nothing authored, `lower_node`'s

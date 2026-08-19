@@ -22,8 +22,14 @@ use crate::directives::{check_attr_value, check_domain_member};
 /// crates cannot drift: a key here is a record field, a key NOT here may be a
 /// plugin-declared cross-cutting `stampAttrs` entry, which lowers into the
 /// record's stamp instead (plugin §14.1).
+///
+/// `id` (dsl 0.12.0 §…) is the ONE exception to "a key here is a record
+/// field": it is a forward-jump label (`::next{to="x"}`'s target), consumed
+/// only by `lute-compile::stage`'s addressing bind (`Emitter::bind_named`)
+/// — never serialized onto `LineCmd`. Its document-wide uniqueness is
+/// `lute-check::next_labels`'s job (`E-MARK-DUP`), not this module's.
 pub const KNOWN_ATTRS: &[&str] = &[
-    "code", "emotion", "variant", "action", "dialogMotion", "mono", "os", "vo", "as",
+    "code", "emotion", "variant", "action", "dialogMotion", "mono", "os", "vo", "as", "id",
 ];
 
 /// The two DOMAIN-typed content-line attributes (dsl 0.9.0 D-C). They are not

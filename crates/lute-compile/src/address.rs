@@ -23,6 +23,14 @@ pub struct ShotRecords {
     pub prefix: String,
     pub recs: Vec<Rec>,
     pub trailing: Vec<Label>,
+    /// dsl 0.12.0: NAMED labels (`Rec::named`'s own trailing counterpart)
+    /// left dangling past this unit's last record — a `::mark`/line `id=`
+    /// at the very end of a shot. Resolves to this shot's SAME one-past-end
+    /// converge addr `trailing` does; the runtime's sorted-next-addr
+    /// fallback (`lute-cli::runner::resolve`) then falls through to the
+    /// NEXT shot's first record — exactly how a `::next` "joins a later
+    /// shot" (0.12.0 spec) actually works at runtime, no special case.
+    pub trailing_named: Vec<String>,
 }
 
 /// Assign every `addr`, resolve every symbolic target, and stamp identity.
@@ -43,6 +51,35 @@ pub fn assign_addresses(
     for shot in &shots {
         shot_w = shot_w.max(decimal_digits(shot.shot));
         idx_w = idx_w.max(decimal_digits(widest_emitted_index(shot)));
+    }
+
+    // dsl 0.12.0: document-wide named-label table (`::mark`/line `id=` ->
+    // resolved addr), built BEFORE any shot is CONSUMED below — a
+    // `::next{to}` authored in an EARLIER shot may target a label in a
+    // LATER one (the whole point of a forward jump spanning shots), so
+    // this table must see every shot's addrs before the rewrite pass
+    // resolves any of them. Mirrors the per-shot local `labels` map one
+    // loop down, at DOCUMENT scope instead of shot scope. A check-clean
+    // document (`lute-check::next_labels`, E-MARK-DUP) never has two
+    // entries for the same id, so first-insert-wins is unreachable in
+    // practice; kept total (never overwrites) rather than panicking.
+    let mut named: BTreeMap<String, String> = BTreeMap::new();
+    for shot in &shots {
+        for (i, rec) in shot.recs.iter().enumerate() {
+            if rec.named.is_empty() {
+                continue;
+            }
+            let addr = addr_of(shot.shot, i, shot_w, idx_w);
+            for id in &rec.named {
+                named.entry(id.clone()).or_insert_with(|| addr.clone());
+            }
+        }
+        if !shot.trailing_named.is_empty() {
+            let past_end = addr_of(shot.shot, shot.recs.len(), shot_w, idx_w);
+            for id in &shot.trailing_named {
+                named.entry(id.clone()).or_insert_with(|| past_end.clone());
+            }
+        }
     }
 
     let mut out: Vec<Command> = Vec::new();
@@ -74,6 +111,18 @@ pub fn assign_addresses(
                             shot.shot
                         ))),
                     }
+                } else if let Some(id) = t.strip_prefix('#') {
+                    // dsl 0.12.0: a `::next{to}` target, encoded `"#<id>"`
+                    // at stage time (`lower::lower_directive`'s `next` arm)
+                    // — resolved against the DOCUMENT-WIDE table above,
+                    // never the per-shot `labels` map.
+                    match named.get(id) {
+                        Some(addr) => *t = addr.clone(),
+                        None => diags.push(internal(format!(
+                            "unresolved named label `#{id}` in shot {}",
+                            shot.shot
+                        ))),
+                    }
                 }
             });
             out.push(rec.cmd);
@@ -83,6 +132,7 @@ pub fn assign_addresses(
     assign_identity(&mut out, &segments, identity);
     (out, diags)
 }
+
 
 /// 0.7.0's literal `{:03}` shot segment. The uniform width only ever GROWS
 /// past this floor, so a document with <1000 shots emits byte-identical
@@ -113,7 +163,12 @@ fn index_value(position: usize) -> i64 {
 /// but inserts it solely `for l in &shot.trailing`, so an absent converge
 /// contributes no address and must not widen the artifact. Saturating.
 fn widest_emitted_index(shot: &ShotRecords) -> i64 {
-    let emitted = shot.recs.len() + usize::from(!shot.trailing.is_empty());
+    // dsl 0.12.0: a NAMED trailing label (`trailing_named`) ALSO causes the
+    // one-past-the-end converge addr to be embedded in the artifact (as a
+    // resolved `::next` target) — the SAME condition `trailing` documents
+    // above, widened to either kind of trailing label.
+    let has_trailing = !shot.trailing.is_empty() || !shot.trailing_named.is_empty();
+    let emitted = shot.recs.len() + usize::from(has_trailing);
     i64::try_from(emitted).unwrap_or(i64::MAX).saturating_mul(100)
 }
 
@@ -304,6 +359,7 @@ mod tests {
         let mut recs: Vec<Rec> = (0..n)
             .map(|_| Rec {
                 labels: Vec::new(),
+                named: Vec::new(),
                 cmd: line("fixer", Some("0010")),
             })
             .collect();
@@ -320,6 +376,7 @@ mod tests {
             prefix: "bianca.s01ep02".to_string(),
             recs,
             trailing: if converge { vec![Label(0)] } else { Vec::new() },
+            trailing_named: Vec::new(),
         }
     }
 

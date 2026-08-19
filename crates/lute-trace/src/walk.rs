@@ -442,11 +442,17 @@ fn walk_line(l: &Line, w: &mut Walk<'_>) {
 }
 
 /// A leaf `::directive`: recorded as a [`Step::Directive`], then `Continue` —
-/// EXCEPT `::end` (dsl 0.8.0), which is recorded the same way and then
-/// terminates the walk. `::end` is UNCONDITIONAL: there is no guard to
-/// evaluate, so no K3 outcome is involved and nothing here can read
-/// `unknown` — the record is emitted and the walk stops, exactly as if the
-/// document had run out of nodes.
+/// EXCEPT `::end` (dsl 0.8.0) and `::next` (dsl 0.12.0), which are recorded
+/// the same way and then terminate the walk. Both are UNCONDITIONAL here:
+/// there is no guard to evaluate, so no K3 outcome is involved and nothing
+/// here can read `unknown` — the record is emitted and the walk stops,
+/// exactly as if the document had run out of nodes. A GUARDED `::next` never
+/// reaches this function as a `Directive` at all — the module doc's §4.3
+/// pipeline step 4 runs `lute_compile::normalize::normalize_document`
+/// BEFORE the walk, which desugars a guarded `::next` into a canonical
+/// one-arm `<match>` (`synth_when_next_match`, mirroring the gated-line
+/// desugar) that [`walk_match`] already handles — so this function only
+/// ever sees the unconditional form.
 fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
     let boundary = if d.tag == lute_compile::normalize::COMPONENT_BEGIN {
         Some(ComponentBoundary::Begin)
@@ -480,7 +486,7 @@ fn walk_directive(d: &Directive, w: &mut Walk<'_>) -> Flow {
         exit,
         reason,
     });
-    if d.tag == lute_manifest::core::END_DIRECTIVE {
+    if d.tag == lute_manifest::core::END_DIRECTIVE || d.tag == lute_manifest::core::NEXT_DIRECTIVE {
         Flow::Ended
     } else {
         Flow::Continue

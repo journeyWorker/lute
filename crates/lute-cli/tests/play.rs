@@ -1093,3 +1093,117 @@ fn auto_first_applies_at_every_hub_re_presentation_until_exit() {
     assert!(text.contains("left camp."), "{text}");
     assert!(text.contains("after hub."), "the hub must fully converge, not stop after one re-presentation: {text}");
 }
+
+// ===========================================================================
+// dsl 0.12.0: forward jump (`::mark`/line `id=`/`::next`) — one placement
+// whose branch arm rejoins a LATER shot via an unconditional `::next`, then
+// a GUARDED `::next` picks between two independent `::end{reason}`s
+// (multi-end combination). `lute play` and `lute run` share the SAME
+// `Runner` (`runner.rs`), so a `lute play` smoke over ONE scene doc is a
+// faithful end-to-end exercise of the whole forward-jump pipeline: check
+// (labels resolve, no E-NEXT-*/E-MARK-DUP) -> compile (`jump`/`match`
+// records, named-label addressing) -> runtime walk (the jump actually
+// moves the PC, the guard actually forks).
+// ===========================================================================
+
+const NEXT_SCHEDULE: &str = "\
+clock:
+  buckets: [morning]
+  ticksPerBucket: 10
+  days: 1
+
+lanes:
+  user: { exclusive: true }
+  world: { exclusive: false }
+
+placements:
+  - event: forward-jump
+    lane: user
+    at: morning+0
+    size: 5
+    doc: scenes/forward-jump.lute
+";
+
+const NEXT_SCENE: &str = "\
+---
+kind: scene
+character: forward-jump
+season: 1
+episode: 1
+state:
+  run.blessed: { type: bool, default: false }
+---
+
+## Shot 1.
+
+<branch id=\"pick\">
+  <choice id=\"a\" label=\"A\">
+    ::next{to=\"join\"}
+  </choice>
+  <choice id=\"b\" label=\"B\">
+    @narrator: taking the b path
+  </choice>
+</branch>
+
+## Shot 2.
+
+::mark{id=\"join\"}
+@narrator{id=\"afterJoin\"}: we joined here
+::next{to=\"tail\" when=\"run.blessed\"}
+@narrator: fallthrough content
+::end{reason=\"completed\"}
+
+## Shot 3.
+
+::mark{id=\"tail\"}
+@narrator: tail reached
+::end{reason=\"tailed\"}
+";
+
+/// Choice `a`'s unconditional `::next{to=\"join\"}` skips straight to shot
+/// 2's `::mark{id=\"join\"}` — never rendering \"taking the b path\" — then
+/// the guarded `::next{to=\"tail\" when=\"run.blessed\"}` fires TRUE
+/// (`run.blessed=true`), joining shot 3 and ending on `reason=tailed`
+/// rather than shot 2's own `reason=completed`.
+#[test]
+fn branch_arm_next_joins_a_later_shot_and_guarded_next_reaches_the_far_end() {
+    let dir = temp_dir("next-join-true");
+    write(&dir, "lute.project.yaml", PROJECT_YAML);
+    write(&dir, "schedule.yaml", NEXT_SCHEDULE);
+    write(&dir, "scenes/forward-jump.lute", NEXT_SCENE);
+    let script = write(
+        &dir,
+        "route.play.yaml",
+        "state:\n  run.blessed: true\nchoose:\n  pick: a\n",
+    );
+    let out = run(&["play", dir.to_str().unwrap(), "--script", script.to_str().unwrap()]);
+    assert!(out.status.success(), "stdout: {}\nstderr: {}", stdout(&out), stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("we joined here"), "{text}");
+    assert!(text.contains("tail reached"), "the guarded next's true arm must reach shot 3: {text}");
+    assert!(!text.contains("taking the b path"), "the unchosen branch arm must never render: {text}");
+    assert!(!text.contains("fallthrough content"), "the guarded next's false arm must not also render: {text}");
+}
+
+/// SAME scene, guard FALSE this time: the guarded `::next` falls through to
+/// \"fallthrough content\" and the FIRST `::end{reason=\"completed\"}` —
+/// never reaching shot 3's `tail` mark or its OWN `reason=\"tailed\"` end —
+/// the multi-end combination's other arm.
+#[test]
+fn guarded_next_false_arm_falls_through_to_its_own_end_reason() {
+    let dir = temp_dir("next-join-false");
+    write(&dir, "lute.project.yaml", PROJECT_YAML);
+    write(&dir, "schedule.yaml", NEXT_SCHEDULE);
+    write(&dir, "scenes/forward-jump.lute", NEXT_SCENE);
+    let script = write(
+        &dir,
+        "route.play.yaml",
+        "state:\n  run.blessed: false\nchoose:\n  pick: a\n",
+    );
+    let out = run(&["play", dir.to_str().unwrap(), "--script", script.to_str().unwrap()]);
+    assert!(out.status.success(), "stdout: {}\nstderr: {}", stdout(&out), stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("we joined here"), "{text}");
+    assert!(text.contains("fallthrough content"), "the guarded next's false arm must fall through: {text}");
+    assert!(!text.contains("tail reached"), "the false arm must never reach shot 3: {text}");
+}

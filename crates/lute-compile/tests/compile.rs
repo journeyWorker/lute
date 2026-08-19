@@ -199,8 +199,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.11.1");
-    assert_eq!(artifact.ir_version, "0.11.1");
+    assert_eq!(artifact.lute, "0.12.0");
+    assert_eq!(artifact.ir_version, "0.12.0");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
@@ -1026,4 +1026,189 @@ state:
     assert_eq!(retract_rec["relation"], "atLoc");
     assert_eq!(retract_rec["args"], serde_json::json!(["ana", "_"]));
     assert!(retract_rec["addr"].as_str().is_some_and(|s| !s.is_empty()));
+}
+
+// -- dsl 0.12.0: forward jump (`::mark`/line `id=`/`::next`) ----------------
+
+const FORWARD_JUMP_SCENE: &str = r#"---
+kind: scene
+character: bianca
+season: 1
+episode: 2
+state:
+  run.blessed: { type: bool, default: false }
+---
+
+## Shot 1.
+
+<branch id="pick">
+  <choice id="a" label="A">
+    ::next{to="join"}
+  </choice>
+  <choice id="b" label="B">
+    @narrator: taking the b path
+  </choice>
+</branch>
+
+## Shot 2.
+
+::mark{id="join"}
+@narrator{id="afterJoin"}: we joined here
+::next{to="tail" when="run.blessed"}
+@narrator: fallthrough content
+::end{reason="completed"}
+
+## Shot 3.
+
+::mark{id="tail"}
+@narrator: tail reached
+::end{reason="tailed"}
+"#;
+
+/// One command's `kind`/`addr`/`target` (Jump) as a plain triple, easing
+/// index/assert readability below.
+fn kind_addr(v: &serde_json::Value) -> (&str, &str) {
+    (v["kind"].as_str().unwrap(), v["addr"].as_str().unwrap())
+}
+
+/// dsl 0.12.0 §1: mark/line-id/next normal-path check+compile — an
+/// UNCONDITIONAL `::next{to}` (in a `<branch>` choice) resolves to the addr
+/// of the NEXT record after a `::mark{id}` in a LATER shot; a `::mark`'s own
+/// label resolves identically to a content line's `id=` at the SAME record
+/// (both name the shot-2 opener). `check()` must accept this document
+/// clean, and `compile()` must produce a `jump` record whose `target`
+/// equals the label site's real `addr` — never a `"@n"`/`"#id"` symbol.
+#[test]
+fn unconditional_next_resolves_across_shots_to_mark_and_line_id() {
+    let ci = input(FORWARD_JUMP_SCENE);
+    let check = lute_check::check(&ci);
+    assert!(check.ok, "{:#?}", check.diagnostics);
+
+    let art = compile(&ci).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let cmds = j["commands"].as_array().unwrap();
+
+    // The unconditional `::next{to="join"}` inside choice `a` lowers to a
+    // plain `jump` record (no new Command kind — reuses the SAME `JumpCmd`
+    // shape a branch/match converge already emits).
+    let unguarded_jump = cmds
+        .iter()
+        .find(|c| c["kind"] == "jump" && c["target"] != serde_json::Value::Null)
+        .expect("an unconditional ::next lowers to a jump record");
+    let target = unguarded_jump["target"].as_str().unwrap();
+    assert!(
+        target.chars().next().is_some_and(|c| c.is_ascii_digit()),
+        "target must be a resolved real addr, never a `@n`/`#id` symbol: {target}"
+    );
+
+    // `::mark{id="join"}` emits NO record of its own; the label resolves to
+    // whatever record comes right after it — the line carrying `id="afterJoin"`
+    // — so BOTH names must resolve to the exact same addr, and the jump's
+    // target must be that addr.
+    let joined_line = cmds
+        .iter()
+        .find(|c| c["kind"] == "line" && c["text"] == "we joined here")
+        .expect("the joined-to line");
+    let (_, joined_addr) = kind_addr(joined_line);
+    assert_eq!(target, joined_addr, "::next{{to=\"join\"}} must land exactly on the mark's bound record");
+
+    // Shot ordering: the target addr's shot segment must be STRICTLY greater
+    // than the jump's own shot segment (forward across a shot boundary).
+    let (_, jump_addr) = kind_addr(unguarded_jump);
+    assert!(
+        jump_addr.split('-').next().unwrap() < joined_addr.split('-').next().unwrap(),
+        "the jump ({jump_addr}) must land in a LATER shot than it is authored in ({joined_addr})"
+    );
+}
+
+/// dsl 0.12.0 §3/§4: a GUARDED `::next{to when}` desugars
+/// (`normalize::synth_when_next_match`) into the SAME canonical one-arm
+/// `<match>` a gated line uses — this pins BOTH arms' compiled output: the
+/// `when`-true arm ends in a `jump` targeting the far shot's `::mark{id="tail"}`;
+/// the fall-through (`otherwise`) arm's body (`fallthrough content` + the
+/// FIRST `::end{reason="completed"}`) is untouched, never merged with the
+/// jump arm. Confirms "가드 next의 양갈래 하강" end to end.
+#[test]
+fn guarded_next_lowers_to_two_arm_match_both_branches() {
+    let ci = input(FORWARD_JUMP_SCENE);
+    let art = compile(&ci).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let cmds = j["commands"].as_array().unwrap();
+
+    // The guarded next desugars to a `match` record (dsl IR §4.4: `arms`
+    // carries only `When` arms; `Otherwise` is the SEPARATE `otherwise`
+    // target field) — locate it by its one-arm shape plus a present
+    // `otherwise` (the synthesized empty-body Otherwise, dsl 0.12.0).
+    let matches: Vec<&serde_json::Value> = cmds.iter().filter(|c| c["kind"] == "match").collect();
+    assert_eq!(matches.len(), 1, "exactly one guarded ::next desugars to one match: {cmds:#?}");
+    let m = matches[0];
+    let arms = m["arms"].as_array().unwrap();
+    assert_eq!(arms.len(), 1, "the desugar is a canonical one `When` arm: {arms:#?}");
+    assert!(
+        m["otherwise"].as_str().is_some(),
+        "the desugar's synthesized empty-body Otherwise still resolves to a converge target: {m:#?}"
+    );
+
+    // Arm 1 (`When test="$"`) is TRUE iff the hoisted subject (`run.blessed`)
+    // decides true — its body is the now-unconditional `::next{to="tail"}`,
+    // lowered through the ORDINARY unconditional-jump path (no new lowering
+    // code): find the `jump` record whose target lands on shot 3's tail mark.
+    let tail_line = cmds
+        .iter()
+        .find(|c| c["kind"] == "line" && c["text"] == "tail reached")
+        .expect("the tail line");
+    let (_, tail_addr) = kind_addr(tail_line);
+    let guarded_jump = cmds
+        .iter()
+        .find(|c| c["kind"] == "jump" && c["target"] == tail_addr)
+        .expect("the guarded ::next's true arm reaches the tail mark via an ordinary jump record");
+    let (_, guarded_jump_addr) = kind_addr(guarded_jump);
+    assert!(
+        guarded_jump_addr.split('-').next().unwrap() < tail_addr.split('-').next().unwrap(),
+        "the guarded jump must also land in a strictly later shot"
+    );
+
+    // Arm 2 (`Otherwise`, the guard-false fall-through) is untouched: the
+    // fallthrough line and the FIRST `::end{reason="completed"}` still exist,
+    // in document order, right after the guard's converge.
+    let fallthrough = cmds
+        .iter()
+        .find(|c| c["kind"] == "line" && c["text"] == "fallthrough content")
+        .expect("fall-through content survives the guarded next's false arm");
+    let first_end = cmds
+        .iter()
+        .find(|c| c["kind"] == "end" && c["reason"] == "completed")
+        .expect("the first ::end{reason=completed} survives, distinct from the tail shot's ::end");
+    let (_, fallthrough_addr) = kind_addr(fallthrough);
+    let (_, first_end_addr) = kind_addr(first_end);
+    assert!(fallthrough_addr < first_end_addr, "fallthrough content precedes its own ::end");
+    // The fall-through path never reaches shot 3's tail: a second, distinct
+    // `::end{reason="tailed"}` record exists for that path.
+    let tail_end = cmds
+        .iter()
+        .find(|c| c["kind"] == "end" && c["reason"] == "tailed")
+        .expect("the tail shot's own ::end{reason=tailed} is a SEPARATE record (multi-end)");
+    assert_ne!(first_end["addr"], tail_end["addr"], "two independent ::end records — the multi-end combination");
+}
+
+/// dsl 0.12.0: a check-clean document with a forward `::next` never fires
+/// `E-NEXT-UNDEFINED`/`E-NEXT-BACKWARD`/`E-MARK-DUP`, and produces NO
+/// `E-COMPILE-INTERNAL` (the compiler-bug fallback for an unresolved label,
+/// `address::assign_addresses`) — every named-label placeholder must be
+/// resolved.
+#[test]
+fn forward_jump_scene_check_and_compile_are_both_clean() {
+    let ci = input(FORWARD_JUMP_SCENE);
+    let check = lute_check::check(&ci);
+    assert!(check.ok, "{:#?}", check.diagnostics);
+    let art = compile(&ci).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    for cmd in j["commands"].as_array().unwrap() {
+        if let Some(t) = cmd.get("target").and_then(|t| t.as_str()) {
+            assert!(
+                !t.starts_with('@') && !t.starts_with('#'),
+                "every target must be a resolved real addr, found unresolved symbol {t:?} in {cmd:#?}"
+            );
+        }
+    }
 }
