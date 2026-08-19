@@ -1476,9 +1476,21 @@ fn render_record(rec: &Json, cmd_by_addr: &BTreeMap<&str, &Json>) -> String {
             let chosen = rec.get("chose").and_then(Json::as_str);
             let opts: Vec<Json> = orig.and_then(|c| c.get("options")).and_then(Json::as_array).cloned().unwrap_or_default();
             let rendered = render_options(&opts, chosen);
+            // dsl 0.11.0: `<branch prompt=… timeout=…>` — the choice-situation
+            // sentence and the engine-wire countdown, shown only when authored
+            // (`<hub>` carries neither field, so this is a no-op there).
+            let prompt = orig.and_then(|c| c.get("prompt")).and_then(Json::as_str);
+            let timeout = orig.and_then(|c| c.get("timeoutSec")).and_then(Json::as_u64);
+            let mut label = format!("{kind} {id}");
+            if let Some(p) = prompt {
+                label.push_str(&format!(" \"{p}\""));
+            }
+            if let Some(t) = timeout {
+                label.push_str(&format!(" ({t}s)"));
+            }
             match chosen {
-                Some(c) => format!("▷ {kind} {id}: {rendered}        ← chosen: {c}"),
-                None => format!("▷ {kind} {id}: {rendered}        ← INCOMPLETE (no decision)"),
+                Some(c) => format!("▷ {label}: {rendered}        ← chosen: {c}"),
+                None => format!("▷ {label}: {rendered}        ← INCOMPLETE (no decision)"),
             }
         }
         "match" => format!("  match -> {}", rec.get("result").and_then(Json::as_str).unwrap_or("")),

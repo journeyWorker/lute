@@ -1672,6 +1672,15 @@
         "converge": {
           "type": "string"
         },
+        "prompt": {
+          "type": "string",
+          "description": "dsl 0.11.0: the choice-situation sentence shown by the UI. Present only when authored."
+        },
+        "timeoutSec": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "dsl 0.11.0: the countdown, in whole seconds, before the branch times out. Present only when authored."
+        },
         "wait": {
           "type": "boolean"
         },

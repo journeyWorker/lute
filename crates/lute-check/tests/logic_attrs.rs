@@ -174,3 +174,47 @@ fn the_corpus_vocabulary_is_permitted() {
     );
     assert_eq!(unknown_attrs(&t), 0, "{:?}", codes(&t));
 }
+
+/// dsl 0.11.0 (branch prompt/timeout): `prompt`/`timeout` join `id` in the
+/// permitted set (no `E-UNKNOWN-ATTR`) and, well-formed, draw no diagnostic
+/// at all.
+#[test]
+fn branch_prompt_and_timeout_are_permitted_and_valid() {
+    let t = format!(
+        "{HDR}<branch id=\"b\" prompt=\"What now?\" timeout=\"10\">\n\
+         <choice id=\"c\" label=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
+    );
+    assert_eq!(codes(&t), Vec::<String>::new(), "{:?}", codes(&t));
+}
+
+/// `timeout="0"` and a non-numeric `timeout` both draw `E-BRANCH-TIMEOUT`:
+/// the engine wire's countdown cannot count down from zero or parse
+/// garbage — the two ways `str::parse::<u32>` combined with the positivity
+/// check reject a value.
+#[test]
+fn branch_timeout_zero_or_non_numeric_is_rejected() {
+    for bad in ["0", "abc"] {
+        let t = format!(
+            "{HDR}<branch id=\"b\" prompt=\"What now?\" timeout=\"{bad}\">\n\
+             <choice id=\"c\" label=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
+        );
+        assert_eq!(codes(&t), vec!["E-BRANCH-TIMEOUT".to_string()], "{bad:?}: {:?}", codes(&t));
+    }
+}
+
+/// An empty `prompt` is not a valid "no prompt" spelling — `E-BRANCH-PROMPT`,
+/// column-exact at the attribute (matching `E-UNKNOWN-ATTR`'s own anchor
+/// convention).
+#[test]
+fn branch_empty_prompt_is_rejected_at_its_own_span() {
+    let t = format!(
+        "{HDR}<branch id=\"b\" prompt=\"\" timeout=\"10\">\n\
+         <choice id=\"c\" label=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
+    );
+    let d = run(&t)
+        .diagnostics
+        .into_iter()
+        .find(|d| d.code == "E-BRANCH-PROMPT")
+        .expect("expected E-BRANCH-PROMPT");
+    assert_eq!(&t[d.span.byte_start..d.span.byte_end], "prompt=\"\"");
+}
