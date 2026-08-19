@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.11.1`, the grammar and semantics the checker
+- **Language** — currently `0.12.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.11.1`) and gated on by consuming engines.
+  artifact (currently `0.12.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,49 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.12.0] - 2026-08-19
+
+**Flow that names its destinations.**
+
+The release-earning axis is the **language**: forward jumps. A document can
+now label a position — `::mark{id="x"}` anywhere, or `id="x"` directly on a
+content line — and move to it with `::next{to="x"}`, optionally guarded
+(`::next{to="x" when="<CEL>"}`: jump when true, fall through when false).
+Jumps are FORWARD-ONLY by static rule, so the walk stays a DAG and every
+existing analysis (reachability, definite assignment, trace termination,
+coverage) keeps its footing. Combined with `::end{reason=…}`, branches can
+now leave their arm, rejoin a later trunk, re-diverge, and land on multiple
+endings without nesting.
+
+### Added
+
+- **Language 0.12.0 — labels and forward jumps** — `::mark{id=…}` (position
+  anchor, emits no record), content-line `id=…` (that line's record is the
+  label; the one line attribute that is compile-time addressing rather than
+  a record field), `::next{to=… when=…}`. One label namespace per document.
+  New diagnostics: `E-MARK-DUP` (duplicate label, mark/line-id cross
+  collisions included), `E-NEXT-UNDEFINED`, `E-NEXT-BACKWARD` (forward-only),
+  `W-CODE-AFTER-NEXT` (dead nodes after an unguarded `::next`, the
+  `W-CODE-AFTER-END` mirror). Guarded `::next` desugars to the same canonical
+  one-arm `<match>` a guarded content line lowers to. Spec:
+  [`docs/proposals/scenario-dsl/0.12.0.md`](docs/proposals/scenario-dsl/0.12.0.md).
+- Timeline clips explicitly reject `::mark`/`::next` (the `::end` precedent).
+
+### Changed
+
+- **IR 0.12.0 is a pure restamp** — `::next` lowers to the EXISTING `jump`
+  command and guarded jumps to the existing `match` record; no field is
+  added, renamed, moved, or retyped. The gated `major.minor` still moves
+  (`0.11` → `0.12`) purely by the alignment rule, so
+  `schemas/lute-ir-0.11.schema.json` is renamed to
+  [`schemas/lute-ir-0.12.schema.json`](schemas/lute-ir-0.12.schema.json)
+  (body unchanged apart from the stamp) and an engine gated on IR `0.11`
+  must widen its gate to `0.12` — reading no new field once it does.
+- `lute.core` capability surface grows two directives (`mark`, `next`), so
+  `capabilityVersion` snapshots move.
+- Version re-alignment per [`docs/versioning.md`](docs/versioning.md):
+  toolchain, language, and IR all present `0.12.0`.
 
 ## [0.11.1] - 2026-08-19
 
@@ -1122,6 +1165,7 @@ Initial scoped npm release: the [`@lute-lang/lute`](https://www.npmjs.com/packag
 launcher resolving `darwin-arm64` and `linux-x64` prebuilt binaries, targeting
 language version `0.6.1`.
 
+[0.12.0]: https://github.com/journeyWorker/lute/releases/tag/v0.12.0
 [0.11.1]: https://github.com/journeyWorker/lute/releases/tag/v0.11.1
 [0.7.0]: https://github.com/journeyWorker/lute/releases/tag/v0.7.0
 [0.2.0]: https://github.com/journeyWorker/lute/releases/tag/v0.2.0
