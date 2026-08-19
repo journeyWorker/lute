@@ -82,7 +82,14 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// major.minor move) and an engine implementing IR `0.10` MUST widen its
 /// gate before it accepts a `0.11.0` artifact — reading no new field,
 /// because there is none.
-pub const LUTE_IR_VERSION: &str = "0.11.0";
+///
+/// IR `0.11.1` is ADDITIVE-ONLY over `0.11.0`: the choice record gains two
+/// optional fields, `prompt` and `timeoutSec` (`<branch prompt=… timeout=…>`,
+/// language 0.11.1), both omitted entirely when unauthored so prompt-less
+/// artifacts stay byte-stable. The gated major.minor does not move, so
+/// `schemas/lute-ir-0.11.schema.json` keeps its name and engines already on
+/// IR `0.11` parse `0.11.1` artifacts unchanged.
+pub const LUTE_IR_VERSION: &str = "0.11.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -841,8 +848,8 @@ mod tests {
         // gated major.minor line (`0.10` -> `0.11`) even though the shape
         // does not move. The two remain independently tracked pins (T13);
         // they simply agree on this release.
-        assert_eq!(super::LUTE_IR_VERSION, "0.11.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.11.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.11.1");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.11.1");
     }
 
     #[test]
@@ -851,8 +858,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.11.0");
-        assert_eq!(v["irVersion"], "0.11.0");
+        assert_eq!(v["lute"], "0.11.1");
+        assert_eq!(v["irVersion"], "0.11.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");
