@@ -293,6 +293,8 @@ fn walk_branch(
         record_key: format!("scene.choices.{}", b.id),
         options,
         converge: conv.sym(),
+        prompt: attr_string(&b.attrs, "prompt"),
+        timeout_sec: attr_string(&b.attrs, "timeout").and_then(|s| s.parse::<u32>().ok()),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);

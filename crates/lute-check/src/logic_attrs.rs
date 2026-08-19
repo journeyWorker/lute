@@ -43,11 +43,15 @@
 //! that survives into the residual list must be permitted.
 
 use lute_core_span::{Diagnostic, Layer, Severity};
-use lute_syntax::ast::{Arm, Attr, Branch, Choice, Hub, Match};
+use lute_syntax::ast::{Arm, Attr, AttrValue, Branch, Choice, Hub, Match};
 
 use crate::content_line::E_UNKNOWN_ATTR;
 
-const BRANCH_ATTRS: &[&str] = &["id"];
+/// dsl 0.11.0 (branch prompt/timeout): `<branch>`'s two engine-wire fields
+/// for the countdown UI, joining `id` in the permitted set. `close` only
+/// enforces that no OTHER key appears; their own VALUES are checked below
+/// by [`check_branch_value_attrs`], because the parser accepts any `Str`.
+const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout"];
 const MATCH_ATTRS: &[&str] = &["on"];
 const WHEN_ATTRS: &[&str] = &["is", "test"];
 const OTHERWISE_ATTRS: &[&str] = &[];
@@ -87,6 +91,55 @@ pub(crate) enum ChoicePos {
 
 pub(crate) fn check_branch_attrs(b: &Branch, diags: &mut Vec<Diagnostic>) {
     close(&b.attrs, "branch", BRANCH_ATTRS, &[], None, diags);
+    check_branch_value_attrs(b, diags);
+}
+
+/// `E-BRANCH-PROMPT`: `<branch prompt>` must be a non-empty string — it is
+/// the choice-situation sentence the UI shows verbatim, and an empty/absent
+/// one is a silent blank prompt, not a valid "no prompt" spelling (there is
+/// none; the attribute is optional at the grammar level by being absent from
+/// `b.attrs` entirely, which this loop never sees).
+///
+/// `E-BRANCH-TIMEOUT`: `<branch timeout>` must parse as a positive integer
+/// number of seconds — the engine wire's countdown, which cannot count down
+/// from zero, a negative number, or a fraction of a second.
+const E_BRANCH_PROMPT: &str = "E-BRANCH-PROMPT";
+const E_BRANCH_TIMEOUT: &str = "E-BRANCH-TIMEOUT";
+
+fn check_branch_value_attrs(b: &Branch, diags: &mut Vec<Diagnostic>) {
+    for attr in &b.attrs {
+        let bad = match attr.key.as_str() {
+            "prompt" => match &attr.value {
+                AttrValue::Str(s) if !s.trim().is_empty() => None,
+                _ => Some((
+                    E_BRANCH_PROMPT,
+                    "`<branch prompt>` must be a non-empty string (dsl 0.11.0 §4)".to_string(),
+                )),
+            },
+            "timeout" => match &attr.value {
+                AttrValue::Str(s) if s.parse::<u32>().is_ok_and(|n| n > 0) => None,
+                _ => Some((
+                    E_BRANCH_TIMEOUT,
+                    "`<branch timeout>` must be a positive integer number of seconds (dsl 0.11.0 §4)"
+                        .to_string(),
+                )),
+            },
+            _ => None,
+        };
+        if let Some((code, message)) = bad {
+            diags.push(Diagnostic {
+                code: code.to_string(),
+                severity: Severity::Error,
+                message,
+                span: attr.span,
+                layer: Layer::Logic,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+        }
+    }
 }
 
 pub(crate) fn check_hub_attrs(h: &Hub, diags: &mut Vec<Diagnostic>) {

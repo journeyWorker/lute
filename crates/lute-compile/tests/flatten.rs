@@ -236,3 +236,42 @@ fn component_sentinels_stamp_source_and_emit_nothing() {
     };
     assert!(l.stamp.source.is_none());
 }
+
+/// dsl 0.11.0 (branch prompt/timeout): `<branch prompt=… timeout=…>` flows
+/// through `walk_branch`'s residual-attr extraction into `ChoiceCmd`'s two
+/// new fields, and both survive into the serialized IR under their camelCase
+/// wire names (`prompt`/`timeoutSec`) — the JSON a `lute compile` invocation
+/// actually emits.
+#[test]
+fn branch_prompt_and_timeout_flow_into_choice_cmd() {
+    let b = r#"<branch id="firstMove" prompt="What do you do first?" timeout="10">
+  <choice id="go" label="Go">
+    @narrator: went.
+  </choice>
+</branch>"#;
+    let (recs, _) = flatten(b);
+    let Command::Choice(c) = &recs[0].cmd else {
+        panic!()
+    };
+    assert_eq!(c.prompt.as_deref(), Some("What do you do first?"));
+    assert_eq!(c.timeout_sec, Some(10));
+    let json = serde_json::to_string(&Command::Choice(c.clone())).unwrap();
+    assert!(json.contains(r#""prompt":"What do you do first?""#), "{json}");
+    assert!(json.contains(r#""timeoutSec":10"#), "{json}");
+}
+
+/// The counterpart: a `<branch>` without `prompt`/`timeout` leaves both
+/// fields `None`, and `skip_serializing_if` drops them from the wire — no
+/// regression on the corpus's existing untimed branches.
+#[test]
+fn branch_without_prompt_or_timeout_omits_both_fields() {
+    let (recs, _) = flatten(BRANCH);
+    let Command::Choice(c) = &recs[0].cmd else {
+        panic!()
+    };
+    assert!(c.prompt.is_none());
+    assert!(c.timeout_sec.is_none());
+    let json = serde_json::to_string(&Command::Choice(c.clone())).unwrap();
+    assert!(!json.contains("prompt"), "{json}");
+    assert!(!json.contains("timeoutSec"), "{json}");
+}

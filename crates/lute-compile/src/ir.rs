@@ -599,6 +599,14 @@ pub struct ChoiceCmd {
     pub record_key: String,
     pub options: Vec<ChoiceOption>,
     pub converge: String,
+    /// dsl 0.11.0: the choice-situation sentence for the UI. Absent unless
+    /// authored (skip-if-empty, matching `ChoiceOption::when`/`expr`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    /// dsl 0.11.0: the countdown, in whole seconds, matching the wire's
+    /// `timeoutSec` name. Absent unless authored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_sec: Option<u32>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }

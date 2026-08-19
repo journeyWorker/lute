@@ -135,6 +135,8 @@ fn choice_matches_spec_worked_example() {
             labels: Default::default(),
         }],
         converge: "004-1100".into(),
+        prompt: None,
+        timeout_sec: None,
         stamp: Stamp::default(),
     });
     assert_eq!(
@@ -361,6 +363,8 @@ fn retarget_and_addr_helpers_visit_every_flow_field() {
             labels: Default::default(),
         }],
         converge: "@2".into(),
+        prompt: None,
+        timeout_sec: None,
         stamp: Stamp::default(),
     });
     *cmd.addr_mut() = "001-0100".into();
