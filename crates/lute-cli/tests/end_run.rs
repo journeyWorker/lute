@@ -55,6 +55,44 @@ fn kinds(v: &serde_json::Value) -> Vec<&str> {
     v["commands"].as_array().unwrap().iter().map(|c| c["kind"].as_str().unwrap()).collect()
 }
 
+/// 0.13.0 version negotiation: the gate is MAJOR-only. A minor/patch
+/// difference within the implemented major line is compatible-by-default
+/// (the aligned releases 0.11.0/0.12.0 moved the minor while changing
+/// nothing an engine reads); a MAJOR mismatch still refuses at exit 2.
+#[test]
+fn run_gates_on_major_only() {
+    let dir = temp_dir("gate");
+    let src = dir.join("source.lute");
+    let art = dir.join("artifact.json");
+    std::fs::write(&src, format!("{HDR}@narrator: hi\n")).unwrap();
+    let out = Command::new(BIN)
+        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "compile: {}", String::from_utf8_lossy(&out.stderr));
+
+    let mut v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&art).unwrap()).unwrap();
+
+    // Same major, wildly different minor -> accepted.
+    v["irVersion"] = serde_json::json!("0.999.7");
+    std::fs::write(&art, serde_json::to_string(&v).unwrap()).unwrap();
+    let ok = Command::new(BIN).args(["run", art.to_str().unwrap()]).output().unwrap();
+    assert!(
+        ok.status.success(),
+        "same-major minor drift must run: {}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+
+    // Different major -> refused, exit 2, message names the MAJOR policy.
+    v["irVersion"] = serde_json::json!("1.0.0");
+    std::fs::write(&art, serde_json::to_string(&v).unwrap()).unwrap();
+    let no = Command::new(BIN).args(["run", art.to_str().unwrap()]).output().unwrap();
+    assert_eq!(no.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&no.stderr);
+    assert!(err.contains("unsupported irVersion") && err.contains("MAJOR"), "{err}");
+}
+
 #[test]
 fn end_stops_the_walk_and_surfaces_its_reason() {
     let v = compile_and_run(

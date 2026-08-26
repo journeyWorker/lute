@@ -46,20 +46,31 @@ loads, exactly as it concatenates the command streams.
 
 ## Version negotiation
 
-Gate parsing on `irVersion` by **major.minor** (spec §4.1, A9):
+Gate parsing on `irVersion` by **MAJOR** (0.13.0; previously major.minor):
 
-- accept any artifact whose `irVersion` major.minor you implement;
-- refuse one from a newer major.minor (the PATCH component is an advisory,
-  backward-compatible refinement and never gates);
-- **ignore unknown object fields** — new optional fields are added append-only
-  within a minor line, so a newer PATCH artifact still loads on an older engine
-  of the same major.minor;
+- accept any artifact whose `irVersion` MAJOR you implement — minor and
+  patch are compatible-by-default;
+- refuse one from a different MAJOR;
+- **ignore unknown object fields** — new optional fields are added
+  append-only within a major line, so a newer minor/patch artifact still
+  loads on an older engine of the same major;
 - treat an **unknown command `kind` as an error** — a new command kind is a
-  real capability you cannot fake.
+  real capability you cannot fake, and this is the check that actually
+  protects you from a newer artifact, not the version number.
 
 `lute` (the language version) is informational for the runtime and does not
 gate. `capabilityVersion` lets you refuse an artifact compiled against a plugin
 snapshot you do not match.
+
+> **History.** Through `0.12.0` the gate was **major.minor**, and consecutive
+> releases (`0.11.0`, `0.12.0`) moved the gated line while changing nothing
+> an engine reads — every consumer paid a gate-widening edit for a pure
+> restamp. `0.13.0` relaxes the gate to MAJOR only. Pre-1.0 caveat this
+> makes explicit: a breaking IR change may still land in a minor (see
+> `0.10.0` below, and the `0.8.0` `addr`-width note under *Addressing*);
+> such changes are called out in the CHANGELOG and the schema rather than
+> fenced by the version gate, so an engine that reads an affected field
+> consults those when crossing a minor with a documented break.
 
 **IR `0.10.0` changes the shape** — one field rename, the first since `0.8.0`.
 The injection provenance stamp's `reason` becomes **`explanation`**:
@@ -69,10 +80,9 @@ while this field is human-readable English the compiler wrote and nothing
 dispatches on. Nothing else moves — no field added or retyped, no new command
 `kind`, and `Provenance.injected` is retained but is now constant-`true`, so do
 not read a `true` as distinguishing anything. The schema is
-`schemas/lute-ir-0.12.schema.json`. The gate above is still normative, so an
-engine implementing `0.9` **refuses** a `0.10.0` artifact until it accepts
-`0.10` — and if it reads the provenance stamp, that rename is the only edit
-beyond the gate.
+`schemas/lute-ir-0.13.schema.json`. An engine that reads the provenance stamp
+and consumes artifacts from both sides of `0.10.0` must handle that rename;
+the version gate no longer refuses on its behalf.
 
 ## Addressing and control flow
 
@@ -137,7 +147,7 @@ const evalSlot = (raw, expr, state, facts) =>
   expr !== undefined ? evalExpr(expr, state) : evalCel(raw, state, facts);
 
 function run(artifact: Artifact, state: StateStore, facts: FactStore) {
-  assertVersionCompatible(artifact.irVersion); // major.minor gate
+  assertVersionCompatible(artifact.irVersion); // MAJOR gate (0.13.0)
 
   // scene: one continuous command stream. quest: see quest-lifecycle.md —
   // `quest`/`on` records are declarations the lifecycle driver consults, not

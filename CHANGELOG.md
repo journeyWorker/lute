@@ -37,21 +37,75 @@ table.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-26
+
+**Editorial policy as configuration, and drafts that stay legible.**
+
+Two axes earn this one. The **toolchain** gains a lint layer: `lute lint`
+evaluates configurable editorial content rules — the checks a scenario team
+enforces by convention (dialogue length and ratio, scene-length spread,
+per-speaker emotion distribution with streak caps and a thrash floor,
+variant composition, asset existence, shot staging) — as project policy in
+`lute.lint.yaml` rather than as hardcoded opinion. The **language** gains
+one universal frontmatter key, `codesLocked:`, which marks a document's
+line codes as published identity and lets the new `lute tag --force`
+renumber freely everywhere it is absent. The release also relaxes the
+runtime version gate: engines now refuse on a **major** mismatch only, so
+the recurring "pure restamp, but every engine must widen its gate" cost
+(paid on 0.11.0 and 0.12.0 back to back) is gone.
+
 ### Added
 
-- **Lint system** — `lute lint` evaluates configurable editorial content rules
-  independently of `lute check`, with normal and JSON diagnostics, deniable
-  `L-*` rule codes, and LSP opt-in. `lute.lint.yaml` configures levels,
-  thresholds, ignores, and project-local CEL rules; plugins may export advisory
-  `lints/*.yaml` rules without changing the capability snapshot or
-  `capabilityVersion`.
-- **`lute tag --force`** — FORCE-renumber every content line's `code` in clean
-  document order (0010/0020/… per speaker per identity scope), rewriting
-  existing codes — a drafting tool for keeping sequences readable while a
-  scene is still being written. Refused when frontmatter declares
-  `codesLocked:` (new universal key): published codes are `lineId`/`voiceKey`
-  identity, and renumbering them severs the localization/voice join. The
-  guard fails closed — any value other than exactly `false` locks.
+- **Lint system** — `lute lint` evaluates configurable editorial content
+  rules independently of `lute check`, with human and JSON diagnostics,
+  deniable `L-*` rule codes, and LSP opt-in (`lsp: true`). `lute.lint.yaml`
+  configures levels (`off`/`hint`/`info`/`warn`/`error`), thresholds,
+  ignore globs, and project-local CEL rules over core-computed metric
+  tables (line/shot/scene/speaker/group/project); seven core rules ship
+  enabled with drafting-safe defaults. Plugins may export advisory
+  `lints/*.yaml` rules (`<plugin-id>/<rule-id>`,
+  [`plugin-system/0.0.5.md`](docs/proposals/plugin-system/0.0.5.md))
+  **without** changing the capability snapshot or `capabilityVersion` —
+  lints are advisory and never move artifact identity. Guide:
+  [`docs/linting.md`](docs/linting.md).
+- **Language 0.13.0 — `codesLocked:` and the guarded renumber** —
+  `lute tag --force` rewrites every content line's `code` in clean document
+  order (0010/0020/… per speaker per identity scope), a drafting tool for
+  sequences left gappy by edits; output is indistinguishable from a fresh
+  tag pass and the run is idempotent. The new universal frontmatter key
+  `codesLocked:` refuses it — published codes key `lineId`/`voiceKey`, and
+  renumbering them severs the localization/voice join. The guard fails
+  closed (any value other than exactly `false` locks), and plain `lute tag`
+  back-fill stays available under lock. Spec:
+  [`docs/proposals/scenario-dsl/0.13.0.md`](docs/proposals/scenario-dsl/0.13.0.md).
+
+### Changed
+
+- **Version negotiation gates on MAJOR only** — the runtime contract
+  ([`docs/runtime/execution-model.md`](docs/runtime/execution-model.md))
+  and the reference runner (`lute run`/`play`/`test`) now refuse an
+  artifact only when its `irVersion` MAJOR differs from the implemented
+  line; minor and patch are compatible-by-default (append-only fields,
+  ignored when unknown), and an **unknown command `kind`** remains the
+  hard error that catches a genuinely newer capability. Previously a
+  minor-line mismatch was refused outright, which taxed every aligned
+  release — `0.11.0` and `0.12.0` both moved the gated line while
+  changing nothing an engine reads. Pre-1.0 caveat: breaking IR changes
+  may still land in a minor (`0.10.0`'s provenance rename); they are
+  called out in this changelog and the schema, no longer fenced by the
+  gate.
+- **IR 0.13.0 is a pure restamp** — no field is added, renamed, moved, or
+  retyped. The schema file still tracks the release line for strict
+  validators, so `schemas/lute-ir-0.12.schema.json` is renamed to
+  [`schemas/lute-ir-0.13.schema.json`](schemas/lute-ir-0.13.schema.json)
+  (body unchanged apart from the stamp) — but under the major-only gate
+  this rename no longer implies any engine edit at all.
+- `capabilityVersion` does NOT move this release: plugin `lints` exports
+  are excluded from the capability snapshot by design, and `lute.core`
+  declares nothing new (`codesLocked` is checker frontmatter admission,
+  not a capability export).
+- Version re-alignment per [`docs/versioning.md`](docs/versioning.md):
+  toolchain, language, and IR all present `0.13.0`.
 
 ## [0.12.0] - 2026-08-19
 
@@ -1183,6 +1237,7 @@ Initial scoped npm release: the [`@lute-lang/lute`](https://www.npmjs.com/packag
 launcher resolving `darwin-arm64` and `linux-x64` prebuilt binaries, targeting
 language version `0.6.1`.
 
+[0.13.0]: https://github.com/journeyWorker/lute/releases/tag/v0.13.0
 [0.12.0]: https://github.com/journeyWorker/lute/releases/tag/v0.12.0
 [0.11.1]: https://github.com/journeyWorker/lute/releases/tag/v0.11.1
 [0.7.0]: https://github.com/journeyWorker/lute/releases/tag/v0.7.0
