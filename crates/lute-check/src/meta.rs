@@ -148,6 +148,7 @@ const UNIVERSAL_KEYS: &[&str] = &[
     "facts",
     "rules",
     "components",
+    "codesLocked",
 ];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Scene` document (dsl 0.1.0 §6.1,
@@ -1497,6 +1498,18 @@ mod tests {
     fn missing_required_meta_key_errors() {
         let (_m, diags) = parse_meta_str("season: 1\nepisode: 2\n"); // no character
         assert!(diags.iter().any(|d| d.code == "E-META-MISSING"));
+    }
+
+    #[test]
+    fn codes_locked_is_a_known_universal_key() {
+        // dsl §12 publish guard (`lute tag --force`): `codesLocked:` is core
+        // frontmatter on every document kind — never E-META-UNKNOWN-KEY.
+        let (_m, diags) =
+            parse_meta_str("character: x\nseason: 1\nepisode: 1\ncodesLocked: true\n");
+        assert!(
+            !diags.iter().any(|d| d.code == "E-META-UNKNOWN-KEY"),
+            "{diags:?}"
+        );
     }
 
     #[test]

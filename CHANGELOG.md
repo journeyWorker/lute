@@ -45,6 +45,13 @@ table.
   thresholds, ignores, and project-local CEL rules; plugins may export advisory
   `lints/*.yaml` rules without changing the capability snapshot or
   `capabilityVersion`.
+- **`lute tag --force`** — FORCE-renumber every content line's `code` in clean
+  document order (0010/0020/… per speaker per identity scope), rewriting
+  existing codes — a drafting tool for keeping sequences readable while a
+  scene is still being written. Refused when frontmatter declares
+  `codesLocked:` (new universal key): published codes are `lineId`/`voiceKey`
+  identity, and renumbering them severs the localization/voice join. The
+  guard fails closed — any value other than exactly `false` locks.
 
 ## [0.12.0] - 2026-08-19
 
