@@ -113,14 +113,14 @@ fn check_branch_value_attrs(b: &Branch, diags: &mut Vec<Diagnostic>) {
                 AttrValue::Str(s) if !s.trim().is_empty() => None,
                 _ => Some((
                     E_BRANCH_PROMPT,
-                    "`<branch prompt>` must be a non-empty string (dsl 0.11.0 §4)".to_string(),
+                    "`<branch prompt>` must be a non-empty string (dsl 0.11.1 §4)".to_string(),
                 )),
             },
             "timeout" => match &attr.value {
                 AttrValue::Str(s) if s.parse::<u32>().is_ok_and(|n| n > 0) => None,
                 _ => Some((
                     E_BRANCH_TIMEOUT,
-                    "`<branch timeout>` must be a positive integer number of seconds (dsl 0.11.0 §4)"
+                    "`<branch timeout>` must be a positive integer number of seconds (dsl 0.11.1 §4)"
                         .to_string(),
                 )),
             },
