@@ -226,6 +226,13 @@ enum Command {
     Tag {
         /// Path to the `.lute` file to tag.
         file: PathBuf,
+        /// FORCE-renumber every line's `code` in clean document order
+        /// (0010/0020/… per speaker per scope), rewriting existing codes.
+        /// A drafting tool: refused when frontmatter declares `codesLocked:`
+        /// (published codes key `lineId`/`voiceKey` — renumbering breaks the
+        /// localization/voice join).
+        #[arg(long)]
+        force: bool,
     },
     /// Migrate a pre-0.2.2 document to 0.2.2 in place — `:line[speaker]{…}:
     /// text` → `@speaker{…}: text`, any other content line's leading `:`
@@ -843,7 +850,7 @@ fn main() -> ExitCode {
             providers.as_deref(),
             project.as_deref(),
         ),
-        Command::Tag { file } => run_tag(&file),
+        Command::Tag { file, force } => run_tag(&file, force),
         Command::Fix { file } => run_fix(&file),
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
             run_refresh(&dir, project.as_deref())
@@ -4750,7 +4757,13 @@ fn print_trace_report(report: &TraceReport, json: bool) {
 /// core that owns the tagging logic): read the file, tag, and — only when at
 /// least one line was tagged — write the result back. Exit `0` on success
 /// (whether or not anything changed), `2` on an I/O failure (like `run_check`).
-fn run_tag(file: &Path) -> ExitCode {
+///
+/// With `--force`, FORCE-renumber instead ([`lute_check::retag_document`]):
+/// every line's code is rewritten in clean document order — a drafting tool.
+/// Refused (exit `1`) when frontmatter declares `codesLocked:` (published
+/// codes are `lineId`/`voiceKey` identity; renumbering severs the
+/// localization/voice join) or when the document has structural errors.
+fn run_tag(file: &Path, force: bool) -> ExitCode {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
         Err(e) => {
@@ -4758,6 +4771,47 @@ fn run_tag(file: &Path) -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    if force {
+        return match lute_check::retag_document(&text) {
+            lute_check::RetagOutcome::Locked => {
+                eprintln!(
+                    "lute: {} declares `codesLocked:` — its codes are published identity \
+                     (lineId/voiceKey); refusing to renumber. Remove the key or set it \
+                     `false` to renumber a draft.",
+                    file.display()
+                );
+                ExitCode::from(1)
+            }
+            lute_check::RetagOutcome::Broken => {
+                eprintln!(
+                    "lute: {} has structural errors — fix `lute check` findings first; \
+                     nothing was rewritten",
+                    file.display()
+                );
+                ExitCode::from(1)
+            }
+            lute_check::RetagOutcome::Renumbered {
+                text: out,
+                renumbered,
+                skipped,
+            } => {
+                if renumbered > 0 {
+                    if let Err(e) = std::fs::write(file, &out) {
+                        eprintln!("lute: cannot write {}: {e}", file.display());
+                        return ExitCode::from(2);
+                    }
+                    println!("lute: renumbered {renumbered} line(s)");
+                } else {
+                    println!("lute: codes already in order");
+                }
+                if skipped > 0 {
+                    println!("lute: {skipped} line(s) skipped (non-string `code` value)");
+                }
+                ExitCode::SUCCESS
+            }
+        };
+    }
 
     let out = lute_check::tag_document(&text);
 

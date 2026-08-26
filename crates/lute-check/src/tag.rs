@@ -117,35 +117,196 @@ fn tag_scope(lines: Vec<&Line>, bytes: &[u8], inserts: &mut Vec<(usize, String)>
         };
         *counter = nc;
         let code = format!("{nc:04}");
-        // 0.1.0 content line: `:speaker{attrs}?: text` (dsl §7.1). We derive the
-        // insertion point from the parsed span rather than re-scanning raw bytes:
-        // spans are ORIGINAL-source offsets and comment-blanking is
-        // length-preserving (parser SPAN-FIDELITY contract), so a `text` byte
-        // offset maps 1:1 onto what the parser saw.
-        //   - `speaker_end` is the byte just past the speaker ident. An ident
-        //     holds no comments/whitespace, so it is exactly `speaker.len()`
-        //     bytes past the leading `:` (`span.byte_start`).
-        //   - An attr block exists iff that byte is `{`: the parser only accepts
-        //     a `{` FLUSH against the ident, and `{` is never a comment byte, so
-        //     this single byte is authoritative (a `{` in a comment or in the
-        //     text can never sit here).
-        let speaker_end = line.span.byte_start + 1 + line.speaker.len();
-        if bytes.get(speaker_end) == Some(&b'{') {
-            // Existing attr block: merge `code` as the FIRST attribute, right
-            // after `{`. Trailing space only when the block is non-empty (the
-            // next byte isn't the closing `}`).
-            let at = speaker_end + 1;
-            let inserted = if bytes.get(at) == Some(&b'}') {
-                format!("code=\"{code}\"")
-            } else {
-                format!("code=\"{code}\" ")
-            };
-            inserts.push((at, inserted));
+        let (at, inserted) = code_insert(line, bytes, &code);
+        inserts.push((at, inserted));
+    }
+}
+
+/// Where and what to splice to give `line` a fresh `code` attribute.
+///
+/// 0.1.0 content line: `:speaker{attrs}?: text` (dsl §7.1). We derive the
+/// insertion point from the parsed span rather than re-scanning raw bytes:
+/// spans are ORIGINAL-source offsets and comment-blanking is
+/// length-preserving (parser SPAN-FIDELITY contract), so a `text` byte
+/// offset maps 1:1 onto what the parser saw.
+///   - `speaker_end` is the byte just past the speaker ident. An ident
+///     holds no comments/whitespace, so it is exactly `speaker.len()`
+///     bytes past the leading `:` (`span.byte_start`).
+///   - An attr block exists iff that byte is `{`: the parser only accepts
+///     a `{` FLUSH against the ident, and `{` is never a comment byte, so
+///     this single byte is authoritative (a `{` in a comment or in the
+///     text can never sit here).
+fn code_insert(line: &Line, bytes: &[u8], code: &str) -> (usize, String) {
+    let speaker_end = line.span.byte_start + 1 + line.speaker.len();
+    if bytes.get(speaker_end) == Some(&b'{') {
+        // Existing attr block: merge `code` as the FIRST attribute, right
+        // after `{`. Trailing space only when the block is non-empty (the
+        // next byte isn't the closing `}`).
+        let at = speaker_end + 1;
+        let inserted = if bytes.get(at) == Some(&b'}') {
+            format!("code=\"{code}\"")
         } else {
-            // No attr block: fresh `{code="ID"}` between the speaker ident and
-            // the second `:` (`@bianca: hi` -> `@bianca{code="0010"}: hi`).
-            inserts.push((speaker_end, format!("{{code=\"{code}\"}}")));
+            format!("code=\"{code}\" ")
+        };
+        (at, inserted)
+    } else {
+        // No attr block: fresh `{code="ID"}` between the speaker ident and
+        // the second `:` (`@bianca: hi` -> `@bianca{code="0010"}: hi`).
+        (speaker_end, format!("{{code=\"{code}\"}}"))
+    }
+}
+
+/// The outcome of a FORCE renumber ([`retag_document`], `lute tag --force`).
+#[derive(Clone, Debug, PartialEq)]
+pub enum RetagOutcome {
+    /// Frontmatter carries `codesLocked` — the document's codes are published
+    /// identity (they key `lineId`/`voiceKey`, dsl §12) and renumbering is
+    /// refused. Remove the key (or set it `false`) to renumber again.
+    Locked,
+    /// A structural (Error-severity) parse defect — never rewrite a broken
+    /// doc; the input is left untouched.
+    Broken,
+    /// The renumbered text. `renumbered` counts lines whose code was written
+    /// (changed or newly inserted); `skipped` counts lines whose `code` is
+    /// not a string literal (an `@ref` is intentional identity, not a
+    /// sequence member — left alone).
+    Renumbered {
+        text: String,
+        renumbered: usize,
+        skipped: usize,
+    },
+}
+
+/// FORCE-renumber every content line's `code` (`lute tag --force`): each
+/// identity scope (the scene, then each `<quest>` — dsl 0.2.0 §7) restarts a
+/// per-speaker counter and assigns 0010/0020/… in document order, REWRITING
+/// existing codes in place (the one thing [`tag_document`] never does).
+///
+/// This is a drafting tool: while a scene is being written, insertions and
+/// deletions leave the back-filled sequence gappy and out of order, and a
+/// clean renumber keeps codes readable. Once a document's codes are
+/// published identity — exported for localization or voice — renumbering
+/// breaks the `lineId` join (`loc import`, `compile --locales`), so a
+/// frontmatter `codesLocked:` key refuses the operation. The guard fails
+/// CLOSED: any `codesLocked:` value other than exactly `false` locks
+/// (a typo like `codesLocked: "no"` must never silently unlock).
+///
+/// Idempotent (a second run is byte-identical) and total, like
+/// [`tag_document`].
+pub fn retag_document(text: &str) -> RetagOutcome {
+    let (doc, diags) = parse(text);
+    if diags.iter().any(|d| d.severity == Severity::Error) {
+        return RetagOutcome::Broken;
+    }
+    if codes_locked(&doc.meta.raw_yaml) {
+        return RetagOutcome::Locked;
+    }
+
+    let bytes = text.as_bytes();
+    // (start, end, replacement): end == start is a pure insertion.
+    let mut edits: Vec<(usize, usize, String)> = Vec::new();
+    let mut renumbered = 0usize;
+    let mut skipped = 0usize;
+
+    let mut scene_lines: Vec<&Line> = Vec::new();
+    for shot in &doc.shots {
+        collect_lines(&shot.body, &mut scene_lines);
+    }
+    retag_scope(scene_lines, bytes, &mut edits, &mut renumbered, &mut skipped);
+    for quest in &doc.quests {
+        let mut quest_lines: Vec<&Line> = Vec::new();
+        collect_lines(&quest.body, &mut quest_lines);
+        retag_scope(quest_lines, bytes, &mut edits, &mut renumbered, &mut skipped);
+    }
+
+    if edits.is_empty() {
+        return RetagOutcome::Renumbered {
+            text: text.to_string(),
+            renumbered: 0,
+            skipped,
+        };
+    }
+
+    // Splice back-to-front (descending offset) so earlier offsets stay valid.
+    edits.sort_by_key(|(at, _, _)| std::cmp::Reverse(*at));
+    let mut out = text.to_string();
+    for (start, end, replacement) in &edits {
+        out.replace_range(*start..*end, replacement);
+    }
+
+    RetagOutcome::Renumbered {
+        text: out,
+        renumbered,
+        skipped,
+    }
+}
+
+/// Renumber ONE identity scope in document order with a fresh per-speaker
+/// counter (0010 step 10 — the same shape [`tag_scope`] back-fills, so a
+/// renumbered doc and a freshly-tagged doc are indistinguishable). A line
+/// whose existing code already equals its recomputed value produces NO edit
+/// (idempotence); a non-string `code` value consumes no counter slot and is
+/// counted in `skipped`.
+fn retag_scope(
+    lines: Vec<&Line>,
+    bytes: &[u8],
+    edits: &mut Vec<(usize, usize, String)>,
+    renumbered: &mut usize,
+    skipped: &mut usize,
+) {
+    let mut counter: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    for line in lines {
+        let code_attr = line.attrs.iter().find(|a| a.key == "code");
+        if let Some(attr) = code_attr {
+            if !matches!(attr.value, AttrValue::Str(_)) {
+                *skipped += 1;
+                continue;
+            }
         }
+        let next = counter.entry(line.speaker.clone()).or_insert(0);
+        let Some(nc) = next.checked_add(10) else {
+            continue;
+        };
+        *next = nc;
+        let code = format!("{nc:04}");
+        match code_attr {
+            Some(attr) => {
+                if matches!(&attr.value, AttrValue::Str(s) if s == &code) {
+                    continue; // already the right code — no edit, no count
+                }
+                // Replace the whole `code="…"` attr in place; `attr.span`
+                // covers key through closing quote.
+                edits.push((
+                    attr.span.byte_start,
+                    attr.span.byte_end,
+                    format!("code=\"{code}\""),
+                ));
+                *renumbered += 1;
+            }
+            None => {
+                let (at, inserted) = code_insert(line, bytes, &code);
+                edits.push((at, at, inserted));
+                *renumbered += 1;
+            }
+        }
+    }
+}
+
+/// dsl §12 publish guard: `true` iff frontmatter declares `codesLocked:` with
+/// any value other than exactly `false`. Fail-closed on malformed values —
+/// a lock typo must never silently unlock a published document. Malformed
+/// YAML cannot lock (the checker reports it separately); an absent key is
+/// unlocked.
+pub fn codes_locked(raw_yaml: &str) -> bool {
+    let Ok(serde_yaml::Value::Mapping(map)) =
+        serde_yaml::from_str::<serde_yaml::Value>(raw_yaml)
+    else {
+        return false;
+    };
+    match map.get(serde_yaml::Value::String("codesLocked".into())) {
+        None => false,
+        Some(serde_yaml::Value::Bool(false)) => false,
+        Some(_) => true,
     }
 }
 
@@ -245,6 +406,136 @@ mod tests {
         );
     }
 
+    // ── retag_document (`lute tag --force`) ────────────────────────────────
+
+    fn renumbered(out: RetagOutcome) -> (String, usize, usize) {
+        match out {
+            RetagOutcome::Renumbered {
+                text,
+                renumbered,
+                skipped,
+            } => (text, renumbered, skipped),
+            other => panic!("expected Renumbered, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn retag_renumbers_out_of_order_codes_in_document_order() {
+        // Drafting left the sequence gappy and out of order: 0050 then 0010.
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+                   @fixer{code=\"0050\"}: first\n\
+                   @fixer{code=\"0010\" mono}: second\n\
+                   @fixer: third\n";
+        let (text, n, skipped) = renumbered(retag_document(src));
+        assert_eq!((n, skipped), (3, 0));
+        assert!(text.contains("@fixer{code=\"0010\"}: first"), "got:\n{text}");
+        assert!(
+            text.contains("@fixer{code=\"0020\" mono}: second"),
+            "got:\n{text}"
+        );
+        assert!(text.contains("@fixer{code=\"0030\"}: third"), "got:\n{text}");
+    }
+
+    #[test]
+    fn retag_keeps_per_speaker_sequences_independent() {
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+                   @fixer{code=\"0090\"}: a\n\
+                   @bianca{code=\"0070\"}: b\n\
+                   @fixer: c\n";
+        let (text, n, _) = renumbered(retag_document(src));
+        assert_eq!(n, 3);
+        assert!(text.contains("@fixer{code=\"0010\"}: a"), "got:\n{text}");
+        assert!(text.contains("@bianca{code=\"0010\"}: b"), "got:\n{text}");
+        assert!(text.contains("@fixer{code=\"0020\"}: c"), "got:\n{text}");
+    }
+
+    #[test]
+    fn retag_is_idempotent() {
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+                   @fixer{code=\"0050\"}: first\n\
+                   @fixer: second\n";
+        let (once, n1, _) = renumbered(retag_document(src));
+        assert_eq!(n1, 2);
+        let (twice, n2, _) = renumbered(retag_document(&once));
+        assert_eq!(n2, 0, "second run must be a no-op");
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn retag_matches_fresh_tag_output() {
+        // A renumbered doc and a freshly-tagged doc are indistinguishable.
+        let untagged = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+                        @fixer: a\n@bianca: b\n@fixer: c\n";
+        let fresh = tag_document(untagged).text;
+        let (forced, _, _) = renumbered(retag_document(untagged));
+        assert_eq!(fresh, forced);
+    }
+
+    #[test]
+    fn retag_refuses_codes_locked() {
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncodesLocked: true\n---\n\
+                   ## Shot 1.\n@fixer{code=\"0050\"}: kept\n";
+        assert_eq!(retag_document(src), RetagOutcome::Locked);
+    }
+
+    #[test]
+    fn retag_lock_fails_closed_on_malformed_value() {
+        // `codesLocked: "no"` is not `false` — a typo must never unlock.
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncodesLocked: \"no\"\n---\n\
+                   ## Shot 1.\n@fixer{code=\"0050\"}: kept\n";
+        assert_eq!(retag_document(src), RetagOutcome::Locked);
+    }
+
+    #[test]
+    fn retag_codes_locked_false_unlocks() {
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncodesLocked: false\n---\n\
+                   ## Shot 1.\n@fixer{code=\"0050\"}: a\n";
+        let (text, n, _) = renumbered(retag_document(src));
+        assert_eq!(n, 1);
+        assert!(text.contains("code=\"0010\""), "got:\n{text}");
+    }
+
+    #[test]
+    fn retag_skips_non_string_code_and_consumes_no_slot() {
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+                   @fixer{code=@customId}: special\n\
+                   @fixer: plain\n";
+        let (text, n, skipped) = renumbered(retag_document(src));
+        assert_eq!((n, skipped), (1, 1));
+        assert!(text.contains("@fixer{code=@customId}: special"), "got:\n{text}");
+        // The @ref line consumed no slot: the plain line starts the sequence.
+        assert!(text.contains("@fixer{code=\"0010\"}: plain"), "got:\n{text}");
+    }
+
+    #[test]
+    fn retag_quest_scopes_restart_counters() {
+        // Mirrors `tag_document`'s scoping: each <quest> is an independent
+        // identity domain (dsl 0.2.0 §7) — the second quest's counter
+        // restarts, so both lines renumber to 0010 without colliding.
+        let src = "---\nkind: quest\n---\n\
+                   <quest id=\"q1\">\n\
+                   <objective id=\"o1\" done=\"a\"/>\n\
+                   <on event=\"questActive\">\n\
+                   @fixer{code=\"0800\"}: first quest line\n\
+                   </on>\n\
+                   </quest>\n\
+                   <quest id=\"q2\">\n\
+                   <objective id=\"o2\" done=\"b\"/>\n\
+                   <on event=\"questActive\">\n\
+                   @fixer{code=\"0900\"}: second quest line\n\
+                   </on>\n\
+                   </quest>\n";
+        let (text, n, _) = renumbered(retag_document(src));
+        assert_eq!(n, 2);
+        assert!(
+            text.contains("@fixer{code=\"0010\"}: first quest line"),
+            "got:\n{text}"
+        );
+        assert!(
+            text.contains("@fixer{code=\"0010\"}: second quest line"),
+            "got:\n{text}"
+        );
+    }
     #[test]
     fn already_tagged_is_untouched_and_idempotent() {
         let out = tag_document(ALREADY);

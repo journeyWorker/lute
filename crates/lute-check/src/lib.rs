@@ -88,7 +88,7 @@ pub use producible::W_UNPROVEN_RELATIONAL;
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use schema_import::{resolve_imports, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner};
-pub use tag::{tag_document, TagOutcome};
+pub use tag::{codes_locked, retag_document, tag_document, RetagOutcome, TagOutcome};
 pub use temporal::{check_temporal, E_TEMPORAL_ARG};
 pub use time::{
     fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS,

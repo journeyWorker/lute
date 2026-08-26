@@ -23,6 +23,14 @@ cp docs/examples/showcase/episode01.lute docs/examples/showcase/_t.lute
 rm docs/examples/showcase/_t.lute
 ```
 
+While a scene is still being drafted, `lute tag --force` renumbers EVERY line's
+`code` in clean document order (0010/0020/… per speaker per identity scope),
+rewriting existing codes — useful after insertions/deletions leave the sequence
+gappy. Once codes are published identity (exported for localization or voice),
+declare `codesLocked: true` in frontmatter and `--force` refuses to renumber
+(plain `lute tag` back-fill stays available — new lines never break the
+`lineId` join).
+
 > Schema declarations (`schema/*.schema.yaml`) and component files (`components/*.component.lute`)
 > carry no `character`/`season`/`episode` because they are **imported** (validated in
 > import / component mode) by the episode, not run as scenes — like
