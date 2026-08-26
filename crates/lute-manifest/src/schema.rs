@@ -110,6 +110,21 @@ pub struct StampAttrsFile {
     pub stamp_attrs: Vec<AttrDecl>,
 }
 
+/// plugin `lints/*.yaml` export file (lint-system design §6): a top-level
+/// `lints:` sequence of [`crate::lint::LintRuleDecl`]. Mirrors
+/// [`StampAttrsFile`]'s shape — the loader reads each file with the same
+/// `read_kind` machinery, and a per-package duplicate id is caught by the
+/// shared `merge_named` path (key = raw rule id).
+///
+/// Excluded from [`crate::snapshot::CapabilitySnapshot`] and
+/// `capabilityVersion` by construction: neither ever references this
+/// file (or [`crate::loader::LoadedPlugin::lints`]), so a plugin can add,
+/// remove, or change lints without perturbing artifact identity.
+#[derive(Debug, Deserialize)]
+pub struct LintsFile {
+    pub lints: Vec<crate::lint::LintRuleDecl>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DirectiveDecl {
     pub name: String,

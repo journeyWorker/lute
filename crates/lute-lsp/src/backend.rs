@@ -116,19 +116,47 @@ impl Backend {
             text: snapshot.text.clone(),
             uri: uri.as_str().to_string(),
             snapshot: cap,
-            providers,
+            // Clone: `providers` is reused below for the opt-in lint pass so
+            // both surfaces resolve provider ids against the SAME pinned
+            // catalog.
+            providers: providers.clone(),
             mode: Mode::Author,
             imports,
             components,
             defaults: self.defaults_for(&uri),
         };
         let result = check(&input);
+        // Opt-in lint (design §2, §3): publish alongside check diagnostics
+        // when `<project root>/lute.lint.yaml` exists AND sets `lsp: true`.
+        // Silent no-op on absent/malformed config or `lsp: false` — the CLI
+        // (`lute lint`) owns config-error reporting; a diagnostic anchored at
+        // a file the editor never opened has no natural publish channel here
+        // (`crate::lint`'s module docs). Lint diagnostics MUST be cached
+        // alongside `check()`'s so `textDocument/codeAction` can still walk
+        // their fixits (spec §8 permits fixits on lint diagnostics; today
+        // none of the v1 rules emit any, but the cache is the general seam).
+        let mut all_diags = result.diagnostics;
+        if let Some(file_path) = uri_to_path(&uri) {
+            if let Some(project_root) = find_project_root(&file_path) {
+                let project = lute_manifest::project::load_project(&project_root)
+                    .ok()
+                    .flatten();
+                let (doc_ast, _) = lute_syntax::parse(&snapshot.text);
+                all_diags.extend(crate::lint::lint_document(
+                    &file_path,
+                    &project_root,
+                    project.as_ref(),
+                    &providers,
+                    &doc_ast,
+                    &snapshot.text,
+                ));
+            }
+        }
         // Task 15: retain the ORIGINAL diagnostics (fixits/covered intact)
         // beside the published LSP form for `code_action` to read back later.
-        self.diagnostics.insert(uri.clone(), result.diagnostics.clone());
+        self.diagnostics.insert(uri.clone(), all_diags.clone());
         let idx = lute_core_span::TextIndex::new(&snapshot.text);
-        let mut diags: Vec<LspDiagnostic> = result
-            .diagnostics
+        let mut diags: Vec<LspDiagnostic> = all_diags
             .iter()
             .map(|d| to_lsp_diagnostic(d, &idx, &uri))
             .collect();

@@ -26,6 +26,14 @@ pub struct LoadedPlugin {
     /// every directive and content line, lowered into the record's stamp
     /// rather than its own fields.
     pub stamp_attrs: Vec<AttrDecl>,
+    /// lint-system design §6 `lints/*.yaml`: DECLARATIVE lint rules a
+    /// plugin publishes. Stored with RAW ids; a consumer namespaces each
+    /// as `<plugin-id>/<id>` via [`crate::lint::namespace_active_lints`].
+    /// DELIBERATELY not folded into
+    /// [`crate::snapshot::CapabilitySnapshot`] or `capabilityVersion` —
+    /// lints are advisory and must never change artifact identity
+    /// (design §1 non-goals).
+    pub lints: Vec<crate::lint::LintRuleDecl>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -120,7 +128,7 @@ impl std::fmt::Display for LoadError {
                 f,
                 "export `{export}` is not one of the plugin manifest's known kinds \
                  (directives, state, providers, bridge, defs, enums, frontmatter, docs, \
-                 assetkinds, events, stampattrs)"
+                 assetkinds, events, stampattrs, lints)"
             ),
             LoadError::AssetSegmentType {
                 file,
@@ -173,6 +181,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
         asset_kinds: Vec::new(),
         events: Vec::new(),
         stamp_attrs: Vec::new(),
+        lints: Vec::new(),
     };
 
     // Read each declared export. A relative export path resolves under `dir`.
@@ -235,6 +244,9 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                     |a| a.name.clone(),
                     e,
                 )
+            }),
+            "lints" => read_kind::<LintsFile, _>(&path, &mut errs, |f, _file, e| {
+                merge_named(&mut out.lints, f.lints, "lint", |r| r.id.clone(), e)
             }),
             other => errs.push(LoadError::UnknownExport {
                 export: other.to_string(),

@@ -45,6 +45,7 @@ fn plugin_with_directive(id: &str, dname: &str) -> LoadedPlugin {
         asset_kinds: vec![],
         events: vec![],
         stamp_attrs: vec![],
+        lints: vec![],
     }
 }
 

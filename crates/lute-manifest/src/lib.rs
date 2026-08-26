@@ -2,6 +2,7 @@ pub mod assemble;
 pub mod asset;
 pub mod core;
 pub mod entities;
+pub mod lint;
 pub mod loader;
 pub mod project;
 pub mod provider;

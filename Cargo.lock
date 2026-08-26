@@ -554,6 +554,7 @@ dependencies = [
  "lute-check",
  "lute-compile",
  "lute-core-span",
+ "lute-lint",
  "lute-manifest",
  "lute-syntax",
  "lute-trace",
@@ -587,6 +588,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lute-lint"
+version = "0.12.0"
+dependencies = [
+ "cel-parser",
+ "lute-cel",
+ "lute-check",
+ "lute-core-span",
+ "lute-manifest",
+ "lute-syntax",
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
 name = "lute-lsp"
 version = "0.12.0"
 dependencies = [
@@ -596,6 +611,7 @@ dependencies = [
  "lute-cel",
  "lute-check",
  "lute-core-span",
+ "lute-lint",
  "lute-manifest",
  "lute-syntax",
  "lute-test-vocab",

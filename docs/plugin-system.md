@@ -11,10 +11,11 @@ doc, not a stale feature.)
 > resolution algorithm, the capability snapshot, and the data↔code boundary — are specified with
 > RFC 2119 rigor in [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md), with the
 > [`0.0.2`](proposals/plugin-system/0.0.2.md) delta adding option/frontmatter value validation,
-> cross-cutting `stampAttrs`, and the implemented `lower: { record, fields }` form, and the
+> cross-cutting `stampAttrs`, and the implemented `lower: { record, fields }` form; the
 > [`0.0.3`](proposals/plugin-system/0.0.3.md) delta making `lute.core`'s `enums` export empty,
 > admitting the `enums` long form (`members`/`default`/`exits`), and shrinking the closed
-> `semantics` vocabulary from twelve flags to ten.
+> `semantics` vocabulary from twelve flags to ten; and the
+> [`0.0.4`](proposals/plugin-system/0.0.4.md) delta adding advisory `lints` exports.
 > **Those proposals are the source of truth.** This document is the human-facing **overview +
 > rationale** (the *why* and the author's mental model); where they differ, the proposals win.
 
@@ -28,7 +29,7 @@ declares.
 ## The one rule
 
 Plugins add *vocabulary* (directive names, attrs, enums, state shapes, providers, bridge
-signatures, definitions, diagnostics) and *capability surfaces* — **never grammar and never
+signatures, definitions, diagnostics, advisory lint rules) and *capability surfaces* — **never grammar and never
 behavior**. The fixed grammar lives in the language spec; behavior (control flow, lowering
 algorithms, exhaustiveness, auto-injection) lives in the compiler core. The line that decides which
 side a new capability falls on is the [data↔code boundary](#the-datacode-boundary-read-this-first)
@@ -109,6 +110,7 @@ plugins/<id>/
   assetkinds/*.yaml     # asset id templates (compose / query)      → proposal §6.9
   enums/*.yaml          # named content vocabularies (members)      → proposal §6.10, 0.0.3 §2
   stampattrs/*.yaml     # cross-cutting stamp attributes            → proposal 0.0.2 §4
+  lints/*.yaml          # advisory metric assertions (not capability snapshot)  → proposal 0.0.4 §2
 ```
 
 Everything a plugin declares is **typed** by one small manifest type system (`enum`, `list`,
