@@ -1,0 +1,8 @@
+id: dialogue-ratio
+target: scene
+when: "scene.bodyNodes >= options.minNodes && scene.dialogueRatio < options.min"
+level: warn
+message: "dialogue ratio {scene.dialogueRatio:%} below floor {options.min:%} ({scene.dialogueLines} lines / {scene.bodyNodes} body nodes)"
+options:
+  min: 0.35
+  minNodes: 10

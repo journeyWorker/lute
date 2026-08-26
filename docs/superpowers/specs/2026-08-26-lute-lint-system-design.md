@@ -159,8 +159,9 @@ Three sources, one shape:
 3. **Plugin rules** — new export kind `lints` (`lints/*.yaml`, list of the rule shape
    above). Loader gets a `lints` arm and `LoadedPlugin.lints`;
    **excluded from `CapabilitySnapshot` and the `capabilityVersion` hash.**
-   For each document, active plugin rules = plugins resolved for that document's
-   profile; `project`-target plugin rules use the default profile's plugin set.
+   v1 resolves ONE rule set per project root — the default profile's plugin
+   activation — used for every document and for `project`-target rules.
+   Per-document profile activation is a named future refinement.
 4. **Custom rules** — `custom:` in `lute.lint.yaml`, same shape.
 
 ## 7. v1 core rules and defaults

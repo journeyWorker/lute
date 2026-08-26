@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://lute.dev/schemas/lute.plugin.json",
   "title": "Lute plugin manifest + export files",
-  "description": "STRUCTURE-only schema for `plugin.yaml` (PluginManifest, plugin §5) and every export file kind it can `exports:` (plugin §6-10, §14): directives, state/{shapes,templates}, providers, bridge, defs (LIST form), frontmatter, enums, events, assetkinds, stampattrs. Mirrors `crates/lute-manifest/src/schema.rs` 1:1 (each definition below is named after its Rust struct). `additionalProperties` is left permissive everywhere EXCEPT two shapes borrowed from lute.schema.json — the `type:` tagged-map forms, whose `singleton_map_recursive` genuinely requires a closed single-key shape, and the `enums:` long form, closed deliberately AGAINST serde's silent tolerance because an unknown key there (a typo'd `exit:`) loses vocabulary semantics with no diagnostic. Otherwise none of these structs derive `#[serde(deny_unknown_fields)]`. A document matches exactly ONE of the `oneOf` branches below, discriminated by its own required top-level key (`directives:`, `stateShapes:`, `id:`+`version:`+`kind:`+`exports:`, …).",
+  "description": "STRUCTURE-only schema for `plugin.yaml` (PluginManifest, plugin §5) and every export file kind it can `exports:` (plugin §6-10, §14, lint-system §6): directives, state/{shapes,templates}, providers, bridge, defs (LIST form), frontmatter, enums, events, assetkinds, stampattrs, lints. Mirrors `crates/lute-manifest/src/schema.rs` 1:1 (each definition below is named after its Rust struct). `additionalProperties` is left permissive everywhere EXCEPT two shapes borrowed from lute.schema.json — the `type:` tagged-map forms, whose `singleton_map_recursive` genuinely requires a closed single-key shape, and the `enums:` long form, closed deliberately AGAINST serde's silent tolerance because an unknown key there (a typo'd `exit:`) loses vocabulary semantics with no diagnostic. Otherwise none of these structs derive `#[serde(deny_unknown_fields)]`. A document matches exactly ONE of the `oneOf` branches below, discriminated by its own required top-level key (`directives:`, `stateShapes:`, `id:`+`version:`+`kind:`+`exports:`, …).",
   "oneOf": [
     {
       "$ref": "#/definitions/pluginManifest"
@@ -39,6 +39,9 @@
     },
     {
       "$ref": "#/definitions/stampAttrsFile"
+    },
+    {
+      "$ref": "#/definitions/lintsFile"
     }
   ],
   "definitions": {
@@ -94,7 +97,8 @@
               "docs",
               "assetkinds",
               "events",
-              "stampattrs"
+              "stampattrs",
+              "lints"
             ]
           },
           "additionalProperties": {
@@ -700,6 +704,64 @@
           "items": {
             "$ref": "#/definitions/attrDecl"
           }
+        }
+      }
+    },
+    "lintsFile": {
+      "description": "schema.rs::LintsFile (export `lints/*.yaml`, lint-system design §6). A sequence of lintRuleDecl entries a plugin publishes. Excluded from `CapabilitySnapshot` and `capabilityVersion` by construction — lints are advisory and must never change artifact identity (design §1 non-goals).",
+      "type": "object",
+      "required": [
+        "lints"
+      ],
+      "properties": {
+        "lints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/lintRuleDecl"
+          }
+        }
+      }
+    },
+    "lintRuleDecl": {
+      "description": "lint.rs::LintRuleDecl. `target` is one of `line | shot | scene | speaker | group | project`; `level` (optional) is one of `off | hint | info | warn | error`; `when` is a lint-CEL expression parsed by lute-lint at load time; `message` is a `{path.to.field}` template; `options` is an opaque YAML mapping the rule's own logic interprets. Consumers namespace the raw `id` as `<plugin-id>/<id>`.",
+      "type": "object",
+      "required": [
+        "id",
+        "target",
+        "when",
+        "message"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "target": {
+          "enum": [
+            "line",
+            "shot",
+            "scene",
+            "speaker",
+            "group",
+            "project"
+          ]
+        },
+        "when": {
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warn",
+            "error"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "options": {
+          "type": "object"
         }
       }
     },

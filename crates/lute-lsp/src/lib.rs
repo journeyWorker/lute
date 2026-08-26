@@ -25,3 +25,4 @@ pub mod backend;
 pub mod code_action;
 pub mod convert;
 pub mod features;
+pub mod lint;

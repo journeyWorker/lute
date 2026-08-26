@@ -61,6 +61,7 @@ use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
 mod compile_all;
 mod doctor;
 mod loc;
+mod lint;
 mod manifests;
 mod mockcheck;
 mod play;
@@ -136,6 +137,42 @@ enum Command {
         /// (spec §5).
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
+    },
+    /// Run configurable content/metric advisory lints over a `.lute`
+    /// document or a directory tree (docs/superpowers/specs/
+    /// 2026-08-26-lute-lint-system-design.md). Distinct from `lute check`:
+    /// this surface publishes advisory `L-*` findings governed by
+    /// `<project root>/lute.lint.yaml` (rule levels, thresholds, ignore
+    /// globs, project-local `custom:` rules) and never touches artifact
+    /// identity (spec §1). Documents are grouped by their nearest
+    /// ancestor `lute.project.yaml` exactly as `check-project` does;
+    /// engine runs once per root with `LintScope::Full`. Exit `0` clean
+    /// or only sub-error findings, `1` any Error-severity finding
+    /// (native or `--deny`-promoted, including `E-LINT-CONFIG`/
+    /// `E-LINT-EXPR`), `2` I/O, malformed YAML, or usage.
+    Lint {
+        /// File or directory to lint (default: current directory).
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Emit the structured report as JSON instead of human lines.
+        #[arg(long)]
+        json: bool,
+        /// Promote every diagnostic with EXACTLY this code to an error
+        /// (repeatable). Lint codes are dynamic (`L-*` from plugin/custom
+        /// rule ids), so this accepts any `L-<CODE>` plus
+        /// `E-LINT-CONFIG`/`E-LINT-EXPR`/`E-LINT-RULE`; a typo is a
+        /// clap usage error (exit 2), never a silent no-op (spec §5).
+        #[arg(long = "deny", value_name = "CODE", value_parser = lint::parse_lint_deny_code)]
+        deny: Vec<String>,
+        /// Promote EVERY warning to an error for the verdict and exit
+        /// code (spec §5).
+        #[arg(long = "deny-warnings")]
+        deny_warnings: bool,
+        /// Use this `lute.lint.yaml` instead of the per-root default
+        /// (`<project root>/lute.lint.yaml`). Applied to every root in
+        /// the target's grouping.
+        #[arg(long = "config", value_name = "PATH")]
+        config: Option<PathBuf>,
     },
     /// Compile a checked `.lute` document to its JSON command-record artifact,
     /// or — with `--all` — every document in a project plus a
@@ -750,6 +787,13 @@ fn main() -> ExitCode {
             providers.as_deref(),
             &DenyPolicy::new(&deny, deny_warnings),
         ),
+        Command::Lint {
+            path,
+            json,
+            deny,
+            deny_warnings,
+            config,
+        } => lint::run_lint(&path, json, &deny, deny_warnings, config.as_deref()),
         Command::Compile {
             file,
             json,

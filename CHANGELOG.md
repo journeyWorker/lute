@@ -35,6 +35,17 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### Added
+
+- **Lint system** — `lute lint` evaluates configurable editorial content rules
+  independently of `lute check`, with normal and JSON diagnostics, deniable
+  `L-*` rule codes, and LSP opt-in. `lute.lint.yaml` configures levels,
+  thresholds, ignores, and project-local CEL rules; plugins may export advisory
+  `lints/*.yaml` rules without changing the capability snapshot or
+  `capabilityVersion`.
+
 ## [0.12.0] - 2026-08-19
 
 **Flow that names its destinations.**

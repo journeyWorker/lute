@@ -195,6 +195,7 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
             ty: Type::Str,
             default: None,
         }],
+        lints: Vec::new(),
     };
     let installed = InstalledPlugins {
         by_id: BTreeMap::from([("third.party".to_string(), InstalledPlugin { loaded: pkg })]),

@@ -1,0 +1,6 @@
+id: shot-starts-with-background
+target: shot
+when: 'shot.firstStagingTag != "bg"'
+level: warn
+message: "shot `{shot.title}` first staging directive is `{shot.firstStagingTag}` (expected `bg`)"
+options: {}

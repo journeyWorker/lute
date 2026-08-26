@@ -1,0 +1,7 @@
+id: dialogue-length
+target: line
+when: "line.words > options.maxWords"
+level: warn
+message: "line has {line.words} words (limit {options.maxWords})"
+options:
+  maxWords: 40

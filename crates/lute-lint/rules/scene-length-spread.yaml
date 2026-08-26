@@ -1,0 +1,7 @@
+id: scene-length-spread
+target: project
+when: "project.scenes >= 2 && project.spreadRatio > options.maxRatio"
+level: warn
+message: "scene-length spread {project.spreadRatio} exceeds cap {options.maxRatio} (min {project.sceneWords.min}, max {project.sceneWords.max})"
+options:
+  maxRatio: 3.0

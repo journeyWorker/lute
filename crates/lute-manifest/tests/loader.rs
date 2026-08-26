@@ -522,3 +522,231 @@ fn parse_error_message_is_prose() {
     assert!(msg.contains("a.yaml"), "must name the offending file: {msg}");
     fs::remove_dir_all(&tmp).ok();
 }
+
+/// lint-system design §6: the `lints` export loads off disk like every
+/// other export kind. `lints:` entries deserialize as `LintRuleDecl`s
+/// (id/target/when/level/message/options) with lowercase-serialized enums
+/// on `target` and `level`.
+fn write_lints_pkg(root: &std::path::Path, dup: bool) {
+    fs::create_dir_all(root.join("lints")).unwrap();
+    fs::write(
+        root.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  lints: lints/\n",
+    )
+    .unwrap();
+    let second = if dup { "too-many-choices" } else { "another-rule" };
+    fs::write(
+        root.join("lints/a.yaml"),
+        format!(
+            "lints:\n  - id: too-many-choices\n    target: scene\n    when: \"scene.choices > options.max\"\n    level: warn\n    message: \"scene has {{scene.choices}} choices\"\n    options: {{ max: 6 }}\n  - id: {second}\n    target: line\n    when: \"line.words > 40\"\n    message: \"too long\"\n"
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn loads_lints_export_round_trip() {
+    use lute_manifest::lint::{LintLevel, LintTarget};
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_lints_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_lints_pkg(&tmp, false);
+    let loaded = load_plugin_dir(&tmp).expect("lints package loads");
+    assert_eq!(loaded.lints.len(), 2);
+    let r0 = &loaded.lints[0];
+    assert_eq!(r0.id, "too-many-choices");
+    assert_eq!(r0.target, LintTarget::Scene);
+    assert_eq!(r0.when, "scene.choices > options.max");
+    assert_eq!(r0.level, Some(LintLevel::Warn));
+    assert_eq!(r0.message, "scene has {scene.choices} choices");
+    // options are the raw serde_yaml::Mapping — { max: 6 } is present.
+    assert_eq!(
+        r0.options
+            .get(&serde_yaml::Value::String("max".into()))
+            .and_then(|v| v.as_i64()),
+        Some(6)
+    );
+    // level absent -> None (plugin declines to declare a default)
+    assert_eq!(loaded.lints[1].level, None);
+    assert_eq!(loaded.lints[1].target, LintTarget::Line);
+    fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn loads_lints_rejects_dup_id() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_lintsdup_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_lints_pkg(&tmp, true);
+    let errs = load_plugin_dir(&tmp).expect_err("dup lint id");
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            LoadError::DuplicateId { kind, id }
+                if kind == "lint" && id == "too-many-choices"
+        )),
+        "duplicate rule id must surface DuplicateId{{kind:\"lint\"}}, got {errs:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// A malformed `lints/*.yaml` file (bad YAML structure) surfaces through
+/// the loader's shared per-file `LoadError::Parse` channel — the load-time
+/// flavor of the design's `E-LINT-RULE`, using the SAME anchor every
+/// other export uses (see `parse_error_message_is_prose` above).
+#[test]
+fn malformed_lint_file_is_parse_error() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_lintsbad_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(tmp.join("lints")).unwrap();
+    fs::write(
+        tmp.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  lints: lints/\n",
+    )
+    .unwrap();
+    // wrong shape: `target: nope` isn't a LintTarget variant.
+    fs::write(
+        tmp.join("lints/a.yaml"),
+        "lints:\n  - id: r\n    target: nope\n    when: \"true\"\n    message: m\n",
+    )
+    .unwrap();
+    let errs = load_plugin_dir(&tmp).expect_err("malformed rule must fail");
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            LoadError::Parse { file, .. } if file.ends_with("a.yaml")
+        )),
+        "malformed rule must surface as LoadError::Parse anchored at the file, got {errs:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
+
+/// Lints must NEVER perturb `CapabilitySnapshot` / `capabilityVersion`
+/// (design §1 non-goals). Two packages that differ ONLY by the presence
+/// of a `lints/` export produce assembled snapshots whose `version` hash
+/// is byte-identical — the concrete evidence that lints are not folded
+/// anywhere on the capability-surface hash path.
+#[test]
+fn lints_do_not_participate_in_capability_version() {
+    use lute_manifest::assemble::assemble_snapshot;
+    use lute_manifest::loader::load_plugins_dir;
+    use lute_manifest::resolve::ActivePlugin;
+
+    // Package A: no lints export.
+    let root_a = std::env::temp_dir().join(format!("lute_lints_hashA_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root_a);
+    fs::create_dir_all(root_a.join("t.plug/directives")).unwrap();
+    fs::write(
+        root_a.join("t.plug/plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  directives: directives/\n",
+    )
+    .unwrap();
+    fs::write(
+        root_a.join("t.plug/directives/a.yaml"),
+        "directives:\n  - { name: foo, attrs: [ { name: x, type: bool } ], lower: { kind: builtin, name: n } }\n",
+    )
+    .unwrap();
+
+    // Package B: same, PLUS a lints export.
+    let root_b = std::env::temp_dir().join(format!("lute_lints_hashB_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root_b);
+    fs::create_dir_all(root_b.join("t.plug/directives")).unwrap();
+    fs::create_dir_all(root_b.join("t.plug/lints")).unwrap();
+    fs::write(
+        root_b.join("t.plug/plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  directives: directives/\n  lints: lints/\n",
+    )
+    .unwrap();
+    fs::write(
+        root_b.join("t.plug/directives/a.yaml"),
+        "directives:\n  - { name: foo, attrs: [ { name: x, type: bool } ], lower: { kind: builtin, name: n } }\n",
+    )
+    .unwrap();
+    fs::write(
+        root_b.join("t.plug/lints/a.yaml"),
+        "lints:\n  - id: r\n    target: scene\n    when: \"scene.words > 100\"\n    level: warn\n    message: m\n",
+    )
+    .unwrap();
+
+    let (reg_a, errs_a) = load_plugins_dir(&root_a);
+    assert!(errs_a.is_empty(), "{errs_a:?}");
+    let (reg_b, errs_b) = load_plugins_dir(&root_b);
+    assert!(errs_b.is_empty(), "{errs_b:?}");
+
+    // Confirm B actually carries the rule (guards against a silent regression
+    // where a future refactor drops the lints load path and the hash equality
+    // below trivially holds because both packages are empty of lints).
+    assert_eq!(reg_b.get("t.plug").unwrap().loaded.lints.len(), 1);
+    assert_eq!(reg_a.get("t.plug").unwrap().loaded.lints.len(), 0);
+
+    let active = vec![ActivePlugin {
+        id: "t.plug".into(),
+        options: Default::default(),
+    }];
+    let (snap_a, ea) = assemble_snapshot(&active, &reg_a);
+    let (snap_b, eb) = assemble_snapshot(&active, &reg_b);
+    assert!(ea.is_empty(), "{ea:?}");
+    assert!(eb.is_empty(), "{eb:?}");
+    assert_eq!(
+        snap_a.version, snap_b.version,
+        "capabilityVersion must be byte-identical whether a plugin ships lints or not"
+    );
+
+    fs::remove_dir_all(&root_a).ok();
+    fs::remove_dir_all(&root_b).ok();
+}
+
+/// [`lute_manifest::lint::namespace_active_lints`] pairs an activation
+/// order with the installed registry, emitting each rule keyed by its
+/// `<plugin-id>/<id>` (design §3 / §6) in activation order. A rule from
+/// an installed-but-inactive plugin is not emitted; a rule from an
+/// active-but-not-installed plugin is silently skipped (assembly owns
+/// the `MissingActivePlugin` diagnostic for that).
+#[test]
+fn namespace_active_lints_pairs_activation_with_registry() {
+    use lute_manifest::lint::namespace_active_lints;
+    use lute_manifest::loader::load_plugins_dir;
+    use lute_manifest::resolve::ActivePlugin;
+
+    let root = std::env::temp_dir().join(format!("lute_lints_ns_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+
+    for id in ["a.plug", "b.plug", "inactive.plug"] {
+        let pkg = root.join(id);
+        fs::create_dir_all(pkg.join("lints")).unwrap();
+        fs::write(
+            pkg.join("plugin.yaml"),
+            format!(
+                "id: {id}\nversion: 0.1.0\nkind: capability\nexports:\n  lints: lints/\n"
+            ),
+        )
+        .unwrap();
+        fs::write(
+            pkg.join("lints/a.yaml"),
+            "lints:\n  - id: r1\n    target: scene\n    when: \"true\"\n    message: m\n",
+        )
+        .unwrap();
+    }
+    let (reg, errs) = load_plugins_dir(&root);
+    assert!(errs.is_empty(), "{errs:?}");
+
+    let active = vec![
+        ActivePlugin {
+            id: "b.plug".into(),
+            options: Default::default(),
+        },
+        ActivePlugin {
+            id: "a.plug".into(),
+            options: Default::default(),
+        },
+        // active but NOT installed — silently skipped.
+        ActivePlugin {
+            id: "ghost.plug".into(),
+            options: Default::default(),
+        },
+    ];
+    let ns = namespace_active_lints(&active, &reg);
+    let keys: Vec<&str> = ns.iter().map(|(k, _)| k.as_str()).collect();
+    // Activation order preserved; inactive.plug is not emitted; ghost.plug is skipped.
+    assert_eq!(keys, vec!["b.plug/r1", "a.plug/r1"]);
+
+    fs::remove_dir_all(&root).ok();
+}
