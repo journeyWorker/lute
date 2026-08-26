@@ -132,7 +132,7 @@ Install the server once (`cargo install --path crates/lute-lsp`), then:
 Lute's status splits along three independent axes (see
 [`docs/versioning.md`](docs/versioning.md) for the full policy):
 
-- **Language: draft.** The grammar is at **0.12.0** — the normative surface is
+- **Language: draft.** The grammar is at **0.13.0** — the normative surface is
   the versioned spec stack (0.1.0 base + 0.2.0 / 0.2.2 / 0.3.0 / 0.4.0 /
   0.5.0–0.5.2 / 0.6.0 / 0.6.1 / 0.7.0 / 0.8.0 / 0.9.0 / 0.10.0 / 0.10.1 /
   0.10.2 / 0.11.0 deltas; 0.10.0 is *the toolchain says what it knows* —

@@ -14,8 +14,10 @@ doc, not a stale feature.)
 > cross-cutting `stampAttrs`, and the implemented `lower: { record, fields }` form; the
 > [`0.0.3`](proposals/plugin-system/0.0.3.md) delta making `lute.core`'s `enums` export empty,
 > admitting the `enums` long form (`members`/`default`/`exits`), and shrinking the closed
-> `semantics` vocabulary from twelve flags to ten; and the
-> [`0.0.4`](proposals/plugin-system/0.0.4.md) delta adding advisory `lints` exports.
+> `semantics` vocabulary from twelve flags to ten; the
+> [`0.0.4`](proposals/plugin-system/0.0.4.md) delta folding plugin-owned frontmatter into the
+> compiled artifact's `meta.plugin`; and the
+> [`0.0.5`](proposals/plugin-system/0.0.5.md) delta adding advisory `lints` exports.
 > **Those proposals are the source of truth.** This document is the human-facing **overview +
 > rationale** (the *why* and the author's mental model); where they differ, the proposals win.
 
@@ -110,7 +112,7 @@ plugins/<id>/
   assetkinds/*.yaml     # asset id templates (compose / query)      → proposal §6.9
   enums/*.yaml          # named content vocabularies (members)      → proposal §6.10, 0.0.3 §2
   stampattrs/*.yaml     # cross-cutting stamp attributes            → proposal 0.0.2 §4
-  lints/*.yaml          # advisory metric assertions (not capability snapshot)  → proposal 0.0.4 §2
+  lints/*.yaml          # advisory metric assertions (not capability snapshot)  → proposal 0.0.5 §2
 ```
 
 Everything a plugin declares is **typed** by one small manifest type system (`enum`, `list`,

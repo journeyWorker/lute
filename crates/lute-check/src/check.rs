@@ -3887,18 +3887,19 @@ mod lute_version_tests {
 
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
-    /// workspace (toolchain) version must both read the release number. For
-    /// `0.11.1` the LANGUAGE is the axis that earns the move — `<branch>`
-    /// gains the optional `prompt=`/`timeout=` attributes with their own
-    /// value diagnostics (`E-BRANCH-PROMPT`/`E-BRANCH-TIMEOUT`) — while the
-    /// IR change is additive-only (optional `prompt`/`timeoutSec` on the
-    /// choice record; `lute-ir-0.12.schema.json` keeps its name because the
-    /// gated major.minor does not move) and the toolchain move is the
-    /// re-alignment plus the `lute play` prompt display. The alignment rule
-    /// moves every axis together regardless of which contract changed.
+    /// workspace (toolchain) version must both read the release number.
+    /// `0.13.0` earns the move on TWO axes at once — the toolchain (lint
+    /// system: `lute lint`, `lute.lint.yaml`, plugin lints export; and
+    /// `lute tag --force`, the clean renumber for drafts guarded by the
+    /// publish latch) and the language (universal frontmatter key
+    /// `codesLocked`, the publish latch itself, checked and echoed but not
+    /// consumed by the IR). The IR is a pure restamp; the schema file
+    /// still renames (`lute-ir-0.13.schema.json`) because the release
+    /// crosses the gated major.minor line (`0.12` → `0.13`). The alignment
+    /// rule moves every axis together regardless of which contract changed.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_12_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.12.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.12.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_13_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.13.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.13.0");
     }
 }

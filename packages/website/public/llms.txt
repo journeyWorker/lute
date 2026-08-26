@@ -1,6 +1,6 @@
 # Lute
 
-> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. Language version 0.11.0.
+> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. Language version 0.13.0.
 
 Lute is deliberately non-Turing: every document is a finite, terminating artifact, so the checker can prove reachability, definite-assignment, and envelope properties instead of guessing. The CLI (`lute`) is a headless checker, compiler, and preview tool; `lute context --json` emits the project-resolved authoring surface an AI or human needs to write valid Lute, and `lute check --json` gives a machine-readable diagnostic loop. Content vocabulary is the project's, not the compiler's: since language 0.9.0 the core declares seven *slots* (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) and ships zero members, so every `emotion=`/`action=`/`::music{mood}` value must be declared by the project first — an undeclared slot is the error `E-DOMAIN-UNKNOWN`. Below, each link points to a single documentation page on <https://lute-lang.vercel.app>.
 

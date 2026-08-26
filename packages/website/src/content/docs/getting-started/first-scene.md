@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.11.0**.
+**0.13.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -242,7 +242,7 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.11.0",
+  "lute": "0.13.0",
   "irVersion": "0.11.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {

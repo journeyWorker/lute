@@ -1,12 +1,12 @@
 ---
 title: Current specification
-description: The consolidated index of what the Lute language enforces today at version 0.11.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
+description: The consolidated index of what the Lute language enforces today at version 0.13.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
 ---
 
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.11.0**:
+the consolidated **index** of what is *current* at language version **0.13.0**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -49,7 +49,7 @@ capability proposals), see the [specification index](/spec/).
   `0.10` still has to widen its gate to `0.11` to keep accepting artifacts
   (the runtime contract gates on `major.minor`, not on whether anything
   inside actually changed), and `schemas/lute-ir-0.10.schema.json` is renamed
-  to `schemas/lute-ir-0.12.schema.json` under the `0.7.0` precedent — a
+  to `schemas/lute-ir-0.13.schema.json` under the `0.7.0` precedent — a
   `major.minor` move renames the schema file regardless of why it moved. The
   release itself is entirely toolchain: a new `schedule.yaml` project-file
   layer and `lute play` command

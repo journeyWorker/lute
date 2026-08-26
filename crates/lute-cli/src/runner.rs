@@ -1,9 +1,9 @@
 //! `lute run` — the reference headless runner over a COMPILED artifact
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.12.schema.json`).
+//! `schemas/lute-ir-0.13.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
-//! artifact (`lute compile` output), gates on `irVersion` by **major.minor**
+//! artifact (`lute compile` output), gates on `irVersion` by **MAJOR** only
 //! (execution-model.md §"Version negotiation"), and executes the flat
 //! `commands` stream headlessly against a `--mock` playthrough — the same mock
 //! surfaces `lute trace --mock` reads (`state:`/`facts:`/`choose:`/`events:`/
@@ -39,7 +39,7 @@
 //!
 //! Exit codes: `0` a complete walk, `2` an I/O / usage failure (unreadable
 //! artifact/mock, malformed artifact, an `irVersion` outside the implemented
-//! major.minor line, or an unknown command `kind`), `3` an incomplete walk (a
+//! MAJOR line, or an unknown command `kind`), `3` an incomplete walk (a
 //! `choice`/`hub` reached with no mock decision — mirroring `lute trace`'s §4.5
 //! incomplete convention).
 //!
@@ -70,10 +70,14 @@ use lute_trace::{eval, EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value
 use serde_json::{json, Value as Json};
 
 /// The IR major.minor line this reference runner implements, derived from
-/// [`lute_compile::LUTE_IR_VERSION`] so the gate follows the compiler's IR
-/// version forever. Parsing gates on major.minor (execution-model.md): an
-/// artifact from a different major.minor is refused (exit 2); the PATCH
-/// component is advisory and never gates.
+/// [`lute_compile::LUTE_IR_VERSION`] so it follows the compiler's IR
+/// version forever. Parsing gates on **MAJOR only** (execution-model.md,
+/// 0.13.0): an artifact from a different MAJOR is refused (exit 2); minor
+/// and patch are compatible-by-default (fields are append-only within a
+/// major line and unknown fields are ignored), and an unknown command
+/// `kind` remains the hard error that catches a genuinely newer
+/// capability. The minor is still carried here because the `--json`
+/// transcript reports the full implemented line.
 fn impl_ir_line() -> (u64, u64) {
     parse_major_minor(lute_compile::LUTE_IR_VERSION)
         .expect("LUTE_IR_VERSION must carry a major.minor prefix")
@@ -102,15 +106,19 @@ pub fn run_artifact(artifact: &Path, mock: Option<&Path>, json_out: bool) -> Exi
         }
     };
 
-    // ── Version negotiation (execution-model.md): gate on major.minor. ──
-    let (impl_major, impl_minor) = impl_ir_line();
+    // ── Version negotiation (execution-model.md): gate on MAJOR only.
+    // A minor/patch difference within the implemented major line is
+    // compatible by contract (append-only fields; unknown command kinds
+    // hard-error below at dispatch), so a 0.12.0 artifact runs on a
+    // 0.13.0 runner and vice versa. ──
+    let (impl_major, _impl_minor) = impl_ir_line();
     let ir_version = art.get("irVersion").and_then(Json::as_str).unwrap_or("");
     match parse_major_minor(ir_version) {
-        Some((maj, min)) if maj == impl_major && min == impl_minor => {}
+        Some((maj, _)) if maj == impl_major => {}
         _ => {
             eprintln!(
                 "lute run: unsupported irVersion {ir_version:?}: this runner implements the \
-                 {impl_major}.{impl_minor} line (engines gate on major.minor)"
+                 major-{impl_major} line (engines gate on MAJOR; minor/patch are compatible)"
             );
             return ExitCode::from(2);
         }
