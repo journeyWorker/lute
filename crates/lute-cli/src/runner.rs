@@ -215,13 +215,21 @@ struct Obj {
     optional: bool,
     /// `addr` of the completion body segment, or `None` (empty body).
     body: Option<String>,
+    /// `ObjectiveEntry.quest` — the referenced child quest id (subquest
+    /// design 2026-08-31 §3), or `None` for an authored-`done` objective.
+    quest: Option<String>,
 }
 
-/// A parsed `<on>` handler.
+/// A parsed `<on>` handler. `quest` is the ENCLOSING quest's id, recovered
+/// from stream order (an `on` record is emitted inside its quest's walk, so
+/// it follows its own quest record and precedes the next one). Lifecycle
+/// events (`questActive`/`questComplete`/`questFailed`) fire only for their
+/// own enclosing quest (quest-lifecycle.md); world events are unscoped.
 struct Handler {
     event: String,
     when: Option<String>,
     body: String,
+    quest: Option<String>,
 }
 
 /// The bounded step outcome of the dispatcher.
@@ -1230,6 +1238,10 @@ impl Runner {
                         event: cmd.get("event").and_then(Json::as_str).unwrap_or("").to_string(),
                         when: cel_raw(cmd.get("when")),
                         body: cmd.get("body").and_then(Json::as_str).unwrap_or("").to_string(),
+                        // Stream order recovers the enclosing quest: the `on`
+                        // record is emitted inside its quest's walk, after the
+                        // quest declaration head (stage.rs `walk_quest`).
+                        quest: quests.last().map(|q| q.id.clone()),
                     });
                 }
                 _ => {}
@@ -1255,22 +1267,40 @@ impl Runner {
             self.quest_status.insert(q.id.clone(), "unset".to_string());
         }
 
-        // Activation (quest-lifecycle.md §Activation).
+        // Parent→child edges (subquest design 2026-08-31 §2.4/§3): a child is
+        // any quest some objective references via `ObjectiveEntry.quest`.
+        let parent_of: BTreeMap<String, String> = quests
+            .iter()
+            .flat_map(|q| {
+                q.objectives
+                    .iter()
+                    .filter_map(|o| o.quest.clone().map(|c| (c, q.id.clone())))
+            })
+            .collect();
+
+        // Activation (quest-lifecycle.md §Activation). A REFERENCED child is
+        // parent-activation-driven (§2.4): it never activates at walk start
+        // and is not accept-driven — `reevaluate` activates it once its parent
+        // is `active` (no `start`: immediately; with `start`: when the
+        // predicate holds while the parent is active).
         let quest_ids: Vec<String> = quests.iter().map(|q| q.id.clone()).collect();
         for (qi, q) in quests.iter().enumerate() {
+            if parent_of.contains_key(&q.id) {
+                continue;
+            }
             let activate = match &q.start {
                 None => true, // no `start`: activates at the start of the walk / accept.
                 Some(raw) => self.truthy(raw) == Some(true),
             } || self.mock.accepts.contains(&quest_ids[qi]);
             if activate {
                 self.set_quest_state(&q.id, "active");
-                self.fire_event("questActive", &handlers, &seg_starts);
+                self.fire_event("questActive", Some(&q.id), &handlers, &seg_starts);
             }
         }
 
         // Track which objectives have completed (monotone).
         let mut done: BTreeSet<(usize, usize)> = BTreeSet::new();
-        self.reevaluate(&quests, &handlers, &seg_starts, &mut done);
+        self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
 
         // Mock events fire in order; each re-evaluates the lifecycle. An `end`
         // inside a handler/objective body ends the WALK (dsl 0.8.0), so no
@@ -1280,9 +1310,10 @@ impl Runner {
             if self.terminated {
                 break;
             }
-            self.fire_event(&ev, &handlers, &seg_starts);
-            self.reevaluate(&quests, &handlers, &seg_starts, &mut done);
+            self.fire_event(&ev, None, &handlers, &seg_starts);
+            self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
         }
+
 
         // Incomplete if an active quest is stuck on an undecidable required
         // objective (a missing mock left the `done` predicate unknown). An
@@ -1302,11 +1333,16 @@ impl Runner {
         }
     }
 
-    /// Re-evaluate objectives (monotone), then `fail` before derived completion
-    /// (quest-lifecycle.md §Re-evaluation cadence), to a fixpoint.
+    /// Re-evaluate the quest lifecycle to a fixpoint: referenced-child
+    /// activation (subquest §2.4), then per active quest objectives
+    /// (monotone), then `fail` before derived completion (quest-lifecycle.md
+    /// §Re-evaluation cadence). A terminal transition cascades every
+    /// still-`active` child to `failed` (subquest §2.3, recursive) — the one
+    /// downward rule a per-artifact compile cannot synthesize.
     fn reevaluate(
         &mut self,
         quests: &[QuestDecl],
+        parent_of: &BTreeMap<String, String>,
         handlers: &[Handler],
         seg_starts: &[usize],
         done: &mut BTreeSet<(usize, usize)>,
@@ -1316,6 +1352,28 @@ impl Runner {
         while changed && !self.terminated && rounds < quests.len() * 8 + 16 {
             changed = false;
             rounds += 1;
+            // 0. referenced-child activation (§2.4): a pending child whose
+            // parent is `active` activates — immediately without `start`, or
+            // when its `start` predicate holds (evaluated only while the
+            // parent is active).
+            for q in quests {
+                if self.quest_status.get(&q.id).map(String::as_str) != Some("unset") {
+                    continue;
+                }
+                let Some(parent) = parent_of.get(&q.id) else { continue };
+                if self.quest_status.get(parent).map(String::as_str) != Some("active") {
+                    continue;
+                }
+                let activate = match &q.start {
+                    None => true,
+                    Some(raw) => self.truthy(raw) == Some(true),
+                };
+                if activate {
+                    self.set_quest_state(&q.id, "active");
+                    self.fire_event("questActive", Some(&q.id), handlers, seg_starts);
+                    changed = true;
+                }
+            }
             for (qi, q) in quests.iter().enumerate() {
                 if self.quest_status.get(&q.id).map(String::as_str) != Some("active") {
                     continue;
@@ -1347,7 +1405,8 @@ impl Runner {
                 if let Some(fail) = &q.fail {
                     if self.truthy(fail) == Some(true) {
                         self.set_quest_state(&q.id, "failed");
-                        self.fire_event("questFailed", handlers, seg_starts);
+                        self.fire_event("questFailed", Some(&q.id), handlers, seg_starts);
+                        self.cascade_children(&q.id, quests, parent_of, handlers, seg_starts);
                         changed = true;
                         continue;
                     }
@@ -1360,9 +1419,46 @@ impl Runner {
                     .all(|(oi, o)| o.optional || done.contains(&(qi, oi)));
                 if complete {
                     self.set_quest_state(&q.id, "complete");
-                    self.fire_event("questComplete", handlers, seg_starts);
+                    self.fire_event("questComplete", Some(&q.id), handlers, seg_starts);
+                    self.cascade_children(&q.id, quests, parent_of, handlers, seg_starts);
                     changed = true;
                 }
+            }
+        }
+    }
+
+    /// Downward cascade (subquest design 2026-08-31 §2.3): on `terminal`'s
+    /// terminal transition, every still-`active` child transitions to
+    /// `failed` and fires ITS OWN `questFailed` handlers; recursive (a
+    /// cascaded failure is itself a terminal transition). A required child
+    /// cannot be `active` when its parent completes (its completion is part
+    /// of the parent's derived completion), so the `complete` arm only ever
+    /// fails running optionals.
+    fn cascade_children(
+        &mut self,
+        terminal: &str,
+        quests: &[QuestDecl],
+        parent_of: &BTreeMap<String, String>,
+        handlers: &[Handler],
+        seg_starts: &[usize],
+    ) {
+        let mut stack = vec![terminal.to_string()];
+        while let Some(parent) = stack.pop() {
+            if self.terminated {
+                return;
+            }
+            let children: Vec<String> = quests
+                .iter()
+                .filter(|q| {
+                    parent_of.get(&q.id) == Some(&parent)
+                        && self.quest_status.get(&q.id).map(String::as_str) == Some("active")
+                })
+                .map(|q| q.id.clone())
+                .collect();
+            for child in children {
+                self.set_quest_state(&child, "failed");
+                self.fire_event("questFailed", Some(&child), handlers, seg_starts);
+                stack.push(child);
             }
         }
     }
@@ -1378,12 +1474,17 @@ impl Runner {
     }
 
     /// Fire every handler matching `event` whose `when` holds over the current
-    /// (pre-event) state snapshot, running each body once.
-    fn fire_event(&mut self, event: &str, handlers: &[Handler], seg_starts: &[usize]) {
+    /// (pre-event) state snapshot, running each body once. `scope` is the
+    /// transitioning quest's id for the engine-derived lifecycle events —
+    /// those fire ONLY for their own enclosing quest (quest-lifecycle.md);
+    /// `None` (a mock world event) fires every matching handler.
+    fn fire_event(&mut self, event: &str, scope: Option<&str>, handlers: &[Handler], seg_starts: &[usize]) {
         let matching: Vec<usize> = handlers
             .iter()
             .enumerate()
-            .filter(|(_, h)| h.event == event)
+            .filter(|(_, h)| {
+                h.event == event && scope.is_none_or(|s| h.quest.as_deref() == Some(s))
+            })
             .map(|(i, _)| i)
             .collect();
         for i in matching {
@@ -1555,6 +1656,7 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
                     done: o.get("done").and_then(|d| d.get("raw")).and_then(Json::as_str).unwrap_or("").to_string(),
                     optional: o.get("optional").and_then(Json::as_bool).unwrap_or(false),
                     body: o.get("body").and_then(Json::as_str).map(str::to_string),
+                    quest: o.get("quest").and_then(Json::as_str).map(str::to_string),
                 })
                 .collect()
         })

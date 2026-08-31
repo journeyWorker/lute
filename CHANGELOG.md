@@ -96,6 +96,28 @@ state (a nuance of journal copy is not worth a state-enum ripple).
   artifacts, exactly as they already union `relations`, `rules`, and
   `prereqEdges` — no new command kind, no new edge table.
 
+### Fixed
+
+- **`lute run` fired every quest's lifecycle handlers on every quest's
+  transition.** The reference runner matched `<on>` handlers by event name
+  alone, so in a multi-quest artifact one quest's `questComplete` ran EVERY
+  quest's `questComplete` bodies — three completions replayed the same
+  narrator line three times. Handlers now carry their enclosing quest
+  (recovered from stream order — an `on` record follows its own quest
+  declaration head) and the engine-derived lifecycle events
+  (`questActive`/`questComplete`/`questFailed`) fire only for their own
+  quest, which is what quest-lifecycle.md always said; mock `events:` (world
+  events) stay unscoped. Surfaced by the subquest work — a cascading child's
+  `questFailed` under the old matching would have replayed every sibling's
+  failure copy — but the bug predates it and needed no subquests to trigger.
+  The runner also implements the two subquest engine rules now, exactly as
+  [`docs/runtime/quest-lifecycle.md`](docs/runtime/quest-lifecycle.md)
+  specifies them for any engine: a referenced child activates on its
+  parent's activation (its `start`, if any, is evaluated only while the
+  parent is `active`; it is not accept-driven and never activates at walk
+  start) and a terminal parent cascades every still-`active` child to
+  `failed`, recursively, firing each child's own `questFailed`.
+
 ## [0.13.0] - 2026-08-26
 
 **Editorial policy as configuration, and drafts that stay legible.**
