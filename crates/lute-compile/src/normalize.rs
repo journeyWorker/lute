@@ -1227,7 +1227,7 @@ kind: quest
     fn subquest_done_raw_is_synthesized_verbatim() {
         let src = r#"---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 ---
 <quest id="parent" title="Parent">
   <objective id="findChild" quest="child"/>
@@ -1249,7 +1249,7 @@ luteVersion: "0.13.0"
     fn subquest_fail_synthesizes_from_scratch_when_unauthored() {
         let src = r#"---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 ---
 <quest id="parent">
   <objective id="a" quest="c1"/>
@@ -1278,7 +1278,7 @@ luteVersion: "0.13.0"
     fn subquest_fail_wraps_authored_and_appends_required_children_only() {
         let src = r#"---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 state:
   run.dead: { type: bool, default: false }
 ---
@@ -1315,7 +1315,7 @@ state:
     fn subquest_optional_only_child_leaves_fail_untouched() {
         let src = r#"---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 ---
 <quest id="parent">
   <objective id="opt" quest="c1" optional/>
@@ -1335,7 +1335,7 @@ luteVersion: "0.13.0"
     fn quests_without_subquest_children_untouched() {
         let src = r#"---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 state:
   run.here: { type: bool, default: false }
 ---
@@ -1359,7 +1359,7 @@ state:
     fn subquest_leaves_authored_done_untouched() {
         let src = r#"---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 state:
   run.override: { type: bool, default: false }
 ---

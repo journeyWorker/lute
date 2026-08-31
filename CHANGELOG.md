@@ -37,6 +37,8 @@ table.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-31
+
 **Quests that name their sub-quests.**
 
 A parent objective can now name a child quest by id — `<objective id

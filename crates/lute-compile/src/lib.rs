@@ -103,7 +103,20 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// major.minor move) and an engine implementing IR `0.12` MUST widen its
 /// gate before it accepts a `0.13.0` artifact — reading no new field,
 /// because there is none.
-pub const LUTE_IR_VERSION: &str = "0.13.0";
+///
+/// IR `0.14.0` is ADDITIVE-ONLY over `0.13.0`: [`ir::ObjectiveEntry`] gains
+/// one optional field, `quest` — the referenced child quest id of a subquest
+/// objective (`<objective quest=…>`, language 0.14.0, subquest design
+/// 2026-08-31 §3) — omitted entirely when unauthored so artifacts from
+/// documents without the feature stay byte-stable. Since `0.13.0` the runtime
+/// contract gates on MAJOR only (minor/patch are compatible-by-default,
+/// fields append-only within a major line), so no engine gate widens; a
+/// `0.13` engine parses a `0.14.0` artifact unchanged and simply does not
+/// ask for the new key. `schemas/lute-ir-0.13.schema.json` is renamed to
+/// `schemas/lute-ir-0.14.schema.json` per the per-release rename rule (the
+/// file tracks the published release line for strict validators), and its
+/// content gains the `quest` property on the objective entry.
+pub const LUTE_IR_VERSION: &str = "0.14.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -854,20 +867,20 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.13.0 axis alignment (docs/versioning.md): a release re-aligns
-        // the visible numbers to that release's number. This time BOTH the
-        // toolchain (lint system: `lute lint`, `lute.lint.yaml`, plugin
-        // lints export; and `lute tag --force`) AND the language (universal
-        // frontmatter key `codesLocked` — a publish latch checked and
-        // echoed but not consumed by the IR) earn the move. The IR itself
-        // is a pure restamp, no field added, renamed, moved, or retyped.
-        // The IR schema STILL renames (`lute-ir-0.13.schema.json`),
-        // because the release crosses the gated major.minor line
-        // (`0.12` -> `0.13`) even though the shape does not move. The two
-        // remain independently tracked pins (T13); they simply agree on
-        // this release.
-        assert_eq!(super::LUTE_IR_VERSION, "0.13.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.13.0");
+        // 0.14.0 axis alignment (docs/versioning.md): a release re-aligns
+        // the visible numbers to that release's number. This time all
+        // THREE axes earn the move — the language (subquests: `<objective
+        // quest=…>`, four new diagnostics, referenced-child activation
+        // semantics), the IR (`ObjectiveEntry.quest`, additive-only,
+        // omitted when unauthored — non-subquest artifacts stay
+        // byte-stable), and the toolchain (the release carrying them plus
+        // the runner's lifecycle-handler scoping fix). The IR schema
+        // renames per release line (`lute-ir-0.14.schema.json`) and gains
+        // the `quest` property; no engine gate widens (MAJOR-only since
+        // 0.13.0). The two remain independently tracked pins (T13); they
+        // simply agree on this release.
+        assert_eq!(super::LUTE_IR_VERSION, "0.14.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.14.0");
     }
 
     #[test]
@@ -876,8 +889,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.13.0");
-        assert_eq!(v["irVersion"], "0.13.0");
+        assert_eq!(v["lute"], "0.14.0");
+        assert_eq!(v["irVersion"], "0.14.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

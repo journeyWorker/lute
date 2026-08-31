@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 uses: ../world.schema.yaml
 title: What Vesna Carries
 ---

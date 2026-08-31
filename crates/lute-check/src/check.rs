@@ -3888,18 +3888,18 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.13.0` earns the move on TWO axes at once — the toolchain (lint
-    /// system: `lute lint`, `lute.lint.yaml`, plugin lints export; and
-    /// `lute tag --force`, the clean renumber for drafts guarded by the
-    /// publish latch) and the language (universal frontmatter key
-    /// `codesLocked`, the publish latch itself, checked and echoed but not
-    /// consumed by the IR). The IR is a pure restamp; the schema file
-    /// still renames (`lute-ir-0.13.schema.json`) because the release
-    /// crosses the gated major.minor line (`0.12` → `0.13`). The alignment
-    /// rule moves every axis together regardless of which contract changed.
+    /// `0.14.0` earns the move on ALL THREE axes — the language (subquests:
+    /// the `<objective quest=…>` attribute, four new diagnostics, and the
+    /// referenced-child activation semantics, subquest design 2026-08-31),
+    /// the IR (`ObjectiveEntry.quest`, additive-only, omitted when
+    /// unauthored), and the toolchain (the release that carries them plus
+    /// the runner's lifecycle-handler scoping fix). The schema file renames
+    /// per release line (`lute-ir-0.14.schema.json`) and its content gains
+    /// the `quest` property; no engine gate widens (MAJOR-only since
+    /// `0.13.0`).
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_13_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.13.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.13.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_14_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.14.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.14.0");
     }
 }
