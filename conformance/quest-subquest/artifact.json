@@ -1,0 +1,131 @@
+{
+  "kind": "quest",
+  "lute": "0.13.0",
+  "irVersion": "0.13.0",
+  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "meta": {
+    "title": "Subquest happy path"
+  },
+  "state": [
+    {
+      "path": "quest.findKey.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:findKey"
+    },
+    {
+      "path": "quest.findKey.objectives.found.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:findKey"
+    },
+    {
+      "path": "quest.findKey.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:findKey"
+    },
+    {
+      "path": "quest.parentQuest.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:parentQuest"
+    },
+    {
+      "path": "quest.parentQuest.objectives.delegate.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:parentQuest"
+    },
+    {
+      "path": "quest.parentQuest.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:parentQuest"
+    },
+    {
+      "path": "run.gotKey",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "parentQuest",
+      "title": "Find the key, unlock the door",
+      "titleLineId": "parentQuest.title",
+      "start": {
+        "raw": "true",
+        "expr": {
+          "lit": true
+        }
+      },
+      "fail": {
+        "raw": "quest.findKey.state == 'failed'",
+        "expr": {
+          "op": "==",
+          "l": {
+            "path": "quest.findKey.state"
+          },
+          "r": {
+            "lit": "failed"
+          }
+        }
+      },
+      "objectives": [
+        {
+          "id": "delegate",
+          "title": "Get the key",
+          "titleLineId": "parentQuest.delegate",
+          "done": {
+            "raw": "quest.findKey.state == 'complete'",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "quest.findKey.state"
+              },
+              "r": {
+                "lit": "complete"
+              }
+            }
+          },
+          "optional": false,
+          "body": null,
+          "quest": "findKey"
+        }
+      ]
+    },
+    {
+      "kind": "quest",
+      "addr": "002-0100",
+      "id": "findKey",
+      "title": "Find the key",
+      "titleLineId": "findKey.title",
+      "objectives": [
+        {
+          "id": "found",
+          "title": "Found the key",
+          "titleLineId": "findKey.found",
+          "done": {
+            "raw": "run.gotKey",
+            "expr": {
+              "path": "run.gotKey"
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ]
+    }
+  ]
+}

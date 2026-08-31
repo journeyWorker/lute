@@ -785,13 +785,19 @@ fn validate_events(mocks: &MockSet) -> Vec<Diagnostic> {
     out
 }
 
-/// `--accept`/`accept:`/`accepts:` validation (§4.3/§4.4): an id absent
-/// from `doc.quests`, or naming a quest that carries a `start` predicate
-/// (declarative — it activates on its own and needs no accept), is
-/// [`E_TRACE_ACCEPT`].
+/// `--accept`/`accept:`/`accepts:` validation (§4.3/§4.4, extended by the
+/// subquest design 2026-08-31 §2.4): an id absent from `doc.quests`,
+/// naming a quest that carries a `start` predicate (declarative — it
+/// activates on its own and needs no accept), or naming a REFERENCED
+/// no-start child (activation is derived from its parent's activation,
+/// not accept-driven), is [`E_TRACE_ACCEPT`]. The referenced-child guard
+/// uses only same-doc `<objective quest=…>` refs — cross-file parents
+/// are the CLI's project-aware concern (spec §2.3's own union note); an
+/// unref'd cross-file child still admits `--accept` here.
 fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let span = synthetic_span();
+    let referenced_children = referenced_child_ids(doc);
     for id in &mocks.accepts {
         let Some(quest) = doc.quests.iter().find(|q| &q.id == id) else {
             out.push(diag(
@@ -810,6 +816,37 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
                 ),
                 span,
             ));
+            continue;
+        }
+        if referenced_children.contains(id.as_str()) {
+            out.push(diag(
+                E_TRACE_ACCEPT,
+                format!(
+                    "`--accept {id}` names quest `{id}`, which is referenced by a parent \
+                     quest's `<objective quest=\"{id}\"/>` — a referenced no-start child \
+                     activates when its parent activates and does not accept (subquest design 2026-08-31 §2.4)"
+                ),
+                span,
+            ));
+        }
+    }
+    out
+}
+
+/// Same-doc set of quest ids named by any `<objective quest=…>` — the
+/// mock validator's own view of the subquest child→parent edges (spec
+/// §2.4); mirrors `walk::build_child_parent_map` intentionally rather
+/// than sharing it (both are tiny AST scans; keeping them local keeps
+/// mock.rs free of a walk.rs dependency).
+fn referenced_child_ids(doc: &Document) -> BTreeSet<&str> {
+    let mut out = BTreeSet::new();
+    for q in &doc.quests {
+        for node in &q.body {
+            let Node::Objective(o) = node else { continue };
+            let Some(child) = &o.quest else { continue };
+            if !child.is_empty() {
+                out.insert(child.as_str());
+            }
         }
     }
     out

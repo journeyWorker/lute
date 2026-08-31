@@ -872,17 +872,31 @@ fn walk_document(doc: &Document, w: &mut Walk<'_>) -> Flow {
 // them.
 // ---------------------------------------------------------------------
 
-/// A quest's lifecycle position, tracked locally through [`walk_quest`]
-/// (mirrored into `quest.<id>.state` via [`EffectiveState::write`] on every
-/// transition — the reserved-path write IS the report-visible record).
-/// `start` deciding `false`/`unknown` never produces a live [`QuestState`]
-/// at all (`walk_quest` returns before this type is ever constructed) — a
-/// quest that never activates has no lifecycle to track.
+/// A quest's lifecycle position, tracked through the settle-fixpoint
+/// `states` map [`walk_quests`] threads (subquest design 2026-08-31
+/// §2.3/§2.4). `Active`/`Complete`/`Failed` mirror `quest.<id>.state`
+/// via [`EffectiveState::write`] on every transition — the reserved-path
+/// write IS the report-visible record. `Skipped` captures a permanent
+/// "did not activate" decision recorded once: a `start`-having quest
+/// whose `start` decided `false`/`unknown`, or a `start`-less
+/// UNREFERENCED quest with no matching `--accept`; the fixpoint never
+/// revisits a `Skipped` quest (mirrors today's single-shot activation
+/// semantics — a `start=false` quest never re-tries). A referenced no-
+/// start child whose parent has not yet activated is *absent* from the
+/// map (implicit `Pending`), and the fixpoint retries it every pass
+/// until the parent transitions.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum QuestState {
     Active,
     Complete,
     Failed,
+    Skipped,
+}
+
+impl QuestState {
+    fn is_terminal(self) -> bool {
+        matches!(self, QuestState::Complete | QuestState::Failed)
+    }
 }
 
 fn quest_state_path(quest_id: &str) -> String {
@@ -1069,103 +1083,322 @@ fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow
     Flow::Continue
 }
 
-/// One `<quest>`'s full lifecycle (§4.4). **Two distinct paths reach the
-/// same `unset -> active` transition:** a `start`-having quest activates
-/// **declaratively** — evaluate `start`; `true` transitions it, deciding
-/// `false` never activates (reported via a `"never"` [`Decision`]),
-/// `unknown` leaves the quest (and every objective — nothing below this
-/// point ever runs) unresolved. A `start`-less quest is **accept-driven**:
-/// it stays inactive — reported `"awaiting accept"`, the walk CONTINUES
-/// (never unresolved/exit-3) — until `quest.id` appears in
-/// [`MockSet::accepts`] (`--accept`, pre-walk validated E-TRACE-ACCEPT-clean
-/// by [`crate::mock::validate`]: an unknown id or a `start`-having quest
-/// never reaches here). Either path activates AT MOST once, so
-/// `questActive` fires from this ONE call site — never twice (the
-/// historical double-fire: `--event questActive` used to re-dispatch it a
-/// second time through the loop below; lifecycle names are now rejected
-/// pre-walk, E-TRACE-EVENT, so `events` can never carry one). Once active,
-/// `questActive` fires as the quest's OWN first event, settled once, then
-/// every `--event` in CLI order — each re-dispatches and re-settles; a
-/// transition to `Complete`/`Failed` is terminal, stopping further event
-/// processing for THIS quest (the `Active`-only loop guard below).
-fn walk_quest(quest: &Quest, events: &[String], w: &mut Walk<'_>) -> Flow {
-    match quest.start.as_ref() {
+/// Same-doc child→parent quest map (subquest design 2026-08-31 §2.3/
+/// §2.4): every `<objective quest="c"/>` in `doc.quests` contributes one
+/// edge from `c` (child) to the enclosing `<quest id=p>` (parent).
+/// Cross-file parent edges are the CLI's project-aware concern (spec
+/// §2.3's own union note — a foreign parent's `<objective quest=…>`
+/// resolves via reserved-path reads only, never through this map). The
+/// checker rejects `E-QUEST-MULTI-PARENT` project-wide, so a check-clean
+/// document reaches trace with ≤1 same-doc parent per child; defensive
+/// here too — first parent in doc order wins if two same-doc parents
+/// name the same child.
+fn build_child_parent_map(doc: &Document) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for q in &doc.quests {
+        for node in &q.body {
+            let Node::Objective(o) = node else { continue };
+            let Some(child) = &o.quest else { continue };
+            if child.is_empty() {
+                continue;
+            }
+            out.entry(child.clone()).or_insert_with(|| q.id.clone());
+        }
+    }
+    out
+}
+
+/// §2.3 downward cascade: a parent's fresh terminal transition
+/// (`Complete`/`Failed`) fails every still-`Active` same-doc child;
+/// recursive — a cascaded failure is itself a terminal transition,
+/// so the cascaded child's own children fail in turn. Each cascaded
+/// child transitions to `Failed`, mirrors the `failed` write into
+/// `quest.<child>.state`, purges its own pending unresolved objectives
+/// (§3.2), records a `quest`/`failed` decision annotated with the
+/// cascade source, then fires `questFailed` — the SAME sequence
+/// [`settle_quest`] runs for an authored-`fail`-driven failure, so an
+/// engine consumer sees no structural difference between the two.
+fn cascade_terminal(
+    parent_id: &str,
+    doc: &Document,
+    parents: &BTreeMap<String, String>,
+    states: &mut BTreeMap<String, QuestState>,
+    w: &mut Walk<'_>,
+) -> Flow {
+    for child in &doc.quests {
+        if parents.get(&child.id).map(String::as_str) != Some(parent_id) {
+            continue;
+        }
+        if states.get(&child.id).copied() != Some(QuestState::Active) {
+            continue;
+        }
+        states.insert(child.id.clone(), QuestState::Failed);
+        w.state.write(&quest_state_path(&child.id), Value::Str("failed".to_string()));
+        purge_terminal_objectives(child, w);
+        w.push_decision(
+            "quest",
+            &child.id,
+            child.span,
+            "failed".to_string(),
+            Some(format!("cascade from quest.{parent_id}")),
+            false,
+            false,
+            Vec::new(),
+        );
+        let flow = dispatch_event(child, "questFailed", w);
+        if !matches!(flow, Flow::Continue) {
+            return flow;
+        }
+        let flow = cascade_terminal(&child.id, doc, parents, states, w);
+        if !matches!(flow, Flow::Continue) {
+            return flow;
+        }
+    }
+    Flow::Continue
+}
+
+/// One `<quest>`'s per-pass settle: call [`settle_quest`], mirror any
+/// terminal transition into `states`, then §2.3-cascade a terminal
+/// transition down to same-doc children. The `Active`-only guard is
+/// intentional — [`settle_quest`]'s own contract says a `Complete`/
+/// `Failed` quest is never resettled ("`walk_quest`'s own `Active`-only
+/// loop guard"); the fixpoint honours it too.
+fn settle_and_cascade(
+    quest: &Quest,
+    doc: &Document,
+    parents: &BTreeMap<String, String>,
+    states: &mut BTreeMap<String, QuestState>,
+    w: &mut Walk<'_>,
+) -> Flow {
+    let mut local = match states.get(&quest.id).copied() {
+        Some(QuestState::Active) => QuestState::Active,
+        _ => return Flow::Continue,
+    };
+    let flow = settle_quest(quest, &mut local, w);
+    states.insert(quest.id.clone(), local);
+    if !matches!(flow, Flow::Continue) {
+        return flow;
+    }
+    if local.is_terminal() {
+        return cascade_terminal(&quest.id, doc, parents, states, w);
+    }
+    Flow::Continue
+}
+
+/// Result of a state-only activation attempt. Split from the
+/// `questActive` dispatch so a fixpoint pass can activate ALL eligible
+/// quests (parent then referenced children, doc order) BEFORE any
+/// settle runs — otherwise a parent whose authored `fail` decides true
+/// on its first settle would go terminal before its referenced no-start
+/// children ever transitioned to `Active`, and §2.3's cascade rule
+/// ("every child STILL ACTIVE") would find no active child to fail.
+enum ActivateOutcome {
+    /// State transitioned to [`QuestState::Active`]; the caller MUST
+    /// still fire `questActive` (via [`dispatch_event`]) before any
+    /// settle happens.
+    Activated,
+    /// A terminal `Skipped` was recorded (a decision or unresolved atom
+    /// may have been pushed) — no further work.
+    Skipped,
+    /// Still `Pending` (a referenced child whose parent has not yet
+    /// activated) — the fixpoint retries on a later pass.
+    StillPending,
+}
+
+/// §2.4 activation-STATE transition of ONE `<quest>` — the state write
+/// and the `"active"` decision only. Does NOT fire `questActive` (see
+/// [`ActivateOutcome`] for the split rationale). The `questActive`
+/// dispatch happens in the fixpoint's second sub-pass over the just-
+/// activated set, doc order.
+fn try_activate_state(
+    quest: &Quest,
+    parents: &BTreeMap<String, String>,
+    states: &mut BTreeMap<String, QuestState>,
+    w: &mut Walk<'_>,
+) -> ActivateOutcome {
+    if states.contains_key(&quest.id) {
+        return ActivateOutcome::StillPending; // already handled — nothing this pass
+    }
+
+    // §2.4: a referenced child's activation gate is CONJUNCTED with
+    // parent-Active. Parent Pending → wait. Parent terminal/Skipped
+    // without ever activating us → silently Skipped.
+    let parent_id = parents.get(&quest.id).cloned();
+    if let Some(pid) = &parent_id {
+        match states.get(pid).copied() {
+            Some(QuestState::Active) => {}
+            Some(QuestState::Complete) | Some(QuestState::Failed) | Some(QuestState::Skipped) => {
+                states.insert(quest.id.clone(), QuestState::Skipped);
+                return ActivateOutcome::Skipped;
+            }
+            None => return ActivateOutcome::StillPending,
+        }
+    }
+
+    let (activation_guard, auto_accept) = match &quest.start {
         Some(start_slot) => {
-            // Declarative path: `start` decides the transition.
             let mut atoms = Vec::new();
             let start_v = eval_choice_guard(Some(start_slot), &w.env(), &mut atoms);
             let start_guard = render_choice_guard(Some(start_slot));
             match start_v {
                 Value::Bool(false) => {
                     w.push_decision("quest", &quest.id, quest.span, "never".to_string(), start_guard, false, false, Vec::new());
-                    return Flow::Continue;
+                    states.insert(quest.id.clone(), QuestState::Skipped);
+                    return ActivateOutcome::Skipped;
                 }
                 Value::Unknown | Value::Num(_) | Value::Str(_) => {
                     w.record_unresolved("quest", &quest.id, quest.span, start_guard.unwrap_or_default(), atoms);
-                    return Flow::Continue;
+                    states.insert(quest.id.clone(), QuestState::Skipped);
+                    return ActivateOutcome::Skipped;
                 }
-                Value::Bool(true) => {}
+                Value::Bool(true) => (start_guard, false),
             }
-            w.state.write(&quest_state_path(&quest.id), Value::Str("active".to_string()));
-            w.push_decision("quest", &quest.id, quest.span, "active".to_string(), start_guard, false, false, Vec::new());
         }
         None => {
-            // Accept-driven path: no `start` predicate — stays inactive
-            // until `--accept <questId>` names this quest (§4.4). NOT an
-            // unknown/halt condition: the walk simply continues past this
-            // quest, exactly like `start` deciding false, except the
-            // report says "awaiting accept" rather than "never" (the quest
-            // MAY still activate later via a different trace invocation
-            // with `--accept`, unlike a `start=false` quest).
-            if !w.mocks.accepts.iter().any(|id| id == &quest.id) {
-                w.push_decision("quest", &quest.id, quest.span, "awaiting accept".to_string(), None, false, false, Vec::new());
-                return Flow::Continue;
+            if parent_id.is_some() {
+                // Referenced no-start child: parent guaranteed Active above.
+                (None, false)
+            } else {
+                // Unreferenced no-start: accept-driven (§4.4). `--accept`
+                // on a referenced no-start child is pre-walk
+                // `E-TRACE-ACCEPT`-refused (`mock::validate_accept`), so
+                // accepts here always name an unreferenced target.
+                if !w.mocks.accepts.iter().any(|id| id == &quest.id) {
+                    w.push_decision("quest", &quest.id, quest.span, "awaiting accept".to_string(), None, false, false, Vec::new());
+                    states.insert(quest.id.clone(), QuestState::Skipped);
+                    return ActivateOutcome::Skipped;
+                }
+                (None, true)
             }
-            w.state.write(&quest_state_path(&quest.id), Value::Str("active".to_string()));
-            w.push_decision("quest", &quest.id, quest.span, "active".to_string(), None, true, false, Vec::new());
         }
-    }
+    };
 
-    let mut state = QuestState::Active;
+    states.insert(quest.id.clone(), QuestState::Active);
+    w.state.write(&quest_state_path(&quest.id), Value::Str("active".to_string()));
+    w.push_decision("quest", &quest.id, quest.span, "active".to_string(), activation_guard, auto_accept, false, Vec::new());
+    ActivateOutcome::Activated
+}
 
-    let flow = dispatch_event(quest, "questActive", w);
-    if !matches!(flow, Flow::Continue) {
-        return flow;
-    }
-    let flow = settle_quest(quest, &mut state, w);
-    if !matches!(flow, Flow::Continue) {
-        return flow;
-    }
+/// The settle fixpoint (subquest design §2.3/§2.4). One pass runs three
+/// sub-passes over `doc.quests` in doc order:
+///   * **A — activation**: every Pending quest attempts state-only
+///     activation ([`try_activate_state`]). No `questActive` yet.
+///   * **B — `questActive` for the newly-activated set** (doc order):
+///     fires each just-activated quest's `questActive` handler. Split
+///     from A so a parent's referenced no-start children have already
+///     transitioned to `Active` BEFORE the parent's own settle runs —
+///     otherwise §2.3's cascade rule would never find an active child.
+///   * **C — settle Active quests** (doc order, includes newly-active
+///     and previously-active): [`settle_and_cascade`] evaluates each
+///     quest's `fail` before its derived completion (§6.3 precedence),
+///     transitions on decision, and §2.3-cascades a terminal
+///     transition downward.
+///
+/// The pass repeats until a full pass changes nothing in `states`.
+/// Transitions are monotonic (`Pending → Active → Complete|Failed`;
+/// `Pending → Skipped`; terminals and `Skipped` never leave), so the
+/// fixpoint is bounded by the quest count. The explicit iteration cap
+/// is a defensive guard against a stuck state; unreachable in a
+/// check-clean document, but cheaper than a hang.
+fn quest_settle_fixpoint(
+    doc: &Document,
+    parents: &BTreeMap<String, String>,
+    states: &mut BTreeMap<String, QuestState>,
+    w: &mut Walk<'_>,
+) -> Flow {
+    let cap = doc.quests.len() * 4 + 4;
+    for _ in 0..cap {
+        let snap = states.clone();
 
-    for event in events {
-        if !matches!(state, QuestState::Active) {
+        // A: state-only activation, doc order.
+        let mut just_activated: Vec<usize> = Vec::new();
+        for (i, quest) in doc.quests.iter().enumerate() {
+            match try_activate_state(quest, parents, states, w) {
+                ActivateOutcome::Activated => just_activated.push(i),
+                ActivateOutcome::Skipped | ActivateOutcome::StillPending => {}
+            }
+        }
+
+        // B: `questActive` for the just-activated set (doc order).
+        for &i in &just_activated {
+            let quest = &doc.quests[i];
+            // If a sibling's cascade in an earlier iteration of THIS
+            // sub-pass already flipped us terminal, skip the event.
+            // (Cascade cannot happen inside this loop — settle runs in
+            // sub-pass C — but the state guard is cheap and future-proof.)
+            if states.get(&quest.id).copied() != Some(QuestState::Active) {
+                continue;
+            }
+            let flow = dispatch_event(quest, "questActive", w);
+            if !matches!(flow, Flow::Continue) {
+                return flow;
+            }
+        }
+
+        // C: settle every Active quest, doc order.
+        for quest in &doc.quests {
+            if states.get(&quest.id).copied() != Some(QuestState::Active) {
+                continue;
+            }
+            let flow = settle_and_cascade(quest, doc, parents, states, w);
+            if !matches!(flow, Flow::Continue) {
+                return flow;
+            }
+        }
+
+        if states == &snap {
             break;
         }
-        let flow = dispatch_event(quest, event, w);
-        if !matches!(flow, Flow::Continue) {
-            return flow;
-        }
-        let flow = settle_quest(quest, &mut state, w);
-        if !matches!(flow, Flow::Continue) {
-            return flow;
-        }
     }
-
     Flow::Continue
 }
 
-/// `doc.quests` linearly, document order (mirrors [`walk_document`]'s own
-/// shape) — admission (§3.3/§6.7) guarantees a check-clean document never
-/// populates both `doc.shots` and `doc.quests`, so [`trace_document`]
-/// calling both this and [`walk_document`] unconditionally is safe.
+/// `doc.quests` linearly, document order — activation + settle via the
+/// settle fixpoint, then per-quest `--event` dispatch (preserves today's
+/// single-quest and multi-quest-without-subquest event ordering: one
+/// quest's `--event`s stream through before the next quest's), then a
+/// final fixpoint pass to propagate any parent-completion whose only
+/// remaining pending objective referenced a child that reached terminal
+/// state during the events phase (subquest design §2.3). Admission
+/// (§3.3/§6.7) guarantees a check-clean document never populates both
+/// `doc.shots` and `doc.quests`, so [`trace_document`] calling both this
+/// and [`walk_document`] unconditionally is safe.
 fn walk_quests(doc: &Document, events: &[String], w: &mut Walk<'_>) -> Flow {
+    let parents = build_child_parent_map(doc);
+    let mut states: BTreeMap<String, QuestState> = BTreeMap::new();
+
+    // Activation + initial settle + cascade fixpoint.
+    let flow = quest_settle_fixpoint(doc, &parents, &mut states, w);
+    if !matches!(flow, Flow::Continue) {
+        return flow;
+    }
+
+    // Per-quest events phase (preserves today's ordering for single-quest
+    // and multi-quest-no-subquest documents — one quest, all its events,
+    // then the next quest).
     for quest in &doc.quests {
-        let flow = walk_quest(quest, events, w);
-        if !matches!(flow, Flow::Continue) {
-            return flow;
+        for event in events {
+            if states.get(&quest.id).copied() != Some(QuestState::Active) {
+                break;
+            }
+            let flow = dispatch_event(quest, event, w);
+            if !matches!(flow, Flow::Continue) {
+                return flow;
+            }
+            let flow = settle_and_cascade(quest, doc, &parents, &mut states, w);
+            if !matches!(flow, Flow::Continue) {
+                return flow;
+            }
         }
     }
-    Flow::Continue
+
+    // Final fixpoint: re-settle Active quests whose objectives reference
+    // a child that only reached terminal state during the per-quest
+    // events phase; cascade any resulting transitions downstream. Also
+    // activates any still-Pending children whose parent became Active
+    // via events processing (a `<on>` handler's `::set` gating
+    // parent's activation… fringe, but the fixpoint covers it).
+    quest_settle_fixpoint(doc, &parents, &mut states, w)
 }
 
 /// dsl 0.5.1 §1.1: a RESERVED `quest.<id>.state`/`quest.<id>.objectives.

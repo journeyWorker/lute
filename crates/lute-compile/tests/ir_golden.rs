@@ -446,6 +446,7 @@ fn quest_record_serializes_per_spec() {
             when: None,
             optional: false,
             body: None,
+            quest: None,
         }],
         stamp: Stamp::default(),
     });

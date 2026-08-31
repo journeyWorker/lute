@@ -16,3 +16,4 @@
   they live under a project's `schema/`/`catalog/` dir — get direct semantic lint in-editor
   (LSP declaration claim) plus structural lint from the shipped JSON Schema (`yaml.schemas`).
 - Examples that use plugin directives resolve their plugins via the nearest `lute.project.yaml`.
+- Worked-example spot picks: [`quest-grove.lute`](quest-grove.lute) (a lone quest with authored `fail=` and derived completion) and [`quest-subquest.lute`](quest-subquest.lute) (a parent that names required + optional children via `<objective quest="…"/>`, spec: [`docs/superpowers/specs/2026-08-31-lute-subquest-design.md`](../superpowers/specs/2026-08-31-lute-subquest-design.md)).

@@ -45,7 +45,93 @@ pub fn normalize_document(
     for quest in &mut doc.quests {
         normalize_nodes(&mut quest.body, components, schema, &mut diags);
     }
+    // Subquest synthesis (2026-08-31 design §2.1/§2.2) — MUST run here (not
+    // in `stage::walk_quest`) so `lute-trace` inherits the derived
+    // predicates verbatim: trace calls `normalize_document` before its own
+    // walk, so upward semantics need zero engine code. `stage.rs` then
+    // reads the already-synthesized `done.raw`/`fail.raw` through the
+    // ordinary `CelPair::from_raw` path — no subquest-aware branch in the
+    // lowerer.
+    synthesize_subquests(&mut doc.quests);
     diags
+}
+
+/// Fill the empty `done` slot of every `<objective quest=c>` with §2.1's
+/// synthesized predicate and extend the parent quest's `fail` with §2.2's
+/// required-child disjunction. Both text forms are load-bearing wire
+/// contract shared with `lute-trace` (see `docs/superpowers/plans/
+/// 2026-08-31-lute-subquest.md` Global Constraints):
+///
+/// - done raw: `quest.<c>.state == 'complete'` — exact, single-quoted.
+/// - fail raw: `(<authoredFail>) || quest.<c1>.state == 'failed' || …` when
+///   an authored fail exists; the disjunction alone (no wrapping parens)
+///   otherwise. Only REQUIRED children (`!optional`) contribute a `failed`
+///   test; children appear in document order.
+///
+/// Non-goals: this pass does NOT validate anything the checker owns
+/// (`E-OBJECTIVE-QUEST-DONE` on a `quest=` + non-empty `done` collision;
+/// unknown / cycled / multi-parent references). Compile only runs after
+/// the checker's error gate, so a subquest objective reaching here has a
+/// well-formed empty `done` slot; a non-empty `done` slot on a `quest=`
+/// objective is left untouched (the checker already flagged it).
+fn synthesize_subquests(quests: &mut [lute_syntax::ast::Quest]) {
+    for quest in quests {
+        // Collect required children in document order (`!optional` filter,
+        // spec §2.2) BEFORE mutating anything: the fail synthesis needs
+        // the ordered id list, and the done fill would otherwise force a
+        // second scan. `Node::Objective` is the only body node that can
+        // carry `quest=` (grammar admission, dsl 0.2.0 §6.4/§6.7 —
+        // objectives never nest), so a single top-level pass is complete.
+        let mut required_children: Vec<String> = Vec::new();
+        for node in &mut quest.body {
+            let Node::Objective(o) = node else { continue };
+            let Some(child) = o.quest.clone() else { continue };
+            // §2.1: fill an empty `done` slot only. A non-empty `done`
+            // means the author wrote both `quest=` and `done=` — the
+            // checker fires `E-OBJECTIVE-QUEST-DONE` and compile aborts
+            // upstream; if we somehow reach here with that shape we must
+            // NOT clobber the authored text (would poison error recovery
+            // and hide the collision from downstream tools).
+            if o.done.raw.trim().is_empty() {
+                o.done.raw = format!("quest.{child}.state == 'complete'");
+            }
+            if !o.optional {
+                required_children.push(child);
+            }
+        }
+        if required_children.is_empty() {
+            continue;
+        }
+        // §2.2: `<authoredFail>` in parentheses (precedence-safe for any
+        // authored expression — `||` binds looser than everything CEL
+        // admits, but the parens make the wrapping legible and immune to
+        // future operator changes), then one `failed` test per required
+        // child, `||`-joined in document order. No authored fail → the
+        // bare disjunction (no surrounding parens; the whole slot IS the
+        // disjunction).
+        let disjunction = required_children
+            .iter()
+            .map(|c| format!("quest.{c}.state == 'failed'"))
+            .collect::<Vec<_>>()
+            .join(" || ");
+        match quest.fail.as_mut() {
+            Some(slot) if !slot.raw.trim().is_empty() => {
+                slot.raw = format!("({}) || {}", slot.raw, disjunction);
+            }
+            _ => {
+                // No authored fail (or a degenerate empty-raw slot):
+                // materialize a fresh `CelSlot` at the quest's id span
+                // (the most localized span the AST offers a top-level
+                // quest — mirrors how `quest_span`/`after_span` fall back
+                // to the open-tag span when the attr is absent).
+                quest.fail = Some(CelSlot::raw(
+                    CelKind::Condition,
+                    disjunction,
+                    quest.id_span,
+                ));
+            }
+        }
+    }
 }
 
 fn normalize_nodes(
@@ -1096,5 +1182,196 @@ kind: quest
         assert_eq!(cel_string_literal("warm"), "'warm'");
         assert_eq!(cel_string_literal("it's"), "'it\\'s'");
         assert_eq!(cel_string_literal("a\\b"), "'a\\\\b'");
+    }
+
+    fn normalize_quests(src: &str) -> lute_syntax::ast::Document {
+        let mut doc = parse_clean(src);
+        let comps = resolve_components(Path::new("."), &[], doc.meta.span);
+        assert!(comps.diags.is_empty(), "{:#?}", comps.diags);
+        let diags = normalize_document(&mut doc, &comps, &StateSchema::default());
+        // Subquest synthesis is pure text: it never produces diagnostics of
+        // its own (structural / cross-doc violations are the checker's job).
+        assert!(diags.is_empty(), "{diags:#?}");
+        doc
+    }
+
+    fn quest_by_id<'a>(
+        doc: &'a lute_syntax::ast::Document,
+        id: &str,
+    ) -> &'a lute_syntax::ast::Quest {
+        doc.quests
+            .iter()
+            .find(|q| q.id == id)
+            .expect("quest present")
+    }
+
+    fn objective_by_id<'a>(
+        quest: &'a lute_syntax::ast::Quest,
+        id: &str,
+    ) -> &'a lute_syntax::ast::Objective {
+        quest
+            .body
+            .iter()
+            .find_map(|n| match n {
+                Node::Objective(o) if o.id == id => Some(o),
+                _ => None,
+            })
+            .expect("objective present")
+    }
+
+    /// §2.1: an empty-`done` `<objective quest="c"/>` receives the exact
+    /// synthesized completion predicate (single-quoted, no whitespace
+    /// variation) so `lute-trace` and any engine reading the wire text see
+    /// the identical bytes the plan pins.
+    #[test]
+    fn subquest_done_raw_is_synthesized_verbatim() {
+        let src = r#"---
+kind: quest
+luteVersion: "0.13.0"
+---
+<quest id="parent" title="Parent">
+  <objective id="findChild" quest="child"/>
+</quest>
+<quest id="child" title="Child">
+  <objective id="reach" done="true"/>
+</quest>
+"#;
+        let doc = normalize_quests(src);
+        let obj = objective_by_id(quest_by_id(&doc, "parent"), "findChild");
+        assert_eq!(obj.done.raw, "quest.child.state == 'complete'");
+        assert_eq!(obj.quest.as_deref(), Some("child"));
+    }
+
+    /// §2.2 no-authored-fail case: a required subquest child materializes
+    /// a brand-new `fail` slot carrying the bare disjunction (no wrapping
+    /// parens — the whole slot IS the disjunction).
+    #[test]
+    fn subquest_fail_synthesizes_from_scratch_when_unauthored() {
+        let src = r#"---
+kind: quest
+luteVersion: "0.13.0"
+---
+<quest id="parent">
+  <objective id="a" quest="c1"/>
+  <objective id="b" quest="c2"/>
+</quest>
+<quest id="c1">
+  <objective id="x" done="true"/>
+</quest>
+<quest id="c2">
+  <objective id="y" done="true"/>
+</quest>
+"#;
+        let doc = normalize_quests(src);
+        let parent = quest_by_id(&doc, "parent");
+        let fail = parent.fail.as_ref().expect("fail synthesized");
+        assert_eq!(
+            fail.raw,
+            "quest.c1.state == 'failed' || quest.c2.state == 'failed'"
+        );
+    }
+
+    /// §2.2 authored-fail case: authored text is wrapped in parens, then
+    /// the required-child disjunction is appended in document order.
+    /// Optional children contribute nothing.
+    #[test]
+    fn subquest_fail_wraps_authored_and_appends_required_children_only() {
+        let src = r#"---
+kind: quest
+luteVersion: "0.13.0"
+state:
+  run.dead: { type: bool, default: false }
+---
+<quest id="parent" fail="run.dead">
+  <objective id="a" quest="c1"/>
+  <objective id="opt" quest="c2" optional/>
+  <objective id="b" quest="c3"/>
+</quest>
+<quest id="c1">
+  <objective id="x" done="true"/>
+</quest>
+<quest id="c2">
+  <objective id="y" done="true"/>
+</quest>
+<quest id="c3">
+  <objective id="z" done="true"/>
+</quest>
+"#;
+        let doc = normalize_quests(src);
+        let parent = quest_by_id(&doc, "parent");
+        let fail = parent.fail.as_ref().expect("fail present");
+        // Optional child (`c2`) does NOT appear; required siblings appear
+        // in document order (`c1` then `c3`).
+        assert_eq!(
+            fail.raw,
+            "(run.dead) || quest.c1.state == 'failed' || quest.c3.state == 'failed'"
+        );
+    }
+
+    /// A quest whose only subquest child is `optional` gets no fail
+    /// synthesis (optional failure does not gate parent completion, §2.1
+    /// tail note, §2.2 required-only rule).
+    #[test]
+    fn subquest_optional_only_child_leaves_fail_untouched() {
+        let src = r#"---
+kind: quest
+luteVersion: "0.13.0"
+---
+<quest id="parent">
+  <objective id="opt" quest="c1" optional/>
+</quest>
+<quest id="c1">
+  <objective id="x" done="true"/>
+</quest>
+"#;
+        let doc = normalize_quests(src);
+        assert!(quest_by_id(&doc, "parent").fail.is_none());
+    }
+
+    /// A quest with no subquest objectives at all is byte-identical to
+    /// pre-subquest normalization: no `fail` synthesized, no `done`
+    /// rewrites — the byte-stability guarantee of §3 in the design doc.
+    #[test]
+    fn quests_without_subquest_children_untouched() {
+        let src = r#"---
+kind: quest
+luteVersion: "0.13.0"
+state:
+  run.here: { type: bool, default: false }
+---
+<quest id="plain">
+  <objective id="a" done="run.here"/>
+</quest>
+"#;
+        let doc = normalize_quests(src);
+        let q = quest_by_id(&doc, "plain");
+        assert!(q.fail.is_none());
+        let obj = objective_by_id(q, "a");
+        assert_eq!(obj.done.raw, "run.here");
+        assert!(obj.quest.is_none());
+    }
+
+    /// A non-empty authored `done` on a `quest=` objective is the
+    /// `E-OBJECTIVE-QUEST-DONE` collision — the checker owns it, and this
+    /// pass MUST NOT clobber the authored text (would erase the collision
+    /// for downstream tools re-running lower stages on the same AST).
+    #[test]
+    fn subquest_leaves_authored_done_untouched() {
+        let src = r#"---
+kind: quest
+luteVersion: "0.13.0"
+state:
+  run.override: { type: bool, default: false }
+---
+<quest id="parent">
+  <objective id="a" quest="c1" done="run.override"/>
+</quest>
+<quest id="c1">
+  <objective id="x" done="true"/>
+</quest>
+"#;
+        let doc = normalize_quests(src);
+        let obj = objective_by_id(quest_by_id(&doc, "parent"), "a");
+        assert_eq!(obj.done.raw, "run.override");
     }
 }

@@ -1,0 +1,14 @@
+---
+kind: quest
+luteVersion: "0.10.0"
+uses: ./schema.yaml
+title: Subquest happy path
+---
+
+<quest id="parentQuest" title="Find the key, unlock the door" start="true">
+  <objective id="delegate" title="Get the key" quest="findKey"/>
+</quest>
+
+<quest id="findKey" title="Find the key">
+  <objective id="found" title="Found the key" done="run.gotKey"/>
+</quest>

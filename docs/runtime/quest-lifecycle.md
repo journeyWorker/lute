@@ -93,6 +93,86 @@ independently of visibility, so completion may still be reachable). A required
 objective whose `done` is provably false is `E-OBJECTIVE-UNSATISFIABLE`; mark
 such an objective `optional` if that is intended.
 
+## Subquests
+
+An `<objective quest="c"/>` names a child quest whose completion is the
+objective. The mechanism is two compiler-synthesized surfaces plus two
+engine-derived rules; the state machine, `activatedAt` stamp, and `<on>`
+handler contract are all untouched. The design record and the diagnostic
+set are in
+[`docs/superpowers/specs/2026-08-31-lute-subquest-design.md`](../superpowers/specs/2026-08-31-lute-subquest-design.md).
+
+### Synthesized surfaces (transparent to the engine)
+
+For every `<objective id="oid" quest="c"/>` the compiler synthesizes:
+
+- `ObjectiveEntry.done = { raw: "quest.c.state == 'complete'", expr: … }`.
+  The field stays the required, always-present `CelPair`, so an engine
+  unaware of subquests evaluates a subquest objective the same way it
+  evaluates any other — one predicate over `quest.<id>.state` (dsl §5.4).
+  Derived quest completion ("all non-`optional` objectives `done`") is
+  unchanged; marking the objective `optional` decouples the child from the
+  parent's completion in both directions.
+- The parent quest's effective `QuestCmd.fail` becomes the disjunction of
+  the authored predicate (if any) and one `quest.<c>.state == 'failed'`
+  test per **required** subquest child, in document order:
+
+  ```
+  <authoredFail> || quest.c1.state == 'failed' || quest.c2.state == 'failed'
+  ```
+
+  An `optional` child contributes nothing. `fail`'s precedence over derived
+  completion (dsl 0.2 §6.3) is unchanged, so a required child failing
+  resolves the parent to `failed` at the next evaluation instant even if
+  the remaining objectives could otherwise complete.
+
+`ObjectiveEntry` also grows a `quest: Option<String>` field carrying the
+referenced child id — omitted for authored `done=` objectives
+(`skip_serializing_if = "Option::is_none"`, byte-stable for artifacts
+without the feature). The field is what the two engine rules below key on;
+unioned across artifacts exactly as `relations`/`rules`/`prereqEdges`
+already are, it reconstructs the project-wide parent→child tree.
+
+### Downward failure cascade (engine-derived)
+
+When a quest transitions to a terminal state (`failed` or `complete`),
+every child of that quest still `active` transitions to `failed` and fires
+its `questFailed` handlers.
+
+The reference points parent → child, so a child compiled in its own
+document does not know which parent (if any) owns it; the cascade cannot
+be synthesized per-artifact and must be an engine rule. Notes:
+
+- A **required** child cannot be `active` when its parent completes — its
+  `complete` is part of the parent's derived completion — so the
+  parent-`complete` arm of this rule only ever fails still-running
+  **optional** children.
+- The cascade is recursive: a cascaded `failed` transition is itself a
+  terminal transition, so its own live children are cascaded in turn.
+- `abandoned` is deliberately not a fifth lifecycle state. Reusing
+  `failed` keeps the enum, its match exhaustiveness, and every consumer
+  contract (diagnostics, IR, engine) untouched; journal copy that wants to
+  say "abandoned" reads the parent's own terminal transition to distinguish
+  the cases.
+
+### Activation of referenced children (engine-derived)
+
+Being referenced refines a child's activation — the natural consequence of
+"child = big objective" (an objective is evaluated only while its enclosing
+quest is `active`):
+
+- **child with no `start`** → the child activates when its parent
+  activates, replacing the walk-start / accept-driven default. An
+  unreferenced quest with no `start` keeps today's semantics exactly.
+- **child with a `start` predicate** → the predicate is evaluated only
+  while the parent is `active`; the effective gate is the conjunction
+  "parent is `active` && `start` holds".
+
+Same union-derived tree as the cascade rule above. `quest.<child>.activatedAt`
+stamping is unchanged: the stamp fires at the `unset → active` transition
+whatever gate produced it, and the reserved-path guards
+(`E-QUEST-RESERVED-DECL`, `E-QUEST-RESERVED-WRITE`) still hold.
+
 ## Re-evaluation cadence
 
 After **activation** and after **every event**, the engine (0.4.0 §4.6):

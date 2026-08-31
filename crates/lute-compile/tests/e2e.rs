@@ -231,6 +231,32 @@ fn quest_rescue_halsin() {
     );
 }
 
+/// 2026-08-31 subquest design end-to-end: `<objective quest=child>` in a
+/// parent with an AUTHORED `fail` exercises every branch of the synthesis
+/// pass in one artifact — the snapshot is the load-bearing wire contract
+/// `lute-trace` and any engine consumer reads. Verifies:
+///
+///  - §2.1 `done` synthesis into three empty subquest slots (single-quoted
+///    `quest.<child>.state == 'complete'`, exact bytes);
+///  - §2.2 `fail` extension: authored `run.npc.halsin.dead` wrapped in
+///    parens, then required children (`findHalsin`, `stopRitual`) in
+///    document order, `||`-joined;
+///  - the OPTIONAL subquest child (`scoutPerimeter`) contributes nothing
+///    to `fail` yet still serializes its `quest` field on the objective;
+///  - a plain sibling objective (`talkRath`) with an authored `done` mixes
+///    freely (design §1) and its `ObjectiveEntry.quest` stays omitted
+///    (`skip_serializing_if`, IR §3);
+///  - the referenced child quests declared in the SAME file receive no
+///    synthesis of their own (their own objectives are plain `done=`).
+#[test]
+fn quest_subquest() {
+    golden(
+        "quest_subquest",
+        "../../docs/examples/quest-subquest.lute",
+        None,
+    );
+}
+
 /// IR A12: the `::serve` plugin record carries resolved effect bindings. The
 /// `fromAttr` template (`resultKey="debut"`) is substituted into each path at
 /// compile time; `from` is the bridge-result key or the `op`/`by` increment,

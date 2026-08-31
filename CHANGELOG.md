@@ -37,6 +37,65 @@ table.
 
 ## [Unreleased]
 
+**Quests that name their sub-quests.**
+
+A parent objective can now name a child quest by id — `<objective id
+quest="childId"/>` — and the child's completion IS that objective. The
+language finally owns the vocabulary for the parent–child structure games
+model constantly (BG3 "Save the Grove" → "Free Halsin"), so the checker
+can catch orphaned children, the compiler can synthesize both the parent's
+per-child completion tests and its per-required-child failure disjunction,
+and engines can reconstruct a project-wide journal tree by unioning one
+new IR field. `abandoned` is explicitly rejected as a fifth lifecycle
+state (a nuance of journal copy is not worth a state-enum ripple).
+
+### Added
+
+- **Language — subquest support via `<objective quest=…>`** — an
+  objective can now name a child quest by id (`<objective id
+  quest="childId"/>`), and the child's completion is the objective.
+  `quest=` and `done=` are mutually exclusive on one objective
+  (`E-OBJECTIVE-QUEST-DONE`, exactly one required); every other objective
+  attribute admits alongside `quest=` (`when=`, `optional`, `title=`, a
+  completion body), and the body still plays exactly once — when the
+  objective first becomes `done`, i.e. when the child completes — the
+  natural "child resolved" journal slot. The compiler rewrites the
+  objective's `done` as `quest.<child>.state == 'complete'` and the
+  parent's `fail` as the disjunction of the authored predicate (if any)
+  and one `quest.<c>.state == 'failed'` test per **required** child in
+  document order, so the parent's derived-completion machinery and
+  `fail`-before-completion precedence are unchanged and an engine
+  unaware of the feature evaluates the compiled artifact correctly with
+  zero code changes. The two rules a per-artifact compile cannot
+  synthesize (a child does not know its parent) are documented in
+  [`docs/runtime/quest-lifecycle.md`](docs/runtime/quest-lifecycle.md):
+  (1) a terminal transition on a parent cascades every still-`active`
+  child to `failed` (recursive; a required child cannot be `active` at
+  parent `complete`, so that arm only ever fails running optionals) and
+  (2) a referenced child with no `start` activates when its parent
+  activates (replacing the walk-start / accept-driven default; a `start`
+  predicate on a referenced child is evaluated only while the parent is
+  `active`). Project shape is a **tree, not a DAG** — at most one parent
+  per quest, cycles rejected, depth unbounded — guarded by three new
+  project-level diagnostics `E-QUEST-REF-UNKNOWN` (same-document
+  resolution at `check`, cross-document at `check-project`, matching how
+  `after` targets already split), `E-QUEST-MULTI-PARENT`, and
+  `E-QUEST-TREE-CYCLE` (self-reference is a length-1 cycle and, when
+  parent and child share a document, `check` catches it early), plus the
+  reachability extension where an `E-QUEST-UNREACHABLE` child propagates
+  `E-OBJECTIVE-UNSATISFIABLE` onto its referencing objective's `quest=`
+  span. Design record:
+  [`docs/superpowers/specs/2026-08-31-lute-subquest-design.md`](docs/superpowers/specs/2026-08-31-lute-subquest-design.md).
+  Language reference: [Quests & scenes → Subquests](https://lute.dev/language/quests-and-scenes/#subquests).
+  Worked example: [`docs/examples/quest-subquest.lute`](docs/examples/quest-subquest.lute).
+- **IR — `ObjectiveEntry.quest`** — the new field carries the referenced
+  child id when authored; it is serialized only for subquest objectives
+  (`skip_serializing_if = "Option::is_none"`, appended after `body`), so
+  artifacts from documents without the feature are byte-identical.
+  Engines reconstruct the parent→child tree by unioning the field across
+  artifacts, exactly as they already union `relations`, `rules`, and
+  `prereqEdges` — no new command kind, no new edge table.
+
 ## [0.13.0] - 2026-08-26
 
 **Editorial policy as configuration, and drafts that stay legible.**

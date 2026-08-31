@@ -1,0 +1,51 @@
+{
+  "commands": [
+    {
+      "kind": "quest",
+      "quest": "parentQuest",
+      "state": "active"
+    },
+    {
+      "kind": "quest",
+      "quest": "findKey",
+      "state": "active"
+    },
+    {
+      "done": true,
+      "kind": "objective",
+      "objective": "found",
+      "quest": "findKey"
+    },
+    {
+      "kind": "quest",
+      "quest": "findKey",
+      "state": "complete"
+    },
+    {
+      "done": true,
+      "kind": "objective",
+      "objective": "delegate",
+      "quest": "parentQuest"
+    },
+    {
+      "kind": "quest",
+      "quest": "parentQuest",
+      "state": "complete"
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.13",
+  "kind": "quest",
+  "quests": {
+    "findKey": "complete",
+    "parentQuest": "complete"
+  },
+  "state": {
+    "quest.findKey.objectives.found.done": true,
+    "quest.findKey.state": "complete",
+    "quest.parentQuest.objectives.delegate.done": true,
+    "quest.parentQuest.state": "complete",
+    "run.gotKey": true
+  }
+}

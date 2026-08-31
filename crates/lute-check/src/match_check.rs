@@ -104,6 +104,24 @@ pub const E_HUB_NO_EXIT: &str = "E-HUB-NO-EXIT";
 /// subsumption downstream.
 pub const E_WHEN_LITERAL_DOMAIN: &str = "E-WHEN-LITERAL-DOMAIN";
 
+/// `E-OBJECTIVE-QUEST-DONE`: an `<objective>` carries BOTH `quest=` (a
+/// subquest reference, subquest design 2026-08-31 §1) and a non-empty
+/// `done=` completion predicate. The two are mutually exclusive: `done`
+/// authors the completion predicate directly; `quest` DELEGATES it to the
+/// referenced child quest, which `lute-compile` synthesises downstream as
+/// `quest.<child>.state == 'complete'` (spec §2.1). Anchored at the
+/// `quest=` attribute value — that is the addition that turned a
+/// well-formed authored `done` into an over-specification.
+pub const E_OBJECTIVE_QUEST_DONE: &str = "E-OBJECTIVE-QUEST-DONE";
+
+/// `E-QUEST-TREE-CYCLE`: the parent→child edges induced by `<objective
+/// quest=…>` form a cycle (subquest design 2026-08-31 §4 — the tree, not
+/// DAG, invariant). The general project-wide walk lives in
+/// `check_project`; here we catch the doc-local length-1 case — an
+/// objective that names its OWN enclosing quest as its child. Anchored at
+/// the offending `quest=` attribute value.
+pub const E_QUEST_TREE_CYCLE: &str = "E-QUEST-TREE-CYCLE";
+
 /// A concrete, statically-known value an arm can match against.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DomainValue {
@@ -534,7 +552,9 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
 /// One quest's recording result (dsl 0.2.0 §5.2, §6.3, §6.4): the folded
 /// reserved `quest.<id>.*` decls to fold into the schema, plus any
 /// diagnostics (`E-QUEST-ID-DUP`, `E-OBJECTIVE-ID-DUP`,
-/// `E-OBJECTIVE-MISSING-DONE`).
+/// `E-OBJECTIVE-MISSING-DONE`, plus the subquest doc-level pair
+/// `E-OBJECTIVE-QUEST-DONE` / `E-QUEST-TREE-CYCLE` — subquest design
+/// 2026-08-31 §1/§4).
 #[derive(Clone, Debug)]
 pub struct QuestRecord {
     /// The implicit reserved declarations (path -> decl), quest-state first
@@ -549,11 +569,20 @@ pub struct QuestRecord {
 /// — a namespace SEPARATE from the branch/hub `scene.choices.*` `seen` set
 /// (quest ids key the `quest.<id>.*` tier, dsl 0.2.0 §5.2); `E-OBJECTIVE-ID-DUP`
 /// on a repeated `<objective id>` WITHIN this quest; `E-OBJECTIVE-MISSING-DONE`
-/// on an `<objective>` whose `done` slot is empty (the parser always yields a
-/// syntactically valid — possibly empty — CEL slot for a missing `done`, dsl
-/// 0.2.0 §6.4). Objectives are found by scanning `quest.body` for
-/// `Node::Objective` — grammar admission (Task 5) guarantees they appear only
-/// directly in a quest body, never nested.
+/// on an `<objective>` whose `done` slot is empty AND no `quest=` reference
+/// stands in for it (the parser always yields a syntactically valid — possibly
+/// empty — CEL slot for a missing `done`, dsl 0.2.0 §6.4). Objectives are
+/// found by scanning `quest.body` for `Node::Objective` — grammar admission
+/// (Task 5) guarantees they appear only directly in a quest body, never nested.
+///
+/// Subquest surface (subquest design 2026-08-31): an `<objective quest="c">`
+/// delegates its completion to child quest `c`. Doc-level checks here:
+/// `E-OBJECTIVE-QUEST-DONE` when `quest=` and a non-empty `done=` coexist
+/// (§1 — mutually exclusive), and `E-QUEST-TREE-CYCLE` when `quest=` names
+/// the enclosing quest itself (§4 — length-1 cycle, doc-local early catch;
+/// deeper cycles and cross-doc `quest=` resolution are `check_project`'s
+/// job). An unknown `quest=` id stays silent here — it may resolve in
+/// another artifact.
 ///
 /// `id`/`<objective id>` are REQUIRED (dsl 0.2.0 §6.3/§6.4); the parser still
 /// yields a syntactically valid AST with `id = ""` for a missing attr (the
@@ -687,8 +716,31 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
                 ));
             }
         }
-        if o.done.raw.trim().is_empty() {
-            diags.push(diag(
+        // Subquest triage (subquest design 2026-08-31 §1): `quest=` and a
+        // non-empty `done=` are mutually exclusive — `done` authors the
+        // completion predicate directly, `quest` DELEGATES it to a child
+        // (synthesised downstream as `quest.<child>.state == 'complete'`,
+        // spec §2.1). A `quest=` reference SATISFIES the "completion
+        // predicate required" obligation, so `E-OBJECTIVE-MISSING-DONE`
+        // must NOT fire on an empty `done` when `quest=` is present.
+        // Empty-CEL-slot diagnostics elsewhere already treat an empty raw
+        // as a structural gap (lute-cel `fill.rs`: no `E-CEL-PARSE`; the
+        // check-pass `check_cel_slot` is a no-op on a `None` ast), so no
+        // further suppression is needed here.
+        match (&o.quest, o.done.raw.trim().is_empty()) {
+            (Some(_), false) => diags.push(diag(
+                E_OBJECTIVE_QUEST_DONE,
+                Severity::Error,
+                format!(
+                    "`<objective id=\"{}\">` within `<quest id=\"{id}\">` carries BOTH `quest=` \
+                     and a non-empty `done=`; the two are mutually exclusive — `done` authors the \
+                     completion predicate, `quest` delegates it to the referenced child (subquest \
+                     design 2026-08-31 §1)",
+                    o.id
+                ),
+                o.quest_span,
+            )),
+            (None, true) => diags.push(diag(
                 "E-OBJECTIVE-MISSING-DONE",
                 Severity::Error,
                 format!(
@@ -697,6 +749,32 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
                     o.id
                 ),
                 o.span,
+            )),
+            // (Some(_), true): subquest delegation — completion synthesised
+            // downstream. (None, false): plain authored predicate — nothing
+            // to flag here.
+            _ => {}
+        }
+        // Doc-local length-1 cycle (subquest design 2026-08-31 §4 — tree,
+        // not DAG): an objective whose `quest=` names its own enclosing
+        // quest is a self-parent. The general parent→child cycle walk is
+        // project-wide (`check_project`); catching the length-1 case here
+        // means an author sees it without needing a project pass, and
+        // matches the spec's "same-document self-reference is caught
+        // early" note (§4 table). Non-empty `id` gate: an empty enclosing
+        // id is already `E-QUEST-ID-MISSING` above, and the `quest=`
+        // string cannot syntactically be empty either (attr parsing).
+        if !id.is_empty() && o.quest.as_deref() == Some(id) {
+            diags.push(diag(
+                E_QUEST_TREE_CYCLE,
+                Severity::Error,
+                format!(
+                    "`<objective id=\"{}\" quest=\"{id}\">` within `<quest id=\"{id}\">` names its \
+                     own enclosing quest as its subquest — a length-1 cycle in the parent→child \
+                     tree (subquest design 2026-08-31 §4)",
+                    o.id
+                ),
+                o.quest_span,
             ));
         }
         // A malformed (empty) quest OR objective id makes this decl's path
@@ -2519,5 +2597,187 @@ mod tests {
         assert!(!rec_b.diags.iter().any(|d| d.code == "E-QUEST-ID-DUP"));
         assert!(rec_a.diags.iter().any(|d| d.code == "E-QUEST-ID-MISSING"));
         assert!(rec_b.diags.iter().any(|d| d.code == "E-QUEST-ID-MISSING"));
+    }
+
+    // --- Subquest doc-level checks (subquest design 2026-08-31 §1/§4) ---
+
+    /// Helper: an objective with a `quest=` reference and an optional
+    /// `done=` raw. Mirrors [`objective`] but sets `quest` / `quest_span`
+    /// (the parser fallback: the objective's open-tag span, span() here).
+    fn subquest_objective(id: &str, quest: &str, done_raw: &str) -> lute_syntax::ast::Objective {
+        lute_syntax::ast::Objective {
+            id: id.to_string(),
+            id_span: span(),
+            done: CelSlot::raw(CelKind::Condition, done_raw.to_string(), span()),
+            quest: Some(quest.to_string()),
+            quest_span: span(),
+            when: None,
+            title: None,
+            optional: false,
+            attrs: Vec::new(),
+            body: Vec::new(),
+            span: span(),
+        }
+    }
+
+    #[test]
+    fn quest_and_done_together_error_objective_quest_done() {
+        // §1: `quest=` + non-empty `done=` on one objective is mutually
+        // exclusive — E-OBJECTIVE-QUEST-DONE fires. `E-OBJECTIVE-MISSING-DONE`
+        // must NOT fire (the `done` is present); `E-QUEST-TREE-CYCLE` must
+        // NOT fire (the child is not the enclosing quest).
+        let q = quest_with_body(
+            "parent",
+            vec![Node::Objective(subquest_objective(
+                "o",
+                "child",
+                "run.spokeRath",
+            ))],
+        );
+        let mut seen = BTreeSet::new();
+        let rec = check_quest(&q, &mut seen);
+        assert!(
+            rec.diags.iter().any(|d| d.code == E_OBJECTIVE_QUEST_DONE),
+            "expected E-OBJECTIVE-QUEST-DONE: {:?}",
+            rec.diags
+        );
+        assert!(
+            !rec.diags.iter().any(|d| d.code == "E-OBJECTIVE-MISSING-DONE"),
+            "MISSING-DONE must not co-fire when `done=` is populated: {:?}",
+            rec.diags
+        );
+        assert!(
+            !rec.diags.iter().any(|d| d.code == E_QUEST_TREE_CYCLE),
+            "child != enclosing id, cycle must not fire: {:?}",
+            rec.diags
+        );
+    }
+
+    #[test]
+    fn quest_alone_suppresses_missing_done() {
+        // §1: an empty `done=` alongside `quest=` is the CANONICAL subquest
+        // shape — the completion predicate is synthesised downstream
+        // (`quest.<child>.state == 'complete'`, spec §2.1). No
+        // `E-OBJECTIVE-MISSING-DONE`, no `E-OBJECTIVE-QUEST-DONE` (the two
+        // are not co-present), no cycle.
+        let q = quest_with_body(
+            "parent",
+            vec![Node::Objective(subquest_objective("o", "child", ""))],
+        );
+        let mut seen = BTreeSet::new();
+        let rec = check_quest(&q, &mut seen);
+        assert!(
+            !rec.diags
+                .iter()
+                .any(|d| d.code == "E-OBJECTIVE-MISSING-DONE"),
+            "MISSING-DONE must be suppressed when `quest=` delegates completion: {:?}",
+            rec.diags
+        );
+        assert!(
+            !rec.diags.iter().any(|d| d.code == E_OBJECTIVE_QUEST_DONE),
+            "QUEST-DONE fires only when both coexist: {:?}",
+            rec.diags
+        );
+        assert!(
+            !rec.diags.iter().any(|d| d.code == E_QUEST_TREE_CYCLE),
+            "child != enclosing id, cycle must not fire: {:?}",
+            rec.diags
+        );
+        // Reserved-decl fold is UNCHANGED for subquest objectives (Task B
+        // constraint): the `quest.parent.objectives.o.done` decl still
+        // participates in the schema so downstream reads of the folded
+        // done bit stay declared (its synthesised true-value comes at
+        // compile time).
+        let paths: Vec<&str> = rec.decls.iter().map(|(p, _)| p.as_str()).collect();
+        assert!(
+            paths.iter().any(|p| *p == "quest.parent.objectives.o.done"),
+            "subquest objective's reserved `done` decl must still fold: {paths:?}"
+        );
+    }
+
+    #[test]
+    fn neither_quest_nor_done_keeps_missing_done() {
+        // §1: with NO `quest=` reference AND an empty `done=` the classic
+        // missing-`done` diagnostic still fires — nothing about the
+        // subquest path suppresses the plain-objective obligation.
+        let q = quest_with_body("parent", vec![Node::Objective(objective("o", ""))]);
+        let mut seen = BTreeSet::new();
+        let rec = check_quest(&q, &mut seen);
+        assert!(
+            rec.diags
+                .iter()
+                .any(|d| d.code == "E-OBJECTIVE-MISSING-DONE"),
+            "plain objective with empty done must still fire MISSING-DONE: {:?}",
+            rec.diags
+        );
+        assert!(
+            !rec.diags.iter().any(|d| d.code == E_OBJECTIVE_QUEST_DONE),
+            "QUEST-DONE requires `quest=` to fire: {:?}",
+            rec.diags
+        );
+    }
+
+    #[test]
+    fn self_referential_quest_ref_is_length_1_cycle() {
+        // §4 (tree, not DAG): `<objective quest="self">` inside
+        // `<quest id="self">` names its own enclosing quest — a length-1
+        // cycle, caught early at the doc level (deeper cycles are the
+        // project pass's job). Empty `done=` here so we do not also trip
+        // E-OBJECTIVE-QUEST-DONE.
+        let q = quest_with_body(
+            "self",
+            vec![Node::Objective(subquest_objective("o", "self", ""))],
+        );
+        let mut seen = BTreeSet::new();
+        let rec = check_quest(&q, &mut seen);
+        assert!(
+            rec.diags.iter().any(|d| d.code == E_QUEST_TREE_CYCLE),
+            "expected E-QUEST-TREE-CYCLE for a self-reference: {:?}",
+            rec.diags
+        );
+        assert!(
+            !rec.diags.iter().any(|d| d.code == E_OBJECTIVE_QUEST_DONE),
+            "empty `done=` here — QUEST-DONE must not co-fire: {:?}",
+            rec.diags
+        );
+        assert!(
+            !rec.diags
+                .iter()
+                .any(|d| d.code == "E-OBJECTIVE-MISSING-DONE"),
+            "the `quest=` reference itself satisfies the completion obligation; \
+             MISSING-DONE must not fire on a self-reference: {:?}",
+            rec.diags
+        );
+    }
+
+    #[test]
+    fn unknown_quest_ref_is_silent_at_doc_level() {
+        // §4: an unknown child id (not the enclosing quest, and not
+        // otherwise defined in this doc) stays silent at the doc level —
+        // it may resolve in another artifact; `check_project` owns
+        // cross-doc `E-QUEST-REF-UNKNOWN`. `check_quest` sees one quest
+        // in isolation, so we only assert the subquest-owned codes stay
+        // quiet here.
+        let q = quest_with_body(
+            "parent",
+            vec![Node::Objective(subquest_objective(
+                "o",
+                "elsewhere",
+                "",
+            ))],
+        );
+        let mut seen = BTreeSet::new();
+        let rec = check_quest(&q, &mut seen);
+        for code in [
+            E_OBJECTIVE_QUEST_DONE,
+            E_QUEST_TREE_CYCLE,
+            "E-OBJECTIVE-MISSING-DONE",
+        ] {
+            assert!(
+                !rec.diags.iter().any(|d| d.code == code),
+                "{code} must not fire on a bare same-doc subquest reference: {:?}",
+                rec.diags
+            );
+        }
     }
 }

@@ -319,6 +319,364 @@ pub fn check_project_quest_refs(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
     out
 }
 
+/// dsl 2026-08-31 §4 (subquest design): the child quest a
+/// `<objective quest="c">` names is not declared by any quest document in
+/// the walked project. Errors, unlike `W_QUEST_REF_UNKNOWN` (which is a
+/// warning on `quest.<id>.state`-style READS): a `quest=` reference IS the
+/// tree — an unknown child leaves the parent objective with no completion
+/// source, since the synthesized predicate `quest.c.state == 'complete'`
+/// can never fire on a quest nothing ever activates.
+pub const E_QUEST_REF_UNKNOWN: &str = "E-QUEST-REF-UNKNOWN";
+
+/// dsl 2026-08-31 §4: one quest is referenced by `<objective quest=>` from
+/// two DIFFERENT parent quests. Tree, not DAG (design table row "Shape").
+pub const E_QUEST_MULTI_PARENT: &str = "E-QUEST-MULTI-PARENT";
+
+/// dsl 2026-08-31 §4: parent→child edges close a cycle. Self-reference is
+/// a length-1 cycle; §2/§4 note that when parent and child share a document
+/// the per-file `check` catches it early — this pass is the cross-file
+/// safety net (and re-derives the same-doc case incidentally).
+pub const E_QUEST_TREE_CYCLE: &str = "E-QUEST-TREE-CYCLE";
+
+/// dsl 2026-08-31 §4 (extension): `E-OBJECTIVE-UNSATISFIABLE` for a REQUIRED
+/// `<objective quest="c">` whose child `c` is itself `E-QUEST-UNREACHABLE`.
+/// The synthesized completion predicate is `quest.c.state == 'complete'`
+/// (§2.1); a child that can never activate can never complete, so a
+/// non-`optional` parent objective referencing it can never satisfy —
+/// which is exactly the classical §5.3 unsatisfiability signal, propagated
+/// one edge up the tree. Reuses the existing
+/// [`crate::reachability`] code so the two remedies (fix the child, or
+/// mark the objective `optional`) share a single diagnostic surface.
+pub const E_OBJECTIVE_UNSATISFIABLE_SUBQUEST: &str = "E-OBJECTIVE-UNSATISFIABLE";
+
+/// One parent→child edge harvested from an `<objective quest="c">` — the
+/// shared shape behind [`check_project_quest_tree`] and
+/// [`check_project_subquest_unsatisfiable`], both of which need the same
+/// `(parent, child, path, span, required, objective_id)` tuple. Owned
+/// strings because the caller's `docs` slice is borrowed as a whole; a
+/// borrowed `parent: &str` would tie every edge to a single doc-slice
+/// lifetime and force every helper to thread it, for zero real win over
+/// the tiny per-objective clone.
+#[derive(Debug, Clone)]
+struct SubquestEdge {
+    parent: String,
+    child: String,
+    path: PathBuf,
+    span: Span,
+    required: bool,
+    objective_id: String,
+}
+
+/// Every `<objective quest="c">` occurrence in `docs`, harvested in
+/// document/quest/objective order (so downstream "first occurrence"
+/// decisions inherit the caller's `docs` order, exactly as
+/// [`check_project_quest_ids`] does with `group_by_id`). An empty parent
+/// quest id, an empty child reference, or an empty objective id is skipped
+/// — those are their own document's missing-id problems
+/// (`E-QUEST-ID-MISSING`/`E-OBJECTIVE-ID-MISSING`, reported per-file), not
+/// an edge this project-wide pass can meaningfully name.
+fn subquest_edges(docs: &[(PathBuf, Document)]) -> Vec<SubquestEdge> {
+    let mut out = Vec::new();
+    for (path, doc) in docs {
+        for quest in &doc.quests {
+            if quest.id.is_empty() {
+                continue;
+            }
+            for node in &quest.body {
+                if let Node::Objective(o) = node {
+                    let Some(child) = o.quest.as_deref() else {
+                        continue;
+                    };
+                    if child.is_empty() || o.id.is_empty() {
+                        continue;
+                    }
+                    out.push(SubquestEdge {
+                        parent: quest.id.clone(),
+                        child: child.to_string(),
+                        path: path.clone(),
+                        span: o.quest_span,
+                        required: !o.optional,
+                        objective_id: o.id.clone(),
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Boilerplate constructor for the three tree diagnostics — all
+/// [`Layer::Logic`] (matching every other quest-identity diagnostic here),
+/// all `Severity::Error` (a broken tree is a hard authoring fault: an
+/// unknown reference, a two-parent DAG, or a cycle each yields an artifact
+/// whose derived completion is undefined).
+fn tree_diag(code: &str, message: String, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        span,
+        layer: Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// DFS body for [`check_project_quest_tree`]'s cycle pass. Standard
+/// three-color walk (WHITE=absent, GRAY=on the current path,
+/// BLACK=finished) — a `GRAY` neighbour is a back-edge, i.e. the exact
+/// edge that closes a cycle, so it is the natural anchor: an editor jump
+/// lands on the `<objective quest=...>` whose addition would break the
+/// tree. Cycles are deduplicated by their canonical (sorted-node) set —
+/// walking from a different start MUST NOT report the same ring twice —
+/// which is the reason we exit `dfs` even for `Gray` neighbours WITHOUT
+/// propagating an error return: reporting is a side effect at the discovery
+/// site, control just unwinds.
+fn dfs_cycle<'a>(
+    u: &'a str,
+    adj: &BTreeMap<&'a str, Vec<&'a SubquestEdge>>,
+    color: &mut BTreeMap<&'a str, u8>,
+    stack: &mut Vec<&'a str>,
+    seen_cycles: &mut BTreeSet<Vec<&'a str>>,
+    out: &mut Vec<(PathBuf, Diagnostic)>,
+) {
+    color.insert(u, 1);
+    stack.push(u);
+    if let Some(edges) = adj.get(u) {
+        for e in edges {
+            let v = e.child.as_str();
+            let c = color.get(v).copied().unwrap_or(0);
+            if c == 0 {
+                dfs_cycle(v, adj, color, stack, seen_cycles, out);
+            } else if c == 1 {
+                // Back-edge: cycle is stack[pos(v)..] plus the closing edge back to v.
+                let Some(start) = stack.iter().position(|n| *n == v) else {
+                    continue;
+                };
+                let ring: Vec<&str> = stack[start..].to_vec();
+                let mut canon: Vec<&str> = ring.clone();
+                canon.sort();
+                canon.dedup();
+                if !seen_cycles.insert(canon) {
+                    continue;
+                }
+                let mut pretty: Vec<&str> = ring.clone();
+                pretty.push(v);
+                let arrow = pretty.join(" → ");
+                let msg = if ring.len() == 1 {
+                    format!(
+                        "`<objective id=\"{oid}\" quest=\"{child}\">` on quest `{parent}` is a \
+                         self-reference; the parent→child graph must be acyclic (tree, not DAG) \
+                         (dsl 2026-08-31 §4)",
+                        oid = e.objective_id,
+                        child = e.child,
+                        parent = e.parent,
+                    )
+                } else {
+                    format!(
+                        "`<objective id=\"{oid}\" quest=\"{child}\">` on quest `{parent}` closes a \
+                         subquest cycle {arrow}; the parent→child graph must be acyclic (tree, \
+                         not DAG) (dsl 2026-08-31 §4)",
+                        oid = e.objective_id,
+                        child = e.child,
+                        parent = e.parent,
+                    )
+                };
+                out.push((e.path.clone(), tree_diag(E_QUEST_TREE_CYCLE, msg, e.span)));
+            }
+        }
+    }
+    color.insert(u, 2);
+    stack.pop();
+}
+
+/// dsl 2026-08-31 §4: subquest **tree** structural checks. Runs three
+/// passes over the parent→child graph implied by every
+/// `<objective quest="c">` in `docs`:
+///
+///  1. [`E_QUEST_REF_UNKNOWN`] — the child names no quest defined by any
+///     doc in `docs`. Anchored at the referencing objective's
+///     `quest_span`. Same "walked directory" caveat as
+///     [`check_project_quest_refs`]: a child defined in a sibling root
+///     naturally reads as unknown here, which is the point.
+///  2. [`E_QUEST_MULTI_PARENT`] — the same child is referenced by two
+///     DIFFERENT parent quest ids. Mirrors
+///     [`check_project_quest_ids`]'s "flag every occurrence past the
+///     first" shape (`docs` order is the tie-breaker, so callers MUST
+///     pass files pre-sorted for deterministic output); every subsequent
+///     edge whose parent differs from the first-seen parent gets one
+///     diagnostic anchored at THAT edge's own objective. Two objectives
+///     inside the SAME parent quest that both `quest=` the same child are
+///     the parent's own duplicate-edge issue, not a multi-parent problem;
+///     they are silently deduplicated here (only distinct parents count).
+///  3. [`E_QUEST_TREE_CYCLE`] — the parent→child graph closes a cycle
+///     (self-reference is a length-1 cycle). One diagnostic per cycle
+///     (deduped by node set — DFS from a different root MUST NOT
+///     re-report the same ring), anchored at the back-edge — the exact
+///     `<objective quest=...>` whose addition breaks the tree. Edges
+///     whose child is undefined are excluded from the cycle graph: they
+///     already earn [`E_QUEST_REF_UNKNOWN`] and there is no ambiguity for
+///     them to close a cycle against.
+///
+/// The `<objective quest= / done=>` mutual exclusion
+/// ([`crate::match_check`]'s `E-OBJECTIVE-QUEST-DONE`, dsl 2026-08-31 §1)
+/// and same-document unknown-child are the per-file `check()`'s job —
+/// this pass is deliberately silent on both, so its output stays a
+/// diff-friendly project-wide superset without doubling every per-file
+/// error.
+pub fn check_project_quest_tree(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
+    let defined = defined_quests(docs);
+    let edges = subquest_edges(docs);
+    let mut out = Vec::new();
+
+    // 1) Unknown-child references.
+    for e in &edges {
+        if !defined.contains_key(e.child.as_str()) {
+            out.push((
+                e.path.clone(),
+                tree_diag(
+                    E_QUEST_REF_UNKNOWN,
+                    format!(
+                        "`<objective id=\"{oid}\" quest=\"{child}\">` on quest `{parent}` \
+                         references child quest `{child}`, which no project quest defines \
+                         (dsl 2026-08-31 §4) — a typo, or a quest defined outside this walked \
+                         directory",
+                        oid = e.objective_id,
+                        parent = e.parent,
+                        child = e.child,
+                    ),
+                    e.span,
+                ),
+            ));
+        }
+    }
+
+    // 2) Multi-parent references.
+    let mut by_child: BTreeMap<&str, Vec<&SubquestEdge>> = BTreeMap::new();
+    for e in &edges {
+        by_child.entry(e.child.as_str()).or_default().push(e);
+    }
+    for (child, occurrences) in &by_child {
+        let distinct_parents: BTreeSet<&str> =
+            occurrences.iter().map(|e| e.parent.as_str()).collect();
+        if distinct_parents.len() < 2 {
+            continue;
+        }
+        let first_parent = occurrences[0].parent.as_str();
+        for e in occurrences {
+            if e.parent.as_str() == first_parent {
+                continue;
+            }
+            out.push((
+                e.path.clone(),
+                tree_diag(
+                    E_QUEST_MULTI_PARENT,
+                    format!(
+                        "quest `{child}` is referenced as a subquest from two different parents \
+                         (`{first_parent}` and `{}`); a quest must have at most one parent \
+                         (tree, not DAG — dsl 2026-08-31 §4)",
+                        e.parent,
+                    ),
+                    e.span,
+                ),
+            ));
+        }
+    }
+
+    // 3) Cycles.
+    let mut adj: BTreeMap<&str, Vec<&SubquestEdge>> = BTreeMap::new();
+    for e in &edges {
+        if defined.contains_key(e.child.as_str()) {
+            adj.entry(e.parent.as_str()).or_default().push(e);
+        }
+    }
+    // First-appearance node order (not `adj`'s `BTreeMap` sort) is what
+    // makes back-edge anchoring predictable: DFS from the earliest-declared
+    // parent means the closing edge lands on the LATER quest whose
+    // `<objective quest=...>` completes the ring — the same edge an author
+    // would most recently have added, and the natural place to jump to fix
+    // the cycle. A `BTreeSet` sort would let the alphabetically-earliest
+    // node steal DFS root and flip the anchor onto an earlier edge for no
+    // authoring reason.
+    let mut nodes: Vec<&str> = Vec::new();
+    let mut seen_nodes: BTreeSet<&str> = BTreeSet::new();
+    for e in &edges {
+        if !defined.contains_key(e.child.as_str()) {
+            continue;
+        }
+        if seen_nodes.insert(e.parent.as_str()) {
+            nodes.push(e.parent.as_str());
+        }
+        if seen_nodes.insert(e.child.as_str()) {
+            nodes.push(e.child.as_str());
+        }
+    }
+    let mut color: BTreeMap<&str, u8> = BTreeMap::new();
+    let mut stack: Vec<&str> = Vec::new();
+    let mut seen_cycles: BTreeSet<Vec<&str>> = BTreeSet::new();
+    for &start in &nodes {
+        if color.get(start).copied().unwrap_or(0) != 0 {
+            continue;
+        }
+        dfs_cycle(start, &adj, &mut color, &mut stack, &mut seen_cycles, &mut out);
+    }
+
+    out
+}
+
+/// dsl 2026-08-31 §4 (extension): propagate `E-QUEST-UNREACHABLE` one edge
+/// up the subquest tree — a REQUIRED `<objective quest="c">` whose child
+/// `c` is unreachable can never complete (§2.1 makes the objective's
+/// completion predicate `quest.c.state == 'complete'`), so it earns
+/// [`E_OBJECTIVE_UNSATISFIABLE_SUBQUEST`] anchored at its own `quest_span`.
+///
+/// `unreachable_quests` is whatever set the CLI has already proven dead —
+/// today `ConnFixpoint::unreachable_quests` (union of per-file
+/// `E-QUEST-UNREACHABLE`, dead-`start` liveness, and dead-required-objective
+/// propagation). An `optional` objective's failed child never gates parent
+/// completion (§2.1), so this pass is deliberately silent on them —
+/// diagnostic parity with the existing §5.3 rule.
+pub fn check_project_subquest_unsatisfiable(
+    docs: &[(PathBuf, Document)],
+    unreachable_quests: &BTreeSet<String>,
+) -> Vec<(PathBuf, Diagnostic)> {
+    let mut out = Vec::new();
+    for e in subquest_edges(docs) {
+        if !e.required {
+            continue;
+        }
+        if !unreachable_quests.contains(e.child.as_str()) {
+            continue;
+        }
+        out.push((
+            e.path.clone(),
+            Diagnostic {
+                code: E_OBJECTIVE_UNSATISFIABLE_SUBQUEST.to_string(),
+                severity: Severity::Error,
+                message: format!(
+                    "required `<objective id=\"{oid}\" quest=\"{child}\">` on quest `{parent}` \
+                     can never complete: the referenced child quest `{child}` is unreachable \
+                     (`E-QUEST-UNREACHABLE`), so its synthesized completion predicate \
+                     `quest.{child}.state == 'complete'` (dsl 2026-08-31 §2.1) never fires. \
+                     Fix the child, or mark this objective `optional`.",
+                    oid = e.objective_id,
+                    parent = e.parent,
+                    child = e.child,
+                ),
+                span: e.span,
+                layer: Layer::Logic,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            },
+        ));
+    }
+    out
+}
+
 /// `W-COMPONENT-UNVERIFIED`: a standalone component check with no caller in
 /// scope (dsl 0.10.0 §9 rule 4, **D-W**).
 pub const W_COMPONENT_UNVERIFIED: &str = "W-COMPONENT-UNVERIFIED";
@@ -944,5 +1302,304 @@ mod tests {
             !read.contains(""),
             "a non-string YAML arg is preserved as \"\" and is not a domain; got {read:?}"
         );
+    }
+
+    // --- `check_project_quest_tree` (dsl 2026-08-31 §4 subquest design) ---
+
+    fn objective(id: &str, quest: Option<&str>, optional: bool, line: u32) -> lute_syntax::ast::Objective {
+        use lute_syntax::ast::{CelKind, CelSlot};
+        lute_syntax::ast::Objective {
+            id: id.to_string(),
+            id_span: span(line),
+            // A subquest objective's synthesized `done` predicate is written
+            // downstream (`lute-compile`); the AST-level slot is empty raw
+            // text in the `quest=Some` case, exactly as the parser lands it.
+            done: CelSlot::raw(
+                CelKind::Condition,
+                if quest.is_none() { "true".to_string() } else { String::new() },
+                span(line),
+            ),
+            quest: quest.map(str::to_string),
+            quest_span: span(line),
+            when: None,
+            title: None,
+            optional,
+            attrs: Vec::new(),
+            body: Vec::new(),
+            span: span(line),
+        }
+    }
+
+    fn quest_with(id: &str, id_line: u32, objectives: Vec<lute_syntax::ast::Objective>) -> Quest {
+        let mut q = quest(id, id_line);
+        q.body = objectives.into_iter().map(lute_syntax::ast::Node::Objective).collect();
+        q
+    }
+
+    #[test]
+    fn quest_tree_no_docs_yields_no_diagnostics() {
+        assert!(check_project_quest_tree(&[]).is_empty());
+    }
+
+    #[test]
+    fn quest_tree_unknown_child_flags_e_quest_ref_unknown() {
+        let docs = vec![(
+            PathBuf::from("a.lute"),
+            doc(vec![quest_with(
+                "parent",
+                1,
+                vec![objective("goal", Some("ghost"), false, 5)],
+            )]),
+        )];
+        let out = check_project_quest_tree(&docs);
+        assert_eq!(out.len(), 1, "{out:?}");
+        let (path, d) = &out[0];
+        assert_eq!(path, Path::new("a.lute"));
+        assert_eq!(d.code, E_QUEST_REF_UNKNOWN);
+        assert_eq!(d.severity, Severity::Error);
+        assert_eq!(d.span.line, 5, "anchored at the objective's quest_span");
+        assert!(d.message.contains("ghost"), "{}", d.message);
+        assert!(d.message.contains("parent"), "{}", d.message);
+    }
+
+    #[test]
+    fn quest_tree_defined_child_across_files_does_not_flag_ref_unknown() {
+        let docs = vec![
+            (
+                PathBuf::from("a.lute"),
+                doc(vec![quest_with(
+                    "parent",
+                    1,
+                    vec![objective("goal", Some("child"), false, 5)],
+                )]),
+            ),
+            (PathBuf::from("b.lute"), doc(vec![quest("child", 1)])),
+        ];
+        let out = check_project_quest_tree(&docs);
+        assert!(out.is_empty(), "cross-file resolution must succeed: {out:?}");
+    }
+
+    #[test]
+    fn quest_tree_multi_parent_flags_every_edge_past_the_first() {
+        // `child` is referenced by both `parentA` and `parentB`. `parentA`
+        // is first in `docs` order, so only `parentB`'s edge earns the
+        // diagnostic, anchored at its own `quest_span`.
+        let docs = vec![
+            (
+                PathBuf::from("a.lute"),
+                doc(vec![
+                    quest_with(
+                        "parentA",
+                        1,
+                        vec![objective("goalA", Some("child"), false, 5)],
+                    ),
+                    quest("child", 10),
+                ]),
+            ),
+            (
+                PathBuf::from("b.lute"),
+                doc(vec![quest_with(
+                    "parentB",
+                    1,
+                    vec![objective("goalB", Some("child"), false, 7)],
+                )]),
+            ),
+        ];
+        let out = check_project_quest_tree(&docs);
+        assert_eq!(out.len(), 1, "{out:?}");
+        let (path, d) = &out[0];
+        assert_eq!(path, Path::new("b.lute"));
+        assert_eq!(d.code, E_QUEST_MULTI_PARENT);
+        assert_eq!(d.severity, Severity::Error);
+        assert_eq!(d.span.line, 7);
+        assert!(d.message.contains("parentA"), "{}", d.message);
+        assert!(d.message.contains("parentB"), "{}", d.message);
+        assert!(d.message.contains("child"), "{}", d.message);
+    }
+
+    #[test]
+    fn quest_tree_two_objectives_in_same_parent_referencing_same_child_are_not_multi_parent() {
+        // Distinct-parent count is 1, so no MULTI-PARENT diagnostic; the
+        // parent's own in-quest duplicate is that quest's problem, not this
+        // pass's.
+        let docs = vec![(
+            PathBuf::from("a.lute"),
+            doc(vec![
+                quest_with(
+                    "parent",
+                    1,
+                    vec![
+                        objective("goal1", Some("child"), false, 5),
+                        objective("goal2", Some("child"), false, 6),
+                    ],
+                ),
+                quest("child", 10),
+            ]),
+        )];
+        let out = check_project_quest_tree(&docs);
+        assert!(
+            !out.iter().any(|(_, d)| d.code == E_QUEST_MULTI_PARENT),
+            "same-parent duplicate must not read as multi-parent: {out:?}"
+        );
+    }
+
+    #[test]
+    fn quest_tree_cycle_flags_e_quest_tree_cycle_at_the_closing_edge() {
+        // parent -> mid -> parent forms a 2-cycle; the back-edge is
+        // `mid`'s `<objective quest="parent">` at line 8.
+        let docs = vec![(
+            PathBuf::from("a.lute"),
+            doc(vec![
+                quest_with(
+                    "parent",
+                    1,
+                    vec![objective("goal", Some("mid"), false, 5)],
+                ),
+                quest_with(
+                    "mid",
+                    7,
+                    vec![objective("back", Some("parent"), false, 8)],
+                ),
+            ]),
+        )];
+        let out = check_project_quest_tree(&docs);
+        let cycles: Vec<_> = out.iter().filter(|(_, d)| d.code == E_QUEST_TREE_CYCLE).collect();
+        assert_eq!(cycles.len(), 1, "exactly one cycle: {out:?}");
+        let (_, d) = &cycles[0];
+        assert_eq!(d.severity, Severity::Error);
+        assert_eq!(d.span.line, 8, "anchored at the back-edge");
+        assert!(d.message.contains("parent"), "{}", d.message);
+        assert!(d.message.contains("mid"), "{}", d.message);
+    }
+
+    #[test]
+    fn quest_tree_self_reference_flags_a_length_one_cycle() {
+        let docs = vec![(
+            PathBuf::from("a.lute"),
+            doc(vec![quest_with(
+                "loop",
+                1,
+                vec![objective("self", Some("loop"), false, 4)],
+            )]),
+        )];
+        let out = check_project_quest_tree(&docs);
+        let cycles: Vec<_> = out.iter().filter(|(_, d)| d.code == E_QUEST_TREE_CYCLE).collect();
+        assert_eq!(cycles.len(), 1, "one self-cycle: {out:?}");
+        let (_, d) = &cycles[0];
+        assert!(
+            d.message.contains("self-reference"),
+            "self-cycle must announce itself as such: {}",
+            d.message
+        );
+        assert_eq!(d.span.line, 4);
+    }
+
+    #[test]
+    fn quest_tree_cycle_is_reported_once_regardless_of_dfs_start() {
+        // Three-node cycle A -> B -> C -> A. Whichever node the DFS starts
+        // from, the cycle is one diagnostic.
+        let docs = vec![(
+            PathBuf::from("a.lute"),
+            doc(vec![
+                quest_with("A", 1, vec![objective("oa", Some("B"), false, 2)]),
+                quest_with("B", 3, vec![objective("ob", Some("C"), false, 4)]),
+                quest_with("C", 5, vec![objective("oc", Some("A"), false, 6)]),
+            ]),
+        )];
+        let out = check_project_quest_tree(&docs);
+        let cycles: Vec<_> = out.iter().filter(|(_, d)| d.code == E_QUEST_TREE_CYCLE).collect();
+        assert_eq!(cycles.len(), 1, "one ring, one diagnostic: {out:?}");
+    }
+
+    #[test]
+    fn quest_tree_edge_with_unknown_child_is_excluded_from_cycle_graph() {
+        // The only edge points to `ghost`, which is undefined; that edge
+        // already earns E-QUEST-REF-UNKNOWN. It contributes nothing to the
+        // cycle graph, so no bogus E-QUEST-TREE-CYCLE fires.
+        let docs = vec![(
+            PathBuf::from("a.lute"),
+            doc(vec![quest_with(
+                "parent",
+                1,
+                vec![objective("goal", Some("ghost"), false, 5)],
+            )]),
+        )];
+        let out = check_project_quest_tree(&docs);
+        assert!(
+            !out.iter().any(|(_, d)| d.code == E_QUEST_TREE_CYCLE),
+            "unknown-child edges must not fabricate cycles: {out:?}"
+        );
+    }
+
+    // --- `check_project_subquest_unsatisfiable` (dsl 2026-08-31 §4 ext) ---
+
+    #[test]
+    fn subquest_unsat_required_child_unreachable_flags_the_parent_objective() {
+        let docs = vec![(
+            PathBuf::from("a.lute"),
+            doc(vec![
+                quest_with(
+                    "parent",
+                    1,
+                    vec![objective("goal", Some("child"), false, 5)],
+                ),
+                quest("child", 10),
+            ]),
+        )];
+        let mut unreachable = BTreeSet::new();
+        unreachable.insert("child".to_string());
+        let out = check_project_subquest_unsatisfiable(&docs, &unreachable);
+        assert_eq!(out.len(), 1, "{out:?}");
+        let (path, d) = &out[0];
+        assert_eq!(path, Path::new("a.lute"));
+        assert_eq!(d.code, "E-OBJECTIVE-UNSATISFIABLE");
+        assert_eq!(d.severity, Severity::Error);
+        assert_eq!(d.span.line, 5, "anchored at the referencing objective");
+        assert!(d.message.contains("child"), "{}", d.message);
+        assert!(
+            d.message.contains("E-QUEST-UNREACHABLE"),
+            "the message must name the propagating cause: {}",
+            d.message
+        );
+    }
+
+    #[test]
+    fn subquest_unsat_optional_child_never_gates_the_parent() {
+        let docs = vec![(
+            PathBuf::from("a.lute"),
+            doc(vec![
+                quest_with(
+                    "parent",
+                    1,
+                    vec![objective("goal", Some("child"), true, 5)],
+                ),
+                quest("child", 10),
+            ]),
+        )];
+        let mut unreachable = BTreeSet::new();
+        unreachable.insert("child".to_string());
+        let out = check_project_subquest_unsatisfiable(&docs, &unreachable);
+        assert!(
+            out.is_empty(),
+            "an optional child does not gate parent completion (§2.1): {out:?}"
+        );
+    }
+
+    #[test]
+    fn subquest_unsat_reachable_child_does_not_flag() {
+        let docs = vec![(
+            PathBuf::from("a.lute"),
+            doc(vec![
+                quest_with(
+                    "parent",
+                    1,
+                    vec![objective("goal", Some("child"), false, 5)],
+                ),
+                quest("child", 10),
+            ]),
+        )];
+        let unreachable: BTreeSet<String> = BTreeSet::new();
+        let out = check_project_subquest_unsatisfiable(&docs, &unreachable);
+        assert!(out.is_empty(), "{out:?}");
     }
 }
