@@ -507,7 +507,7 @@ fn subquest_parent_child_fixture() -> String {
     // (which fires only for constant-`false` `done`).
     r#"---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 title: Subquest parent+child
 state:
   run.gotKey: { type: bool, default: false }
@@ -582,7 +582,7 @@ fn subquest_child_completion_propagates_to_parent() {
 fn subquest_required_child_failure_fails_parent_via_synth_fail() {
     let text = r#"---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 title: Subquest upward fail
 state:
   run.giveUp: { type: bool, default: true }
@@ -628,7 +628,7 @@ fn subquest_parent_failure_cascades_to_active_child() {
     // decides true → parent Failed → cascade fails still-Active child.
     let text = r#"---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 title: Subquest downward cascade
 state:
   run.explode: { type: bool, default: true }
@@ -694,7 +694,7 @@ state:
 fn subquest_no_start_child_waits_for_parent_activation() {
     let text = r#"---
 kind: quest
-luteVersion: "0.13.0"
+luteVersion: "0.14.0"
 title: Subquest child gate
 state:
   run.canStart: { type: bool, default: false }
