@@ -814,6 +814,18 @@ pub struct ObjectiveEntry {
     /// declaration-shape field the engine always expects to find (final
     /// review F1).
     pub body: Option<String>,
+    /// Subquest reference (2026-08-31 subquest design, IR §3): the
+    /// child-quest id this objective's completion is bound to (§2.1 —
+    /// `done.raw` is the synthesized `quest.<child>.state == 'complete'`).
+    /// Serialized ONLY for subquest objectives (`skip_serializing_if`):
+    /// artifacts without the feature are BYTE-IDENTICAL to pre-subquest
+    /// output, and the field is appended AFTER `body` so field-declaration
+    /// order (the byte-stability contract, this file's header) is
+    /// preserved for every existing objective. The journal tree is
+    /// derivable from this field alone across artifacts — no new edge
+    /// table, no new command kind (design doc §3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quest: Option<String>,
 }
 
 /// `<on>` event-condition-action record (dsl 0.2.0 §4, §6.6, IR addendum

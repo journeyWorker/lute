@@ -1,0 +1,348 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "quest",
+  "lute": "0.13.0",
+  "irVersion": "0.13.0",
+  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "meta": {
+    "title": "Act 1 — Save the Grove (subquest tree)"
+  },
+  "state": [
+    {
+      "path": "quest.findHalsin.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:findHalsin"
+    },
+    {
+      "path": "quest.findHalsin.objectives.reachCage.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:findHalsin"
+    },
+    {
+      "path": "quest.findHalsin.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:findHalsin"
+    },
+    {
+      "path": "quest.saveTheGrove.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:saveTheGrove"
+    },
+    {
+      "path": "quest.saveTheGrove.objectives.halsin.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:saveTheGrove"
+    },
+    {
+      "path": "quest.saveTheGrove.objectives.ritual.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:saveTheGrove"
+    },
+    {
+      "path": "quest.saveTheGrove.objectives.scout.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:saveTheGrove"
+    },
+    {
+      "path": "quest.saveTheGrove.objectives.talkRath.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:saveTheGrove"
+    },
+    {
+      "path": "quest.saveTheGrove.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:saveTheGrove"
+    },
+    {
+      "path": "quest.scoutPerimeter.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:scoutPerimeter"
+    },
+    {
+      "path": "quest.scoutPerimeter.objectives.mapEdges.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:scoutPerimeter"
+    },
+    {
+      "path": "quest.scoutPerimeter.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:scoutPerimeter"
+    },
+    {
+      "path": "quest.stopRitual.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:stopRitual"
+    },
+    {
+      "path": "quest.stopRitual.objectives.disrupt.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:stopRitual"
+    },
+    {
+      "path": "quest.stopRitual.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:stopRitual"
+    },
+    {
+      "path": "run.act",
+      "type": "number",
+      "default": 0
+    },
+    {
+      "path": "run.npc.halsin.dead",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.npc.halsin.freed",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.perimeter.mapped",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.region",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "path": "run.ritual.stopped",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.spokeRath",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "saveTheGrove",
+      "title": "Save the Grove",
+      "titleLineId": "saveTheGrove.title",
+      "start": {
+        "raw": "run.act == 1",
+        "expr": {
+          "op": "==",
+          "l": {
+            "path": "run.act"
+          },
+          "r": {
+            "lit": 1.0
+          }
+        }
+      },
+      "fail": {
+        "raw": "(run.npc.halsin.dead) || quest.findHalsin.state == 'failed' || quest.stopRitual.state == 'failed'",
+        "expr": {
+          "op": "||",
+          "l": {
+            "op": "||",
+            "l": {
+              "path": "run.npc.halsin.dead"
+            },
+            "r": {
+              "op": "==",
+              "l": {
+                "path": "quest.findHalsin.state"
+              },
+              "r": {
+                "lit": "failed"
+              }
+            }
+          },
+          "r": {
+            "op": "==",
+            "l": {
+              "path": "quest.stopRitual.state"
+            },
+            "r": {
+              "lit": "failed"
+            }
+          }
+        }
+      },
+      "objectives": [
+        {
+          "id": "halsin",
+          "title": "Find Halsin",
+          "titleLineId": "saveTheGrove.halsin",
+          "done": {
+            "raw": "quest.findHalsin.state == 'complete'",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "quest.findHalsin.state"
+              },
+              "r": {
+                "lit": "complete"
+              }
+            }
+          },
+          "optional": false,
+          "body": null,
+          "quest": "findHalsin"
+        },
+        {
+          "id": "ritual",
+          "title": "Stop the ritual",
+          "titleLineId": "saveTheGrove.ritual",
+          "done": {
+            "raw": "quest.stopRitual.state == 'complete'",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "quest.stopRitual.state"
+              },
+              "r": {
+                "lit": "complete"
+              }
+            }
+          },
+          "optional": false,
+          "body": null,
+          "quest": "stopRitual"
+        },
+        {
+          "id": "scout",
+          "title": "Scout the perimeter",
+          "titleLineId": "saveTheGrove.scout",
+          "done": {
+            "raw": "quest.scoutPerimeter.state == 'complete'",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "quest.scoutPerimeter.state"
+              },
+              "r": {
+                "lit": "complete"
+              }
+            }
+          },
+          "optional": true,
+          "body": null,
+          "quest": "scoutPerimeter"
+        },
+        {
+          "id": "talkRath",
+          "title": "Speak with Rath",
+          "titleLineId": "saveTheGrove.talkRath",
+          "done": {
+            "raw": "run.spokeRath",
+            "expr": {
+              "path": "run.spokeRath"
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ]
+    },
+    {
+      "kind": "quest",
+      "addr": "002-0100",
+      "id": "findHalsin",
+      "title": "Find Halsin",
+      "titleLineId": "findHalsin.title",
+      "objectives": [
+        {
+          "id": "reachCage",
+          "title": "Reach the cage",
+          "titleLineId": "findHalsin.reachCage",
+          "done": {
+            "raw": "run.npc.halsin.freed",
+            "expr": {
+              "path": "run.npc.halsin.freed"
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ]
+    },
+    {
+      "kind": "quest",
+      "addr": "003-0100",
+      "id": "stopRitual",
+      "title": "Stop the ritual",
+      "titleLineId": "stopRitual.title",
+      "objectives": [
+        {
+          "id": "disrupt",
+          "title": "Disrupt the ritual",
+          "titleLineId": "stopRitual.disrupt",
+          "done": {
+            "raw": "run.ritual.stopped",
+            "expr": {
+              "path": "run.ritual.stopped"
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ]
+    },
+    {
+      "kind": "quest",
+      "addr": "004-0100",
+      "id": "scoutPerimeter",
+      "title": "Scout the perimeter",
+      "titleLineId": "scoutPerimeter.title",
+      "objectives": [
+        {
+          "id": "mapEdges",
+          "title": "Map the perimeter",
+          "titleLineId": "scoutPerimeter.mapEdges",
+          "done": {
+            "raw": "run.perimeter.mapped",
+            "expr": {
+              "path": "run.perimeter.mapped"
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ]
+    }
+  ]
+}

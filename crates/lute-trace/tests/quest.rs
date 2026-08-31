@@ -483,3 +483,264 @@ fn unrelated_supplied_fact_does_not_silence_the_note() {
         "note must name a declared-but-unsupplied seed relation, not the unrelated one: {note}"
     );
 }
+
+// ---------------------------------------------------------------------
+// Subquest scenarios (design doc 2026-08-31, `docs/superpowers/specs/
+// 2026-08-31-lute-subquest-design.md`). Trace consumes the SAME
+// `lute_compile::normalize::normalize_document` synthesis the compiler
+// runs (spec §2.1/§2.2: parent objective `done` synthesized to
+// `quest.<c>.state == 'complete'`, parent `fail` extended with required
+// children's `quest.<c>.state == 'failed'` disjuncts). Test (a) and (b)
+// depend on that synthesis being present in normalize; without it, the
+// synth `done` slot is empty and the parent's required objective can
+// never reach `done` via the child's state — those two tests will fail
+// UNTIL normalize's synthesis lands (task D in the plan). Tests (c) and
+// (d) exercise the two engine rules trace itself owns (§2.3 downward
+// cascade, §2.4 activation of referenced children) and do not depend on
+// synthesis.
+// ---------------------------------------------------------------------
+
+fn subquest_parent_child_fixture() -> String {
+    // Parent's ONE required objective references child `findKey`. Child
+    // has no `start`: activation is derived from parent-Active per §2.4.
+    // Runtime state paths avoid the checker's E-OBJECTIVE-UNSATISFIABLE
+    // (which fires only for constant-`false` `done`).
+    r#"---
+kind: quest
+luteVersion: "0.13.0"
+title: Subquest parent+child
+state:
+  run.gotKey: { type: bool, default: false }
+  run.canStart: { type: bool, default: true }
+---
+
+<quest id="parentQ" title="Parent" start="run.canStart">
+  <objective id="getIt" title="Get the key" quest="findKey"/>
+</quest>
+
+<quest id="findKey" title="Find the key">
+  <objective id="got" title="Got it" done="run.gotKey"/>
+</quest>
+"#
+    .to_string()
+}
+
+fn synth_span() -> lute_core_span::Span {
+    lute_core_span::Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    }
+}
+
+/// (a) Parent + child same file: seeding the child's own objective true
+/// completes the child during the fixpoint's initial-settle pass; the
+/// parent's synth objective (`quest.findKey.state == 'complete'`) then
+/// reads true on the re-settle, and parent completes. Depends on
+/// normalize's parent-objective `done` synthesis (spec §2.1): without
+/// synthesis, the parent's `<objective quest="findKey"/>` has an EMPTY
+/// `done` slot and the objective never becomes done — the assertion on
+/// parent completing then fails. Marked `#[ignore]`-worthy pre-synthesis
+/// but left live so the contract is exercised end-to-end once
+/// CompileSynth lands.
+#[test]
+fn subquest_child_completion_propagates_to_parent() {
+    let text = subquest_parent_child_fixture();
+    let input = input_for(&text, "subquest_child_complete.lute", Path::new("."));
+    let mocks = MockSet {
+        state: vec![("run.gotKey".to_string(), "true".to_string(), synth_span())],
+        ..Default::default()
+    };
+
+    let (report, exit) = trace_document(&input, mocks);
+    assert_complete(&exit);
+
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "findKey", "complete"),
+        1,
+        "child must reach complete: {:?}",
+        report.decisions
+    );
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "parentQ", "complete"),
+        1,
+        "parent must reach complete via synth objective referencing child state: {:?}",
+        report.decisions
+    );
+}
+
+/// (b) Required child fails → parent's synth `fail` disjunction
+/// (`quest.childQ.state == 'failed'`) fires → parent fails. Upward
+/// failure needs NO trace code — the disjunction assembled in
+/// normalize provides it. Depends on normalize's parent-`fail`
+/// synthesis (spec §2.2): without synthesis, the parent has no
+/// authored fail and no synthesized fail, so the child's failure never
+/// propagates and the assertion on parent-failed fails.
+#[test]
+fn subquest_required_child_failure_fails_parent_via_synth_fail() {
+    let text = r#"---
+kind: quest
+luteVersion: "0.13.0"
+title: Subquest upward fail
+state:
+  run.giveUp: { type: bool, default: true }
+  run.win: { type: bool, default: false }
+---
+
+<quest id="parentQ" title="Parent" start="true">
+  <objective id="delegate" title="Delegate" quest="childQ"/>
+</quest>
+
+<quest id="childQ" title="Child" fail="run.giveUp">
+  <objective id="win" title="Win" done="run.win"/>
+</quest>
+"#;
+    let input = input_for(text, "subquest_child_fail.lute", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "childQ", "failed"),
+        1,
+        "child must record a failed decision: {:?}",
+        report.decisions
+    );
+    // Parent's synth fail disjunction includes `quest.childQ.state == 'failed'`.
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "parentQ", "failed"),
+        1,
+        "parent must fail via synth fail disjunction referencing child: {:?}",
+        report.decisions
+    );
+}
+
+/// (c) Parent transitions to `failed` (authored fail) → §2.3 downward
+/// cascade fails every still-`Active` child; fires `questFailed` on each.
+/// Does NOT depend on normalize synthesis — this is a pure trace-engine
+/// rule and must pass regardless of CompileSynth's progress.
+#[test]
+fn subquest_parent_failure_cascades_to_active_child() {
+    // Parent has authored fail that fires immediately; child is
+    // referenced no-start, so §2.4 activates it when parent activates.
+    // Same fixpoint pass: parent activates and settles → authored fail
+    // decides true → parent Failed → cascade fails still-Active child.
+    let text = r#"---
+kind: quest
+luteVersion: "0.13.0"
+title: Subquest downward cascade
+state:
+  run.explode: { type: bool, default: true }
+  run.grinded: { type: bool, default: false }
+---
+
+<quest id="parentQ" title="Parent" start="true" fail="run.explode">
+  <objective id="delegate" title="Delegate" quest="childQ"/>
+</quest>
+
+<quest id="childQ" title="Child">
+  <objective id="grind" title="Grind" done="run.grinded"/>
+  <on event="questFailed">
+    @narrator: child heard the boom
+  </on>
+</quest>
+"#;
+    let input = input_for(text, "subquest_cascade.lute", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "parentQ", "failed"),
+        1,
+        "parent must record a failed decision (authored fail): {:?}",
+        report.decisions
+    );
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "childQ", "failed"),
+        1,
+        "child must record a failed decision via §2.3 cascade: {:?}",
+        report.decisions
+    );
+
+    // The cascade fires `questFailed` on the child — its handler ran.
+    assert!(
+        has_line_containing(&report.steps, "child heard the boom"),
+        "cascade must fire the child's questFailed handler: {:?}",
+        report.steps
+    );
+
+    // Cascade decision annotates its guard as `cascade from quest.<parent>`
+    // so a trace reader can tell derived cascades from authored fails.
+    let child_decision = report
+        .decisions
+        .iter()
+        .find(|d| d.construct == "quest" && d.id == "childQ" && d.outcome == "failed")
+        .unwrap();
+    assert_eq!(
+        child_decision.guard.as_deref(),
+        Some("cascade from quest.parentQ"),
+        "cascade must annotate its source: {child_decision:?}"
+    );
+}
+
+/// (d) A referenced no-start child must NOT activate before its parent
+/// activates. Here the parent is start-gated by `run.canStart=false`,
+/// so the parent never activates; the child must therefore never
+/// activate either — and, because it never activated, must never record
+/// its `questActive`-driven side effect. This is the §2.4 gate holding,
+/// independent of any synthesis (trace-engine rule).
+#[test]
+fn subquest_no_start_child_waits_for_parent_activation() {
+    let text = r#"---
+kind: quest
+luteVersion: "0.13.0"
+title: Subquest child gate
+state:
+  run.canStart: { type: bool, default: false }
+---
+
+<quest id="parentQ" title="Parent" start="run.canStart">
+  <objective id="delegate" title="Delegate" quest="childQ"/>
+</quest>
+
+<quest id="childQ" title="Child">
+  <objective id="grind" title="Grind" done="true"/>
+  <on event="questActive">
+    @narrator: child woke up
+  </on>
+</quest>
+"#;
+    let input = input_for(text, "subquest_child_waits.lute", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    // Parent records "never" (start decided false) — its own record.
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "parentQ", "never"),
+        1,
+        "parent must record 'never': {:?}",
+        report.decisions
+    );
+
+    // Child must NEVER activate — no `active` decision, no `questActive`
+    // handler side effect, no `awaiting accept` (accept-driven semantics
+    // do not apply to a referenced child, §2.4).
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "childQ", "active"),
+        0,
+        "referenced no-start child must not activate before parent: {:?}",
+        report.decisions
+    );
+    assert!(
+        !has_line_containing(&report.steps, "child woke up"),
+        "child's questActive handler must not have fired: {:?}",
+        report.steps
+    );
+    assert_eq!(
+        count_quest_decisions(&report.decisions, "childQ", "awaiting accept"),
+        0,
+        "referenced no-start child must NOT report accept-driven awaiting: {:?}",
+        report.decisions
+    );
+}

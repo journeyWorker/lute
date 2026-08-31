@@ -629,6 +629,16 @@ pub fn walk_quest(
                 when: o.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
                 optional: o.optional,
                 body: label.map(Label::sym),
+                // Subquest reference (2026-08-31 subquest design §3): the
+                // child id this objective is bound to. `normalize_document`
+                // has already synthesized `done.raw` from it (§2.1 —
+                // `quest.<child>.state == 'complete'`); the field itself
+                // rides along so cross-artifact consumers can derive the
+                // journal tree without re-parsing CEL. Preserved verbatim
+                // for a non-subquest objective (`None`) — `serde` omits it
+                // there, keeping the byte-stable output of every existing
+                // artifact (see `ir::ObjectiveEntry.quest`).
+                quest: o.quest.clone(),
             });
             obj_labels.push(label);
         }

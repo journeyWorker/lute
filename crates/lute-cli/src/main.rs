@@ -667,14 +667,15 @@ const DENIABLE_CODES: &[&str] = &[
     "E-MATCH-DUP-OTHERWISE", "E-MATCH-RELATION-SUBJECT",
     "E-MAYBE-UNSET", "E-META-MISSING", "E-META-PARSE", "E-META-UNKNOWN-KEY",
     "E-MISSING-ATTR", "E-MOCK-SUBJECT", "E-NEXT-BACKWARD", "E-NEXT-UNDEFINED", "E-NONEXHAUSTIVE", "E-OBJECTIVE-CONTRADICTION", "E-OBJECTIVE-ID-DUP", "E-OBJECTIVE-ID-MISSING",
-    "E-OBJECTIVE-MISSING-DONE", "E-OBJECTIVE-UNSATISFIABLE", "E-ON-NO-EVENT", "E-PATH-IDENT",
+    "E-OBJECTIVE-MISSING-DONE", "E-OBJECTIVE-QUEST-DONE", "E-OBJECTIVE-UNSATISFIABLE", "E-ON-NO-EVENT", "E-PATH-IDENT",
     "E-PERSIST-REMOVED", "E-PLUGIN-ASSET-SEGMENT-TYPE", "E-PLUGIN-DUP-ACROSS", "E-PLUGIN-DUP-ID", "E-PLUGIN-INVALID-DIRECTIVE",
     "E-PLUGIN-IO", "E-PLUGIN-MANIFEST", "E-PLUGIN-MISSING-ACTIVE", "E-PLUGIN-MISSING-EXPORT",
     "E-PLUGIN-OPTION-TYPE", "E-PLUGIN-OPTION-UNKNOWN",
     "E-PLUGIN-PARSE", "E-PLUGIN-RESERVED-NAME", "E-PLUGIN-RESERVED-STAMP-ATTR",
     "E-PLUGIN-UNKNOWN-ASSETKIND", "E-PLUGIN-UNKNOWN-EXPORT",
     "E-PROFILE-EXTENDS-CYCLE", "E-PROFILE-UNKNOWN", "E-QUEST-ID-DUP", "E-QUEST-ID-MISSING",
-    "E-QUEST-RESERVED-DECL", "E-QUEST-RESERVED-WRITE", "E-QUEST-UNREACHABLE", "E-REF-ARG-TYPE",
+    "E-QUEST-MULTI-PARENT", "E-QUEST-REF-UNKNOWN",
+    "E-QUEST-RESERVED-DECL", "E-QUEST-RESERVED-WRITE", "E-QUEST-TREE-CYCLE", "E-QUEST-UNREACHABLE", "E-REF-ARG-TYPE",
     "E-REF-ARITY", "E-REF-TYPE", "E-RELATION-ARITY", "E-RELATION-DOMAIN",
     "E-RELATION-DUP", "E-RELATION-EMPTY", "E-RELATION-RESERVED-WRITE", "E-RELATION-UNKNOWN",
     "E-RETRACT-WILDCARD-ASSERT", "E-SET-OP-TYPE", "E-SET-TYPE", "E-STATE-COLLECTION", "E-STATE-DECL",
@@ -1988,6 +1989,14 @@ fn reconcile_collected(
         let group = &plain_group;
         project_diags.extend(check_project_quest_ids(group));
         project_diags.extend(check_project_quest_refs(group));
+        // dsl 2026-08-31 §4 (subquest design): structural checks over the
+        // parent→child tree implied by every `<objective quest="c">`. Sits
+        // next to the existing quest-ref pass because the two ask the same
+        // question at two different depths -- ref pass on the READ side
+        // (`quest.<id>.state` from anywhere), tree pass on the STRUCTURAL
+        // side (parent quest naming the child). Both are project-wide
+        // because a `quest=` reference can name a quest in a sibling file.
+        project_diags.extend(lute_check::check_project_quest_tree(group));
         project_diags.extend(lute_check::connectivity::check_conn_episode_dup(group));
         let key_set = lute_check::connectivity::scene_key_set(group);
         let quest_ids = lute_check::connectivity::quest_id_set(group);
@@ -2014,6 +2023,18 @@ fn reconcile_collected(
         let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
         let fp = compute_conn_fixpoint(group, group_full, &file_results, &conn_graph, &quest_ids, &ambiguous_quests);
         project_diags.extend(fp.reach_diags);
+        // dsl 2026-08-31 §4 extension: `E-QUEST-UNREACHABLE` propagates one
+        // edge UP a subquest tree — a required `<objective quest="c">` on a
+        // dead child can never complete (§2.1's synthesized predicate
+        // `quest.c.state == 'complete'` never fires). Sits AFTER the
+        // fixpoint because it consumes `fp.unreachable_quests` — the union
+        // of lifecycle-dead, dead-`start`, and dead-required-objective
+        // consequences the fixpoint has just settled. `optional` is
+        // filtered inside the helper, matching §2.1's own carve-out.
+        project_diags.extend(lute_check::check_project_subquest_unsatisfiable(
+            group,
+            &fp.unreachable_quests,
+        ));
         for (path, doc, folded) in group_full {
             let producible =
                 lute_check::producible::producible(&folded.env.rel_vocab, &fp.live_asserts);

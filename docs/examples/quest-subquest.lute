@@ -1,0 +1,51 @@
+---
+kind: quest
+luteVersion: "0.13.0"
+title: Act 1 — Save the Grove (subquest tree)
+state:
+  run.act:               { type: number, default: 0 }
+  run.region:             { type: string, default: "" }
+  run.npc.halsin.dead:    { type: bool,   default: false }
+  run.npc.halsin.freed:   { type: bool,   default: false }
+  run.ritual.stopped:     { type: bool,   default: false }
+  run.perimeter.mapped:   { type: bool,   default: false }
+  run.spokeRath:          { type: bool,   default: false }
+---
+
+/*
+  Worked example of the 2026-08-31 subquest design
+  (docs/superpowers/specs/2026-08-31-lute-subquest-design.md). Exercises
+  every synthesis path the design pins in ONE compilable artifact so the
+  snapshot double-locks the wire text `lute-trace` reads:
+
+    - parent has an AUTHORED `fail` (`run.npc.halsin.dead`) — §2.2 wraps
+      that in parens and APPENDS one `failed` disjunct per REQUIRED
+      subquest child, in document order (halsin, ritual); the OPTIONAL
+      child (scout) contributes nothing;
+    - three `<objective quest=…>` slots start with EMPTY `done` — §2.1
+      synthesizes `quest.<child>.state == 'complete'` into each;
+    - one plain `<objective done=…>` (talkRath) mixes freely alongside
+      the subquest objectives (design §1 mix-freely rule);
+    - every child quest is declared in the SAME file so the artifact is
+      self-contained under check + compile (no cross-file resolution
+      needed to golden the synthesis output).
+*/
+
+<quest id="saveTheGrove" title="Save the Grove" start="run.act == 1" fail="run.npc.halsin.dead">
+  <objective id="halsin" title="Find Halsin" quest="findHalsin"/>
+  <objective id="ritual" title="Stop the ritual" quest="stopRitual"/>
+  <objective id="scout" title="Scout the perimeter" quest="scoutPerimeter" optional/>
+  <objective id="talkRath" title="Speak with Rath" done="run.spokeRath"/>
+</quest>
+
+<quest id="findHalsin" title="Find Halsin">
+  <objective id="reachCage" title="Reach the cage" done="run.npc.halsin.freed"/>
+</quest>
+
+<quest id="stopRitual" title="Stop the ritual">
+  <objective id="disrupt" title="Disrupt the ritual" done="run.ritual.stopped"/>
+</quest>
+
+<quest id="scoutPerimeter" title="Scout the perimeter">
+  <objective id="mapEdges" title="Map the perimeter" done="run.perimeter.mapped"/>
+</quest>

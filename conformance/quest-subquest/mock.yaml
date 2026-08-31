@@ -1,0 +1,8 @@
+# Seed the child's `done` predicate true: the parent activates
+# (start=true), the referenced no-start child activates same-pass
+# (subquest design §2.4), the child's `found` objective completes,
+# the child transitions to `complete` and fires `questComplete`, and
+# the parent's synth objective (`quest.findKey.state == 'complete'`,
+# spec §2.1) then reads true and the parent transitions to `complete`.
+state:
+  run.gotKey: true
