@@ -960,6 +960,8 @@ mod tests {
             id: id.to_string(),
             id_span: dummy_span(),
             done: cel(done),
+            quest: None,
+            quest_span: dummy_span(),
             when: None,
             title: None,
             optional,
