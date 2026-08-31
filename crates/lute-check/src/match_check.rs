@@ -2432,6 +2432,8 @@ mod tests {
             id: id.to_string(),
             id_span: span(),
             done: CelSlot::raw(CelKind::Condition, done_raw.to_string(), span()),
+            quest: None,
+            quest_span: span(),
             when: None,
             title: None,
             optional: false,

@@ -164,13 +164,24 @@ pub struct Quest {
 }
 
 /// `<objective id done …> Node* </objective>` or self-closing
-/// `<objective … />` (dsl 0.2.0 §6.4). `done` is the required completion
-/// predicate; `when` gates visibility; `optional` is a bare boolean flag.
+/// `<objective … />` (dsl 0.2.0 §6.4). Exactly one of `done`/`quest` carries
+/// the completion source: `done` is the authored completion predicate;
+/// `quest` (subquest design, 2026-08-31) references a child quest whose
+/// completion IS this objective's completion (the predicate is synthesized
+/// downstream — `quest.<child>.state == 'complete'` — never authored).
+/// `when` gates visibility; `optional` is a bare boolean flag.
 #[derive(Clone, Debug)]
 pub struct Objective {
     pub id: String,
     pub id_span: Span,
     pub done: CelSlot,
+    /// `quest=` child-quest reference (subquest); mutually exclusive with a
+    /// non-empty `done` (`E-OBJECTIVE-QUEST-DONE`, checker-owned).
+    pub quest: Option<String>,
+    /// Span of the `quest=` attribute value; meaningful only when `quest` is
+    /// `Some` (defaults to the open-tag span otherwise, mirroring
+    /// [`Quest::after_span`]).
+    pub quest_span: Span,
     pub when: Option<CelSlot>,
     pub title: Option<String>,
     pub optional: bool,

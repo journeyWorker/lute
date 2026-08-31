@@ -244,10 +244,13 @@ impl Parser<'_> {
     }
 
     /// `Objective ::= "<objective" Attrs ">" Node* "</objective>" | "<objective"
-    /// Attrs "/>"` (dsl 0.2.0 §6.4). `done` is required but a MISSING `done`
-    /// still yields a valid AST (empty CEL slot) — `E-OBJECTIVE-MISSING-DONE`
-    /// is a Plan C checker diagnostic, NOT a parse error. Mirrors
-    /// `parse_when`/`parse_match`'s empty-slot idiom exactly.
+    /// Attrs "/>"` (dsl 0.2.0 §6.4). One of `done`/`quest=` is required but a
+    /// MISSING `done` still yields a valid AST (empty CEL slot) —
+    /// `E-OBJECTIVE-MISSING-DONE` / `E-OBJECTIVE-QUEST-DONE` are Plan C checker
+    /// diagnostics, NOT parse errors. Mirrors `parse_when`/`parse_match`'s
+    /// empty-slot idiom exactly. `quest=` is a plain string reference (a quest
+    /// id, never CEL), mirroring `<quest after=>`'s `take_str_spanned`
+    /// treatment.
     pub(super) fn parse_objective(&mut self) -> Objective {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
@@ -260,6 +263,10 @@ impl Parser<'_> {
                 self.span_o(open.start_o, open.end_o),
             )
         });
+        let (quest, quest_span) = match take_str_spanned(&mut attrs, "quest") {
+            Some((q, s)) => (Some(q), s),
+            None => (None, self.span_o(open.start_o, open.end_o)),
+        };
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let title = take_str(&mut attrs, "title");
         let optional = take_bool(&mut attrs, "optional");
@@ -272,6 +279,8 @@ impl Parser<'_> {
             id,
             id_span,
             done,
+            quest,
+            quest_span,
             when,
             title,
             optional,
