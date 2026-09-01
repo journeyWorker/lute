@@ -17,7 +17,12 @@ import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const binaryName = process.platform === "win32" ? "lute.exe" : "lute";
+// Entry selection: `bin.js` launches `lute`; `lsp-bin.js` sets
+// LUTE_LAUNCHER_BINARY=lute-lsp before importing this module. Closed
+// allowlist — an unknown value falls back to `lute`, never an arbitrary
+// binary name from the environment.
+const binaryBase = process.env.LUTE_LAUNCHER_BINARY === "lute-lsp" ? "lute-lsp" : "lute";
+const binaryName = process.platform === "win32" ? `${binaryBase}.exe` : binaryBase;
 
 const currentDir = fileURLToPath(new URL(".", import.meta.url));
 const dirName = basename(currentDir);
@@ -237,6 +242,7 @@ function tryRealpath(p: string): string {
 const selfPaths = new Set<string>([
   tryRealpath(fileURLToPath(import.meta.url)),
   tryRealpath(join(cliDir, "bin.js")),
+  tryRealpath(join(cliDir, "lsp-bin.js")),
 ]);
 if (process.argv[1]) {
   selfPaths.add(tryRealpath(process.argv[1]));
@@ -245,13 +251,14 @@ if (process.argv[1]) {
 const binary = searchPaths.find((p) => existsSync(p) && !selfPaths.has(tryRealpath(p)));
 
 if (!binary) {
-  console.error(`lute: no binary found for ${process.platform}/${process.arch}`);
+  console.error(`${binaryBase}: no binary found for ${process.platform}/${process.arch}`);
   if (platformPkgName) {
     console.error(`  expected optional package: ${platformPkgName}`);
   } else {
     console.error("  no @lute-lang/lute-core-<platform> package exists for this platform/arch yet");
   }
-  console.error("  build from source: cargo build --release -p lute-cli");
+  const sourceCrate = binaryBase === "lute-lsp" ? "lute-lsp" : "lute-cli";
+  console.error(`  build from source: cargo build --release -p ${sourceCrate}`);
   process.exit(1);
 }
 

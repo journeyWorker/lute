@@ -6,10 +6,12 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "lute": "./bin.js"
+    "lute": "./bin.js",
+    "lute-lsp": "./lsp-bin.js"
   },
   "files": [
     "bin.js",
+    "lsp-bin.js",
     "dist/**/*"
   ],
   "publishConfig": {
