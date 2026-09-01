@@ -30,7 +30,7 @@ pub use ir::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_cel::CelArena;
-use lute_check::meta::{canonical_episode_id, canonical_episode_key, StateSchema};
+use lute_check::meta::{canonical_episode_id, canonical_scene_key, StateSchema};
 use lute_check::{check, fold_env, CheckInput, CheckResult, DefTable, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::project::IdentityTemplates;
@@ -116,7 +116,26 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// `schemas/lute-ir-0.14.schema.json` per the per-release rename rule (the
 /// file tracks the published release line for strict validators), and its
 /// content gains the `quest` property on the objective entry.
-pub const LUTE_IR_VERSION: &str = "0.14.0";
+///
+/// IR `0.15.0` reshapes [`ir::SceneMeta`] (dsl 0.15.0 §2/§3, authored scene
+/// identity): the always-present `id` field is added as the FIRST envelope
+/// meta field — the resolved canonical scene key
+/// ([`lute_check::meta::canonical_scene_key`]: authored `id:` verbatim, else
+/// the derived `{character}.{episodeId}` join) — the four legacy identity
+/// keys (`character`/`season`/`episode`/`episodeId`) demote to optional
+/// (`skip_serializing_if = "Option::is_none"`), and BOTH `SceneMeta` and
+/// `QuestMeta` gain the descriptive `meta` block (a JSON-ready open mapping
+/// key-sorted via `BTreeMap`, `skip_serializing_if = "BTreeMap::is_empty"`
+/// so a document without the block stays byte-identical to 0.14.0). The
+/// derived-key path still emits all four legacy fields with `episodeId`
+/// resolved exactly as 0.14.0 did (dsl 0.15.0 §7 compatibility): a
+/// pre-0.15 document's 0.15 artifact differs from its 0.14 artifact ONLY
+/// by the new `id` line and the version strings. The gated major.minor
+/// moves (`0.14` -> `0.15`); `schemas/lute-ir-0.14.schema.json` is kept
+/// published for engines still on 0.14 while
+/// `schemas/lute-ir-0.15.schema.json` publishes the new `sceneMeta.id`
+/// requirement and the `meta` property on both metas.
+pub const LUTE_IR_VERSION: &str = "0.15.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -186,16 +205,15 @@ pub fn compile_with_check(
             // `meta` is computed BEFORE the shot loop so every
             // `ShotRecords.prefix` (the lineId identity prefix, §4/§5.6, D7)
             // can be set inline — scene is ONE document-wide identity scope,
-            // so every shot gets the SAME `{character}.{episodeId}` prefix
-            // (byte-identical to 0.1.0's single continuous back-fill
-            // counter).
+            // so every shot gets the SAME prefix (byte-identical to 0.1.0's
+            // single continuous back-fill counter). Since dsl 0.15.0 §2 the
+            // scene identity IS `meta.id` — an authored `id:` verbatim, else
+            // the derived `{character}.{episodeId}` join — computed once in
+            // `artifact_meta` via `canonical_scene_key` and stamped into
+            // every lineId here (byte-identical to 0.14.0 for a doc that has
+            // not migrated to `id:`).
             let meta = artifact_meta(&doc, &folded, &input.snapshot);
-            // Shared with `lute-check::connectivity::scene_key_set` (T3, DRY):
-            // `meta.episode_id` is already resolved (authored or defaulted), so
-            // this call always takes the `Some` branch — byte-identical to the
-            // former inline `format!("{}.{}", meta.character, meta.episode_id)`.
-            let prefix =
-                canonical_episode_key(&meta.character, meta.season, meta.episode, Some(&meta.episode_id));
+            let prefix = meta.id.clone();
             let mut shots = Vec::new();
             for (i, shot) in doc.shots.iter().enumerate() {
                 let mut em = cfg::Emitter::default();
@@ -285,7 +303,11 @@ pub fn compile_with_check(
                 });
             }
             let (commands, addr_diags) = address::assign_addresses(shots, identity);
-            (ArtifactMeta::Quest(quest_meta(&doc, &input.snapshot)), commands, addr_diags)
+            (
+                ArtifactMeta::Quest(quest_meta(&doc, &folded, &input.snapshot)),
+                commands,
+                addr_diags,
+            )
         }
     };
     diags.extend(addr_diags);
@@ -342,6 +364,10 @@ fn shot_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::ShotEntry> {
 /// malformed-parse-sentinel facts/rules never reach this function — compile
 /// only runs past the D6 check gate (`compile`, above) on a clean check, and
 /// every such shape is an Error diagnostic that gate would have caught.
+// clippy 1.96 tightened `type_complexity` past this five-Vec return; the
+// declaration IS the readable form here — each Vec is a distinct artifact
+// axis the caller destructures by position, and a `type` alias buys nothing.
+#[allow(clippy::type_complexity)]
 fn rel_entries(
     vocab: &lute_check::RelVocab,
 ) -> (
@@ -476,42 +502,93 @@ fn body_entry(l: &lute_syntax::datalog::BodyLiteral) -> BodyEntry {
     }
 }
 
-/// Envelope meta (§4.1 + A4; plugin-owned keys per plugin-system 0.0.4 §2).
-/// `character`/`season`/`episode` are §6.1 REQUIRED keys — the gate proved
-/// them present; degrade to defaults, never panic. `title` and the authored
-/// `episodeId` live only in the raw frontmatter (neither is lifted into
-/// `TypedMeta`); both are read from the mapping here, alongside every
-/// plugin-owned top-level key ([`plugin_frontmatter`]).
+/// Envelope meta (§4.1 + A4; dsl 0.15.0 §2/§3; plugin-owned keys per
+/// plugin-system 0.0.4 §2).
+///
+/// [`SceneMeta::id`] is the canonical scene key resolved via the shared
+/// [`lute_check::meta::canonical_scene_key`] helper (authored `id:`
+/// verbatim, else the derived `{character}.{episodeId}` join). `check()`
+/// gates a document that yields `None` from this helper (missing `id:` AND
+/// missing legacy triad), so an artifact that reaches lowering always has
+/// a resolvable canonical key; `unwrap_or_default` is a totality guard
+/// rather than a real branch.
+///
+/// The four legacy identity fields are emitted according to the dsl 0.15.0
+/// §2 wire contract: on the AUTHORED-`id:` path (`TypedMeta.id` is
+/// `Some`), only the legacy keys the author WROTE (raw frontmatter lookup)
+/// carry through — a project-level `defaults:` fallback must not resurrect
+/// a key the author dropped (dsl 0.15.0 §4). On the DERIVED-key path
+/// (`TypedMeta.id` is `None`, canonical key = `{character}.{episodeId}`),
+/// all four fields carry through with `episodeId` resolved exactly as
+/// 0.14.0 did (via [`canonical_episode_id`]) so a legacy document's 0.15
+/// artifact differs from its 0.14 artifact ONLY by the added `id` line
+/// (dsl 0.15.0 §7 compatibility).
+///
+/// `title` and `episodeId` continue to live in the raw frontmatter (neither
+/// is lifted into `TypedMeta` for its own sake, though `TypedMeta.episode_id`
+/// backs `canonical_scene_key`), read from the mapping here. Plugin-owned
+/// top-level keys route through [`plugin_frontmatter`] as before. The
+/// authored descriptive `meta:` block (dsl 0.15.0 §3) is copied verbatim
+/// from `TypedMeta.meta_block` — the checker already validated the shape
+/// and stripped nested maps / mixed lists.
 fn artifact_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) -> SceneMeta {
-    let character = folded.typed.character.clone().unwrap_or_default();
-    let season = folded.typed.season.unwrap_or(0);
-    let episode = folded.typed.episode.unwrap_or(0);
     let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
-    let lookup = |key: &str| -> Option<String> {
+    let lookup_str = |key: &str| -> Option<String> {
         raw.as_ref()?
             .get(serde_yaml::Value::String(key.to_string()))?
             .as_str()
             .map(String::from)
     };
-    let title = lookup("title");
-    // A4/A9: derive the resolved `episodeId` component via the shared
-    // `canonical_episode_id` helper (DRY with `lute-check::connectivity`'s
-    // project-wide key set) — an authored, non-empty `episodeId` is used
-    // VERBATIM, otherwise the lowercase default `s{season:02}ep{episode:02}`
-    // is derived from `season`/`episode`. This is the same component
-    // [`canonical_episode_key`] joins onto `character` for the identity key
-    // the address pass reuses for every lineId episode segment.
-    let episode_id = canonical_episode_id(season, episode, lookup("episodeId").as_deref());
+    let lookup_i64 = |key: &str| -> Option<i64> {
+        raw.as_ref()?
+            .get(serde_yaml::Value::String(key.to_string()))?
+            .as_i64()
+    };
+    let title = lookup_str("title");
+    let id = canonical_scene_key(&folded.typed).unwrap_or_default();
+    let (character, season, episode, episode_id) = if folded.typed.id.is_some() {
+        // Authored-id path: only the legacy keys the author WROTE carry
+        // through, read straight from the raw frontmatter so a project-level
+        // `defaults:` fallback can never resurrect a dropped key (dsl 0.15.0
+        // §4). Each survives its own `skip_serializing_if = Option::is_none`
+        // gate — a doc that authored only `id:` emits `id` alone from this
+        // legacy block.
+        (
+            lookup_str("character"),
+            lookup_i64("season"),
+            lookup_i64("episode"),
+            lookup_str("episodeId"),
+        )
+    } else {
+        // Derived-key path: emit all four legacy fields resolved exactly as
+        // 0.14.0 did (defaults-merged via `TypedMeta`, `episodeId` via
+        // `canonical_episode_id`) so a pre-0.15 document's artifact differs
+        // from its 0.14 shape ONLY by the added `id` line + version strings
+        // (dsl 0.15.0 §7 compatibility, verified end-to-end by the compile
+        // test suite's byte-diff assertion).
+        let character = folded.typed.character.clone().unwrap_or_default();
+        let season = folded.typed.season.unwrap_or(0);
+        let episode = folded.typed.episode.unwrap_or(0);
+        let episode_id = canonical_episode_id(season, episode, lookup_str("episodeId").as_deref());
+        (
+            Some(character),
+            Some(season),
+            Some(episode),
+            Some(episode_id),
+        )
+    };
     let plugin = raw
         .as_ref()
         .map(|m| plugin_frontmatter(m, snapshot))
         .unwrap_or_default();
     SceneMeta {
+        id,
         character,
         season,
         episode,
         episode_id,
         title,
+        meta: folded.typed.meta_block.clone(),
         plugin,
     }
 }
@@ -580,7 +657,9 @@ fn plugin_frontmatter(
 /// mirrors ONLY presence, never emptiness-as-absence.
 ///
 /// A scene doc contributes AT MOST ONE entry: its own frontmatter `after:`,
-/// keyed by its own canonical episode key ([`canonical_episode_key`]). A
+/// keyed by the shared canonical scene key
+/// ([`lute_check::meta::canonical_scene_key`], dsl 0.15.0 §2) so authored
+/// `id:` and derived legacy joins land on the same identity everywhere. A
 /// quest-pack doc contributes ONE entry per `<quest>` that carries an
 /// `after` attribute (attribute present, any text), keyed by that quest's
 /// id. Sorted by `node` (byte-stable determinism).
@@ -589,16 +668,12 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
     match folded.doc_kind {
         lute_check::DocKind::Scene => {
             if let Some(after) = folded.typed.after.as_deref() {
-                let character = folded.typed.character.clone().unwrap_or_default();
-                let season = folded.typed.season.unwrap_or(0);
-                let episode = folded.typed.episode.unwrap_or(0);
-                let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
-                let episode_id = raw
-                    .as_ref()
-                    .and_then(|m| m.get(serde_yaml::Value::String("episodeId".to_string())))
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-                let node = canonical_episode_key(&character, season, episode, episode_id.as_deref());
+                // `canonical_scene_key` returns `Some` for every doc that
+                // survives the D6 gate (`check()` bounces a missing `id:` AND
+                // missing legacy triad); the `unwrap_or_default` is a totality
+                // guard, not a real branch — the same string
+                // `artifact_meta` stamps as `SceneMeta.id`.
+                let node = canonical_scene_key(&folded.typed).unwrap_or_default();
                 out.push(PrereqEdgeEntry {
                     node,
                     after: after.to_string(),
@@ -620,12 +695,14 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
     out
 }
 
-/// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1; plugin-owned
-/// keys per plugin-system 0.0.4 §2): `title`/`contentLang` live only in the
-/// raw frontmatter (mirrors `artifact_meta`'s `title`/`episodeId` lookup) —
-/// MAY serialize as `{}` when none of title/contentLang/plugin are authored
-/// (all three carry `skip_serializing_if`).
-fn quest_meta(doc: &Document, snapshot: &CapabilitySnapshot) -> QuestMeta {
+/// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1; dsl 0.15.0 §3
+/// adds the descriptive `meta:` block; plugin-owned keys per plugin-system
+/// 0.0.4 §2): `title`/`contentLang` live only in the raw frontmatter
+/// (mirrors `artifact_meta`'s `title` lookup); `meta` is the JSON-ready
+/// block the checker lifted into `TypedMeta.meta_block`. MAY serialize as
+/// `{}` when none of title/contentLang/meta/plugin are authored (all four
+/// carry `skip_serializing_if`).
+fn quest_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) -> QuestMeta {
     let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
     let lookup = |key: &str| -> Option<String> {
         raw.as_ref()?
@@ -640,6 +717,7 @@ fn quest_meta(doc: &Document, snapshot: &CapabilitySnapshot) -> QuestMeta {
     QuestMeta {
         title: lookup("title"),
         content_lang: lookup("contentLang"),
+        meta: folded.typed.meta_block.clone(),
         plugin,
     }
 }
@@ -867,20 +945,18 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.14.0 axis alignment (docs/versioning.md): a release re-aligns
-        // the visible numbers to that release's number. This time all
-        // THREE axes earn the move — the language (subquests: `<objective
-        // quest=…>`, four new diagnostics, referenced-child activation
-        // semantics), the IR (`ObjectiveEntry.quest`, additive-only,
-        // omitted when unauthored — non-subquest artifacts stay
-        // byte-stable), and the toolchain (the release carrying them plus
-        // the runner's lifecycle-handler scoping fix). The IR schema
-        // renames per release line (`lute-ir-0.14.schema.json`) and gains
-        // the `quest` property; no engine gate widens (MAJOR-only since
-        // 0.13.0). The two remain independently tracked pins (T13); they
-        // simply agree on this release.
-        assert_eq!(super::LUTE_IR_VERSION, "0.14.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.14.0");
+        // 0.15.0 axis alignment (docs/versioning.md): a release re-aligns
+        // the visible numbers to that release's number. This time the
+        // language earns the move (authored scene identity: `id:`, `meta:`
+        // block on scenes+quests, legacy `character`/`season`/`episode`/
+        // `episodeId` demoted to optional, `W-META-LEGACY` deprecation
+        // signal); the IR moves with it (`SceneMeta.id` always present,
+        // legacy four optional, `SceneMeta.meta`/`QuestMeta.meta` added
+        // key-sorted and skip-when-empty — additive-only over 0.14.0 for a
+        // pre-0.15 document beyond the added `id`). The two pins remain
+        // independently tracked (T13); they simply agree on this release.
+        assert_eq!(super::LUTE_IR_VERSION, "0.15.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.15.0");
     }
 
     #[test]
@@ -889,8 +965,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.14.0");
-        assert_eq!(v["irVersion"], "0.14.0");
+        assert_eq!(v["lute"], "0.15.0");
+        assert_eq!(v["irVersion"], "0.15.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");
