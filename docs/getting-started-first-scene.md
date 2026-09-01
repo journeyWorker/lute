@@ -286,10 +286,11 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.14.0",
-  "irVersion": "0.13.0",
+  "lute": "0.15.0",
+  "irVersion": "0.15.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
+    "id": "mira.s01ep01",
     "character": "mira",
     "season": 1,
     "episode": 1,
@@ -416,23 +417,40 @@ If you type `!visited(...)` or a state path in here, the checker rejects it. Ord
 
 ### The scene key: how to name a scene in `visited(...)`
 
-`visited("…")` needs a scene's **canonical key**, and this is the part worth memorizing,
-because you can write it *without* compiling anything to look it up. The key is simply:
+`visited("…")` needs a scene's **canonical key**. The primary way to name one — and
+the shape you should reach for in new work — is to *author* it, with one dedicated
+frontmatter key (dsl 0.15.0 §2):
+
+```yaml
+id: mira.s01ep01
+```
+
+`id:` is a plain string (letters, digits, `_`, `-`, `.`) that identifies this scene
+project-wide. `visited("mira.s01ep01")` in another scene's `after:` names *this* one;
+the same string is the prefix every `lineId`/`voiceKey` in the compiled artifact is
+built from (`"lineId": "mira.s01ep01.narrator_0010"` in the Part 4 output). With
+`id:` declared, `character:` / `season:` / `episode:` become optional — keep them if
+they carry useful metadata (search, TMS), drop them if they don't. If you write
+`id:` **and** any of those legacy identity keys in the same document, the checker
+draws one `W-META-LEGACY` per key: identity now comes from `id:`, and anything
+descriptive belongs under `meta:` (see §3 of the same spec).
+
+**Legacy fallback (no `id:` declared).** Every existing scene that authored
+`character:` / `season:` / `episode:` — including this tutorial's diner — is still
+valid: when `id:` is absent, the canonical key derives from the frontmatter as
 
 ```
 {character}.{episodeId}
 ```
 
-- `{character}` is the `character:` from that scene's frontmatter.
-- `{episodeId}` is its `episodeId:` frontmatter key — **or**, when you don't declare one
-  (as in this tutorial), it's derived from `season`/`episode` as `s{season}ep{episode}`,
-  zero-padded to two digits each.
-
-Our tutorial scene declares `character: mira`, `season: 1`, `episode: 1` and no explicit
-`episodeId:`, so its canonical key is **`mira.s01ep01`** — season 1, episode 1. That's the
-exact same `mira.s01ep01` you already saw threaded through every `lineId` in the Part 4
-compile output (`"lineId": "mira.s01ep01.narrator_0010"`); the key is that prefix. You never
-have to reverse-engineer it from compiler output — read it straight off the frontmatter.
+where `{character}` is the `character:` value and `{episodeId}` is the `episodeId:`
+key when declared, otherwise `s{season}ep{episode}` zero-padded to two digits each.
+Our tutorial scene declares `character: mira`, `season: 1`, `episode: 1` and no
+explicit `id:` or `episodeId:`, so its canonical key is still **`mira.s01ep01`** —
+the same string you would get by writing `id: mira.s01ep01` outright, which is why
+the Part 4 compile output shows `"meta": { "id": "mira.s01ep01", … }` regardless.
+You never have to reverse-engineer the key from compiler output — read it straight
+off the frontmatter, either the authored `id:` or the derived join.
 
 ### Worked example: a second scene that follows the diner
 
@@ -586,8 +604,10 @@ list. Each is a helpful catch, not a nuisance:
 - **`E-CONN-FORMULA-TOO-COMPLEX`** — an `after` formula with too many terms for the checker to
   analyse (past its complexity cap); usually a sign the clause was machine-generated rather
   than hand-written. Simplify it into something a reader — and the checker — can follow.
-- **`E-CONN-EPISODE-ID-DUP`** — two scenes computing the *same* canonical key, so `visited("…")`
-  would be ambiguous. Give one a distinct `episode`/`episodeId`.
+- **`E-CONN-EPISODE-ID-DUP`** — two scenes resolving to the *same* canonical scene id
+  (whether authored with `id:` or derived from `{character}.{episodeId}`), so
+  `visited("…")` would be ambiguous. Give one a distinct `id:`, or a distinct
+  `episode`/`episodeId` on the derived side.
 - **`E-STATE-MAYBE-UNAVAILABLE`** — a `when=`/read of a `run.*`/`user.*` path that NO declared
   route into this scene sets at all — the very thing the `envelope` above screens for. (A path
   set on *some* but not all routes is only a suppressed warning, not this error.)
