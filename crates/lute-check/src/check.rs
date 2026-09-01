@@ -3925,15 +3925,21 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.14.0` earns the move on ALL THREE axes — the language (subquests:
-    /// the `<objective quest=…>` attribute, four new diagnostics, and the
-    /// referenced-child activation semantics, subquest design 2026-08-31),
-    /// the IR (`ObjectiveEntry.quest`, additive-only, omitted when
-    /// unauthored), and the toolchain (the release that carries them plus
-    /// the runner's lifecycle-handler scoping fix). The schema file renames
-    /// per release line (`lute-ir-0.14.schema.json`) and its content gains
-    /// the `quest` property; no engine gate widens (MAJOR-only since
-    /// `0.13.0`).
+    /// `0.15.0` earns the move on TWO axes — the language (authored scene
+    /// identity: the new `id:` frontmatter key is the canonical scene key
+    /// everywhere `{character}.{episodeId}` was consumed, the four legacy
+    /// identity keys demote to optional when `id:` is present, a free
+    /// descriptive `extra:` block lands on scene and quest roots, three new
+    /// diagnostics `E-META-ID`/`E-META-VALUE`/`W-META-LEGACY` plus one
+    /// narrowed `E-META-MISSING` and one generalized `E-CONN-EPISODE-ID-DUP`
+    /// message; scene-id design 2026-09-01) and the IR (`SceneMeta.id`
+    /// required, the four legacy fields optional, `extra` added to both
+    /// `SceneMeta` and `QuestMeta` — additive-only under the MAJOR-only
+    /// gate). The toolchain carries both plus the clippy-1.96 lint-debt
+    /// cleanup. The schema file renames per release line
+    /// (`lute-ir-0.15.schema.json`); no engine gate widens (MAJOR-only
+    /// since `0.13.0`); `capabilityVersion` does not move (no `lute.core`
+    /// export change, no grammar production change).
     #[test]
     fn language_ir_and_toolchain_are_aligned_at_0_15_0() {
         assert_eq!(crate::LUTE_LANG_VERSION, "0.15.0");

@@ -6,7 +6,7 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 이 문서는 Lute를 한 번도 다뤄본 적 없는 시나리오 작가를 위한 "여기서 시작" 안내입니다 —
 컴파일러 배경지식은 필요 없습니다. 빈 파일에서 **작지만 실제로 동작하는 장면 하나**를 단계별로
 만들며, 매 단계마다 실제 `lute` 도구를 실행해 도구가 정확히 뭐라고 말하는지 확인합니다. 언어
-버전 **0.14.0**을 대상으로 합니다.
+버전 **0.15.0**을 대상으로 합니다.
 
 일반 텍스트 편집기, 터미널, 그리고 `lute` 명령
 ([먼저 설치하세요](/ko/getting-started/installation/))이 필요합니다. 여기서 작성하는 모든
@@ -241,10 +241,11 @@ lute: migrated 1 edit(s) to 0.2.2
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.14.0",
-  "irVersion": "0.11.0",
+  "lute": "0.15.0",
+  "irVersion": "0.15.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
+    "id": "mira.s01ep01",
     "character": "mira",
     "season": 1,
     "episode": 1,
@@ -349,9 +350,31 @@ after: 'visited("mira.s01ep01") || visited("mira.s01ep03")'
 이것이 어휘의 전부입니다. `!`도, 산술도, 상태 읽기도 없습니다 — 이것들은 의도적으로 제외되었습니다.
 런타임 상태에 조건부인 것은 무엇이든 당신의 `when=` 가드에 남습니다.
 
-장면의 **표준 키(canonical key)**는 `{character}.{episodeId}`이며, `episodeId`는 기본적으로
-`s{season}ep{episode}`(0으로 채움)입니다. 우리 튜토리얼 장면(`character: mira`, `season: 1`,
-`episode: 1`)의 키는 **`mira.s01ep01`**입니다.
+`visited("…")`에는 장면의 **표준 키(canonical key)**가 필요합니다. 새 문서를 쓸 때 우선적으로
+선택해야 하는 방식은 그것을 *직접 작성*하는 것 — 전용 프런트매터 키 하나(dsl 0.15.0 §2):
+
+```yaml
+id: mira.s01ep01
+```
+
+`id:`는 이 장면을 프로젝트 전역에서 식별하는 평문 문자열입니다(문자, 숫자, `_`, `-`, `.`).
+다른 장면의 `after:`에 있는 `visited("mira.s01ep01")`는 *이* 장면을 가리키고, 컴파일된
+산출물의 모든 `lineId` / `voiceKey`의 접두사(Part 4 출력의
+`"lineId": "mira.s01ep01.narrator_0010"`)도 같은 문자열에서 만들어집니다. `id:`가 선언되면
+`character:` / `season:` / `episode:`는 선택 사항이 됩니다 — 검색·TMS 등 유용한 메타데이터로
+남기려면 유지하고, 그렇지 않으면 지우세요. `id:`와 저 레거시 식별 키들을 한 문서에서 함께
+작성하면 체커는 각 키마다 `W-META-LEGACY` 한 건씩을 냅니다: 정체성은 이제 `id:`에서 오고,
+서술 정보는 `extra:` 아래에 둡니다(같은 스펙 §3).
+
+**레거시 폴백(`id:` 미선언).** `character:` / `season:` / `episode:`만 작성한 기존
+장면 — 이 튜토리얼의 다이너 포함 — 은 그대로 유효합니다: `id:`가 없으면 표준 키는
+프런트매터에서 `{character}.{episodeId}`로 유도되며, `{episodeId}`는 선언된 `episodeId:`
+값이거나, 없으면 각각 두 자리로 0을 채운 `s{season}ep{episode}`입니다. 우리 튜토리얼 장면은
+`character: mira`, `season: 1`, `episode: 1`을 선언하고 명시적 `id:`나 `episodeId:`가 없으므로
+표준 키는 여전히 **`mira.s01ep01`** — `id: mira.s01ep01`을 그대로 쓴 것과 동일한
+문자열이며, 그래서 Part 4의 컴파일 출력이 어느 쪽이든 `"meta": { "id": "mira.s01ep01", … }`를
+보여줍니다. 컴파일러 출력에서 키를 역추적할 필요가 전혀 없습니다 — 프런트매터에서 곧바로
+읽으세요, 작성한 `id:` 또는 유도된 조인 중 어느 것이든.
 
 에피소드를 넘나들며 팩트를 이어가려면, 지속되는 **`run.`** 계층을 사용하세요. 만남을 기억하도록
 다이너를 가르쳐 봅시다 — `run.metMira`를 선언하고 설정하세요:

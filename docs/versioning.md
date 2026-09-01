@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.14.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.14.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.14.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.14.schema.json`](../schemas/lute-ir-0.14.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.15.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.15.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.15.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.15.schema.json`](../schemas/lute-ir-0.15.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.14.schema.json`](../schemas/lute-ir-0.14.schema.json)
+published as [`schemas/lute-ir-0.15.schema.json`](../schemas/lute-ir-0.15.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -190,9 +190,39 @@ across every quest in a multi-quest artifact; they now fire only for their
 own enclosing quest, which is what quest-lifecycle.md always said).
 `capabilityVersion` does not move (no `lute.core` export changes). The
 schema file renames per release line
-(`lute-ir-0.13.schema.json` →
-[`lute-ir-0.14.schema.json`](../schemas/lute-ir-0.14.schema.json)) and its
-content gains the `quest` property on the objective entry.
+(`lute-ir-0.13.schema.json` → `lute-ir-0.14.schema.json`) and its content
+gains the `quest` property on the objective entry.
+
+**`0.15.0` aligns all three axes at `0.15.0`, and language and IR earn it —
+the toolchain carries them plus a clippy-1.96 lint-debt cleanup.** The
+language gains authored scene identity: one new scene frontmatter key
+`id:` becomes the canonical scene key wherever the derived
+`{character}.{episodeId}` join was consumed today (lineId prefix,
+`visited()`/connectivity, `prereqEdges`, `project.index.json`, the runtime
+visited-set), and with `id:` present the four legacy identity keys
+(`character`/`season`/`episode`/`episodeId`) demote from required to
+optional; a second new frontmatter key `extra:` lands on scene and quest
+roots as a free descriptive block (open mapping of scalars or flat
+scalar-lists, carried verbatim into `meta.extra`, read by no checker,
+compiler, or runtime rule); three new diagnostics `E-META-ID` /
+`E-META-VALUE` / `W-META-LEGACY`, `E-META-MISSING` narrowed to fire only
+when the merged frontmatter lacks `id:`, and `E-CONN-EPISODE-ID-DUP`'s
+message generalized to name the *canonical scene id*
+([`proposals/scenario-dsl/0.15.0.md`](proposals/scenario-dsl/0.15.0.md)).
+The IR moves additively under `0.13.0`'s MAJOR-only gate: `SceneMeta.id`
+is required (always the resolved canonical key), the four legacy identity
+fields become optional (emitted when the source supplies them), and both
+`SceneMeta` and `QuestMeta` gain an optional `extra` block (omitted when
+empty) — an untouched pre-0.15 corpus's artifacts differ from their 0.14
+equivalents only by the added `meta.id`, so a `0.14` engine parses a
+`0.15.0` artifact unchanged and simply does not ask for the added key.
+`capabilityVersion` does not move (no `lute.core` change, no grammar
+production change). The schema file renames per release line
+(`lute-ir-0.14.schema.json` →
+[`lute-ir-0.15.schema.json`](../schemas/lute-ir-0.15.schema.json)) — its
+content gains the `sceneMeta.id` requirement, demotes the four legacy
+identity keys to optional, and adds the `extra` property on both
+`sceneMeta` and `questMeta`.
 
 ## Which bump when
 
