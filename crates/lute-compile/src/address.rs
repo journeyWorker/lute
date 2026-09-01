@@ -133,7 +133,6 @@ pub fn assign_addresses(
     (out, diags)
 }
 
-
 /// 0.7.0's literal `{:03}` shot segment. The uniform width only ever GROWS
 /// past this floor, so a document with <1000 shots emits byte-identical
 /// addrs.
@@ -169,7 +168,9 @@ fn widest_emitted_index(shot: &ShotRecords) -> i64 {
     // above, widened to either kind of trailing label.
     let has_trailing = !shot.trailing.is_empty() || !shot.trailing_named.is_empty();
     let emitted = shot.recs.len() + usize::from(has_trailing);
-    i64::try_from(emitted).unwrap_or(i64::MAX).saturating_mul(100)
+    i64::try_from(emitted)
+        .unwrap_or(i64::MAX)
+        .saturating_mul(100)
 }
 
 /// Decimal digits `v` occupies when formatted, sign included. Allocation-free
@@ -397,7 +398,10 @@ mod tests {
     fn assert_lexicographically_ordered(got: &[&str]) {
         let mut sorted = got.to_vec();
         sorted.sort_unstable();
-        assert_eq!(sorted, got, "lexicographic order must equal execution order");
+        assert_eq!(
+            sorted, got,
+            "lexicographic order must equal execution order"
+        );
     }
 
     /// A 99-record shot emits 99 addresses and no converge, so the widest
@@ -406,12 +410,15 @@ mod tests {
     /// byte-identical to 0.7.0.
     #[test]
     fn ninety_nine_record_shot_is_byte_identical_to_070() {
-        let (cmds, diags) = assign_addresses(vec![unit(1, 99, false)], &IdentityTemplates::default());
+        let (cmds, diags) =
+            assign_addresses(vec![unit(1, 99, false)], &IdentityTemplates::default());
         assert!(diags.is_empty(), "{diags:#?}");
 
         let got = addrs(&cmds);
         // 0.7.0's literal format, recomputed independently.
-        let want: Vec<String> = (0..99).map(|i| format!("{:03}-{:04}", 1, (i + 1) * 100)).collect();
+        let want: Vec<String> = (0..99)
+            .map(|i| format!("{:03}-{:04}", 1, (i + 1) * 100))
+            .collect();
         assert_eq!(got, want.iter().map(String::as_str).collect::<Vec<_>>());
         assert_eq!(got[0], "001-0100");
         assert_eq!(got[98], "001-9900");
@@ -426,7 +433,8 @@ mod tests {
     /// `001-10100` is emitted too, and shares the same width.
     #[test]
     fn hundred_record_shot_widens_every_index_and_stays_sorted() {
-        let (cmds, diags) = assign_addresses(vec![unit(1, 100, true)], &IdentityTemplates::default());
+        let (cmds, diags) =
+            assign_addresses(vec![unit(1, 100, true)], &IdentityTemplates::default());
         assert!(diags.is_empty(), "{diags:#?}");
 
         let got = addrs(&cmds);
@@ -448,7 +456,10 @@ mod tests {
             .collect();
         let mut legacy_sorted = legacy.clone();
         legacy_sorted.sort_unstable();
-        assert_ne!(legacy_sorted, legacy, "0.7.0 output was NOT lexicographically ordered");
+        assert_ne!(
+            legacy_sorted, legacy,
+            "0.7.0 output was NOT lexicographically ordered"
+        );
 
         // The end-of-shot converge resolved through the same width.
         match &cmds[99] {
@@ -496,8 +507,10 @@ mod tests {
     /// underflow.
     #[test]
     fn empty_unit_emits_nothing_and_widens_nothing() {
-        let (cmds, diags) =
-            assign_addresses(vec![unit(1, 0, false), unit(2, 1, false)], &IdentityTemplates::default());
+        let (cmds, diags) = assign_addresses(
+            vec![unit(1, 0, false), unit(2, 1, false)],
+            &IdentityTemplates::default(),
+        );
         assert!(diags.is_empty(), "{diags:#?}");
         assert_eq!(addrs(&cmds), vec!["002-0100"]);
     }
@@ -648,7 +661,10 @@ mod tests {
     /// unit 1 (both back-fill to `0010`, the scope's own first step).
     #[test]
     fn code_backfill_counter_resets_per_prefix_scope() {
-        let segments = [("questA".to_string(), 1usize), ("questB".to_string(), 1usize)];
+        let segments = [
+            ("questA".to_string(), 1usize),
+            ("questB".to_string(), 1usize),
+        ];
         let mut cmds = vec![line("narrator", None), line("narrator", None)];
         assign_identity(&mut cmds, &segments, &IdentityTemplates::default());
 

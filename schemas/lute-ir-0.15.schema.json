@@ -703,9 +703,9 @@
         "title": {
           "type": "string"
         },
-        "meta": {
+        "extra": {
           "type": "object",
-          "description": "dsl 0.15.0 §3: free descriptive open mapping the checker admitted past E-META-VALUE. Values are scalars (string / integer / number / boolean) or FLAT sequences of scalars. Never consulted by any checker/compiler/runtime rule and never routed through CEL — the sanctioned home for team search metadata (`arc`, `location`, `tags`, whatever). Key-sorted by the compiler; absent when the document authors no `meta:` block.",
+          "description": "dsl 0.15.0 §3: free descriptive open mapping the checker admitted past E-META-VALUE. Values are scalars (string / integer / number / boolean) or FLAT sequences of scalars. Never consulted by any checker/compiler/runtime rule and never routed through CEL — the sanctioned home for team search metadata (`arc`, `location`, `tags`, whatever). Key-sorted by the compiler; absent when the document authors no `extra:` block.",
           "additionalProperties": {
             "oneOf": [
               { "type": "string" },
@@ -746,9 +746,9 @@
         "contentLang": {
           "type": "string"
         },
-        "meta": {
+        "extra": {
           "type": "object",
-          "description": "dsl 0.15.0 §3: same descriptive block as sceneMeta.meta, sanctioned on quest roots too. Same scalar / flat-scalar-array shape; key-sorted; absent when the document authors no `meta:` block.",
+          "description": "dsl 0.15.0 §3: same descriptive block as sceneMeta.extra, sanctioned on quest roots too. Same scalar / flat-scalar-array shape; key-sorted; absent when the document authors no `extra:` block.",
           "additionalProperties": {
             "oneOf": [
               { "type": "string" },

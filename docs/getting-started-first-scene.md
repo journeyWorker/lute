@@ -433,7 +433,7 @@ built from (`"lineId": "mira.s01ep01.narrator_0010"` in the Part 4 output). With
 they carry useful metadata (search, TMS), drop them if they don't. If you write
 `id:` **and** any of those legacy identity keys in the same document, the checker
 draws one `W-META-LEGACY` per key: identity now comes from `id:`, and anything
-descriptive belongs under `meta:` (see §3 of the same spec).
+descriptive belongs under `extra:` (see §3 of the same spec).
 
 **Legacy fallback (no `id:` declared).** Every existing scene that authored
 `character:` / `season:` / `episode:` — including this tutorial's diner — is still

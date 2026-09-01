@@ -400,7 +400,7 @@ fn envelope_serializes_with_state_entries() {
             episode: Some(2),
             episode_id: Some("s01ep02".into()),
             title: Some("T".into()),
-            meta: BTreeMap::new(),
+            extra: BTreeMap::new(),
             plugin: BTreeMap::new(),
         }),
         state: vec![StateEntry {

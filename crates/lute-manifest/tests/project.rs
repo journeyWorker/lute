@@ -551,21 +551,21 @@ fn defaults_scalar_path_canonicalises_too() {
     assert!(std::path::Path::new(got).is_absolute(), "{got}");
 }
 
-// ── 0.15.0 §3/§8 D-D: `meta:` joins `DEFAULTABLE_KEYS`; `id:` deliberately does not.
+// ── 0.15.0 §3/§8 D-D: `extra:` joins `DEFAULTABLE_KEYS`; `id:` deliberately does not.
 
-/// A `defaults.meta:` mapping loads and its value is carried verbatim.
+/// A `defaults.extra:` mapping loads and its value is carried verbatim.
 #[test]
-fn defaults_meta_mapping_loads() {
+fn defaults_extra_mapping_loads() {
     let dir = write_manifest(
         "meta-ok",
-        "defaultProfile: core\ndefaults:\n  meta:\n    arc: main\n    tags: [harbor, night]\n",
+        "defaultProfile: core\ndefaults:\n  extra:\n    arc: main\n    tags: [harbor, night]\n",
     );
     let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
     assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
     let value = proj
         .defaults
-        .get("meta")
-        .expect("`meta:` default is applied");
+        .get("extra")
+        .expect("`extra:` default is applied");
     let map = value.as_mapping().expect("stored as a YAML mapping");
     assert_eq!(
         map.get(serde_yaml::Value::String("arc".into()))
@@ -574,23 +574,23 @@ fn defaults_meta_mapping_loads() {
     );
 }
 
-/// A non-mapping `defaults.meta:` value is `E-DEFAULTS-KEY` (§3).
+/// A non-mapping `defaults.extra:` value is `E-DEFAULTS-KEY` (§3).
 #[test]
-fn defaults_meta_non_mapping_is_e_defaults_key() {
+fn defaults_extra_non_mapping_is_e_defaults_key() {
     let dir = write_manifest(
         "meta-scalar",
-        "defaultProfile: core\ndefaults:\n  meta: not-a-mapping\n",
+        "defaultProfile: core\ndefaults:\n  extra: not-a-mapping\n",
     );
     let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
     assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
     assert_eq!(proj.defaults_diags[0].code, "E-DEFAULTS-KEY");
     assert!(
-        proj.defaults_diags[0].message.contains("meta"),
+        proj.defaults_diags[0].message.contains("extra"),
         "names the offending key: {}",
         proj.defaults_diags[0].message
     );
     assert!(
-        proj.defaults.get("meta").is_none(),
+        proj.defaults.get("extra").is_none(),
         "an ill-shaped default is not applied"
     );
 }

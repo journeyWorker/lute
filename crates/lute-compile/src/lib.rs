@@ -528,8 +528,8 @@ fn body_entry(l: &lute_syntax::datalog::BodyLiteral) -> BodyEntry {
 /// is lifted into `TypedMeta` for its own sake, though `TypedMeta.episode_id`
 /// backs `canonical_scene_key`), read from the mapping here. Plugin-owned
 /// top-level keys route through [`plugin_frontmatter`] as before. The
-/// authored descriptive `meta:` block (dsl 0.15.0 §3) is copied verbatim
-/// from `TypedMeta.meta_block` — the checker already validated the shape
+/// authored descriptive `extra:` block (dsl 0.15.0 §3) is copied verbatim
+/// from `TypedMeta.extra_block` — the checker already validated the shape
 /// and stripped nested maps / mixed lists.
 fn artifact_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) -> SceneMeta {
     let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
@@ -588,7 +588,7 @@ fn artifact_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapsh
         episode,
         episode_id,
         title,
-        meta: folded.typed.meta_block.clone(),
+        extra: folded.typed.extra_block.clone(),
         plugin,
     }
 }
@@ -696,10 +696,10 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
 }
 
 /// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1; dsl 0.15.0 §3
-/// adds the descriptive `meta:` block; plugin-owned keys per plugin-system
+/// adds the descriptive `extra:` block; plugin-owned keys per plugin-system
 /// 0.0.4 §2): `title`/`contentLang` live only in the raw frontmatter
-/// (mirrors `artifact_meta`'s `title` lookup); `meta` is the JSON-ready
-/// block the checker lifted into `TypedMeta.meta_block`. MAY serialize as
+/// (mirrors `artifact_meta`'s `title` lookup); `extra` is the JSON-ready
+/// block the checker lifted into `TypedMeta.extra_block`. MAY serialize as
 /// `{}` when none of title/contentLang/meta/plugin are authored (all four
 /// carry `skip_serializing_if`).
 fn quest_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) -> QuestMeta {
@@ -717,7 +717,7 @@ fn quest_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot)
     QuestMeta {
         title: lookup("title"),
         content_lang: lookup("contentLang"),
-        meta: folded.typed.meta_block.clone(),
+        extra: folded.typed.extra_block.clone(),
         plugin,
     }
 }
@@ -947,7 +947,7 @@ mod tests {
     fn lang_and_ir_version_stamps() {
         // 0.15.0 axis alignment (docs/versioning.md): a release re-aligns
         // the visible numbers to that release's number. This time the
-        // language earns the move (authored scene identity: `id:`, `meta:`
+        // language earns the move (authored scene identity: `id:`, `extra:`
         // block on scenes+quests, legacy `character`/`season`/`episode`/
         // `episodeId` demoted to optional, `W-META-LEGACY` deprecation
         // signal); the IR moves with it (`SceneMeta.id` always present,

@@ -238,7 +238,10 @@ fn compiler_emits_the_fixture_tree_for_cel_sources() {
             continue;
         };
         let node = lute_compile::expr::lower_expr(cel).unwrap_or_else(|| {
-            panic!("fixture {file} ({}): lower_expr returned None for cel {cel:?}", fx.name)
+            panic!(
+                "fixture {file} ({}): lower_expr returned None for cel {cel:?}",
+                fx.name
+            )
         });
         let lowered = serde_json::to_value(&node).expect("serialize lowered expr");
         assert_eq!(
@@ -253,5 +256,7 @@ fn compiler_emits_the_fixture_tree_for_cel_sources() {
         checked > 0,
         "no `cel`-bearing fixtures cross-checked — the compiler-agreement invariant would be a no-op"
     );
-    eprintln!("expr-eval conformance: {checked} cel-bearing fixtures cross-checked against lower_expr");
+    eprintln!(
+        "expr-eval conformance: {checked} cel-bearing fixtures cross-checked against lower_expr"
+    );
 }

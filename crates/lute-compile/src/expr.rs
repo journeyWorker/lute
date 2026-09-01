@@ -44,10 +44,7 @@ pub enum ExprNode {
     /// Static state/subject path: `{"path": "a.b.c"}`.
     Path { path: String },
     /// Unary operator (`!`/`-`): `{"op": "<sym>", "l": <node>}`.
-    Unary {
-        op: &'static str,
-        l: Box<ExprNode>,
-    },
+    Unary { op: &'static str, l: Box<ExprNode> },
     /// Binary operator: `{"op": "<sym>", "l": <node>, "r": <node>}`.
     Binary {
         op: &'static str,

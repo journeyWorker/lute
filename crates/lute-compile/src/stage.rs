@@ -66,7 +66,11 @@ pub fn walk_seq(
             // Fact args are ground — nothing authored, `lower_node`'s
             // wildcard skips them; lowering to `Command::Assert`/`Retract`
             // is Task 14.
-            Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {
+            Node::Line(_)
+            | Node::Directive(_)
+            | Node::Set(_)
+            | Node::Assert(_)
+            | Node::Retract(_) => {
                 // Only an `::auto` entrance consumes the lookahead
                 // (`entry-emotion-lookahead`); build the CFG-reachable
                 // continuation just for it and pass nothing otherwise, so the
@@ -305,7 +309,10 @@ fn walk_branch(
             label: c.label.clone(),
             line_id: String::new(),
             when: c.when.as_ref().map(|w| w.raw.clone()),
-            expr: c.when.as_ref().and_then(|w| crate::expr::lower_expr(&w.raw)),
+            expr: c
+                .when
+                .as_ref()
+                .and_then(|w| crate::expr::lower_expr(&w.raw)),
             target: l.sym(),
             placeholders: lute_syntax::scan_label_interps(&c.label, c.span)
                 .iter()
@@ -371,7 +378,10 @@ fn walk_hub(
             once: attr_bool(&c.attrs, "once").unwrap_or(false),
             exit: attr_bool(&c.attrs, "exit").unwrap_or(false),
             when: c.when.as_ref().map(|w| w.raw.clone()),
-            expr: c.when.as_ref().and_then(|w| crate::expr::lower_expr(&w.raw)),
+            expr: c
+                .when
+                .as_ref()
+                .and_then(|w| crate::expr::lower_expr(&w.raw)),
             target: l.sym(),
             placeholders: lute_syntax::scan_label_interps(&c.label, c.span)
                 .iter()
@@ -435,9 +445,7 @@ fn walk_match(
     let mut otherwise = None;
     for (arm, l) in m.arms.iter().zip(&labels) {
         match arm {
-            Arm::When {
-                is, test, span, ..
-            } => {
+            Arm::When { is, test, span, .. } => {
                 let expr = match crate::expr::synth_arm_expr(
                     is.as_ref().map(|p| p.raw.as_str()),
                     &test.raw,
@@ -713,7 +721,11 @@ pub fn walk_quest(
             // Fact args are ground — nothing authored, `lower_node`'s
             // wildcard skips them; lowering to `Command::Assert`/`Retract`
             // is Task 14.
-            Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {
+            Node::Line(_)
+            | Node::Directive(_)
+            | Node::Set(_)
+            | Node::Assert(_)
+            | Node::Retract(_) => {
                 let look = if matches!(node, Node::Directive(d) if d.tag == "auto") {
                     reachable_after(&quest.body[i + 1..], &[])
                 } else {

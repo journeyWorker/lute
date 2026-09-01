@@ -84,7 +84,8 @@ const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
 
 #[test]
 fn stamp_attrs_land_in_the_stamp_typed_by_their_decl() {
-    let text = format!("{HDR}::sfx{{assetId=\"x\" bonusId=\"b1\" bonusScore=\"7\"}}\n@narrator: hi\n");
+    let text =
+        format!("{HDR}::sfx{{assetId=\"x\" bonusId=\"b1\" bonusScore=\"7\"}}\n@narrator: hi\n");
     let cmds = commands(&text, snap_with_stamp_attrs());
     let sfx = find(&cmds, "sfx");
     assert_eq!(sfx["assetId"], serde_json::json!("x"));

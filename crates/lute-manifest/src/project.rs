@@ -142,9 +142,9 @@ pub const DEFAULTABLE_KEYS: [&str; 11] = [
     "contentLang",
     "episode",
     "extends",
+    "extra",
     "kind",
     "luteVersion",
-    "meta",
     "pov",
     "season",
     "uses",
@@ -397,10 +397,10 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
         },
         // dsl 0.15.0 §3: the manifest-supplied descriptive block. Only the
         // top-level shape is checked at the manifest — inner scalar/list
-        // enforcement runs at the document (through the identical `meta:`
+        // enforcement runs at the document (through the identical `extra:`
         // lift path that an authored block takes), same discipline as the
         // `uses`/`extends`/`components` string-list check above.
-        "meta" => match v {
+        "extra" => match v {
             serde_yaml::Value::Mapping(_) | serde_yaml::Value::Null => Ok(()),
             _ => Err("a mapping"),
         },
