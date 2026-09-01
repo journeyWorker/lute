@@ -206,8 +206,11 @@ quest's declaration table):
 A quest's `after` prerequisite (dsl §2.4) appears in the artifact only as raw
 text under `prereqEdges` (`node`, `after`) — **unresolved and unvalidated**. A
 single `compile` has no project root to resolve `visited(...)` / `completed(...)`
-targets against. An engine reconstructs the project-wide prerequisite graph by
-**unioning `prereqEdges` across every document's artifact**, exactly as it
-unions `relations`/`rules`. The static reachability proof lives in
+targets against. Each `prereqEdges[].node` is the containing document's
+**canonical scene id** — a scene's authored `id:` when it declares one, else
+the derived `{character}.{episodeId}` fallback (dsl 0.15.0 §2); a quest keeps
+its authored quest id. An engine reconstructs the project-wide prerequisite
+graph by **unioning `prereqEdges` across every document's artifact**, exactly
+as it unions `relations`/`rules`. The static reachability proof lives in
 `check-project` / `lute scenario`, and even there it is **conservative under the
 declared `after` routes** — never a claim about every runtime path.

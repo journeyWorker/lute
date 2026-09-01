@@ -18,7 +18,14 @@ One artifact is produced per `.lute` document (`lute compile <file>` →
 
 - an **envelope** — `kind` (`"scene"` | `"quest"`), `lute` (language version),
   `irVersion` (the version you gate on), `capabilityVersion` (a snapshot hash),
-  and `meta`;
+  and `meta`. `meta.id` (present since dsl 0.15.0 §2) is the **canonical scene
+  key** engines and tools join on — the string a `visited("…")` prereq
+  resolves to, the prefix every `lineId` / `voiceKey` was derived from, and
+  what `project.index.json` keys documents by. A quest keeps its authored quest
+  id as identity in the same slot. The legacy scene-meta fields
+  (`character` / `season` / `episode` / `episodeId`) are now optional and
+  purely descriptive — emitted only when the source supplied them, never
+  something a runtime rederives an id from;
 - a **folded state table** — `state: StateEntry[]` (see
   [state-lifecycle.md](./state-lifecycle.md));
 - a **declared vocabulary** — `entities` / `enums` / `relations` / `seedFacts` /

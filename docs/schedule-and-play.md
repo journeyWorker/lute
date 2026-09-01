@@ -201,12 +201,14 @@ routes/<route>[-<label>].play.yaml
 schedule.yaml
 ```
 
-Canonical node identity is unchanged language-side — a scene doc still
-declares `character: <event>-<variant>` and its `season:`/`episode:` stay
-opaque, frozen identity numbers (existing scenes keep their numbers; a new
-scene takes the next free one, forever). What retires is the *rule* that the
-number encodes reading order: position now lives only in `schedule.yaml`, so
-inserting a scene is a schedule edit, never a renumbering.
+Canonical node identity is a scene doc's authored `id: <event>-<variant>`
+(dsl 0.15.0 §2), so `scenes/confinement/iroha.lute` writes
+`id: confinement-iroha` and simply omits `season:`/`episode:` — the frozen-
+numbers workaround (`character: <event>-<variant>` plus opaque season/episode
+integers) that predated authored ids is no longer needed, and existing scenes
+can keep their derived key or migrate at their own pace. What retires is the
+*rule* that a number encodes reading order: position now lives only in
+`schedule.yaml`, so inserting a scene is a schedule edit, never a renumbering.
 
 ## `lute play`
 
