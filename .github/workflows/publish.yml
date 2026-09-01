@@ -118,18 +118,22 @@ jobs:
             target/
           key: lute-cli-${{ matrix.settings.target }}-cargo-${{ hashFiles('Cargo.lock') }}
 
-      - name: Build lute-cli binary
-        run: cargo build --release -p lute-cli --target ${{ matrix.settings.target }}
+      - name: Build lute-cli + lute-lsp binaries
+        run: cargo build --release -p lute-cli -p lute-lsp --target ${{ matrix.settings.target }}
 
-      - name: Strip binary
+      - name: Strip binaries
         if: matrix.settings.binary_ext == ''
-        run: strip "target/${{ matrix.settings.target }}/release/lute"
+        run: |
+          strip "target/${{ matrix.settings.target }}/release/lute"
+          strip "target/${{ matrix.settings.target }}/release/lute-lsp"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v6
         with:
           name: lute-binary-${{ matrix.settings.target }}
-          path: target/${{ matrix.settings.target }}/release/lute${{ matrix.settings.binary_ext }}
+          path: |
+            target/${{ matrix.settings.target }}/release/lute${{ matrix.settings.binary_ext }}
+            target/${{ matrix.settings.target }}/release/lute-lsp${{ matrix.settings.binary_ext }}
           if-no-files-found: error
 
   publish:
@@ -186,9 +190,9 @@ jobs:
 
       - name: Stage binaries executable
         run: |
-          chmod +x packages/core-darwin-arm64/bin/lute
-          chmod +x packages/core-linux-x64/bin/lute
-          chmod +x packages/core-win32-x64/bin/lute.exe
+          chmod +x packages/core-darwin-arm64/bin/lute packages/core-darwin-arm64/bin/lute-lsp
+          chmod +x packages/core-linux-x64/bin/lute packages/core-linux-x64/bin/lute-lsp
+          chmod +x packages/core-win32-x64/bin/lute.exe packages/core-win32-x64/bin/lute-lsp.exe
 
       - name: Apply the workspace version to every package.json
         env:

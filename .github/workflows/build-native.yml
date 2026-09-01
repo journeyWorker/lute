@@ -70,25 +70,31 @@ jobs:
             target/
           key: lute-cli-${{ matrix.settings.target }}-cargo-${{ hashFiles('Cargo.lock') }}
 
-      - name: Build lute-cli binary
-        run: cargo build --release -p lute-cli --target ${{ matrix.settings.target }}
+      - name: Build lute-cli + lute-lsp binaries
+        run: cargo build --release -p lute-cli -p lute-lsp --target ${{ matrix.settings.target }}
 
-      - name: Strip binary
+      - name: Strip binaries
         if: matrix.settings.binary_ext == ''
-        run: strip "target/${{ matrix.settings.target }}/release/lute"
+        run: |
+          strip "target/${{ matrix.settings.target }}/release/lute"
+          strip "target/${{ matrix.settings.target }}/release/lute-lsp"
 
       - name: Stage into platform package (local verification only — not committed)
         shell: bash
         run: |
-          BIN="lute${{ matrix.settings.binary_ext }}"
           mkdir -p "packages/${{ matrix.settings.package_dir }}/bin"
-          cp "target/${{ matrix.settings.target }}/release/$BIN" "packages/${{ matrix.settings.package_dir }}/bin/$BIN"
-          chmod +x "packages/${{ matrix.settings.package_dir }}/bin/$BIN"
-          "packages/${{ matrix.settings.package_dir }}/bin/$BIN" --version
+          for base in lute lute-lsp; do
+            BIN="${base}${{ matrix.settings.binary_ext }}"
+            cp "target/${{ matrix.settings.target }}/release/$BIN" "packages/${{ matrix.settings.package_dir }}/bin/$BIN"
+            chmod +x "packages/${{ matrix.settings.package_dir }}/bin/$BIN"
+          done
+          "packages/${{ matrix.settings.package_dir }}/bin/lute${{ matrix.settings.binary_ext }}" --version
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: lute-binary-${{ matrix.settings.target }}
-          path: target/${{ matrix.settings.target }}/release/lute${{ matrix.settings.binary_ext }}
+          path: |
+            target/${{ matrix.settings.target }}/release/lute${{ matrix.settings.binary_ext }}
+            target/${{ matrix.settings.target }}/release/lute-lsp${{ matrix.settings.binary_ext }}
           if-no-files-found: error
