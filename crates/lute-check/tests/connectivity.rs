@@ -200,6 +200,105 @@ fn unknown_completed_quest_attribute_is_flagged_and_anchored_on_quest_after() {
     );
 }
 
+// --- 0.15.0 §2: authored `id:` canonical key set + `E-CONN-EPISODE-ID-DUP` ---
+
+#[test]
+fn authored_id_and_derived_key_collide_in_one_namespace() {
+    // The authored `id: harbor.night` shares one canonical-key namespace with
+    // a derived `harbor.night` (character `harbor` + episodeId `night`) —
+    // exactly one `E-CONN-EPISODE-ID-DUP` fires and its message names the
+    // canonical scene id (dsl 0.15.0 §2 D-B: code kept, wording generalised).
+    let text_authored = "---\nkind: scene\nid: harbor.night\n---\n## Shot 1.\n@x: hi\n";
+    let text_derived = "---\nkind: scene\ncharacter: harbor\nseason: 1\nepisode: 1\nepisodeId: night\n---\n## Shot 1.\n@y: hi\n";
+    let docs = docs_for(&[
+        ("authored.lute", text_authored),
+        ("derived.lute", text_derived),
+    ]);
+    let dups = lute_check::connectivity::check_conn_episode_dup(&docs);
+    let hits: Vec<_> = dups
+        .iter()
+        .filter(|(_, d)| d.code == "E-CONN-EPISODE-ID-DUP")
+        .collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "one dup diagnostic across the two docs: {dups:?}"
+    );
+    assert!(
+        hits[0].1.message.contains("canonical scene id"),
+        "message must name the canonical scene id (§2 D-B): {}",
+        hits[0].1.message
+    );
+    assert!(
+        hits[0].1.message.contains("harbor.night"),
+        "message must name the colliding key: {}",
+        hits[0].1.message
+    );
+}
+
+#[test]
+fn authored_id_occurrence_anchors_at_id_key() {
+    // Two authored ids collide; the second occurrence anchors at that
+    // scene's own `id:` line, not at any `character:` span (there is none).
+    let text_a = "---\nkind: scene\nid: harbor.night\n---\n## Shot 1.\n@a: hi\n";
+    let text_b = "---\ntitle: pilot\nkind: scene\nid: harbor.night\n---\n## Shot 1.\n@b: hi\n";
+    let docs = docs_for(&[("a.lute", text_a), ("b.lute", text_b)]);
+    let dups = lute_check::connectivity::check_conn_episode_dup(&docs);
+    let hit = dups
+        .iter()
+        .find(|(_, d)| d.code == "E-CONN-EPISODE-ID-DUP")
+        .unwrap_or_else(|| panic!("expected a dup, got {dups:?}"));
+    let (path_b, doc_b) = &docs[1];
+    assert_eq!(&hit.0, path_b, "reported on the later occurrence");
+    // The second doc's `id:` starts on line 3 (0-indexed byte offset). Verify
+    // the diagnostic span points at exactly the `id` needle in the second doc.
+    let raw = &doc_b.meta.raw_yaml;
+    let base = doc_b.meta.span.byte_start + 4; // "---\n" opener; envelope shape
+    let id_start = base + raw.find("id:").unwrap();
+    assert_eq!(
+        hit.1.span.byte_start, id_start,
+        "anchor at the `id:` key line"
+    );
+}
+
+#[test]
+fn visited_resolves_against_authored_id() {
+    // A third doc's `after: visited('harbor.night')` resolves clean against
+    // an authored-id scene of the same key — no unknown-node diagnostic.
+    let text_authored = "---\nkind: scene\nid: harbor.night\n---\n## Shot 1.\n@x: hi\n";
+    let text_ref = "---\nkind: scene\nid: seq.two\nafter: 'visited(\"harbor.night\")'\n---\n## Shot 1.\n@y: hi\n";
+    let docs = docs_for(&[("harbor.lute", text_authored), ("ref.lute", text_ref)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let res = resolve_nodes(&docs, &key_set, &quest_ids);
+    assert!(
+        !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
+        "authored id must resolve `visited(...)` clean: {res:?}"
+    );
+}
+
+#[test]
+fn unknown_visited_suggestion_includes_authored_id() {
+    // Typo `harbour.night` (u) with a real authored id `harbor.night` (no u):
+    // suggestion candidate set includes authored ids alongside derived keys,
+    // so the did-you-mean names it.
+    let text_authored = "---\nkind: scene\nid: harbor.night\n---\n## Shot 1.\n@x: hi\n";
+    let text_typo = "---\nkind: scene\nid: seq.two\nafter: 'visited(\"harbour.night\")'\n---\n## Shot 1.\n@y: hi\n";
+    let docs = docs_for(&[("harbor.lute", text_authored), ("typo.lute", text_typo)]);
+    let key_set = scene_key_set(&docs);
+    let quest_ids = quest_id_set(&docs);
+    let res = resolve_nodes(&docs, &key_set, &quest_ids);
+    let hit = res
+        .iter()
+        .find(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE")
+        .unwrap_or_else(|| panic!("expected unknown-node for typo, got {res:?}"));
+    assert!(
+        hit.1.message.contains("harbor.night"),
+        "did-you-mean must name the authored id: {}",
+        hit.1.message
+    );
+}
+
 // --- Task 5: topological-precedence DAG + `E-CONN-CYCLE` (typed `NodeId`) ---
 
 use lute_check::connectivity::{assemble_graph, EdgeKind, NodeId, PrereqState};
