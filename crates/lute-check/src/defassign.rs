@@ -70,8 +70,8 @@ use std::collections::BTreeSet;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{
-    Arm, AttrValue, Branch, CelSlot, Choice, ClipNode, Hub, InterpKind, Match, Node, Objective,
-    On, Set, Timeline,
+    Arm, AttrValue, Branch, CelSlot, Choice, ClipNode, Hub, InterpKind, Match, Node, Objective, On,
+    Set, Timeline,
 };
 
 use crate::cel_paths::{
@@ -270,7 +270,14 @@ fn walk_nodes(
                 None => {
                     for interp in &line.interps {
                         if interp.kind == InterpKind::Path {
-                            check_read(&interp.raw, schema, &flow.available, interp.span, diags, reads);
+                            check_read(
+                                &interp.raw,
+                                schema,
+                                &flow.available,
+                                interp.span,
+                                diags,
+                                reads,
+                            );
                         }
                     }
                 }
@@ -346,10 +353,14 @@ fn walk_set(
 /// INSIDE the body; it enters both `available` and `writes` exactly like a
 /// `::set`.
 fn choice_record_target(choice: &Choice) -> Option<&str> {
-    choice.attrs.iter().find(|a| a.key == "into").and_then(|into| match &into.value {
-        AttrValue::Str(path) => Some(path.as_str()),
-        _ => None,
-    })
+    choice
+        .attrs
+        .iter()
+        .find(|a| a.key == "into")
+        .and_then(|into| match &into.value {
+            AttrValue::Str(path) => Some(path.as_str()),
+            _ => None,
+        })
 }
 
 /// Apply a choice's record-sugar write (if any) to `flow`, AFTER its body has
@@ -381,7 +392,14 @@ fn walk_branch(
         // §7.6: a `{{path}}` in the choice LABEL is a READ at the point the choice
         // is OFFERED — after its own `when` guard proves (a guarded choice's label
         // shows only when the guard holds), so check against the post-guard arm.
-        check_label_reads(&choice.label, schema, &arm.available, choice.span, diags, reads);
+        check_label_reads(
+            &choice.label,
+            schema,
+            &arm.available,
+            choice.span,
+            diags,
+            reads,
+        );
         walk_nodes(&choice.body, schema, &mut arm, diags, reads);
         apply_choice_record(choice, &mut arm);
         arm_finals.push(arm);
@@ -416,7 +434,14 @@ fn walk_hub(
         }
         // Label reads (§7.6): checked against the post-guard arm, then discarded
         // with the rest of the fork.
-        check_label_reads(&choice.label, schema, &arm.available, choice.span, diags, reads);
+        check_label_reads(
+            &choice.label,
+            schema,
+            &arm.available,
+            choice.span,
+            diags,
+            reads,
+        );
         walk_nodes(&choice.body, schema, &mut arm, diags, reads);
         apply_choice_record(choice, &mut arm);
         // arm (and any record write) discarded — a hub never folds back.
@@ -930,7 +955,6 @@ mod tests {
             "`||` does not dominate its right operand; got {diags:?}"
         );
     }
-
 
     #[test]
     fn definite_assignment_returns_final_assigned_set() {

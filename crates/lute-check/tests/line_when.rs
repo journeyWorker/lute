@@ -73,10 +73,7 @@ fn dollar_out_of_scope_even_in_match() {
          </match>\n"
     );
     let cs = codes(&t);
-    assert!(
-        cs.contains(&"E-DOLLAR-OUTSIDE-MATCH".to_string()),
-        "{cs:?}"
-    );
+    assert!(cs.contains(&"E-DOLLAR-OUTSIDE-MATCH".to_string()), "{cs:?}");
 }
 
 #[test]
@@ -144,8 +141,10 @@ fn scene(components: &str, body: &str) -> String {
 /// `tests/component_match.rs`'s harness.
 fn component_codes(dir: &Path, scene: &str) -> Vec<String> {
     let (doc, _) = lute_syntax::parse(scene);
-    let (meta0, _) =
-        parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
+    let (meta0, _) = parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
     let components = resolve_components(dir, &meta0.components, doc.meta.span);
     let input = CheckInput {
         text: scene.to_string(),
@@ -175,7 +174,10 @@ fn component_line_when_params_only() {
          ## Scene 1.\n\
          @bianca{when=\"@tier == 'fond'\"}: You remembered!\n",
     );
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = component_codes(&dir, &s);
     assert!(
         !cs.iter().any(|c| c.starts_with("E-")),
@@ -227,7 +229,10 @@ fn component_line_when_also_runs_ordinary_cel_validation() {
          ## Scene 1.\n\
          @narrator{when=\"$ == 'fond'\"}: hi\n",
     );
-    let s2 = scene("dollar_leak.lute", "::use{component=\"dollar_leak\" tier=\"fond\"}");
+    let s2 = scene(
+        "dollar_leak.lute",
+        "::use{component=\"dollar_leak\" tier=\"fond\"}",
+    );
     let cs2 = component_codes(&dir2, &s2);
     assert!(
         cs2.contains(&"E-DOLLAR-OUTSIDE-MATCH".to_string()),
@@ -244,7 +249,10 @@ fn component_line_when_also_runs_ordinary_cel_validation() {
          ## Scene 1.\n\
          @narrator{when=\"@tier == 'fond'\"}: hi\n",
     );
-    let s3 = scene("clean_param.lute", "::use{component=\"clean_param\" tier=\"fond\"}");
+    let s3 = scene(
+        "clean_param.lute",
+        "::use{component=\"clean_param\" tier=\"fond\"}",
+    );
     let cs3 = component_codes(&dir3, &s3);
     assert!(
         !cs3.iter().any(|c| c.starts_with("E-")),
@@ -274,9 +282,8 @@ fn delivery_and_emotion_checks_hold() {
     );
     let cs = codes(&clean);
     assert!(
-        !cs.iter().any(|c| c.starts_with("E-DELIVERY")
-            || c == "E-BAD-ENUM"
-            || c == "E-UNKNOWN-ATTR"),
+        !cs.iter()
+            .any(|c| c.starts_with("E-DELIVERY") || c == "E-BAD-ENUM" || c == "E-UNKNOWN-ATTR"),
         "{cs:?}"
     );
 

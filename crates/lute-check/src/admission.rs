@@ -172,7 +172,12 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                 ));
             }
             for shot in &doc.shots {
-                walk(&shot.body, DocKind::Scene, GrammarContext::SceneBody, &mut diags);
+                walk(
+                    &shot.body,
+                    DocKind::Scene,
+                    GrammarContext::SceneBody,
+                    &mut diags,
+                );
             }
         }
         DocKind::Quest => {
@@ -206,7 +211,12 @@ pub fn check_admission(doc: &Document, kind: DocKind) -> Vec<Diagnostic> {
                 ));
             }
             for quest in &doc.quests {
-                walk(&quest.body, DocKind::Quest, GrammarContext::QuestBody, &mut diags);
+                walk(
+                    &quest.body,
+                    DocKind::Quest,
+                    GrammarContext::QuestBody,
+                    &mut diags,
+                );
             }
         }
     }
@@ -375,7 +385,9 @@ fn describe(nk: NodeKind) -> &'static str {
 
 fn context_reason(doc: DocKind, ctx: GrammarContext) -> &'static str {
     match (doc, ctx) {
-        (DocKind::Scene, _) => "the scene grammar admits no `<on>`/`<objective>` (quest-only constructs)",
+        (DocKind::Scene, _) => {
+            "the scene grammar admits no `<on>`/`<objective>` (quest-only constructs)"
+        }
         (DocKind::Quest, GrammarContext::QuestBody) => {
             "a quest body forbids `<hub>`/`<timeline>` (dsl 0.2.0 §6.7)"
         }
@@ -426,7 +438,8 @@ mod tests {
     #[test]
     fn assert_retract_admitted_wherever_set_is() {
         // scene body: admitted
-        let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## S.\n::assert{ a(b) }\n";
+        let scene =
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## S.\n::assert{ a(b) }\n";
         let (doc, _) = lute_syntax::parse(scene);
         assert!(check_admission(&doc, DocKind::Scene).is_empty());
         // quest body + <on> arm: admitted

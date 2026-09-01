@@ -772,10 +772,7 @@ fn assemble_rejects_reserved_names_in_stamp_attrs_export() {
             },
         ];
         let reg = InstalledPlugins {
-            by_id: BTreeMap::from([(
-                "idola.minigame".to_string(),
-                InstalledPlugin { loaded: p },
-            )]),
+            by_id: BTreeMap::from([("idola.minigame".to_string(), InstalledPlugin { loaded: p })]),
         };
         let active = vec![
             ActivePlugin {
@@ -789,7 +786,8 @@ fn assemble_rejects_reserved_names_in_stamp_attrs_export() {
         ];
         let (snap, errs) = assemble_snapshot(&active, &reg);
         assert!(
-            errs.iter().any(|e| e.code() == "E-PLUGIN-RESERVED-STAMP-ATTR"),
+            errs.iter()
+                .any(|e| e.code() == "E-PLUGIN-RESERVED-STAMP-ATTR"),
             "reserved `stampAttrs` name `{reserved}` must be rejected, got {errs:?}"
         );
         assert!(
@@ -837,10 +835,7 @@ fn stamp_attrs_merge_and_participate_in_capability_version() {
     ];
     let assemble = |loaded: LoadedPlugin| {
         let reg = InstalledPlugins {
-            by_id: BTreeMap::from([(
-                "idola.minigame".to_string(),
-                InstalledPlugin { loaded },
-            )]),
+            by_id: BTreeMap::from([("idola.minigame".to_string(), InstalledPlugin { loaded })]),
         };
         assemble_snapshot(&active, &reg)
     };

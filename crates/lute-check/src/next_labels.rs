@@ -49,10 +49,13 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
 }
 
 fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
-    attrs.iter().find(|a| a.key == key).and_then(|a| match &a.value {
-        AttrValue::Str(s) => Some(s.as_str()),
-        _ => None,
-    })
+    attrs
+        .iter()
+        .find(|a| a.key == key)
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some(s.as_str()),
+            _ => None,
+        })
 }
 
 fn attr_span(attrs: &[Attr], key: &str) -> Option<Span> {
@@ -93,7 +96,8 @@ impl Collector {
                 span,
             ));
         } else {
-            self.labels.insert(id.to_string(), LabelSite { pos: self.pos });
+            self.labels
+                .insert(id.to_string(), LabelSite { pos: self.pos });
         }
         self.tick();
     }
@@ -133,7 +137,11 @@ impl Collector {
                     Some(id) => self.record_label(id, l.span),
                     None => self.tick(),
                 },
-                Node::Directive(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) | Node::Timeline(_) => {
+                Node::Directive(_)
+                | Node::Set(_)
+                | Node::Assert(_)
+                | Node::Retract(_)
+                | Node::Timeline(_) => {
                     self.tick();
                 }
                 Node::Branch(b) => {
@@ -190,7 +198,12 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
     for quest in &doc.quests {
         c.walk(&quest.body);
     }
-    let Collector { labels, dups, nexts, .. } = c;
+    let Collector {
+        labels,
+        dups,
+        nexts,
+        ..
+    } = c;
     let mut diags = dups;
     for next in nexts {
         match labels.get(&next.to) {

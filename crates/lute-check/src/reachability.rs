@@ -53,7 +53,9 @@ use lute_syntax::ast::{Arm, CelSlot, Document, Match, Node, Objective, Quest};
 
 use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
-use crate::decide::{analyze_unset_sentinel_slot, decide_slot, DecideCtx, Decided, DollarBinding, UnsetSentinelHit};
+use crate::decide::{
+    analyze_unset_sentinel_slot, decide_slot, DecideCtx, Decided, DollarBinding, UnsetSentinelHit,
+};
 use crate::match_check::{
     classify_when_literal, infer_domain, is_pattern_literals, literal_is_foreign, param_domain,
     subject_path, Domain, DomainInfo, DomainValue, WhenLiteral,
@@ -156,9 +158,8 @@ pub(crate) const W_CODE_AFTER_END: &str = "W-CODE-AFTER-END";
 /// `lute_manifest::validate::SEMANTICS_VOCAB` for why the flag declares
 /// the semantics but never drives the dispatch.
 fn check_code_after_end(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
-    let is_end = |n: &Node| {
-        matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::END_DIRECTIVE)
-    };
+    let is_end =
+        |n: &Node| matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::END_DIRECTIVE);
     let Some(end_at) = nodes.iter().position(is_end) else {
         return;
     };
@@ -185,9 +186,7 @@ pub(crate) const W_CODE_AFTER_NEXT: &str = "W-CODE-AFTER-NEXT";
 /// verbatim except the terminator predicate (unguarded `::next` — dispatch
 /// by TAG, [`lute_manifest::core::NEXT_DIRECTIVE`], AND `d.when.is_none()`).
 fn check_code_after_next(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
-    let is_unguarded_next = |n: &Node| {
-        matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::NEXT_DIRECTIVE && d.when.is_none())
-    };
+    let is_unguarded_next = |n: &Node| matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::NEXT_DIRECTIVE && d.when.is_none());
     let Some(next_at) = nodes.iter().position(is_unguarded_next) else {
         return;
     };
@@ -288,7 +287,12 @@ pub(crate) fn check_reachability_in(
 /// site (a shot, an arm, a choice, an `<on>`/`<objective>` body), which is
 /// precisely [`check_code_after_end`]'s unit of analysis — so the
 /// `W-CODE-AFTER-END` scan rides this recursion instead of duplicating it.
-fn walk_reach(nodes: &[Node], defs: &DefTable<'_>, ctx: &DecideCtx<'_>, diags: &mut Vec<Diagnostic>) {
+fn walk_reach(
+    nodes: &[Node],
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
     check_code_after_end(nodes, diags);
     check_code_after_next(nodes, diags);
     for node in nodes {
@@ -561,7 +565,9 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                 // guard (a literal `false`, an unrelated foreign typo,
                 // `@never`, …) still flags E-ARM-DEAD even when a sentinel
                 // comparison is ALSO present.
-                let foreign_literal = is.as_ref().is_some_and(|pat| arm_has_foreign_literal(pat, &dom));
+                let foreign_literal = is
+                    .as_ref()
+                    .is_some_and(|pat| arm_has_foreign_literal(pat, &dom));
                 let sentinel_load_bearing = analysis
                     .as_ref()
                     .is_some_and(|a| !a.hits.is_empty() && a.load_bearing_for_false);
@@ -598,7 +604,8 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                             for item in &residual {
                                 match u.source(item) {
                                     Some(src) => {
-                                        if covering.is_none_or(|c| src.0.byte_start < c.0.byte_start)
+                                        if covering
+                                            .is_none_or(|c| src.0.byte_start < c.0.byte_start)
                                         {
                                             covering = Some(src);
                                         }
@@ -744,7 +751,11 @@ fn check_quest_reach(quest: &Quest, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) ->
 /// whether `done` is itself decided, since visibility and completion are
 /// evaluated independently (§5.3). `ctx.dollar` MUST be `None` — no `$` is
 /// in scope at an `<objective>`'s attrs.
-fn check_objective_reach(o: &Objective, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec<Diagnostic> {
+fn check_objective_reach(
+    o: &Objective,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     // dsl 0.5.2 §2.1: `<objective when/done>` are listed guard slots too —
     // independent of `E-OBJECTIVE-UNSATISFIABLE`/`W-OBJECTIVE-HIDDEN`, which
@@ -788,7 +799,12 @@ enum SolutionSet {
     /// inclusion. **The domain is the REALS, not the integers** — a literal is
     /// an `f64` and the language has no integer scalar type, so `x > 1` and
     /// `x < 2` INTERSECT and are not a contradiction.
-    Interval { lo: f64, lo_inc: bool, hi: f64, hi_inc: bool },
+    Interval {
+        lo: f64,
+        lo_inc: bool,
+        hi: f64,
+        hi_inc: bool,
+    },
     /// Every real except one (`number` `!=`).
     NotNum(f64),
     /// The satisfying members of a finite domain (`bool`, `enum`).
@@ -835,7 +851,10 @@ fn check_objective_contradiction(
         // declared path is never `decide`-false today (a `number` path is
         // `Domain::Infinite`, so R2 leaves it undecided), but stating the
         // exclusion structurally is cheaper than relying on that staying true.
-        if matches!(decide_slot(&o.done.raw, defs, ctx), Some(Decided::Bool(false))) {
+        if matches!(
+            decide_slot(&o.done.raw, defs, ctx),
+            Some(Decided::Bool(false))
+        ) {
             continue;
         }
         if let Some(g) = in_domain_gate(o, ctx) {
@@ -878,7 +897,9 @@ fn in_domain_gate<'a>(o: &'a Objective, ctx: &DecideCtx<'_>) -> Option<Gate<'a>>
     let mut arena = lute_cel::CelArena::default();
     let handle = lute_cel::parse_slot_marked_refs(&mut arena, raw)?;
     let ided = arena.get(handle)?;
-    let Expr::Call(c) = &ided.expr else { return None };
+    let Expr::Call(c) = &ided.expr else {
+        return None;
+    };
     if c.target.is_some() || c.args.len() != 2 {
         return None;
     }
@@ -896,7 +917,13 @@ fn in_domain_gate<'a>(o: &'a Objective, ctx: &DecideCtx<'_>) -> Option<Gate<'a>>
     };
     let declared = crate::set_op::resolve_type(&path, ctx.schema)?;
     let set = solution_set(declared, opname, lit)?;
-    Some(Gate { id: &o.id, path, raw: o.done.raw.trim(), set, span: o.span })
+    Some(Gate {
+        id: &o.id,
+        path,
+        raw: o.done.raw.trim(),
+        set,
+        span: o.span,
+    })
 }
 
 /// The operator with its operands exchanged (`1 < x` is `x > 1`).
@@ -925,7 +952,12 @@ fn solution_set(declared: &Type, opname: &str, lit: &Val) -> Option<SolutionSet>
                 _ => return None,
             };
             Some(match opname {
-                op::EQUALS => SolutionSet::Interval { lo: v, lo_inc: true, hi: v, hi_inc: true },
+                op::EQUALS => SolutionSet::Interval {
+                    lo: v,
+                    lo_inc: true,
+                    hi: v,
+                    hi_inc: true,
+                },
                 op::NOT_EQUALS => SolutionSet::NotNum(v),
                 op::LESS => SolutionSet::Interval {
                     lo: f64::NEG_INFINITY,
@@ -986,7 +1018,11 @@ fn solution_set(declared: &Type, opname: &str, lit: &Val) -> Option<SolutionSet>
 fn finite_members(all: &[String], value: &str, opname: &str) -> Option<SolutionSet> {
     let set: BTreeSet<String> = match opname {
         op::EQUALS => std::iter::once(value.to_string()).collect(),
-        op::NOT_EQUALS => all.iter().filter(|m| m.as_str() != value).cloned().collect(),
+        op::NOT_EQUALS => all
+            .iter()
+            .filter(|m| m.as_str() != value)
+            .cloned()
+            .collect(),
         _ => return None,
     };
     Some(SolutionSet::Members(set))
@@ -999,20 +1035,43 @@ fn disjoint(a: &SolutionSet, b: &SolutionSet) -> bool {
     use SolutionSet::*;
     match (a, b) {
         (
-            Interval { lo: l1, lo_inc: li1, hi: h1, hi_inc: hi1 },
-            Interval { lo: l2, lo_inc: li2, hi: h2, hi_inc: hi2 },
+            Interval {
+                lo: l1,
+                lo_inc: li1,
+                hi: h1,
+                hi_inc: hi1,
+            },
+            Interval {
+                lo: l2,
+                lo_inc: li2,
+                hi: h2,
+                hi_inc: hi2,
+            },
         ) => {
             // Over the REALS: the intervals miss iff one ends before the other
             // begins, or they touch at a point neither includes.
-            (h1 < l2 || (h1 == l2 && !(*hi1 && *li2)))
-                || (h2 < l1 || (h2 == l1 && !(*hi2 && *li1)))
+            (h1 < l2 || (h1 == l2 && !(*hi1 && *li2))) || (h2 < l1 || (h2 == l1 && !(*hi2 && *li1)))
         }
         // Every real except `v` misses an interval only when that interval IS
         // the single point `v`.
-        (NotNum(v), Interval { lo, lo_inc, hi, hi_inc })
-        | (Interval { lo, lo_inc, hi, hi_inc }, NotNum(v)) => {
-            *lo == *v && *hi == *v && *lo_inc && *hi_inc
-        }
+        (
+            NotNum(v),
+            Interval {
+                lo,
+                lo_inc,
+                hi,
+                hi_inc,
+            },
+        )
+        | (
+            Interval {
+                lo,
+                lo_inc,
+                hi,
+                hi_inc,
+            },
+            NotNum(v),
+        ) => *lo == *v && *hi == *v && *lo_inc && *hi_inc,
         (NotNum(_), NotNum(_)) => false,
         (Members(x), Members(y)) => x.is_disjoint(y),
         (OnlyStr(x), OnlyStr(y)) => x != y,
@@ -1053,7 +1112,10 @@ fn quest_unreachable_message(dead_start: bool, true_fail: bool) -> String {
              instance fails at the first evaluation instant",
         );
     }
-    format!("quest can never complete: {} (dsl 0.4 §5.3)", causes.join("; "))
+    format!(
+        "quest can never complete: {} (dsl 0.4 §5.3)",
+        causes.join("; ")
+    )
 }
 
 /// The §5.3/C4 quest-consequence note (Task 5 rules, quoted verbatim):

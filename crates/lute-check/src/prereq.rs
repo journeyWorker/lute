@@ -306,7 +306,10 @@ mod tests {
         assert!(codes.is_empty(), "unexpected diags: {codes:?}");
         assert_eq!(
             atoms(&f.expect("in-profile formula")),
-            vec![Atom::Active("a".to_string()), Atom::Completed("a".to_string())],
+            vec![
+                Atom::Active("a".to_string()),
+                Atom::Completed("a".to_string())
+            ],
             "`active` and `completed` on the SAME id must stay distinguishable atoms"
         );
     }

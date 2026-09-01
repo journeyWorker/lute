@@ -104,12 +104,16 @@ impl<'a> EffectiveState<'a> {
         }
         if let Some(v) = self.seed.get(path) {
             if is_reserved_quest_path(path) {
-                self.reserved_reads.borrow_mut().insert(path.to_string(), ReservedReadKind::Mocked);
+                self.reserved_reads
+                    .borrow_mut()
+                    .insert(path.to_string(), ReservedReadKind::Mocked);
             }
             return Read::Value(v.clone());
         }
         if is_reserved_quest_path(path) {
-            self.reserved_reads.borrow_mut().insert(path.to_string(), ReservedReadKind::Defaulted);
+            self.reserved_reads
+                .borrow_mut()
+                .insert(path.to_string(), ReservedReadKind::Defaulted);
             return Read::Value(reserved_quest_default(path));
         }
         if let Some(default) = self.schema.decls.get(path).and_then(|d| d.default.as_ref()) {
@@ -144,7 +148,10 @@ impl<'a> EffectiveState<'a> {
 /// there, so not reusable across the D1 quarantine boundary).
 pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
     let segs: Vec<&str> = path.split('.').collect();
-    matches!(segs.as_slice(), ["quest", _, "state"] | ["quest", _, "objectives", _, "done"])
+    matches!(
+        segs.as_slice(),
+        ["quest", _, "state"] | ["quest", _, "objectives", _, "done"]
+    )
 }
 
 /// `true` specifically for the `quest.<id>.objectives.<oid>.done` shape —
@@ -153,7 +160,10 @@ pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
 /// `lute_check::cel_paths::is_reserved_quest_objective_done` (`pub(crate)`
 /// there too).
 pub(crate) fn is_reserved_quest_objective_done_path(path: &str) -> bool {
-    matches!(path.split('.').collect::<Vec<&str>>().as_slice(), ["quest", _, "objectives", _, "done"])
+    matches!(
+        path.split('.').collect::<Vec<&str>>().as_slice(),
+        ["quest", _, "objectives", _, "done"]
+    )
 }
 
 /// dsl 0.5.1 §1.2's reserved-path default: `objectives.<oid>.done` →
@@ -220,11 +230,16 @@ impl<'a> FactStore<'a> {
     /// `_` wildcard positions retract every fact matching the GROUND
     /// positions, regardless of what occupies a wildcard slot.
     pub fn retract(&mut self, rel: &str, pattern: &[Pat]) {
-        self.facts.retain(|(r, args)| !(r == rel && pattern_matches(pattern, args)));
+        self.facts
+            .retain(|(r, args)| !(r == rel && pattern_matches(pattern, args)));
     }
 
     fn is_derived(&self, rel: &str) -> bool {
-        self.rel_vocab.relations.get(rel).map(|d| d.derive).unwrap_or(false)
+        self.rel_vocab
+            .relations
+            .get(rel)
+            .map(|d| d.derive)
+            .unwrap_or(false)
     }
 
     fn scan(&self, rel: &str, pattern: &[Pat]) -> usize {
@@ -329,7 +344,11 @@ fn pattern_args(c: &CallExpr) -> Option<Vec<Pat>> {
         .collect()
 }
 
-pub(crate) fn eval_path_read(path: &str, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
+pub(crate) fn eval_path_read(
+    path: &str,
+    env: &EvalEnv<'_>,
+    unresolved: &mut Vec<UnresolvedAtom>,
+) -> Value {
     match env.state.read(path) {
         Read::Value(v) => {
             if v == Value::Unknown {
@@ -348,7 +367,12 @@ pub(crate) fn eval_path_read(path: &str, env: &EvalEnv<'_>, unresolved: &mut Vec
 /// recorded for a branch the connective didn't need to know. Otherwise both
 /// sides are evaluated and combined: `true && true = true`, a `false` on
 /// either side wins, else unknown (`U && true = U`).
-fn eval_and(a: &IdedExpr, b: &IdedExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
+fn eval_and(
+    a: &IdedExpr,
+    b: &IdedExpr,
+    env: &EvalEnv<'_>,
+    unresolved: &mut Vec<UnresolvedAtom>,
+) -> Value {
     let va = eval(&a.expr, env, unresolved);
     if va == Value::Bool(false) {
         return Value::Bool(false);
@@ -364,7 +388,12 @@ fn eval_and(a: &IdedExpr, b: &IdedExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<
 /// K3 `||`: `true || x = true` (short-circuit, symmetric to [`eval_and`]);
 /// otherwise `false || false = false`, a `true` on either side wins, else
 /// unknown.
-fn eval_or(a: &IdedExpr, b: &IdedExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
+fn eval_or(
+    a: &IdedExpr,
+    b: &IdedExpr,
+    env: &EvalEnv<'_>,
+    unresolved: &mut Vec<UnresolvedAtom>,
+) -> Value {
     let va = eval(&a.expr, env, unresolved);
     if va == Value::Bool(true) {
         return Value::Bool(true);
@@ -398,8 +427,16 @@ fn eval_conditional(
 /// equality) — ANY unknown operand makes the whole node unknown. Every
 /// operand is still evaluated (even once the result is known-unknown) so
 /// every atom that could resolve it lands in `unresolved`.
-fn eval_ground(name: &str, args: &[&IdedExpr], env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
-    let values: Vec<Value> = args.iter().map(|a| eval(&a.expr, env, unresolved)).collect();
+fn eval_ground(
+    name: &str,
+    args: &[&IdedExpr],
+    env: &EvalEnv<'_>,
+    unresolved: &mut Vec<UnresolvedAtom>,
+) -> Value {
+    let values: Vec<Value> = args
+        .iter()
+        .map(|a| eval(&a.expr, env, unresolved))
+        .collect();
     if values.contains(&Value::Unknown) {
         return Value::Unknown;
     }
@@ -414,7 +451,12 @@ fn eval_ground(name: &str, args: &[&IdedExpr], env: &EvalEnv<'_>, unresolved: &m
 /// element is evaluated (so an unknown list member's atom is still
 /// reported); a non-list right side is out of profile — defensive,
 /// unreachable post-check.
-fn eval_in(needle: &IdedExpr, list: &IdedExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
+fn eval_in(
+    needle: &IdedExpr,
+    list: &IdedExpr,
+    env: &EvalEnv<'_>,
+    unresolved: &mut Vec<UnresolvedAtom>,
+) -> Value {
     let Expr::List(elements) = &list.expr else {
         return Value::Unknown;
     };
@@ -431,7 +473,12 @@ fn eval_in(needle: &IdedExpr, list: &IdedExpr, env: &EvalEnv<'_>, unresolved: &m
 /// an unknown index still records its atom); a non-list target, a
 /// non-decided/non-numeric/non-integer index, or an out-of-range index is
 /// `Unknown` — never a panic, never a guess.
-fn eval_index(target: &IdedExpr, index: &IdedExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
+fn eval_index(
+    target: &IdedExpr,
+    index: &IdedExpr,
+    env: &EvalEnv<'_>,
+    unresolved: &mut Vec<UnresolvedAtom>,
+) -> Value {
     let Expr::List(elements) = &target.expr else {
         return Value::Unknown;
     };
@@ -449,7 +496,12 @@ fn eval_index(target: &IdedExpr, index: &IdedExpr, env: &EvalEnv<'_>, unresolved
 /// [`FactStore`]; `None` (derive:true + zero matches) records a
 /// [`UnresolvedAtom::DerivedFact`] with the rendered pattern as the
 /// "supply it as a mock" hint (§4.6).
-fn eval_fact_query(kind: &str, pattern: &IdedExpr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>) -> Value {
+fn eval_fact_query(
+    kind: &str,
+    pattern: &IdedExpr,
+    env: &EvalEnv<'_>,
+    unresolved: &mut Vec<UnresolvedAtom>,
+) -> Value {
     let Expr::Call(pat_call) = &pattern.expr else {
         return Value::Unknown; // caller guarantees this; defensive fallback
     };
@@ -543,9 +595,11 @@ pub fn eval(expr: &Expr, env: &EvalEnv<'_>, unresolved: &mut Vec<UnresolvedAtom>
         Expr::Call(c) => eval_call(c, env, unresolved),
         // Out of the closed evaluated subset (§4.3) — never produced by a
         // document that passed `check`.
-        Expr::List(_) | Expr::Map(_) | Expr::Struct(_) | Expr::Comprehension(_) | Expr::Unspecified => {
-            Value::Unknown
-        }
+        Expr::List(_)
+        | Expr::Map(_)
+        | Expr::Struct(_)
+        | Expr::Comprehension(_)
+        | Expr::Unspecified => Value::Unknown,
     }
 }
 
@@ -607,12 +661,18 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, unresolved) = eval_str("false && run.unseen", &env);
         assert_eq!(v, Value::Bool(false));
         // Short-circuit: the unknown right side is never evaluated, so it
         // never contributes an atom to the (already fully decided) result.
-        assert!(unresolved.is_empty(), "short-circuit must not record {unresolved:?}");
+        assert!(
+            unresolved.is_empty(),
+            "short-circuit must not record {unresolved:?}"
+        );
     }
 
     #[test]
@@ -621,10 +681,16 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, unresolved) = eval_str("true || run.unseen", &env);
         assert_eq!(v, Value::Bool(true));
-        assert!(unresolved.is_empty(), "short-circuit must not record {unresolved:?}");
+        assert!(
+            unresolved.is_empty(),
+            "short-circuit must not record {unresolved:?}"
+        );
     }
 
     #[test]
@@ -633,10 +699,16 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, unresolved) = eval_str("run.unseen && true", &env);
         assert_eq!(v, Value::Unknown);
-        assert_eq!(unresolved, vec![UnresolvedAtom::Path("run.unseen".to_string())]);
+        assert_eq!(
+            unresolved,
+            vec![UnresolvedAtom::Path("run.unseen".to_string())]
+        );
     }
 
     #[test]
@@ -645,10 +717,16 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, unresolved) = eval_str("1 > run.unseen", &env);
         assert_eq!(v, Value::Unknown);
-        assert_eq!(unresolved, vec![UnresolvedAtom::Path("run.unseen".to_string())]);
+        assert_eq!(
+            unresolved,
+            vec![UnresolvedAtom::Path("run.unseen".to_string())]
+        );
     }
 
     #[test]
@@ -657,12 +735,18 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         // `run.other` would itself be unknown too, but must never be read
         // (and thus never recorded) since the condition alone decides U.
         let (v, unresolved) = eval_str("run.cond ? 1 : run.other", &env);
         assert_eq!(v, Value::Unknown);
-        assert_eq!(unresolved, vec![UnresolvedAtom::Path("run.cond".to_string())]);
+        assert_eq!(
+            unresolved,
+            vec![UnresolvedAtom::Path("run.cond".to_string())]
+        );
     }
 
     #[test]
@@ -673,7 +757,10 @@ mod tests {
         let state = EffectiveState::new(&schema, seed);
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, unresolved) = eval_str("run.cond ? 1 : run.untouched", &env);
         assert_eq!(v, Value::Num(1.0));
         assert!(unresolved.is_empty());
@@ -687,7 +774,10 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, unresolved) = eval_str("run.a + run.b", &env);
         assert_eq!(v, Value::Unknown);
         assert_eq!(
@@ -707,7 +797,10 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, unresolved) = eval_str("[10, 20, 30][1]", &env);
         assert_eq!(v, Value::Num(20.0));
         assert!(unresolved.is_empty());
@@ -719,7 +812,10 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, _unresolved) = eval_str("[10, 20][5]", &env);
         assert_eq!(v, Value::Unknown);
     }
@@ -730,10 +826,16 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, unresolved) = eval_str("[10, 20][run.idx]", &env);
         assert_eq!(v, Value::Unknown);
-        assert_eq!(unresolved, vec![UnresolvedAtom::Path("run.idx".to_string())]);
+        assert_eq!(
+            unresolved,
+            vec![UnresolvedAtom::Path("run.idx".to_string())]
+        );
     }
 
     #[test]
@@ -746,7 +848,10 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, unresolved) = eval_str("[10, 20, 30][1] == 20", &env);
         assert_eq!(v, Value::Bool(true));
         assert!(unresolved.is_empty());
@@ -764,7 +869,10 @@ mod tests {
         // default only
         let schema_no_seed = schema_with(&[("run.other", Type::Number, Some(Literal::Num(9.0)))]);
         let state_default = EffectiveState::new(&schema_no_seed, BTreeMap::new());
-        assert_eq!(state_default.read("run.other"), Read::Value(Value::Num(9.0)));
+        assert_eq!(
+            state_default.read("run.other"),
+            Read::Value(Value::Num(9.0))
+        );
 
         // seed beats default
         assert_eq!(state.read("run.tip"), Read::Value(Value::Num(2.0)));
@@ -785,7 +893,10 @@ mod tests {
         assert_eq!(state.read("run.tip"), Read::Value(Value::Unknown));
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         // D19: isSet is definite presence, true even though the VALUE at
         // that path is unknown.
         let (v, unresolved) = eval_str("isSet(run.tip)", &env);
@@ -794,7 +905,10 @@ mod tests {
         // A plain value read of that same path IS unknown, and records it.
         let (v, unresolved) = eval_str("run.tip", &env);
         assert_eq!(v, Value::Unknown);
-        assert_eq!(unresolved, vec![UnresolvedAtom::Path("run.tip".to_string())]);
+        assert_eq!(
+            unresolved,
+            vec![UnresolvedAtom::Path("run.tip".to_string())]
+        );
     }
 
     // -- D19: isSet()/has() are definite ---------------------------------
@@ -807,7 +921,10 @@ mod tests {
         let state = EffectiveState::new(&schema, seed);
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
 
         let (v, unresolved) = eval_str("isSet(run.tip)", &env);
         assert_eq!(v, Value::Bool(true));
@@ -826,7 +943,10 @@ mod tests {
         let state = EffectiveState::new(&schema, seed);
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
 
         let (v, unresolved) = eval_str("has(run.tip)", &env);
         assert_eq!(v, Value::Bool(true));
@@ -845,7 +965,10 @@ mod tests {
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
         let facts = FactStore::new(&vocab);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         let (v, unresolved) = eval_str("!isSet(run.fresh)", &env);
         assert_eq!(v, Value::Bool(true));
         assert!(unresolved.is_empty());
@@ -860,7 +983,10 @@ mod tests {
         facts.assert("inParty", &["sofia".to_string(), "grove".to_string()]);
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
 
         let (v, unresolved) = eval_str("holds(inParty(sofia, grove))", &env);
         assert_eq!(v, Value::Bool(true));
@@ -878,7 +1004,10 @@ mod tests {
         facts.assert("inParty", &["sofia".to_string(), "grove".to_string()]);
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
 
         let (v, unresolved) = eval_str("holds(inParty(sofia, _))", &env);
         assert_eq!(v, Value::Bool(true));
@@ -897,7 +1026,10 @@ mod tests {
         let facts = FactStore::new(&vocab);
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
 
         let (v, unresolved) = eval_str("holds(believesLocation(player, halsin, grove))", &env);
         assert_eq!(v, Value::Unknown);
@@ -918,11 +1050,18 @@ mod tests {
         let mut facts = FactStore::new(&vocab);
         facts.assert(
             "believesLocation",
-            &["player".to_string(), "halsin".to_string(), "grove".to_string()],
+            &[
+                "player".to_string(),
+                "halsin".to_string(),
+                "grove".to_string(),
+            ],
         );
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
 
         let (v, unresolved) = eval_str("holds(believesLocation(player, halsin, grove))", &env);
         assert_eq!(v, Value::Bool(true));
@@ -937,13 +1076,22 @@ mod tests {
         let facts = FactStore::new(&vocab); // nothing asserted at all
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
 
         let (v, unresolved) = eval_str("holds(inParty(sofia, grove))", &env);
         assert_eq!(v, Value::Bool(false));
         assert!(unresolved.is_empty());
-        assert_eq!(facts.holds("inParty", &[Pat::Wildcard, Pat::Wildcard]), Some(false));
-        assert_eq!(facts.count("inParty", &[Pat::Wildcard, Pat::Wildcard]), Some(0));
+        assert_eq!(
+            facts.holds("inParty", &[Pat::Wildcard, Pat::Wildcard]),
+            Some(false)
+        );
+        assert_eq!(
+            facts.count("inParty", &[Pat::Wildcard, Pat::Wildcard]),
+            Some(0)
+        );
     }
 
     // -- retract -------------------------------------------------------------
@@ -954,9 +1102,15 @@ mod tests {
         let mut facts = FactStore::new(&vocab);
         facts.assert("inParty", &["sofia".to_string(), "grove".to_string()]);
         facts.assert("inParty", &["gale".to_string(), "grove".to_string()]);
-        facts.retract("inParty", &[Pat::Ground("sofia".to_string()), Pat::Wildcard]);
+        facts.retract(
+            "inParty",
+            &[Pat::Ground("sofia".to_string()), Pat::Wildcard],
+        );
         assert_eq!(
-            facts.holds("inParty", &[Pat::Ground("sofia".to_string()), Pat::Wildcard]),
+            facts.holds(
+                "inParty",
+                &[Pat::Ground("sofia".to_string()), Pat::Wildcard]
+            ),
             Some(false)
         );
         assert_eq!(
@@ -973,7 +1127,10 @@ mod tests {
         let facts = FactStore::new(&vocab);
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
 
         let (v, unresolved) = eval_str("now()", &env);
         assert_eq!(v, Value::Unknown);
@@ -1009,7 +1166,11 @@ mod tests {
         // Same for `quest.<id>.state` (no schema default at all in
         // practice, but the reserved default must win even if one were
         // present) — its reserved default is the literal `"unset"`.
-        let schema2 = schema_with(&[("quest.rescueHalsin.state", Type::Str, Some(Literal::Str("active".to_string())))]);
+        let schema2 = schema_with(&[(
+            "quest.rescueHalsin.state",
+            Type::Str,
+            Some(Literal::Str("active".to_string())),
+        )]);
         let state2 = EffectiveState::new(&schema2, BTreeMap::new());
         assert_eq!(
             state2.read("quest.rescueHalsin.state"),
@@ -1024,9 +1185,15 @@ mod tests {
         // attach the "existence unverified" note.
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
-        assert_eq!(state.read("quest.foo.state"), Read::Value(Value::Str("unset".to_string())));
+        assert_eq!(
+            state.read("quest.foo.state"),
+            Read::Value(Value::Str("unset".to_string()))
+        );
         let log = state.reserved_reads();
-        assert_eq!(log.get("quest.foo.state"), Some(&ReservedReadKind::Defaulted));
+        assert_eq!(
+            log.get("quest.foo.state"),
+            Some(&ReservedReadKind::Defaulted)
+        );
     }
 
     #[test]
@@ -1035,9 +1202,15 @@ mod tests {
         // must log itself as `Mocked`, distinct from a defaulted one.
         let schema = schema_with(&[]);
         let mut seed = BTreeMap::new();
-        seed.insert("quest.foo.state".to_string(), Value::Str("complete".to_string()));
+        seed.insert(
+            "quest.foo.state".to_string(),
+            Value::Str("complete".to_string()),
+        );
         let state = EffectiveState::new(&schema, seed);
-        assert_eq!(state.read("quest.foo.state"), Read::Value(Value::Str("complete".to_string())));
+        assert_eq!(
+            state.read("quest.foo.state"),
+            Read::Value(Value::Str("complete".to_string()))
+        );
         let log = state.reserved_reads();
         assert_eq!(log.get("quest.foo.state"), Some(&ReservedReadKind::Mocked));
     }
@@ -1049,7 +1222,10 @@ mod tests {
         let schema = schema_with(&[]);
         let mut state = EffectiveState::new(&schema, BTreeMap::new());
         state.write("quest.foo.state", Value::Str("active".to_string()));
-        assert_eq!(state.read("quest.foo.state"), Read::Value(Value::Str("active".to_string())));
+        assert_eq!(
+            state.read("quest.foo.state"),
+            Read::Value(Value::Str("active".to_string()))
+        );
         assert!(state.reserved_reads().is_empty());
     }
 
@@ -1069,15 +1245,29 @@ mod tests {
         // An ORDINARY path with the identical shape-adjacent name must
         // still use its schema default — the bypass is `is_reserved_quest_path`-
         // gated, never a blanket "quest.*" skip.
-        let schema = schema_with(&[("quest.rescueHalsin.objectives.reach.notDone", Type::Bool, Some(Literal::Bool(true)))]);
+        let schema = schema_with(&[(
+            "quest.rescueHalsin.objectives.reach.notDone",
+            Type::Bool,
+            Some(Literal::Bool(true)),
+        )]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
-        assert_eq!(state.read("quest.rescueHalsin.objectives.reach.notDone"), Read::Value(Value::Bool(true)));
+        assert_eq!(
+            state.read("quest.rescueHalsin.objectives.reach.notDone"),
+            Read::Value(Value::Bool(true))
+        );
 
         // A once-decided objective still overrides via a trace WRITE (the
         // bypass only removes the `default:` tier, never `writes`/`seed`).
-        let schema2 = schema_with(&[("quest.q.objectives.o.done", Type::Bool, Some(Literal::Bool(false)))]);
+        let schema2 = schema_with(&[(
+            "quest.q.objectives.o.done",
+            Type::Bool,
+            Some(Literal::Bool(false)),
+        )]);
         let mut state2 = EffectiveState::new(&schema2, BTreeMap::new());
         state2.write("quest.q.objectives.o.done", Value::Bool(true));
-        assert_eq!(state2.read("quest.q.objectives.o.done"), Read::Value(Value::Bool(true)));
+        assert_eq!(
+            state2.read("quest.q.objectives.o.done"),
+            Read::Value(Value::Bool(true))
+        );
     }
 }

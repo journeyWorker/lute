@@ -59,8 +59,8 @@ fn unique_dir() -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let dir = std::env::temp_dir()
-        .join(format!("lute_cinj_{}_{}_{}", std::process::id(), n, nanos));
+    let dir =
+        std::env::temp_dir().join(format!("lute_cinj_{}_{}_{}", std::process::id(), n, nanos));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -166,7 +166,10 @@ fn check_with_components_snap(
 fn component_diags(body: &str, snapshot: CapabilitySnapshot) -> Vec<Diagnostic> {
     check_with_components_snap(
         USE_SCENE,
-        &[("c.lute", format!("---\ncomponent: c\n---\n## Scene 1.\n{body}"))],
+        &[(
+            "c.lute",
+            format!("---\ncomponent: c\n---\n## Scene 1.\n{body}"),
+        )],
         snapshot,
     )
     .diagnostics
@@ -194,7 +197,10 @@ fn fold_diags(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
 /// code on all three paths.
 #[test]
 fn injection_fold_three_way_parity() {
-    let scene = codes(&scene_diags(NO_ANCHOR_DOMAIN_BODY, no_anchor_domain_snapshot()));
+    let scene = codes(&scene_diags(
+        NO_ANCHOR_DOMAIN_BODY,
+        no_anchor_domain_snapshot(),
+    ));
     let standalone = codes(&standalone_diags(
         NO_ANCHOR_DOMAIN_BODY,
         no_anchor_domain_snapshot(),
@@ -208,7 +214,10 @@ fn injection_fold_three_way_parity() {
         vec!["E-DOMAIN-UNKNOWN".to_string()],
         "scene-level reference behaviour"
     );
-    assert_eq!(scene, standalone, "standalone component must match scene level");
+    assert_eq!(
+        scene, standalone,
+        "standalone component must match scene level"
+    );
     assert_eq!(
         scene, component,
         "a component body reached through a `::use` must match scene level: {component:?}"
@@ -448,7 +457,10 @@ fn component_body_injections_reach_the_resolved_view() {
         .injections;
     let via_use = check_with_components(
         USE_SCENE,
-        &[("c.lute", format!("---\ncomponent: c\n---\n## Scene 1.\n{body}"))],
+        &[(
+            "c.lute",
+            format!("---\ncomponent: c\n---\n## Scene 1.\n{body}"),
+        )],
     )
     .resolved
     .expect("resolved view")
@@ -499,7 +511,10 @@ const MATCH_ON_WHO: &str =
 /// declared four lines up.
 #[test]
 fn standalone_component_reports_its_own_malformed_params() {
-    let diags = standalone_with_meta("component: c\nparams:\n  who: [not, a, type]\n", MATCH_ON_WHO);
+    let diags = standalone_with_meta(
+        "component: c\nparams:\n  who: [not, a, type]\n",
+        MATCH_ON_WHO,
+    );
     let cs = codes(&diags);
     assert!(
         cs.iter().any(|c| c == "E-COMPONENT-PARSE"),
@@ -536,7 +551,8 @@ fn standalone_component_still_reports_a_genuinely_unknown_ref() {
 /// malformed `params:` says nothing about.
 #[test]
 fn an_importers_own_undeclared_ref_survives_a_components_parse_failure() {
-    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
+    let scene =
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
 ## Shot 1.\n::use{component=\"c\"}\n<match on=\"@mine\">\n<when is=\"a\">\n@bianca: Hi.\n</when>\n\
 <otherwise>\n@bianca: Ho.\n</otherwise>\n</match>\n";
     let diags = check_with_components(

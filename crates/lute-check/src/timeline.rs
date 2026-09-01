@@ -335,10 +335,13 @@ pub fn resolve_timeline(
     // §10.2: the comparison is integer and the message prints the authored
     // decimal — it used to print `1.2000000000000002` at the author, which is
     // the same leak in its most confusing form.
-    let explicit_barrier_ms = tl.duration.as_ref().and_then(|slot| match parse_time_ms(&slot.raw) {
-        TimeParse::Ms(ms) => Some(ms),
-        TimeParse::TooFine | TimeParse::NotANumber => None,
-    });
+    let explicit_barrier_ms =
+        tl.duration
+            .as_ref()
+            .and_then(|slot| match parse_time_ms(&slot.raw) {
+                TimeParse::Ms(ms) => Some(ms),
+                TimeParse::TooFine | TimeParse::NotANumber => None,
+            });
     let barrier_ms = match explicit_barrier_ms {
         Some(explicit_ms) => {
             if explicit_ms < max_end_ms {

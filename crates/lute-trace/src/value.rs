@@ -56,7 +56,10 @@ mod tests {
 
     #[test]
     fn from_decided_converts_bool_num_str() {
-        assert_eq!(Value::from(lute_check::Decided::Bool(true)), Value::Bool(true));
+        assert_eq!(
+            Value::from(lute_check::Decided::Bool(true)),
+            Value::Bool(true)
+        );
         assert_eq!(Value::from(lute_check::Decided::Num(3.5)), Value::Num(3.5));
         assert_eq!(
             Value::from(lute_check::Decided::Str("x".to_string())),

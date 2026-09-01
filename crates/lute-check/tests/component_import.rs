@@ -48,8 +48,7 @@ fn codes(res: &ComponentSet) -> Vec<&str> {
     res.diags.iter().map(|d| d.code.as_str()).collect()
 }
 
-const GREET: &str =
-    "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n@x: hi\n";
+const GREET: &str = "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n@x: hi\n";
 
 #[test]
 fn resolves_single_component_with_params() {
@@ -138,7 +137,12 @@ fn malformed_component_parse_error_carries_related_sub_diagnostics() {
         .diags
         .iter()
         .find(|d| d.code == "E-COMPONENT-PARSE" && d.message.contains("issue"))
-        .unwrap_or_else(|| panic!("expected the parse-error E-COMPONENT-PARSE; got {:?}", res.diags));
+        .unwrap_or_else(|| {
+            panic!(
+                "expected the parse-error E-COMPONENT-PARSE; got {:?}",
+                res.diags
+            )
+        });
     assert!(
         !parse_diag.related.is_empty(),
         "must carry the component's own sub-diagnostics: {parse_diag:?}"

@@ -77,7 +77,10 @@ pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
 /// `check_quest`'s synthetic decl (definite-assignment defaulting) can treat
 /// the two reserved shapes differently without re-deriving the segment shape.
 pub(crate) fn is_reserved_quest_objective_done(path: &str) -> bool {
-    matches!(path.split('.').collect::<Vec<&str>>().as_slice(), ["quest", _, "objectives", _, "done"])
+    matches!(
+        path.split('.').collect::<Vec<&str>>().as_slice(),
+        ["quest", _, "objectives", _, "done"]
+    )
 }
 
 /// `true` specifically for the `quest.<id>.activatedAt` reserved shape (3
@@ -95,7 +98,10 @@ pub(crate) fn is_reserved_quest_objective_done(path: &str) -> bool {
 /// [`crate::match_check`] (narrative time is opaque — `Domain::Infinite`, not
 /// the lifecycle enum `quest.<id>.state` carries).
 pub(crate) fn is_reserved_quest_activated_at(path: &str) -> bool {
-    matches!(path.split('.').collect::<Vec<&str>>().as_slice(), ["quest", _, "activatedAt"])
+    matches!(
+        path.split('.').collect::<Vec<&str>>().as_slice(),
+        ["quest", _, "activatedAt"]
+    )
 }
 
 /// `E-PATH-IDENT`: a `-` in a CEL-facing name — a state-path segment, a `defs`

@@ -296,7 +296,10 @@ fn spec_54_subsumption_example() {
         "exactly one E-ARM-DEAD (the subsumed `gold` arm): {codes:?}"
     );
     assert_eq!(
-        codes.iter().filter(|c| **c == "E-WHEN-LITERAL-DOMAIN").count(),
+        codes
+            .iter()
+            .filter(|c| **c == "E-WHEN-LITERAL-DOMAIN")
+            .count(),
         1,
         "exactly one E-WHEN-LITERAL-DOMAIN (`platnum`): {codes:?}"
     );
@@ -460,9 +463,16 @@ fn dead_start_is_quest_unreachable() {
         .iter()
         .find(|d| d.code == "E-QUEST-UNREACHABLE")
         .unwrap_or_else(|| {
-            panic!("dead start must flag E-QUEST-UNREACHABLE: {:?}", res.diagnostics)
+            panic!(
+                "dead start must flag E-QUEST-UNREACHABLE: {:?}",
+                res.diagnostics
+            )
         });
-    assert!(hit.message.contains("start"), "message must name `start`: {}", hit.message);
+    assert!(
+        hit.message.contains("start"),
+        "message must name `start`: {}",
+        hit.message
+    );
 }
 
 // Cause 2: `fail` deciding TRUE (fail precedes completion, dsl 0.2 §6.3) is
@@ -479,9 +489,16 @@ fn true_fail_is_quest_unreachable() {
         .iter()
         .find(|d| d.code == "E-QUEST-UNREACHABLE")
         .unwrap_or_else(|| {
-            panic!("true fail must flag E-QUEST-UNREACHABLE: {:?}", res.diagnostics)
+            panic!(
+                "true fail must flag E-QUEST-UNREACHABLE: {:?}",
+                res.diagnostics
+            )
         });
-    assert!(hit.message.contains("fail"), "message must name `fail`: {}", hit.message);
+    assert!(
+        hit.message.contains("fail"),
+        "message must name `fail`: {}",
+        hit.message
+    );
 }
 
 // A `done` deciding false (here via R2: `platnum` is foreign to
@@ -497,7 +514,9 @@ fn foreign_done_is_objective_unsat() {
     );
     let res = run(&text);
     assert!(
-        !res.diagnostics.iter().any(|d| d.code == "E-QUEST-UNREACHABLE"),
+        !res.diagnostics
+            .iter()
+            .any(|d| d.code == "E-QUEST-UNREACHABLE"),
         "an objective-only defect must never pile on E-QUEST-UNREACHABLE (C4): {:?}",
         res.diagnostics
     );
@@ -506,7 +525,10 @@ fn foreign_done_is_objective_unsat() {
         .iter()
         .find(|d| d.code == "E-OBJECTIVE-UNSATISFIABLE")
         .unwrap_or_else(|| {
-            panic!("dead done must flag E-OBJECTIVE-UNSATISFIABLE: {:?}", res.diagnostics)
+            panic!(
+                "dead done must flag E-OBJECTIVE-UNSATISFIABLE: {:?}",
+                res.diagnostics
+            )
         });
     assert!(
         hit.message.contains("run.rank == 'platnum'"),
@@ -535,7 +557,10 @@ fn optional_dead_done_has_no_quest_note() {
         .iter()
         .find(|d| d.code == "E-OBJECTIVE-UNSATISFIABLE")
         .unwrap_or_else(|| {
-            panic!("an optional dead done must still flag the code: {:?}", res.diagnostics)
+            panic!(
+                "an optional dead done must still flag the code: {:?}",
+                res.diagnostics
+            )
         });
     assert!(
         hit.message.contains("run.rank == 'platnum'"),
@@ -560,12 +585,16 @@ fn spec_54_quest_example_two_roots() {
     );
     let out = codes(&text);
     assert_eq!(
-        out.iter().filter(|c| c.as_str() == "E-QUEST-UNREACHABLE").count(),
+        out.iter()
+            .filter(|c| c.as_str() == "E-QUEST-UNREACHABLE")
+            .count(),
         1,
         "{out:?}"
     );
     assert_eq!(
-        out.iter().filter(|c| c.as_str() == "E-OBJECTIVE-UNSATISFIABLE").count(),
+        out.iter()
+            .filter(|c| c.as_str() == "E-OBJECTIVE-UNSATISFIABLE")
+            .count(),
         1,
         "{out:?}"
     );
@@ -582,9 +611,15 @@ fn hidden_required_objective_warns() {
          <objective id=\"o\" when=\"false\" done=\"run.flag\"/>\n</quest>\n"
     );
     let res = run(&text);
-    assert!(res.ok, "a warning-only doc must stay res.ok: {:?}", res.diagnostics);
     assert!(
-        res.diagnostics.iter().any(|d| d.code == "W-OBJECTIVE-HIDDEN"),
+        res.ok,
+        "a warning-only doc must stay res.ok: {:?}",
+        res.diagnostics
+    );
+    assert!(
+        res.diagnostics
+            .iter()
+            .any(|d| d.code == "W-OBJECTIVE-HIDDEN"),
         "{:?}",
         res.diagnostics
     );
@@ -828,10 +863,7 @@ fn control_defaulted_enum_foreign_typo_stays_arm_dead() {
         out.contains(&"E-ARM-DEAD".to_string()),
         "a defaulted-enum foreign typo must still flag E-ARM-DEAD: {out:?}"
     );
-    assert!(
-        !out.contains(&"E-UNSET-LITERAL".to_string()),
-        "{out:?}"
-    );
+    assert!(!out.contains(&"E-UNSET-LITERAL".to_string()), "{out:?}");
 }
 
 // An `<objective done>` foreign (non-'unset') literal is untouched by this
@@ -848,10 +880,7 @@ fn control_objective_foreign_literal_stays_unsatisfiable() {
         "a foreign (non-'unset') objective done literal must still flag \
          E-OBJECTIVE-UNSATISFIABLE: {out:?}"
     );
-    assert!(
-        !out.contains(&"E-UNSET-LITERAL".to_string()),
-        "{out:?}"
-    );
+    assert!(!out.contains(&"E-UNSET-LITERAL".to_string()), "{out:?}");
 }
 
 // A LEGITIMATE enum member literally named `unset` (in-domain) is a normal
@@ -960,10 +989,7 @@ fn sentinel_as_sole_cause_still_suppresses_arm_dead() {
          <choice id=\"c\" label=\"C\" when=\"run.flag && quest.foo.state == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
-    assert!(
-        out.contains(&"E-UNSET-LITERAL".to_string()),
-        "{out:?}"
-    );
+    assert!(out.contains(&"E-UNSET-LITERAL".to_string()), "{out:?}");
     assert!(
         !out.contains(&"E-ARM-DEAD".to_string()),
         "the sentinel comparison is the SOLE decidable cause (run.flag is an undecided read) — \
@@ -986,7 +1012,9 @@ fn two_sentinel_comparisons_both_flag_and_arm_dead_stays_suppressed() {
          </branch>\n",
     );
     assert_eq!(
-        out.iter().filter(|c| c.as_str() == "E-UNSET-LITERAL").count(),
+        out.iter()
+            .filter(|c| c.as_str() == "E-UNSET-LITERAL")
+            .count(),
         2,
         "two distinct sentinel comparisons must each flag their own E-UNSET-LITERAL: {out:?}"
     );
@@ -1035,7 +1063,10 @@ fn disjoint_number_intervals_contradict() {
         "<objective id=\"high\" done=\"run.n >= 99\"/>\n\
          <objective id=\"low\" done=\"run.n <= 0\"/>\n",
     );
-    assert!(cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{cs:?}");
+    assert!(
+        cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
+        "{cs:?}"
+    );
 }
 
 /// Reported ONCE per pair, anchored at the SECOND objective, naming both ids
@@ -1057,7 +1088,11 @@ fn contradiction_message_and_anchor() {
         .collect();
     assert_eq!(ds.len(), 1, "once per pair: {:?}", res.diagnostics);
     let d = ds[0];
-    assert!(d.message.contains("`high`") && d.message.contains("`low`"), "{}", d.message);
+    assert!(
+        d.message.contains("`high`") && d.message.contains("`low`"),
+        "{}",
+        d.message
+    );
     assert!(d.message.contains("run.n"), "{}", d.message);
     assert!(
         d.message.contains("being required, the quest"),
@@ -1065,12 +1100,16 @@ fn contradiction_message_and_anchor() {
         d.message
     );
     assert!(
-        res.diagnostics.iter().all(|x| x.code != "E-QUEST-UNREACHABLE"),
+        res.diagnostics
+            .iter()
+            .all(|x| x.code != "E-QUEST-UNREACHABLE"),
         "C4: the consequence rides as a note, never a second code: {:?}",
         res.diagnostics
     );
     assert!(
-        res.diagnostics.iter().all(|x| x.code != "E-OBJECTIVE-UNSATISFIABLE"),
+        res.diagnostics
+            .iter()
+            .all(|x| x.code != "E-OBJECTIVE-UNSATISFIABLE"),
         "neither objective is individually dead: {:?}",
         res.diagnostics
     );
@@ -1091,7 +1130,10 @@ fn open_intervals_over_reals_intersect() {
         "<objective id=\"gt\" done=\"run.n > 1\"/>\n\
          <objective id=\"lt\" done=\"run.n < 2\"/>\n",
     );
-    assert!(!cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{cs:?}");
+    assert!(
+        !cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
+        "{cs:?}"
+    );
 }
 
 /// Different paths never pair.
@@ -1101,7 +1143,10 @@ fn different_paths_never_pair() {
         "<objective id=\"a\" done=\"run.n >= 99\"/>\n\
          <objective id=\"b\" done=\"run.m <= 0\"/>\n",
     );
-    assert!(!cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{cs:?}");
+    assert!(
+        !cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
+        "{cs:?}"
+    );
 }
 
 /// An OPTIONAL objective never participates: the quest can still complete
@@ -1112,7 +1157,10 @@ fn optional_objectives_never_participate() {
         "<objective id=\"high\" done=\"run.n >= 99\"/>\n\
          <objective id=\"low\" done=\"run.n <= 0\" optional/>\n",
     );
-    assert!(!cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{cs:?}");
+    assert!(
+        !cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
+        "{cs:?}"
+    );
 }
 
 /// Out of domain: an `&&`, an `||`, a `!`, a fact query, a `@ref`, a second
@@ -1143,12 +1191,18 @@ fn enum_equality_pairs() {
         "<objective id=\"x\" done=\"run.pick == 'a'\"/>\n\
          <objective id=\"y\" done=\"run.pick == 'b'\"/>\n",
     );
-    assert!(bad.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{bad:?}");
+    assert!(
+        bad.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
+        "{bad:?}"
+    );
     let ok = quest_codes(
         "<objective id=\"x\" done=\"run.pick == 'a'\"/>\n\
          <objective id=\"y\" done=\"run.pick != 'b'\"/>\n",
     );
-    assert!(!ok.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{ok:?}");
+    assert!(
+        !ok.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
+        "{ok:?}"
+    );
 }
 
 /// `string` supports equality/inequality only; a relational operator on a
@@ -1160,12 +1214,18 @@ fn string_equality_pairs_only() {
         "<objective id=\"x\" done=\"run.note == 'p'\"/>\n\
          <objective id=\"y\" done=\"run.note == 'q'\"/>\n",
     );
-    assert!(bad.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{bad:?}");
+    assert!(
+        bad.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
+        "{bad:?}"
+    );
     let ok = quest_codes(
         "<objective id=\"x\" done=\"run.note != 'p'\"/>\n\
          <objective id=\"y\" done=\"run.note != 'q'\"/>\n",
     );
-    assert!(!ok.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{ok:?}");
+    assert!(
+        !ok.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
+        "{ok:?}"
+    );
 }
 
 /// The Anseo shape: at most one in-domain scalar `done=` per quest, so nothing
@@ -1176,5 +1236,8 @@ fn one_scalar_gate_per_quest_is_clean() {
         "<objective id=\"a\" done=\"run.n >= 1\"/>\n\
          <objective id=\"b\" done=\"run.pick == 'a'\"/>\n",
     );
-    assert!(!cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()), "{cs:?}");
+    assert!(
+        !cs.contains(&"E-OBJECTIVE-CONTRADICTION".to_string()),
+        "{cs:?}"
+    );
 }

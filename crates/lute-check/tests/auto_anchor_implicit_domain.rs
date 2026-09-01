@@ -63,7 +63,10 @@ fn error_codes(text: &str) -> Vec<String> {
 /// command.
 #[test]
 fn implicit_anchor_read_without_the_domain_is_an_error() {
-    let codes = error_codes(&scene(ACTION, "::auto{character=\"bianca\" action=\"show\"}"));
+    let codes = error_codes(&scene(
+        ACTION,
+        "::auto{character=\"bianca\" action=\"show\"}",
+    ));
     assert!(
         codes.contains(&"E-DOMAIN-UNKNOWN".to_string()),
         "expected E-DOMAIN-UNKNOWN for the implicit `anchor` read, got {codes:?}"

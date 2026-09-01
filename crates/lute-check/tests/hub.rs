@@ -74,7 +74,11 @@ fn hub_all_once_ok() {
          <choice id=\"b\" label=\"B\" once>\n@narrator: b.\n</choice>\n</hub>\n",
     );
     let res = run(&text);
-    assert!(res.ok, "an all-`once` hub must check clean; got {:?}", res.diagnostics);
+    assert!(
+        res.ok,
+        "an all-`once` hub must check clean; got {:?}",
+        res.diagnostics
+    );
 }
 
 // (d) The implicit recording decls are folded: a later `<match on="scene.choices.h">`
@@ -101,7 +105,10 @@ fn hub_records_choices_and_visited() {
         "scene.choices.<hub>/scene.visited.<hub>.<choice> must be folded as finite domains so \
          the matches are exhaustive; got {out:?}",
     );
-    assert!(res.ok, "the recording matches must check clean; got {out:?}");
+    assert!(
+        res.ok,
+        "the recording matches must check clean; got {out:?}"
+    );
 }
 
 // (e) Hub ids and branch ids share one per-episode uniqueness domain: a hub id
@@ -150,7 +157,10 @@ fn hub_passes_clean_check_end_to_end() {
         !out.contains(&"E-HUB-UNSUPPORTED".to_string()),
         "the transitional hub gate must be gone; got {out:?}",
     );
-    assert!(res.ok, "a valid hub document must check ok=true; got {out:?}");
+    assert!(
+        res.ok,
+        "a valid hub document must check ok=true; got {out:?}"
+    );
 }
 
 // Regression (Task-8 review fix): defassign still walks each hub choice's `when`

@@ -36,7 +36,9 @@ const W: &str = "W-CODE-AFTER-END";
 
 #[test]
 fn end_is_a_known_core_directive() {
-    let out = codes(&format!("{HDR}@narrator: bye\n::end{{reason=\"completed\"}}\n"));
+    let out = codes(&format!(
+        "{HDR}@narrator: bye\n::end{{reason=\"completed\"}}\n"
+    ));
     assert!(out.is_empty(), "a terminating shot must be clean: {out:?}");
 }
 
@@ -73,9 +75,15 @@ fn the_warning_is_a_warning_with_the_spec_message() {
         .find(|d| d.code == W)
         .unwrap_or_else(|| panic!("expected {W}: {:?}", result.diagnostics));
     assert_eq!(d.severity, lute_core_span::Severity::Warning);
-    assert_eq!(d.message, "unreachable content after `::end` (the walk terminates here)");
+    assert_eq!(
+        d.message,
+        "unreachable content after `::end` (the walk terminates here)"
+    );
     // Anchored at the FIRST unreachable node, not at the `::end`.
-    assert_eq!(&text[d.span.byte_start..d.span.byte_end], "@narrator: never");
+    assert_eq!(
+        &text[d.span.byte_start..d.span.byte_end],
+        "@narrator: never"
+    );
 }
 
 #[test]
@@ -170,9 +178,7 @@ fn a_shot_with_no_end_never_warns() {
 
 #[test]
 fn end_inside_a_track_clip_is_rejected() {
-    let text = format!(
-        "{HDR}<timeline>\n<track subject=\"cam\">\n::end\n</track>\n</timeline>\n"
-    );
+    let text = format!("{HDR}<timeline>\n<track subject=\"cam\">\n::end\n</track>\n</timeline>\n");
     let out = codes(&text);
     assert!(
         out.contains(&"E-TIMELINE-CONTENT".to_string()),

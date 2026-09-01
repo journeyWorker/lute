@@ -12,10 +12,10 @@
 //! Value-level membership validation — a `{domain: X}`-typed attr
 //! accepting/rejecting a value against the SAME merged view
 //! (`check_attr_value`'s `Type::Domain` arm) — is A4 (tests below).
+use lute_check::ctx::{Ctx, Env};
 use lute_check::directives::check_directive;
 use lute_check::resolve_imports;
 use lute_check::schema_import::merge_domains;
-use lute_check::ctx::{Ctx, Env};
 use lute_check::{check, CheckInput, Mode};
 use lute_core_span::Span;
 use lute_manifest::core::load_core_snapshot;
@@ -48,8 +48,12 @@ fn unique_dir() -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let dir =
-        std::env::temp_dir().join(format!("lute_domains_{}_{}_{}", std::process::id(), n, nanos));
+    let dir = std::env::temp_dir().join(format!(
+        "lute_domains_{}_{}_{}",
+        std::process::id(),
+        n,
+        nanos
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -87,10 +91,12 @@ fn project_enum_domain_is_visible_in_schema_imports() {
     write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let res = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
-    let action = res
-        .domains
-        .get("action")
-        .unwrap_or_else(|| panic!("action domain missing: {:?}", res.domains.keys().collect::<Vec<_>>()));
+    let action = res.domains.get("action").unwrap_or_else(|| {
+        panic!(
+            "action domain missing: {:?}",
+            res.domains.keys().collect::<Vec<_>>()
+        )
+    });
     assert_eq!(action.members, vec!["wave".to_string(), "bow".to_string()]);
     assert!(!action.open);
     // dsl 0.9.0 D-D: the long form's member semantics must survive the lift —
@@ -110,7 +116,10 @@ fn project_entities_closed_members_domain_is_visible() {
     );
     let res = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
-    let character = res.domains.get("character").expect("character domain missing");
+    let character = res
+        .domains
+        .get("character")
+        .expect("character domain missing");
     assert_eq!(
         character.members,
         vec!["shadowheart".to_string(), "halsin".to_string()]
@@ -124,7 +133,11 @@ fn project_entities_closed_members_domain_is_visible() {
 #[test]
 fn project_entities_open_engine_domain_is_open() {
     let dir = unique_dir();
-    write_lute(&dir, "schema.lute", "---\nentities:\n  npc: { open: engine }\n---\n");
+    write_lute(
+        &dir,
+        "schema.lute",
+        "---\nentities:\n  npc: { open: engine }\n---\n",
+    );
     let res = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
     let npc = res.domains.get("npc").expect("npc domain missing");
@@ -155,8 +168,16 @@ fn enum_declared_by_two_peers_is_e_uses_dup_relation() {
 #[test]
 fn entity_kind_declared_by_two_peers_is_e_kind_name_clash() {
     let dir = unique_dir();
-    write_lute(&dir, "x.lute", "---\nentities:\n  npc: { members: [ana] }\n---\n");
-    write_lute(&dir, "y.lute", "---\nentities:\n  npc: { members: [bo] }\n---\n");
+    write_lute(
+        &dir,
+        "x.lute",
+        "---\nentities:\n  npc: { members: [ana] }\n---\n",
+    );
+    write_lute(
+        &dir,
+        "y.lute",
+        "---\nentities:\n  npc: { members: [bo] }\n---\n",
+    );
     write_lute(&dir, "a.lute", "---\nuses: [x.lute, y.lute]\n---\n");
     let res = resolve_imports(&dir, &["a.lute".to_string()], &[], zero_span());
     let codes: Vec<&str> = res.diags.iter().map(|d| d.code.as_str()).collect();
@@ -208,7 +229,11 @@ fn merge_domains_unions_project_with_core() {
 #[test]
 fn merge_domains_flags_clash_with_snapshot_domain() {
     let dir = unique_dir();
-    write_lute(&dir, "schema.lute", "---\nenums:\n  emotion: [rogue]\n---\n");
+    write_lute(
+        &dir,
+        "schema.lute",
+        "---\nenums:\n  emotion: [rogue]\n---\n",
+    );
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     let snapshot = lute_test_vocab::vocab_snapshot();
     let snapshot_emotion_members = snapshot
@@ -238,7 +263,11 @@ fn scene_uses_enum_schema_checks_clean_and_domain_is_merged() {
     write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: schema.lute\n---\n## Shot 1.\n@x: hi\n";
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
-    assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
+    assert!(
+        imports.diags.is_empty(),
+        "unexpected import diags: {:?}",
+        imports.diags
+    );
     let snapshot = load_core_snapshot();
     let input = CheckInput {
         text: text.into(),
@@ -256,8 +285,7 @@ fn scene_uses_enum_schema_checks_clean_and_domain_is_merged() {
         "expected a clean check, got: {:?}",
         result.diagnostics
     );
-    let (merged, diags) =
-        merge_domains(&input.snapshot, &imports, no_inline(), zero_span());
+    let (merged, diags) = merge_domains(&input.snapshot, &imports, no_inline(), zero_span());
     assert!(diags.is_empty());
     assert_eq!(
         merged.get("action").map(|d| d.members.clone()),
@@ -368,7 +396,11 @@ fn project_declared_domain_validates() {
     let dir = unique_dir();
     write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
-    assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
+    assert!(
+        imports.diags.is_empty(),
+        "unexpected import diags: {:?}",
+        imports.diags
+    );
     let snapshot = load_core_snapshot();
     // Core ships no "action" domain: it can ONLY resolve via the project fold.
     assert!(!snapshot.domains.contains_key("action"));
@@ -393,9 +425,17 @@ fn project_declared_domain_validates() {
 #[test]
 fn open_domain_accepts_any_string() {
     let dir = unique_dir();
-    write_lute(&dir, "schema.lute", "---\nentities:\n  npc: { open: engine }\n---\n");
+    write_lute(
+        &dir,
+        "schema.lute",
+        "---\nentities:\n  npc: { open: engine }\n---\n",
+    );
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
-    assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
+    assert!(
+        imports.diags.is_empty(),
+        "unexpected import diags: {:?}",
+        imports.diags
+    );
     let snapshot = load_core_snapshot();
     let (merged, diags) = merge_domains(&snapshot, &imports, no_inline(), zero_span());
     assert!(diags.is_empty());
@@ -406,7 +446,10 @@ fn open_domain_accepts_any_string() {
         &snapshot,
         &merged,
     );
-    assert!(codes.is_empty(), "open domain must always-accept, got {codes:?}");
+    assert!(
+        codes.is_empty(),
+        "open domain must always-accept, got {codes:?}"
+    );
 }
 
 /// Regression (foundation A4 order): a CLOSED domain whose name ALSO matches
@@ -434,7 +477,11 @@ fn closed_domain_membership_wins_over_same_named_provider() {
     let dir = unique_dir();
     write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
-    assert!(imports.diags.is_empty(), "unexpected import diags: {:?}", imports.diags);
+    assert!(
+        imports.diags.is_empty(),
+        "unexpected import diags: {:?}",
+        imports.diags
+    );
     let mut snapshot = load_core_snapshot();
     // Core ships no "action" domain or provider: both are exclusively this
     // test's synthetic setup, so nothing outside this test can collide.
@@ -450,14 +497,16 @@ fn closed_domain_membership_wins_over_same_named_provider() {
     );
     let (merged, diags) = merge_domains(&snapshot, &imports, no_inline(), zero_span());
     assert!(diags.is_empty(), "unexpected merge diags: {diags:?}");
-    assert_eq!(merged["action"].members, vec!["wave".to_string(), "bow".to_string()]);
+    assert_eq!(
+        merged["action"].members,
+        vec!["wave".to_string(), "bow".to_string()]
+    );
     assert!(!merged["action"].open, "`enums:` lifts as a CLOSED domain");
 
     // A declared `action` MEMBER validates clean. Pre-fix (provider-first)
     // this ALSO fails: the provider path (empty `ProviderSet`) resolves
     // every id, including a real member, to `E-UNKNOWN-ID`.
-    let ok_codes =
-        codes_with_domain_attr_against("{ domain: action }", "wave", &snapshot, &merged);
+    let ok_codes = codes_with_domain_attr_against("{ domain: action }", "wave", &snapshot, &merged);
     assert!(
         !ok_codes
             .iter()
@@ -468,8 +517,7 @@ fn closed_domain_membership_wins_over_same_named_provider() {
     // The discriminating case: a NON-member value. Provider-first order
     // (pre-fix) resolves it to `E-UNKNOWN-ID`, never `E-BAD-ENUM` --
     // this assertion FAILS under the current (A4) provider-first order.
-    let bad_codes =
-        codes_with_domain_attr_against("{ domain: action }", "zzz", &snapshot, &merged);
+    let bad_codes = codes_with_domain_attr_against("{ domain: action }", "zzz", &snapshot, &merged);
     assert!(
         bad_codes.contains(&"E-BAD-ENUM".to_string()),
         "closed-domain membership must win over the same-named provider; got {bad_codes:?}"
@@ -685,8 +733,11 @@ fn scene_codes(dir: &Path, text: &str, snapshot: CapabilitySnapshot) -> Vec<Stri
         components: Default::default(),
         defaults: Default::default(),
     };
-    let mut codes: Vec<String> =
-        check(&input).diagnostics.iter().map(|d| d.code.clone()).collect();
+    let mut codes: Vec<String> = check(&input)
+        .diagnostics
+        .iter()
+        .map(|d| d.code.clone())
+        .collect();
     codes.sort();
     codes.dedup();
     codes
@@ -708,8 +759,8 @@ const INLINE_FIXTURE: &str = "---\nkind: scene\ncharacter: demo\nseason: 1\nepis
      @bianca{emotion=\"gleeful\"}: declared INLINE in this very document.\n";
 
 /// 1. An inline `enums:` declaration satisfies a content line in the SAME
-/// document. This is the whole defect: it parsed, it was dropped, and the
-/// diagnostic pointed the author at the declaration they had already written.
+///    document. This is the whole defect: it parsed, it was dropped, and the
+///    diagnostic pointed the author at the declaration they had already written.
 #[test]
 fn inline_enum_declaration_satisfies_a_content_line() {
     let dir = unique_dir();
@@ -721,12 +772,12 @@ fn inline_enum_declaration_satisfies_a_content_line() {
 }
 
 /// 2. The dsl 0.9.0 D-D long form works inline too: `action`'s `exits:` and
-/// `anchor`'s `default:` carry the same member semantics an IMPORTED
-/// declaration does. Reaching the D-D validator at all is what proves the
-/// semantics survived the lift — a projection down to a bare member list
-/// would silently discard them and the bare-list cases below would pass.
-/// Mirrors `enum_declared_slot_validation_is_unchanged`, which pins exactly
-/// this for the imported route.
+///    `anchor`'s `default:` carry the same member semantics an IMPORTED
+///    declaration does. Reaching the D-D validator at all is what proves the
+///    semantics survived the lift — a projection down to a bare member list
+///    would silently discard them and the bare-list cases below would pass.
+///    Mirrors `enum_declared_slot_validation_is_unchanged`, which pins exactly
+///    this for the imported route.
 #[test]
 fn inline_long_form_enum_carries_the_slot_member_semantics() {
     let dir = unique_dir();
@@ -745,7 +796,10 @@ fn inline_long_form_enum_carries_the_slot_member_semantics() {
     // imported route reports — never silence.
     let bare = scene_codes(
         &dir,
-        &scene("enums:\n  action: [wave, bow]\n", "@bianca{action=\"wave\"}: line."),
+        &scene(
+            "enums:\n  action: [wave, bow]\n",
+            "@bianca{action=\"wave\"}: line.",
+        ),
         load_core_snapshot(),
     );
     assert!(
@@ -757,13 +811,20 @@ fn inline_long_form_enum_carries_the_slot_member_semantics() {
     // `SLOT_REQUIRES_EXITS` from `SLOT_REQUIRES_DEFAULT`), so pin it on the
     // slot that actually accepts it.
     let long_anchor = "enums:\n  anchor:\n    members: [left, center]\n    default: center\n";
-    let anchor_ok = scene_codes(&dir, &scene(long_anchor, "@bianca: line."), load_core_snapshot());
+    let anchor_ok = scene_codes(
+        &dir,
+        &scene(long_anchor, "@bianca: line."),
+        load_core_snapshot(),
+    );
     assert!(
         !anchor_ok.contains(&"E-ENUM-MISSING-SEMANTICS".to_string()),
         "an inline long-form `anchor` declaring `default:` must satisfy the slot: {anchor_ok:?}"
     );
-    let anchor_bare =
-        scene_codes(&dir, &scene("enums:\n  anchor: [left, center]\n", "@bianca: line."), load_core_snapshot());
+    let anchor_bare = scene_codes(
+        &dir,
+        &scene("enums:\n  anchor: [left, center]\n", "@bianca: line."),
+        load_core_snapshot(),
+    );
     assert!(
         anchor_bare.contains(&"E-ENUM-MISSING-SEMANTICS".to_string()),
         "a bare inline `anchor:` list must still be flagged: {anchor_bare:?}"
@@ -771,19 +832,23 @@ fn inline_long_form_enum_carries_the_slot_member_semantics() {
 }
 
 /// 3. Inline-vs-IMPORTED is a decision-D5 refinement, NOT `E-DOMAIN-DUP`.
-/// Both sides are the PROJECT, and D2 reserves `E-DOMAIN-DUP` for a clash that
-/// involves a plugin (a project-project collision is `E-USES-DUP-RELATION` /
-/// `E-KIND-NAME-CLASH`, raised where the collision is seen — see this file's
-/// header and `rel_compose.rs`). The document is depth 0 to any import's depth
+///    Both sides are the PROJECT, and D2 reserves `E-DOMAIN-DUP` for a clash that
+///    involves a plugin (a project-project collision is `E-USES-DUP-RELATION` /
+///    `E-KIND-NAME-CLASH`, raised where the collision is seen — see this file's
+///    header and `rel_compose.rs`). The document is depth 0 to any import's depth
 /// >= 1, so `resolve_imports`'s own shallowest-wins rule makes the INLINE list
-/// live — which is also what `build_rel_vocab` already does for the same names
-/// in `RelVocab.enums`. The two maps must never disagree about which member
-/// list is in force, so the non-superset diagnostic stays `build_rel_vocab`'s
-/// alone: one owner, one diagnostic.
+/// > live — which is also what `build_rel_vocab` already does for the same names
+/// > in `RelVocab.enums`. The two maps must never disagree about which member
+/// > list is in force, so the non-superset diagnostic stays `build_rel_vocab`'s
+/// > alone: one owner, one diagnostic.
 #[test]
 fn inline_and_imported_enum_is_a_d5_refinement_never_domain_dup() {
     let dir = unique_dir();
-    write_lute(&dir, "vocab.lute", "---\nenums:\n  emotion: [neutral, gleeful]\n---\n");
+    write_lute(
+        &dir,
+        "vocab.lute",
+        "---\nenums:\n  emotion: [neutral, gleeful]\n---\n",
+    );
 
     // Superset re-declaration: legal, and the inline list is the live one — a
     // member only the inline decl adds must be ACCEPTED.
@@ -818,22 +883,27 @@ fn inline_and_imported_enum_is_a_d5_refinement_never_domain_dup() {
         "D2 reserves E-DOMAIN-DUP for plugin-involving clashes: {shrink:?}"
     );
     assert_eq!(
-        shrink.iter().filter(|c| *c == "E-EXTENDS-RELATION-SIG").count(),
+        shrink
+            .iter()
+            .filter(|c| *c == "E-EXTENDS-RELATION-SIG")
+            .count(),
         1,
         "the D5 diagnostic has exactly one owner (`build_rel_vocab`): {shrink:?}"
     );
 }
 
 /// 4. Inline-vs-PLUGIN is `E-DOMAIN-DUP`, exactly as project-vs-plugin already
-/// is (`merge_domains_flags_clash_with_snapshot_domain`, above): a domain name
-/// must be declared by exactly one source, and the plugin/core entry wins by
-/// the same drop-and-report semantics — never a silent shadow.
+///    is (`merge_domains_flags_clash_with_snapshot_domain`, above): a domain name
+///    must be declared by exactly one source, and the plugin/core entry wins by
+///    the same drop-and-report semantics — never a silent shadow.
 #[test]
 fn inline_enum_clashing_with_a_plugin_domain_is_domain_dup() {
     let dir = unique_dir();
     let snapshot = lute_test_vocab::vocab_snapshot();
     assert!(
-        !snapshot.domains["emotion"].members.contains(&"gleeful".to_string()),
+        !snapshot.domains["emotion"]
+            .members
+            .contains(&"gleeful".to_string()),
         "the baseline must NOT already provide `gleeful`, or the clash is unobservable"
     );
     let codes = scene_codes(
@@ -857,10 +927,10 @@ fn inline_enum_clashing_with_a_plugin_domain_is_domain_dup() {
 }
 
 /// 5. PARITY — the assertion that keeps the two routes from drifting: the same
-/// declaration expressed INLINE and in an imported schema yields the same
-/// checking outcome for the same content. Runs both `enums:` and `entities:`,
-/// against an accepted and a rejected value, so a divergence in either the
-/// declaration shape or the membership decision fails here.
+///    declaration expressed INLINE and in an imported schema yields the same
+///    checking outcome for the same content. Runs both `enums:` and `entities:`,
+///    against an accepted and a rejected value, so a divergence in either the
+///    declaration shape or the membership decision fails here.
 #[test]
 fn inline_and_imported_declarations_check_identically() {
     // (label, inline frontmatter block, the schema body declaring the same thing)
@@ -885,15 +955,22 @@ fn inline_and_imported_declarations_check_identically() {
         // `action` is the slot the third route declares; the others declare
         // `emotion`. Use whichever the block names so the content line is
         // actually resolved against it.
-        let slot = if inline_front.contains("action") { "action" } else { "emotion" };
+        let slot = if inline_front.contains("action") {
+            "action"
+        } else {
+            "emotion"
+        };
         for value in ["gleeful", "zzz"] {
             let body = format!("@bianca{{{slot}=\"{value}\"}}: line.");
             let dir = unique_dir();
             let inline = scene_codes(&dir, &scene(inline_front, &body), load_core_snapshot());
             let dir2 = unique_dir();
             write_lute(&dir2, "vocab.lute", schema);
-            let imported =
-                scene_codes(&dir2, &scene("uses: vocab.lute\n", &body), load_core_snapshot());
+            let imported = scene_codes(
+                &dir2,
+                &scene("uses: vocab.lute\n", &body),
+                load_core_snapshot(),
+            );
             assert_eq!(
                 inline, imported,
                 "{label} with {slot}={value:?}: inline and imported must agree"

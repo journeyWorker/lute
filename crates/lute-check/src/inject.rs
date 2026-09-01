@@ -423,7 +423,9 @@ fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<In
             provenance: Provenance {
                 injected: true,
                 by: "stage-bookkeeping".to_string(),
-                explanation: format!("auto-hiding `{character}` left on stage across a scene change"),
+                explanation: format!(
+                    "auto-hiding `{character}` left on stage across a scene change"
+                ),
             },
         });
     }
@@ -1220,10 +1222,7 @@ mod tests {
         let doms = action_domain_with_exits(&["go-under"]);
         let look = [
             line("vesna", vec![]),
-            auto(vec![
-                attr("character", "vesna"),
-                attr("action", "go-under"),
-            ]),
+            auto(vec![attr("character", "vesna"), attr("action", "go-under")]),
         ];
         let (st2, _emit) = lower_node(
             staged("vesna"),

@@ -50,7 +50,10 @@ fn interp_maybe_unset_path() {
     );
     let c = codes(&t);
     assert!(c.contains(&"E-MAYBE-UNSET".to_string()), "got {c:?}");
-    assert!(!c.contains(&"E-UNDECLARED".to_string()), "declared ⇒ no E-UNDECLARED; got {c:?}");
+    assert!(
+        !c.contains(&"E-UNDECLARED".to_string()),
+        "declared ⇒ no E-UNDECLARED; got {c:?}"
+    );
 }
 
 // `{{@nope}}` — `@nope` is not a declared `defs:` entry ⇒ E-UNDECLARED-REF.
@@ -69,8 +72,16 @@ fn interp_undeclared_ref() {
 fn interp_username_ok() {
     let t = format!("{HDR}---\n## Shot 1.\n@bianca: hello {{{{userName}}}}\n");
     let c = codes(&t);
-    for code in ["E-UNDECLARED", "E-MAYBE-UNSET", "E-UNDECLARED-REF", "E-REF-TYPE"] {
-        assert!(!c.contains(&code.to_string()), "{code} unexpected; got {c:?}");
+    for code in [
+        "E-UNDECLARED",
+        "E-MAYBE-UNSET",
+        "E-UNDECLARED-REF",
+        "E-REF-TYPE",
+    ] {
+        assert!(
+            !c.contains(&code.to_string()),
+            "{code} unexpected; got {c:?}"
+        );
     }
 }
 
@@ -82,8 +93,16 @@ fn interp_declared_path_ok() {
          @bianca: language is {{{{app.lang}}}}\n"
     );
     let c = codes(&t);
-    for code in ["E-UNDECLARED", "E-MAYBE-UNSET", "E-UNDECLARED-REF", "E-REF-TYPE"] {
-        assert!(!c.contains(&code.to_string()), "{code} unexpected; got {c:?}");
+    for code in [
+        "E-UNDECLARED",
+        "E-MAYBE-UNSET",
+        "E-UNDECLARED-REF",
+        "E-REF-TYPE",
+    ] {
+        assert!(
+            !c.contains(&code.to_string()),
+            "{code} unexpected; got {c:?}"
+        );
     }
 }
 
@@ -96,7 +115,10 @@ fn interp_ref_nonrenderable_type() {
          @bianca: {{{{@greeting}}}}\n"
     );
     let c = codes(&t);
-    assert!(c.contains(&"E-REF-TYPE".to_string()), "str def in interp must flag E-REF-TYPE; got {c:?}");
+    assert!(
+        c.contains(&"E-REF-TYPE".to_string()),
+        "str def in interp must flag E-REF-TYPE; got {c:?}"
+    );
 }
 
 // A renderable `@ref` (number) interpolates cleanly ⇒ no ref diagnostic.
@@ -107,8 +129,16 @@ fn interp_ref_renderable_ok() {
          @bianca: you have {{{{@coins}}}} coins\n"
     );
     let c = codes(&t);
-    for code in ["E-UNDECLARED-REF", "E-REF-TYPE", "E-MAYBE-UNSET", "E-UNDECLARED"] {
-        assert!(!c.contains(&code.to_string()), "{code} unexpected; got {c:?}");
+    for code in [
+        "E-UNDECLARED-REF",
+        "E-REF-TYPE",
+        "E-MAYBE-UNSET",
+        "E-UNDECLARED",
+    ] {
+        assert!(
+            !c.contains(&code.to_string()),
+            "{code} unexpected; got {c:?}"
+        );
     }
 }
 
@@ -144,7 +174,10 @@ fn interp_arbitrary_cel_rejected() {
          @bianca: you have {{{{run.coins + 1}}}} coins\n"
     );
     let c = codes(&t);
-    assert!(c.contains(&"E-CEL-PROFILE".to_string()), "arbitrary CEL in interp must flag E-CEL-PROFILE; got {c:?}");
+    assert!(
+        c.contains(&"E-CEL-PROFILE".to_string()),
+        "arbitrary CEL in interp must flag E-CEL-PROFILE; got {c:?}"
+    );
 }
 
 // The three legal interp forms — bare path, bare `@ref`, `@fn(args)` ref, and
@@ -159,7 +192,10 @@ fn interp_legal_forms_no_grammar_error() {
          @bianca: {{{{run.coins}}}} {{{{@fond}}}} {{{{@atLeast(1)}}}} {{{{userName}}}}\n"
     );
     let c = codes(&t);
-    assert!(!c.contains(&"E-CEL-PROFILE".to_string()), "legal interp forms must not flag E-CEL-PROFILE; got {c:?}");
+    assert!(
+        !c.contains(&"E-CEL-PROFILE".to_string()),
+        "legal interp forms must not flag E-CEL-PROFILE; got {c:?}"
+    );
 }
 
 // --- Fix 3: §7.6 choice-label interpolations are validated (branch AND hub) ---
@@ -175,7 +211,10 @@ fn choice_label_interp_branch_undeclared_path() {
          </branch>\n"
     );
     let c = codes(&t);
-    assert!(c.contains(&"E-UNDECLARED".to_string()), "branch label undeclared path must flag E-UNDECLARED; got {c:?}");
+    assert!(
+        c.contains(&"E-UNDECLARED".to_string()),
+        "branch label undeclared path must flag E-UNDECLARED; got {c:?}"
+    );
 }
 
 // A hub `<choice label="{{@nope}}">` — `@nope` is not a declared def ⇒
@@ -189,7 +228,10 @@ fn choice_label_interp_hub_undeclared_ref() {
          </hub>\n"
     );
     let c = codes(&t);
-    assert!(c.contains(&"E-UNDECLARED-REF".to_string()), "hub label undeclared ref must flag E-UNDECLARED-REF; got {c:?}");
+    assert!(
+        c.contains(&"E-UNDECLARED-REF".to_string()),
+        "hub label undeclared ref must flag E-UNDECLARED-REF; got {c:?}"
+    );
 }
 
 // A branch label reading a declared-but-maybe-unset path (`run.x`, no default, no
@@ -203,7 +245,10 @@ fn choice_label_interp_branch_maybe_unset() {
          </branch>\n"
     );
     let c = codes(&t);
-    assert!(c.contains(&"E-MAYBE-UNSET".to_string()), "branch label maybe-unset path must flag E-MAYBE-UNSET; got {c:?}");
+    assert!(
+        c.contains(&"E-MAYBE-UNSET".to_string()),
+        "branch label maybe-unset path must flag E-MAYBE-UNSET; got {c:?}"
+    );
 }
 
 // `label="{{userName}}"` — the reserved token always renders ⇒ no interp
@@ -217,7 +262,15 @@ fn choice_label_interp_username_clean() {
          </branch>\n"
     );
     let c = codes(&t);
-    for code in ["E-UNDECLARED", "E-UNDECLARED-REF", "E-CEL-PROFILE", "E-MAYBE-UNSET"] {
-        assert!(!c.contains(&code.to_string()), "{code} unexpected on userName label; got {c:?}");
+    for code in [
+        "E-UNDECLARED",
+        "E-UNDECLARED-REF",
+        "E-CEL-PROFILE",
+        "E-MAYBE-UNSET",
+    ] {
+        assert!(
+            !c.contains(&code.to_string()),
+            "{code} unexpected on userName label; got {c:?}"
+        );
     }
 }

@@ -147,7 +147,9 @@ mod tests {
         let end = snap.directive(END_DIRECTIVE).expect("missing ::end");
         assert_eq!(end.semantics, ["terminatesWalk"]);
         assert!(crate::validate::validate_directive(end).is_empty());
-        let [reason] = &end.attrs[..] else { panic!("::end declares exactly one attr") };
+        let [reason] = &end.attrs[..] else {
+            panic!("::end declares exactly one attr")
+        };
         assert_eq!(reason.name, "reason");
         assert!(!reason.required);
         assert_eq!(reason.ty, crate::types::Type::Str);
@@ -177,7 +179,7 @@ mod tests {
             .expect("missing music.action");
         assert_eq!(action.ty, Type::Domain("musicAction".into()));
         assert_eq!(snap.enums.get("musicAction"), None);
-        assert!(snap.domains.get("musicAction").is_none());
+        assert!(!snap.domains.contains_key("musicAction"));
     }
 
     /// dsl 0.9.0 D-A: the core's vocabulary surface is exactly this set of
@@ -201,7 +203,17 @@ mod tests {
             .collect();
         slots.sort_unstable();
         slots.dedup();
-        assert_eq!(slots, ["action", "anchor", "mood", "musicAction", "vfxType", "volume"]);
+        assert_eq!(
+            slots,
+            [
+                "action",
+                "anchor",
+                "mood",
+                "musicAction",
+                "vfxType",
+                "volume"
+            ]
+        );
         for slot in slots {
             assert!(
                 !snap.domains.contains_key(slot),
@@ -217,7 +229,11 @@ mod tests {
     fn core_ships_no_vocabulary_members() {
         let snap = load_core_snapshot();
         assert!(snap.enums.is_empty(), "core enums: {:?}", snap.enums);
-        assert!(snap.domains.is_empty(), "core domains: {:?}", snap.domains.keys());
+        assert!(
+            snap.domains.is_empty(),
+            "core domains: {:?}",
+            snap.domains.keys()
+        );
     }
 
     /// dsl 0.9.0 D-A: the two attrs that were free strings become checkable.

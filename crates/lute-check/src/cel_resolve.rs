@@ -930,7 +930,10 @@ mod tests {
                 namespace: crate::meta::Namespace::Scene,
             },
         );
-        Env { state: schema, ..Env::default() }
+        Env {
+            state: schema,
+            ..Env::default()
+        }
     }
 
     fn mk_ctx(env: &Env) -> Ctx<'_> {
@@ -1084,7 +1087,11 @@ mod tests {
         // or comprehension macro is `E-CEL-PROFILE`.
         let env = Env::default();
         let ctx = mk_ctx_in_match(&env);
-        for raw in ["size(scene.x) > 0", "[1, 2].exists(x, x > 0)", "matches(a, b)"] {
+        for raw in [
+            "size(scene.x) > 0",
+            "[1, 2].exists(x, x > 0)",
+            "matches(a, b)",
+        ] {
             let slot = cel_slot_condition(raw);
             let d = check_cel_slot(&slot, &arena_for(&slot), &ctx, None);
             assert!(

@@ -21,12 +21,8 @@ fn unique_dir() -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_match_{}_{}_{}",
-        std::process::id(),
-        n,
-        nanos
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("lute_match_{}_{}_{}", std::process::id(), n, nanos));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -101,7 +97,10 @@ const REACTION: &str = "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold
 fn param_match_is_admitted() {
     let dir = unique_dir();
     write_lute(&dir, "reaction.lute", REACTION);
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = codes(&dir, &s);
     assert!(
         !cs.contains(&"E-COMPONENT-BODY".to_string()),
@@ -126,7 +125,10 @@ fn ambient_test_is_component_state() {
 <otherwise>\n@bianca: bye\n</otherwise>\n\
 </match>\n",
     );
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-COMPONENT-STATE".to_string()),
@@ -196,7 +198,10 @@ fn fact_query_and_now_flag() {
 <otherwise>\n@bianca: bye\n</otherwise>\n\
 </match>\n",
     );
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-COMPONENT-STATE".to_string()),
@@ -217,7 +222,10 @@ fn ambient_interp_is_component_state() {
 <otherwise>\n@bianca: bye\n</otherwise>\n\
 </match>\n",
     );
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-COMPONENT-STATE".to_string()),
@@ -301,7 +309,10 @@ fn set_branch_hub_stay_component_body() {
     );
     let s = scene("c.lute", "::use{component=\"c\"}");
     let cs = codes(&dir, &s);
-    let body_count = cs.iter().filter(|c| c.as_str() == "E-COMPONENT-BODY").count();
+    let body_count = cs
+        .iter()
+        .filter(|c| c.as_str() == "E-COMPONENT-BODY")
+        .count();
     assert!(
         body_count >= 3,
         "`::set`/`<branch>`/`<hub>` in a component body must ALL still flag E-COMPONENT-BODY (unadmitted constructs, dsl §6.2); got {cs:?}"
@@ -400,7 +411,10 @@ fn enum_param_covered_is_clean() {
     // the assertion of that invariant).
     let dir = unique_dir();
     write_lute(&dir, "reaction.lute", REACTION);
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = codes(&dir, &s);
     assert!(
         !cs.iter().any(|c| c.starts_with("E-")),
@@ -423,7 +437,10 @@ fn missing_member_is_nonexhaustive() {
 <when is=\"warm\">\n@bianca: hey\n</when>\n\
 </match>\n",
     );
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-NONEXHAUSTIVE".to_string()),
@@ -471,7 +488,10 @@ fn unset_on_param_is_literal_domain() {
 <otherwise>\n@narrator: y\n</otherwise>\n\
 </match>\n",
     );
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
@@ -495,7 +515,10 @@ fn foreign_member_on_param_flags() {
 <otherwise>\n@narrator: y\n</otherwise>\n\
 </match>\n",
     );
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()),
@@ -520,7 +543,10 @@ fn subsumed_param_arm_is_dead() {
 <when is=\"cold\">\n@narrator: z\n</when>\n\
 </match>\n",
     );
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-ARM-DEAD".to_string()),
@@ -549,7 +575,10 @@ fn dup_otherwise_and_overlap_apply() {
 <otherwise>\n@narrator: d\n</otherwise>\n\
 </match>\n",
     );
-    let s = scene("reaction.lute", "::use{component=\"reaction\" tier=\"fond\"}");
+    let s = scene(
+        "reaction.lute",
+        "::use{component=\"reaction\" tier=\"fond\"}",
+    );
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-MATCH-DUP-OTHERWISE".to_string()),

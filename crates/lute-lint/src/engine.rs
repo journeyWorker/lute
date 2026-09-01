@@ -116,8 +116,11 @@ pub fn lint(
     let group_bys = active_group_bys(&rules);
 
     // Compute per-doc tables and directive rows.
-    let mut per_doc: Vec<(PathBuf, crate::metrics::DocTables, Vec<crate::metrics::DirectiveRow>)> =
-        Vec::with_capacity(active.len());
+    let mut per_doc: Vec<(
+        PathBuf,
+        crate::metrics::DocTables,
+        Vec<crate::metrics::DirectiveRow>,
+    )> = Vec::with_capacity(active.len());
     for input in &active {
         let (tables, dirs) = compute_doc_tables(&input.doc, &group_bys);
         per_doc.push((input.path.clone(), tables, dirs));
@@ -170,10 +173,7 @@ pub fn lint(
                             diagnostic: Diagnostic {
                                 code: f.code.clone(),
                                 severity: f.severity,
-                                message: format!(
-                                    "contributes to project rule `{}`",
-                                    rule.id
-                                ),
+                                message: format!("contributes to project rule `{}`", rule.id),
                                 span: scene.span,
                                 layer: f.layer.unwrap_or(Layer::Content),
                                 fixits: Vec::new(),
@@ -195,8 +195,7 @@ pub fn lint(
                     directives,
                     providers,
                 };
-                let decl_span =
-                    decl_span(rule, config_path.unwrap_or(&cfg_anchor), config_span);
+                let decl_span = decl_span(rule, config_path.unwrap_or(&cfg_anchor), config_span);
                 let findings = evaluate_rule(rule, &ctx, &project, decl_span);
                 for f in findings {
                     outcome
@@ -255,10 +254,7 @@ fn decl_span(_rule: &crate::rules::ResolvedRule, _config_path: &Path, config_spa
     config_span
 }
 
-fn diag_order(
-    a: &(PathBuf, Diagnostic),
-    b: &(PathBuf, Diagnostic),
-) -> std::cmp::Ordering {
+fn diag_order(a: &(PathBuf, Diagnostic), b: &(PathBuf, Diagnostic)) -> std::cmp::Ordering {
     a.0.cmp(&b.0)
         .then(a.1.span.byte_start.cmp(&b.1.span.byte_start))
         .then(a.1.code.cmp(&b.1.code))
@@ -273,8 +269,6 @@ fn ignored(path: &Path, patterns: &[String]) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     crate::glob::matches_any(patterns, &s)
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -310,7 +304,15 @@ mod tests {
             ignore: vec!["drafts/**".into()],
             ..Default::default()
         };
-        let out = lint(&[doc], &cfg, &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+        let out = lint(
+            &[doc],
+            &cfg,
+            &[],
+            &ProviderSet::default(),
+            None,
+            empty_span(),
+            LintScope::Full,
+        );
         assert!(out.diagnostics.is_empty());
     }
 }

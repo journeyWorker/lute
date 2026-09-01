@@ -17,8 +17,11 @@ fn no_quarantined_crate_depends_on_lute_trace() {
         "lute-compile",
         "lute-lsp",
     ] {
-        let manifest =
-            std::fs::read_to_string(format!("{}/../{krate}/Cargo.toml", env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let manifest = std::fs::read_to_string(format!(
+            "{}/../{krate}/Cargo.toml",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
         assert!(
             !manifest.contains("lute-trace"),
             "D1 QUARANTINE VIOLATION: {krate} must not reach lute-trace (dsl 0.4 \u{00a7}4.2)"

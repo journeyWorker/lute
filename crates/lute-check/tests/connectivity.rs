@@ -385,10 +385,26 @@ fn independent_chain_survives_cycle() {
     let b = NodeId::Scene("b.s01ep01".to_string());
     let p = NodeId::Scene("p.s01ep01".to_string());
     let q = NodeId::Scene("q.s01ep01".to_string());
-    assert!(g.topo_order.contains(&a), "independent entry A must survive the cycle: {:?}", g.topo_order);
-    assert!(g.topo_order.contains(&b), "independent dependent B must survive the cycle: {:?}", g.topo_order);
-    assert!(!g.topo_order.contains(&p), "cycle member p must be excluded: {:?}", g.topo_order);
-    assert!(!g.topo_order.contains(&q), "cycle member q must be excluded: {:?}", g.topo_order);
+    assert!(
+        g.topo_order.contains(&a),
+        "independent entry A must survive the cycle: {:?}",
+        g.topo_order
+    );
+    assert!(
+        g.topo_order.contains(&b),
+        "independent dependent B must survive the cycle: {:?}",
+        g.topo_order
+    );
+    assert!(
+        !g.topo_order.contains(&p),
+        "cycle member p must be excluded: {:?}",
+        g.topo_order
+    );
+    assert!(
+        !g.topo_order.contains(&q),
+        "cycle member q must be excluded: {:?}",
+        g.topo_order
+    );
 }
 
 #[test]
@@ -418,9 +434,21 @@ fn downstream_of_cycle_excluded() {
     let e = NodeId::Scene("e.s01ep01".to_string());
     let d = NodeId::Scene("d.s01ep01".to_string());
     let p = NodeId::Scene("p.s01ep01".to_string());
-    assert!(g.topo_order.contains(&e), "independent entry E must survive the cycle: {:?}", g.topo_order);
-    assert!(!g.topo_order.contains(&p), "cycle member p must be excluded: {:?}", g.topo_order);
-    assert!(!g.topo_order.contains(&d), "downstream-of-cycle D must be excluded: {:?}", g.topo_order);
+    assert!(
+        g.topo_order.contains(&e),
+        "independent entry E must survive the cycle: {:?}",
+        g.topo_order
+    );
+    assert!(
+        !g.topo_order.contains(&p),
+        "cycle member p must be excluded: {:?}",
+        g.topo_order
+    );
+    assert!(
+        !g.topo_order.contains(&d),
+        "downstream-of-cycle D must be excluded: {:?}",
+        g.topo_order
+    );
 }
 
 #[test]
@@ -444,8 +472,16 @@ fn scene_and_quest_sharing_a_string_are_distinct_nodes() {
 
     let scene_node = NodeId::Scene("shared.key".to_string());
     let quest_node = NodeId::Quest("shared.key".to_string());
-    assert!(g.nodes.contains_key(&scene_node), "scene node missing: {:?}", g.nodes.keys().collect::<Vec<_>>());
-    assert!(g.nodes.contains_key(&quest_node), "quest node missing: {:?}", g.nodes.keys().collect::<Vec<_>>());
+    assert!(
+        g.nodes.contains_key(&scene_node),
+        "scene node missing: {:?}",
+        g.nodes.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        g.nodes.contains_key(&quest_node),
+        "quest node missing: {:?}",
+        g.nodes.keys().collect::<Vec<_>>()
+    );
 
     let referencer_node = NodeId::Scene("referencer.s01ep01".to_string());
     let consumer_node = NodeId::Quest("consumer".to_string());
@@ -490,17 +526,26 @@ fn completed_on_a_plain_after_less_quest_is_a_leaf_not_an_edge() {
         "a no-`after` quest must never be a graph node: {:?}",
         g.nodes.keys().collect::<Vec<_>>()
     );
-    assert!(g.nodes.contains_key(&dependent_node), "the after-declaring quest must be a node");
+    assert!(
+        g.nodes.contains_key(&dependent_node),
+        "the after-declaring quest must be a node"
+    );
     assert!(
         !g.edges.contains_key(&plain_node),
         "no edge may originate from a non-node target: {:?}",
         g.edges
     );
     assert!(
-        g.edges.values().all(|targets| !targets.contains(&dependent_node)),
+        g.edges
+            .values()
+            .all(|targets| !targets.contains(&dependent_node)),
         "dependent must have no incoming edge -- its only atom target isn't a graph node"
     );
-    assert_eq!(g.topo_order, vec![dependent_node], "only the node-worthy quest appears in topo_order");
+    assert_eq!(
+        g.topo_order,
+        vec![dependent_node],
+        "only the node-worthy quest appears in topo_order"
+    );
 }
 
 #[test]
@@ -537,7 +582,10 @@ fn malformed_after_scene_prereq_is_invalid_not_absent() {
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let node = NodeId::Scene("a.s01ep01".to_string());
-    let info = g.nodes.get(&node).expect("malformed-after scene must still be a node");
+    let info = g
+        .nodes
+        .get(&node)
+        .expect("malformed-after scene must still be a node");
     assert!(
         matches!(info.prereq, PrereqState::Invalid),
         "a malformed `after` must resolve to PrereqState::Invalid, got {:?}",
@@ -565,7 +613,10 @@ fn nonstring_after_scene_prereq_is_invalid_not_absent() {
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let node = NodeId::Scene("a.s01ep01".to_string());
-    let info = g.nodes.get(&node).expect("non-string-after scene must still be a node");
+    let info = g
+        .nodes
+        .get(&node)
+        .expect("non-string-after scene must still be a node");
     assert!(
         matches!(info.prereq, PrereqState::Invalid),
         "a present non-string `after` must resolve to PrereqState::Invalid, got {:?}",
@@ -591,7 +642,10 @@ fn empty_string_after_scene_prereq_is_absent() {
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let node = NodeId::Scene("a.s01ep01".to_string());
-    let info = g.nodes.get(&node).expect("empty-after scene must still be a node");
+    let info = g
+        .nodes
+        .get(&node)
+        .expect("empty-after scene must still be a node");
     assert!(
         matches!(info.prereq, PrereqState::Absent),
         "an empty-string `after` must resolve to PrereqState::Absent, got {:?}",
@@ -614,7 +668,10 @@ fn whitespace_only_after_scene_prereq_is_invalid_not_absent() {
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let node = NodeId::Scene("a.s01ep01".to_string());
-    let info = g.nodes.get(&node).expect("whitespace-only-after scene must still be a node");
+    let info = g
+        .nodes
+        .get(&node)
+        .expect("whitespace-only-after scene must still be a node");
     assert!(
         matches!(info.prereq, PrereqState::Invalid),
         "a whitespace-only `after` must resolve to PrereqState::Invalid, got {:?}",
@@ -645,7 +702,9 @@ fn quest_admitted_regardless_of_stale_quest_ids_set() {
 
 // --- Task 6: `E-CONN-UNREACHABLE` structural reachability + `E-CONN-FORMULA-TOO-COMPLEX` ---
 
-use lute_check::connectivity::{ambiguous_quest_ids, check_reachability, unreachable_quest_ids, Reachability};
+use lute_check::connectivity::{
+    ambiguous_quest_ids, check_reachability, unreachable_quest_ids, Reachability,
+};
 use std::collections::BTreeSet;
 
 #[test]
@@ -660,7 +719,10 @@ fn entry_scene_is_reachable() {
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
     let node = NodeId::Scene("a.s01ep01".to_string());
     assert_eq!(reach.get(&node), Some(&Reachability::Reachable));
-    assert!(r_diags.is_empty(), "an entry node must never earn a reachability diagnostic: {r_diags:?}");
+    assert!(
+        r_diags.is_empty(),
+        "an entry node must never earn a reachability diagnostic: {r_diags:?}"
+    );
 }
 
 #[test]
@@ -680,7 +742,8 @@ fn node_behind_unreachable_completed_quest_is_unreachable() {
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
-    let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
+    let (reach, r_diags) =
+        check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
     let node = NodeId::Scene("a.s01ep01".to_string());
     assert_eq!(reach.get(&node), Some(&Reachability::Unreachable));
     let hit = r_diags
@@ -709,11 +772,21 @@ fn transitive_unreachability_propagates() {
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
-    let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
-    assert_eq!(reach.get(&NodeId::Scene("a.s01ep01".to_string())), Some(&Reachability::Unreachable));
-    assert_eq!(reach.get(&NodeId::Scene("b.s01ep01".to_string())), Some(&Reachability::Unreachable));
+    let (reach, r_diags) =
+        check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
     assert_eq!(
-        r_diags.iter().filter(|(_, d)| d.code == "E-CONN-UNREACHABLE").count(),
+        reach.get(&NodeId::Scene("a.s01ep01".to_string())),
+        Some(&Reachability::Unreachable)
+    );
+    assert_eq!(
+        reach.get(&NodeId::Scene("b.s01ep01".to_string())),
+        Some(&Reachability::Unreachable)
+    );
+    assert_eq!(
+        r_diags
+            .iter()
+            .filter(|(_, d)| d.code == "E-CONN-UNREACHABLE")
+            .count(),
         2,
         "both a and b must each earn their own E-CONN-UNREACHABLE: {r_diags:?}"
     );
@@ -723,7 +796,8 @@ fn transitive_unreachability_propagates() {
 fn or_arm_still_reachable_keeps_node_reachable() {
     // `gated` gates on `completed(deadQ) || visited(alive)` -- one live arm
     // is enough (Or's dominance rule): the dead quest must NOT poison it.
-    let text_alive = "---\nkind: scene\ncharacter: alive\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@alive: hi\n";
+    let text_alive =
+        "---\nkind: scene\ncharacter: alive\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@alive: hi\n";
     let text_gated = "---\nkind: scene\ncharacter: gated\nseason: 1\nepisode: 1\nafter: 'completed(\"deadQ\") || visited(\"alive.s01ep01\")'\n---\n## Shot 1.\n@gated: hi\n";
     let docs = docs_for(&[("alive.lute", text_alive), ("gated.lute", text_gated)]);
     let key_set = scene_key_set(&docs);
@@ -732,7 +806,8 @@ fn or_arm_still_reachable_keeps_node_reachable() {
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
-    let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
+    let (reach, r_diags) =
+        check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
     let node = NodeId::Scene("gated.s01ep01".to_string());
     assert_eq!(reach.get(&node), Some(&Reachability::Reachable));
     assert!(
@@ -774,7 +849,9 @@ fn unknown_visited_ref_does_not_cascade_to_false() {
 
     let unknown_diags = resolve_nodes(&docs, &key_set, &quest_ids);
     assert!(
-        unknown_diags.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
+        unknown_diags
+            .iter()
+            .any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "fixture must trigger E-CONN-UNKNOWN-NODE (T4): {unknown_diags:?}"
     );
 
@@ -803,15 +880,23 @@ fn completed_on_known_quest_node_defaults_reachable() {
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
-    assert_eq!(reach.get(&NodeId::Quest("q1".to_string())), Some(&Reachability::Reachable));
-    assert_eq!(reach.get(&NodeId::Quest("q2".to_string())), Some(&Reachability::Reachable));
+    assert_eq!(
+        reach.get(&NodeId::Quest("q1".to_string())),
+        Some(&Reachability::Reachable)
+    );
+    assert_eq!(
+        reach.get(&NodeId::Quest("q2".to_string())),
+        Some(&Reachability::Reachable)
+    );
     assert!(r_diags.is_empty(), "unexpected diags: {r_diags:?}");
 }
 
 #[test]
 fn oversized_formula_is_capped() {
     // 300 Or-chained atoms, over the 256-atom cap.
-    let clauses: Vec<String> = (0..300).map(|i| format!("visited(\"k{i}.s01ep01\")")).collect();
+    let clauses: Vec<String> = (0..300)
+        .map(|i| format!("visited(\"k{i}.s01ep01\")"))
+        .collect();
     let formula = clauses.join(" || ");
     let text_a = format!(
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: '{formula}'\n---\n## Shot 1.\n@a: hi\n"
@@ -824,7 +909,9 @@ fn oversized_formula_is_capped() {
 
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
     assert!(
-        r_diags.iter().any(|(_, d)| d.code == "E-CONN-FORMULA-TOO-COMPLEX"),
+        r_diags
+            .iter()
+            .any(|(_, d)| d.code == "E-CONN-FORMULA-TOO-COMPLEX"),
         "expected E-CONN-FORMULA-TOO-COMPLEX for a 300-atom formula: {r_diags:?}"
     );
     let node = NodeId::Scene("a.s01ep01".to_string());
@@ -868,20 +955,28 @@ fn or_and_over_plain_and_dead_completed_quests() {
     let quest_text = "---\nkind: quest\n---\n<quest id=\"plainAliveQ\" start=\"true\">\n<objective id=\"o1\" done=\"true\"/>\n</quest>\n<quest id=\"deadQ\" start=\"true\">\n<objective id=\"o2\" done=\"true\"/>\n</quest>\n";
     let or_text = "---\nkind: scene\ncharacter: orScene\nseason: 1\nepisode: 1\nafter: 'completed(\"plainAliveQ\") || completed(\"deadQ\")'\n---\n## Shot 1.\n@orScene: hi\n";
     let and_text = "---\nkind: scene\ncharacter: andScene\nseason: 1\nepisode: 1\nafter: 'completed(\"plainAliveQ\") && completed(\"deadQ\")'\n---\n## Shot 1.\n@andScene: hi\n";
-    let docs = docs_for(&[("quests.lute", quest_text), ("or.lute", or_text), ("and.lute", and_text)]);
+    let docs = docs_for(&[
+        ("quests.lute", quest_text),
+        ("or.lute", or_text),
+        ("and.lute", and_text),
+    ]);
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
     let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
-    let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
+    let (reach, r_diags) =
+        check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
     let or_node = NodeId::Scene("orScene.s01ep01".to_string());
     let and_node = NodeId::Scene("andScene.s01ep01".to_string());
     assert_eq!(reach.get(&or_node), Some(&Reachability::Reachable));
     assert_eq!(reach.get(&and_node), Some(&Reachability::Unreachable));
     assert_eq!(
-        r_diags.iter().filter(|(_, d)| d.code == "E-CONN-UNREACHABLE").count(),
+        r_diags
+            .iter()
+            .filter(|(_, d)| d.code == "E-CONN-UNREACHABLE")
+            .count(),
         1,
         "only the And scene may earn E-CONN-UNREACHABLE, never the Or scene: {r_diags:?}"
     );
@@ -902,13 +997,17 @@ fn transitive_unreachable_through_opted_in_quest_completed() {
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
     let unreachable_quests: BTreeSet<String> = ["deadQ".to_string()].into_iter().collect();
-    let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
+    let (reach, r_diags) =
+        check_reachability(&g, &quest_ids, &BTreeSet::new(), &unreachable_quests);
     let scene_node = NodeId::Scene("s.s01ep01".to_string());
     let qopt_node = NodeId::Quest("qOpt".to_string());
     assert_eq!(reach.get(&qopt_node), Some(&Reachability::Unreachable));
     assert_eq!(reach.get(&scene_node), Some(&Reachability::Unreachable));
     assert_eq!(
-        r_diags.iter().filter(|(_, d)| d.code == "E-CONN-UNREACHABLE").count(),
+        r_diags
+            .iter()
+            .filter(|(_, d)| d.code == "E-CONN-UNREACHABLE")
+            .count(),
         2,
         "both qOpt and s must each earn their own E-CONN-UNREACHABLE: {r_diags:?}"
     );
@@ -926,13 +1025,19 @@ fn unreachable_quest_ids_extracts_by_span_match() {
     let docs = docs_for(&[("quests.lute", text)]);
     let result = check(&input_for(text));
     assert!(
-        result.diagnostics.iter().any(|d| d.code == "E-QUEST-UNREACHABLE"),
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "E-QUEST-UNREACHABLE"),
         "fixture must trigger E-QUEST-UNREACHABLE: {:?}",
         result.diagnostics
     );
     let file_results = vec![(PathBuf::from("quests.lute"), result)];
     let ids = unreachable_quest_ids(&docs, &file_results);
-    assert_eq!(ids, ["deadQ".to_string()].into_iter().collect::<BTreeSet<_>>());
+    assert_eq!(
+        ids,
+        ["deadQ".to_string()].into_iter().collect::<BTreeSet<_>>()
+    );
 }
 
 #[test]
@@ -959,7 +1064,10 @@ fn duplicate_quest_id_is_omitted_from_unreachable_set() {
     let docs = docs_for(&[("quests.lute", text)]);
     let result = check(&input_for(text));
     assert!(
-        result.diagnostics.iter().any(|d| d.code == "E-QUEST-UNREACHABLE"),
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "E-QUEST-UNREACHABLE"),
         "fixture must trigger E-QUEST-UNREACHABLE on the dead declaration: {:?}",
         result.diagnostics
     );
@@ -1036,7 +1144,10 @@ fn duplicate_quest_id_graph_dead_completed_is_unknown() {
     let key_set = scene_key_set(&docs);
     let quest_ids = quest_id_set(&docs);
     let ambiguous = ambiguous_quest_ids(&docs);
-    assert_eq!(ambiguous, ["dupQ".to_string()].into_iter().collect::<BTreeSet<_>>());
+    assert_eq!(
+        ambiguous,
+        ["dupQ".to_string()].into_iter().collect::<BTreeSet<_>>()
+    );
     let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
     assert!(diags.is_empty(), "unexpected diags: {diags:?}");
 
@@ -1044,7 +1155,10 @@ fn duplicate_quest_id_graph_dead_completed_is_unknown() {
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &ambiguous, &unreachable_quests);
 
     // `dupQ`'s own opted-in graph node IS genuinely Unreachable structurally.
-    assert_eq!(reach.get(&NodeId::Quest("dupQ".to_string())), Some(&Reachability::Unreachable));
+    assert_eq!(
+        reach.get(&NodeId::Quest("dupQ".to_string())),
+        Some(&Reachability::Unreachable)
+    );
     // But a DIFFERENT formula's `completed("dupQ")` reference must still
     // read Unknown -- the ambiguity dominates over the graph-node lookup.
     let scene_node = NodeId::Scene("s.s01ep01".to_string());
@@ -1054,7 +1168,10 @@ fn duplicate_quest_id_graph_dead_completed_is_unknown() {
         "an ambiguous id's completed() reference must stay Unknown even when its OWN node is graph-dead"
     );
     assert_eq!(
-        r_diags.iter().filter(|(_, d)| d.code == "E-CONN-UNREACHABLE").count(),
+        r_diags
+            .iter()
+            .filter(|(_, d)| d.code == "E-CONN-UNREACHABLE")
+            .count(),
         1,
         "only dupQ's own opted-in node may earn E-CONN-UNREACHABLE, never the scene: {r_diags:?}"
     );
@@ -1083,8 +1200,8 @@ use std::collections::BTreeMap;
 /// schema-imported `RelVocab` (a plain in-memory `docs_for` never resolves
 /// `uses:`).
 fn build_project_input(file: &PathBuf, project_dir: Option<&std::path::Path>) -> CheckInput {
-    let text = std::fs::read_to_string(file)
-        .unwrap_or_else(|e| panic!("read {}: {e}", file.display()));
+    let text =
+        std::fs::read_to_string(file).unwrap_or_else(|e| panic!("read {}: {e}", file.display()));
     let project = project_dir.and_then(|d| load_project(d).ok().flatten());
     let providers = project_providers(project.as_ref());
     let (doc, _) = lute_syntax::parse(&text);
@@ -1134,8 +1251,12 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
     let (conn_graph, _cycle_diags) = assemble_graph(&docs, &key_set, &quest_ids);
     let unreachable_quests = unreachable_quest_ids(&docs, &file_results);
     let ambiguous_quests = ambiguous_quest_ids(&docs);
-    let (reach, _reach_diags) =
-        check_reachability(&conn_graph, &quest_ids, &ambiguous_quests, &unreachable_quests);
+    let (reach, _reach_diags) = check_reachability(
+        &conn_graph,
+        &quest_ids,
+        &ambiguous_quests,
+        &unreachable_quests,
+    );
     let live_asserts = lute_check::connectivity::live_assert_relations(
         &docs,
         &reach,
@@ -1185,12 +1306,19 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         }
     }
     for (key, occurrences) in &key_set {
-        let Some((scene_path, _)) = occurrences.first() else { continue };
-        let Some(idx) = docs.iter().position(|(p, _)| p == scene_path) else { continue };
+        let Some((scene_path, _)) = occurrences.first() else {
+            continue;
+        };
+        let Some(idx) = docs.iter().position(|(p, _)| p == scene_path) else {
+            continue;
+        };
         let (_, doc) = &docs[idx];
         let folded = &foldeds[idx];
-        let all_nodes: Vec<lute_syntax::ast::Node> =
-            doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
+        let all_nodes: Vec<lute_syntax::ast::Node> = doc
+            .shots
+            .iter()
+            .flat_map(|s| s.body.iter().cloned())
+            .collect();
         let (_diags, assigned, reads) =
             lute_check::check_definite_assignment(&all_nodes, &folded.env.state);
         // T4.4/T4.6 carry-forward parity (dsl §7 soundness invariant), same
@@ -1268,7 +1396,9 @@ fn derived_relation_seeded_via_facts_is_producible_no_false_positive() {
         "../../docs/examples",
     );
     assert!(
-        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        !diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "canReach is structurally producible (facts-seeded atLocation/connected feed its rule \
          closure) -- the halsin corpus objective must NEVER be flagged dead: {diags:?}"
     );
@@ -1286,14 +1416,19 @@ fn objective_on_never_producible_relation_is_dead() {
                 <quest id=\"q\" start=\"true\">\n\
                 <objective id=\"o\" done=\"holds(dead(ana))\"/>\n</quest>\n";
     let diags = check_project_fixture(&[("dead.lute", text)]);
-    let hit = diags.iter().find(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE");
+    let hit = diags
+        .iter()
+        .find(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE");
     assert!(
         hit.is_some(),
         "an objective gated on a relation with no facts seed/reserved tier/assert site \
          anywhere in the project must be flagged provably dead: {diags:?}"
     );
     assert!(
-        hit.unwrap().1.message.contains("under your declared routes"),
+        hit.unwrap()
+            .1
+            .message
+            .contains("under your declared routes"),
         "a §4.2 diagnostic message MUST carry the verbatim declared-routes hedge (§2.6): {}",
         hit.unwrap().1.message
     );
@@ -1311,7 +1446,9 @@ fn objective_on_facts_seeded_base_relation_is_not_dead() {
                 <objective id=\"o\" done=\"holds(seeded(ana))\"/>\n</quest>\n";
     let diags = check_project_fixture(&[("seeded.lute", text)]);
     assert!(
-        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        !diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "a facts:-seeded base relation is unconditionally producible: {diags:?}"
     );
 }
@@ -1325,7 +1462,10 @@ fn assert_in_provably_unreachable_node_does_not_seed_producibility() {
                 ## Shot 1.\n::assert{ seen(a) }\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text)]);
     let mut reach = BTreeMap::new();
-    reach.insert(NodeId::Scene("a.s01ep01".to_string()), Reachability::Unreachable);
+    reach.insert(
+        NodeId::Scene("a.s01ep01".to_string()),
+        Reachability::Unreachable,
+    );
     let live = lute_check::connectivity::live_assert_relations(
         &docs,
         &reach,
@@ -1348,7 +1488,10 @@ fn assert_in_unknown_node_still_seeds_producibility() {
                 ## Shot 1.\n::assert{ seen(a) }\n@a: hi\n";
     let docs = docs_for(&[("a.lute", text)]);
     let mut reach = BTreeMap::new();
-    reach.insert(NodeId::Scene("a.s01ep01".to_string()), Reachability::Unknown);
+    reach.insert(
+        NodeId::Scene("a.s01ep01".to_string()),
+        Reachability::Unknown,
+    );
     let live = lute_check::connectivity::live_assert_relations(
         &docs,
         &reach,
@@ -1409,7 +1552,9 @@ fn count_comparison_greater_than_zero_over_dead_relation_is_dead() {
     let text = dead_relation_fixture("count(neverSeeded(ana)) > 0");
     let diags = check_project_fixture(&[("count_gt.lute", text.as_str())]);
     assert!(
-        diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "count(deadR) > 0 substitutes to 0 > 0 -- provably false -- must be flagged: {diags:?}"
     );
 }
@@ -1423,7 +1568,9 @@ fn count_comparison_greater_equal_zero_over_dead_relation_is_not_dead() {
     let text = dead_relation_fixture("count(neverSeeded(ana)) >= 0");
     let diags = check_project_fixture(&[("count_gte.lute", text.as_str())]);
     assert!(
-        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        !diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "count(deadR) >= 0 substitutes to 0 >= 0 -- provably TRUE, not dead: {diags:?}"
     );
 }
@@ -1435,7 +1582,9 @@ fn and_with_dead_relation_short_circuits_dead() {
     let text = dead_relation_fixture("holds(neverSeeded(ana)) && holds(live(ana))");
     let diags = check_project_fixture(&[("and_dead.lute", text.as_str())]);
     assert!(
-        diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "holds(deadR) && holds(liveR) substitutes to false && Undecided -- AND short-circuits \
          to false -- must be flagged: {diags:?}"
     );
@@ -1449,7 +1598,9 @@ fn or_with_one_live_relation_is_not_dead() {
     let text = dead_relation_fixture("holds(neverSeeded(ana)) || holds(live(ana))");
     let diags = check_project_fixture(&[("or_live.lute", text.as_str())]);
     assert!(
-        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        !diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "holds(deadR) || holds(liveR) substitutes to false || Undecided -- OR never proves \
          false from one dead arm -- must NOT be flagged: {diags:?}"
     );
@@ -1463,7 +1614,9 @@ fn or_with_one_undeclared_relation_is_not_dead() {
     let text = dead_relation_fixture("holds(neverSeeded(ana)) || holds(unknownR(ana))");
     let diags = check_project_fixture(&[("or_unknown.lute", text.as_str())]);
     assert!(
-        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        !diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "holds(deadR) || holds(unknownR) -- unknownR stays Undecided -- OR can't prove false: \
          {diags:?}"
     );
@@ -1493,7 +1646,9 @@ fn literal_false_done_has_no_dead_relation_liveness_scan_stays_silent() {
     let text = dead_relation_fixture("false");
     let diags = check_project_fixture(&[("literal_false.lute", text.as_str())]);
     assert!(
-        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        !diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "done=\"false\" substitutes NO fact-query -- dead_relations is empty -- the liveness \
          scan must not emit a relational cause naming an empty relation set (gate a): {diags:?}"
     );
@@ -1506,7 +1661,9 @@ fn numeric_literal_comparison_done_has_no_dead_relation_liveness_scan_stays_sile
     let text = dead_relation_fixture("0 > 1");
     let diags = check_project_fixture(&[("numeric_false.lute", text.as_str())]);
     assert!(
-        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        !diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "done=\"0 > 1\" substitutes NO fact-query -- dead_relations is empty -- the liveness \
          scan must not emit a relational cause naming an empty relation set (gate a): {diags:?}"
     );
@@ -1522,7 +1679,9 @@ fn pure_dead_relation_guard_is_load_bearing_and_emits() {
     let text = dead_relation_fixture("holds(neverSeeded(ana))");
     let diags = check_project_fixture(&[("pure_dead.lute", text.as_str())]);
     assert!(
-        diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "holds(deadR) alone -- pre-substitution decide() is Undecided, post-substitution decides \
          false -- the dead-relation substitution is load-bearing (gate b passes) -- must be \
          flagged: {diags:?}"
@@ -1543,9 +1702,14 @@ fn false_and_dead_relation_relational_cause_suppressed_non_relational_owns_it() 
     let text = dead_relation_fixture("false && holds(neverSeeded(ana))");
     let ordinary = check(&input_for(&text)).diagnostics;
     let liveness = check_project_fixture(&[("false_and_dead.lute", text.as_str())]);
-    let ordinary_unsat = ordinary.iter().filter(|d| d.code == "E-OBJECTIVE-UNSATISFIABLE").count();
-    let liveness_unsat =
-        liveness.iter().filter(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE").count();
+    let ordinary_unsat = ordinary
+        .iter()
+        .filter(|d| d.code == "E-OBJECTIVE-UNSATISFIABLE")
+        .count();
+    let liveness_unsat = liveness
+        .iter()
+        .filter(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE")
+        .count();
     assert_eq!(
         ordinary_unsat, 1,
         "the ordinary per-file reachability pass must independently prove `false && holds(deadR)` \
@@ -1560,7 +1724,8 @@ fn false_and_dead_relation_relational_cause_suppressed_non_relational_owns_it() 
          cause already owns this objective, no relational duplicate: {liveness:?}"
     );
     assert_eq!(
-        ordinary_unsat + liveness_unsat, 1,
+        ordinary_unsat + liveness_unsat,
+        1,
         "exactly ONE unsatisfiable-family diagnostic total on this objective -- never a \
          relational duplicate of the non-relational cause: {ordinary:?} / {liveness:?}"
     );
@@ -1598,7 +1763,9 @@ fn entity_kind_bodied_rule_relation_is_producible_no_false_positive() {
     let text = kind_bodied_rule_fixture("holds(viaKind(ana))");
     let diags = check_project_fixture(&[("kind_rule.lute", text.as_str())]);
     assert!(
-        !diags.iter().any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
+        !diags
+            .iter()
+            .any(|(_, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE"),
         "viaKind(X) :- c(X) with `c` an entity KIND (not a relation) must not be treated as a \
          dead body atom -- producible() must default an undeclared-as-relation positive atom \
          (kind or unknown) to conservatively-satisfiable, never false: {diags:?}"
@@ -1620,7 +1787,8 @@ fn read_never_set_on_any_route_errors() {
     // route) never sets `run.z` anywhere, and `run.z` carries no schema
     // default -- no declared route ever sets it before `x`, so the read
     // must earn `E-STATE-MAYBE-UNAVAILABLE` at ERROR grade, by default.
-    let y = "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let y =
+        "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
     let x = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nafter: 'visited(\"y.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let res = check_project_fixture(&[("y.lute", y), ("x.lute", x)]);
     let (_p, d) = res
@@ -1644,7 +1812,8 @@ fn read_set_on_all_routes_is_clean() {
     let x = "---\nkind: scene\ncharacter: x2\nseason: 1\nepisode: 1\nafter: 'visited(\"y2.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let res = check_project_fixture(&[("y2.lute", y), ("x2.lute", x)]);
     assert!(
-        !res.iter().any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
+        !res.iter()
+            .any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
         "run.z is guaranteed on the only declared route, must not flag: {res:?}"
     );
 }
@@ -1659,19 +1828,25 @@ fn standalone_clean_file_not_newly_errored() {
     // LOCALLY, so it must never be reclassified against `x3`'s `Env` at
     // project scope. `check-project` must NOT newly error a file
     // single-file `check` reports clean.
-    let y3 = "---\nkind: scene\ncharacter: y3\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let y3 =
+        "---\nkind: scene\ncharacter: y3\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
     let x3_text = "---\nkind: scene\ncharacter: x3\nseason: 1\nepisode: 1\nafter: 'visited(\"y3.s01ep01\")'\nstate:\n  run.q: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.q = 5}\n::set{run.out = run.q}\n";
 
     let single = check(&input_for(x3_text));
     assert!(
-        single.diagnostics.iter().all(|d| d.severity != Severity::Error),
+        single
+            .diagnostics
+            .iter()
+            .all(|d| d.severity != Severity::Error),
         "x3 must check clean standalone: {:?}",
         single.diagnostics
     );
 
     let proj = check_project_fixture(&[("y3.lute", y3), ("x3.lute", x3_text)]);
     assert!(
-        !proj.iter().any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
+        !proj
+            .iter()
+            .any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
         "a locally-proven read must never be reclassified against the project envelope: {proj:?}"
     );
 }
@@ -1688,7 +1863,8 @@ fn tainted_node_via_unresolvable_visited_target_skips_envelope_diagnostic() {
     let x4 = "---\nkind: scene\ncharacter: x4\nseason: 1\nepisode: 1\nafter: 'visited(\"ghost.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let res = check_project_fixture(&[("x4.lute", x4)]);
     assert!(
-        !res.iter().any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
+        !res.iter()
+            .any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
         "a tainted node's unreliable Env must never seed E-STATE-MAYBE-UNAVAILABLE: {res:?}"
     );
 }
@@ -1702,14 +1878,21 @@ fn possible_not_guaranteed_is_warning_grade_and_worded() {
     // (dsl §2.6/§7) even though it is default-suppressed from the errors
     // surface.
     let a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
-    let b = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let b =
+        "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
     let x5 = "---\nkind: scene\ncharacter: x5\nseason: 1\nepisode: 1\nafter: 'visited(\"a.s01ep01\") || visited(\"b.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let res = check_project_fixture(&[("a.lute", a), ("b.lute", b), ("x5.lute", x5)]);
     let (_p, d) = res
         .iter()
         .find(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE)
-        .unwrap_or_else(|| panic!("expected a warning-grade E-STATE-MAYBE-UNAVAILABLE, got {res:?}"));
-    assert_eq!(d.severity, Severity::Warning, "set on some but not all routes must be warning grade");
+        .unwrap_or_else(|| {
+            panic!("expected a warning-grade E-STATE-MAYBE-UNAVAILABLE, got {res:?}")
+        });
+    assert_eq!(
+        d.severity,
+        Severity::Warning,
+        "set on some but not all routes must be warning grade"
+    );
     assert!(
         d.message.contains("under your declared routes"),
         "warning-grade message must carry the qualifier verbatim too, got: {}",
@@ -1735,8 +1918,11 @@ fn parsed_scene(text: &str) -> (Vec<lute_syntax::ast::Node>, lute_check::FoldedE
     let input = input_for(text);
     let (doc, _) = lute_syntax::parse(&input.text);
     let (folded, _, _) = fold_env(&doc, &input);
-    let nodes: Vec<lute_syntax::ast::Node> =
-        doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
+    let nodes: Vec<lute_syntax::ast::Node> = doc
+        .shots
+        .iter()
+        .flat_map(|s| s.body.iter().cloned())
+        .collect();
     (nodes, folded)
 }
 
@@ -1744,8 +1930,11 @@ fn parsed_quest(text: &str) -> (Vec<lute_syntax::ast::Node>, lute_check::FoldedE
     let input = input_for(text);
     let (doc, _) = lute_syntax::parse(&input.text);
     let (folded, _, _) = fold_env(&doc, &input);
-    let nodes: Vec<lute_syntax::ast::Node> =
-        doc.quests.iter().flat_map(|q| q.body.iter().cloned()).collect();
+    let nodes: Vec<lute_syntax::ast::Node> = doc
+        .quests
+        .iter()
+        .flat_map(|q| q.body.iter().cloned())
+        .collect();
     (nodes, folded)
 }
 
@@ -1776,17 +1965,32 @@ fn exhaustive_match_subject_spans_recurses_into_nested_constructs() {
     let in_branch = scene_of(format!(
         "<branch id=\"br\">\n<choice id=\"c\" label=\"go\">\n{m}\n</choice>\n</branch>"
     ));
-    let in_hub =
-        scene_of(format!("<hub id=\"h\">\n<choice id=\"c\" label=\"go\">\n{m}\n</choice>\n</hub>"));
+    let in_hub = scene_of(format!(
+        "<hub id=\"h\">\n<choice id=\"c\" label=\"go\">\n{m}\n</choice>\n</hub>"
+    ));
     let in_on = quest_of(format!("<on event=\"questComplete\">\n{m}\n</on>"));
-    let in_objective = quest_of(format!("<objective id=\"o\" done=\"true\">\n{m}\n</objective>"));
+    let in_objective = quest_of(format!(
+        "<objective id=\"o\" done=\"true\">\n{m}\n</objective>"
+    ));
 
     for (label, nodes, folded) in [
-        ("top-level", parsed_scene(&top_level).0, parsed_scene(&top_level).1),
-        ("branch", parsed_scene(&in_branch).0, parsed_scene(&in_branch).1),
+        (
+            "top-level",
+            parsed_scene(&top_level).0,
+            parsed_scene(&top_level).1,
+        ),
+        (
+            "branch",
+            parsed_scene(&in_branch).0,
+            parsed_scene(&in_branch).1,
+        ),
         ("hub", parsed_scene(&in_hub).0, parsed_scene(&in_hub).1),
         ("on", parsed_quest(&in_on).0, parsed_quest(&in_on).1),
-        ("objective", parsed_quest(&in_objective).0, parsed_quest(&in_objective).1),
+        (
+            "objective",
+            parsed_quest(&in_objective).0,
+            parsed_quest(&in_objective).1,
+        ),
     ] {
         let spans =
             lute_check::defassign::exhaustive_match_subject_spans(&nodes, &folded.env.state);
@@ -1837,14 +2041,19 @@ fn envelope_soundness_exhaustive_match_subject_after_choice_record_stays_clean()
 
     let single = check(&input_for(x6));
     assert!(
-        single.diagnostics.iter().all(|d| d.severity != Severity::Error),
+        single
+            .diagnostics
+            .iter()
+            .all(|d| d.severity != Severity::Error),
         "x6 must check clean standalone (T4.4/T4.6 exhaustive-match-subject exemption): {:?}",
         single.diagnostics
     );
 
     let proj = check_project_fixture(&[("x6.lute", x6)]);
     assert!(
-        !proj.iter().any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
+        !proj
+            .iter()
+            .any(|(_p, d)| d.code == E_STATE_MAYBE_UNAVAILABLE),
         "a `<choice into>`-written path consumed by an exhaustive `<match>` subject must \
          never be reclassified against the project envelope: {proj:?}"
     );
@@ -1864,7 +2073,8 @@ fn envelope_soundness_exhaustive_match_subject_after_choice_record_stays_clean()
 fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachable() {
     // (1) E-STATE-MAYBE-UNAVAILABLE, error grade: `run.z` never set on the
     // only declared route.
-    let y = "---\nkind: scene\ncharacter: wy\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let y =
+        "---\nkind: scene\ncharacter: wy\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
     let x = "---\nkind: scene\ncharacter: wx\nseason: 1\nepisode: 1\nafter: 'visited(\"wy.s01ep01\")'\nstate:\n  run.z: { type: number }\n  run.out: { type: number }\n---\n## Shot 1.\n::set{run.out = run.z}\n";
     let state_unavailable = check_project_fixture(&[("wy.lute", y), ("wx.lute", x)]);
     let state_diag = state_unavailable
@@ -1881,7 +2091,9 @@ fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachab
     let relational_diag = relational
         .iter()
         .find(|(_p, d)| d.code == "E-OBJECTIVE-UNSATISFIABLE")
-        .unwrap_or_else(|| panic!("expected relational E-OBJECTIVE-UNSATISFIABLE, got {relational:?}"));
+        .unwrap_or_else(|| {
+            panic!("expected relational E-OBJECTIVE-UNSATISFIABLE, got {relational:?}")
+        });
 
     // (3) E-CONN-UNREACHABLE: a node gated on a provably-dead quest --
     // §4.1, the SOLE hedge exception.
@@ -1902,7 +2114,10 @@ fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachab
 
     for (code, msg) in [
         (state_diag.1.code.as_str(), state_diag.1.message.as_str()),
-        (relational_diag.1.code.as_str(), relational_diag.1.message.as_str()),
+        (
+            relational_diag.1.code.as_str(),
+            relational_diag.1.message.as_str(),
+        ),
     ] {
         assert!(
             msg.contains("under your declared routes"),
@@ -1911,7 +2126,10 @@ fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachab
         );
     }
     assert!(
-        !unreachable_diag.1.message.contains("under your declared routes"),
+        !unreachable_diag
+            .1
+            .message
+            .contains("under your declared routes"),
         "E-CONN-UNREACHABLE is the SOLE named §2.6 exception -- it must NOT carry the hedge: {}",
         unreachable_diag.1.message
     );
@@ -1919,7 +2137,11 @@ fn route_class_diagnostics_carry_declared_routes_qualifier_except_conn_unreachab
     // read as an unconditional runtime claim -- it names only the
     // AUTHORED graph's own self-consistency.
     assert!(
-        !unreachable_diag.1.message.to_lowercase().contains("at runtime"),
+        !unreachable_diag
+            .1
+            .message
+            .to_lowercase()
+            .contains("at runtime"),
         "E-CONN-UNREACHABLE must never phrase itself as a runtime claim: {}",
         unreachable_diag.1.message
     );
@@ -1949,7 +2171,10 @@ fn active_gated_three_node_chain_is_reachable() {
     );
 
     let (g, diags) = assemble_graph(&docs, &key_set, &quest_ids);
-    assert!(diags.is_empty(), "an acyclic active chain must be clean: {diags:?}");
+    assert!(
+        diags.is_empty(),
+        "an acyclic active chain must be clean: {diags:?}"
+    );
 
     let q2 = NodeId::Quest("q2".to_string());
     let q3 = NodeId::Quest("q3".to_string());
@@ -1959,7 +2184,8 @@ fn active_gated_three_node_chain_is_reachable() {
         "active(\"q2\") must edge q2 -> q3 exactly as completed would"
     );
     assert_eq!(
-        g.edge_kinds_for(&q2, &q3).map(|k| k.iter().copied().collect::<Vec<_>>()),
+        g.edge_kinds_for(&q2, &q3)
+            .map(|k| k.iter().copied().collect::<Vec<_>>()),
         Some(vec![EdgeKind::Active]),
         "the q2 -> q3 edge must be tagged `active`"
     );
@@ -1967,7 +2193,10 @@ fn active_gated_three_node_chain_is_reachable() {
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
     assert_eq!(reach.get(&q2), Some(&Reachability::Reachable));
     assert_eq!(reach.get(&q3), Some(&Reachability::Reachable));
-    assert!(r_diags.is_empty(), "unexpected reachability diags: {r_diags:?}");
+    assert!(
+        r_diags.is_empty(),
+        "unexpected reachability diags: {r_diags:?}"
+    );
 }
 
 /// `pa` requires `active("pb")` and `pb` requires `active("pa")` — a cycle
@@ -2035,7 +2264,8 @@ fn active_and_completed_on_one_target_record_both_edge_kinds() {
     let src = NodeId::Quest("src".to_string());
     let dep = NodeId::Quest("dep".to_string());
     assert_eq!(
-        g.edge_kinds_for(&src, &dep).map(|k| k.iter().copied().collect::<Vec<_>>()),
+        g.edge_kinds_for(&src, &dep)
+            .map(|k| k.iter().copied().collect::<Vec<_>>()),
         Some(vec![EdgeKind::Completed, EdgeKind::Active]),
         "both atoms must be recorded on the single src -> dep edge"
     );
@@ -2055,7 +2285,13 @@ fn active_envelope_is_strictly_weaker_than_completed() {
             id: NodeId::Quest(id.to_string()),
             path: PathBuf::from("t.lute"),
             prereq: PrereqState::Valid(f),
-            span: Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) },
+            span: Span {
+                byte_start: 0,
+                byte_end: 0,
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            },
         }
     }
 
@@ -2063,24 +2299,38 @@ fn active_envelope_is_strictly_weaker_than_completed() {
     let after_active = quest_node("afterActive", PrereqFormula::Active("w".to_string()));
     let order = vec![after_completed.id.clone(), after_active.id.clone()];
     let g = lute_check::connectivity::ConnGraph {
-        nodes: [after_completed, after_active].into_iter().map(|n| (n.id.clone(), n)).collect(),
+        nodes: [after_completed, after_active]
+            .into_iter()
+            .map(|n| (n.id.clone(), n))
+            .collect(),
         topo_order: order,
         ..Default::default()
     };
 
     let mut per_doc = PerDocEffects::default();
-    per_doc
-        .quest_writes_on_complete
-        .insert("w".to_string(), ["run.flag".to_string()].into_iter().collect());
+    per_doc.quest_writes_on_complete.insert(
+        "w".to_string(),
+        ["run.flag".to_string()].into_iter().collect(),
+    );
 
     let (envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
-    assert!(tainted.is_empty(), "both quest atoms resolve, so nothing may taint: {tainted:?}");
+    assert!(
+        tainted.is_empty(),
+        "both quest atoms resolve, so nothing may taint: {tainted:?}"
+    );
 
-    let strong = envs.get(&NodeId::Quest("afterCompleted".to_string())).expect("memoized");
-    assert!(strong.guaranteed.contains("run.flag"), "completed(Q) guarantees Q's completion writes");
+    let strong = envs
+        .get(&NodeId::Quest("afterCompleted".to_string()))
+        .expect("memoized");
+    assert!(
+        strong.guaranteed.contains("run.flag"),
+        "completed(Q) guarantees Q's completion writes"
+    );
     assert!(strong.possible.contains("run.flag"));
 
-    let weak = envs.get(&NodeId::Quest("afterActive".to_string())).expect("memoized");
+    let weak = envs
+        .get(&NodeId::Quest("afterActive".to_string()))
+        .expect("memoized");
     assert!(
         !weak.guaranteed.contains("run.flag"),
         "active(Q) must NOT guarantee Q's completion writes: {:?}",
@@ -2109,7 +2359,9 @@ fn oversized_active_only_formula_is_capped() {
     let (g, _diags) = assemble_graph(&docs, &key_set, &quest_ids);
     let (reach, r_diags) = check_reachability(&g, &quest_ids, &BTreeSet::new(), &BTreeSet::new());
     assert!(
-        r_diags.iter().any(|(_, d)| d.code == "E-CONN-FORMULA-TOO-COMPLEX"),
+        r_diags
+            .iter()
+            .any(|(_, d)| d.code == "E-CONN-FORMULA-TOO-COMPLEX"),
         "300 `active` atoms must trip the same cap: {r_diags:?}"
     );
     assert_eq!(

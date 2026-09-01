@@ -64,16 +64,16 @@ use lute_manifest::schema::{SlotDecl, StateShape};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::{type_accepts, Literal, PathSegment, Type};
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document,
-    Interp, InterpKind, Node,
+    Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document, Interp,
+    InterpKind, Node,
 };
 use lute_syntax::parse;
-use lute_syntax::walk::for_each_cel_slot;
 /// Delegate: the label-interp scanner now lives in `lute-syntax` (single source
 /// of truth with the parser's content-line scan). Re-exported `pub(crate)` so
 /// `crate::check::scan_label_interps` (used by `defassign`) and the local call
 /// sites keep resolving without change.
 pub(crate) use lute_syntax::scan_label_interps;
+use lute_syntax::walk::for_each_cel_slot;
 
 use crate::cel_expand::DefTable;
 use crate::cel_message::translate_cel_parse;
@@ -338,19 +338,27 @@ pub fn fold_env(
         crate::meta::resolve_doc_kind_with_defaults(&doc.meta, &input.defaults);
     let has_body = !doc.shots.is_empty() || !doc.quests.is_empty();
     let (doc_kind, meta_kind, kind_diags) = match resolved_kind {
-        Some(crate::meta::DocKind::Scene) => {
-            (crate::meta::DocKind::Scene, crate::meta::MetaKind::Scene, kind_diags)
-        }
-        Some(crate::meta::DocKind::Quest) => {
-            (crate::meta::DocKind::Quest, crate::meta::MetaKind::Quest, kind_diags)
-        }
+        Some(crate::meta::DocKind::Scene) => (
+            crate::meta::DocKind::Scene,
+            crate::meta::MetaKind::Scene,
+            kind_diags,
+        ),
+        Some(crate::meta::DocKind::Quest) => (
+            crate::meta::DocKind::Quest,
+            crate::meta::MetaKind::Quest,
+            kind_diags,
+        ),
         None => match crate::meta::infer_meta_kind_from_shape(&doc.meta, has_body) {
             // A fragment opened standalone: validate in its import role, drop the
             // root-only E-KIND-MISSING/E-META-MISSING false positives. Any body
             // (e.g. a component's `## Scene`) still walks as `DocKind::Scene` —
             // the same degrade-safe shape as the genuine-missing-kind default.
             Some(mk) => (crate::meta::DocKind::Scene, mk, Vec::new()),
-            None => (crate::meta::DocKind::Scene, crate::meta::MetaKind::Scene, kind_diags), // genuine missing kind
+            None => (
+                crate::meta::DocKind::Scene,
+                crate::meta::MetaKind::Scene,
+                kind_diags,
+            ), // genuine missing kind
         },
     };
 
@@ -846,8 +854,9 @@ pub fn check(input: &CheckInput) -> CheckResult {
                     ds.extend(check_quest_guard_defassign(fail, &env.state));
                 }
                 let (diags, _, _reads) = check_definite_assignment(&q.body, &env.state);
-                exhaustive_subject_spans
-                    .extend(crate::defassign::exhaustive_match_subject_spans(&q.body, &env.state));
+                exhaustive_subject_spans.extend(crate::defassign::exhaustive_match_subject_spans(
+                    &q.body, &env.state,
+                ));
                 ds.extend(diags);
                 ds
             })
@@ -930,8 +939,10 @@ pub fn check(input: &CheckInput) -> CheckResult {
         domains,
         doc.meta.span,
     );
-    let component_body_diags =
-        crate::component_import::merge_component_body_diags(&mut component_diags, component_body_diags);
+    let component_body_diags = crate::component_import::merge_component_body_diags(
+        &mut component_diags,
+        component_body_diags,
+    );
     diags.extend(component_diags);
     diags.extend(component_body_diags);
     diags.extend(state_merge_diags);
@@ -1507,11 +1518,7 @@ impl Walker<'_> {
                     // §7.6: an objective `title` MAY embed `{{…}}` interpolations,
                     // same as a choice label.
                     if let Some(title) = &o.title {
-                        check_interps(
-                            &scan_label_interps(title, o.span),
-                            ctx,
-                            &mut self.diags,
-                        );
+                        check_interps(&scan_label_interps(title, o.span), ctx, &mut self.diags);
                     }
                     self.check_attr_refs(&o.attrs, ctx, None);
                     self.walk(&o.body, ctx);
@@ -1535,12 +1542,14 @@ impl Walker<'_> {
                     self.check_attr_refs(&o.attrs, ctx, None);
                     self.walk(&o.body, ctx);
                 }
-                Node::Assert(a) => self
-                    .diags
-                    .extend(crate::fact_write::check_assert(a, self.domains, ctx)),
-                Node::Retract(r) => self
-                    .diags
-                    .extend(crate::fact_write::check_retract(r, self.domains, ctx)),
+                Node::Assert(a) => {
+                    self.diags
+                        .extend(crate::fact_write::check_assert(a, self.domains, ctx))
+                }
+                Node::Retract(r) => {
+                    self.diags
+                        .extend(crate::fact_write::check_retract(r, self.domains, ctx))
+                }
             }
         }
     }
@@ -1560,7 +1569,6 @@ impl Walker<'_> {
             }
         }
     }
-
 }
 
 /// Validate the `{{…}}` interpolation referents on a content line (dsl §7.6).
@@ -1663,7 +1671,11 @@ fn check_interp_referent(
     // `E-UNDECLARED-REF` above (its name is absent from `def_types`, so this
     // never double-reports).
     if interp.kind == InterpKind::Ref {
-        if let Some(name) = scan_refs(referent).into_iter().find(|r| !r.is_dollar).map(|r| r.name) {
+        if let Some(name) = scan_refs(referent)
+            .into_iter()
+            .find(|r| !r.is_dollar)
+            .map(|r| r.name)
+        {
             if let Some(ty) = interp_ctx.env.def_types.get(&name) {
                 if !is_renderable(ty) {
                     diags.push(Diagnostic {
@@ -2887,8 +2899,7 @@ fn check_into_value(
     span: Span,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let accepted =
-        |v: &Attr| into_literal(ty, &v.value).is_some_and(|lit| type_accepts(ty, &lit));
+    let accepted = |v: &Attr| into_literal(ty, &v.value).is_some_and(|lit| type_accepts(ty, &lit));
     match ty {
         Type::Bool => {
             if let Some(v) = value {
@@ -3461,7 +3472,11 @@ fn fold_use(
     }
     let name = using.pop().expect("pushed above");
     for diag in &mut state.diags[mark..] {
-        diag.message = format!("component `{name}` ({}): {}", def.src.display(), diag.message);
+        diag.message = format!(
+            "component `{name}` ({}): {}",
+            def.src.display(),
+            diag.message
+        );
         diag.span = d.span;
         diag.fixits.clear();
     }
@@ -3789,7 +3804,13 @@ mod persist_fixit_tests {
     use super::*;
 
     fn mkspan(byte_start: usize, byte_end: usize) -> Span {
-        Span { byte_start, byte_end, line: 0, column: 0, utf16_range: (0, 0) }
+        Span {
+            byte_start,
+            byte_end,
+            line: 0,
+            column: 0,
+            utf16_range: (0, 0),
+        }
     }
 
     fn persist_attr(src: &str) -> Attr {
@@ -3814,12 +3835,18 @@ mod persist_fixit_tests {
         assert_eq!(diag.code, E_PERSIST_REMOVED);
         assert_eq!(diag.severity, Severity::Error);
         let fx = &diag.fixits[0];
-        assert_eq!(fx.kind, "migrate", "lute fix auto-applies only `migrate` fixits");
+        assert_eq!(
+            fx.kind, "migrate",
+            "lute fix auto-applies only `migrate` fixits"
+        );
         assert_eq!(fx.confidence, 100);
         let edit = &fx.edit[0];
         let mut spliced = src.to_string();
         spliced.replace_range(edit.span.byte_start..edit.span.byte_end, &edit.new_text);
-        assert_eq!(spliced, "<choice id=\"a\" into=\"run.x\">", "got {spliced:?}");
+        assert_eq!(
+            spliced, "<choice id=\"a\" into=\"run.x\">",
+            "got {spliced:?}"
+        );
     }
 
     /// When `persist=` is the LAST attr (no trailing whitespace to take), the
@@ -3843,7 +3870,13 @@ mod lute_version_tests {
     fn meta(raw: &str) -> lute_syntax::ast::Meta {
         lute_syntax::ast::Meta {
             raw_yaml: raw.to_string(),
-            span: Span { byte_start: 0, byte_end: raw.len(), line: 1, column: 1, utf16_range: (0, 0) },
+            span: Span {
+                byte_start: 0,
+                byte_end: raw.len(),
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            },
         }
     }
 
@@ -3860,7 +3893,11 @@ mod lute_version_tests {
             .expect("a stale stamp must warn");
         assert_eq!(d.code, W_LUTE_VERSION_STALE);
         assert_eq!(d.severity, Severity::Warning);
-        assert!(d.message.contains("0.5.0"), "names the stale stamp: {}", d.message);
+        assert!(
+            d.message.contains("0.5.0"),
+            "names the stale stamp: {}",
+            d.message
+        );
         assert!(
             d.message.contains(crate::LUTE_LANG_VERSION),
             "names the current version: {}",

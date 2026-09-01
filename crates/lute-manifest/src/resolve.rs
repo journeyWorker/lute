@@ -792,7 +792,10 @@ mod tests {
         let inst = installed(vec![manifest("a.x", "0.1.0", &[("a.missing", "^0.1.0")])]);
         let err = resolve_activation(&graph, "s", &BTreeMap::new(), &inst).unwrap_err();
         let msg = err.to_string();
-        assert!(!msg.contains("UnresolvedDepends {"), "must not be a Debug dump: {msg}");
+        assert!(
+            !msg.contains("UnresolvedDepends {"),
+            "must not be a Debug dump: {msg}"
+        );
         assert_eq!(
             msg,
             "plugin `a.x` depends on `a.missing`, which is not installed"

@@ -285,7 +285,9 @@ mod tests {
 
     #[test]
     fn preserves_malformed_fields_and_empty_args() {
-        let p = parse_relations(&yaml("weird: { args: 5, derive: \"yes\", keys: [0] }\nempty: {}\nscalar: 3"));
+        let p = parse_relations(&yaml(
+            "weird: { args: 5, derive: \"yes\", keys: [0] }\nempty: {}\nscalar: 3",
+        ));
         let w = &p.relations["weird"];
         assert!(w.args.is_empty());
         assert!(w.malformed_fields.contains(&"args".to_string()));
@@ -297,7 +299,9 @@ mod tests {
 
     #[test]
     fn kinds_project_to_domains() {
-        let p = parse_entity_kinds(&yaml("character: { members: [a] }\nnpc: { open: engine }\nbad: {}"));
+        let p = parse_entity_kinds(&yaml(
+            "character: { members: [a] }\nnpc: { open: engine }\nbad: {}",
+        ));
         let d = kinds_to_domains(&p.kinds);
         assert_eq!(d["character"].members, vec!["a"]);
         assert!(d["npc"].open && d["npc"].members.is_empty());

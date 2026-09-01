@@ -132,8 +132,12 @@ fn const_side(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<Constant> {
 fn domain_contains(dom: &DomainInfo, value: &Constant) -> bool {
     match value {
         Constant::Unset => dom.maybe_unset,
-        Constant::Value(Decided::Str(s)) => matches!(&dom.domain, Domain::Finite(vals) if vals.iter().any(|v| matches!(v, DomainValue::Str(x) if x == s))),
-        Constant::Value(Decided::Bool(b)) => matches!(&dom.domain, Domain::Finite(vals) if vals.iter().any(|v| matches!(v, DomainValue::Bool(x) if x == b))),
+        Constant::Value(Decided::Str(s)) => {
+            matches!(&dom.domain, Domain::Finite(vals) if vals.iter().any(|v| matches!(v, DomainValue::Str(x) if x == s)))
+        }
+        Constant::Value(Decided::Bool(b)) => {
+            matches!(&dom.domain, Domain::Finite(vals) if vals.iter().any(|v| matches!(v, DomainValue::Bool(x) if x == b)))
+        }
         Constant::Value(Decided::Num(_)) => false,
     }
 }
@@ -229,19 +233,16 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
         // R4 — connectives, Kleene-style short circuit. NEVER collect-then-
         // `apply_op`: a decided short-circuit must win even when the OTHER
         // side is undecided (`1 > 2 && run.flag` decides false).
-        (n, [a]) if n == op::LOGICAL_NOT => decide(&a.expr, ctx)
-            .and_then(|d| apply_op(op::LOGICAL_NOT, std::slice::from_ref(&d))),
-        (op::LOGICAL_AND, [a, b]) => {
-            match (decide(&a.expr, ctx), decide(&b.expr, ctx)) {
-                (Some(Decided::Bool(false)), _) | (_, Some(Decided::Bool(false))) => {
-                    Some(Decided::Bool(false))
-                }
-                (Some(Decided::Bool(true)), Some(Decided::Bool(true))) => {
-                    Some(Decided::Bool(true))
-                }
-                _ => None,
-            }
+        (n, [a]) if n == op::LOGICAL_NOT => {
+            decide(&a.expr, ctx).and_then(|d| apply_op(op::LOGICAL_NOT, std::slice::from_ref(&d)))
         }
+        (op::LOGICAL_AND, [a, b]) => match (decide(&a.expr, ctx), decide(&b.expr, ctx)) {
+            (Some(Decided::Bool(false)), _) | (_, Some(Decided::Bool(false))) => {
+                Some(Decided::Bool(false))
+            }
+            (Some(Decided::Bool(true)), Some(Decided::Bool(true))) => Some(Decided::Bool(true)),
+            _ => None,
+        },
         (op::LOGICAL_OR, [a, b]) => match (decide(&a.expr, ctx), decide(&b.expr, ctx)) {
             (Some(Decided::Bool(true)), _) | (_, Some(Decided::Bool(true))) => {
                 Some(Decided::Bool(true))
@@ -321,9 +322,11 @@ pub fn decide(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<Decided> {
         // R5: everything else — list/map/struct literals (a bare list only
         // ever reaches here outside `in`'s special handling), comprehension
         // macros, and the unspecified placeholder — is undecided.
-        Expr::List(_) | Expr::Map(_) | Expr::Struct(_) | Expr::Comprehension(_) | Expr::Unspecified => {
-            None
-        }
+        Expr::List(_)
+        | Expr::Map(_)
+        | Expr::Struct(_)
+        | Expr::Comprehension(_)
+        | Expr::Unspecified => None,
     }
 }
 
@@ -445,10 +448,14 @@ fn collect_unset_sentinel_cmp(
             if (c.func_name == op::EQUALS || c.func_name == op::NOT_EQUALS) && c.args.len() == 2 {
                 let not_equals = c.func_name == op::NOT_EQUALS;
                 let (a, b) = (&c.args[0].expr, &c.args[1].expr);
-                if let Some(subject) = unset_sentinel_operand(a, b, ctx)
-                    .or_else(|| unset_sentinel_operand(b, a, ctx))
+                if let Some(subject) =
+                    unset_sentinel_operand(a, b, ctx).or_else(|| unset_sentinel_operand(b, a, ctx))
                 {
-                    out.push(UnsetSentinelHit { subject, not_equals, id: ided.id });
+                    out.push(UnsetSentinelHit {
+                        subject,
+                        not_equals,
+                        id: ided.id,
+                    });
                 }
             }
             if let Some(target) = &c.target {
@@ -474,7 +481,13 @@ fn collect_unset_sentinel_cmp(
             }
         }
         Expr::Comprehension(c) => {
-            for e in [&c.iter_range, &c.accu_init, &c.loop_cond, &c.loop_step, &c.result] {
+            for e in [
+                &c.iter_range,
+                &c.accu_init,
+                &c.loop_cond,
+                &c.loop_step,
+                &c.result,
+            ] {
                 collect_unset_sentinel_cmp(e, ctx, out);
             }
         }
@@ -577,7 +590,10 @@ pub(crate) fn analyze_unset_sentinel_slot(
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
 ) -> UnsetSentinelAnalysis {
-    let empty = || UnsetSentinelAnalysis { hits: Vec::new(), load_bearing_for_false: false };
+    let empty = || UnsetSentinelAnalysis {
+        hits: Vec::new(),
+        load_bearing_for_false: false,
+    };
     let mut stack = Vec::new();
     let expanded = expand_cel(raw, defs, Some("$"), &mut stack).unwrap_or_else(|_| raw.to_string());
     let mut arena = lute_cel::CelArena::default();
@@ -594,8 +610,12 @@ pub(crate) fn analyze_unset_sentinel_slot(
     }
     let ids: Vec<u64> = hits.iter().map(|h| h.id).collect();
     let substituted = undecide_ids(ided, &ids);
-    let load_bearing_for_false = !matches!(decide(&substituted.expr, ctx), Some(Decided::Bool(false)));
-    UnsetSentinelAnalysis { hits, load_bearing_for_false }
+    let load_bearing_for_false =
+        !matches!(decide(&substituted.expr, ctx), Some(Decided::Bool(false)));
+    UnsetSentinelAnalysis {
+        hits,
+        load_bearing_for_false,
+    }
 }
 
 #[cfg(test)]
@@ -655,17 +675,17 @@ mod tests {
         assert_eq!(
             apply_op(
                 op::EQUALS,
-                &[
-                    Decided::Str("a".to_string()),
-                    Decided::Str("a".to_string())
-                ]
+                &[Decided::Str("a".to_string()), Decided::Str("a".to_string())]
             ),
             Some(Decided::Bool(true))
         );
         // Heterogeneous equality (different `Decided` variants) is false,
         // never a type error — matches CEL semantics.
         assert_eq!(
-            apply_op(op::EQUALS, &[Decided::Str("a".to_string()), Decided::Bool(true)]),
+            apply_op(
+                op::EQUALS,
+                &[Decided::Str("a".to_string()), Decided::Bool(true)]
+            ),
             Some(Decided::Bool(false))
         );
     }
@@ -719,14 +739,23 @@ mod tests {
         );
         // Overflow.
         assert_eq!(
-            apply_op(op::MULTIPLY, &[Decided::Num(f64::MAX), Decided::Num(f64::MAX)]),
+            apply_op(
+                op::MULTIPLY,
+                &[Decided::Num(f64::MAX), Decided::Num(f64::MAX)]
+            ),
             None
         );
     }
 
     #[test]
     fn unrecognized_op_is_undecided() {
-        assert_eq!(apply_op(op::INDEX, &[Decided::Num(1.0), Decided::Num(0.0)]), None);
-        assert_eq!(apply_op("_%_", &[Decided::Num(5.0), Decided::Num(2.0)]), None);
+        assert_eq!(
+            apply_op(op::INDEX, &[Decided::Num(1.0), Decided::Num(0.0)]),
+            None
+        );
+        assert_eq!(
+            apply_op("_%_", &[Decided::Num(5.0), Decided::Num(2.0)]),
+            None
+        );
     }
 }

@@ -99,7 +99,9 @@ pub struct EvalError {
 
 impl EvalError {
     pub fn new(msg: impl Into<String>) -> Self {
-        Self { message: msg.into() }
+        Self {
+            message: msg.into(),
+        }
     }
 }
 
@@ -140,7 +142,9 @@ fn literal_value(v: &Val) -> Result<Value, EvalError> {
         Val::Double(d) => Value::Num(*d),
         Val::String(s) => Value::Str(s.clone()),
         Val::Bytes(_) => {
-            return Err(EvalError::new("bytes literals are not supported in lint fragment"))
+            return Err(EvalError::new(
+                "bytes literals are not supported in lint fragment",
+            ))
         }
     })
 }
@@ -230,8 +234,14 @@ fn eval_call(c: &CallExpr, env: &Env) -> Result<Value, EvalError> {
         }
         // Scalar arithmetic/comparison/equality via apply_op.
         (
-            op::ADD | op::SUBSTRACT | op::MULTIPLY | op::DIVIDE | op::GREATER
-            | op::GREATER_EQUALS | op::LESS | op::LESS_EQUALS,
+            op::ADD
+            | op::SUBSTRACT
+            | op::MULTIPLY
+            | op::DIVIDE
+            | op::GREATER
+            | op::GREATER_EQUALS
+            | op::LESS
+            | op::LESS_EQUALS,
             [a, b],
         ) => {
             let av = eval(&a.expr, env)?;
@@ -316,12 +326,8 @@ fn index_value(base: &Value, key: &Value) -> Result<Value, EvalError> {
 }
 
 fn to_bool(v: &Value) -> Result<bool, EvalError> {
-    v.as_bool().ok_or_else(|| {
-        EvalError::new(format!(
-            "expected bool, got {}",
-            v.type_name()
-        ))
-    })
+    v.as_bool()
+        .ok_or_else(|| EvalError::new(format!("expected bool, got {}", v.type_name())))
 }
 
 // ---------------------------------------------------------------------------
@@ -363,10 +369,8 @@ pub fn render_message(template: &str, env: &Env) -> String {
 fn next_char_boundary(bytes: &[u8], i: usize) -> usize {
     // UTF-8 char at position i.
     let b = bytes[i];
-    let width = if b < 0x80 {
-        1
-    } else if b < 0xC0 {
-        1 // continuation byte encountered (malformed): step by 1
+    let width = if b < 0xC0 {
+        1 // ASCII, or a continuation byte encountered (malformed): step by 1
     } else if b < 0xE0 {
         2
     } else if b < 0xF0 {
@@ -410,16 +414,8 @@ fn render_scalar(v: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Num(n) => trim_number(*n),
         Value::Str(s) => s.clone(),
-        Value::List(l) => l
-            .iter()
-            .map(render_scalar)
-            .collect::<Vec<_>>()
-            .join(", "),
-        Value::Map(m) => m
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(", "),
+        Value::List(l) => l.iter().map(render_scalar).collect::<Vec<_>>().join(", "),
+        Value::Map(m) => m.keys().cloned().collect::<Vec<_>>().join(", "),
     }
 }
 

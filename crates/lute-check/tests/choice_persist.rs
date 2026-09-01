@@ -329,7 +329,12 @@ fn into_alone_records_clean_then_persist_reports_removed() {
         "E-PERSIST-REMOVED is an error and must flip the verdict; got {:?}",
         res.diagnostics
     );
-    assert_eq!(d.fixits.len(), 1, "exactly one migrate fixit; got {:?}", d.fixits);
+    assert_eq!(
+        d.fixits.len(),
+        1,
+        "exactly one migrate fixit; got {:?}",
+        d.fixits
+    );
     let fx = &d.fixits[0];
     assert_eq!(
         fx.kind, "migrate",
@@ -461,7 +466,11 @@ fn as_on_hub_choice_is_as_removed() {
          </choice>\n\
          </hub>\n"
     );
-    assert!(codes(&t).contains(&"E-AS-REMOVED".to_string()), "{:?}", codes(&t));
+    assert!(
+        codes(&t).contains(&"E-AS-REMOVED".to_string()),
+        "{:?}",
+        codes(&t)
+    );
 }
 
 /// The fixit is a 2→4 byte KEY REPLACEMENT with NO widening. This is where it
@@ -478,8 +487,17 @@ fn as_removed_fixit_replaces_only_the_key() {
          </branch>\n"
     );
     let res = diagnose(&t);
-    let d = res.diagnostics.iter().find(|d| d.code == "E-AS-REMOVED").unwrap();
-    assert_eq!(d.fixits.len(), 1, "exactly one migrate fixit; got {:?}", d.fixits);
+    let d = res
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E-AS-REMOVED")
+        .unwrap();
+    assert_eq!(
+        d.fixits.len(),
+        1,
+        "exactly one migrate fixit; got {:?}",
+        d.fixits
+    );
     let fx = &d.fixits[0];
     assert_eq!(fx.kind, "migrate");
     assert_eq!(fx.confidence, 100);

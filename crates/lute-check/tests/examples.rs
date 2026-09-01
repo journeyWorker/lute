@@ -204,7 +204,12 @@ fn hyphen_path_ident_span_is_narrow() {
         .diagnostics
         .iter()
         .find(|d| d.code == "E-PATH-IDENT")
-        .unwrap_or_else(|| panic!("expected an E-PATH-IDENT diagnostic, got: {:#?}", res.diagnostics));
+        .unwrap_or_else(|| {
+            panic!(
+                "expected an E-PATH-IDENT diagnostic, got: {:#?}",
+                res.diagnostics
+            )
+        });
     let len = d.span.byte_end - d.span.byte_start;
     assert_eq!(
         len,
@@ -217,7 +222,10 @@ fn hyphen_path_ident_span_is_narrow() {
         d.span.byte_start > "---\n".len(),
         "span must point inside the frontmatter, not at its start: {d:#?}"
     );
-    let block_end = text.find("\n---\n").map(|i| i + 5).expect("frontmatter close");
+    let block_end = text
+        .find("\n---\n")
+        .map(|i| i + 5)
+        .expect("frontmatter close");
     assert!(
         len < block_end,
         "span ({len} bytes) must be narrower than the whole frontmatter block ({block_end} bytes)"
@@ -234,10 +242,18 @@ fn hyphen_path_ident_span_is_key_aware() {
         .diagnostics
         .iter()
         .find(|d| d.code == "E-PATH-IDENT")
-        .unwrap_or_else(|| panic!("expected an E-PATH-IDENT diagnostic, got: {:#?}", res.diagnostics));
+        .unwrap_or_else(|| {
+            panic!(
+                "expected an E-PATH-IDENT diagnostic, got: {:#?}",
+                res.diagnostics
+            )
+        });
     let comment_at = text.find("scene.affect-total").expect("comment occurrence");
     let key_at = text.rfind("scene.affect-total").expect("key occurrence");
-    assert_ne!(comment_at, key_at, "test setup: identifier must appear twice");
+    assert_ne!(
+        comment_at, key_at,
+        "test setup: identifier must appear twice"
+    );
     assert_eq!(
         d.span.byte_start, key_at,
         "span must point at the KEY occurrence (byte {key_at}), not the comment (byte {comment_at}): {d:#?}"

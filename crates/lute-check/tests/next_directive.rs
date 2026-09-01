@@ -41,13 +41,20 @@ fn next_is_a_known_core_directive() {
     // The mark lives in a SEPARATE shot body — placed in the SAME
     // straight-line body as the unconditional `::next` it would be
     // unreachable code (see `content_after_unguarded_next_in_the_same_shot_warns_once`).
-    let out = codes(&format!("{HDR}::next{{to=\"x\"}}\n## Shot 2.\n::mark{{id=\"x\"}}\n"));
-    assert!(out.is_empty(), "a clean forward jump must be clean: {out:?}");
+    let out = codes(&format!(
+        "{HDR}::next{{to=\"x\"}}\n## Shot 2.\n::mark{{id=\"x\"}}\n"
+    ));
+    assert!(
+        out.is_empty(),
+        "a clean forward jump must be clean: {out:?}"
+    );
 }
 
 #[test]
 fn next_rejects_an_undeclared_attr() {
-    let out = codes(&format!("{HDR}::next{{to=\"x\" bogus=\"1\"}}\n::mark{{id=\"x\"}}\n"));
+    let out = codes(&format!(
+        "{HDR}::next{{to=\"x\" bogus=\"1\"}}\n::mark{{id=\"x\"}}\n"
+    ));
     assert!(
         out.contains(&"E-UNKNOWN-ATTR".to_string()),
         "`::next` declares only `to`/`when`: {out:?}"
@@ -90,9 +97,15 @@ fn the_warning_is_a_warning_with_the_spec_message() {
         .find(|d| d.code == W)
         .unwrap_or_else(|| panic!("expected {W}: {:?}", result.diagnostics));
     assert_eq!(d.severity, lute_core_span::Severity::Warning);
-    assert_eq!(d.message, "unreachable content after `::next` (the walk jumps away here)");
+    assert_eq!(
+        d.message,
+        "unreachable content after `::next` (the walk jumps away here)"
+    );
     // Anchored at the FIRST unreachable node, not at the `::next`.
-    assert_eq!(&text[d.span.byte_start..d.span.byte_end], "@narrator: never");
+    assert_eq!(
+        &text[d.span.byte_start..d.span.byte_end],
+        "@narrator: never"
+    );
 }
 
 #[test]
@@ -131,19 +144,31 @@ fn next_targeting_an_undefined_label_errors() {
 #[test]
 fn next_targeting_a_backward_label_errors() {
     let text = format!("{HDR}::mark{{id=\"x\"}}\n@narrator: hi\n::next{{to=\"x\"}}\n");
-    assert!(codes(&text).contains(&"E-NEXT-BACKWARD".to_string()), "{:?}", codes(&text));
+    assert!(
+        codes(&text).contains(&"E-NEXT-BACKWARD".to_string()),
+        "{:?}",
+        codes(&text)
+    );
 }
 
 #[test]
 fn duplicate_mark_ids_error() {
     let text = format!("{HDR}::mark{{id=\"x\"}}\n::mark{{id=\"x\"}}\n");
-    assert!(codes(&text).contains(&"E-MARK-DUP".to_string()), "{:?}", codes(&text));
+    assert!(
+        codes(&text).contains(&"E-MARK-DUP".to_string()),
+        "{:?}",
+        codes(&text)
+    );
 }
 
 #[test]
 fn mark_and_line_id_collision_errors() {
     let text = format!("{HDR}::mark{{id=\"x\"}}\n@narrator{{id=\"x\"}}: hi\n");
-    assert!(codes(&text).contains(&"E-MARK-DUP".to_string()), "{:?}", codes(&text));
+    assert!(
+        codes(&text).contains(&"E-MARK-DUP".to_string()),
+        "{:?}",
+        codes(&text)
+    );
 }
 
 // --- guarded `::next{when}` gets the SAME CEL validation a line `when=` does -

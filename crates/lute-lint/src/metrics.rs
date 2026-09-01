@@ -166,7 +166,13 @@ pub fn compute_doc_tables(
     let directives = std::mem::take(&mut walker.directive_rows);
 
     (
-        DocTables { scene, lines, shots, speakers, groups },
+        DocTables {
+            scene,
+            lines,
+            shots,
+            speakers,
+            groups,
+        },
         directives,
     )
 }
@@ -190,7 +196,11 @@ pub fn compute_project_row(scene_words: &[u32]) -> ProjectRow {
     if scenes == 0 {
         min = 0.0;
     }
-    let mean = if scenes == 0 { 0.0 } else { sum / scenes as f64 };
+    let mean = if scenes == 0 {
+        0.0
+    } else {
+        sum / scenes as f64
+    };
     let stddev = if scenes < 2 {
         0.0
     } else {
@@ -204,10 +214,19 @@ pub fn compute_project_row(scene_words: &[u32]) -> ProjectRow {
             / scenes as f64;
         var.sqrt()
     };
-    let spread_ratio = if scenes < 2 || min == 0.0 { 0.0 } else { max / min };
+    let spread_ratio = if scenes < 2 || min == 0.0 {
+        0.0
+    } else {
+        max / min
+    };
     ProjectRow {
         scenes,
-        sceneWords: SceneWords { min, max, mean, stddev },
+        sceneWords: SceneWords {
+            min,
+            max,
+            mean,
+            stddev,
+        },
         spreadRatio: spread_ratio,
     }
 }
@@ -446,10 +465,7 @@ impl Walker {
         out
     }
 
-    fn build_groups(
-        &self,
-        group_bys: &BTreeSet<String>,
-    ) -> BTreeMap<String, Vec<GroupRow>> {
+    fn build_groups(&self, group_bys: &BTreeSet<String>) -> BTreeMap<String, Vec<GroupRow>> {
         let mut out = BTreeMap::new();
         if group_bys.is_empty() {
             return out;
@@ -507,10 +523,7 @@ fn attr_display(v: &AttrValue) -> String {
 /// resolves to the raw text but `is_static == false`, so [`asset-exists`]
 /// can silently skip it (a `@ref` id is checked by `lute-check`'s catalog
 /// bind, not by lint).
-fn attr_string(
-    attrs: &[Attr],
-    key: &str,
-) -> (Option<String>, Option<lute_core_span::Span>, bool) {
+fn attr_string(attrs: &[Attr], key: &str) -> (Option<String>, Option<lute_core_span::Span>, bool) {
     for a in attrs {
         if a.key == key {
             return match &a.value {
@@ -598,7 +611,11 @@ fn axis_from_buckets(buckets: &[String]) -> AxisStats {
             streaks: 0,
             streakAvg: 0.0,
             distinct: 0,
-            top: TopStats { value: String::new(), count: 0, share: 0.0 },
+            top: TopStats {
+                value: String::new(),
+                count: 0,
+                share: 0.0,
+            },
         };
     }
     let mut counts: BTreeMap<&str, u32> = BTreeMap::new();
@@ -634,7 +651,11 @@ fn axis_from_buckets(buckets: &[String]) -> AxisStats {
         streaks,
         streakAvg: buckets.len() as f64 / streaks as f64,
         distinct: counts.len() as u32,
-        top: TopStats { value: top_val, count: top_count, share },
+        top: TopStats {
+            value: top_val,
+            count: top_count,
+            share,
+        },
     }
 }
 

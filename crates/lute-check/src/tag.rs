@@ -212,11 +212,23 @@ pub fn retag_document(text: &str) -> RetagOutcome {
     for shot in &doc.shots {
         collect_lines(&shot.body, &mut scene_lines);
     }
-    retag_scope(scene_lines, bytes, &mut edits, &mut renumbered, &mut skipped);
+    retag_scope(
+        scene_lines,
+        bytes,
+        &mut edits,
+        &mut renumbered,
+        &mut skipped,
+    );
     for quest in &doc.quests {
         let mut quest_lines: Vec<&Line> = Vec::new();
         collect_lines(&quest.body, &mut quest_lines);
-        retag_scope(quest_lines, bytes, &mut edits, &mut renumbered, &mut skipped);
+        retag_scope(
+            quest_lines,
+            bytes,
+            &mut edits,
+            &mut renumbered,
+            &mut skipped,
+        );
     }
 
     if edits.is_empty() {
@@ -298,8 +310,7 @@ fn retag_scope(
 /// YAML cannot lock (the checker reports it separately); an absent key is
 /// unlocked.
 pub fn codes_locked(raw_yaml: &str) -> bool {
-    let Ok(serde_yaml::Value::Mapping(map)) =
-        serde_yaml::from_str::<serde_yaml::Value>(raw_yaml)
+    let Ok(serde_yaml::Value::Mapping(map)) = serde_yaml::from_str::<serde_yaml::Value>(raw_yaml)
     else {
         return false;
     };
@@ -371,8 +382,7 @@ mod tests {
         assert_eq!(out.added, 1);
         // `code` is merged as the FIRST attribute, existing attrs preserved.
         assert!(
-            out.text
-                .contains("@fixer{code=\"0010\" mono}: hmm"),
+            out.text.contains("@fixer{code=\"0010\" mono}: hmm"),
             "got:\n{}",
             out.text
         );
@@ -400,7 +410,8 @@ mod tests {
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
-            out.text.contains("@bianca{code=\"0010\" emotion=\"x\"}: hi"),
+            out.text
+                .contains("@bianca{code=\"0010\" emotion=\"x\"}: hi"),
             "got:\n{}",
             out.text
         );
@@ -428,12 +439,18 @@ mod tests {
                    @fixer: third\n";
         let (text, n, skipped) = renumbered(retag_document(src));
         assert_eq!((n, skipped), (3, 0));
-        assert!(text.contains("@fixer{code=\"0010\"}: first"), "got:\n{text}");
+        assert!(
+            text.contains("@fixer{code=\"0010\"}: first"),
+            "got:\n{text}"
+        );
         assert!(
             text.contains("@fixer{code=\"0020\" mono}: second"),
             "got:\n{text}"
         );
-        assert!(text.contains("@fixer{code=\"0030\"}: third"), "got:\n{text}");
+        assert!(
+            text.contains("@fixer{code=\"0030\"}: third"),
+            "got:\n{text}"
+        );
     }
 
     #[test]
@@ -481,14 +498,16 @@ mod tests {
     #[test]
     fn retag_lock_fails_closed_on_malformed_value() {
         // `codesLocked: "no"` is not `false` — a typo must never unlock.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncodesLocked: \"no\"\n---\n\
+        let src =
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncodesLocked: \"no\"\n---\n\
                    ## Shot 1.\n@fixer{code=\"0050\"}: kept\n";
         assert_eq!(retag_document(src), RetagOutcome::Locked);
     }
 
     #[test]
     fn retag_codes_locked_false_unlocks() {
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncodesLocked: false\n---\n\
+        let src =
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncodesLocked: false\n---\n\
                    ## Shot 1.\n@fixer{code=\"0050\"}: a\n";
         let (text, n, _) = renumbered(retag_document(src));
         assert_eq!(n, 1);
@@ -502,9 +521,15 @@ mod tests {
                    @fixer: plain\n";
         let (text, n, skipped) = renumbered(retag_document(src));
         assert_eq!((n, skipped), (1, 1));
-        assert!(text.contains("@fixer{code=@customId}: special"), "got:\n{text}");
+        assert!(
+            text.contains("@fixer{code=@customId}: special"),
+            "got:\n{text}"
+        );
         // The @ref line consumed no slot: the plain line starts the sequence.
-        assert!(text.contains("@fixer{code=\"0010\"}: plain"), "got:\n{text}");
+        assert!(
+            text.contains("@fixer{code=\"0010\"}: plain"),
+            "got:\n{text}"
+        );
     }
 
     #[test]
@@ -638,7 +663,8 @@ mod tests {
         let out = tag_document(src);
         assert_eq!(out.added, 1);
         assert!(
-            out.text.contains("@bianca{code=\"0010\"}: hi /* { */ there"),
+            out.text
+                .contains("@bianca{code=\"0010\"}: hi /* { */ there"),
             "got:\n{}",
             out.text
         );
@@ -650,7 +676,10 @@ mod tests {
             "{diags:?}"
         );
         let twice = tag_document(&out.text);
-        assert_eq!(twice.added, 0, "second tag run must be a no-op (idempotent)");
+        assert_eq!(
+            twice.added, 0,
+            "second tag run must be a no-op (idempotent)"
+        );
         assert_eq!(twice.text, out.text, "idempotent: byte-identical on re-run");
     }
 

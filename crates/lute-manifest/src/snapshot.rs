@@ -497,8 +497,10 @@ mod tests {
         // presence differs. That decides whether `sprite.exit` is emitted.
         let mk = |exits: &[&str]| {
             let mut snap = CapabilitySnapshot::default();
-            snap.domains
-                .insert("action".into(), dom(&["enter", "leave", "wave"], None, exits));
+            snap.domains.insert(
+                "action".into(),
+                dom(&["enter", "leave", "wave"], None, exits),
+            );
             capability_version(&snap)
         };
         assert_ne!(
@@ -527,7 +529,11 @@ mod tests {
             capability_version(&snap)
         };
         let a = build(false);
-        assert_eq!(a, build(false), "hashing the same snapshot twice must agree");
+        assert_eq!(
+            a,
+            build(false),
+            "hashing the same snapshot twice must agree"
+        );
         assert_eq!(a, build(true), "insertion order must not perturb the stamp");
     }
 

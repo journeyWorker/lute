@@ -304,7 +304,10 @@ impl TraceReport {
                 parts.push(format!("choices {}/{} ({})", c.visited, c.total, c.label));
             }
             for (site, c) in &self.coverage.arms {
-                parts.push(format!("arms {}/{} ({} @{site})", c.visited, c.total, c.label));
+                parts.push(format!(
+                    "arms {}/{} ({} @{site})",
+                    c.visited, c.total, c.label
+                ));
             }
             out.push_str(&format!("; {}", parts.join(", ")));
         }
@@ -329,7 +332,12 @@ fn render_step(step: &Step, out: &mut String) {
         }
         Step::Assert { text } => out.push_str(&format!("    ::assert  {text}\n")),
         Step::Retract { text } => out.push_str(&format!("    ::retract  {text}\n")),
-        Step::Directive { tag, component_boundary, exit, reason } => match component_boundary {
+        Step::Directive {
+            tag,
+            component_boundary,
+            exit,
+            reason,
+        } => match component_boundary {
             // §3.3: `tag` on a boundary step IS the internal
             // `__component-begin`/`-end` sentinel (`normalize.rs`'s
             // `COMPONENT_BEGIN`/`COMPONENT_END`) — never interpolated into
@@ -354,7 +362,11 @@ fn render_step(step: &Step, out: &mut String) {
             } else {
                 ""
             };
-            let guard = d.guard.as_deref().map(|g| format!(" ({g})")).unwrap_or_default();
+            let guard = d
+                .guard
+                .as_deref()
+                .map(|g| format!(" ({g})"))
+                .unwrap_or_default();
             let eligible = if d.eligible.is_empty() {
                 String::new()
             } else {

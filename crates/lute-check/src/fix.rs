@@ -166,8 +166,7 @@ pub fn fix_document(text: &str) -> FixResult {
         }
         if let Some(p) = c.attrs.iter().find(|a| a.key == "persist") {
             if matches!(&p.value, AttrValue::Str(s) if s == "run") {
-                let (start, end) =
-                    widen_removed_attr(bytes1, p.span.byte_start, p.span.byte_end);
+                let (start, end) = widen_removed_attr(bytes1, p.span.byte_start, p.span.byte_end);
                 edits2.push((start, end, String::new()));
             }
         }
@@ -216,7 +215,13 @@ pub fn fix_document(text: &str) -> FixResult {
                 "voiceover" => edits2.push((start, end, "vo".to_string())),
                 "spoken" => {
                     if l.attrs.len() == 1 {
-                        match find_enclosing_braces(bytes1, l.span.byte_start, l.text_span.byte_start, start, end) {
+                        match find_enclosing_braces(
+                            bytes1,
+                            l.span.byte_start,
+                            l.text_span.byte_start,
+                            start,
+                            end,
+                        ) {
                             Some((bs, be)) => edits2.push((bs, be, String::new())),
                             None => edits2.push((start, end, String::new())),
                         }
@@ -436,7 +441,7 @@ fn shot_prefix_delete(bytes: &[u8], line_start: usize) -> Option<(usize, usize)>
         return None;
     }
     i += 1; // consume `.`
-    // Separating whitespace, then a non-empty title up to end of line.
+            // Separating whitespace, then a non-empty title up to end of line.
     let ws1 = i;
     while matches!(byte(i), Some(b' ' | b'\t')) {
         i += 1;
@@ -478,18 +483,18 @@ mod tests {
             "got:\n{}",
             out.text
         );
-        assert!(!out.text.contains(":line["), "`:line[` must be gone:\n{}", out.text);
+        assert!(
+            !out.text.contains(":line["),
+            "`:line[` must be gone:\n{}",
+            out.text
+        );
     }
 
     #[test]
     fn migrates_line_bracket_no_attrs() {
         let out = fix_document(&wrap(":line[narrator]: plain\n"));
         assert!(out.changed >= 1, "changed: {}", out.changed);
-        assert!(
-            out.text.contains("@narrator: plain"),
-            "got:\n{}",
-            out.text
-        );
+        assert!(out.text.contains("@narrator: plain"), "got:\n{}", out.text);
         assert!(!out.text.contains(":line["), "got:\n{}", out.text);
     }
 
@@ -500,7 +505,8 @@ mod tests {
         ));
         assert_eq!(out.changed, 2, "got:\n{}", out.text);
         assert!(
-            out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
+            out.text
+                .contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
             "got:\n{}",
             out.text
         );
@@ -518,7 +524,8 @@ mod tests {
         ));
         assert_eq!(out.changed, 2, "got:\n{}", out.text);
         assert!(
-            out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
+            out.text
+                .contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
             "got:\n{}",
             out.text
         );
@@ -589,9 +596,14 @@ mod tests {
         let out = fix_document(&src);
         // phase1 (`:line[` removal + both lines' `:`→`@`) + phase2 (`as`→`into`).
         assert_eq!(out.changed, 3, "all rules fire; got:\n{}", out.text);
-        assert!(out.text.contains("@bianca{emotion=\"x\"}: hi"), "got:\n{}", out.text);
         assert!(
-            out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
+            out.text.contains("@bianca{emotion=\"x\"}: hi"),
+            "got:\n{}",
+            out.text
+        );
+        assert!(
+            out.text
+                .contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
             "got:\n{}",
             out.text
         );
@@ -615,12 +627,14 @@ mod tests {
         let out = fix_document(src);
         assert_eq!(out.changed, 4, "got:\n{}", out.text);
         assert!(
-            out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
+            out.text
+                .contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
             "on-nested choice not migrated, got:\n{}",
             out.text
         );
         assert!(
-            out.text.contains("<choice id=\"c2\" label=\"M\" into=\"run.y\">"),
+            out.text
+                .contains("<choice id=\"c2\" label=\"M\" into=\"run.y\">"),
             "objective-nested choice not migrated, got:\n{}",
             out.text
         );
@@ -649,8 +663,14 @@ mod tests {
 
     #[test]
     fn migrates_delivery_attr_to_flag() {
-        let out = fix_document("## Shot 1.\n@x{delivery=\"thought\"}: a\n@y{delivery=\"voiceover\"}: b\n");
-        assert!(out.text.contains("{mono}") && out.text.contains("{vo}"), "got:\n{}", out.text);
+        let out = fix_document(
+            "## Shot 1.\n@x{delivery=\"thought\"}: a\n@y{delivery=\"voiceover\"}: b\n",
+        );
+        assert!(
+            out.text.contains("{mono}") && out.text.contains("{vo}"),
+            "got:\n{}",
+            out.text
+        );
         assert!(!out.text.contains("delivery="), "got:\n{}", out.text);
     }
 
@@ -685,8 +705,16 @@ mod tests {
             "## Shot 1.\n@z{emotion=\"x\" delivery=\"spoken\"}: c\n@w{delivery=\"spoken\" emotion=\"x\"}: d\n",
         );
         assert!(!out.text.contains("delivery="), "got:\n{}", out.text);
-        assert!(out.text.contains("@z{emotion=\"x\"}: c"), "got:\n{}", out.text);
-        assert!(out.text.contains("@w{emotion=\"x\"}: d"), "got:\n{}", out.text);
+        assert!(
+            out.text.contains("@z{emotion=\"x\"}: c"),
+            "got:\n{}",
+            out.text
+        );
+        assert!(
+            out.text.contains("@w{emotion=\"x\"}: d"),
+            "got:\n{}",
+            out.text
+        );
     }
 
     #[test]
@@ -695,7 +723,11 @@ mod tests {
         // no edits — the rule only ever fires on a `delivery=` attr key.
         let src = "## Shot 1.\n@x{mono}: a\n@y{vo}: b\n@z: c\n";
         let out = fix_document(src);
-        assert_eq!(out.changed, 0, "already-bare flags must not be touched: {}", out.text);
+        assert_eq!(
+            out.changed, 0,
+            "already-bare flags must not be touched: {}",
+            out.text
+        );
         assert_eq!(out.text, src);
     }
 
@@ -707,16 +739,24 @@ mod tests {
         let out = fix_document(&wrap(
             "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" persist=\"run\" into=\"run.x\">\n@bianca: hi\n</choice>\n</branch>\n",
         ));
-        assert_eq!(out.changed, 1, "only the persist attr is deleted; got:\n{}", out.text);
+        assert_eq!(
+            out.changed, 1,
+            "only the persist attr is deleted; got:\n{}",
+            out.text
+        );
         assert!(
-            out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
+            out.text
+                .contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
             "persist= must splice away leaving one clean space, got:\n{}",
             out.text
         );
         assert!(!out.text.contains("persist="), "got:\n{}", out.text);
         // still parses clean, and re-running is a no-op (idempotent).
         let (_doc, diags) = parse(&out.text);
-        assert!(!diags.iter().any(|d| d.severity == Severity::Error), "{diags:?}");
+        assert!(
+            !diags.iter().any(|d| d.severity == Severity::Error),
+            "{diags:?}"
+        );
         let again = fix_document(&out.text);
         assert_eq!(again.changed, 0, "second pass is a no-op");
         assert_eq!(again.text, out.text);
@@ -729,7 +769,8 @@ mod tests {
         ));
         assert_eq!(out.changed, 1, "got:\n{}", out.text);
         assert!(
-            out.text.contains("<choice id=\"c\" label=\"L\" into=\"run.x\" exit>"),
+            out.text
+                .contains("<choice id=\"c\" label=\"L\" into=\"run.x\" exit>"),
             "got:\n{}",
             out.text
         );
@@ -766,14 +807,27 @@ mod tests {
     fn strips_shot_heading_prefix_when_title_follows() {
         // dsl 0.6.0 §3.4: `## Shot 3. The Alley` → `## The Alley` — the legacy
         // grammar prefix is stripped, the free-text title survives byte-exact.
-        let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 3. The Alley\n@bianca: hi\n";
+        let src =
+            "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 3. The Alley\n@bianca: hi\n";
         let out = fix_document(src);
-        assert_eq!(out.changed, 1, "only the heading prefix is stripped; got:\n{}", out.text);
+        assert_eq!(
+            out.changed, 1,
+            "only the heading prefix is stripped; got:\n{}",
+            out.text
+        );
         assert!(out.text.contains("## The Alley\n"), "got:\n{}", out.text);
-        assert!(!out.text.contains("Shot 3."), "grammar prefix must be gone; got:\n{}", out.text);
+        assert!(
+            !out.text.contains("Shot 3."),
+            "grammar prefix must be gone; got:\n{}",
+            out.text
+        );
         // idempotent: the stripped title no longer matches the prefix shape.
         let again = fix_document(&out.text);
-        assert_eq!(again.changed, 0, "second pass is a no-op; got:\n{}", again.text);
+        assert_eq!(
+            again.changed, 0,
+            "second pass is a no-op; got:\n{}",
+            again.text
+        );
         assert_eq!(again.text, out.text);
     }
 
@@ -782,7 +836,11 @@ mod tests {
         let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Scene 2. Rooftop at dusk\n@bianca: hi\n";
         let out = fix_document(src);
         assert_eq!(out.changed, 1, "got:\n{}", out.text);
-        assert!(out.text.contains("## Rooftop at dusk\n"), "got:\n{}", out.text);
+        assert!(
+            out.text.contains("## Rooftop at dusk\n"),
+            "got:\n{}",
+            out.text
+        );
         assert!(!out.text.contains("Scene 2."), "got:\n{}", out.text);
     }
 
@@ -792,7 +850,11 @@ mod tests {
         // stripping would leave an empty heading, so `lute fix` leaves it be.
         let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 3.\n@bianca: hi\n";
         let out = fix_document(src);
-        assert_eq!(out.changed, 0, "bare `## Shot 3.` must be untouched; got:\n{}", out.text);
+        assert_eq!(
+            out.changed, 0,
+            "bare `## Shot 3.` must be untouched; got:\n{}",
+            out.text
+        );
         assert_eq!(out.text, src);
     }
 
@@ -800,7 +862,11 @@ mod tests {
     fn leaves_bare_scene_heading_untouched() {
         let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Scene 2.\n@bianca: hi\n";
         let out = fix_document(src);
-        assert_eq!(out.changed, 0, "bare `## Scene 2.` must be untouched; got:\n{}", out.text);
+        assert_eq!(
+            out.changed, 0,
+            "bare `## Scene 2.` must be untouched; got:\n{}",
+            out.text
+        );
         assert_eq!(out.text, src);
     }
 
@@ -810,7 +876,11 @@ mod tests {
         // free title — never touched.
         let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## The Alley\n@bianca: hi\n";
         let out = fix_document(src);
-        assert_eq!(out.changed, 0, "a non-grammar free heading is untouched; got:\n{}", out.text);
+        assert_eq!(
+            out.changed, 0,
+            "a non-grammar free heading is untouched; got:\n{}",
+            out.text
+        );
         assert_eq!(out.text, src);
     }
 }

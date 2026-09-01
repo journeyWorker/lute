@@ -79,7 +79,8 @@ fn message_and_span_follow_3_4() {
         .find(|d| d.code == "E-SET-TYPE")
         .expect("expected E-SET-TYPE");
     assert!(
-        d.message.contains("writes a `bool` into `run.n`, declared `number`"),
+        d.message
+            .contains("writes a `bool` into `run.n`, declared `number`"),
         "got: {}",
         d.message
     );
@@ -121,7 +122,11 @@ fn foreign_enum_member_is_set_type_with_suggestion() {
         .into_iter()
         .find(|d| d.code == "E-SET-TYPE")
         .expect("a foreign enum member must be E-SET-TYPE");
-    assert!(d.message.contains("did you mean `blake`?"), "got: {}", d.message);
+    assert!(
+        d.message.contains("did you mean `blake`?"),
+        "got: {}",
+        d.message
+    );
 }
 
 /// D-M applied to §3.2's own table: an `enum`-typed READ satisfies a required

@@ -78,15 +78,17 @@ pub fn producible(
     vocab: &RelVocab,
     live_assert_relations: &BTreeSet<String>,
 ) -> BTreeMap<String, bool> {
-    let seeded: BTreeSet<&str> = vocab.facts.iter().map(|f| f.fact.relation.as_str()).collect();
+    let seeded: BTreeSet<&str> = vocab
+        .facts
+        .iter()
+        .map(|f| f.fact.relation.as_str())
+        .collect();
     let mut result: BTreeMap<String, bool> = BTreeMap::new();
     for (name, decl) in &vocab.relations {
         let value = if decl.derive {
             false // filled by the fixpoint below, monotone false -> true only.
         } else {
-            seeded.contains(name.as_str())
-                || decl.reserved
-                || live_assert_relations.contains(name)
+            seeded.contains(name.as_str()) || decl.reserved || live_assert_relations.contains(name)
         };
         result.insert(name.clone(), value);
     }
@@ -94,7 +96,9 @@ pub fn producible(
         let mut changed = false;
         for rule_decl in &vocab.rules {
             let head = &rule_decl.rule.head.relation;
-            let Some(decl) = vocab.relations.get(head) else { continue };
+            let Some(decl) = vocab.relations.get(head) else {
+                continue;
+            };
             if !decl.derive {
                 continue;
             }
@@ -403,7 +407,10 @@ fn objective_is_dead(
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
 ) -> bool {
-    if matches!(decide_slot(&o.done.raw, defs, ctx), Some(Decided::Bool(false))) {
+    if matches!(
+        decide_slot(&o.done.raw, defs, ctx),
+        Some(Decided::Bool(false))
+    ) {
         return true;
     }
     let mut dead_relations = BTreeSet::new();
@@ -505,7 +512,9 @@ fn dead_guard(
     let Some(handle) = lute_cel::parse_slot_marked_refs(&mut arena, &expanded) else {
         return false;
     };
-    let Some(ided) = arena.get(handle) else { return false };
+    let Some(ided) = arena.get(handle) else {
+        return false;
+    };
     // Gate (b): decide the ORIGINAL guard first, WITHOUT substitution. If
     // it is already provably false on its own, that non-relational cause
     // is load-bearing and owned by the ordinary reachability pass — the
@@ -712,7 +721,9 @@ fn unproven_relations(
     let Some(handle) = lute_cel::parse_slot_marked_refs(&mut arena, &expanded) else {
         return out;
     };
-    let Some(ided) = arena.get(handle) else { return out };
+    let Some(ided) = arena.get(handle) else {
+        return out;
+    };
     // (1) already proved or refuted by static reachability — not a review region.
     if decide(&ided.expr, ctx).is_some() {
         return out;
@@ -832,7 +843,13 @@ mod tests {
     }
 
     fn dummy_span() -> Span {
-        Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+        Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        }
     }
 
     fn fact(relation: &str) -> crate::meta::FactDecl {
@@ -846,13 +863,19 @@ mod tests {
 
     fn rule(text: &str) -> crate::meta::RuleDecl {
         let rule = lute_syntax::datalog::parse_rule(text).unwrap();
-        crate::meta::RuleDecl { rule, raw: text.to_string(), span: dummy_span() }
+        crate::meta::RuleDecl {
+            rule,
+            raw: text.to_string(),
+            span: dummy_span(),
+        }
     }
 
     #[test]
     fn base_relation_with_facts_seed_is_producible() {
         let mut vocab = RelVocab::default();
-        vocab.relations.insert("seeded".to_string(), base_relation(false));
+        vocab
+            .relations
+            .insert("seeded".to_string(), base_relation(false));
         vocab.facts.push(fact("seeded"));
         let result = producible(&vocab, &BTreeSet::new());
         assert_eq!(result.get("seeded"), Some(&true));
@@ -861,7 +884,9 @@ mod tests {
     #[test]
     fn base_relation_reserved_is_producible_without_facts() {
         let mut vocab = RelVocab::default();
-        vocab.relations.insert("engineOwned".to_string(), base_relation(true));
+        vocab
+            .relations
+            .insert("engineOwned".to_string(), base_relation(true));
         let result = producible(&vocab, &BTreeSet::new());
         assert_eq!(result.get("engineOwned"), Some(&true));
     }
@@ -869,7 +894,9 @@ mod tests {
     #[test]
     fn base_relation_with_live_assert_is_producible() {
         let mut vocab = RelVocab::default();
-        vocab.relations.insert("asserted".to_string(), base_relation(false));
+        vocab
+            .relations
+            .insert("asserted".to_string(), base_relation(false));
         let live: BTreeSet<String> = ["asserted".to_string()].into_iter().collect();
         let result = producible(&vocab, &live);
         assert_eq!(result.get("asserted"), Some(&true));
@@ -878,7 +905,9 @@ mod tests {
     #[test]
     fn base_relation_with_no_producer_is_not_producible() {
         let mut vocab = RelVocab::default();
-        vocab.relations.insert("orphan".to_string(), base_relation(false));
+        vocab
+            .relations
+            .insert("orphan".to_string(), base_relation(false));
         let result = producible(&vocab, &BTreeSet::new());
         assert_eq!(result.get("orphan"), Some(&false));
     }
@@ -886,8 +915,12 @@ mod tests {
     #[test]
     fn derived_relation_producible_via_seeded_base() {
         let mut vocab = RelVocab::default();
-        vocab.relations.insert("base".to_string(), base_relation(false));
-        vocab.relations.insert("derived".to_string(), derive_relation());
+        vocab
+            .relations
+            .insert("base".to_string(), base_relation(false));
+        vocab
+            .relations
+            .insert("derived".to_string(), derive_relation());
         vocab.facts.push(fact("base"));
         vocab.rules.push(rule("derived(X) :- base(X)"));
         let result = producible(&vocab, &BTreeSet::new());
@@ -897,8 +930,12 @@ mod tests {
     #[test]
     fn derived_relation_never_producible_when_base_has_no_producer() {
         let mut vocab = RelVocab::default();
-        vocab.relations.insert("base".to_string(), base_relation(false));
-        vocab.relations.insert("derived".to_string(), derive_relation());
+        vocab
+            .relations
+            .insert("base".to_string(), base_relation(false));
+        vocab
+            .relations
+            .insert("derived".to_string(), derive_relation());
         vocab.rules.push(rule("derived(X) :- base(X)"));
         let result = producible(&vocab, &BTreeSet::new());
         assert_eq!(result.get("derived"), Some(&false));
@@ -910,11 +947,19 @@ mod tests {
         // is always-satisfiable, so `derived` is producible purely off
         // `notSeeded`'s facts seed, regardless of `neverSeeded`'s state.
         let mut vocab = RelVocab::default();
-        vocab.relations.insert("notSeeded".to_string(), base_relation(false));
-        vocab.relations.insert("neverSeeded".to_string(), base_relation(false));
-        vocab.relations.insert("derived".to_string(), derive_relation());
+        vocab
+            .relations
+            .insert("notSeeded".to_string(), base_relation(false));
+        vocab
+            .relations
+            .insert("neverSeeded".to_string(), base_relation(false));
+        vocab
+            .relations
+            .insert("derived".to_string(), derive_relation());
         vocab.facts.push(fact("notSeeded"));
-        vocab.rules.push(rule("derived(X) :- notSeeded(X), not neverSeeded(X)"));
+        vocab
+            .rules
+            .push(rule("derived(X) :- notSeeded(X), not neverSeeded(X)"));
         let result = producible(&vocab, &BTreeSet::new());
         assert_eq!(result.get("derived"), Some(&true));
     }
@@ -925,7 +970,9 @@ mod tests {
         // satisfiable (the spec's "every positive atom producible" holds
         // trivially over an empty positive set).
         let mut vocab = RelVocab::default();
-        vocab.relations.insert("derived".to_string(), derive_relation());
+        vocab
+            .relations
+            .insert("derived".to_string(), derive_relation());
         vocab.rules.push(rule("derived(X) :- cel(\"true\")"));
         let result = producible(&vocab, &BTreeSet::new());
         assert_eq!(result.get("derived"), Some(&true));
@@ -937,11 +984,17 @@ mod tests {
         // self-referencing, must not infinite-loop; terminates true off the
         // base case.
         let mut vocab = RelVocab::default();
-        vocab.relations.insert("edge".to_string(), base_relation(false));
-        vocab.relations.insert("path".to_string(), derive_relation());
+        vocab
+            .relations
+            .insert("edge".to_string(), base_relation(false));
+        vocab
+            .relations
+            .insert("path".to_string(), derive_relation());
         vocab.facts.push(fact("edge"));
         vocab.rules.push(rule("path(X, Y) :- edge(X, Y)"));
-        vocab.rules.push(rule("path(X, Y) :- path(X, Z), edge(Z, Y)"));
+        vocab
+            .rules
+            .push(rule("path(X, Y) :- path(X, Z), edge(Z, Y)"));
         let result = producible(&vocab, &BTreeSet::new());
         assert_eq!(result.get("path"), Some(&true));
     }
@@ -952,7 +1005,11 @@ mod tests {
     // `crate::connectivity::check_reachability`'s `completed(Q)`) -------
 
     fn cel(raw: &str) -> lute_syntax::ast::CelSlot {
-        lute_syntax::ast::CelSlot::raw(lute_syntax::ast::CelKind::Condition, raw.to_string(), dummy_span())
+        lute_syntax::ast::CelSlot::raw(
+            lute_syntax::ast::CelKind::Condition,
+            raw.to_string(),
+            dummy_span(),
+        )
     }
 
     fn objective_node(id: &str, done: &str, optional: bool) -> Node {
@@ -973,7 +1030,10 @@ mod tests {
 
     fn quest_doc(quest_id: &str, body: Vec<Node>) -> Document {
         Document {
-            meta: lute_syntax::ast::Meta { raw_yaml: String::new(), span: dummy_span() },
+            meta: lute_syntax::ast::Meta {
+                raw_yaml: String::new(),
+                span: dummy_span(),
+            },
             title: None,
             shots: Vec::new(),
             quests: vec![lute_syntax::ast::Quest {
@@ -996,12 +1056,23 @@ mod tests {
     fn scalar_dead_required_objective_marks_quest() {
         let doc = quest_doc("deadQuest", vec![objective_node("o", "false", false)]);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
-        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
-        assert!(out.contains("deadQuest"), "scalar-dead REQUIRED objective must mark the quest");
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
+        let out =
+            dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
+        assert!(
+            out.contains("deadQuest"),
+            "scalar-dead REQUIRED objective must mark the quest"
+        );
     }
 
     /// C4: an OPTIONAL dead objective never marks its quest -- the quest
@@ -1010,12 +1081,23 @@ mod tests {
     fn scalar_dead_optional_objective_never_marks_quest() {
         let doc = quest_doc("q", vec![objective_node("o", "false", true)]);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
-        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
-        assert!(out.is_empty(), "an OPTIONAL dead objective must never mark its quest");
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
+        let out =
+            dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
+        assert!(
+            out.is_empty(),
+            "an OPTIONAL dead objective must never mark its quest"
+        );
     }
 
     /// The relational never-producible-relation flavor (spec §4.2): a
@@ -1032,11 +1114,19 @@ mod tests {
         let mut producible_map = BTreeMap::new();
         producible_map.insert("deadRel".to_string(), false);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
-        let out = dead_required_objective_quests(&doc, &producible_map, &BTreeSet::new(), &defs, &ctx);
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
+        let out =
+            dead_required_objective_quests(&doc, &producible_map, &BTreeSet::new(), &defs, &ctx);
         assert!(
             out.contains("deadQuest"),
             "a REQUIRED objective gated on a never-producible relation must mark the quest"
@@ -1049,11 +1139,19 @@ mod tests {
     fn live_objective_never_marks_quest() {
         let doc = quest_doc("q", vec![objective_node("o", "true", false)]);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
-        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
+        let out =
+            dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
         assert!(out.is_empty());
     }
 
@@ -1067,11 +1165,19 @@ mod tests {
             vec![objective_node("o", "holds(unknownRel(\"x\"))", false)],
         );
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
-        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
+        let out =
+            dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
         assert!(out.is_empty());
     }
 
@@ -1095,11 +1201,19 @@ mod tests {
         });
         let doc = quest_doc("deadQuest", vec![branch]);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
-        let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
+        let out =
+            dead_required_objective_quests(&doc, &BTreeMap::new(), &BTreeSet::new(), &defs, &ctx);
         assert!(out.contains("deadQuest"));
     }
 
@@ -1112,10 +1226,17 @@ mod tests {
         let doc = quest_doc("q", vec![objective_node("o", "false", false)]);
         let ambiguous: BTreeSet<String> = ["q".to_string()].into_iter().collect();
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
         let out = dead_required_objective_quests(&doc, &BTreeMap::new(), &ambiguous, &defs, &ctx);
         assert!(out.is_empty());
     }
@@ -1127,7 +1248,10 @@ mod tests {
 
     fn quest_doc_lifecycle(quest_id: &str, start: Option<&str>, fail: Option<&str>) -> Document {
         Document {
-            meta: lute_syntax::ast::Meta { raw_yaml: String::new(), span: dummy_span() },
+            meta: lute_syntax::ast::Meta {
+                raw_yaml: String::new(),
+                span: dummy_span(),
+            },
             title: None,
             shots: Vec::new(),
             quests: vec![lute_syntax::ast::Quest {
@@ -1151,28 +1275,46 @@ mod tests {
     /// `E-OBJECTIVE-UNSATISFIABLE` (the objective is not dead).
     #[test]
     fn producible_fact_gated_objective_warns_once() {
-        let doc = quest_doc("q", vec![objective_node("o", "holds(liveRel(\"x\"))", false)]);
+        let doc = quest_doc(
+            "q",
+            vec![objective_node("o", "holds(liveRel(\"x\"))", false)],
+        );
         let mut producible_map = BTreeMap::new();
         producible_map.insert("liveRel".to_string(), true);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
         let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
-        let w: Vec<&Diagnostic> =
-            diags.iter().filter(|d| d.code == W_UNPROVEN_RELATIONAL).collect();
+        let w: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.code == W_UNPROVEN_RELATIONAL)
+            .collect();
         assert_eq!(w.len(), 1, "exactly one W-UNPROVEN-RELATIONAL");
         assert_eq!(w[0].severity, Severity::Warning);
         assert_eq!(w[0].layer, Layer::Logic);
-        assert!(w[0].message.contains("liveRel"), "names the relation: {}", w[0].message);
+        assert!(
+            w[0].message.contains("liveRel"),
+            "names the relation: {}",
+            w[0].message
+        );
         assert!(
             w[0].message.contains("done=\"holds(liveRel(\"x\"))\""),
             "quotes the raw predicate: {}",
             w[0].message
         );
         assert!(
-            diags.iter().all(|d| d.code != crate::reachability::E_OBJECTIVE_UNSATISFIABLE),
+            diags
+                .iter()
+                .all(|d| d.code != crate::reachability::E_OBJECTIVE_UNSATISFIABLE),
             "a producible-gated objective is not dead"
         );
     }
@@ -1181,17 +1323,29 @@ mod tests {
     /// dead cause) and never ALSO warns (spec §2: never double-reported).
     #[test]
     fn never_producible_objective_only_unsat_no_warning() {
-        let doc = quest_doc("q", vec![objective_node("o", "holds(deadRel(\"x\"))", false)]);
+        let doc = quest_doc(
+            "q",
+            vec![objective_node("o", "holds(deadRel(\"x\"))", false)],
+        );
         let mut producible_map = BTreeMap::new();
         producible_map.insert("deadRel".to_string(), false);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
         let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
         assert!(
-            diags.iter().any(|d| d.code == crate::reachability::E_OBJECTIVE_UNSATISFIABLE),
+            diags
+                .iter()
+                .any(|d| d.code == crate::reachability::E_OBJECTIVE_UNSATISFIABLE),
             "never-producible gate is the relational unsatisfiable cause"
         );
         assert!(
@@ -1205,12 +1359,22 @@ mod tests {
     fn scalar_only_gate_emits_nothing() {
         let doc = quest_doc("q", vec![objective_node("o", "scene.mood == 1", false)]);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
         let diags = scan_objective_liveness(&doc, &BTreeMap::new(), &defs, &ctx);
-        assert!(diags.is_empty(), "scalar-only gate: no W, no E; got {diags:?}");
+        assert!(
+            diags.is_empty(),
+            "scalar-only gate: no W, no E; got {diags:?}"
+        );
     }
 
     /// A `<quest start>` AND a `<quest fail>` predicate each gated by a
@@ -1225,16 +1389,31 @@ mod tests {
         let mut producible_map = BTreeMap::new();
         producible_map.insert("liveRel".to_string(), true);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
         let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
-        let w: Vec<&Diagnostic> =
-            diags.iter().filter(|d| d.code == W_UNPROVEN_RELATIONAL).collect();
+        let w: Vec<&Diagnostic> = diags
+            .iter()
+            .filter(|d| d.code == W_UNPROVEN_RELATIONAL)
+            .collect();
         assert_eq!(w.len(), 2, "one W for start, one for fail");
-        assert!(w.iter().any(|d| d.message.contains("start=\"")), "labels start");
-        assert!(w.iter().any(|d| d.message.contains("fail=\"")), "labels fail");
+        assert!(
+            w.iter().any(|d| d.message.contains("start=\"")),
+            "labels start"
+        );
+        assert!(
+            w.iter().any(|d| d.message.contains("fail=\"")),
+            "labels fail"
+        );
     }
 
     /// dsl 0.10.0 §5.1 (D-N): a `<quest start>` gated on a NEVER-producible
@@ -1246,10 +1425,17 @@ mod tests {
         let mut producible_map = BTreeMap::new();
         producible_map.insert("deadRel".to_string(), false);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
         let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
         let e: Vec<&Diagnostic> = diags
             .iter()
@@ -1258,7 +1444,11 @@ mod tests {
         assert_eq!(e.len(), 1, "exactly one E-QUEST-UNREACHABLE; got {diags:?}");
         assert_eq!(e[0].severity, Severity::Error);
         assert_eq!(e[0].layer, Layer::Logic);
-        assert!(e[0].message.contains("deadRel"), "names the relation: {}", e[0].message);
+        assert!(
+            e[0].message.contains("deadRel"),
+            "names the relation: {}",
+            e[0].message
+        );
         assert!(
             e[0].message.contains("under your declared routes"),
             "carries the verbatim hedge: {}",
@@ -1283,13 +1473,22 @@ mod tests {
         let mut producible_map = BTreeMap::new();
         producible_map.insert("deadRel".to_string(), false);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
         let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
         assert!(
-            diags.iter().all(|d| d.code != crate::reachability::E_QUEST_UNREACHABLE),
+            diags
+                .iter()
+                .all(|d| d.code != crate::reachability::E_QUEST_UNREACHABLE),
             "a fail that can never hold is not a defect: {diags:?}"
         );
     }
@@ -1303,13 +1502,22 @@ mod tests {
         let mut producible_map = BTreeMap::new();
         producible_map.insert("deadRel".to_string(), false);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
         let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
         assert!(
-            diags.iter().all(|d| d.code != crate::reachability::E_QUEST_UNREACHABLE),
+            diags
+                .iter()
+                .all(|d| d.code != crate::reachability::E_QUEST_UNREACHABLE),
             "the literal `false` is the load-bearing cause, not the relation: {diags:?}"
         );
     }
@@ -1324,13 +1532,22 @@ mod tests {
         let mut producible_map = BTreeMap::new();
         producible_map.insert("liveRel".to_string(), true);
         let (bodies, params) = (BTreeMap::new(), BTreeMap::new());
-        let defs = DefTable { bodies: &bodies, params: &params };
+        let defs = DefTable {
+            bodies: &bodies,
+            params: &params,
+        };
         let schema = crate::meta::StateSchema::default();
         let ctx_params = BTreeMap::new();
-        let ctx = DecideCtx { schema: &schema, dollar: None, params: &ctx_params };
+        let ctx = DecideCtx {
+            schema: &schema,
+            dollar: None,
+            params: &ctx_params,
+        };
         let diags = scan_objective_liveness(&doc, &producible_map, &defs, &ctx);
         assert!(
-            diags.iter().all(|d| d.code != crate::reachability::E_QUEST_UNREACHABLE),
+            diags
+                .iter()
+                .all(|d| d.code != crate::reachability::E_QUEST_UNREACHABLE),
             "a producible gate is a review region, not a dead one: {diags:?}"
         );
         assert!(

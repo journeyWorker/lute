@@ -101,7 +101,9 @@ pub fn translate_cel_parse(
     if let Some((pos, right)) = scan_reversed_compare(raw, &mask) {
         let wrong = if right == "<=" { "=<" } else { "=>" };
         return Translation {
-            message: format!("`{wrong}` is not an operator — did you mean `{right}`? (dsl 0.4 §8.1)"),
+            message: format!(
+                "`{wrong}` is not an operator — did you mean `{right}`? (dsl 0.4 §8.1)"
+            ),
             fixits: vec![splice_fixit(
                 format!("swap to `{right}`"),
                 slot_span,
@@ -428,10 +430,24 @@ mod tests {
     #[test]
     fn rule2_unbalanced_quote_spans_the_open_quote_to_end() {
         let raw = "'unterminated";
-        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 100 + raw.len()), CelKind::Condition);
+        let t = translate_cel_parse(
+            raw,
+            slot_span(raw.len()),
+            &backend(100, 100 + raw.len()),
+            CelKind::Condition,
+        );
         assert!(t.message.contains("unclosed quote"), "{}", t.message);
         assert!(t.fixits.is_empty());
-        assert_eq!(t.span, Some(Span { byte_start: 100, byte_end: 100 + raw.len(), line: 0, column: 0, utf16_range: (0, 0) }));
+        assert_eq!(
+            t.span,
+            Some(Span {
+                byte_start: 100,
+                byte_end: 100 + raw.len(),
+                line: 0,
+                column: 0,
+                utf16_range: (0, 0)
+            })
+        );
     }
 
     #[test]
@@ -444,7 +460,12 @@ mod tests {
     #[test]
     fn rule3_reversed_compare_fixit_splices_correctly() {
         let raw = "x =< 1";
-        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 100 + raw.len()), CelKind::Condition);
+        let t = translate_cel_parse(
+            raw,
+            slot_span(raw.len()),
+            &backend(100, 100 + raw.len()),
+            CelKind::Condition,
+        );
         assert!(t.message.contains("`<=`"), "{}", t.message);
         let f = &t.fixits[0];
         let mut spliced = raw.to_string();
@@ -457,7 +478,12 @@ mod tests {
     #[test]
     fn rule4_bare_eq_suggests_the_whole_corrected_slot() {
         let raw = "run.act = 1";
-        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 100 + raw.len()), CelKind::Condition);
+        let t = translate_cel_parse(
+            raw,
+            slot_span(raw.len()),
+            &backend(100, 100 + raw.len()),
+            CelKind::Condition,
+        );
         assert!(
             t.message.contains("did you mean `run.act == 1`"),
             "{}",
@@ -470,7 +496,11 @@ mod tests {
     fn rule4_skips_real_comparison_operators() {
         for ok in ["a == b", "a != b", "a <= b", "a >= b", "a < b", "a > b"] {
             let mask = cel_string_mask(ok);
-            assert_eq!(scan_bare_eq(ok, &mask), None, "{ok:?} must not flag a bare =");
+            assert_eq!(
+                scan_bare_eq(ok, &mask),
+                None,
+                "{ok:?} must not flag a bare ="
+            );
         }
     }
 
@@ -486,14 +516,22 @@ mod tests {
     fn rule6_word_operator_skips_member_access_segments() {
         let raw = "scene.and.x";
         let mask = cel_string_mask(raw);
-        assert_eq!(scan_word_operator(raw, &mask), None, "field name `and` must not flag");
+        assert_eq!(
+            scan_word_operator(raw, &mask),
+            None,
+            "field name `and` must not flag"
+        );
     }
 
     #[test]
     fn rule6_word_operator_finds_whole_word_only() {
         let raw = "andy && b";
         let mask = cel_string_mask(raw);
-        assert_eq!(scan_word_operator(raw, &mask), None, "`andy` is not the keyword `and`");
+        assert_eq!(
+            scan_word_operator(raw, &mask),
+            None,
+            "`andy` is not the keyword `and`"
+        );
     }
 
     #[test]
@@ -514,8 +552,16 @@ mod tests {
     #[test]
     fn fallback_never_repeats_backend_message() {
         let raw = "(";
-        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(100, 101), CelKind::Condition);
-        assert_eq!(t.message, "not a valid condition expression: `(` (dsl 0.4 §8.1)");
+        let t = translate_cel_parse(
+            raw,
+            slot_span(raw.len()),
+            &backend(100, 101),
+            CelKind::Condition,
+        );
+        assert_eq!(
+            t.message,
+            "not a valid condition expression: `(` (dsl 0.4 §8.1)"
+        );
         assert!(t.fixits.is_empty());
     }
 
@@ -523,7 +569,12 @@ mod tests {
     fn fallback_ignores_an_out_of_range_backend_span() {
         let raw = "(";
         // A backend span far outside this slot must not leak through as-is.
-        let t = translate_cel_parse(raw, slot_span(raw.len()), &backend(9_999, 10_000), CelKind::Condition);
+        let t = translate_cel_parse(
+            raw,
+            slot_span(raw.len()),
+            &backend(9_999, 10_000),
+            CelKind::Condition,
+        );
         assert!(t.span.is_none());
     }
 }
