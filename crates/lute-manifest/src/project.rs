@@ -136,9 +136,18 @@ pub const IDENTITY_TOKENS: [&str; 3] = ["prefix", "speaker", "code"];
 /// `facts`/`rules`/`defs` already have a composition mechanism — hoist them
 /// into a schema and default `uses:`. `profile`/`plugins` are already
 /// project-level. `component`/`params` are per-file identity.
-pub const DEFAULTABLE_KEYS: [&str; 10] = [
-    "character", "components", "contentLang", "episode", "extends", "kind", "luteVersion",
-    "pov", "season", "uses",
+pub const DEFAULTABLE_KEYS: [&str; 11] = [
+    "character",
+    "components",
+    "contentLang",
+    "episode",
+    "extends",
+    "kind",
+    "luteVersion",
+    "meta",
+    "pov",
+    "season",
+    "uses",
 ];
 
 /// The three defaultable keys holding PATHS. A path in a manifest is not a
@@ -179,6 +188,18 @@ impl MetaDefaults {
     /// Every supplied key, sorted.
     pub fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.keys().map(|k| k.as_str())
+    }
+}
+
+/// Build a defaults set directly from `(key, YAML value)` pairs, without
+/// going through a `lute.project.yaml` on disk. Used by downstream crates'
+/// unit tests (`lute-check`) to exercise the defaults-merge path in
+/// `parse_meta_kind_with_defaults` without staging a temp manifest.
+impl FromIterator<(String, serde_yaml::Value)> for MetaDefaults {
+    fn from_iter<I: IntoIterator<Item = (String, serde_yaml::Value)>>(iter: I) -> Self {
+        Self {
+            entries: iter.into_iter().collect(),
+        }
     }
 }
 
@@ -268,12 +289,7 @@ fn scan_template(template: &str, mut piece: impl FnMut(&str, Option<&str>)) {
 /// reset to its default there — so this arm is reachable only for a hand-built
 /// [`IdentityTemplates`], where the token is emitted verbatim rather than
 /// silently dropped.
-pub fn render_identity_template(
-    template: &str,
-    prefix: &str,
-    speaker: &str,
-    code: &str,
-) -> String {
+pub fn render_identity_template(template: &str, prefix: &str, speaker: &str, code: &str) -> String {
     let mut out = String::with_capacity(template.len() + prefix.len() + speaker.len() + code.len());
     scan_template(template, |lit, token| {
         out.push_str(lit);
@@ -379,6 +395,15 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
             }
             _ => Err("a string or a list of strings"),
         },
+        // dsl 0.15.0 §3: the manifest-supplied descriptive block. Only the
+        // top-level shape is checked at the manifest — inner scalar/list
+        // enforcement runs at the document (through the identical `meta:`
+        // lift path that an authored block takes), same discipline as the
+        // `uses`/`extends`/`components` string-list check above.
+        "meta" => match v {
+            serde_yaml::Value::Mapping(_) | serde_yaml::Value::Null => Ok(()),
+            _ => Err("a mapping"),
+        },
         _ => Ok(()),
     }
 }
@@ -396,7 +421,10 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
 fn canonical_default_path(manifest_dir: &Path, rel: &str) -> Result<String, String> {
     match std::fs::canonicalize(manifest_dir.join(rel)) {
         Ok(p) => Ok(p.display().to_string()),
-        Err(e) => Err(format!("`{rel}` does not resolve against {}: {e}", manifest_dir.display())),
+        Err(e) => Err(format!(
+            "`{rel}` does not resolve against {}: {e}",
+            manifest_dir.display()
+        )),
     }
 }
 
@@ -411,14 +439,20 @@ fn canonicalise_entry(
 ) -> Result<serde_yaml::Value, String> {
     match v {
         serde_yaml::Value::Null => Ok(v.clone()),
-        serde_yaml::Value::String(s) => {
-            Ok(serde_yaml::Value::String(canonical_default_path(manifest_dir, s)?))
-        }
+        serde_yaml::Value::String(s) => Ok(serde_yaml::Value::String(canonical_default_path(
+            manifest_dir,
+            s,
+        )?)),
         serde_yaml::Value::Sequence(items) => {
             let mut out = Vec::with_capacity(items.len());
             for item in items {
-                let s = item.as_str().expect("shape already checked by defaults_shape_ok");
-                out.push(serde_yaml::Value::String(canonical_default_path(manifest_dir, s)?));
+                let s = item
+                    .as_str()
+                    .expect("shape already checked by defaults_shape_ok");
+                out.push(serde_yaml::Value::String(canonical_default_path(
+                    manifest_dir,
+                    s,
+                )?));
             }
             Ok(serde_yaml::Value::Sequence(out))
         }
