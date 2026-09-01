@@ -10,8 +10,9 @@ use lute_compile::Command;
 use lute_core_span::Severity;
 
 fn walk(body: &str) -> (Vec<Rec>, StageState) {
-    let src =
-        format!("---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n\n## Shot 1.\n\n{body}\n");
+    let src = format!(
+        "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n\n## Shot 1.\n\n{body}\n"
+    );
     let (doc, diags) = lute_syntax::parse(&src);
     assert!(
         diags.iter().all(|d| d.severity != Severity::Error),

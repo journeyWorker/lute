@@ -28,11 +28,11 @@ the one root kind still bound to the derived join.
 | Identity source | New optional scene frontmatter `id:`. When present, it IS the canonical scene key everywhere. |
 | Fallback | `id:` absent → derived `{character}.{episodeId}` exactly as today, byte-identical. No migration, no lineId churn. |
 | Required keys | `id:` present → `character`/`season`/`episode` no longer required. `id:` absent → required as today. |
-| Legacy keys | Deprecated when coexisting with authored `id:` — per-key warning `W-META-LEGACY` ("move under `meta:`"), fix-it, `--deny`-promotable. Legacy-only documents stay silent. |
-| Descriptive metadata | New `meta:` frontmatter block: open mapping, scalar / scalar-list values, never read by language semantics, carried verbatim into the artifact for search tooling. Legal on Scene and Quest roots. |
+| Legacy keys | Deprecated when coexisting with authored `id:` — per-key warning `W-META-LEGACY` ("move under `extra:`"), fix-it, `--deny`-promotable. Legacy-only documents stay silent. |
+| Descriptive metadata | New `extra:` frontmatter block: open mapping, scalar / scalar-list values, never read by language semantics, carried verbatim into the artifact for search tooling. Legal on Scene and Quest roots. |
 | Duplicate detection | `E-CONN-EPISODE-ID-DUP` code kept (tooling stability); message generalized to "canonical scene id"; authored-id collisions anchor at `id:`. Derived and authored keys share one namespace — a collision between them is the same diagnostic. |
-| `defaults:` | `id` NOT defaultable (must be per-document unique; stays outside `DEFAULTABLE_KEYS` → `E-DEFAULTS-KEY`). `meta` IS defaultable (whole-value-per-key rule unchanged). |
-| IR | `SceneMeta` gains `id` (always present, the resolved canonical key); `character`/`season`/`episode`/`episodeId` become optional (emitted when authored/derivable); both meta kinds gain optional `meta` (the descriptive block, omitted when empty). IR minor bump. |
+| `defaults:` | `id` NOT defaultable (must be per-document unique; stays outside `DEFAULTABLE_KEYS` → `E-DEFAULTS-KEY`). `extra` IS defaultable (whole-value-per-key rule unchanged). |
+| IR | `SceneMeta` gains `id` (always present, the resolved canonical key); `character`/`season`/`episode`/`episodeId` become optional (emitted when authored/derivable); both meta kinds gain optional `extra` (the descriptive block, omitted when empty). IR minor bump. |
 | Version | Language + IR → **0.15.0**. Grammar untouched (frontmatter is one opaque token) → no tree-sitter `capabilityVersion` restamp. |
 
 ## 1. `id:` — the authored canonical key
@@ -66,7 +66,7 @@ anseo corpus).
 An authored `id:` alongside an authored `episodeId:` leaves the latter inert
 for identity; it draws `W-META-LEGACY` like the rest of the triad.
 
-## 2. `meta:` — free descriptive block
+## 2. `extra:` — free descriptive block
 
 Open mapping under one reserved key. Values: scalars (string / int / bool /
 float) or flat lists of scalars; a nested mapping or non-scalar list entry is
@@ -77,14 +77,14 @@ is the sanctioned home for team search metadata (`character`, `season`,
 
 Semantics: none. Not readable from CEL, not a state path, not a template
 token, never consulted by any checker/compiler/runtime rule. Carried
-verbatim into the artifact meta (`meta.meta`, omitted when empty) so external
+verbatim into the artifact meta (`meta.extra`, omitted when empty) so external
 tooling (jq, TMS, editors) can search it.
 
 Legal on Scene and Quest roots (both artifact meta kinds carry it); Schema
 and Component documents reject it via the existing kind gate.
 
-`defaults:` may supply `meta:` (added to `DEFAULTABLE_KEYS`); §6.2's
-whole-value-per-key rule applies — a document authoring any `meta:` replaces
+`defaults:` may supply `extra:` (added to `DEFAULTABLE_KEYS`); §6.2's
+whole-value-per-key rule applies — a document authoring any `extra:` replaces
 the default entirely.
 
 ## 3. Deprecation — quiet legacy, loud coexistence
@@ -92,7 +92,7 @@ the default entirely.
 - Document authors `id:` AND any of `character:` / `season:` / `episode:` /
   `episodeId:` **in its own frontmatter** → one `W-META-LEGACY` warning per
   key, anchored at that key (`meta_key_span`), message: identity now comes
-  from `id:`; move the value under `meta:` if it should stay searchable.
+  from `id:`; move the value under `extra:` if it should stay searchable.
   Promotable via `--deny W-META-LEGACY`.
 - The check consults the **authored** map, never the defaults-merged one: a
   manifest-inherited `character:` on an `id:`-carrying document does not warn
@@ -119,11 +119,11 @@ the default entirely.
   now optional, emitted when the source supplies them (a legacy document's
   artifact keeps all four plus the new `id`, so the only delta on untouched
   corpora is the added `id` field).
-- `SceneMeta` + `QuestMeta`: new optional `meta` object (the §2 block),
+- `SceneMeta` + `QuestMeta`: new optional `extra` object (the §2 block),
   omitted when empty.
 - `LUTE_LANG_VERSION` / `LUTE_IR_VERSION` → `0.15.0`;
   `schemas/lute-ir-0.15.schema.json` (sceneMeta: `id` required, legacy four
-  optional, `meta` free-object; questMeta: `meta`); `conformance/README.md`
+  optional, `extra` free-object; questMeta: `extra`); `conformance/README.md`
   schema link; all seven conformance fixtures restamped, five scene fixtures
   re-accepted for the added `meta.id`.
 
@@ -132,7 +132,7 @@ the default entirely.
 | Code | Grade | New/changed |
 | --- | --- | --- |
 | `E-META-ID` | error | new — malformed `id:` value |
-| `E-META-VALUE` | error | new — non-scalar(-list) value under `meta:` |
+| `E-META-VALUE` | error | new — non-scalar(-list) value under `extra:` |
 | `W-META-LEGACY` | warning | new — authored legacy identity key coexisting with authored `id:` |
 | `E-META-MISSING` | error | condition narrowed: only fires when `id:` absent |
 | `E-CONN-EPISODE-ID-DUP` | error | kept; message says "canonical scene id"; authored-id occurrences anchor at `id:` |
@@ -142,7 +142,7 @@ the default entirely.
 
 - Renaming `E-CONN-EPISODE-ID-DUP` (code churn breaks downstream tooling for
   a name).
-- Any search/query command over `meta:` (external tooling's job).
+- Any search/query command over `extra:` (external tooling's job).
 - Removing the legacy derived path (a later major).
 - LSP frontmatter-key completion/hover (none exists today; diagnostics flow
   through shared `lute-check::meta` automatically).

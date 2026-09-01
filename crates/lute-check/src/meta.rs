@@ -89,14 +89,14 @@ pub struct TypedMeta {
     /// — anything else stays `None` and draws `E-META-ID`. Absent → derived
     /// fallback via [`canonical_scene_key`], byte-identical to 0.14.0.
     pub id: Option<String>,
-    /// dsl 0.15.0 §3: authored `meta:` descriptive block. Free open mapping
+    /// dsl 0.15.0 §3: authored `extra:` descriptive block. Free open mapping
     /// with scalar or flat-scalar-list values, never consulted by any
     /// checker/compiler/runtime rule and never routed through CEL — the
     /// sanctioned home for team search metadata (`arc`, `location`, whatever)
     /// carried verbatim into the artifact (`SceneMeta.meta`/`QuestMeta.meta`,
     /// omitted when empty). A nested mapping or non-scalar list entry stays
     /// out of this map and draws `E-META-VALUE`.
-    pub meta_block: BTreeMap<String, serde_json::Value>,
+    pub extra_block: BTreeMap<String, serde_json::Value>,
     pub profile: Option<String>,
     pub plugins: BTreeMap<String, serde_yaml::Value>,
     pub uses: Vec<String>,
@@ -206,13 +206,13 @@ const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params"];
 /// dsl 0.15.0 D-D: `id:` is per-document unique — it is deliberately NOT in
 /// `DEFAULTABLE_KEYS`, so it can never reach this predicate at runtime, but
 /// filter it explicitly so a hand-built `MetaDefaults` cannot silently smuggle
-/// it either. `meta:` is legal on Scene AND Quest — both artifact meta kinds
+/// it either. `extra:` is legal on Scene AND Quest — both artifact meta kinds
 /// carry it (§3).
 pub fn default_key_legal_on(key: &str, kind: MetaKind) -> bool {
     if key == "id" {
         return false;
     }
-    if key == "meta" {
+    if key == "extra" {
         return matches!(kind, MetaKind::Scene | MetaKind::Quest);
     }
     UNIVERSAL_KEYS.contains(&key)
@@ -251,7 +251,7 @@ fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> S
     } else {
         &[]
     };
-    let root_extras: &[&str] = if is_root { &["kind", "meta"] } else { &[] };
+    let root_extras: &[&str] = if is_root { &["kind", "extra"] } else { &[] };
     let candidates = UNIVERSAL_KEYS
         .iter()
         .copied()
@@ -470,17 +470,17 @@ pub(crate) fn is_valid_scene_id_raw(raw: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
 }
 
-/// dsl 0.15.0 §3: lift one authored `meta:` YAML value into the JSON-ready
-/// `meta_block` on `TypedMeta`. The value MUST be a mapping with string keys
+/// dsl 0.15.0 §3: lift one authored `extra:` YAML value into the JSON-ready
+/// `extra_block` on `TypedMeta`. The value MUST be a mapping with string keys
 /// whose values are either scalars (string/int/float/bool) or FLAT sequences
 /// of scalars — anything else (nested mapping, mixed list, non-string key,
 /// non-mapping top-level) stays out of the block and draws one `E-META-VALUE`
-/// anchored at the offending inner key (or at `meta:` itself for the
+/// anchored at the offending inner key (or at `extra:` itself for the
 /// non-mapping case).
 ///
 /// Never panics; a malformed entry is simply skipped so a partly-valid block
 /// still contributes its clean keys downstream.
-fn lift_meta_block(
+fn lift_extra_block(
     meta: &Meta,
     value: &serde_yaml::Value,
     into: &mut BTreeMap<String, serde_json::Value>,
@@ -493,11 +493,11 @@ fn lift_meta_block(
             diags.push(Diagnostic {
                 code: "E-META-VALUE".to_string(),
                 severity: Severity::Error,
-                message: "`meta:` must be a YAML mapping of descriptive keys; each value \
+                message: "`extra:` must be a YAML mapping of descriptive keys; each value \
                           is a scalar (string/int/float/bool) or a flat list of scalars \
                           (dsl 0.15.0 §3)"
                     .to_string(),
-                span: meta_key_span(meta, "meta"),
+                span: meta_key_span(meta, "extra"),
                 layer: Layer::Content,
                 fixits: Vec::new(),
                 provenance: None,
@@ -512,8 +512,8 @@ fn lift_meta_block(
             diags.push(Diagnostic {
                 code: "E-META-VALUE".to_string(),
                 severity: Severity::Error,
-                message: "`meta:` mapping keys must be strings (dsl 0.15.0 §3)".to_string(),
-                span: meta_key_span(meta, "meta"),
+                message: "`extra:` mapping keys must be strings (dsl 0.15.0 §3)".to_string(),
+                span: meta_key_span(meta, "extra"),
                 layer: Layer::Content,
                 fixits: Vec::new(),
                 provenance: None,
@@ -545,7 +545,7 @@ fn lift_meta_block(
     }
 }
 
-/// dsl 0.15.0 §3: convert a `meta:` value to `serde_json::Value` if and only
+/// dsl 0.15.0 §3: convert an `extra:` value to `serde_json::Value` if and only
 /// if it is a scalar or a flat sequence of scalars. `None` for a nested
 /// mapping, a sequence containing a non-scalar, a `!tag`, or a mapping with
 /// non-string keys. `null` is a scalar (it round-trips to JSON `null`).
@@ -770,7 +770,7 @@ pub fn parse_meta_kind_with_defaults(
         let core_key = UNIVERSAL_KEYS.contains(&key)
             || (key == "kind" && matches!(kind, MetaKind::Scene | MetaKind::Quest))
             || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
-            || (matches!(kind, MetaKind::Scene | MetaKind::Quest) && key == "meta")
+            || (matches!(kind, MetaKind::Scene | MetaKind::Quest) && key == "extra")
             || (component_key_allowed && COMPONENT_ONLY_KEYS.contains(&key));
         if core_key {
             continue;
@@ -836,13 +836,13 @@ pub fn parse_meta_kind_with_defaults(
         }
     }
 
-    // dsl 0.15.0 §3: authored `meta:` descriptive block. Legal on Scene and
+    // dsl 0.15.0 §3: authored `extra:` descriptive block. Legal on Scene and
     // Quest roots (both artifact meta kinds carry it); on Schema/Component
     // documents the top-level unknown-key loop above already rejected it, so
     // the lift silently drops it there.
     if matches!(kind, MetaKind::Scene | MetaKind::Quest) {
-        if let Some(meta_value) = map.get(yaml_key("meta")) {
-            lift_meta_block(meta, meta_value, &mut typed.meta_block, &mut diags);
+        if let Some(meta_value) = map.get(yaml_key("extra")) {
+            lift_extra_block(meta, meta_value, &mut typed.extra_block, &mut diags);
         }
     }
 
@@ -857,7 +857,7 @@ pub fn parse_meta_kind_with_defaults(
                 severity: Severity::Warning,
                 message: format!(
                     "`{key}` no longer carries scene identity (superseded by `id:`); move it \
-                     under `meta:` to keep it searchable (dsl 0.15.0 §4)"
+                     under `extra:` to keep it searchable (dsl 0.15.0 §4)"
                 ),
                 span: meta_key_span(meta, key),
                 layer: Layer::Content,
@@ -1698,7 +1698,7 @@ mod tests {
         parse_meta(&meta, &CapabilitySnapshot::default())
     }
 
-    // ── 0.15.0 §2/§3/§4: authored scene `id:`, `meta:` block, legacy demotion.
+    // ── 0.15.0 §2/§3/§4: authored scene `id:`, `extra:` block, legacy demotion.
 
     #[test]
     fn authored_id_relieves_required_triad() {
@@ -1741,24 +1741,24 @@ mod tests {
     }
 
     #[test]
-    fn meta_block_lifts_scalars_and_lists() {
+    fn extra_block_lifts_scalars_and_lists() {
         let (m, diags) =
-            parse_meta_str("id: x\nmeta:\n  arc: main\n  season: 1\n  tags: [harbor, night]\n");
+            parse_meta_str("id: x\nextra:\n  arc: main\n  season: 1\n  tags: [harbor, night]\n");
         assert!(
             diags.is_empty(),
             "clean scalars/lists must not diagnose: {diags:?}"
         );
-        assert_eq!(m.meta_block.get("arc"), Some(&serde_json::json!("main")));
-        assert_eq!(m.meta_block.get("season"), Some(&serde_json::json!(1)));
+        assert_eq!(m.extra_block.get("arc"), Some(&serde_json::json!("main")));
+        assert_eq!(m.extra_block.get("season"), Some(&serde_json::json!(1)));
         assert_eq!(
-            m.meta_block.get("tags"),
+            m.extra_block.get("tags"),
             Some(&serde_json::json!(["harbor", "night"]))
         );
     }
 
     #[test]
     fn nested_meta_value_is_e_meta_value() {
-        let (_m, diags) = parse_meta_str("id: x\nmeta:\n  nested: { a: 1 }\n");
+        let (_m, diags) = parse_meta_str("id: x\nextra:\n  nested: { a: 1 }\n");
         assert!(
             diags.iter().any(|d| d.code == "E-META-VALUE"),
             "a nested mapping under meta: must draw E-META-VALUE (§3): {diags:?}"
@@ -1766,13 +1766,13 @@ mod tests {
     }
 
     #[test]
-    fn non_mapping_meta_is_e_meta_value() {
-        let (m, diags) = parse_meta_str("id: x\nmeta: not-a-mapping\n");
+    fn non_mapping_extra_is_e_meta_value() {
+        let (m, diags) = parse_meta_str("id: x\nextra: not-a-mapping\n");
         assert!(
             diags.iter().any(|d| d.code == "E-META-VALUE"),
             "a non-mapping `meta:` must draw one E-META-VALUE (§3): {diags:?}"
         );
-        assert!(m.meta_block.is_empty());
+        assert!(m.extra_block.is_empty());
     }
 
     #[test]
@@ -1854,12 +1854,12 @@ mod tests {
 
     #[test]
     fn meta_key_is_legal_on_a_quest() {
-        let (m, diags) = parse_kind_str("kind: quest\nmeta:\n  arc: main\n", MetaKind::Quest);
+        let (m, diags) = parse_kind_str("kind: quest\nextra:\n  arc: main\n", MetaKind::Quest);
         assert!(
             !diags.iter().any(|d| d.code == "E-META-UNKNOWN-KEY"),
             "`meta:` is legal on quest roots too (§3): {diags:?}"
         );
-        assert_eq!(m.meta_block.get("arc"), Some(&serde_json::json!("main")));
+        assert_eq!(m.extra_block.get("arc"), Some(&serde_json::json!("main")));
     }
 
     /// 0.10.0 §12.4: `{ type: X }` is a synonym for `X`, for every spelling the

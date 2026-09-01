@@ -1420,15 +1420,15 @@ title: Legacy
     assert_eq!(actual["irVersion"], serde_json::json!("0.15.0"));
 }
 
-/// dsl 0.15.0 §3: the authored `meta:` block lands under `meta.meta`
+/// dsl 0.15.0 §3: the authored `extra:` block lands under `meta.extra`
 /// key-sorted (BTreeMap serialization), scalar and flat-scalar-list values
 /// pass through JSON-shaped. Sanctioned on both scene and quest roots.
 #[test]
-fn meta_block_lands_under_meta_meta_key_sorted() {
+fn extra_block_lands_under_meta_extra_key_sorted() {
     const SCENE_META: &str = r#"---
 kind: scene
 id: anseo.s01ep01
-meta:
+extra:
   arc: main
   tags: [harbor, night]
   weight: 3
@@ -1440,23 +1440,23 @@ meta:
 "#;
     let art = compile(&input(SCENE_META)).expect("meta:-block scene compiles");
     let v = serde_json::to_value(&art).unwrap();
-    let meta_block = v["meta"]["meta"]
+    let extra_block = v["meta"]["extra"]
         .as_object()
-        .expect("meta.meta serializes as an object");
-    let keys: Vec<&str> = meta_block.keys().map(String::as_str).collect();
+        .expect("meta.extra serializes as an object");
+    let keys: Vec<&str> = extra_block.keys().map(String::as_str).collect();
     assert_eq!(
         keys,
         vec!["arc", "tags", "weight"],
         "keys sort lexicographically"
     );
-    assert_eq!(meta_block["arc"], serde_json::json!("main"));
-    assert_eq!(meta_block["tags"], serde_json::json!(["harbor", "night"]));
-    assert_eq!(meta_block["weight"], serde_json::json!(3));
+    assert_eq!(extra_block["arc"], serde_json::json!("main"));
+    assert_eq!(extra_block["tags"], serde_json::json!(["harbor", "night"]));
+    assert_eq!(extra_block["weight"], serde_json::json!(3));
 
     // Quest kind gets the same treatment — the wire contract covers both.
     const QUEST_META: &str = r#"---
 kind: quest
-meta:
+extra:
   arc: main
   region: harbor
 ---
@@ -1467,13 +1467,13 @@ meta:
 "#;
     let qart = compile(&input(QUEST_META)).expect("meta:-block quest compiles");
     let qv = serde_json::to_value(&qart).unwrap();
-    let qmeta = qv["meta"]["meta"]
+    let qextra = qv["meta"]["extra"]
         .as_object()
-        .expect("quest meta.meta object");
-    let qkeys: Vec<&str> = qmeta.keys().map(String::as_str).collect();
+        .expect("quest meta.extra object");
+    let qkeys: Vec<&str> = qextra.keys().map(String::as_str).collect();
     assert_eq!(qkeys, vec!["arc", "region"]);
 
-    // Byte-stability: a doc that authors no `meta:` omits the key entirely
+    // Byte-stability: a doc that authors no `extra:` omits the key entirely
     // (`skip_serializing_if = BTreeMap::is_empty`).
     let bare = compile(&input(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n",

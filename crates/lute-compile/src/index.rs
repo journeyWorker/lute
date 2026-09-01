@@ -333,7 +333,7 @@ mod tests {
                 episode: Some(2),
                 episode_id: Some("s01ep02".to_string()),
                 title: None,
-                meta: BTreeMap::new(),
+                extra: BTreeMap::new(),
                 plugin: BTreeMap::new(),
             }),
             state: Vec::new(),

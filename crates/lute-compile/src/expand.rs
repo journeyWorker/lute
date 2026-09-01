@@ -233,7 +233,9 @@ mod tests {
         let src = "---\nkind: quest\nstate:\n  run.region: { type: string, default: \"\" }\n  run.act: { type: number, default: 0 }\n---\n\n<quest id=\"q1\" title=\"Q1\">\n<objective id=\"o1\" title=\"O1\" done=\"@inGrove\"/>\n\n<match on=\"run.region\">\n  <when test=\"$ == 'grove'\">\n  ::set{run.act = 1}\n  </when>\n  <otherwise>\n  ::set{run.act = 0}\n  </otherwise>\n</match>\n\n<on event=\"questComplete\" when=\"@inGrove\">\n@narrator: done\n</on>\n</quest>\n";
         let (mut doc, diags) = lute_syntax::parse(src);
         assert!(
-            diags.iter().all(|d| d.severity != lute_core_span::Severity::Error),
+            diags
+                .iter()
+                .all(|d| d.severity != lute_core_span::Severity::Error),
             "{diags:#?}"
         );
         assert_eq!(doc.quests.len(), 1, "fixture must parse one <quest>");

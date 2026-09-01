@@ -29,9 +29,14 @@ fn artifact(text: &str) -> lute_compile::Artifact {
 
 #[test]
 fn end_lowers_to_an_end_record_with_its_reason() {
-    let a = artifact(&format!("{HDR}@narrator: bye\n::end{{reason=\"completed\"}}\n"));
+    let a = artifact(&format!(
+        "{HDR}@narrator: bye\n::end{{reason=\"completed\"}}\n"
+    ));
     let end = a.commands.last().expect("a record");
-    assert!(matches!(end, Command::End(_)), "last record is `end`: {end:?}");
+    assert!(
+        matches!(end, Command::End(_)),
+        "last record is `end`: {end:?}"
+    );
     assert_eq!(
         serde_json::to_string(end).unwrap(),
         r#"{"kind":"end","addr":"001-0200","reason":"completed"}"#

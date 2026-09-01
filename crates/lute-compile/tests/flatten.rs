@@ -10,8 +10,9 @@ use lute_compile::Command;
 use lute_core_span::Severity;
 
 fn flatten(body: &str) -> (Vec<Rec>, Vec<Label>) {
-    let src =
-        format!("---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n\n## Shot 1.\n\n{body}\n");
+    let src = format!(
+        "---\nkind: scene\ncharacter: bianca\nseason: 1\nepisode: 2\n---\n\n## Shot 1.\n\n{body}\n"
+    );
     let (doc, diags) = lute_syntax::parse(&src);
     assert!(
         diags.iter().all(|d| d.severity != Severity::Error),
@@ -257,7 +258,10 @@ fn branch_prompt_and_timeout_flow_into_choice_cmd() {
     assert_eq!(c.prompt.as_deref(), Some("What do you do first?"));
     assert_eq!(c.timeout_sec, Some(10));
     let json = serde_json::to_string(&Command::Choice(c.clone())).unwrap();
-    assert!(json.contains(r#""prompt":"What do you do first?""#), "{json}");
+    assert!(
+        json.contains(r#""prompt":"What do you do first?""#),
+        "{json}"
+    );
     assert!(json.contains(r#""timeoutSec":10"#), "{json}");
 }
 

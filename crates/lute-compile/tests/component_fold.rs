@@ -28,12 +28,8 @@ fn unique_dir() -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_fold_{}_{}_{}",
-        std::process::id(),
-        n,
-        nanos
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("lute_fold_{}_{}_{}", std::process::id(), n, nanos));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -132,12 +128,13 @@ fn literal_arg_folds_to_selected_arm() {
     // Exactly the selected ("fond") arm's line — the other two arms' text
     // never appears (dead-arm elimination, not just first-match masking).
     let ls = lines(&artifact);
-    assert_eq!(ls.len(), 1, "exactly the selected arm's one line; got {ls:?}");
-    assert_eq!(ls[0]["speaker"], "bianca");
     assert_eq!(
-        ls[0]["text"],
-        "You remembered! You actually remembered."
+        ls.len(),
+        1,
+        "exactly the selected arm's one line; got {ls:?}"
     );
+    assert_eq!(ls[0]["speaker"], "bianca");
+    assert_eq!(ls[0]["text"], "You remembered! You actually remembered.");
     assert_eq!(ls[0]["emotion"], "delighted");
     let full_text = serde_json::to_string(&artifact).unwrap();
     assert!(!full_text.contains("Not bad at all"));
@@ -184,7 +181,11 @@ fn otherwise_selected_when_no_is_matches() {
     let s = scene("leveled.lute", "::use{component=\"leveled\" n=5}");
     let artifact = compile_scene(&dir, &s);
 
-    assert_eq!(match_count(&artifact), 0, "otherwise-arm selection still folds away the match");
+    assert_eq!(
+        match_count(&artifact),
+        0,
+        "otherwise-arm selection still folds away the match"
+    );
     let ls = lines(&artifact);
     assert_eq!(ls.len(), 1);
     assert_eq!(ls[0]["text"], "something else");
@@ -227,7 +228,11 @@ defs:\n  currentTier: { type: { enum: [cold, warm, fond] }, cel: \"scene.tier\" 
     );
     // Arms intact: all three `tier` arms of REACTION survive, in order.
     let arms = m["arms"].as_array().unwrap();
-    assert_eq!(arms.len(), 3, "all three arms survive the residual dispatch; got {arms:?}");
+    assert_eq!(
+        arms.len(),
+        3,
+        "all three arms survive the residual dispatch; got {arms:?}"
+    );
     // And every arm's line is still reachable in the flattened stream (the
     // dispatch is genuinely dynamic — nothing was eliminated).
     let full_text = serde_json::to_string(&artifact).unwrap();
@@ -236,7 +241,10 @@ defs:\n  currentTier: { type: { enum: [cold, warm, fond] }, cel: \"scene.tier\" 
         "Not bad at all, Mr. Fixer.",
         "...Shall we begin?",
     ] {
-        assert!(full_text.contains(needle), "arm line `{needle}` must survive a residual dispatch");
+        assert!(
+            full_text.contains(needle),
+            "arm line `{needle}` must survive a residual dispatch"
+        );
     }
 }
 
@@ -273,7 +281,11 @@ fn nested_param_match_folds_recursively() {
         "both levels literal-bound: zero match records at ANY depth; artifact: {artifact:#}"
     );
     let ls = lines(&artifact);
-    assert_eq!(ls.len(), 1, "exactly the doubly-selected leaf line; got {ls:?}");
+    assert_eq!(
+        ls.len(),
+        1,
+        "exactly the doubly-selected leaf line; got {ls:?}"
+    );
     assert_eq!(ls[0]["text"], "fond and high");
 }
 
@@ -348,7 +360,13 @@ fn existing_goldens_untouched() {
         let snap_path = manifest_dir.join("tests/snapshots").join(snap_name);
         let snap_text = std::fs::read_to_string(&snap_path).unwrap();
         // Strip insta's `---\nsource: …\nexpression: …\n---\n` header.
-        let body = snap_text.split_once("---\n").unwrap().1.split_once("---\n").unwrap().1;
+        let body = snap_text
+            .split_once("---\n")
+            .unwrap()
+            .1
+            .split_once("---\n")
+            .unwrap()
+            .1;
         assert_eq!(
             json, body,
             "{path}'s recompiled artifact must stay byte-identical to {snap_name} (B2)"

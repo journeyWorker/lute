@@ -252,9 +252,21 @@ mod tests {
 
     fn bundle() -> LocaleBundle {
         LocaleBundle::from_triples([
-            ("x.a_0010".to_string(), "ja-JP".to_string(), "こんにちは".to_string()),
-            ("x.a_0010".to_string(), "en-US".to_string(), "hello".to_string()),
-            ("x.b.pick".to_string(), "ja-JP".to_string(), "選ぶ".to_string()),
+            (
+                "x.a_0010".to_string(),
+                "ja-JP".to_string(),
+                "こんにちは".to_string(),
+            ),
+            (
+                "x.a_0010".to_string(),
+                "en-US".to_string(),
+                "hello".to_string(),
+            ),
+            (
+                "x.b.pick".to_string(),
+                "ja-JP".to_string(),
+                "選ぶ".to_string(),
+            ),
         ])
     }
 
@@ -274,7 +286,10 @@ mod tests {
         assert_eq!(back, b);
         assert_eq!(back.to_json(), json, "round trip must be byte-stable");
         // Declaration order, not alphabetical: `schemaVersion` first.
-        assert!(json.starts_with("{\n  \"schemaVersion\": 1,\n  \"locales\": ["), "{json}");
+        assert!(
+            json.starts_with("{\n  \"schemaVersion\": 1,\n  \"locales\": ["),
+            "{json}"
+        );
         assert!(json.ends_with("\n"));
     }
 

@@ -59,11 +59,17 @@ fn commands(artifact: &serde_json::Value) -> &[serde_json::Value] {
 /// gated line DID (residual) or did NOT (folded/absent) lower to a match
 /// command record.
 fn match_count(artifact: &serde_json::Value) -> usize {
-    commands(artifact).iter().filter(|c| c["kind"] == "match").count()
+    commands(artifact)
+        .iter()
+        .filter(|c| c["kind"] == "match")
+        .count()
 }
 
 fn lines(artifact: &serde_json::Value) -> Vec<&serde_json::Value> {
-    commands(artifact).iter().filter(|c| c["kind"] == "line").collect()
+    commands(artifact)
+        .iter()
+        .filter(|c| c["kind"] == "line")
+        .collect()
 }
 
 /// Recursively strip position/label churn: `addr` (a record's own
@@ -113,7 +119,11 @@ fn sugared_line_lowers_to_canonical_match_record() {
         sugared_cmds, explicit_cmds,
         "sugared vs. explicit command streams must be equal modulo addr/converge/target-label churn"
     );
-    assert_eq!(match_count(&sugared), 1, "exactly one match record either way");
+    assert_eq!(
+        match_count(&sugared),
+        1,
+        "exactly one match record either way"
+    );
 
     // Identity (§7.4): the SAME lineId/voiceKey — wrapping cannot move them
     // (address.rs:85-104 — identity is shot-prefix + emission-order scoped,
@@ -123,7 +133,9 @@ fn sugared_line_lowers_to_canonical_match_record() {
     assert_eq!(sugared_lines.len(), 1);
     assert_eq!(explicit_lines.len(), 1);
     assert!(
-        sugared_lines[0]["lineId"].as_str().is_some_and(|s| !s.is_empty()),
+        sugared_lines[0]["lineId"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
         "lineId must be a real, non-empty identity string"
     );
     assert_eq!(
@@ -183,8 +195,15 @@ fn no_sugar_document_is_byte_identical() {
     let text = scene("@sofia: Hello there.\n@sofia{code=\"0099\"}: Again.\n");
     let a = compile_text(&text);
     let b = compile_text(&text);
-    assert_eq!(a, b, "compiling the same when=-free document twice must be byte-identical");
-    assert_eq!(match_count(&a), 0, "no when= anywhere => no synthesized match record");
+    assert_eq!(
+        a, b,
+        "compiling the same when=-free document twice must be byte-identical"
+    );
+    assert_eq!(
+        match_count(&a),
+        0,
+        "no when= anywhere => no synthesized match record"
+    );
     assert_eq!(lines(&a).len(), 2);
 }
 
@@ -207,8 +226,7 @@ fn sugared_line_survives_compilation() {
             )
         })
         .collect();
-    let expected =
-        "You helped me back then. I've been meaning to thank you.".to_string();
+    let expected = "You helped me back then. I've been meaning to thank you.".to_string();
     assert_eq!(
         pairs,
         vec![

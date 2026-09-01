@@ -85,7 +85,9 @@ fn synthesize_subquests(quests: &mut [lute_syntax::ast::Quest]) {
         let mut required_children: Vec<String> = Vec::new();
         for node in &mut quest.body {
             let Node::Objective(o) = node else { continue };
-            let Some(child) = o.quest.clone() else { continue };
+            let Some(child) = o.quest.clone() else {
+                continue;
+            };
             // §2.1: fill an empty `done` slot only. A non-empty `done`
             // means the author wrote both `quest=` and `done=` — the
             // checker fires `E-OBJECTIVE-QUEST-DONE` and compile aborts
@@ -124,11 +126,7 @@ fn synthesize_subquests(quests: &mut [lute_syntax::ast::Quest]) {
                 // (the most localized span the AST offers a top-level
                 // quest — mirrors how `quest_span`/`after_span` fall back
                 // to the open-tag span when the attr is absent).
-                quest.fail = Some(CelSlot::raw(
-                    CelKind::Condition,
-                    disjunction,
-                    quest.id_span,
-                ));
+                quest.fail = Some(CelSlot::raw(CelKind::Condition, disjunction, quest.id_span));
             }
         }
     }
@@ -315,10 +313,7 @@ fn synth_when_match(mut line: Line) -> Node {
 /// copy so a re-normalized desugared `::next` can never re-enter this
 /// rewrite (idempotent by construction, mirrors `synth_when_match`).
 fn synth_when_next_match(mut d: Directive) -> Node {
-    let guard = d
-        .when
-        .take()
-        .expect("caller guarantees `d.when.is_some()`");
+    let guard = d.when.take().expect("caller guarantees `d.when.is_some()`");
     let span = d.span;
     let test = CelSlot::raw(CelKind::Condition, "$".to_string(), span);
     Node::Match(Match {
@@ -566,7 +561,10 @@ fn select_component_arm(arms: &[Arm], subj: &Decided, schema: &StateSchema) -> O
             Arm::When { is, test, .. } => {
                 if let Some(pat) = is {
                     let literals = is_pattern_literals(&pat.raw, pat.span);
-                    if !literals.iter().any(|(lit, _)| is_literal_matches(lit, subj)) {
+                    if !literals
+                        .iter()
+                        .any(|(lit, _)| is_literal_matches(lit, subj))
+                    {
                         continue; // `is` provably misses: skip, `test` irrelevant.
                     }
                 }

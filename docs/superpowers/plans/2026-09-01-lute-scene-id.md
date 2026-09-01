@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** Scene frontmatter gains `id:` (authored canonical key, derived `{character}.{episodeId}` fallback), `character`/`season`/`episode` demote to optional, a free `meta:` descriptive block ships on scene+quest roots, and legacy identity keys coexisting with `id:` draw a per-key deprecation warning.
+**Goal:** Scene frontmatter gains `id:` (authored canonical key, derived `{character}.{episodeId}` fallback), `character`/`season`/`episode` demote to optional, a free `extra:` descriptive block ships on scene+quest roots, and legacy identity keys coexisting with `id:` draw a per-key deprecation warning.
 
 **Architecture:** One shared resolution point — `lute_check::meta::canonical_scene_key(&TypedMeta)` — feeds every consumer (connectivity key set, compile prefix/`prereqEdges`, `project.index.json`, loc prefix). The artifact carries the resolved key as `SceneMeta.id` so `play`/`index` stop rederiving. Legacy path is the existing code unchanged; the anseo corpus gates byte-stability.
 
@@ -16,9 +16,9 @@
 - **Worktree authoritative:** `/Users/journey/Workspace/lute/.worktrees/lute-0.15.0` on `feat/lute-0.15.0-scene-id`. HARNESS QUIRK: `write`/`edit` relative paths resolve against the MAIN workspace — always use ABSOLUTE worktree paths.
 - TDD tester-first; own-crate `cargo test -p <crate>` during a task; full gate at the end. `cargo fmt -p` + `cargo clippy -p … --all-targets -- -D warnings` before each commit.
 - `id:` charset: `[A-Za-z0-9_.-]+`, non-empty (spec §2).
-- `meta:` values: YAML scalars (string/int/float/bool) or flat sequences of scalars; anything else `E-META-VALUE` (spec §3).
+- `extra:` values: YAML scalars (string/int/float/bool) or flat sequences of scalars; anything else `E-META-VALUE` (spec §3).
 - `W-META-LEGACY` consults the AUTHORED frontmatter map (pre-`defaults:` merge), never the merged `Cow` (spec §4, D-C).
-- JSON field names are the cross-task contract: `meta.id` (string, always on scenes), `meta.meta` (object, skip-empty, scenes+quests), legacy `character`/`season`/`episode`/`episodeId` optional.
+- JSON field names are the cross-task contract: `meta.id` (string, always on scenes), `meta.extra` (object, skip-empty, scenes+quests), legacy `character`/`season`/`episode`/`episodeId` optional.
 - Grammar/tree-sitter untouched — `capabilityVersion` MUST NOT change (tree-sitter tests stay green unmodified).
 - Diagnostics codes exactly: `E-META-ID`, `E-META-VALUE`, `W-META-LEGACY`; `E-META-MISSING` narrowed; `E-CONN-EPISODE-ID-DUP` message generalized to "canonical scene id".
 

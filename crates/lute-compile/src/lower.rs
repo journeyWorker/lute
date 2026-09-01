@@ -19,7 +19,9 @@ use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
 /// on a checked document; still deterministic when called directly (unit
 /// tests, or an author-mode document with the conflict warning suppressed).
 fn has_delivery_flag(attrs: &[Attr], key: &str) -> bool {
-    attrs.iter().any(|a| a.key == key && matches!(a.value, AttrValue::BoolTrue))
+    attrs
+        .iter()
+        .any(|a| a.key == key && matches!(a.value, AttrValue::BoolTrue))
 }
 
 pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
@@ -97,7 +99,12 @@ pub fn lower_assert(a: &Assert) -> Command {
     Command::Assert(AssertCmd {
         addr: String::new(),
         relation: a.pattern.relation.clone(),
-        args: a.pattern.args.iter().map(|arg| fact_term_string(&arg.term)).collect(),
+        args: a
+            .pattern
+            .args
+            .iter()
+            .map(|arg| fact_term_string(&arg.term))
+            .collect(),
         stamp: Stamp::default(),
     })
 }
@@ -109,7 +116,12 @@ pub fn lower_retract(r: &Retract) -> Command {
     Command::Retract(RetractCmd {
         addr: String::new(),
         relation: r.pattern.relation.clone(),
-        args: r.pattern.args.iter().map(|arg| fact_term_string(&arg.term)).collect(),
+        args: r
+            .pattern
+            .args
+            .iter()
+            .map(|arg| fact_term_string(&arg.term))
+            .collect(),
         stamp: Stamp::default(),
     })
 }
@@ -769,9 +781,13 @@ mod tests {
         );
         assert_eq!(lower_first("::camera{shake=\"0.6\"}")["wait"], false);
         // Non-wait families (§4.4) carry NO `wait` key.
-        assert!(lower_first("::music{action=\"start\"}").get("wait").is_none());
+        assert!(lower_first("::music{action=\"start\"}")
+            .get("wait")
+            .is_none());
         assert!(lower_first("::sfx{sound=\"ding\"}").get("wait").is_none());
-        assert!(lower_first("::vfx{type=\"whiteOut\"}").get("wait").is_none());
+        assert!(lower_first("::vfx{type=\"whiteOut\"}")
+            .get("wait")
+            .is_none());
         assert!(
             lower_first("::auto{character=\"bianca\" anchor=\"center\"}")
                 .get("wait")
@@ -853,9 +869,17 @@ mod tests {
         // as the string "0.4" beside `zoom: 1.2`).
         let v = lower_first("::camera{shake=\"0.4\" zoom=\"1.2\"}");
         assert_eq!(v["kind"], "camera");
-        assert!(v["shake"].is_number(), "shake must be a JSON number, got {}", v["shake"]);
+        assert!(
+            v["shake"].is_number(),
+            "shake must be a JSON number, got {}",
+            v["shake"]
+        );
         assert_eq!(v["shake"], 0.4);
-        assert!(v["zoom"].is_number(), "zoom must be a JSON number, got {}", v["zoom"]);
+        assert!(
+            v["zoom"].is_number(),
+            "zoom must be a JSON number, got {}",
+            v["zoom"]
+        );
         assert_eq!(v["zoom"], 1.2);
     }
 
@@ -864,7 +888,11 @@ mod tests {
         // IR A10: a typed bool attr is a JSON bool, not a string (confirms the
         // existing `get_bool` coercion for core records).
         let v = lower_first("::camera{shake=\"0.4\" reset=\"true\"}");
-        assert!(v["reset"].is_boolean(), "reset must be a JSON bool, got {}", v["reset"]);
+        assert!(
+            v["reset"].is_boolean(),
+            "reset must be a JSON bool, got {}",
+            v["reset"]
+        );
         assert_eq!(v["reset"], true);
     }
 
@@ -874,7 +902,11 @@ mod tests {
         // plugin ships, so it never serializes (skip-if-none).
         let v = lower_first("::auto{character=\"bianca\" anchor=\"center\"}");
         assert_eq!(v["kind"], "sprite");
-        assert!(v.get("costume").is_none(), "costume must be absent, got {:?}", v.get("costume"));
+        assert!(
+            v.get("costume").is_none(),
+            "costume must be absent, got {:?}",
+            v.get("costume")
+        );
     }
 
     /// A snapshot whose `::<tag>` plugin directive declares `attrs` and the
@@ -973,7 +1005,10 @@ mod tests {
         assert_eq!(v["kind"], "background");
         assert_eq!(v["assetId"], "BG.y");
         assert_eq!(v["time"], "dusk");
-        assert!(v.get("location").is_none(), "unsourced field stays absent: {v}");
+        assert!(
+            v.get("location").is_none(),
+            "unsourced field stays absent: {v}"
+        );
     }
 
     #[test]
@@ -981,7 +1016,10 @@ mod tests {
         let snapshot = snap_with(
             "lens",
             &[("z", Type::Number), ("snap", Type::Bool)],
-            record_lowering("camera", "{ zoom: { fromAttr: z }, reset: { fromAttr: snap } }"),
+            record_lowering(
+                "camera",
+                "{ zoom: { fromAttr: z }, reset: { fromAttr: snap } }",
+            ),
         );
         let v = lower_with("::lens{z=\"1.25\" snap=\"true\"}", &snapshot);
         assert_eq!(v["kind"], "camera");

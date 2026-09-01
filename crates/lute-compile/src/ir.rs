@@ -234,12 +234,12 @@ pub struct SceneMeta {
     pub episode_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// dsl 0.15.0 §3: free descriptive `meta:` block, JSON-ready
-    /// (`TypedMeta.meta_block`), key-sorted (`BTreeMap`) and skipped when
+    /// dsl 0.15.0 §3: free descriptive `extra:` block, JSON-ready
+    /// (`TypedMeta.extra_block`), key-sorted (`BTreeMap`) and skipped when
     /// empty so a document without the block stays byte-identical to
     /// pre-0.15 output.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub meta: BTreeMap<String, serde_json::Value>,
+    pub extra: BTreeMap<String, serde_json::Value>,
     /// plugin-owned top-level frontmatter keys the checker admitted past
     /// `E-META-UNKNOWN-KEY` and validated against the declaring plugin's
     /// `frontmatter/*.yaml` schema (`E-FRONTMATTER-SCHEMA`, plugin-system
@@ -253,8 +253,8 @@ pub struct SceneMeta {
 }
 
 /// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1; dsl 0.15.0 §3
-/// adds the descriptive `meta:` block): MAY serialize as `{}` when none of
-/// title/contentLang/meta/plugin are authored.
+/// adds the descriptive `extra:` block): MAY serialize as `{}` when none of
+/// title/contentLang/extra/plugin are authored.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuestMeta {
@@ -266,7 +266,7 @@ pub struct QuestMeta {
     /// skip-when-empty discipline. dsl 0.15.0 §3 sanctions the block on
     /// quest roots too.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub meta: BTreeMap<String, serde_json::Value>,
+    pub extra: BTreeMap<String, serde_json::Value>,
     /// See [`SceneMeta::plugin`] — same predicate, same shape, same
     /// skip-when-empty discipline.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]

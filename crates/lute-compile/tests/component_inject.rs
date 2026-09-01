@@ -37,8 +37,8 @@ fn unique_dir() -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let dir = std::env::temp_dir()
-        .join(format!("lute_cinj_{}_{}_{}", std::process::id(), n, nanos));
+    let dir =
+        std::env::temp_dir().join(format!("lute_cinj_{}_{}_{}", std::process::id(), n, nanos));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -136,7 +136,12 @@ fn use_and_inline_lower_to_the_same_command_stream() {
     let kinds = |a: &lute_compile::Artifact| -> Vec<String> {
         a.commands
             .iter()
-            .map(|c| serde_json::to_value(c).unwrap()["kind"].as_str().unwrap().to_string())
+            .map(|c| {
+                serde_json::to_value(c).unwrap()["kind"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
             .collect()
     };
     assert_eq!(kinds(&inline), kinds(&via_use));
