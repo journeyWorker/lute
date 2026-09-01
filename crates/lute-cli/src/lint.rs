@@ -70,15 +70,17 @@ pub struct LintDenyPolicy {
 
 impl LintDenyPolicy {
     pub fn new(codes: &[String], warnings: bool) -> Self {
-        Self { codes: codes.iter().cloned().collect(), warnings }
+        Self {
+            codes: codes.iter().cloned().collect(),
+            warnings,
+        }
     }
 
     /// Same semantics as `check`'s: promote iff not already an error AND
     /// the code is named OR `--deny-warnings` is on and severity is Warning.
     pub fn denied(&self, d: &Diagnostic) -> bool {
         d.severity != Severity::Error
-            && (self.codes.contains(&d.code)
-                || (self.warnings && d.severity == Severity::Warning))
+            && (self.codes.contains(&d.code) || (self.warnings && d.severity == Severity::Warning))
     }
 }
 
@@ -145,6 +147,7 @@ fn project_root_for(file: &Path, walk_root: &Path) -> PathBuf {
 /// `--config`). Returns `Ok(None)` on an absent file (defaults are fine);
 /// `Err(exit 2)` on a read failure or malformed YAML; `Ok(Some(...))` on a
 /// parsed config plus non-fatal `E-LINT-CONFIG` diagnostics.
+#[allow(clippy::type_complexity)]
 fn read_root_config(
     root: &Path,
     explicit: Option<&Path>,
@@ -240,10 +243,7 @@ fn build_lint_input(file: &Path, root: &Path) -> Result<LintDocInput, ExitCode> 
 
 /// Group the discovered files by resolved project root and run the engine
 /// once per root. Returns `Err(exit 2)` on any I/O / malformed-YAML failure.
-fn lint_target(
-    path: &Path,
-    explicit_config: Option<&Path>,
-) -> Result<LintOutcome, ExitCode> {
+fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcome, ExitCode> {
     let mut aggregated = LintOutcome::default();
 
     // Two shapes: a single .lute file or a directory tree.
@@ -283,16 +283,21 @@ fn lint_target(
 
     for (root, files) in by_root {
         // Load config for this root (or the shared --config override).
-        let (cfg_path, cfg, cfg_diags, cfg_span) =
-            match read_root_config(&root, explicit_config)? {
-                Some(v) => (Some(v.0), v.1, v.2, v.3),
-                None => (
-                    None,
-                    LintConfig::default(),
-                    Vec::new(),
-                    Span { byte_start: 0, byte_end: 0, line: 0, column: 0, utf16_range: (0, 0) },
-                ),
-            };
+        let (cfg_path, cfg, cfg_diags, cfg_span) = match read_root_config(&root, explicit_config)? {
+            Some(v) => (Some(v.0), v.1, v.2, v.3),
+            None => (
+                None,
+                LintConfig::default(),
+                Vec::new(),
+                Span {
+                    byte_start: 0,
+                    byte_end: 0,
+                    line: 0,
+                    column: 0,
+                    utf16_range: (0, 0),
+                },
+            ),
+        };
 
         // Load the project (for plugin lints + provider catalog). Absent
         // manifest ⇒ defaults-only, no plugin rules.
@@ -327,30 +332,30 @@ fn lint_target(
         // Config-file `E-LINT-CONFIG` diagnostics from `parse_config`
         // (semantic YAML defects — unknown level, bad shape) are surfaced
         // through the same channel the engine uses.
-        let anchor = cfg_path.clone().unwrap_or_else(|| root.join("lute.lint.yaml"));
+        let anchor = cfg_path
+            .clone()
+            .unwrap_or_else(|| root.join("lute.lint.yaml"));
         for d in cfg_diags {
             outcome.config_diagnostics.push((anchor.clone(), d));
         }
 
         aggregated.diagnostics.extend(outcome.diagnostics);
-        aggregated.config_diagnostics.extend(outcome.config_diagnostics);
+        aggregated
+            .config_diagnostics
+            .extend(outcome.config_diagnostics);
     }
 
     // Deterministic order across roots.
-    aggregated
-        .diagnostics
-        .sort_by(|(pa, da), (pb, db)| {
-            pa.cmp(pb)
-                .then_with(|| da.span.byte_start.cmp(&db.span.byte_start))
-                .then_with(|| da.code.cmp(&db.code))
-        });
-    aggregated
-        .config_diagnostics
-        .sort_by(|(pa, da), (pb, db)| {
-            pa.cmp(pb)
-                .then_with(|| da.span.byte_start.cmp(&db.span.byte_start))
-                .then_with(|| da.code.cmp(&db.code))
-        });
+    aggregated.diagnostics.sort_by(|(pa, da), (pb, db)| {
+        pa.cmp(pb)
+            .then_with(|| da.span.byte_start.cmp(&db.span.byte_start))
+            .then_with(|| da.code.cmp(&db.code))
+    });
+    aggregated.config_diagnostics.sort_by(|(pa, da), (pb, db)| {
+        pa.cmp(pb)
+            .then_with(|| da.span.byte_start.cmp(&db.span.byte_start))
+            .then_with(|| da.code.cmp(&db.code))
+    });
     Ok(aggregated)
 }
 
@@ -377,13 +382,22 @@ fn diag_to_json(path: &Path, d: &Diagnostic, denied: bool) -> serde_json::Value 
 
 fn print_human_line(path: &Path, d: &Diagnostic, denied: bool) {
     let marker = if denied { " [denied]" } else { "" };
-    let severity = if denied { "error" } else { severity_str(d.severity) };
+    let severity = if denied {
+        "error"
+    } else {
+        severity_str(d.severity)
+    };
     if d.span.line == 0 && d.span.column == 0 {
         // A config-file diagnostic anchored at the file head via a zero
         // span still prints with a real 1:1 position (config-file parse
         // errors always have a span computed against the file text); a
         // truly zeroed span is a rare edge — render without a position.
-        println!("{}: {severity} [{}]{marker} {}", path.display(), d.code, d.message);
+        println!(
+            "{}: {severity} [{}]{marker} {}",
+            path.display(),
+            d.code,
+            d.message
+        );
     } else {
         println!(
             "{}:{}:{}: {severity} [{}]{marker} {}",
@@ -453,7 +467,10 @@ pub fn run_lint(
         }
         let (errors, warnings) = count(&outcome, &policy);
         if ok {
-            println!("ok: {} ({errors} error(s), {warnings} warning(s))", path.display());
+            println!(
+                "ok: {} ({errors} error(s), {warnings} warning(s))",
+                path.display()
+            );
         } else {
             println!(
                 "failed: {} ({errors} error(s), {warnings} warning(s))",

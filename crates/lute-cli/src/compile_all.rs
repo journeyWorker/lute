@@ -156,7 +156,11 @@ pub fn run(
             return ExitCode::from(2);
         };
         built.report_project_diags();
-        let crate::BuiltInput { input, resolve_error, .. } = built;
+        let crate::BuiltInput {
+            input,
+            resolve_error,
+            ..
+        } = built;
         // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
         // option, missing active plugin, bad identity template) is a build-failing
         // error; it printed above, and it MUST gate here or it would pass silently.
@@ -306,8 +310,15 @@ mod tests {
             rel_slash(Path::new("/p/quests/a.lute"), root).as_deref(),
             Some("quests/a.lute")
         );
-        assert_eq!(rel_slash(Path::new("/p/a.lute"), root).as_deref(), Some("a.lute"));
+        assert_eq!(
+            rel_slash(Path::new("/p/a.lute"), root).as_deref(),
+            Some("a.lute")
+        );
         assert_eq!(rel_slash(Path::new("/other/a.lute"), root), None);
-        assert_eq!(rel_slash(root, root), None, "the root itself is not a document");
+        assert_eq!(
+            rel_slash(root, root),
+            None,
+            "the root itself is not a document"
+        );
     }
 }

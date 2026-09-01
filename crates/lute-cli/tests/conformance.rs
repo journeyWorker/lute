@@ -72,8 +72,7 @@ fn fixtures() -> Vec<(String, PathBuf)> {
 }
 
 fn read(path: &Path) -> String {
-    std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
+    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
 }
 
 fn json_at(path: &Path) -> serde_json::Value {
@@ -84,8 +83,8 @@ fn json_at(path: &Path) -> serde_json::Value {
 /// A scratch dir private to one fixture — no fixture shares mutable temp state
 /// with another, so the suite is order- and concurrency-independent.
 fn scratch(fixture: &str) -> PathBuf {
-    let dir = std::env::temp_dir()
-        .join(format!("lute-conformance-{fixture}-{}", std::process::id()));
+    let dir =
+        std::env::temp_dir().join(format!("lute-conformance-{fixture}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -230,7 +229,12 @@ fn every_fixture_carries_live_stamps() {
         let scratch = scratch(name);
         let fresh_path = scratch.join("artifact.json");
         let out = Command::new(BIN)
-            .args(["compile", &path_arg(&dir.join("source.lute")), "-o", &path_arg(&fresh_path)])
+            .args([
+                "compile",
+                &path_arg(&dir.join("source.lute")),
+                "-o",
+                &path_arg(&fresh_path),
+            ])
             .output()
             .unwrap_or_else(|e| panic!("fixture {name}: cannot spawn {BIN}: {e}"));
         assert!(
@@ -242,7 +246,9 @@ fn every_fixture_carries_live_stamps() {
         let fresh = json_at(&fresh_path);
         let (want, got) = (
             fresh["capabilityVersion"].as_str().unwrap_or("<missing>"),
-            recorded["capabilityVersion"].as_str().unwrap_or("<missing>"),
+            recorded["capabilityVersion"]
+                .as_str()
+                .unwrap_or("<missing>"),
         );
         if got != want {
             failures.push(format!(
@@ -288,7 +294,11 @@ fn every_fixture_has_the_documented_layout() {
         }
     }
 
-    assert!(failures.is_empty(), "malformed conformance fixture(s):\n{}", failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "malformed conformance fixture(s):\n{}",
+        failures.join("\n")
+    );
 }
 
 /// The major.minor line of a full `x.y.z` version — what the `--json`
@@ -302,7 +312,9 @@ fn ir_line(full: &str) -> String {
 }
 
 fn path_arg(p: &Path) -> String {
-    p.to_str().unwrap_or_else(|| panic!("non-UTF-8 path {}", p.display())).to_string()
+    p.to_str()
+        .unwrap_or_else(|| panic!("non-UTF-8 path {}", p.display()))
+        .to_string()
 }
 
 /// The first differing line, so a byte-identity failure points at the clause

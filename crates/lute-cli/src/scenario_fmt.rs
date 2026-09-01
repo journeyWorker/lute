@@ -39,9 +39,7 @@ pub fn run(
         "json" => run_json(dir, providers, command),
         "dot" => run_dot(dir, providers, command),
         other => {
-            eprintln!(
-                "lute scenario: unknown --format `{other}` (valid formats: text, json, dot)"
-            );
+            eprintln!("lute scenario: unknown --format `{other}` (valid formats: text, json, dot)");
             ExitCode::from(2)
         }
     }
@@ -140,9 +138,12 @@ fn run_json(dir: &Path, providers: Option<&Path>, command: Option<ScenarioComman
 /// maps are built in one pass) emits `[]` rather than a fabricated kind.
 fn edge_kinds_json(graph: &ConnGraph, from: &NodeId, to: &NodeId) -> Value {
     match graph.edge_kinds_for(from, to) {
-        Some(kinds) => {
-            Value::Array(kinds.iter().map(|k| Value::String(k.as_str().to_string())).collect())
-        }
+        Some(kinds) => Value::Array(
+            kinds
+                .iter()
+                .map(|k| Value::String(k.as_str().to_string()))
+                .collect(),
+        ),
         None => Value::Array(Vec::new()),
     }
 }
@@ -162,8 +163,14 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
         .map(|node| {
             let mut obj = Map::new();
             obj.insert("id".to_string(), Value::String(node.to_string()));
-            obj.insert("kind".to_string(), Value::String(node_kind_str(node).to_string()));
-            obj.insert("reach".to_string(), Value::String(reach_token(scenario, node).to_string()));
+            obj.insert(
+                "kind".to_string(),
+                Value::String(node_kind_str(node).to_string()),
+            );
+            obj.insert(
+                "reach".to_string(),
+                Value::String(reach_token(scenario, node).to_string()),
+            );
             obj.insert("prereq".to_string(), prereq_json(scenario, node));
             Value::Object(obj)
         })
@@ -175,7 +182,10 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
             let mut obj = Map::new();
             obj.insert("from".to_string(), Value::String(from.to_string()));
             obj.insert("to".to_string(), Value::String(to.to_string()));
-            obj.insert("kinds".to_string(), edge_kinds_json(&scenario.graph, from, to));
+            obj.insert(
+                "kinds".to_string(),
+                edge_kinds_json(&scenario.graph, from, to),
+            );
             edges.push(Value::Object(obj));
         }
     }
@@ -183,12 +193,20 @@ fn root_graph_json(root: &Path, scenario: &RootScenario) -> Value {
     let layers: Vec<Value> = topo_layers(&scenario.graph)
         .into_iter()
         .map(|layer| {
-            Value::Array(layer.into_iter().map(|n| Value::String(n.to_string())).collect())
+            Value::Array(
+                layer
+                    .into_iter()
+                    .map(|n| Value::String(n.to_string()))
+                    .collect(),
+            )
         })
         .collect();
 
     let mut obj = Map::new();
-    obj.insert("root".to_string(), Value::String(root.display().to_string()));
+    obj.insert(
+        "root".to_string(),
+        Value::String(root.display().to_string()),
+    );
     obj.insert("nodes".to_string(), Value::Array(nodes));
     obj.insert("edges".to_string(), Value::Array(edges));
     obj.insert("layers".to_string(), Value::Array(layers));
@@ -211,17 +229,29 @@ fn reach_json(
     };
     let node_id = node_ref_to_id(&node_ref);
     let mut obj = Map::new();
-    obj.insert("root".to_string(), Value::String(root.display().to_string()));
+    obj.insert(
+        "root".to_string(),
+        Value::String(root.display().to_string()),
+    );
     obj.insert("node".to_string(), Value::String(node_id.to_string()));
-    obj.insert("kind".to_string(), Value::String(node_kind_str(&node_id).to_string()));
+    obj.insert(
+        "kind".to_string(),
+        Value::String(node_kind_str(&node_id).to_string()),
+    );
 
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
         obj.insert("unavailable".to_string(), Value::String(note));
         return print_json(&Value::Object(obj));
     }
 
-    obj.insert("reach".to_string(), Value::String(reach_token(&scenario, &node_id).to_string()));
-    obj.insert("verdict".to_string(), Value::String(reach_verdict_text(&scenario, &node_id)));
+    obj.insert(
+        "reach".to_string(),
+        Value::String(reach_token(&scenario, &node_id).to_string()),
+    );
+    obj.insert(
+        "verdict".to_string(),
+        Value::String(reach_verdict_text(&scenario, &node_id)),
+    );
     obj.insert("prereq".to_string(), prereq_json(&scenario, &node_id));
 
     // Directly referenced nodes (same set `print_prereq_structure` lists) —
@@ -235,9 +265,7 @@ fn reach_json(
                 lute_check::Atom::Visited(key) => NodeId::Scene(key),
                 // Both quest-lifecycle atoms name the SAME node; the
                 // `completed`/`active` distinction lives on the graph edge.
-                lute_check::Atom::Completed(id) | lute_check::Atom::Active(id) => {
-                    NodeId::Quest(id)
-                }
+                lute_check::Atom::Completed(id) | lute_check::Atom::Active(id) => NodeId::Quest(id),
             });
         }
         let referenced: Vec<Value> = targets
@@ -245,9 +273,18 @@ fn reach_json(
             .map(|t| {
                 let mut r = Map::new();
                 r.insert("node".to_string(), Value::String(t.to_string()));
-                r.insert("kind".to_string(), Value::String(node_kind_str(t).to_string()));
-                r.insert("reach".to_string(), Value::String(reach_token(&scenario, t).to_string()));
-                r.insert("verdict".to_string(), Value::String(reach_verdict_text(&scenario, t)));
+                r.insert(
+                    "kind".to_string(),
+                    Value::String(node_kind_str(t).to_string()),
+                );
+                r.insert(
+                    "reach".to_string(),
+                    Value::String(reach_token(&scenario, t).to_string()),
+                );
+                r.insert(
+                    "verdict".to_string(),
+                    Value::String(reach_verdict_text(&scenario, t)),
+                );
                 Value::Object(r)
             })
             .collect();
@@ -275,16 +312,25 @@ fn envelope_json(
     };
     let node_id = node_ref_to_id(&node_ref);
     let mut obj = Map::new();
-    obj.insert("root".to_string(), Value::String(root.display().to_string()));
+    obj.insert(
+        "root".to_string(),
+        Value::String(root.display().to_string()),
+    );
     obj.insert("node".to_string(), Value::String(node_id.to_string()));
-    obj.insert("kind".to_string(), Value::String(node_kind_str(&node_id).to_string()));
+    obj.insert(
+        "kind".to_string(),
+        Value::String(node_kind_str(&node_id).to_string()),
+    );
 
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
         obj.insert("unavailable".to_string(), Value::String(note));
         return print_json(&Value::Object(obj));
     }
 
-    obj.insert("reach".to_string(), Value::String(reach_token(&scenario, &node_id).to_string()));
+    obj.insert(
+        "reach".to_string(),
+        Value::String(reach_token(&scenario, &node_id).to_string()),
+    );
     obj.insert("prereq".to_string(), prereq_json(&scenario, &node_id));
     obj.insert(
         "cycleDegraded".to_string(),
@@ -293,16 +339,26 @@ fn envelope_json(
 
     let (env, enrichment_note) = match &node_ref {
         NodeRef::Scene(_) => {
-            obj.insert("tainted".to_string(), Value::Bool(scenario.tainted.contains(&node_id)));
-            let env = scenario.envs.get(&node_id).cloned().unwrap_or_else(|| envelope::Env {
-                guaranteed: scenario.envelope_d.clone(),
-                possible: scenario.envelope_d.clone(),
-            });
+            obj.insert(
+                "tainted".to_string(),
+                Value::Bool(scenario.tainted.contains(&node_id)),
+            );
+            let env = scenario
+                .envs
+                .get(&node_id)
+                .cloned()
+                .unwrap_or_else(|| envelope::Env {
+                    guaranteed: scenario.envelope_d.clone(),
+                    possible: scenario.envelope_d.clone(),
+                });
             (env, None)
         }
         NodeRef::Quest(id) => {
-            let Some(quest) =
-                scenario.docs.iter().flat_map(|(_, d)| d.quests.iter()).find(|q| &q.id == id)
+            let Some(quest) = scenario
+                .docs
+                .iter()
+                .flat_map(|(_, d)| d.quests.iter())
+                .find(|q| &q.id == id)
             else {
                 eprintln!("lute: internal error: quest `{id}` resolved but no declaration found");
                 return ExitCode::from(2);
@@ -388,7 +444,10 @@ fn run_dot(dir: &Path, providers: Option<&Path>, command: Option<ScenarioCommand
 /// containing a `"`/`\`/control char stays valid Graphviz.
 fn root_dot(root: &Path, scenario: &RootScenario) -> String {
     let mut s = String::new();
-    s.push_str(&format!("digraph {} {{\n", dot_quote(&root.display().to_string())));
+    s.push_str(&format!(
+        "digraph {} {{\n",
+        dot_quote(&root.display().to_string())
+    ));
     for node in scenario.graph.nodes.keys() {
         let shape = match node {
             NodeId::Scene(_) => "box",

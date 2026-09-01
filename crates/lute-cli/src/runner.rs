@@ -339,8 +339,16 @@ impl Runner {
     /// `state:`/`facts:` seeds on top via [`Runner::apply_mock_seeds`] — the
     /// one place that override rule lives.
     fn blank(art: &Json, mock: lute_trace::MockSet) -> Self {
-        let kind = art.get("kind").and_then(Json::as_str).unwrap_or("scene").to_string();
-        let commands = art.get("commands").and_then(Json::as_array).cloned().unwrap_or_default();
+        let kind = art
+            .get("kind")
+            .and_then(Json::as_str)
+            .unwrap_or("scene")
+            .to_string();
+        let commands = art
+            .get("commands")
+            .and_then(Json::as_array)
+            .cloned()
+            .unwrap_or_default();
 
         let mut addr_index = BTreeMap::new();
         let mut addr_order = Vec::new();
@@ -470,8 +478,12 @@ impl Runner {
     /// carryover), so the "mock wins on conflict" rule applies identically
     /// either way.
     fn apply_mock_seeds(&mut self) {
-        let seeds: Vec<(String, String)> =
-            self.mock.state.iter().map(|(p, lit, _)| (p.clone(), lit.clone())).collect();
+        let seeds: Vec<(String, String)> = self
+            .mock
+            .state
+            .iter()
+            .map(|(p, lit, _)| (p.clone(), lit.clone()))
+            .collect();
         for (path, lit) in seeds {
             let v = self.coerce_literal(&path, &lit);
             self.state.insert(path, v);
@@ -492,13 +504,19 @@ impl Runner {
                 "false" => Value::Bool(false),
                 _ => Value::Str(lit.to_string()),
             },
-            Some("number") => lit.parse::<f64>().map(Value::Num).unwrap_or(Value::Str(lit.to_string())),
+            Some("number") => lit
+                .parse::<f64>()
+                .map(Value::Num)
+                .unwrap_or(Value::Str(lit.to_string())),
             // enum / string / reserved / unknown: keep verbatim, but recognize
             // an obvious bool/number so an un-typed seed still evaluates.
             _ => match lit {
                 "true" => Value::Bool(true),
                 "false" => Value::Bool(false),
-                _ => lit.parse::<f64>().map(Value::Num).unwrap_or(Value::Str(lit.to_string())),
+                _ => lit
+                    .parse::<f64>()
+                    .map(Value::Num)
+                    .unwrap_or(Value::Str(lit.to_string())),
             },
         }
     }
@@ -541,7 +559,10 @@ impl Runner {
         for (rel, args) in &self.all_facts {
             fs.assert(rel, args);
         }
-        let env = EvalEnv { state: &eff, facts: &fs };
+        let env = EvalEnv {
+            state: &eff,
+            facts: &fs,
+        };
         let mut unresolved = Vec::new();
         let v = eval(&ided.expr, &env, &mut unresolved);
         self.unresolved.extend(unresolved);
@@ -579,7 +600,9 @@ impl Runner {
         if let Some(path) = node.get("path").and_then(Json::as_str) {
             return self.state.get(path).cloned().unwrap_or(Value::Unknown);
         }
-        if let (Some(cond), Some(then), Some(otherwise)) = (node.get("cond"), node.get("then"), node.get("else")) {
+        if let (Some(cond), Some(then), Some(otherwise)) =
+            (node.get("cond"), node.get("then"), node.get("else"))
+        {
             return match self.expr_node_value(cond) {
                 Value::Bool(true) => self.expr_node_value(then),
                 Value::Bool(false) => self.expr_node_value(otherwise),
@@ -587,7 +610,10 @@ impl Runner {
             };
         }
         if let Some(op) = node.get("op").and_then(Json::as_str) {
-            let l = node.get("l").map(|n| self.expr_node_value(n)).unwrap_or(Value::Unknown);
+            let l = node
+                .get("l")
+                .map(|n| self.expr_node_value(n))
+                .unwrap_or(Value::Unknown);
             let r = node.get("r").map(|n| self.expr_node_value(n));
             return match (op, r) {
                 ("!", None) => match l {
@@ -608,12 +634,24 @@ impl Runner {
                     (Value::Bool(false), Value::Bool(false)) => Value::Bool(false),
                     _ => Value::Unknown,
                 },
-                ("==", Some(r)) => expr_node_eq(&l, &r).map(Value::Bool).unwrap_or(Value::Unknown),
-                ("!=", Some(r)) => expr_node_eq(&l, &r).map(|b| Value::Bool(!b)).unwrap_or(Value::Unknown),
-                ("<", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o == std::cmp::Ordering::Less)).unwrap_or(Value::Unknown),
-                ("<=", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o != std::cmp::Ordering::Greater)).unwrap_or(Value::Unknown),
-                (">", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o == std::cmp::Ordering::Greater)).unwrap_or(Value::Unknown),
-                (">=", Some(r)) => expr_node_cmp(&l, &r).map(|o| Value::Bool(o != std::cmp::Ordering::Less)).unwrap_or(Value::Unknown),
+                ("==", Some(r)) => expr_node_eq(&l, &r)
+                    .map(Value::Bool)
+                    .unwrap_or(Value::Unknown),
+                ("!=", Some(r)) => expr_node_eq(&l, &r)
+                    .map(|b| Value::Bool(!b))
+                    .unwrap_or(Value::Unknown),
+                ("<", Some(r)) => expr_node_cmp(&l, &r)
+                    .map(|o| Value::Bool(o == std::cmp::Ordering::Less))
+                    .unwrap_or(Value::Unknown),
+                ("<=", Some(r)) => expr_node_cmp(&l, &r)
+                    .map(|o| Value::Bool(o != std::cmp::Ordering::Greater))
+                    .unwrap_or(Value::Unknown),
+                (">", Some(r)) => expr_node_cmp(&l, &r)
+                    .map(|o| Value::Bool(o == std::cmp::Ordering::Greater))
+                    .unwrap_or(Value::Unknown),
+                (">=", Some(r)) => expr_node_cmp(&l, &r)
+                    .map(|o| Value::Bool(o != std::cmp::Ordering::Less))
+                    .unwrap_or(Value::Unknown),
                 ("+", Some(r)) => match (l, r) {
                     (Value::Num(a), Value::Num(b)) => Value::Num(a + b),
                     (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
@@ -769,7 +807,9 @@ impl Runner {
             // by `run_quest`, never linearly).
             "quest" | "on" => Step::Next(pc + 1),
             other => {
-                self.fatal = Some(format!("unknown command kind {other:?} (a new capability the runner cannot fake)"));
+                self.fatal = Some(format!(
+                    "unknown command kind {other:?} (a new capability the runner cannot fake)"
+                ));
                 Step::Halt
             }
         }
@@ -835,7 +875,11 @@ impl Runner {
     // ── state & facts ──────────────────────────────────────────────────
 
     fn exec_set(&mut self, cmd: &Json) {
-        let path = cmd.get("path").and_then(Json::as_str).unwrap_or("").to_string();
+        let path = cmd
+            .get("path")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
         let op = cmd.get("op").and_then(Json::as_str).unwrap_or("=");
         let rhs_raw = cmd.get("value").and_then(Json::as_str).unwrap_or("");
         let rhs = self.eval_raw(rhs_raw);
@@ -870,7 +914,11 @@ impl Runner {
     }
 
     fn exec_assert(&mut self, cmd: &Json) {
-        let rel = cmd.get("relation").and_then(Json::as_str).unwrap_or("").to_string();
+        let rel = cmd
+            .get("relation")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
         let args: Vec<String> = cmd
             .get("args")
             .and_then(Json::as_array)
@@ -886,7 +934,11 @@ impl Runner {
     }
 
     fn exec_retract(&mut self, cmd: &Json) {
-        let rel = cmd.get("relation").and_then(Json::as_str).unwrap_or("").to_string();
+        let rel = cmd
+            .get("relation")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
         let args: Vec<String> = cmd
             .get("args")
             .and_then(Json::as_array)
@@ -909,12 +961,29 @@ impl Runner {
     // ── control flow ───────────────────────────────────────────────────
 
     fn do_choice(&mut self, cmd: &Json) -> Step {
-        let branch = cmd.get("branchId").and_then(Json::as_str).unwrap_or("").to_string();
-        let record_key = cmd.get("recordKey").and_then(Json::as_str).map(str::to_string);
+        let branch = cmd
+            .get("branchId")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
+        let record_key = cmd
+            .get("recordKey")
+            .and_then(Json::as_str)
+            .map(str::to_string);
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
-        let options = cmd.get("options").and_then(Json::as_array).cloned().unwrap_or_default();
+        let options = cmd
+            .get("options")
+            .and_then(Json::as_array)
+            .cloned()
+            .unwrap_or_default();
 
-        let forced = match self.mock.choose.get(&branch).and_then(|v| v.first()).cloned() {
+        let forced = match self
+            .mock
+            .choose
+            .get(&branch)
+            .and_then(|v| v.first())
+            .cloned()
+        {
             Some(c) => c,
             None => {
                 self.incomplete = true;
@@ -928,7 +997,10 @@ impl Runner {
                 return Step::Halt;
             }
         };
-        let opt = match options.iter().find(|o| o.get("id").and_then(Json::as_str) == Some(&forced)) {
+        let opt = match options
+            .iter()
+            .find(|o| o.get("id").and_then(Json::as_str) == Some(&forced))
+        {
             Some(o) => o.clone(),
             None => {
                 self.fatal = Some(format!("choice `{branch}` has no option `{forced}`"));
@@ -978,11 +1050,22 @@ impl Runner {
     /// the actual "loop guard" spec §4.4 implies: a hub authored with no
     /// reachable exit option would otherwise spin `--auto first` forever.
     fn do_hub(&mut self, cmd: &Json) -> Step {
-        let id = cmd.get("id").and_then(Json::as_str).unwrap_or("").to_string();
-        let record_key = cmd.get("recordKey").and_then(Json::as_str).map(str::to_string);
+        let id = cmd
+            .get("id")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
+        let record_key = cmd
+            .get("recordKey")
+            .and_then(Json::as_str)
+            .map(str::to_string);
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
         let converge_idx = self.resolve(converge);
-        let options = cmd.get("options").and_then(Json::as_array).cloned().unwrap_or_default();
+        let options = cmd
+            .get("options")
+            .and_then(Json::as_array)
+            .cloned()
+            .unwrap_or_default();
 
         // Segment boundaries: every option target + the converge, so an option
         // body runs from its target up to the NEXT boundary (a non-`exit`
@@ -1061,7 +1144,10 @@ impl Runner {
                 return Step::Halt;
             };
 
-            let opt = match options.iter().find(|o| o.get("id").and_then(Json::as_str) == Some(&choice_id)) {
+            let opt = match options
+                .iter()
+                .find(|o| o.get("id").and_then(Json::as_str) == Some(&choice_id))
+            {
                 Some(o) => o.clone(),
                 None => {
                     self.fatal = Some(format!("hub `{id}` has no option `{choice_id}`"));
@@ -1089,10 +1175,12 @@ impl Runner {
                 }
             }
             if let Some(key) = &record_key {
-                self.state.insert(key.clone(), Value::Str(choice_id.clone()));
+                self.state
+                    .insert(key.clone(), Value::Str(choice_id.clone()));
             }
             // hub visit record slot (scene.visited.<hub>.<opt>, state-lifecycle.md).
-            self.state.insert(format!("scene.visited.{id}.{choice_id}"), Value::Bool(true));
+            self.state
+                .insert(format!("scene.visited.{id}.{choice_id}"), Value::Bool(true));
             self.transcript.push(json!({
                 "addr": addr(cmd),
                 "kind": "hub",
@@ -1101,7 +1189,11 @@ impl Runner {
             }));
             let target = opt.get("target").and_then(Json::as_str).unwrap_or(converge);
             let start = self.resolve(target);
-            let stop = boundaries.iter().find(|&&b| b > start).copied().unwrap_or(self.commands.len());
+            let stop = boundaries
+                .iter()
+                .find(|&&b| b > start)
+                .copied()
+                .unwrap_or(self.commands.len());
             self.run_range(start, stop);
             if self.fatal.is_some() || self.incomplete || self.terminated {
                 return Step::Halt;
@@ -1117,7 +1209,11 @@ impl Runner {
     }
 
     fn do_match(&mut self, cmd: &Json) -> Step {
-        let arms = cmd.get("arms").and_then(Json::as_array).cloned().unwrap_or_default();
+        let arms = cmd
+            .get("arms")
+            .and_then(Json::as_array)
+            .cloned()
+            .unwrap_or_default();
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
         for (i, arm) in arms.iter().enumerate() {
             // An `is`-form arm compiles to an EMPTY `test` plus a structured
@@ -1180,13 +1276,21 @@ impl Runner {
     }
 
     fn exec_plugin(&mut self, cmd: &Json) {
-        let tag = cmd.get("tag").and_then(Json::as_str).unwrap_or("").to_string();
+        let tag = cmd
+            .get("tag")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string();
         // Apply effects that need no bridge result; record a `bridgeResult`
         // effect as unresolved (no host bridge is invoked).
         let mut unresolved = Vec::new();
         if let Some(effects) = cmd.get("effects").and_then(Json::as_array) {
             for e in effects {
-                let path = e.get("path").and_then(Json::as_str).unwrap_or("").to_string();
+                let path = e
+                    .get("path")
+                    .and_then(Json::as_str)
+                    .unwrap_or("")
+                    .to_string();
                 let from = e.get("from");
                 if let Some(from) = from {
                     if let Some(lit) = from.as_bool() {
@@ -1235,9 +1339,17 @@ impl Runner {
                 Some("quest") => quests.push(parse_quest(cmd)),
                 Some("on") => {
                     handlers.push(Handler {
-                        event: cmd.get("event").and_then(Json::as_str).unwrap_or("").to_string(),
+                        event: cmd
+                            .get("event")
+                            .and_then(Json::as_str)
+                            .unwrap_or("")
+                            .to_string(),
                         when: cel_raw(cmd.get("when")),
-                        body: cmd.get("body").and_then(Json::as_str).unwrap_or("").to_string(),
+                        body: cmd
+                            .get("body")
+                            .and_then(Json::as_str)
+                            .unwrap_or("")
+                            .to_string(),
                         // Stream order recovers the enclosing quest: the `on`
                         // record is emitted inside its quest's walk, after the
                         // quest declaration head (stage.rs `walk_quest`).
@@ -1314,7 +1426,6 @@ impl Runner {
             self.reevaluate(&quests, &parent_of, &handlers, &seg_starts, &mut done);
         }
 
-
         // Incomplete if an active quest is stuck on an undecidable required
         // objective (a missing mock left the `done` predicate unknown). An
         // `end` record makes this moot: the author declared the walk finished,
@@ -1360,7 +1471,9 @@ impl Runner {
                 if self.quest_status.get(&q.id).map(String::as_str) != Some("unset") {
                     continue;
                 }
-                let Some(parent) = parent_of.get(&q.id) else { continue };
+                let Some(parent) = parent_of.get(&q.id) else {
+                    continue;
+                };
                 if self.quest_status.get(parent).map(String::as_str) != Some("active") {
                     continue;
                 }
@@ -1464,7 +1577,8 @@ impl Runner {
     }
 
     fn set_quest_state(&mut self, id: &str, state: &str) {
-        self.state.insert(format!("quest.{id}.state"), Value::Str(state.to_string()));
+        self.state
+            .insert(format!("quest.{id}.state"), Value::Str(state.to_string()));
         self.quest_status.insert(id.to_string(), state.to_string());
         self.transcript.push(json!({
             "kind": "quest",
@@ -1478,7 +1592,13 @@ impl Runner {
     /// transitioning quest's id for the engine-derived lifecycle events —
     /// those fire ONLY for their own enclosing quest (quest-lifecycle.md);
     /// `None` (a mock world event) fires every matching handler.
-    fn fire_event(&mut self, event: &str, scope: Option<&str>, handlers: &[Handler], seg_starts: &[usize]) {
+    fn fire_event(
+        &mut self,
+        event: &str,
+        scope: Option<&str>,
+        handlers: &[Handler],
+        seg_starts: &[usize],
+    ) {
         let matching: Vec<usize> = handlers
             .iter()
             .enumerate()
@@ -1504,17 +1624,27 @@ impl Runner {
     /// (or end of the stream). Bodies are forward-only (quest-lifecycle.md).
     fn run_segment(&mut self, body_addr: &str, seg_starts: &[usize]) {
         let start = self.resolve(body_addr);
-        let stop = seg_starts.iter().find(|&&s| s > start).copied().unwrap_or(self.commands.len());
+        let stop = seg_starts
+            .iter()
+            .find(|&&s| s > start)
+            .copied()
+            .unwrap_or(self.commands.len());
         self.run_range(start, stop);
     }
 
     // ── output ─────────────────────────────────────────────────────────
 
     fn output_value(&self) -> Json {
-        let state: serde_json::Map<String, Json> =
-            self.state.iter().map(|(k, v)| (k.clone(), value_to_json(v))).collect();
-        let facts: Vec<Json> =
-            self.all_facts.iter().map(|(r, a)| Json::String(render_fact(r, a))).collect();
+        let state: serde_json::Map<String, Json> = self
+            .state
+            .iter()
+            .map(|(k, v)| (k.clone(), value_to_json(v)))
+            .collect();
+        let facts: Vec<Json> = self
+            .all_facts
+            .iter()
+            .map(|(r, a)| Json::String(render_fact(r, a)))
+            .collect();
         let quests: serde_json::Map<String, Json> = self
             .quest_status
             .iter()
@@ -1536,7 +1666,10 @@ impl Runner {
         // `serde_json` (no `preserve_order`) emits object keys sorted, so this
         // machine transcript is byte-stable across runs — the conformance
         // `expected.json` contract.
-        println!("{}", serde_json::to_string_pretty(&self.output_value()).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&self.output_value()).unwrap_or_default()
+        );
     }
 
     fn print_human(&self, artifact: &Path) {
@@ -1555,8 +1688,14 @@ impl Runner {
                     e.get("path").and_then(Json::as_str).unwrap_or(""),
                     json_scalar_str(e.get("value"))
                 ),
-                "assert" => format!("  {a}  assert {}", e.get("fact").and_then(Json::as_str).unwrap_or("")),
-                "retract" => format!("  {a}  retract {}", e.get("pattern").and_then(Json::as_str).unwrap_or("")),
+                "assert" => format!(
+                    "  {a}  assert {}",
+                    e.get("fact").and_then(Json::as_str).unwrap_or("")
+                ),
+                "retract" => format!(
+                    "  {a}  retract {}",
+                    e.get("pattern").and_then(Json::as_str).unwrap_or("")
+                ),
                 "choice" => format!(
                     "  {a}  choice [{}] -> {}",
                     e.get("branch").and_then(Json::as_str).unwrap_or(""),
@@ -1567,7 +1706,10 @@ impl Runner {
                     e.get("hub").and_then(Json::as_str).unwrap_or(""),
                     e.get("chose").and_then(Json::as_str).unwrap_or("(none)")
                 ),
-                "match" => format!("  {a}  match  -> {}", e.get("result").and_then(Json::as_str).unwrap_or("")),
+                "match" => format!(
+                    "  {a}  match  -> {}",
+                    e.get("result").and_then(Json::as_str).unwrap_or("")
+                ),
                 "barrier" => format!("  {a}  barrier (no real clock)"),
                 "end" => match e.get("reason").and_then(Json::as_str) {
                     Some(r) => format!("  {a}  end    reason={r}"),
@@ -1607,7 +1749,14 @@ impl Runner {
                 println!("  {k}: {v}");
             }
         }
-        println!("run {}", if self.incomplete { "incomplete" } else { "complete" });
+        println!(
+            "run {}",
+            if self.incomplete {
+                "incomplete"
+            } else {
+                "complete"
+            }
+        );
     }
 }
 
@@ -1641,11 +1790,18 @@ fn addr(cmd: &Json) -> &str {
 
 /// The `raw` of a `{raw, expr}` CEL pair, when present and non-empty.
 fn cel_raw(pair: Option<&Json>) -> Option<String> {
-    pair.and_then(|p| p.get("raw")).and_then(Json::as_str).filter(|s| !s.trim().is_empty()).map(str::to_string)
+    pair.and_then(|p| p.get("raw"))
+        .and_then(Json::as_str)
+        .filter(|s| !s.trim().is_empty())
+        .map(str::to_string)
 }
 
 fn parse_quest(cmd: &Json) -> QuestDecl {
-    let id = cmd.get("id").and_then(Json::as_str).unwrap_or("").to_string();
+    let id = cmd
+        .get("id")
+        .and_then(Json::as_str)
+        .unwrap_or("")
+        .to_string();
     let objectives = cmd
         .get("objectives")
         .and_then(Json::as_array)
@@ -1653,7 +1809,12 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
             arr.iter()
                 .map(|o| Obj {
                     id: o.get("id").and_then(Json::as_str).unwrap_or("").to_string(),
-                    done: o.get("done").and_then(|d| d.get("raw")).and_then(Json::as_str).unwrap_or("").to_string(),
+                    done: o
+                        .get("done")
+                        .and_then(|d| d.get("raw"))
+                        .and_then(Json::as_str)
+                        .unwrap_or("")
+                        .to_string(),
                     optional: o.get("optional").and_then(Json::as_bool).unwrap_or(false),
                     body: o.get("body").and_then(Json::as_str).map(str::to_string),
                     quest: o.get("quest").and_then(Json::as_str).map(str::to_string),
@@ -1699,7 +1860,9 @@ fn parse_atom(a: &Json) -> Option<RAtom> {
 fn parse_term(t: &Json) -> Option<Term> {
     match t.get("kind").and_then(Json::as_str)? {
         "var" => Some(Term::Var(t.get("name").and_then(Json::as_str)?.to_string())),
-        "const" => Some(Term::Const(t.get("value").and_then(Json::as_str)?.to_string())),
+        "const" => Some(Term::Const(
+            t.get("value").and_then(Json::as_str)?.to_string(),
+        )),
         _ => None,
     }
 }
@@ -1816,7 +1979,11 @@ fn solve_body(
     let mut bindings: Vec<BTreeMap<String, String>> = vec![BTreeMap::new()];
     // 1. positive atoms generate/extend bindings.
     for lit in body {
-        if let Lit::Atom { atom, negated: false } = lit {
+        if let Lit::Atom {
+            atom,
+            negated: false,
+        } = lit
+        {
             let mut next = Vec::new();
             for b in &bindings {
                 for (rel, args) in facts {
@@ -1835,7 +2002,10 @@ fn solve_body(
     bindings.retain(|b| {
         body.iter().all(|lit| match lit {
             Lit::Atom { negated: false, .. } => true,
-            Lit::Atom { atom, negated: true } => {
+            Lit::Atom {
+                atom,
+                negated: true,
+            } => {
                 let ground: Option<Vec<String>> = atom
                     .terms
                     .iter()
@@ -1893,7 +2063,10 @@ fn eval_rule_guard(
     let eff = EffectiveState::new(schema, state.clone());
     let vocab = RelVocab::default();
     let fs = FactStore::new(&vocab);
-    let env = EvalEnv { state: &eff, facts: &fs };
+    let env = EvalEnv {
+        state: &eff,
+        facts: &fs,
+    };
     let mut unresolved = Vec::new();
     matches!(eval(&ided.expr, &env, &mut unresolved), Value::Bool(true))
 }
@@ -1947,7 +2120,11 @@ fn substitute_vars(cel: &str, binding: &BTreeMap<String, String>) -> String {
 }
 
 /// Extend `binding` so `terms` matches `args`, or `None` on a conflict.
-fn unify(terms: &[Term], args: &[String], binding: &BTreeMap<String, String>) -> Option<BTreeMap<String, String>> {
+fn unify(
+    terms: &[Term],
+    args: &[String],
+    binding: &BTreeMap<String, String>,
+) -> Option<BTreeMap<String, String>> {
     let mut b = binding.clone();
     for (t, a) in terms.iter().zip(args) {
         match t {

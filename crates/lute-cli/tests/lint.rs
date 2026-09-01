@@ -55,7 +55,12 @@ fn default_run_reports_dialogue_length() {
     write(&dir.join("scene.lute"), &scene_with_long_line());
 
     let out = run(&["lint", dir.to_str().unwrap()]);
-    assert_eq!(out.status.code(), Some(0), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("L-DIALOGUE-LENGTH"), "{stdout}");
 }
@@ -66,12 +71,18 @@ fn default_run_reports_dialogue_length() {
 fn level_off_silences_rule() {
     let dir = temp_dir("off");
     write(&dir.join("scene.lute"), &scene_with_long_line());
-    write(&dir.join("lute.lint.yaml"), "rules:\n  dialogue-length: off\n");
+    write(
+        &dir.join("lute.lint.yaml"),
+        "rules:\n  dialogue-length: off\n",
+    );
 
     let out = run(&["lint", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(!stdout.contains("L-DIALOGUE-LENGTH"), "unexpected: {stdout}");
+    assert!(
+        !stdout.contains("L-DIALOGUE-LENGTH"),
+        "unexpected: {stdout}"
+    );
 }
 
 /// A rule promoted to `error` in `lute.lint.yaml` (native, no `--deny`)
@@ -86,7 +97,12 @@ fn level_error_flips_exit_code() {
     );
 
     let out = run(&["lint", dir.to_str().unwrap()]);
-    assert_eq!(out.status.code(), Some(1), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("error [L-DIALOGUE-LENGTH]"), "{stdout}");
 }
@@ -165,8 +181,19 @@ fn deny_promotes_lint_code() {
     let dir = temp_dir("deny");
     write(&dir.join("scene.lute"), &scene_with_long_line());
 
-    let out = run(&["lint", dir.to_str().unwrap(), "--json", "--deny", "L-DIALOGUE-LENGTH"]);
-    assert_eq!(out.status.code(), Some(1), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let out = run(&[
+        "lint",
+        dir.to_str().unwrap(),
+        "--json",
+        "--deny",
+        "L-DIALOGUE-LENGTH",
+    ]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
     let d = v["diagnostics"]
@@ -201,7 +228,12 @@ fn malformed_yaml_is_exit_2() {
     write(&dir.join("lute.lint.yaml"), "rules: [\n  not: a: mapping\n");
 
     let out = run(&["lint", dir.to_str().unwrap()]);
-    assert_eq!(out.status.code(), Some(2), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("malformed"), "{stderr}");
 }
@@ -254,6 +286,12 @@ fn plugin_lint_export_fires_end_to_end() {
     let hit = diags
         .iter()
         .find(|d| d["code"] == "L-MY-PLUGIN-TOO-FEW-SHOTS");
-    assert!(hit.is_some(), "expected namespaced plugin rule; got {diags:?}");
-    assert!(hit.unwrap()["message"].as_str().unwrap().contains("only 1 shots"));
+    assert!(
+        hit.is_some(),
+        "expected namespaced plugin rule; got {diags:?}"
+    );
+    assert!(hit.unwrap()["message"]
+        .as_str()
+        .unwrap()
+        .contains("only 1 shots"));
 }

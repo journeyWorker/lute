@@ -30,10 +30,19 @@ fn compile_and_run(tag: &str, source: &str, mock: Option<&str>) -> serde_json::V
     std::fs::write(&src, source).unwrap();
 
     let out = Command::new(BIN)
-        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .args([
+            "compile",
+            src.to_str().unwrap(),
+            "-o",
+            art.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
-    assert!(out.status.success(), "compile: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "compile: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let mut args = vec!["run".to_string(), art.to_str().unwrap().to_string()];
     if let Some(m) = mock {
@@ -44,7 +53,11 @@ fn compile_and_run(tag: &str, source: &str, mock: Option<&str>) -> serde_json::V
     }
     args.push("--json".into());
     let out = Command::new(BIN).args(&args).output().unwrap();
-    assert!(out.status.success(), "run: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "run: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     serde_json::from_slice(&out.stdout).unwrap()
 }
 
@@ -52,7 +65,12 @@ const HDR: &str = "---\nkind: scene\nluteVersion: \"0.8.0\"\ncharacter: hero\nse
     episode: 1\ntitle: T\n---\n\n## Shot 1.\n\n";
 
 fn kinds(v: &serde_json::Value) -> Vec<&str> {
-    v["commands"].as_array().unwrap().iter().map(|c| c["kind"].as_str().unwrap()).collect()
+    v["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["kind"].as_str().unwrap())
+        .collect()
 }
 
 /// 0.13.0 version negotiation: the gate is MAJOR-only. A minor/patch
@@ -66,10 +84,19 @@ fn run_gates_on_major_only() {
     let art = dir.join("artifact.json");
     std::fs::write(&src, format!("{HDR}@narrator: hi\n")).unwrap();
     let out = Command::new(BIN)
-        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .args([
+            "compile",
+            src.to_str().unwrap(),
+            "-o",
+            art.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
-    assert!(out.status.success(), "compile: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "compile: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let mut v: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&art).unwrap()).unwrap();
@@ -77,7 +104,10 @@ fn run_gates_on_major_only() {
     // Same major, wildly different minor -> accepted.
     v["irVersion"] = serde_json::json!("0.999.7");
     std::fs::write(&art, serde_json::to_string(&v).unwrap()).unwrap();
-    let ok = Command::new(BIN).args(["run", art.to_str().unwrap()]).output().unwrap();
+    let ok = Command::new(BIN)
+        .args(["run", art.to_str().unwrap()])
+        .output()
+        .unwrap();
     assert!(
         ok.status.success(),
         "same-major minor drift must run: {}",
@@ -87,10 +117,16 @@ fn run_gates_on_major_only() {
     // Different major -> refused, exit 2, message names the MAJOR policy.
     v["irVersion"] = serde_json::json!("1.0.0");
     std::fs::write(&art, serde_json::to_string(&v).unwrap()).unwrap();
-    let no = Command::new(BIN).args(["run", art.to_str().unwrap()]).output().unwrap();
+    let no = Command::new(BIN)
+        .args(["run", art.to_str().unwrap()])
+        .output()
+        .unwrap();
     assert_eq!(no.status.code(), Some(2));
     let err = String::from_utf8_lossy(&no.stderr);
-    assert!(err.contains("unsupported irVersion") && err.contains("MAJOR"), "{err}");
+    assert!(
+        err.contains("unsupported irVersion") && err.contains("MAJOR"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -102,7 +138,10 @@ fn end_stops_the_walk_and_surfaces_its_reason() {
     );
     assert_eq!(kinds(&v), ["line", "end"], "{v}");
     assert_eq!(v["commands"][1]["reason"], "completed");
-    assert_eq!(v["exit"], "complete", "an `end` walk is COMPLETE, not incomplete");
+    assert_eq!(
+        v["exit"], "complete",
+        "an `end` walk is COMPLETE, not incomplete"
+    );
 }
 
 /// The whole point of the record: identical to falling off the end of the
@@ -168,7 +207,12 @@ fn run_refuses_a_selection_whose_guard_is_false_and_plays_the_true_one() {
     )
     .unwrap();
     let c = Command::new(BIN)
-        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .args([
+            "compile",
+            src.to_str().unwrap(),
+            "-o",
+            art.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     assert!(c.status.success(), "{}", String::from_utf8_lossy(&c.stderr));
@@ -176,7 +220,12 @@ fn run_refuses_a_selection_whose_guard_is_false_and_plays_the_true_one() {
     let bad = dir.join("false.yaml");
     std::fs::write(&bad, "state:\n  run.open: false\nchoose:\n  pick: gated\n").unwrap();
     let out = Command::new(BIN)
-        .args(["run", art.to_str().unwrap(), "--mock", bad.to_str().unwrap()])
+        .args([
+            "run",
+            art.to_str().unwrap(),
+            "--mock",
+            bad.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     let combined = format!(
@@ -184,19 +233,38 @@ fn run_refuses_a_selection_whose_guard_is_false_and_plays_the_true_one() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_ne!(out.status.code(), Some(0), "an ineligible selection must not play: {combined}");
+    assert_ne!(
+        out.status.code(),
+        Some(0),
+        "an ineligible selection must not play: {combined}"
+    );
     assert!(combined.contains("E-TRACE-CHOICE"), "{combined}");
-    assert!(combined.contains("gated"), "the refused option must be named: {combined}");
-    assert!(!combined.contains("narrator: gated."), "the arm must not have played: {combined}");
+    assert!(
+        combined.contains("gated"),
+        "the refused option must be named: {combined}"
+    );
+    assert!(
+        !combined.contains("narrator: gated."),
+        "the arm must not have played: {combined}"
+    );
 
     let good = dir.join("true.yaml");
     std::fs::write(&good, "state:\n  run.open: true\nchoose:\n  pick: gated\n").unwrap();
     let ok = Command::new(BIN)
-        .args(["run", art.to_str().unwrap(), "--mock", good.to_str().unwrap()])
+        .args([
+            "run",
+            art.to_str().unwrap(),
+            "--mock",
+            good.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     let oktext = String::from_utf8_lossy(&ok.stdout).to_string();
-    assert_eq!(ok.status.code(), Some(0), "the guard-true twin must still play: {oktext}");
+    assert_eq!(
+        ok.status.code(),
+        Some(0),
+        "the guard-true twin must still play: {oktext}"
+    );
     assert!(oktext.contains("gated."), "{oktext}");
 }
 
@@ -225,7 +293,12 @@ fn run_does_not_refuse_a_selection_whose_guard_is_undecided() {
     )
     .unwrap();
     let c = Command::new(BIN)
-        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .args([
+            "compile",
+            src.to_str().unwrap(),
+            "-o",
+            art.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     assert!(c.status.success(), "{}", String::from_utf8_lossy(&c.stderr));
@@ -240,7 +313,11 @@ fn run_does_not_refuse_a_selection_whose_guard_is_undecided() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(out.status.code(), Some(0), "an undecided guard is not a false one: {text}");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "an undecided guard is not a false one: {text}"
+    );
     assert!(text.contains("timed."), "{text}");
 }
 
@@ -268,7 +345,12 @@ fn run_refuses_an_ineligible_hub_visit_but_not_one_an_earlier_visit_enabled() {
     )
     .unwrap();
     let c = Command::new(BIN)
-        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .args([
+            "compile",
+            src.to_str().unwrap(),
+            "-o",
+            art.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     assert!(c.status.success(), "{}", String::from_utf8_lossy(&c.stderr));
@@ -276,7 +358,12 @@ fn run_refuses_an_ineligible_hub_visit_but_not_one_an_earlier_visit_enabled() {
     let bad = dir.join("bad.yaml");
     std::fs::write(&bad, "choose:\n  desk: [gated, leave]\n").unwrap();
     let out = Command::new(BIN)
-        .args(["run", art.to_str().unwrap(), "--mock", bad.to_str().unwrap()])
+        .args([
+            "run",
+            art.to_str().unwrap(),
+            "--mock",
+            bad.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     let combined = format!(
@@ -284,15 +371,30 @@ fn run_refuses_an_ineligible_hub_visit_but_not_one_an_earlier_visit_enabled() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_ne!(out.status.code(), Some(0), "the hub leg must refuse too: {combined}");
+    assert_ne!(
+        out.status.code(),
+        Some(0),
+        "the hub leg must refuse too: {combined}"
+    );
     assert!(combined.contains("E-TRACE-CHOICE"), "{combined}");
-    assert!(combined.contains("desk: gated"), "the hub and option must be named: {combined}");
-    assert!(!combined.contains("narrator: gated."), "the arm must not have played: {combined}");
+    assert!(
+        combined.contains("desk: gated"),
+        "the hub and option must be named: {combined}"
+    );
+    assert!(
+        !combined.contains("narrator: gated."),
+        "the arm must not have played: {combined}"
+    );
 
     let good = dir.join("good.yaml");
     std::fs::write(&good, "choose:\n  desk: [unlock, gated, leave]\n").unwrap();
     let ok = Command::new(BIN)
-        .args(["run", art.to_str().unwrap(), "--mock", good.to_str().unwrap()])
+        .args([
+            "run",
+            art.to_str().unwrap(),
+            "--mock",
+            good.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     let oktext = String::from_utf8_lossy(&ok.stdout).to_string();
@@ -324,25 +426,48 @@ fn match_is_arm_selects_on_compiled_expr_not_raw_test() {
     )
     .unwrap();
     let out = Command::new(BIN)
-        .args(["compile", src.to_str().unwrap(), "-o", art.to_str().unwrap()])
+        .args([
+            "compile",
+            src.to_str().unwrap(),
+            "-o",
+            art.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
-    assert!(out.status.success(), "compile: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "compile: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let mock = dir.join("mock.yaml");
     std::fs::write(&mock, "state:\n  run.who: b\n").unwrap();
     let out = Command::new(BIN)
-        .args(["run", art.to_str().unwrap(), "--mock", mock.to_str().unwrap()])
+        .args([
+            "run",
+            art.to_str().unwrap(),
+            "--mock",
+            mock.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert_eq!(out.status.code(), Some(0), "{text}");
     assert!(text.contains("arm-b."), "the is=b arm must play: {text}");
-    assert!(!text.contains("fell-through."), "otherwise must not play: {text}");
+    assert!(
+        !text.contains("fell-through."),
+        "otherwise must not play: {text}"
+    );
     assert!(!text.contains("arm-a."), "{text}");
 
     // Default state (run.who=a) picks arm-a — both directions decided, never otherwise.
-    let out = Command::new(BIN).args(["run", art.to_str().unwrap()]).output().unwrap();
+    let out = Command::new(BIN)
+        .args(["run", art.to_str().unwrap()])
+        .output()
+        .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
-    assert!(text.contains("arm-a.") && !text.contains("fell-through."), "{text}");
+    assert!(
+        text.contains("arm-a.") && !text.contains("fell-through."),
+        "{text}"
+    );
 }

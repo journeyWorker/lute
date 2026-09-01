@@ -45,7 +45,11 @@ fn run(args: &[&str]) -> std::process::Output {
 fn warning_doc_clean_without_flags() {
     let (_dir, file) = write_stale("clean");
     let out = run(&["check", file.to_str().unwrap(), "--json"]);
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true);
@@ -55,7 +59,10 @@ fn warning_doc_clean_without_flags() {
         .find(|d| d["code"] == "W-LUTE-VERSION-STALE")
         .expect("fixture must emit W-LUTE-VERSION-STALE");
     assert_eq!(stale["severity"], "warning");
-    assert!(stale.get("denied").is_none(), "unpromoted warning has no denied marker");
+    assert!(
+        stale.get("denied").is_none(),
+        "unpromoted warning has no denied marker"
+    );
 }
 
 /// `--deny <thatcode>` promotes exactly that code: exit 1, `ok: false`, the
@@ -63,8 +70,19 @@ fn warning_doc_clean_without_flags() {
 #[test]
 fn deny_specific_code_promotes_to_error() {
     let (_dir, file) = write_stale("deny-code");
-    let out = run(&["check", file.to_str().unwrap(), "--json", "--deny", "W-LUTE-VERSION-STALE"]);
-    assert_eq!(out.status.code(), Some(1), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let out = run(&[
+        "check",
+        file.to_str().unwrap(),
+        "--json",
+        "--deny",
+        "W-LUTE-VERSION-STALE",
+    ]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
     let stale = v["diagnostics"]
@@ -74,7 +92,10 @@ fn deny_specific_code_promotes_to_error() {
         .find(|d| d["code"] == "W-LUTE-VERSION-STALE")
         .unwrap();
     assert_eq!(stale["severity"], "error", "promoted severity is error");
-    assert_eq!(stale["denied"], true, "promoted diagnostic carries denied: true");
+    assert_eq!(
+        stale["denied"], true,
+        "promoted diagnostic carries denied: true"
+    );
 }
 
 /// `--deny-warnings` promotes every warning the same way: exit 1 + denied.
@@ -82,7 +103,12 @@ fn deny_specific_code_promotes_to_error() {
 fn deny_warnings_promotes_to_error() {
     let (_dir, file) = write_stale("deny-warnings");
     let out = run(&["check", file.to_str().unwrap(), "--json", "--deny-warnings"]);
-    assert_eq!(out.status.code(), Some(1), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
     let stale = v["diagnostics"]
@@ -100,15 +126,26 @@ fn deny_warnings_promotes_to_error() {
 #[test]
 fn deny_human_line_marks_denied() {
     let (_dir, file) = write_stale("deny-human");
-    let out = run(&["check", file.to_str().unwrap(), "--deny", "W-LUTE-VERSION-STALE"]);
+    let out = run(&[
+        "check",
+        file.to_str().unwrap(),
+        "--deny",
+        "W-LUTE-VERSION-STALE",
+    ]);
     assert_eq!(out.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&out.stdout);
     let line = stdout
         .lines()
         .find(|l| l.contains("W-LUTE-VERSION-STALE"))
         .expect("a diagnostic line naming the code");
-    assert!(line.contains("[denied]"), "promoted line must carry the [denied] marker: {line}");
-    assert!(line.contains(" error "), "promoted line reports error severity: {line}");
+    assert!(
+        line.contains("[denied]"),
+        "promoted line must carry the [denied] marker: {line}"
+    );
+    assert!(
+        line.contains(" error "),
+        "promoted line reports error severity: {line}"
+    );
 }
 
 /// An unknown `--deny` code is a clap usage error (exit 2) — "a typo'd
@@ -116,8 +153,18 @@ fn deny_human_line_marks_denied() {
 #[test]
 fn unknown_deny_code_is_usage_error() {
     let (_dir, file) = write_stale("deny-unknown");
-    let out = run(&["check", file.to_str().unwrap(), "--json", "--deny", "W-NOPE-NOT-REAL"]);
-    assert_eq!(out.status.code(), Some(2), "unknown --deny code must be a usage error");
+    let out = run(&[
+        "check",
+        file.to_str().unwrap(),
+        "--json",
+        "--deny",
+        "W-NOPE-NOT-REAL",
+    ]);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "unknown --deny code must be a usage error"
+    );
     // clap usage errors go to stderr, not the JSON stdout surface.
     assert!(
         String::from_utf8_lossy(&out.stderr).contains("W-NOPE-NOT-REAL"),
@@ -131,8 +178,19 @@ fn unknown_deny_code_is_usage_error() {
 #[test]
 fn deny_nonmatching_code_leaves_verdict_unchanged() {
     let (_dir, file) = write_stale("deny-nonmatch");
-    let out = run(&["check", file.to_str().unwrap(), "--json", "--deny", "W-OVERLAP-ARMS"]);
-    assert_eq!(out.status.code(), Some(0), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let out = run(&[
+        "check",
+        file.to_str().unwrap(),
+        "--json",
+        "--deny",
+        "W-OVERLAP-ARMS",
+    ]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true);
 }
@@ -145,8 +203,18 @@ fn check_project_deny_warnings_promotes() {
     let clean = run(&["check-project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(clean.status.code(), Some(0), "baseline project is clean");
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json", "--deny-warnings"]);
-    assert_eq!(out.status.code(), Some(1), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let out = run(&[
+        "check-project",
+        dir.to_str().unwrap(),
+        "--json",
+        "--deny-warnings",
+    ]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
     let file0 = &v["files"].as_array().unwrap()[0];
@@ -165,7 +233,12 @@ fn check_project_deny_warnings_promotes() {
 #[test]
 fn check_project_unknown_deny_code_is_usage_error() {
     let (dir, _file) = write_stale("proj-unknown");
-    let out = run(&["check-project", dir.to_str().unwrap(), "--deny", "NOT-A-CODE"]);
+    let out = run(&[
+        "check-project",
+        dir.to_str().unwrap(),
+        "--deny",
+        "NOT-A-CODE",
+    ]);
     assert_eq!(out.status.code(), Some(2));
 }
 

@@ -15,7 +15,7 @@
 //! observable. §9 rule 4's suite reuses both builders: with a single caller,
 //! rule 4's intersection over call sites and a union are indistinguishable.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
@@ -111,7 +111,7 @@ pub fn run(args: &[&str]) -> std::process::Output {
 /// Every `(path, code, message)` a `check-project --json` run reports for a
 /// document under `scenes/` — i.e. the CALLERS, excluding the component file's
 /// own standalone verdict, which §9 rule 4 owns separately.
-fn caller_diags(dir: &PathBuf, code: &str) -> Vec<(String, String)> {
+fn caller_diags(dir: &Path, code: &str) -> Vec<(String, String)> {
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout)
         .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));

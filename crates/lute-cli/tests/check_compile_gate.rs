@@ -101,7 +101,8 @@ fn check_and_trace_report_the_same_compile_gate_fault() {
     assert!(
         diag_lines(&checked)
             .iter()
-            .any(|l| l.contains("E-COMPILE-EXPAND") && l.contains("def expansion cycle: a -> b -> a")),
+            .any(|l| l.contains("E-COMPILE-EXPAND")
+                && l.contains("def expansion cycle: a -> b -> a")),
         "and the fault is the real one; got:\n{:?}",
         diag_lines(&checked)
     );
@@ -122,7 +123,11 @@ fn a_document_with_no_compile_fault_stays_clean_in_both() {
         "got:\n{}",
         String::from_utf8_lossy(&checked.stdout)
     );
-    assert!(diag_lines(&checked).is_empty(), "got:\n{:?}", diag_lines(&checked));
+    assert!(
+        diag_lines(&checked).is_empty(),
+        "got:\n{:?}",
+        diag_lines(&checked)
+    );
     assert_eq!(
         run(&["trace", path]).status.code(),
         Some(0),
@@ -153,7 +158,9 @@ fn the_compile_gate_runs_only_past_the_check_gate() {
     let traced = run(&["trace", path]);
     assert_eq!(diag_lines(&checked), diag_lines(&traced), "same stream");
     assert!(
-        diag_lines(&checked).iter().any(|l| l.contains("E-UNDECLARED")),
+        diag_lines(&checked)
+            .iter()
+            .any(|l| l.contains("E-UNDECLARED")),
         "got:\n{:?}",
         diag_lines(&checked)
     );
@@ -206,7 +213,11 @@ fn a_component_is_refused_as_a_root_for_the_true_reason() {
     for command in ["trace", "compile"] {
         let out = run(&[command, path]);
         let text = String::from_utf8_lossy(&out.stdout);
-        assert_eq!(out.status.code(), Some(1), "{command} refuses; got:\n{text}");
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "{command} refuses; got:\n{text}"
+        );
         assert!(
             text.contains("has no standalone compiled form") && text.contains("`::use`"),
             "{command} must name the real reason; got:\n{text}"

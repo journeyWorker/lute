@@ -46,8 +46,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use lute_check::{
-    check, check_definite_assignment, check_project_quest_ids, check_project_quest_refs,
-    defassign, envelope, fold_env, parse_meta, CheckInput, Mode, Namespace, RelVocab,
+    check, check_definite_assignment, check_project_quest_ids, check_project_quest_refs, defassign,
+    envelope, fold_env, CheckInput, Mode, Namespace, RelVocab,
 };
 use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
 use lute_manifest::core::load_core_snapshot;
@@ -60,15 +60,15 @@ use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
 
 mod compile_all;
 mod doctor;
-mod loc;
 mod lint;
+mod loc;
 mod manifests;
 mod mockcheck;
 mod play;
-mod schedule;
 mod runner;
 mod scaffold;
 mod scenario_fmt;
+mod schedule;
 mod testcmd;
 
 #[derive(Parser)]
@@ -638,70 +638,221 @@ fn parse_choose_flag(raw: &str) -> Result<(String, Vec<String>), String> {
 /// (denying a code `check` never emits merely protects nothing); a MISSING code
 /// is the only defect, and that test guards exactly it. Sorted for readability.
 const DENIABLE_CODES: &[&str] = &[
-    "E-AGE-GATE", "E-APP-READONLY", "E-ARM-DEAD", "E-AS-REMOVED", "E-ASSET-DECOMPOSE",
-    "E-ASSET-SEGMENT", "E-ASSET-UNKNOWN-ID", "E-AT-CONTEXT", "E-ATTR-TYPE",
-    "E-BAD-ENUM", "E-BRANCH-ALL-GUARDED", "E-BRANCH-EMPTY", "E-BRANCH-PROMPT",
-    "E-BRANCH-TIMEOUT", "E-CEL-PARSE",
-    "E-CEL-PROFILE", "E-CHOICE-DUP", "E-CHOICE-ID-RESERVED", "E-CHOICELOG-READ",
-    "E-CLIP-OVERLAP", "E-CLIP-TIMING", "E-COMMENT-UNTERMINATED",
-    "E-COMPILE-COMPONENT", "E-COMPILE-EXPAND", "E-COMPILE-INTERNAL", "E-COMPONENT-ARG",
-    "E-COMPONENT-BODY", "E-COMPONENT-CYCLE", "E-COMPONENT-DUP", "E-COMPONENT-PARSE",
-    "E-COMPONENT-STATE", "E-COMPONENT-UNDECLARED", "E-CONN-CYCLE", "E-CONN-EPISODE-ID-DUP",
-    "E-CONN-FORMULA-TOO-COMPLEX", "E-CONN-PROFILE", "E-CONN-UNKNOWN-NODE", "E-CONN-UNREACHABLE",
-    "E-CONTENT-LINE-BRACKET", "E-CONTENT-OUTSIDE-SHOT", "E-DATALOG-FUNCTION", "E-DATALOG-GUARD-FACT",
-    "E-DATALOG-PARSE", "E-DATALOG-UNSAFE", "E-DATALOG-UNSTRATIFIED", "E-DEFAULTS-KEY", "E-DELIVERY-CONFLICT",
-    "E-DELIVERY-FLAG-VALUE", "E-DELIVERY-NARRATOR", "E-DEPENDS-CYCLE", "E-DEPENDS-UNRESOLVED",
-    "E-DEPENDS-VERSION", "E-DERIVE-TIER", "E-DERIVE-UNDECLARED", "E-DERIVED-WRITE",
-    "E-DOLLAR-OUTSIDE-MATCH", "E-DOMAIN-DUP", "E-DOMAIN-UNKNOWN", "E-DUP-BRANCH",
-    "E-DUP-LINE-CODE", "E-DUP-TRACK", "E-ENTITY-KIND-CLASH", "E-ENTITY-KIND-SHAPE",
-    "E-ENUM-DEFAULT-NOT-MEMBER", "E-ENUM-EXITS-NOT-MEMBER", "E-ENUM-MISSING-SEMANTICS",
+    "E-AGE-GATE",
+    "E-APP-READONLY",
+    "E-ARM-DEAD",
+    "E-AS-REMOVED",
+    "E-ASSET-DECOMPOSE",
+    "E-ASSET-SEGMENT",
+    "E-ASSET-UNKNOWN-ID",
+    "E-AT-CONTEXT",
+    "E-ATTR-TYPE",
+    "E-BAD-ENUM",
+    "E-BRANCH-ALL-GUARDED",
+    "E-BRANCH-EMPTY",
+    "E-BRANCH-PROMPT",
+    "E-BRANCH-TIMEOUT",
+    "E-CEL-PARSE",
+    "E-CEL-PROFILE",
+    "E-CHOICE-DUP",
+    "E-CHOICE-ID-RESERVED",
+    "E-CHOICELOG-READ",
+    "E-CLIP-OVERLAP",
+    "E-CLIP-TIMING",
+    "E-COMMENT-UNTERMINATED",
+    "E-COMPILE-COMPONENT",
+    "E-COMPILE-EXPAND",
+    "E-COMPILE-INTERNAL",
+    "E-COMPONENT-ARG",
+    "E-COMPONENT-BODY",
+    "E-COMPONENT-CYCLE",
+    "E-COMPONENT-DUP",
+    "E-COMPONENT-PARSE",
+    "E-COMPONENT-STATE",
+    "E-COMPONENT-UNDECLARED",
+    "E-CONN-CYCLE",
+    "E-CONN-EPISODE-ID-DUP",
+    "E-CONN-FORMULA-TOO-COMPLEX",
+    "E-CONN-PROFILE",
+    "E-CONN-UNKNOWN-NODE",
+    "E-CONN-UNREACHABLE",
+    "E-CONTENT-LINE-BRACKET",
+    "E-CONTENT-OUTSIDE-SHOT",
+    "E-DATALOG-FUNCTION",
+    "E-DATALOG-GUARD-FACT",
+    "E-DATALOG-PARSE",
+    "E-DATALOG-UNSAFE",
+    "E-DATALOG-UNSTRATIFIED",
+    "E-DEFAULTS-KEY",
+    "E-DELIVERY-CONFLICT",
+    "E-DELIVERY-FLAG-VALUE",
+    "E-DELIVERY-NARRATOR",
+    "E-DEPENDS-CYCLE",
+    "E-DEPENDS-UNRESOLVED",
+    "E-DEPENDS-VERSION",
+    "E-DERIVE-TIER",
+    "E-DERIVE-UNDECLARED",
+    "E-DERIVED-WRITE",
+    "E-DOLLAR-OUTSIDE-MATCH",
+    "E-DOMAIN-DUP",
+    "E-DOMAIN-UNKNOWN",
+    "E-DUP-BRANCH",
+    "E-DUP-LINE-CODE",
+    "E-DUP-TRACK",
+    "E-ENTITY-KIND-CLASH",
+    "E-ENTITY-KIND-SHAPE",
+    "E-ENUM-DEFAULT-NOT-MEMBER",
+    "E-ENUM-EXITS-NOT-MEMBER",
+    "E-ENUM-MISSING-SEMANTICS",
     "E-ENUM-UNEXPECTED-SEMANTICS",
-    "E-EXTENDS-RELATION-SIG", "E-EXTENDS-STATE-TYPE", "E-FACT-DOMAIN", "E-FACT-TIER-WRITE",
+    "E-EXTENDS-RELATION-SIG",
+    "E-EXTENDS-STATE-TYPE",
+    "E-FACT-DOMAIN",
+    "E-FACT-TIER-WRITE",
     "E-FRONTMATTER-SCHEMA",
-    "E-GRAMMAR-NOT-ADMITTED", "E-HUB-NO-EXIT", "E-IDENTITY-TEMPLATE",
-    "E-INTERP-UNTERMINATED", "E-INTO-TARGET",
-    "E-INTO-UNDECLARED", "E-INTO-VALUE", "E-KIND-MISSING", "E-KIND-NAME-CLASH",
-    "E-LEGACY-CONTENT-SIGIL", "E-LOCALE-BUNDLE", "E-LOGIC-CONTENT", "E-LOWER-RECORD-FIELD",
+    "E-GRAMMAR-NOT-ADMITTED",
+    "E-HUB-NO-EXIT",
+    "E-IDENTITY-TEMPLATE",
+    "E-INTERP-UNTERMINATED",
+    "E-INTO-TARGET",
+    "E-INTO-UNDECLARED",
+    "E-INTO-VALUE",
+    "E-KIND-MISSING",
+    "E-KIND-NAME-CLASH",
+    "E-LEGACY-CONTENT-SIGIL",
+    "E-LOCALE-BUNDLE",
+    "E-LOGIC-CONTENT",
+    "E-LOWER-RECORD-FIELD",
     "E-LOWER-RECORD-UNKNOWN",
     "E-MARK-DUP",
-    "E-MATCH-DUP-OTHERWISE", "E-MATCH-RELATION-SUBJECT",
-    "E-MAYBE-UNSET", "E-META-MISSING", "E-META-PARSE", "E-META-UNKNOWN-KEY",
-    "E-MISSING-ATTR", "E-MOCK-SUBJECT", "E-NEXT-BACKWARD", "E-NEXT-UNDEFINED", "E-NONEXHAUSTIVE", "E-OBJECTIVE-CONTRADICTION", "E-OBJECTIVE-ID-DUP", "E-OBJECTIVE-ID-MISSING",
-    "E-OBJECTIVE-MISSING-DONE", "E-OBJECTIVE-QUEST-DONE", "E-OBJECTIVE-UNSATISFIABLE", "E-ON-NO-EVENT", "E-PATH-IDENT",
-    "E-PERSIST-REMOVED", "E-PLUGIN-ASSET-SEGMENT-TYPE", "E-PLUGIN-DUP-ACROSS", "E-PLUGIN-DUP-ID", "E-PLUGIN-INVALID-DIRECTIVE",
-    "E-PLUGIN-IO", "E-PLUGIN-MANIFEST", "E-PLUGIN-MISSING-ACTIVE", "E-PLUGIN-MISSING-EXPORT",
-    "E-PLUGIN-OPTION-TYPE", "E-PLUGIN-OPTION-UNKNOWN",
-    "E-PLUGIN-PARSE", "E-PLUGIN-RESERVED-NAME", "E-PLUGIN-RESERVED-STAMP-ATTR",
-    "E-PLUGIN-UNKNOWN-ASSETKIND", "E-PLUGIN-UNKNOWN-EXPORT",
-    "E-PROFILE-EXTENDS-CYCLE", "E-PROFILE-UNKNOWN", "E-QUEST-ID-DUP", "E-QUEST-ID-MISSING",
-    "E-QUEST-MULTI-PARENT", "E-QUEST-REF-UNKNOWN",
-    "E-QUEST-RESERVED-DECL", "E-QUEST-RESERVED-WRITE", "E-QUEST-TREE-CYCLE", "E-QUEST-UNREACHABLE", "E-REF-ARG-TYPE",
-    "E-REF-ARITY", "E-REF-TYPE", "E-RELATION-ARITY", "E-RELATION-DOMAIN",
-    "E-RELATION-DUP", "E-RELATION-EMPTY", "E-RELATION-RESERVED-WRITE", "E-RELATION-UNKNOWN",
-    "E-RETRACT-WILDCARD-ASSERT", "E-SET-OP-TYPE", "E-SET-TYPE", "E-STATE-COLLECTION", "E-STATE-DECL",
+    "E-MATCH-DUP-OTHERWISE",
+    "E-MATCH-RELATION-SUBJECT",
+    "E-MAYBE-UNSET",
+    "E-META-ID",
+    "E-META-MISSING",
+    "E-META-PARSE",
+    "E-META-UNKNOWN-KEY",
+    "E-META-VALUE",
+    "E-MISSING-ATTR",
+    "E-MOCK-SUBJECT",
+    "E-NEXT-BACKWARD",
+    "E-NEXT-UNDEFINED",
+    "E-NONEXHAUSTIVE",
+    "E-OBJECTIVE-CONTRADICTION",
+    "E-OBJECTIVE-ID-DUP",
+    "E-OBJECTIVE-ID-MISSING",
+    "E-OBJECTIVE-MISSING-DONE",
+    "E-OBJECTIVE-QUEST-DONE",
+    "E-OBJECTIVE-UNSATISFIABLE",
+    "E-ON-NO-EVENT",
+    "E-PATH-IDENT",
+    "E-PERSIST-REMOVED",
+    "E-PLUGIN-ASSET-SEGMENT-TYPE",
+    "E-PLUGIN-DUP-ACROSS",
+    "E-PLUGIN-DUP-ID",
+    "E-PLUGIN-INVALID-DIRECTIVE",
+    "E-PLUGIN-IO",
+    "E-PLUGIN-MANIFEST",
+    "E-PLUGIN-MISSING-ACTIVE",
+    "E-PLUGIN-MISSING-EXPORT",
+    "E-PLUGIN-OPTION-TYPE",
+    "E-PLUGIN-OPTION-UNKNOWN",
+    "E-PLUGIN-PARSE",
+    "E-PLUGIN-RESERVED-NAME",
+    "E-PLUGIN-RESERVED-STAMP-ATTR",
+    "E-PLUGIN-UNKNOWN-ASSETKIND",
+    "E-PLUGIN-UNKNOWN-EXPORT",
+    "E-PROFILE-EXTENDS-CYCLE",
+    "E-PROFILE-UNKNOWN",
+    "E-QUEST-ID-DUP",
+    "E-QUEST-ID-MISSING",
+    "E-QUEST-MULTI-PARENT",
+    "E-QUEST-REF-UNKNOWN",
+    "E-QUEST-RESERVED-DECL",
+    "E-QUEST-RESERVED-WRITE",
+    "E-QUEST-TREE-CYCLE",
+    "E-QUEST-UNREACHABLE",
+    "E-REF-ARG-TYPE",
+    "E-REF-ARITY",
+    "E-REF-TYPE",
+    "E-RELATION-ARITY",
+    "E-RELATION-DOMAIN",
+    "E-RELATION-DUP",
+    "E-RELATION-EMPTY",
+    "E-RELATION-RESERVED-WRITE",
+    "E-RELATION-UNKNOWN",
+    "E-RETRACT-WILDCARD-ASSERT",
+    "E-SET-OP-TYPE",
+    "E-SET-TYPE",
+    "E-STATE-COLLECTION",
+    "E-STATE-DECL",
     "E-STATE-MAYBE-UNAVAILABLE",
-    "E-STATE-NAMESPACE", "E-STATE-REDECLARE", "E-STATE-SHAPE-CYCLE", "E-STRING-ESCAPE",
-    "E-TAG-INLINE-BODY", "E-TAG-NOT-ONE-LINE", "E-TEMPORAL-ARG", "E-TEST-KEY",
-    "E-TEST-NO-EXPECT", "E-TIME-RESOLUTION",
+    "E-STATE-NAMESPACE",
+    "E-STATE-REDECLARE",
+    "E-STATE-SHAPE-CYCLE",
+    "E-STRING-ESCAPE",
+    "E-TAG-INLINE-BODY",
+    "E-TAG-NOT-ONE-LINE",
+    "E-TEMPORAL-ARG",
+    "E-TEST-KEY",
+    "E-TEST-NO-EXPECT",
+    "E-TIME-RESOLUTION",
     "E-TIMELINE-CONTENT",
     "E-TIMELINE-DURATION",
-    "E-TITLE-PLACEMENT", "E-TRACE-ACCEPT", "E-TRACE-CHOICE", "E-TRACE-EVENT",
-    "E-TRACE-MOCK-FACT", "E-TRACE-MOCK-PARSE", "E-TRACE-MOCK-TYPE", "E-TRACE-MOCK-UNDECLARED",
-    "E-TRACK-KEY", "E-UNCLASSIFIED", "E-UNCLOSED-TAG",
-    "E-UNDECLARED", "E-UNDECLARED-REF", "E-UNKNOWN-ATTR", "E-UNKNOWN-DIRECTIVE",
-    "E-UNKNOWN-EVENT", "E-UNKNOWN-ID", "E-UNKNOWN-KIND", "E-UNSET-LITERAL",
-    "E-UNSET-UNCOVERED", "E-USES-CYCLE", "E-USES-DUP-DEF", "E-USES-DUP-RELATION",
-    "E-USES-DUP-STATE", "E-USES-NOT-FOUND", "E-USES-PARSE", "E-VALIDAT-DERIVED",
-    "E-WHEN-LITERAL-DOMAIN", "E-WHEN-PATTERN", "E-WHEN-UNSET-SUBJECT", "E-WRITE-CONFLICT",
+    "E-TITLE-PLACEMENT",
+    "E-TRACE-ACCEPT",
+    "E-TRACE-CHOICE",
+    "E-TRACE-EVENT",
+    "E-TRACE-MOCK-FACT",
+    "E-TRACE-MOCK-PARSE",
+    "E-TRACE-MOCK-TYPE",
+    "E-TRACE-MOCK-UNDECLARED",
+    "E-TRACK-KEY",
+    "E-UNCLASSIFIED",
+    "E-UNCLOSED-TAG",
+    "E-UNDECLARED",
+    "E-UNDECLARED-REF",
+    "E-UNKNOWN-ATTR",
+    "E-UNKNOWN-DIRECTIVE",
+    "E-UNKNOWN-EVENT",
+    "E-UNKNOWN-ID",
+    "E-UNKNOWN-KIND",
+    "E-UNSET-LITERAL",
+    "E-UNSET-UNCOVERED",
+    "E-USES-CYCLE",
+    "E-USES-DUP-DEF",
+    "E-USES-DUP-RELATION",
+    "E-USES-DUP-STATE",
+    "E-USES-NOT-FOUND",
+    "E-USES-PARSE",
+    "E-VALIDAT-DERIVED",
+    "E-WHEN-LITERAL-DOMAIN",
+    "E-WHEN-PATTERN",
+    "E-WHEN-UNSET-SUBJECT",
+    "E-WRITE-CONFLICT",
     "W-ASSET-PLACEHOLDER",
-    "W-CATALOG-STALE", "W-CODE-AFTER-END", "W-CODE-AFTER-NEXT", "W-COMPONENT-UNVERIFIED", "W-DERIVE-NO-RULES",
+    "W-CATALOG-STALE",
+    "W-CODE-AFTER-END",
+    "W-CODE-AFTER-NEXT",
+    "W-COMPONENT-UNVERIFIED",
+    "W-DERIVE-NO-RULES",
     "W-DOMAIN-UNREAD",
     "W-EXIT-INERT",
-    "W-INTO-SET-DUP", "W-L10N-MISSING", "W-LUTE-VERSION-STALE", "W-OBJECTIVE-HIDDEN",
+    "W-INTO-SET-DUP",
+    "W-L10N-MISSING",
+    "W-LUTE-VERSION-STALE",
+    "W-META-LEGACY",
+    "W-OBJECTIVE-HIDDEN",
     "W-OTHERWISE-DEAD",
-    "W-OVERLAP-ARMS", "W-PROJECT-INERT", "W-QUEST-REF-UNKNOWN", "W-STAGE-ABSENT",
-    "W-TIMELINE-CLIPS", "W-TIMELINE-TOTAL",
-    "W-TIMELINE-TRACKS", "W-TRACE-MOCK-UNPRODUCIBLE", "W-UNPROVEN-RELATIONAL",
+    "W-OVERLAP-ARMS",
+    "W-PROJECT-INERT",
+    "W-QUEST-REF-UNKNOWN",
+    "W-STAGE-ABSENT",
+    "W-TIMELINE-CLIPS",
+    "W-TIMELINE-TOTAL",
+    "W-TIMELINE-TRACKS",
+    "W-TRACE-MOCK-UNPRODUCIBLE",
+    "W-UNPROVEN-RELATIONAL",
 ];
 
 /// clap `value_parser` for `--deny <CODE>`: accept only a code in the known
@@ -730,7 +881,10 @@ struct DenyPolicy {
 
 impl DenyPolicy {
     fn new(deny: &[String], deny_warnings: bool) -> Self {
-        DenyPolicy { codes: deny.iter().cloned().collect(), warnings: deny_warnings }
+        DenyPolicy {
+            codes: deny.iter().cloned().collect(),
+            warnings: deny_warnings,
+        }
     }
 
     /// `true` iff `d` is PROMOTED to an error by this policy: it is not ALREADY
@@ -742,8 +896,7 @@ impl DenyPolicy {
     /// (spec §5).
     fn denied(&self, d: &Diagnostic) -> bool {
         d.severity != Severity::Error
-            && (self.codes.contains(&d.code)
-                || (self.warnings && d.severity == Severity::Warning))
+            && (self.codes.contains(&d.code) || (self.warnings && d.severity == Severity::Warning))
     }
 
     /// `true` iff any diagnostic in `diags` is promoted — the signal that flips
@@ -875,20 +1028,35 @@ fn main() -> ExitCode {
             steps,
             coverage,
             json,
-        } => play::run_play(&dir, state, fact, script.as_deref(), choose, auto, lanes, steps, coverage, json),
+        } => play::run_play(
+            &dir,
+            state,
+            fact,
+            script.as_deref(),
+            choose,
+            auto,
+            lanes,
+            steps,
+            coverage,
+            json,
+        ),
         Command::Test {
             dir,
             json,
             providers,
             project,
             coverage,
-        } => testcmd::run_test(&dir, json, providers.as_deref(), project.as_deref(), coverage),
+        } => testcmd::run_test(
+            &dir,
+            json,
+            providers.as_deref(),
+            project.as_deref(),
+            coverage,
+        ),
         Command::Loc(LocCommand::Export { dir, format, out }) => {
             loc::run_export(&dir, format.as_deref().unwrap_or("json"), out.as_deref())
         }
-        Command::Loc(LocCommand::Import { files, out }) => {
-            loc::run_import(&files, out.as_deref())
-        }
+        Command::Loc(LocCommand::Import { files, out }) => loc::run_import(&files, out.as_deref()),
         Command::Loc(LocCommand::Report { dir, json }) => loc::run_report(&dir, json),
         Command::Scenario {
             dir,
@@ -964,7 +1132,9 @@ pub(crate) struct BuiltInput {
     /// `input.imports` — see `doctor::resolved_domains`.
     pub meta: lute_check::TypedMeta,
     /// The governing manifest's `defaults:` (0.10.0 §6), as applied to this
-    /// document's frontmatter.
+    /// document's frontmatter. Carried so future consumers of `BuiltInput`
+    /// can inspect the applied defaults without re-loading the project.
+    #[allow(dead_code)]
     pub defaults: lute_manifest::project::MetaDefaults,
 }
 
@@ -1143,9 +1313,7 @@ fn nodes_use_component(nodes: &[lute_syntax::ast::Node], name: &str) -> bool {
         Node::On(o) => nodes_use_component(&o.body, name),
         Node::Objective(o) => nodes_use_component(&o.body, name),
         Node::Match(m) => m.arms.iter().any(|arm| match arm {
-            Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                nodes_use_component(body, name)
-            }
+            Arm::When { body, .. } | Arm::Otherwise { body, .. } => nodes_use_component(body, name),
         }),
         Node::Timeline(t) => t.tracks.iter().any(|track| {
             track.clips.iter().any(|clip| match &clip.node {
@@ -1222,7 +1390,9 @@ fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
             // argument text, and any `@`/`$`-free stand-in measures the same
             // body. `or_insert` so a real def never loses its body to a param
             // that shadows its name.
-            bodies.entry(p.name.clone()).or_insert_with(|| p.name.clone());
+            bodies
+                .entry(p.name.clone())
+                .or_insert_with(|| p.name.clone());
         }
         std::borrow::Cow::Owned(bodies)
     } else {
@@ -1389,9 +1559,7 @@ fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCo
         let end = d.span.byte_end.min(byte_end).max(start);
         d.span = Span::from_bytes(&idx, start, end);
     }
-    diagnostics.sort_by(|a, b| {
-        (a.span.byte_start, &a.code).cmp(&(b.span.byte_start, &b.code))
-    });
+    diagnostics.sort_by(|a, b| (a.span.byte_start, &a.code).cmp(&(b.span.byte_start, &b.code)));
     let result = lute_check::CheckResult {
         ok: !diagnostics.iter().any(|d| d.severity == Severity::Error),
         diagnostics,
@@ -1430,7 +1598,11 @@ fn run_check(
     // `build_input` no longer prints these itself (`lute doctor` folds them into
     // its checklist instead); every gating command emits them exactly as before.
     built.report_project_diags();
-    let BuiltInput { input, resolve_error, .. } = built;
+    let BuiltInput {
+        input,
+        resolve_error,
+        ..
+    } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
@@ -1500,16 +1672,20 @@ fn run_check(
             Some((root, callers)) if !callers.is_empty() => result
                 .diagnostics
                 .extend(caller_resolved_common(&callers, file, providers, root)),
-            Some(_) => result.diagnostics.push(lute_check::component_unverified_diag(
-                &component,
-                at,
-                lute_check::ComponentScope::NoImporter,
-            )),
-            None => result.diagnostics.push(lute_check::component_unverified_diag(
-                &component,
-                at,
-                lute_check::ComponentScope::NoProject,
-            )),
+            Some(_) => result
+                .diagnostics
+                .push(lute_check::component_unverified_diag(
+                    &component,
+                    at,
+                    lute_check::ComponentScope::NoImporter,
+                )),
+            None => result
+                .diagnostics
+                .push(lute_check::component_unverified_diag(
+                    &component,
+                    at,
+                    lute_check::ComponentScope::NoProject,
+                )),
         }
         result.ok = !result
             .diagnostics
@@ -1679,21 +1855,28 @@ fn collect_project_docs(
         ExitCode::from(2)
     })?;
 
-    let mut file_results: Vec<(PathBuf, lute_check::CheckResult)> =
-        Vec::with_capacity(files.len());
+    let mut file_results: Vec<(PathBuf, lute_check::CheckResult)> = Vec::with_capacity(files.len());
     let mut docs: Vec<(PathBuf, lute_syntax::ast::Document)> = Vec::with_capacity(files.len());
     let mut foldeds: Vec<lute_check::FoldedEnv> = Vec::with_capacity(files.len());
     let mut roots: Vec<PathBuf> = Vec::with_capacity(files.len());
 
     for file in &files {
-        let root = if single_root { dir.to_path_buf() } else { project_root_for(file, dir) };
+        let root = if single_root {
+            dir.to_path_buf()
+        } else {
+            project_root_for(file, dir)
+        };
         let Some(built) = build_input(file, providers, Some(&root)) else {
             return Err(ExitCode::from(2));
         };
         // Per file, exactly as `build_input` printed them before: this loop
         // resolves each document's own root, so the lines stay one-per-document.
         built.report_project_diags();
-        let BuiltInput { input, resolve_error, .. } = built;
+        let BuiltInput {
+            input,
+            resolve_error,
+            ..
+        } = built;
         // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
         // option, missing active plugin, bad identity template) is a
         // build-failing error; it printed above, and it MUST gate or it would
@@ -1723,10 +1906,11 @@ fn collect_project_docs(
 
     let mut by_root: ByRoot = BTreeMap::new();
     for (idx, entry) in docs.iter().enumerate() {
-        by_root
-            .entry(roots[idx].clone())
-            .or_default()
-            .push((entry.0.clone(), entry.1.clone(), foldeds[idx].clone()));
+        by_root.entry(roots[idx].clone()).or_default().push((
+            entry.0.clone(),
+            entry.1.clone(),
+            foldeds[idx].clone(),
+        ));
     }
 
     Ok((file_results, by_root))
@@ -1937,6 +2121,7 @@ fn compute_conn_fixpoint(
 /// FS-free and format-free). Shared by [`run_check_project`] (grouping +
 /// human/JSON output) and [`reconciled_project_results`] (the compile/trace
 /// project-aware §5 gate).
+#[allow(clippy::type_complexity)]
 fn reconcile_collected(
     mut file_results: Vec<(PathBuf, lute_check::CheckResult)>,
     by_root: &ByRoot,
@@ -1984,8 +2169,10 @@ fn reconcile_collected(
     let mut nodes_by_path: BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>> =
         BTreeMap::new();
     for group_full in by_root.values() {
-        let plain_group: Vec<(PathBuf, lute_syntax::ast::Document)> =
-            group_full.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+        let plain_group: Vec<(PathBuf, lute_syntax::ast::Document)> = group_full
+            .iter()
+            .map(|(p, d, _)| (p.clone(), d.clone()))
+            .collect();
         let group = &plain_group;
         project_diags.extend(check_project_quest_ids(group));
         project_diags.extend(check_project_quest_refs(group));
@@ -2000,7 +2187,9 @@ fn reconcile_collected(
         project_diags.extend(lute_check::connectivity::check_conn_episode_dup(group));
         let key_set = lute_check::connectivity::scene_key_set(group);
         let quest_ids = lute_check::connectivity::quest_id_set(group);
-        project_diags.extend(lute_check::connectivity::resolve_nodes(group, &key_set, &quest_ids));
+        project_diags.extend(lute_check::connectivity::resolve_nodes(
+            group, &key_set, &quest_ids,
+        ));
         let (conn_graph, cycle_diags) =
             lute_check::connectivity::assemble_graph(group, &key_set, &quest_ids);
         project_diags.extend(cycle_diags);
@@ -2021,7 +2210,14 @@ fn reconcile_collected(
         // are shared with the envelope wiring below.
         let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(group);
         let no_params: BTreeMap<String, lute_check::DomainInfo> = BTreeMap::new();
-        let fp = compute_conn_fixpoint(group, group_full, &file_results, &conn_graph, &quest_ids, &ambiguous_quests);
+        let fp = compute_conn_fixpoint(
+            group,
+            group_full,
+            &file_results,
+            &conn_graph,
+            &quest_ids,
+            &ambiguous_quests,
+        );
         project_diags.extend(fp.reach_diags);
         // dsl 2026-08-31 §4 extension: `E-QUEST-UNREACHABLE` propagates one
         // edge UP a subquest tree — a required `<objective quest="c">` on a
@@ -2051,8 +2247,7 @@ fn reconcile_collected(
                 dollar: None,
                 params: &no_params,
             };
-            for d in
-                lute_check::producible::scan_objective_liveness(doc, &producible, &defs, &ctx)
+            for d in lute_check::producible::scan_objective_liveness(doc, &producible, &defs, &ctx)
             {
                 project_diags.push((path.clone(), d));
             }
@@ -2093,13 +2288,17 @@ fn reconcile_collected(
             }
         }
         for (key, occurrences) in &key_set {
-            let Some((scene_path, _)) = occurrences.first() else { continue };
-            let Some((_, doc, folded)) = group_full.iter().find(|(p, _, _)| p == scene_path)
-            else {
+            let Some((scene_path, _)) = occurrences.first() else {
                 continue;
             };
-            let all_nodes: Vec<lute_syntax::ast::Node> =
-                doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
+            let Some((_, doc, folded)) = group_full.iter().find(|(p, _, _)| p == scene_path) else {
+                continue;
+            };
+            let all_nodes: Vec<lute_syntax::ast::Node> = doc
+                .shots
+                .iter()
+                .flat_map(|s| s.body.iter().cloned())
+                .collect();
             let (local_diags, assigned, reads) =
                 check_definite_assignment(&all_nodes, &folded.env.state);
             // T4.4/T4.6 carry-forward parity (dsl §7 soundness invariant): the
@@ -2120,7 +2319,10 @@ fn reconcile_collected(
             };
             per_doc.scene.insert(
                 key.clone(),
-                (envelope::guaranteed(&assigned), envelope::possible_writes(&all_nodes)),
+                (
+                    envelope::guaranteed(&assigned),
+                    envelope::possible_writes(&all_nodes),
+                ),
             );
             let maybe_unset_messages: Vec<&str> = local_diags
                 .iter()
@@ -2158,9 +2360,7 @@ fn reconcile_collected(
         // exists to surface it). EVERY entry-dependent, in-scope,
         // non-tainted read is reconciled below regardless of its own
         // classification outcome.
-        for (path, d) in
-            envelope::check_envelope(&conn_graph, &envs, &tainted, &reads_per_scene)
-        {
+        for (path, d) in envelope::check_envelope(&conn_graph, &envs, &tainted, &reads_per_scene) {
             if d.severity == Severity::Error {
                 project_diags.push((path, d));
             }
@@ -2181,8 +2381,12 @@ fn reconcile_collected(
             if tainted.contains(&node_id) || !envs.contains_key(&node_id) {
                 continue;
             }
-            let Some((scene_path, _)) = occurrences.first() else { continue };
-            let Some(sites) = sites_per_scene.get(key) else { continue };
+            let Some((scene_path, _)) = occurrences.first() else {
+                continue;
+            };
+            let Some(sites) = sites_per_scene.get(key) else {
+                continue;
+            };
             for (span, message) in sites {
                 reconciled_reads.push((scene_path.clone(), *span, message.clone()));
             }
@@ -2191,8 +2395,8 @@ fn reconcile_collected(
     }
     for (path, result) in &mut file_results {
         result.diagnostics.retain(|d| {
-            let quest_dup_covered =
-                d.code == "E-QUEST-ID-DUP" && covered.iter().any(|(p, s)| p == path && *s == d.span);
+            let quest_dup_covered = d.code == "E-QUEST-ID-DUP"
+                && covered.iter().any(|(p, s)| p == path && *s == d.span);
             let envelope_reconciled = d.code == "E-MAYBE-UNSET"
                 && reconciled_reads
                     .iter()
@@ -2392,8 +2596,7 @@ fn run_check_project(
         let files_json: Vec<serde_json::Value> = file_results
             .iter()
             .map(|(path, result)| {
-                let mut v =
-                    serde_json::to_value(result).unwrap_or_else(|_| serde_json::json!({}));
+                let mut v = serde_json::to_value(result).unwrap_or_else(|_| serde_json::json!({}));
                 if let Some(arr) = v.get_mut("diagnostics").and_then(|x| x.as_array_mut()) {
                     for (d, jd) in result.diagnostics.iter().zip(arr.iter_mut()) {
                         apply_deny_json(d, policy, jd);
@@ -2452,7 +2655,11 @@ fn run_check_project(
                     path.display(),
                     d.span.line,
                     d.span.column,
-                    if denied { "error" } else { severity_str(d.severity) },
+                    if denied {
+                        "error"
+                    } else {
+                        severity_str(d.severity)
+                    },
                     d.code,
                     d.message,
                 );
@@ -2580,7 +2787,9 @@ fn project_gate_result(
     // display path may differ in form from the CLI-supplied `file`, and
     // `find_lute_files` already dedupes symlink aliases by canonical identity).
     let matched = reconciled.per_doc.iter().find(|(path, _)| {
-        std::fs::canonicalize(path).map(|c| c == target_canon).unwrap_or(false)
+        std::fs::canonicalize(path)
+            .map(|c| c == target_canon)
+            .unwrap_or(false)
     });
     let Some((matched_key, base)) = matched else {
         eprintln!(
@@ -2636,27 +2845,32 @@ fn gate_for_doc(
         .iter()
         .any(|d| d.code == lute_check::connectivity::E_CONN_CYCLE);
     if !already_cyclic {
-        if let Some((id, span)) = reconciled
-            .nodes_by_path
-            .get(path)
-            .and_then(|hosted| hosted.iter().find(|(id, _)| reconciled.cycle_degraded.contains(id)))
-        {
+        if let Some((id, span)) = reconciled.nodes_by_path.get(path).and_then(|hosted| {
+            hosted
+                .iter()
+                .find(|(id, _)| reconciled.cycle_degraded.contains(id))
+        }) {
             // Normalize line/col from the target's own text (mirrors
             // `reconcile_collected`'s project-diag normalization) — the raw
             // `character:`-key node span carries zeroed line/col otherwise.
             let text = std::fs::read_to_string(path).unwrap_or_default();
             let span = normalize_span_from_text(&text, *span);
-            result.diagnostics.push(lute_check::connectivity::cycle_diag(
-                format!(
+            result
+                .diagnostics
+                .push(lute_check::connectivity::cycle_diag(
+                    format!(
                     "prerequisite cycle: this document hosts `{id}`, which is on or downstream \
                      of an `after`-precedence cycle (E-CONN-CYCLE); no evaluation order can \
                      satisfy every `after` (dsl §2.4/§4.1 §A)"
                 ),
-                span,
-            ));
+                    span,
+                ));
         }
     }
-    result.ok = !result.diagnostics.iter().any(|d| d.severity == Severity::Error);
+    result.ok = !result
+        .diagnostics
+        .iter()
+        .any(|d| d.severity == Severity::Error);
     result
 }
 
@@ -2757,8 +2971,10 @@ fn assemble_root_scenario(
     group_full: &DocGroup,
     file_results: &[(PathBuf, lute_check::CheckResult)],
 ) -> RootScenario {
-    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> =
-        group_full.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+    let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = group_full
+        .iter()
+        .map(|(p, d, _)| (p.clone(), d.clone()))
+        .collect();
     let key_set = lute_check::connectivity::scene_key_set(&docs);
     let quest_ids = lute_check::connectivity::quest_id_set(&docs);
     let (graph, _cycle_diags) =
@@ -2768,7 +2984,14 @@ fn assemble_root_scenario(
     // for the termination + soundness argument) -- never re-derived
     // independently.
     let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&docs);
-    let fp = compute_conn_fixpoint(&docs, group_full, file_results, &graph, &quest_ids, &ambiguous_quests);
+    let fp = compute_conn_fixpoint(
+        &docs,
+        group_full,
+        file_results,
+        &graph,
+        &quest_ids,
+        &ambiguous_quests,
+    );
     let reach = fp.reach;
     let unreachable_quests = fp.unreachable_quests;
     let dead_required_objective_quests = fp.dead_required_objective_quests;
@@ -2796,12 +3019,17 @@ fn assemble_root_scenario(
         }
     }
     for (key, occurrences) in &key_set {
-        let Some((scene_path, _)) = occurrences.first() else { continue };
+        let Some((scene_path, _)) = occurrences.first() else {
+            continue;
+        };
         let Some((_, doc, folded)) = group_full.iter().find(|(p, _, _)| p == scene_path) else {
             continue;
         };
-        let all_nodes: Vec<lute_syntax::ast::Node> =
-            doc.shots.iter().flat_map(|s| s.body.iter().cloned()).collect();
+        let all_nodes: Vec<lute_syntax::ast::Node> = doc
+            .shots
+            .iter()
+            .flat_map(|s| s.body.iter().cloned())
+            .collect();
         let (_local_diags, assigned, reads) =
             check_definite_assignment(&all_nodes, &folded.env.state);
         // Same T4.4/T4.6 carry-forward parity fix as `run_check_project`'s
@@ -2820,7 +3048,10 @@ fn assemble_root_scenario(
             .collect();
         per_doc.scene.insert(
             key.clone(),
-            (envelope::guaranteed(&assigned), envelope::possible_writes(&all_nodes)),
+            (
+                envelope::guaranteed(&assigned),
+                envelope::possible_writes(&all_nodes),
+            ),
         );
         reads_per_scene.insert(key.clone(), reads);
     }
@@ -2961,7 +3192,12 @@ fn reach_verdict_text(scenario: &RootScenario, node: &lute_check::connectivity::
              (E-CONN-UNKNOWN-NODE), under your declared routes."
                 .to_string()
         }
-        NodeId::Quest(id) if !scenario.graph.nodes.contains_key(&NodeId::Quest(id.clone())) => {
+        NodeId::Quest(id)
+            if !scenario
+                .graph
+                .nodes
+                .contains_key(&NodeId::Quest(id.clone())) =>
+        {
             "Reachable — a plain quest with no declared `after` prerequisite, reachable by \
              default quest lifecycle under your declared routes."
                 .to_string()
@@ -3041,8 +3277,10 @@ fn pick_unique_root<'a>(
         }
         1 => Ok(matches.pop().expect("len == 1")),
         n => {
-            let roots: Vec<String> =
-                matches.iter().map(|(r, _)| r.display().to_string()).collect();
+            let roots: Vec<String> = matches
+                .iter()
+                .map(|(r, _)| r.display().to_string())
+                .collect();
             eprintln!(
                 "lute: node `{node_id_raw}` is declared in {n} different project roots under \
                  {} -- ambiguous (a scene/quest id is only unique WITHIN one resolved project \
@@ -3168,11 +3406,11 @@ fn run_scenario_reach(
     file_results: &[(PathBuf, lute_check::CheckResult)],
     node_id_raw: &str,
 ) -> ExitCode {
-    let (node_ref, root, scenario) =
-        match resolve_node_ref(dir, by_root, file_results, node_id_raw) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+    let (node_ref, root, scenario) = match resolve_node_ref(dir, by_root, file_results, node_id_raw)
+    {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
     let node_id = node_ref_to_id(&node_ref);
     println!("project root: {}", root.display());
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
@@ -3206,8 +3444,10 @@ fn ancestors_of(
     g: &lute_check::connectivity::ConnGraph,
     node: &lute_check::connectivity::NodeId,
 ) -> BTreeSet<lute_check::connectivity::NodeId> {
-    let mut rev: BTreeMap<&lute_check::connectivity::NodeId, Vec<&lute_check::connectivity::NodeId>> =
-        BTreeMap::new();
+    let mut rev: BTreeMap<
+        &lute_check::connectivity::NodeId,
+        Vec<&lute_check::connectivity::NodeId>,
+    > = BTreeMap::new();
     for (prereq, deps) in &g.edges {
         for dep in deps {
             rev.entry(dep).or_default().push(prereq);
@@ -3246,10 +3486,7 @@ fn ancestors_of(
 /// second label claims only that its write is NOT provably before this node.
 type WriterSplit = BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)>;
 
-fn writers_of(
-    scenario: &RootScenario,
-    node: &lute_check::connectivity::NodeId,
-) -> WriterSplit {
+fn writers_of(scenario: &RootScenario, node: &lute_check::connectivity::NodeId) -> WriterSplit {
     let upstream = ancestors_of(&scenario.graph, node);
     let mut out: WriterSplit = BTreeMap::new();
     let mut record = |path: &String, id: lute_check::connectivity::NodeId, label: String| {
@@ -3337,7 +3574,11 @@ fn print_facts_section(scenario: &RootScenario, root: &Path) {
     );
     let producible = lute_check::producible::producible(vocab, &live);
     let per_doc = lute_check::connectivity::assert_relations_per_doc(&scenario.docs);
-    let seeded: BTreeSet<&str> = vocab.facts.iter().map(|f| f.fact.relation.as_str()).collect();
+    let seeded: BTreeSet<&str> = vocab
+        .facts
+        .iter()
+        .map(|f| f.fact.relation.as_str())
+        .collect();
 
     println!("  Facts (the relational layer — declared relations, how each becomes true):");
     for (name, decl) in &vocab.relations {
@@ -3388,10 +3629,7 @@ fn graph_has_cycle(scenario: &RootScenario) -> bool {
 /// test is a node absent from `reach` in a root that does contain a cycle —
 /// the same absence [`reach_verdict_text`]'s cycle arm keys off, reused
 /// verbatim so a node's reach verdict and its envelope note never disagree.
-fn node_cycle_degraded(
-    scenario: &RootScenario,
-    node: &lute_check::connectivity::NodeId,
-) -> bool {
+fn node_cycle_degraded(scenario: &RootScenario, node: &lute_check::connectivity::NodeId) -> bool {
     !scenario.reach.contains_key(node) && graph_has_cycle(scenario)
 }
 
@@ -3434,10 +3672,14 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str, root: &Path) {
              E-CONN-UNKNOWN-NODE)."
         );
     }
-    let env = scenario.envs.get(&node_id).cloned().unwrap_or_else(|| envelope::Env {
-        guaranteed: scenario.envelope_d.clone(),
-        possible: scenario.envelope_d.clone(),
-    });
+    let env = scenario
+        .envs
+        .get(&node_id)
+        .cloned()
+        .unwrap_or_else(|| envelope::Env {
+            guaranteed: scenario.envelope_d.clone(),
+            possible: scenario.envelope_d.clone(),
+        });
     let writers = writers_of(scenario, &node_id);
     println!("  Guaranteed (safe to read under your declared routes):");
     print_path_set_with_writers(&env.guaranteed, &writers);
@@ -3460,7 +3702,13 @@ fn print_scene_envelope(scenario: &RootScenario, key: &str, root: &Path) {
             continue;
         }
         any = true;
-        println!("    - {}:{}:{}: {}", path.display(), d.span.line, d.span.column, d.message);
+        println!(
+            "    - {}:{}:{}: {}",
+            path.display(),
+            d.span.line,
+            d.span.column,
+            d.message
+        );
     }
     if !any {
         println!("    (none)");
@@ -3499,15 +3747,18 @@ fn print_quest_envelope(
     if quest.after.is_some() && node_cycle_degraded(scenario, &node_id) {
         print_cycle_envelope_note();
     }
-    let qe =
-        envelope::quest_envelope(quest, &scenario.graph, &scenario.envs, &scenario.envelope_d);
+    let qe = envelope::quest_envelope(quest, &scenario.graph, &scenario.envs, &scenario.envelope_d);
     let writers = writers_of(scenario, &node_id);
     println!("  Guaranteed (safe to read under your declared routes):");
     print_path_set_with_writers(&qe.env.guaranteed, &writers);
     println!("  Possible (set on at least one declared route reaching this node):");
     print_path_set_with_writers(&qe.env.possible, &writers);
-    let warn: BTreeSet<String> =
-        qe.env.possible.difference(&qe.env.guaranteed).cloned().collect();
+    let warn: BTreeSet<String> = qe
+        .env
+        .possible
+        .difference(&qe.env.guaranteed)
+        .cloned()
+        .collect();
     // #33 / T4.10: this sentence named `T11` (an internal task label) and
     // `check_quest_guard_defassign` (a Rust function) at an AUTHOR. Neither
     // appears anywhere on the website, so neither is lookupable. The
@@ -3538,11 +3789,11 @@ fn run_scenario_envelope(
     file_results: &[(PathBuf, lute_check::CheckResult)],
     node_id_raw: &str,
 ) -> ExitCode {
-    let (node_ref, root, scenario) =
-        match resolve_node_ref(dir, by_root, file_results, node_id_raw) {
-            Ok(v) => v,
-            Err(code) => return code,
-        };
+    let (node_ref, root, scenario) = match resolve_node_ref(dir, by_root, file_results, node_id_raw)
+    {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
     println!("project root: {}", root.display());
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
         let node_id = node_ref_to_id(&node_ref);
@@ -3552,8 +3803,11 @@ fn run_scenario_envelope(
     match &node_ref {
         NodeRef::Scene(key) => print_scene_envelope(&scenario, key, root),
         NodeRef::Quest(id) => {
-            let Some(quest) =
-                scenario.docs.iter().flat_map(|(_, d)| d.quests.iter()).find(|q| &q.id == id)
+            let Some(quest) = scenario
+                .docs
+                .iter()
+                .flat_map(|(_, d)| d.quests.iter())
+                .find(|q| &q.id == id)
             else {
                 eprintln!("lute: internal error: quest `{id}` resolved but no declaration found");
                 return ExitCode::from(2);
@@ -3622,7 +3876,11 @@ pub(crate) fn edge_kinds_text(
     to: &lute_check::connectivity::NodeId,
 ) -> String {
     match graph.edge_kinds_for(from, to) {
-        Some(kinds) => kinds.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", "),
+        Some(kinds) => kinds
+            .iter()
+            .map(|k| k.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
         None => "?".to_string(),
     }
 }
@@ -3672,8 +3930,10 @@ fn run_scenario_graph(by_root: &ByRoot) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     for (root, group_full) in by_root {
-        let docs: Vec<(PathBuf, lute_syntax::ast::Document)> =
-            group_full.iter().map(|(p, d, _)| (p.clone(), d.clone())).collect();
+        let docs: Vec<(PathBuf, lute_syntax::ast::Document)> = group_full
+            .iter()
+            .map(|(p, d, _)| (p.clone(), d.clone()))
+            .collect();
         let key_set = lute_check::connectivity::scene_key_set(&docs);
         let quest_ids = lute_check::connectivity::quest_id_set(&docs);
         let (graph, _cycle_diags) =
@@ -3729,7 +3989,11 @@ fn run_context(
         return ExitCode::from(2);
     };
     built.report_project_diags();
-    let BuiltInput { input, resolve_error, .. } = built;
+    let BuiltInput {
+        input,
+        resolve_error,
+        ..
+    } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
@@ -3975,7 +4239,10 @@ fn authoring_surface(
     // flags — `{mono}`/`{os}`/`{vo}` — with their normative meanings, in
     // spec declaration order.
     let delivery_flags: Vec<Value> = [
-        ("mono", "interior monologue / thought (not spoken aloud in-scene)"),
+        (
+            "mono",
+            "interior monologue / thought (not spoken aloud in-scene)",
+        ),
         (
             "os",
             "off-screen: the speaker is heard but not currently staged/visible",
@@ -4028,7 +4295,10 @@ fn authoring_surface(
     );
     // dsl 0.5.1 §2/§3: the referenced reserved quest paths and the fixed
     // delivery-flag vocabulary — new, always-present authoring-surface keys.
-    root.insert("reservedQuestPaths".into(), reserved_quest_paths_json.into());
+    root.insert(
+        "reservedQuestPaths".into(),
+        reserved_quest_paths_json.into(),
+    );
     root.insert("deliveryFlags".into(), delivery_flags.into());
     Value::Object(root)
 }
@@ -4141,7 +4411,9 @@ fn literal_json(l: &Literal) -> serde_json::Value {
         Literal::Str(s) => serde_json::Value::String(s.clone()),
         Literal::List(xs) => serde_json::Value::Array(xs.iter().map(literal_json).collect()),
         Literal::Map(m) => serde_json::Value::Object(
-            m.iter().map(|(k, v)| (k.clone(), literal_json(v))).collect(),
+            m.iter()
+                .map(|(k, v)| (k.clone(), literal_json(v)))
+                .collect(),
         ),
     }
 }
@@ -4419,7 +4691,11 @@ fn run_compile(
         return ExitCode::from(2);
     };
     built.report_project_diags();
-    let BuiltInput { input, resolve_error, .. } = built;
+    let BuiltInput {
+        input,
+        resolve_error,
+        ..
+    } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
@@ -4549,11 +4825,7 @@ fn load_locale_bundle(path: &Path) -> Result<lute_compile::locale::LocaleBundle,
         ExitCode::from(2)
     })?;
     lute_compile::locale::LocaleBundle::parse(&text).map_err(|msg| {
-        eprintln!(
-            "{}: error [{}] {msg}",
-            path.display(),
-            loc::E_LOCALE_BUNDLE
-        );
+        eprintln!("{}: error [{}] {msg}", path.display(), loc::E_LOCALE_BUNDLE);
         ExitCode::FAILURE
     })
 }
@@ -4586,6 +4858,7 @@ fn write_stdout(s: &str) -> std::io::Result<()> {
 /// malformed `--mock` YAML document — the same tier `run_check`/`run_compile`
 /// use for a read failure), `3` [`TraceExit::Incomplete`] (an `unknown`
 /// guard halted the walk, or an unresolved objective/quest atom).
+#[allow(clippy::too_many_arguments)]
 fn run_trace(
     file: &Path,
     state: Vec<(String, String)>,
@@ -4602,7 +4875,11 @@ fn run_trace(
         return ExitCode::from(2);
     };
     built.report_project_diags();
-    let BuiltInput { input, resolve_error, .. } = built;
+    let BuiltInput {
+        input,
+        resolve_error,
+        ..
+    } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
@@ -4671,9 +4948,18 @@ fn run_trace(
     // zeroed placeholder ([`lute_trace::mock`]'s own "CLI-arg synthetic
     // span" convention — that helper is `pub(crate)` there, so this mirrors
     // it byte-for-byte rather than reaching into the crate's internals).
-    let span = lute_core_span::Span { byte_start: 0, byte_end: 0, line: 0, column: 0, utf16_range: (0, 0) };
+    let span = lute_core_span::Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    };
     let flag_mocks = MockSet {
-        state: state.into_iter().map(|(path, literal)| (path, literal, span)).collect(),
+        state: state
+            .into_iter()
+            .map(|(path, literal)| (path, literal, span))
+            .collect(),
         facts: fact,
         choose: choose.into_iter().collect(),
         events: event,
@@ -4918,7 +5204,11 @@ fn render_diagnostics(file: &Path, diagnostics: &[Diagnostic], policy: &DenyPoli
             "{path}:{}:{}: {} [{}]{marker} {}{more}",
             d.span.line,
             d.span.column,
-            if denied { "error" } else { severity_str(d.severity) },
+            if denied {
+                "error"
+            } else {
+                severity_str(d.severity)
+            },
             d.code,
             d.message,
         );
@@ -5099,7 +5389,9 @@ mod tests {
             let rest = parts.next().unwrap_or("");
             matches!(head, "E" | "W")
                 && !rest.is_empty()
-                && rest.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '-')
+                && rest
+                    .chars()
+                    .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '-')
         };
         for c in DENIABLE_CODES {
             assert!(re_ok(c), "malformed code in DENIABLE_CODES: {c}");
@@ -5107,7 +5399,11 @@ mod tests {
         let mut sorted = DENIABLE_CODES.to_vec();
         sorted.sort_unstable();
         sorted.dedup();
-        assert_eq!(sorted.as_slice(), DENIABLE_CODES, "DENIABLE_CODES must be sorted and deduped");
+        assert_eq!(
+            sorted.as_slice(),
+            DENIABLE_CODES,
+            "DENIABLE_CODES must be sorted and deduped"
+        );
     }
 
     /// The drift guard below scans the five CHECK crates; `lute-cli/src` is
@@ -5166,13 +5462,17 @@ mod tests {
         for dir in crates {
             let mut stack = vec![PathBuf::from(dir)];
             while let Some(p) = stack.pop() {
-                let Ok(rd) = std::fs::read_dir(&p) else { continue };
+                let Ok(rd) = std::fs::read_dir(&p) else {
+                    continue;
+                };
                 for entry in rd.flatten() {
                     let path = entry.path();
                     if path.is_dir() {
                         stack.push(path);
                     } else if path.extension().and_then(|x| x.to_str()) == Some("rs") {
-                        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+                        let Ok(text) = std::fs::read_to_string(&path) else {
+                            continue;
+                        };
                         // Scan every double-quoted literal for a diagnostic code.
                         for chunk in text.split('"').skip(1).step_by(2) {
                             if is_code(chunk) && !known.contains(chunk) {

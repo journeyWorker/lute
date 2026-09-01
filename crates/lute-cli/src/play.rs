@@ -84,7 +84,7 @@ use lute_trace::{eval, EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value
 use serde_json::{json, Value as Json};
 
 use crate::runner::{Fact, Runner};
-use crate::schedule::{self, Placement, Schedule, SchedDiag};
+use crate::schedule::{self, Placement, SchedDiag, Schedule};
 
 // ===========================================================================
 // CLI value parsers (`crate::Command::Play`'s `value_parser`s live here,
@@ -98,7 +98,9 @@ use crate::schedule::{self, Placement, Schedule, SchedDiag};
 pub fn parse_auto_policy(raw: &str) -> Result<String, String> {
     match raw {
         "first" => Ok(raw.to_string()),
-        other => Err(format!("unknown --auto policy `{other}` (only `first` is implemented)")),
+        other => Err(format!(
+            "unknown --auto policy `{other}` (only `first` is implemented)"
+        )),
     }
 }
 
@@ -108,7 +110,9 @@ pub fn parse_auto_policy(raw: &str) -> Result<String, String> {
 pub fn parse_lanes_flag(raw: &str) -> Result<String, String> {
     match raw {
         "user" | "all" => Ok(raw.to_string()),
-        other => Err(format!("unknown --lanes value `{other}` (expected `user` or `all`)")),
+        other => Err(format!(
+            "unknown --lanes value `{other}` (expected `user` or `all`)"
+        )),
     }
 }
 
@@ -181,7 +185,9 @@ fn parse_route_script(text: &str) -> Result<RouteScript, String> {
                 return Err("`state:` keys must be strings".to_string());
             };
             let Some(literal) = scalar_to_text(v) else {
-                return Err(format!("`state.{path}` must be a scalar literal (bool/number/string)"));
+                return Err(format!(
+                    "`state.{path}` must be a scalar literal (bool/number/string)"
+                ));
             };
             script.state.push((path.to_string(), literal));
         }
@@ -202,7 +208,8 @@ fn parse_route_script(text: &str) -> Result<RouteScript, String> {
     if let Some(v) = top.get("choose") {
         let serde_yaml::Value::Mapping(m) = v else {
             return Err(
-                "`choose:` must be a mapping of `<event>/<id>` (or bare `<id>`) -> choice id(s)".to_string(),
+                "`choose:` must be a mapping of `<event>/<id>` (or bare `<id>`) -> choice id(s)"
+                    .to_string(),
             );
         };
         for (k, v) in m {
@@ -221,7 +228,11 @@ fn parse_route_script(text: &str) -> Result<RouteScript, String> {
                     }
                     out
                 }
-                _ => return Err(format!("`choose.{key}` must be a choice id or a list of choice ids")),
+                _ => {
+                    return Err(format!(
+                        "`choose.{key}` must be a choice id or a list of choice ids"
+                    ))
+                }
             };
             script.choose.insert(key.to_string(), ids);
         }
@@ -268,15 +279,15 @@ fn compile_project(project_dir: &Path) -> Result<BTreeMap<String, Artifact>, Exi
             }
         }
         Err(e) => {
-            eprintln!("lute play: cannot walk {} for manifests: {e}", project_dir.display());
+            eprintln!(
+                "lute play: cannot walk {} for manifests: {e}",
+                project_dir.display()
+            );
             return Err(ExitCode::from(2));
         }
     }
 
-    let reconciled = match crate::reconciled_project_results(project_dir, None) {
-        Ok(r) => r,
-        Err(code) => return Err(code),
-    };
+    let reconciled = crate::reconciled_project_results(project_dir, None)?;
     let identity = lute_manifest::project::load_project(project_dir)
         .ok()
         .flatten()
@@ -292,14 +303,22 @@ fn compile_project(project_dir: &Path) -> Result<BTreeMap<String, Artifact>, Exi
             continue;
         }
         let Some(rel) = project_rel(file, project_dir) else {
-            eprintln!("lute play: {} is not under {}", file.display(), project_dir.display());
+            eprintln!(
+                "lute play: {} is not under {}",
+                file.display(),
+                project_dir.display()
+            );
             return Err(ExitCode::from(2));
         };
         let Some(built) = crate::build_input(file, None, Some(project_dir)) else {
             return Err(ExitCode::from(2));
         };
         built.report_project_diags();
-        let crate::BuiltInput { input, resolve_error, .. } = built;
+        let crate::BuiltInput {
+            input,
+            resolve_error,
+            ..
+        } = built;
         if resolve_error {
             return Err(ExitCode::from(1));
         }
@@ -309,7 +328,10 @@ fn compile_project(project_dir: &Path) -> Result<BTreeMap<String, Artifact>, Exi
                 artifacts.insert(rel, artifact);
             }
             Err(diags) => {
-                failures.insert(file.clone(), crate::render_diagnostics(file, &diags, &policy));
+                failures.insert(
+                    file.clone(),
+                    crate::render_diagnostics(file, &diags, &policy),
+                );
             }
         }
     }
@@ -343,23 +365,32 @@ struct ProjectUnion {
     enums: BTreeMap<String, Vec<String>>,
 }
 
-fn build_project_union(artifacts: &BTreeMap<String, Artifact>) -> Result<ProjectUnion, Vec<String>> {
+fn build_project_union(
+    artifacts: &BTreeMap<String, Artifact>,
+) -> Result<ProjectUnion, Vec<String>> {
     let inputs: Vec<IndexInput> = artifacts
         .iter()
-        .map(|(rel, art)| IndexInput { path: rel.clone(), artifact_path: format!("{rel}.json"), artifact: art })
+        .map(|(rel, art)| IndexInput {
+            path: rel.clone(),
+            artifact_path: format!("{rel}.json"),
+            artifact: art,
+        })
         .collect();
-    let index = build_index(lute_compile::LUTE_IR_VERSION, &inputs).map_err(|errs| {
-        errs.iter().map(|e| e.to_string()).collect::<Vec<_>>()
-    })?;
+    let index = build_index(lute_compile::LUTE_IR_VERSION, &inputs)
+        .map_err(|errs| errs.iter().map(|e| e.to_string()).collect::<Vec<_>>())?;
     let rules = serde_json::to_value(&index.rules).unwrap_or_else(|_| json!([]));
     let seed_facts = serde_json::to_value(&index.seed_facts).unwrap_or_else(|_| json!([]));
 
     let mut state: BTreeMap<String, Json> = BTreeMap::new();
     for art in artifacts.values() {
-        let Ok(art_json) = serde_json::to_value(art) else { continue };
+        let Ok(art_json) = serde_json::to_value(art) else {
+            continue;
+        };
         if let Some(entries) = art_json.get("state").and_then(Json::as_array) {
             for e in entries {
-                let Some(path) = e.get("path").and_then(Json::as_str) else { continue };
+                let Some(path) = e.get("path").and_then(Json::as_str) else {
+                    continue;
+                };
                 state.entry(path.to_string()).or_insert_with(|| e.clone());
             }
         }
@@ -368,14 +399,22 @@ fn build_project_union(artifacts: &BTreeMap<String, Artifact>) -> Result<Project
     for (path, e) in &state {
         if e.get("type").and_then(Json::as_str) == Some("enum") {
             if let Some(domain) = e.get("domain").and_then(Json::as_array) {
-                let members: Vec<String> = domain.iter().filter_map(|v| v.as_str().map(str::to_string)).collect();
+                let members: Vec<String> = domain
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect();
                 if !members.is_empty() {
                     enums.insert(path.clone(), members);
                 }
             }
         }
     }
-    Ok(ProjectUnion { state, rules, seed_facts, enums })
+    Ok(ProjectUnion {
+        state,
+        rules,
+        seed_facts,
+        enums,
+    })
 }
 
 /// The artifact JSON handed to a scene's [`Runner`]: this scene's OWN
@@ -389,7 +428,10 @@ fn play_artifact_json(scene_json: &Json, union: &ProjectUnion) -> Json {
     if let Json::Object(map) = &mut v {
         map.insert("rules".to_string(), union.rules.clone());
         map.insert("seedFacts".to_string(), union.seed_facts.clone());
-        map.insert("state".to_string(), Json::Array(union.state.values().cloned().collect()));
+        map.insert(
+            "state".to_string(),
+            Json::Array(union.state.values().cloned().collect()),
+        );
     }
     v
 }
@@ -416,18 +458,28 @@ fn json_to_value(j: &Json) -> Option<Value> {
 /// (private to `runner.rs`; duplicated here rather than widened, since it is
 /// ten lines with no other caller).
 fn coerce_literal(union: &ProjectUnion, path: &str, lit: &str) -> Value {
-    let ty = union.state.get(path).and_then(|e| e.get("type")).and_then(Json::as_str);
+    let ty = union
+        .state
+        .get(path)
+        .and_then(|e| e.get("type"))
+        .and_then(Json::as_str);
     match ty {
         Some("bool") => match lit {
             "true" => Value::Bool(true),
             "false" => Value::Bool(false),
             _ => Value::Str(lit.to_string()),
         },
-        Some("number") => lit.parse::<f64>().map(Value::Num).unwrap_or(Value::Str(lit.to_string())),
+        Some("number") => lit
+            .parse::<f64>()
+            .map(Value::Num)
+            .unwrap_or(Value::Str(lit.to_string())),
         _ => match lit {
             "true" => Value::Bool(true),
             "false" => Value::Bool(false),
-            _ => lit.parse::<f64>().map(Value::Num).unwrap_or(Value::Str(lit.to_string())),
+            _ => lit
+                .parse::<f64>()
+                .map(Value::Num)
+                .unwrap_or(Value::Str(lit.to_string())),
         },
     }
 }
@@ -454,7 +506,11 @@ fn parse_ground_fact(s: &str) -> Option<Fact> {
 /// `StateSchema`/`RelVocab` (mirrors `Runner`'s own construction): every
 /// relation is non-derived, so `holds`/`count` return DEFINITE answers over
 /// exactly the supplied `facts`.
-fn eval_cel(raw: &str, state: &BTreeMap<String, Value>, facts: &BTreeSet<Fact>) -> (Value, Vec<UnresolvedAtom>) {
+fn eval_cel(
+    raw: &str,
+    state: &BTreeMap<String, Value>,
+    facts: &BTreeSet<Fact>,
+) -> (Value, Vec<UnresolvedAtom>) {
     if raw.trim().is_empty() {
         return (Value::Unknown, Vec::new());
     }
@@ -472,7 +528,10 @@ fn eval_cel(raw: &str, state: &BTreeMap<String, Value>, facts: &BTreeSet<Fact>) 
     for (rel, args) in facts {
         fs.assert(rel, args);
     }
-    let env = EvalEnv { state: &eff, facts: &fs };
+    let env = EvalEnv {
+        state: &eff,
+        facts: &fs,
+    };
     let mut unresolved = Vec::new();
     let v = eval(&ided.expr, &env, &mut unresolved);
     (v, unresolved)
@@ -491,13 +550,26 @@ fn truthy_cel(raw: &str, state: &BTreeMap<String, Value>, facts: &BTreeSet<Fact>
 // module compiles every doc itself, so it always has it at hand).
 // ===========================================================================
 
+/// The canonical scene key an artifact identifies as, for the presentation-
+/// order `visited(…)` set the causality check (design spec §4.2, dsl 0.15.0
+/// §2) evaluates against. Under IR 0.15+ the compiler stamps this on every
+/// scene artifact as `meta.id` (`SceneMeta.id`, always present — authored
+/// `id:` or the `{character}.{episodeId}` derivation) so we read it
+/// straight. For a pre-0.15 artifact (which never carries `meta.id`) the
+/// legacy triad is reconstructed on the fly via
+/// [`lute_check::meta::canonical_episode_key`].
 fn scene_canonical_key(art_json: &Json) -> Option<String> {
     let meta = art_json.get("meta")?;
+    if let Some(id) = meta.get("id").and_then(Json::as_str) {
+        return Some(id.to_string());
+    }
     let character = meta.get("character").and_then(Json::as_str)?;
     let season = meta.get("season").and_then(Json::as_i64)?;
     let episode = meta.get("episode").and_then(Json::as_i64)?;
     let episode_id = meta.get("episodeId").and_then(Json::as_str);
-    Some(lute_check::meta::canonical_episode_key(character, season, episode, episode_id))
+    Some(lute_check::meta::canonical_episode_key(
+        character, season, episode, episode_id,
+    ))
 }
 
 /// This scene's own declared `after:` prerequisite, parsed via
@@ -512,8 +584,13 @@ fn scene_prereq(art_json: &Json) -> Option<PrereqFormula> {
     if raw.trim().is_empty() {
         return None;
     }
-    let span =
-        lute_core_span::Span { byte_start: 0, byte_end: 0, line: 0, column: 0, utf16_range: (0, 0) };
+    let span = lute_core_span::Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    };
     lute_check::parse_prereq(raw, span).0
 }
 
@@ -523,7 +600,12 @@ fn scene_prereq(art_json: &Json) -> Option<PrereqFormula> {
 /// `completed`/`active` are always empty for the whole playthrough per this
 /// module's scoping decision (module doc) — an honest empty set, not a
 /// faked one.
-fn eval_prereq(f: &PrereqFormula, visited: &BTreeSet<String>, completed: &BTreeSet<String>, active: &BTreeSet<String>) -> bool {
+fn eval_prereq(
+    f: &PrereqFormula,
+    visited: &BTreeSet<String>,
+    completed: &BTreeSet<String>,
+    active: &BTreeSet<String>,
+) -> bool {
     match f {
         PrereqFormula::Visited(k) => visited.contains(k),
         PrereqFormula::Completed(q) => completed.contains(q),
@@ -543,7 +625,9 @@ fn eval_prereq(f: &PrereqFormula, visited: &BTreeSet<String>, completed: &BTreeS
 /// `--auto first`, and the "eligible options" an incomplete halt names).
 fn scene_decision_points(art_json: &Json) -> Vec<(String, Vec<Json>)> {
     let mut out = Vec::new();
-    let Some(commands) = art_json.get("commands").and_then(Json::as_array) else { return out };
+    let Some(commands) = art_json.get("commands").and_then(Json::as_array) else {
+        return out;
+    };
     for cmd in commands {
         let kind = cmd.get("kind").and_then(Json::as_str).unwrap_or("");
         let id = match kind {
@@ -552,8 +636,11 @@ fn scene_decision_points(art_json: &Json) -> Vec<(String, Vec<Json>)> {
             _ => None,
         };
         let Some(id) = id else { continue };
-        let opts: Vec<Json> =
-            cmd.get("options").and_then(Json::as_array).cloned().unwrap_or_default();
+        let opts: Vec<Json> = cmd
+            .get("options")
+            .and_then(Json::as_array)
+            .cloned()
+            .unwrap_or_default();
         out.push((id.to_string(), opts));
     }
     out
@@ -567,10 +654,16 @@ fn scene_decision_points(art_json: &Json) -> Vec<(String, Vec<Json>)> {
 /// literal first option when every option is decided-false; `Runner`'s own
 /// existing forced-selection guard refusal (`[E-TRACE-CHOICE]`) then
 /// correctly refuses it rather than this module silently picking a bad one.
-fn first_eligible_option(opts: &[Json], state: &BTreeMap<String, Value>, facts: &BTreeSet<Fact>) -> Option<String> {
+fn first_eligible_option(
+    opts: &[Json],
+    state: &BTreeMap<String, Value>,
+    facts: &BTreeSet<Fact>,
+) -> Option<String> {
     let mut fallback = None;
     for o in opts {
-        let Some(id) = o.get("id").and_then(Json::as_str) else { continue };
+        let Some(id) = o.get("id").and_then(Json::as_str) else {
+            continue;
+        };
         if fallback.is_none() {
             fallback = Some(id.to_string());
         }
@@ -588,11 +681,16 @@ fn first_eligible_option(opts: &[Json], state: &BTreeMap<String, Value>, facts: 
 /// `id -> distinct owning event names`, scanned across EVERY placement's
 /// EVERY variant doc (route-independent — the whole schedule, design spec
 /// §4.4), for bare `choose:` key resolution/uniqueness.
-fn decision_point_events(schedule: &Schedule, art_json: &BTreeMap<String, Json>) -> BTreeMap<String, BTreeSet<String>> {
+fn decision_point_events(
+    schedule: &Schedule,
+    art_json: &BTreeMap<String, Json>,
+) -> BTreeMap<String, BTreeSet<String>> {
     let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for p in &schedule.placements {
         for v in &p.variants {
-            let Some(doc) = art_json.get(&v.doc) else { continue };
+            let Some(doc) = art_json.get(&v.doc) else {
+                continue;
+            };
             for (id, _) in scene_decision_points(doc) {
                 out.entry(id).or_default().insert(p.event.clone());
             }
@@ -626,7 +724,11 @@ fn resolve_choose_keys(
             Some(events) => {
                 let mut names: Vec<&String> = events.iter().collect();
                 names.sort();
-                let list = names.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
+                let list = names
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 return Err(format!(
                     "`choose: {key}` is ambiguous — that hub/branch id appears in multiple scheduled events ({list}); use the qualified `<event>/{key}` form"
                 ));
@@ -662,19 +764,34 @@ fn scene_mock(
 }
 
 fn variant_label_of(doc: &str) -> String {
-    Path::new(doc).file_stem().and_then(|s| s.to_str()).unwrap_or(doc).to_string()
+    Path::new(doc)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(doc)
+        .to_string()
 }
 
 /// W-SCHED-TIME-MISMATCH (design spec §5): the scene's FIRST `::bg time=`
 /// vs. the placement's START bucket (`day` matches morning..late_afternoon).
 /// `Some((bg_time, bucket))` on a mismatch; `None` when clean or inapplicable
 /// (no `background` record, or an unresolvable clock).
-fn first_bg_time_mismatch(scene_json: &Json, clock: &schedule::Clock, tick: u32) -> Option<(String, String)> {
+fn first_bg_time_mismatch(
+    scene_json: &Json,
+    clock: &schedule::Clock,
+    tick: u32,
+) -> Option<(String, String)> {
     let commands = scene_json.get("commands").and_then(Json::as_array)?;
-    let bg = commands.iter().find(|c| c.get("kind").and_then(Json::as_str) == Some("background"))?;
+    let bg = commands
+        .iter()
+        .find(|c| c.get("kind").and_then(Json::as_str) == Some("background"))?;
     let time = bg.get("time").and_then(Json::as_str)?;
     let bucket = bucket_of(clock, tick)?;
-    let ok = time == bucket || (time == "day" && matches!(bucket, "morning" | "late_morning" | "afternoon" | "late_afternoon"));
+    let ok = time == bucket
+        || (time == "day"
+            && matches!(
+                bucket,
+                "morning" | "late_morning" | "afternoon" | "late_afternoon"
+            ));
     if ok {
         None
     } else {
@@ -704,28 +821,49 @@ fn bucket_of(clock: &schedule::Clock, tick: u32) -> Option<&str> {
 /// 1 = schedule-runtime/gate failure, 2 = I/O-ish/engine-fatal, 3 =
 /// incomplete).
 enum PlayHalt {
-    VariantGap { event: String },
-    VariantAmbig { event: String, docs: Vec<String> },
-    AfterOrder { event: String, doc: String },
+    VariantGap {
+        event: String,
+    },
+    VariantAmbig {
+        event: String,
+        docs: Vec<String>,
+    },
+    AfterOrder {
+        event: String,
+        doc: String,
+    },
     /// A Runner-reported fatal (malformed artifact, unknown command kind, an
     /// unresolvable placement tick despite a clean gate).
     Fatal(String),
-    UnscriptedDecision { event: String, doc: String, kind: String, id: String, options: Vec<String> },
-    UnresolvedSurface { event: String, doc: String, detail: String },
+    UnscriptedDecision {
+        event: String,
+        doc: String,
+        kind: String,
+        id: String,
+        options: Vec<String>,
+    },
+    UnresolvedSurface {
+        event: String,
+        doc: String,
+        detail: String,
+    },
     /// Review fix #3 (design spec §4.5 honesty): a placement's variant
     /// selection depends on an unresolved reference-runtime surface
     /// (`now()`/`validAt(...)`, an undecided derived fact) THAT AFFECTS
     /// which variant (if any) would be selected — never silently folded to
     /// `false` the way a merely-decided-false guard is.
-    UnresolvedVariantGuard { event: String, detail: String },
+    UnresolvedVariantGuard {
+        event: String,
+        detail: String,
+    },
 }
 
 impl PlayHalt {
     fn exit_code(&self) -> ExitCode {
         match self {
-            PlayHalt::VariantGap { .. } | PlayHalt::VariantAmbig { .. } | PlayHalt::AfterOrder { .. } => {
-                ExitCode::from(1)
-            }
+            PlayHalt::VariantGap { .. }
+            | PlayHalt::VariantAmbig { .. }
+            | PlayHalt::AfterOrder { .. } => ExitCode::from(1),
             PlayHalt::Fatal(_) => ExitCode::from(2),
             PlayHalt::UnscriptedDecision { .. }
             | PlayHalt::UnresolvedSurface { .. }
@@ -781,8 +919,12 @@ impl PlayHalt {
 fn describe_unresolved_atom(a: &UnresolvedAtom) -> String {
     match a {
         UnresolvedAtom::Path(p) => format!("state path `{p}` has no effective value"),
-        UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => format!("fact `{f}` is undetermined"),
-        UnresolvedAtom::Time => "now()/validAt(...) has no reference-runtime resolution".to_string(),
+        UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => {
+            format!("fact `{f}` is undetermined")
+        }
+        UnresolvedAtom::Time => {
+            "now()/validAt(...) has no reference-runtime resolution".to_string()
+        }
     }
 }
 
@@ -803,7 +945,11 @@ fn describe_unresolved_atom(a: &UnresolvedAtom) -> String {
 /// selection (it could turn a gap into a play, a single pick into an
 /// ambiguity, or vice versa) and the walk halts honestly incomplete
 /// ([`PlayHalt::UnresolvedVariantGuard`], exit 3) rather than guessing.
-fn resolve_active_variant(p: &Placement, state: &BTreeMap<String, Value>, facts: &BTreeSet<Fact>) -> Result<Option<usize>, PlayHalt> {
+fn resolve_active_variant(
+    p: &Placement,
+    state: &BTreeMap<String, Value>,
+    facts: &BTreeSet<Fact>,
+) -> Result<Option<usize>, PlayHalt> {
     let mut definite_true = Vec::new();
     let mut maybe_count = 0usize;
     let mut atoms: Vec<UnresolvedAtom> = Vec::new();
@@ -837,15 +983,23 @@ fn resolve_active_variant(p: &Placement, state: &BTreeMap<String, Value>, facts:
             }
         }
         debug_assert!(maybe_count > definite_true.len());
-        return Err(PlayHalt::UnresolvedVariantGuard { event: p.event.clone(), detail: reasons.join("; ") });
+        return Err(PlayHalt::UnresolvedVariantGuard {
+            event: p.event.clone(),
+            detail: reasons.join("; "),
+        });
     }
     match definite_true.len() {
         0 if p.optional => Ok(None),
-        0 => Err(PlayHalt::VariantGap { event: p.event.clone() }),
+        0 => Err(PlayHalt::VariantGap {
+            event: p.event.clone(),
+        }),
         1 => Ok(Some(definite_true[0])),
         _ => Err(PlayHalt::VariantAmbig {
             event: p.event.clone(),
-            docs: definite_true.iter().map(|&vi| p.variants[vi].doc.clone()).collect(),
+            docs: definite_true
+                .iter()
+                .map(|&vi| p.variants[vi].doc.clone())
+                .collect(),
         }),
     }
 }
@@ -880,7 +1034,13 @@ fn next_user_step(
         }
         if let Some(vi) = resolve_active_variant(p, live_state, live_facts)? {
             let v = &p.variants[vi];
-            let key = (v.presentation, v.at.unwrap_or(u32::MAX), p.decl_index, pi, vi);
+            let key = (
+                v.presentation,
+                v.at.unwrap_or(u32::MAX),
+                p.decl_index,
+                pi,
+                vi,
+            );
             if best.as_ref().map(|b| key < *b).unwrap_or(true) {
                 best = Some(key);
             }
@@ -928,11 +1088,16 @@ struct OneRun {
 /// — `scene.*` always resets to the artifact's own declared default at
 /// every scene boundary, never inherited from a sibling document or a
 /// previous scene.
-fn scene_initial_state(scene_json: &Json, live_state: &BTreeMap<String, Value>) -> BTreeMap<String, Value> {
+fn scene_initial_state(
+    scene_json: &Json,
+    live_state: &BTreeMap<String, Value>,
+) -> BTreeMap<String, Value> {
     let mut state = BTreeMap::new();
     if let Some(entries) = scene_json.get("state").and_then(Json::as_array) {
         for e in entries {
-            let Some(path) = e.get("path").and_then(Json::as_str) else { continue };
+            let Some(path) = e.get("path").and_then(Json::as_str) else {
+                continue;
+            };
             if let Some(default) = e.get("default") {
                 if let Some(v) = json_to_value(default) {
                     state.insert(path.to_string(), v);
@@ -969,12 +1134,20 @@ fn run_one_scene(
     choose: &BTreeMap<(String, String), Vec<String>>,
     auto_first: bool,
 ) -> OneRun {
-    let mock = scene_mock(event, scene_json, choose, auto_first, live_state, live_facts);
+    let mock = scene_mock(
+        event, scene_json, choose, auto_first, live_state, live_facts,
+    );
     let play_json = play_artifact_json(scene_json, union);
     let state_before = live_state.clone();
     let initial_state = scene_initial_state(scene_json, live_state);
-    let mut runner = Runner::with_carryover(&play_json, mock, initial_state, live_facts.clone(), live_quests.clone())
-        .with_auto_first(auto_first);
+    let mut runner = Runner::with_carryover(
+        &play_json,
+        mock,
+        initial_state,
+        live_facts.clone(),
+        live_quests.clone(),
+    )
+    .with_auto_first(auto_first);
     let run_result = runner.run();
     let outcome = runner.into_outcome();
 
@@ -988,14 +1161,16 @@ fn run_one_scene(
 
     let mut halt = run_result.err().map(PlayHalt::Fatal);
     if halt.is_none() && outcome.incomplete {
-        let rec = outcome
-            .transcript
-            .iter()
-            .rev()
-            .find(|c| c.get("note").and_then(Json::as_str) == Some("no mock decision — incomplete"));
+        let rec = outcome.transcript.iter().rev().find(|c| {
+            c.get("note").and_then(Json::as_str) == Some("no mock decision — incomplete")
+        });
         let (kind, id) = match rec {
             Some(r) => {
-                let k = r.get("kind").and_then(Json::as_str).unwrap_or("choice").to_string();
+                let k = r
+                    .get("kind")
+                    .and_then(Json::as_str)
+                    .unwrap_or("choice")
+                    .to_string();
                 let id = r
                     .get("branch")
                     .or_else(|| r.get("hub"))
@@ -1009,23 +1184,40 @@ fn run_one_scene(
         let options = scene_decision_points(scene_json)
             .into_iter()
             .find(|(i, _)| i == &id)
-            .map(|(_, opts)| opts.iter().filter_map(|o| o.get("id").and_then(Json::as_str).map(str::to_string)).collect())
+            .map(|(_, opts)| {
+                opts.iter()
+                    .filter_map(|o| o.get("id").and_then(Json::as_str).map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default();
-        halt = Some(PlayHalt::UnscriptedDecision { event: event.to_string(), doc: doc.to_string(), kind, id, options });
+        halt = Some(PlayHalt::UnscriptedDecision {
+            event: event.to_string(),
+            doc: doc.to_string(),
+            kind,
+            id,
+            options,
+        });
     }
-    if halt.is_none() {
-        if outcome.unresolved.iter().any(|a| matches!(a, UnresolvedAtom::Time)) {
-            halt = Some(PlayHalt::UnresolvedSurface {
-                event: event.to_string(),
-                doc: doc.to_string(),
-                detail: "now()/validAt(...) has no reference-runtime resolution (design spec §4.5)".to_string(),
-            });
-        }
+    if halt.is_none()
+        && outcome
+            .unresolved
+            .iter()
+            .any(|a| matches!(a, UnresolvedAtom::Time))
+    {
+        halt = Some(PlayHalt::UnresolvedSurface {
+            event: event.to_string(),
+            doc: doc.to_string(),
+            detail: "now()/validAt(...) has no reference-runtime resolution (design spec §4.5)"
+                .to_string(),
+        });
     }
     if halt.is_none() {
         if let Some(plugin) = outcome.transcript.iter().find(|c| {
             c.get("kind").and_then(Json::as_str) == Some("plugin")
-                && c.get("unresolvedEffects").and_then(Json::as_array).map(|a| !a.is_empty()).unwrap_or(false)
+                && c.get("unresolvedEffects")
+                    .and_then(Json::as_array)
+                    .map(|a| !a.is_empty())
+                    .unwrap_or(false)
         }) {
             let tag = plugin.get("tag").and_then(Json::as_str).unwrap_or("?");
             halt = Some(PlayHalt::UnresolvedSurface {
@@ -1123,14 +1315,19 @@ fn drain_world(
             // variants could possibly land in this window never has its
             // guard evaluated here, so it can never raise a premature
             // GAP/AMBIG for a boundary it has not reached yet.
-            let could_be_due = p.variants.iter().any(|v| v.at.map(|at| at >= scan_from && at < t_end).unwrap_or(false));
+            let could_be_due = p.variants.iter().any(|v| {
+                v.at.map(|at| at >= scan_from && at < t_end)
+                    .unwrap_or(false)
+            });
             if !could_be_due {
                 continue;
             }
             let Some(vi) = resolve_active_variant(p, live_state, live_facts)? else {
                 continue;
             };
-            let Some(at) = p.variants[vi].at else { continue };
+            let Some(at) = p.variants[vi].at else {
+                continue;
+            };
             if at < scan_from || at >= t_end {
                 // The LIVE-active variant is not the one(s) that made this
                 // placement pass the pre-filter — not due in this window
@@ -1139,11 +1336,17 @@ fn drain_world(
                 continue;
             }
             let key = (at, p.decl_index, pi, vi);
-            if winner.as_ref().map(|w| (key.0, key.1) < (w.0, w.1)).unwrap_or(true) {
+            if winner
+                .as_ref()
+                .map(|w| (key.0, key.1) < (w.0, w.1))
+                .unwrap_or(true)
+            {
                 winner = Some(key);
             }
         }
-        let Some((t_start, decl_index, pi, vi)) = winner else { break };
+        let Some((t_start, decl_index, pi, vi)) = winner else {
+            break;
+        };
 
         if let Some(limit) = steps_limit {
             if *presented_count >= limit {
@@ -1154,11 +1357,17 @@ fn drain_world(
         let variant = &p.variants[vi];
         let t_end_v = t_start.saturating_add(variant.size);
         let Some(scene_json) = art_json.get(&variant.doc) else {
-            return Err(PlayHalt::Fatal(format!("world event `{}` names an uncompiled doc `{}`", p.event, variant.doc)));
+            return Err(PlayHalt::Fatal(format!(
+                "world event `{}` names an uncompiled doc `{}`",
+                p.event, variant.doc
+            )));
         };
         if let Some(formula) = scene_prereq(scene_json) {
             if !eval_prereq(&formula, visited, &BTreeSet::new(), &BTreeSet::new()) {
-                return Err(PlayHalt::AfterOrder { event: p.event.clone(), doc: variant.doc.clone() });
+                return Err(PlayHalt::AfterOrder {
+                    event: p.event.clone(),
+                    doc: variant.doc.clone(),
+                });
             }
         }
         let mut run = run_one_scene(
@@ -1236,7 +1445,11 @@ fn execute(
     let mut world_fired: BTreeSet<u32> = BTreeSet::new();
     let mut presented_count: u32 = 0;
 
-    let world_placements: Vec<&Placement> = schedule.placements.iter().filter(|p| p.lane == "world").collect();
+    let world_placements: Vec<&Placement> = schedule
+        .placements
+        .iter()
+        .filter(|p| p.lane == "world")
+        .collect();
 
     loop {
         if let Some(limit) = steps_limit {
@@ -1244,7 +1457,8 @@ fn execute(
                 return (scenes, Ok(format!("stopped after {limit} step(s)")));
             }
         }
-        let (placement_idx, vi) = match next_user_step(schedule, &decided, &live_state, &live_facts) {
+        let (placement_idx, vi) = match next_user_step(schedule, &decided, &live_state, &live_facts)
+        {
             Ok(Some(step)) => step,
             Ok(None) => break,
             Err(h) => return (scenes, Err(h)),
@@ -1293,12 +1507,21 @@ fn execute(
         let Some(scene_json) = art_json.get(&variant.doc) else {
             return (
                 scenes,
-                Err(PlayHalt::Fatal(format!("event `{}` names an uncompiled doc `{}`", placement.event, variant.doc))),
+                Err(PlayHalt::Fatal(format!(
+                    "event `{}` names an uncompiled doc `{}`",
+                    placement.event, variant.doc
+                ))),
             );
         };
         if let Some(formula) = scene_prereq(scene_json) {
             if !eval_prereq(&formula, &visited, &completed, &active) {
-                return (scenes, Err(PlayHalt::AfterOrder { event: placement.event.clone(), doc: variant.doc.clone() }));
+                return (
+                    scenes,
+                    Err(PlayHalt::AfterOrder {
+                        event: placement.event.clone(),
+                        doc: variant.doc.clone(),
+                    }),
+                );
             }
         }
 
@@ -1383,7 +1606,13 @@ fn execute(
         steps_limit,
     ) {
         Ok(Some(reason)) => (scenes, Ok(reason)),
-        Ok(None) => (scenes, Ok(format!("clock exhausted (tick {})", schedule.clock.total_ticks()))),
+        Ok(None) => (
+            scenes,
+            Ok(format!(
+                "clock exhausted (tick {})",
+                schedule.clock.total_ticks()
+            )),
+        ),
         Err(h) => (scenes, Err(h)),
     }
 }
@@ -1411,7 +1640,9 @@ fn value_to_string(v: &Value) -> String {
 }
 
 fn render_attrs(cmd: &Json, skip: &[&str]) -> String {
-    let Json::Object(map) = cmd else { return String::new() };
+    let Json::Object(map) = cmd else {
+        return String::new();
+    };
     let mut parts = Vec::new();
     for (k, v) in map {
         if skip.contains(&k.as_str()) {
@@ -1430,7 +1661,13 @@ fn render_attrs(cmd: &Json, skip: &[&str]) -> String {
 fn render_options(opts: &[Json], chosen: Option<&str>) -> String {
     opts.iter()
         .filter_map(|o| o.get("id").and_then(Json::as_str))
-        .map(|id| if Some(id) == chosen { format!("[{id}]") } else { id.to_string() })
+        .map(|id| {
+            if Some(id) == chosen {
+                format!("[{id}]")
+            } else {
+                id.to_string()
+            }
+        })
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -1448,7 +1685,25 @@ fn render_record(rec: &Json, cmd_by_addr: &BTreeMap<&str, &Json>) -> String {
         "line" => {
             let speaker = rec.get("speaker").and_then(Json::as_str).unwrap_or("");
             let text = rec.get("text").and_then(Json::as_str).unwrap_or("");
-            let attrs = orig.map(|c| render_attrs(c, &["addr", "kind", "text", "speaker", "lineId", "role", "asLabel", "as", "placeholders", "texts"])).unwrap_or_default();
+            let attrs = orig
+                .map(|c| {
+                    render_attrs(
+                        c,
+                        &[
+                            "addr",
+                            "kind",
+                            "text",
+                            "speaker",
+                            "lineId",
+                            "role",
+                            "asLabel",
+                            "as",
+                            "placeholders",
+                            "texts",
+                        ],
+                    )
+                })
+                .unwrap_or_default();
             if attrs.is_empty() {
                 format!("@{speaker}: {text}")
             } else {
@@ -1456,7 +1711,9 @@ fn render_record(rec: &Json, cmd_by_addr: &BTreeMap<&str, &Json>) -> String {
             }
         }
         "background" | "music" | "sfx" | "vfx" | "sprite" | "camera" | "cut" | "video" => {
-            let attrs = orig.map(|c| render_attrs(c, &["addr", "kind"])).unwrap_or_default();
+            let attrs = orig
+                .map(|c| render_attrs(c, &["addr", "kind"]))
+                .unwrap_or_default();
             if attrs.is_empty() {
                 format!("::{kind}")
             } else {
@@ -1468,19 +1725,31 @@ fn render_record(rec: &Json, cmd_by_addr: &BTreeMap<&str, &Json>) -> String {
             rec.get("path").and_then(Json::as_str).unwrap_or(""),
             rec.get("value").map(|v| v.to_string()).unwrap_or_default()
         ),
-        "assert" => format!("  assert {}", rec.get("fact").and_then(Json::as_str).unwrap_or("")),
-        "retract" => format!("  retract {}", rec.get("pattern").and_then(Json::as_str).unwrap_or("")),
+        "assert" => format!(
+            "  assert {}",
+            rec.get("fact").and_then(Json::as_str).unwrap_or("")
+        ),
+        "retract" => format!(
+            "  retract {}",
+            rec.get("pattern").and_then(Json::as_str).unwrap_or("")
+        ),
         "choice" | "hub" => {
             let id_key = if kind == "choice" { "branch" } else { "hub" };
             let id = rec.get(id_key).and_then(Json::as_str).unwrap_or("?");
             let chosen = rec.get("chose").and_then(Json::as_str);
-            let opts: Vec<Json> = orig.and_then(|c| c.get("options")).and_then(Json::as_array).cloned().unwrap_or_default();
+            let opts: Vec<Json> = orig
+                .and_then(|c| c.get("options"))
+                .and_then(Json::as_array)
+                .cloned()
+                .unwrap_or_default();
             let rendered = render_options(&opts, chosen);
             // dsl 0.11.0: `<branch prompt=… timeout=…>` — the choice-situation
             // sentence and the engine-wire countdown, shown only when authored
             // (`<hub>` carries neither field, so this is a no-op there).
             let prompt = orig.and_then(|c| c.get("prompt")).and_then(Json::as_str);
-            let timeout = orig.and_then(|c| c.get("timeoutSec")).and_then(Json::as_u64);
+            let timeout = orig
+                .and_then(|c| c.get("timeoutSec"))
+                .and_then(Json::as_u64);
             let mut label = format!("{kind} {id}");
             if let Some(p) = prompt {
                 label.push_str(&format!(" \"{p}\""));
@@ -1493,13 +1762,19 @@ fn render_record(rec: &Json, cmd_by_addr: &BTreeMap<&str, &Json>) -> String {
                 None => format!("▷ {label}: {rendered}        ← INCOMPLETE (no decision)"),
             }
         }
-        "match" => format!("  match -> {}", rec.get("result").and_then(Json::as_str).unwrap_or("")),
+        "match" => format!(
+            "  match -> {}",
+            rec.get("result").and_then(Json::as_str).unwrap_or("")
+        ),
         "barrier" => "  barrier (no real clock simulated)".to_string(),
         "end" => match rec.get("reason").and_then(Json::as_str) {
             Some(r) => format!("  ::end reason={r}"),
             None => "  ::end".to_string(),
         },
-        "plugin" => format!("  plugin {} (external call, not invoked)", rec.get("tag").and_then(Json::as_str).unwrap_or("")),
+        "plugin" => format!(
+            "  plugin {} (external call, not invoked)",
+            rec.get("tag").and_then(Json::as_str).unwrap_or("")
+        ),
         "objective" => format!(
             "  {}.{} done",
             rec.get("quest").and_then(Json::as_str).unwrap_or(""),
@@ -1514,17 +1789,28 @@ fn render_record(rec: &Json, cmd_by_addr: &BTreeMap<&str, &Json>) -> String {
     }
 }
 
-fn render_human(art_json: &BTreeMap<String, Json>, scenes: &[SceneRun], outcome: &Result<String, PlayHalt>, lanes_all: bool) -> String {
+fn render_human(
+    art_json: &BTreeMap<String, Json>,
+    scenes: &[SceneRun],
+    outcome: &Result<String, PlayHalt>,
+    lanes_all: bool,
+) -> String {
     let mut out = String::new();
     for s in scenes {
         if s.lane == "world" && !lanes_all {
             continue;
         }
         if let Some((from_tick, from_label)) = &s.rewind_from {
-            out.push_str(&format!("⏪ {from_label} → {} (rewind, tick {from_tick} → {})\n", s.tick_label, s.tick));
+            out.push_str(&format!(
+                "⏪ {from_label} → {} (rewind, tick {from_tick} → {})\n",
+                s.tick_label, s.tick
+            ));
         }
         if let Some(from) = s.fast_forward_from {
-            out.push_str(&format!("⏩ tick {from} → {} (fast-forward, empty user lane)\n", s.tick));
+            out.push_str(&format!(
+                "⏩ tick {from} → {} (fast-forward, empty user lane)\n",
+                s.tick
+            ));
         }
         out.push_str(&format!(
             "── {} (tick {}) · {} · {}/{} ──────────────\n",
@@ -1535,7 +1821,11 @@ fn render_human(art_json: &BTreeMap<String, Json>, scenes: &[SceneRun], outcome:
             .and_then(Json::as_object)
             .and_then(|o| o.get("commands"))
             .and_then(Json::as_array)
-            .map(|arr| arr.iter().filter_map(|c| c.get("addr").and_then(Json::as_str).map(|a| (a, c))).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|c| c.get("addr").and_then(Json::as_str).map(|a| (a, c)))
+                    .collect()
+            })
             .unwrap_or_default();
         for rec in &s.transcript {
             out.push_str(&render_record(rec, &cmd_by_addr));
@@ -1555,7 +1845,10 @@ fn render_human(art_json: &BTreeMap<String, Json>, scenes: &[SceneRun], outcome:
     }
     match outcome {
         Ok(reason) => out.push_str(&format!("── end: {reason} ──────────────────────────\n")),
-        Err(h) => out.push_str(&format!("── halted: {} ──────────────────────────\n", h.message())),
+        Err(h) => out.push_str(&format!(
+            "── halted: {} ──────────────────────────\n",
+            h.message()
+        )),
     }
     out
 }
@@ -1614,6 +1907,7 @@ fn render_json(scenes: &[SceneRun], outcome: &Result<String, PlayHalt>) -> Json 
 /// literal). Shared by a single `--script` playthrough and each
 /// `--coverage` corpus member (design spec §4.7): one merge rule, never
 /// re-derived per script.
+#[allow(clippy::type_complexity)]
 fn build_seeds(
     union: &ProjectUnion,
     owners: &BTreeMap<String, BTreeSet<String>>,
@@ -1621,7 +1915,14 @@ fn build_seeds(
     cli_state: &[(String, String)],
     cli_fact: &[String],
     cli_choose: &[(String, Vec<String>)],
-) -> Result<(BTreeMap<String, Value>, BTreeSet<Fact>, BTreeMap<(String, String), Vec<String>>), String> {
+) -> Result<
+    (
+        BTreeMap<String, Value>,
+        BTreeSet<Fact>,
+        BTreeMap<(String, String), Vec<String>>,
+    ),
+    String,
+> {
     let mut state_seeds: BTreeMap<String, String> = route_script.state.into_iter().collect();
     for (k, v) in cli_state {
         state_seeds.insert(k.clone(), v.clone());
@@ -1656,7 +1957,11 @@ fn build_seeds(
             let args: Vec<String> = e
                 .get("args")
                 .and_then(Json::as_array)
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
                 .unwrap_or_default();
             if !rel.is_empty() {
                 seed_facts.insert((rel.to_string(), args));
@@ -1692,7 +1997,9 @@ pub fn run_play(
     // `--choose`/`--steps` do not compose with that (which script's
     // choices? which step limit, applied to every corpus member?).
     if !coverage.is_empty() && (script.is_some() || !choose.is_empty() || steps.is_some()) {
-        eprintln!("lute play: --coverage is exclusive with --script/--choose/--steps (design spec §4.7)");
+        eprintln!(
+            "lute play: --coverage is exclusive with --script/--choose/--steps (design spec §4.7)"
+        );
         return ExitCode::from(2);
     }
     let auto_first = auto.as_deref() == Some("first");
@@ -1732,7 +2039,10 @@ pub fn run_play(
             for e in &errs {
                 eprintln!("lute play: {e}");
             }
-            eprintln!("lute play: {} vocabulary conflict(s); refusing to play", errs.len());
+            eprintln!(
+                "lute play: {} vocabulary conflict(s); refusing to play",
+                errs.len()
+            );
             return ExitCode::from(1);
         }
     };
@@ -1748,7 +2058,9 @@ pub fn run_play(
     let owners = decision_point_events(&schedule, &art_json);
 
     if !coverage.is_empty() {
-        return run_coverage(&schedule, &art_json, &union, &owners, &coverage, &state, &fact, auto_first, json);
+        return run_coverage(
+            &schedule, &art_json, &union, &owners, &coverage, &state, &fact, auto_first, json,
+        );
     }
 
     // Route script (state:/facts:/choose:) + CLI flags (design spec §4.4);
@@ -1779,8 +2091,16 @@ pub fn run_play(
             }
         };
 
-    let (scenes, outcome) =
-        execute(&schedule, &art_json, &union, seed_state, seed_facts, &choose_resolved, auto_first, steps);
+    let (scenes, outcome) = execute(
+        &schedule,
+        &art_json,
+        &union,
+        seed_state,
+        seed_facts,
+        &choose_resolved,
+        auto_first,
+        steps,
+    );
 
     if json {
         let v = render_json(&scenes, &outcome);
@@ -1862,7 +2182,11 @@ impl CoverageAgg {
             .and_then(Json::as_object)
             .and_then(|o| o.get("commands"))
             .and_then(Json::as_array)
-            .map(|arr| arr.iter().filter_map(|c| c.get("addr").and_then(Json::as_str).map(|a| (a, c))).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|c| c.get("addr").and_then(Json::as_str).map(|a| (a, c)))
+                    .collect()
+            })
             .unwrap_or_default();
         for rec in &scene.transcript {
             let kind = rec.get("kind").and_then(Json::as_str).unwrap_or("");
@@ -1870,10 +2194,16 @@ impl CoverageAgg {
                 continue;
             }
             let id_key = if kind == "choice" { "branch" } else { "hub" };
-            let Some(id) = rec.get(id_key).and_then(Json::as_str) else { continue };
+            let Some(id) = rec.get(id_key).and_then(Json::as_str) else {
+                continue;
+            };
             let key = (scene.event.clone(), id.to_string());
             let addr = rec.get("addr").and_then(Json::as_str).unwrap_or("");
-            if let Some(opts) = cmd_by_addr.get(addr).and_then(|c| c.get("options")).and_then(Json::as_array) {
+            if let Some(opts) = cmd_by_addr
+                .get(addr)
+                .and_then(|c| c.get("options"))
+                .and_then(Json::as_array)
+            {
                 let entry = self.offered.entry(key.clone()).or_default();
                 for o in opts {
                     if let Some(oid) = o.get("id").and_then(Json::as_str) {
@@ -1882,7 +2212,10 @@ impl CoverageAgg {
                 }
             }
             if let Some(chose) = rec.get("chose").and_then(Json::as_str) {
-                self.chosen.entry(key).or_default().insert(chose.to_string());
+                self.chosen
+                    .entry(key)
+                    .or_default()
+                    .insert(chose.to_string());
             }
         }
     }
@@ -1892,7 +2225,12 @@ impl CoverageAgg {
 /// uniqueness key (`E_SCHED_EVENT_DUP`), never `event` alone (two lanes may
 /// legally share an event name).
 fn placement_lookup(schedule: &Schedule) -> BTreeMap<(String, String), usize> {
-    schedule.placements.iter().enumerate().map(|(i, p)| ((p.event.clone(), p.lane.clone()), i)).collect()
+    schedule
+        .placements
+        .iter()
+        .enumerate()
+        .map(|(i, p)| ((p.event.clone(), p.lane.clone()), i))
+        .collect()
 }
 
 /// `--coverage` entry point (design spec §4.7): replay every corpus member
@@ -1922,7 +2260,10 @@ fn run_coverage(
         let text = match std::fs::read_to_string(path) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("lute play: cannot read route script {}: {e}", path.display());
+                eprintln!(
+                    "lute play: cannot read route script {}: {e}",
+                    path.display()
+                );
                 return ExitCode::from(2);
             }
         };
@@ -1941,8 +2282,16 @@ fn run_coverage(
                     return ExitCode::from(2);
                 }
             };
-        let (scenes, outcome) =
-            execute(schedule, art_json, union, seed_state, seed_facts, &choose_resolved, auto_first, None);
+        let (scenes, outcome) = execute(
+            schedule,
+            art_json,
+            union,
+            seed_state,
+            seed_facts,
+            &choose_resolved,
+            auto_first,
+            None,
+        );
         for scene in &scenes {
             agg.record(scene, &lookup, schedule, art_json);
         }
@@ -1968,8 +2317,11 @@ fn run_coverage(
     let mut uncovered_options: Vec<((String, String), Vec<String>)> = Vec::new();
     for (key, offered) in &agg.offered {
         let chosen = agg.chosen.get(key);
-        let mut missing: Vec<String> =
-            offered.iter().filter(|o| !chosen.map(|c| c.contains(*o)).unwrap_or(false)).cloned().collect();
+        let mut missing: Vec<String> = offered
+            .iter()
+            .filter(|o| !chosen.map(|c| c.contains(*o)).unwrap_or(false))
+            .cloned()
+            .collect();
         if !missing.is_empty() {
             missing.sort();
             uncovered_options.push((key.clone(), missing));
@@ -1977,7 +2329,9 @@ fn run_coverage(
     }
 
     let any_incomplete = scripts.iter().any(|s| s.outcome.is_err());
-    let any_uncovered = !uncovered_placements.is_empty() || !uncovered_variants.is_empty() || !uncovered_options.is_empty();
+    let any_uncovered = !uncovered_placements.is_empty()
+        || !uncovered_variants.is_empty()
+        || !uncovered_options.is_empty();
     let exit = if any_incomplete {
         ExitCode::from(3)
     } else if any_uncovered {
@@ -1987,12 +2341,26 @@ fn run_coverage(
     };
 
     if json {
-        let v = render_coverage_json(schedule, &scripts, &uncovered_placements, &uncovered_variants, &uncovered_options, &agg);
+        let v = render_coverage_json(
+            schedule,
+            &scripts,
+            &uncovered_placements,
+            &uncovered_variants,
+            &uncovered_options,
+            &agg,
+        );
         println!("{}", serde_json::to_string_pretty(&v).unwrap_or_default());
     } else {
         print!(
             "{}",
-            render_coverage_human(schedule, &scripts, &uncovered_placements, &uncovered_variants, &uncovered_options, &agg)
+            render_coverage_human(
+                schedule,
+                &scripts,
+                &uncovered_placements,
+                &uncovered_variants,
+                &uncovered_options,
+                &agg
+            )
         );
     }
     exit
@@ -2008,10 +2376,17 @@ fn render_coverage_human(
     agg: &CoverageAgg,
 ) -> String {
     let mut out = String::new();
-    out.push_str(&format!("lute play coverage: {} script(s) replayed\n", scripts.len()));
+    out.push_str(&format!(
+        "lute play coverage: {} script(s) replayed\n",
+        scripts.len()
+    ));
     for s in scripts {
         match &s.outcome {
-            Ok(reason) => out.push_str(&format!("  \u{2713} {}: {reason} ({} scene(s))\n", s.path.display(), s.scene_count)),
+            Ok(reason) => out.push_str(&format!(
+                "  \u{2713} {}: {reason} ({} scene(s))\n",
+                s.path.display(),
+                s.scene_count
+            )),
             Err(msg) => out.push_str(&format!(
                 "  \u{2717} {}: INCOMPLETE \u{2014} {msg} ({} scene(s) before halt)\n",
                 s.path.display(),
@@ -2031,7 +2406,10 @@ fn render_coverage_human(
         total_placements - uncovered_placements.len()
     ));
     for p in uncovered_placements {
-        out.push_str(&format!("  \u{2717} never presented: `{}` ({} lane)\n", p.event, p.lane));
+        out.push_str(&format!(
+            "  \u{2717} never presented: `{}` ({} lane)\n",
+            p.event, p.lane
+        ));
     }
 
     out.push_str(&format!(
@@ -2039,7 +2417,11 @@ fn render_coverage_human(
         total_variants - uncovered_variants.len()
     ));
     for (p, v) in uncovered_variants {
-        out.push_str(&format!("  \u{2717} never selected: `{}` variant `{}`\n", p.event, variant_label_of(&v.doc)));
+        out.push_str(&format!(
+            "  \u{2717} never selected: `{}` variant `{}`\n",
+            p.event,
+            variant_label_of(&v.doc)
+        ));
     }
 
     out.push_str(&format!(
@@ -2047,12 +2429,18 @@ fn render_coverage_human(
         total_option_instances - uncovered_option_instances
     ));
     for ((event, id), missing) in uncovered_options {
-        out.push_str(&format!("  \u{2717} never chosen: `{event}/{id}` \u{2014} {}\n", missing.join(", ")));
+        out.push_str(&format!(
+            "  \u{2717} never chosen: `{event}/{id}` \u{2014} {}\n",
+            missing.join(", ")
+        ));
     }
 
     let verdict = if scripts.iter().any(|s| s.outcome.is_err()) {
         "INCOMPLETE \u{2014} at least one script halted before completion; its coverage contribution is partial"
-    } else if !uncovered_placements.is_empty() || !uncovered_variants.is_empty() || !uncovered_options.is_empty() {
+    } else if !uncovered_placements.is_empty()
+        || !uncovered_variants.is_empty()
+        || !uncovered_options.is_empty()
+    {
         "UNCOVERED \u{2014} gap(s) remain"
     } else {
         "COVERED"
@@ -2075,7 +2463,9 @@ fn render_coverage_json(
     let uncovered_option_instances: usize = uncovered_options.iter().map(|(_, m)| m.len()).sum();
 
     let any_incomplete = scripts.iter().any(|s| s.outcome.is_err());
-    let any_uncovered = !uncovered_placements.is_empty() || !uncovered_variants.is_empty() || !uncovered_options.is_empty();
+    let any_uncovered = !uncovered_placements.is_empty()
+        || !uncovered_variants.is_empty()
+        || !uncovered_options.is_empty();
     let exit = if any_incomplete {
         "incomplete"
     } else if any_uncovered {
@@ -2135,7 +2525,12 @@ fn print_sched_diags(dir: &Path, diags: &[SchedDiag]) -> bool {
         } else {
             "warning"
         };
-        eprintln!("{}: {sev} [{}] {}", dir.join("schedule.yaml").display(), d.code, d.message);
+        eprintln!(
+            "{}: {sev} [{}] {}",
+            dir.join("schedule.yaml").display(),
+            d.code,
+            d.message
+        );
     }
     ok
 }

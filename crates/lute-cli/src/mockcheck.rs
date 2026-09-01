@@ -55,7 +55,10 @@ fn find_mocks(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
                 stack.push(path);
                 continue;
             }
-            let in_mocks = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str())
+            let in_mocks = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
                 == Some("mocks");
             let is_yaml = path.extension().and_then(|e| e.to_str()) == Some("yaml");
             let is_test = path
