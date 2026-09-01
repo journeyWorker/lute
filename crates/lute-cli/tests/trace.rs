@@ -26,7 +26,11 @@ fn choice_persist_worked_example() {
         "sofaHelp=help",
     ]);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "stderr: {}\nstdout: {stdout}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}\nstdout: {stdout}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     assert!(
         stdout.contains("<branch sofaHelp>") && stdout.contains("-> help"),
@@ -59,11 +63,26 @@ fn json_contract() {
         "--json",
     ];
     let first = trace(&args);
-    assert!(first.status.success(), "{}", String::from_utf8_lossy(&first.stderr));
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
 
-    let v: serde_json::Value = serde_json::from_slice(&first.stdout)
-        .unwrap_or_else(|e| panic!("--json output must parse: {e}\n{}", String::from_utf8_lossy(&first.stdout)));
-    for key in ["file", "seeds", "steps", "decisions", "unresolved", "coverage"] {
+    let v: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap_or_else(|e| {
+        panic!(
+            "--json output must parse: {e}\n{}",
+            String::from_utf8_lossy(&first.stdout)
+        )
+    });
+    for key in [
+        "file",
+        "seeds",
+        "steps",
+        "decisions",
+        "unresolved",
+        "coverage",
+    ] {
         assert!(v.get(key).is_some(), "top-level key `{key}` missing: {v}");
     }
 
@@ -82,7 +101,11 @@ fn json_contract() {
 #[test]
 fn refused_on_check_errors() {
     let out = trace(&["../../docs/examples/idola-project/date-minigame.lute"]);
-    assert_eq!(out.status.code(), Some(1), "a check-error document must refuse with exit 1");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a check-error document must refuse with exit 1"
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         stdout.contains("[E-UNKNOWN-DIRECTIVE]") || stdout.contains("[E-UNDECLARED]"),
@@ -105,7 +128,11 @@ fn bad_mock_exits_1() {
         "--state",
         "run.metHelpfuly=true",
     ]);
-    assert_eq!(out.status.code(), Some(1), "an invalid mock must refuse with exit 1");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "an invalid mock must refuse with exit 1"
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         stdout.contains("[E-TRACE-MOCK-UNDECLARED]"),
@@ -151,9 +178,17 @@ fn event_lifecycle_name_exits_1_with_trace_event() {
         "--project",
         "../../docs/examples",
     ]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("E-TRACE-EVENT"), "expected E-TRACE-EVENT in output: {stdout}");
+    assert!(
+        stdout.contains("E-TRACE-EVENT"),
+        "expected E-TRACE-EVENT in output: {stdout}"
+    );
 }
 
 // --- §4.3/§4.4: `--accept` on rescueHalsin (a `start`-having, declarative
@@ -168,9 +203,17 @@ fn accept_on_start_having_quest_exits_1_with_trace_accept() {
         "--project",
         "../../docs/examples",
     ]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("E-TRACE-ACCEPT"), "expected E-TRACE-ACCEPT in output: {stdout}");
+    assert!(
+        stdout.contains("E-TRACE-ACCEPT"),
+        "expected E-TRACE-ACCEPT in output: {stdout}"
+    );
 }
 
 // --- D15/T17: the positive half of the quarantine test — `lute-cli`'s OWN
@@ -211,9 +254,15 @@ fn declares_seed_facts_with_no_mocks_prints_not_auto_loaded_note() {
         lower.contains("note:") && lower.contains("not auto-load"),
         "missing §3.1 not-auto-loaded note: {stdout}"
     );
-    assert!(stdout.contains("--fact"), "note must point authors at --fact: {stdout}");
+    assert!(
+        stdout.contains("--fact"),
+        "note must point authors at --fact: {stdout}"
+    );
     // The banner still reports the seeded (mock) counts unaffected by the note.
-    assert!(stdout.contains("0 facts"), "seeds banner must still report the (unaffected) mock count: {stdout}");
+    assert!(
+        stdout.contains("0 facts"),
+        "seeds banner must still report the (unaffected) mock count: {stdout}"
+    );
 }
 
 // --- §3.3: a component-expanding trace's human transcript must not leak
@@ -224,7 +273,11 @@ fn declares_seed_facts_with_no_mocks_prints_not_auto_loaded_note() {
 fn component_expansion_transcript_has_no_sentinel_leak() {
     let out = trace(&["../../docs/examples/components/scene.lute"]);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "stderr: {}\nstdout: {stdout}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}\nstdout: {stdout}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(
         !stdout.contains("__component-begin") && !stdout.contains("__component-end"),
         "the internal component sentinel must never leak into the human transcript: {stdout}"
@@ -283,7 +336,11 @@ fn trace_refuses_a_mock_whose_file_names_a_different_document() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(out.status.code(), Some(2), "a mock naming the wrong subject is an input error:\n{text}");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "a mock naming the wrong subject is an input error:\n{text}"
+    );
     assert!(text.contains("E-MOCK-SUBJECT"), "{text}");
 }
 
@@ -325,9 +382,16 @@ fn trace_accepts_an_agreeing_or_absent_file_key() {
 /// `<auto>`. wake.lute's LAST line is the corpus's single declared exit.
 #[test]
 fn trace_marks_an_exiting_auto_as_an_exit() {
-    let out = trace(&["../../docs/examples/anseo/scenes/wake.lute", "--project", "../../docs/examples/anseo"]);
+    let out = trace(&[
+        "../../docs/examples/anseo/scenes/wake.lute",
+        "--project",
+        "../../docs/examples/anseo",
+    ]);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
-    assert!(text.contains("<auto exit>"), "the exit must be marked: {text}");
+    assert!(
+        text.contains("<auto exit>"),
+        "the exit must be marked: {text}"
+    );
     assert!(
         text.lines().any(|l| l.trim() == "<auto>"),
         "the entrance must NOT be marked: {text}"
@@ -340,7 +404,11 @@ fn trace_marks_an_exiting_auto_as_an_exit() {
 /// previewed them all as an identical `<end>`.
 #[test]
 fn trace_renders_the_end_reason_and_reports_a_disposition() {
-    let out = trace(&["../../docs/examples/anseo/scenes/bridge.lute", "--project", "../../docs/examples/anseo"]);
+    let out = trace(&[
+        "../../docs/examples/anseo/scenes/bridge.lute",
+        "--project",
+        "../../docs/examples/anseo",
+    ]);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(text.contains("<end reason=bridge-reached>"), "{text}");
 
@@ -351,7 +419,10 @@ fn trace_renders_the_end_reason_and_reports_a_disposition() {
         "--json",
     ]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("trace --json");
-    assert_eq!(v["disposition"], "ended", "a harness must tell a terminated walk from a spent one");
+    assert_eq!(
+        v["disposition"], "ended",
+        "a harness must tell a terminated walk from a spent one"
+    );
     assert_eq!(v["endReason"], "bridge-reached", "{v:#?}");
 
     // A scene that runs out of nodes is `complete`, not `ended`, and carries
@@ -373,7 +444,11 @@ fn trace_renders_the_end_reason_and_reports_a_disposition() {
 /// retires the docs row.
 #[test]
 fn trace_prints_the_shot_heading_it_is_holding() {
-    let out = trace(&["../../docs/examples/anseo/scenes/hydroponics.lute", "--project", "../../docs/examples/anseo"]);
+    let out = trace(&[
+        "../../docs/examples/anseo/scenes/hydroponics.lute",
+        "--project",
+        "../../docs/examples/anseo",
+    ]);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(text.contains("## Hydroponics"), "{text}");
 }
@@ -421,11 +496,21 @@ fn trace_refuses_a_mock_that_mis_keys_a_surface() {
     // gate that refused every mock could not pass this test.
     let (code, text) = run("choose:\n  pick: right\n");
     assert_eq!(code, Some(0), "{text}");
-    assert!(text.contains("-> right"), "the supplied selection is taken:\n{text}");
+    assert!(
+        text.contains("-> right"),
+        "the supplied selection is taken:\n{text}"
+    );
 
     let (code, text) = run("selections:\n  pick: right\n");
-    assert_eq!(code, Some(2), "a mis-keyed mock surface is an input error:\n{text}");
-    assert!(text.contains("E-TRACE-MOCK-PARSE") && text.contains("`selections`"), "{text}");
+    assert_eq!(
+        code,
+        Some(2),
+        "a mis-keyed mock surface is an input error:\n{text}"
+    );
+    assert!(
+        text.contains("E-TRACE-MOCK-PARSE") && text.contains("`selections`"),
+        "{text}"
+    );
     assert!(
         !text.contains("(auto)"),
         "the excluded arm must never be reached — that was the whole defect:\n{text}"

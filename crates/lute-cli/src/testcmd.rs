@@ -68,8 +68,9 @@ use lute_trace::{parse_mock_surfaces, trace_document, Step, TraceExit, TraceRepo
 /// **The two sets are not identical and differ by exactly `expect:`** —
 /// asserted by [`the_test_key_set_is_the_mock_key_set_plus_expect`], so the
 /// two cannot drift when a surface is added on either side.
-const TEST_TOP_KEYS: &[&str] =
-    &["accept", "accepts", "choose", "events", "expect", "facts", "file", "state"];
+const TEST_TOP_KEYS: &[&str] = &[
+    "accept", "accepts", "choose", "events", "expect", "facts", "file", "state",
+];
 
 /// The complete legal key set inside `expect:`. Also CLOSED. (b)/(c)'s new
 /// expectation kinds — endings, quest lifecycle, `facts:` as an output — are
@@ -99,7 +100,8 @@ fn closed_key_violations(map: &serde_yaml::Mapping) -> Vec<String> {
     for (k, v) in map {
         let Some(key) = k.as_str() else {
             out.push(
-                "error [E-TEST-KEY] a top-level key must be a string in a `*.test.yaml`".to_string(),
+                "error [E-TEST-KEY] a top-level key must be a string in a `*.test.yaml`"
+                    .to_string(),
             );
             continue;
         };
@@ -115,8 +117,9 @@ fn closed_key_violations(map: &serde_yaml::Mapping) -> Vec<String> {
                         Some(ekey) => {
                             out.push(unknown_key_line("`expect:`", ekey, TEST_EXPECT_KEYS))
                         }
-                        None => out
-                            .push("error [E-TEST-KEY] an `expect:` key must be a string".to_string()),
+                        None => out.push(
+                            "error [E-TEST-KEY] an `expect:` key must be a string".to_string(),
+                        ),
                     }
                 }
             }
@@ -196,7 +199,10 @@ struct CoverageAccum {
 /// Canonical paths are absolute and machine-specific and are used for the
 /// comparison ONLY; the printed list keeps the walk's own display paths.
 fn canonical_key(p: &std::path::Path) -> String {
-    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()).display().to_string()
+    std::fs::canonicalize(p)
+        .unwrap_or_else(|_| p.to_path_buf())
+        .display()
+        .to_string()
 }
 
 /// Run every `*.test.yaml` scenario test under `dir`. See [`crate::Command::Test`].
@@ -255,7 +261,10 @@ pub fn run_test(
                 .map(|p| p.display().to_string())
                 .collect(),
             Err(e) => {
-                eprintln!("lute: cannot walk {} for the untested set: {e}", dir.display());
+                eprintln!(
+                    "lute: cannot walk {} for the untested set: {e}",
+                    dir.display()
+                );
                 Vec::new()
             }
         }
@@ -375,7 +384,11 @@ fn run_one_test(
         return Err(ExitCode::from(2));
     };
     built.report_project_diags();
-    let crate::BuiltInput { input, resolve_error, .. } = built;
+    let crate::BuiltInput {
+        input,
+        resolve_error,
+        ..
+    } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
@@ -452,7 +465,10 @@ fn run_one_test(
         }
 
         // transcriptContains: [substrings] — against the human transcript.
-        if let Some(list) = expect.get("transcriptContains").and_then(|v| v.as_sequence()) {
+        if let Some(list) = expect
+            .get("transcriptContains")
+            .and_then(|v| v.as_sequence())
+        {
             let transcript = report.render_human();
             for item in list {
                 if let Some(sub) = item.as_str() {
@@ -562,7 +578,8 @@ fn yaml_key_spelling(message: &str) -> String {
 /// Fold one report's decisions + coverage counts into the run accumulator.
 fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
     cov.paths += 1;
-    cov.traced_files.insert(canonical_key(std::path::Path::new(&report.file)));
+    cov.traced_files
+        .insert(canonical_key(std::path::Path::new(&report.file)));
     for d in &report.decisions {
         match d.construct.as_str() {
             "branch" | "hub" => {
@@ -578,8 +595,10 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
             }
             "match" => {
                 let key = format!("{}:{}:{}", report.file, d.span.line, d.span.column);
-                let entry =
-                    cov.arms.entry(key).or_insert_with(|| (d.id.clone(), BTreeSet::new(), 0));
+                let entry = cov
+                    .arms
+                    .entry(key)
+                    .or_insert_with(|| (d.id.clone(), BTreeSet::new(), 0));
                 entry.1.insert(d.outcome.clone());
             }
             _ => {}
@@ -595,7 +614,10 @@ fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
     }
     for (site, c) in &report.coverage.arms {
         let key = format!("{}:{site}", report.file);
-        let entry = cov.arms.entry(key).or_insert_with(|| (c.label.clone(), BTreeSet::new(), 0));
+        let entry = cov
+            .arms
+            .entry(key)
+            .or_insert_with(|| (c.label.clone(), BTreeSet::new(), 0));
         entry.2 = entry.2.max(c.total);
     }
 }
@@ -733,21 +755,33 @@ fn print_coverage_human(cov: &CoverageAccum, untested: &[String]) {
     }
     for (key, (label, chosen, eligible_seen, total)) in &cov.choices {
         let never_named: Vec<&String> = eligible_seen.difference(chosen).collect();
-        let mut line =
-            format!("  branch/hub {label} ({key}): {}/{} chosen", chosen.len().min(*total), total);
+        let mut line = format!(
+            "  branch/hub {label} ({key}): {}/{} chosen",
+            chosen.len().min(*total),
+            total
+        );
         if !chosen.is_empty() {
-            line.push_str(&format!(" [{}]", chosen.iter().cloned().collect::<Vec<_>>().join(", ")));
+            line.push_str(&format!(
+                " [{}]",
+                chosen.iter().cloned().collect::<Vec<_>>().join(", ")
+            ));
         }
         if !never_named.is_empty() {
             line.push_str(&format!(
                 "; never chosen [{}]",
-                never_named.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+                never_named
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
         }
         // Choices never seen eligible in ANY traced path: count only, honest.
         let unseen = total.saturating_sub(chosen.len() + never_named.len());
         if unseen > 0 {
-            line.push_str(&format!("; {unseen} never seen eligible in any traced path"));
+            line.push_str(&format!(
+                "; {unseen} never seen eligible in any traced path"
+            ));
         }
         println!("{line}");
     }
@@ -759,7 +793,10 @@ fn print_coverage_human(cov: &CoverageAccum, untested: &[String]) {
             total
         );
         if !chosen.is_empty() {
-            line.push_str(&format!(" [{}]", chosen.iter().cloned().collect::<Vec<_>>().join(", ")));
+            line.push_str(&format!(
+                " [{}]",
+                chosen.iter().cloned().collect::<Vec<_>>().join(", ")
+            ));
         }
         if unexecuted > 0 {
             line.push_str(&format!("; {unexecuted} unexecuted"));
@@ -774,7 +811,10 @@ fn print_coverage_human(cov: &CoverageAccum, untested: &[String]) {
     if untested.is_empty() {
         println!("  every testable document under this root is named by at least one test");
     } else {
-        println!("  {} untested document(s) — no *.test.yaml names them:", untested.len());
+        println!(
+            "  {} untested document(s) — no *.test.yaml names them:",
+            untested.len()
+        );
         for f in untested {
             println!("    {f}");
         }
@@ -864,7 +904,10 @@ fn print_json(results: &[TestResult], cov: Option<&CoverageAccum>, untested: &[S
         });
     }
 
-    println!("{}", serde_json::to_string_pretty(&root).expect("report is JSON-serializable"));
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&root).expect("report is JSON-serializable")
+    );
 }
 
 #[cfg(test)]

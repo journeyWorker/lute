@@ -183,7 +183,9 @@ impl Clock {
     /// would make every interval trivially "non-overflowing" against a
     /// bogus total).
     pub fn total_ticks_checked(&self) -> Option<u32> {
-        (self.buckets.len() as u32).checked_mul(self.ticks_per_bucket)?.checked_mul(self.days)
+        (self.buckets.len() as u32)
+            .checked_mul(self.ticks_per_bucket)?
+            .checked_mul(self.days)
     }
 
     /// Render `tick` as `"d{day}.{bucket}+{within}"` (spec §4.6 transcript
@@ -202,7 +204,11 @@ impl Clock {
         let rem = tick % per_day;
         let bucket_idx = (rem / self.ticks_per_bucket) as usize;
         let within = rem % self.ticks_per_bucket;
-        let bucket = self.buckets.get(bucket_idx).map(String::as_str).unwrap_or("?");
+        let bucket = self
+            .buckets
+            .get(bucket_idx)
+            .map(String::as_str)
+            .unwrap_or("?");
         format!("d{}.{bucket}+{within}", day + 1)
     }
 }
@@ -235,6 +241,7 @@ pub struct Placement {
     pub at: Option<u32>,
     pub size: u32,
     /// Default 100 when omitted (lower plays first, spec §3/§4.1).
+    #[allow(dead_code)]
     pub presentation: u32,
     /// Spec §5: `true` legalizes zero satisfiable variants for some route —
     /// [`E_SCHED_VARIANT_GAP`] is suppressed for this placement.
@@ -285,7 +292,11 @@ pub struct SchedDiag {
 }
 
 fn diag(code: &str, severity: Severity, message: String) -> SchedDiag {
-    SchedDiag { code: code.to_string(), message, severity }
+    SchedDiag {
+        code: code.to_string(),
+        message,
+        severity,
+    }
 }
 
 fn err(code: &str, message: String) -> SchedDiag {
@@ -440,10 +451,13 @@ pub fn load_schedule(project_dir: &Path) -> Result<Option<(Schedule, Vec<SchedDi
         .lanes
         .into_iter()
         .map(|(name, cfg)| {
-            (name, LaneCfg {
-                exclusive: cfg.exclusive,
-                idle_threshold: cfg.idle_threshold.unwrap_or(W_SCHED_IDLE_THRESHOLD_TICKS),
-            })
+            (
+                name,
+                LaneCfg {
+                    exclusive: cfg.exclusive,
+                    idle_threshold: cfg.idle_threshold.unwrap_or(W_SCHED_IDLE_THRESHOLD_TICKS),
+                },
+            )
         })
         .collect();
 
@@ -462,7 +476,13 @@ pub fn load_schedule(project_dir: &Path) -> Result<Option<(Schedule, Vec<SchedDi
         // gone once this loop exits, so this is the ONLY place that can
         // report it).
         let raw_variants: Vec<RawVariant> = match (rp.doc, rp.variants) {
-            (Some(d), None) => vec![RawVariant { when: None, doc: d, at: None, size: None, presentation: None }],
+            (Some(d), None) => vec![RawVariant {
+                when: None,
+                doc: d,
+                at: None,
+                size: None,
+                presentation: None,
+            }],
             (None, Some(vs)) => {
                 if vs.is_empty() {
                     diags.push(err(
@@ -491,13 +511,19 @@ pub fn load_schedule(project_dir: &Path) -> Result<Option<(Schedule, Vec<SchedDi
             }
         };
 
-        let has_override = raw_variants.iter().any(|v| v.at.is_some() || v.size.is_some());
+        let has_override = raw_variants
+            .iter()
+            .any(|v| v.at.is_some() || v.size.is_some());
 
         let resolved_at: Option<u32> = match &rp.at {
             Some(raw_at) => match parse_at(raw_at, &clock) {
                 Ok(t) => Some(t),
                 Err(e) => {
-                    push_at_error(&mut diags, &format!("placement '{event}' (lane '{lane}')"), e);
+                    push_at_error(
+                        &mut diags,
+                        &format!("placement '{event}' (lane '{lane}')"),
+                        e,
+                    );
                     None
                 }
             },
@@ -538,7 +564,14 @@ pub fn load_schedule(project_dir: &Path) -> Result<Option<(Schedule, Vec<SchedDi
             },
         };
 
-        lane_state.insert(lane.clone(), LaneCursor { base_at: resolved_at, base_size: rp.size, has_override });
+        lane_state.insert(
+            lane.clone(),
+            LaneCursor {
+                base_at: resolved_at,
+                base_size: rp.size,
+                has_override,
+            },
+        );
 
         let mut variants = Vec::with_capacity(raw_variants.len());
         for rv in raw_variants {
@@ -548,13 +581,23 @@ pub fn load_schedule(project_dir: &Path) -> Result<Option<(Schedule, Vec<SchedDi
                 Some(raw_at) => match parse_at(&raw_at, &clock) {
                     Ok(t) => Some(t),
                     Err(e) => {
-                        push_at_error(&mut diags, &format!("placement '{event}' variant (doc '{}')", rv.doc), e);
+                        push_at_error(
+                            &mut diags,
+                            &format!("placement '{event}' variant (doc '{}')", rv.doc),
+                            e,
+                        );
                         None
                     }
                 },
                 None => resolved_at,
             };
-            variants.push(Variant { when: rv.when, doc: rv.doc, at: eff_at, size: eff_size, presentation: eff_presentation });
+            variants.push(Variant {
+                when: rv.when,
+                doc: rv.doc,
+                at: eff_at,
+                size: eff_size,
+                presentation: eff_presentation,
+            });
         }
 
         placements.push(Placement {
@@ -569,7 +612,12 @@ pub fn load_schedule(project_dir: &Path) -> Result<Option<(Schedule, Vec<SchedDi
         });
     }
 
-    let schedule = Schedule { clock, lanes, assume, placements };
+    let schedule = Schedule {
+        clock,
+        lanes,
+        assume,
+        placements,
+    };
 
     let project_docs = crate::find_lute_files(project_dir)
         .map_err(|e| format!("cannot walk {}: {e}", project_dir.display()))?;
@@ -599,7 +647,9 @@ enum AtParseError {
 fn parse_at(raw: &RawAt, clock: &Clock) -> Result<u32, AtParseError> {
     match raw {
         RawAt::Abs(n) => u32::try_from(*n).map_err(|_| {
-            AtParseError::Malformed(format!("absolute tick {n} is out of range (must be a non-negative integer)"))
+            AtParseError::Malformed(format!(
+                "absolute tick {n} is out of range (must be a non-negative integer)"
+            ))
         }),
         RawAt::Sym(s) => parse_at_symbolic(s, clock),
     }
@@ -609,29 +659,43 @@ fn parse_at_symbolic(s: &str, clock: &Clock) -> Result<u32, AtParseError> {
     let (day, rest) = match s.split_once('.') {
         Some((day_part, rest)) => {
             let Some(day_digits) = day_part.strip_prefix('d') else {
-                return Err(AtParseError::Malformed(format!("malformed `at: '{s}'` — expected `[dN.]bucket+tick`")));
+                return Err(AtParseError::Malformed(format!(
+                    "malformed `at: '{s}'` — expected `[dN.]bucket+tick`"
+                )));
             };
-            let day: u32 = day_digits
-                .parse()
-                .map_err(|_| AtParseError::Malformed(format!("malformed `at: '{s}'` — bad day prefix 'd{day_digits}'")))?;
+            let day: u32 = day_digits.parse().map_err(|_| {
+                AtParseError::Malformed(format!(
+                    "malformed `at: '{s}'` — bad day prefix 'd{day_digits}'"
+                ))
+            })?;
             if day == 0 {
-                return Err(AtParseError::Malformed(format!("`at: '{s}'` — days are 1-based, `d0` is invalid")));
+                return Err(AtParseError::Malformed(format!(
+                    "`at: '{s}'` — days are 1-based, `d0` is invalid"
+                )));
             }
             (day, rest)
         }
         None => (1, s),
     };
     let Some((bucket, tick_str)) = rest.split_once('+') else {
-        return Err(AtParseError::Malformed(format!("malformed `at: '{s}'` — expected `[dN.]bucket+tick`")));
+        return Err(AtParseError::Malformed(format!(
+            "malformed `at: '{s}'` — expected `[dN.]bucket+tick`"
+        )));
     };
-    let tick: u32 = tick_str
-        .parse()
-        .map_err(|_| AtParseError::Malformed(format!("malformed `at: '{s}'` — bad tick offset '{tick_str}'")))?;
+    let tick: u32 = tick_str.parse().map_err(|_| {
+        AtParseError::Malformed(format!(
+            "malformed `at: '{s}'` — bad tick offset '{tick_str}'"
+        ))
+    })?;
     let Some(bucket_idx) = clock.buckets.iter().position(|b| b == bucket) else {
-        return Err(AtParseError::Malformed(format!("`at: '{s}'` references unknown bucket '{bucket}'")));
+        return Err(AtParseError::Malformed(format!(
+            "`at: '{s}'` references unknown bucket '{bucket}'"
+        )));
     };
     if clock.ticks_per_bucket == 0 {
-        return Err(AtParseError::Malformed(format!("`at: '{s}'` cannot resolve — clock.ticksPerBucket is 0")));
+        return Err(AtParseError::Malformed(format!(
+            "`at: '{s}'` cannot resolve — clock.ticksPerBucket is 0"
+        )));
     }
     if tick >= clock.ticks_per_bucket {
         return Err(AtParseError::Malformed(format!(
@@ -641,9 +705,17 @@ fn parse_at_symbolic(s: &str, clock: &Clock) -> Result<u32, AtParseError> {
         )));
     }
     let day_index = day - 1;
-    let overflow = || AtParseError::Overflow(format!("`at: '{s}'` — resolved absolute tick overflows u32 arithmetic"));
-    let per_day = (clock.buckets.len() as u32).checked_mul(clock.ticks_per_bucket).ok_or_else(overflow)?;
-    let bucket_offset = (bucket_idx as u32).checked_mul(clock.ticks_per_bucket).ok_or_else(overflow)?;
+    let overflow = || {
+        AtParseError::Overflow(format!(
+            "`at: '{s}'` — resolved absolute tick overflows u32 arithmetic"
+        ))
+    };
+    let per_day = (clock.buckets.len() as u32)
+        .checked_mul(clock.ticks_per_bucket)
+        .ok_or_else(overflow)?;
+    let bucket_offset = (bucket_idx as u32)
+        .checked_mul(clock.ticks_per_bucket)
+        .ok_or_else(overflow)?;
     let abs = day_index
         .checked_mul(per_day)
         .and_then(|v| v.checked_add(bucket_offset))
@@ -659,8 +731,12 @@ fn parse_at_symbolic(s: &str, clock: &Clock) -> Result<u32, AtParseError> {
 /// overflowing schedule cannot be misread as a shape typo.
 fn push_at_error(diags: &mut Vec<SchedDiag>, context: &str, e: AtParseError) {
     match e {
-        AtParseError::Malformed(msg) => diags.push(err(E_SCHED_AT_PARSE, format!("{context}: {msg}"))),
-        AtParseError::Overflow(msg) => diags.push(err(E_SCHED_CLOCK_OVERFLOW, format!("{context}: {msg}"))),
+        AtParseError::Malformed(msg) => {
+            diags.push(err(E_SCHED_AT_PARSE, format!("{context}: {msg}")))
+        }
+        AtParseError::Overflow(msg) => {
+            diags.push(err(E_SCHED_CLOCK_OVERFLOW, format!("{context}: {msg}")))
+        }
     }
 }
 
@@ -695,10 +771,14 @@ fn resolve_doc_path(project_dir: &Path, doc: &str) -> Result<PathBuf, DocPathIss
     for comp in rel.components() {
         match comp {
             std::path::Component::ParentDir => {
-                return Err(DocPathIssue::Invalid(format!("doc '{doc}' escapes the project root via `..`")));
+                return Err(DocPathIssue::Invalid(format!(
+                    "doc '{doc}' escapes the project root via `..`"
+                )));
             }
             std::path::Component::RootDir | std::path::Component::Prefix(_) => {
-                return Err(DocPathIssue::Invalid(format!("doc '{doc}' is not project-relative")));
+                return Err(DocPathIssue::Invalid(format!(
+                    "doc '{doc}' is not project-relative"
+                )));
             }
             std::path::Component::CurDir | std::path::Component::Normal(_) => {}
         }
@@ -707,11 +787,16 @@ fn resolve_doc_path(project_dir: &Path, doc: &str) -> Result<PathBuf, DocPathIss
     if !full.is_file() {
         return Err(DocPathIssue::Missing);
     }
-    let (Ok(canon_root), Ok(canon_full)) = (std::fs::canonicalize(project_dir), std::fs::canonicalize(&full)) else {
+    let (Ok(canon_root), Ok(canon_full)) = (
+        std::fs::canonicalize(project_dir),
+        std::fs::canonicalize(&full),
+    ) else {
         return Err(DocPathIssue::Missing);
     };
     if !canon_full.starts_with(&canon_root) {
-        return Err(DocPathIssue::Invalid(format!("doc '{doc}' resolves outside the project root")));
+        return Err(DocPathIssue::Invalid(format!(
+            "doc '{doc}' resolves outside the project root"
+        )));
     }
     Ok(canon_full)
 }
@@ -732,19 +817,31 @@ pub fn static_check(s: &Schedule, project_docs: &[PathBuf], project_dir: &Path) 
     let mut diags = Vec::new();
 
     if s.clock.ticks_per_bucket == 0 {
-        diags.push(err(E_SCHED_CLOCK_STRUCTURE, "clock.ticksPerBucket must be greater than 0".to_string()));
+        diags.push(err(
+            E_SCHED_CLOCK_STRUCTURE,
+            "clock.ticksPerBucket must be greater than 0".to_string(),
+        ));
     }
     if s.clock.days == 0 {
-        diags.push(err(E_SCHED_CLOCK_STRUCTURE, "clock.days must be greater than 0".to_string()));
+        diags.push(err(
+            E_SCHED_CLOCK_STRUCTURE,
+            "clock.days must be greater than 0".to_string(),
+        ));
     }
     if s.clock.buckets.is_empty() {
-        diags.push(err(E_SCHED_CLOCK_STRUCTURE, "clock.buckets must declare at least one bucket".to_string()));
+        diags.push(err(
+            E_SCHED_CLOCK_STRUCTURE,
+            "clock.buckets must declare at least one bucket".to_string(),
+        ));
     }
     {
         let mut seen = BTreeSet::new();
         for b in &s.clock.buckets {
             if !seen.insert(b.as_str()) {
-                diags.push(err(E_SCHED_BUCKET_DUP, format!("bucket '{b}' is declared more than once in clock.buckets")));
+                diags.push(err(
+                    E_SCHED_BUCKET_DUP,
+                    format!("bucket '{b}' is declared more than once in clock.buckets"),
+                ));
             }
         }
     }
@@ -773,19 +870,28 @@ pub fn static_check(s: &Schedule, project_docs: &[PathBuf], project_dir: &Path) 
         if !s.lanes.contains_key(&p.lane) {
             diags.push(err(
                 E_SCHED_LANE_UNKNOWN,
-                format!("placement '{}' references unknown lane '{}'", p.event, p.lane),
+                format!(
+                    "placement '{}' references unknown lane '{}'",
+                    p.event, p.lane
+                ),
             ));
         }
         if !seen_lane_event.insert((p.event.as_str(), p.lane.as_str())) {
             diags.push(err(
                 E_SCHED_EVENT_DUP,
-                format!("event '{}' is placed more than once on lane '{}'", p.event, p.lane),
+                format!(
+                    "event '{}' is placed more than once on lane '{}'",
+                    p.event, p.lane
+                ),
             ));
         }
         if p.size == 0 {
             diags.push(err(
                 E_SCHED_SIZE_INVALID,
-                format!("placement '{}' (lane '{}'): size must be >= 1", p.event, p.lane),
+                format!(
+                    "placement '{}' (lane '{}'): size must be >= 1",
+                    p.event, p.lane
+                ),
             ));
         }
 
@@ -793,7 +899,10 @@ pub fn static_check(s: &Schedule, project_docs: &[PathBuf], project_dir: &Path) 
             if v.size == 0 {
                 diags.push(err(
                     E_SCHED_SIZE_INVALID,
-                    format!("placement '{}' variant #{vi} (doc '{}'): size must be >= 1", p.event, v.doc),
+                    format!(
+                        "placement '{}' variant #{vi} (doc '{}'): size must be >= 1",
+                        p.event, v.doc
+                    ),
                 ));
             }
             if let Some(at) = v.at {
@@ -828,13 +937,19 @@ pub fn static_check(s: &Schedule, project_docs: &[PathBuf], project_dir: &Path) 
                 Err(DocPathIssue::Missing) => {
                     diags.push(err(
                         E_SCHED_DOC_MISSING,
-                        format!("placement '{}' variant #{vi} references missing doc '{}'", p.event, v.doc),
+                        format!(
+                            "placement '{}' variant #{vi} references missing doc '{}'",
+                            p.event, v.doc
+                        ),
                     ));
                 }
                 Err(DocPathIssue::Invalid(msg)) => {
                     diags.push(err(
                         E_SCHED_DOC_PATH,
-                        format!("placement '{}' variant #{vi} (doc '{}'): {msg}", p.event, v.doc),
+                        format!(
+                            "placement '{}' variant #{vi} (doc '{}'): {msg}",
+                            p.event, v.doc
+                        ),
                     ));
                 }
             }
@@ -845,12 +960,17 @@ pub fn static_check(s: &Schedule, project_docs: &[PathBuf], project_dir: &Path) 
         if crate::compile_all::is_component_file(doc) {
             continue;
         }
-        let Ok(canon) = std::fs::canonicalize(doc) else { continue };
+        let Ok(canon) = std::fs::canonicalize(doc) else {
+            continue;
+        };
         if !referenced_canon.contains(&canon) {
             let display = doc.strip_prefix(project_dir).unwrap_or(doc);
             diags.push(warning(
                 W_SCHED_DOC_UNPLACED,
-                format!("scene doc '{}' exists but is not referenced by any schedule placement", display.display()),
+                format!(
+                    "scene doc '{}' exists but is not referenced by any schedule placement",
+                    display.display()
+                ),
             ));
         }
     }
@@ -877,7 +997,9 @@ fn idle_check(s: &Schedule) -> Vec<SchedDiag> {
             .placements
             .iter()
             .filter(|p| &p.lane == lane_name)
-            .filter_map(|p| p.at.map(|at| (at, at.saturating_add(p.size), p.event.as_str())))
+            .filter_map(|p| {
+                p.at.map(|at| (at, at.saturating_add(p.size), p.event.as_str()))
+            })
             .collect();
         intervals.sort_by_key(|(at, ..)| *at);
         for w in intervals.windows(2) {
@@ -922,7 +1044,11 @@ enum GuardExpr {
 fn cel_expr_path(expr: &Expr) -> Option<String> {
     match expr {
         Expr::Ident(name) => Some(name.clone()),
-        Expr::Select(sel) => Some(format!("{}.{}", cel_expr_path(&sel.operand.expr)?, sel.field)),
+        Expr::Select(sel) => Some(format!(
+            "{}.{}",
+            cel_expr_path(&sel.operand.expr)?,
+            sel.field
+        )),
         _ => None,
     }
 }
@@ -988,7 +1114,11 @@ fn collect_entry_paths(entry: &EntryExpr, out: &mut BTreeSet<String>) {
 
 /// Render one enum-domain combo as `"path=value, path2=value2"` for a
 /// diagnostic's "when …" clause.
-fn combo_label(domain_paths: &[String], combo: &[usize], enums: &BTreeMap<String, Vec<String>>) -> String {
+fn combo_label(
+    domain_paths: &[String],
+    combo: &[usize],
+    enums: &BTreeMap<String, Vec<String>>,
+) -> String {
     if domain_paths.is_empty() {
         return "(no enum-domain guard scalars)".to_string();
     }
@@ -996,7 +1126,11 @@ fn combo_label(domain_paths: &[String], combo: &[usize], enums: &BTreeMap<String
         .iter()
         .zip(combo.iter())
         .map(|(p, &i)| {
-            let val = enums.get(p).and_then(|v| v.get(i)).map(String::as_str).unwrap_or("?");
+            let val = enums
+                .get(p)
+                .and_then(|v| v.get(i))
+                .map(String::as_str)
+                .unwrap_or("?");
             format!("{p}={val}")
         })
         .collect::<Vec<_>>()
@@ -1029,16 +1163,18 @@ pub fn route_space_check(s: &Schedule, enums: &BTreeMap<String, Vec<String>>) ->
         for v in &p.variants {
             let g = match &v.when {
                 None => GuardExpr::Always,
-                Some(raw) => match lute_cel::parse_slot(&mut arena, raw, 0) {
-                    Ok(h) => GuardExpr::Parsed(h),
-                    Err(_) => {
-                        diags.push(err(
+                Some(raw) => {
+                    match lute_cel::parse_slot(&mut arena, raw, 0) {
+                        Ok(h) => GuardExpr::Parsed(h),
+                        Err(_) => {
+                            diags.push(err(
                             E_SCHED_GUARD_PARSE,
                             format!("placement '{}' variant (doc '{}'): malformed CEL guard `{raw}`", p.event, v.doc),
                         ));
-                        GuardExpr::ParseError
+                            GuardExpr::ParseError
+                        }
                     }
-                },
+                }
             };
             row.push(g);
         }
@@ -1079,8 +1215,14 @@ pub fn route_space_check(s: &Schedule, enums: &BTreeMap<String, Vec<String>>) ->
             }
         }
     }
-    let domain_paths: Vec<String> = all_paths.into_iter().filter(|p| enums.contains_key(p)).collect();
-    let sizes: Vec<usize> = domain_paths.iter().map(|p| enums.get(p).map(Vec::len).unwrap_or(0)).collect();
+    let domain_paths: Vec<String> = all_paths
+        .into_iter()
+        .filter(|p| enums.contains_key(p))
+        .collect();
+    let sizes: Vec<usize> = domain_paths
+        .iter()
+        .map(|p| enums.get(p).map(Vec::len).unwrap_or(0))
+        .collect();
 
     let mut combo_count: u64 = 1;
     for &n in &sizes {
@@ -1158,7 +1300,10 @@ pub fn route_space_check(s: &Schedule, enums: &BTreeMap<String, Vec<String>>) ->
             }
         }
         let state = EffectiveState::new(&schema, seed);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
 
         // Spec §3.1 `assume:`: an assignment under which any assumption is
         // definitively false is outside the declared route space — skip it.
@@ -1198,7 +1343,10 @@ pub fn route_space_check(s: &Schedule, enums: &BTreeMap<String, Vec<String>>) ->
                 continue; // already reported via E_SCHED_VARIANT_FORM
             }
             let row = &evaluated[p_idx];
-            let true_count = row.iter().filter(|v| matches!(v, Value::Bool(true))).count();
+            let true_count = row
+                .iter()
+                .filter(|v| matches!(v, Value::Bool(true)))
+                .count();
             let unknown_count = row.iter().filter(|v| matches!(v, Value::Unknown)).count();
 
             if true_count == 0 && !p.optional {
@@ -1210,9 +1358,13 @@ pub fn route_space_check(s: &Schedule, enums: &BTreeMap<String, Vec<String>>) ->
                 }
             }
             if true_count >= 2 {
-                ambig_hard.entry(p_idx).or_insert_with(|| combo_label(&domain_paths, combo, enums));
+                ambig_hard
+                    .entry(p_idx)
+                    .or_insert_with(|| combo_label(&domain_paths, combo, enums));
             } else if true_count == 1 && unknown_count >= 1 {
-                ambig_soft.entry(p_idx).or_insert_with(|| combo_label(&domain_paths, combo, enums));
+                ambig_soft
+                    .entry(p_idx)
+                    .or_insert_with(|| combo_label(&domain_paths, combo, enums));
             }
         }
 
@@ -1224,9 +1376,13 @@ pub fn route_space_check(s: &Schedule, enums: &BTreeMap<String, Vec<String>>) ->
             let a_maybe = a_true || matches!(a, Value::Unknown);
             let b_maybe = b_true || matches!(b, Value::Unknown);
             if a_true && b_true {
-                overlap_hard.entry((pi, vi, pj, vj)).or_insert_with(|| combo_label(&domain_paths, combo, enums));
+                overlap_hard
+                    .entry((pi, vi, pj, vj))
+                    .or_insert_with(|| combo_label(&domain_paths, combo, enums));
             } else if a_maybe && b_maybe {
-                overlap_soft.entry((pi, vi, pj, vj)).or_insert_with(|| combo_label(&domain_paths, combo, enums));
+                overlap_soft
+                    .entry((pi, vi, pj, vj))
+                    .or_insert_with(|| combo_label(&domain_paths, combo, enums));
             }
         }
     }
@@ -1235,7 +1391,10 @@ pub fn route_space_check(s: &Schedule, enums: &BTreeMap<String, Vec<String>>) ->
         let p = &s.placements[*p_idx];
         diags.push(err(
             E_SCHED_VARIANT_GAP,
-            format!("placement '{}' (lane '{}'): no satisfiable variant when {label}", p.event, p.lane),
+            format!(
+                "placement '{}' (lane '{}'): no satisfiable variant when {label}",
+                p.event, p.lane
+            ),
         ));
     }
     for (p_idx, label) in &gap_soft {
@@ -1256,7 +1415,10 @@ pub fn route_space_check(s: &Schedule, enums: &BTreeMap<String, Vec<String>>) ->
         let p = &s.placements[*p_idx];
         diags.push(err(
             E_SCHED_VARIANT_AMBIG,
-            format!("placement '{}' (lane '{}'): two or more variants are co-satisfiable when {label}", p.event, p.lane),
+            format!(
+                "placement '{}' (lane '{}'): two or more variants are co-satisfiable when {label}",
+                p.event, p.lane
+            ),
         ));
     }
     for (p_idx, label) in &ambig_soft {
@@ -1312,14 +1474,19 @@ mod tests {
         use std::sync::atomic::{AtomicU32, Ordering};
         static N: AtomicU32 = AtomicU32::new(0);
         let n = N.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("lute-schedule-{tag}-{}-{n}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("lute-schedule-{tag}-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
 
     fn basic_clock() -> Clock {
-        Clock { buckets: vec!["morning".into(), "afternoon".into()], ticks_per_bucket: 12, days: 7 }
+        Clock {
+            buckets: vec!["morning".into(), "afternoon".into()],
+            ticks_per_bucket: 12,
+            days: 7,
+        }
     }
 
     fn find_diag<'a>(diags: &'a [SchedDiag], code: &str) -> Option<&'a SchedDiag> {
@@ -1352,7 +1519,10 @@ mod tests {
     fn parse_at_symbolic_explicit_day() {
         let clock = basic_clock();
         // per-day = 2 buckets * 12 ticks = 24; d2.afternoon+3 = 24 + 12 + 3 = 39
-        assert_eq!(parse_at(&RawAt::Sym("d2.afternoon+3".into()), &clock), Ok(39));
+        assert_eq!(
+            parse_at(&RawAt::Sym("d2.afternoon+3".into()), &clock),
+            Ok(39)
+        );
     }
 
     #[test]
@@ -1384,7 +1554,11 @@ mod tests {
 
     #[test]
     fn parse_at_zero_ticks_per_bucket_rejected() {
-        let clock = Clock { buckets: vec!["morning".into()], ticks_per_bucket: 0, days: 1 };
+        let clock = Clock {
+            buckets: vec!["morning".into()],
+            ticks_per_bucket: 0,
+            days: 1,
+        };
         assert!(parse_at(&RawAt::Sym("morning+0".into()), &clock).is_err());
     }
 
@@ -1400,7 +1574,11 @@ mod tests {
 
     #[test]
     fn clock_label_degrades_without_panicking_on_broken_clock() {
-        let clock = Clock { buckets: vec![], ticks_per_bucket: 0, days: 1 };
+        let clock = Clock {
+            buckets: vec![],
+            ticks_per_bucket: 0,
+            days: 1,
+        };
         assert_eq!(clock.label(5), "t5");
         assert_eq!(clock.total_ticks(), 0);
     }
@@ -1436,7 +1614,10 @@ mod tests {
             ),
         );
         let (sched, diags) = load_schedule(&dir).unwrap().unwrap();
-        assert!(!diags.iter().any(|d| d.severity == Severity::Error), "{diags:?}");
+        assert!(
+            !diags.iter().any(|d| d.severity == Severity::Error),
+            "{diags:?}"
+        );
         assert_eq!(sched.placements.len(), 1);
         let v = &sched.placements[0].variants[0];
         assert_eq!(v.when, None);
@@ -1454,7 +1635,10 @@ mod tests {
             &format!("{YAML_HEADER}placements:\n  - event: neither\n    lane: world\n    at: morning+0\n    size: 1\n"),
         );
         let (_sched, diags) = load_schedule(&dir).unwrap().unwrap();
-        assert!(find_diag(&diags, E_SCHED_VARIANT_FORM).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_VARIANT_FORM).is_some(),
+            "{diags:?}"
+        );
     }
 
     #[test]
@@ -1471,7 +1655,10 @@ mod tests {
             ),
         );
         let (sched, diags) = load_schedule(&dir).unwrap().unwrap();
-        assert!(!diags.iter().any(|d| d.severity == Severity::Error), "{diags:?}");
+        assert!(
+            !diags.iter().any(|d| d.severity == Severity::Error),
+            "{diags:?}"
+        );
         assert_eq!(sched.placements[0].at, Some(0));
         assert_eq!(sched.placements[1].at, Some(5)); // 0 + size(5)
     }
@@ -1511,10 +1698,19 @@ mod tests {
             ),
         );
         let (sched, diags) = load_schedule(&dir).unwrap().unwrap();
-        assert!(find_diag(&diags, E_SCHED_CURSOR_DYNAMIC).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_CURSOR_DYNAMIC).is_some(),
+            "{diags:?}"
+        );
         assert_eq!(sched.placements[1].at, None);
         // no duplicate diagnostic for the cascade — exactly one CURSOR_DYNAMIC entry
-        assert_eq!(diags.iter().filter(|d| d.code == E_SCHED_CURSOR_DYNAMIC).count(), 1);
+        assert_eq!(
+            diags
+                .iter()
+                .filter(|d| d.code == E_SCHED_CURSOR_DYNAMIC)
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -1544,30 +1740,80 @@ mod tests {
     // -- static_check diagnostics --------------------------------------------
 
     fn sched_with(placements: Vec<Placement>, lanes: BTreeMap<String, LaneCfg>) -> Schedule {
-        Schedule { clock: basic_clock(), lanes, assume: Vec::new(), placements }
+        Schedule {
+            clock: basic_clock(),
+            lanes,
+            assume: Vec::new(),
+            placements,
+        }
     }
 
     fn lanes_user_exclusive() -> BTreeMap<String, LaneCfg> {
         let mut m = BTreeMap::new();
-        m.insert("user".to_string(), LaneCfg { exclusive: true, idle_threshold: 24 });
-        m.insert("world".to_string(), LaneCfg { exclusive: false, idle_threshold: 24 });
+        m.insert(
+            "user".to_string(),
+            LaneCfg {
+                exclusive: true,
+                idle_threshold: 24,
+            },
+        );
+        m.insert(
+            "world".to_string(),
+            LaneCfg {
+                exclusive: false,
+                idle_threshold: 24,
+            },
+        );
         m
     }
 
     fn variant(doc: &str, when: Option<&str>, at: Option<u32>, size: u32) -> Variant {
-        Variant { when: when.map(str::to_string), doc: doc.to_string(), at, size, presentation: 100 }
+        Variant {
+            when: when.map(str::to_string),
+            doc: doc.to_string(),
+            at,
+            size,
+            presentation: 100,
+        }
     }
 
-    fn placement(event: &str, lane: &str, decl_index: u32, at: Option<u32>, size: u32, optional: bool, variants: Vec<Variant>) -> Placement {
-        Placement { event: event.to_string(), lane: lane.to_string(), at, size, presentation: 100, optional, decl_index, variants }
+    fn placement(
+        event: &str,
+        lane: &str,
+        decl_index: u32,
+        at: Option<u32>,
+        size: u32,
+        optional: bool,
+        variants: Vec<Variant>,
+    ) -> Placement {
+        Placement {
+            event: event.to_string(),
+            lane: lane.to_string(),
+            at,
+            size,
+            presentation: 100,
+            optional,
+            decl_index,
+            variants,
+        }
     }
 
     #[test]
     fn static_check_clock_structure_and_bucket_dup() {
         let mut s = sched_with(vec![], BTreeMap::new());
-        s.clock = Clock { buckets: vec!["a".into(), "a".into()], ticks_per_bucket: 0, days: 0 };
+        s.clock = Clock {
+            buckets: vec!["a".into(), "a".into()],
+            ticks_per_bucket: 0,
+            days: 0,
+        };
         let diags = static_check(&s, &[], Path::new("/tmp/nonexistent-lute-project"));
-        assert_eq!(diags.iter().filter(|d| d.code == E_SCHED_CLOCK_STRUCTURE).count(), 2); // ticksPerBucket, days — buckets non-empty
+        assert_eq!(
+            diags
+                .iter()
+                .filter(|d| d.code == E_SCHED_CLOCK_STRUCTURE)
+                .count(),
+            2
+        ); // ticksPerBucket, days — buckets non-empty
         assert!(find_diag(&diags, E_SCHED_BUCKET_DUP).is_some(), "{diags:?}");
     }
 
@@ -1584,7 +1830,10 @@ mod tests {
             BTreeMap::new(),
         );
         let diags = static_check(&s, &[], &dir);
-        assert!(find_diag(&diags, E_SCHED_LANE_UNKNOWN).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_LANE_UNKNOWN).is_some(),
+            "{diags:?}"
+        );
         assert!(find_diag(&diags, E_SCHED_EVENT_DUP).is_some(), "{diags:?}");
     }
 
@@ -1593,9 +1842,18 @@ mod tests {
         let dir = temp_dir("static-size");
         write_scene(&dir, "scenes/a/x.lute");
         let variants = vec![variant("scenes/a/x.lute", None, Some(0), 0)];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 0, false, variants)], lanes_user_exclusive());
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 0, false, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = static_check(&s, &[], &dir);
-        assert_eq!(diags.iter().filter(|d| d.code == E_SCHED_SIZE_INVALID).count(), 2); // placement + variant
+        assert_eq!(
+            diags
+                .iter()
+                .filter(|d| d.code == E_SCHED_SIZE_INVALID)
+                .count(),
+            2
+        ); // placement + variant
     }
 
     #[test]
@@ -1604,9 +1862,15 @@ mod tests {
         write_scene(&dir, "scenes/a/x.lute");
         // total = 2 buckets * 12 * 7 days = 168
         let variants = vec![variant("scenes/a/x.lute", None, Some(160), 20)];
-        let s = sched_with(vec![placement("a", "user", 0, Some(160), 20, false, variants)], lanes_user_exclusive());
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(160), 20, false, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = static_check(&s, &[], &dir);
-        assert!(find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).is_some(),
+            "{diags:?}"
+        );
     }
 
     // -- review fix #7: checked overflow arithmetic (never saturated) ------
@@ -1619,7 +1883,11 @@ mod tests {
         // trivially "non-overflowing".
         let dir = temp_dir("static-total-overflow");
         let mut s = sched_with(vec![], lanes_user_exclusive());
-        s.clock = Clock { buckets: vec!["a".into(), "b".into()], ticks_per_bucket: u32::MAX, days: 2 };
+        s.clock = Clock {
+            buckets: vec!["a".into(), "b".into()],
+            ticks_per_bucket: u32::MAX,
+            days: 2,
+        };
         let diags = static_check(&s, &[], &dir);
         let d = find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).expect("expected CLOCK_OVERFLOW");
         assert!(d.message.contains("overflow"), "{}", d.message);
@@ -1634,7 +1902,15 @@ mod tests {
         write_scene(&dir, "scenes/a/x.lute");
         let variants = vec![variant("scenes/a/x.lute", None, Some(u32::MAX - 5), 20)];
         let s = sched_with(
-            vec![placement("a", "user", 0, Some(u32::MAX - 5), 20, false, variants)],
+            vec![placement(
+                "a",
+                "user",
+                0,
+                Some(u32::MAX - 5),
+                20,
+                false,
+                variants,
+            )],
             lanes_user_exclusive(),
         );
         let diags = static_check(&s, &[], &dir);
@@ -1655,7 +1931,10 @@ mod tests {
             &format!("{clock_yaml}placements:\n  - event: a\n    lane: user\n    at: \"d2.morning+0\"\n    size: 1\n    doc: scenes/a/x.lute\n"),
         );
         let (_sched, diags) = load_schedule(&dir).unwrap().unwrap();
-        assert!(find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).is_some(),
+            "{diags:?}"
+        );
         assert!(find_diag(&diags, E_SCHED_AT_PARSE).is_none(), "{diags:?}");
     }
 
@@ -1674,7 +1953,10 @@ mod tests {
             ),
         );
         let (sched, diags) = load_schedule(&dir).unwrap().unwrap();
-        assert!(find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_CLOCK_OVERFLOW).is_some(),
+            "{diags:?}"
+        );
         assert_eq!(sched.placements[1].at, None);
     }
 
@@ -1692,10 +1974,16 @@ mod tests {
         let outside_file = outside.join("secret.lute");
         std::fs::write(&outside_file, "kind: scene\n").unwrap();
         let variants = vec![variant(outside_file.to_str().unwrap(), None, Some(0), 4)];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 4, false, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = static_check(&s, &[], &dir);
         assert!(find_diag(&diags, E_SCHED_DOC_PATH).is_some(), "{diags:?}");
-        assert!(find_diag(&diags, E_SCHED_DOC_MISSING).is_none(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_DOC_MISSING).is_none(),
+            "{diags:?}"
+        );
     }
 
     #[test]
@@ -1705,7 +1993,10 @@ mod tests {
         // Escapes the project root and lands on a real file two levels up —
         // rejected on shape alone, never reaching the filesystem check.
         let variants = vec![variant("scenes/../../schedule.rs", None, Some(0), 4)];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 4, false, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = static_check(&s, &[], &dir);
         assert!(find_diag(&diags, E_SCHED_DOC_PATH).is_some(), "{diags:?}");
     }
@@ -1717,9 +2008,15 @@ mod tests {
         // conflate "not project-relative" with "not found").
         let dir = temp_dir("doc-missing-relative");
         let variants = vec![variant("scenes/nowhere/x.lute", None, Some(0), 4)];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 4, false, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = static_check(&s, &[], &dir);
-        assert!(find_diag(&diags, E_SCHED_DOC_MISSING).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_DOC_MISSING).is_some(),
+            "{diags:?}"
+        );
         assert!(find_diag(&diags, E_SCHED_DOC_PATH).is_none(), "{diags:?}");
     }
 
@@ -1729,12 +2026,24 @@ mod tests {
         write_scene(&dir, "scenes/placed/x.lute");
         write_scene(&dir, "scenes/orphan/x.lute");
         write_scene(&dir, "scenes/frag.component.lute");
-        let variants = vec![variant("scenes/placed/x.lute", None, Some(0), 4), variant("scenes/missing/x.lute", None, Some(4), 4)];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 8, false, variants)], lanes_user_exclusive());
+        let variants = vec![
+            variant("scenes/placed/x.lute", None, Some(0), 4),
+            variant("scenes/missing/x.lute", None, Some(4), 4),
+        ];
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 8, false, variants)],
+            lanes_user_exclusive(),
+        );
         let project_docs = crate::find_lute_files(&dir).unwrap();
         let diags = static_check(&s, &project_docs, &dir);
-        assert!(find_diag(&diags, E_SCHED_DOC_MISSING).is_some(), "{diags:?}");
-        let unplaced: Vec<&SchedDiag> = diags.iter().filter(|d| d.code == W_SCHED_DOC_UNPLACED).collect();
+        assert!(
+            find_diag(&diags, E_SCHED_DOC_MISSING).is_some(),
+            "{diags:?}"
+        );
+        let unplaced: Vec<&SchedDiag> = diags
+            .iter()
+            .filter(|d| d.code == W_SCHED_DOC_UNPLACED)
+            .collect();
         assert_eq!(unplaced.len(), 1, "{diags:?}"); // orphan only — component fragment excluded
         assert!(unplaced[0].message.contains("orphan"));
     }
@@ -1747,7 +2056,10 @@ mod tests {
         let va = vec![variant("scenes/a/x.lute", None, Some(0), 4)];
         let vb = vec![variant("scenes/b/x.lute", None, Some(50), 4)]; // gap = 50 - 4 = 46 > 24
         let s = sched_with(
-            vec![placement("a", "user", 0, Some(0), 4, false, va), placement("b", "user", 1, Some(50), 4, false, vb)],
+            vec![
+                placement("a", "user", 0, Some(0), 4, false, va),
+                placement("b", "user", 1, Some(50), 4, false, vb),
+            ],
             lanes_user_exclusive(),
         );
         let diags = static_check(&s, &[], &dir);
@@ -1762,7 +2074,10 @@ mod tests {
         let va = vec![variant("scenes/a/x.lute", None, Some(0), 4)];
         let vb = vec![variant("scenes/b/x.lute", None, Some(10), 4)]; // gap = 10 - 4 = 6
         let s = sched_with(
-            vec![placement("a", "user", 0, Some(0), 4, false, va), placement("b", "user", 1, Some(10), 4, false, vb)],
+            vec![
+                placement("a", "user", 0, Some(0), 4, false, va),
+                placement("b", "user", 1, Some(10), 4, false, vb),
+            ],
             lanes_user_exclusive(),
         );
         let diags = static_check(&s, &[], &dir);
@@ -1773,15 +2088,26 @@ mod tests {
 
     fn inflow_enums() -> BTreeMap<String, Vec<String>> {
         let mut m = BTreeMap::new();
-        m.insert("run.inflow".to_string(), vec!["iroha".to_string(), "reiha".to_string()]);
+        m.insert(
+            "run.inflow".to_string(),
+            vec!["iroha".to_string(), "reiha".to_string()],
+        );
         m
     }
 
     #[test]
     fn route_space_variant_gap_detected() {
         // only iroha covered — reiha route has zero satisfiable variants.
-        let variants = vec![variant("scenes/a/iroha.lute", Some("run.inflow == 'iroha'"), Some(0), 4)];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let variants = vec![variant(
+            "scenes/a/iroha.lute",
+            Some("run.inflow == 'iroha'"),
+            Some(0),
+            4,
+        )];
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 4, false, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = route_space_check(&s, &inflow_enums());
         let gap = find_diag(&diags, E_SCHED_VARIANT_GAP).expect("expected VARIANT_GAP");
         assert_eq!(gap.severity, Severity::Error);
@@ -1790,20 +2116,44 @@ mod tests {
 
     #[test]
     fn route_space_variant_gap_suppressed_when_optional() {
-        let variants = vec![variant("scenes/a/iroha.lute", Some("run.inflow == 'iroha'"), Some(0), 4)];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, true, variants)], lanes_user_exclusive());
+        let variants = vec![variant(
+            "scenes/a/iroha.lute",
+            Some("run.inflow == 'iroha'"),
+            Some(0),
+            4,
+        )];
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 4, true, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = route_space_check(&s, &inflow_enums());
-        assert!(find_diag(&diags, E_SCHED_VARIANT_GAP).is_none(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_VARIANT_GAP).is_none(),
+            "{diags:?}"
+        );
     }
 
     #[test]
     fn route_space_variant_ambig_detected() {
         // both variants satisfiable simultaneously when inflow == iroha
         let variants = vec![
-            variant("scenes/a/iroha.lute", Some("run.inflow == 'iroha'"), Some(0), 4),
-            variant("scenes/a/either.lute", Some("run.inflow != 'nonexistent'"), Some(0), 4),
+            variant(
+                "scenes/a/iroha.lute",
+                Some("run.inflow == 'iroha'"),
+                Some(0),
+                4,
+            ),
+            variant(
+                "scenes/a/either.lute",
+                Some("run.inflow != 'nonexistent'"),
+                Some(0),
+                4,
+            ),
         ];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 4, false, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = route_space_check(&s, &inflow_enums());
         let ambig = find_diag(&diags, E_SCHED_VARIANT_AMBIG).expect("expected VARIANT_AMBIG");
         assert_eq!(ambig.severity, Severity::Error);
@@ -1812,21 +2162,48 @@ mod tests {
     #[test]
     fn route_space_no_gap_or_ambig_when_exhaustive_and_exclusive() {
         let variants = vec![
-            variant("scenes/a/iroha.lute", Some("run.inflow == 'iroha'"), Some(0), 4),
-            variant("scenes/a/reiha.lute", Some("run.inflow == 'reiha'"), Some(0), 4),
+            variant(
+                "scenes/a/iroha.lute",
+                Some("run.inflow == 'iroha'"),
+                Some(0),
+                4,
+            ),
+            variant(
+                "scenes/a/reiha.lute",
+                Some("run.inflow == 'reiha'"),
+                Some(0),
+                4,
+            ),
         ];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 4, false, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = route_space_check(&s, &inflow_enums());
-        assert!(find_diag(&diags, E_SCHED_VARIANT_GAP).is_none(), "{diags:?}");
-        assert!(find_diag(&diags, E_SCHED_VARIANT_AMBIG).is_none(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_VARIANT_GAP).is_none(),
+            "{diags:?}"
+        );
+        assert!(
+            find_diag(&diags, E_SCHED_VARIANT_AMBIG).is_none(),
+            "{diags:?}"
+        );
     }
 
     #[test]
     fn route_space_non_enum_guard_downgrades_to_warning() {
         // `run.mystery` is not in `enums` — every combo reads it Unknown, so
         // the resulting GAP finding must be a warning, not an error.
-        let variants = vec![variant("scenes/a/x.lute", Some("run.mystery == 'x'"), Some(0), 4)];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let variants = vec![variant(
+            "scenes/a/x.lute",
+            Some("run.mystery == 'x'"),
+            Some(0),
+            4,
+        )];
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 4, false, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = route_space_check(&s, &BTreeMap::new());
         let gap = find_diag(&diags, E_SCHED_VARIANT_GAP).expect("expected downgraded VARIANT_GAP");
         assert_eq!(gap.severity, Severity::Warning);
@@ -1834,10 +2211,23 @@ mod tests {
 
     #[test]
     fn route_space_user_overlap_detected_for_co_satisfiable_overlapping_placements() {
-        let va = vec![variant("scenes/a/iroha.lute", Some("run.inflow == 'iroha'"), Some(0), 10)];
-        let vb = vec![variant("scenes/b/iroha.lute", Some("run.inflow == 'iroha'"), Some(5), 10)]; // overlaps [0,10) with [5,15)
+        let va = vec![variant(
+            "scenes/a/iroha.lute",
+            Some("run.inflow == 'iroha'"),
+            Some(0),
+            10,
+        )];
+        let vb = vec![variant(
+            "scenes/b/iroha.lute",
+            Some("run.inflow == 'iroha'"),
+            Some(5),
+            10,
+        )]; // overlaps [0,10) with [5,15)
         let s = sched_with(
-            vec![placement("a", "user", 0, Some(0), 10, true, va), placement("b", "user", 1, Some(5), 10, true, vb)],
+            vec![
+                placement("a", "user", 0, Some(0), 10, true, va),
+                placement("b", "user", 1, Some(5), 10, true, vb),
+            ],
             lanes_user_exclusive(),
         );
         let diags = route_space_check(&s, &inflow_enums());
@@ -1847,26 +2237,58 @@ mod tests {
 
     #[test]
     fn route_space_no_overlap_when_mutually_exclusive_routes() {
-        let va = vec![variant("scenes/a/iroha.lute", Some("run.inflow == 'iroha'"), Some(0), 10)];
-        let vb = vec![variant("scenes/b/reiha.lute", Some("run.inflow == 'reiha'"), Some(5), 10)]; // ticks overlap but never co-satisfiable
+        let va = vec![variant(
+            "scenes/a/iroha.lute",
+            Some("run.inflow == 'iroha'"),
+            Some(0),
+            10,
+        )];
+        let vb = vec![variant(
+            "scenes/b/reiha.lute",
+            Some("run.inflow == 'reiha'"),
+            Some(5),
+            10,
+        )]; // ticks overlap but never co-satisfiable
         let s = sched_with(
-            vec![placement("a", "user", 0, Some(0), 10, true, va), placement("b", "user", 1, Some(5), 10, true, vb)],
+            vec![
+                placement("a", "user", 0, Some(0), 10, true, va),
+                placement("b", "user", 1, Some(5), 10, true, vb),
+            ],
             lanes_user_exclusive(),
         );
         let diags = route_space_check(&s, &inflow_enums());
-        assert!(find_diag(&diags, E_SCHED_USER_OVERLAP).is_none(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_USER_OVERLAP).is_none(),
+            "{diags:?}"
+        );
     }
 
     #[test]
     fn route_space_no_overlap_on_non_exclusive_lane() {
-        let va = vec![variant("scenes/a/iroha.lute", Some("run.inflow == 'iroha'"), Some(0), 10)];
-        let vb = vec![variant("scenes/b/iroha.lute", Some("run.inflow == 'iroha'"), Some(5), 10)];
+        let va = vec![variant(
+            "scenes/a/iroha.lute",
+            Some("run.inflow == 'iroha'"),
+            Some(0),
+            10,
+        )];
+        let vb = vec![variant(
+            "scenes/b/iroha.lute",
+            Some("run.inflow == 'iroha'"),
+            Some(5),
+            10,
+        )];
         let s = sched_with(
-            vec![placement("a", "world", 0, Some(0), 10, true, va), placement("b", "world", 1, Some(5), 10, true, vb)],
+            vec![
+                placement("a", "world", 0, Some(0), 10, true, va),
+                placement("b", "world", 1, Some(5), 10, true, vb),
+            ],
             lanes_user_exclusive(),
         );
         let diags = route_space_check(&s, &inflow_enums());
-        assert!(find_diag(&diags, E_SCHED_USER_OVERLAP).is_none(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_USER_OVERLAP).is_none(),
+            "{diags:?}"
+        );
     }
 
     #[test]
@@ -1879,23 +2301,45 @@ mod tests {
             enums.insert(path.clone(), (0..10).map(|n| format!("v{n}")).collect());
         }
         // one guard referencing all 5 enum paths at once (AND-chain) so they're all "referenced"
-        let guard = (0..5).map(|i| format!("run.p{i} == 'v0'")).collect::<Vec<_>>().join(" && ");
+        let guard = (0..5)
+            .map(|i| format!("run.p{i} == 'v0'"))
+            .collect::<Vec<_>>()
+            .join(" && ");
         variants.push(variant("scenes/a/x.lute", Some(&guard), Some(0), 4));
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants)], lanes_user_exclusive());
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 4, false, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = route_space_check(&s, &enums);
-        assert!(find_diag(&diags, W_SCHED_ROUTESPACE_CAP).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, W_SCHED_ROUTESPACE_CAP).is_some(),
+            "{diags:?}"
+        );
         // capped sweep must not ALSO claim a GAP/AMBIG verdict it never checked
         assert!(find_diag(&diags, E_SCHED_VARIANT_GAP).is_none());
     }
 
     #[test]
     fn route_space_guard_parse_error_reported_and_treated_unknown() {
-        let variants = vec![variant("scenes/a/x.lute", Some("run.inflow =="), Some(0), 4)];
-        let s = sched_with(vec![placement("a", "user", 0, Some(0), 4, true, variants)], lanes_user_exclusive());
+        let variants = vec![variant(
+            "scenes/a/x.lute",
+            Some("run.inflow =="),
+            Some(0),
+            4,
+        )];
+        let s = sched_with(
+            vec![placement("a", "user", 0, Some(0), 4, true, variants)],
+            lanes_user_exclusive(),
+        );
         let diags = route_space_check(&s, &inflow_enums());
-        assert!(find_diag(&diags, E_SCHED_GUARD_PARSE).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_GUARD_PARSE).is_some(),
+            "{diags:?}"
+        );
         // optional placement, so an unknown-only variant must not ALSO fire a hard GAP
-        assert!(diags.iter().all(|d| !(d.code == E_SCHED_VARIANT_GAP && d.severity == Severity::Error)));
+        assert!(diags
+            .iter()
+            .all(|d| !(d.code == E_SCHED_VARIANT_GAP && d.severity == Severity::Error)));
     }
 
     // -- assume: (route-space assumptions) ------------------------------------
@@ -1916,10 +2360,31 @@ mod tests {
             vec!["none".to_string(), "iroha".to_string(), "reiha".to_string()],
         );
         let variants = vec![
-            variant("scenes/a/iroha.lute", Some("run.inflow == 'iroha'"), Some(0), 4),
-            variant("scenes/a/reiha.lute", Some("run.inflow == 'reiha'"), Some(0), 4),
+            variant(
+                "scenes/a/iroha.lute",
+                Some("run.inflow == 'iroha'"),
+                Some(0),
+                4,
+            ),
+            variant(
+                "scenes/a/reiha.lute",
+                Some("run.inflow == 'reiha'"),
+                Some(0),
+                4,
+            ),
         ];
-        let bare = sched_with(vec![placement("a", "user", 0, Some(0), 4, false, variants.clone())], lanes_user_exclusive());
+        let bare = sched_with(
+            vec![placement(
+                "a",
+                "user",
+                0,
+                Some(0),
+                4,
+                false,
+                variants.clone(),
+            )],
+            lanes_user_exclusive(),
+        );
         assert!(find_diag(&route_space_check(&bare, &enums), E_SCHED_VARIANT_GAP).is_some());
 
         let assumed = sched_with_assume(
@@ -1927,7 +2392,10 @@ mod tests {
             vec!["run.inflow != 'none'"],
         );
         let diags = route_space_check(&assumed, &enums);
-        assert!(find_diag(&diags, E_SCHED_VARIANT_GAP).is_none(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_VARIANT_GAP).is_none(),
+            "{diags:?}"
+        );
     }
 
     #[test]
@@ -1938,7 +2406,12 @@ mod tests {
             "run.inflow".to_string(),
             vec!["none".to_string(), "iroha".to_string(), "reiha".to_string()],
         );
-        let variants = vec![variant("scenes/a/iroha.lute", Some("run.inflow == 'iroha'"), Some(0), 4)];
+        let variants = vec![variant(
+            "scenes/a/iroha.lute",
+            Some("run.inflow == 'iroha'"),
+            Some(0),
+            4,
+        )];
         let s = sched_with_assume(
             vec![placement("a", "user", 0, Some(0), 4, false, variants)],
             vec!["run.inflow != 'none'"],
@@ -1950,15 +2423,26 @@ mod tests {
 
     #[test]
     fn assume_malformed_cel_reported_and_ignored() {
-        let variants = vec![variant("scenes/a/iroha.lute", Some("run.inflow == 'iroha'"), Some(0), 4)];
+        let variants = vec![variant(
+            "scenes/a/iroha.lute",
+            Some("run.inflow == 'iroha'"),
+            Some(0),
+            4,
+        )];
         let s = sched_with_assume(
             vec![placement("a", "user", 0, Some(0), 4, false, variants)],
             vec!["run.inflow !="],
         );
         let diags = route_space_check(&s, &inflow_enums());
-        assert!(find_diag(&diags, E_SCHED_GUARD_PARSE).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_GUARD_PARSE).is_some(),
+            "{diags:?}"
+        );
         // a broken assumption must not prune anything: reiha's gap still fires.
-        assert!(find_diag(&diags, E_SCHED_VARIANT_GAP).is_some(), "{diags:?}");
+        assert!(
+            find_diag(&diags, E_SCHED_VARIANT_GAP).is_some(),
+            "{diags:?}"
+        );
     }
 
     // -- lanes.<name>.idleThreshold -------------------------------------------
@@ -1972,21 +2456,44 @@ mod tests {
             placement("b", "user", 1, Some(50), 4, false, vb),
         ];
         let mut off = BTreeMap::new();
-        off.insert("user".to_string(), LaneCfg { exclusive: true, idle_threshold: 0 });
+        off.insert(
+            "user".to_string(),
+            LaneCfg {
+                exclusive: true,
+                idle_threshold: 0,
+            },
+        );
         let s = sched_with(placements.clone(), off);
         assert!(find_diag(&static_check(&s, &[], Path::new(".")), W_SCHED_IDLE).is_none());
 
         let mut wide = BTreeMap::new();
-        wide.insert("user".to_string(), LaneCfg { exclusive: true, idle_threshold: 100 });
+        wide.insert(
+            "user".to_string(),
+            LaneCfg {
+                exclusive: true,
+                idle_threshold: 100,
+            },
+        );
         let s = sched_with(placements.clone(), wide);
         assert!(find_diag(&static_check(&s, &[], Path::new(".")), W_SCHED_IDLE).is_none());
 
         let mut tight = BTreeMap::new();
-        tight.insert("user".to_string(), LaneCfg { exclusive: true, idle_threshold: 10 });
+        tight.insert(
+            "user".to_string(),
+            LaneCfg {
+                exclusive: true,
+                idle_threshold: 10,
+            },
+        );
         let s = sched_with(placements, tight);
         let diags = static_check(&s, &[], Path::new("."));
         assert!(find_diag(&diags, W_SCHED_IDLE).is_some(), "{diags:?}");
-        assert!(diags.iter().any(|d| d.code == W_SCHED_IDLE && d.message.contains("10-tick")), "{diags:?}");
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code == W_SCHED_IDLE && d.message.contains("10-tick")),
+            "{diags:?}"
+        );
     }
 
     #[test]

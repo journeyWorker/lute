@@ -20,7 +20,10 @@ fn temp_dir(tag: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU32, Ordering};
     static N: AtomicU32 = AtomicU32::new(0);
     let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-test-project-{tag}-{}-{n}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "lute-test-project-{tag}-{}-{n}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -51,7 +54,11 @@ fn write_manifest_dependent_project(dir: &std::path::Path) {
          defaults:\n\
          \x20\x20uses: [world.schema.yaml]\n",
     );
-    write_at(dir, "world.schema.yaml", "state:\n  run.mood: { type: string, default: neutral }\n");
+    write_at(
+        dir,
+        "world.schema.yaml",
+        "state:\n  run.mood: { type: string, default: neutral }\n",
+    );
     write_at(
         dir,
         "plugins/demo.plugin/plugin.yaml",
@@ -87,7 +94,12 @@ fn test_yaml_needing_manifest_passes_under_project() {
     write_manifest_dependent_project(&dir);
 
     let out = Command::new(BIN)
-        .args(["test", dir.join("tests").to_str().unwrap(), "--project", dir.to_str().unwrap()])
+        .args([
+            "test",
+            dir.join("tests").to_str().unwrap(),
+            "--project",
+            dir.to_str().unwrap(),
+        ])
         .output()
         .expect("run lute");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -151,7 +163,12 @@ fn explicit_providers_flag_wins_over_the_projects_pinned_catalog() {
     let empty_providers = temp_dir("providers-precedence-empty");
 
     let auto = Command::new(BIN)
-        .args(["test", dir.join("tests").to_str().unwrap(), "--project", idola.to_str().unwrap()])
+        .args([
+            "test",
+            dir.join("tests").to_str().unwrap(),
+            "--project",
+            idola.to_str().unwrap(),
+        ])
         .output()
         .expect("run lute");
     let auto_text = String::from_utf8_lossy(&auto.stdout).to_string();
@@ -205,10 +222,19 @@ fn project_resolution_error_gates_the_exit_code() {
         "scene.lute",
         "---\nkind: scene\ncharacter: narrator\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n@narrator: hi\n",
     );
-    write_at(&dir, "tests/t.test.yaml", "file: ../scene.lute\nexpect:\n  exit: complete\n");
+    write_at(
+        &dir,
+        "tests/t.test.yaml",
+        "file: ../scene.lute\nexpect:\n  exit: complete\n",
+    );
 
     let out = Command::new(BIN)
-        .args(["test", dir.join("tests").to_str().unwrap(), "--project", dir.to_str().unwrap()])
+        .args([
+            "test",
+            dir.join("tests").to_str().unwrap(),
+            "--project",
+            dir.to_str().unwrap(),
+        ])
         .output()
         .expect("run lute");
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();

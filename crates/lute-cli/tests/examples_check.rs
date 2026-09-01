@@ -26,7 +26,11 @@ fn extends_demo_scene_checks_clean_under_project() {
         "--project",
         "../../docs/examples",
     ]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
 }
 
 #[test]
@@ -64,7 +68,11 @@ fn showcase_episode_checks_clean_with_yaml_schema_chain() {
         "--project",
         "../../docs/examples/showcase",
     ]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
 }
 
 #[test]
@@ -78,7 +86,11 @@ fn rescue_halsin_quest_checks_clean_under_project() {
         "--project",
         "../../docs/examples",
     ]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
 }
 
 #[test]
@@ -94,13 +106,21 @@ fn affinity_reaction_pair_checks_clean_under_project() {
         "--project",
         "../../docs/examples",
     ]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let out = check(&[
         "../../docs/examples/components/reaction.component.lute",
         "--project",
         "../../docs/examples",
     ]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
 }
 
 #[test]
@@ -113,7 +133,11 @@ fn gated_line_checks_clean_under_project() {
         "--project",
         "../../docs/examples",
     ]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -145,7 +169,10 @@ fn all_codes(v: &serde_json::Value) -> Vec<String> {
             codes.push(d["code"].as_str().unwrap_or_default().to_string());
         }
     }
-    for d in v["project_diagnostics"].as_array().expect("project_diagnostics array") {
+    for d in v["project_diagnostics"]
+        .as_array()
+        .expect("project_diagnostics array")
+    {
         codes.push(d["code"].as_str().unwrap_or_default().to_string());
     }
     codes
@@ -295,9 +322,8 @@ fn envelope_never_newly_errors_a_clean_standalone_scene() {
         let proj_out = check_project(&[project.to_str().unwrap(), "--json"]);
         let pv: serde_json::Value = serde_json::from_slice(&proj_out.stdout)
             .unwrap_or_else(|e| panic!("{rel}: invalid JSON from `check-project`: {e}"));
-        let path_ends_with_rel = |v: &serde_json::Value| {
-            v["path"].as_str().is_some_and(|p| p.ends_with(rel))
-        };
+        let path_ends_with_rel =
+            |v: &serde_json::Value| v["path"].as_str().is_some_and(|p| p.ends_with(rel));
         // The envelope diagnostic (`E-STATE-MAYBE-UNAVAILABLE`, error grade)
         // lands in `project_diagnostics` (`main.rs`'s T11 wiring pushes it
         // there via `check_envelope`, NOT into a per-file `diagnostics`

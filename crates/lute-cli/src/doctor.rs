@@ -378,7 +378,10 @@ fn print_json(dir: &Path, checks: &[Check]) {
     let mut map = serde_json::Map::new();
     for c in checks {
         let mut obj = serde_json::Map::new();
-        obj.insert("label".to_string(), serde_json::Value::from(c.label.clone()));
+        obj.insert(
+            "label".to_string(),
+            serde_json::Value::from(c.label.clone()),
+        );
         obj.insert(
             "ok".to_string(),
             match c.ok {

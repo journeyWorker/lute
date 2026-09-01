@@ -37,7 +37,11 @@ fn date_minigame_is_clean_with_plugin_project() {
 fn date_minigame_core_only_still_errors() {
     // REGRESSION GUARD: without --project, the existing core-only contract holds.
     let out = Command::new(lute_bin())
-        .args(["check", "../../docs/examples/idola-project/date-minigame.lute", "--json"])
+        .args([
+            "check",
+            "../../docs/examples/idola-project/date-minigame.lute",
+            "--json",
+        ])
         .output()
         .expect("run lute");
     assert_eq!(out.status.code(), Some(1), "core-only still exits 1");

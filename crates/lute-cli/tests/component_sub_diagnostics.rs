@@ -5,7 +5,7 @@
 //! an "(N issue(s))" count), spans relative to the component file. Mirrors
 //! the temp-dir harness in `uses_import.rs`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
@@ -31,7 +31,7 @@ fn scene_importing_broken_component() -> &'static str {
      ## Shot 1.\n@x: hi\n"
 }
 
-fn write_fixture(dir: &PathBuf) -> PathBuf {
+fn write_fixture(dir: &Path) -> PathBuf {
     std::fs::write(dir.join("component.lute"), COMPONENT).unwrap();
     let scene = dir.join("scene.lute");
     std::fs::write(&scene, scene_importing_broken_component()).unwrap();
@@ -82,20 +82,31 @@ fn json_output_carries_structured_component_sub_diagnostics() {
     let diags = v["diagnostics"].as_array().expect("diagnostics array");
     let parse_diag = diags
         .iter()
-        .find(|d| d["code"] == "E-COMPONENT-PARSE" && d["message"].as_str().unwrap_or("").contains("issue"))
-        .unwrap_or_else(|| panic!("expected an E-COMPONENT-PARSE parse-error diagnostic; got {diags:#?}"));
+        .find(|d| {
+            d["code"] == "E-COMPONENT-PARSE"
+                && d["message"].as_str().unwrap_or("").contains("issue")
+        })
+        .unwrap_or_else(|| {
+            panic!("expected an E-COMPONENT-PARSE parse-error diagnostic; got {diags:#?}")
+        });
     let related = parse_diag["related"]
         .as_array()
         .filter(|r| !r.is_empty())
         .unwrap_or_else(|| panic!("E-COMPONENT-PARSE must carry structured `related` sub-diagnostics; got {parse_diag:#?}"));
     let child = &related[0];
     assert!(
-        child["file"].as_str().unwrap_or("").contains("component.lute"),
+        child["file"]
+            .as_str()
+            .unwrap_or("")
+            .contains("component.lute"),
         "related entry must name the component file; got {child:#?}"
     );
     let cd = &child["diagnostic"];
     assert_eq!(cd["code"], "E-UNCLASSIFIED");
-    assert!(cd["message"].as_str().unwrap_or("").contains("unrecognized line"));
+    assert!(cd["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("unrecognized line"));
     // The span is relative to the COMPONENT file, not the importing scene.
     assert!(cd["span"]["line"].is_number(), "got {cd:#?}");
     assert!(cd["span"]["column"].is_number(), "got {cd:#?}");
@@ -113,7 +124,7 @@ fn json_output_carries_structured_component_sub_diagnostics() {
 const COMPONENT_WITH_TWO_ISSUES: &str = "---\ncomponent: greet\n---\n\
      garbage line before any heading\n## Shot 2.\n@x{when=\"run.flag\"}: hi\n";
 
-fn write_two_issue_fixture(dir: &PathBuf) -> PathBuf {
+fn write_two_issue_fixture(dir: &Path) -> PathBuf {
     std::fs::write(dir.join("component.lute"), COMPONENT_WITH_TWO_ISSUES).unwrap();
     let scene = dir.join("scene.lute");
     std::fs::write(&scene, scene_importing_broken_component()).unwrap();
@@ -142,8 +153,13 @@ fn issue_count_includes_a_reclassified_component_state_child() {
 
     let parse_diag = diags
         .iter()
-        .find(|d| d["code"] == "E-COMPONENT-PARSE" && d["message"].as_str().unwrap_or("").contains("issue"))
-        .unwrap_or_else(|| panic!("expected an E-COMPONENT-PARSE parse-error diagnostic; got {diags:#?}"));
+        .find(|d| {
+            d["code"] == "E-COMPONENT-PARSE"
+                && d["message"].as_str().unwrap_or("").contains("issue")
+        })
+        .unwrap_or_else(|| {
+            panic!("expected an E-COMPONENT-PARSE parse-error diagnostic; got {diags:#?}")
+        });
     let related = parse_diag["related"].as_array().expect("related array");
     assert_eq!(
         related.len(),
@@ -151,11 +167,15 @@ fn issue_count_includes_a_reclassified_component_state_child() {
         "both the parse child AND the reclassified body child must be surfaced: {parse_diag:#?}"
     );
     assert!(
-        related.iter().any(|r| r["diagnostic"]["code"] == "E-UNCLASSIFIED"),
+        related
+            .iter()
+            .any(|r| r["diagnostic"]["code"] == "E-UNCLASSIFIED"),
         "{related:#?}"
     );
     assert!(
-        related.iter().any(|r| r["diagnostic"]["code"] == "E-COMPONENT-STATE"),
+        related
+            .iter()
+            .any(|r| r["diagnostic"]["code"] == "E-COMPONENT-STATE"),
         "{related:#?}"
     );
     assert!(

@@ -19,7 +19,8 @@ fn temp_dir(tag: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU32, Ordering};
     static N: AtomicU32 = AtomicU32::new(0);
     let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-compile-all-{tag}-{}-{n}", std::process::id()));
+    let dir =
+        std::env::temp_dir().join(format!("lute-compile-all-{tag}-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -146,16 +147,21 @@ fn all_writes_every_artifact_and_a_unioned_index() {
     // Per-document artifacts, at `<outdir>/<path relative to project>.json`,
     // with nested directories created.
     assert!(out.join("a.lute.json").is_file(), "scene artifact");
-    assert!(out.join("quests/q.lute.json").is_file(), "nested quest artifact");
+    assert!(
+        out.join("quests/q.lute.json").is_file(),
+        "nested quest artifact"
+    );
     assert!(
         !out.join("parts/greet.component.lute.json").exists(),
         "a component fragment is not an addressable document"
     );
 
     let index = read_json(&out.join("project.index.json"));
-    assert_eq!(index["irVersion"], "0.14.0");
+    assert_eq!(index["irVersion"], "0.15.0");
     assert!(
-        index["capabilityVersion"].as_str().is_some_and(|s| !s.is_empty()),
+        index["capabilityVersion"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
         "the index carries the project's one resolved snapshot stamp"
     );
 
@@ -171,12 +177,19 @@ fn all_writes_every_artifact_and_a_unioned_index() {
     assert_eq!(docs[1]["key"], "findKai", "the quest's declared id");
     for d in docs {
         let p = d["path"].as_str().unwrap();
-        assert!(!p.starts_with('/') && !p.contains('\\'), "relative + forward-slashed: {p}");
+        assert!(
+            !p.starts_with('/') && !p.contains('\\'),
+            "relative + forward-slashed: {p}"
+        );
     }
 
     // The union: `npc`/`knows` are declared by BOTH documents identically and
     // appear once; `seen`/`anyone` only by the quest. Name-sorted.
-    assert_eq!(names(&index, "entities"), vec!["npc"], "shared entity kind dedupes");
+    assert_eq!(
+        names(&index, "entities"),
+        vec!["npc"],
+        "shared entity kind dedupes"
+    );
     assert_eq!(
         names(&index, "relations"),
         vec!["anyone", "knows", "seen"],
@@ -218,7 +231,10 @@ fn all_is_byte_deterministic_across_runs() {
         ));
     }
     assert_eq!(rendered[0].0, rendered[1].0, "index must be byte-stable");
-    assert_eq!(rendered[0].1, rendered[1].1, "artifacts must be byte-stable");
+    assert_eq!(
+        rendered[0].1, rendered[1].1,
+        "artifacts must be byte-stable"
+    );
 }
 
 #[test]
@@ -247,7 +263,10 @@ fn all_with_a_failing_document_exits_one_and_writes_nothing() {
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr)
     );
-    assert!(combined.contains("E-UNDECLARED"), "the diagnostic is printed: {combined}");
+    assert!(
+        combined.contains("E-UNDECLARED"),
+        "the diagnostic is printed: {combined}"
+    );
     assert!(combined.contains("no output written"), "got: {combined}");
     let written: Vec<_> = std::fs::read_dir(&out).unwrap().flatten().collect();
     assert!(
@@ -264,7 +283,10 @@ fn all_without_project_is_a_usage_error() {
     assert_eq!(result.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(stderr.contains("--all requires --project"), "got: {stderr}");
-    assert!(stderr.contains("Usage: lute compile --all"), "got: {stderr}");
+    assert!(
+        stderr.contains("Usage: lute compile --all"),
+        "got: {stderr}"
+    );
 }
 
 #[test]
@@ -309,7 +331,10 @@ fn a_conflicting_cross_document_signature_exits_one_and_writes_nothing() {
         "b.lute",
         &SCENE
             .replace("character: bianca", "character: kai")
-            .replace("knows: { args: [npc], tier: run }", "knows: { args: [npc, npc], tier: run }")
+            .replace(
+                "knows: { args: [npc], tier: run }",
+                "knows: { args: [npc, npc], tier: run }",
+            )
             .replace("\"knows(kai)\"", "\"knows(kai, mira)\""),
     );
     let out = temp_dir("conflict-out");
@@ -327,7 +352,10 @@ fn a_conflicting_cross_document_signature_exits_one_and_writes_nothing() {
         stderr.contains("relation `knows` is declared with conflicting signatures"),
         "got: {stderr}"
     );
-    assert!(stderr.contains("a.lute") && stderr.contains("b.lute"), "both sides named: {stderr}");
+    assert!(
+        stderr.contains("a.lute") && stderr.contains("b.lute"),
+        "both sides named: {stderr}"
+    );
     assert!(
         std::fs::read_dir(&out).unwrap().next().is_none(),
         "a conflict writes nothing"
@@ -357,7 +385,9 @@ fn compile_all_warns_only_for_a_nested_manifest_that_would_have_mattered() {
     )
     .unwrap();
     let scene = |c: &str| {
-        format!("---\nkind: scene\ncharacter: {c}\nseason: 1\nepisode: 1\n---\n\n## S\n\n@{c}: hi\n")
+        format!(
+            "---\nkind: scene\ncharacter: {c}\nseason: 1\nepisode: 1\n---\n\n## S\n\n@{c}: hi\n"
+        )
     };
     std::fs::write(dir.join("scenes/a.lute"), scene("a")).unwrap();
     std::fs::write(dir.join("same/scenes/b.lute"), scene("b")).unwrap();
@@ -379,7 +409,11 @@ fn compile_all_warns_only_for_a_nested_manifest_that_would_have_mattered() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(out.status.code(), Some(0), "a warning must not fail the build:\n{text}");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a warning must not fail the build:\n{text}"
+    );
     assert!(
         text.contains("W-PROJECT-INERT") && text.contains("differs/lute.project.yaml"),
         "the manifest that would have resolved differently must warn, by path:\n{text}"
@@ -410,7 +444,9 @@ fn check_project_never_reports_project_inert() {
     )
     .unwrap();
     let scene = |c: &str| {
-        format!("---\nkind: scene\ncharacter: {c}\nseason: 1\nepisode: 1\n---\n\n## S\n\n@{c}: hi\n")
+        format!(
+            "---\nkind: scene\ncharacter: {c}\nseason: 1\nepisode: 1\n---\n\n## S\n\n@{c}: hi\n"
+        )
     };
     std::fs::write(dir.join("scenes/a.lute"), scene("a")).unwrap();
     std::fs::write(dir.join("differs/scenes/c.lute"), scene("c")).unwrap();
@@ -425,7 +461,10 @@ fn check_project_never_reports_project_inert() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert_eq!(out.status.code(), Some(0), "{text}");
-    assert!(!text.contains("W-PROJECT-INERT"), "the nearest manifest governs:\n{text}");
+    assert!(
+        !text.contains("W-PROJECT-INERT"),
+        "the nearest manifest governs:\n{text}"
+    );
 }
 
 /// T1.10's headline sentence with a third cause, found while re-investigating

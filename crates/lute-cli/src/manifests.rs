@@ -83,9 +83,19 @@ impl ManifestVerdict {
 pub fn as_diagnostic(code: &str, message: String) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
-        severity: if code.starts_with("E-") { Severity::Error } else { Severity::Warning },
+        severity: if code.starts_with("E-") {
+            Severity::Error
+        } else {
+            Severity::Warning
+        },
         message,
-        span: Span { byte_start: 0, byte_end: 0, line: 0, column: 0, utf16_range: (0, 0) },
+        span: Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 0,
+            column: 0,
+            utf16_range: (0, 0),
+        },
         layer: Layer::Logic,
         fixits: Vec::new(),
         provenance: None,
@@ -113,7 +123,13 @@ pub fn validate_manifests_under(dir: &Path) -> std::io::Result<Vec<ManifestVerdi
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        out.push(ManifestVerdict { path, dir: root, config, load_error, diags });
+        out.push(ManifestVerdict {
+            path,
+            dir: root,
+            config,
+            load_error,
+            diags,
+        });
     }
     Ok(out)
 }
@@ -124,9 +140,18 @@ pub fn validate_manifests_under(dir: &Path) -> std::io::Result<Vec<ManifestVerdi
 /// that does not exist, which is the exact defect §8 opens with
 /// (`scenes/wake.lute:0:0`).
 pub fn spanless_line(path: &Path, d: &Diagnostic, denied: bool) -> String {
-    let severity = if denied || d.severity == Severity::Error { "error" } else { "warning" };
+    let severity = if denied || d.severity == Severity::Error {
+        "error"
+    } else {
+        "warning"
+    };
     let marker = if denied { " [denied]" } else { "" };
-    format!("{}: {severity} [{}]{marker} {}", path.display(), d.code, d.message)
+    format!(
+        "{}: {severity} [{}]{marker} {}",
+        path.display(),
+        d.code,
+        d.message
+    )
 }
 
 /// Print every verdict's diagnostics and return `true` when the tree holds an

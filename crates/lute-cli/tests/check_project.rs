@@ -111,7 +111,9 @@ fn check_project_json_reports_ok_false_and_project_diagnostic_for_cross_file_dup
             "per-file result must not carry E-QUEST-ID-DUP: {v}"
         );
     }
-    let project_diags = v["project_diagnostics"].as_array().expect("project_diagnostics array");
+    let project_diags = v["project_diagnostics"]
+        .as_array()
+        .expect("project_diagnostics array");
     assert_eq!(project_diags.len(), 1, "{v}");
     assert_eq!(project_diags[0]["code"], "E-QUEST-ID-DUP");
     assert!(
@@ -141,7 +143,10 @@ fn check_project_clean_project_with_distinct_quest_ids_exits_zero() {
     let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
     assert_eq!(v["files"].as_array().unwrap().len(), 2, "{v}");
-    assert!(v["project_diagnostics"].as_array().unwrap().is_empty(), "{v}");
+    assert!(
+        v["project_diagnostics"].as_array().unwrap().is_empty(),
+        "{v}"
+    );
 }
 
 // --- an unrelated per-file error still surfaces + fails the run ------------
@@ -431,7 +436,11 @@ fn scene_matching_quest_objective_done(quest_id: &str, objective_id: &str) -> St
 #[test]
 fn check_project_quest_ref_to_a_defined_quest_state_emits_no_warning() {
     let dir = temp_dir("quest-ref-known-state");
-    write(&dir, "heist.lute", &quest_doc_with("heist", "steal", "run.steal"));
+    write(
+        &dir,
+        "heist.lute",
+        &quest_doc_with("heist", "steal", "run.steal"),
+    );
     write(&dir, "scene.lute", &scene_matching_quest_state("heist"));
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
@@ -443,9 +452,13 @@ fn check_project_quest_ref_to_a_defined_quest_state_emits_no_warning() {
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
-    let project_diags = v["project_diagnostics"].as_array().expect("project_diagnostics array");
+    let project_diags = v["project_diagnostics"]
+        .as_array()
+        .expect("project_diagnostics array");
     assert!(
-        !project_diags.iter().any(|d| d["code"] == "W-QUEST-REF-UNKNOWN"),
+        !project_diags
+            .iter()
+            .any(|d| d["code"] == "W-QUEST-REF-UNKNOWN"),
         "a reference to a quest the project actually defines must not warn: {v}"
     );
 }
@@ -454,7 +467,11 @@ fn check_project_quest_ref_to_a_defined_quest_state_emits_no_warning() {
 fn check_project_flags_mistyped_quest_id_reference() {
     // Project defines `heist`; the scene reads `quest.heits.state` (typo).
     let dir = temp_dir("quest-ref-typo");
-    write(&dir, "heist.lute", &quest_doc_with("heist", "steal", "run.steal"));
+    write(
+        &dir,
+        "heist.lute",
+        &quest_doc_with("heist", "steal", "run.steal"),
+    );
     write(&dir, "scene.lute", &scene_matching_quest_state("heits"));
 
     let out = run(&["check-project", dir.to_str().unwrap()]);
@@ -466,18 +483,28 @@ fn check_project_flags_mistyped_quest_id_reference() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("W-QUEST-REF-UNKNOWN"), "{stdout}");
-    assert!(stdout.contains("scene.lute"), "must name the referencing doc: {stdout}");
-    assert!(stdout.contains("quest.heits.state"), "must name the path: {stdout}");
+    assert!(
+        stdout.contains("scene.lute"),
+        "must name the referencing doc: {stdout}"
+    );
+    assert!(
+        stdout.contains("quest.heits.state"),
+        "must name the path: {stdout}"
+    );
 
     let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
-    let project_diags = v["project_diagnostics"].as_array().expect("project_diagnostics array");
+    let project_diags = v["project_diagnostics"]
+        .as_array()
+        .expect("project_diagnostics array");
     assert_eq!(project_diags.len(), 1, "{v}");
     assert_eq!(project_diags[0]["code"], "W-QUEST-REF-UNKNOWN");
     assert_eq!(project_diags[0]["severity"], "warning");
     assert!(
-        project_diags[0]["path"].as_str().is_some_and(|p| p.ends_with("scene.lute")),
+        project_diags[0]["path"]
+            .as_str()
+            .is_some_and(|p| p.ends_with("scene.lute")),
         "anchored in the referencing scene: {v}"
     );
 }
@@ -488,13 +515,28 @@ fn check_project_flags_reference_to_an_undefined_objective_under_a_defined_quest
     // `quest.heist.objectives.bogus.done` -- the quest exists, but that
     // objective does not.
     let dir = temp_dir("quest-ref-bad-objective");
-    write(&dir, "heist.lute", &quest_doc_with("heist", "steal", "run.steal"));
-    write(&dir, "scene.lute", &scene_matching_quest_objective_done("heist", "bogus"));
+    write(
+        &dir,
+        "heist.lute",
+        &quest_doc_with("heist", "steal", "run.steal"),
+    );
+    write(
+        &dir,
+        "scene.lute",
+        &scene_matching_quest_objective_done("heist", "bogus"),
+    );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let project_diags = v["project_diagnostics"].as_array().expect("project_diagnostics array");
+    let project_diags = v["project_diagnostics"]
+        .as_array()
+        .expect("project_diagnostics array");
     assert_eq!(project_diags.len(), 1, "{v}");
     assert_eq!(project_diags[0]["code"], "W-QUEST-REF-UNKNOWN");
     assert!(
@@ -534,8 +576,16 @@ fn check_project_clean_project_still_exits_zero_with_quest_refs_present() {
     // that legitimately reads BOTH reserved shapes on it stays exit 0 with
     // an empty project_diagnostics list.
     let dir = temp_dir("quest-ref-clean");
-    write(&dir, "heist.lute", &quest_doc_with("heist", "steal", "run.steal"));
-    write(&dir, "state-scene.lute", &scene_matching_quest_state("heist"));
+    write(
+        &dir,
+        "heist.lute",
+        &quest_doc_with("heist", "steal", "run.steal"),
+    );
+    write(
+        &dir,
+        "state-scene.lute",
+        &scene_matching_quest_state("heist"),
+    );
     write(
         &dir,
         "objective-scene.lute",
@@ -543,10 +593,18 @@ fn check_project_clean_project_still_exits_zero_with_quest_refs_present() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
-    assert!(v["project_diagnostics"].as_array().unwrap().is_empty(), "{v}");
+    assert!(
+        v["project_diagnostics"].as_array().unwrap().is_empty(),
+        "{v}"
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -582,7 +640,11 @@ fn envelope_guaranteed_read_drops_the_reconciled_maybe_unset_and_exits_zero() {
     let dir = temp_dir("envelope-guaranteed");
     let y = "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
     write(&dir, "y.lute", y);
-    write(&dir, "x.lute", &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"));
+    write(
+        &dir,
+        "x.lute",
+        &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"),
+    );
 
     let out_x = run(&["check", dir.join("x.lute").to_str().unwrap()]);
     assert!(
@@ -592,17 +654,27 @@ fn envelope_guaranteed_read_drops_the_reconciled_maybe_unset_and_exits_zero() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
-    assert!(v["project_diagnostics"].as_array().unwrap().is_empty(), "{v}");
+    assert!(
+        v["project_diagnostics"].as_array().unwrap().is_empty(),
+        "{v}"
+    );
     for f in v["files"].as_array().unwrap() {
         let diags = f["diagnostics"].as_array().unwrap();
         assert!(
             !diags.iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
             "the reconciled read must not keep its per-file E-MAYBE-UNSET: {v}"
         );
-        assert!(diags.iter().all(|d| d["code"] != "E-STATE-MAYBE-UNAVAILABLE"));
+        assert!(diags
+            .iter()
+            .all(|d| d["code"] != "E-STATE-MAYBE-UNAVAILABLE"));
     }
 }
 
@@ -616,20 +688,32 @@ fn envelope_possible_not_guaranteed_read_is_fully_suppressed_by_default() {
     // output -- and no `envelope_warnings` key at all (T14 territory).
     let dir = temp_dir("envelope-possible-not-guaranteed");
     let a = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: number }\n---\n## Shot 1.\n::set{run.z = 1}\n";
-    let b = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let b =
+        "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
     write(&dir, "a.lute", a);
     write(&dir, "b.lute", b);
     write(
         &dir,
         "x.lute",
-        &scene_reading_run_z("x", "after: 'visited(\"a.s01ep01\") || visited(\"b.s01ep01\")'\n"),
+        &scene_reading_run_z(
+            "x",
+            "after: 'visited(\"a.s01ep01\") || visited(\"b.s01ep01\")'\n",
+        ),
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
-    assert!(v["project_diagnostics"].as_array().unwrap().is_empty(), "{v}");
+    assert!(
+        v["project_diagnostics"].as_array().unwrap().is_empty(),
+        "{v}"
+    );
     assert!(
         v.get("envelope_warnings").is_none(),
         "the warning grade must not be surfaced anywhere in default check-project output: {v}"
@@ -637,7 +721,9 @@ fn envelope_possible_not_guaranteed_read_is_fully_suppressed_by_default() {
     for f in v["files"].as_array().unwrap() {
         let diags = f["diagnostics"].as_array().unwrap();
         assert!(
-            diags.iter().all(|d| d["code"] != "E-MAYBE-UNSET" && d["code"] != "E-STATE-MAYBE-UNAVAILABLE"),
+            diags
+                .iter()
+                .all(|d| d["code"] != "E-MAYBE-UNSET" && d["code"] != "E-STATE-MAYBE-UNAVAILABLE"),
             "no diagnostic at all for a Possible-but-not-Guaranteed read by default: {v}"
         );
     }
@@ -657,12 +743,22 @@ fn envelope_never_possible_read_replaces_maybe_unset_with_state_unavailable_erro
     // both at once), and the wording must carry the declared-routes
     // qualifier verbatim.
     let dir = temp_dir("envelope-never-possible");
-    let y = "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
+    let y =
+        "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
     write(&dir, "y.lute", y);
-    write(&dir, "x.lute", &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"));
+    write(
+        &dir,
+        "x.lute",
+        &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"),
+    );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false, "{v}");
     let project_diags = v["project_diagnostics"].as_array().unwrap();
@@ -699,7 +795,12 @@ fn envelope_tainted_node_leaves_maybe_unset_untouched() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(
         !v["project_diagnostics"]
@@ -710,9 +811,16 @@ fn envelope_tainted_node_leaves_maybe_unset_untouched() {
         "a tainted node's Env is untrustworthy -- must never seed E-STATE-MAYBE-UNAVAILABLE: {v}"
     );
     let files = v["files"].as_array().unwrap();
-    let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
+    let x = files
+        .iter()
+        .find(|f| f["path"].as_str().unwrap().ends_with("x.lute"))
+        .unwrap();
     assert!(
-        x["diagnostics"].as_array().unwrap().iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+        x["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-MAYBE-UNSET"),
         "a tainted node's per-file E-MAYBE-UNSET must be left untouched: {v}"
     );
 }
@@ -742,7 +850,11 @@ fn envelope_reconciliation_is_per_node_across_a_cycle() {
     write(&dir, "p.lute", p);
     write(&dir, "q.lute", q);
     write(&dir, "x.lute", &scene_reading_run_z("x", ""));
-    write(&dir, "d.lute", &scene_reading_run_z("d", "after: 'visited(\"p.s01ep01\")'\n"));
+    write(
+        &dir,
+        "d.lute",
+        &scene_reading_run_z("d", "after: 'visited(\"p.s01ep01\")'\n"),
+    );
 
     // Red proof: both cycle-independent `x` and downstream `d` flag
     // E-MAYBE-UNSET standalone (neither can see the project).
@@ -756,7 +868,12 @@ fn envelope_reconciliation_is_per_node_across_a_cycle() {
     }
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let project_diags = v["project_diagnostics"].as_array().unwrap();
     assert!(
@@ -767,30 +884,48 @@ fn envelope_reconciliation_is_per_node_across_a_cycle() {
     // Cycle-INDEPENDENT `x`: reconciled -> per-file E-MAYBE-UNSET GONE, and an
     // error-grade E-STATE-MAYBE-UNAVAILABLE now stands in for it project-wide.
     assert!(
-        project_diags.iter().any(|d| d["code"] == "E-STATE-MAYBE-UNAVAILABLE"
-            && d["severity"] == "error"
-            && d["path"].as_str().is_some_and(|p| p.ends_with("x.lute"))),
+        project_diags
+            .iter()
+            .any(|d| d["code"] == "E-STATE-MAYBE-UNAVAILABLE"
+                && d["severity"] == "error"
+                && d["path"].as_str().is_some_and(|p| p.ends_with("x.lute"))),
         "cycle-independent x must earn its project-wide E-STATE-MAYBE-UNAVAILABLE error: {v}"
     );
     let files = v["files"].as_array().unwrap();
-    let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
+    let x = files
+        .iter()
+        .find(|f| f["path"].as_str().unwrap().ends_with("x.lute"))
+        .unwrap();
     assert!(
-        !x["diagnostics"].as_array().unwrap().iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+        !x["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-MAYBE-UNSET"),
         "cycle-independent x's per-file E-MAYBE-UNSET must be reconciled away, not kept alongside \
          its project envelope verdict: {v}"
     );
 
     // DOWNSTREAM-of-cycle `d`: genuinely absent from envs -> its E-MAYBE-UNSET
     // survives untouched, and it earns NO E-STATE-MAYBE-UNAVAILABLE.
-    let d = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("d.lute")).unwrap();
+    let d = files
+        .iter()
+        .find(|f| f["path"].as_str().unwrap().ends_with("d.lute"))
+        .unwrap();
     assert!(
-        d["diagnostics"].as_array().unwrap().iter().any(|dg| dg["code"] == "E-MAYBE-UNSET"),
+        d["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|dg| dg["code"] == "E-MAYBE-UNSET"),
         "downstream-of-cycle d's genuine E-MAYBE-UNSET must survive (no trustworthy envelope to \
          reclassify against): {v}"
     );
     assert!(
-        !project_diags.iter().any(|dg| dg["code"] == "E-STATE-MAYBE-UNAVAILABLE"
-            && dg["path"].as_str().is_some_and(|p| p.ends_with("d.lute"))),
+        !project_diags
+            .iter()
+            .any(|dg| dg["code"] == "E-STATE-MAYBE-UNAVAILABLE"
+                && dg["path"].as_str().is_some_and(|p| p.ends_with("d.lute"))),
         "downstream-of-cycle d must NOT earn a project envelope verdict: {v}"
     );
 }
@@ -810,7 +945,12 @@ fn envelope_out_of_scope_scene_maybe_unset_survives_check_project() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false, "{v}");
     assert!(
@@ -822,9 +962,16 @@ fn envelope_out_of_scope_scene_maybe_unset_survives_check_project() {
         "scene.* is never envelope-classified: {v}"
     );
     let files = v["files"].as_array().unwrap();
-    let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
+    let x = files
+        .iter()
+        .find(|f| f["path"].as_str().unwrap().ends_with("x.lute"))
+        .unwrap();
     assert!(
-        x["diagnostics"].as_array().unwrap().iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+        x["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-MAYBE-UNSET"),
         "an out-of-scope scene.* read's E-MAYBE-UNSET must survive reconciliation: {v}"
     );
 }
@@ -844,7 +991,12 @@ fn envelope_out_of_scope_quest_maybe_unset_survives_check_project() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(
         !v["project_diagnostics"]
@@ -855,9 +1007,16 @@ fn envelope_out_of_scope_quest_maybe_unset_survives_check_project() {
         "quest.* is never envelope-classified: {v}"
     );
     let files = v["files"].as_array().unwrap();
-    let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
+    let x = files
+        .iter()
+        .find(|f| f["path"].as_str().unwrap().ends_with("x.lute"))
+        .unwrap();
     assert!(
-        x["diagnostics"].as_array().unwrap().iter().any(|d| d["code"] == "E-MAYBE-UNSET"),
+        x["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-MAYBE-UNSET"),
         "an out-of-scope quest.* read's E-MAYBE-UNSET must survive reconciliation: {v}"
     );
 }
@@ -889,11 +1048,23 @@ fn envelope_mixed_slot_span_collision_only_reconciles_the_in_scope_path() {
         .iter()
         .filter(|d| d["code"] == "E-MAYBE-UNSET")
         .collect();
-    assert_eq!(unset.len(), 2, "expected both reads to flag standalone: {vx}");
-    assert_eq!(unset[0]["span"], unset[1]["span"], "both reads must share the same slot span: {vx}");
+    assert_eq!(
+        unset.len(),
+        2,
+        "expected both reads to flag standalone: {vx}"
+    );
+    assert_eq!(
+        unset[0]["span"], unset[1]["span"],
+        "both reads must share the same slot span: {vx}"
+    );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false, "{v}");
     assert!(
@@ -905,7 +1076,10 @@ fn envelope_mixed_slot_span_collision_only_reconciles_the_in_scope_path() {
         "run.upstream is Guaranteed -> no envelope diagnostic at all: {v}"
     );
     let files = v["files"].as_array().unwrap();
-    let x = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("x.lute")).unwrap();
+    let x = files
+        .iter()
+        .find(|f| f["path"].as_str().unwrap().ends_with("x.lute"))
+        .unwrap();
     let remaining: Vec<&serde_json::Value> = x["diagnostics"]
         .as_array()
         .unwrap()
@@ -918,7 +1092,10 @@ fn envelope_mixed_slot_span_collision_only_reconciles_the_in_scope_path() {
         "exactly the scene.local site must survive reconciliation, run.upstream's must not: {v}"
     );
     assert!(
-        remaining[0]["message"].as_str().unwrap().contains("scene.local"),
+        remaining[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("scene.local"),
         "the surviving E-MAYBE-UNSET must be scene.local's, not run.upstream's: {v}"
     );
 }
@@ -955,11 +1132,18 @@ fn dead_required_objective_scalar_marks_completed_gate_unreachable() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let project_diags = v["project_diagnostics"].as_array().unwrap();
     assert!(
-        project_diags.iter().any(|d| d["code"] == "E-CONN-UNREACHABLE"),
+        project_diags
+            .iter()
+            .any(|d| d["code"] == "E-CONN-UNREACHABLE"),
         "a scene gated on completed(Q) where Q has a dead REQUIRED (scalar) objective must be \
          E-CONN-UNREACHABLE: {v}"
     );
@@ -996,16 +1180,25 @@ fn dead_required_objective_relational_marks_completed_gate_unreachable() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let project_diags = v["project_diagnostics"].as_array().unwrap();
     assert!(
-        project_diags.iter().any(|d| d["code"] == "E-CONN-UNREACHABLE"),
+        project_diags
+            .iter()
+            .any(|d| d["code"] == "E-CONN-UNREACHABLE"),
         "a scene gated on completed(Q) where Q has a dead REQUIRED (never-producible relation) \
          objective must be E-CONN-UNREACHABLE: {v}"
     );
     assert!(
-        project_diags.iter().any(|d| d["code"] == "E-OBJECTIVE-UNSATISFIABLE"),
+        project_diags
+            .iter()
+            .any(|d| d["code"] == "E-OBJECTIVE-UNSATISFIABLE"),
         "the underlying relational-objective-liveness diagnostic must still fire too: {v}"
     );
 }
@@ -1036,11 +1229,16 @@ fn optional_dead_objective_does_not_make_quest_unreachable() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let project_diags = v["project_diagnostics"].as_array().unwrap();
     assert!(
-        !project_diags.iter().any(|d| d["code"] == "E-CONN-UNREACHABLE"),
+        !project_diags
+            .iter()
+            .any(|d| d["code"] == "E-CONN-UNREACHABLE"),
         "an OPTIONAL dead objective must never make the quest unreachable-to-complete: {v}"
     );
     let files = v["files"].as_array().unwrap();
-    let gated = files.iter().find(|f| f["path"].as_str().unwrap().ends_with("gated.lute")).unwrap();
+    let gated = files
+        .iter()
+        .find(|f| f["path"].as_str().unwrap().ends_with("gated.lute"))
+        .unwrap();
     assert_eq!(
         gated["diagnostics"].as_array().unwrap().len(),
         0,
@@ -1068,11 +1266,18 @@ fn start_false_quest_still_marks_completed_gate_unreachable() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let project_diags = v["project_diagnostics"].as_array().unwrap();
     assert!(
-        project_diags.iter().any(|d| d["code"] == "E-CONN-UNREACHABLE"),
+        project_diags
+            .iter()
+            .any(|d| d["code"] == "E-CONN-UNREACHABLE"),
         "the start=false control must still propagate to E-CONN-UNREACHABLE: {v}"
     );
     let files = v["files"].as_array().unwrap();
@@ -1105,10 +1310,18 @@ fn live_quest_completed_gate_stays_reachable() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
-    assert!(v["project_diagnostics"].as_array().unwrap().is_empty(), "{v}");
+    assert!(
+        v["project_diagnostics"].as_array().unwrap().is_empty(),
+        "{v}"
+    );
 }
 
 // --- Defect A (persona review): real spans on project-level connectivity
@@ -1130,7 +1343,10 @@ fn episode_id_dup_span_points_at_character_line() {
         .iter()
         .find(|d| d["code"] == "E-CONN-EPISODE-ID-DUP")
         .unwrap_or_else(|| panic!("E-CONN-EPISODE-ID-DUP present: {v}"));
-    assert_eq!(d["span"]["line"], 3, "must point at `character:` (line 3), not 0:0: {v}");
+    assert_eq!(
+        d["span"]["line"], 3,
+        "must point at `character:` (line 3), not 0:0: {v}"
+    );
     assert_eq!(d["span"]["column"], 1, "{v}");
 }
 
@@ -1152,7 +1368,10 @@ fn unknown_node_span_points_at_after_line() {
         .iter()
         .find(|d| d["code"] == "E-CONN-UNKNOWN-NODE")
         .unwrap_or_else(|| panic!("E-CONN-UNKNOWN-NODE present: {v}"));
-    assert_eq!(d["span"]["line"], 6, "must point at `after:` (line 6), not 0:0: {v}");
+    assert_eq!(
+        d["span"]["line"], 6,
+        "must point at `after:` (line 6), not 0:0: {v}"
+    );
     assert_eq!(d["span"]["column"], 1, "{v}");
 }
 
@@ -1264,7 +1483,12 @@ fn fixpoint_closure_propagates_through_a_multi_hop_chain() {
     );
 
     let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
-    assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let project_diags = v["project_diagnostics"].as_array().unwrap();
 
@@ -1319,7 +1543,9 @@ fn dead_required_objective_never_drops_a_sibling_optional_objectives_live_assert
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let project_diags = v["project_diagnostics"].as_array().unwrap();
     assert!(
-        !project_diags.iter().any(|d| d["code"] == "E-CONN-UNREACHABLE"),
+        !project_diags
+            .iter()
+            .any(|d| d["code"] == "E-CONN-UNREACHABLE"),
         "{v}"
     );
     // Load-bearing: `checkLive`'s `holds(liveRel(a))` cause is a RELATIONAL
@@ -1331,7 +1557,9 @@ fn dead_required_objective_never_drops_a_sibling_optional_objectives_live_assert
     // `E-OBJECTIVE-UNSATISFIABLE` would land -- the per-file assertion
     // below alone can never observe it.
     assert!(
-        !project_diags.iter().any(|d| d["code"] == "E-OBJECTIVE-UNSATISFIABLE"),
+        !project_diags
+            .iter()
+            .any(|d| d["code"] == "E-OBJECTIVE-UNSATISFIABLE"),
         "no project-wide (relational) E-OBJECTIVE-UNSATISFIABLE may fire -- `checkLive` must \
          stay live: {v}"
     );
@@ -1401,7 +1629,11 @@ fn compile_all_validates_nested_manifests() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(out.status.code(), Some(1), "nested manifest must fail the build:\n{text}");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "nested manifest must fail the build:\n{text}"
+    );
     assert!(
         text.contains("E-IDENTITY-TEMPLATE"),
         "the inner manifest's own diagnostic must surface:\n{text}"
@@ -1467,8 +1699,11 @@ fn check_project_fails_on_an_unloadable_manifest_anywhere_under_the_tree() {
     )
     .unwrap();
     // No `.lute` lives under `empty/`, so nothing ever resolved this manifest.
-    std::fs::write(dir.join("empty/lute.project.yaml"), "defaultProfile: core\nprofiles: [not, a, map]\n")
-        .unwrap();
+    std::fs::write(
+        dir.join("empty/lute.project.yaml"),
+        "defaultProfile: core\nprofiles: [not, a, map]\n",
+    )
+    .unwrap();
     std::fs::write(
         dir.join("scenes/s.lute"),
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n",
@@ -1484,7 +1719,11 @@ fn check_project_fails_on_an_unloadable_manifest_anywhere_under_the_tree() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(out.status.code(), Some(1), "an unloadable manifest must fail the build:\n{text}");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "an unloadable manifest must fail the build:\n{text}"
+    );
     assert!(
         text.contains("empty/lute.project.yaml"),
         "the manifest nothing resolves must still be validated:\n{text}"
@@ -1521,12 +1760,25 @@ fn a_canonical_defaults_path_never_reaches_a_serialised_surface() {
     let canonical = std::fs::canonicalize(&dir).unwrap().display().to_string();
 
     for args in [
-        vec!["context", dir.join("scenes/s.lute").to_str().unwrap(), "--json",
-             "--project", dir.to_str().unwrap()],
-        vec!["compile", dir.join("scenes/s.lute").to_str().unwrap(), "--json",
-             "--project", dir.to_str().unwrap()],
+        vec![
+            "context",
+            dir.join("scenes/s.lute").to_str().unwrap(),
+            "--json",
+            "--project",
+            dir.to_str().unwrap(),
+        ],
+        vec![
+            "compile",
+            dir.join("scenes/s.lute").to_str().unwrap(),
+            "--json",
+            "--project",
+            dir.to_str().unwrap(),
+        ],
     ] {
-        let out = std::process::Command::new(BIN).args(&args).output().unwrap();
+        let out = std::process::Command::new(BIN)
+            .args(&args)
+            .output()
+            .unwrap();
         let text = String::from_utf8_lossy(&out.stdout).to_string();
         assert!(
             !text.contains(&canonical),
@@ -1592,7 +1844,10 @@ fn defaults_satisfy_required_frontmatter_keys() {
     );
     assert_eq!(out.status.code(), Some(0), "{text}");
     assert!(!text.contains("E-META-MISSING"), "{text}");
-    assert!(!text.contains("E-KIND-MISSING"), "`kind:` is defaultable (§6.3):\n{text}");
+    assert!(
+        !text.contains("E-KIND-MISSING"),
+        "`kind:` is defaultable (§6.3):\n{text}"
+    );
 }
 
 /// §6.2: whole-value override, no merging. A document declaring `uses:`
@@ -1633,7 +1888,11 @@ fn a_documents_own_key_overrides_the_default_entire() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(out.status.code(), Some(1), "concatenation would have made this green:\n{text}");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "concatenation would have made this green:\n{text}"
+    );
     assert!(text.contains("E-UNDECLARED"), "{text}");
 }
 
@@ -1669,7 +1928,11 @@ fn an_empty_authored_value_overrides_the_default() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(out.status.code(), Some(1), "`uses: []` means no imports:\n{text}");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "`uses: []` means no imports:\n{text}"
+    );
     assert!(text.contains("E-UNDECLARED"), "{text}");
 }
 
@@ -1729,7 +1992,11 @@ fn a_defaulted_character_reaches_the_line_id_prefix() {
          defaults:\n  kind: scene\n  character: anseo\n  season: 1\n",
     )
     .unwrap();
-    std::fs::write(dir.join("scenes/s.lute"), "---\nepisode: 7\n---\n\n## S\n\n@vesna: hi\n").unwrap();
+    std::fs::write(
+        dir.join("scenes/s.lute"),
+        "---\nepisode: 7\n---\n\n## S\n\n@vesna: hi\n",
+    )
+    .unwrap();
     let out = std::process::Command::new(BIN)
         .args([
             "compile",
@@ -1804,12 +2071,19 @@ fn a_subject_less_mock_is_reported_once_then_its_seed_is_caught() {
 
     // Run 2: the author supplies `file:`. The schema is now knowable and the
     // seed is caught.
-    std::fs::write(&mock, "file: ../scenes/s.lute\nstate:\n  run.greeted: false\n").unwrap();
+    std::fs::write(
+        &mock,
+        "file: ../scenes/s.lute\nstate:\n  run.greeted: false\n",
+    )
+    .unwrap();
     let (code, text) = run();
     assert_eq!(code, Some(1), "{text}");
     assert!(!text.contains("E-MOCK-SUBJECT"), "{text}");
     assert!(text.contains("E-TRACE-MOCK-UNDECLARED"), "{text}");
-    assert!(text.contains("mocks/play.yaml"), "still anchored at the mock:\n{text}");
+    assert!(
+        text.contains("mocks/play.yaml"),
+        "still anchored at the mock:\n{text}"
+    );
 
     // Run 3: the author corrects the seed. Green.
     std::fs::write(&mock, "file: ../scenes/s.lute\nstate:\n  run.pressure: 1\n").unwrap();
@@ -1835,7 +2109,11 @@ fn a_mock_naming_a_deleted_scene_is_e_mock_subject() {
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n",
     )
     .unwrap();
-    std::fs::write(dir.join("mocks/play.yaml"), "file: ../scenes/opening.lute\n").unwrap();
+    std::fs::write(
+        dir.join("mocks/play.yaml"),
+        "file: ../scenes/opening.lute\n",
+    )
+    .unwrap();
     let out = std::process::Command::new(BIN)
         .args(["check-project", dir.to_str().unwrap()])
         .output()
@@ -1846,7 +2124,10 @@ fn a_mock_naming_a_deleted_scene_is_e_mock_subject() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert_eq!(out.status.code(), Some(1), "{text}");
-    assert!(text.contains("E-MOCK-SUBJECT") && text.contains("opening.lute"), "{text}");
+    assert!(
+        text.contains("E-MOCK-SUBJECT") && text.contains("opening.lute"),
+        "{text}"
+    );
 }
 
 /// §8's glob boundary is CHOSEN, not incidental. A `*.test.yaml` already
@@ -1871,8 +2152,16 @@ fn the_pass_reaches_mocks_yaml_and_nothing_else() {
     )
     .unwrap();
     // Neither of these is `mocks/*.yaml`; neither may be reported.
-    std::fs::write(dir.join("conformance/fx/mock.yaml"), "choose:\n  path: left\n").unwrap();
-    std::fs::write(dir.join("mocks/a.test.yaml"), "file: ../scenes/s.lute\nexpect: {}\n").unwrap();
+    std::fs::write(
+        dir.join("conformance/fx/mock.yaml"),
+        "choose:\n  path: left\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("mocks/a.test.yaml"),
+        "file: ../scenes/s.lute\nexpect: {}\n",
+    )
+    .unwrap();
     // This one is, and it is sound.
     std::fs::write(dir.join("mocks/ok.yaml"), "file: ../scenes/s.lute\n").unwrap();
 
@@ -1902,7 +2191,11 @@ fn a_mis_keyed_mock_surface_is_reported_by_check_project() {
         "lute.project.yaml",
         "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
     );
-    write(&dir, "world.schema.yaml", "state:\n  run.pressure: { type: number, default: 0 }\n");
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state:\n  run.pressure: { type: number, default: 0 }\n",
+    );
     write(
         &dir,
         "scenes/s.lute",
@@ -1921,7 +2214,11 @@ fn a_mis_keyed_mock_surface_is_reported_by_check_project() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(out.status.code(), Some(0), "a well-keyed mock stays green:\n{text}");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a well-keyed mock stays green:\n{text}"
+    );
 
     // Now mis-key exactly one surface.
     std::fs::write(&mock, "file: ../scenes/s.lute\nselections:\n  h: a\n").unwrap();
@@ -1932,7 +2229,10 @@ fn a_mis_keyed_mock_surface_is_reported_by_check_project() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert_eq!(out.status.code(), Some(1), "{text}");
-    assert!(text.contains("E-TRACE-MOCK-PARSE") && text.contains("`selections`"), "{text}");
+    assert!(
+        text.contains("E-TRACE-MOCK-PARSE") && text.contains("`selections`"),
+        "{text}"
+    );
     assert!(
         text.contains("mocks/play.yaml") && !text.contains("mocks/play.yaml:0:0"),
         "anchored at the mock, with no fabricated position (D-AB):\n{text}"

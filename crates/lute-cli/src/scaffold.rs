@@ -390,10 +390,7 @@ pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
         }
     }
 
-    println!(
-        "Initialized `{template}` Lute project at {}",
-        dir.display()
-    );
+    println!("Initialized `{template}` Lute project at {}", dir.display());
     println!("  created {} file(s):", files.len());
     for file in &files {
         println!("    {}", dir.join(file.rel).display());

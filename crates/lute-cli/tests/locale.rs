@@ -93,7 +93,11 @@ fn translate(project: &Path, out: &Path, decorate: &str, drop: &[&str]) -> PathB
         .map(|mut r| {
             // A `line` row carries its text in `text`, a `choice` row in
             // `label` — exactly the split `loc export` writes.
-            let field = if r["kind"] == "choice" { "label" } else { "text" };
+            let field = if r["kind"] == "choice" {
+                "label"
+            } else {
+                "text"
+            };
             let old = r[field].as_str().unwrap_or_default().to_string();
             r[field] = serde_json::Value::String(format!("{decorate}{old}"));
             r
@@ -174,9 +178,15 @@ fn export_then_import_produces_a_stable_bundle() {
         "locales are sorted; the tag comes from each file's stem"
     );
     let entries = bundle["entries"].as_object().unwrap();
-    assert_eq!(entries.len(), LINE_IDS.len(), "every translatable record keyed");
+    assert_eq!(
+        entries.len(),
+        LINE_IDS.len(),
+        "every translatable record keyed"
+    );
     for id in LINE_IDS {
-        let e = entries.get(id).unwrap_or_else(|| panic!("missing `{id}` in {entries:#?}"));
+        let e = entries
+            .get(id)
+            .unwrap_or_else(|| panic!("missing `{id}` in {entries:#?}"));
         assert!(e["ja-JP"].as_str().unwrap().starts_with("[ja] "));
         assert!(e["en-US"].as_str().unwrap().starts_with("[en] "));
     }
@@ -221,7 +231,10 @@ fn a_csv_export_round_trips_through_import_too() {
     assert_eq!(bundle["locales"][0], "fr-FR");
     assert_eq!(bundle["entries"].as_object().unwrap().len(), LINE_IDS.len());
     // A choice option's label survives the CSV `text` column.
-    assert_eq!(bundle["entries"]["bianca.s01ep01.pick.go"]["fr-FR"], "Go on");
+    assert_eq!(
+        bundle["entries"]["bianca.s01ep01.pick.go"]["fr-FR"],
+        "Go on"
+    );
 }
 
 #[test]
@@ -238,8 +251,14 @@ fn a_duplicate_line_id_within_one_locale_is_e_locale_bundle() {
     assert_eq!(result.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(stderr.contains("E-LOCALE-BUNDLE"), "got: {stderr}");
-    assert!(stderr.contains(LINE_IDS[0]), "the offending id is named: {stderr}");
-    assert!(stderr.contains("ja-JP.json"), "the offending file is named: {stderr}");
+    assert!(
+        stderr.contains(LINE_IDS[0]),
+        "the offending id is named: {stderr}"
+    );
+    assert!(
+        stderr.contains("ja-JP.json"),
+        "the offending file is named: {stderr}"
+    );
     assert!(result.stdout.is_empty(), "no bundle on a rejected import");
 }
 
@@ -321,16 +340,25 @@ fn compile_locales_fills_texts_and_labels_and_never_touches_the_source_string() 
     for c in artifact["commands"].as_array().unwrap() {
         if c["kind"] == "line" {
             let text = c["text"].as_str().unwrap();
-            assert!(!text.starts_with("[ja] "), "`text` stays source language: {text}");
+            assert!(
+                !text.starts_with("[ja] "),
+                "`text` stays source language: {text}"
+            );
         }
         if c["kind"] == "choice" {
             for o in c["options"].as_array().unwrap() {
                 let label = o["label"].as_str().unwrap();
-                assert!(!label.starts_with("[ja] "), "`label` stays source language: {label}");
+                assert!(
+                    !label.starts_with("[ja] "),
+                    "`label` stays source language: {label}"
+                );
             }
         }
     }
-    let go = maps.iter().find(|(id, _)| id == "bianca.s01ep01.pick.go").unwrap();
+    let go = maps
+        .iter()
+        .find(|(id, _)| id == "bianca.s01ep01.pick.go")
+        .unwrap();
     assert_eq!(go.1["ja-JP"], "[ja] Go on", "a choice option gets `labels`");
 }
 
@@ -408,13 +436,25 @@ fn w_l10n_missing_fires_once_per_missing_line_id_locale_pair() {
         "-o",
         work.join("a.json").to_str().unwrap(),
     ]);
-    assert_eq!(result.status.code(), Some(0), "a warning never flips the verdict");
+    assert_eq!(
+        result.status.code(),
+        Some(0),
+        "a warning never flips the verdict"
+    );
     let stderr = String::from_utf8_lossy(&result.stderr);
-    let hits: Vec<&str> = stderr.lines().filter(|l| l.contains("W-L10N-MISSING")).collect();
-    assert_eq!(hits.len(), 2, "one per missing (lineId, locale) pair: {stderr}");
+    let hits: Vec<&str> = stderr
+        .lines()
+        .filter(|l| l.contains("W-L10N-MISSING"))
+        .collect();
+    assert_eq!(
+        hits.len(),
+        2,
+        "one per missing (lineId, locale) pair: {stderr}"
+    );
     for id in [LINE_IDS[3], LINE_IDS[5]] {
         assert!(
-            hits.iter().any(|h| h.contains(&format!("no `en-US` text for `{id}`"))),
+            hits.iter()
+                .any(|h| h.contains(&format!("no `en-US` text for `{id}`"))),
             "exact message for `{id}`: {stderr}"
         );
     }
@@ -427,8 +467,14 @@ fn w_l10n_missing_fires_once_per_missing_line_id_locale_pair() {
     let artifact = read_json(&work.join("a.json"));
     let maps = locale_maps(&artifact);
     let stay = maps.iter().find(|(id, _)| id == LINE_IDS[3]).unwrap();
-    assert!(stay.1["ja-JP"].is_string(), "the present locale still merged");
-    assert!(stay.1["en-US"].is_null(), "the missing one is simply absent");
+    assert!(
+        stay.1["ja-JP"].is_string(),
+        "the present locale still merged"
+    );
+    assert!(
+        stay.1["en-US"].is_null(),
+        "the missing one is simply absent"
+    );
 }
 
 #[test]
@@ -466,11 +512,18 @@ fn deny_promotes_w_l10n_missing_and_suppresses_the_artifact() {
         let mut promoted: Vec<&str> = args.to_vec();
         promoted.push(flag);
         let result = run(&promoted);
-        assert_eq!(result.status.code(), Some(1), "{flag} must flip the verdict");
+        assert_eq!(
+            result.status.code(),
+            Some(1),
+            "{flag} must flip the verdict"
+        );
         assert!(result.stdout.is_empty(), "{flag}: no artifact emitted");
         let stderr = String::from_utf8_lossy(&result.stderr);
         assert!(stderr.contains("[denied]"), "{flag}: got {stderr}");
-        assert!(stderr.contains("error [W-L10N-MISSING]"), "{flag}: got {stderr}");
+        assert!(
+            stderr.contains("error [W-L10N-MISSING]"),
+            "{flag}: got {stderr}"
+        );
     }
 }
 
@@ -502,9 +555,9 @@ fn loc_export_emits_component_lines_per_expansion_with_the_callers_id() {
     // A component file has no prefix, so it contributes no rows of its own —
     // a row with no reproducible identity is what this issue is about.
     assert!(
-        !rows
-            .iter()
-            .any(|r| r["file"].as_str().is_some_and(|f| f.ends_with(".component.lute"))),
+        !rows.iter().any(|r| r["file"]
+            .as_str()
+            .is_some_and(|f| f.ends_with(".component.lute"))),
         "a component file must not be exported as a document in its own right"
     );
 
@@ -514,7 +567,9 @@ fn loc_export_emits_component_lines_per_expansion_with_the_callers_id() {
         .find(|r| r["lineId"].as_str() == Some("anseo.s01ep02.purser_0020"))
         .unwrap_or_else(|| panic!("the caller-derived id must be exported: {text}"));
     assert!(
-        expanded["file"].as_str().is_some_and(|f| f.ends_with("cryobank.lute")),
+        expanded["file"]
+            .as_str()
+            .is_some_and(|f| f.ends_with("cryobank.lute")),
         "the row belongs to the CALLER: {expanded}"
     );
     assert!(
@@ -527,7 +582,10 @@ fn loc_export_emits_component_lines_per_expansion_with_the_callers_id() {
 
     // Every row carries the key, null or not, so the JSON shape does not vary
     // with authoring.
-    assert!(rows.iter().all(|r| r.get("source").is_some()), "`source` must be on every row");
+    assert!(
+        rows.iter().all(|r| r.get("source").is_some()),
+        "`source` must be on every row"
+    );
 
     // No row carrying a `code` may still have a null lineId — that is exactly
     // the class `lute tag` can never fix, and it must be empty now.
@@ -535,12 +593,18 @@ fn loc_export_emits_component_lines_per_expansion_with_the_callers_id() {
         .iter()
         .filter(|r| r["lineId"].is_null() && !r["code"].is_null())
         .collect();
-    assert!(impossible.is_empty(), "structurally un-taggable rows remain: {impossible:?}");
+    assert!(
+        impossible.is_empty(),
+        "structurally un-taggable rows remain: {impossible:?}"
+    );
 
     // The eight code-less quest rows must STILL be reported as untagged —
     // T6.10's distinction, which the fix must sharpen, not erase.
     let untagged = rows.iter().filter(|r| r["lineId"].is_null()).count();
-    assert_eq!(untagged, 8, "the eight code-less quest narration rows stay untagged");
+    assert_eq!(
+        untagged, 8,
+        "the eight code-less quest narration rows stay untagged"
+    );
 }
 
 /// The completeness claim itself, as a COUNT rather than an eyeball: every
@@ -561,7 +625,11 @@ fn every_content_line_the_compiler_emits_has_an_export_row() {
         "-o",
         artifact.to_str().unwrap(),
     ]);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let compiled = read_json(&artifact);
     let compiled_ids: Vec<String> = compiled["commands"]
         .as_array()
@@ -573,19 +641,183 @@ fn every_content_line_the_compiler_emits_has_an_export_row() {
     assert!(!compiled_ids.is_empty(), "no compiled lines: {compiled}");
 
     let export = run(&["loc", "export", root.to_str().unwrap()]);
-    let rows: serde_json::Value =
-        serde_json::from_slice(&export.stdout).expect("export json");
+    let rows: serde_json::Value = serde_json::from_slice(&export.stdout).expect("export json");
     let exported: std::collections::BTreeSet<String> = rows
         .as_array()
         .unwrap()
         .iter()
         .filter_map(|r| r["lineId"].as_str().map(str::to_string))
         .collect();
-    let missing: Vec<&String> = compiled_ids.iter().filter(|id| !exported.contains(*id)).collect();
+    let missing: Vec<&String> = compiled_ids
+        .iter()
+        .filter(|id| !exported.contains(*id))
+        .collect();
     assert!(
         missing.is_empty(),
         "{} of {} compiled line ids have no export row: {missing:?}",
         missing.len(),
         compiled_ids.len()
     );
+}
+
+// --- Task 4 §2 (dsl 0.15.0) — loc export honors authored `id:` --------------
+
+/// A scene document with an authored `id:` (no legacy triad): `loc export`
+/// MUST stamp every row's `lineId` under that authored key. Pre-fix it
+/// stamped `null` (the triad was missing so `scene_prefix` gave up).
+#[test]
+fn loc_export_prefixes_line_ids_with_the_authored_scene_id() {
+    let dir = temp_dir("authored-id");
+    write(&dir, "lute.project.yaml", PROJECT_YAML);
+    write(
+        &dir,
+        "scenes/authored.lute",
+        "\
+---
+kind: scene
+id: authored.myid
+---
+
+## Opener.
+
+@narrator{code=\"0010\"}: Hi.
+@narrator{code=\"0020\"}: There.
+
+<branch id=\"pick\">
+  <choice id=\"go\" label=\"Go\">
+    @narrator{code=\"0030\"}: Onward.
+  </choice>
+</branch>
+",
+    );
+    let out = run(&["loc", "export", dir.to_str().unwrap()]);
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let rows: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout).expect("export json");
+    let ids: Vec<String> = rows
+        .iter()
+        .filter_map(|r| r["lineId"].as_str().map(str::to_string))
+        .collect();
+    assert_eq!(
+        ids,
+        vec![
+            "authored.myid.narrator_0010",
+            "authored.myid.narrator_0020",
+            "authored.myid.pick.go",
+            "authored.myid.narrator_0030",
+        ],
+        "every row's lineId must be prefixed by the authored `id:` (rows: {rows:#?})",
+    );
+}
+
+/// A pinned legacy scene (no authored `id:` — only the `character`/`season`/
+/// `episode` triad) MUST export byte-identically to today's output. The
+/// project-relative payload (paths stripped) is compared against a checked-in
+/// snapshot so the derived-key path stays wire-stable under Task 4.
+#[test]
+fn loc_export_of_a_legacy_scene_is_byte_identical_to_the_pinned_snapshot() {
+    let dir = temp_dir("legacy-pin");
+    write(&dir, "lute.project.yaml", PROJECT_YAML);
+    write(
+        &dir,
+        "a.lute",
+        "\
+---
+kind: scene
+character: bianca
+season: 1
+episode: 1
+---
+
+## Opener.
+
+@bianca{code=\"0010\"}: Hello there.
+@kai{code=\"0010\"}: Hi.
+
+<branch id=\"pick\">
+  <choice id=\"go\" label=\"Go on\">
+    @bianca{code=\"0020\"}: Onward.
+  </choice>
+  <choice id=\"stay\" label=\"Stay here\">
+    @bianca{code=\"0030\"}: Fine.
+  </choice>
+</branch>
+",
+    );
+    let out = run(&["loc", "export", dir.to_str().unwrap()]);
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let got = String::from_utf8(out.stdout).expect("utf-8 export");
+    // Strip the absolute temp-dir prefix so the pin is portable — the row's
+    // `file` value is the ONLY host-dependent field the export emits.
+    let prefix = format!("{}/", dir.to_str().unwrap());
+    let stripped = got.replace(&prefix, "");
+    const PINNED: &str = r#"[
+  {
+    "code": "0010",
+    "file": "a.lute",
+    "kind": "line",
+    "line": 10,
+    "lineId": "bianca.s01ep01.bianca_0010",
+    "source": null,
+    "speaker": "bianca",
+    "text": "Hello there."
+  },
+  {
+    "code": "0010",
+    "file": "a.lute",
+    "kind": "line",
+    "line": 11,
+    "lineId": "bianca.s01ep01.kai_0010",
+    "source": null,
+    "speaker": "kai",
+    "text": "Hi."
+  },
+  {
+    "file": "a.lute",
+    "key": "pick.go",
+    "kind": "choice",
+    "label": "Go on",
+    "line": 14,
+    "lineId": "bianca.s01ep01.pick.go",
+    "source": null
+  },
+  {
+    "code": "0020",
+    "file": "a.lute",
+    "kind": "line",
+    "line": 15,
+    "lineId": "bianca.s01ep01.bianca_0020",
+    "source": null,
+    "speaker": "bianca",
+    "text": "Onward."
+  },
+  {
+    "file": "a.lute",
+    "key": "pick.stay",
+    "kind": "choice",
+    "label": "Stay here",
+    "line": 17,
+    "lineId": "bianca.s01ep01.pick.stay",
+    "source": null
+  },
+  {
+    "code": "0030",
+    "file": "a.lute",
+    "kind": "line",
+    "line": 18,
+    "lineId": "bianca.s01ep01.bianca_0030",
+    "source": null,
+    "speaker": "bianca",
+    "text": "Fine."
+  }
+]
+"#;
+    assert_eq!(stripped, PINNED, "legacy loc export drifted:\n{stripped}");
 }

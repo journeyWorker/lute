@@ -92,7 +92,11 @@ fn scene_passthrough_after(character: &str, after_key: &str) -> String {
 fn compile_gate_guaranteed_read_fails_standalone_succeeds_under_project() {
     let dir = temp_dir("gate-compile-guaranteed");
     write(&dir, "y.lute", &scene_setting_run_z("y"));
-    let x = write(&dir, "x.lute", &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"));
+    let x = write(
+        &dir,
+        "x.lute",
+        &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"),
+    );
 
     // Standalone: single-file check can't see the project -> E-MAYBE-UNSET
     // blocks compilation (exit 1, no artifact).
@@ -111,7 +115,12 @@ fn compile_gate_guaranteed_read_fails_standalone_succeeds_under_project() {
 
     // Project-aware: `run.z ∈ Guaranteed(x)` (y is the only route and always
     // sets it) -> reconciled away -> the artifact emits (exit 0).
-    let gated = run(&["compile", x.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "compile",
+        x.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(
         gated.status.code(),
         Some(0),
@@ -129,7 +138,11 @@ fn compile_gate_guaranteed_read_fails_standalone_succeeds_under_project() {
 fn trace_gate_guaranteed_read_refused_standalone_runs_under_project() {
     let dir = temp_dir("gate-trace-guaranteed");
     write(&dir, "y.lute", &scene_setting_run_z("y"));
-    let x = write(&dir, "x.lute", &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"));
+    let x = write(
+        &dir,
+        "x.lute",
+        &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"),
+    );
 
     // Standalone: refused (exit 1) — the check gate has E-MAYBE-UNSET.
     let standalone = run(&["trace", x.to_str().unwrap()]);
@@ -147,7 +160,12 @@ fn trace_gate_guaranteed_read_refused_standalone_runs_under_project() {
     );
 
     // Project-aware: reconciled clean -> trace walks and completes (exit 0).
-    let gated = run(&["trace", x.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "trace",
+        x.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(
         gated.status.code(),
         Some(0),
@@ -164,9 +182,18 @@ fn compile_gate_never_possible_read_blocks_under_project() {
     let dir = temp_dir("gate-compile-never");
     // `y` is the ONLY route and NEVER sets `run.z` -> `run.z ∉ Possible(x)`.
     write(&dir, "y.lute", &scene_silent("y"));
-    let x = write(&dir, "x.lute", &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"));
+    let x = write(
+        &dir,
+        "x.lute",
+        &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"),
+    );
 
-    let gated = run(&["compile", x.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "compile",
+        x.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(
         gated.status.code(),
         Some(1),
@@ -188,9 +215,18 @@ fn compile_gate_never_possible_read_blocks_under_project() {
 fn trace_gate_never_possible_read_blocks_under_project() {
     let dir = temp_dir("gate-trace-never");
     write(&dir, "y.lute", &scene_silent("y"));
-    let x = write(&dir, "x.lute", &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"));
+    let x = write(
+        &dir,
+        "x.lute",
+        &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"),
+    );
 
-    let gated = run(&["trace", x.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "trace",
+        x.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(
         gated.status.code(),
         Some(1),
@@ -214,7 +250,12 @@ fn compile_gate_out_of_tree_target_errors_explicitly() {
     let other = temp_dir("gate-out-of-tree-target");
     let outside = write(&other, "outside.lute", &scene_silent("outside"));
 
-    let out = run(&["compile", outside.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let out = run(&[
+        "compile",
+        outside.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(
         out.status.code(),
         Some(2),
@@ -230,7 +271,12 @@ fn compile_gate_out_of_tree_target_errors_explicitly() {
     // Sanity: the SAME file compiles clean standalone (no --project) — proving
     // the exit 2 is the gate's out-of-tree rule, not a document fault.
     let standalone = run(&["compile", outside.to_str().unwrap()]);
-    assert_eq!(standalone.status.code(), Some(0), "{}", String::from_utf8_lossy(&standalone.stdout));
+    assert_eq!(
+        standalone.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&standalone.stdout)
+    );
 }
 
 #[test]
@@ -240,7 +286,12 @@ fn trace_gate_out_of_tree_target_errors_explicitly() {
     let other = temp_dir("gate-trace-out-of-tree-target");
     let outside = write(&other, "outside.lute", &scene_silent("outside"));
 
-    let out = run(&["trace", outside.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let out = run(&[
+        "trace",
+        outside.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(
         out.status.code(),
         Some(2),
@@ -280,7 +331,12 @@ fn compile_gate_sibling_project_fault_does_not_block_target() {
 
     // …but compiling the TARGET under the same --project SUCCEEDS: the gate
     // blocks on the target's OWN reconciled diagnostics only (spec §5).
-    let gated = run(&["compile", x.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "compile",
+        x.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(
         gated.status.code(),
         Some(0),
@@ -321,22 +377,39 @@ fn compile_gate_non_anchor_cycle_member_blocks() {
     // provably the non-anchored member.
     let cp = run(&["check-project", dir.to_str().unwrap()]);
     let cp_out = String::from_utf8_lossy(&cp.stdout);
-    let cycle_line = cp_out.lines().find(|l| l.contains("E-CONN-CYCLE")).unwrap_or("");
-    assert!(cycle_line.contains("p.lute"), "cycle diag must anchor to p.lute: {cp_out}");
+    let cycle_line = cp_out
+        .lines()
+        .find(|l| l.contains("E-CONN-CYCLE"))
+        .unwrap_or("");
+    assert!(
+        cycle_line.contains("p.lute"),
+        "cycle diag must anchor to p.lute: {cp_out}"
+    );
     assert!(
         !cycle_line.contains("q.lute"),
         "cycle diag must NOT anchor to q.lute (q is the non-anchored member): {cp_out}"
     );
 
-    let gated = run(&["compile", q.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "compile",
+        q.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     let stdout = String::from_utf8_lossy(&gated.stdout);
     assert_eq!(
         gated.status.code(),
         Some(1),
         "a non-anchored cycle member must block compilation: {stdout}"
     );
-    assert!(stdout.contains("E-CONN-CYCLE"), "the block must cite the cycle: {stdout}");
-    assert!(!stdout.starts_with('{'), "no artifact on a blocked gate: {stdout}");
+    assert!(
+        stdout.contains("E-CONN-CYCLE"),
+        "the block must cite the cycle: {stdout}"
+    );
+    assert!(
+        !stdout.starts_with('{'),
+        "no artifact on a blocked gate: {stdout}"
+    );
 }
 
 #[test]
@@ -345,14 +418,22 @@ fn trace_gate_non_anchor_cycle_member_blocks() {
     write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
     let q = write(&dir, "q.lute", &scene_after_only("q", "p.s01ep01"));
 
-    let gated = run(&["trace", q.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "trace",
+        q.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     let stdout = String::from_utf8_lossy(&gated.stdout);
     assert_eq!(
         gated.status.code(),
         Some(1),
         "a non-anchored cycle member must refuse the trace: {stdout}"
     );
-    assert!(stdout.contains("E-CONN-CYCLE"), "the refusal must cite the cycle: {stdout}");
+    assert!(
+        stdout.contains("E-CONN-CYCLE"),
+        "the refusal must cite the cycle: {stdout}"
+    );
 }
 
 // --- (g) a Guaranteed write reconciles ACROSS multiple `after` hops ----------
@@ -365,7 +446,11 @@ fn trace_gate_non_anchor_cycle_member_blocks() {
 fn compile_gate_multi_hop_guaranteed_read_compiles_under_project() {
     let dir = temp_dir("gate-multi-hop");
     write(&dir, "up.lute", &scene_setting_run_z("up"));
-    write(&dir, "mid.lute", &scene_passthrough_after("mid", "up.s01ep01"));
+    write(
+        &dir,
+        "mid.lute",
+        &scene_passthrough_after("mid", "up.s01ep01"),
+    );
     let term = write(
         &dir,
         "term.lute",
@@ -387,7 +472,12 @@ fn compile_gate_multi_hop_guaranteed_read_compiles_under_project() {
     );
 
     // Project-aware: `run.z ∈ Guaranteed(term)` via up -> mid -> term (2 hops).
-    let gated = run(&["compile", term.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "compile",
+        term.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(
         gated.status.code(),
         Some(0),
@@ -427,35 +517,62 @@ fn scene_after_two(character: &str, k1: &str, k2: &str) -> String {
 fn compile_gate_overlapping_cycle_member_blocks() {
     let dir = temp_dir("gate-overlap-cycle-compile");
     write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
-    write(&dir, "q.lute", &scene_after_two("q", "p.s01ep01", "r.s01ep01"));
+    write(
+        &dir,
+        "q.lute",
+        &scene_after_two("q", "p.s01ep01", "r.s01ep01"),
+    );
     let r = write(&dir, "r.lute", &scene_after_only("r", "p.s01ep01"));
 
-    let gated = run(&["compile", r.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "compile",
+        r.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     let stdout = String::from_utf8_lossy(&gated.stdout);
     assert_eq!(
         gated.status.code(),
         Some(1),
         "r is on the overlapping 3-cycle -> must block compilation: {stdout}"
     );
-    assert!(stdout.contains("E-CONN-CYCLE"), "the block must cite the cycle: {stdout}");
-    assert!(!stdout.starts_with('{'), "no artifact on a blocked gate: {stdout}");
+    assert!(
+        stdout.contains("E-CONN-CYCLE"),
+        "the block must cite the cycle: {stdout}"
+    );
+    assert!(
+        !stdout.starts_with('{'),
+        "no artifact on a blocked gate: {stdout}"
+    );
 }
 
 #[test]
 fn trace_gate_overlapping_cycle_member_blocks() {
     let dir = temp_dir("gate-overlap-cycle-trace");
     write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
-    write(&dir, "q.lute", &scene_after_two("q", "p.s01ep01", "r.s01ep01"));
+    write(
+        &dir,
+        "q.lute",
+        &scene_after_two("q", "p.s01ep01", "r.s01ep01"),
+    );
     let r = write(&dir, "r.lute", &scene_after_only("r", "p.s01ep01"));
 
-    let gated = run(&["trace", r.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "trace",
+        r.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     let stdout = String::from_utf8_lossy(&gated.stdout);
     assert_eq!(
         gated.status.code(),
         Some(1),
         "r is on the overlapping 3-cycle -> must refuse the trace: {stdout}"
     );
-    assert!(stdout.contains("E-CONN-CYCLE"), "the refusal must cite the cycle: {stdout}");
+    assert!(
+        stdout.contains("E-CONN-CYCLE"),
+        "the refusal must cite the cycle: {stdout}"
+    );
 }
 
 /// A node DOWNSTREAM of a cycle (spec §5): `a<->b` is a 2-node `after` cycle;
@@ -471,13 +588,24 @@ fn compile_gate_downstream_of_cycle_blocks() {
     write(&dir, "b.lute", &scene_after_only("b", "a.s01ep01"));
     let d = write(&dir, "d.lute", &scene_after_only("d", "a.s01ep01"));
 
-    let gated = run(&["compile", d.to_str().unwrap(), "--project", dir.to_str().unwrap()]);
+    let gated = run(&[
+        "compile",
+        d.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     let stdout = String::from_utf8_lossy(&gated.stdout);
     assert_eq!(
         gated.status.code(),
         Some(1),
         "a node downstream of a cycle is absent from topo_order -> must block: {stdout}"
     );
-    assert!(stdout.contains("E-CONN-CYCLE"), "the block must cite the cycle: {stdout}");
-    assert!(!stdout.starts_with('{'), "no artifact on a blocked gate: {stdout}");
+    assert!(
+        stdout.contains("E-CONN-CYCLE"),
+        "the block must cite the cycle: {stdout}"
+    );
+    assert!(
+        !stdout.starts_with('{'),
+        "no artifact on a blocked gate: {stdout}"
+    );
 }

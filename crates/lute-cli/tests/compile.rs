@@ -17,10 +17,12 @@ fn compile_bianca_exits_zero_with_artifact_json() {
         String::from_utf8_lossy(&out.stderr)
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(v["lute"], "0.14.0");
-    assert_eq!(v["irVersion"], "0.14.0");
+    assert_eq!(v["lute"], "0.15.0");
+    assert_eq!(v["irVersion"], "0.15.0");
     assert!(
-        v["capabilityVersion"].as_str().is_some_and(|s| !s.is_empty()),
+        v["capabilityVersion"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty()),
         "capabilityVersion must be a non-empty snapshot stamp"
     );
     assert_eq!(v["meta"]["episodeId"], "s01ep02");
@@ -33,7 +35,10 @@ fn compile_bianca_exits_zero_with_artifact_json() {
 fn compile_error_doc_exits_one_and_emits_no_artifact() {
     // date-minigame needs its project; core-only it checks with errors.
     let out = Command::new(BIN)
-        .args(["compile", "../../docs/examples/idola-project/date-minigame.lute"])
+        .args([
+            "compile",
+            "../../docs/examples/idola-project/date-minigame.lute",
+        ])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));

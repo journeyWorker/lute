@@ -122,7 +122,10 @@ fn scenario_envelope_reports_guaranteed_for_scene() {
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(out_text.contains("run.a"), "{out_text}");
-    assert!(out_text.contains("under your declared routes"), "{out_text}");
+    assert!(
+        out_text.contains("under your declared routes"),
+        "{out_text}"
+    );
 }
 
 #[test]
@@ -130,7 +133,12 @@ fn scenario_envelope_quest_without_after_shows_defaults_note() {
     let dir = temp_dir("scenario-envelope-quest-defaults");
     write(&dir, "q.lute", &quest_no_after("someQuest"));
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "quest:someQuest"]);
+    let out = run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "envelope",
+        "quest:someQuest",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(out_text.contains("declaring `after`"), "{out_text}");
@@ -194,9 +202,15 @@ fn scenario_envelope_cyclic_project_announces_e_conn_cycle_degraded() {
 
     let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "p.s01ep01"]);
     let out_text = stdout(&out);
-    assert!(out.status.success(), "cyclic envelope must exit 0 like reach: {out_text}");
+    assert!(
+        out.status.success(),
+        "cyclic envelope must exit 0 like reach: {out_text}"
+    );
     // The explicit cycle note, mirroring `reach`'s E-CONN-CYCLE wording.
-    assert!(out_text.contains("E-CONN-CYCLE"), "envelope must name the cycle code: {out_text}");
+    assert!(
+        out_text.contains("E-CONN-CYCLE"),
+        "envelope must name the cycle code: {out_text}"
+    );
     assert!(
         out_text.contains("cycle"),
         "envelope must explain the emptiness is cycle-caused, not silently empty: {out_text}"
@@ -204,7 +218,11 @@ fn scenario_envelope_cyclic_project_announces_e_conn_cycle_degraded() {
     // Cross-check the same project's `reach` DOES announce the cycle, so the
     // two views are now consistent rather than reach-only.
     let reach_out = run(&["scenario", dir.to_str().unwrap(), "reach", "p.s01ep01"]);
-    assert!(stdout(&reach_out).contains("E-CONN-CYCLE"), "{}", stdout(&reach_out));
+    assert!(
+        stdout(&reach_out).contains("E-CONN-CYCLE"),
+        "{}",
+        stdout(&reach_out)
+    );
 }
 
 #[test]
@@ -228,7 +246,12 @@ fn scenario_envelope_plain_quest_on_cyclic_root_no_cycle_note() {
     // A plain, after-less quest sharing this same resolved root.
     write(&dir, "quest.lute", &quest_no_after("plainQuest"));
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "quest:plainQuest"]);
+    let out = run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "envelope",
+        "quest:plainQuest",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     // No cycle-degradation note for an after-less quest: its floor is
@@ -265,7 +288,12 @@ fn scenario_cycle_independent_scene_keeps_real_reach_and_envelope() {
     write(&dir, "q.lute", q);
 
     // Independent node: real Reachable verdict, NO cycle wording.
-    let reach_ind = stdout(&run(&["scenario", dir.to_str().unwrap(), "reach", "ind.s01ep01"]));
+    let reach_ind = stdout(&run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "reach",
+        "ind.s01ep01",
+    ]));
     assert!(
         reach_ind.contains("Reachable"),
         "cycle-independent scene must report its real Reachable verdict, not the cycle-Unknown \
@@ -329,7 +357,10 @@ fn scenario_envelope_header_carries_pre_entry_label() {
     let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
-    assert!(out_text.contains("pre-entry"), "header must carry the pre-entry label: {out_text}");
+    assert!(
+        out_text.contains("pre-entry"),
+        "header must carry the pre-entry label: {out_text}"
+    );
     assert!(
         out_text.contains("before its own writes"),
         "header must clarify the tables are before the node's own writes: {out_text}"
@@ -346,10 +377,18 @@ fn connectivity_t15_corpus_example_envelope_shows_guaranteed_cross_scene_read() 
     // under the Guaranteed table, carrying the §2.6 declared-routes
     // qualifier.
     let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples");
-    let out = run(&["scenario", examples.to_str().unwrap(), "envelope", "kestrel.s01ep02"]);
+    let out = run(&[
+        "scenario",
+        examples.to_str().unwrap(),
+        "envelope",
+        "kestrel.s01ep02",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
-    assert!(out_text.contains("under your declared routes"), "{out_text}");
+    assert!(
+        out_text.contains("under your declared routes"),
+        "{out_text}"
+    );
     // Pin the path to the GUARANTEED section specifically -- the printer
     // always emits a "Guaranteed" heading and `run.sawOverlook` ALSO
     // appears in the (superset) "Possible" section regardless of whether
@@ -385,14 +424,20 @@ fn bare_scenario_prints_nonempty_topological_graph() {
     let out = run(&["scenario", dir.to_str().unwrap()]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
-    assert!(!out_text.trim().is_empty(), "bare scenario must print a nonempty graph");
+    assert!(
+        !out_text.trim().is_empty(),
+        "bare scenario must print a nonempty graph"
+    );
     assert!(out_text.contains("scene(a.s01ep01)"), "{out_text}");
     assert!(out_text.contains("scene(b.s01ep01)"), "{out_text}");
     // Topological ordering: A (no prerequisite) must be reported before B
     // (after visited(A)) — a real edge, not just node names dumped flat.
     let a_pos = out_text.find("scene(a.s01ep01)").unwrap();
     let b_pos = out_text.find("scene(b.s01ep01)").unwrap();
-    assert!(a_pos < b_pos, "A must precede B in topological order: {out_text}");
+    assert!(
+        a_pos < b_pos,
+        "A must precede B in topological order: {out_text}"
+    );
 }
 
 #[test]
@@ -406,7 +451,10 @@ fn scenario_reach_prints_reachability_verdict() {
     assert!(out.status.success(), "{out_text}");
     assert!(out_text.contains("Reachable"), "{out_text}");
     // The reachability CLAIM itself carries the §2.6 declared-routes hedge.
-    assert!(out_text.contains("under your declared routes"), "{out_text}");
+    assert!(
+        out_text.contains("under your declared routes"),
+        "{out_text}"
+    );
     // The declared prerequisite is shown structurally (not flattened away).
     assert!(out_text.contains("visited(\"a.s01ep01\")"), "{out_text}");
 }
@@ -426,7 +474,11 @@ fn scenario_envelope_explicitly_lists_possible_not_guaranteed_warning_read() {
         "b.lute",
         "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n",
     );
-    write(&dir, "x.lute", &scene_reading_run_z_after_or("x", "a.s01ep01", "b.s01ep01"));
+    write(
+        &dir,
+        "x.lute",
+        &scene_reading_run_z_after_or("x", "a.s01ep01", "b.s01ep01"),
+    );
 
     // Default `check-project` must NOT surface this warning grade at all
     // (T11's compute-and-drop default stays unchanged).
@@ -455,7 +507,10 @@ fn check_project_unknown_node_exits_nonzero_with_e_conn_unknown_node() {
 
     let out = run(&["check-project", dir.to_str().unwrap()]);
     let out_text = stdout(&out);
-    assert!(!out.status.success(), "unknown node must exit non-zero: {out_text}");
+    assert!(
+        !out.status.success(),
+        "unknown node must exit non-zero: {out_text}"
+    );
     assert!(out_text.contains("E-CONN-UNKNOWN-NODE"), "{out_text}");
 }
 
@@ -482,18 +537,33 @@ fn scenario_reach_on_cross_root_duplicate_node_id_is_ambiguous_not_silently_pick
     assert!(!reach_out.status.success(), "{}", stdout(&reach_out));
     let reach_err = stderr(&reach_out);
     assert!(reach_err.contains("ambiguous"), "{reach_err}");
-    assert!(reach_err.contains("2"), "must name the match count: {reach_err}");
+    assert!(
+        reach_err.contains("2"),
+        "must name the match count: {reach_err}"
+    );
     // The fix's observable contract is naming EVERY matching root, not
     // merely a count -- assert BOTH root paths appear, not just one.
-    assert!(reach_err.contains(&sub_a), "must name subA's root path: {reach_err}");
-    assert!(reach_err.contains(&sub_b), "must name subB's root path: {reach_err}");
+    assert!(
+        reach_err.contains(&sub_a),
+        "must name subA's root path: {reach_err}"
+    );
+    assert!(
+        reach_err.contains(&sub_b),
+        "must name subB's root path: {reach_err}"
+    );
 
     let env_out = run(&["scenario", dir.to_str().unwrap(), "envelope", "c.s01ep01"]);
     assert!(!env_out.status.success(), "{}", stdout(&env_out));
     let env_err = stderr(&env_out);
     assert!(env_err.contains("ambiguous"), "{env_err}");
-    assert!(env_err.contains(&sub_a), "must name subA's root path: {env_err}");
-    assert!(env_err.contains(&sub_b), "must name subB's root path: {env_err}");
+    assert!(
+        env_err.contains(&sub_a),
+        "must name subA's root path: {env_err}"
+    );
+    assert!(
+        env_err.contains(&sub_b),
+        "must name subB's root path: {env_err}"
+    );
 }
 
 #[test]
@@ -505,7 +575,11 @@ fn scenario_reach_referenced_undeclared_node_reports_unknown_not_reachable_or_cy
     // `E-CONN-CYCLE`. Both must instead read Unknown, consistent with
     // `E-CONN-UNKNOWN-NODE`.
     let dir = temp_dir("scenario-undeclared-reference");
-    write(&dir, "x.lute", &scene_after("x", "__never_declared_scene__"));
+    write(
+        &dir,
+        "x.lute",
+        &scene_after("x", "__never_declared_scene__"),
+    );
     // Rewrite `x.lute` to reference a quest instead via `completed(...)`
     // is covered by a separate doc so both atom kinds are exercised.
     write(
@@ -518,21 +592,38 @@ fn scenario_reach_referenced_undeclared_node_reports_unknown_not_reachable_or_cy
     let out_scene = run(&["scenario", dir.to_str().unwrap(), "reach", "x.s01ep01"]);
     let text_scene = stdout(&out_scene);
     assert!(out_scene.status.success(), "{text_scene}");
-    assert!(text_scene.contains("scene(__never_declared_scene__)"), "{text_scene}");
+    assert!(
+        text_scene.contains("scene(__never_declared_scene__)"),
+        "{text_scene}"
+    );
     let referenced_line_scene = text_scene
         .lines()
         .find(|l| l.contains("scene(__never_declared_scene__)"))
         .unwrap();
-    assert!(referenced_line_scene.contains("Unknown"), "{referenced_line_scene}");
-    assert!(!referenced_line_scene.contains("E-CONN-CYCLE"), "{referenced_line_scene}");
+    assert!(
+        referenced_line_scene.contains("Unknown"),
+        "{referenced_line_scene}"
+    );
+    assert!(
+        !referenced_line_scene.contains("E-CONN-CYCLE"),
+        "{referenced_line_scene}"
+    );
 
     let out_quest = run(&["scenario", dir.to_str().unwrap(), "reach", "q.s01ep01"]);
     let text_quest = stdout(&out_quest);
     assert!(out_quest.status.success(), "{text_quest}");
-    let referenced_line_quest =
-        text_quest.lines().find(|l| l.contains("quest(missingQuest)")).unwrap();
-    assert!(referenced_line_quest.contains("Unknown"), "{referenced_line_quest}");
-    assert!(!referenced_line_quest.contains("Reachable"), "{referenced_line_quest}");
+    let referenced_line_quest = text_quest
+        .lines()
+        .find(|l| l.contains("quest(missingQuest)"))
+        .unwrap();
+    assert!(
+        referenced_line_quest.contains("Unknown"),
+        "{referenced_line_quest}"
+    );
+    assert!(
+        !referenced_line_quest.contains("Reachable"),
+        "{referenced_line_quest}"
+    );
 }
 
 #[test]
@@ -553,7 +644,12 @@ fn scenario_envelope_labels_scene_and_quest_possible_guaranteed_differently() {
 
     let qdir = temp_dir("scenario-envelope-label-quest");
     write(&qdir, "q.lute", &quest_no_after("labelQuest"));
-    let out_quest = run(&["scenario", qdir.to_str().unwrap(), "envelope", "quest:labelQuest"]);
+    let out_quest = run(&[
+        "scenario",
+        qdir.to_str().unwrap(),
+        "envelope",
+        "quest:labelQuest",
+    ]);
     let text_quest = stdout(&out_quest);
     assert!(out_quest.status.success(), "{text_quest}");
     assert!(!text_quest.contains("warning-grade reads"), "{text_quest}");
@@ -565,7 +661,10 @@ fn scenario_envelope_labels_scene_and_quest_possible_guaranteed_differently() {
     // deliberately — that reader has the source open, which is exactly the
     // audience this message was wrongly addressed to.
     assert!(!text_quest.contains("T11"), "{text_quest}");
-    assert!(!text_quest.contains("check_quest_guard_defassign"), "{text_quest}");
+    assert!(
+        !text_quest.contains("check_quest_guard_defassign"),
+        "{text_quest}"
+    );
 }
 
 #[test]
@@ -598,7 +697,10 @@ fn scenario_envelope_ambiguous_quest_id_prints_ambiguity_note_not_arbitrary_pick
     // satisfy the two assertions above -- assert NO envelope table (either
     // declaration's `run.a`/`run.b` "Guaranteed" section) is shown at all.
     assert!(!out_text.contains("Guaranteed"), "{out_text}");
-    assert!(!out_text.contains("run.a") && !out_text.contains("run.b"), "{out_text}");
+    assert!(
+        !out_text.contains("run.a") && !out_text.contains("run.b"),
+        "{out_text}"
+    );
 }
 
 #[test]
@@ -704,15 +806,26 @@ fn scene_key_beginning_with_quest_prefix_is_selectable_via_explicit_scene_prefix
          ## Shot 1.\n@narrator: hi\n",
     );
 
-    let reach_out =
-        run(&["scenario", dir.to_str().unwrap(), "reach", "scene:quest:zzz.s01ep01"]);
+    let reach_out = run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "reach",
+        "scene:quest:zzz.s01ep01",
+    ]);
     let reach_text = stdout(&reach_out);
     assert!(reach_out.status.success(), "{reach_text}");
-    assert!(reach_text.contains("scene(quest:zzz.s01ep01)"), "{reach_text}");
+    assert!(
+        reach_text.contains("scene(quest:zzz.s01ep01)"),
+        "{reach_text}"
+    );
     assert!(reach_text.contains("Reachable"), "{reach_text}");
 
-    let env_out =
-        run(&["scenario", dir.to_str().unwrap(), "envelope", "scene:quest:zzz.s01ep01"]);
+    let env_out = run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "envelope",
+        "scene:quest:zzz.s01ep01",
+    ]);
     let env_text = stdout(&env_out);
     assert!(env_out.status.success(), "{env_text}");
     assert!(env_text.contains("scene(quest:zzz.s01ep01)"), "{env_text}");
@@ -722,9 +835,18 @@ fn scene_key_beginning_with_quest_prefix_is_selectable_via_explicit_scene_prefix
     // an authoritative (never-guessed) quest lookup -- and since no quest
     // `zzz.s01ep01` is declared, it must fail as unknown, NOT silently
     // fall through to the colliding scene.
-    let bare_out = run(&["scenario", dir.to_str().unwrap(), "reach", "quest:zzz.s01ep01"]);
+    let bare_out = run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "reach",
+        "quest:zzz.s01ep01",
+    ]);
     assert!(!bare_out.status.success(), "{}", stdout(&bare_out));
-    assert!(stderr(&bare_out).contains("unknown node"), "{}", stderr(&bare_out));
+    assert!(
+        stderr(&bare_out).contains("unknown node"),
+        "{}",
+        stderr(&bare_out)
+    );
 }
 
 #[test]
@@ -771,12 +893,25 @@ fn scenario_reach_reports_unreachable_for_dead_required_objective_quest() {
          after: 'completed(\"deadQuest\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out_quest = run(&["scenario", dir.to_str().unwrap(), "reach", "quest:deadQuest"]);
+    let out_quest = run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "reach",
+        "quest:deadQuest",
+    ]);
     let text_quest = stdout(&out_quest);
     assert!(text_quest.contains("Unreachable"), "{text_quest}");
-    assert!(text_quest.contains("E-OBJECTIVE-UNSATISFIABLE"), "{text_quest}");
+    assert!(
+        text_quest.contains("E-OBJECTIVE-UNSATISFIABLE"),
+        "{text_quest}"
+    );
 
-    let out_scene = run(&["scenario", dir.to_str().unwrap(), "reach", "scene:repro.s01ep01"]);
+    let out_scene = run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "reach",
+        "scene:repro.s01ep01",
+    ]);
     let text_scene = stdout(&out_scene);
     assert!(text_scene.contains("Unreachable"), "{text_scene}");
     assert!(
@@ -821,8 +956,9 @@ fn scenario_json_reports_each_edge_kind_distinguishably() {
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
 
-    let v: serde_json::Value = serde_json::from_str(&out_text)
-        .unwrap_or_else(|e| panic!("scenario --format json must emit valid JSON ({e}): {out_text}"));
+    let v: serde_json::Value = serde_json::from_str(&out_text).unwrap_or_else(|e| {
+        panic!("scenario --format json must emit valid JSON ({e}): {out_text}")
+    });
     let edges = v["roots"][0]["edges"].as_array().expect("edges array");
 
     let kinds_of = |to: &str| -> Vec<String> {
@@ -837,7 +973,10 @@ fn scenario_json_reports_each_edge_kind_distinguishably() {
             .collect()
     };
     assert_eq!(kinds_of("quest(viaActive)"), vec!["active".to_string()]);
-    assert_eq!(kinds_of("quest(viaCompleted)"), vec!["completed".to_string()]);
+    assert_eq!(
+        kinds_of("quest(viaCompleted)"),
+        vec!["completed".to_string()]
+    );
 
     // The pre-existing `visited` edge keeps reporting its own kind — the field
     // is uniform, not an `active`-only annotation.
@@ -891,7 +1030,10 @@ fn scenario_dot_dashes_active_edges_only_and_is_deterministic() {
     );
 
     let again = stdout(&run(&["scenario", &path, "--format", "dot"]));
-    assert_eq!(out_text, again, "dot output must be byte-identical across runs");
+    assert_eq!(
+        out_text, again,
+        "dot output must be byte-identical across runs"
+    );
 }
 
 #[test]
@@ -928,7 +1070,12 @@ fn dead_relation_start_reads_unreachable() {
          <objective id=\"o\" done=\"run.n >= 1\"/>\n</quest>\n",
     );
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "reach", "quest:deadStart"]);
+    let out = run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "reach",
+        "quest:deadStart",
+    ]);
     let text = stdout(&out);
     assert!(
         text.contains("verdict: Unreachable"),
@@ -952,9 +1099,17 @@ fn scene_envelope_names_the_writers_of_each_path() {
     write(&dir, "lute.project.yaml", &core_only_project_yaml());
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
-    let text = stdout(&run(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]));
+    let text = stdout(&run(&[
+        "scenario",
+        dir.to_str().unwrap(),
+        "envelope",
+        "b.s01ep01",
+    ]));
     assert!(text.contains("written by"), "{text}");
-    assert!(text.contains("a.s01ep01"), "the writing scene must be named: {text}");
+    assert!(
+        text.contains("a.s01ep01"),
+        "the writing scene must be named: {text}"
+    );
 }
 
 /// #15 / T9.14's last verify bullet, the edge nobody could draw:
@@ -987,25 +1142,45 @@ fn quest_envelope_names_a_completion_handler_as_a_writer() {
 #[test]
 fn envelope_reports_the_relational_layer_not_only_the_scalar_one() {
     let root = anseo();
-    let text = stdout(&run(&["scenario", root.to_str().unwrap(), "envelope", "anseo.s01ep06"]));
+    let text = stdout(&run(&[
+        "scenario",
+        root.to_str().unwrap(),
+        "envelope",
+        "anseo.s01ep06",
+    ]));
     assert!(text.contains("Facts"), "{text}");
     for rel in ["awake", "knows", "found", "can_halt"] {
-        assert!(text.contains(rel), "every declared relation must be listed ({rel}): {text}");
+        assert!(
+            text.contains(rel),
+            "every declared relation must be listed ({rel}): {text}"
+        );
     }
     let derived = text
         .lines()
         .find(|l| l.contains("can_halt"))
         .unwrap_or_else(|| panic!("no can_halt row: {text}"));
-    assert!(derived.contains("derived"), "a `derive: true` relation must say so: {derived}");
+    assert!(
+        derived.contains("derived"),
+        "a `derive: true` relation must say so: {derived}"
+    );
     // `awake` is BOTH `facts:`-seeded and ::asserted in the corpus; both
     // producers must be drawn or the section is decorative.
     let awake = text
         .lines()
         .find(|l| l.trim_start().starts_with("- awake"))
         .unwrap_or_else(|| panic!("no awake row: {text}"));
-    assert!(awake.contains("asserted by"), "the producer edge must be drawn: {awake}");
-    assert!(awake.contains("facts: seed"), "the seed is a producer too: {awake}");
-    assert!(awake.contains(".lute"), "the asserting document must be named: {awake}");
+    assert!(
+        awake.contains("asserted by"),
+        "the producer edge must be drawn: {awake}"
+    );
+    assert!(
+        awake.contains("facts: seed"),
+        "the seed is a producer too: {awake}"
+    );
+    assert!(
+        awake.contains(".lute"),
+        "the asserting document must be named: {awake}"
+    );
     assert!(
         text.contains("can_halt(C) :- awake(C), knows(C, shed_sequence)"),
         "the rule that makes the derived relation true must be printed: {text}"
@@ -1017,10 +1192,27 @@ fn envelope_reports_the_relational_layer_not_only_the_scalar_one() {
 #[test]
 fn envelope_at_the_root_and_at_the_leaf_are_no_longer_identical() {
     let root = anseo();
-    let first = stdout(&run(&["scenario", root.to_str().unwrap(), "envelope", "anseo.s01ep01"]));
-    let last = stdout(&run(&["scenario", root.to_str().unwrap(), "envelope", "anseo.s01ep09"]));
-    let strip = |s: &str| s.replace("anseo.s01ep01", "N").replace("anseo.s01ep09", "N");
-    assert_ne!(strip(&first), strip(&last), "still byte-identical:\n{first}");
+    let first = stdout(&run(&[
+        "scenario",
+        root.to_str().unwrap(),
+        "envelope",
+        "anseo.s01ep01",
+    ]));
+    let last = stdout(&run(&[
+        "scenario",
+        root.to_str().unwrap(),
+        "envelope",
+        "anseo.s01ep09",
+    ]));
+    let strip = |s: &str| {
+        s.replace("anseo.s01ep01", "N")
+            .replace("anseo.s01ep09", "N")
+    };
+    assert_ne!(
+        strip(&first),
+        strip(&last),
+        "still byte-identical:\n{first}"
+    );
     // Inequality alone would be satisfied by any per-node noise. What must
     // hold is the PRE-ENTRY claim: at the root nothing has run yet, and a
     // project-wide writer join — which is what the plan specified — would

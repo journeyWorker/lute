@@ -194,10 +194,13 @@ fn line_code(attrs: &[Attr]) -> Option<String> {
 /// A string-valued attribute (used for a `<hub>`'s `id`, which — unlike a
 /// `<branch>` — has no dedicated AST field, dsl §7.3.2).
 fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
-    attrs.iter().find(|a| a.key == key).and_then(|a| match &a.value {
-        AttrValue::Str(s) => Some(s.as_str()),
-        _ => None,
-    })
+    attrs
+        .iter()
+        .find(|a| a.key == key)
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some(s.as_str()),
+            _ => None,
+        })
 }
 
 /// Push one choice/hub label unit plus recurse into its body. An option's
@@ -313,14 +316,16 @@ fn walk_nodes<'a>(cx: &Cx<'a>, nodes: &[Node], region: Region<'a>, out: &mut Vec
     }
 }
 
-/// A scene document's identity prefix: `{character}.{episodeId}` via the SHARED
+/// A scene document's identity prefix: authored `id:` (dsl 0.15.0 §2) when
+/// present and valid, else `{character}.{episodeId}` via the SHARED
 /// [`canonical_episode_key`] `lute-compile`'s own prefix join and
-/// `check-project`'s scene-key grouping both call. `None` when the frontmatter
-/// carries no usable `character`/`season`/`episode` triad — a quest document
-/// (whose prefix is per-`<quest>`), a component/schema fragment, or a scene too
-/// broken to identify. Reads the raw mapping directly (mirroring
-/// `connectivity.rs`'s own `scene_identity`) because `episodeId` is never
-/// lifted into `TypedMeta`.
+/// `check-project`'s scene-key grouping both call. `None` when the
+/// frontmatter carries neither a usable authored id nor a usable
+/// `character`/`season`/`episode` triad — a quest document (whose prefix is
+/// per-`<quest>`), a component/schema fragment, or a scene too broken to
+/// identify. Reads the raw mapping directly (mirroring `connectivity.rs`'s
+/// own `scene_identity`) because `id`/`episodeId` are never lifted into a
+/// syntax-layer type here.
 fn scene_prefix(doc: &Document) -> Option<String> {
     let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
     let map = match value {
@@ -328,6 +333,21 @@ fn scene_prefix(doc: &Document) -> Option<String> {
         _ => return None,
     };
     let key = |k: &str| serde_yaml::Value::String(k.to_string());
+    // Authored `id:` wins — validated to the dsl 0.15.0 §2 charset (the
+    // whole-project compile gate rejects anything else, but `loc export`
+    // never runs the checker so we mirror the charset here rather than
+    // stamping an id `lute compile` would refuse). An invalid or missing
+    // authored id falls through to today's derivation, unchanged.
+    if let Some(id) = map.get(key("id")).and_then(|v| v.as_str()) {
+        let trimmed = id.trim();
+        if !trimmed.is_empty()
+            && trimmed
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+        {
+            return Some(trimmed.to_string());
+        }
+    }
     let character = map.get(key("character"))?.as_str()?.to_string();
     if character.is_empty() {
         return None;
@@ -335,7 +355,9 @@ fn scene_prefix(doc: &Document) -> Option<String> {
     let season = map.get(key("season"))?.as_i64()?;
     let episode = map.get(key("episode"))?.as_i64()?;
     let episode_id = map.get(key("episodeId")).and_then(|v| v.as_str());
-    Some(canonical_episode_key(&character, season, episode, episode_id))
+    Some(canonical_episode_key(
+        &character, season, episode, episode_id,
+    ))
 }
 
 /// Collect every translatable unit from one parsed document. A scene's shots
@@ -429,12 +451,18 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         // interpolation is what a translator must see intact.
         let root = crate::project_root_for(path, dir);
         let Some(built) = crate::build_input(path, None, Some(&root)) else {
-            eprintln!("lute loc: skipping {} — cannot resolve inputs", path.display());
+            eprintln!(
+                "lute loc: skipping {} — cannot resolve inputs",
+                path.display()
+            );
             continue;
         };
         let input = built.input;
         let (mut doc, diags) = lute_syntax::parse(&input.text);
-        let errors = diags.iter().filter(|d| d.severity == Severity::Error).count();
+        let errors = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .count();
         if errors > 0 {
             eprintln!(
                 "lute loc: skipping {} — parse failed ({errors} error(s))",
@@ -663,7 +691,10 @@ fn render_csv(units: &[Unit]) -> String {
 /// remove the `{{`/`}}` interpolation delimiters, then count whitespace-split
 /// non-empty tokens.
 fn word_count(text: &str) -> usize {
-    text.replace("{{", "").replace("}}", "").split_whitespace().count()
+    text.replace("{{", "")
+        .replace("}}", "")
+        .split_whitespace()
+        .count()
 }
 
 /// Per-speaker accumulator within one document (or project-wide).
@@ -698,7 +729,10 @@ pub fn run_report(dir: &Path, json: bool) -> ExitCode {
         let stat = docs.entry(u.file().to_string()).or_default();
         match u {
             Unit::Line {
-                code, speaker, text, ..
+                code,
+                speaker,
+                text,
+                ..
             } => {
                 let words = word_count(text);
                 stat.lines += 1;
@@ -820,9 +854,15 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
             .max()
             .unwrap_or(7);
         s.push('\n');
-        s.push_str(&format!("{:<sp_w$}  {:>6}  {:>6}\n", "speaker", "lines", "words"));
+        s.push_str(&format!(
+            "{:<sp_w$}  {:>6}  {:>6}\n",
+            "speaker", "lines", "words"
+        ));
         for (name, sp) in &totals.speakers {
-            s.push_str(&format!("{:<sp_w$}  {:>6}  {:>6}\n", name, sp.lines, sp.words));
+            s.push_str(&format!(
+                "{:<sp_w$}  {:>6}  {:>6}\n",
+                name, sp.lines, sp.words
+            ));
         }
     }
 
@@ -1178,12 +1218,18 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].line_id.as_deref(), Some("x.n_0010"));
         assert_eq!(rows[0].text, "he said \"hi, there\"\nand left");
-        assert_eq!(rows[0].locale, None, "no `locale` column -> the file stem decides");
+        assert_eq!(
+            rows[0].locale, None,
+            "no `locale` column -> the file stem decides"
+        );
     }
 
     #[test]
     fn csv_reader_rejects_an_unterminated_quote() {
-        let bad = format!("{}\r\nline,a.lute,1,x,0010,n,,\"oops\r\n", CSV_COLUMNS.join(","));
+        let bad = format!(
+            "{}\r\nline,a.lute,1,x,0010,n,,\"oops\r\n",
+            CSV_COLUMNS.join(",")
+        );
         assert!(parse_csv_rows(&bad).is_err());
     }
 
@@ -1206,14 +1252,20 @@ mod tests {
         let rows = parse_json_rows(src).expect("export shape parses");
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].text, "hi");
-        assert_eq!(rows[1].text, "Go", "a choice row's translation is its `label`");
+        assert_eq!(
+            rows[1].text, "Go",
+            "a choice row's translation is its `label`"
+        );
         assert_eq!(rows[2].line_id, None, "an untagged row carries no join key");
     }
 
     #[test]
     fn json_reader_rejects_a_shape_export_never_writes() {
         assert!(parse_json_rows("{}").is_err(), "root must be an array");
-        assert!(parse_json_rows(r#"[{"text":"hi"}]"#).is_err(), "`kind` is required");
+        assert!(
+            parse_json_rows(r#"[{"text":"hi"}]"#).is_err(),
+            "`kind` is required"
+        );
         assert!(
             parse_json_rows(r#"[{"kind":"song","text":"hi"}]"#).is_err(),
             "an unknown `kind` is a defect, not something to guess past"
