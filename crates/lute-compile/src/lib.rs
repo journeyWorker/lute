@@ -124,17 +124,21 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// the derived `{character}.{episodeId}` join) — the four legacy identity
 /// keys (`character`/`season`/`episode`/`episodeId`) demote to optional
 /// (`skip_serializing_if = "Option::is_none"`), and BOTH `SceneMeta` and
-/// `QuestMeta` gain the descriptive `meta` block (a JSON-ready open mapping
+/// `QuestMeta` gain the descriptive `extra` block (a JSON-ready open mapping
 /// key-sorted via `BTreeMap`, `skip_serializing_if = "BTreeMap::is_empty"`
 /// so a document without the block stays byte-identical to 0.14.0). The
 /// derived-key path still emits all four legacy fields with `episodeId`
 /// resolved exactly as 0.14.0 did (dsl 0.15.0 §7 compatibility): a
 /// pre-0.15 document's 0.15 artifact differs from its 0.14 artifact ONLY
-/// by the new `id` line and the version strings. The gated major.minor
-/// moves (`0.14` -> `0.15`); `schemas/lute-ir-0.14.schema.json` is kept
-/// published for engines still on 0.14 while
-/// `schemas/lute-ir-0.15.schema.json` publishes the new `sceneMeta.id`
-/// requirement and the `meta` property on both metas.
+/// by the new `id` line and the version strings. `schemas/lute-ir-0.14.schema.json`
+/// is renamed to `schemas/lute-ir-0.15.schema.json` per the per-release
+/// rename rule (the file tracks the published release line for strict
+/// validators); its content gains the `sceneMeta.id` requirement, demotes
+/// the four legacy identity keys to optional, and adds the `extra` property
+/// on both `sceneMeta` and `questMeta`. No engine gate widens: the runtime
+/// contract has gated on IR MAJOR only since `0.13.0`, so a `0.14` engine
+/// parses a `0.15.0` artifact unchanged and simply does not ask for the
+/// added key.
 pub const LUTE_IR_VERSION: &str = "0.15.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating

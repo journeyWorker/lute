@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.12.0`, the grammar and semantics the checker
+- **Language** — currently `0.15.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.12.0`) and gated on by consuming engines.
+  artifact (currently `0.15.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -36,6 +36,109 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.15.0] - 2026-09-01
+
+**Scenes get to name themselves.**
+
+The canonical scene key was the derived join `{character}.{episodeId}`,
+and three required frontmatter keys had degenerated into an opaque id
+authored in three pieces, two forced to be integers. `0.15.0` adds one
+opt-in scene frontmatter key — `id:` — that IS the canonical scene key
+wherever the derived join was consumed today, demotes the four legacy
+identity keys to optional when it is present, and lands a free descriptive
+`extra:` block on scene and quest roots for anything the language never
+read anyway. No grammar production changes (frontmatter is one opaque
+token), `capabilityVersion` does not move, and untouched corpora keep
+every lineId, translation, `visited()` reference, and `schedule.yaml`
+behavior — their artifacts differ from the 0.14.0 output only by the
+added `meta.id` line.
+
+### Added
+
+- **Language — authored canonical scene id via `id:`** — one scene-only
+  frontmatter key that IS the canonical scene key everywhere the derived
+  `{character}.{episodeId}` join is consumed today: the lineId prefix and
+  the structural choice/hub option ids, `visited()` targets (including the
+  nearest-key suggestion on `E-CONN-UNKNOWN-NODE`), connectivity nodes,
+  reachability, project-wide duplicate detection, `prereqEdges[].node`,
+  the document key in `project.index.json`, and the runtime visited-set
+  entry `lute play` records after presentation. Value is non-empty and
+  matches `[A-Za-z0-9_.-]+` (`.` admits namespacing like
+  `anseo.s01ep01`); anything else is **`E-META-ID`**. When `id:` is
+  present the four legacy identity keys (`character` / `season` /
+  `episode` / `episodeId`) are no longer required and **`E-META-MISSING`**
+  fires only when the defaults-merged frontmatter lacks `id:`. Authored
+  and derived keys share one namespace and one project-wide uniqueness
+  rule: **`E-CONN-EPISODE-ID-DUP`** keeps its code (tooling stability)
+  but its message now names the *canonical scene id*, and an occurrence
+  contributed by an authored `id:` anchors at that key. `id` is not
+  defaultable (a manifest supplying one to many documents can only
+  manufacture collisions), so it stays outside `defaults:`' closed key
+  set. When absent, every site derives `{character}.{episodeId}` exactly
+  as 0.14.0 — the fallback is the existing code path, so an untouched
+  project's lineIds, translations, `visited()` references, and
+  `schedule.yaml` behavior do not move. Spec:
+  [`docs/proposals/scenario-dsl/0.15.0.md`](docs/proposals/scenario-dsl/0.15.0.md).
+  Design record: [`docs/superpowers/specs/2026-09-01-lute-scene-id-design.md`](docs/superpowers/specs/2026-09-01-lute-scene-id-design.md).
+- **Language — free descriptive `extra:` block on scene and quest roots**
+  — one reserved frontmatter key holding an open mapping (keys free,
+  values scalars or flat scalar-lists; a nested mapping or a non-scalar
+  list entry is **`E-META-VALUE`**), legal on scene and quest roots and
+  rejected on schema/component documents through the existing kind gate.
+  `extra:` carries **no language semantics**: not readable from CEL, not
+  a state path, not a template token, consulted by no checker, compiler,
+  or runtime rule. It is serialized verbatim into `meta.extra` (omitted
+  when empty) so external tooling — search, TMS, editors — can key on
+  it, and the top level stays closed (`E-META-UNKNOWN-KEY` keeps
+  catching top-level typos). `extra` joins `defaults:`' closed key set;
+  0.10.0 §6.2's whole-value-per-key rule applies unchanged.
+- **Language — `W-META-LEGACY`** — a document that authors `id:` and
+  ALSO authors any of `character:` / `season:` / `episode:` /
+  `episodeId:` in its **own** frontmatter draws one warning per key,
+  anchored at that key: identity now comes from `id:`; move the value
+  under `extra:` if it should stay searchable. Promotable with `--deny`.
+  The pass reads the authored frontmatter, never the defaults-merged
+  view: a manifest-inherited `character:` on an `id:`-carrying document
+  is silent. A document with no `id:` warns nowhere; the derived path is
+  fully supported and its removal is deferred to a future major.
+- **IR — `SceneMeta.id` (required) and `extra` on both `SceneMeta` and
+  `QuestMeta` (optional)** — `id` is always emitted as the resolved
+  canonical scene key (authored `id:` verbatim, else the derived
+  `{character}.{episodeId}` join), so no consumer rederives identity;
+  the four legacy `SceneMeta` fields (`character`/`season`/`episode`/
+  `episodeId`) demote to optional and are emitted only when the source
+  supplies them; both metas gain a `BTreeMap`-backed `extra` block
+  (key-sorted, omitted when empty), populated from the frontmatter
+  block. Additive under `0.13.0`'s MAJOR-only gate — the only artifact
+  delta on a pre-0.15 document is the added `meta.id` line, and a
+  `0.14` engine parses a `0.15.0` artifact unchanged.
+
+### Changed
+
+- **Schema renamed per release line** — `schemas/lute-ir-0.14.schema.json`
+  is renamed to [`schemas/lute-ir-0.15.schema.json`](schemas/lute-ir-0.15.schema.json);
+  its `sceneMeta` now requires `id`, admits the four legacy identity
+  keys as optional, and gains an `extra` object (values are scalars or
+  flat scalar-lists); `questMeta` also gains `extra`. `$id` and title
+  updated to match. Under the MAJOR-only gate the rename tracks the
+  published release line for strict validators only; no engine gate
+  widens.
+- **`E-META-MISSING` narrowed and `E-CONN-EPISODE-ID-DUP` generalized**
+  — the former fires only when the defaults-merged frontmatter lacks
+  `id:` (so an `id:`-carrying document with no `character:`/`season:`/
+  `episode:` is silent); the latter keeps its code but its message
+  names the *canonical scene id*, and an occurrence contributed by an
+  authored `id:` anchors at `id:` instead of `character:`.
+- **Clippy 1.96 lint-debt cleanup** — doc-list indentation, identical-if
+  merges, `if let` chains, and scoped `#[allow(…)]`s for
+  `result_large_err` / `too_many_arguments`. No behavior change; the
+  workspace is clippy-clean again on the current stable toolchain.
+- `capabilityVersion` does NOT move this release: no `lute.core` export
+  changes, and frontmatter admission is checker work, not a capability
+  export.
+- Version re-alignment per [`docs/versioning.md`](docs/versioning.md):
+  toolchain, language, and IR all present `0.15.0`.
 
 ## [0.14.0] - 2026-08-31
 

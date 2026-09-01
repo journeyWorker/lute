@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.14.0**.
+**0.15.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -242,10 +242,11 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.14.0",
-  "irVersion": "0.11.0",
+  "lute": "0.15.0",
+  "irVersion": "0.15.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
+    "id": "mira.s01ep01",
     "character": "mira",
     "season": 1,
     "episode": 1,
@@ -349,9 +350,33 @@ after: 'visited("mira.s01ep01") || visited("mira.s01ep03")'
 That is the whole vocabulary. There is no `!`, no arithmetic, and no reading state — those are
 intentionally left out. Anything conditional on runtime state stays in your `when=` guards.
 
-A scene's **canonical key** is `{character}.{episodeId}`, where `episodeId` defaults to
-`s{season}ep{episode}` (zero-padded). Our tutorial scene (`character: mira`, `season: 1`,
-`episode: 1`) has key **`mira.s01ep01`**.
+`visited("…")` needs a scene's **canonical key**. The primary way to name one — and the shape you
+should reach for in new work — is to *author* it, with one dedicated frontmatter key (dsl 0.15.0
+§2):
+
+```yaml
+id: mira.s01ep01
+```
+
+`id:` is a plain string (letters, digits, `_`, `-`, `.`) that identifies this scene project-wide.
+`visited("mira.s01ep01")` in another scene's `after:` names *this* one; the same string is the
+prefix every `lineId`/`voiceKey` in the compiled artifact is built from
+(`"lineId": "mira.s01ep01.narrator_0010"` in the Part 4 output). With `id:` declared,
+`character:` / `season:` / `episode:` become optional — keep them if they carry useful metadata
+(search, TMS), drop them if they don't. If you write `id:` **and** any of those legacy identity
+keys in the same document, the checker draws one `W-META-LEGACY` per key: identity now comes from
+`id:`, and anything descriptive belongs under `extra:` (see §3 of the same spec).
+
+**Legacy fallback (no `id:` declared).** Every existing scene that authored
+`character:` / `season:` / `episode:` — including this tutorial's diner — is still valid: when
+`id:` is absent, the canonical key derives from the frontmatter as `{character}.{episodeId}`,
+where `{episodeId}` is the `episodeId:` key when declared, otherwise `s{season}ep{episode}`
+zero-padded to two digits each. Our tutorial scene declares `character: mira`, `season: 1`,
+`episode: 1` and no explicit `id:` or `episodeId:`, so its canonical key is still
+**`mira.s01ep01`** — the same string you would get by writing `id: mira.s01ep01` outright, which
+is why the Part 4 compile output shows `"meta": { "id": "mira.s01ep01", … }` regardless. You
+never have to reverse-engineer the key from compiler output — read it straight off the
+frontmatter, either the authored `id:` or the derived join.
 
 To carry a fact across episodes, use the persistent **`run.`** tier. Teach the diner to remember
 the meeting — declare `run.metMira` and set it:
