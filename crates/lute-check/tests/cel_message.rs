@@ -49,7 +49,11 @@ fn diagnostics_for(raw: &str) -> (String, Vec<Diagnostic>) {
 }
 
 fn messages_for(raw: &str) -> Vec<String> {
-    diagnostics_for(raw).1.into_iter().map(|d| d.message).collect()
+    diagnostics_for(raw)
+        .1
+        .into_iter()
+        .map(|d| d.message)
+        .collect()
 }
 
 fn cel_parse_diag(raw: &str) -> Diagnostic {
@@ -120,7 +124,12 @@ fn assignment_eq_gets_suggestion() {
         "{}",
         d.message
     );
-    assert_eq!(d.fixits.len(), 1, "expected exactly one fixit; got {:?}", d.fixits);
+    assert_eq!(
+        d.fixits.len(),
+        1,
+        "expected exactly one fixit; got {:?}",
+        d.fixits
+    );
     let edit = &d.fixits[0].edit[0];
     let mut spliced = text.clone();
     spliced.replace_range(edit.span.byte_start..edit.span.byte_end, &edit.new_text);
@@ -162,7 +171,15 @@ fn no_backend_vocabulary_ever() {
         "extraneous input",
         "no viable",
     ];
-    for bad in ["run.act = 1", "a &", "(", "1 +", "'unterminated", "a and b", "@"] {
+    for bad in [
+        "run.act = 1",
+        "a &",
+        "(",
+        "1 +",
+        "'unterminated",
+        "a and b",
+        "@",
+    ] {
         let msgs = messages_for(bad);
         for m in &msgs {
             for tok in LEAKS {
@@ -179,7 +196,10 @@ fn c2_parse_failure_suppresses_slot() {
     // suppress every downstream per-slot analysis (dsl §8.2 C2).
     let (_, diags) = diagnostics_for("run.nope = 1");
     let codes: Vec<&str> = diags.iter().map(|d| d.code.as_str()).collect();
-    assert!(codes.contains(&"E-CEL-PARSE"), "expected E-CEL-PARSE; got {codes:?}");
+    assert!(
+        codes.contains(&"E-CEL-PARSE"),
+        "expected E-CEL-PARSE; got {codes:?}"
+    );
     assert!(
         !codes.contains(&"E-UNDECLARED"),
         "C2 must suppress E-UNDECLARED for a slot that failed to parse; got {codes:?}"
@@ -253,10 +273,14 @@ fn component_body_cel_parse_is_translated_and_reanchored() {
          </match>\n",
     )
     .unwrap();
-    let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [reaction.lute]\n---\n\
+    let scene =
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [reaction.lute]\n---\n\
          ## Shot 1.\n::use{component=\"reaction\" tier=\"fond\"}\n";
     let (doc, _) = lute_syntax::parse(scene);
-    let (meta0, _) = lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
     let components = lute_check::resolve_components(&dir, &meta0.components, doc.meta.span);
     let input = CheckInput {
         text: scene.to_string(),

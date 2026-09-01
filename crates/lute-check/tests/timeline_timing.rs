@@ -4,6 +4,7 @@
 //! - `E-CLIP-TIMING`: a single clip carrying BOTH `at` and `delay`.
 //! - `E-TIMELINE-DURATION`: an explicit `<timeline duration>` below the max
 //!   resolved clip end.
+//!
 //! Fed through the assembled `check()` over inline `state:` frontmatter so the
 //! parser's `at`-stripping (track context) and the walker are both exercised.
 use lute_check::{check, CheckInput, CheckResult, Mode, SchemaImports};

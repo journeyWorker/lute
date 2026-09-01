@@ -12,7 +12,11 @@ fn codes(text: &str) -> Vec<String> {
         components: Default::default(),
         defaults: Default::default(),
     };
-    check(&input).diagnostics.into_iter().map(|d| d.code).collect()
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
 }
 
 #[test]
@@ -20,7 +24,11 @@ fn standalone_schema_fragment_has_no_kind_or_meta_error() {
     // A schema doc (state/defs only, no kind:) checked standalone must NOT
     // trip E-KIND-MISSING or E-META-MISSING (dsl 0.2.0 §3.1 / §6.1).
     let cs = codes("---\nstate:\n  run.blessed: { type: bool, default: false }\n---\n");
-    assert!(!cs.iter().any(|c| c == "E-KIND-MISSING" || c == "E-META-MISSING"), "{cs:?}");
+    assert!(
+        !cs.iter()
+            .any(|c| c == "E-KIND-MISSING" || c == "E-META-MISSING"),
+        "{cs:?}"
+    );
 }
 
 #[test]
@@ -40,7 +48,8 @@ fn scene_missing_kind_still_errors() {
 fn unrecognized_kind_with_schema_shape_still_errors() {
     // `kind:` PRESENT but unrecognized + schema-shaped + no body must NOT be
     // swallowed by shape inference — E-UNKNOWN-KIND must survive.
-    let cs = codes("---\nkind: reward\nstate:\n  run.blessed: { type: bool, default: false }\n---\n");
+    let cs =
+        codes("---\nkind: reward\nstate:\n  run.blessed: { type: bool, default: false }\n---\n");
     assert!(cs.contains(&"E-UNKNOWN-KIND".to_string()), "{cs:?}");
 }
 

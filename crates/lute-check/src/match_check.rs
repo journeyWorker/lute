@@ -184,7 +184,11 @@ pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagno
 /// component param's [`param_domain`] instead — same rules, same codes,
 /// different domain source (§6.3: "apply inside component bodies exactly as
 /// at scene level").
-pub(crate) fn check_match_with_domain(m: &Match, info: DomainInfo, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
+pub(crate) fn check_match_with_domain(
+    m: &Match,
+    info: DomainInfo,
+    ctx: &Ctx<'_>,
+) -> Vec<Diagnostic> {
     let _ = ctx; // reserved: subject typing is owned by T4.3; unused here.
     let mut diags = Vec::new();
     let subject = subject_path(m);
@@ -630,9 +634,7 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
             diags.push(diag(
                 E_PATH_IDENT,
                 Severity::Error,
-                format!(
-                    "quest id `{id}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)"
-                ),
+                format!("quest id `{id}` has a `-`; CEL-facing names forbid `-` (dsl §8.4)"),
                 quest.id_span,
             ));
         }
@@ -798,10 +800,13 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
 /// The plain string value of the attr keyed `key`, if present and a string
 /// literal (`key="s"`). A bare/`@ref` value or a missing key yields `None`.
 fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
-    attrs.iter().find(|a| a.key == key).and_then(|a| match &a.value {
-        AttrValue::Str(s) => Some(s.as_str()),
-        _ => None,
-    })
+    attrs
+        .iter()
+        .find(|a| a.key == key)
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some(s.as_str()),
+            _ => None,
+        })
 }
 
 /// True when a bare boolean flag attr (`key`, e.g. `once`/`exit`) is present —
@@ -1047,10 +1052,7 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
             // treatment.
             if is_reserved_quest_objective_done(path) {
                 DomainInfo {
-                    domain: Domain::Finite(vec![
-                        DomainValue::Bool(true),
-                        DomainValue::Bool(false),
-                    ]),
+                    domain: Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)]),
                     // `check_quest` seeds this decl with `default: Some(false)`.
                     maybe_unset: false,
                     resolved: true,
@@ -1292,7 +1294,9 @@ pub(crate) fn literal_is_foreign(lit: &WhenLiteral, dom: &DomainInfo) -> bool {
     };
     match lit {
         WhenLiteral::Bool(b) => !vals.contains(&DomainValue::Bool(*b)),
-        WhenLiteral::Str(s) => !vals.iter().any(|v| matches!(v, DomainValue::Str(x) if x == s)),
+        WhenLiteral::Str(s) => !vals
+            .iter()
+            .any(|v| matches!(v, DomainValue::Str(x) if x == s)),
         WhenLiteral::Num(_) => true, // `Domain::Finite` is always bool/enum; a Num never fits.
         WhenLiteral::Unset => unreachable!("handled above"),
     }
@@ -1756,7 +1760,13 @@ mod tests {
                 when_arm("$ == null"),
             ],
         );
-        let errs = check_match(&m, &StateSchema { decls: BTreeMap::new() }, &ctx());
+        let errs = check_match(
+            &m,
+            &StateSchema {
+                decls: BTreeMap::new(),
+            },
+            &ctx(),
+        );
         assert!(
             errs.is_empty(),
             "foreign quest.state fully covered incl. unset should be clean: {errs:?}"
@@ -1776,7 +1786,13 @@ mod tests {
                 when_arm("$ == null"),
             ],
         );
-        let errs = check_match(&m, &StateSchema { decls: BTreeMap::new() }, &ctx());
+        let errs = check_match(
+            &m,
+            &StateSchema {
+                decls: BTreeMap::new(),
+            },
+            &ctx(),
+        );
         assert!(
             errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
             "missing `failed` member must still be E-NONEXHAUSTIVE: {errs:?}"
@@ -1791,7 +1807,13 @@ mod tests {
             "quest.foo.objectives.bar.done",
             vec![when_arm("$"), when_arm("!$")],
         );
-        let errs = check_match(&m, &StateSchema { decls: BTreeMap::new() }, &ctx());
+        let errs = check_match(
+            &m,
+            &StateSchema {
+                decls: BTreeMap::new(),
+            },
+            &ctx(),
+        );
         assert!(
             errs.is_empty(),
             "foreign objective.done fully covered should be clean: {errs:?}"
@@ -2502,7 +2524,6 @@ mod tests {
         assert!(errs.is_empty(), "bool covered by is=true/false: {errs:?}");
     }
 
-
     // --- CheckFix F6/F7: `<quest id>`/`<objective id>` required (§6.3/§6.4) ---
 
     fn objective(id: &str, done_raw: &str) -> lute_syntax::ast::Objective {
@@ -2577,7 +2598,11 @@ mod tests {
         );
         assert_eq!(
             paths,
-            vec!["quest.q.state", "quest.q.activatedAt", "quest.q.objectives.o2.done"],
+            vec![
+                "quest.q.state",
+                "quest.q.activatedAt",
+                "quest.q.objectives.o2.done"
+            ],
             "the quest's own state + activatedAt decls and the well-formed objective's \
              done decl still fold; only the id-less objective's decl is skipped"
         );
@@ -2642,7 +2667,9 @@ mod tests {
             rec.diags
         );
         assert!(
-            !rec.diags.iter().any(|d| d.code == "E-OBJECTIVE-MISSING-DONE"),
+            !rec.diags
+                .iter()
+                .any(|d| d.code == "E-OBJECTIVE-MISSING-DONE"),
             "MISSING-DONE must not co-fire when `done=` is populated: {:?}",
             rec.diags
         );
@@ -2690,7 +2717,7 @@ mod tests {
         // compile time).
         let paths: Vec<&str> = rec.decls.iter().map(|(p, _)| p.as_str()).collect();
         assert!(
-            paths.iter().any(|p| *p == "quest.parent.objectives.o.done"),
+            paths.contains(&"quest.parent.objectives.o.done"),
             "subquest objective's reserved `done` decl must still fold: {paths:?}"
         );
     }
@@ -2760,11 +2787,7 @@ mod tests {
         // quiet here.
         let q = quest_with_body(
             "parent",
-            vec![Node::Objective(subquest_objective(
-                "o",
-                "elsewhere",
-                "",
-            ))],
+            vec![Node::Objective(subquest_objective("o", "elsewhere", ""))],
         );
         let mut seen = BTreeSet::new();
         let rec = check_quest(&q, &mut seen);

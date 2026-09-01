@@ -64,8 +64,9 @@ pub fn parse_config(
     yaml: &str,
     config_span: Span,
 ) -> Result<(LintConfig, Vec<Diagnostic>), ConfigError> {
-    let root: serde_yaml::Value = serde_yaml::from_str(yaml)
-        .map_err(|e| ConfigError { message: format!("malformed lute.lint.yaml: {e}") })?;
+    let root: serde_yaml::Value = serde_yaml::from_str(yaml).map_err(|e| ConfigError {
+        message: format!("malformed lute.lint.yaml: {e}"),
+    })?;
     // An empty file is legal — the caller falls back to defaults.
     if root.is_null() {
         return Ok((LintConfig::default(), Vec::new()));
@@ -134,10 +135,9 @@ pub fn parse_config(
                             Ok(ovr) => {
                                 cfg.rules.insert(id, ovr);
                             }
-                            Err(msg) => diags.push(diag(
-                                format!("rule `{id}`: {msg}"),
-                                config_span,
-                            )),
+                            Err(msg) => {
+                                diags.push(diag(format!("rule `{id}`: {msg}"), config_span))
+                            }
                         }
                     }
                 }
@@ -151,10 +151,9 @@ pub fn parse_config(
                     for item in seq {
                         match serde_yaml::from_value::<LintRuleDecl>(item.clone()) {
                             Ok(decl) => cfg.custom.push(decl),
-                            Err(e) => diags.push(diag(
-                                format!("bad custom rule: {e}"),
-                                config_span,
-                            )),
+                            Err(e) => {
+                                diags.push(diag(format!("bad custom rule: {e}"), config_span))
+                            }
                         }
                     }
                 }
@@ -178,14 +177,15 @@ fn parse_rule_override(v: &serde_yaml::Value) -> Result<RuleOverride, String> {
         serde_yaml::Value::String(s) => {
             let lvl = level_from_str(s)
                 .ok_or_else(|| format!("unknown level `{s}`; expected off|hint|info|warn|error"))?;
-            Ok(RuleOverride { level: Some(lvl), options: Default::default() })
+            Ok(RuleOverride {
+                level: Some(lvl),
+                options: Default::default(),
+            })
         }
         serde_yaml::Value::Mapping(m) => {
             let mut ovr = RuleOverride::default();
             for (k, v) in m {
-                let key = k
-                    .as_str()
-                    .ok_or_else(|| format!("non-string key {k:?}"))?;
+                let key = k.as_str().ok_or_else(|| format!("non-string key {k:?}"))?;
                 match key {
                     "level" => {
                         let s = v
@@ -299,11 +299,17 @@ custom:
         assert!(diags.is_empty(), "{diags:?}");
         assert!(cfg.lsp);
         assert_eq!(cfg.ignore, vec!["drafts/**".to_string()]);
-        assert_eq!(cfg.rules.get("dialogue-length").unwrap().level, Some(LintLevel::Warn));
+        assert_eq!(
+            cfg.rules.get("dialogue-length").unwrap().level,
+            Some(LintLevel::Warn)
+        );
         let dr = cfg.rules.get("dialogue-ratio").unwrap();
         assert_eq!(dr.level, Some(LintLevel::Error));
         assert!(dr.options.contains_key(serde_yaml::Value::from("min")));
-        assert_eq!(cfg.rules.get("my-plugin/x").unwrap().level, Some(LintLevel::Off));
+        assert_eq!(
+            cfg.rules.get("my-plugin/x").unwrap().level,
+            Some(LintLevel::Off)
+        );
         assert_eq!(cfg.custom.len(), 1);
         assert_eq!(cfg.custom[0].id, "too-many-choices");
     }
@@ -324,10 +330,8 @@ custom:
 
     #[test]
     fn deep_merge_replaces_scalars_and_recurses() {
-        let defaults: serde_yaml::Mapping = serde_yaml::from_str(
-            "maxWords: 40\nnested: { a: 1, b: 2 }\n",
-        )
-        .unwrap();
+        let defaults: serde_yaml::Mapping =
+            serde_yaml::from_str("maxWords: 40\nnested: { a: 1, b: 2 }\n").unwrap();
         let overrides: serde_yaml::Mapping =
             serde_yaml::from_str("maxWords: 50\nnested: { b: 20 }\n").unwrap();
         let merged = deep_merge(&defaults, &overrides);

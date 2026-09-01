@@ -165,7 +165,14 @@ pub(crate) fn check_choice_attrs(c: &Choice, pos: ChoicePos, diags: &mut Vec<Dia
         ChoicePos::Hub => HUB_CHOICE_ATTRS,
     };
     let hint = matches!(pos, ChoicePos::Branch).then_some(HUB_ONLY_HINT);
-    close(&c.attrs, "choice", permitted, CHOICE_REMOVED_ATTRS, hint, diags);
+    close(
+        &c.attrs,
+        "choice",
+        permitted,
+        CHOICE_REMOVED_ATTRS,
+        hint,
+        diags,
+    );
 }
 
 /// One construct's closure: every attr whose key is outside `permitted` and not

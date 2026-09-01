@@ -20,10 +20,19 @@ use lute_trace::{trace_document, Decision, MockSet, Step, TraceExit, UnresolvedE
 /// `components:` relative paths).
 fn input_for(text: &str, uri: &str, base: &Path) -> CheckInput {
     let (doc, parse_diags) = lute_syntax::parse(text);
-    assert!(parse_diags.is_empty(), "fixture must parse clean: {parse_diags:?}");
-    let (meta0, _) = lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
-    let (snapshot, _) =
-        lute_manifest::project::resolve_document_snapshot(None, meta0.profile.as_deref(), &meta0.plugins);
+    assert!(
+        parse_diags.is_empty(),
+        "fixture must parse clean: {parse_diags:?}"
+    );
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let (snapshot, _) = lute_manifest::project::resolve_document_snapshot(
+        None,
+        meta0.profile.as_deref(),
+        &meta0.plugins,
+    );
     let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
     let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
     CheckInput {
@@ -60,23 +69,36 @@ fn quest_facts(facts: &[&str]) -> MockSet {
 }
 
 fn assert_complete(exit: &TraceExit) {
-    assert!(matches!(exit, TraceExit::Complete), "expected Complete, got {exit:?}");
+    assert!(
+        matches!(exit, TraceExit::Complete),
+        "expected Complete, got {exit:?}"
+    );
 }
 
 fn assert_incomplete(exit: &TraceExit) {
-    assert!(matches!(exit, TraceExit::Incomplete), "expected Incomplete, got {exit:?}");
+    assert!(
+        matches!(exit, TraceExit::Incomplete),
+        "expected Incomplete, got {exit:?}"
+    );
 }
 
 fn quest_decision<'a>(decisions: &'a [Decision], outcome: &str) -> Option<&'a Decision> {
-    decisions.iter().find(|d| d.construct == "quest" && d.outcome == outcome)
+    decisions
+        .iter()
+        .find(|d| d.construct == "quest" && d.outcome == outcome)
 }
 
 fn has_step_assert(steps: &[Step], text: &str) -> bool {
-    steps.iter().any(|s| matches!(s, Step::Assert { text: t } if t == text))
+    steps
+        .iter()
+        .any(|s| matches!(s, Step::Assert { text: t } if t == text))
 }
 
 fn count_step_assert(steps: &[Step], text: &str) -> usize {
-    steps.iter().filter(|s| matches!(s, Step::Assert { text: t } if t == text)).count()
+    steps
+        .iter()
+        .filter(|s| matches!(s, Step::Assert { text: t } if t == text))
+        .count()
 }
 
 fn count_quest_decisions(decisions: &[Decision], id: &str, outcome: &str) -> usize {
@@ -87,7 +109,9 @@ fn count_quest_decisions(decisions: &[Decision], id: &str, outcome: &str) -> usi
 }
 
 fn has_step_retract(steps: &[Step], text: &str) -> bool {
-    steps.iter().any(|s| matches!(s, Step::Retract { text: t } if t == text))
+    steps
+        .iter()
+        .any(|s| matches!(s, Step::Retract { text: t } if t == text))
 }
 
 fn has_step_set(steps: &[Step], path: &str, value: &str) -> bool {
@@ -97,11 +121,18 @@ fn has_step_set(steps: &[Step], path: &str, value: &str) -> bool {
 }
 
 fn has_line_containing(steps: &[Step], needle: &str) -> bool {
-    steps.iter().any(|s| matches!(s, Step::Line { text, .. } if text.contains(needle)))
+    steps
+        .iter()
+        .any(|s| matches!(s, Step::Line { text, .. } if text.contains(needle)))
 }
 
-fn objective_unresolved<'a>(unresolved: &'a [UnresolvedEntry], id: &str) -> Option<&'a UnresolvedEntry> {
-    unresolved.iter().find(|u| u.construct == "objective" && u.id == id)
+fn objective_unresolved<'a>(
+    unresolved: &'a [UnresolvedEntry],
+    id: &str,
+) -> Option<&'a UnresolvedEntry> {
+    unresolved
+        .iter()
+        .find(|u| u.construct == "objective" && u.id == id)
 }
 
 // ---------------------------------------------------------------------
@@ -121,7 +152,8 @@ fn quest_activates_and_halts_on_unresolved_derived_objective() {
 
     // `start` decided true -> active, recorded EXACTLY once (the
     // declarative path activates at most one time per quest).
-    let active = quest_decision(&report.decisions, "active").expect("quest must record an active decision");
+    let active =
+        quest_decision(&report.decisions, "active").expect("quest must record an active decision");
     assert_eq!(active.id, "rescueHalsin");
     assert_eq!(
         count_quest_decisions(&report.decisions, "rescueHalsin", "active"),
@@ -146,9 +178,13 @@ fn quest_activates_and_halts_on_unresolved_derived_objective() {
     // `learn`'s `done` (`holds(believesLocation(...))`, `derive:true`,
     // never supplied) is unresolved, naming `believesLocation` and the
     // §4.6 "supply it as a mock" hint.
-    let learn = objective_unresolved(&report.unresolved, "learn").expect("`learn` must be unresolved");
+    let learn =
+        objective_unresolved(&report.unresolved, "learn").expect("`learn` must be unresolved");
     assert!(
-        learn.atoms.iter().any(|a| a.contains("believesLocation") && a.contains("--fact")),
+        learn
+            .atoms
+            .iter()
+            .any(|a| a.contains("believesLocation") && a.contains("--fact")),
         "unresolved atoms must name believesLocation + the mock hint: {:?}",
         learn.atoms
     );
@@ -174,14 +210,19 @@ fn supplying_derived_facts_completes_the_quest() {
 
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
-    assert!(report.unresolved.is_empty(), "a complete trace has nothing left unresolved: {:?}", report.unresolved);
+    assert!(
+        report.unresolved.is_empty(),
+        "a complete trace has nothing left unresolved: {:?}",
+        report.unresolved
+    );
     assert!(
         report.notes.is_empty(),
         "§3.1 note must not fire once `--fact` mocks are supplied: {:?}",
         report.notes
     );
 
-    let complete = quest_decision(&report.decisions, "complete").expect("quest must record a complete decision");
+    let complete = quest_decision(&report.decisions, "complete")
+        .expect("quest must record a complete decision");
     assert_eq!(complete.id, "rescueHalsin");
 
     // Both objectives recorded done.
@@ -193,13 +234,33 @@ fn supplying_derived_facts_completes_the_quest() {
         .decisions
         .iter()
         .any(|d| d.construct == "objective" && d.id == "learn" && d.outcome == "done");
-    assert!(reach_done, "reach must be recorded done: {:?}", report.decisions);
-    assert!(learn_done, "learn must be recorded done: {:?}", report.decisions);
+    assert!(
+        reach_done,
+        "reach must be recorded done: {:?}",
+        report.decisions
+    );
+    assert!(
+        learn_done,
+        "learn must be recorded done: {:?}",
+        report.decisions
+    );
 
     // `questComplete`'s writes are visible in the transcript.
-    assert!(has_step_retract(&report.steps, "captive(halsin)"), "retract must be visible: {:?}", report.steps);
-    assert!(has_step_assert(&report.steps, "inParty(halsin)"), "assert must be visible: {:?}", report.steps);
-    assert!(has_step_set(&report.steps, "user.xp", "300"), "set must be visible: {:?}", report.steps);
+    assert!(
+        has_step_retract(&report.steps, "captive(halsin)"),
+        "retract must be visible: {:?}",
+        report.steps
+    );
+    assert!(
+        has_step_assert(&report.steps, "inParty(halsin)"),
+        "assert must be visible: {:?}",
+        report.steps
+    );
+    assert!(
+        has_step_set(&report.steps, "user.xp", "300"),
+        "set must be visible: {:?}",
+        report.steps
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -221,7 +282,8 @@ fn fail_takes_precedence_over_derived_completion() {
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit); // every guard fully decided; the quest itself failed
 
-    let failed = quest_decision(&report.decisions, "failed").expect("quest must record a failed decision");
+    let failed =
+        quest_decision(&report.decisions, "failed").expect("quest must record a failed decision");
     assert_eq!(failed.id, "rescueHalsin");
 
     // Completion never fires, even though both objectives are done.
@@ -230,8 +292,14 @@ fn fail_takes_precedence_over_derived_completion() {
         "fail must PREEMPT completion, never both: {:?}",
         report.decisions
     );
-    assert!(!has_step_retract(&report.steps, "captive(halsin)"), "questComplete must never fire");
-    assert!(!has_step_set(&report.steps, "user.xp", "300"), "questComplete's ::set must never fire");
+    assert!(
+        !has_step_retract(&report.steps, "captive(halsin)"),
+        "questComplete must never fire"
+    );
+    assert!(
+        !has_step_set(&report.steps, "user.xp", "300"),
+        "questComplete's ::set must never fire"
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -268,7 +336,11 @@ fn on_guard_reads_pre_event_snapshot_not_a_sibling_arms_write() {
     assert_complete(&exit);
 
     // The first handler's write landed.
-    assert!(has_step_set(&report.steps, "run.flag", "false"), "the first handler's ::set must land: {:?}", report.steps);
+    assert!(
+        has_step_set(&report.steps, "run.flag", "false"),
+        "the first handler's ::set must land: {:?}",
+        report.steps
+    );
 
     // The second handler's guard (`when="run.flag"`) fired using the
     // PRE-EVENT value (schema default `true`) — NOT the sibling arm's
@@ -279,7 +351,11 @@ fn on_guard_reads_pre_event_snapshot_not_a_sibling_arms_write() {
         "the second handler must fire on the OLD (pre-event) value: {:?}",
         report.steps
     );
-    let on_decisions: Vec<&Decision> = report.decisions.iter().filter(|d| d.construct == "on").collect();
+    let on_decisions: Vec<&Decision> = report
+        .decisions
+        .iter()
+        .filter(|d| d.construct == "on")
+        .collect();
     assert!(
         on_decisions.iter().any(|d| d.outcome == "fires"),
         "at least one on-decision must record a fire: {on_decisions:?}"
@@ -320,21 +396,31 @@ fn start_less_quest_stays_inactive_without_accept_exit_zero_not_incomplete() {
     let awaiting = quest_decision(&report.decisions, "awaiting accept")
         .expect("a start-less, unaccepted quest must report awaiting-accept");
     assert_eq!(awaiting.id, "sideQuest");
-    assert!(quest_decision(&report.decisions, "active").is_none(), "must never activate without --accept");
-    assert!(!has_line_containing(&report.steps, "accepted!"), "questActive must never fire without activation");
+    assert!(
+        quest_decision(&report.decisions, "active").is_none(),
+        "must never activate without --accept"
+    );
+    assert!(
+        !has_line_containing(&report.steps, "accepted!"),
+        "questActive must never fire without activation"
+    );
 }
 
 #[test]
 fn start_less_quest_activates_on_matching_accept_questactive_fires_once() {
     let text = accept_driven_fixture();
     let input = input_for(&text, "accept_driven.lute", Path::new("."));
-    let mocks = MockSet { accepts: vec!["sideQuest".to_string()], ..Default::default() };
+    let mocks = MockSet {
+        accepts: vec!["sideQuest".to_string()],
+        ..Default::default()
+    };
 
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
 
     // Activated exactly once via the accept-driven path.
-    let active = quest_decision(&report.decisions, "active").expect("`--accept` must activate the quest");
+    let active =
+        quest_decision(&report.decisions, "active").expect("`--accept` must activate the quest");
     assert_eq!(active.id, "sideQuest");
     assert_eq!(
         count_quest_decisions(&report.decisions, "sideQuest", "active"),
@@ -346,8 +432,16 @@ fn start_less_quest_activates_on_matching_accept_questactive_fires_once() {
 
     // `questActive` fired from the ONE activation, exactly once (double-fire
     // regression guard for the accept-driven path).
-    let fire_count = report.steps.iter().filter(|s| matches!(s, Step::Line { text, .. } if text.contains("accepted!"))).count();
-    assert_eq!(fire_count, 1, "questActive handler must fire exactly once: {:?}", report.steps);
+    let fire_count = report
+        .steps
+        .iter()
+        .filter(|s| matches!(s, Step::Line { text, .. } if text.contains("accepted!")))
+        .count();
+    assert_eq!(
+        fire_count, 1,
+        "questActive handler must fire exactly once: {:?}",
+        report.steps
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -369,7 +463,8 @@ fn terminal_failed_quest_purges_unresolved_objectives() {
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit); // terminal (failed) -> NOT incomplete/exit 3
 
-    let failed = quest_decision(&report.decisions, "failed").expect("quest must record a failed decision");
+    let failed =
+        quest_decision(&report.decisions, "failed").expect("quest must record a failed decision");
     assert_eq!(failed.id, "rescueHalsin");
 
     assert!(
@@ -405,10 +500,26 @@ fn nonterminal_quest_dedupes_unresolved_objective_across_passes() {
     assert!(quest_decision(&report.decisions, "failed").is_none());
     assert!(quest_decision(&report.decisions, "complete").is_none());
 
-    let reach_count = report.unresolved.iter().filter(|u| u.construct == "objective" && u.id == "reach").count();
-    let learn_count = report.unresolved.iter().filter(|u| u.construct == "objective" && u.id == "learn").count();
-    assert_eq!(reach_count, 1, "`reach` must be reported unresolved exactly once, not once per pass: {:?}", report.unresolved);
-    assert_eq!(learn_count, 1, "`learn` must be reported unresolved exactly once, not once per pass: {:?}", report.unresolved);
+    let reach_count = report
+        .unresolved
+        .iter()
+        .filter(|u| u.construct == "objective" && u.id == "reach")
+        .count();
+    let learn_count = report
+        .unresolved
+        .iter()
+        .filter(|u| u.construct == "objective" && u.id == "learn")
+        .count();
+    assert_eq!(
+        reach_count, 1,
+        "`reach` must be reported unresolved exactly once, not once per pass: {:?}",
+        report.unresolved
+    );
+    assert_eq!(
+        learn_count, 1,
+        "`learn` must be reported unresolved exactly once, not once per pass: {:?}",
+        report.unresolved
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -431,15 +542,25 @@ fn declares_seed_facts_with_no_mocks_emits_not_auto_loaded_note() {
 
     let (report, exit) = trace_document(&input, mocks);
 
-    assert_eq!(report.notes.len(), 1, "expected exactly one §3.1 note: {:?}", report.notes);
+    assert_eq!(
+        report.notes.len(),
+        1,
+        "expected exactly one §3.1 note: {:?}",
+        report.notes
+    );
     let note = &report.notes[0];
     assert!(
         note.to_lowercase().contains("not auto-load"),
         "note must state schema seed facts are not auto-loaded: {note}"
     );
-    assert!(note.contains("--fact"), "note must say --fact supplies them: {note}");
     assert!(
-        ["inParty", "captive", "atLocation", "connected"].iter().any(|r| note.contains(r)),
+        note.contains("--fact"),
+        "note must say --fact supplies them: {note}"
+    );
+    assert!(
+        ["inParty", "captive", "atLocation", "connected"]
+            .iter()
+            .any(|r| note.contains(r)),
         "note must name a declared seed relation: {note}"
     );
 
@@ -448,10 +569,18 @@ fn declares_seed_facts_with_no_mocks_emits_not_auto_loaded_note() {
     // `start` decides `false` off the genuinely-empty explicit set and the
     // quest never activates — informational only, never a reachability
     // claim, never touching the exit-code decision.
-    assert_eq!(report.seeds.facts, 0, "the seeded-count banner reflects supplied mocks only, unaffected by the note");
+    assert_eq!(
+        report.seeds.facts, 0,
+        "the seeded-count banner reflects supplied mocks only, unaffected by the note"
+    );
     assert_complete(&exit);
-    assert!(report.unresolved.is_empty(), "the note must never manufacture an unresolved atom: {:?}", report.unresolved);
-    let never = quest_decision(&report.decisions, "never").expect("start decides false off the empty explicit set");
+    assert!(
+        report.unresolved.is_empty(),
+        "the note must never manufacture an unresolved atom: {:?}",
+        report.unresolved
+    );
+    let never = quest_decision(&report.decisions, "never")
+        .expect("start decides false off the empty explicit set");
     assert_eq!(never.id, "rescueHalsin");
 }
 
@@ -479,7 +608,9 @@ fn unrelated_supplied_fact_does_not_silence_the_note() {
     );
     let note = &report.notes[0];
     assert!(
-        ["inParty", "captive", "atLocation", "connected"].iter().any(|r| note.contains(r)),
+        ["inParty", "captive", "atLocation", "connected"]
+            .iter()
+            .any(|r| note.contains(r)),
         "note must name a declared-but-unsupplied seed relation, not the unrelated one: {note}"
     );
 }

@@ -16,7 +16,11 @@ fn codes(text: &str) -> Vec<String> {
         components: Default::default(),
         defaults: Default::default(),
     };
-    check(&input).diagnostics.into_iter().map(|d| d.code).collect()
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
 }
 
 const VOCAB: &str = "entities:\n  c: { members: [ana, bo] }\n  loc: { members: [grove] }\nrelations:\n  inParty: { args: [c] }\n  atLoc: { args: [c, loc], key: [0] }\n  buddy: { args: [c, c], derive: true }\n  gated: { args: [c], derive: true }\nstate:\n  run.act: { type: number, default: 1 }\nrules:\n  - \"buddy(A, B) :- inParty(A), inParty(B), A != B\"\n  - \"gated(X) :- inParty(X), cel(\\\"run.act == 1\\\")\"\n";
@@ -51,12 +55,20 @@ fn holds_count_validat_now_are_in_profile() {
 #[test]
 fn bare_relation_reference_stays_out_of_profile() {
     let c = codes(&scene_when("inParty(ana)"));
-    assert!(c.contains(&"E-CEL-PROFILE".to_string()), "bare relation call (§8): {c:?}");
+    assert!(
+        c.contains(&"E-CEL-PROFILE".to_string()),
+        "bare relation call (§8): {c:?}"
+    );
 }
 
 #[test]
 fn malformed_query_shapes_are_cel_profile() {
-    for cond in ["holds()", "holds(run.act)", "holds(inParty(ana), 2)", "now(1) == now(1)"] {
+    for cond in [
+        "holds()",
+        "holds(run.act)",
+        "holds(inParty(ana), 2)",
+        "now(1) == now(1)",
+    ] {
         let c = codes(&scene_when(cond));
         assert!(c.contains(&"E-CEL-PROFILE".to_string()), "{cond}: {c:?}");
     }
@@ -71,9 +83,15 @@ fn query_pattern_closure_checks() {
     let c = codes(&scene_when("holds(inParty(grove))"));
     assert!(c.contains(&"E-FACT-DOMAIN".to_string()), "{c:?}");
     let c = codes(&scene_when("holds(inParty(run.act))"));
-    assert!(c.contains(&"E-CEL-PROFILE".to_string()), "non-ground pattern arg: {c:?}");
+    assert!(
+        c.contains(&"E-CEL-PROFILE".to_string()),
+        "non-ground pattern arg: {c:?}"
+    );
     let c = codes(&scene_when("holds(c(ana))"));
-    assert!(c.contains(&"E-RELATION-UNKNOWN".to_string()), "kind is not queryable: {c:?}");
+    assert!(
+        c.contains(&"E-RELATION-UNKNOWN".to_string()),
+        "kind is not queryable: {c:?}"
+    );
 }
 
 #[test]
@@ -81,7 +99,10 @@ fn validat_over_guarded_derived_is_flagged() {
     let c = codes(&scene_when("validAt(gated(ana), now())"));
     assert!(c.contains(&"E-VALIDAT-DERIVED".to_string()), "{c:?}");
     let c = codes(&scene_when("holds(gated(ana))"));
-    assert!(!c.contains(&"E-VALIDAT-DERIVED".to_string()), "holds is fine on guarded (§6): {c:?}");
+    assert!(
+        !c.contains(&"E-VALIDAT-DERIVED".to_string()),
+        "holds is fine on guarded (§6): {c:?}"
+    );
 }
 
 #[test]

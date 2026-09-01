@@ -12,7 +12,11 @@ fn codes(text: &str) -> Vec<String> {
         components: Default::default(),
         defaults: Default::default(),
     };
-    check(&input).diagnostics.into_iter().map(|d| d.code).collect()
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
 }
 
 /// `codes` with the message kept — the did-you-mean assertions below are
@@ -28,7 +32,11 @@ fn messages(text: &str) -> Vec<(String, String)> {
         components: Default::default(),
         defaults: Default::default(),
     };
-    check(&input).diagnostics.into_iter().map(|d| (d.code, d.message)).collect()
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| (d.code, d.message))
+        .collect()
 }
 
 /// The one diagnostic with `code`, or a panic naming everything that fired.
@@ -57,7 +65,9 @@ fn relations_facts_rules_are_known_meta_keys() {
 #[test]
 fn unquoted_rule_mapping_is_datalog_parse() {
     // `head :- body` unquoted → YAML mapping, not a string (spec §4 Quoting).
-    let c = codes(&scene_with("rules:\n  - canReach(C, L) : atLocation(C, L)\n"));
+    let c = codes(&scene_with(
+        "rules:\n  - canReach(C, L) : atLocation(C, L)\n",
+    ));
     assert!(c.contains(&"E-DATALOG-PARSE".to_string()), "{c:?}");
 }
 
@@ -81,19 +91,29 @@ fn hyphenated_relation_name_is_path_ident() {
 
 #[test]
 fn kind_shape_neither_or_both_is_entity_kind_shape() {
-    let c = codes(&scene_with("entities:\n  ghost: {}\n  both: { members: [x], open: engine }\n"));
-    assert_eq!(c.iter().filter(|k| *k == "E-ENTITY-KIND-SHAPE").count(), 2, "{c:?}");
+    let c = codes(&scene_with(
+        "entities:\n  ghost: {}\n  both: { members: [x], open: engine }\n",
+    ));
+    assert_eq!(
+        c.iter().filter(|k| *k == "E-ENTITY-KIND-SHAPE").count(),
+        2,
+        "{c:?}"
+    );
 }
 
 #[test]
 fn id_in_two_kinds_is_entity_kind_clash() {
-    let c = codes(&scene_with("entities:\n  character: { members: [ana] }\n  faction: { members: [ana] }\n"));
+    let c = codes(&scene_with(
+        "entities:\n  character: { members: [ana] }\n  faction: { members: [ana] }\n",
+    ));
     assert!(c.contains(&"E-ENTITY-KIND-CLASH".to_string()), "{c:?}");
 }
 
 #[test]
 fn kind_colliding_with_relation_is_kind_name_clash() {
-    let c = codes(&scene_with("entities:\n  inParty: { members: [x] }\nrelations:\n  inParty: { args: [inParty] }\n"));
+    let c = codes(&scene_with(
+        "entities:\n  inParty: { members: [x] }\nrelations:\n  inParty: { args: [inParty] }\n",
+    ));
     assert!(c.contains(&"E-KIND-NAME-CLASH".to_string()), "{c:?}");
 }
 
@@ -103,9 +123,15 @@ fn relation_shape_diagnostics() {
         "entities:\n  c: { members: [x] }\nrelations:\n  empty: {}\n  badArg: { args: [nowhere] }\n  badKey: { args: [c], key: [3] }\n  dupKey: { args: [c, c], key: [0, 0] }\n  derived: { args: [c], derive: true, tier: run }\n  conflicted: { args: [c], derive: true, reserved: true }\n",
     ));
     assert!(c.contains(&"E-RELATION-EMPTY".to_string()), "{c:?}");
-    assert!(c.iter().filter(|k| *k == "E-RELATION-DOMAIN").count() >= 3, "badArg+badKey+dupKey: {c:?}");
+    assert!(
+        c.iter().filter(|k| *k == "E-RELATION-DOMAIN").count() >= 3,
+        "badArg+badKey+dupKey: {c:?}"
+    );
     assert!(c.contains(&"E-DERIVE-TIER".to_string()), "{c:?}");
-    assert!(c.contains(&"E-RELATION-RESERVED-WRITE".to_string()), "both flags: {c:?}");
+    assert!(
+        c.contains(&"E-RELATION-RESERVED-WRITE".to_string()),
+        "both flags: {c:?}"
+    );
 }
 
 #[test]
@@ -127,33 +153,65 @@ fn seed_fact_validation() {
     let c = codes(&scene_with(&format!("{front}facts:\n  - \"knows(ana)\"\n")));
     assert!(c.contains(&"E-RELATION-ARITY".to_string()), "{c:?}");
     // non-member enum arg
-    let c = codes(&scene_with(&format!("{front}facts:\n  - \"knows(ana, sideways)\"\n")));
+    let c = codes(&scene_with(&format!(
+        "{front}facts:\n  - \"knows(ana, sideways)\"\n"
+    )));
     assert!(c.contains(&"E-FACT-DOMAIN".to_string()), "{c:?}");
     // wildcard in a seed (D12)
-    let c = codes(&scene_with(&format!("{front}facts:\n  - \"knows(ana, _)\"\n")));
-    assert!(c.contains(&"E-RETRACT-WILDCARD-ASSERT".to_string()), "{c:?}");
+    let c = codes(&scene_with(&format!(
+        "{front}facts:\n  - \"knows(ana, _)\"\n"
+    )));
+    assert!(
+        c.contains(&"E-RETRACT-WILDCARD-ASSERT".to_string()),
+        "{c:?}"
+    );
     // open-kind arg: unknown id is FINE (D10)…
-    let c = codes(&scene_with(&format!("{front}facts:\n  - \"met(ana, minted77)\"\n")));
-    assert!(!c.contains(&"E-FACT-DOMAIN".to_string()), "open kind must not membership-check: {c:?}");
+    let c = codes(&scene_with(&format!(
+        "{front}facts:\n  - \"met(ana, minted77)\"\n"
+    )));
+    assert!(
+        !c.contains(&"E-FACT-DOMAIN".to_string()),
+        "open kind must not membership-check: {c:?}"
+    );
     // …but an id belonging to a DIFFERENT closed kind is not (one-id-one-kind)
-    let c = codes(&scene_with(&format!("{front}facts:\n  - \"met(ana, ana)\"\n")));
+    let c = codes(&scene_with(&format!(
+        "{front}facts:\n  - \"met(ana, ana)\"\n"
+    )));
     assert!(c.contains(&"E-FACT-DOMAIN".to_string()), "{c:?}");
     // clean seeds stay clean
-    let c = codes(&scene_with(&format!("{front}facts:\n  - \"knows(ana, low)\"\n")));
-    assert!(!c.iter().any(|k| k.starts_with("E-RELATION") || k == "E-FACT-DOMAIN"), "{c:?}");
+    let c = codes(&scene_with(&format!(
+        "{front}facts:\n  - \"knows(ana, low)\"\n"
+    )));
+    assert!(
+        !c.iter()
+            .any(|k| k.starts_with("E-RELATION") || k == "E-FACT-DOMAIN"),
+        "{c:?}"
+    );
 }
 
 #[test]
 fn inline_redeclaring_imported_relation_needs_matching_sig() {
     // inline vs imported uses the SAME full-decl comparison as extends (Task 6 D5)
     use std::path::Path;
-    fn write(dir: &Path, name: &str, body: &str) { std::fs::write(dir.join(name), body).unwrap(); }
+    fn write(dir: &Path, name: &str, body: &str) {
+        std::fs::write(dir.join(name), body).unwrap();
+    }
     fn zero_span() -> lute_core_span::Span {
-        lute_core_span::Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+        lute_core_span::Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        }
     }
     let dir = std::env::temp_dir().join(format!("lute_rs_inline_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    write(&dir, "s.yaml", "entities:\n  c: { members: [x] }\nrelations:\n  r: { args: [c], tier: run }\n");
+    write(
+        &dir,
+        "s.yaml",
+        "entities:\n  c: { members: [x] }\nrelations:\n  r: { args: [c], tier: run }\n",
+    );
     let imports = lute_check::resolve_imports(&dir, &["s.yaml".into()], &[], zero_span());
     let input = lute_check::CheckInput {
         text: scene_with("relations:\n  r: { args: [c], tier: user }\n"),
@@ -165,7 +223,11 @@ fn inline_redeclaring_imported_relation_needs_matching_sig() {
         components: Default::default(),
         defaults: Default::default(),
     };
-    let c: Vec<String> = lute_check::check(&input).diagnostics.into_iter().map(|d| d.code).collect();
+    let c: Vec<String> = lute_check::check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect();
     assert!(c.contains(&"E-EXTENDS-RELATION-SIG".to_string()), "{c:?}");
 }
 
@@ -181,7 +243,10 @@ fn unknown_relation_near_a_declared_one_suggests_it() {
         ),
         "E-RELATION-UNKNOWN",
     );
-    assert!(m.contains("did you mean `can_halt`"), "a one-edit-away declared relation must be suggested: {m}");
+    assert!(
+        m.contains("did you mean `can_halt`"),
+        "a one-edit-away declared relation must be suggested: {m}"
+    );
 }
 
 /// The suggestion is advisory and MUST NOT fire on a name nothing is close to
@@ -211,5 +276,8 @@ fn a_declared_kind_used_as_a_fact_gets_the_categorical_hint_not_a_guess() {
         "E-RELATION-UNKNOWN",
     );
     assert!(m.contains("an entity kind is a rule-body predicate"), "{m}");
-    assert!(!m.contains("did you mean"), "a declared kind is not a misspelling: {m}");
+    assert!(
+        !m.contains("did you mean"),
+        "a declared kind is not a misspelling: {m}"
+    );
 }

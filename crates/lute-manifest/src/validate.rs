@@ -315,7 +315,10 @@ fn validate_record_lowering(
                     ));
                     continue;
                 };
-                if let Some(extra) = m.keys().filter_map(|k| k.as_str()).find(|k| *k != "fromAttr")
+                if let Some(extra) = m
+                    .keys()
+                    .filter_map(|k| k.as_str())
+                    .find(|k| *k != "fromAttr")
                 {
                     bad(format!(
                         "field `{target}`: the binding form accepts only `fromAttr`, got `{extra}`"
@@ -700,7 +703,10 @@ mod tests {
             );
         }
         for k in lower_record_kinds() {
-            assert!(lower_record_fields(k).is_some(), "`{k}` must be in the table");
+            assert!(
+                lower_record_fields(k).is_some(),
+                "`{k}` must be in the table"
+            );
         }
     }
 }

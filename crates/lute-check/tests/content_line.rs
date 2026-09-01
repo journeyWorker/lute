@@ -21,7 +21,11 @@ fn codes_with(text: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
         components: Default::default(),
         defaults: Default::default(),
     };
-    check(&input).diagnostics.into_iter().map(|d| d.code).collect()
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
 }
 
 /// `codes_with` with the message kept, against the same shared vocabulary —
@@ -53,7 +57,10 @@ fn two_delivery_flags_conflict() {
 fn single_delivery_flag_ok() {
     for f in ["mono", "os", "vo"] {
         let cs = codes(&format!("{HDR}@x{{{f}}}: hi\n"));
-        assert!(!cs.iter().any(|c| c.starts_with("E-DELIVERY")), "{f}: {cs:?}");
+        assert!(
+            !cs.iter().any(|c| c.starts_with("E-DELIVERY")),
+            "{f}: {cs:?}"
+        );
     }
 }
 
@@ -99,7 +106,9 @@ fn known_content_attrs_are_clean() {
 #[test]
 fn emotion_member_clean_nonmember_errors() {
     // uses the HDR + codes() harness already in content_line.rs tests
-    assert!(!codes(&format!("{HDR}@x{{emotion=\"neutral\"}}: hi\n")).iter().any(|c| c == "E-BAD-ENUM"));
+    assert!(!codes(&format!("{HDR}@x{{emotion=\"neutral\"}}: hi\n"))
+        .iter()
+        .any(|c| c == "E-BAD-ENUM"));
     assert!(codes(&format!("{HDR}@x{{emotion=\"zzz\"}}: hi\n")).contains(&"E-BAD-ENUM".to_string()));
 }
 
@@ -151,7 +160,9 @@ fn bad_enum_names_the_owning_construct_with_its_real_sigil() {
     );
     assert!(!d.message.contains("::narrator"), "{}", d.message);
 
-    let dir = diagnostics(&format!("{HDR}::auto{{character=\"vesna\" action=\"zzz\"}}\n"));
+    let dir = diagnostics(&format!(
+        "{HDR}::auto{{character=\"vesna\" action=\"zzz\"}}\n"
+    ));
     let d = dir
         .iter()
         .find(|d| d.code == "E-BAD-ENUM")

@@ -329,7 +329,14 @@ pub fn resolve_nodes(
             if let Some(after) = &quest.after {
                 let (formula, _) = parse_prereq(after, quest.after_span);
                 if let Some(formula) = formula {
-                    check_formula_atoms(&formula, quest.after_span, path, key_set, quest_ids, &mut out);
+                    check_formula_atoms(
+                        &formula,
+                        quest.after_span,
+                        path,
+                        key_set,
+                        quest_ids,
+                        &mut out,
+                    );
                 }
             }
         }
@@ -556,20 +563,21 @@ pub fn assemble_graph(
         let Some((path, span)) = occurrences.first() else {
             continue;
         };
-        let prereq = by_path.get(path.as_path()).map_or(PrereqState::Absent, |doc| {
-            match scene_after(doc) {
-                SceneAfter::Absent => PrereqState::Absent,
-                SceneAfter::NonString => PrereqState::Invalid,
-                SceneAfter::String(after) if after.is_empty() => PrereqState::Absent,
-                SceneAfter::String(after) => {
-                    let after_span = meta_key_span(&doc.meta, "after");
-                    match parse_prereq(&after, after_span).0 {
-                        Some(f) => PrereqState::Valid(f),
-                        None => PrereqState::Invalid,
+        let prereq =
+            by_path
+                .get(path.as_path())
+                .map_or(PrereqState::Absent, |doc| match scene_after(doc) {
+                    SceneAfter::Absent => PrereqState::Absent,
+                    SceneAfter::NonString => PrereqState::Invalid,
+                    SceneAfter::String(after) if after.is_empty() => PrereqState::Absent,
+                    SceneAfter::String(after) => {
+                        let after_span = meta_key_span(&doc.meta, "after");
+                        match parse_prereq(&after, after_span).0 {
+                            Some(f) => PrereqState::Valid(f),
+                            None => PrereqState::Invalid,
+                        }
                     }
-                }
-            }
-        });
+                });
         nodes.insert(
             NodeId::Scene(key.clone()),
             NodeInfo {
@@ -636,7 +644,10 @@ pub fn assemble_graph(
                 Atom::Completed(id) | Atom::Active(id) => NodeId::Quest(id),
             };
             if nodes.contains_key(&target) {
-                edges.entry(target.clone()).or_default().insert(info.id.clone());
+                edges
+                    .entry(target.clone())
+                    .or_default()
+                    .insert(info.id.clone());
                 edge_kinds
                     .entry(target)
                     .or_default()
@@ -686,7 +697,15 @@ fn detect_conn_cycles(
     let mut stack: Vec<NodeId> = Vec::new();
     for start in nodes.keys() {
         if !done.contains(start) && !on_stack.contains(start) {
-            dfs_conn_cycle(start, nodes, edges, &mut on_stack, &mut done, &mut stack, diags);
+            dfs_conn_cycle(
+                start,
+                nodes,
+                edges,
+                &mut on_stack,
+                &mut done,
+                &mut stack,
+                diags,
+            );
         }
     }
 }
@@ -748,7 +767,10 @@ fn dfs_conn_cycle(
 /// zero-in-degree nodes ready at once) break on [`NodeId`]'s own `Ord` via a
 /// `BTreeSet` ready queue — independent of `nodes`/`edges`' own insertion
 /// order.
-fn topo_sort(nodes: &BTreeMap<NodeId, NodeInfo>, edges: &BTreeMap<NodeId, BTreeSet<NodeId>>) -> Vec<NodeId> {
+fn topo_sort(
+    nodes: &BTreeMap<NodeId, NodeInfo>,
+    edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
+) -> Vec<NodeId> {
     let mut in_degree: BTreeMap<NodeId, usize> = nodes.keys().map(|id| (id.clone(), 0)).collect();
     for targets in edges.values() {
         for target in targets {
@@ -931,7 +953,9 @@ pub fn check_reachability(
     let mut diags = Vec::new();
 
     for id in &g.topo_order {
-        let Some(info) = g.nodes.get(id) else { continue };
+        let Some(info) = g.nodes.get(id) else {
+            continue;
+        };
         let r = match &info.prereq {
             PrereqState::Absent => Reachability::Reachable,
             PrereqState::Invalid => Reachability::Unknown,
@@ -950,7 +974,14 @@ pub fn check_reachability(
                     ));
                     Reachability::Unknown
                 } else {
-                    eval_reach(f, g, &reach, quest_ids, ambiguous_quest_ids, unreachable_quests)
+                    eval_reach(
+                        f,
+                        g,
+                        &reach,
+                        quest_ids,
+                        ambiguous_quest_ids,
+                        unreachable_quests,
+                    )
                 }
             }
         };
@@ -1011,12 +1042,40 @@ fn eval_reach(
             }
         }
         PrereqFormula::And(l, r) => and_reach(
-            eval_reach(l, g, reach, quest_ids, ambiguous_quest_ids, unreachable_quests),
-            eval_reach(r, g, reach, quest_ids, ambiguous_quest_ids, unreachable_quests),
+            eval_reach(
+                l,
+                g,
+                reach,
+                quest_ids,
+                ambiguous_quest_ids,
+                unreachable_quests,
+            ),
+            eval_reach(
+                r,
+                g,
+                reach,
+                quest_ids,
+                ambiguous_quest_ids,
+                unreachable_quests,
+            ),
         ),
         PrereqFormula::Or(l, r) => or_reach(
-            eval_reach(l, g, reach, quest_ids, ambiguous_quest_ids, unreachable_quests),
-            eval_reach(r, g, reach, quest_ids, ambiguous_quest_ids, unreachable_quests),
+            eval_reach(
+                l,
+                g,
+                reach,
+                quest_ids,
+                ambiguous_quest_ids,
+                unreachable_quests,
+            ),
+            eval_reach(
+                r,
+                g,
+                reach,
+                quest_ids,
+                ambiguous_quest_ids,
+                unreachable_quests,
+            ),
         ),
     }
 }
@@ -1061,7 +1120,11 @@ pub fn ambiguous_quest_ids(docs: &[(PathBuf, Document)]) -> BTreeSet<String> {
             *counts.entry(quest.id.clone()).or_insert(0) += 1;
         }
     }
-    counts.into_iter().filter(|(_, count)| *count > 1).map(|(id, _)| id).collect()
+    counts
+        .into_iter()
+        .filter(|(_, count)| *count > 1)
+        .map(|(id, _)| id)
+        .collect()
 }
 
 /// T6/T7 wiring: every `<quest>` in `docs` whose declaration was flagged
@@ -1104,10 +1167,9 @@ pub fn unreachable_quest_ids(
             if quest.id.is_empty() || ambiguous.contains(&quest.id) {
                 continue;
             }
-            let flagged = result
-                .diagnostics
-                .iter()
-                .any(|d| d.code == crate::reachability::E_QUEST_UNREACHABLE && d.span == quest.span);
+            let flagged = result.diagnostics.iter().any(|d| {
+                d.code == crate::reachability::E_QUEST_UNREACHABLE && d.span == quest.span
+            });
             if flagged {
                 out.insert(quest.id.clone());
             }
@@ -1152,8 +1214,8 @@ pub fn live_assert_relations(
     let mut out = BTreeSet::new();
     for (_, doc) in docs {
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
-            let node_reach = scene_identity(doc)
-                .and_then(|ident| reach.get(&NodeId::Scene(ident.key)).copied());
+            let node_reach =
+                scene_identity(doc).and_then(|ident| reach.get(&NodeId::Scene(ident.key)).copied());
             if assert_site_is_live(node_reach) {
                 for shot in &doc.shots {
                     collect_assert_relations(&shot.body, &mut out);

@@ -31,8 +31,10 @@ fn codes(text: &str) -> Vec<String> {
 #[test]
 fn scene_kind_missing_errors() {
     // a doc with the scene triad but no `kind:` -> E-KIND-MISSING.
-    assert!(codes("---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@x: hi\n")
-        .contains(&"E-KIND-MISSING".to_string()));
+    assert!(
+        codes("---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@x: hi\n")
+            .contains(&"E-KIND-MISSING".to_string())
+    );
 }
 
 #[test]
@@ -43,15 +45,22 @@ fn unknown_kind_errors() {
 #[test]
 fn kind_scene_is_clean_discriminator() {
     // explicit kind: scene + triad -> no E-KIND-MISSING/E-UNKNOWN-KIND.
-    let cs = codes("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@x: hi\n");
-    assert!(!cs.iter().any(|c| c == "E-KIND-MISSING" || c == "E-UNKNOWN-KIND"), "{cs:?}");
+    let cs =
+        codes("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@x: hi\n");
+    assert!(
+        !cs.iter()
+            .any(|c| c == "E-KIND-MISSING" || c == "E-UNKNOWN-KIND"),
+        "{cs:?}"
+    );
 }
 
 // --- Task 2: MetaKind::Quest + kind-scoped frontmatter keys ----------------
 
 #[test]
 fn quest_needs_no_scene_triad() {
-    let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n");
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
+    );
     assert!(!cs.iter().any(|c| c == "E-META-MISSING"), "{cs:?}");
 }
 
@@ -68,15 +77,21 @@ fn quest_scratch_path_is_a_declared_tier() {
     // declaring quest.q.count in state: and reading it must NOT be E-STATE-NAMESPACE / E-UNDECLARED.
     let cs = codes("---\nkind: quest\nstate:\n  quest.q.count: { type: number, default: 0 }\n---\n\
                     <quest id=\"q\">\n<objective id=\"o\" done=\"quest.q.count >= 1\"/>\n</quest>\n");
-    assert!(!cs.iter().any(|c| c == "E-STATE-NAMESPACE" || c == "E-UNDECLARED"), "{cs:?}");
+    assert!(
+        !cs.iter()
+            .any(|c| c == "E-STATE-NAMESPACE" || c == "E-UNDECLARED"),
+        "{cs:?}"
+    );
 }
 
 // --- Task 4: check_quest/check_objective — folded reserved decls -----------
 
 #[test]
 fn duplicate_quest_id_errors() {
-    let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n\
-                    <quest id=\"q\">\n<objective id=\"o2\" done=\"b\"/>\n</quest>\n");
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n\
+                    <quest id=\"q\">\n<objective id=\"o2\" done=\"b\"/>\n</quest>\n",
+    );
     assert!(cs.contains(&"E-QUEST-ID-DUP".to_string()), "{cs:?}");
 }
 
@@ -89,17 +104,22 @@ fn duplicate_objective_id_in_quest_errors() {
 #[test]
 fn objective_missing_done_errors() {
     let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\"/>\n</quest>\n");
-    assert!(cs.contains(&"E-OBJECTIVE-MISSING-DONE".to_string()), "{cs:?}");
+    assert!(
+        cs.contains(&"E-OBJECTIVE-MISSING-DONE".to_string()),
+        "{cs:?}"
+    );
 }
 
 #[test]
 fn quest_state_readable_in_match() {
     // quest.q.state is an implicitly-declared enum; a match over it covering unset is clean.
-    let cs = codes("---\nkind: quest\nstate:\n  run.d: { type: bool, default: false }\n---\n\
+    let cs = codes(
+        "---\nkind: quest\nstate:\n  run.d: { type: bool, default: false }\n---\n\
                     <quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
                     <on event=\"questComplete\">\n<match on=\"quest.q.state\">\n\
                     <when is=\"complete\">\n@x: done\n</when>\n<otherwise>\n@x: -\n</otherwise>\n\
-                    </match>\n</on>\n</quest>\n");
+                    </match>\n</on>\n</quest>\n",
+    );
     assert!(!cs.iter().any(|c| c == "E-UNDECLARED"), "{cs:?}");
 }
 
@@ -160,8 +180,10 @@ fn foreign_quest_objective_done_declared_in_state_block_errors() {
 
 #[test]
 fn scene_rejects_on_and_objective_and_quest() {
-    let cs = codes("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-                    <on event=\"questComplete\">\n@x: hi\n</on>\n");
+    let cs = codes(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+                    <on event=\"questComplete\">\n@x: hi\n</on>\n",
+    );
     assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
 }
 
@@ -187,9 +209,14 @@ fn nested_objective_inside_on_arm_not_admitted() {
 
 #[test]
 fn quest_body_admits_objective_on_match_branch_set_content() {
-    let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
-                    <on event=\"questComplete\">\n::set{run.x = 1}\n@x: hi\n</on>\n</quest>\n");
-    assert!(!cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
+                    <on event=\"questComplete\">\n::set{run.x = 1}\n@x: hi\n</on>\n</quest>\n",
+    );
+    assert!(
+        !cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()),
+        "{cs:?}"
+    );
 }
 
 // --- Task 6: <on> semantics + write-policy ----------------------------------
@@ -210,7 +237,9 @@ fn set_to_objective_done_errors() {
 
 #[test]
 fn no_more_quest_unsupported() {
-    let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n");
+    let cs = codes(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n",
+    );
     assert!(!cs.contains(&"E-QUEST-UNSUPPORTED".to_string()), "{cs:?}");
 }
 
@@ -337,7 +366,11 @@ fn codes_with(text: &str, snap: lute_manifest::snapshot::CapabilitySnapshot) -> 
         components: Default::default(),
         defaults: Default::default(),
     };
-    check(&input).diagnostics.into_iter().map(|d| d.code).collect()
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
 }
 
 #[test]
@@ -476,7 +509,11 @@ fn codes_with_imports(text: &str, imports: SchemaImports) -> Vec<String> {
         components: Default::default(),
         defaults: Default::default(),
     };
-    check(&input).diagnostics.into_iter().map(|d| d.code).collect()
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
 }
 
 #[test]

@@ -620,7 +620,14 @@ pub fn check_project_quest_tree(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, D
         if color.get(start).copied().unwrap_or(0) != 0 {
             continue;
         }
-        dfs_cycle(start, &adj, &mut color, &mut stack, &mut seen_cycles, &mut out);
+        dfs_cycle(
+            start,
+            &adj,
+            &mut color,
+            &mut stack,
+            &mut seen_cycles,
+            &mut out,
+        );
     }
 
     out
@@ -1049,14 +1056,8 @@ mod tests {
         ];
         let out = colliding_occurrences(&docs);
         assert_eq!(out.len(), 2, "{out:?}");
-        assert!(
-            out.contains(&(PathBuf::from("a.lute"), span(1))),
-            "{out:?}"
-        );
-        assert!(
-            out.contains(&(PathBuf::from("b.lute"), span(2))),
-            "{out:?}"
-        );
+        assert!(out.contains(&(PathBuf::from("a.lute"), span(1))), "{out:?}");
+        assert!(out.contains(&(PathBuf::from("b.lute"), span(2))), "{out:?}");
     }
 
     #[test]
@@ -1225,7 +1226,11 @@ mod tests {
             at: span(1),
         };
         let out = check_project_domain_reads(&[(PathBuf::from("a.lute"), &use_a)]);
-        assert_eq!(out.len(), 1, "one unread domain, one diagnostic; got {out:?}");
+        assert_eq!(
+            out.len(),
+            1,
+            "one unread domain, one diagnostic; got {out:?}"
+        );
         assert_eq!(out[0].1.code, "W-DOMAIN-UNREAD");
         assert_eq!(out[0].1.severity, Severity::Warning);
         assert!(
@@ -1306,7 +1311,12 @@ mod tests {
 
     // --- `check_project_quest_tree` (dsl 2026-08-31 §4 subquest design) ---
 
-    fn objective(id: &str, quest: Option<&str>, optional: bool, line: u32) -> lute_syntax::ast::Objective {
+    fn objective(
+        id: &str,
+        quest: Option<&str>,
+        optional: bool,
+        line: u32,
+    ) -> lute_syntax::ast::Objective {
         use lute_syntax::ast::{CelKind, CelSlot};
         lute_syntax::ast::Objective {
             id: id.to_string(),
@@ -1316,7 +1326,11 @@ mod tests {
             // text in the `quest=Some` case, exactly as the parser lands it.
             done: CelSlot::raw(
                 CelKind::Condition,
-                if quest.is_none() { "true".to_string() } else { String::new() },
+                if quest.is_none() {
+                    "true".to_string()
+                } else {
+                    String::new()
+                },
                 span(line),
             ),
             quest: quest.map(str::to_string),
@@ -1332,7 +1346,10 @@ mod tests {
 
     fn quest_with(id: &str, id_line: u32, objectives: Vec<lute_syntax::ast::Objective>) -> Quest {
         let mut q = quest(id, id_line);
-        q.body = objectives.into_iter().map(lute_syntax::ast::Node::Objective).collect();
+        q.body = objectives
+            .into_iter()
+            .map(lute_syntax::ast::Node::Objective)
+            .collect();
         q
     }
 
@@ -1376,7 +1393,10 @@ mod tests {
             (PathBuf::from("b.lute"), doc(vec![quest("child", 1)])),
         ];
         let out = check_project_quest_tree(&docs);
-        assert!(out.is_empty(), "cross-file resolution must succeed: {out:?}");
+        assert!(
+            out.is_empty(),
+            "cross-file resolution must succeed: {out:?}"
+        );
     }
 
     #[test]
@@ -1450,20 +1470,15 @@ mod tests {
         let docs = vec![(
             PathBuf::from("a.lute"),
             doc(vec![
-                quest_with(
-                    "parent",
-                    1,
-                    vec![objective("goal", Some("mid"), false, 5)],
-                ),
-                quest_with(
-                    "mid",
-                    7,
-                    vec![objective("back", Some("parent"), false, 8)],
-                ),
+                quest_with("parent", 1, vec![objective("goal", Some("mid"), false, 5)]),
+                quest_with("mid", 7, vec![objective("back", Some("parent"), false, 8)]),
             ]),
         )];
         let out = check_project_quest_tree(&docs);
-        let cycles: Vec<_> = out.iter().filter(|(_, d)| d.code == E_QUEST_TREE_CYCLE).collect();
+        let cycles: Vec<_> = out
+            .iter()
+            .filter(|(_, d)| d.code == E_QUEST_TREE_CYCLE)
+            .collect();
         assert_eq!(cycles.len(), 1, "exactly one cycle: {out:?}");
         let (_, d) = &cycles[0];
         assert_eq!(d.severity, Severity::Error);
@@ -1483,7 +1498,10 @@ mod tests {
             )]),
         )];
         let out = check_project_quest_tree(&docs);
-        let cycles: Vec<_> = out.iter().filter(|(_, d)| d.code == E_QUEST_TREE_CYCLE).collect();
+        let cycles: Vec<_> = out
+            .iter()
+            .filter(|(_, d)| d.code == E_QUEST_TREE_CYCLE)
+            .collect();
         assert_eq!(cycles.len(), 1, "one self-cycle: {out:?}");
         let (_, d) = &cycles[0];
         assert!(
@@ -1507,7 +1525,10 @@ mod tests {
             ]),
         )];
         let out = check_project_quest_tree(&docs);
-        let cycles: Vec<_> = out.iter().filter(|(_, d)| d.code == E_QUEST_TREE_CYCLE).collect();
+        let cycles: Vec<_> = out
+            .iter()
+            .filter(|(_, d)| d.code == E_QUEST_TREE_CYCLE)
+            .collect();
         assert_eq!(cycles.len(), 1, "one ring, one diagnostic: {out:?}");
     }
 
@@ -1568,11 +1589,7 @@ mod tests {
         let docs = vec![(
             PathBuf::from("a.lute"),
             doc(vec![
-                quest_with(
-                    "parent",
-                    1,
-                    vec![objective("goal", Some("child"), true, 5)],
-                ),
+                quest_with("parent", 1, vec![objective("goal", Some("child"), true, 5)]),
                 quest("child", 10),
             ]),
         )];

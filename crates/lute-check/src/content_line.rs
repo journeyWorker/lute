@@ -29,7 +29,16 @@ use crate::directives::{check_attr_value, check_domain_member};
 /// — never serialized onto `LineCmd`. Its document-wide uniqueness is
 /// `lute-check::next_labels`'s job (`E-MARK-DUP`), not this module's.
 pub const KNOWN_ATTRS: &[&str] = &[
-    "code", "emotion", "variant", "action", "dialogMotion", "mono", "os", "vo", "as", "id",
+    "code",
+    "emotion",
+    "variant",
+    "action",
+    "dialogMotion",
+    "mono",
+    "os",
+    "vo",
+    "as",
+    "id",
 ];
 
 /// The two DOMAIN-typed content-line attributes (dsl 0.9.0 D-C). They are not
@@ -117,7 +126,10 @@ pub fn check_content_line_attrs(
             }
             diags.push(err(
                 E_UNKNOWN_ATTR,
-                format!("unknown content-line attribute `{}` (dsl 0.1.0 §7.1)", attr.key),
+                format!(
+                    "unknown content-line attribute `{}` (dsl 0.1.0 §7.1)",
+                    attr.key
+                ),
                 attr.span,
             ));
             continue;
@@ -168,7 +180,15 @@ pub fn check_content_line_attrs(
             // collect into a scratch vec and re-layer before folding into `diags`.
             "emotion" => {
                 let mut scratch = Vec::new();
-                check_domain_member(&owner, "emotion", attr, domains, snapshot, providers, &mut scratch);
+                check_domain_member(
+                    &owner,
+                    "emotion",
+                    attr,
+                    domains,
+                    snapshot,
+                    providers,
+                    &mut scratch,
+                );
                 for mut d in scratch {
                     d.layer = Layer::Content;
                     diags.push(d);
@@ -181,7 +201,15 @@ pub fn check_content_line_attrs(
             // from the shared resolver's step 4.
             "action" => {
                 let mut scratch = Vec::new();
-                check_domain_member(&owner, "action", attr, domains, snapshot, providers, &mut scratch);
+                check_domain_member(
+                    &owner,
+                    "action",
+                    attr,
+                    domains,
+                    snapshot,
+                    providers,
+                    &mut scratch,
+                );
                 for mut d in scratch {
                     d.layer = Layer::Content;
                     diags.push(d);

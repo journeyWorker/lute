@@ -59,7 +59,11 @@ fn insert_in_scope(out: &mut BTreeSet<String>, path: &str) {
 /// `run.*`/`user.*`. Reuses `defassign`'s own computed set verbatim — no new
 /// lattice, this is purely the tier filter.
 pub fn guaranteed(assigned: &Assigned) -> BTreeSet<String> {
-    assigned.iter().filter(|p| in_envelope_scope(p)).cloned().collect()
+    assigned
+        .iter()
+        .filter(|p| in_envelope_scope(p))
+        .cloned()
+        .collect()
 }
 
 /// The possible-write set `P` for a document (dsl §4.3): every `::set` /
@@ -315,7 +319,9 @@ pub fn propagate(
     let mut tainted: BTreeSet<NodeId> = BTreeSet::new();
 
     for id in &g.topo_order {
-        let Some(info) = g.nodes.get(id) else { continue };
+        let Some(info) = g.nodes.get(id) else {
+            continue;
+        };
         let (mut env, is_tainted) = match &info.prereq {
             PrereqState::Absent => (Env::default(), false),
             PrereqState::Invalid => (Env::default(), true),
@@ -360,7 +366,8 @@ fn formula_tainted(f: &PrereqFormula, per_doc: &PerDocEffects, tainted: &BTreeSe
             !per_doc.scene.contains_key(key) || tainted.contains(&NodeId::Scene(key.clone()))
         }
         PrereqFormula::Completed(id) | PrereqFormula::Active(id) => {
-            !per_doc.quest_writes_on_complete.contains_key(id) || tainted.contains(&NodeId::Quest(id.clone()))
+            !per_doc.quest_writes_on_complete.contains_key(id)
+                || tainted.contains(&NodeId::Quest(id.clone()))
         }
         PrereqFormula::And(l, r) | PrereqFormula::Or(l, r) => {
             formula_tainted(l, per_doc, tainted) || formula_tainted(r, per_doc, tainted)
@@ -397,12 +404,26 @@ fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<Node
             env
         }
         PrereqFormula::Completed(id) => {
-            let writes = per_doc.quest_writes_on_complete.get(id).cloned().unwrap_or_default();
-            Env { guaranteed: writes.clone(), possible: writes }
+            let writes = per_doc
+                .quest_writes_on_complete
+                .get(id)
+                .cloned()
+                .unwrap_or_default();
+            Env {
+                guaranteed: writes.clone(),
+                possible: writes,
+            }
         }
         PrereqFormula::Active(id) => {
-            let writes = per_doc.quest_writes_on_complete.get(id).cloned().unwrap_or_default();
-            Env { guaranteed: BTreeSet::new(), possible: writes }
+            let writes = per_doc
+                .quest_writes_on_complete
+                .get(id)
+                .cloned()
+                .unwrap_or_default();
+            Env {
+                guaranteed: BTreeSet::new(),
+                possible: writes,
+            }
         }
         PrereqFormula::And(l, r) => {
             let el = eval_formula(l, per_doc, envs);
@@ -416,7 +437,11 @@ fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<Node
             let el = eval_formula(l, per_doc, envs);
             let er = eval_formula(r, per_doc, envs);
             Env {
-                guaranteed: el.guaranteed.intersection(&er.guaranteed).cloned().collect(),
+                guaranteed: el
+                    .guaranteed
+                    .intersection(&er.guaranteed)
+                    .cloned()
+                    .collect(),
                 possible: el.possible.union(&er.possible).cloned().collect(),
             }
         }
@@ -654,22 +679,30 @@ pub fn check_envelope(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connectivity::NodeInfo;
     use lute_cel::{fill_document, CelArena};
     use lute_syntax::parse;
-    use crate::connectivity::NodeInfo;
 
     fn shot_nodes(src: &str) -> Vec<Node> {
         let (mut doc, _pd) = parse(src);
         let mut arena = CelArena::default();
         let _ = fill_document(&mut arena, &mut doc);
-        doc.shots.into_iter().next().map(|s| s.body).unwrap_or_default()
+        doc.shots
+            .into_iter()
+            .next()
+            .map(|s| s.body)
+            .unwrap_or_default()
     }
 
     fn quest_nodes(src: &str) -> Vec<Node> {
         let (mut doc, _pd) = parse(src);
         let mut arena = CelArena::default();
         let _ = fill_document(&mut arena, &mut doc);
-        doc.quests.into_iter().next().map(|q| q.body).unwrap_or_default()
+        doc.quests
+            .into_iter()
+            .next()
+            .map(|q| q.body)
+            .unwrap_or_default()
     }
 
     /// Mirrors `defassign::tests::fixture` — parses + fills CEL + lifts the
@@ -713,7 +746,6 @@ mod tests {
         (quest, meta.state)
     }
 
-
     #[test]
     fn possible_writes_collects_across_branch_hub_match_run_user_only() {
         // `run.a` (branch choice), `user.b` (nested match `<when>`) collected;
@@ -724,7 +756,11 @@ mod tests {
         let p = possible_writes(&nodes);
         assert_eq!(
             p,
-            BTreeSet::from(["run.a".to_string(), "run.c".to_string(), "user.b".to_string()])
+            BTreeSet::from([
+                "run.a".to_string(),
+                "run.c".to_string(),
+                "user.b".to_string()
+            ])
         );
     }
 
@@ -786,7 +822,10 @@ mod tests {
             p.contains("run.a"),
             "guarded-only write must still be a possible write in P, got {p:?}"
         );
-        assert!(p.is_superset(&g), "P must be a superset of G, P={p:?} G={g:?}");
+        assert!(
+            p.is_superset(&g),
+            "P must be a superset of G, P={p:?} G={g:?}"
+        );
     }
 
     #[test]
@@ -811,7 +850,10 @@ mod tests {
             !g.contains("run.x"),
             "a guard-proof with no write must NOT enter G, got {g:?}"
         );
-        assert!(p.is_superset(&g), "P must be a superset of G, P={p:?} G={g:?}");
+        assert!(
+            p.is_superset(&g),
+            "P must be a superset of G, P={p:?} G={g:?}"
+        );
     }
 
     #[test]
@@ -831,7 +873,10 @@ mod tests {
             g.contains("run.x"),
             "an exhaustive per-arm record should join G, got {g:?}"
         );
-        assert!(p.is_superset(&g), "P must be a superset of G, P={p:?} G={g:?}");
+        assert!(
+            p.is_superset(&g),
+            "P must be a superset of G, P={p:?} G={g:?}"
+        );
     }
 
     #[test]
@@ -845,9 +890,18 @@ mod tests {
         let src = "---\nkind: quest\nstate:\n  run.done: { type: number }\n  run.b: { type: number }\n  run.flag: { type: number }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.done\">\n<branch id=\"br\">\n<choice id=\"c1\" label=\"L1\">\n::set{run.done = 1}\n::set{run.b = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n::set{run.done = 1}\n</choice>\n</branch>\n</objective>\n<on event=\"questComplete\">\n::set{run.flag = 1}\n</on>\n</quest>\n";
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
-        assert!(w.contains("run.done"), "both-arm write must be guaranteed, got {w:?}");
-        assert!(w.contains("run.flag"), "unconditional questComplete body must union in, got {w:?}");
-        assert!(!w.contains("run.b"), "one-arm-only write must NOT survive intersect, got {w:?}");
+        assert!(
+            w.contains("run.done"),
+            "both-arm write must be guaranteed, got {w:?}"
+        );
+        assert!(
+            w.contains("run.flag"),
+            "unconditional questComplete body must union in, got {w:?}"
+        );
+        assert!(
+            !w.contains("run.b"),
+            "one-arm-only write must NOT survive intersect, got {w:?}"
+        );
     }
 
     #[test]
@@ -858,8 +912,14 @@ mod tests {
         let src = "---\nkind: quest\nstate:\n  run.req: { type: number }\n  run.opt: { type: number }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.req\">\n::set{run.req = 1}\n</objective>\n<objective id=\"o2\" done=\"run.opt\" optional>\n::set{run.opt = 1}\n</objective>\n</quest>\n";
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
-        assert!(w.contains("run.req"), "required objective write must be present, got {w:?}");
-        assert!(!w.contains("run.opt"), "optional objective write must be excluded, got {w:?}");
+        assert!(
+            w.contains("run.req"),
+            "required objective write must be present, got {w:?}"
+        );
+        assert!(
+            !w.contains("run.opt"),
+            "optional objective write must be excluded, got {w:?}"
+        );
     }
 
     #[test]
@@ -882,7 +942,10 @@ mod tests {
         let src = "---\nkind: quest\nstate:\n  run.flag: { type: number }\n  run.g: { type: number }\n---\n<quest id=\"q\">\n<on event=\"questComplete\" when=\"run.flag\">\n::set{run.g = 1}\n</on>\n</quest>\n";
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
-        assert!(w.contains("run.g"), "guarded questComplete write must still be guaranteed, got {w:?}");
+        assert!(
+            w.contains("run.g"),
+            "guarded questComplete write must still be guaranteed, got {w:?}"
+        );
     }
 
     #[test]
@@ -892,7 +955,10 @@ mod tests {
         let src = "---\nkind: quest\nstate:\n  run.g: { type: number }\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n::set{run.g = 1}\n</on>\n</quest>\n";
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
-        assert!(w.contains("run.g"), "unconditional questComplete write must be guaranteed, got {w:?}");
+        assert!(
+            w.contains("run.g"),
+            "unconditional questComplete write must be guaranteed, got {w:?}"
+        );
     }
 
     // ---- T10: propagate (Env{guaranteed, possible}) ------------------
@@ -933,7 +999,10 @@ mod tests {
     fn invalid_node_is_tainted_with_placeholder_d_env() {
         let d = BTreeSet::from(["run.def".to_string()]);
         let bad = NodeId::Scene("bad".into());
-        let g = graph(vec![node(bad.clone(), PrereqState::Invalid)], vec![bad.clone()]);
+        let g = graph(
+            vec![node(bad.clone(), PrereqState::Invalid)],
+            vec![bad.clone()],
+        );
         let (envs, tainted) = propagate(&g, &PerDocEffects::default(), &d);
         assert!(tainted.contains(&bad));
         assert_eq!(envs[&bad].guaranteed, d);
@@ -947,7 +1016,10 @@ mod tests {
         let g = graph(
             vec![
                 node(bad.clone(), PrereqState::Invalid),
-                node(n.clone(), PrereqState::Valid(PrereqFormula::Visited("bad".into()))),
+                node(
+                    n.clone(),
+                    PrereqState::Valid(PrereqFormula::Visited("bad".into())),
+                ),
             ],
             vec![bad.clone(), n.clone()],
         );
@@ -956,10 +1028,15 @@ mod tests {
         // tainted (its `PrereqState::Invalid`), isolating that rule from
         // the separate "unresolvable atom" rule tested below.
         let mut per_doc = PerDocEffects::default();
-        per_doc.scene.insert("bad".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        per_doc
+            .scene
+            .insert("bad".to_string(), (BTreeSet::new(), BTreeSet::new()));
         let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
         assert!(tainted.contains(&bad));
-        assert!(tainted.contains(&n), "a formula referencing a tainted node must itself be tainted");
+        assert!(
+            tainted.contains(&n),
+            "a formula referencing a tainted node must itself be tainted"
+        );
     }
 
     #[test]
@@ -972,11 +1049,17 @@ mod tests {
         // `Invalid` anywhere in this graph.
         let n = NodeId::Scene("n".into());
         let g = graph(
-            vec![node(n.clone(), PrereqState::Valid(PrereqFormula::Visited("ghost".into())))],
+            vec![node(
+                n.clone(),
+                PrereqState::Valid(PrereqFormula::Visited("ghost".into())),
+            )],
             vec![n.clone()],
         );
         let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
-        assert!(tainted.contains(&n), "visited() of an unresolvable key must taint the node");
+        assert!(
+            tainted.contains(&n),
+            "visited() of an unresolvable key must taint the node"
+        );
     }
 
     #[test]
@@ -988,11 +1071,17 @@ mod tests {
         // missing `visited` target.
         let n = NodeId::Scene("n".into());
         let g = graph(
-            vec![node(n.clone(), PrereqState::Valid(PrereqFormula::Completed("ghost_quest".into())))],
+            vec![node(
+                n.clone(),
+                PrereqState::Valid(PrereqFormula::Completed("ghost_quest".into())),
+            )],
             vec![n.clone()],
         );
         let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
-        assert!(tainted.contains(&n), "completed() of an unresolvable quest id must taint the node");
+        assert!(
+            tainted.contains(&n),
+            "completed() of an unresolvable quest id must taint the node"
+        );
     }
 
     #[test]
@@ -1009,14 +1098,25 @@ mod tests {
             Box::new(PrereqFormula::Visited("live".into())),
         );
         let g = graph(
-            vec![node(live.clone(), PrereqState::Absent), node(n.clone(), PrereqState::Valid(f))],
+            vec![
+                node(live.clone(), PrereqState::Absent),
+                node(n.clone(), PrereqState::Valid(f)),
+            ],
             vec![live.clone(), n.clone()],
         );
         let mut per_doc = PerDocEffects::default();
-        per_doc.scene.insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        per_doc
+            .scene
+            .insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
         let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
-        assert!(!tainted.contains(&live), "live's own node must stay untainted");
-        assert!(tainted.contains(&n), "|| with an unresolvable arm must taint the whole node, even with a clean arm");
+        assert!(
+            !tainted.contains(&live),
+            "live's own node must stay untainted"
+        );
+        assert!(
+            tainted.contains(&n),
+            "|| with an unresolvable arm must taint the whole node, even with a clean arm"
+        );
     }
 
     #[test]
@@ -1048,11 +1148,21 @@ mod tests {
         // "unresolvable atom" rule (`or_with_unresolvable_arm_taints_even_
         // with_a_clean_arm`, above).
         let mut per_doc = PerDocEffects::default();
-        per_doc.scene.insert("bad".to_string(), (BTreeSet::new(), BTreeSet::new()));
-        per_doc.scene.insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        per_doc
+            .scene
+            .insert("bad".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        per_doc
+            .scene
+            .insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
         let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
-        assert!(!tainted.contains(&live), "live's own arm must stay untainted");
-        assert!(tainted.contains(&n), "|| with an invalid arm must taint the whole node");
+        assert!(
+            !tainted.contains(&live),
+            "live's own arm must stay untainted"
+        );
+        assert!(
+            tainted.contains(&n),
+            "|| with an invalid arm must taint the whole node"
+        );
     }
 
     #[test]
@@ -1073,19 +1183,28 @@ mod tests {
             vec![bad.clone(), live.clone(), n.clone()],
         );
         let mut per_doc = PerDocEffects::default();
-        per_doc.scene.insert("bad".to_string(), (BTreeSet::new(), BTreeSet::new()));
-        per_doc.scene.insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        per_doc
+            .scene
+            .insert("bad".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        per_doc
+            .scene
+            .insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
         let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
-        assert!(tainted.contains(&n), "&& with an invalid arm must taint the whole node");
+        assert!(
+            tainted.contains(&n),
+            "&& with an invalid arm must taint the whole node"
+        );
     }
-
 
     #[test]
     fn completed_only_node_still_carries_d() {
         let d = BTreeSet::from(["run.def".to_string()]);
         let n = NodeId::Scene("n".into());
         let g = graph(
-            vec![node(n.clone(), PrereqState::Valid(PrereqFormula::Completed("q".into())))],
+            vec![node(
+                n.clone(),
+                PrereqState::Valid(PrereqFormula::Completed("q".into())),
+            )],
             vec![n.clone()],
         );
         let mut per_doc = PerDocEffects::default();
@@ -1095,9 +1214,16 @@ mod tests {
         let (envs, tainted) = propagate(&g, &per_doc, &d);
         assert!(!tainted.contains(&n));
         let env = &envs[&n];
-        assert!(env.guaranteed.contains("run.def"), "D must survive a completed(Q)-only node, got {:?}", env.guaranteed);
+        assert!(
+            env.guaranteed.contains("run.def"),
+            "D must survive a completed(Q)-only node, got {:?}",
+            env.guaranteed
+        );
         assert!(env.guaranteed.contains("run.done"));
-        assert_eq!(env.guaranteed, env.possible, "completed(Q): G=P=writesOnComplete(Q), D unioned into both");
+        assert_eq!(
+            env.guaranteed, env.possible,
+            "completed(Q): G=P=writesOnComplete(Q), D unioned into both"
+        );
     }
 
     #[test]
@@ -1138,7 +1264,11 @@ mod tests {
         assert!(env.guaranteed.contains("run.x"), "in both arms");
         assert!(!env.guaranteed.contains("run.a"), "only one arm");
         assert!(!env.guaranteed.contains("run.b"), "only one arm");
-        assert!(env.possible.contains("run.a") && env.possible.contains("run.b") && env.possible.contains("run.x"));
+        assert!(
+            env.possible.contains("run.a")
+                && env.possible.contains("run.b")
+                && env.possible.contains("run.x")
+        );
     }
 
     #[test]
@@ -1161,11 +1291,17 @@ mod tests {
         let mut per_doc = PerDocEffects::default();
         per_doc.scene.insert(
             "a".to_string(),
-            (BTreeSet::from(["run.a".to_string()]), BTreeSet::from(["run.a".to_string()])),
+            (
+                BTreeSet::from(["run.a".to_string()]),
+                BTreeSet::from(["run.a".to_string()]),
+            ),
         );
         per_doc.scene.insert(
             "b".to_string(),
-            (BTreeSet::from(["run.b".to_string()]), BTreeSet::from(["run.b".to_string()])),
+            (
+                BTreeSet::from(["run.b".to_string()]),
+                BTreeSet::from(["run.b".to_string()]),
+            ),
         );
         let (envs, _tainted) = propagate(&g, &per_doc, &BTreeSet::new());
         let env = &envs[&n];
@@ -1181,14 +1317,22 @@ mod tests {
         let g = graph(
             vec![
                 node(a.clone(), PrereqState::Absent),
-                node(n.clone(), PrereqState::Valid(PrereqFormula::Visited("a".into()))),
+                node(
+                    n.clone(),
+                    PrereqState::Valid(PrereqFormula::Visited("a".into())),
+                ),
             ],
             vec![a.clone(), n.clone()],
         );
         let mut per_doc = PerDocEffects::default();
-        per_doc.scene.insert("a".to_string(), (BTreeSet::new(), BTreeSet::new()));
+        per_doc
+            .scene
+            .insert("a".to_string(), (BTreeSet::new(), BTreeSet::new()));
         let (envs, tainted) = propagate(&g, &per_doc, &d);
-        assert!(tainted.is_empty(), "a fully-resolved graph must never taint");
+        assert!(
+            tainted.is_empty(),
+            "a fully-resolved graph must never taint"
+        );
         assert!(envs.values().all(|e| e.guaranteed.contains("run.def")));
         assert!(envs.values().all(|e| e.possible.contains("run.def")));
     }
@@ -1347,7 +1491,10 @@ mod tests {
             }
             let (graph, n) = graph_for_formula(&atom_names, f.clone());
             let (envs, tainted) = propagate(&graph, &per_doc, &d);
-            assert!(!tainted.contains(&n), "seed {seed}: an all-`Absent`/`Valid` fixture must never taint");
+            assert!(
+                !tainted.contains(&n),
+                "seed {seed}: an all-`Absent`/`Valid` fixture must never taint"
+            );
             let env = &envs[&n];
             assert_eq!(env.guaranteed, expected_g, "seed {seed}: formula {f:?}");
             assert_eq!(env.possible, expected_p, "seed {seed}: formula {f:?}");
@@ -1365,8 +1512,15 @@ mod tests {
         let qe = quest_envelope(&q, &g, &envs, &d);
 
         assert_eq!(qe.env.guaranteed, qe.env.possible);
-        assert!(qe.env.guaranteed.contains("run.def"), "got {:?}", qe.env.guaranteed);
-        assert!(qe.enrichment_note, "no-after quest must carry the enrichment note");
+        assert!(
+            qe.env.guaranteed.contains("run.def"),
+            "got {:?}",
+            qe.env.guaranteed
+        );
+        assert!(
+            qe.enrichment_note,
+            "no-after quest must carry the enrichment note"
+        );
     }
 
     #[test]
@@ -1389,15 +1543,25 @@ mod tests {
         let mut per_doc = PerDocEffects::default();
         per_doc.scene.insert(
             "a".to_string(),
-            (BTreeSet::from(["run.a".to_string()]), BTreeSet::from(["run.a".to_string()])),
+            (
+                BTreeSet::from(["run.a".to_string()]),
+                BTreeSet::from(["run.a".to_string()]),
+            ),
         );
         let d = BTreeSet::new();
         let (envs, tainted) = propagate(&g, &per_doc, &d);
         assert!(!tainted.contains(&quest_node));
 
         let qe = quest_envelope(&q, &g, &envs, &d);
-        assert!(qe.env.guaranteed.contains("run.a"), "got {:?}", qe.env.guaranteed);
-        assert!(!qe.enrichment_note, "after-opted quest must not carry the enrichment note");
+        assert!(
+            qe.env.guaranteed.contains("run.a"),
+            "got {:?}",
+            qe.env.guaranteed
+        );
+        assert!(
+            !qe.enrichment_note,
+            "after-opted quest must not carry the enrichment note"
+        );
     }
 
     #[test]
@@ -1422,7 +1586,10 @@ mod tests {
 
         let qe = quest_envelope(&q, &g, &envs, &d);
         assert!(qe.env.guaranteed.contains("run.def"));
-        assert!(!qe.enrichment_note, "attribute was declared (even empty) -> no enrichment note");
+        assert!(
+            !qe.enrichment_note,
+            "attribute was declared (even empty) -> no enrichment note"
+        );
     }
 
     #[test]
@@ -1452,7 +1619,10 @@ mod tests {
             "tainted quest must still surface a non-empty D placeholder, got {:?}",
             qe.env.guaranteed
         );
-        assert!(!qe.enrichment_note, "quest DID declare after; no misleading enrichment note");
+        assert!(
+            !qe.enrichment_note,
+            "quest DID declare after; no misleading enrichment note"
+        );
     }
 
     #[test]
@@ -1470,7 +1640,14 @@ mod tests {
 
         let qe = quest_envelope(&q, &g, &envs, &d);
         assert_eq!(qe.env.guaranteed, qe.env.possible);
-        assert!(qe.env.guaranteed.contains("run.def"), "got {:?}", qe.env.guaranteed);
-        assert!(!qe.enrichment_note, "quest DID declare after; no misleading enrichment note");
+        assert!(
+            qe.env.guaranteed.contains("run.def"),
+            "got {:?}",
+            qe.env.guaranteed
+        );
+        assert!(
+            !qe.enrichment_note,
+            "quest DID declare after; no misleading enrichment note"
+        );
     }
 }

@@ -28,7 +28,10 @@ const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:
     run.rank: { type: { enum: [a, b] }, default: a }\n---\n## Shot 1.\n";
 
 fn unknown_attrs(text: &str) -> usize {
-    codes(text).iter().filter(|c| *c == "E-UNKNOWN-ATTR").count()
+    codes(text)
+        .iter()
+        .filter(|c| *c == "E-UNKNOWN-ATTR")
+        .count()
 }
 
 /// T8.2: `<choice goto=…>` — a routing declaration discarded in silence, on a
@@ -198,7 +201,12 @@ fn branch_timeout_zero_or_non_numeric_is_rejected() {
             "{HDR}<branch id=\"b\" prompt=\"What now?\" timeout=\"{bad}\">\n\
              <choice id=\"c\" label=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
         );
-        assert_eq!(codes(&t), vec!["E-BRANCH-TIMEOUT".to_string()], "{bad:?}: {:?}", codes(&t));
+        assert_eq!(
+            codes(&t),
+            vec!["E-BRANCH-TIMEOUT".to_string()],
+            "{bad:?}: {:?}",
+            codes(&t)
+        );
     }
 }
 

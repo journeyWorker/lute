@@ -113,16 +113,18 @@ impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LoadError::Manifest { dir, msg } => {
-                write!(f, "plugin package `{dir}` has no readable `plugin.yaml`: {msg}")
+                write!(
+                    f,
+                    "plugin package `{dir}` has no readable `plugin.yaml`: {msg}"
+                )
             }
             LoadError::Parse { file, msg } => write!(f, "`{file}` failed to parse: {msg}"),
             LoadError::DuplicateId { kind, id } => {
                 write!(f, "{kind} `{id}` is declared more than once")
             }
-            LoadError::MissingExportDir { export, path } => write!(
-                f,
-                "export `{export}` names `{path}`, which does not exist"
-            ),
+            LoadError::MissingExportDir { export, path } => {
+                write!(f, "export `{export}` names `{path}`, which does not exist")
+            }
             LoadError::Io { path, msg } => write!(f, "`{path}` could not be read: {msg}"),
             LoadError::UnknownExport { export } => write!(
                 f,

@@ -463,12 +463,21 @@ fn asset_segment_type_message_is_prose() {
         .find(|e| matches!(e, LoadError::AssetSegmentType { .. }))
         .expect("AssetSegmentType error present");
     let msg = err.to_string();
-    assert!(!msg.contains("AssetSegmentType {"), "must not be a Debug dump: {msg}");
+    assert!(
+        !msg.contains("AssetSegmentType {"),
+        "must not be a Debug dump: {msg}"
+    );
     assert!(msg.contains("CH"), "must name the kind: {msg}");
     assert!(msg.contains("variant"), "must name the segment: {msg}");
-    assert!(msg.contains("domain:slotDomain"), "must name the declared type: {msg}");
+    assert!(
+        msg.contains("domain:slotDomain"),
+        "must name the declared type: {msg}"
+    );
     for admitted in ["enum", "number", "string", "providerRef"] {
-        assert!(msg.contains(admitted), "must list admitted type `{admitted}`: {msg}");
+        assert!(
+            msg.contains(admitted),
+            "must list admitted type `{admitted}`: {msg}"
+        );
     }
     fs::remove_dir_all(&tmp).ok();
 }
@@ -511,7 +520,11 @@ fn parse_error_message_is_prose() {
         "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  directives: directives/\n",
     )
     .unwrap();
-    fs::write(tmp.join("directives/a.yaml"), "directives: [ not valid yaml\n").unwrap();
+    fs::write(
+        tmp.join("directives/a.yaml"),
+        "directives: [ not valid yaml\n",
+    )
+    .unwrap();
     let errs = load_plugin_dir(&tmp).unwrap_err();
     let err = errs
         .iter()
@@ -519,7 +532,10 @@ fn parse_error_message_is_prose() {
         .expect("Parse error present");
     let msg = err.to_string();
     assert!(!msg.contains("Parse {"), "must not be a Debug dump: {msg}");
-    assert!(msg.contains("a.yaml"), "must name the offending file: {msg}");
+    assert!(
+        msg.contains("a.yaml"),
+        "must name the offending file: {msg}"
+    );
     fs::remove_dir_all(&tmp).ok();
 }
 
@@ -534,7 +550,11 @@ fn write_lints_pkg(root: &std::path::Path, dup: bool) {
         "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  lints: lints/\n",
     )
     .unwrap();
-    let second = if dup { "too-many-choices" } else { "another-rule" };
+    let second = if dup {
+        "too-many-choices"
+    } else {
+        "another-rule"
+    };
     fs::write(
         root.join("lints/a.yaml"),
         format!(
@@ -561,7 +581,7 @@ fn loads_lints_export_round_trip() {
     // options are the raw serde_yaml::Mapping — { max: 6 } is present.
     assert_eq!(
         r0.options
-            .get(&serde_yaml::Value::String("max".into()))
+            .get(serde_yaml::Value::String("max".into()))
             .and_then(|v| v.as_i64()),
         Some(6)
     );
@@ -714,9 +734,7 @@ fn namespace_active_lints_pairs_activation_with_registry() {
         fs::create_dir_all(pkg.join("lints")).unwrap();
         fs::write(
             pkg.join("plugin.yaml"),
-            format!(
-                "id: {id}\nversion: 0.1.0\nkind: capability\nexports:\n  lints: lints/\n"
-            ),
+            format!("id: {id}\nversion: 0.1.0\nkind: capability\nexports:\n  lints: lints/\n"),
         )
         .unwrap();
         fs::write(

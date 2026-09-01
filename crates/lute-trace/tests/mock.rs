@@ -23,7 +23,13 @@ use lute_trace::{
 };
 
 fn zero_span() -> Span {
-    Span { byte_start: 0, byte_end: 0, line: 0, column: 0, utf16_range: (0, 0) }
+    Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    }
 }
 
 /// Assemble `(FoldedEnv, Document)` for `text` exactly as `lute check`/
@@ -33,10 +39,19 @@ fn zero_span() -> Span {
 /// expect to have already passed `check` (§4.3's own pipeline note).
 fn folded_and_doc(text: &str, uri: &str, base: &Path) -> (FoldedEnv, Document) {
     let (doc, parse_diags) = lute_syntax::parse(text);
-    assert!(parse_diags.is_empty(), "fixture must parse clean: {parse_diags:?}");
-    let (meta0, _) = lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
-    let (snapshot, _) =
-        lute_manifest::project::resolve_document_snapshot(None, meta0.profile.as_deref(), &meta0.plugins);
+    assert!(
+        parse_diags.is_empty(),
+        "fixture must parse clean: {parse_diags:?}"
+    );
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let (snapshot, _) = lute_manifest::project::resolve_document_snapshot(
+        None,
+        meta0.profile.as_deref(),
+        &meta0.plugins,
+    );
     let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
     let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
     let input = CheckInput {
@@ -50,7 +65,10 @@ fn folded_and_doc(text: &str, uri: &str, base: &Path) -> (FoldedEnv, Document) {
         defaults: Default::default(),
     };
     let (folded, fd1, fd2) = lute_check::fold_env(&doc, &input);
-    assert!(fd1.is_empty() && fd2.is_empty(), "fixture must fold clean: {fd1:?} {fd2:?}");
+    assert!(
+        fd1.is_empty() && fd2.is_empty(),
+        "fixture must fold clean: {fd1:?} {fd2:?}"
+    );
     (folded, doc)
 }
 
@@ -77,7 +95,11 @@ fn codes(diags: &[lute_core_span::Diagnostic]) -> Vec<&str> {
 fn appendix_a_state_typo_is_undeclared() {
     let (folded, doc) = load("../../docs/examples/choice-persist.lute");
     let mocks = MockSet {
-        state: vec![("run.metHelpfuly".to_string(), "true".to_string(), zero_span())],
+        state: vec![(
+            "run.metHelpfuly".to_string(),
+            "true".to_string(),
+            zero_span(),
+        )],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -142,7 +164,10 @@ fn choose_unknown_branch_id_is_choice_error() {
 #[test]
 fn appendix_a_event_lifecycle_name_is_event_error() {
     let (folded, doc) = load("../../docs/examples/quest-rescue-halsin.lute");
-    let mocks = MockSet { events: vec!["questActive".to_string()], ..Default::default() };
+    let mocks = MockSet {
+        events: vec!["questActive".to_string()],
+        ..Default::default()
+    };
     let diags = validate(&mocks, &folded, &doc);
     assert_eq!(codes(&diags), vec![E_TRACE_EVENT], "{diags:?}");
 }
@@ -152,7 +177,10 @@ fn appendix_a_event_lifecycle_name_is_event_error() {
 #[test]
 fn event_non_lifecycle_name_passes_structural_validation() {
     let (folded, doc) = load("../../docs/examples/quest-rescue-halsin.lute");
-    let mocks = MockSet { events: vec!["npcSpoke".to_string()], ..Default::default() };
+    let mocks = MockSet {
+        events: vec!["npcSpoke".to_string()],
+        ..Default::default()
+    };
     let diags = validate(&mocks, &folded, &doc);
     assert!(diags.is_empty(), "{diags:?}");
 }
@@ -162,7 +190,10 @@ fn event_non_lifecycle_name_passes_structural_validation() {
 #[test]
 fn appendix_a_accept_on_start_having_quest_is_accept_error() {
     let (folded, doc) = load("../../docs/examples/quest-rescue-halsin.lute");
-    let mocks = MockSet { accepts: vec!["rescueHalsin".to_string()], ..Default::default() };
+    let mocks = MockSet {
+        accepts: vec!["rescueHalsin".to_string()],
+        ..Default::default()
+    };
     let diags = validate(&mocks, &folded, &doc);
     assert_eq!(codes(&diags), vec![E_TRACE_ACCEPT], "{diags:?}");
 }
@@ -172,7 +203,10 @@ fn appendix_a_accept_on_start_having_quest_is_accept_error() {
 #[test]
 fn accept_unknown_quest_id_is_accept_error() {
     let (folded, doc) = load("../../docs/examples/quest-rescue-halsin.lute");
-    let mocks = MockSet { accepts: vec!["noSuchQuest".to_string()], ..Default::default() };
+    let mocks = MockSet {
+        accepts: vec!["noSuchQuest".to_string()],
+        ..Default::default()
+    };
     let diags = validate(&mocks, &folded, &doc);
     assert_eq!(codes(&diags), vec![E_TRACE_ACCEPT], "{diags:?}");
 }
@@ -264,10 +298,20 @@ fn parse_mock_yaml_reads_all_four_surfaces() {
                 events:\n  - questActive\n";
     let mocks = parse_mock_yaml(yaml).expect("valid mock yaml");
     assert_eq!(mocks.facts, vec!["inParty(shadowheart)".to_string()]);
-    assert_eq!(mocks.choose.get("sofaHelp"), Some(&vec!["help".to_string()]));
-    assert_eq!(mocks.choose.get("h"), Some(&vec!["a".to_string(), "b".to_string()]));
+    assert_eq!(
+        mocks.choose.get("sofaHelp"),
+        Some(&vec!["help".to_string()])
+    );
+    assert_eq!(
+        mocks.choose.get("h"),
+        Some(&vec!["a".to_string(), "b".to_string()])
+    );
     assert_eq!(mocks.events, vec!["questActive".to_string()]);
-    let state: BTreeMap<_, _> = mocks.state.iter().map(|(p, v, _)| (p.clone(), v.clone())).collect();
+    let state: BTreeMap<_, _> = mocks
+        .state
+        .iter()
+        .map(|(p, v, _)| (p.clone(), v.clone()))
+        .collect();
     assert_eq!(state.get("run.metHelpfully"), Some(&"true".to_string()));
     assert_eq!(state.get("run.tip"), Some(&"5".to_string()));
 }
@@ -276,8 +320,12 @@ fn parse_mock_yaml_reads_all_four_surfaces() {
 fn parse_mock_yaml_reads_accept_and_accepts_keys() {
     let mocks = parse_mock_yaml("accept:\n  - rescueHalsin\n").expect("valid mock yaml");
     assert_eq!(mocks.accepts, vec!["rescueHalsin".to_string()]);
-    let mocks = parse_mock_yaml("accepts:\n  - rescueHalsin\n  - anotherQuest\n").expect("valid mock yaml");
-    assert_eq!(mocks.accepts, vec!["rescueHalsin".to_string(), "anotherQuest".to_string()]);
+    let mocks =
+        parse_mock_yaml("accepts:\n  - rescueHalsin\n  - anotherQuest\n").expect("valid mock yaml");
+    assert_eq!(
+        mocks.accepts,
+        vec!["rescueHalsin".to_string(), "anotherQuest".to_string()]
+    );
 }
 
 #[test]
@@ -302,10 +350,19 @@ fn parse_mock_yaml_rejects_malformed_shape() {
 
 #[test]
 fn merge_facts_union_dedupes_and_preserves_file_then_flag_order() {
-    let file = MockSet { facts: vec!["a(x)".into(), "b(y)".into()], ..Default::default() };
-    let flags = MockSet { facts: vec!["b(y)".into(), "c(z)".into()], ..Default::default() };
+    let file = MockSet {
+        facts: vec!["a(x)".into(), "b(y)".into()],
+        ..Default::default()
+    };
+    let flags = MockSet {
+        facts: vec!["b(y)".into(), "c(z)".into()],
+        ..Default::default()
+    };
     let merged = merge(file, flags);
-    assert_eq!(merged.facts, vec!["a(x)".to_string(), "b(y)".to_string(), "c(z)".to_string()]);
+    assert_eq!(
+        merged.facts,
+        vec!["a(x)".to_string(), "b(y)".to_string(), "c(z)".to_string()]
+    );
 }
 
 #[test]
@@ -313,7 +370,10 @@ fn merge_choose_flag_replaces_file_entry_per_id() {
     let file = MockSet {
         choose: BTreeMap::from([
             ("sofaHelp".to_string(), vec!["help".to_string()]),
-            ("otherHub".to_string(), vec!["a".to_string(), "b".to_string()]),
+            (
+                "otherHub".to_string(),
+                vec!["a".to_string(), "b".to_string()],
+            ),
         ]),
         ..Default::default()
     };
@@ -322,7 +382,11 @@ fn merge_choose_flag_replaces_file_entry_per_id() {
         ..Default::default()
     };
     let merged = merge(file, flags);
-    assert_eq!(merged.choose.get("sofaHelp"), Some(&vec!["tip".to_string()]), "flag replaces file, per id");
+    assert_eq!(
+        merged.choose.get("sofaHelp"),
+        Some(&vec!["tip".to_string()]),
+        "flag replaces file, per id"
+    );
     assert_eq!(
         merged.choose.get("otherHub"),
         Some(&vec!["a".to_string(), "b".to_string()]),
@@ -334,36 +398,78 @@ fn merge_choose_flag_replaces_file_entry_per_id() {
 fn merge_flag_state_wins_per_path() {
     let file = MockSet {
         state: vec![
-            ("run.metHelpfully".to_string(), "true".to_string(), zero_span()),
+            (
+                "run.metHelpfully".to_string(),
+                "true".to_string(),
+                zero_span(),
+            ),
             ("run.tip".to_string(), "5".to_string(), zero_span()),
         ],
         ..Default::default()
     };
     let flags = MockSet {
-        state: vec![("run.metHelpfully".to_string(), "false".to_string(), zero_span())],
+        state: vec![(
+            "run.metHelpfully".to_string(),
+            "false".to_string(),
+            zero_span(),
+        )],
         ..Default::default()
     };
     let merged = merge(file, flags);
-    let values: BTreeMap<_, _> = merged.state.iter().map(|(p, v, _)| (p.clone(), v.clone())).collect();
-    assert_eq!(values.get("run.metHelpfully"), Some(&"false".to_string()), "flag wins over file, same path");
-    assert_eq!(values.get("run.tip"), Some(&"5".to_string()), "file-only path passes through");
-    assert_eq!(merged.state.len(), 2, "the shadowed file entry for run.metHelpfully is dropped, not duplicated");
+    let values: BTreeMap<_, _> = merged
+        .state
+        .iter()
+        .map(|(p, v, _)| (p.clone(), v.clone()))
+        .collect();
+    assert_eq!(
+        values.get("run.metHelpfully"),
+        Some(&"false".to_string()),
+        "flag wins over file, same path"
+    );
+    assert_eq!(
+        values.get("run.tip"),
+        Some(&"5".to_string()),
+        "file-only path passes through"
+    );
+    assert_eq!(
+        merged.state.len(),
+        2,
+        "the shadowed file entry for run.metHelpfully is dropped, not duplicated"
+    );
 }
 
 #[test]
 fn merge_events_compose_file_then_flags_in_order() {
-    let file = MockSet { events: vec!["questActive".to_string()], ..Default::default() };
-    let flags = MockSet { events: vec!["npcSpoke".to_string()], ..Default::default() };
+    let file = MockSet {
+        events: vec!["questActive".to_string()],
+        ..Default::default()
+    };
+    let flags = MockSet {
+        events: vec!["npcSpoke".to_string()],
+        ..Default::default()
+    };
     let merged = merge(file, flags);
-    assert_eq!(merged.events, vec!["questActive".to_string(), "npcSpoke".to_string()]);
+    assert_eq!(
+        merged.events,
+        vec!["questActive".to_string(), "npcSpoke".to_string()]
+    );
 }
 
 #[test]
 fn merge_accepts_union_dedupes_and_preserves_file_then_flag_order() {
-    let file = MockSet { accepts: vec!["a".into(), "b".into()], ..Default::default() };
-    let flags = MockSet { accepts: vec!["b".into(), "c".into()], ..Default::default() };
+    let file = MockSet {
+        accepts: vec!["a".into(), "b".into()],
+        ..Default::default()
+    };
+    let flags = MockSet {
+        accepts: vec!["b".into(), "c".into()],
+        ..Default::default()
+    };
     let merged = merge(file, flags);
-    assert_eq!(merged.accepts, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+    assert_eq!(
+        merged.accepts,
+        vec!["a".to_string(), "b".to_string(), "c".to_string()]
+    );
 }
 
 /// End-to-end: a `--mock` file seeds a typo'd path, a `--state` flag corrects
@@ -373,7 +479,11 @@ fn end_to_end_yaml_file_plus_flag_state_win_validates_clean() {
     let yaml = "state:\n  run.metHelpfully: false\n";
     let file = parse_mock_yaml(yaml).expect("valid mock yaml");
     let flags = MockSet {
-        state: vec![("run.metHelpfully".to_string(), "true".to_string(), zero_span())],
+        state: vec![(
+            "run.metHelpfully".to_string(),
+            "true".to_string(),
+            zero_span(),
+        )],
         ..Default::default()
     };
     let merged = merge(file, flags);
@@ -403,9 +513,17 @@ fn quest_state_reader_text() -> &'static str {
 /// REFERENCES the exact path (§1.1).
 #[test]
 fn reserved_quest_state_mock_admitted_when_document_references_it() {
-    let (folded, doc) = folded_and_doc(quest_state_reader_text(), "quest-state-reader", Path::new("."));
+    let (folded, doc) = folded_and_doc(
+        quest_state_reader_text(),
+        "quest-state-reader",
+        Path::new("."),
+    );
     let mocks = MockSet {
-        state: vec![("quest.foo.state".to_string(), "complete".to_string(), zero_span())],
+        state: vec![(
+            "quest.foo.state".to_string(),
+            "complete".to_string(),
+            zero_span(),
+        )],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -417,9 +535,17 @@ fn reserved_quest_state_mock_admitted_when_document_references_it() {
 /// also validates clean.
 #[test]
 fn reserved_quest_objective_done_mock_admitted_when_document_references_it() {
-    let (folded, doc) = folded_and_doc(quest_state_reader_text(), "quest-state-reader", Path::new("."));
+    let (folded, doc) = folded_and_doc(
+        quest_state_reader_text(),
+        "quest-state-reader",
+        Path::new("."),
+    );
     let mocks = MockSet {
-        state: vec![("quest.foo.objectives.bar.done".to_string(), "true".to_string(), zero_span())],
+        state: vec![(
+            "quest.foo.objectives.bar.done".to_string(),
+            "true".to_string(),
+            zero_span(),
+        )],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -432,9 +558,17 @@ fn reserved_quest_objective_done_mock_admitted_when_document_references_it() {
 /// document actually makes").
 #[test]
 fn reserved_quest_path_mock_rejected_when_document_does_not_reference_it() {
-    let (folded, doc) = folded_and_doc(quest_state_reader_text(), "quest-state-reader", Path::new("."));
+    let (folded, doc) = folded_and_doc(
+        quest_state_reader_text(),
+        "quest-state-reader",
+        Path::new("."),
+    );
     let mocks = MockSet {
-        state: vec![("quest.bar.state".to_string(), "complete".to_string(), zero_span())],
+        state: vec![(
+            "quest.bar.state".to_string(),
+            "complete".to_string(),
+            zero_span(),
+        )],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -448,9 +582,17 @@ fn reserved_quest_path_mock_rejected_when_document_does_not_reference_it() {
 /// mock").
 #[test]
 fn reserved_quest_state_mock_outside_domain_is_type_error() {
-    let (folded, doc) = folded_and_doc(quest_state_reader_text(), "quest-state-reader", Path::new("."));
+    let (folded, doc) = folded_and_doc(
+        quest_state_reader_text(),
+        "quest-state-reader",
+        Path::new("."),
+    );
     let mocks = MockSet {
-        state: vec![("quest.foo.state".to_string(), "paused".to_string(), zero_span())],
+        state: vec![(
+            "quest.foo.state".to_string(),
+            "paused".to_string(),
+            zero_span(),
+        )],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -461,9 +603,17 @@ fn reserved_quest_state_mock_outside_domain_is_type_error() {
 /// are legal, even on a referenced path.
 #[test]
 fn reserved_quest_objective_done_mock_outside_domain_is_type_error() {
-    let (folded, doc) = folded_and_doc(quest_state_reader_text(), "quest-state-reader", Path::new("."));
+    let (folded, doc) = folded_and_doc(
+        quest_state_reader_text(),
+        "quest-state-reader",
+        Path::new("."),
+    );
     let mocks = MockSet {
-        state: vec![("quest.foo.objectives.bar.done".to_string(), "yes".to_string(), zero_span())],
+        state: vec![(
+            "quest.foo.objectives.bar.done".to_string(),
+            "yes".to_string(),
+            zero_span(),
+        )],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -491,7 +641,11 @@ fn local_quest_state_mock_rejected_when_document_does_not_reference_it() {
                 </quest>\n";
     let (folded, doc) = folded_and_doc(text, "local-quest-unreferenced", Path::new("."));
     let mocks = MockSet {
-        state: vec![("quest.q.state".to_string(), "complete".to_string(), zero_span())],
+        state: vec![(
+            "quest.q.state".to_string(),
+            "complete".to_string(),
+            zero_span(),
+        )],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -514,7 +668,11 @@ fn local_quest_state_mock_unset_admitted_when_document_references_it() {
                 </match>\n</on>\n</quest>\n";
     let (folded, doc) = folded_and_doc(text, "local-quest-referenced", Path::new("."));
     let mocks = MockSet {
-        state: vec![("quest.q.state".to_string(), "unset".to_string(), zero_span())],
+        state: vec![(
+            "quest.q.state".to_string(),
+            "unset".to_string(),
+            zero_span(),
+        )],
         ..Default::default()
     };
     let diags = validate(&mocks, &folded, &doc);
@@ -539,7 +697,10 @@ fn mock_subject_reads_the_file_key() {
 /// `check-project`'s pass over `mocks/*.yaml`, not to the grammar.
 #[test]
 fn mock_subject_is_absent_not_an_error() {
-    assert_eq!(lute_trace::mock_subject("choose:\n  path: left\n").unwrap(), None);
+    assert_eq!(
+        lute_trace::mock_subject("choose:\n  path: left\n").unwrap(),
+        None
+    );
 }
 
 /// A `file:` that is present but not a string is a malformed mock.
@@ -554,7 +715,10 @@ fn mock_subject_must_be_a_string() {
 #[test]
 fn file_key_does_not_disturb_the_other_surfaces() {
     let m = lute_trace::parse_mock_yaml("file: x.lute\nchoose:\n  path: left\n").unwrap();
-    assert_eq!(m.choose.get("path").map(|v| v.as_slice()), Some(&["left".to_string()][..]));
+    assert_eq!(
+        m.choose.get("path").map(|v| v.as_slice()),
+        Some(&["left".to_string()][..])
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -572,14 +736,22 @@ fn parse_mock_yaml_refuses_an_unknown_top_level_key() {
     // The legal set is recited, as `E-TEST-KEY`'s does — an author who
     // mis-keyed one surface can see every surface there is.
     for key in lute_trace::MOCK_TOP_KEYS {
-        assert!(err.message.contains(key), "{key} missing from: {}", err.message);
+        assert!(
+            err.message.contains(key),
+            "{key} missing from: {}",
+            err.message
+        );
     }
 }
 
 #[test]
 fn parse_mock_yaml_offers_the_nearest_legal_key() {
     let err = parse_mock_yaml("chooses:\n  h: a\n").unwrap_err();
-    assert!(err.message.contains("did you mean `choose`"), "{}", err.message);
+    assert!(
+        err.message.contains("did you mean `choose`"),
+        "{}",
+        err.message
+    );
 }
 
 /// The gate must not be a blanket refusal: EVERY key the mock family
@@ -592,7 +764,10 @@ fn every_legal_mock_key_still_parses() {
     let m = parse_mock_yaml(yaml).expect("every legal key parses");
     assert_eq!(m.state.len(), 1);
     assert_eq!(m.facts, vec!["f(a)".to_string()]);
-    assert_eq!(m.choose.get("h").map(|v| v.as_slice()), Some(&["a".to_string()][..]));
+    assert_eq!(
+        m.choose.get("h").map(|v| v.as_slice()),
+        Some(&["a".to_string()][..])
+    );
     assert_eq!(m.events, vec!["e".to_string()]);
     assert_eq!(m.accepts, vec!["q".to_string()]);
     // `accepts` is the other spelling of the same key and is legal too.
@@ -616,8 +791,8 @@ fn expect_is_a_test_key_and_not_a_mock_key() {
 /// duplicate `E-TEST-KEY`'s job at a different exit code.
 #[test]
 fn parse_mock_surfaces_keeps_the_grammar_open() {
-    let m = lute_trace::parse_mock_surfaces("selections:\n  h: a\nchoose:\n  g: b\n")
-        .expect("open");
+    let m =
+        lute_trace::parse_mock_surfaces("selections:\n  h: a\nchoose:\n  g: b\n").expect("open");
     assert!(m.choose.contains_key("g"));
     assert!(!m.choose.contains_key("h"));
 }

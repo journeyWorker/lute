@@ -104,7 +104,7 @@ struct CoreEntry {
 }
 
 enum CoreKind {
-    Data(&'static str),           // embedded YAML text
+    Data(&'static str), // embedded YAML text
     Rust(RustRuleId, &'static str /* default options YAML */),
 }
 
@@ -222,10 +222,7 @@ pub fn resolve_rules(
     for c in &config.custom {
         if core_ids.contains(c.id.as_str()) {
             config_diags.push(config_diag(
-                format!(
-                    "custom rule id `{}` collides with a core rule id",
-                    c.id
-                ),
+                format!("custom rule id `{}` collides with a core rule id", c.id),
                 config_span,
             ));
             continue;
@@ -243,12 +240,9 @@ pub fn resolve_rules(
 
     // Core.
     for entry in &entries {
-        match resolve_core(entry, &config.rules, config_span, &mut config_diags) {
-            Some(r) => {
-                seen_ids.insert(r.id.clone());
-                out.push(r);
-            }
-            None => {}
+        if let Some(r) = resolve_core(entry, &config.rules, config_span, &mut config_diags) {
+            seen_ids.insert(r.id.clone());
+            out.push(r);
         }
     }
 
@@ -315,7 +309,10 @@ fn resolve_core(
                 Ok(d) => d,
                 Err(e) => {
                     diags.push(config_diag(
-                        format!("core rule `{}` embedded YAML failed to parse: {e}", entry.id),
+                        format!(
+                            "core rule `{}` embedded YAML failed to parse: {e}",
+                            entry.id
+                        ),
                         config_span,
                     ));
                     return None;
@@ -409,11 +406,17 @@ fn validate_options(
 ) -> Result<(), String> {
     for (k, ov) in overrides {
         let Some(dv) = defaults.get(k) else {
-            let key = k.as_str().map(|s| s.to_string()).unwrap_or_else(|| format!("{k:?}"));
+            let key = k
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{k:?}"));
             return Err(format!("rule `{id}`: unknown option key `{key}`"));
         };
         if !type_compatible(dv, ov) {
-            let key = k.as_str().map(|s| s.to_string()).unwrap_or_else(|| format!("{k:?}"));
+            let key = k
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{k:?}"));
             return Err(format!("rule `{id}`: option `{key}` has wrong type"));
         }
     }
@@ -517,8 +520,8 @@ fn evaluate_data(
     let options = mapping_to_value(&rule.options);
     let code = diagnostic_code(&rule.id);
 
-    let evaluate_env = |env: Env, span: Span, related: Vec<RelatedDiagnostic>| {
-        match eval(&ided.expr, &env) {
+    let evaluate_env =
+        |env: Env, span: Span, related: Vec<RelatedDiagnostic>| match eval(&ided.expr, &env) {
             Ok(Value::Bool(true)) => Some(Finding {
                 code: code.clone(),
                 severity,
@@ -534,8 +537,7 @@ fn evaluate_data(
                 rule_decl_span,
             )),
             Err(e) => Some(expr_error(&rule.id, e.message, rule_decl_span)),
-        }
-    };
+        };
 
     match rule.target {
         LintTarget::Line => {
@@ -616,7 +618,12 @@ fn evaluate_data(
             let env = Env::new()
                 .with("project", project_value(project))
                 .with("options", options.clone());
-            let anchor = ctx.tables.scene.as_ref().map(|s| s.span).unwrap_or(rule_decl_span);
+            let anchor = ctx
+                .tables
+                .scene
+                .as_ref()
+                .map(|s| s.span)
+                .unwrap_or(rule_decl_span);
             if let Some(f) = evaluate_env(env, anchor, Vec::new()) {
                 out.push(f);
             }
@@ -670,7 +677,14 @@ fn eval_emotion_distribution(
         let mut reasons: Vec<String> = Vec::new();
         // Single-domain axis.
         if let Some(ax) = sp.axis.get(&domain) {
-            report_axis(&mut reasons, &domain, ax, run_max, streak_avg_min, max_share);
+            report_axis(
+                &mut reasons,
+                &domain,
+                ax,
+                run_max,
+                streak_avg_min,
+                max_share,
+            );
         }
         // Pair axis (e.g. emotion+variant).
         if let Some(pair) = &pair_with {
@@ -683,11 +697,7 @@ fn eval_emotion_distribution(
             out.push(Finding {
                 code: code.clone(),
                 severity,
-                message: format!(
-                    "speaker `{}`: {}",
-                    sp.speaker,
-                    reasons.join("; ")
-                ),
+                message: format!("speaker `{}`: {}", sp.speaker, reasons.join("; ")),
                 span: sp.first_line_span,
                 related: Vec::new(),
                 layer: None,
@@ -706,10 +716,7 @@ fn report_axis(
     max_share: f64,
 ) {
     if ax.run > run_max {
-        reasons.push(format!(
-            "{}-run={} (cap {})",
-            axis_name, ax.run, run_max
-        ));
+        reasons.push(format!("{}-run={} (cap {})", axis_name, ax.run, run_max));
     }
     if ax.streakAvg < streak_avg_min {
         reasons.push(format!(
@@ -742,11 +749,7 @@ fn eval_variant_composition(
     let code = diagnostic_code(&rule.id);
 
     // Inert if no line in the document carries the tracked attr (spec §7).
-    let attr_seen = ctx
-        .tables
-        .lines
-        .iter()
-        .any(|l| l.attrs.contains_key(&attr));
+    let attr_seen = ctx.tables.lines.iter().any(|l| l.attrs.contains_key(&attr));
     if !attr_seen {
         return Vec::new();
     }
@@ -909,7 +912,10 @@ fn shot_value(s: &ShotRow) -> Value {
     m.insert("title".into(), Value::Str(s.title.clone()));
     m.insert("dialogueLines".into(), num(s.dialogueLines as f64));
     m.insert("words".into(), num(s.words as f64));
-    m.insert("firstStagingTag".into(), Value::Str(s.firstStagingTag.clone()));
+    m.insert(
+        "firstStagingTag".into(),
+        Value::Str(s.firstStagingTag.clone()),
+    );
     Value::Map(m)
 }
 
@@ -1002,10 +1008,7 @@ fn yaml_to_value(v: &serde_yaml::Value) -> Value {
     match v {
         serde_yaml::Value::Null => Value::Null,
         serde_yaml::Value::Bool(b) => Value::Bool(*b),
-        serde_yaml::Value::Number(n) => n
-            .as_f64()
-            .map(Value::Num)
-            .unwrap_or(Value::Null),
+        serde_yaml::Value::Number(n) => n.as_f64().map(Value::Num).unwrap_or(Value::Null),
         serde_yaml::Value::String(s) => Value::Str(s.clone()),
         serde_yaml::Value::Sequence(seq) => Value::List(seq.iter().map(yaml_to_value).collect()),
         serde_yaml::Value::Mapping(m) => mapping_to_value(m),

@@ -13,9 +13,14 @@ use lute_trace::{trace_document, MockSet, Step, TraceExit};
 
 fn input_for(text: &str) -> CheckInput {
     let (doc, parse_diags) = lute_syntax::parse(text);
-    assert!(parse_diags.is_empty(), "fixture must parse clean: {parse_diags:?}");
-    let (meta0, _) =
-        lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
+    assert!(
+        parse_diags.is_empty(),
+        "fixture must parse clean: {parse_diags:?}"
+    );
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
     let (snapshot, _) = lute_manifest::project::resolve_document_snapshot(
         None,
         meta0.profile.as_deref(),
@@ -37,7 +42,10 @@ fn input_for(text: &str) -> CheckInput {
 fn choose(id: &str, cids: &[&str]) -> MockSet {
     let mut choose = BTreeMap::new();
     choose.insert(id.to_string(), cids.iter().map(|s| s.to_string()).collect());
-    MockSet { choose, ..Default::default() }
+    MockSet {
+        choose,
+        ..Default::default()
+    }
 }
 
 /// Every spoken line in the transcript, in walk order.
@@ -67,9 +75,16 @@ const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
 fn end_terminates_the_walk_and_the_run_is_complete() {
     let text = format!("{HDR}@narrator: seen\n::end{{reason=\"done\"}}\n@narrator: unreachable\n");
     let (report, exit) = trace_document(&input_for(&text), MockSet::default());
-    assert!(matches!(exit, TraceExit::Complete), "an `::end` walk is COMPLETE: {exit:?}");
+    assert!(
+        matches!(exit, TraceExit::Complete),
+        "an `::end` walk is COMPLETE: {exit:?}"
+    );
     assert_eq!(lines(&report.steps), ["seen"]);
-    assert_eq!(directives(&report.steps), ["end"], "the terminator IS recorded");
+    assert_eq!(
+        directives(&report.steps),
+        ["end"],
+        "the terminator IS recorded"
+    );
 }
 
 #[test]
@@ -79,7 +94,11 @@ fn a_later_shot_is_never_entered() {
     assert!(matches!(exit, TraceExit::Complete), "{exit:?}");
     assert!(lines(&report.steps).is_empty(), "{:?}", report.steps);
     // Shot 2's header step is never pushed either — the walk left `walk_document`.
-    let shots = report.steps.iter().filter(|s| matches!(s, Step::Shot { .. })).count();
+    let shots = report
+        .steps
+        .iter()
+        .filter(|s| matches!(s, Step::Shot { .. }))
+        .count();
     assert_eq!(shots, 1);
 }
 
@@ -115,7 +134,10 @@ fn the_unterminated_arm_still_reaches_the_converge() {
     let (report, exit) = trace_document(&input_for(&text), choose("exit", &["stay"]));
     assert!(matches!(exit, TraceExit::Complete), "{exit:?}");
     assert_eq!(lines(&report.steps), ["staying", "after the converge"]);
-    assert!(directives(&report.steps).is_empty(), "the other arm's `::end` never ran");
+    assert!(
+        directives(&report.steps).is_empty(),
+        "the other arm's `::end` never ran"
+    );
 }
 
 /// A terminator does NOT launder an unresolved atom recorded EARLIER in the
@@ -139,7 +161,12 @@ fn a_terminator_does_not_launder_an_unresolved_atom() {
         "fixture must record an unresolved atom: {:?}",
         report.unresolved
     );
-    assert_eq!(directives(&report.steps), ["end"], "the terminator ran: {:?}", report.steps);
+    assert_eq!(
+        directives(&report.steps),
+        ["end"],
+        "the terminator ran: {:?}",
+        report.steps
+    );
     assert!(
         matches!(exit, TraceExit::Incomplete),
         "an unresolved atom outranks the terminator's clean exit: {exit:?}"

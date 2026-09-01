@@ -17,7 +17,13 @@ use lute_core_span::Span;
 use lute_trace::{trace_document, MockSet, TraceExit};
 
 fn zero_span() -> Span {
-    Span { byte_start: 0, byte_end: 0, line: 0, column: 0, utf16_range: (0, 0) }
+    Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    }
 }
 
 /// Assemble a [`CheckInput`] for `text` exactly as `lute check`/`lute
@@ -25,10 +31,19 @@ fn zero_span() -> Span {
 /// `components:` relative paths).
 fn input_for(text: &str, uri: &str, base: &Path) -> CheckInput {
     let (doc, parse_diags) = lute_syntax::parse(text);
-    assert!(parse_diags.is_empty(), "fixture must parse clean: {parse_diags:?}");
-    let (meta0, _) = lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default());
-    let (snapshot, _) =
-        lute_manifest::project::resolve_document_snapshot(None, meta0.profile.as_deref(), &meta0.plugins);
+    assert!(
+        parse_diags.is_empty(),
+        "fixture must parse clean: {parse_diags:?}"
+    );
+    let (meta0, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let (snapshot, _) = lute_manifest::project::resolve_document_snapshot(
+        None,
+        meta0.profile.as_deref(),
+        &meta0.plugins,
+    );
     let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
     let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
     CheckInput {
@@ -58,11 +73,17 @@ fn choose(pairs: &[(&str, &[&str])]) -> MockSet {
     for (id, cids) in pairs {
         choose.insert(id.to_string(), cids.iter().map(|s| s.to_string()).collect());
     }
-    MockSet { choose, ..Default::default() }
+    MockSet {
+        choose,
+        ..Default::default()
+    }
 }
 
 fn assert_complete(exit: &TraceExit) {
-    assert!(matches!(exit, TraceExit::Complete), "expected Complete, got {exit:?}");
+    assert!(
+        matches!(exit, TraceExit::Complete),
+        "expected Complete, got {exit:?}"
+    );
 }
 
 fn assert_refused(exit: &TraceExit) -> &[lute_core_span::Diagnostic] {
@@ -76,12 +97,19 @@ fn assert_refused(exit: &TraceExit) -> &[lute_core_span::Diagnostic] {
 /// T9.13) — the subject text is a LABEL now, and two blocks sharing one
 /// subject are two entries. Look the row up by label and assert the label is
 /// unambiguous in this report, which is the property the re-keying bought.
-fn arms_cov_for(
-    report: &lute_trace::TraceReport,
-    label: &str,
-) -> lute_trace::CoverageCount {
-    let hits: Vec<_> = report.coverage.arms.values().filter(|c| c.label == label).collect();
-    assert_eq!(hits.len(), 1, "expected exactly one `{label}` match site: {:?}", report.coverage.arms);
+fn arms_cov_for(report: &lute_trace::TraceReport, label: &str) -> lute_trace::CoverageCount {
+    let hits: Vec<_> = report
+        .coverage
+        .arms
+        .values()
+        .filter(|c| c.label == label)
+        .collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "expected exactly one `{label}` match site: {:?}",
+        report.coverage.arms
+    );
     hits[0].clone()
 }
 
@@ -119,13 +147,28 @@ fn auto_pick_and_forced_pick() {
     let mocks = choose(&[("sofaHelp", &["help"])]);
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
-    let branch = report.decisions.iter().find(|d| d.construct == "branch").expect("branch decision");
+    let branch = report
+        .decisions
+        .iter()
+        .find(|d| d.construct == "branch")
+        .expect("branch decision");
     assert_eq!(branch.outcome, "help");
     assert!(!branch.auto && !branch.forced);
-    assert_eq!(branch.eligible, vec!["help".to_string(), "warmly".to_string(), "tip".to_string()]);
-    let m = report.decisions.iter().find(|d| d.construct == "match").expect("match decision");
+    assert_eq!(
+        branch.eligible,
+        vec!["help".to_string(), "warmly".to_string(), "tip".to_string()]
+    );
+    let m = report
+        .decisions
+        .iter()
+        .find(|d| d.construct == "match")
+        .expect("match decision");
     assert_eq!(m.outcome, "arm 1");
-    let choices_cov = report.coverage.choices.get("sofaHelp").expect("branch coverage entry");
+    let choices_cov = report
+        .coverage
+        .choices
+        .get("sofaHelp")
+        .expect("branch coverage entry");
     assert_eq!((choices_cov.visited, choices_cov.total), (1, 3));
     let arms_cov = arms_cov_for(&report, "run.metHelpfully");
     assert_eq!((arms_cov.visited, arms_cov.total), (1, 2));
@@ -153,8 +196,15 @@ fn presentation_point_eligibility() {
     let input = input_for(text, "presentation-point", Path::new("."));
     let (report, exit) = trace_document(&input, MockSet::default());
     assert_complete(&exit);
-    let branch = report.decisions.iter().find(|d| d.construct == "branch").expect("branch decision");
-    assert_eq!(branch.outcome, "a", "the in-flow ::set must make `a` eligible: {report:#?}");
+    let branch = report
+        .decisions
+        .iter()
+        .find(|d| d.construct == "branch")
+        .expect("branch decision");
+    assert_eq!(
+        branch.outcome, "a",
+        "the in-flow ::set must make `a` eligible: {report:#?}"
+    );
     assert!(branch.auto);
 }
 
@@ -211,9 +261,16 @@ fn forcing_unknown_guard_is_forced() {
     let mocks = choose(&[("approach", &["soft"])]);
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
-    let branch = report.decisions.iter().find(|d| d.construct == "branch").expect("branch decision");
+    let branch = report
+        .decisions
+        .iter()
+        .find(|d| d.construct == "branch")
+        .expect("branch decision");
     assert_eq!(branch.outcome, "soft");
-    assert!(branch.forced, "forcing past an unresolved guard must be annotated forced: {branch:?}");
+    assert!(
+        branch.forced,
+        "forcing past an unresolved guard must be annotated forced: {branch:?}"
+    );
     assert!(!branch.auto);
 }
 
@@ -231,9 +288,15 @@ fn unknown_match_guard_halts_exit3() {
                 </match>\n";
     let input = input_for(text, "unknown-match", Path::new("."));
     let (report, exit) = trace_document(&input, MockSet::default());
-    assert!(matches!(exit, TraceExit::Incomplete), "expected Incomplete (exit 3), got {exit:?}");
+    assert!(
+        matches!(exit, TraceExit::Incomplete),
+        "expected Incomplete (exit 3), got {exit:?}"
+    );
     assert_eq!(exit.code(), 3);
-    assert!(!report.unresolved.is_empty(), "unresolved[] must name the halted path");
+    assert!(
+        !report.unresolved.is_empty(),
+        "unresolved[] must name the halted path"
+    );
     let u = &report.unresolved[0];
     assert_eq!(u.id, "run.y");
     assert!(
@@ -295,7 +358,10 @@ fn no_arm_match_reports_and_continues() {
     assert_eq!(m.id, "run.flag");
     assert_eq!(m.outcome, "no arm");
     assert!(
-        report.steps.iter().any(|s| matches!(s, lute_trace::Step::Decision(d) if d.outcome == "no arm")),
+        report
+            .steps
+            .iter()
+            .any(|s| matches!(s, lute_trace::Step::Decision(d) if d.outcome == "no arm")),
         "the \"no arm\" outcome must also appear inline in the transcript: {:?}",
         report.steps
     );
@@ -336,7 +402,11 @@ fn hub_reevaluates_between_picks() {
         .filter(|d| d.construct == "hub")
         .map(|d| d.outcome.as_str())
         .collect();
-    assert_eq!(picks, vec!["c1", "c2", "leave"], "c2 must have been honored after c1's write: {report:#?}");
+    assert_eq!(
+        picks,
+        vec!["c1", "c2", "leave"],
+        "c2 must have been honored after c1's write: {report:#?}"
+    );
 
     // `c1` is `once`: forcing it a SECOND time (after it already fired) is
     // ineligible at that presentation point -> Refused. (once-arms drop
@@ -359,7 +429,11 @@ fn hub_reevaluates_between_picks() {
 fn writes_are_sequential() {
     let input = load_input("../../docs/examples/choice-persist.lute");
     let mocks = MockSet {
-        state: vec![("run.metHelpfully".to_string(), "true".to_string(), zero_span())],
+        state: vec![(
+            "run.metHelpfully".to_string(),
+            "true".to_string(),
+            zero_span(),
+        )],
         choose: BTreeMap::from([("sofaHelp".to_string(), vec!["tip".to_string()])]),
         ..Default::default()
     };
@@ -368,14 +442,20 @@ fn writes_are_sequential() {
 
     // The seeded `true` survives (`tip`'s into sugar writes run.tip, never
     // run.metHelpfully) — Shot 2 still takes arm 1.
-    let m = report.decisions.iter().find(|d| d.construct == "match").expect("match decision");
+    let m = report
+        .decisions
+        .iter()
+        .find(|d| d.construct == "match")
+        .expect("match decision");
     assert_eq!(m.outcome, "arm 1");
 
     // AND the `tip` arm's own into ::set (`run.tip = 5`) is visible in
     // the transcript — both effects hold at once (sequential in-flow
     // visibility never overwrites the earlier seed).
     let tip_set = report.steps.iter().find_map(|s| match s {
-        lute_trace::Step::Set { path, value, sugar } if path == "run.tip" => Some((value.clone(), *sugar)),
+        lute_trace::Step::Set { path, value, sugar } if path == "run.tip" => {
+            Some((value.clone(), *sugar))
+        }
         _ => None,
     });
     let (value, sugar) = tip_set.expect("run.tip ::set must appear in the transcript");
@@ -399,26 +479,42 @@ fn output_is_byte_deterministic() {
 
     let human1 = report1.render_human();
     let human2 = report2.render_human();
-    assert_eq!(human1, human2, "render_human must be byte-identical across runs");
+    assert_eq!(
+        human1, human2,
+        "render_human must be byte-identical across runs"
+    );
 
     let json1 = report1.render_json();
     let json2 = report2.render_json();
-    assert_eq!(json1, json2, "render_json must be byte-identical across runs");
+    assert_eq!(
+        json1, json2,
+        "render_json must be byte-identical across runs"
+    );
 
     // Top-level JSON key order is normative (§4.5): file, seeds, steps,
     // decisions, unresolved, coverage — checked as literal byte positions
     // in the SERIALIZED TEXT (not via a re-parsed `serde_json::Value`,
     // whose `Map` may reorder keys).
-    let keys = ["\"file\"", "\"seeds\"", "\"steps\"", "\"decisions\"", "\"unresolved\"", "\"coverage\""];
+    let keys = [
+        "\"file\"",
+        "\"seeds\"",
+        "\"steps\"",
+        "\"decisions\"",
+        "\"unresolved\"",
+        "\"coverage\"",
+    ];
     let mut last = 0usize;
     for k in keys {
-        let pos = json1.find(k).unwrap_or_else(|| panic!("missing key {k} in:\n{json1}"));
+        let pos = json1
+            .find(k)
+            .unwrap_or_else(|| panic!("missing key {k} in:\n{json1}"));
         assert!(pos >= last, "key {k} out of order in:\n{json1}");
         last = pos;
     }
 
     // Sanity: the JSON round-trips as a well-formed document.
-    let _: serde_json::Value = serde_json::from_str(&json1).expect("render_json must be valid JSON");
+    let _: serde_json::Value =
+        serde_json::from_str(&json1).expect("render_json must be valid JSON");
     assert!(!matches!(exit1, TraceExit::Refused(_)));
 }
 
@@ -462,7 +558,10 @@ fn match_decision<'a>(report: &'a lute_trace::TraceReport, id: &str) -> &'a lute
 
 fn state_mocks(pairs: &[(&str, &str)]) -> MockSet {
     MockSet {
-        state: pairs.iter().map(|(p, v)| (p.to_string(), v.to_string(), zero_span())).collect(),
+        state: pairs
+            .iter()
+            .map(|(p, v)| (p.to_string(), v.to_string(), zero_span()))
+            .collect(),
         ..Default::default()
     }
 }
@@ -474,7 +573,11 @@ fn state_mocks(pairs: &[(&str, &str)]) -> MockSet {
 /// note, WITHOUT a "defaults to" clause (nothing was defaulted).
 #[test]
 fn reserved_quest_state_mock_admitted_and_previews_referenced_arm() {
-    let input = input_for(&quest_state_match_text(), "quest-state-match", Path::new("."));
+    let input = input_for(
+        &quest_state_match_text(),
+        "quest-state-match",
+        Path::new("."),
+    );
     let mocks = state_mocks(&[("quest.foo.state", "complete")]);
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
@@ -484,7 +587,10 @@ fn reserved_quest_state_mock_admitted_and_previews_referenced_arm() {
     assert_eq!(d.guard.as_deref(), Some("is=\"complete\""), "{d:?}");
 
     assert!(
-        report.notes.iter().any(|n| n.contains("quest `foo`") && n.contains("unverified")),
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("quest `foo`") && n.contains("unverified")),
         "{:?}",
         report.notes
     );
@@ -526,7 +632,10 @@ fn reserved_quest_mock_note_fires_even_when_the_referencing_arm_is_never_reached
     assert_eq!(d.outcome, "arm 1", "{d:?}");
 
     assert!(
-        report.notes.iter().any(|n| n.contains("quest `foo`") && n.contains("unverified")),
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("quest `foo`") && n.contains("unverified")),
         "an admitted mock on an unread reserved path must still be noted: {:?}",
         report.notes
     );
@@ -536,7 +645,11 @@ fn reserved_quest_mock_note_fires_even_when_the_referencing_arm_is_never_reached
 /// stays `E-TRACE-MOCK-UNDECLARED` — Refused, end to end.
 #[test]
 fn reserved_quest_state_mock_on_unreferenced_path_stays_refused() {
-    let input = input_for(&quest_state_match_text(), "quest-state-match", Path::new("."));
+    let input = input_for(
+        &quest_state_match_text(),
+        "quest-state-match",
+        Path::new("."),
+    );
     let mocks = state_mocks(&[("quest.bar.state", "complete")]);
     let (_, exit) = trace_document(&input, mocks);
     let diags = assert_refused(&exit);
@@ -550,7 +663,11 @@ fn reserved_quest_state_mock_on_unreferenced_path_stays_refused() {
 /// "defaults to `unset`" clause.
 #[test]
 fn unmocked_quest_state_match_fires_unset_arm_not_no_arm() {
-    let input = input_for(&quest_state_match_text(), "quest-state-match", Path::new("."));
+    let input = input_for(
+        &quest_state_match_text(),
+        "quest-state-match",
+        Path::new("."),
+    );
     let (report, exit) = trace_document(&input, MockSet::default());
     assert_complete(&exit);
 
@@ -562,10 +679,9 @@ fn unmocked_quest_state_match_fires_unset_arm_not_no_arm() {
     assert_eq!((arms_cov.visited, arms_cov.total), (1, 4));
 
     assert!(
-        report
-            .notes
-            .iter()
-            .any(|n| n.contains("quest `foo`") && n.contains("unverified") && n.contains("defaults to `unset`")),
+        report.notes.iter().any(|n| n.contains("quest `foo`")
+            && n.contains("unverified")
+            && n.contains("defaults to `unset`")),
         "{:?}",
         report.notes
     );
@@ -576,7 +692,11 @@ fn unmocked_quest_state_match_fires_unset_arm_not_no_arm() {
 /// defect this revision fixes. §1.3: defaulted note names `false`.
 #[test]
 fn unmocked_objective_done_match_fires_false_arm_not_no_arm() {
-    let input = input_for(&quest_objective_done_match_text(), "quest-objective-match", Path::new("."));
+    let input = input_for(
+        &quest_objective_done_match_text(),
+        "quest-objective-match",
+        Path::new("."),
+    );
     let (report, exit) = trace_document(&input, MockSet::default());
     assert_complete(&exit);
 
@@ -588,10 +708,9 @@ fn unmocked_objective_done_match_fires_false_arm_not_no_arm() {
     assert_eq!((arms_cov.visited, arms_cov.total), (1, 2));
 
     assert!(
-        report
-            .notes
-            .iter()
-            .any(|n| n.contains("quest `foo`") && n.contains("unverified") && n.contains("defaults to `false`")),
+        report.notes.iter().any(|n| n.contains("quest `foo`")
+            && n.contains("unverified")
+            && n.contains("defaults to `false`")),
         "{:?}",
         report.notes
     );
@@ -621,12 +740,22 @@ fn never_completing_quest_text() -> String {
 /// -> an informational note, exit UNCHANGED (still Complete).
 #[test]
 fn unmatched_event_emits_note_and_leaves_exit_unchanged() {
-    let input = input_for(&never_completing_quest_text(), "unmatched-event", Path::new("."));
-    let mocks = MockSet { events: vec!["nonexistentHandler".to_string()], ..Default::default() };
+    let input = input_for(
+        &never_completing_quest_text(),
+        "unmatched-event",
+        Path::new("."),
+    );
+    let mocks = MockSet {
+        events: vec!["nonexistentHandler".to_string()],
+        ..Default::default()
+    };
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
     assert!(
-        report.notes.iter().any(|n| n.contains("event `nonexistentHandler` matched no `<on>` handler")),
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("event `nonexistentHandler` matched no `<on>` handler")),
         "{:?}",
         report.notes
     );
@@ -646,22 +775,38 @@ fn matched_event_emits_no_unmatched_note() {
                 <on event=\"npcSpoke\">\n@narrator: heard\n</on>\n\
                 </quest>\n";
     let mut input = input_for(text, "matched-event", Path::new("."));
-    input
-        .snapshot
-        .events
-        .insert("npcSpoke".to_string(), lute_manifest::schema::EventDecl { name: "npcSpoke".to_string() });
-    let mocks = MockSet { events: vec!["npcSpoke".to_string()], ..Default::default() };
+    input.snapshot.events.insert(
+        "npcSpoke".to_string(),
+        lute_manifest::schema::EventDecl {
+            name: "npcSpoke".to_string(),
+        },
+    );
+    let mocks = MockSet {
+        events: vec!["npcSpoke".to_string()],
+        ..Default::default()
+    };
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
-    assert!(!report.notes.iter().any(|n| n.contains("matched no")), "{:?}", report.notes);
+    assert!(
+        !report.notes.iter().any(|n| n.contains("matched no")),
+        "{:?}",
+        report.notes
+    );
 }
 
 /// Preserved behavior (§4's own text): a `--event` naming a built-in
 /// lifecycle event is STILL `E-TRACE-EVENT`, Refused, end to end.
 #[test]
 fn builtin_lifecycle_event_still_refused_end_to_end() {
-    let input = input_for(&never_completing_quest_text(), "lifecycle-event", Path::new("."));
-    let mocks = MockSet { events: vec!["questComplete".to_string()], ..Default::default() };
+    let input = input_for(
+        &never_completing_quest_text(),
+        "lifecycle-event",
+        Path::new("."),
+    );
+    let mocks = MockSet {
+        events: vec!["questComplete".to_string()],
+        ..Default::default()
+    };
     let (_, exit) = trace_document(&input, mocks);
     let diags = assert_refused(&exit);
     assert_eq!(diags.len(), 1, "{diags:?}");
@@ -688,7 +833,10 @@ fn mock_fact_over_unproducible_relation_warns() {
                 ## Shot 1.\n\
                 @narrator: hi\n";
     let input = input_for(text, "unproducible", Path::new("."));
-    let mocks = MockSet { facts: vec!["orphan(halsin)".to_string()], ..Default::default() };
+    let mocks = MockSet {
+        facts: vec!["orphan(halsin)".to_string()],
+        ..Default::default()
+    };
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
     assert!(
@@ -713,11 +861,17 @@ fn mock_fact_over_seeded_relation_is_silent() {
                 ## Shot 1.\n\
                 @narrator: hi\n";
     let input = input_for(text, "seeded", Path::new("."));
-    let mocks = MockSet { facts: vec!["seeded(halsin)".to_string()], ..Default::default() };
+    let mocks = MockSet {
+        facts: vec!["seeded(halsin)".to_string()],
+        ..Default::default()
+    };
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
     assert!(
-        !report.notes.iter().any(|n| n.contains("W-TRACE-MOCK-UNPRODUCIBLE")),
+        !report
+            .notes
+            .iter()
+            .any(|n| n.contains("W-TRACE-MOCK-UNPRODUCIBLE")),
         "a seeded relation is producible and must not warn: {:?}",
         report.notes
     );
@@ -734,11 +888,17 @@ fn mock_fact_over_reserved_relation_is_silent() {
                 ## Shot 1.\n\
                 @narrator: hi\n";
     let input = input_for(text, "reserved", Path::new("."));
-    let mocks = MockSet { facts: vec!["flagged(halsin)".to_string()], ..Default::default() };
+    let mocks = MockSet {
+        facts: vec!["flagged(halsin)".to_string()],
+        ..Default::default()
+    };
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
     assert!(
-        !report.notes.iter().any(|n| n.contains("W-TRACE-MOCK-UNPRODUCIBLE")),
+        !report
+            .notes
+            .iter()
+            .any(|n| n.contains("W-TRACE-MOCK-UNPRODUCIBLE")),
         "a reserved relation is producible by definition and must not warn: {:?}",
         report.notes
     );
@@ -756,11 +916,17 @@ fn mock_fact_over_asserted_relation_is_silent() {
                 ## Shot 1.\n\
                 ::assert{seen(halsin)}\n";
     let input = input_for(text, "asserted", Path::new("."));
-    let mocks = MockSet { facts: vec!["seen(halsin)".to_string()], ..Default::default() };
+    let mocks = MockSet {
+        facts: vec!["seen(halsin)".to_string()],
+        ..Default::default()
+    };
     let (report, exit) = trace_document(&input, mocks);
     assert_complete(&exit);
     assert!(
-        !report.notes.iter().any(|n| n.contains("W-TRACE-MOCK-UNPRODUCIBLE")),
+        !report
+            .notes
+            .iter()
+            .any(|n| n.contains("W-TRACE-MOCK-UNPRODUCIBLE")),
         "a relation with a live `::assert` site is producible and must not warn: {:?}",
         report.notes
     );

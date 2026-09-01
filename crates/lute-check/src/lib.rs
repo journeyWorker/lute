@@ -1,11 +1,11 @@
 pub mod admission;
-pub mod cel_paths;
 pub mod cel_expand;
-pub mod connectivity;
 pub mod cel_message;
+pub mod cel_paths;
 pub mod cel_resolve;
 pub mod check;
 pub mod component_import;
+pub mod connectivity;
 pub mod content_line;
 pub mod ctx;
 pub mod datalog_check;
@@ -19,11 +19,11 @@ pub mod inject;
 pub mod logic_attrs;
 pub mod match_check;
 pub mod meta;
+pub mod next_labels;
 pub mod on;
 pub mod prereq;
-pub mod next_labels;
-pub mod project_check;
 pub mod producible;
+pub mod project_check;
 pub mod reachability;
 pub mod rel_schema;
 pub mod schema_import;
@@ -44,17 +44,15 @@ pub mod timeline;
 pub const LUTE_LANG_VERSION: &str = "0.15.0";
 
 pub use admission::{check_admission, node_kind, NodeKind};
-pub use cel_paths::E_PATH_IDENT;
-pub use cel_message::{translate_cel_parse, Translation};
 pub use cel_expand::{expand_cel, DefTable};
-pub use decide::{apply_op, decide, decide_slot, DecideCtx, Decided, DollarBinding};
+pub use cel_message::{translate_cel_parse, Translation};
+pub use cel_paths::E_PATH_IDENT;
 pub use cel_resolve::{
-    check_cel_slot, check_rule_guards, E_CEL_PROFILE, E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT,
-    E_VALIDAT_DERIVED,
+    check_cel_slot, check_rule_guards, E_CEL_PROFILE, E_DATALOG_GUARD_FACT,
+    E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED,
 };
 pub use check::{
-    check, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved,
-    W_LUTE_VERSION_STALE,
+    check, fold_env, CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved, W_LUTE_VERSION_STALE,
 };
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
 pub use ctx::{Ctx, Mode};
@@ -62,6 +60,7 @@ pub use datalog_check::{
     check_rules, check_stratification, E_DATALOG_UNSAFE, E_DATALOG_UNSTRATIFIED,
     E_DERIVE_UNDECLARED, W_DERIVE_NO_RULES,
 };
+pub use decide::{apply_op, decide, decide_slot, DecideCtx, Decided, DollarBinding};
 pub use defassign::{check_definite_assignment, check_quest_guard_defassign};
 pub use directives::E_AT_CONTEXT;
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
@@ -78,6 +77,8 @@ pub use meta::{
     StateSchema, TypedMeta, E_KIND_MISSING, E_STATE_COLLECTION, E_UNKNOWN_KIND,
 };
 pub use on::{check_on_event, E_ON_NO_EVENT, E_UNKNOWN_EVENT};
+pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
+pub use producible::W_UNPROVEN_RELATIONAL;
 pub use project_check::{
     check_project_domain_reads, check_project_quest_ids, check_project_quest_refs,
     check_project_quest_tree, check_project_subquest_unsatisfiable, colliding_occurrences,
@@ -85,16 +86,12 @@ pub use project_check::{
     E_QUEST_REF_UNKNOWN, E_QUEST_TREE_CYCLE, W_COMPONENT_UNVERIFIED, W_DOMAIN_UNREAD,
     W_QUEST_REF_UNKNOWN,
 };
-pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
-pub use producible::W_UNPROVEN_RELATIONAL;
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use schema_import::{resolve_imports, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner};
 pub use tag::{codes_locked, retag_document, tag_document, RetagOutcome, TagOutcome};
 pub use temporal::{check_temporal, E_TEMPORAL_ARG};
-pub use time::{
-    fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS,
-};
+pub use time::{fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS};
 pub use timeline::{
     resolve_timeline, time_resolution_diag, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING,
     E_TIMELINE_DURATION, E_TIME_RESOLUTION,

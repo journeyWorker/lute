@@ -22,7 +22,11 @@ fn codes(text: &str) -> Vec<String> {
         components: Default::default(),
         defaults: Default::default(),
     };
-    check(&input).diagnostics.into_iter().map(|d| d.code).collect()
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
 }
 
 /// A scene whose `<choice when=…>` slot carries `cond`, plus a second
@@ -63,11 +67,14 @@ fn input_with_anchor(cond: &str) -> CheckInput {
 }
 
 fn anchor_codes(cond: &str) -> Vec<String> {
-    check(&input_with_anchor(cond)).diagnostics.into_iter().map(|d| d.code).collect()
+    check(&input_with_anchor(cond))
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
 }
 
-const VOCAB: &str =
-    "entities:\n  c: { members: [ana] }\nrelations:\n  inParty: { args: [c] }\n";
+const VOCAB: &str = "entities:\n  c: { members: [ana] }\nrelations:\n  inParty: { args: [c] }\n";
 
 fn validat_scene(t_arg: &str) -> String {
     format!(
@@ -79,7 +86,13 @@ fn validat_scene(t_arg: &str) -> String {
 fn ordering_comparisons_between_times_are_legal() {
     // D8 (five ops): `<`, `<=`, `==`, `>`, `>=` — between two `now()` calls and
     // between an engine-declared anchor and `now()`.
-    for cond in ["now() < now()", "now() <= now()", "now() == now()", "now() > now()", "now() >= now()"] {
+    for cond in [
+        "now() < now()",
+        "now() <= now()",
+        "now() == now()",
+        "now() > now()",
+        "now() >= now()",
+    ] {
         let c = codes(&scene_when(cond));
         assert!(!c.contains(&"E-TEMPORAL-ARG".to_string()), "{cond}: {c:?}");
     }
@@ -102,7 +115,10 @@ fn not_equals_between_times_is_rejected_by_d8() {
     // superseded by the Decisions section.
     for cond in ["now() != now()", "app.episodeStart != now()"] {
         let c = anchor_codes(cond);
-        assert!(c.contains(&"E-TEMPORAL-ARG".to_string()), "D8: {cond}: {c:?}");
+        assert!(
+            c.contains(&"E-TEMPORAL-ARG".to_string()),
+            "D8: {cond}: {c:?}"
+        );
     }
 }
 
@@ -137,10 +153,16 @@ fn nt_anchor_at_bool_root_is_temporal_arg() {
 #[test]
 fn validat_second_arg_must_be_narrative_time() {
     let clean = codes(&validat_scene("now()"));
-    assert!(!clean.contains(&"E-TEMPORAL-ARG".to_string()), "validAt(rel, now()) is clean: {clean:?}");
+    assert!(
+        !clean.contains(&"E-TEMPORAL-ARG".to_string()),
+        "validAt(rel, now()) is clean: {clean:?}"
+    );
 
     let bad = codes(&validat_scene("5"));
-    assert!(bad.contains(&"E-TEMPORAL-ARG".to_string()), "validAt(rel, 5): {bad:?}");
+    assert!(
+        bad.contains(&"E-TEMPORAL-ARG".to_string()),
+        "validAt(rel, 5): {bad:?}"
+    );
 }
 
 #[test]
@@ -193,7 +215,12 @@ fn validat_against_quest_activated_at_is_clean() {
     // time admits no `isSet`/`has` guard — that would itself be
     // E-TEMPORAL-ARG — so the engine-populated anchor is definite).
     let cs = codes(&quest_done("validAt(sawClue(map), quest.q1.activatedAt)"));
-    for code in ["E-TEMPORAL-ARG", "E-UNDECLARED", "E-MAYBE-UNSET", "E-CEL-PROFILE"] {
+    for code in [
+        "E-TEMPORAL-ARG",
+        "E-UNDECLARED",
+        "E-MAYBE-UNSET",
+        "E-CEL-PROFILE",
+    ] {
         assert!(!cs.contains(&code.to_string()), "{code}: {cs:?}");
     }
     assert!(!cs.iter().any(|c| c.starts_with("E-")), "{cs:?}");
@@ -205,7 +232,9 @@ fn foreign_quest_activated_at_is_narrative_time_too() {
     // declared project-wide, so `is_nt` must recognise it WITHOUT a schema
     // decl to resolve against — otherwise `validAt`'s second argument would
     // be E-TEMPORAL-ARG purely because the quest lives in another file.
-    let cs = codes(&quest_done("validAt(sawClue(map), quest.elsewhere.activatedAt)"));
+    let cs = codes(&quest_done(
+        "validAt(sawClue(map), quest.elsewhere.activatedAt)",
+    ));
     assert!(!cs.contains(&"E-TEMPORAL-ARG".to_string()), "{cs:?}");
     assert!(!cs.contains(&"E-UNDECLARED".to_string()), "{cs:?}");
 }

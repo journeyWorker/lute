@@ -11,9 +11,9 @@
 //! model, §7 core rules & defaults, §8 diagnostics).
 //!
 //! ## Public surface
-//! - [`engine::lint`] — orchestrator: takes parsed documents + resolved config
-//!   + plugin rules + provider snapshots and returns
-//!   [`engine::LintOutcome`] (a deterministic `Vec<(PathBuf, Diagnostic)>`).
+//! - [`engine::lint`] — orchestrator: takes parsed documents, resolved config,
+//!   plugin rules, and provider snapshots; returns [`engine::LintOutcome`]
+//!   (a deterministic `Vec<(PathBuf, Diagnostic)>`).
 //! - [`config::LintConfig`] / [`config::parse_config`] — YAML config loader.
 //! - [`model::LintRuleDecl`] and friends — declarative rule shape shared with
 //!   plugin YAML and `custom:`; re-exported from `lute_manifest::lint` (the

@@ -30,7 +30,8 @@ fn check_codes(text: &str, imports: SchemaImports) -> Vec<String> {
 }
 
 // Minimal valid scene reading an imported run path via <match>.
-const SCENE_READS_RUN: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+const SCENE_READS_RUN: &str =
+    "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
 <match on=\"run.choseHelp\">\n<when test=\"$ == true\">@x: a\n</when>\n\
 <otherwise>@x: b\n</otherwise>\n</match>\n";
 // Same but the scene ALSO inline-declares run.x which the import owns.
@@ -199,10 +200,12 @@ fn yaml_import_lifts_enums_and_entities_domains() {
     );
     let res = resolve_imports(&dir, &["schema.yml".to_string()], &[], zero_span());
     assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
-    let action = res
-        .domains
-        .get("action")
-        .unwrap_or_else(|| panic!("action domain missing: {:?}", res.domains.keys().collect::<Vec<_>>()));
+    let action = res.domains.get("action").unwrap_or_else(|| {
+        panic!(
+            "action domain missing: {:?}",
+            res.domains.keys().collect::<Vec<_>>()
+        )
+    });
     assert_eq!(action.members, vec!["wave".to_string(), "bow".to_string()]);
     let character = res
         .domains
@@ -672,12 +675,7 @@ fn uses_parse_carries_the_imports_own_diagnostics_not_only_a_count() {
         "state:\n  app.rating: { type: enum, values: [teen, adult], default: teen }\n",
     )
     .unwrap();
-    let res = resolve_imports(
-        &dir,
-        &["world.schema.yaml".to_string()],
-        &[],
-        zero_span(),
-    );
+    let res = resolve_imports(&dir, &["world.schema.yaml".to_string()], &[], zero_span());
     let parent = res
         .diags
         .iter()

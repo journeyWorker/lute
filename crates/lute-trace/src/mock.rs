@@ -22,8 +22,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_check::{check_atom, FoldedEnv};
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::{type_accepts, Literal, Type};
 use lute_syntax::ast::{Arm, AttrValue, Document, Hub, Node};
 use lute_syntax::datalog::{parse_fact, DatalogError};
@@ -181,8 +181,9 @@ fn scalar_to_text(v: &serde_yaml::Value) -> Option<String> {
 /// is meaningless — nothing runs it — so it is an unknown key here. That one
 /// difference is asserted by `testcmd.rs`'s
 /// `the_test_key_set_is_the_mock_key_set_plus_expect`.
-pub const MOCK_TOP_KEYS: &[&str] =
-    &["accept", "accepts", "choose", "events", "facts", "file", "state"];
+pub const MOCK_TOP_KEYS: &[&str] = &[
+    "accept", "accepts", "choose", "events", "facts", "file", "state",
+];
 
 /// Parse a `--mock <file.yaml>` document (dsl 0.4.0 §4.3, 0.10.0 §8):
 /// `state:` (a map of path -> literal), `facts:` (a list of quoted
@@ -201,6 +202,11 @@ pub const MOCK_TOP_KEYS: &[&str] =
 /// preview without a new code and without a new wiring point. Enforcing it
 /// HERE rather than at each call site is the point: a mock document cannot be
 /// consumed anywhere without the gate.
+// `Diagnostic` is the crate's error currency by design (span + fixits travel
+// with every refusal); boxing it here would ripple through every `?` caller
+// for a cold path. clippy 1.96's `result_large_err` threshold is waived at
+// the four mock-parser entry points.
+#[allow(clippy::result_large_err)]
 pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
     parse_mock_document(text, Some(MOCK_TOP_KEYS))
 }
@@ -213,16 +219,23 @@ pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
 /// differently — a per-test FAILURE naming *every* offender in one run
 /// (`E-TEST-KEY`, exit 1, D-B), not a first-offender parse error (exit 2) —
 /// so it cannot delegate the gate here even for the keys the sets share.
+#[allow(clippy::result_large_err)]
 pub fn parse_mock_surfaces(text: &str) -> Result<MockSet, Diagnostic> {
     parse_mock_document(text, None)
 }
 
 /// The one mock parser. `legal` is `Some` for the closed mock grammar and
 /// `None` for `lute test`'s open read; see the two public wrappers.
+#[allow(clippy::result_large_err)]
 fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Diagnostic> {
     let span = synthetic_span();
-    let value: serde_yaml::Value = serde_yaml::from_str(text)
-        .map_err(|e| diag(E_TRACE_MOCK_PARSE, format!("malformed `--mock` YAML: {e}"), span))?;
+    let value: serde_yaml::Value = serde_yaml::from_str(text).map_err(|e| {
+        diag(
+            E_TRACE_MOCK_PARSE,
+            format!("malformed `--mock` YAML: {e}"),
+            span,
+        )
+    })?;
     if matches!(value, serde_yaml::Value::Null) {
         return Ok(MockSet::default());
     }
@@ -319,7 +332,8 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
         let serde_yaml::Value::Mapping(m) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
-                "`choose:` must be a mapping of branch/hub id -> choice id(s) (dsl 0.4.0 §4.3)".to_string(),
+                "`choose:` must be a mapping of branch/hub id -> choice id(s) (dsl 0.4.0 §4.3)"
+                    .to_string(),
                 span,
             ));
         };
@@ -414,11 +428,19 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
 /// and that wins, and the six `conformance/*/mock.yaml` acceptance fixtures
 /// legitimately carry none. `check-project`'s pass over `mocks/*.yaml` is
 /// where the key is required.
+#[allow(clippy::result_large_err)]
 pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
     let span = synthetic_span();
-    let value: serde_yaml::Value = serde_yaml::from_str(text)
-        .map_err(|e| diag(E_TRACE_MOCK_PARSE, format!("malformed mock YAML: {e}"), span))?;
-    let Some(top) = value.as_mapping() else { return Ok(None) };
+    let value: serde_yaml::Value = serde_yaml::from_str(text).map_err(|e| {
+        diag(
+            E_TRACE_MOCK_PARSE,
+            format!("malformed mock YAML: {e}"),
+            span,
+        )
+    })?;
+    let Some(top) = value.as_mapping() else {
+        return Ok(None);
+    };
     match top.get("file") {
         None => Ok(None),
         Some(serde_yaml::Value::String(s)) => Ok(Some(s.clone())),
@@ -484,7 +506,13 @@ pub fn merge(file: MockSet, flags: MockSet) -> MockSet {
         .filter(|id| seen_accepts.insert(id.clone()))
         .collect();
 
-    MockSet { state, facts, choose, events, accepts }
+    MockSet {
+        state,
+        facts,
+        choose,
+        events,
+        accepts,
+    }
 }
 
 /// Coerce a raw `--state`/mock literal into a manifest [`Literal`] *in the
@@ -536,8 +564,9 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
     let mut referenced_reserved: Option<BTreeSet<String>> = None;
     for (path, literal, span) in &mocks.state {
         if crate::eval::is_reserved_quest_path(path) {
-            let referenced = referenced_reserved
-                .get_or_insert_with(|| crate::quest_refs::collect_referenced_reserved_quest_paths(doc));
+            let referenced = referenced_reserved.get_or_insert_with(|| {
+                crate::quest_refs::collect_referenced_reserved_quest_paths(doc)
+            });
             if referenced.contains(path) {
                 if !reserved_quest_literal_valid(path, literal) {
                     out.push(diag(
@@ -556,7 +585,8 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
             continue;
         }
         if let Some(decl) = folded.env.state.decls.get(path) {
-            let ok = coerce_state_literal(&decl.ty, literal).is_some_and(|lit| type_accepts(&decl.ty, &lit));
+            let ok = coerce_state_literal(&decl.ty, literal)
+                .is_some_and(|lit| type_accepts(&decl.ty, &lit));
             if !ok {
                 out.push(diag(
                     E_TRACE_MOCK_TYPE,
@@ -691,7 +721,10 @@ fn collect_choice_ids_nodes(nodes: &[Node], out: &mut BTreeMap<String, Vec<Strin
     for node in nodes {
         match node {
             Node::Branch(b) => {
-                out.insert(b.id.clone(), b.choices.iter().map(|c| c.id.clone()).collect());
+                out.insert(
+                    b.id.clone(),
+                    b.choices.iter().map(|c| c.id.clone()).collect(),
+                );
                 for choice in &b.choices {
                     collect_choice_ids_nodes(&choice.body, out);
                 }

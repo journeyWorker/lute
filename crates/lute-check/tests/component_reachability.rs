@@ -43,8 +43,12 @@ fn unique_dir() -> PathBuf {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let dir = std::env::temp_dir()
-        .join(format!("lute_creach_{}_{}_{}", std::process::id(), n, nanos));
+    let dir = std::env::temp_dir().join(format!(
+        "lute_creach_{}_{}_{}",
+        std::process::id(),
+        n,
+        nanos
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }

@@ -46,7 +46,11 @@ const USE_SCENE: &str =
     "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
 ## Shot 1.\n::use{component=\"c\"}\n";
 
-fn check_codes(text: String, components: ComponentSet, snapshot: CapabilitySnapshot) -> Vec<String> {
+fn check_codes(
+    text: String,
+    components: ComponentSet,
+    snapshot: CapabilitySnapshot,
+) -> Vec<String> {
     let input = CheckInput {
         text,
         uri: "scene".into(),
@@ -57,7 +61,11 @@ fn check_codes(text: String, components: ComponentSet, snapshot: CapabilitySnaps
         components,
         defaults: Default::default(),
     };
-    let mut v: Vec<String> = check(&input).diagnostics.into_iter().map(|d| d.code).collect();
+    let mut v: Vec<String> = check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect();
     v.sort();
     v
 }
@@ -178,7 +186,11 @@ fn standalone_component_admits_presentational_forms() {
     let param_match = "---\ncomponent: c\nparams:\n  tier: string\n---\n## Scene 1.\n\
 <match on=\"@tier\">\n<when is=\"gold\">\n@narrator: hi\n</when>\n<otherwise>\n\
 @narrator: ho\n</otherwise>\n</match>\n";
-    let codes = check_codes(param_match.to_string(), Default::default(), vocab_snapshot());
+    let codes = check_codes(
+        param_match.to_string(),
+        Default::default(),
+        vocab_snapshot(),
+    );
     assert!(
         codes.is_empty(),
         "a param-scoped `<match>` is admitted by dsl 0.4.0 §6.2 and must check \

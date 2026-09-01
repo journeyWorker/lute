@@ -49,15 +49,27 @@ pub const E_FACT_TIER_WRITE: &str = "E-FACT-TIER-WRITE";
 /// then full pattern validation with `wildcard_ok = false` — a `_` in an
 /// assert pattern is `E-RETRACT-WILDCARD-ASSERT` (assert is a single
 /// concrete delta, never a bulk operation).
-pub fn check_assert(a: &Assert, domains: &BTreeMap<String, Domain>, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
-    check_write(&a.pattern, a.span, /* wildcard_ok = */ false, domains, ctx)
+pub fn check_assert(
+    a: &Assert,
+    domains: &BTreeMap<String, Domain>,
+    ctx: &Ctx<'_>,
+) -> Vec<Diagnostic> {
+    check_write(
+        &a.pattern, a.span, /* wildcard_ok = */ false, domains, ctx,
+    )
 }
 
 /// Check a `::retract{ RetractPattern }` directive (dsl 0.3.0 §5): write
 /// policy, then full pattern validation with `wildcard_ok = true` — `_` is
 /// legal in every ground position.
-pub fn check_retract(r: &Retract, domains: &BTreeMap<String, Domain>, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
-    check_write(&r.pattern, r.span, /* wildcard_ok = */ true, domains, ctx)
+pub fn check_retract(
+    r: &Retract,
+    domains: &BTreeMap<String, Domain>,
+    ctx: &Ctx<'_>,
+) -> Vec<Diagnostic> {
+    check_write(
+        &r.pattern, r.span, /* wildcard_ok = */ true, domains, ctx,
+    )
 }
 
 /// Shared assert/retract logic (§5), short-circuiting exactly like

@@ -31,7 +31,8 @@ pub fn check_on_event(on: &On, snapshot: &CapabilitySnapshot) -> Vec<Diagnostic>
             on,
         )];
     }
-    if BUILTIN_LIFECYCLE_EVENTS.contains(&on.event.as_str()) || snapshot.event(&on.event).is_some() {
+    if BUILTIN_LIFECYCLE_EVENTS.contains(&on.event.as_str()) || snapshot.event(&on.event).is_some()
+    {
         return Vec::new();
     }
     vec![diag(

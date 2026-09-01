@@ -92,7 +92,12 @@ fn attr_type_message(text: &str) -> String {
     all.iter()
         .find(|d| d.code == "E-ATTR-TYPE")
         .map(|d| d.message.clone())
-        .unwrap_or_else(|| panic!("no E-ATTR-TYPE in {:?}", all.iter().map(|d| &d.code).collect::<Vec<_>>()))
+        .unwrap_or_else(|| {
+            panic!(
+                "no E-ATTR-TYPE in {:?}",
+                all.iter().map(|d| &d.code).collect::<Vec<_>>()
+            )
+        })
 }
 
 #[test]
@@ -238,5 +243,8 @@ fn attr_type_names_the_owning_construct_with_its_real_sigil() {
     let dir = attr_type_message(&format!(
         "{HDR}::bg{{location=\"cafe\" bonusScore=\"nope\"}}\n@narrator: hi\n"
     ));
-    assert!(dir.contains("of `::bg`"), "a directive's owner keeps the `::` sigil: {dir}");
+    assert!(
+        dir.contains("of `::bg`"),
+        "a directive's owner keeps the `::` sigil: {dir}"
+    );
 }

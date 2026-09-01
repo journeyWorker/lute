@@ -240,7 +240,9 @@ fn resolver_surfaces_option_and_lowering_diagnostics_end_to_end() {
     )
     .unwrap();
 
-    let proj = load_project(&root).expect("valid project").expect("present");
+    let proj = load_project(&root)
+        .expect("valid project")
+        .expect("present");
     let (snap, diags) = resolve_document_snapshot(Some(&proj), None, &BTreeMap::new());
 
     let got: Vec<(&str, &str)> = diags
@@ -264,6 +266,9 @@ fn resolver_surfaces_option_and_lowering_diagnostics_end_to_end() {
     );
     // The CONFORMING directive still resolves — one bad declaration does not
     // take the whole capability surface down.
-    assert!(snap.directive("backdrop").is_some(), "conforming decl merged");
+    assert!(
+        snap.directive("backdrop").is_some(),
+        "conforming decl merged"
+    );
     fs::remove_dir_all(&root).ok();
 }

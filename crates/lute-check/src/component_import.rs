@@ -177,14 +177,17 @@ pub fn merge_component_body_diags(
     let mut out = Vec::with_capacity(body_diags.len());
     for (src, diag) in body_diags {
         let file = src.display().to_string();
-        if let Some(parent) = component_diags.iter_mut().find(|d| {
-            d.code == "E-COMPONENT-PARSE" && d.related.iter().any(|r| r.file == file)
-        }) {
-            parent.related.push(RelatedDiagnostic { file: file.clone(), diagnostic: diag.clone() });
+        if let Some(parent) = component_diags
+            .iter_mut()
+            .find(|d| d.code == "E-COMPONENT-PARSE" && d.related.iter().any(|r| r.file == file))
+        {
+            parent.related.push(RelatedDiagnostic {
+                file: file.clone(),
+                diagnostic: diag.clone(),
+            });
             let n = parent.related.len();
-            parent.message = format!(
-                "component import `{file}` has parse/frontmatter errors ({n} issue(s))"
-            );
+            parent.message =
+                format!("component import `{file}` has parse/frontmatter errors ({n} issue(s))");
         }
         out.push(diag);
     }
@@ -276,7 +279,10 @@ fn read_and_parse(
             .iter()
             .chain(mdiags.iter())
             .cloned()
-            .map(|diagnostic| RelatedDiagnostic { file: file.clone(), diagnostic })
+            .map(|diagnostic| RelatedDiagnostic {
+                file: file.clone(),
+                diagnostic,
+            })
             .collect();
         diags.push(d);
     }
@@ -377,7 +383,13 @@ mod tests {
     use super::*;
 
     fn zero_span() -> Span {
-        Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+        Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        }
     }
 
     fn body_diag(code: &str, message: &str) -> Diagnostic {
@@ -414,7 +426,10 @@ mod tests {
     fn folds_a_matching_body_diag_into_related_and_updates_the_count() {
         let file = "comp.lute";
         let mut component_diags = vec![parse_failure_with_one_child(file)];
-        let body_diag_entry = body_diag("E-COMPONENT-STATE", "ambient state read in a component body");
+        let body_diag_entry = body_diag(
+            "E-COMPONENT-STATE",
+            "ambient state read in a component body",
+        );
         let body_diags = vec![(PathBuf::from(file), body_diag_entry.clone())];
 
         let out = merge_component_body_diags(&mut component_diags, body_diags);
@@ -427,7 +442,10 @@ mod tests {
         let parent = &component_diags[0];
         assert_eq!(parent.related.len(), 2, "{parent:?}");
         assert!(
-            parent.related.iter().any(|r| r.diagnostic.code == "E-COMPONENT-STATE"),
+            parent
+                .related
+                .iter()
+                .any(|r| r.diagnostic.code == "E-COMPONENT-STATE"),
             "{parent:?}"
         );
         assert!(
@@ -442,7 +460,10 @@ mod tests {
         // The common case: a component that imports CLEANLY (no
         // `E-COMPONENT-PARSE` at all) but has a body-level semantic defect.
         let mut component_diags: Vec<Diagnostic> = Vec::new();
-        let diag = body_diag("E-COMPONENT-STATE", "ambient state read in a component body");
+        let diag = body_diag(
+            "E-COMPONENT-STATE",
+            "ambient state read in a component body",
+        );
         let body_diags = vec![(PathBuf::from("clean.lute"), diag.clone())];
 
         let out = merge_component_body_diags(&mut component_diags, body_diags);
@@ -457,24 +478,40 @@ mod tests {
         // match a REAL component's `E-COMPONENT-PARSE` (whose `related[].file`
         // is always a real canonical path, never empty).
         let mut component_diags = vec![parse_failure_with_one_child("comp.lute")];
-        let cycle = body_diag("E-COMPONENT-CYCLE", "`components:` import cycle: a -> b -> a");
+        let cycle = body_diag(
+            "E-COMPONENT-CYCLE",
+            "`components:` import cycle: a -> b -> a",
+        );
         let body_diags = vec![(PathBuf::new(), cycle.clone())];
 
         let out = merge_component_body_diags(&mut component_diags, body_diags);
         assert_eq!(out, vec![cycle]);
-        assert_eq!(component_diags[0].related.len(), 1, "untouched: {component_diags:?}");
+        assert_eq!(
+            component_diags[0].related.len(),
+            1,
+            "untouched: {component_diags:?}"
+        );
     }
 
     #[test]
     fn only_merges_into_the_matching_files_own_parse_failure() {
-        let mut component_diags =
-            vec![parse_failure_with_one_child("a.lute"), parse_failure_with_one_child("b.lute")];
-        let body_diag_entry = body_diag("E-COMPONENT-STATE", "ambient state read in a component body");
+        let mut component_diags = vec![
+            parse_failure_with_one_child("a.lute"),
+            parse_failure_with_one_child("b.lute"),
+        ];
+        let body_diag_entry = body_diag(
+            "E-COMPONENT-STATE",
+            "ambient state read in a component body",
+        );
         let body_diags = vec![(PathBuf::from("b.lute"), body_diag_entry.clone())];
 
         let out = merge_component_body_diags(&mut component_diags, body_diags);
         assert_eq!(out, vec![body_diag_entry]);
-        assert_eq!(component_diags[0].related.len(), 1, "a.lute must stay untouched");
+        assert_eq!(
+            component_diags[0].related.len(),
+            1,
+            "a.lute must stay untouched"
+        );
         assert!(component_diags[0].message.contains("(1 issue(s))"));
         assert_eq!(component_diags[1].related.len(), 2, "b.lute gets the merge");
         assert!(component_diags[1].message.contains("(2 issue(s))"));

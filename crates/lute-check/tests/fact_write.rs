@@ -15,13 +15,19 @@ fn codes(text: &str) -> Vec<String> {
         components: Default::default(),
         defaults: Default::default(),
     };
-    check(&input).diagnostics.into_iter().map(|d| d.code).collect()
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| d.code)
+        .collect()
 }
 
 const VOCAB: &str = "entities:\n  c: { members: [ana, bo] }\n  f: { members: [reds] }\nenums:\n  trust: [low, high]\nrelations:\n  inParty: { args: [c] }\n  topo: { args: [c, c], tier: app }\n  vibe: { args: [c, trust], derive: true }\n  sensed: { args: [c], reserved: true }\nrules:\n  - \"vibe(X, low) :- inParty(X)\"\n";
 
 fn scene_body(body: &str) -> String {
-    format!("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n{body}\n")
+    format!(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n{body}\n"
+    )
 }
 
 #[test]
@@ -35,7 +41,10 @@ fn derived_write_precedes_everything() {
 #[test]
 fn reserved_write_is_relation_reserved_write() {
     let c = codes(&scene_body("::assert{ sensed(ana) }"));
-    assert!(c.contains(&"E-RELATION-RESERVED-WRITE".to_string()), "{c:?}");
+    assert!(
+        c.contains(&"E-RELATION-RESERVED-WRITE".to_string()),
+        "{c:?}"
+    );
 }
 
 #[test]
@@ -47,7 +56,10 @@ fn app_tier_write_is_fact_tier_write() {
 #[test]
 fn wildcard_in_assert_is_flagged_retract_ok() {
     let c = codes(&scene_body("::assert{ inParty(_) }"));
-    assert!(c.contains(&"E-RETRACT-WILDCARD-ASSERT".to_string()), "{c:?}");
+    assert!(
+        c.contains(&"E-RETRACT-WILDCARD-ASSERT".to_string()),
+        "{c:?}"
+    );
     let c = codes(&scene_body("::retract{ inParty(_) }"));
     assert!(!c.iter().any(|k| k.starts_with("E-")), "{c:?}");
 }
@@ -59,7 +71,10 @@ fn unknown_arity_domain_mirror_assert_and_retract() {
     let c = codes(&scene_body("::assert{ inParty(ana, bo) }"));
     assert!(c.contains(&"E-RELATION-ARITY".to_string()), "{c:?}");
     let c = codes(&scene_body("::retract{ inParty(reds) }"));
-    assert!(c.contains(&"E-FACT-DOMAIN".to_string()), "reds is an f, not a c (§3.1): {c:?}");
+    assert!(
+        c.contains(&"E-FACT-DOMAIN".to_string()),
+        "reds is an f, not a c (§3.1): {c:?}"
+    );
 }
 
 #[test]

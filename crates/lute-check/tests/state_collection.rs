@@ -53,8 +53,15 @@ fn scene(state_block: &str, cond: &str) -> String {
 fn list_typed_author_state_is_rejected_and_not_installed() {
     let text = scene("state:\n  run.bag: { type: { list: string } }\n", "run.bag");
     let diags = run(&text).diagnostics;
-    let collection: Vec<_> = diags.iter().filter(|d| d.code == "E-STATE-COLLECTION").collect();
-    assert_eq!(collection.len(), 1, "exactly one E-STATE-COLLECTION: {diags:?}");
+    let collection: Vec<_> = diags
+        .iter()
+        .filter(|d| d.code == "E-STATE-COLLECTION")
+        .collect();
+    assert_eq!(
+        collection.len(),
+        1,
+        "exactly one E-STATE-COLLECTION: {diags:?}"
+    );
     assert_eq!(
         collection[0].message,
         "state path `run.bag` cannot declare a collection type (`list`/`record`/`map`); \
@@ -67,7 +74,10 @@ fn list_typed_author_state_is_rejected_and_not_installed() {
     // `set_op::descend` invent field types for everything under `run.bag.*`).
     let cs: Vec<String> = diags.into_iter().map(|d| d.code).collect();
     assert!(cs.contains(&"E-UNDECLARED".to_string()), "{cs:?}");
-    assert!(!cs.contains(&"E-MAYBE-UNSET".to_string()), "phantom decl: {cs:?}");
+    assert!(
+        !cs.contains(&"E-MAYBE-UNSET".to_string()),
+        "phantom decl: {cs:?}"
+    );
 }
 
 #[test]
@@ -86,7 +96,11 @@ fn record_and_map_typed_author_state_are_rejected() {
         "state:\n  run.tally: { type: { map: { key: string, value: number } } }\n",
         "run.other",
     );
-    assert!(codes(&map).contains(&"E-STATE-COLLECTION".to_string()), "{:?}", codes(&map));
+    assert!(
+        codes(&map).contains(&"E-STATE-COLLECTION".to_string()),
+        "{:?}",
+        codes(&map)
+    );
 }
 
 #[test]
@@ -97,10 +111,16 @@ fn scalar_author_state_is_unaffected() {
         ("run.n: { type: number, default: 0 }", "run.n > 0"),
         ("run.b: { type: bool, default: false }", "run.b"),
         ("run.s: { type: string, default: \"\" }", "run.s == 'x'"),
-        ("run.e: { type: { enum: [a, b] }, default: a }", "run.e == 'a'"),
+        (
+            "run.e: { type: { enum: [a, b] }, default: a }",
+            "run.e == 'a'",
+        ),
     ] {
         let cs = codes(&scene(&format!("state:\n  {decl}\n"), cond));
-        assert!(!cs.contains(&"E-STATE-COLLECTION".to_string()), "{decl}: {cs:?}");
+        assert!(
+            !cs.contains(&"E-STATE-COLLECTION".to_string()),
+            "{decl}: {cs:?}"
+        );
         assert!(!cs.contains(&"E-UNDECLARED".to_string()), "{decl}: {cs:?}");
         assert!(!cs.iter().any(|c| c.starts_with("E-")), "{decl}: {cs:?}");
     }

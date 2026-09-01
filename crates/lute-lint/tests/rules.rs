@@ -7,13 +7,19 @@
 
 use std::path::PathBuf;
 
-use lute_core_span::{Span, Severity};
+use lute_core_span::{Severity, Span};
 use lute_lint::{lint, LintConfig, LintDocInput, LintScope};
 use lute_manifest::provider::{IdStatus, ProviderSet, ProviderSnapshot};
 use lute_syntax::parse;
 
 fn empty_span() -> Span {
-    Span { byte_start: 0, byte_end: 0, line: 1, column: 1, utf16_range: (0, 0) }
+    Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 1,
+        column: 1,
+        utf16_range: (0, 0),
+    }
 }
 
 fn input(path: &str, text: &str) -> LintDocInput {
@@ -29,8 +35,15 @@ fn codes(diags: &[(PathBuf, lute_core_span::Diagnostic)]) -> Vec<String> {
     diags.iter().map(|(_, d)| d.code.clone()).collect()
 }
 
-fn only_code(diags: &[(PathBuf, lute_core_span::Diagnostic)], code: &str) -> Vec<(PathBuf, lute_core_span::Diagnostic)> {
-    diags.iter().filter(|(_, d)| d.code == code).cloned().collect()
+fn only_code(
+    diags: &[(PathBuf, lute_core_span::Diagnostic)],
+    code: &str,
+) -> Vec<(PathBuf, lute_core_span::Diagnostic)> {
+    diags
+        .iter()
+        .filter(|(_, d)| d.code == code)
+        .cloned()
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +58,15 @@ fn dialogue_length_fires_when_over_cap() {
          @alice: hello\n\
          @bob: one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six twenty-seven twenty-eight twenty-nine thirty thirty-one thirty-two thirty-three thirty-four thirty-five thirty-six thirty-seven thirty-eight thirty-nine forty forty-one\n",
     );
-    let out = lint(&[doc], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let dl = only_code(&out.diagnostics, "L-DIALOGUE-LENGTH");
     assert_eq!(dl.len(), 1, "codes: {:?}", codes(&out.diagnostics));
     assert!(dl[0].1.message.contains("41 words"), "{}", dl[0].1.message);
@@ -58,13 +79,23 @@ fn dialogue_length_fires_when_over_cap() {
 #[test]
 fn dialogue_ratio_fires_when_below_floor() {
     // 11 body nodes: 1 dialogue, 10 directive lines → ratio 1/11 ≈ 0.09.
-    let mut body = String::from("---\nkind: scene\n---\n## Shot 1.\n\
-        @alice: hello\n");
+    let mut body = String::from(
+        "---\nkind: scene\n---\n## Shot 1.\n\
+        @alice: hello\n",
+    );
     for i in 0..10 {
         body.push_str(&format!("::bg{{location=\"a{i}\"}}\n"));
     }
     let doc = input("scene.lute", &body);
-    let out = lint(&[doc], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-DIALOGUE-RATIO");
     assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out.diagnostics));
 }
@@ -81,7 +112,15 @@ fn dialogue_ratio_silent_below_min_nodes() {
          ::bg{location=\"c\"}\n\
          ::bg{location=\"d\"}\n",
     );
-    let out = lint(&[doc], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-DIALOGUE-RATIO");
     assert!(rows.is_empty(), "unexpected: {:?}", codes(&out.diagnostics));
 }
@@ -97,7 +136,15 @@ fn shot_starts_with_background_ok_when_first_is_bg() {
         "---\nkind: scene\n---\n## Shot 1.\n\
          ::bg{location=\"a\"}\n@alice: hi\n",
     );
-    let out = lint(&[doc], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-SHOT-STARTS-WITH-BACKGROUND");
     assert!(rows.is_empty(), "unexpected: {:?}", codes(&out.diagnostics));
 }
@@ -109,7 +156,15 @@ fn shot_starts_with_background_fires_when_first_is_not_bg() {
         "---\nkind: scene\n---\n## Shot 1.\n\
          ::music{action=\"start\"}\n@alice: hi\n",
     );
-    let out = lint(&[doc], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-SHOT-STARTS-WITH-BACKGROUND");
     assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out.diagnostics));
 }
@@ -120,7 +175,15 @@ fn shot_starts_with_background_fires_when_no_directives() {
         "scene.lute",
         "---\nkind: scene\n---\n## Shot 1.\n@alice: hi\n",
     );
-    let out = lint(&[doc], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-SHOT-STARTS-WITH-BACKGROUND");
     assert_eq!(rows.len(), 1);
 }
@@ -141,7 +204,15 @@ fn scene_length_spread_fires_over_ratio() {
         "---\nkind: scene\n---\n## Shot 1.\n\
          @alice: one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six twenty-seven twenty-eight twenty-nine thirty\n",
     );
-    let out = lint(&[small, big], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[small, big],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-SCENE-LENGTH-SPREAD");
     assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out.diagnostics));
 }
@@ -149,7 +220,15 @@ fn scene_length_spread_fires_over_ratio() {
 #[test]
 fn scene_length_spread_inert_on_single_scene() {
     let doc = input("a.lute", "---\nkind: scene\n---\n## Shot 1.\n@alice: hi\n");
-    let out = lint(&[doc], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-SCENE-LENGTH-SPREAD");
     assert!(rows.is_empty());
 }
@@ -200,10 +279,22 @@ fn emotion_distribution_fires_when_run_exceeds_cap() {
         body.push_str("@alice{emotion=\"neutral\"}: hi\n");
     }
     let doc = input("scene.lute", &body);
-    let out = lint(&[doc], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-EMOTION-DISTRIBUTION");
     assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out.diagnostics));
-    assert!(rows[0].1.message.contains("emotion-run"), "{}", rows[0].1.message);
+    assert!(
+        rows[0].1.message.contains("emotion-run"),
+        "{}",
+        rows[0].1.message
+    );
 }
 
 #[test]
@@ -216,7 +307,15 @@ fn emotion_distribution_skips_when_min_lines_not_met() {
          @alice{emotion=\"neutral\"}: b\n\
          @alice{emotion=\"neutral\"}: c\n",
     );
-    let out = lint(&[doc], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-EMOTION-DISTRIBUTION");
     assert!(rows.is_empty(), "codes: {:?}", codes(&out.diagnostics));
 }
@@ -242,7 +341,15 @@ fn variant_composition_group_fires_when_thin() {
             options: serde_yaml::from_str("groupBy: variant\nminPerGroup: 2\n").unwrap(),
         },
     );
-    let out = lint(&[doc], &cfg, &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &cfg,
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-VARIANT-COMPOSITION");
     assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out.diagnostics));
 }
@@ -262,7 +369,15 @@ fn variant_composition_inert_when_attr_absent() {
             options: serde_yaml::from_str("groupBy: variant\nminPerGroup: 2\n").unwrap(),
         },
     );
-    let out = lint(&[doc], &cfg, &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &cfg,
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-VARIANT-COMPOSITION");
     assert!(rows.is_empty());
 }
@@ -296,7 +411,15 @@ fn asset_exists_fires_on_absent_id() {
             options: serde_yaml::from_str("providers: { bg: bg-catalog }\n").unwrap(),
         },
     );
-    let out = lint(&[doc], &cfg, &[], &providers, None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &cfg,
+        &[],
+        &providers,
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-ASSET-EXISTS");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].1.severity, Severity::Error);
@@ -318,7 +441,15 @@ fn asset_exists_sentinel_skips() {
             options: serde_yaml::from_str("providers: { bg: bg-catalog }\n").unwrap(),
         },
     );
-    let out = lint(&[doc], &cfg, &[], &providers, None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &cfg,
+        &[],
+        &providers,
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-ASSET-EXISTS");
     assert!(rows.is_empty());
 }
@@ -344,7 +475,15 @@ fn asset_exists_stale_downgrades_to_warning() {
             options: serde_yaml::from_str("providers: { bg: bg-catalog }\n").unwrap(),
         },
     );
-    let out = lint(&[doc], &cfg, &[], &providers, None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &cfg,
+        &[],
+        &providers,
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-ASSET-EXISTS");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].1.severity, Severity::Warning);
@@ -370,7 +509,15 @@ fn level_off_disables_rule() {
             options: Default::default(),
         },
     );
-    let out = lint(&[doc], &cfg, &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &cfg,
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-SHOT-STARTS-WITH-BACKGROUND");
     assert!(rows.is_empty());
 }
@@ -381,7 +528,10 @@ fn level_off_disables_rule() {
 
 #[test]
 fn unknown_rule_id_is_config_error() {
-    let doc = input("scene.lute", "---\nkind: scene\n---\n## Shot 1.\n@alice: hi\n");
+    let doc = input(
+        "scene.lute",
+        "---\nkind: scene\n---\n## Shot 1.\n@alice: hi\n",
+    );
     let mut cfg = LintConfig::default();
     cfg.rules.insert(
         "does-not-exist".into(),
@@ -390,7 +540,15 @@ fn unknown_rule_id_is_config_error() {
             options: Default::default(),
         },
     );
-    let out = lint(&[doc], &cfg, &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &cfg,
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let cfg_rows: Vec<&str> = out
         .config_diagnostics
         .iter()
@@ -409,18 +567,26 @@ fn diagnostics_are_sorted_by_path_then_byte_then_code() {
         "a.lute",
         "---\nkind: scene\n---\n## Shot 1.\n@alice: one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six twenty-seven twenty-eight twenty-nine thirty thirty-one thirty-two thirty-three thirty-four thirty-five thirty-six thirty-seven thirty-eight thirty-nine forty forty-one\n",
     );
-    let b = input(
-        "b.lute",
-        "---\nkind: scene\n---\n## Shot 1.\n@bob: hi\n",
+    let b = input("b.lute", "---\nkind: scene\n---\n## Shot 1.\n@bob: hi\n");
+    let out = lint(
+        &[b, a],
+        &LintConfig::default(),
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
     );
-    let out = lint(&[b, a], &LintConfig::default(), &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
     // The `a.lute` finding must precede `b.lute` regardless of input order.
     let paths: Vec<String> = out
         .diagnostics
         .iter()
         .map(|(p, _)| p.display().to_string())
         .collect();
-    assert!(paths.first().map(|p| p == "a.lute").unwrap_or(false), "{paths:?}");
+    assert!(
+        paths.first().map(|p| p == "a.lute").unwrap_or(false),
+        "{paths:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -447,10 +613,22 @@ custom:
     )
     .unwrap()
     .0;
-    let out = lint(&[doc], &cfg, &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &cfg,
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "L-TOO-FEW-SHOTS");
     assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out.diagnostics));
-    assert!(rows[0].1.message.contains("only 1 shots"), "{}", rows[0].1.message);
+    assert!(
+        rows[0].1.message.contains("only 1 shots"),
+        "{}",
+        rows[0].1.message
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -476,7 +654,15 @@ custom:
     )
     .unwrap()
     .0;
-    let out = lint(&[doc], &cfg, &[], &ProviderSet::default(), None, empty_span(), LintScope::Full);
+    let out = lint(
+        &[doc],
+        &cfg,
+        &[],
+        &ProviderSet::default(),
+        None,
+        empty_span(),
+        LintScope::Full,
+    );
     let rows = only_code(&out.diagnostics, "E-LINT-EXPR");
     assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out.diagnostics));
 }

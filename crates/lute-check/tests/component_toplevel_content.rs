@@ -121,8 +121,14 @@ fn toplevel_quest_three_way_parity() {
         format!("{SCENE_HDR}<quest id=\"q1\">\n{SMUGGLED_SET}</quest>\n## Shot 1.\n@x: hi.\n");
     for (label, diags) in [
         ("scene", check_text(scene, Default::default())),
-        ("standalone component", standalone_diags(&quest_component(SMUGGLED_SET))),
-        ("component via ::use", component_diags(&quest_component(SMUGGLED_SET))),
+        (
+            "standalone component",
+            standalone_diags(&quest_component(SMUGGLED_SET)),
+        ),
+        (
+            "component via ::use",
+            component_diags(&quest_component(SMUGGLED_SET)),
+        ),
     ] {
         assert!(
             codes(&diags).contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()),
@@ -173,7 +179,12 @@ fn every_toplevel_quest_is_reported() {
         .iter()
         .filter(|d| d.code == "E-GRAMMAR-NOT-ADMITTED")
         .collect();
-    assert_eq!(hits.len(), 2, "one per top-level `<quest>`, got {:?}", codes(&diags));
+    assert_eq!(
+        hits.len(),
+        2,
+        "one per top-level `<quest>`, got {:?}",
+        codes(&diags)
+    );
     assert!(
         hits.iter().any(|d| d.message.contains("q1"))
             && hits.iter().any(|d| d.message.contains("q2")),

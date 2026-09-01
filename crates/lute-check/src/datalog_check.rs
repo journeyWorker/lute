@@ -30,7 +30,9 @@ use lute_manifest::relations::{EntityKindDecl, KindShape};
 use lute_manifest::snapshot::Domain;
 use lute_syntax::datalog::{BodyLiteral, FactArg, FactTerm, Rule, RuleAtom, RuleTerm};
 
-use crate::rel_schema::{check_atom, RelVocab, E_FACT_DOMAIN, E_RELATION_ARITY, E_RELATION_UNKNOWN};
+use crate::rel_schema::{
+    check_atom, RelVocab, E_FACT_DOMAIN, E_RELATION_ARITY, E_RELATION_UNKNOWN,
+};
 
 pub const E_DERIVE_UNDECLARED: &str = "E-DERIVE-UNDECLARED"; // §7.1
 pub const W_DERIVE_NO_RULES: &str = "W-DERIVE-NO-RULES"; // §7.1 — Severity::Warning
@@ -378,7 +380,11 @@ fn check_rule_safety(rule: &Rule, span: Span, out: &mut Vec<Diagnostic>) {
 /// (the other side ground) binds `V` unconditionally; `V = W` binds whichever
 /// side is still unbound once the other is already `bound`. Returns whether
 /// `bound` grew, so the caller's fixpoint loop can detect convergence.
-fn bind_via_equality<'r>(lhs: &'r RuleTerm, rhs: &'r RuleTerm, bound: &mut BTreeSet<&'r str>) -> bool {
+fn bind_via_equality<'r>(
+    lhs: &'r RuleTerm,
+    rhs: &'r RuleTerm,
+    bound: &mut BTreeSet<&'r str>,
+) -> bool {
     let lhs_var = match lhs {
         RuleTerm::Var(v) => Some(v.as_str()),
         _ => None,

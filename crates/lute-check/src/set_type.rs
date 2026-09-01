@@ -59,11 +59,7 @@ enum Decision {
 /// dsl 0.10.0 §3: type one `::set`'s right-hand side against the declared type
 /// of the path it writes. Returns an empty vec for everything §3 does not
 /// decide.
-pub(crate) fn check_set_type(
-    set: &Set,
-    arena: &CelArena,
-    schema: &StateSchema,
-) -> Vec<Diagnostic> {
+pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) -> Vec<Diagnostic> {
     // §3.3 rule 8 plus its closing paragraph, in one gate. A WHOLE-slot `@ref`
     // already carries this position's expected type and a mismatch there is
     // the pre-existing `E-REF-TYPE` (`cel_resolve.rs:135-146`, driven by the
@@ -86,7 +82,10 @@ pub(crate) fn check_set_type(
     // no row in §3.2's table; `list`/`record`/`map`/`narrativeTime` are
     // rejected at the declaration. A `::set` into any of them has no required
     // type and draws no `E-SET-TYPE`, whatever `E` produces.
-    if !matches!(declared, Type::Bool | Type::Number | Type::Str | Type::Enum(_)) {
+    if !matches!(
+        declared,
+        Type::Bool | Type::Number | Type::Str | Type::Enum(_)
+    ) {
         return Vec::new();
     }
     // §3.1: `E-SET-TYPE` is SUPPRESSED wherever `E-SET-OP-TYPE` fires
@@ -171,7 +170,10 @@ fn decide(expr: &Expr, schema: &StateSchema) -> Decision {
         // (`Ident("_")`) and any other bare ident resolve to nothing and fall
         // through to `Undecidable`.
         Expr::Ident(_) | Expr::Select(_) => {
-            match select_path(expr).as_deref().and_then(|p| resolve_type(p, schema)) {
+            match select_path(expr)
+                .as_deref()
+                .and_then(|p| resolve_type(p, schema))
+            {
                 Some(t) => Decision::Ty(t.clone()),
                 None => Decision::Undecidable,
             }

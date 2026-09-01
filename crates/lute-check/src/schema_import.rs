@@ -33,7 +33,9 @@ use lute_manifest::relations::{
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_syntax::ast::Meta;
 
-use crate::meta::{parse_meta_kind, FactDecl, MetaKind, RuleDecl, StateDecl, StateSchema, TypedMeta};
+use crate::meta::{
+    parse_meta_kind, FactDecl, MetaKind, RuleDecl, StateDecl, StateSchema, TypedMeta,
+};
 
 /// The resolved result of a scene's composition imports (dsl §9.2): the merged
 /// imported state schema, the merged imported `defs` (untyped YAML values, like
@@ -242,8 +244,7 @@ pub fn resolve_imports(
     let mut state_by_name: BTreeMap<String, Vec<(PathBuf, usize, StateDecl)>> = BTreeMap::new();
     let mut def_by_name: BTreeMap<String, Vec<(PathBuf, usize, serde_yaml::Value)>> =
         BTreeMap::new();
-    let mut kind_by_name: BTreeMap<String, Vec<(PathBuf, usize, EntityKindDecl)>> =
-        BTreeMap::new();
+    let mut kind_by_name: BTreeMap<String, Vec<(PathBuf, usize, EntityKindDecl)>> = BTreeMap::new();
     let mut relation_by_name: BTreeMap<String, Vec<(PathBuf, usize, RelationDecl)>> =
         BTreeMap::new();
     let mut enum_by_name: BTreeMap<String, Vec<(PathBuf, usize, Domain)>> = BTreeMap::new();
@@ -265,16 +266,18 @@ pub fn resolve_imports(
                 .push((canon.clone(), depth, v.clone()));
         }
         for (name, decl) in &doc.rel_kinds.kinds {
-            kind_by_name
-                .entry(name.clone())
-                .or_default()
-                .push((canon.clone(), depth, decl.clone()));
+            kind_by_name.entry(name.clone()).or_default().push((
+                canon.clone(),
+                depth,
+                decl.clone(),
+            ));
         }
         for (name, decl) in &doc.rel_relations.relations {
-            relation_by_name
-                .entry(name.clone())
-                .or_default()
-                .push((canon.clone(), depth, decl.clone()));
+            relation_by_name.entry(name.clone()).or_default().push((
+                canon.clone(),
+                depth,
+                decl.clone(),
+            ));
         }
         // A pure `enums:` name never collides with this SAME doc's `entities:`
         // name in `doc.domains` (entities always win a same-doc clash, see
@@ -282,10 +285,11 @@ pub fn resolve_imports(
         // recovers exactly this doc's project `enums:` names.
         for (name, dom) in &doc.domains {
             if !doc.rel_kinds.kinds.contains_key(name) {
-                enum_by_name
-                    .entry(name.clone())
-                    .or_default()
-                    .push((canon.clone(), depth, dom.clone()));
+                enum_by_name.entry(name.clone()).or_default().push((
+                    canon.clone(),
+                    depth,
+                    dom.clone(),
+                ));
             }
         }
         for (i, fact) in doc.facts.iter().enumerate() {
@@ -302,7 +306,14 @@ pub fn resolve_imports(
         // A depth level with >= 2 distinct files is a same-level collision — a
         // `uses` peer dup or a base-base dup, ALWAYS reported (never masked by a
         // closer override, which lives at a different depth).
-        emit_level_dups("E-USES-DUP-STATE", "state path", &path, &entries, &mut diags, at);
+        emit_level_dups(
+            "E-USES-DUP-STATE",
+            "state path",
+            &path,
+            &entries,
+            &mut diags,
+            at,
+        );
         let Some((winner, winner_depth)) = pick_winner(&entries) else {
             continue;
         };
@@ -339,7 +350,14 @@ pub fn resolve_imports(
         // A depth level with >= 2 distinct files declaring the same entity-kind
         // NAME is a peer clash (spec §4/§4.1, decision D2) — never masked by a
         // closer `extends` override, which lives at a different depth.
-        emit_level_dups("E-KIND-NAME-CLASH", "entity kind", &name, &entries, &mut diags, at);
+        emit_level_dups(
+            "E-KIND-NAME-CLASH",
+            "entity kind",
+            &name,
+            &entries,
+            &mut diags,
+            at,
+        );
         let Some((winner, winner_depth)) = pick_winner(&entries) else {
             continue;
         };
@@ -365,7 +383,14 @@ pub fn resolve_imports(
 
     let mut rel_relations: BTreeMap<String, RelationDecl> = BTreeMap::new();
     for (name, entries) in relation_by_name {
-        emit_level_dups("E-USES-DUP-RELATION", "relation", &name, &entries, &mut diags, at);
+        emit_level_dups(
+            "E-USES-DUP-RELATION",
+            "relation",
+            &name,
+            &entries,
+            &mut diags,
+            at,
+        );
         let Some((winner, winner_depth)) = pick_winner(&entries) else {
             continue;
         };
@@ -392,7 +417,14 @@ pub fn resolve_imports(
 
     let mut rel_enums: BTreeMap<String, Domain> = BTreeMap::new();
     for (name, entries) in enum_by_name {
-        emit_level_dups("E-USES-DUP-RELATION", "enum", &name, &entries, &mut diags, at);
+        emit_level_dups(
+            "E-USES-DUP-RELATION",
+            "enum",
+            &name,
+            &entries,
+            &mut diags,
+            at,
+        );
         let Some((winner, winner_depth)) = pick_winner(&entries) else {
             continue;
         };
@@ -436,7 +468,10 @@ pub fn resolve_imports(
     let mut quest_by_name: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
     for (canon, doc) in &parsed {
         for id in &doc.quest_ids {
-            quest_by_name.entry(id.clone()).or_default().push(canon.clone());
+            quest_by_name
+                .entry(id.clone())
+                .or_default()
+                .push(canon.clone());
         }
     }
     let mut imported_quest_ids: BTreeMap<String, PathBuf> = BTreeMap::new();

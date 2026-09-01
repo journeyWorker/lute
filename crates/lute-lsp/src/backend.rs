@@ -379,10 +379,7 @@ impl Backend {
     fn defaults_for(&self, uri: &Uri) -> lute_manifest::project::MetaDefaults {
         uri_to_path(uri)
             .and_then(|p| find_project_root(&p))
-            .and_then(|root| match lute_manifest::project::load_project(&root) {
-                Ok(p) => p,
-                Err(_) => None,
-            })
+            .and_then(|root| lute_manifest::project::load_project(&root).unwrap_or_default())
             .map(|p| p.defaults)
             .unwrap_or_default()
     }

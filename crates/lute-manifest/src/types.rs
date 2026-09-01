@@ -15,12 +15,17 @@ pub enum Type {
     Enum(Vec<String>),
     List(Box<Type>),
     Record(Vec<Field>),
-    Map { key: Box<Type>, value: Box<Type> },
-    EnumFromOption(String),       // attribute types only
-    ProviderRef(String),          // any typed position
-    Domain(String),               // any typed position; membership checked at check-stage
-    SlotId { namespace: String }, // attribute types only
-    AssetKind(String),            // attribute types only
+    Map {
+        key: Box<Type>,
+        value: Box<Type>,
+    },
+    EnumFromOption(String), // attribute types only
+    ProviderRef(String),    // any typed position
+    Domain(String),         // any typed position; membership checked at check-stage
+    SlotId {
+        namespace: String,
+    }, // attribute types only
+    AssetKind(String),      // attribute types only
     /// dsl 0.3.0 §6, D11: opaque, ordering-only narrative-time value. NEVER
     /// author-declarable state (an author `state:`/schema-doc decl of it is
     /// `E-TEMPORAL-ARG` at the decl, `lute-check/src/meta.rs`) — this variant
@@ -386,7 +391,10 @@ mod tests {
     fn domain_type_roundtrips_and_accepts_string() {
         let ty: Type = serde_yaml::from_str("{ domain: emotion }").unwrap();
         assert_eq!(ty, Type::Domain("emotion".into()));
-        assert_eq!(serde_yaml::to_string(&ty).unwrap().trim(), "domain: emotion");
+        assert_eq!(
+            serde_yaml::to_string(&ty).unwrap().trim(),
+            "domain: emotion"
+        );
         assert!(type_accepts(&ty, &Literal::Str("neutral".into()))); // structural: any string
         assert!(!type_accepts(&ty, &Literal::Bool(true)));
     }

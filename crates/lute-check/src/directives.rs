@@ -192,7 +192,9 @@ pub fn check_directive(
             ));
             continue;
         };
-        check_attr_value(&owner, adecl, attr, snapshot, providers, domains, &mut diags);
+        check_attr_value(
+            &owner, adecl, attr, snapshot, providers, domains, &mut diags,
+        );
     }
 
     // Missing required attributes (dsl §7.2).
@@ -414,7 +416,10 @@ pub(crate) fn check_domain_member(
         diags.push(diag(
             "E-ATTR-TYPE",
             Severity::Error,
-            format!("attribute `{}` expects a `{name}` domain id string", attr.key),
+            format!(
+                "attribute `{}` expects a `{name}` domain id string",
+                attr.key
+            ),
             attr.value_span,
         ));
         return;
@@ -784,7 +789,13 @@ mod tests {
     #[test]
     fn unknown_directive_errors_with_layer_staging() {
         let d = directive("teleport", &[]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(errs
             .iter()
             .any(|e| e.code == "E-UNKNOWN-DIRECTIVE" && e.layer == lute_core_span::Layer::Staging));
@@ -793,14 +804,26 @@ mod tests {
     #[test]
     fn bad_enum_value_errors() {
         let d = directive("music", &[("action", "explode")]); // not in musicAction enum
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &vocab_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &vocab_domains(),
+            &ctx(),
+        );
         assert!(errs.iter().any(|e| e.code == "E-BAD-ENUM"));
     }
 
     #[test]
     fn known_directive_valid_attrs_pass() {
         let d = directive("music", &[("action", "start"), ("mood", "peaceful")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &vocab_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &vocab_domains(),
+            &ctx(),
+        );
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -809,7 +832,13 @@ mod tests {
         // Numeric camera attrs are declared `number`; a non-numeric literal is a
         // check-time type error (closes the coercion seam — Plan C review).
         let d = directive("camera", &[("zoom", "hard")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(
             errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
             "expected E-ATTR-TYPE for non-numeric zoom, got {errs:?}"
@@ -821,7 +850,13 @@ mod tests {
         // `::camera{shake="hard"}` must be rejected at check, not silently dropped
         // by the compiler's get_f64 coercion (Plan C review).
         let d = directive("camera", &[("shake", "hard")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(
             errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
             "expected E-ATTR-TYPE for non-numeric shake, got {errs:?}"
@@ -833,9 +868,20 @@ mod tests {
         // Valid numeric literals for zoom/move-x/move-y/shake still validate.
         let d = directive(
             "camera",
-            &[("zoom", "1.1"), ("move-x", "0.2"), ("move-y", "0.3"), ("shake", "0.4")],
+            &[
+                ("zoom", "1.1"),
+                ("move-x", "0.2"),
+                ("move-y", "0.3"),
+                ("shake", "0.4"),
+            ],
         );
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -865,7 +911,13 @@ mod tests {
             when: None,
             span: span(),
         };
-        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &plugin_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -874,7 +926,13 @@ mod tests {
         // `music` (core) declares no timing attrs at all -- the fallback must
         // apply to core directives just as much as plugin ones.
         let d = directive("music", &[("action", "start"), ("delay", "1.0")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &vocab_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &vocab_domains(),
+            &ctx(),
+        );
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -883,7 +941,13 @@ mod tests {
         // `::p{duration="soon"}` -- the fallback type-checks; it is not a
         // blanket accept.
         let d = directive("p", &[("duration", "soon")]);
-        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &plugin_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(
             errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
             "expected E-ATTR-TYPE for non-numeric duration, got {errs:?}"
@@ -899,7 +963,13 @@ mod tests {
         // `::p{wait="maybe"}` -- not `true`/`false`, so the bool type
         // diagnostic fires just like a declared `wait` attr would.
         let d = directive("p", &[("wait", "maybe")]);
-        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &plugin_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(
             errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
             "expected E-ATTR-TYPE for non-bool wait, got {errs:?}"
@@ -924,7 +994,13 @@ mod tests {
                 span(),
             )),
         );
-        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &plugin_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(errs.is_empty(), "{errs:?}");
     }
 
@@ -933,7 +1009,13 @@ mod tests {
         // Regression guard: `at` stays context-gated, never folded into the
         // universal-timing fallback.
         let d = directive("music", &[("at", "1.0")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(
             errs.iter().any(|e| e.code == "E-AT-CONTEXT"),
             "expected E-AT-CONTEXT, got {errs:?}"
@@ -950,7 +1032,13 @@ mod tests {
         // duration/delay/wait -- any other undeclared key is still
         // E-UNKNOWN-ATTR.
         let d = directive("p", &[("bogus", "1")]);
-        let errs = check_directive(&d, &plugin_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &plugin_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(
             errs.iter().any(|e| e.code == "E-UNKNOWN-ATTR"),
             "expected E-UNKNOWN-ATTR for `bogus`, got {errs:?}"
@@ -963,7 +1051,13 @@ mod tests {
         // (staging.yaml) -- the declared path must keep taking precedence
         // over the fallback and stay clean.
         let d = directive("camera", &[("duration", "0.5"), ("wait", "false")]);
-        let errs = check_directive(&d, &load_core_snapshot(), &empty_providers(), &empty_domains(), &ctx());
+        let errs = check_directive(
+            &d,
+            &load_core_snapshot(),
+            &empty_providers(),
+            &empty_domains(),
+            &ctx(),
+        );
         assert!(errs.is_empty(), "{errs:?}");
     }
 }
