@@ -463,7 +463,7 @@ pub fn canonical_scene_key(meta: &TypedMeta) -> Option<String> {
 /// [`canonical_episode_id`]'s derived fallback can produce (`.` admits
 /// namespacing like `anseo.s01ep01`), so a document migrated from the
 /// derived join keeps the same canonical key when it moves to authored `id:`.
-fn is_valid_scene_id(raw: &str) -> bool {
+pub(crate) fn is_valid_scene_id_raw(raw: &str) -> bool {
     !raw.is_empty()
         && raw
             .chars()
@@ -822,7 +822,7 @@ pub fn parse_meta_kind_with_defaults(
     // key). Scene-only; a `Quest`/`Schema`/`Component` id: was already
     // rejected as `E-META-UNKNOWN-KEY` above.
     if let Some(raw) = get_str(map, "id") {
-        if is_valid_scene_id(&raw) {
+        if is_valid_scene_id_raw(&raw) {
             typed.id = Some(raw);
         } else {
             diags.push(err_at(

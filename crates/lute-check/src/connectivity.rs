@@ -17,11 +17,16 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, Document, Node};
 
 use crate::check::CheckResult;
-use crate::meta::{canonical_episode_key, meta_key_span, resolve_doc_kind, DocKind};
+use crate::meta::{
+    canonical_episode_key, is_valid_scene_id_raw, meta_key_span, resolve_doc_kind, DocKind,
+};
 use crate::prereq::{atoms, parse_prereq, Atom, PrereqFormula};
 
-/// dsl §2.3/§4.1 (§A dup): two scene documents resolve the SAME canonical
-/// `{character}.{episodeId}` identity key.
+/// dsl §2.3/§4.1, dsl 0.15.0 §2/§6 (D-B): two scene documents resolve to the
+/// SAME canonical scene id (authored `id:` or the derived
+/// `{character}.{episodeId}` fallback). The code stays for tooling stability
+/// (breaks no downstream `--deny` config); the message names the canonical
+/// scene id.
 pub const E_CONN_EPISODE_ID_DUP: &str = "E-CONN-EPISODE-ID-DUP";
 
 fn diag(message: String, span: Span) -> Diagnostic {
@@ -38,55 +43,78 @@ fn diag(message: String, span: Span) -> Diagnostic {
     }
 }
 
-/// Read `character`/`season`/`episode`/`episodeId` straight from a scene
-/// doc's raw frontmatter mapping — the same ad-hoc lookup
-/// `lute-compile::artifact_meta` uses, NOT `TypedMeta` (building that needs a
-/// `CapabilitySnapshot` the project walk does not have, and `episodeId` is
-/// not lifted into `TypedMeta` regardless). Returns `None` when the YAML
-/// fails to parse, is not a mapping, or `character`/`season`/`episode` is
-/// missing or the wrong type — a malformed identity triad already earns
-/// `E-META-MISSING`/`E-META-PARSE` from the normal per-file `check()`; this
-/// project-wide pass must never fabricate a degenerate key (e.g.
-/// `.s00ep00`) for it, or unrelated malformed docs would cascade into a
-/// bogus dup report.
-fn scene_identity(doc: &Document) -> Option<(String, i64, i64, Option<String>)> {
+/// A scene document's canonical identity as resolved from raw frontmatter
+/// (dsl 0.15.0 §2): the canonical scene key plus the frontmatter key name
+/// the diagnostic anchor should point at — `id:` for an authored key,
+/// `character:` for the derived `{character}.{episodeId}` fallback.
+struct SceneIdentity {
+    key: String,
+    /// The frontmatter key the diagnostic must anchor at. Constant so both
+    /// [`scene_key_set`] and any future consumer report the same shape.
+    anchor: &'static str,
+}
+
+/// Resolve a scene document's canonical key straight off its raw frontmatter
+/// mapping — the same ad-hoc lookup `lute-compile::artifact_meta` uses, NOT
+/// `TypedMeta` (building that needs a `CapabilitySnapshot` the project walk
+/// does not have). dsl 0.15.0 §2: authored `id:` wins entire when present and
+/// well-formed (same `[A-Za-z0-9_.-]+` gate as [`crate::meta::parse_meta`],
+/// so a rejected id contributes no key here — its own `E-META-ID` is the
+/// anchoring diagnostic). Otherwise the derived legacy join
+/// `{character}.{episodeId}` (with `episodeId` defaulting to
+/// `s{season:02}ep{episode:02}` via [`canonical_episode_key`]) is
+/// reconstructed; a scene doc missing/mistyping any of `character`/`season`/
+/// `episode` earns `E-META-MISSING`/`E-META-PARSE` from the per-file
+/// `check()` and this project-wide pass must never fabricate a degenerate
+/// key (e.g. `.s00ep00`) for it, or unrelated malformed docs would cascade
+/// into a bogus dup report.
+fn scene_identity(doc: &Document) -> Option<SceneIdentity> {
     let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
-    let map = match value {
-        serde_yaml::Value::Mapping(m) => m,
-        _ => return None,
+    let serde_yaml::Value::Mapping(map) = value else {
+        return None;
     };
     let key = |k: &str| serde_yaml::Value::String(k.to_string());
+    if let Some(raw) = map.get(key("id")).and_then(|v| v.as_str()) {
+        return is_valid_scene_id_raw(raw).then(|| SceneIdentity {
+            key: raw.to_string(),
+            anchor: "id",
+        });
+    }
     let character = map.get(key("character"))?.as_str()?.to_string();
     if character.is_empty() {
         return None;
     }
     let season = map.get(key("season"))?.as_i64()?;
     let episode = map.get(key("episode"))?.as_i64()?;
-    let episode_id = map.get(key("episodeId")).and_then(|v| v.as_str()).map(String::from);
-    Some((character, season, episode, episode_id))
+    let episode_id = map
+        .get(key("episodeId"))
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    Some(SceneIdentity {
+        key: canonical_episode_key(&character, season, episode, episode_id.as_deref()),
+        anchor: "character",
+    })
 }
 
-/// Every scene document in `docs`, grouped by its computed
-/// [`canonical_episode_key`] — never by `character`/`episodeId` decomposed
-/// back apart, so a collision via embedded `.` (e.g. `character="a"` +
-/// `episodeId="b.c"` vs `character="a.b"` + `episodeId="c"`, both
-/// `"a.b.c"`) is caught the same as an identical-pair repeat. Quest
-/// documents (no `character`/`season`/`episode` triad) and any scene doc
-/// missing/mistyping that triad contribute nothing (see [`scene_identity`]).
-/// Anchored at each doc's `character:` key span (mirrors
-/// `check_project_quest_ids`'s `id_span` anchor — the actual offending
-/// identifier, not a synthetic location).
+/// Every scene document in `docs`, grouped by its canonical scene key
+/// ([`canonical_episode_key`] for the derived fallback, or the authored
+/// `id:` value verbatim — dsl 0.15.0 §2). Authored and derived keys share
+/// ONE namespace, so a collision between them is a `E-CONN-EPISODE-ID-DUP`
+/// exactly the same as an identical-pair repeat. Quest documents (no
+/// canonical scene key) and any scene doc missing/mistyping its identity
+/// contribute nothing (see [`scene_identity`]). Anchored at each doc's
+/// canonical-key source: `id:` when authored, `character:` for the derived
+/// triad.
 pub fn scene_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
     let mut by_key: BTreeMap<String, Vec<(PathBuf, Span)>> = BTreeMap::new();
     for (path, doc) in docs {
         if resolve_doc_kind(&doc.meta).0 != Some(DocKind::Scene) {
             continue;
         }
-        let Some((character, season, episode, episode_id)) = scene_identity(doc) else {
+        let Some(SceneIdentity { key, anchor }) = scene_identity(doc) else {
             continue;
         };
-        let key = canonical_episode_key(&character, season, episode, episode_id.as_deref());
-        let span = meta_key_span(&doc.meta, "character");
+        let span = meta_key_span(&doc.meta, anchor);
         by_key.entry(key).or_default().push((path.clone(), span));
     }
     by_key
@@ -94,10 +122,16 @@ pub fn scene_key_set(docs: &[(PathBuf, Document)]) -> BTreeMap<String, Vec<(Path
 
 /// Every `E-CONN-EPISODE-ID-DUP` collision across `docs`' scene documents
 /// (parallel to [`crate::project_check::check_project_quest_ids`]): for each
-/// canonical key with 2+ occurrences, every occurrence past the first is one
-/// diagnostic, anchored at that occurrence's own `character:` key span.
-/// Callers MUST pre-scope `docs` to one resolved project root (`lute-cli`'s
-/// `by_root` grouping) — this function itself performs no root scoping.
+/// canonical scene key with 2+ occurrences, every occurrence past the first
+/// is one diagnostic, anchored at that occurrence's own canonical-key source
+/// — `id:` when authored, `character:` for the derived triad. Callers MUST
+/// pre-scope `docs` to one resolved project root (`lute-cli`'s `by_root`
+/// grouping) — this function itself performs no root scoping.
+///
+/// The code stays `E-CONN-EPISODE-ID-DUP` for tooling stability (dsl 0.15.0
+/// §2/§6 D-B): renaming would break downstream `--deny` configs and log
+/// tooling to convey no new information. The MESSAGE generalises: `canonical
+/// scene id`, since authored `id:` and the derived join share one namespace.
 pub fn check_conn_episode_dup(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for (key, occurrences) in scene_key_set(docs) {
@@ -108,14 +142,15 @@ pub fn check_conn_episode_dup(docs: &[(PathBuf, Document)]) -> Vec<(PathBuf, Dia
         for (file, span) in &occurrences[1..] {
             let message = if file == first_file {
                 format!(
-                    "duplicate canonical episode key `{key}`; scene `character`+`episodeId` \
-                     (or its `s{{season}}ep{{episode}}` default) must be unique project-wide \
-                     (dsl §2.3)"
+                    "duplicate canonical scene id `{key}`; a scene's `id:` (or its \
+                     `{{character}}.{{episodeId}}` fallback) must be unique project-wide \
+                     (dsl 0.15.0 §2)"
                 )
             } else {
                 format!(
-                    "duplicate canonical episode key `{key}` across project files (`{}` and \
-                     `{}`); scene identity must be unique project-wide (dsl §2.3)",
+                    "duplicate canonical scene id `{key}` across project files (`{}` and \
+                     `{}`); a scene's `id:` (or its `{{character}}.{{episodeId}}` fallback) \
+                     must be unique project-wide (dsl 0.15.0 §2)",
                     first_file.display(),
                     file.display()
                 )
@@ -1117,10 +1152,8 @@ pub fn live_assert_relations(
     let mut out = BTreeSet::new();
     for (_, doc) in docs {
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
-            let node_reach = scene_identity(doc).and_then(|(character, season, episode, episode_id)| {
-                let key = canonical_episode_key(&character, season, episode, episode_id.as_deref());
-                reach.get(&NodeId::Scene(key)).copied()
-            });
+            let node_reach = scene_identity(doc)
+                .and_then(|ident| reach.get(&NodeId::Scene(ident.key)).copied());
             if assert_site_is_live(node_reach) {
                 for shot in &doc.shots {
                     collect_assert_relations(&shot.body, &mut out);
