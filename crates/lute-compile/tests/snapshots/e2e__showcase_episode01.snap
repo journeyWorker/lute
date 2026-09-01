@@ -4,10 +4,11 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.14.0",
-  "irVersion": "0.14.0",
+  "lute": "0.15.0",
+  "irVersion": "0.15.0",
   "capabilityVersion": "b7333d56c368f060dd7f6792712f8a73e12ddb6acea156e85b968a07b1e8b315",
   "meta": {
+    "id": "bianca.s01ep01",
     "character": "bianca",
     "season": 1,
     "episode": 1,

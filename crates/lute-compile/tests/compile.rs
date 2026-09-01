@@ -118,16 +118,28 @@ state:
         .expect("hub record");
     assert_eq!(hub.id, "chat");
     assert_eq!(hub.record_key, "scene.choices.chat");
-    assert!(!hub.converge.is_empty(), "converge addr filled by address pass");
+    assert!(
+        !hub.converge.is_empty(),
+        "converge addr filled by address pass"
+    );
     assert_eq!(hub.options.len(), 3);
     let opt = |id: &str| hub.options.iter().find(|o| o.id == id).expect("option");
     let ask = opt("ask");
     assert!(ask.once && !ask.exit, "ask: once, not exit");
     assert!(ask.when.is_none() && ask.expr.is_none(), "ask is unguarded");
     let curious = opt("curious");
-    assert!(!curious.once && !curious.exit, "curious: neither once nor exit");
-    assert!(curious.when.is_some(), "guarded option carries the raw `when`");
-    assert!(curious.expr.is_some(), "guarded option carries the lowered A7 expr");
+    assert!(
+        !curious.once && !curious.exit,
+        "curious: neither once nor exit"
+    );
+    assert!(
+        curious.when.is_some(),
+        "guarded option carries the raw `when`"
+    );
+    assert!(
+        curious.expr.is_some(),
+        "guarded option carries the lowered A7 expr"
+    );
     let leave = opt("leave");
     assert!(!leave.once && leave.exit, "leave: exit, not once");
     for o in &hub.options {
@@ -147,8 +159,15 @@ state:
             _ => None,
         })
         .collect();
-    assert_eq!(jumps.len(), 1, "only the exit arm jumps to converge, got {jumps:?}");
-    assert_eq!(jumps[0], hub.converge, "the exit-arm jump targets the hub converge");
+    assert_eq!(
+        jumps.len(),
+        1,
+        "only the exit arm jumps to converge, got {jumps:?}"
+    );
+    assert_eq!(
+        jumps[0], hub.converge,
+        "the exit-arm jump targets the hub converge"
+    );
 
     // Serialized shape: kind:"hub", recordKey, options[*].once/exit are bools.
     let json = serde_json::to_value(
@@ -190,7 +209,11 @@ state:
     for cid in ["ask", "curious", "leave"] {
         let v = entry(&format!("scene.visited.chat.{cid}"));
         assert_eq!(v.ty, "bool", "visited {cid} is bool");
-        assert_eq!(v.default, Some(serde_json::json!(false)), "visited {cid} default false");
+        assert_eq!(
+            v.default,
+            Some(serde_json::json!(false)),
+            "visited {cid} default false"
+        );
     }
 }
 
@@ -199,16 +222,16 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.14.0");
-    assert_eq!(artifact.ir_version, "0.14.0");
+    assert_eq!(artifact.lute, "0.15.0");
+    assert_eq!(artifact.ir_version, "0.15.0");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
         "capabilityVersion must be a non-empty snapshot stamp"
     );
-    assert_eq!(scene_meta(&artifact).character, "bianca");
+    assert_eq!(scene_meta(&artifact).character.as_deref(), Some("bianca"));
     // A4/A9: episodeId normalized lowercase to match the lineId episode segment.
-    assert_eq!(scene_meta(&artifact).episode_id, "s01ep02");
+    assert_eq!(scene_meta(&artifact).episode_id.as_deref(), Some("s01ep02"));
     assert_eq!(scene_meta(&artifact).title.as_deref(), Some("Compile me"));
 
     // Folded state envelope: author decl + implicit branch decl (§4.1).
@@ -272,7 +295,14 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
         ]
     );
 
-    // A4/A9 byte-for-byte: every lineId's episode segment == meta.episodeId.
+    // A4/A9 byte-for-byte: every lineId's episode segment == meta.episodeId
+    // (still true post-0.15 for the derived-key path — `episode_id` stays
+    // Some and resolved as today; the lineId prefix is now `meta.id` which
+    // for this legacy doc equals `{character}.{episodeId}`).
+    let expected_episode_id = scene_meta(&artifact)
+        .episode_id
+        .as_deref()
+        .expect("legacy doc keeps a resolved episodeId");
     for cmd in &artifact.commands {
         if let Command::Line(l) = cmd {
             if l.line_id.is_empty() {
@@ -280,7 +310,7 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
             }
             let seg = l.line_id.split('.').nth(1).expect("lineId episode segment");
             assert_eq!(
-                seg, scene_meta(&artifact).episode_id,
+                seg, expected_episode_id,
                 "lineId {} episode segment must equal meta.episodeId byte-for-byte",
                 l.line_id
             );
@@ -306,7 +336,10 @@ episodeId: ep02final
 @narrator: The stage is set.
 "#;
     let artifact = compile(&input(AUTHORED)).expect("authored episodeId doc compiles");
-    assert_eq!(scene_meta(&artifact).episode_id, "ep02final");
+    assert_eq!(
+        scene_meta(&artifact).episode_id.as_deref(),
+        Some("ep02final")
+    );
     let line = artifact
         .commands
         .iter()
@@ -353,7 +386,10 @@ title: Cut gate
         .map(|c| serde_json::to_value(c).unwrap())
         .find(|v| v["kind"] == "cut")
         .expect("a kind:\"cut\" record");
-    assert_eq!(cut["wait"], false, "cut carries the resolved family default");
+    assert_eq!(
+        cut["wait"], false,
+        "cut carries the resolved family default"
+    );
 }
 
 #[test]
@@ -618,8 +654,16 @@ state:
             _ => None,
         })
         .expect("choice record");
-    let give = choice.options.iter().find(|o| o.id == "give").expect("give option");
-    let keep = choice.options.iter().find(|o| o.id == "keep").expect("keep option");
+    let give = choice
+        .options
+        .iter()
+        .find(|o| o.id == "give")
+        .expect("give option");
+    let keep = choice
+        .options
+        .iter()
+        .find(|o| o.id == "keep")
+        .expect("keep option");
     // Label verbatim, interps retained.
     assert_eq!(give.label, "Give {{run.coins}} coins");
     let give_json = serde_json::to_value(give).unwrap();
@@ -666,13 +710,20 @@ fn quest_doc_compiles_to_quest_artifact() {
     let j = serde_json::to_value(&art).unwrap();
     assert_eq!(j["kind"], "quest");
     let cmds = j["commands"].as_array().unwrap();
-    let q = cmds.iter().find(|c| c["kind"] == "quest").expect("quest record");
+    let q = cmds
+        .iter()
+        .find(|c| c["kind"] == "quest")
+        .expect("quest record");
     assert_eq!(q["id"], "rescueHalsin");
     assert_eq!(q["objectives"].as_array().unwrap().len(), 2);
-    assert!(cmds.iter().any(|c| c["kind"] == "on" && c["event"] == "questComplete"));
+    assert!(cmds
+        .iter()
+        .any(|c| c["kind"] == "on" && c["event"] == "questComplete"));
     // an <on> body content line lowered as a line record with a {questId} lineId:
     assert!(cmds.iter().any(|c| c["kind"] == "line"
-        && c["lineId"].as_str().is_some_and(|s| s.starts_with("rescueHalsin."))));
+        && c["lineId"]
+            .as_str()
+            .is_some_and(|s| s.starts_with("rescueHalsin."))));
 }
 
 /// A checker-admitted DIRECT quest-body-level content line + `::set` (dsl
@@ -701,7 +752,9 @@ state:
         .find(|c| c["kind"] == "line" && c["text"] == "A quest begins.")
         .expect("direct quest-body content-line record");
     assert_eq!(
-        narrator_line["lineId"].as_str().map(|s| s.starts_with("rescueHalsin.")),
+        narrator_line["lineId"]
+            .as_str()
+            .map(|s| s.starts_with("rescueHalsin.")),
         Some(true)
     );
     assert!(
@@ -749,7 +802,9 @@ state:
         .iter()
         .find(|c| c["kind"] == "set" && c["path"] == "run.act")
         .expect("set record");
-    let on_body = on["body"].as_str().expect("on.body must be a string addr, never null/@n");
+    let on_body = on["body"]
+        .as_str()
+        .expect("on.body must be a string addr, never null/@n");
     assert!(
         !on_body.starts_with('@'),
         "on.body must be addressed, never a dangling symbolic label: {on_body}"
@@ -780,7 +835,9 @@ fn hub_choice_use_expands_component_records_with_source_stamp() {
          @narrator: A familiar face steps into the light.\n",
     );
     assert!(
-        comp_diags.iter().all(|d| d.severity != lute_core_span::Severity::Error),
+        comp_diags
+            .iter()
+            .all(|d| d.severity != lute_core_span::Severity::Error),
         "{comp_diags:#?}"
     );
     table.insert(
@@ -1010,8 +1067,14 @@ state:
     let cmds = j["commands"].as_array().unwrap();
     let kinds: Vec<&str> = cmds.iter().map(|c| c["kind"].as_str().unwrap()).collect();
     let set_i = kinds.iter().position(|k| *k == "set").expect("set record");
-    let assert_i = kinds.iter().position(|k| *k == "assert").expect("assert record");
-    let retract_i = kinds.iter().position(|k| *k == "retract").expect("retract record");
+    let assert_i = kinds
+        .iter()
+        .position(|k| *k == "assert")
+        .expect("assert record");
+    let retract_i = kinds
+        .iter()
+        .position(|k| *k == "retract")
+        .expect("retract record");
     assert!(
         set_i < assert_i && assert_i < retract_i,
         "document order preserved: {kinds:?}"
@@ -1110,7 +1173,10 @@ fn unconditional_next_resolves_across_shots_to_mark_and_line_id() {
         .find(|c| c["kind"] == "line" && c["text"] == "we joined here")
         .expect("the joined-to line");
     let (_, joined_addr) = kind_addr(joined_line);
-    assert_eq!(target, joined_addr, "::next{{to=\"join\"}} must land exactly on the mark's bound record");
+    assert_eq!(
+        target, joined_addr,
+        "::next{{to=\"join\"}} must land exactly on the mark's bound record"
+    );
 
     // Shot ordering: the target addr's shot segment must be STRICTLY greater
     // than the jump's own shot segment (forward across a shot boundary).
@@ -1140,10 +1206,18 @@ fn guarded_next_lowers_to_two_arm_match_both_branches() {
     // target field) — locate it by its one-arm shape plus a present
     // `otherwise` (the synthesized empty-body Otherwise, dsl 0.12.0).
     let matches: Vec<&serde_json::Value> = cmds.iter().filter(|c| c["kind"] == "match").collect();
-    assert_eq!(matches.len(), 1, "exactly one guarded ::next desugars to one match: {cmds:#?}");
+    assert_eq!(
+        matches.len(),
+        1,
+        "exactly one guarded ::next desugars to one match: {cmds:#?}"
+    );
     let m = matches[0];
     let arms = m["arms"].as_array().unwrap();
-    assert_eq!(arms.len(), 1, "the desugar is a canonical one `When` arm: {arms:#?}");
+    assert_eq!(
+        arms.len(),
+        1,
+        "the desugar is a canonical one `When` arm: {arms:#?}"
+    );
     assert!(
         m["otherwise"].as_str().is_some(),
         "the desugar's synthesized empty-body Otherwise still resolves to a converge target: {m:#?}"
@@ -1181,14 +1255,20 @@ fn guarded_next_lowers_to_two_arm_match_both_branches() {
         .expect("the first ::end{reason=completed} survives, distinct from the tail shot's ::end");
     let (_, fallthrough_addr) = kind_addr(fallthrough);
     let (_, first_end_addr) = kind_addr(first_end);
-    assert!(fallthrough_addr < first_end_addr, "fallthrough content precedes its own ::end");
+    assert!(
+        fallthrough_addr < first_end_addr,
+        "fallthrough content precedes its own ::end"
+    );
     // The fall-through path never reaches shot 3's tail: a second, distinct
     // `::end{reason="tailed"}` record exists for that path.
     let tail_end = cmds
         .iter()
         .find(|c| c["kind"] == "end" && c["reason"] == "tailed")
         .expect("the tail shot's own ::end{reason=tailed} is a SEPARATE record (multi-end)");
-    assert_ne!(first_end["addr"], tail_end["addr"], "two independent ::end records — the multi-end combination");
+    assert_ne!(
+        first_end["addr"], tail_end["addr"],
+        "two independent ::end records — the multi-end combination"
+    );
 }
 
 /// dsl 0.12.0: a check-clean document with a forward `::next` never fires
@@ -1210,5 +1290,252 @@ fn forward_jump_scene_check_and_compile_are_both_clean() {
                 "every target must be a resolved real addr, found unresolved symbol {t:?} in {cmd:#?}"
             );
         }
+    }
+}
+
+// --- dsl 0.15.0 §2/§3: authored scene identity + descriptive meta block ----
+
+/// dsl 0.15.0 §2: an authored `id:` becomes the ONE canonical scene key —
+/// stamped into `meta.id`, prefixed onto every `lineId`, joined into
+/// `prereqEdges[].node`, and echoed as the index `document_key`. All four
+/// consumers must land byte-identical (the "one shared resolution point"
+/// architecture the plan turns on).
+#[test]
+fn authored_id_flows_into_meta_line_prefix_prereq_and_document_key() {
+    const DOC: &str = r#"---
+kind: scene
+id: anseo.s01ep01
+after: "visited('kestrel.s01ep01')"
+---
+
+## Shot 1.
+
+@narrator: Hello.
+"#;
+    let art = compile(&input(DOC)).expect("authored-id doc compiles");
+    let v = serde_json::to_value(&art).unwrap();
+
+    // `meta.id` — the shared canonical key.
+    assert_eq!(v["meta"]["id"], serde_json::json!("anseo.s01ep01"));
+
+    // lineId prefix — the same `anseo.s01ep01.` string, per lineId (`{prefix}.{speaker}_{code}`).
+    let line = art
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::Line(l) => Some(l),
+            _ => None,
+        })
+        .expect("a content line");
+    assert!(
+        line.line_id.starts_with("anseo.s01ep01."),
+        "lineId {} must be prefixed by the authored id",
+        line.line_id
+    );
+
+    // `prereqEdges[].node` — same string.
+    assert_eq!(
+        v["prereqEdges"][0]["node"],
+        serde_json::json!("anseo.s01ep01")
+    );
+    assert_eq!(
+        v["prereqEdges"][0]["after"],
+        serde_json::json!("visited('kestrel.s01ep01')")
+    );
+
+    // Index `document_key` — same string.
+    assert_eq!(
+        lute_compile::index::document_key(&art),
+        "anseo.s01ep01",
+        "document_key must equal meta.id verbatim"
+    );
+}
+
+/// dsl 0.15.0 §7 wire-compat: a legacy (no `id:`) document's 0.15 artifact
+/// differs from a pinned 0.14-shape expectation ONLY by the added `id`
+/// field and the two version strings (`lute`, `irVersion`). Asserted via
+/// `serde_json::Value` diff, not string compare — field order changes are
+/// deliberate here (the `id` line lands FIRST inside `meta`).
+#[test]
+fn legacy_document_artifact_differs_from_014_only_by_id_and_versions() {
+    const DOC: &str = r#"---
+kind: scene
+character: bianca
+season: 1
+episode: 2
+title: Legacy
+---
+
+## Shot 1.
+
+@narrator: Hi.
+"#;
+    let art = compile(&input(DOC)).expect("legacy doc compiles");
+    let capability_version = art.capability_version.clone();
+    let actual = serde_json::to_value(&art).unwrap();
+
+    // What a 0.14 emit would have produced for the SAME document: the same
+    // envelope, minus `meta.id`, with `lute`/`irVersion` pinned to 0.14.0.
+    let mut expected = actual.clone();
+    expected["lute"] = serde_json::json!("0.14.0");
+    expected["irVersion"] = serde_json::json!("0.14.0");
+    let expected_meta = expected["meta"].as_object_mut().unwrap();
+    expected_meta.remove("id");
+
+    // Reconstruct the pinned 0.14 shape from the ground up (not from the
+    // 0.15 output) to prove `expected` isn't tautologically = actual.
+    let pinned_014 = serde_json::json!({
+        "kind": "scene",
+        "lute": "0.14.0",
+        "irVersion": "0.14.0",
+        "capabilityVersion": capability_version,
+        "meta": {
+            "character": "bianca",
+            "season": 1,
+            "episode": 2,
+            "episodeId": "s01ep02",
+            "title": "Legacy",
+        },
+        "state": actual["state"].clone(),
+        "commands": actual["commands"].clone(),
+        "shots": actual["shots"].clone(),
+    });
+    assert_eq!(
+        expected, pinned_014,
+        "0.14 shape reconstruction must match the artifact minus id/versions"
+    );
+
+    // The core §7 claim: exactly three keys differ (`meta.id` added, two
+    // version strings bumped) — nothing else moved.
+    assert_eq!(actual["kind"], pinned_014["kind"]);
+    assert_eq!(actual["capabilityVersion"], pinned_014["capabilityVersion"]);
+    assert_eq!(actual["commands"], pinned_014["commands"]);
+    assert_eq!(actual["meta"]["character"], pinned_014["meta"]["character"]);
+    assert_eq!(actual["meta"]["season"], pinned_014["meta"]["season"]);
+    assert_eq!(actual["meta"]["episode"], pinned_014["meta"]["episode"]);
+    assert_eq!(actual["meta"]["episodeId"], pinned_014["meta"]["episodeId"]);
+    assert_eq!(actual["meta"]["title"], pinned_014["meta"]["title"]);
+    assert_eq!(actual["meta"]["id"], serde_json::json!("bianca.s01ep02"));
+    assert_eq!(actual["lute"], serde_json::json!("0.15.0"));
+    assert_eq!(actual["irVersion"], serde_json::json!("0.15.0"));
+}
+
+/// dsl 0.15.0 §3: the authored `meta:` block lands under `meta.meta`
+/// key-sorted (BTreeMap serialization), scalar and flat-scalar-list values
+/// pass through JSON-shaped. Sanctioned on both scene and quest roots.
+#[test]
+fn meta_block_lands_under_meta_meta_key_sorted() {
+    const SCENE_META: &str = r#"---
+kind: scene
+id: anseo.s01ep01
+meta:
+  arc: main
+  tags: [harbor, night]
+  weight: 3
+---
+
+## Shot 1.
+
+@narrator: Yo.
+"#;
+    let art = compile(&input(SCENE_META)).expect("meta:-block scene compiles");
+    let v = serde_json::to_value(&art).unwrap();
+    let meta_block = v["meta"]["meta"]
+        .as_object()
+        .expect("meta.meta serializes as an object");
+    let keys: Vec<&str> = meta_block.keys().map(String::as_str).collect();
+    assert_eq!(
+        keys,
+        vec!["arc", "tags", "weight"],
+        "keys sort lexicographically"
+    );
+    assert_eq!(meta_block["arc"], serde_json::json!("main"));
+    assert_eq!(meta_block["tags"], serde_json::json!(["harbor", "night"]));
+    assert_eq!(meta_block["weight"], serde_json::json!(3));
+
+    // Quest kind gets the same treatment — the wire contract covers both.
+    const QUEST_META: &str = r#"---
+kind: quest
+meta:
+  arc: main
+  region: harbor
+---
+
+<quest id="q1">
+<objective id="o" done="true"/>
+</quest>
+"#;
+    let qart = compile(&input(QUEST_META)).expect("meta:-block quest compiles");
+    let qv = serde_json::to_value(&qart).unwrap();
+    let qmeta = qv["meta"]["meta"]
+        .as_object()
+        .expect("quest meta.meta object");
+    let qkeys: Vec<&str> = qmeta.keys().map(String::as_str).collect();
+    assert_eq!(qkeys, vec!["arc", "region"]);
+
+    // Byte-stability: a doc that authors no `meta:` omits the key entirely
+    // (`skip_serializing_if = BTreeMap::is_empty`).
+    let bare = compile(&input(
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n",
+    ))
+    .unwrap();
+    let bv = serde_json::to_value(&bare).unwrap();
+    assert!(
+        bv["meta"].get("meta").is_none(),
+        "meta.meta must be skipped when the document authors no meta: block; got {}",
+        bv["meta"]
+    );
+}
+
+/// dsl 0.15.0 §2: the derived-key path (no `id:` authored) still emits all
+/// four legacy fields resolved as 0.14.0 did, with `meta.id` = the derived
+/// `{character}.{episodeId}` join stamped on top. Pins the wire contract
+/// the loc/play consumers (Task 4) will read.
+#[test]
+fn derived_key_path_emits_meta_id_alongside_all_four_legacy_fields() {
+    const LEGACY: &str = r#"---
+kind: scene
+character: kestrel
+season: 1
+episode: 3
+---
+
+## Shot 1.
+
+@narrator: Legacy.
+"#;
+    let art = compile(&input(LEGACY)).expect("legacy doc compiles");
+    let v = serde_json::to_value(&art).unwrap();
+    assert_eq!(v["meta"]["id"], serde_json::json!("kestrel.s01ep03"));
+    assert_eq!(v["meta"]["character"], serde_json::json!("kestrel"));
+    assert_eq!(v["meta"]["season"], serde_json::json!(1));
+    assert_eq!(v["meta"]["episode"], serde_json::json!(3));
+    assert_eq!(v["meta"]["episodeId"], serde_json::json!("s01ep03"));
+}
+
+/// dsl 0.15.0 §2: the authored-`id:` path emits ONLY the legacy keys the
+/// author WROTE (raw frontmatter is the source of truth — a project-level
+/// `defaults:` fallback must not resurrect a dropped key). A scene that
+/// authors only `id:` emits `id` alone from the legacy identity block.
+#[test]
+fn authored_id_only_scene_omits_all_four_legacy_fields() {
+    const AUTH: &str = r#"---
+kind: scene
+id: anseo.s01ep01
+---
+
+## Shot 1.
+
+@narrator: Hi.
+"#;
+    let art = compile(&input(AUTH)).expect("authored-only doc compiles");
+    let v = serde_json::to_value(&art).unwrap();
+    assert_eq!(v["meta"]["id"], serde_json::json!("anseo.s01ep01"));
+    for k in ["character", "season", "episode", "episodeId"] {
+        assert!(
+            v["meta"].get(k).is_none(),
+            "legacy key {k} must be skipped on the authored-id path; got {}",
+            v["meta"]
+        );
     }
 }

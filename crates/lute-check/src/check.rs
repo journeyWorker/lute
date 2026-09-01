@@ -3898,8 +3898,8 @@ mod lute_version_tests {
     /// the `quest` property; no engine gate widens (MAJOR-only since
     /// `0.13.0`).
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_14_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.14.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.14.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_15_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.15.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.15.0");
     }
 }

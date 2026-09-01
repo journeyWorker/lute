@@ -394,11 +394,13 @@ fn envelope_serializes_with_state_entries() {
         ir_version: "0.3.0".into(),
         capability_version: "cap-sha".into(),
         meta: ArtifactMeta::Scene(SceneMeta {
-            character: "bianca".into(),
-            season: 1,
-            episode: 2,
-            episode_id: "s01ep02".into(),
+            id: "bianca.s01ep02".into(),
+            character: Some("bianca".into()),
+            season: Some(1),
+            episode: Some(2),
+            episode_id: Some("s01ep02".into()),
             title: Some("T".into()),
+            meta: BTreeMap::new(),
             plugin: BTreeMap::new(),
         }),
         state: vec![StateEntry {
@@ -419,7 +421,7 @@ fn envelope_serializes_with_state_entries() {
     };
     assert_eq!(
         serde_json::to_string(&a).unwrap(),
-        r#"{"kind":"scene","lute":"0.3.0","irVersion":"0.3.0","capabilityVersion":"cap-sha","meta":{"character":"bianca","season":1,"episode":2,"episodeId":"s01ep02","title":"T"},"state":[{"path":"scene.choices.number","type":"enum","domain":["blunt","soft","unset"],"provenance":"branch:number"}],"commands":[]}"#
+        r#"{"kind":"scene","lute":"0.3.0","irVersion":"0.3.0","capabilityVersion":"cap-sha","meta":{"id":"bianca.s01ep02","character":"bianca","season":1,"episode":2,"episodeId":"s01ep02","title":"T"},"state":[{"path":"scene.choices.number","type":"enum","domain":["blunt","soft","unset"],"provenance":"branch:number"}],"commands":[]}"#
     );
 }
 

@@ -33,7 +33,6 @@
 
 use std::collections::BTreeMap;
 
-use lute_check::meta::canonical_episode_key;
 use serde::Serialize;
 
 use crate::ir::{
@@ -208,7 +207,10 @@ impl<T: Clone + Serialize> Axis<T> {
 ///
 /// `Err` carries EVERY problem found, not just the first — a project with three
 /// conflicting relations should report three, not force three rebuilds.
-pub fn build_index(ir_version: &str, docs: &[IndexInput<'_>]) -> Result<ProjectIndex, Vec<IndexError>> {
+pub fn build_index(
+    ir_version: &str,
+    docs: &[IndexInput<'_>],
+) -> Result<ProjectIndex, Vec<IndexError>> {
     let mut errors = Vec::new();
 
     let mut capability: Option<(&str, &str)> = None;
@@ -291,17 +293,17 @@ pub fn build_index(ir_version: &str, docs: &[IndexInput<'_>]) -> Result<ProjectI
     })
 }
 
-/// The document's canonical node key (see [`IndexDocument::key`]). A scene's key
-/// is recomputed through the SHARED [`canonical_episode_key`] the addressing
-/// prefix and `check-project`'s scene-key grouping both use, so the index can
-/// never name a scene differently from the graph. A quest document with no
-/// `<quest>` at all has no key; that shape never survives the check gate, so
-/// the empty string is a total fallback, not a real output.
+/// The document's canonical node key (see [`IndexDocument::key`]). A scene's
+/// key is [`SceneMeta::id`] verbatim — the shared canonical scene key
+/// ([`lute_check::meta::canonical_scene_key`], dsl 0.15.0 §2) already
+/// stamped into the artifact by `artifact_meta`, so the index can never
+/// name a scene differently from the addressing prefix or `check-project`'s
+/// scene-key grouping. A quest document with no `<quest>` at all has no
+/// key; that shape never survives the check gate, so the empty string is a
+/// total fallback, not a real output.
 pub fn document_key(artifact: &Artifact) -> String {
     match &artifact.meta {
-        ArtifactMeta::Scene(m) => {
-            canonical_episode_key(&m.character, m.season, m.episode, Some(&m.episode_id))
-        }
+        ArtifactMeta::Scene(m) => m.id.clone(),
         ArtifactMeta::Quest(_) => artifact
             .commands
             .iter()
@@ -325,11 +327,13 @@ mod tests {
             ir_version: "0.11.0".to_string(),
             capability_version: capability.to_string(),
             meta: ArtifactMeta::Scene(SceneMeta {
-                character: character.to_string(),
-                season: 1,
-                episode: 2,
-                episode_id: "s01ep02".to_string(),
+                id: format!("{character}.s01ep02"),
+                character: Some(character.to_string()),
+                season: Some(1),
+                episode: Some(2),
+                episode_id: Some("s01ep02".to_string()),
                 title: None,
+                meta: BTreeMap::new(),
                 plugin: BTreeMap::new(),
             }),
             state: Vec::new(),
@@ -404,7 +408,11 @@ mod tests {
         let index = build_index("0.9.0", &inputs(&docs)).expect("no conflicts");
 
         assert_eq!(
-            index.documents.iter().map(|d| d.path.as_str()).collect::<Vec<_>>(),
+            index
+                .documents
+                .iter()
+                .map(|d| d.path.as_str())
+                .collect::<Vec<_>>(),
             vec!["a/a.lute", "z/b.lute"],
             "documents sort by path"
         );
@@ -412,7 +420,11 @@ mod tests {
         assert_eq!(index.documents[0].key, "bianca.s01ep02");
         assert_eq!(index.capability_version, "cap-1");
         assert_eq!(
-            index.relations.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            index
+                .relations
+                .iter()
+                .map(|r| r.name.as_str())
+                .collect::<Vec<_>>(),
             vec!["aware", "knows", "owns"],
             "relations union, dedupe, and sort by name"
         );
@@ -438,12 +450,19 @@ mod tests {
                 other_doc: "b.lute".to_string(),
             }]
         );
-        assert!(errors[0].to_string().contains("conflicting signatures"), "{}", errors[0]);
+        assert!(
+            errors[0].to_string().contains("conflicting signatures"),
+            "{}",
+            errors[0]
+        );
     }
 
     #[test]
     fn two_capability_snapshots_are_an_error() {
-        let docs = [("a.lute", scene("bianca", "cap-1")), ("b.lute", scene("kai", "cap-2"))];
+        let docs = [
+            ("a.lute", scene("bianca", "cap-1")),
+            ("b.lute", scene("kai", "cap-2")),
+        ];
         let errors = build_index("0.9.0", &inputs(&docs)).expect_err("two profiles");
         assert!(
             matches!(errors[0], IndexError::CapabilityMismatch { .. }),
@@ -456,8 +475,18 @@ mod tests {
         let docs = [("a.lute", scene("bianca", "cap-1"))];
         let index = build_index("0.9.0", &inputs(&docs)).unwrap();
         let json = index.to_json().unwrap();
-        for key in ["entities", "enums", "relations", "seedFacts", "rules", "prereqEdges"] {
-            assert!(json.contains(&format!("\"{key}\": []")), "missing empty `{key}`: {json}");
+        for key in [
+            "entities",
+            "enums",
+            "relations",
+            "seedFacts",
+            "rules",
+            "prereqEdges",
+        ] {
+            assert!(
+                json.contains(&format!("\"{key}\": []")),
+                "missing empty `{key}`: {json}"
+            );
         }
         // Declaration order, not alphabetical.
         let pos = |k: &str| json.find(k).unwrap_or(usize::MAX);

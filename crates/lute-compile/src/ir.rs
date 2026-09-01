@@ -174,15 +174,28 @@ pub enum TermEntry {
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum BodyEntry {
-    Atom { atom: AtomEntry, negated: bool },
-    Guard { cel: String },
-    Cmp { lhs: TermEntry, rhs: TermEntry, negated: bool },
+    Atom {
+        atom: AtomEntry,
+        negated: bool,
+    },
+    Guard {
+        cel: String,
+    },
+    Cmp {
+        lhs: TermEntry,
+        rhs: TermEntry,
+        negated: bool,
+    },
 }
 
-/// Kind-polymorphic envelope `meta` (dsl 0.2.0, IR addendum §1): untagged so
-/// the wire shape is exactly `SceneMeta`'s or `QuestMeta`'s own fields — the
-/// consumer reads `Artifact.kind` to know which. `SceneMeta` = the 0.1.0
-/// `ArtifactMeta` fields verbatim (BYTE-IDENTICAL scene output).
+/// Kind-polymorphic envelope `meta` (dsl 0.2.0, IR addendum §1; dsl 0.15.0
+/// §2): untagged so the wire shape is exactly `SceneMeta`'s or `QuestMeta`'s
+/// own fields — the consumer reads `Artifact.kind` to know which. Since IR
+/// `0.15.0` the discriminator for a scene is `SceneMeta.id` (always present,
+/// the resolved canonical scene key); legacy `character`/`season`/`episode`/
+/// `episodeId` demote to optional (skipped when unauthored on an authored-
+/// `id:` document, retained resolved-as-today on the derived-key path — dsl
+/// 0.15.0 §2 wire contract).
 #[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
 pub enum ArtifactMeta {
@@ -190,15 +203,43 @@ pub enum ArtifactMeta {
     Quest(QuestMeta),
 }
 
+/// Scene-kind envelope meta (dsl 0.15.0 §2/§3). Field DECLARATION ORDER is
+/// the serialized order (byte-stability contract):
+///
+///   `id` -> `character` -> `season` -> `episode` -> `episodeId` -> `title`
+///   -> `meta` -> `plugin`
+///
+/// `id` is ALWAYS present — either the authored canonical scene key
+/// (`TypedMeta.id`) or the derived `{character}.{episodeId}` join
+/// ([`lute_check::meta::canonical_scene_key`]). The four legacy identity
+/// fields (`character`/`season`/`episode`/`episodeId`) demote to optional
+/// per dsl 0.15.0 §2; the derived-key path still emits all four verbatim
+/// (with `episodeId` resolved as in 0.14.0) so a document that has not
+/// migrated to `id:` stays wire-compatible field-for-field beyond the added
+/// `id`. On the authored-`id:` path only the AUTHORED legacy keys survive
+/// into the artifact (the raw frontmatter is the source of truth — a
+/// project-level `defaults:` fallback SHOULD NOT resurrect a key the author
+/// dropped, dsl 0.15.0 §4).
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneMeta {
-    pub character: String,
-    pub season: i64,
-    pub episode: i64,
-    pub episode_id: String,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub character: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub season: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub episode: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub episode_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// dsl 0.15.0 §3: free descriptive `meta:` block, JSON-ready
+    /// (`TypedMeta.meta_block`), key-sorted (`BTreeMap`) and skipped when
+    /// empty so a document without the block stays byte-identical to
+    /// pre-0.15 output.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub meta: BTreeMap<String, serde_json::Value>,
     /// plugin-owned top-level frontmatter keys the checker admitted past
     /// `E-META-UNKNOWN-KEY` and validated against the declaring plugin's
     /// `frontmatter/*.yaml` schema (`E-FRONTMATTER-SCHEMA`, plugin-system
@@ -211,8 +252,9 @@ pub struct SceneMeta {
     pub plugin: BTreeMap<String, serde_json::Value>,
 }
 
-/// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1): MAY serialize
-/// as `{}` when neither is authored.
+/// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1; dsl 0.15.0 §3
+/// adds the descriptive `meta:` block): MAY serialize as `{}` when none of
+/// title/contentLang/meta/plugin are authored.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuestMeta {
@@ -220,6 +262,11 @@ pub struct QuestMeta {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_lang: Option<String>,
+    /// See [`SceneMeta::meta`] — same predicate, same shape, same
+    /// skip-when-empty discipline. dsl 0.15.0 §3 sanctions the block on
+    /// quest roots too.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub meta: BTreeMap<String, serde_json::Value>,
     /// See [`SceneMeta::plugin`] — same predicate, same shape, same
     /// skip-when-empty discipline.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -374,9 +421,15 @@ pub enum Placeholder {
 pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placeholder {
     use lute_syntax::ast::InterpKind;
     match i.kind {
-        InterpKind::Path => Placeholder::Path { path: i.raw.clone() },
-        InterpKind::Ref => Placeholder::Ref { reference: i.raw.clone() },
-        InterpKind::Reserved => Placeholder::Reserved { token: i.raw.clone() },
+        InterpKind::Path => Placeholder::Path {
+            path: i.raw.clone(),
+        },
+        InterpKind::Ref => Placeholder::Ref {
+            reference: i.raw.clone(),
+        },
+        InterpKind::Reserved => Placeholder::Reserved {
+            token: i.raw.clone(),
+        },
     }
 }
 
