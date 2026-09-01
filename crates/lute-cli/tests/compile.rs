@@ -17,8 +17,8 @@ fn compile_bianca_exits_zero_with_artifact_json() {
         String::from_utf8_lossy(&out.stderr)
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(v["lute"], "0.15.0");
-    assert_eq!(v["irVersion"], "0.15.0");
+    assert_eq!(v["lute"], "0.15.1");
+    assert_eq!(v["irVersion"], "0.15.1");
     assert!(
         v["capabilityVersion"]
             .as_str()

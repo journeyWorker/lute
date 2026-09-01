@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.15.0`, the grammar and semantics the checker
+- **Language** — currently `0.15.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.15.0`) and gated on by consuming engines.
+  artifact (currently `0.15.1`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -36,6 +36,51 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.15.1] - 2026-09-01
+
+**LSP joins the npm distribution.**
+
+Toolchain-only alignment restamp. The npm launcher `@lute-lang/lute`
+now ships `lute-lsp` alongside `lute`: a second `bin` entry
+(`packages/cli/lsp-bin.js`) resolves the platform-specific core package
+and dispatches to its `lute-lsp` executable, so downstream editors can
+spawn the language server through the same install the CLI already uses
+(a `bunx @lute-lang/lute-lsp` route, symmetric with `bunx @lute-lang/lute`).
+Every per-platform core package (`@lute-lang/lute-core-darwin-arm64`,
+`@lute-lang/lute-core-linux-x64`, `@lute-lang/lute-core-win32-x64`) now
+carries both binaries, and the publish/build-native workflow matrices
+build `-p lute-lsp` next to `-p lute-cli`. Neither the language nor the
+IR earns the move; both restamp per
+[`docs/versioning.md`](docs/versioning.md)'s alignment rule.
+
+### Changed
+
+- **npm distribution ships `lute-lsp` alongside `lute`** — the
+  `@lute-lang/lute` launcher gains a second `bin` entry, `lute-lsp`,
+  backed by `packages/cli/lsp-bin.js` (the CLI launcher's
+  platform-resolution logic reused, dispatching to the same
+  `@lute-lang/lute-core-<platform>` package). The per-platform core
+  packages now carry both `lute` and `lute-lsp` binaries; `publish.yml`
+  and `build-native.yml` build both under one release matrix. No
+  behavior change to either binary — this is packaging only.
+- **IR is a pure restamp** — no field added, renamed, moved, or
+  retyped. `schemas/lute-ir-0.15.schema.json` keeps its name and `$id`
+  (the file's `0.15.x` title already covers `0.15.1`, and the schema is
+  byte-identical to `0.15.0`); no engine gate widens under `0.13.0`'s
+  MAJOR-only runtime contract, so a `0.15` engine parses a `0.15.1`
+  artifact unchanged.
+- **Language is a pure restamp** — no grammar production, no
+  static-semantic rule, no diagnostic added or removed;
+  `LUTE_LANG_VERSION` advances to `0.15.1` so `W-LUTE-VERSION-STALE`
+  fires on a document stamped `0.15.0` (mechanical fix: restamp to
+  `0.15.1`; a `0.15.0`-clean document restamped to `0.15.1` checks
+  clean with no other edit). Spec:
+  [`docs/proposals/scenario-dsl/0.15.1.md`](docs/proposals/scenario-dsl/0.15.1.md).
+- `capabilityVersion` does NOT move this release: no `lute.core`
+  export changes, no grammar production change.
+- Version re-alignment per [`docs/versioning.md`](docs/versioning.md):
+  toolchain, language, and IR all present `0.15.1`.
 
 ## [0.15.0] - 2026-09-01
 

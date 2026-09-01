@@ -139,7 +139,19 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// contract has gated on IR MAJOR only since `0.13.0`, so a `0.14` engine
 /// parses a `0.15.0` artifact unchanged and simply does not ask for the
 /// added key.
-pub const LUTE_IR_VERSION: &str = "0.15.0";
+///
+/// IR `0.15.1` is a PURE RESTAMP of `0.15.0` — no field added, renamed,
+/// moved, or retyped. The release is toolchain-only: the npm distribution
+/// now ships `lute-lsp` alongside `lute` (a second launcher `bin` entry
+/// and both binaries carried in every per-platform core package), so
+/// downstream editors can spawn the LSP through the same `@lute-lang/lute`
+/// install the CLI already uses. Neither the language nor the IR earns the
+/// move; `docs/versioning.md`'s alignment rule moves both numbers anyway.
+/// The gated MAJOR does not move, so no engine gate widens and
+/// `schemas/lute-ir-0.15.schema.json` keeps its name and `$id` (the file's
+/// `0.15.x` title already covers `0.15.1`; the schema is byte-identical to
+/// `0.15.0`).
+pub const LUTE_IR_VERSION: &str = "0.15.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -949,18 +961,17 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.15.0 axis alignment (docs/versioning.md): a release re-aligns
-        // the visible numbers to that release's number. This time the
-        // language earns the move (authored scene identity: `id:`, `extra:`
-        // block on scenes+quests, legacy `character`/`season`/`episode`/
-        // `episodeId` demoted to optional, `W-META-LEGACY` deprecation
-        // signal); the IR moves with it (`SceneMeta.id` always present,
-        // legacy four optional, `SceneMeta.meta`/`QuestMeta.meta` added
-        // key-sorted and skip-when-empty — additive-only over 0.14.0 for a
-        // pre-0.15 document beyond the added `id`). The two pins remain
-        // independently tracked (T13); they simply agree on this release.
-        assert_eq!(super::LUTE_IR_VERSION, "0.15.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.15.0");
+        // 0.15.1 axis alignment (docs/versioning.md): a release re-aligns
+        // the visible numbers to that release's number even when no axis
+        // earned the move. This one is toolchain-only — the npm
+        // distribution now ships `lute-lsp` alongside `lute` (a second
+        // `bin` launcher entry and both binaries carried in each
+        // per-platform core package) — so language and IR restamp with
+        // no semantic change (`0.15.0` shape, byte-identical to `0.15.0`
+        // beyond the version strings). The two pins remain independently
+        // tracked (T13); they simply agree on this release.
+        assert_eq!(super::LUTE_IR_VERSION, "0.15.1");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.15.1");
     }
 
     #[test]
@@ -969,8 +980,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.15.0");
-        assert_eq!(v["irVersion"], "0.15.0");
+        assert_eq!(v["lute"], "0.15.1");
+        assert_eq!(v["irVersion"], "0.15.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

@@ -222,8 +222,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.15.0");
-    assert_eq!(artifact.ir_version, "0.15.0");
+    assert_eq!(artifact.lute, "0.15.1");
+    assert_eq!(artifact.ir_version, "0.15.1");
     assert_eq!(artifact.capability_version, inp.snapshot.version);
     assert!(
         !artifact.capability_version.is_empty(),
@@ -1416,8 +1416,8 @@ title: Legacy
     assert_eq!(actual["meta"]["episodeId"], pinned_014["meta"]["episodeId"]);
     assert_eq!(actual["meta"]["title"], pinned_014["meta"]["title"]);
     assert_eq!(actual["meta"]["id"], serde_json::json!("bianca.s01ep02"));
-    assert_eq!(actual["lute"], serde_json::json!("0.15.0"));
-    assert_eq!(actual["irVersion"], serde_json::json!("0.15.0"));
+    assert_eq!(actual["lute"], serde_json::json!("0.15.1"));
+    assert_eq!(actual["irVersion"], serde_json::json!("0.15.1"));
 }
 
 /// dsl 0.15.0 §3: the authored `extra:` block lands under `meta.extra`
