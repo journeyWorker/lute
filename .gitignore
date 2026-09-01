@@ -7,3 +7,6 @@ packages/website/.astro/
 packages/*/dist/
 packages/core-*/bin/
 .DS_Store
+
+# git-worktree checkouts
+.worktrees/
