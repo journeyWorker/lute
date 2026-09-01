@@ -88,7 +88,7 @@ state (a nuance of journal copy is not worth a state-enum ripple).
   `E-OBJECTIVE-UNSATISFIABLE` onto its referencing objective's `quest=`
   span. Design record:
   [`docs/superpowers/specs/2026-08-31-lute-subquest-design.md`](docs/superpowers/specs/2026-08-31-lute-subquest-design.md).
-  Language reference: [Quests & scenes → Subquests](https://lute.dev/language/quests-and-scenes/#subquests).
+  Language reference: [Quests & scenes → Subquests](https://lute-lang.vercel.app/language/quests-and-scenes/#subquests).
   Worked example: [`docs/examples/quest-subquest.lute`](docs/examples/quest-subquest.lute).
 - **IR — `ObjectiveEntry.quest`** — the new field carries the referenced
   child id when authored; it is serialized only for subquest objectives
