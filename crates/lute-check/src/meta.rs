@@ -60,6 +60,13 @@ pub struct TypedMeta {
     pub character: Option<String>,
     pub season: Option<i64>,
     pub episode: Option<i64>,
+    /// dsl §2.3: authored `episodeId:` frontmatter value (if any). A non-empty
+    /// authored value overrides the derived `s{season:02}ep{episode:02}` default
+    /// in [`canonical_episode_id`]; an absent or empty value falls back to the
+    /// default. Lifted so [`canonical_scene_key`] (dsl 0.15.0 §2) can reproduce
+    /// the derived scene key from `TypedMeta` alone without a second raw-YAML
+    /// peek.
+    pub episode_id: Option<String>,
     pub pov: Option<String>,
     /// The frontmatter `luteVersion:` stamp (dsl §6.1), lifted straight from
     /// the raw YAML mapping like `character`/`pov`. D13 stands: it is NEVER
@@ -73,6 +80,23 @@ pub struct TypedMeta {
     /// separately (grammar only, `crate::prereq::parse_prereq`) by `check()`,
     /// never here.
     pub after: Option<String>,
+    /// dsl 0.15.0 §2: authored canonical scene key. When present, this string
+    /// is the canonical scene identity everywhere the derived
+    /// `{character}.{episodeId}` join is consumed today (lineId prefix,
+    /// connectivity `visited(K)` targets, `prereqEdges[].node`,
+    /// `project.index.json` document key, `lute play`'s visited-set). The
+    /// value is validated on lift: non-empty and matching `[A-Za-z0-9_.-]+`
+    /// — anything else stays `None` and draws `E-META-ID`. Absent → derived
+    /// fallback via [`canonical_scene_key`], byte-identical to 0.14.0.
+    pub id: Option<String>,
+    /// dsl 0.15.0 §3: authored `meta:` descriptive block. Free open mapping
+    /// with scalar or flat-scalar-list values, never consulted by any
+    /// checker/compiler/runtime rule and never routed through CEL — the
+    /// sanctioned home for team search metadata (`arc`, `location`, whatever)
+    /// carried verbatim into the artifact (`SceneMeta.meta`/`QuestMeta.meta`,
+    /// omitted when empty). A nested mapping or non-scalar list entry stays
+    /// out of this map and draws `E-META-VALUE`.
+    pub meta_block: BTreeMap<String, serde_json::Value>,
     pub profile: Option<String>,
     pub plugins: BTreeMap<String, serde_yaml::Value>,
     pub uses: Vec<String>,
@@ -152,9 +176,18 @@ const UNIVERSAL_KEYS: &[&str] = &[
 ];
 
 /// Frontmatter keys valid ONLY in a `MetaKind::Scene` document (dsl 0.1.0 §6.1,
-/// dsl 0.2.0 §3.1/§6.1): the scene identity triad plus the scene-only extras.
-/// A Quest document declaring any of these is `E-META-UNKNOWN-KEY`.
-const SCENE_KEYS: &[&str] = &["character", "season", "episode", "episodeId", "pov", "after"];
+/// dsl 0.2.0 §3.1/§6.1, dsl 0.15.0 §2): the scene identity triad plus the
+/// scene-only extras plus the authored canonical key `id:`. A Quest document
+/// declaring any of these is `E-META-UNKNOWN-KEY`.
+const SCENE_KEYS: &[&str] = &[
+    "id",
+    "character",
+    "season",
+    "episode",
+    "episodeId",
+    "pov",
+    "after",
+];
 
 /// Frontmatter keys that are valid ONLY in a component file (dsl §13): the
 /// component's own name (`component:`) and its parameter signature (`params:`).
@@ -169,7 +202,19 @@ const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params"];
 /// The predicate is the same one the unknown-key loop uses below, minus the
 /// component-only and plugin-owned arms:
 /// [`lute_manifest::project::DEFAULTABLE_KEYS`] holds neither.
+///
+/// dsl 0.15.0 D-D: `id:` is per-document unique — it is deliberately NOT in
+/// `DEFAULTABLE_KEYS`, so it can never reach this predicate at runtime, but
+/// filter it explicitly so a hand-built `MetaDefaults` cannot silently smuggle
+/// it either. `meta:` is legal on Scene AND Quest — both artifact meta kinds
+/// carry it (§3).
 pub fn default_key_legal_on(key: &str, kind: MetaKind) -> bool {
+    if key == "id" {
+        return false;
+    }
+    if key == "meta" {
+        return matches!(kind, MetaKind::Scene | MetaKind::Quest);
+    }
     UNIVERSAL_KEYS.contains(&key)
         || (key == "kind" && matches!(kind, MetaKind::Scene | MetaKind::Quest))
         || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
@@ -195,28 +240,24 @@ fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> S
                 not a frontmatter key (dsl §4.1)"
             .to_string();
     }
+    let is_root = matches!(kind, MetaKind::Scene | MetaKind::Quest);
+    let scene_keys: &[&str] = if kind == MetaKind::Scene {
+        SCENE_KEYS
+    } else {
+        &[]
+    };
+    let component_keys: &[&str] = if component_key_allowed {
+        COMPONENT_ONLY_KEYS
+    } else {
+        &[]
+    };
+    let root_extras: &[&str] = if is_root { &["kind", "meta"] } else { &[] };
     let candidates = UNIVERSAL_KEYS
         .iter()
         .copied()
-        .chain(
-            matches!(kind, MetaKind::Scene | MetaKind::Quest)
-                .then_some("kind")
-                .into_iter(),
-        )
-        .chain(
-            (kind == MetaKind::Scene)
-                .then_some(SCENE_KEYS)
-                .unwrap_or(&[])
-                .iter()
-                .copied(),
-        )
-        .chain(
-            component_key_allowed
-                .then_some(COMPONENT_ONLY_KEYS)
-                .unwrap_or(&[])
-                .iter()
-                .copied(),
-        );
+        .chain(root_extras.iter().copied())
+        .chain(scene_keys.iter().copied())
+        .chain(component_keys.iter().copied());
     match lute_manifest::suggest::nearest(key, candidates, 2) {
         Some(sugg) => format!(" — did you mean `{sugg}`?"),
         None => String::new(),
@@ -306,7 +347,10 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
             )],
         ),
         Some(v) => {
-            let kind_str = v.as_str().map(str::to_string).unwrap_or_else(|| format!("{v:?}"));
+            let kind_str = v
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("{v:?}"));
             match kind_str.as_str() {
                 "scene" => (Some(DocKind::Scene), Vec::new()),
                 "quest" => (Some(DocKind::Quest), Vec::new()),
@@ -375,7 +419,166 @@ pub fn canonical_episode_key(
     episode: i64,
     episode_id: Option<&str>,
 ) -> String {
-    format!("{character}.{}", canonical_episode_id(season, episode, episode_id))
+    format!(
+        "{character}.{}",
+        canonical_episode_id(season, episode, episode_id)
+    )
+}
+
+/// dsl 0.15.0 §2: the canonical scene identity key for a parsed frontmatter.
+/// Authored `id:` wins entire — its lift already validates the value against
+/// the `[A-Za-z0-9_.-]+` charset, so a `Some` here is the exact string the
+/// author wrote. Otherwise the derived legacy join
+/// `{character}.{episodeId}` via [`canonical_episode_key`] is reconstructed —
+/// requires all of `character`+`season`+`episode` (with `episodeId` optional,
+/// defaulting to `s{season:02}ep{episode:02}` per [`canonical_episode_id`]).
+/// `None` when neither branch yields a key (a doc still missing the legacy
+/// triad and authoring no `id:` — a `E-META-MISSING` case; this project-wide
+/// helper must never fabricate `.s00ep00` for it).
+///
+/// One shared resolution point: `lute-compile`'s prefix/`prereqEdges`,
+/// `connectivity::scene_key_set`, `project.index.json`'s `document_key`, and
+/// `lute play`'s canonical-key lookup all route through this — so authored
+/// and derived keys land byte-for-byte identical downstream.
+pub fn canonical_scene_key(meta: &TypedMeta) -> Option<String> {
+    if let Some(id) = meta.id.as_deref() {
+        return Some(id.to_string());
+    }
+    let character = meta.character.as_deref()?;
+    if character.is_empty() {
+        return None;
+    }
+    let season = meta.season?;
+    let episode = meta.episode?;
+    Some(canonical_episode_key(
+        character,
+        season,
+        episode,
+        meta.episode_id.as_deref(),
+    ))
+}
+
+/// dsl 0.15.0 §2: the authored `id:` charset gate — non-empty and matching
+/// `[A-Za-z0-9_.-]+`. The set is a superset of every string
+/// [`canonical_episode_id`]'s derived fallback can produce (`.` admits
+/// namespacing like `anseo.s01ep01`), so a document migrated from the
+/// derived join keeps the same canonical key when it moves to authored `id:`.
+fn is_valid_scene_id(raw: &str) -> bool {
+    !raw.is_empty()
+        && raw
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+}
+
+/// dsl 0.15.0 §3: lift one authored `meta:` YAML value into the JSON-ready
+/// `meta_block` on `TypedMeta`. The value MUST be a mapping with string keys
+/// whose values are either scalars (string/int/float/bool) or FLAT sequences
+/// of scalars — anything else (nested mapping, mixed list, non-string key,
+/// non-mapping top-level) stays out of the block and draws one `E-META-VALUE`
+/// anchored at the offending inner key (or at `meta:` itself for the
+/// non-mapping case).
+///
+/// Never panics; a malformed entry is simply skipped so a partly-valid block
+/// still contributes its clean keys downstream.
+fn lift_meta_block(
+    meta: &Meta,
+    value: &serde_yaml::Value,
+    into: &mut BTreeMap<String, serde_json::Value>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let map = match value {
+        serde_yaml::Value::Mapping(m) => m,
+        serde_yaml::Value::Null => return,
+        _ => {
+            diags.push(Diagnostic {
+                code: "E-META-VALUE".to_string(),
+                severity: Severity::Error,
+                message: "`meta:` must be a YAML mapping of descriptive keys; each value \
+                          is a scalar (string/int/float/bool) or a flat list of scalars \
+                          (dsl 0.15.0 §3)"
+                    .to_string(),
+                span: meta_key_span(meta, "meta"),
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+            return;
+        }
+    };
+    for (k, v) in map {
+        let Some(key) = k.as_str() else {
+            diags.push(Diagnostic {
+                code: "E-META-VALUE".to_string(),
+                severity: Severity::Error,
+                message: "`meta:` mapping keys must be strings (dsl 0.15.0 §3)".to_string(),
+                span: meta_key_span(meta, "meta"),
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+            continue;
+        };
+        match scalar_or_flat_seq_to_json(v) {
+            Some(json) => {
+                into.insert(key.to_string(), json);
+            }
+            None => diags.push(Diagnostic {
+                code: "E-META-VALUE".to_string(),
+                severity: Severity::Error,
+                message: format!(
+                    "`meta.{key}` must be a scalar (string/int/float/bool) or a flat list \
+                     of scalars; nested mappings and non-scalar list entries are not allowed \
+                     (dsl 0.15.0 §3)"
+                ),
+                span: meta_key_span(meta, key),
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            }),
+        }
+    }
+}
+
+/// dsl 0.15.0 §3: convert a `meta:` value to `serde_json::Value` if and only
+/// if it is a scalar or a flat sequence of scalars. `None` for a nested
+/// mapping, a sequence containing a non-scalar, a `!tag`, or a mapping with
+/// non-string keys. `null` is a scalar (it round-trips to JSON `null`).
+fn scalar_or_flat_seq_to_json(value: &serde_yaml::Value) -> Option<serde_json::Value> {
+    fn scalar_to_json(value: &serde_yaml::Value) -> Option<serde_json::Value> {
+        match value {
+            serde_yaml::Value::Null => Some(serde_json::Value::Null),
+            serde_yaml::Value::Bool(b) => Some(serde_json::Value::Bool(*b)),
+            serde_yaml::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Some(serde_json::Value::Number(i.into()))
+                } else if let Some(u) = n.as_u64() {
+                    Some(serde_json::Value::Number(u.into()))
+                } else if let Some(f) = n.as_f64() {
+                    serde_json::Number::from_f64(f).map(serde_json::Value::Number)
+                } else {
+                    None
+                }
+            }
+            serde_yaml::Value::String(s) => Some(serde_json::Value::String(s.clone())),
+            _ => None,
+        }
+    }
+    match value {
+        serde_yaml::Value::Sequence(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                out.push(scalar_to_json(item)?);
+            }
+            Some(serde_json::Value::Array(out))
+        }
+        other => scalar_to_json(other),
+    }
 }
 
 /// Parse the peeled YAML frontmatter (dsl §6.1) into typed form plus the inline
@@ -493,6 +696,18 @@ pub fn parse_meta_kind_with_defaults(
         }
     };
 
+    // dsl 0.15.0 §4 (D-C): `W-META-LEGACY` reads the AUTHORED frontmatter,
+    // never the defaults-merged view — a manifest-inherited legacy key is not
+    // the document author's to move. Snapshot the authored `id:` presence and
+    // authored legacy keys BEFORE the defaults overlay below; the required-
+    // and unknown-key checks continue to run over the merged map (0.10.0 §6.2).
+    let authored_has_id = map.contains_key(yaml_key("id"));
+    let authored_legacy: Vec<&'static str> = ["character", "season", "episode", "episodeId"]
+        .iter()
+        .copied()
+        .filter(|k| map.contains_key(yaml_key(k)))
+        .collect();
+
     // 0.10.0 §6.2/§6.3: overlay the governing manifest's `defaults:`, filtered
     // to keys legal on THIS kind. Borrowed when there is nothing to overlay,
     // which is every project written before 0.10.0 — no allocation on the
@@ -518,16 +733,21 @@ pub fn parse_meta_kind_with_defaults(
 
     let mut typed = TypedMeta::default();
 
-    // Required-key check (dsl §6.1); only scenes carry required core keys.
-    // Schema docs imported via `uses:` (§9.2) are not scenes.
-    if kind == MetaKind::Scene {
+    // Required-key check (dsl §6.1). Only scenes carry the legacy required
+    // core keys; Schema/Component/Quest do not. dsl 0.15.0 §4: authored (or
+    // defaults-merged) `id:` IS the canonical scene key — the required-key
+    // rule no longer fires on a document that supplies one.
+    if kind == MetaKind::Scene && !map.contains_key(yaml_key("id")) {
         for missing in REQUIRED_KEYS
             .iter()
             .filter(|k| !map.contains_key(yaml_key(k)))
         {
             diags.push(err(
                 "E-META-MISSING",
-                format!("required meta key `{missing}` is missing"),
+                format!(
+                    "required meta key `{missing}` is missing (authored `id:` also \
+                     satisfies scene identity, dsl 0.15.0 §2/§4)"
+                ),
             ));
         }
     }
@@ -550,6 +770,7 @@ pub fn parse_meta_kind_with_defaults(
         let core_key = UNIVERSAL_KEYS.contains(&key)
             || (key == "kind" && matches!(kind, MetaKind::Scene | MetaKind::Quest))
             || (kind == MetaKind::Scene && SCENE_KEYS.contains(&key))
+            || (matches!(kind, MetaKind::Scene | MetaKind::Quest) && key == "meta")
             || (component_key_allowed && COMPONENT_ONLY_KEYS.contains(&key));
         if core_key {
             continue;
@@ -590,9 +811,64 @@ pub fn parse_meta_kind_with_defaults(
     typed.character = get_str(map, "character");
     typed.season = get_i64(map, "season");
     typed.episode = get_i64(map, "episode");
+    typed.episode_id = get_str(map, "episodeId");
     typed.pov = get_str(map, "pov");
     typed.lute_version = get_str(map, "luteVersion");
     typed.after = get_str(map, "after");
+
+    // dsl 0.15.0 §2: authored canonical scene key. Non-empty and matching
+    // `[A-Za-z0-9_.-]+` — anything else is `E-META-ID` and the value stays
+    // unlifted (a rejected id must never fall through as a valid canonical
+    // key). Scene-only; a `Quest`/`Schema`/`Component` id: was already
+    // rejected as `E-META-UNKNOWN-KEY` above.
+    if let Some(raw) = get_str(map, "id") {
+        if is_valid_scene_id(&raw) {
+            typed.id = Some(raw);
+        } else {
+            diags.push(err_at(
+                "E-META-ID",
+                format!(
+                    "scene `id:` `{raw}` is not a valid canonical scene key; the value must \
+                     be non-empty and match `[A-Za-z0-9_.-]+` (dsl 0.15.0 §2)"
+                ),
+                meta_key_span(meta, "id"),
+            ));
+        }
+    }
+
+    // dsl 0.15.0 §3: authored `meta:` descriptive block. Legal on Scene and
+    // Quest roots (both artifact meta kinds carry it); on Schema/Component
+    // documents the top-level unknown-key loop above already rejected it, so
+    // the lift silently drops it there.
+    if matches!(kind, MetaKind::Scene | MetaKind::Quest) {
+        if let Some(meta_value) = map.get(yaml_key("meta")) {
+            lift_meta_block(meta, meta_value, &mut typed.meta_block, &mut diags);
+        }
+    }
+
+    // dsl 0.15.0 §4/D-C: per-key `W-META-LEGACY` for each authored legacy
+    // identity key coexisting with an authored `id:`. Reads the AUTHORED
+    // snapshot from BEFORE the defaults merge — a manifest-inherited legacy
+    // key on an `id:`-carrying document is silent.
+    if authored_has_id {
+        for key in &authored_legacy {
+            diags.push(Diagnostic {
+                code: "W-META-LEGACY".to_string(),
+                severity: Severity::Warning,
+                message: format!(
+                    "`{key}` no longer carries scene identity (superseded by `id:`); move it \
+                     under `meta:` to keep it searchable (dsl 0.15.0 §4)"
+                ),
+                span: meta_key_span(meta, key),
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+        }
+    }
+
     typed.profile = get_str(map, "profile");
     typed.uses = get_ref_list(map, "uses");
     typed.extends = get_ref_list(map, "extends");
@@ -609,19 +885,24 @@ pub fn parse_meta_kind_with_defaults(
     // (last-write-wins; not diagnosed here — see `TypedMeta::domains`'s doc
     // comment).
     let project_enums = lute_manifest::entities::parse_enums(
-        map.get(yaml_key("enums")).unwrap_or(&serde_yaml::Value::Null),
+        map.get(yaml_key("enums"))
+            .unwrap_or(&serde_yaml::Value::Null),
     );
     typed.domains = project_enums.clone();
     typed.rel_kinds = lute_manifest::relations::parse_entity_kinds(
-        map.get(yaml_key("entities")).unwrap_or(&serde_yaml::Value::Null),
+        map.get(yaml_key("entities"))
+            .unwrap_or(&serde_yaml::Value::Null),
     );
     typed.rel_relations = lute_manifest::relations::parse_relations(
-        map.get(yaml_key("relations")).unwrap_or(&serde_yaml::Value::Null),
+        map.get(yaml_key("relations"))
+            .unwrap_or(&serde_yaml::Value::Null),
     );
     // Domain projection for the 0.2.2 attr layer (entities win over enums, as before).
     typed
         .domains
-        .extend(lute_manifest::relations::kinds_to_domains(&typed.rel_kinds.kinds));
+        .extend(lute_manifest::relations::kinds_to_domains(
+            &typed.rel_kinds.kinds,
+        ));
 
     // `facts:`/`rules:` (dsl 0.3.0 §4/§7.1, T5): each entry is a QUOTED
     // STRING (§4 Quoting — an unquoted `head :- body` misparses as a YAML
@@ -1417,6 +1698,170 @@ mod tests {
         parse_meta(&meta, &CapabilitySnapshot::default())
     }
 
+    // ── 0.15.0 §2/§3/§4: authored scene `id:`, `meta:` block, legacy demotion.
+
+    #[test]
+    fn authored_id_relieves_required_triad() {
+        let (m, diags) = parse_meta_str("id: anseo.s01ep01\n");
+        assert!(
+            !diags.iter().any(|d| d.code == "E-META-MISSING"),
+            "authored `id:` must satisfy the required-key rule (§4): {diags:?}"
+        );
+        assert_eq!(m.id.as_deref(), Some("anseo.s01ep01"));
+        assert_eq!(canonical_scene_key(&m).as_deref(), Some("anseo.s01ep01"));
+    }
+
+    #[test]
+    fn no_id_keeps_required_triad() {
+        let (_m, diags) = parse_meta_str("season: 1\nepisode: 2\n");
+        assert!(
+            diags.iter().any(|d| d.code == "E-META-MISSING"),
+            "without `id:` the legacy required-key rule still fires (§4): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn malformed_id_is_e_meta_id() {
+        let (_m, diags) = parse_meta_str("id: \"has space\"\n");
+        assert!(
+            diags.iter().any(|d| d.code == "E-META-ID"),
+            "an `id:` outside `[A-Za-z0-9_.-]+` must draw E-META-ID (§2): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn empty_id_is_e_meta_id() {
+        // §2: non-empty is part of the charset gate.
+        let (m, diags) = parse_meta_str("id: \"\"\n");
+        assert!(
+            diags.iter().any(|d| d.code == "E-META-ID"),
+            "an empty `id:` must draw E-META-ID (§2): {diags:?}"
+        );
+        assert!(m.id.is_none(), "a rejected `id:` value is not lifted (§2)");
+    }
+
+    #[test]
+    fn meta_block_lifts_scalars_and_lists() {
+        let (m, diags) =
+            parse_meta_str("id: x\nmeta:\n  arc: main\n  season: 1\n  tags: [harbor, night]\n");
+        assert!(
+            diags.is_empty(),
+            "clean scalars/lists must not diagnose: {diags:?}"
+        );
+        assert_eq!(m.meta_block.get("arc"), Some(&serde_json::json!("main")));
+        assert_eq!(m.meta_block.get("season"), Some(&serde_json::json!(1)));
+        assert_eq!(
+            m.meta_block.get("tags"),
+            Some(&serde_json::json!(["harbor", "night"]))
+        );
+    }
+
+    #[test]
+    fn nested_meta_value_is_e_meta_value() {
+        let (_m, diags) = parse_meta_str("id: x\nmeta:\n  nested: { a: 1 }\n");
+        assert!(
+            diags.iter().any(|d| d.code == "E-META-VALUE"),
+            "a nested mapping under meta: must draw E-META-VALUE (§3): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn non_mapping_meta_is_e_meta_value() {
+        let (m, diags) = parse_meta_str("id: x\nmeta: not-a-mapping\n");
+        assert!(
+            diags.iter().any(|d| d.code == "E-META-VALUE"),
+            "a non-mapping `meta:` must draw one E-META-VALUE (§3): {diags:?}"
+        );
+        assert!(m.meta_block.is_empty());
+    }
+
+    #[test]
+    fn authored_legacy_beside_id_warns_per_key() {
+        let (_m, diags) = parse_meta_str("id: x\ncharacter: bianca\nseason: 1\nepisode: 1\n");
+        let n = diags.iter().filter(|d| d.code == "W-META-LEGACY").count();
+        assert_eq!(
+            n, 3,
+            "one W-META-LEGACY per authored legacy key (§4): {diags:?}"
+        );
+        assert!(diags
+            .iter()
+            .all(|d| d.code != "W-META-LEGACY" || d.severity == Severity::Warning));
+    }
+
+    #[test]
+    fn authored_episode_id_beside_id_warns_too() {
+        let (_m, diags) = parse_meta_str("id: x\nepisodeId: ep03\n");
+        let n = diags.iter().filter(|d| d.code == "W-META-LEGACY").count();
+        assert_eq!(
+            n, 1,
+            "authored `episodeId:` alongside `id:` warns (§2/§4): {diags:?}"
+        );
+    }
+
+    #[test]
+    fn defaults_inherited_legacy_beside_id_is_silent() {
+        // §4/D-C: the pass reads the AUTHORED map. A manifest-inherited
+        // `character:`/`season:`/`episode:` on an `id:`-carrying document
+        // does not draw W-META-LEGACY (the document author wrote nothing to
+        // move); required-key/unknown-key enforcement still runs over the
+        // merged view (unchanged from 0.10.0 §6.2).
+        let defaults: lute_manifest::project::MetaDefaults = [
+            (
+                "character".to_string(),
+                serde_yaml::Value::String("bianca".into()),
+            ),
+            ("season".to_string(), serde_yaml::Value::Number(1.into())),
+            ("episode".to_string(), serde_yaml::Value::Number(2.into())),
+        ]
+        .into_iter()
+        .collect();
+        let yaml = "id: x\n";
+        let meta = Meta {
+            raw_yaml: yaml.to_string(),
+            span: lute_core_span::Span {
+                byte_start: 0,
+                byte_end: yaml.len(),
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            },
+        };
+        let (_m, diags) = parse_meta_kind_with_defaults(
+            &meta,
+            &CapabilitySnapshot::default(),
+            MetaKind::Scene,
+            &defaults,
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == "W-META-LEGACY"),
+            "defaults-inherited legacy keys must be silent (§4 D-C): {diags:?}"
+        );
+        assert!(
+            !diags.iter().any(|d| d.code == "E-META-MISSING"),
+            "authored `id:` satisfies the required-key rule via the merged map: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn derived_fallback_unchanged() {
+        let (m, diags) = parse_meta_str("character: x\nseason: 1\nepisode: 2\n");
+        assert!(
+            diags.is_empty(),
+            "clean legacy scene must not diagnose: {diags:?}"
+        );
+        assert_eq!(canonical_scene_key(&m).as_deref(), Some("x.s01ep02"));
+    }
+
+    #[test]
+    fn meta_key_is_legal_on_a_quest() {
+        let (m, diags) = parse_kind_str("kind: quest\nmeta:\n  arc: main\n", MetaKind::Quest);
+        assert!(
+            !diags.iter().any(|d| d.code == "E-META-UNKNOWN-KEY"),
+            "`meta:` is legal on quest roots too (§3): {diags:?}"
+        );
+        assert_eq!(m.meta_block.get("arc"), Some(&serde_json::json!("main")));
+    }
+
     /// 0.10.0 §12.4: `{ type: X }` is a synonym for `X`, for every spelling the
     /// shared `Type` deserializer admits — the same long form `state:`, `defs:`
     /// and a domain declaration already use.
@@ -1661,10 +2106,8 @@ mod tests {
         snap.frontmatter
             .insert("questTier".into(), Type::Enum(vec!["a".into(), "b".into()]));
         snap.frontmatter.insert("difficulty".into(), Type::Number);
-        snap.frontmatter.insert(
-            "tags".into(),
-            Type::List(Box::new(crate::meta::Type::Str)),
-        );
+        snap.frontmatter
+            .insert("tags".into(), Type::List(Box::new(crate::meta::Type::Str)));
         snap
     }
 
@@ -1726,9 +2169,8 @@ mod tests {
 
     #[test]
     fn enum_and_list_frontmatter_violations_report_the_declared_type() {
-        let diags = parse_with_snapshot(&format!(
-            "{SCENE_HEAD}questTier: zzz\ntags: [rhythm, 4]\n"
-        ));
+        let diags =
+            parse_with_snapshot(&format!("{SCENE_HEAD}questTier: zzz\ntags: [rhythm, 4]\n"));
         let msgs: Vec<_> = diags
             .iter()
             .filter(|d| d.code == "E-FRONTMATTER-SCHEMA")

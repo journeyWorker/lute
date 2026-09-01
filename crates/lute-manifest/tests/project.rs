@@ -166,13 +166,17 @@ fn absent_identity_block_defaults_to_070_templates() {
 /// alone leaves `voiceKey` at its default.
 #[test]
 fn authored_identity_templates_resolve_per_key() {
-    let root = identity_project("authored", "identity:\n  lineId: \"{prefix}/{speaker}#{code}\"\n");
+    let root = identity_project(
+        "authored",
+        "identity:\n  lineId: \"{prefix}/{speaker}#{code}\"\n",
+    );
     let proj = load_project(&root).unwrap().unwrap();
     assert_eq!(proj.identity.line_id, "{prefix}/{speaker}#{code}");
     assert_eq!(proj.identity.voice_key, "{speaker}-{code}");
     assert!(proj.identity_diags.is_empty());
     assert_eq!(
-        proj.identity.render_line_id("npc_koyuki_ep05", "koyuki", "0010"),
+        proj.identity
+            .render_line_id("npc_koyuki_ep05", "koyuki", "0010"),
         "npc_koyuki_ep05/koyuki#0010"
     );
     fs::remove_dir_all(&root).ok();
@@ -243,7 +247,10 @@ fn identity_renderer_is_total() {
     );
     // An empty substitution is still a total render (an empty `code` is a
     // back-fill failure the caller already handled by skipping the line).
-    assert_eq!(render_identity_template("{speaker}-{code}", "p", "koyuki", ""), "koyuki-");
+    assert_eq!(
+        render_identity_template("{speaker}-{code}", "p", "koyuki", ""),
+        "koyuki-"
+    );
     assert_eq!(render_identity_template("", "p", "s", "c"), "");
     // No tokens at all -> the literal, unchanged.
     assert_eq!(render_identity_template("fixed", "p", "s", "c"), "fixed");
@@ -271,7 +278,10 @@ fn defaults_block_loads_the_closed_key_set() {
         proj.defaults.get("character").and_then(|v| v.as_str()),
         Some("anseo")
     );
-    assert_eq!(proj.defaults.get("season").and_then(|v| v.as_i64()), Some(1));
+    assert_eq!(
+        proj.defaults.get("season").and_then(|v| v.as_i64()),
+        Some(1)
+    );
 }
 
 /// A key outside the closed set is `E-DEFAULTS-KEY` at project load, with a
@@ -280,15 +290,32 @@ fn defaults_block_loads_the_closed_key_set() {
 /// a bad `identity:` template does not.
 #[test]
 fn defaults_unknown_key_is_e_defaults_key_with_a_suggestion() {
-    let dir = write_manifest("typo", "defaultProfile: core\ndefaults:\n  charater: anseo\n");
+    let dir = write_manifest(
+        "typo",
+        "defaultProfile: core\ndefaults:\n  charater: anseo\n",
+    );
     let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
     assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
     let d = &proj.defaults_diags[0];
     assert_eq!(d.code, "E-DEFAULTS-KEY");
-    assert!(d.message.contains("charater"), "names the offending key: {}", d.message);
-    assert!(d.message.contains("character"), "did-you-mean over the set: {}", d.message);
-    assert_eq!(proj.graph.default_profile, "core", "the project still resolves");
-    assert!(proj.defaults.get("charater").is_none(), "a rejected key is not applied");
+    assert!(
+        d.message.contains("charater"),
+        "names the offending key: {}",
+        d.message
+    );
+    assert!(
+        d.message.contains("character"),
+        "did-you-mean over the set: {}",
+        d.message
+    );
+    assert_eq!(
+        proj.graph.default_profile, "core",
+        "the project still resolves"
+    );
+    assert!(
+        proj.defaults.get("charater").is_none(),
+        "a rejected key is not applied"
+    );
 }
 
 /// `mode:` is a legal core frontmatter key that NOTHING reads — the analysis
@@ -297,14 +324,25 @@ fn defaults_unknown_key_is_e_defaults_key_with_a_suggestion() {
 /// documents at once, so D-P excludes it rather than shipping a no-op.
 #[test]
 fn defaults_rejects_inert_and_excluded_keys() {
-    for key in ["mode", "episodeId", "title", "after", "profile", "plugins", "state", "component"] {
+    for key in [
+        "mode",
+        "episodeId",
+        "title",
+        "after",
+        "profile",
+        "plugins",
+        "state",
+        "component",
+    ] {
         let dir = write_manifest(
             &format!("excl-{key}"),
             &format!("defaultProfile: core\ndefaults:\n  {key}: x\n"),
         );
         let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
         assert!(
-            proj.defaults_diags.iter().any(|d| d.code == "E-DEFAULTS-KEY"),
+            proj.defaults_diags
+                .iter()
+                .any(|d| d.code == "E-DEFAULTS-KEY"),
             "`{key}` is not defaultable (§6.1): {:?}",
             proj.defaults_diags
         );
@@ -316,13 +354,34 @@ fn defaults_rejects_inert_and_excluded_keys() {
 /// the only anchoring a spanless `ResolveDiag` can offer (D-Z).
 #[test]
 fn defaults_value_shape_is_checked_at_the_manifest() {
-    let dir = write_manifest("shape", "defaultProfile: core\ndefaults:\n  season: not-a-number\n  kind: sausage\n");
+    let dir = write_manifest(
+        "shape",
+        "defaultProfile: core\ndefaults:\n  season: not-a-number\n  kind: sausage\n",
+    );
     let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
-    let codes: Vec<&str> = proj.defaults_diags.iter().map(|d| d.code.as_str()).collect();
-    assert_eq!(codes, ["E-DEFAULTS-KEY", "E-DEFAULTS-KEY"], "{:?}", proj.defaults_diags);
-    assert!(proj.defaults_diags.iter().any(|d| d.message.contains("season")));
-    assert!(proj.defaults_diags.iter().any(|d| d.message.contains("kind")));
-    assert!(proj.defaults.get("season").is_none(), "an ill-shaped default is not applied");
+    let codes: Vec<&str> = proj
+        .defaults_diags
+        .iter()
+        .map(|d| d.code.as_str())
+        .collect();
+    assert_eq!(
+        codes,
+        ["E-DEFAULTS-KEY", "E-DEFAULTS-KEY"],
+        "{:?}",
+        proj.defaults_diags
+    );
+    assert!(proj
+        .defaults_diags
+        .iter()
+        .any(|d| d.message.contains("season")));
+    assert!(proj
+        .defaults_diags
+        .iter()
+        .any(|d| d.message.contains("kind")));
+    assert!(
+        proj.defaults.get("season").is_none(),
+        "an ill-shaped default is not applied"
+    );
 }
 
 /// Present-but-empty is PRESENT (§6.2). `uses: []` in the manifest is a real
@@ -332,7 +391,10 @@ fn defaults_empty_list_is_a_present_value() {
     let dir = write_manifest("empty", "defaultProfile: core\ndefaults:\n  uses: []\n");
     let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
     assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
-    assert!(proj.defaults.get("uses").is_some(), "`uses: []` is a present key");
+    assert!(
+        proj.defaults.get("uses").is_some(),
+        "`uses: []` is a present key"
+    );
 }
 
 /// D-Q, verified rather than assumed: `RawProject` has no
@@ -365,18 +427,34 @@ fn a_nested_roots_defaults_replaces_the_outer_roots_entirely() {
     )
     .unwrap();
 
-    let proj = lute_manifest::project::load_project(&inner).unwrap().unwrap();
+    let proj = lute_manifest::project::load_project(&inner)
+        .unwrap()
+        .unwrap();
     // REPLACES: exactly the nested root's key set, in full.
     assert_eq!(proj.defaults.keys().collect::<Vec<_>>(), vec!["pov"]);
     // A merge would carry these two along. Named individually so the failure
     // says which rule broke rather than only that a count moved.
-    assert!(proj.defaults.get("contentLang").is_none(), "no inheritance across roots (§6.5)");
-    assert!(proj.defaults.get("character").is_none(), "no inheritance across roots (§6.5)");
+    assert!(
+        proj.defaults.get("contentLang").is_none(),
+        "no inheritance across roots (§6.5)"
+    );
+    assert!(
+        proj.defaults.get("character").is_none(),
+        "no inheritance across roots (§6.5)"
+    );
 
     // And the outer root still resolves its own, unaffected by the nested one.
-    let up = lute_manifest::project::load_project(&outer).unwrap().unwrap();
-    assert_eq!(up.defaults.keys().collect::<Vec<_>>(), vec!["character", "contentLang"]);
-    assert!(up.defaults.get("pov").is_none(), "a nested root does not leak upward either");
+    let up = lute_manifest::project::load_project(&outer)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        up.defaults.keys().collect::<Vec<_>>(),
+        vec!["character", "contentLang"]
+    );
+    assert!(
+        up.defaults.get("pov").is_none(),
+        "a nested root does not leak upward either"
+    );
 }
 
 /// 0.10.0 §6.5: there is **no `extends:` between manifests.** `RawProject` has
@@ -385,7 +463,10 @@ fn a_nested_roots_defaults_replaces_the_outer_roots_entirely() {
 /// nothing: not the named file, not the parent root.
 #[test]
 fn a_manifest_level_extends_inherits_nothing() {
-    let outer = write_manifest("ext-outer", "defaultProfile: core\ndefaults:\n  character: outer\n");
+    let outer = write_manifest(
+        "ext-outer",
+        "defaultProfile: core\ndefaults:\n  character: outer\n",
+    );
     let inner = outer.join("inner");
     std::fs::create_dir_all(&inner).unwrap();
     std::fs::write(
@@ -394,9 +475,18 @@ fn a_manifest_level_extends_inherits_nothing() {
     )
     .unwrap();
 
-    let proj = lute_manifest::project::load_project(&inner).unwrap().unwrap();
-    assert!(proj.defaults.is_empty(), "`extends:` between manifests inherits nothing (§6.5)");
-    assert!(proj.defaults_diags.is_empty(), "and it is not an error either: {:?}", proj.defaults_diags);
+    let proj = lute_manifest::project::load_project(&inner)
+        .unwrap()
+        .unwrap();
+    assert!(
+        proj.defaults.is_empty(),
+        "`extends:` between manifests inherits nothing (§6.5)"
+    );
+    assert!(
+        proj.defaults_diags.is_empty(),
+        "and it is not an error either: {:?}",
+        proj.defaults_diags
+    );
 }
 
 /// D-Y/D-Z: a path written in `defaults:` resolves against the MANIFEST's
@@ -404,38 +494,121 @@ fn a_manifest_level_extends_inherits_nothing() {
 /// resolvers never have to know that.
 #[test]
 fn defaults_paths_canonicalise_against_the_manifest() {
-    let dir = write_manifest("paths", "defaultProfile: core\ndefaults:\n  uses: [world.schema.yaml]\n");
-    std::fs::write(dir.join("world.schema.yaml"), "state:\n  run.k: { type: number, default: 0 }\n")
-        .unwrap();
+    let dir = write_manifest(
+        "paths",
+        "defaultProfile: core\ndefaults:\n  uses: [world.schema.yaml]\n",
+    );
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  run.k: { type: number, default: 0 }\n",
+    )
+    .unwrap();
     let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
     assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
     let resolved = proj.defaults.get("uses").unwrap().as_sequence().unwrap();
     let got = std::path::PathBuf::from(resolved[0].as_str().unwrap());
-    assert!(got.is_absolute(), "a defaulted path is pre-resolved (D-Z): {got:?}");
-    assert_eq!(got, std::fs::canonicalize(dir.join("world.schema.yaml")).unwrap());
+    assert!(
+        got.is_absolute(),
+        "a defaulted path is pre-resolved (D-Z): {got:?}"
+    );
+    assert_eq!(
+        got,
+        std::fs::canonicalize(dir.join("world.schema.yaml")).unwrap()
+    );
 }
 
 /// D-Z: canonicalisation is I/O and can fail. A bad path fails ONCE, at the
 /// manifest, naming the `defaults:` key — never once per inheriting document.
 #[test]
 fn defaults_bad_path_fails_at_the_manifest() {
-    let dir = write_manifest("badpath", "defaultProfile: core\ndefaults:\n  uses: [nope.schema.yaml]\n");
+    let dir = write_manifest(
+        "badpath",
+        "defaultProfile: core\ndefaults:\n  uses: [nope.schema.yaml]\n",
+    );
     let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
     assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
     assert_eq!(proj.defaults_diags[0].code, "E-DEFAULTS-KEY");
     assert!(proj.defaults_diags[0].message.contains("nope.schema.yaml"));
     assert!(proj.defaults_diags[0].message.contains("uses"));
-    assert!(proj.defaults.get("uses").is_none(), "an unresolvable default is not applied");
+    assert!(
+        proj.defaults.get("uses").is_none(),
+        "an unresolvable default is not applied"
+    );
 }
 
 /// A single string, not a sequence, is the other authored `uses:` shape and
 /// canonicalises the same way.
 #[test]
 fn defaults_scalar_path_canonicalises_too() {
-    let dir = write_manifest("scalarpath", "defaultProfile: core\ndefaults:\n  extends: base.schema.yaml\n");
+    let dir = write_manifest(
+        "scalarpath",
+        "defaultProfile: core\ndefaults:\n  extends: base.schema.yaml\n",
+    );
     std::fs::write(dir.join("base.schema.yaml"), "state: {}\n").unwrap();
     let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
     assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
     let got = proj.defaults.get("extends").unwrap().as_str().unwrap();
     assert!(std::path::Path::new(got).is_absolute(), "{got}");
+}
+
+// ── 0.15.0 §3/§8 D-D: `meta:` joins `DEFAULTABLE_KEYS`; `id:` deliberately does not.
+
+/// A `defaults.meta:` mapping loads and its value is carried verbatim.
+#[test]
+fn defaults_meta_mapping_loads() {
+    let dir = write_manifest(
+        "meta-ok",
+        "defaultProfile: core\ndefaults:\n  meta:\n    arc: main\n    tags: [harbor, night]\n",
+    );
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert!(proj.defaults_diags.is_empty(), "{:?}", proj.defaults_diags);
+    let value = proj
+        .defaults
+        .get("meta")
+        .expect("`meta:` default is applied");
+    let map = value.as_mapping().expect("stored as a YAML mapping");
+    assert_eq!(
+        map.get(serde_yaml::Value::String("arc".into()))
+            .and_then(|v| v.as_str()),
+        Some("main")
+    );
+}
+
+/// A non-mapping `defaults.meta:` value is `E-DEFAULTS-KEY` (§3).
+#[test]
+fn defaults_meta_non_mapping_is_e_defaults_key() {
+    let dir = write_manifest(
+        "meta-scalar",
+        "defaultProfile: core\ndefaults:\n  meta: not-a-mapping\n",
+    );
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert_eq!(proj.defaults_diags.len(), 1, "{:?}", proj.defaults_diags);
+    assert_eq!(proj.defaults_diags[0].code, "E-DEFAULTS-KEY");
+    assert!(
+        proj.defaults_diags[0].message.contains("meta"),
+        "names the offending key: {}",
+        proj.defaults_diags[0].message
+    );
+    assert!(
+        proj.defaults.get("meta").is_none(),
+        "an ill-shaped default is not applied"
+    );
+}
+
+/// D-D: `id:` is per-document unique — outside the closed defaultable set.
+#[test]
+fn defaults_id_is_e_defaults_key() {
+    let dir = write_manifest("id-default", "defaultProfile: core\ndefaults:\n  id: x\n");
+    let proj = lute_manifest::project::load_project(&dir).unwrap().unwrap();
+    assert!(
+        proj.defaults_diags
+            .iter()
+            .any(|d| d.code == "E-DEFAULTS-KEY"),
+        "`id:` is not defaultable (D-D): {:?}",
+        proj.defaults_diags
+    );
+    assert!(
+        proj.defaults.get("id").is_none(),
+        "a rejected default is not applied"
+    );
 }
