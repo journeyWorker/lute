@@ -153,7 +153,8 @@ Reachability propagates through the reference: a required subquest objective
 whose child is `E-QUEST-UNREACHABLE` reports `E-OBJECTIVE-UNSATISFIABLE`
 against the objective's `quest=` span. The full engine treatment (both
 cascade directions, activation, tree reconstruction) is in
-[Quest lifecycle](/runtime/quest-lifecycle/); worked example:
+[quest-lifecycle.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/quest-lifecycle.md);
+worked example:
 [`docs/examples/quest-subquest.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-subquest.lute).
 
 ### Lifecycle reactions with `<on>`
