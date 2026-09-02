@@ -43,7 +43,7 @@
 //! that survives into the residual list must be permitted.
 
 use lute_core_span::{Diagnostic, Layer, Severity};
-use lute_syntax::ast::{Arm, Attr, AttrValue, Branch, Choice, Hub, Match};
+use lute_syntax::ast::{Arm, Attr, AttrValue, Branch, Choice, Hub, Match, Reward};
 
 use crate::content_line::E_UNKNOWN_ATTR;
 
@@ -56,6 +56,12 @@ const MATCH_ATTRS: &[&str] = &["on"];
 const WHEN_ATTRS: &[&str] = &["is", "test"];
 const OTHERWISE_ATTRS: &[&str] = &[];
 const HUB_ATTRS: &[&str] = &["id"];
+/// dsl 0.16.0 §2: `<reward>` closes over the five wire-contract keys.
+/// Every OTHER attribute is `E-UNKNOWN-ATTR` at its own span; a malformed
+/// `amount=` survives here as a residual so [`check_reward_attrs`] can
+/// anchor `E-REWARD-ATTR` at the value span. `id=` is deliberately absent
+/// — a reward is a leaf, not an addressable construct.
+pub(crate) const REWARD_ATTRS: &[&str] = &["kind", "target", "amount", "when", "on"];
 
 /// D-L: the two `<choice>` positions have DIFFERENT permitted sets. `once` and
 /// `exit` attach to `HubChoice` in `0.1.0 §7.3`'s grammar and to nothing else,
@@ -148,6 +154,10 @@ pub(crate) fn check_hub_attrs(h: &Hub, diags: &mut Vec<Diagnostic>) {
 
 pub(crate) fn check_match_attrs(m: &Match, diags: &mut Vec<Diagnostic>) {
     close(&m.attrs, "match", MATCH_ATTRS, &[], None, diags);
+}
+
+pub(crate) fn check_reward_attrs(r: &Reward, diags: &mut Vec<Diagnostic>) {
+    close(&r.attrs, "reward", REWARD_ATTRS, &[], None, diags);
 }
 
 pub(crate) fn check_arm_attrs(a: &Arm, diags: &mut Vec<Diagnostic>) {

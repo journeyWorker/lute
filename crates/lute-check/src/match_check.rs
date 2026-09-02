@@ -65,9 +65,10 @@ use cel_parser::ast::Expr;
 use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{
-    Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node, Quest,
+    Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node, Quest, Reward,
 };
 
 use crate::cel_paths::{
@@ -103,6 +104,22 @@ pub const E_HUB_NO_EXIT: &str = "E-HUB-NO-EXIT";
 /// arm (D4), and the foreign literal contributes nothing to coverage/
 /// subsumption downstream.
 pub const E_WHEN_LITERAL_DOMAIN: &str = "E-WHEN-LITERAL-DOMAIN";
+
+/// `E-REWARD-ATTR` (dsl 0.16.0 §2/§6): a `<reward>` element's shape is
+/// malformed — missing/empty `kind`, an `amount=` value that is not a
+/// signed integer or an inclusive `N..M` range with `N <= M`, an `on=`
+/// value other than `"failed"`, or `on=` authored on an objective-level
+/// reward (only quest-level rewards fire on failure). Anchored at the
+/// offending attribute value (or the reward element for missing `kind`).
+/// Unknown attribute keys are `E-UNKNOWN-ATTR` via the D-J closure.
+pub const E_REWARD_ATTR: &str = "E-REWARD-ATTR";
+
+/// `E-REWARD-KIND` (dsl 0.16.0 §4/§6): a `<reward kind="…">` value is not
+/// a declared reward kind in the resolved capability snapshot's
+/// `rewardKinds` vocabulary. Silently accepted when the snapshot carries
+/// NO reward kinds (shape-only mode — every scenario compiles clean until
+/// a plugin publishes a vocabulary).
+pub const E_REWARD_KIND: &str = "E-REWARD-KIND";
 
 /// `E-OBJECTIVE-QUEST-DONE`: an `<objective>` carries BOTH `quest=` (a
 /// subquest reference, subquest design 2026-08-31 §1) and a non-empty
@@ -795,6 +812,128 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
     }
 
     QuestRecord { decls, diags }
+}
+
+/// Reward shape (`E-REWARD-ATTR`) + vocabulary (`E-REWARD-KIND`) + D-J
+/// attribute closure (`E-UNKNOWN-ATTR`) checks for every `<reward/>` on
+/// this quest AND its objectives (dsl 0.16.0 §2, §4, §6). The vocabulary
+/// gate stays silent when `snapshot.reward_kinds` is empty — a plugin
+/// publishes the vocabulary in Task 4, and this call becomes the point of
+/// enforcement automatically. Anchored at the offending attribute so the
+/// author's editor lands on the fault, not the enclosing element.
+pub fn check_quest_rewards(quest: &Quest, snapshot: &CapabilitySnapshot) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for r in &quest.rewards {
+        check_one_reward(r, snapshot, RewardPos::Quest, &mut diags);
+    }
+    for node in &quest.body {
+        if let Node::Objective(o) = node {
+            for r in &o.rewards {
+                check_one_reward(r, snapshot, RewardPos::Objective, &mut diags);
+            }
+        }
+    }
+    diags
+}
+
+/// The two owner positions a `<reward/>` can occupy (dsl 0.16.0 §2 / D-D).
+/// A quest-level reward MAY carry `on="failed"`; an objective-level reward
+/// MAY NOT (an objective grants at first `done`, never at fail).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RewardPos {
+    Quest,
+    Objective,
+}
+
+fn check_one_reward(
+    r: &Reward,
+    snapshot: &CapabilitySnapshot,
+    pos: RewardPos,
+    diags: &mut Vec<Diagnostic>,
+) {
+    // Shape: `kind=` is required (dsl 0.16.0 §2). An empty value hits
+    // `E-REWARD-ATTR` at the value span (or the open-tag span when the
+    // attribute is missing — the parser stores the same span in both
+    // cases, matching how `<quest after=>` / `<objective quest=>` degrade
+    // an absent attr).
+    if r.kind.trim().is_empty() {
+        diags.push(diag(
+            E_REWARD_ATTR,
+            Severity::Error,
+            "`<reward>` requires a non-empty `kind` (dsl 0.16.0 §2)".to_string(),
+            r.kind_span,
+        ));
+    }
+    // A malformed `amount=` was preserved in `attrs` by the parser so the
+    // checker can anchor `E-REWARD-ATTR` at the value span exactly. `N > M`
+    // is one of the shapes `parse_reward_amount` rejects.
+    if r.amount.is_none() {
+        if let Some(a) = r.attrs.iter().find(|a| a.key == "amount") {
+            let raw = match &a.value {
+                AttrValue::Str(s) => s.as_str(),
+                _ => "",
+            };
+            diags.push(diag(
+                E_REWARD_ATTR,
+                Severity::Error,
+                format!(
+                    "`<reward amount=\"{raw}\">` is not a valid literal; use a signed integer or \
+                     an inclusive `N..M` range with `N <= M` (dsl 0.16.0 §2)"
+                ),
+                a.value_span,
+            ));
+        }
+    }
+    // `on=` enum: `"failed"` is the only legal value (dsl 0.16.0 §2), and
+    // ONLY on a quest-level reward — an objective reward fires at first
+    // `done`, never at fail. Both misuses share the E-REWARD-ATTR code
+    // because they are the same rule ("the on= surface has no meaning
+    // here"); the message names which half.
+    if let (Some(on), Some(on_span)) = (r.on.as_deref(), r.on_span) {
+        if matches!(pos, RewardPos::Objective) {
+            diags.push(diag(
+                E_REWARD_ATTR,
+                Severity::Error,
+                "`<reward on=…>` is legal only on a quest-level reward; an objective grants at \
+                 first `done` and never at fail (dsl 0.16.0 §2)"
+                    .to_string(),
+                on_span,
+            ));
+        } else if on != "failed" {
+            diags.push(diag(
+                E_REWARD_ATTR,
+                Severity::Error,
+                format!(
+                    "`<reward on=\"{on}\">` is not a legal trigger; `failed` is the only \
+                     accepted value (dsl 0.16.0 §2)"
+                ),
+                on_span,
+            ));
+        }
+    }
+    // Vocabulary (dsl 0.16.0 §4): only when a plugin has published one.
+    // Skips a shape-invalid empty kind — the E-REWARD-ATTR above already
+    // owns that (one code per fault, D-A).
+    if !snapshot.reward_kinds.is_empty()
+        && !r.kind.trim().is_empty()
+        && !snapshot.reward_kinds.contains_key(r.kind.trim())
+    {
+        diags.push(diag(
+            E_REWARD_KIND,
+            Severity::Error,
+            format!(
+                "`<reward kind=\"{}\">` names no declared reward kind; add it to a plugin's \
+                 `rewardKinds:` export (dsl 0.16.0 §4)",
+                r.kind
+            ),
+            r.kind_span,
+        ));
+    }
+    // D-J attribute closure (dsl 0.16.0 §2 tag row) — E-UNKNOWN-ATTR at
+    // each residual key's own span. A malformed `amount=` also survives in
+    // `attrs`, but `amount` is in REWARD_ATTRS so it is not reported here;
+    // its E-REWARD-ATTR emission above owns the diagnostic.
+    crate::logic_attrs::check_reward_attrs(r, diags);
 }
 
 /// The plain string value of the attr keyed `key`, if present and a string
@@ -2538,6 +2677,7 @@ mod tests {
             optional: false,
             attrs: Vec::new(),
             body: Vec::new(),
+            rewards: Vec::new(),
             span: span(),
         }
     }
@@ -2553,6 +2693,7 @@ mod tests {
             after_span: span(),
             attrs: Vec::new(),
             body,
+            rewards: Vec::new(),
             span: span(),
         }
     }
@@ -2641,6 +2782,7 @@ mod tests {
             optional: false,
             attrs: Vec::new(),
             body: Vec::new(),
+            rewards: Vec::new(),
             span: span(),
         }
     }

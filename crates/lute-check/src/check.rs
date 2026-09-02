@@ -90,7 +90,8 @@ use crate::set_op::resolve_type;
 use crate::timeline::{resolve_timeline, ResolvedTimeline};
 use crate::{
     check_branch, check_cel_slot, check_definite_assignment, check_hub, check_line_codes,
-    check_match, check_quest, check_quest_guard_defassign, check_set, DomainInfo,
+    check_match, check_quest, check_quest_guard_defassign, check_quest_rewards, check_set,
+    DomainInfo,
 };
 
 /// Diagnostic code for a CEL fragment that failed to parse (surfaced once here
@@ -518,6 +519,11 @@ pub fn fold_env(
             }
         }
         fold_diags.extend(record.diags);
+        // dsl 0.16.0 §2/§4/§6: reward shape/closure/vocabulary. Runs here
+        // (with `fold_diags`) so a shape/vocab fault surfaces alongside the
+        // rest of the quest fold — the Walker's `reward.when` Bool profile
+        // gate below owns only the CEL-side check.
+        fold_diags.extend(check_quest_rewards(quest, &input.snapshot));
     }
 
     // 4b. Expand every active directive's `state.declares[]` into concrete state
@@ -797,6 +803,20 @@ pub fn check(input: &CheckInput) -> CheckResult {
                     ));
                 }
                 walker.walk(&quest.body, &base_ctx);
+                // dsl 0.16.0 §2: quest-level `reward.when` slots share
+                // `<quest start|fail>`'s Bool profile treatment and run
+                // after the body walk to match the canonical walk order
+                // (`lute_syntax::walk::quest`).
+                for reward in &quest.rewards {
+                    if let Some(when) = &reward.when {
+                        walker.diags.extend(check_cel_slot(
+                            when,
+                            &arena,
+                            &base_ctx,
+                            Some(&ExpectedType::Bool),
+                        ));
+                    }
+                }
             }
         }
     }
@@ -852,6 +872,17 @@ pub fn check(input: &CheckInput) -> CheckResult {
                 }
                 if let Some(fail) = &q.fail {
                     ds.extend(check_quest_guard_defassign(fail, &env.state));
+                }
+                // dsl 0.16.0 §2: a quest-level `reward.when` is a
+                // quest-entry-shaped guard exactly like `start`/`fail` —
+                // gets its own fresh defassign check (`isSet(p) && …`
+                // intra-expression narrowing preserved, no dominance from
+                // the body which runs strictly BEFORE the fresh transition
+                // that grants the reward).
+                for reward in &q.rewards {
+                    if let Some(when) = &reward.when {
+                        ds.extend(check_quest_guard_defassign(when, &env.state));
+                    }
                 }
                 let (diags, _, _reads) = check_definite_assignment(&q.body, &env.state);
                 exhaustive_subject_spans.extend(crate::defassign::exhaustive_match_subject_spans(
@@ -1522,6 +1553,21 @@ impl Walker<'_> {
                     }
                     self.check_attr_refs(&o.attrs, ctx, None);
                     self.walk(&o.body, ctx);
+                    // dsl 0.16.0 §2: `reward.when` is a Bool CEL slot with
+                    // the SAME profile treatment `<objective when>` gets.
+                    // Runs AFTER body to match the walk-canonical order in
+                    // `lute_syntax::walk`, so StableId assignment there and
+                    // profile checking here agree.
+                    for reward in &o.rewards {
+                        if let Some(when) = &reward.when {
+                            self.diags.extend(check_cel_slot(
+                                when,
+                                self.arena,
+                                ctx,
+                                Some(&ExpectedType::Bool),
+                            ));
+                        }
+                    }
                 }
                 Node::On(o) => {
                     // ECA trigger (dsl 0.2.0 §4.1): the `event` name (a plain

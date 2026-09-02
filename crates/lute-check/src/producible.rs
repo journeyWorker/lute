@@ -1024,6 +1024,7 @@ mod tests {
             optional,
             attrs: Vec::new(),
             body: Vec::new(),
+            rewards: Vec::new(),
             span: dummy_span(),
         })
     }
@@ -1046,6 +1047,7 @@ mod tests {
                 after_span: dummy_span(),
                 attrs: Vec::new(),
                 body,
+                rewards: Vec::new(),
                 span: dummy_span(),
             }],
             span: dummy_span(),
@@ -1264,6 +1266,7 @@ mod tests {
                 after_span: dummy_span(),
                 attrs: Vec::new(),
                 body: Vec::new(),
+                rewards: Vec::new(),
                 span: dummy_span(),
             }],
             span: dummy_span(),

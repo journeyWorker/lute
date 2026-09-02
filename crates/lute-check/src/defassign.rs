@@ -501,6 +501,17 @@ fn walk_objective(
         apply_condition(cond, schema, &mut arm.available, diags, reads);
     }
     walk_nodes(&o.body, schema, &mut arm, diags, reads);
+    // dsl 0.16.0 §2: an objective `reward.when` is a slot-LOCAL guard —
+    // same intra-expression narrowing `done=`/`when=` get, discarded so it
+    // can never leak into the surviving set (a reward may or may not fire,
+    // like an `<on>` arm). Runs after the body to keep the walk order
+    // byte-identical to `lute_syntax::walk::objective`.
+    for r in &o.rewards {
+        if let Some(cond) = &r.when {
+            let mut fork = arm.available.clone();
+            apply_condition(cond, schema, &mut fork, diags, reads);
+        }
+    }
 }
 
 /// Definite-assignment for a `<choice label>`'s `{{path}}` interpolations (dsl

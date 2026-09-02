@@ -46,6 +46,16 @@ pub struct CapabilitySnapshot {
     /// (`E-PLUGIN-RESERVED-STAMP-ATTR`), so this map can never shadow the
     /// core stamp.
     pub stamp_attrs: BTreeMap<String, AttrDecl>,
+    /// Plugin-declared reward kinds (dsl 0.16.0 §4 `rewardKinds:`) folded
+    /// from every active plugin's `rewardKinds` export. Consumed by the
+    /// checker's `E-REWARD-KIND` closure; the empty map means "shape-only"
+    /// (no vocabulary declared). GUARDED in [`capability_version`] like
+    /// `events`/`stampAttrs`/`domains` so a snapshot with no declared
+    /// vocabulary hashes byte-identically to a pre-`rewardKinds` snapshot.
+    /// Task 4 introduces the loader and the full [`RewardKindDecl`]
+    /// contract; Task 2 lands the empty-by-default field so downstream
+    /// checker work can read it.
+    pub reward_kinds: BTreeMap<String, RewardKindDecl>,
 }
 
 /// An enum-style named vocabulary: an ordered member list, same shape as an
@@ -242,6 +252,20 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
             h.update(name.as_bytes());
             h.update(b"=");
             h.update(format!("{a:?}").as_bytes());
+            h.update(b";");
+        }
+    }
+    // GUARDED for the same reason as `events`/`stampAttrs`/`domains` above:
+    // a snapshot with no declared reward vocabulary hashes byte-identically
+    // to a pre-`rewardKinds` snapshot (dsl 0.16.0 §4). Once populated it
+    // folds in unconditionally, via `RewardKindDecl`'s whole `Debug` — a
+    // changed vocabulary IS a changed capability surface.
+    if !snap.reward_kinds.is_empty() {
+        h.update(b"\nrewardKinds\n");
+        for (name, k) in &snap.reward_kinds {
+            h.update(name.as_bytes());
+            h.update(b"=");
+            h.update(format!("{k:?}").as_bytes());
             h.update(b";");
         }
     }
@@ -549,5 +573,30 @@ mod tests {
             "e4d422238da1596ef546a76c06acac962e8763b0240c0ab0dd0276d25d74db76",
             "an empty `domains` map must not perturb the capability stamp"
         );
+    }
+
+    #[test]
+    fn reward_kinds_absent_keeps_capability_version_stable() {
+        // dsl 0.16.0 §4: a snapshot with no `rewardKinds` MUST hash to the
+        // pre-`rewardKinds` stamp so merely landing the field does not
+        // perturb the pinned capabilityVersion (Task 2 bootstrap).
+        assert_eq!(
+            capability_version(&CapabilitySnapshot::default()),
+            "e4d422238da1596ef546a76c06acac962e8763b0240c0ab0dd0276d25d74db76",
+            "an empty `reward_kinds` map must not perturb the capability stamp"
+        );
+    }
+
+    #[test]
+    fn declaring_a_reward_kind_changes_capability_version() {
+        let a = CapabilitySnapshot::default();
+        let mut b = CapabilitySnapshot::default();
+        b.reward_kinds.insert(
+            "SHARD".into(),
+            RewardKindDecl {
+                name: "SHARD".into(),
+            },
+        );
+        assert_ne!(capability_version(&a), capability_version(&b));
     }
 }

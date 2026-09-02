@@ -919,6 +919,7 @@ mod tests {
             after_span: span(id_line),
             attrs: Vec::new(),
             body: Vec::new(),
+            rewards: Vec::new(),
             span: span(id_line),
         }
     }
@@ -1340,6 +1341,7 @@ mod tests {
             optional,
             attrs: Vec::new(),
             body: Vec::new(),
+            rewards: Vec::new(),
             span: span(line),
         }
     }
