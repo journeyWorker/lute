@@ -710,6 +710,7 @@ mod tests {
             asset_kinds: vec![],
             events: vec![],
             stamp_attrs: vec![],
+            reward_kinds: vec![],
             lints: vec![],
         }
     }

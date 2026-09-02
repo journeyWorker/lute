@@ -158,6 +158,7 @@ fn foreign_kind_is_e_reward_kind_when_vocabulary_declared() {
         "SHARD".into(),
         RewardKindDecl {
             name: "SHARD".into(),
+            ..Default::default()
         },
     );
     snap.version = lute_manifest::snapshot::capability_version(&snap);

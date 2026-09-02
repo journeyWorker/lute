@@ -58,6 +58,16 @@ pub enum AssembleError {
         plugin: String,
         issue: crate::validate::DomainIssue,
     },
+    /// dsl 0.16.0 §4: a `rewardKinds:` entry pinned `target: { provider:
+    /// <name> }` against a provider no active plugin declares. The kind is
+    /// NOT merged (the checker would silently accept any target for it),
+    /// mirroring [`AssembleError::UnknownAssetKind`]'s owner-guarantees
+    /// stance for `assetKind(name)` attrs (see `validate_asset_kind_refs`).
+    UnknownRewardKindTarget {
+        plugin: String,
+        kind: String,
+        provider: String,
+    },
 }
 
 impl AssembleError {
@@ -79,6 +89,7 @@ impl AssembleError {
             AssembleError::UnknownAssetKind { .. } => "E-PLUGIN-UNKNOWN-ASSETKIND",
             AssembleError::ReservedStampAttr { .. } => "E-PLUGIN-RESERVED-STAMP-ATTR",
             AssembleError::DomainSemantics { issue, .. } => issue.code(),
+            AssembleError::UnknownRewardKindTarget { .. } => "E-PLUGIN-UNKNOWN-REWARD-TARGET",
         }
     }
 }
@@ -138,6 +149,15 @@ impl std::fmt::Display for AssembleError {
             AssembleError::DomainSemantics { plugin, issue } => {
                 write!(f, "plugin `{plugin}`: {}", issue.message())
             }
+            AssembleError::UnknownRewardKindTarget {
+                plugin,
+                kind,
+                provider,
+            } => write!(
+                f,
+                "plugin `{plugin}` reward kind `{kind}` pins `target: {{ provider: \
+                 {provider} }}`, which no active plugin declares"
+            ),
         }
     }
 }
@@ -196,6 +216,12 @@ pub fn assemble_snapshot(
     // Track which plugin owns each merged event for precise dup errors (no
     // core-embedded events, so this starts empty).
     let mut ev_owner: BTreeMap<String, String> = BTreeMap::new();
+    // Ditto for reward kinds — cross-plugin dup detection during the main
+    // loop; provider-target validation is DEFERRED to a post-loop pass so a
+    // kind pinning a provider declared by a later-iterated plugin still
+    // resolves (parallels `validate_asset_kind_refs`'s post-loop stance).
+    let mut rk_owner: BTreeMap<String, String> = BTreeMap::new();
+    let mut rk_pending: Vec<(String, crate::schema::RewardKindDecl)> = Vec::new();
 
     for ap in active {
         if ap.id == "lute.core" {
@@ -386,6 +412,19 @@ pub fn assemble_snapshot(
             ev_owner.insert(e.name.clone(), ap.id.clone());
             snap.events.insert(e.name.clone(), e.clone());
         }
+        for rk in &pkg.reward_kinds {
+            if let Some(first) = rk_owner.get(&rk.name) {
+                errs.push(AssembleError::DuplicateAcrossPlugins {
+                    kind: "rewardKind".into(),
+                    id: rk.name.clone(),
+                    first: first.clone(),
+                    second: ap.id.clone(),
+                });
+                continue;
+            }
+            rk_owner.insert(rk.name.clone(), ap.id.clone());
+            rk_pending.push((ap.id.clone(), rk.clone()));
+        }
         for b in &pkg.bridge {
             let k = (b.service.clone(), b.operation.clone());
             match snap.bridge_capabilities.entry(k) {
@@ -437,6 +476,27 @@ pub fn assemble_snapshot(
     // dangling ref is a hard assembly error rather than silently disabled
     // validation. Deterministic: BTreeMap iteration over directives + attrs.
     validate_asset_kind_refs(&snap, &mut errs);
+
+    // dsl 0.16.0 §4: every reward-kind `target: { provider: <name> }` must
+    // resolve to a provider some active plugin declares. Runs post-loop
+    // against the fully-merged snapshot so a kind pinning a provider from a
+    // later-iterated plugin still resolves (parallels
+    // `validate_asset_kind_refs`). The kind is DROPPED — the checker's
+    // `E-REWARD-KIND` closure would otherwise silently accept any target
+    // for it, defeating the point of pinning one.
+    for (plugin, rk) in rk_pending {
+        if let Some(t) = &rk.target {
+            if !snap.providers.contains_key(&t.provider) {
+                errs.push(AssembleError::UnknownRewardKindTarget {
+                    plugin,
+                    kind: rk.name.clone(),
+                    provider: t.provider.clone(),
+                });
+                continue;
+            }
+        }
+        snap.reward_kinds.insert(rk.name.clone(), rk);
+    }
 
     snap.version = capability_version(&snap);
     (snap, errs)

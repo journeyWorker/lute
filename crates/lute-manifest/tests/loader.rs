@@ -768,3 +768,93 @@ fn namespace_active_lints_pairs_activation_with_registry() {
 
     fs::remove_dir_all(&root).ok();
 }
+
+/// dsl 0.16.0 §4: the `rewardkinds` export loads off disk exactly like its
+/// sibling export kinds. A bare `{}` value declares a shape-only kind; a
+/// `{ target: { provider: <name> } }` value carries the target contract
+/// verbatim onto the [`lute_manifest::schema::RewardKindDecl`], and the
+/// map key materializes on `name` (the id is the key, not a body field).
+fn write_reward_kinds_pkg(root: &std::path::Path, dup_across_files: bool) {
+    fs::create_dir_all(root.join("rewardkinds")).unwrap();
+    fs::write(
+        root.join("plugin.yaml"),
+        "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  rewardkinds: rewardkinds/\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("rewardkinds/a.yaml"),
+        "rewardKinds:\n  SHARD: {}\n  ITEM:\n    target: { provider: item }\n",
+    )
+    .unwrap();
+    if dup_across_files {
+        // A second file redeclaring `SHARD` — per-package duplicate caught by
+        // the shared `merge_named` path, exactly like the `stampAttrs` sibling.
+        fs::write(
+            root.join("rewardkinds/b.yaml"),
+            "rewardKinds:\n  SHARD: {}\n",
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn loads_reward_kinds_export() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_rk_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_reward_kinds_pkg(&tmp, false);
+    let loaded = load_plugin_dir(&tmp).expect("valid rewardKinds package loads");
+    assert_eq!(loaded.reward_kinds.len(), 2);
+    let by_name: std::collections::BTreeMap<_, _> = loaded
+        .reward_kinds
+        .iter()
+        .map(|r| (r.name.clone(), r))
+        .collect();
+    let item = by_name.get("ITEM").expect("ITEM present");
+    assert_eq!(
+        item.target.as_ref().expect("ITEM target").provider,
+        "item",
+        "ITEM target must resolve to `{{ provider: item }}`"
+    );
+    let shard = by_name.get("SHARD").expect("SHARD present");
+    assert!(
+        shard.target.is_none(),
+        "SHARD is shape-only ({{}}), must have no target"
+    );
+    assert!(
+        shard.attrs.is_empty(),
+        "bare {{}} kind must have no game-specific attrs"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn loads_reward_kinds_rejects_dup() {
+    let tmp = std::env::temp_dir().join(format!("lute_pkg_rkdup_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    write_reward_kinds_pkg(&tmp, true);
+    let errs = load_plugin_dir(&tmp).expect_err("per-package dup rewardKind must fail load");
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::loader::LoadError::DuplicateId { kind, id }
+                if kind == "rewardKind" && id == "SHARD"
+        )),
+        "per-package duplicate must surface as DuplicateId {{ kind: \"rewardKind\" }}, got {errs:?}"
+    );
+    fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn unknown_export_message_lists_rewardkinds() {
+    // The `UnknownExport` message enumerates the closed set of export kinds;
+    // adding `rewardkinds` must land there so a fix-it hint names it as a
+    // legal key rather than pretending it does not exist.
+    let e = lute_manifest::loader::LoadError::UnknownExport {
+        export: "typo".into(),
+    };
+    let msg = format!("{e}");
+    assert!(
+        msg.contains("rewardkinds"),
+        "closed export list must include `rewardkinds`: {msg}"
+    );
+}

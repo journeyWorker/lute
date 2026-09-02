@@ -26,6 +26,14 @@ pub struct LoadedPlugin {
     /// every directive and content line, lowered into the record's stamp
     /// rather than its own fields.
     pub stamp_attrs: Vec<AttrDecl>,
+    /// dsl 0.16.0 §4 `rewardkinds/*.yaml`: capability-declared reward
+    /// vocabulary. Each entry carries the id (map key), optional `target`
+    /// (`providerRef` pattern — assembly rejects a kind whose provider is
+    /// absent), and optional extra `attrs` for game-specific slots. Folded
+    /// into [`crate::snapshot::CapabilitySnapshot::reward_kinds`] at
+    /// assembly, participating in `capabilityVersion` via the guarded
+    /// hash section.
+    pub reward_kinds: Vec<RewardKindDecl>,
     /// lint-system design §6 `lints/*.yaml`: DECLARATIVE lint rules a
     /// plugin publishes. Stored with RAW ids; a consumer namespaces each
     /// as `<plugin-id>/<id>` via [`crate::lint::namespace_active_lints`].
@@ -130,7 +138,7 @@ impl std::fmt::Display for LoadError {
                 f,
                 "export `{export}` is not one of the plugin manifest's known kinds \
                  (directives, state, providers, bridge, defs, enums, frontmatter, docs, \
-                 assetkinds, events, stampattrs, lints)"
+                 assetkinds, events, stampattrs, rewardkinds, lints)"
             ),
             LoadError::AssetSegmentType {
                 file,
@@ -183,6 +191,7 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
         asset_kinds: Vec::new(),
         events: Vec::new(),
         stamp_attrs: Vec::new(),
+        reward_kinds: Vec::new(),
         lints: Vec::new(),
     };
 
@@ -244,6 +253,24 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
                     f.stamp_attrs,
                     "stampAttr",
                     |a| a.name.clone(),
+                    e,
+                )
+            }),
+            "rewardkinds" => read_kind::<RewardKindsFile, _>(&path, &mut errs, |f, _file, e| {
+                let decls: Vec<RewardKindDecl> = f
+                    .reward_kinds
+                    .into_iter()
+                    .map(|(name, body)| RewardKindDecl {
+                        name,
+                        target: body.target,
+                        attrs: body.attrs,
+                    })
+                    .collect();
+                merge_named(
+                    &mut out.reward_kinds,
+                    decls,
+                    "rewardKind",
+                    |r| r.name.clone(),
                     e,
                 )
             }),
