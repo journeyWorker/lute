@@ -151,7 +151,26 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// `schemas/lute-ir-0.15.schema.json` keeps its name and `$id` (the file's
 /// `0.15.x` title already covers `0.15.1`; the schema is byte-identical to
 /// `0.15.0`).
-pub const LUTE_IR_VERSION: &str = "0.15.1";
+///
+/// IR `0.16.0` is ADDITIVE-ONLY over `0.15.1`: [`ir::QuestCmd`] and
+/// [`ir::ObjectiveEntry`] each gain an optional `rewards` array of the new
+/// [`ir::RewardEntry`] declaration record (dsl 0.16.0 §2/§3, declarative
+/// rewards). Both arrays are `skip_serializing_if = "Vec::is_empty"`, so a
+/// rewardless artifact stays byte-identical to `0.15.1` output. `RewardEntry`
+/// serializes `kind`, optional `target`, exactly one of `amount` XOR
+/// (`amountMin` + `amountMax`) after amount defaulting (spec Global
+/// Constraints: unauthored → `amount: 1`), an optional `when` CEL pair, and
+/// `on: "failed"` only on a quest-level entry (spec §2). Range amounts are
+/// carried verbatim on the wire (spec D-C: never pre-rolled) — the reference
+/// runner and `lute trace` emit deterministic `grant` transcript events at
+/// each fresh transition (spec §3 D-D), passing `amountMin`/`amountMax`
+/// through unchanged. `schemas/lute-ir-0.15.schema.json` is renamed to
+/// `schemas/lute-ir-0.16.schema.json` per the per-release rename rule; its
+/// content gains the `rewardEntry` definition and the two `rewards` arrays.
+/// The gated MAJOR does not move under `0.13.0`'s MAJOR-only runtime
+/// contract, so a `0.15` engine parses a `0.16.0` artifact unchanged and
+/// simply does not ask for the added arrays.
+pub const LUTE_IR_VERSION: &str = "0.16.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -961,17 +980,15 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.15.1 axis alignment (docs/versioning.md): a release re-aligns
-        // the visible numbers to that release's number even when no axis
-        // earned the move. This one is toolchain-only — the npm
-        // distribution now ships `lute-lsp` alongside `lute` (a second
-        // `bin` launcher entry and both binaries carried in each
-        // per-platform core package) — so language and IR restamp with
-        // no semantic change (`0.15.0` shape, byte-identical to `0.15.0`
-        // beyond the version strings). The two pins remain independently
-        // tracked (T13); they simply agree on this release.
-        assert_eq!(super::LUTE_IR_VERSION, "0.15.1");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.15.1");
+        // 0.16.0 axis alignment (docs/versioning.md): a release re-aligns
+        // the visible numbers to that release's number. This one is the
+        // declarative-rewards release — the IR earns the move
+        // (`RewardEntry` on `QuestCmd`/`ObjectiveEntry`, both arrays
+        // skip-when-empty so pre-rewards artifacts stay byte-identical)
+        // and the language pins to the same number. The two pins remain
+        // independently tracked (T13); they simply agree on this release.
+        assert_eq!(super::LUTE_IR_VERSION, "0.16.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.16.0");
     }
 
     #[test]
@@ -980,8 +997,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.15.1");
-        assert_eq!(v["irVersion"], "0.15.1");
+        assert_eq!(v["lute"], "0.16.0");
+        assert_eq!(v["irVersion"], "0.16.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

@@ -2,7 +2,7 @@
   "commands": [
     {
       "kind": "quest",
-      "quest": "parentQuest",
+      "quest": "parentQ",
       "state": "active"
     },
     {
@@ -11,41 +11,48 @@
       "state": "active"
     },
     {
-      "done": true,
-      "kind": "objective",
-      "objective": "found",
-      "quest": "findKey"
+      "kind": "quest",
+      "quest": "parentQ",
+      "state": "failed"
+    },
+    {
+      "kind": "grant",
+      "onFailed": true,
+      "quest": "parentQ",
+      "reward": {
+        "amount": 1,
+        "kind": "CONSOLE"
+      }
     },
     {
       "kind": "quest",
       "quest": "findKey",
-      "state": "complete"
+      "state": "failed"
     },
     {
-      "done": true,
-      "kind": "objective",
-      "objective": "delegate",
-      "quest": "parentQuest"
-    },
-    {
-      "kind": "quest",
-      "quest": "parentQuest",
-      "state": "complete"
+      "kind": "grant",
+      "onFailed": true,
+      "quest": "findKey",
+      "reward": {
+        "amount": 1,
+        "kind": "CHILD_CONSOLE"
+      }
     }
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.15",
+  "irVersion": "0.16",
   "kind": "quest",
   "quests": {
-    "findKey": "complete",
-    "parentQuest": "complete"
+    "findKey": "failed",
+    "parentQ": "failed"
   },
   "state": {
-    "quest.findKey.objectives.found.done": true,
-    "quest.findKey.state": "complete",
-    "quest.parentQuest.objectives.delegate.done": true,
-    "quest.parentQuest.state": "complete",
-    "run.gotKey": true
+    "quest.findKey.objectives.found.done": false,
+    "quest.findKey.state": "failed",
+    "quest.parentQ.objectives.delegate.done": false,
+    "quest.parentQ.state": "failed",
+    "run.giveUp": true,
+    "run.gotKey": false
   }
 }

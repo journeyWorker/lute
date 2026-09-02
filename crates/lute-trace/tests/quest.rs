@@ -875,3 +875,316 @@ state:
         report.decisions
     );
 }
+
+// ---------------------------------------------------------------------
+// Task 5: <reward/> grants (dsl 0.16.0 §3 D-D). Fresh transitions:
+// objective grants at first `done` (once), quest grants at `complete`/
+// `failed` (§2.3 cascade included, once). `when=` gates each grant at
+// the transition instant. `on="failed"` fires on fail AND cascade-fail,
+// never on complete. Ranges are carried verbatim (D-C: never pre-rolled).
+// ---------------------------------------------------------------------
+
+use lute_trace::GrantReward;
+
+fn grants(steps: &[Step]) -> Vec<&Step> {
+    steps
+        .iter()
+        .filter(|s| matches!(s, Step::Grant { .. }))
+        .collect()
+}
+
+fn grant_position<F>(steps: &[Step], pred: F) -> Option<usize>
+where
+    F: Fn(&Step) -> bool,
+{
+    steps.iter().position(pred)
+}
+
+/// (Task 5 a) The lifecycle-order contract (spec §3 D-D): the objective
+/// grant fires once at first `done`, BEFORE the quest grant fires at
+/// fresh `complete`, BEFORE the `questComplete` handler body plays.
+#[test]
+fn objective_grant_precedes_quest_grant_and_questcomplete_body() {
+    let text = r#"---
+kind: quest
+luteVersion: "0.16.0"
+title: Reward grant ordering
+state:
+  run.atGoal: { type: bool, default: true }
+  run.done: { type: number, default: 0 }
+---
+
+<quest id="reachGoal" title="Reach the Goal" start="true">
+  <reward kind="XP" amount="100"/>
+  <objective id="arrive" title="Arrive" done="run.atGoal">
+    <reward kind="GOLD" amount="5"/>
+  </objective>
+
+  <on event="questComplete">
+    ::set{ run.done += 1 }
+    @narrator: The goal is reached.
+  </on>
+</quest>
+"#;
+    let input = input_for(text, "reward_order.lute", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    let all = grants(&report.steps);
+    assert_eq!(
+        all.len(),
+        2,
+        "exactly one objective + one quest grant fire on this walk: {all:?}"
+    );
+
+    let obj_grant = grant_position(
+        &report.steps,
+        |s| matches!(s, Step::Grant { objective: Some(oid), .. } if oid == "arrive"),
+    )
+    .expect("objective grant must fire");
+    let quest_grant = grant_position(
+        &report.steps,
+        |s| matches!(s, Step::Grant { objective: None, quest: q, .. } if q == "reachGoal"),
+    )
+    .expect("quest grant must fire");
+    let handler_line = grant_position(
+        &report.steps,
+        |s| matches!(s, Step::Line { text, .. } if text.contains("goal is reached")),
+    )
+    .expect("questComplete handler line must fire");
+
+    assert!(
+        obj_grant < quest_grant,
+        "objective grant must precede quest grant: obj={obj_grant} quest={quest_grant} steps={:?}",
+        report.steps
+    );
+    assert!(
+        quest_grant < handler_line,
+        "quest grant must precede questComplete handler body: quest={quest_grant} line={handler_line}"
+    );
+
+    // Objective grant fires exactly once (monotone `done`, at-most-once
+    // per instance).
+    let obj_count = report
+        .steps
+        .iter()
+        .filter(|s| {
+            matches!(
+                s,
+                Step::Grant {
+                    objective: Some(_),
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(obj_count, 1, "objective grant must fire exactly once");
+}
+
+/// (Task 5 b) `when=false` at the grant instant skips exactly that
+/// reward once (a transition happens at most once, so a `false` when
+/// gate means the reward is never granted for this walk).
+#[test]
+fn reward_when_false_at_grant_instant_skips_that_reward() {
+    let text = r#"---
+kind: quest
+luteVersion: "0.16.0"
+title: Reward when=false
+state:
+  run.gate: { type: bool, default: false }
+  run.atGoal: { type: bool, default: true }
+---
+
+<quest id="q" title="Q" start="true">
+  <reward kind="XP" amount="1" when="run.gate"/>
+  <reward kind="GOLD" amount="7"/>
+  <objective id="arrive" done="run.atGoal"/>
+</quest>
+"#;
+    let input = input_for(text, "reward_when.lute", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    let quest_grants: Vec<_> = report
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            Step::Grant {
+                objective: None,
+                reward,
+                ..
+            } => Some(reward.kind.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        quest_grants,
+        vec!["GOLD"],
+        "only the unguarded reward may fire; when=false must skip: {:?}",
+        report.steps
+    );
+}
+
+/// (Task 5 c) An `on="failed"` quest reward grants on an authored `fail`
+/// AND on a §2.3 cascade-fail, but never on a plain `complete`. A
+/// sibling default-on reward grants ONLY on complete.
+#[test]
+fn on_failed_grants_on_fail_and_cascade_never_on_complete() {
+    // Parent fails via authored `fail` → cascades to still-Active child.
+    // Parent has an `on="failed"` reward, child has an `on="failed"`
+    // reward. Neither owner ever reaches `complete`.
+    let text = r#"---
+kind: quest
+luteVersion: "0.16.0"
+title: Reward on=failed cascade
+state:
+  run.explode: { type: bool, default: true }
+  run.win: { type: bool, default: false }
+---
+
+<quest id="parentQ" title="Parent" start="true" fail="run.explode">
+  <reward kind="CONSOLE" amount="1" on="failed"/>
+  <reward kind="WINXP" amount="99"/>
+  <objective id="delegate" quest="childQ"/>
+</quest>
+
+<quest id="childQ" title="Child">
+  <reward kind="CHILD_CONSOLE" amount="1" on="failed"/>
+  <objective id="win" done="run.win"/>
+</quest>
+"#;
+    let input = input_for(text, "reward_on_failed.lute", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    // Parent's authored fail fires: on_failed reward grants; default-on
+    // reward MUST NOT grant.
+    let parent_grants: Vec<(&str, bool)> = report
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            Step::Grant {
+                quest,
+                objective: None,
+                reward,
+                on_failed,
+            } if quest == "parentQ" => Some((reward.kind.as_str(), *on_failed)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        parent_grants,
+        vec![("CONSOLE", true)],
+        "parent's on=failed reward grants on authored fail; default reward MUST NOT grant on fail: {:?}",
+        report.steps
+    );
+
+    // Child cascade-fails: its on=failed reward grants exactly once.
+    let child_grants: Vec<(&str, bool)> = report
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            Step::Grant {
+                quest,
+                objective: None,
+                reward,
+                on_failed,
+            } if quest == "childQ" => Some((reward.kind.as_str(), *on_failed)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        child_grants,
+        vec![("CHILD_CONSOLE", true)],
+        "cascaded child's on=failed reward grants exactly once: {:?}",
+        report.steps
+    );
+}
+
+#[test]
+fn on_failed_reward_never_grants_when_quest_completes() {
+    let text = r#"---
+kind: quest
+luteVersion: "0.16.0"
+title: on=failed silent on complete
+state:
+  run.atGoal: { type: bool, default: true }
+---
+
+<quest id="q" title="Q" start="true">
+  <reward kind="CONSOLE" amount="1" on="failed"/>
+  <reward kind="WIN" amount="10"/>
+  <objective id="arrive" done="run.atGoal"/>
+</quest>
+"#;
+    let input = input_for(text, "reward_complete_only.lute", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    let grants: Vec<(&str, bool)> = report
+        .steps
+        .iter()
+        .filter_map(|s| match s {
+            Step::Grant {
+                objective: None,
+                reward,
+                on_failed,
+                ..
+            } => Some((reward.kind.as_str(), *on_failed)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        grants,
+        vec![("WIN", false)],
+        "on=complete reward alone fires; on=failed MUST stay silent on complete: {:?}",
+        report.steps
+    );
+}
+
+/// (Task 5 d) A range `amount="1..5"` grants a grant event whose reward
+/// carries `amountMin`/`amountMax` verbatim (spec D-C: never pre-rolled),
+/// and NO scalar `amount`.
+#[test]
+fn range_reward_grant_carries_min_max_verbatim() {
+    let text = r#"---
+kind: quest
+luteVersion: "0.16.0"
+title: Range reward
+state:
+  run.atGoal: { type: bool, default: true }
+---
+
+<quest id="q" title="Q" start="true">
+  <reward kind="LOOT" amount="1..5"/>
+  <objective id="arrive" done="run.atGoal"/>
+</quest>
+"#;
+    let input = input_for(text, "reward_range.lute", Path::new("."));
+    let (report, exit) = trace_document(&input, MockSet::default());
+    assert_complete(&exit);
+
+    let quest_grant = report
+        .steps
+        .iter()
+        .find_map(|s| match s {
+            Step::Grant {
+                objective: None,
+                reward,
+                ..
+            } => Some(reward.clone()),
+            _ => None,
+        })
+        .expect("quest grant must fire");
+    assert_eq!(
+        quest_grant,
+        GrantReward {
+            kind: "LOOT".to_string(),
+            target: None,
+            amount: None,
+            amount_min: Some(1),
+            amount_max: Some(5),
+        },
+        "range reward must carry min/max verbatim (spec D-C: never pre-rolled)"
+    );
+}

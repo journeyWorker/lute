@@ -1,10 +1,10 @@
 {
   "kind": "quest",
-  "lute": "0.15.1",
-  "irVersion": "0.15.1",
+  "lute": "0.16.0",
+  "irVersion": "0.16.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
-    "title": "Subquest happy path"
+    "title": "Subquest cascade fail"
   },
   "state": [
     {
@@ -30,18 +30,18 @@
       "provenance": "quest:findKey"
     },
     {
-      "path": "quest.parentQuest.activatedAt",
+      "path": "quest.parentQ.activatedAt",
       "type": "narrativeTime",
-      "provenance": "quest:parentQuest"
+      "provenance": "quest:parentQ"
     },
     {
-      "path": "quest.parentQuest.objectives.delegate.done",
+      "path": "quest.parentQ.objectives.delegate.done",
       "type": "bool",
       "default": false,
-      "provenance": "quest:parentQuest"
+      "provenance": "quest:parentQ"
     },
     {
-      "path": "quest.parentQuest.state",
+      "path": "quest.parentQ.state",
       "type": "enum",
       "domain": [
         "active",
@@ -49,7 +49,12 @@
         "failed",
         "unset"
       ],
-      "provenance": "quest:parentQuest"
+      "provenance": "quest:parentQ"
+    },
+    {
+      "path": "run.giveUp",
+      "type": "bool",
+      "default": true
     },
     {
       "path": "run.gotKey",
@@ -61,9 +66,9 @@
     {
       "kind": "quest",
       "addr": "001-0100",
-      "id": "parentQuest",
-      "title": "Find the key, unlock the door",
-      "titleLineId": "parentQuest.title",
+      "id": "parentQ",
+      "title": "Find the key",
+      "titleLineId": "parentQ.title",
       "start": {
         "raw": "true",
         "expr": {
@@ -71,14 +76,20 @@
         }
       },
       "fail": {
-        "raw": "quest.findKey.state == 'failed'",
+        "raw": "(run.giveUp) || quest.findKey.state == 'failed'",
         "expr": {
-          "op": "==",
+          "op": "||",
           "l": {
-            "path": "quest.findKey.state"
+            "path": "run.giveUp"
           },
           "r": {
-            "lit": "failed"
+            "op": "==",
+            "l": {
+              "path": "quest.findKey.state"
+            },
+            "r": {
+              "lit": "failed"
+            }
           }
         }
       },
@@ -86,7 +97,7 @@
         {
           "id": "delegate",
           "title": "Get the key",
-          "titleLineId": "parentQuest.delegate",
+          "titleLineId": "parentQ.delegate",
           "done": {
             "raw": "quest.findKey.state == 'complete'",
             "expr": {
@@ -102,6 +113,13 @@
           "optional": false,
           "body": null,
           "quest": "findKey"
+        }
+      ],
+      "rewards": [
+        {
+          "kind": "CONSOLE",
+          "amount": 1,
+          "on": "failed"
         }
       ]
     },
@@ -124,6 +142,13 @@
           },
           "optional": false,
           "body": null
+        }
+      ],
+      "rewards": [
+        {
+          "kind": "CHILD_CONSOLE",
+          "amount": 1,
+          "on": "failed"
         }
       ]
     }

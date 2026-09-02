@@ -107,7 +107,52 @@ pub enum Step {
         /// falling off the end of the document (#32, T5.9).
         reason: Option<String>,
     },
+    /// dsl 0.16.0 §3 D-D: a declarative `<reward/>` fires at a fresh
+    /// lifecycle transition — objective grants at first `done`, quest
+    /// grants at fresh `complete`/`failed` (§2.3 cascade included). The
+    /// step carries the granting quest id, the granting objective id
+    /// (`Some` for an objective-level grant, `None` for a quest-level
+    /// one), the reward's declaration data (`kind`/`target`/amount —
+    /// range bounds are carried verbatim, spec D-C: never pre-rolled),
+    /// and `on_failed: true` when the grant was on a `<reward on="failed"/>`
+    /// entry firing at the fresh `failed` transition (authored fail OR
+    /// §2.3 cascade). The reward's `when=` gate was already evaluated at
+    /// the grant instant; a grant that fires is unconditionally true —
+    /// the `when` text is not surfaced here.
+    Grant {
+        quest: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        objective: Option<String>,
+        reward: GrantReward,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        on_failed: bool,
+    },
     Decision(Decision),
+}
+
+/// dsl 0.16.0 §3: the reward-declaration data carried by a fired [`Step::Grant`],
+/// mirroring `lute-compile`'s `RewardEntry` MINUS the `when` slot and the
+/// `on` marker. `when` was already evaluated at the grant instant (a fired
+/// grant is unconditionally true), and the `on="failed"` marker lifts to
+/// [`Step::Grant::on_failed`] on the outer transcript entry so a consumer
+/// reads the transition kind without unpacking the reward record.
+///
+/// Exactly one of `amount` XOR (`amount_min` + `amount_max`) is present
+/// after amount defaulting (unauthored → `amount: 1`, spec Global
+/// Constraints). Range bounds serialize verbatim; a runner never
+/// pre-rolls a value here (D-C).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrantReward {
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount_min: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount_max: Option<i64>,
 }
 
 /// One decision (§4.5: "the construct kind, its id/span, the outcome, and
@@ -375,6 +420,32 @@ fn render_step(step: &Step, out: &mut String) {
             out.push_str(&format!(
                 "  <{} {}>{}   -> {}{}{}\n",
                 d.construct, d.id, eligible, d.outcome, guard, annot
+            ));
+        }
+        Step::Grant {
+            quest,
+            objective,
+            reward,
+            on_failed,
+        } => {
+            let owner = match objective {
+                Some(oid) => format!("{quest}.{oid}"),
+                None => quest.clone(),
+            };
+            let amount = match (reward.amount, reward.amount_min, reward.amount_max) {
+                (Some(n), _, _) => n.to_string(),
+                (None, Some(lo), Some(hi)) => format!("{lo}..{hi}"),
+                _ => "?".to_string(),
+            };
+            let target = reward
+                .target
+                .as_deref()
+                .map(|t| format!(" -> {t}"))
+                .unwrap_or_default();
+            let annot = if *on_failed { " (on failed)" } else { "" };
+            out.push_str(&format!(
+                "    grant {owner}  {} {}{}{}\n",
+                reward.kind, amount, target, annot
             ));
         }
     }

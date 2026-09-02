@@ -38,7 +38,8 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
     Arm, Assert, AttrValue, Branch, CelSlot, Choice, ClipNode, Directive, Document, Hub, Interp,
-    InterpKind, IsPattern, Line, Match, Node, Objective, Quest, Retract, Set, Timeline,
+    InterpKind, IsPattern, Line, Match, Node, Objective, Quest, Retract, Reward, RewardAmount, Set,
+    Timeline,
 };
 use lute_syntax::datalog::FactTerm;
 
@@ -48,8 +49,8 @@ use crate::eval::{
 };
 use crate::mock::{self, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
 use crate::report::{
-    self, ComponentBoundary, Coverage, CoverageCount, Decision, Seeds, Step, TraceExit,
-    TraceReport, UnresolvedEntry,
+    self, ComponentBoundary, Coverage, CoverageCount, Decision, GrantReward, Seeds, Step,
+    TraceExit, TraceReport, UnresolvedEntry,
 };
 use crate::value::{UnresolvedAtom, Value};
 
@@ -1098,6 +1099,90 @@ fn is_objective_done(w: &Walk<'_>, quest_id: &str, objective_id: &str) -> bool {
     )
 }
 
+/// Which lifecycle transition is firing rewards (spec §3 D-D). An
+/// [`GrantEvent::Objective`] grant fires ALL objective-level rewards in
+/// declaration order (objective entries never carry `on=`, spec §2);
+/// [`GrantEvent::Complete`] fires quest-level rewards whose `on` is unset
+/// (the default "on complete"); [`GrantEvent::Failed`] fires quest-level
+/// rewards whose `on == "failed"` (both authored-`fail` and §2.3
+/// cascade paths hit this arm — the transcript's `onFailed: true`
+/// distinguishes the grants from a plain-complete run).
+#[derive(Clone, Copy)]
+enum GrantEvent {
+    Objective,
+    Complete,
+    Failed,
+}
+
+/// dsl 0.16.0 §3: lower an AST [`Reward`] into the trace-transcript
+/// [`GrantReward`] shape (§3 D-D). Amount defaulting mirrors the compiler
+/// (`lute_compile::RewardEntry::from_ast`, Task 3): unauthored →
+/// `amount: 1`; a scalar fills `amount`; a range fills
+/// `amount_min`/`amount_max` verbatim (spec D-C: never pre-rolled).
+fn grant_reward_from(r: &Reward) -> GrantReward {
+    let (amount, amount_min, amount_max) = match r.amount {
+        None => (Some(1), None, None),
+        Some(RewardAmount::Scalar(n)) => (Some(n), None, None),
+        Some(RewardAmount::Range(lo, hi)) => (None, Some(lo), Some(hi)),
+    };
+    GrantReward {
+        kind: r.kind.clone(),
+        target: r.target.clone(),
+        amount,
+        amount_min,
+        amount_max,
+    }
+}
+
+/// Emit [`Step::Grant`] for every reward in `rewards` (declaration order,
+/// spec §3 D-D) whose `on=` filter matches `event` AND whose `when=` gate
+/// evaluates to `Bool(true)` against the LIVE walk state at the grant
+/// instant. `unknown`/`false`/non-bool `when` values silently skip the
+/// reward — trace never guesses (a `when` gate that read maybe-unset is
+/// already flagged by `defassign::check_reward_when_defassign`, so a
+/// checker-clean document never reaches a fresh transition with an
+/// undecidable reward gate; the guard here is defense in depth). A
+/// missing `when` is unconditionally true.
+fn emit_grants(
+    quest_id: &str,
+    objective_id: Option<&str>,
+    rewards: &[Reward],
+    event: GrantEvent,
+    w: &mut Walk<'_>,
+) {
+    for r in rewards {
+        if r.kind.trim().is_empty() {
+            // Checker rejects an empty `kind=`; a rewardless-name entry
+            // therefore never reaches a clean walk. Skip defensively so a
+            // partly-broken artifact under a `--project` gate that ran
+            // trace anyway does not surface an empty-kind grant.
+            continue;
+        }
+        let on_failed = matches!(r.on.as_deref(), Some("failed"));
+        let matches = match event {
+            GrantEvent::Objective => true,
+            GrantEvent::Complete => !on_failed,
+            GrantEvent::Failed => on_failed,
+        };
+        if !matches {
+            continue;
+        }
+        if let Some(slot) = &r.when {
+            let mut atoms = Vec::new();
+            let v = eval_choice_guard(Some(slot), &w.env(), &mut atoms);
+            if !matches!(v, Value::Bool(true)) {
+                continue;
+            }
+        }
+        w.steps.push(Step::Grant {
+            quest: quest_id.to_string(),
+            objective: objective_id.map(str::to_string),
+            reward: grant_reward_from(r),
+            on_failed: matches!(event, GrantEvent::Failed),
+        });
+    }
+}
+
 /// Re-evaluate every `<objective>` in `quest.body` (document order) whose
 /// `done` isn't ALREADY recorded true — monotonic (§4.4: "once `true`,
 /// recorded"): a done objective is never re-evaluated, so nothing it
@@ -1134,6 +1219,11 @@ fn reevaluate_objectives(quest: &Quest, w: &mut Walk<'_>) {
                     false,
                     Vec::new(),
                 );
+                // dsl 0.16.0 §3 D-D: fresh `done` → fire this objective's
+                // rewards in declaration order, at THIS instant (before any
+                // quest-level grant fires and before the derived-complete
+                // pass can run `questComplete` handlers).
+                emit_grants(&quest.id, Some(&o.id), &o.rewards, GrantEvent::Objective, w);
             }
             Value::Bool(false) => {
                 w.push_decision(
@@ -1299,6 +1389,10 @@ fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow
             false,
             Vec::new(),
         );
+        // dsl 0.16.0 §3 D-D: fresh `failed` → fire this quest's rewards
+        // in declaration order (only `on="failed"` entries match here).
+        // Runs BEFORE `questFailed` handler bodies play (spec D-D).
+        emit_grants(&quest.id, None, &quest.rewards, GrantEvent::Failed, w);
         return dispatch_event(quest, "questFailed", w);
     }
 
@@ -1319,6 +1413,10 @@ fn settle_quest(quest: &Quest, state: &mut QuestState, w: &mut Walk<'_>) -> Flow
             false,
             Vec::new(),
         );
+        // dsl 0.16.0 §3 D-D: fresh `complete` → fire this quest's default
+        // (unmarked-`on`) rewards in declaration order. Runs BEFORE
+        // `questComplete` handler bodies play.
+        emit_grants(&quest.id, None, &quest.rewards, GrantEvent::Complete, w);
         return dispatch_event(quest, "questComplete", w);
     }
 
@@ -1390,6 +1488,13 @@ fn cascade_terminal(
             false,
             Vec::new(),
         );
+        // dsl 0.16.0 §3 D-D: cascade-fail IS a fresh `failed` transition
+        // (§2.3: cascaded child transitions to `Failed` and fires its own
+        // `questFailed`). Grant its `on="failed"` rewards ONCE, in
+        // declaration order, BEFORE `questFailed` dispatch — same
+        // ordering an authored-`fail` uses in [`settle_quest`], so an
+        // engine consumer reads no structural difference between the two.
+        emit_grants(&child.id, None, &child.rewards, GrantEvent::Failed, w);
         let flow = dispatch_event(child, "questFailed", w);
         if !matches!(flow, Flow::Continue) {
             return flow;

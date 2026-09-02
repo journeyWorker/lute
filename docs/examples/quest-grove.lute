@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.15.1"
+luteVersion: "0.16.0"
 title: Act 1 — Emerald Grove
 state:
   run.act:               { type: number, default: 0 }
