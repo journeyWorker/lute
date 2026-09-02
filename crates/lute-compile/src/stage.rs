@@ -647,6 +647,17 @@ pub fn walk_quest(
                 // there, keeping the byte-stable output of every existing
                 // artifact (see `ir::ObjectiveEntry.quest`).
                 quest: o.quest.clone(),
+                // dsl 0.16.0 §2/§3: owner-declared `<reward/>` entries in
+                // declaration order, pure data (no handler synthesis — the
+                // inverse of the 0.14.0 subquest pass above). Empty when
+                // the objective authored no `<reward/>` — the wire field
+                // is then omitted, preserving byte-identity for every
+                // pre-0.16.0 objective (`skip_serializing_if`).
+                rewards: o
+                    .rewards
+                    .iter()
+                    .map(|r| RewardEntry::from_ast(r, false))
+                    .collect(),
             });
             obj_labels.push(label);
         }
@@ -659,6 +670,16 @@ pub fn walk_quest(
         start: quest.start.as_ref().map(|s| CelPair::from_raw(&s.raw)),
         fail: quest.fail.as_ref().map(|s| CelPair::from_raw(&s.raw)),
         objectives,
+        // dsl 0.16.0 §2/§3: quest-level `<reward/>` entries in declaration
+        // order. `on="failed"` is preserved here (only ever legal on a
+        // quest-level entry per spec §2). Empty ⇒ field omitted, so a
+        // rewardless quest artifact stays byte-identical to pre-0.16.0
+        // output (see `ir::QuestCmd.rewards`).
+        rewards: quest
+            .rewards
+            .iter()
+            .map(|r| RewardEntry::from_ast(r, true))
+            .collect(),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);

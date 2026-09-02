@@ -449,13 +449,144 @@ fn quest_record_serializes_per_spec() {
             optional: false,
             body: None,
             quest: None,
+            rewards: Vec::new(),
         }],
+        rewards: Vec::new(),
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&cmd),
         r#"{"kind":"quest","addr":"001-0100","id":"rescueHalsin","title":"Rescue","titleLineId":"rescueHalsin.title","start":{"raw":"run.act == 1"},"objectives":[{"id":"reachGrove","title":"Reach","titleLineId":"rescueHalsin.reachGrove","done":{"raw":"run.region == 'grove'"},"optional":false,"body":null}]}"#
     );
+}
+
+/// dsl 0.16.0 §2/§3 (Global Constraints): the load-bearing `RewardEntry`
+/// wire shape. Field DECLARATION ORDER (byte-stability contract) is
+/// `kind`, `target?`, `amount?`, `amountMin?`, `amountMax?`, `when?`, `on?`.
+/// Every Option is `skip_serializing_if`, and exactly one of `amount` XOR
+/// (`amountMin`+`amountMax`) is present after amount defaulting; `on` is
+/// only ever `"failed"`, and only on a quest-level entry.
+#[test]
+fn reward_entry_scalar_serializes_per_spec() {
+    let r = RewardEntry {
+        kind: "XP".into(),
+        target: None,
+        amount: Some(100),
+        amount_min: None,
+        amount_max: None,
+        when: None,
+        on: None,
+    };
+    assert_eq!(
+        serde_json::to_string(&r).unwrap(),
+        r#"{"kind":"XP","amount":100}"#
+    );
+}
+
+#[test]
+fn reward_entry_range_serializes_amount_min_and_max() {
+    let r = RewardEntry {
+        kind: "GOLD".into(),
+        target: Some("party".into()),
+        amount: None,
+        amount_min: Some(50),
+        amount_max: Some(200),
+        when: Some(CelPair {
+            raw: "run.freed".into(),
+            expr: None,
+        }),
+        on: None,
+    };
+    assert_eq!(
+        serde_json::to_string(&r).unwrap(),
+        r#"{"kind":"GOLD","target":"party","amountMin":50,"amountMax":200,"when":{"raw":"run.freed"}}"#
+    );
+}
+
+#[test]
+fn reward_entry_on_failed_serializes_only_when_quest_level() {
+    // `on="failed"` reaches the wire only on a quest-level entry (dsl
+    // 0.16.0 §2). This golden pins the exact key + position — appearing
+    // last, as the field declaration order dictates.
+    let r = RewardEntry {
+        kind: "TROPHY".into(),
+        target: Some("halsin".into()),
+        amount: Some(1),
+        amount_min: None,
+        amount_max: None,
+        when: None,
+        on: Some("failed".into()),
+    };
+    assert_eq!(
+        serde_json::to_string(&r).unwrap(),
+        r#"{"kind":"TROPHY","target":"halsin","amount":1,"on":"failed"}"#
+    );
+}
+
+/// A `RewardAmount::Range(lo, hi)` lifts into `amountMin`/`amountMax` with
+/// `amount` skipped; an unauthored amount defaults to `Some(1)`; a stray
+/// `on` value on an objective-level entry is DROPPED (never reaches the
+/// wire — the checker rejects it upstream, this stays defensive).
+#[test]
+fn reward_entry_from_ast_defaults_amount_and_gates_on() {
+    use lute_core_span::Span;
+    use lute_syntax::ast::{Reward, RewardAmount};
+    const ZERO: Span = Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 1,
+        column: 1,
+        utf16_range: (0, 0),
+    };
+    let base = Reward {
+        kind: "SHARD".into(),
+        kind_span: ZERO,
+        target: None,
+        amount: None,
+        amount_span: None,
+        when: None,
+        on: None,
+        on_span: None,
+        attrs: Vec::new(),
+        span: ZERO,
+        self_closing: true,
+    };
+    // Unauthored amount → default 1 on a quest-level entry.
+    let e = RewardEntry::from_ast(&base, true);
+    assert_eq!(e.amount, Some(1));
+    assert!(e.amount_min.is_none() && e.amount_max.is_none());
+
+    // Range lifts verbatim; `amount` stays None.
+    let ranged = Reward {
+        amount: Some(RewardAmount::Range(-3, 5)),
+        ..base.clone()
+    };
+    let e = RewardEntry::from_ast(&ranged, true);
+    assert!(e.amount.is_none());
+    assert_eq!(e.amount_min, Some(-3));
+    assert_eq!(e.amount_max, Some(5));
+
+    // `on="failed"` on a quest-level entry survives; anything else is dropped.
+    let quest_failed = Reward {
+        on: Some("failed".into()),
+        ..base.clone()
+    };
+    assert_eq!(
+        RewardEntry::from_ast(&quest_failed, true).on.as_deref(),
+        Some("failed")
+    );
+    let quest_stray = Reward {
+        on: Some("banana".into()),
+        ..base.clone()
+    };
+    assert!(RewardEntry::from_ast(&quest_stray, true).on.is_none());
+
+    // Objective-level entries never carry `on`, whatever the AST holds.
+    let obj_failed = Reward {
+        on: Some("failed".into()),
+        ..base.clone()
+    };
+    assert!(RewardEntry::from_ast(&obj_failed, false).on.is_none());
 }
 
 #[test]

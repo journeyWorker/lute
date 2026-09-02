@@ -1,0 +1,19 @@
+---
+kind: quest
+state:
+  run.act: { type: bool, default: false }
+  run.region: { type: bool, default: false }
+  run.freed: { type: bool, default: false }
+  run.dead: { type: bool, default: false }
+---
+
+<quest id="rescueHalsin" title="Rescue" start="run.act" fail="run.dead">
+<reward kind="XP" amount="100"/>
+<reward kind="GOLD" target="party" amount="50..200" when="run.freed"/>
+<reward kind="TROPHY" target="halsin" on="failed"/>
+<objective id="reachGrove" title="Reach the Grove" done="run.region">
+<reward kind="XP"/>
+<reward kind="ITEM" target="map" amount="1"/>
+</objective>
+<objective id="freeHalsin" title="Free Halsin" done="run.freed"/>
+</quest>
