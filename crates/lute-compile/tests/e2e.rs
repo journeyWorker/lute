@@ -260,6 +260,17 @@ fn quest_subquest() {
     );
 }
 
+/// dsl 0.16.0 §2/§3 (Task 3): a reward-carrying quest lowered end-to-end.
+/// The load-bearing snapshot pins the exact wire — declaration-order
+/// `rewards[]` on both `QuestCmd` and `ObjectiveEntry`, `amountMin`/
+/// `amountMax` for a range, `amount` default `1` for an unauthored scalar,
+/// `on="failed"` only on the quest entry, `when.raw` verbatim. Task 4/5
+/// (vocabulary + runtime grant events) read this exact shape.
+#[test]
+fn quest_rewards() {
+    golden("quest_rewards", "tests/fixtures/quest_rewards.lute", None);
+}
+
 /// IR A12: the `::serve` plugin record carries resolved effect bindings. The
 /// `fromAttr` template (`resultKey="debut"`) is substituted into each path at
 /// compile time; `from` is the bridge-result key or the `op`/`by` increment,

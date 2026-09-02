@@ -838,6 +838,14 @@ pub struct QuestCmd {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fail: Option<CelPair>,
     pub objectives: Vec<ObjectiveEntry>,
+    /// Owner-declared `<reward/>` entries (dsl 0.16.0 §2/§3) in declaration
+    /// order. Grants at quest complete/failed transitions per spec D-D;
+    /// serialized only when authored so pre-0.16.0 rewardless quests stay
+    /// byte-identical (`Vec::is_empty`, append-only field placement — after
+    /// `objectives`, before the flattened `stamp`, preserving every prior
+    /// field's index — the file-header byte-stability contract).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rewards: Vec<RewardEntry>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -879,6 +887,13 @@ pub struct ObjectiveEntry {
     /// table, no new command kind (design doc §3).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quest: Option<String>,
+    /// Owner-declared `<reward/>` entries (dsl 0.16.0 §2/§3) in declaration
+    /// order — objective grants fire once at first `done` (spec D-D), before
+    /// any quest-level grants. `on=` is never legal here (checker rejects it,
+    /// compiler never emits it). Appended AFTER `quest` so every prior
+    /// objective serializes byte-identically (`Vec::is_empty`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rewards: Vec<RewardEntry>,
 }
 
 /// `<on>` event-condition-action record (dsl 0.2.0 §4, §6.6, IR addendum
@@ -915,6 +930,74 @@ impl CelPair {
         CelPair {
             raw: raw.to_string(),
             expr: crate::expr::lower_expr(raw),
+        }
+    }
+}
+
+/// One `<reward/>` entry inlined in `QuestCmd.rewards` / `ObjectiveEntry.rewards`
+/// (dsl 0.16.0 §2/§3). Pure declaration data — the engine grants at the
+/// spec's fresh transitions (§3 D-D); the compiler NEVER synthesizes
+/// handler bodies or `Command::Set` records here (0.14.0 subquest inverse:
+/// declarative rewards are lifted OUT of executable content). Field
+/// declaration order is serialized order (byte-stability contract).
+///
+/// Wire (dsl 0.16.0 Global Constraints): exactly one of `amount` XOR
+/// (`amountMin`+`amountMax`) is present after amount defaulting
+/// (unauthored → `amount: 1`). `on` is only ever `Some("failed")`, and
+/// only on a quest-level entry.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RewardEntry {
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount_min: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount_max: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<CelPair>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on: Option<String>,
+}
+
+impl RewardEntry {
+    /// Lower an AST [`lute_syntax::ast::Reward`] into the wire record.
+    /// `owner_is_quest = true` preserves `on="failed"` (spec §2 — only legal
+    /// on a quest-level entry); every other `on` value is dropped (the
+    /// checker rejects it upstream, but this stays defensive so a stray
+    /// value never reaches the wire). Amount defaulting (§3 Global
+    /// Constraints): unauthored → `amount: 1`; a scalar fills `amount`; a
+    /// range fills `amountMin`/`amountMax` verbatim (never pre-rolled,
+    /// spec D-C).
+    pub fn from_ast(reward: &lute_syntax::ast::Reward, owner_is_quest: bool) -> Self {
+        use lute_syntax::ast::RewardAmount;
+        let (amount, amount_min, amount_max) = match reward.amount {
+            None => (Some(1), None, None),
+            Some(RewardAmount::Scalar(n)) => (Some(n), None, None),
+            Some(RewardAmount::Range(lo, hi)) => (None, Some(lo), Some(hi)),
+        };
+        let on = if owner_is_quest {
+            reward.on.as_deref().and_then(|v| {
+                if v == "failed" {
+                    Some("failed".to_string())
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        };
+        RewardEntry {
+            kind: reward.kind.clone(),
+            target: reward.target.clone(),
+            amount,
+            amount_min,
+            amount_max,
+            when: reward.when.as_ref().map(|w| CelPair::from_raw(&w.raw)),
+            on,
         }
     }
 }

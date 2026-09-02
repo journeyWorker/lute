@@ -820,6 +820,259 @@ state:
     );
 }
 
+// --- dsl 0.16.0: declarative rewards (Task 3) -------------------------------
+
+const QUEST_REWARDS_SRC: &str = r#"---
+kind: quest
+state:
+  run.act: { type: bool, default: false }
+  run.region: { type: bool, default: false }
+  run.freed: { type: bool, default: false }
+  run.dead: { type: bool, default: false }
+---
+
+<quest id="rescueHalsin" title="Rescue" start="run.act" fail="run.dead">
+<reward kind="XP" amount="100"/>
+<reward kind="GOLD" target="party" amount="50..200" when="run.freed"/>
+<reward kind="TROPHY" target="halsin" on="failed"/>
+<objective id="reachGrove" done="run.region">
+<reward kind="XP"/>
+<reward kind="ITEM" target="map" amount="1"/>
+</objective>
+<objective id="freeHalsin" done="run.freed"/>
+</quest>
+"#;
+
+/// dsl 0.16.0 §2/§3 (Task 3): quest-level and objective-level `<reward/>`
+/// entries lower into `QuestCmd.rewards` / `ObjectiveEntry.rewards` in
+/// DECLARATION ORDER with the exact wire field names — `amountMin`/
+/// `amountMax` for a range, `amount` for a scalar (defaulting to `1` when
+/// unauthored), `when.raw` verbatim, and `on` present only for a
+/// quest-level entry authored `on="failed"`. Every other Option is
+/// `skip_serializing_if`, so the JSON carries exactly what the author
+/// wrote (no reordering, no synthesized keys).
+#[test]
+fn rewards_serialize_in_declaration_order_with_wire_names() {
+    let art = compile(&input(QUEST_REWARDS_SRC)).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let quest = j["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["kind"] == "quest")
+        .expect("quest record");
+
+    // Quest-level rewards, declaration order preserved.
+    let quest_rewards = quest["rewards"]
+        .as_array()
+        .expect("quest.rewards is an array");
+    assert_eq!(
+        quest_rewards.len(),
+        3,
+        "three quest-level `<reward/>` entries: {quest_rewards:#?}"
+    );
+    // Scalar amount: `amount` present, no min/max, no `on`/`target`/`when`.
+    assert_eq!(
+        quest_rewards[0],
+        serde_json::json!({"kind":"XP","amount":100}),
+        "scalar reward serializes with `amount` alone"
+    );
+    // Range amount: `amountMin`/`amountMax`; `amount` skipped; `when.raw` verbatim.
+    assert_eq!(
+        quest_rewards[1]["kind"], "GOLD",
+        "second reward kind preserved in declaration order"
+    );
+    assert_eq!(quest_rewards[1]["target"], "party");
+    assert!(
+        quest_rewards[1].get("amount").is_none(),
+        "range reward must NOT carry a scalar `amount` key: {}",
+        quest_rewards[1]
+    );
+    assert_eq!(quest_rewards[1]["amountMin"], 50);
+    assert_eq!(quest_rewards[1]["amountMax"], 200);
+    assert_eq!(
+        quest_rewards[1]["when"]["raw"], "run.freed",
+        "when.raw preserved verbatim (wire contract)"
+    );
+    // `on="failed"` reaches the wire on a quest-level entry, default amount=1.
+    assert_eq!(
+        quest_rewards[2],
+        serde_json::json!({"kind":"TROPHY","target":"halsin","amount":1,"on":"failed"}),
+        "on=\"failed\" survives on quest-level; unauthored amount defaults to 1"
+    );
+
+    // Objective-level rewards on the reachGrove objective.
+    let objectives = quest["objectives"].as_array().unwrap();
+    let reach = &objectives[0];
+    assert_eq!(reach["id"], "reachGrove");
+    let obj_rewards = reach["rewards"]
+        .as_array()
+        .expect("objective.rewards is an array");
+    assert_eq!(obj_rewards.len(), 2, "two objective rewards in order");
+    // Unauthored amount → default 1; no target, no when, no on.
+    assert_eq!(obj_rewards[0], serde_json::json!({"kind":"XP","amount":1}));
+    assert_eq!(
+        obj_rewards[1],
+        serde_json::json!({"kind":"ITEM","target":"map","amount":1})
+    );
+    assert!(
+        obj_rewards.iter().all(|r| r.get("on").is_none()),
+        "objective-level entries NEVER carry `on` (wire contract)"
+    );
+
+    // The rewardless objective omits the `rewards` key entirely.
+    let free = &objectives[1];
+    assert_eq!(free["id"], "freeHalsin");
+    assert!(
+        free.get("rewards").is_none(),
+        "rewardless objective must omit the `rewards` key: {free}"
+    );
+
+    // Declaration-order stability contract: the emitted JSON object keys
+    // (in insertion order) place `rewards` AFTER `objectives` on the quest
+    // and AFTER `quest` on each objective — the exact field-declaration
+    // order pinned by the ir.rs header. This is what keeps every
+    // pre-0.16.0 artifact byte-identical below `objectives[].quest`.
+    let quest_keys: Vec<&str> = quest
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let (obj_i, rew_i) = (
+        quest_keys.iter().position(|k| *k == "objectives").unwrap(),
+        quest_keys.iter().position(|k| *k == "rewards").unwrap(),
+    );
+    assert!(
+        obj_i < rew_i,
+        "quest keys: `rewards` must follow `objectives`: {quest_keys:?}"
+    );
+}
+
+/// A rewardless quest artifact must be BYTE-IDENTICAL to the pre-change
+/// output — proven directly by diffing against the same source's earlier-
+/// task golden shape via serde_json::Value (deterministic key set) plus a
+/// belt-and-suspenders check that the `rewards` key exists nowhere in the
+/// artifact JSON. `skip_serializing_if = "Vec::is_empty"` on both fields
+/// is the load-bearing invariant; a regression would surface as either the
+/// literal `"rewards":` bytes reappearing or the merged Value diverging.
+#[test]
+fn rewardless_quest_stays_byte_identical_to_pre_change() {
+    let art = compile(&input(QUEST_SRC)).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let wire = serde_json::to_string(&art).unwrap();
+    assert!(
+        !wire.contains("\"rewards\""),
+        "rewardless artifact must not carry a `rewards` key anywhere: {wire}"
+    );
+
+    // Every quest record and every objective row must OMIT the key
+    // (guarding against a shape-only `Some([])`-style regression on either
+    // field independently).
+    for c in j["commands"].as_array().unwrap() {
+        if c["kind"] == "quest" {
+            assert!(
+                c.get("rewards").is_none(),
+                "rewardless quest carries no `rewards`: {c}"
+            );
+            for o in c["objectives"].as_array().unwrap() {
+                assert!(
+                    o.get("rewards").is_none(),
+                    "rewardless objective carries no `rewards`: {o}"
+                );
+            }
+        }
+    }
+}
+
+/// Subquest synthesis (0.14.0 §2.1/§2.2) runs BEFORE reward lowering — the
+/// two features are orthogonal, and neither may perturb the other. This
+/// pins both directions: a parent whose objective is `quest="child"` still
+/// carries its own AUTHORED rewards on the parent-level entry AND on
+/// unrelated sibling objectives; the referenced child quest independently
+/// carries its own rewards untouched (subquest passes never move, drop,
+/// merge, or rewrite reward vectors — the inverse of the 0.14.0 done/fail
+/// synthesis that MUST touch CEL). Task 4/5 vocabulary/runtime work will
+/// consume these vectors verbatim.
+#[test]
+fn subquest_synthesis_leaves_rewards_untouched() {
+    const SUBQUEST_REWARDS: &str = r#"---
+kind: quest
+luteVersion: "0.15.1"
+state:
+  run.act: { type: bool, default: false }
+  run.done: { type: bool, default: false }
+---
+
+<quest id="parent" title="Parent" start="run.act">
+<reward kind="PARENT_XP" amount="500"/>
+<objective id="hookChild" quest="child"/>
+<objective id="ownDone" done="run.done">
+<reward kind="STEP" amount="10"/>
+</objective>
+</quest>
+
+<quest id="child" title="Child" start="run.act">
+<reward kind="CHILD_XP" amount="1..3"/>
+<objective id="childStep" done="run.done"/>
+</quest>
+"#;
+    let art = compile(&input(SUBQUEST_REWARDS)).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let quests: Vec<&serde_json::Value> = j["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["kind"] == "quest")
+        .collect();
+    assert_eq!(quests.len(), 2, "two quests emitted");
+
+    let parent = quests.iter().find(|q| q["id"] == "parent").unwrap();
+    // Parent-level authored reward survives.
+    assert_eq!(
+        parent["rewards"],
+        serde_json::json!([{"kind":"PARENT_XP","amount":500}]),
+        "parent quest-level reward untouched"
+    );
+    // Subquest hook objective has NO rewards and NO `rewards` key emitted;
+    // sibling objective's authored reward survives verbatim.
+    let parent_objs = parent["objectives"].as_array().unwrap();
+    let hook = &parent_objs[0];
+    assert_eq!(hook["id"], "hookChild");
+    assert_eq!(
+        hook["quest"], "child",
+        "subquest synthesis stamps `quest:` on the hook"
+    );
+    assert!(
+        hook.get("rewards").is_none(),
+        "rewardless subquest hook must omit `rewards`: {hook}"
+    );
+    let own = &parent_objs[1];
+    assert_eq!(own["id"], "ownDone");
+    assert_eq!(
+        own["rewards"],
+        serde_json::json!([{"kind":"STEP","amount":10}]),
+        "sibling objective's reward untouched by subquest synthesis"
+    );
+
+    let child = quests.iter().find(|q| q["id"] == "child").unwrap();
+    // Child-level reward survives across subquest synthesis (which only
+    // touches the PARENT's `fail` and the HOOK's `done`).
+    assert_eq!(
+        child["rewards"],
+        serde_json::json!([{"kind":"CHILD_XP","amountMin":1,"amountMax":3}]),
+        "child quest-level reward untouched"
+    );
+    // The child's own objectives were never subquest-hooked; no rewards
+    // authored, no `rewards` key emitted.
+    for o in child["objectives"].as_array().unwrap() {
+        assert!(
+            o.get("rewards").is_none(),
+            "child objective without authored rewards omits `rewards`: {o}"
+        );
+    }
+}
+
 #[test]
 fn hub_choice_use_expands_component_records_with_source_stamp() {
     // REACHABILITY (task-021): a hub choice body is ordinary SceneBody content

@@ -1,0 +1,145 @@
+---
+source: crates/lute-compile/tests/e2e.rs
+expression: json
+---
+{
+  "kind": "quest",
+  "lute": "0.15.1",
+  "irVersion": "0.15.1",
+  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "meta": {},
+  "state": [
+    {
+      "path": "quest.rescueHalsin.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:rescueHalsin"
+    },
+    {
+      "path": "quest.rescueHalsin.objectives.freeHalsin.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:rescueHalsin"
+    },
+    {
+      "path": "quest.rescueHalsin.objectives.reachGrove.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:rescueHalsin"
+    },
+    {
+      "path": "quest.rescueHalsin.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:rescueHalsin"
+    },
+    {
+      "path": "run.act",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.dead",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.freed",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.region",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "addr": "001-0100",
+      "id": "rescueHalsin",
+      "title": "Rescue",
+      "titleLineId": "rescueHalsin.title",
+      "start": {
+        "raw": "run.act",
+        "expr": {
+          "path": "run.act"
+        }
+      },
+      "fail": {
+        "raw": "run.dead",
+        "expr": {
+          "path": "run.dead"
+        }
+      },
+      "objectives": [
+        {
+          "id": "reachGrove",
+          "title": "Reach the Grove",
+          "titleLineId": "rescueHalsin.reachGrove",
+          "done": {
+            "raw": "run.region",
+            "expr": {
+              "path": "run.region"
+            }
+          },
+          "optional": false,
+          "body": null,
+          "rewards": [
+            {
+              "kind": "XP",
+              "amount": 1
+            },
+            {
+              "kind": "ITEM",
+              "target": "map",
+              "amount": 1
+            }
+          ]
+        },
+        {
+          "id": "freeHalsin",
+          "title": "Free Halsin",
+          "titleLineId": "rescueHalsin.freeHalsin",
+          "done": {
+            "raw": "run.freed",
+            "expr": {
+              "path": "run.freed"
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ],
+      "rewards": [
+        {
+          "kind": "XP",
+          "amount": 100
+        },
+        {
+          "kind": "GOLD",
+          "target": "party",
+          "amountMin": 50,
+          "amountMax": 200,
+          "when": {
+            "raw": "run.freed",
+            "expr": {
+              "path": "run.freed"
+            }
+          }
+        },
+        {
+          "kind": "TROPHY",
+          "target": "halsin",
+          "amount": 1,
+          "on": "failed"
+        }
+      ]
+    }
+  ]
+}
