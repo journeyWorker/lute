@@ -39,6 +39,7 @@ state:
 </quest>
 
 <quest id="findHalsin" title="Find Halsin">
+  <reward kind="XP" amount="120"/>
   <objective id="reachCage" title="Reach the cage" done="run.npc.halsin.freed"/>
 </quest>
 

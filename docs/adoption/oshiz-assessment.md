@@ -276,6 +276,17 @@ profile: oshiz
 - `<on event="questComplete">` ← `quest_rewards`
 - `::grant`는 플러그인 디렉티브 (bridge 또는 순수 effect)
 
+> **0.16.0 업데이트 노트.** 위 예시는 데이터/실행이 얽힌 **역사적** 관용구다. 0.16.0의
+> 선언형 `<reward kind= target= amount= when= on=/>`는 그 **데이터 절반**을 커버한다:
+> `quest_rewards` 행은 `<reward/>`로 그대로 낮아지고(문서 순서=grant 순서, `amount`는
+> 스칼라 또는 `N..M` 범위 리터럴, 음수 허용, `when=`는 CEL 슬롯), 참조 런타임은 값을
+> 굴리지 않고 grant transcript 이벤트를 결정적으로 방출한다
+> ([spec §3](../proposals/scenario-dsl/0.16.0.md#3-semantics--pure-data-the-engine-grants),
+> 엔진 규칙은 [`docs/runtime/quest-lifecycle.md`의 Rewards 절](../runtime/quest-lifecycle.md#rewards)).
+> 실행/서사 절반 — `<on questComplete>` + 플러그인 `::grant` — 은 그대로 지원되며 두
+> 관용구는 공존한다 (0.2.0 §6.5). 위 스니펫은 재기술하지 않는다: 매핑 표의 역사 예시로
+> 그대로 남긴다.
+
 `lute check`가 공짜로 주는 것: 조건 target이 실존 id인지(providers), 퀘스트가
 **증명 가능하게 도달 불가**한지(`E-QUEST-UNREACHABLE`), objective가 **증명 가능하게
 만족 불가**한지(`E-OBJECTIVE-UNSATISFIABLE`), 퀘스트 id 프로젝트 전역 유일성.

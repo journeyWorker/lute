@@ -473,6 +473,10 @@
           "named": true
         },
         {
+          "type": "reward",
+          "named": true
+        },
+        {
           "type": "set",
           "named": true
         },
@@ -654,6 +658,10 @@
           "named": true
         },
         {
+          "type": "reward",
+          "named": true
+        },
+        {
           "type": "set",
           "named": true
         },
@@ -674,6 +682,25 @@
       "types": [
         {
           "type": "fact_pattern",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "reward",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "attr",
+          "named": true
+        },
+        {
+          "type": "cel_attr",
           "named": true
         }
       ]
@@ -1157,6 +1184,10 @@
   },
   {
     "type": "<quest",
+    "named": false
+  },
+  {
+    "type": "<reward",
     "named": false
   },
   {
