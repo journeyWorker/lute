@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.15.schema.json",
-  "title": "Lute compiled IR artifact (irVersion 0.15.x)",
-  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `Artifact`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec §4.1, A9; relaxed in 0.13.0): an engine gates on `irVersion` by MAJOR only — it MUST accept any artifact whose `irVersion` MAJOR it implements and MUST refuse one from a different MAJOR. Minor and patch are compatible-by-default (fields are append-only within a major line; unknown fields are ignored), and an unknown command `kind` is the hard error that catches a genuinely newer capability. Pre-1.0, a breaking change may still land in a minor (0.10.0's provenance rename); such changes are called out in the CHANGELOG and this schema rather than fenced by the gate. `lute` (the language version) is informational for the runtime and does not gate parsing. Forward compatibility: an engine MUST IGNORE unknown OBJECT FIELDS (new optional fields are added append-only within a minor line) so a newer PATCH artifact still loads on an older engine of the same major.minor; an engine MUST treat an unknown command `kind` as an ERROR (a new command kind is a real capability the engine cannot fake). Field declaration order in an artifact is a byte-stability contract of the compiler but carries no semantics for a consumer.\n\nIR 0.8.0: within one artifact every `addr` shares a field width, so lexicographic order over `addr` equals execution order (dsl 0.8.0 §2). Engines loading artifacts from mixed toolchain versions SHOULD still compare `addr` segment-wise numerically.\n\nIR 0.9.0: a PURE RESTAMP of 0.8.0 for release-wide version alignment (docs/versioning.md) — lute-ir-0.9.schema.json IS lute-ir-0.8.schema.json renamed, with no field added, renamed, moved, or retyped.\n\nIR 0.10.0: a REAL shape change, not a restamp (#36, dsl 0.10.0 Appendix B). `provenance.reason` is renamed to `provenance.explanation`; no command `kind` is added, renamed, or removed, and no other field changes. Because the gate above is by MAJOR.MINOR, an engine implementing IR 0.9 MUST refuse a 0.10.0 artifact; widening that gate and reading `provenance.explanation` are the only changes such an engine needs. lute-ir-0.9.schema.json is kept published for engines still on 0.9.\n\nIR 0.11.0: a PURE RESTAMP of 0.10.2 for release-wide version alignment (docs/versioning.md) — lute-ir-0.13.schema.json IS lute-ir-0.10.schema.json renamed, with no field added, renamed, moved, or retyped. Unlike 0.10.1/0.10.2, which shared major.minor 0.10 and needed no rename, this release moves the gated major.minor itself (0.10 → 0.11), so the file renames and an engine implementing IR 0.10 MUST widen its gate before it accepts a 0.11.0 artifact — reading no new field, because there is none. lute-ir-0.10.schema.json is kept published for engines still on 0.10.\n\nIR 0.15.0 reshapes sceneMeta (dsl 0.15.0 §2/§3, authored scene identity): sceneMeta gains the always-present `id` field (the resolved canonical scene key — authored `id:` verbatim, else the derived `{character}.{episodeId}` join); the four legacy identity keys (`character`/`season`/`episode`/`episodeId`) demote to optional; and BOTH sceneMeta and questMeta gain the descriptive `meta` block (an open mapping whose values are scalars or flat scalar arrays, key-sorted by the compiler, omitted when empty). The gated major.minor moves (0.14 → 0.15); lute-ir-0.14.schema.json is kept published for engines still on 0.14.",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.16.schema.json",
+  "title": "Lute compiled IR artifact (irVersion 0.16.x)",
+  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `Artifact`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec §4.1, A9; relaxed in 0.13.0): an engine gates on `irVersion` by MAJOR only — it MUST accept any artifact whose `irVersion` MAJOR it implements and MUST refuse one from a different MAJOR. Minor and patch are compatible-by-default (fields are append-only within a major line; unknown fields are ignored), and an unknown command `kind` is the hard error that catches a genuinely newer capability. Pre-1.0, a breaking change may still land in a minor (0.10.0's provenance rename); such changes are called out in the CHANGELOG and this schema rather than fenced by the gate. `lute` (the language version) is informational for the runtime and does not gate parsing. Forward compatibility: an engine MUST IGNORE unknown OBJECT FIELDS (new optional fields are added append-only within a minor line) so a newer PATCH artifact still loads on an older engine of the same major.minor; an engine MUST treat an unknown command `kind` as an ERROR (a new command kind is a real capability the engine cannot fake). Field declaration order in an artifact is a byte-stability contract of the compiler but carries no semantics for a consumer.\n\nIR 0.8.0: within one artifact every `addr` shares a field width, so lexicographic order over `addr` equals execution order (dsl 0.8.0 §2). Engines loading artifacts from mixed toolchain versions SHOULD still compare `addr` segment-wise numerically.\n\nIR 0.9.0: a PURE RESTAMP of 0.8.0 for release-wide version alignment (docs/versioning.md) — lute-ir-0.9.schema.json IS lute-ir-0.8.schema.json renamed, with no field added, renamed, moved, or retyped.\n\nIR 0.10.0: a REAL shape change, not a restamp (#36, dsl 0.10.0 Appendix B). `provenance.reason` is renamed to `provenance.explanation`; no command `kind` is added, renamed, or removed, and no other field changes. Because the gate above is by MAJOR.MINOR, an engine implementing IR 0.9 MUST refuse a 0.10.0 artifact; widening that gate and reading `provenance.explanation` are the only changes such an engine needs. lute-ir-0.9.schema.json is kept published for engines still on 0.9.\n\nIR 0.11.0: a PURE RESTAMP of 0.10.2 for release-wide version alignment (docs/versioning.md) — lute-ir-0.13.schema.json IS lute-ir-0.10.schema.json renamed, with no field added, renamed, moved, or retyped. Unlike 0.10.1/0.10.2, which shared major.minor 0.10 and needed no rename, this release moves the gated major.minor itself (0.10 → 0.11), so the file renames and an engine implementing IR 0.10 MUST widen its gate before it accepts a 0.11.0 artifact — reading no new field, because there is none. lute-ir-0.10.schema.json is kept published for engines still on 0.10.\n\nIR 0.15.0 reshapes sceneMeta (dsl 0.15.0 §2/§3, authored scene identity): sceneMeta gains the always-present `id` field (the resolved canonical scene key — authored `id:` verbatim, else the derived `{character}.{episodeId}` join); the four legacy identity keys (`character`/`season`/`episode`/`episodeId`) demote to optional; and BOTH sceneMeta and questMeta gain the descriptive `meta` block (an open mapping whose values are scalars or flat scalar arrays, key-sorted by the compiler, omitted when empty). The gated major.minor moves (0.14 → 0.15); lute-ir-0.14.schema.json is kept published for engines still on 0.14.\n\nIR 0.16.0 is ADDITIVE-ONLY over 0.15.1 (dsl 0.16.0 declarative rewards): cmdQuest and objectiveEntry each gain an optional `rewards` array of the new `rewardEntry` def. Both arrays are omitted when empty, so a pre-rewards artifact stays byte-identical to 0.15.1. A `rewardEntry` carries `kind`, optional `target`, exactly one of `amount` XOR (`amountMin` + `amountMax`) after amount defaulting (unauthored → `amount: 1`), an optional `when` CEL pair evaluated at the grant instant, and `on: \"failed\"` on a quest-level entry (objective-level entries never carry `on`). Range amounts are wire-verbatim — an engine never sees a pre-rolled scalar (spec D-C). The runtime contract emits deterministic `grant` transcript events at each fresh lifecycle transition (spec §3 D-D); the reference engine's shape is `{ \"kind\": \"grant\", \"quest\": <id>, \"objective\": <oid>?, \"reward\": { …rewardEntry sans when… }, \"onFailed\": true? }`. The per-release rename rule renames `lute-ir-0.15.schema.json` → `lute-ir-0.16.schema.json`; the gated MAJOR does not move under 0.13.0's MAJOR-only runtime contract, so a 0.15 engine parses a 0.16.0 artifact unchanged and simply does not ask for the added arrays.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -990,6 +990,43 @@
       ],
       "description": "One <match> arm."
     },
+    "rewardEntry": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "The reward kind id (dsl 0.16.0 §2). When a plugin publishes a `rewardKinds:` vocabulary (§4), the checker's `E-REWARD-KIND` closure gates this against the merged vocabulary; without a vocabulary, any non-empty string is accepted (shape-only mode)."
+        },
+        "target": {
+          "type": "string",
+          "description": "Optional target id — the address of the effect target (e.g. an inventory owner). Its id-space is pinned by the reward-kind's `target: { provider: <name> }` declaration when the vocabulary declares one; a shape-only kind admits any target string."
+        },
+        "amount": {
+          "type": "integer",
+          "description": "Scalar amount (dsl 0.16.0 §2, integers, negatives legal). Present when the authored `amount` was a scalar, or when the attribute was unauthored (defaults to `1` per Global Constraints amount defaulting). Mutually exclusive with `amountMin`/`amountMax`."
+        },
+        "amountMin": {
+          "type": "integer",
+          "description": "Lower bound of a range amount (dsl 0.16.0 §2, `N..M`, `N <= M`). Carried verbatim from the authored value — a reference engine NEVER pre-rolls a value into `amount` (spec D-C); the engine's own dice draw over `[amountMin, amountMax]` at grant time is engine policy the IR does not fix. Present iff `amountMax` is present; both are mutually exclusive with `amount`."
+        },
+        "amountMax": {
+          "type": "integer",
+          "description": "Upper bound of a range amount — see `amountMin` for the range contract."
+        },
+        "when": {
+          "$ref": "#/$defs/celPair",
+          "description": "Optional CEL gate evaluated at the grant instant (spec §3). Grants fire iff `when` decides Bool(true); a `false`/`unknown` gate silently skips the entry once (a transition is monotone and fires at most once, so `when` is a one-shot filter, not a re-triable predicate)."
+        },
+        "on": {
+          "type": "string",
+          "enum": ["failed"],
+          "description": "Optional lifecycle-transition filter (dsl 0.16.0 §2). Only ever `\"failed\"` on the wire, and only on a quest-level entry — a quest reward with `on=\"failed\"` grants ONLY on a fresh `failed` transition (authored `fail` OR §2.3 cascade); absent `on=` means the reward grants ONLY on a fresh `complete`. Objective-level entries never carry `on=` (checker `E-REWARD-ATTR`)."
+        }
+      },
+      "additionalProperties": true,
+      "required": ["kind"],
+      "description": "One `<reward kind= target= amount= when= on=/>` declaration (dsl 0.16.0 §2/§3). Pure data — the compiler NEVER synthesizes handler bodies or `Command::Set` records for a reward; the reference engine (`crates/lute-cli/src/runner.rs` `Runner::emit_grants`) emits deterministic `grant` transcript events at each fresh lifecycle transition, and `lute trace` mirrors those events (`crates/lute-trace/src/walk.rs`)."
+    },
     "objectiveEntry": {
       "type": "object",
       "properties": {
@@ -1021,6 +1058,13 @@
         "quest": {
           "type": "string",
           "description": "Referenced child quest id of a subquest objective (<objective quest=...>, language 0.14.0); the objective's done is the synthesized quest.<child>.state == 'complete'. Omitted for authored-done objectives."
+        },
+        "rewards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rewardEntry"
+          },
+          "description": "dsl 0.16.0 §2/§3 declarative rewards — direct-child `<reward/>` entries of this objective in declaration order. Objective grants fire once at fresh `done` (spec §3 D-D), BEFORE any quest-level grant. `on=` is never legal on an objective-level entry (checker `E-REWARD-ATTR`); every entry here has no `on` field. Omitted when the objective authors no rewards (byte-identical to 0.15.1 for pre-rewards artifacts)."
         }
       },
       "additionalProperties": true,
@@ -2010,6 +2054,13 @@
           "items": {
             "$ref": "#/$defs/objectiveEntry"
           }
+        },
+        "rewards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rewardEntry"
+          },
+          "description": "dsl 0.16.0 §2/§3 declarative rewards — direct-child `<reward/>` entries of this quest in declaration order. Quest grants fire at fresh `complete`/`failed` transitions (spec §3 D-D). A `<reward on=\"failed\"/>` entry fires ONLY on `failed` (authored fail OR §2.3 downward cascade); a default (no `on=`) entry fires ONLY on `complete`. Runs BEFORE the corresponding `questComplete`/`questFailed` handler bodies. Omitted when the quest authors no rewards (byte-identical to 0.15.1 for pre-rewards artifacts)."
         },
         "wait": {
           "type": "boolean"

@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.15.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.16.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -44,7 +44,7 @@ a plain `diff`.
 ```json
 {
   "kind":       "scene" | "quest",
-  "irVersion":  "0.15",                // the major.minor line the engine gated on
+  "irVersion":  "0.16",                // the major.minor line the engine gated on
   "exit":       "complete" | "incomplete",
   "commands":   [ /* executed records, in execution order */ ],
   "state":      { "<path>": <value>, ... },   // final scalar state, key-sorted
@@ -52,6 +52,38 @@ a plain `diff`.
   "quests":     { "<id>": "active"|"complete"|"failed"|"unset", ... }
 }
 ```
+
+### The `grant` transcript event (dsl 0.16.0 §3 D-D)
+
+A `<reward/>` (`RewardEntry` on `QuestCmd.rewards`/`ObjectiveEntry.rewards`)
+surfaces one `grant` command per fresh lifecycle transition it fires on. An
+objective grant fires at first `done` (once, monotone); a quest grant fires
+at fresh `complete` or `failed` (§2.3 cascade included, once per instance).
+Order within an owner is declaration order; objective grants precede quest
+grants at the SAME settling pass, and both precede the fresh transition's
+`questComplete`/`questFailed` handler bodies.
+
+```json
+{
+  "kind":      "grant",
+  "quest":     "<questId>",
+  "objective": "<objectiveId>",     // only on an objective-level grant
+  "reward": {
+    "kind":      "<rewardKind>",
+    "target":    "<targetId>",       // present only when authored
+    "amount":    5,                  // XOR the range pair
+    "amountMin": 1, "amountMax": 5   // XOR the scalar
+  },
+  "onFailed":  true                  // only when the transition was `failed`
+}
+```
+
+Range bounds are carried **verbatim** on the wire (spec D-C) — a reference
+engine NEVER pre-rolls a value into `amount`; the engine's own dice draw
+over `[amountMin, amountMax]` at grant time is engine policy the IR does not
+fix. `reward.when` is evaluated at the grant instant and is NEVER surfaced
+in the transcript: a grant that fires is unconditionally true; a `false`/
+`unknown` gate silently skips its entry.
 
 ### Exit codes
 

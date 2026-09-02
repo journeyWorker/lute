@@ -207,6 +207,11 @@ struct QuestDecl {
     /// `raw` failure predicate, evaluated before derived completion.
     fail: Option<String>,
     objectives: Vec<Obj>,
+    /// dsl 0.16.0 §3 D-D: owner-declared `<reward/>` entries in
+    /// declaration order. Grants fire at fresh `complete`/`failed`
+    /// transitions (spec §3 D-D) — [`Runner::emit_quest_grants`] filters
+    /// by the per-entry `on=` marker.
+    rewards: Vec<RewardRec>,
 }
 
 struct Obj {
@@ -218,6 +223,40 @@ struct Obj {
     /// `ObjectiveEntry.quest` — the referenced child quest id (subquest
     /// design 2026-08-31 §3), or `None` for an authored-`done` objective.
     quest: Option<String>,
+    /// dsl 0.16.0 §3 D-D: owner-declared `<reward/>` entries in
+    /// declaration order. Fires ONCE at fresh `done` (spec §3 D-D),
+    /// BEFORE any quest-level grant fires.
+    rewards: Vec<RewardRec>,
+}
+
+/// One `RewardEntry` (`ir.rs`, dsl 0.16.0 §3) parsed straight off the
+/// artifact JSON, with `on` normalized to `Option<String>` (only ever
+/// `Some("failed")` after the checker's `E-REWARD-ATTR` gate — the runner
+/// filters strictly on that value). `when` is the raw CEL fragment
+/// evaluated at the grant instant via [`Runner::truthy`]; `None` here
+/// means an unconditional grant.
+struct RewardRec {
+    kind: String,
+    target: Option<String>,
+    amount: Option<i64>,
+    amount_min: Option<i64>,
+    amount_max: Option<i64>,
+    when: Option<String>,
+    on: Option<String>,
+}
+
+/// dsl 0.16.0 §3 D-D: which lifecycle transition is firing declarative
+/// rewards. [`GrantEvent::Objective`] fires every objective-level reward
+/// (objective entries never carry `on=`, spec §2); [`GrantEvent::Complete`]
+/// fires quest-level rewards whose `on=` is unset (the default
+/// "on complete"); [`GrantEvent::Failed`] fires quest-level rewards whose
+/// `on == "failed"` (both authored-`fail` and §2.3 cascade paths hit this
+/// arm, with the transcript's `onFailed: true` marking the transition kind).
+#[derive(Clone, Copy)]
+enum GrantEvent {
+    Objective,
+    Complete,
+    Failed,
 }
 
 /// A parsed `<on>` handler. `quest` is the ENCLOSING quest's id, recovered
@@ -1508,6 +1547,17 @@ impl Runner {
                             "objective": o.id,
                             "done": true,
                         }));
+                        // dsl 0.16.0 §3 D-D: fresh `done` → fire this
+                        // objective's rewards in declaration order BEFORE
+                        // the objective body runs (spec: objective grants
+                        // fire before any quest-level grant, which itself
+                        // fires before a `questComplete` handler body).
+                        self.emit_grants(
+                            &q.id,
+                            Some(&o.id),
+                            &q.objectives[oi].rewards,
+                            GrantEvent::Objective,
+                        );
                         if let Some(body) = &o.body {
                             self.run_segment(body, seg_starts);
                         }
@@ -1518,6 +1568,10 @@ impl Runner {
                 if let Some(fail) = &q.fail {
                     if self.truthy(fail) == Some(true) {
                         self.set_quest_state(&q.id, "failed");
+                        // dsl 0.16.0 §3 D-D: fresh `failed` → grant
+                        // `on="failed"` quest rewards BEFORE `questFailed`
+                        // handlers and BEFORE the §2.3 downward cascade.
+                        self.emit_grants(&q.id, None, &q.rewards, GrantEvent::Failed);
                         self.fire_event("questFailed", Some(&q.id), handlers, seg_starts);
                         self.cascade_children(&q.id, quests, parent_of, handlers, seg_starts);
                         changed = true;
@@ -1532,6 +1586,10 @@ impl Runner {
                     .all(|(oi, o)| o.optional || done.contains(&(qi, oi)));
                 if complete {
                     self.set_quest_state(&q.id, "complete");
+                    // dsl 0.16.0 §3 D-D: fresh `complete` → grant this
+                    // quest's default-on rewards BEFORE `questComplete`
+                    // handlers play.
+                    self.emit_grants(&q.id, None, &q.rewards, GrantEvent::Complete);
                     self.fire_event("questComplete", Some(&q.id), handlers, seg_starts);
                     self.cascade_children(&q.id, quests, parent_of, handlers, seg_starts);
                     changed = true;
@@ -1569,7 +1627,18 @@ impl Runner {
                 .map(|q| q.id.clone())
                 .collect();
             for child in children {
+                // dsl 0.16.0 §3 D-D: cascade-fail IS a fresh `failed`
+                // transition (§2.3). Grant `on="failed"` rewards on the
+                // cascaded child before firing its own `questFailed` — same
+                // ordering as an authored `fail`, so a consumer reads no
+                // structural difference.
+                let child_rewards = quests
+                    .iter()
+                    .find(|q| q.id == child)
+                    .map(|q| q.rewards.as_slice())
+                    .unwrap_or(&[]);
                 self.set_quest_state(&child, "failed");
+                self.emit_grants(&child, None, child_rewards, GrantEvent::Failed);
                 self.fire_event("questFailed", Some(&child), handlers, seg_starts);
                 stack.push(child);
             }
@@ -1585,6 +1654,68 @@ impl Runner {
             "quest": id,
             "state": state,
         }));
+    }
+
+    /// dsl 0.16.0 §3 D-D: emit a `grant` transcript record for every
+    /// entry in `rewards` (declaration order) whose `on=` filter matches
+    /// `event` AND whose `when=` gate is `Some(true)` against the LIVE
+    /// state at the grant instant. `objective_id: Some(oid)` marks an
+    /// objective-level grant (the checker rejects `on=` on those, so the
+    /// filter is a no-op here — passed as [`GrantEvent::Objective`]).
+    /// Ranges are passed through verbatim on the wire (spec D-C: never
+    /// pre-rolled — `amountMin`/`amountMax` land on the transcript entry
+    /// exactly as the artifact carried them).
+    fn emit_grants(
+        &mut self,
+        quest_id: &str,
+        objective_id: Option<&str>,
+        rewards: &[RewardRec],
+        event: GrantEvent,
+    ) {
+        for r in rewards {
+            if r.kind.trim().is_empty() {
+                continue;
+            }
+            let on_failed = matches!(r.on.as_deref(), Some("failed"));
+            let matches = match event {
+                GrantEvent::Objective => true,
+                GrantEvent::Complete => !on_failed,
+                GrantEvent::Failed => on_failed,
+            };
+            if !matches {
+                continue;
+            }
+            if let Some(raw) = &r.when {
+                if self.truthy(raw) != Some(true) {
+                    continue;
+                }
+            }
+            let mut reward = serde_json::Map::new();
+            reward.insert("kind".into(), Json::String(r.kind.clone()));
+            if let Some(t) = &r.target {
+                reward.insert("target".into(), Json::String(t.clone()));
+            }
+            if let Some(n) = r.amount {
+                reward.insert("amount".into(), json!(n));
+            }
+            if let Some(lo) = r.amount_min {
+                reward.insert("amountMin".into(), json!(lo));
+            }
+            if let Some(hi) = r.amount_max {
+                reward.insert("amountMax".into(), json!(hi));
+            }
+            let mut rec = serde_json::Map::new();
+            rec.insert("kind".into(), Json::String("grant".into()));
+            rec.insert("quest".into(), Json::String(quest_id.to_string()));
+            if let Some(oid) = objective_id {
+                rec.insert("objective".into(), Json::String(oid.to_string()));
+            }
+            rec.insert("reward".into(), Json::Object(reward));
+            if matches!(event, GrantEvent::Failed) {
+                rec.insert("onFailed".into(), Json::Bool(true));
+            }
+            self.transcript.push(Json::Object(rec));
+        }
     }
 
     /// Fire every handler matching `event` whose `when` holds over the current
@@ -1729,6 +1860,36 @@ impl Runner {
                     e.get("quest").and_then(Json::as_str).unwrap_or(""),
                     e.get("state").and_then(Json::as_str).unwrap_or("")
                 ),
+                "grant" => {
+                    let quest = e.get("quest").and_then(Json::as_str).unwrap_or("");
+                    let owner = match e.get("objective").and_then(Json::as_str) {
+                        Some(oid) => format!("{quest}.{oid}"),
+                        None => quest.to_string(),
+                    };
+                    let reward = e.get("reward").cloned().unwrap_or(Json::Null);
+                    let kind = reward.get("kind").and_then(Json::as_str).unwrap_or("");
+                    let amount = if let Some(n) = reward.get("amount").and_then(Json::as_i64) {
+                        n.to_string()
+                    } else {
+                        let lo = reward.get("amountMin").and_then(Json::as_i64);
+                        let hi = reward.get("amountMax").and_then(Json::as_i64);
+                        match (lo, hi) {
+                            (Some(l), Some(h)) => format!("{l}..{h}"),
+                            _ => "?".to_string(),
+                        }
+                    };
+                    let target = reward
+                        .get("target")
+                        .and_then(Json::as_str)
+                        .map(|t| format!(" -> {t}"))
+                        .unwrap_or_default();
+                    let annot = if e.get("onFailed").and_then(Json::as_bool) == Some(true) {
+                        " (on failed)"
+                    } else {
+                        ""
+                    };
+                    format!("  grant {owner}  {kind} {amount}{target}{annot}")
+                }
                 _ => format!("  {a}  {k}"),
             };
             println!("{line}");
@@ -1818,6 +1979,7 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
                     optional: o.get("optional").and_then(Json::as_bool).unwrap_or(false),
                     body: o.get("body").and_then(Json::as_str).map(str::to_string),
                     quest: o.get("quest").and_then(Json::as_str).map(str::to_string),
+                    rewards: parse_rewards(o),
                 })
                 .collect()
         })
@@ -1827,6 +1989,39 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
         start: cel_raw(cmd.get("start")),
         fail: cel_raw(cmd.get("fail")),
         objectives,
+        rewards: parse_rewards(cmd),
+    }
+}
+
+/// dsl 0.16.0 §3: parse the `rewards:` array off a `QuestCmd`/
+/// `ObjectiveEntry` JSON record into the runner's [`RewardRec`] shape.
+/// The array is `skip_serializing_if = "Vec::is_empty"` on the compile
+/// side, so a rewardless owner has no `rewards` key at all; this
+/// gracefully returns an empty vector in that case. Fields map directly
+/// from the wire (`kind`/`target`/`amount`/`amountMin`/`amountMax`/
+/// `when.raw`/`on`); a malformed entry keeps default values (empty
+/// `kind` filters at grant time via [`Runner::emit_grants`]).
+fn parse_rewards(owner: &Json) -> Vec<RewardRec> {
+    owner
+        .get("rewards")
+        .and_then(Json::as_array)
+        .map(|arr| arr.iter().map(parse_reward).collect())
+        .unwrap_or_default()
+}
+
+fn parse_reward(r: &Json) -> RewardRec {
+    RewardRec {
+        kind: r
+            .get("kind")
+            .and_then(Json::as_str)
+            .unwrap_or("")
+            .to_string(),
+        target: r.get("target").and_then(Json::as_str).map(str::to_string),
+        amount: r.get("amount").and_then(Json::as_i64),
+        amount_min: r.get("amountMin").and_then(Json::as_i64),
+        amount_max: r.get("amountMax").and_then(Json::as_i64),
+        when: cel_raw(r.get("when")),
+        on: r.get("on").and_then(Json::as_str).map(str::to_string),
     }
 }
 

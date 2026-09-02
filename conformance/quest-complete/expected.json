@@ -12,9 +12,26 @@
       "quest": "reachGoal"
     },
     {
+      "kind": "grant",
+      "objective": "arrive",
+      "quest": "reachGoal",
+      "reward": {
+        "amount": 5,
+        "kind": "GOLD"
+      }
+    },
+    {
       "kind": "quest",
       "quest": "reachGoal",
       "state": "complete"
+    },
+    {
+      "kind": "grant",
+      "quest": "reachGoal",
+      "reward": {
+        "amount": 100,
+        "kind": "XP"
+      }
     },
     {
       "addr": "001-0300",
@@ -31,7 +48,7 @@
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.15",
+  "irVersion": "0.16",
   "kind": "quest",
   "quests": {
     "reachGoal": "complete"
