@@ -22,8 +22,12 @@ state:
 */
 
 <quest id="rescueHalsinGrove" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
+<reward kind="XP" amount="300"/>
+<reward kind="REPUTATION" target="grove" amount="1" on="failed"/>
 <objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
-<objective id="freeHalsin" title="Free Halsin from the cage" done="run.npc.halsin.freed"/>
+<objective id="freeHalsin" title="Free Halsin from the cage" done="run.npc.halsin.freed">
+  <reward kind="XP" amount="50"/>
+</objective>
 
 <on event="questComplete">
 ::set{user.xp += 300}

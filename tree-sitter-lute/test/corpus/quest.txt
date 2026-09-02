@@ -80,3 +80,51 @@ multiple top-level quests (source_file admits repeated quest, mirrors shot)
     (objective
       (attr (key) (string))
       (cel_attr (cel_key) (cel_string (path))))))
+
+==================
+quest-level rewards + objective-level reward (dsl 0.16.0 §2 owner-scoped)
+==================
+<quest id="anonLook" start="run.act == 1">
+  <reward kind="EXP_ACCOUNT" amount="80"/>
+  <reward kind="ITEM" target="empty_milk_carton" amount="-5"/>
+  <reward kind="SHARD" amount="1..5" when="quest.anonLook.objectives.bonus.done"/>
+  <reward kind="SHARD" amount="2" on="failed"/>
+  <objective id="collect" done="run.d">
+    <reward kind="SHARD" amount="1"/>
+  </objective>
+</quest>
+---
+(source_file
+  (quest
+    (attr (key) (string))
+    (cel_attr (cel_key) (cel_string (path)))
+    (reward
+      (attr (key) (string))
+      (attr (key) (string)))
+    (reward
+      (attr (key) (string))
+      (attr (key) (string))
+      (attr (key) (string)))
+    (reward
+      (attr (key) (string))
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (path))))
+    (reward
+      (attr (key) (string))
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string)))
+    (objective
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (path)))
+      (reward
+        (attr (key) (string))
+        (attr (key) (string))))))
+
+==================
+non-self-closing <reward> body is a parse error (dsl 0.16.0 §2, always self-closing)
+:error
+==================
+<quest id="q">
+  <reward kind="SHARD"></reward>
+</quest>
+---

@@ -252,7 +252,7 @@ module.exports = grammar({
         "<quest",
         repeat($._tag_attr),
         ">",
-        repeat($._node),
+        repeat(choice($._node, $.reward)),
         "</quest>",
       ),
 
@@ -276,8 +276,25 @@ module.exports = grammar({
     objective: ($) =>
       choice(
         seq("<objective", repeat($._tag_attr), "/>"),
-        seq("<objective", repeat($._tag_attr), ">", repeat($._node), "</objective>"),
+        seq(
+          "<objective",
+          repeat($._tag_attr),
+          ">",
+          repeat(choice($._node, $.reward)),
+          "</objective>",
+        ),
       ),
+
+    // Reward ::= "<reward" Attrs "/>" (dsl 0.16.0 §2). ALWAYS self-closing —
+    // a body-form `<reward> … </reward>` is a parse error (an authoring bug
+    // any editor surfaces immediately). Reachable ONLY as a direct child of
+    // `<quest>` or `<objective>` (owner-scoped), never in `_node` — so an
+    // exhaustive body walk elsewhere in the tooling can never see a reward
+    // out of place (spec D-A). Attribute set (`kind`/`target`/`amount`/
+    // `when`/`on`) rides the generic `_tag_attr` machinery; the checker owns
+    // shape/vocabulary via `E-REWARD-ATTR`/`E-REWARD-KIND`.
+    reward: ($) =>
+      seq("<reward", repeat($._tag_attr), "/>"),
 
     // ---- attributes (§4.5) -------------------------------------------------
     // Attrs ::= "{" ( Attr ( WS Attr )* )? "}"  — the brace-delimited form used

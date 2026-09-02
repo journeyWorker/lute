@@ -173,6 +173,95 @@ stamping is unchanged: the stamp fires at the `unset → active` transition
 whatever gate produced it, and the reserved-path guards
 (`E-QUEST-RESERVED-DECL`, `E-QUEST-RESERVED-WRITE`) still hold.
 
+## Rewards
+
+A `<reward kind= target= amount= when= on=/>` (dsl 0.16.0 §2) is a
+**declaration**, not flow: a self-closing element legal only as a direct
+child of `<quest>` or `<objective>`. It lowers to pure data — a
+`RewardEntry` in `QuestCmd.rewards` or `ObjectiveEntry.rewards`, never
+synthesized into a handler, command, or predicate (the exact inverse of
+the subquest surfaces above; `::grant` is plugin vocabulary and the core
+language must never depend on any plugin's directive existing, spec D-B).
+The engine grants; the reference runtime emits a deterministic transcript
+event per grant.
+
+### When grants fire (engine-derived)
+
+Grants ride the same transitions the lifecycle already exposes; no new
+state, no new event surface:
+
+- **objective grants** — when an objective first becomes `done` (the same
+  monotonic transition its body segment plays on, §Objectives above).
+- **quest `on="complete"` grants** (or `on` omitted — `complete` is the
+  default) — at the `→ complete` transition.
+- **quest `on="failed"` grants** — at the `→ failed` transition, including
+  a parent-cascade `failed` (§Subquests above). A cascade-failed child
+  grants its `on="failed"` rewards **exactly once**, on the cascaded
+  transition, before its own `questFailed` handlers fire.
+
+Each reward is granted **at most once per quest instance** — the same
+monotonicity as objective bodies. A repeatable quest re-arms its rewards on
+re-instantiation, alongside clearing the instance's other scratch fields.
+
+### `when` is evaluated at the grant instant
+
+`RewardEntry.when` is the ordinary `{raw, expr}` CEL slot (checker
+profile, `E-MAYBE-UNSET`, unset-sentinel guards, LSP hover/fill). The
+engine evaluates it against the same pre-transition state/fact snapshot
+the triggering transition observed — the reward is skipped exactly when
+`when` decides non-`true`, and it is not re-armed (a skipped grant does
+not fire later even if `when` later flips true).
+
+### Order within one owner is declaration order
+
+Within one owner (`Quest.rewards` or `Objective.rewards`), grants fire in
+document order. When one event settles both an objective and its enclosing
+quest, **objective grants precede quest grants**, and all grants precede
+the corresponding lifecycle handler body — so a `questComplete` handler's
+narrative reads live state after every grant of that transition has
+applied. The reverse order would make "you received X" a lie at the
+instant it plays (spec D-D).
+
+### Ranges are declaration data — the reference runtime never rolls
+
+`RewardEntry.amount` is either a scalar (`amount: N`) or a range (`amountMin: N`
++ `amountMax: M`, with integer bounds and `N <= M`). A range is a
+**declaration**, not a roll: journals render "N–M", balancers compute an
+expectation, and the roll itself is the simulation's half (the 0.0.1 dice
+contract). The reference runtime keeps output byte-deterministic by
+emitting the declared shape verbatim — `lute run` / `play` / `trace`
+carry `amount` or `amountMin`+`amountMax` in the grant event exactly as
+authored, never a rolled sample (spec D-C).
+
+### Grant transcript event
+
+The reference runtime emits one deterministic event per grant, mirrored
+by `lute trace` as a `Step::Grant`:
+
+```
+{ "kind": "grant",
+  "quest": "<questId>",
+  "objective": "<oid>"?,            // present iff an objective grant
+  "reward": { …RewardEntry sans when… },
+  "onFailed": true?                 // present iff the reward's on == "failed"
+}
+```
+
+`objective` is present only for objective-owned rewards. `onFailed` is
+present only for quest-owned `on="failed"` rewards (the default
+`complete` transition omits the field). `reward` carries the wire-shape
+`RewardEntry` minus `when` — a grant event only fires when `when` (if
+authored) decided `true`, so re-serializing the predicate is noise. Range
+bounds are the declared literals; a rolled amount NEVER appears.
+
+### Coexistence with `<on questComplete>` + `::grant`
+
+The `<on questComplete>` + plugin-`::grant` idiom (0.2.0 §6.5) remains
+fully supported for narrative staging and engine-specific effects:
+declarative rewards and handler-driven grants coexist. Double-grant
+detection across the two is a **non-goal** — plugin directive semantics
+are opaque to the checker.
+
 ## Re-evaluation cadence
 
 After **activation** and after **every event**, the engine (0.4.0 §4.6):
