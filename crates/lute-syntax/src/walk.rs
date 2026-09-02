@@ -34,7 +34,7 @@
 
 use crate::ast::{
     Arm, Attr, AttrValue, Branch, CelSlot, ClipNode, Directive, Document, Hub, Line, Match, Node,
-    Objective, On, Quest, Timeline,
+    Objective, On, Quest, Reward, Timeline,
 };
 
 /// Visit every [`CelSlot`] in `doc` in the canonical pre-order, borrowing each.
@@ -124,6 +124,12 @@ fn quest<'a>(q: &'a Quest, f: &mut impl FnMut(&'a CelSlot)) {
     }
     attrs(&q.attrs, f);
     body(&q.body, f);
+    // dsl 0.16.0 §2: quest-level reward `when` slots come AFTER the body,
+    // in declaration order. `reward` is an owner field, not a `Node`, so it
+    // rides here rather than through `body`.
+    for r in &q.rewards {
+        reward(r, f);
+    }
 }
 
 fn objective<'a>(o: &'a Objective, f: &mut impl FnMut(&'a CelSlot)) {
@@ -133,6 +139,18 @@ fn objective<'a>(o: &'a Objective, f: &mut impl FnMut(&'a CelSlot)) {
     }
     attrs(&o.attrs, f);
     body(&o.body, f);
+    // dsl 0.16.0 §2: objective-level reward `when` slots come AFTER
+    // `when`/`done` and the body, in declaration order.
+    for r in &o.rewards {
+        reward(r, f);
+    }
+}
+
+fn reward<'a>(r: &'a Reward, f: &mut impl FnMut(&'a CelSlot)) {
+    if let Some(w) = &r.when {
+        f(w);
+    }
+    attrs(&r.attrs, f);
 }
 
 fn on<'a>(o: &'a On, f: &mut impl FnMut(&'a CelSlot)) {
@@ -258,6 +276,9 @@ fn quest_mut(q: &mut Quest, f: &mut impl FnMut(&mut CelSlot)) {
     }
     attrs_mut(&mut q.attrs, f);
     body_mut(&mut q.body, f);
+    for r in &mut q.rewards {
+        reward_mut(r, f);
+    }
 }
 
 fn objective_mut(o: &mut Objective, f: &mut impl FnMut(&mut CelSlot)) {
@@ -267,6 +288,16 @@ fn objective_mut(o: &mut Objective, f: &mut impl FnMut(&mut CelSlot)) {
     }
     attrs_mut(&mut o.attrs, f);
     body_mut(&mut o.body, f);
+    for r in &mut o.rewards {
+        reward_mut(r, f);
+    }
+}
+
+fn reward_mut(r: &mut Reward, f: &mut impl FnMut(&mut CelSlot)) {
+    if let Some(w) = &mut r.when {
+        f(w);
+    }
+    attrs_mut(&mut r.attrs, f);
 }
 
 fn on_mut(o: &mut On, f: &mut impl FnMut(&mut CelSlot)) {
@@ -526,15 +557,24 @@ mod tests {
 
     #[test]
     fn quest_slots_visited_in_canonical_order() {
+        // dsl 0.16.0 §2: an objective-level `<reward when=…/>` slot is
+        // visited AFTER the objective's own `done`/`when`/body, and every
+        // quest-level `<reward when=…/>` slot AFTER `<on>` bodies — all in
+        // declaration order.
         let (doc, _) = crate::parse(
             "<quest id=\"q\" start=\"run.s\" fail=\"run.f\">\n\
-             <objective id=\"o\" done=\"run.d\" when=\"run.w\"/>\n\
+             <objective id=\"o\" done=\"run.d\" when=\"run.w\">\n\
+             <reward kind=\"gold\" when=\"run.rk\"/>\n\
+             </objective>\n\
              <on event=\"questComplete\" when=\"run.g\">\n@x: hi\n</on>\n\
+             <reward kind=\"loot\" when=\"run.rq\"/>\n\
              </quest>\n",
         );
         let mut raws: Vec<String> = Vec::new();
         super::for_each_cel_slot(&doc, &mut |s| raws.push(s.raw.clone()));
-        // start, fail, objective.done, objective.when, on.when — in this order.
-        assert_eq!(raws, vec!["run.s", "run.f", "run.d", "run.w", "run.g"]);
+        assert_eq!(
+            raws,
+            vec!["run.s", "run.f", "run.d", "run.w", "run.rk", "run.g", "run.rq"]
+        );
     }
 }

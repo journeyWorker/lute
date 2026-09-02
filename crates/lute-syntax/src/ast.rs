@@ -143,6 +143,10 @@ pub struct Hub {
 /// admitted by dsl 0.2.0 §6.7 are legal — enforced in lute-check, not here).
 /// `start`/`fail` are optional CEL guards; `title` is a localizable String
 /// captured raw (interps recovered on demand via `scan_label_interps`).
+/// `rewards` collects every self-closing `<reward/>` (dsl 0.16.0 §2) that
+/// appeared as a direct child of this quest — the parse loop intercepts the
+/// element and folds it here instead of the shared `body` stream, so every
+/// existing exhaustive `Node` match stays untouched.
 #[derive(Clone, Debug)]
 pub struct Quest {
     pub id: String,
@@ -160,6 +164,8 @@ pub struct Quest {
     /// Residual (post-extraction) attrs, mirroring [`Branch`]; normally empty.
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
+    /// Self-closing `<reward/>` children in declaration order (dsl 0.16.0 §2).
+    pub rewards: Vec<Reward>,
     pub span: Span,
 }
 
@@ -169,7 +175,9 @@ pub struct Quest {
 /// `quest` (subquest design, 2026-08-31) references a child quest whose
 /// completion IS this objective's completion (the predicate is synthesized
 /// downstream — `quest.<child>.state == 'complete'` — never authored).
-/// `when` gates visibility; `optional` is a bare boolean flag.
+/// `when` gates visibility; `optional` is a bare boolean flag. `rewards`
+/// collects every self-closing `<reward/>` (dsl 0.16.0 §2) child, folded
+/// out of the shared `body` stream by the parse loop.
 #[derive(Clone, Debug)]
 pub struct Objective {
     pub id: String,
@@ -187,7 +195,63 @@ pub struct Objective {
     pub optional: bool,
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
+    /// Self-closing `<reward/>` children in declaration order (dsl 0.16.0 §2).
+    pub rewards: Vec<Reward>,
     pub span: Span,
+}
+
+/// A `<reward kind= target= amount= when= on=/>` element (dsl 0.16.0 §2) —
+/// an OWNER FIELD of the enclosing [`Quest`] / [`Objective`], NEVER a
+/// [`Node`] variant. The parser accepts only the self-closing form
+/// (`self_closing == true`); a body-form `<reward>…</reward>` draws a
+/// parse-layer error. `kind` may be empty when the attribute is missing —
+/// the checker owns `E-REWARD-ATTR`. A malformed `amount=` value keeps
+/// `amount: None` and preserves the raw attribute inside `attrs` so the
+/// checker can anchor its diagnostic at the original value span; a valid
+/// literal is lifted into [`RewardAmount`] and removed from `attrs`.
+#[derive(Clone, Debug)]
+pub struct Reward {
+    /// Value of `kind=`; the empty string when the attribute was absent
+    /// (checker: `E-REWARD-ATTR`).
+    pub kind: String,
+    /// Span of `kind`'s value (or the open-tag span when absent).
+    pub kind_span: Span,
+    /// Value of `target=` when present.
+    pub target: Option<String>,
+    /// Parsed `amount=` literal; `None` when absent OR when the raw text
+    /// failed to parse (the raw attr survives inside `attrs` in that case).
+    pub amount: Option<RewardAmount>,
+    /// Span of the `amount=` attribute value when the attribute was authored
+    /// (whether or not it parsed); `None` when absent.
+    pub amount_span: Option<Span>,
+    /// Optional `when=` CEL guard (dsl 0.16.0 §2) — evaluated at the grant
+    /// instant; joins the canonical [`CelSlot`] walk.
+    pub when: Option<CelSlot>,
+    /// Raw `on=` attribute value (only `"failed"` is legal, and only on a
+    /// quest-level reward per dsl 0.16.0 §2); the checker validates the enum
+    /// and the position.
+    pub on: Option<String>,
+    /// Span of `on`'s value when present.
+    pub on_span: Option<Span>,
+    /// Residual attrs (post-extraction) for the D-J per-tag attribute
+    /// closure check. A malformed `amount=` is preserved here so the checker
+    /// can anchor `E-REWARD-ATTR` at the original value span.
+    pub attrs: Vec<Attr>,
+    /// Span of the whole `<reward … />` element.
+    pub span: Span,
+    /// Parser recovery flag: `true` for the legal self-closing form; `false`
+    /// when a body was written on this leaf (already reported by the parser).
+    pub self_closing: bool,
+}
+
+/// `amount=` payload (dsl 0.16.0 §2): a scalar integer or an inclusive
+/// `N..M` range (`N <= M`, both bounds may be negative). The parser rejects
+/// `N > M`; a range is preserved verbatim through lowering and never
+/// pre-rolled to a scalar (spec D-C).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RewardAmount {
+    Scalar(i64),
+    Range(i64, i64),
 }
 
 /// `<on event … [when …]> Node* </on>` (dsl 0.2.0 §4). The ECA trigger:
@@ -264,7 +328,11 @@ pub fn scan_label_interps(label: &str, span: Span) -> Vec<Interp> {
                 Some(rel) => {
                     let inner = label[j + 2..j + 2 + rel].trim().to_string();
                     let kind = classify_interp(&inner);
-                    out.push(Interp { kind, raw: inner, span });
+                    out.push(Interp {
+                        kind,
+                        raw: inner,
+                        span,
+                    });
                     j = j + 2 + rel + 2;
                     continue;
                 }

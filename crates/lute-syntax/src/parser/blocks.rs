@@ -9,8 +9,8 @@
 
 use super::attrs::{take_bool, take_cel, take_str, take_str_spanned};
 use super::{
-    close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TAG_INLINE_BODY,
-    E_TAG_NOT_ONE_LINE, E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
+    close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TAG_INLINE_BODY, E_TAG_NOT_ONE_LINE,
+    E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
 };
 use crate::ast::*;
 use lute_core_span::Layer;
@@ -63,8 +63,7 @@ impl Parser<'_> {
         // `E-UNCLOSED-TAG`/`E-UNCLASSIFIED` to fire from wherever the parser
         // resyncs. Do NOT attempt to consume the wrap — the one-physical-line
         // model (§2.3) is retained, not relaxed.
-        let one_line =
-            after <= e && self.body.as_bytes().get(after.wrapping_sub(1)) == Some(&b'>');
+        let one_line = after <= e && self.body.as_bytes().get(after.wrapping_sub(1)) == Some(&b'>');
         if !one_line {
             self.emit_o(
                 E_TAG_NOT_ONE_LINE,
@@ -228,7 +227,7 @@ impl Parser<'_> {
         let (after, after_span) = take_str_spanned(&mut attrs, "after")
             .map(|(s, sp)| (Some(s), sp))
             .unwrap_or_else(|| (None, self.span_o(open.start_o, open.end_o)));
-        let (body, end_o) = self.parse_block_body("quest", &open);
+        let (body, rewards, end_o) = self.parse_owner_body("quest", &open);
         Quest {
             id,
             id_span,
@@ -239,6 +238,7 @@ impl Parser<'_> {
             after_span,
             attrs,
             body,
+            rewards,
             span: self.span_o(open.start_o, end_o),
         }
     }
@@ -270,10 +270,10 @@ impl Parser<'_> {
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let title = take_str(&mut attrs, "title");
         let optional = take_bool(&mut attrs, "optional");
-        let (body, end_o) = if open.self_closing {
-            (Vec::new(), open.end_o)
+        let (body, rewards, end_o) = if open.self_closing {
+            (Vec::new(), Vec::new(), open.end_o)
         } else {
-            self.parse_block_body("objective", &open)
+            self.parse_owner_body("objective", &open)
         };
         Objective {
             id,
@@ -286,6 +286,7 @@ impl Parser<'_> {
             optional,
             attrs,
             body,
+            rewards,
             span: self.span_o(open.start_o, end_o),
         }
     }
@@ -569,6 +570,119 @@ impl Parser<'_> {
         (body, end_o)
     }
 
+    /// Parse an owner block body (`<quest>` / `<objective>`) intercepting
+    /// every self-closing `<reward/>` (dsl 0.16.0 §2) into a sibling vector
+    /// while every other node still flows through the shared [`Parser::
+    /// next_node`]. Rewards are OWNER FIELDS, never [`Node`] variants: the
+    /// existing exhaustive `Node` match at each walker/checker/compiler site
+    /// stays untouched. Returns `(body, rewards, end_o)`.
+    fn parse_owner_body(
+        &mut self,
+        name: &str,
+        open: &OpenTag,
+    ) -> (Vec<Node>, Vec<crate::ast::Reward>, usize) {
+        let mut body = Vec::new();
+        let mut rewards = Vec::new();
+        let mut last_end = open.end_o;
+        loop {
+            self.skip_blanks();
+            if self.block_body_done(open) || self.at_close(name) {
+                break;
+            }
+            let trimmed = self.trimmed(self.cursor);
+            if trimmed.starts_with("</") {
+                // A close for some other tag: our tag is unclosed — stop here.
+                break;
+            }
+            if trimmed.starts_with('<')
+                && super::open_tag_name(&trimmed).as_deref() == Some("reward")
+            {
+                let r = self.parse_reward();
+                last_end = r.span.byte_end;
+                rewards.push(r);
+                continue;
+            }
+            if let Some(node) = self.next_node() {
+                last_end = super::node_end(&node);
+                body.push(node);
+            }
+        }
+        let end_o = self.consume_close(name, open, last_end);
+        (body, rewards, end_o)
+    }
+
+    /// Parse a self-closing `<reward kind= target= amount= when= on=/>`
+    /// (dsl 0.16.0 §2). A non-self-closing form is a parse-layer error
+    /// (reuses [`E_LOGIC_CONTENT`]: the closest "content on a construct that
+    /// admits none" shape) and every downstream field is populated as if the
+    /// element were empty; recovery skips subsequent lines up to a matching
+    /// `</reward>` so the owner body loop is not left dangling.
+    fn parse_reward(&mut self) -> crate::ast::Reward {
+        use crate::ast::{Attr, AttrValue, Reward};
+        let open = self.parse_open_tag();
+        if !open.self_closing && !open.inline_closed {
+            self.emit_o(
+                E_LOGIC_CONTENT,
+                "a `<reward>` element must be self-closing: `<reward … />` (dsl 0.16.0 §2)"
+                    .to_string(),
+                open.start_o,
+                open.end_o,
+                Layer::Logic,
+            );
+            // Skip until </reward>, a heading, or EOF — recovery only,
+            // never a body parse (rewards are leaves).
+            while self.cursor < self.lines.len() {
+                if self.stop_at_heading() {
+                    break;
+                }
+                if self.at_close("reward") {
+                    self.cursor += 1;
+                    break;
+                }
+                self.cursor += 1;
+            }
+        }
+        let mut attrs = open.attrs.clone();
+        let (kind, kind_span) = take_str_spanned(&mut attrs, "kind")
+            .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
+        let target = take_str(&mut attrs, "target");
+        let (amount, amount_span) = match take_str_spanned(&mut attrs, "amount") {
+            Some((raw, sp)) => match parse_reward_amount(&raw) {
+                Some(v) => (Some(v), Some(sp)),
+                None => {
+                    // Keep the raw attr so the checker can anchor
+                    // `E-REWARD-ATTR` at the original value span.
+                    attrs.push(Attr {
+                        key: "amount".to_string(),
+                        value: AttrValue::Str(raw),
+                        value_span: sp,
+                        span: sp,
+                    });
+                    (None, Some(sp))
+                }
+            },
+            None => (None, None),
+        };
+        let when = take_cel(&mut attrs, "when", crate::ast::CelKind::Condition);
+        let (on, on_span) = match take_str_spanned(&mut attrs, "on") {
+            Some((v, sp)) => (Some(v), Some(sp)),
+            None => (None, None),
+        };
+        Reward {
+            kind,
+            kind_span,
+            target,
+            amount,
+            amount_span,
+            when,
+            on,
+            on_span,
+            attrs,
+            span: self.span_o(open.start_o, open.end_o),
+            self_closing: open.self_closing,
+        }
+    }
+
     /// True when the block opened by `open` claims no further physical lines,
     /// for either of the two reasons every child scan above shares: the cursor
     /// left this block's territory (EOF, or a `## ` shot heading — both hard
@@ -632,6 +746,30 @@ fn take_at(attrs: &mut Vec<Attr>) -> Option<ClipAt> {
     }
 }
 
+/// Parse a `<reward amount="…">` literal (dsl 0.16.0 §2): either a signed
+/// decimal integer (`Scalar`) or an inclusive `N..M` range (`Range`) where
+/// both bounds are signed decimal integers and `N <= M`. Any other shape —
+/// non-numeric, overflowing `i64`, `N > M`, extra whitespace, floats — is
+/// `None`; the caller preserves the raw attr so the checker can anchor
+/// `E-REWARD-ATTR` at the original value span.
+fn parse_reward_amount(raw: &str) -> Option<crate::ast::RewardAmount> {
+    use crate::ast::RewardAmount;
+    let raw = raw.trim();
+    // A `..` is the range separator; longer runs (`...`) are malformed.
+    if let Some(mid) = raw.find("..") {
+        if raw[mid..].starts_with("...") {
+            return None;
+        }
+        let lo: i64 = raw[..mid].parse().ok()?;
+        let hi: i64 = raw[mid + 2..].parse().ok()?;
+        if lo > hi {
+            return None;
+        }
+        return Some(RewardAmount::Range(lo, hi));
+    }
+    raw.parse::<i64>().ok().map(RewardAmount::Scalar)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::ast::Node;
@@ -642,7 +780,9 @@ mod tests {
         let src = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"a\" label=\"Ask\" once>\n@bianca: Sure.\n</choice>\n<choice id=\"leave\" label=\"Go\" exit>\n@fixer: Bye.\n</choice>\n</hub>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Hub(h) = &doc.shots[0].body[0] else { panic!() };
+        let Node::Hub(h) = &doc.shots[0].body[0] else {
+            panic!()
+        };
         assert_eq!(h.choices.len(), 2);
         assert!(h.choices[0].attrs.iter().any(|a| a.key == "once"));
         assert!(h.choices[1].attrs.iter().any(|a| a.key == "exit"));
@@ -662,11 +802,19 @@ mod tests {
         let src = "## Shot 1.\n<hub id=\"outer\">\n<choice id=\"a\" label=\"A\">\n<hub id=\"inner\">\n<choice id=\"x\" label=\"X\">\n@bianca: hi\n</choice>\n</hub>\n</choice>\n</hub>\n<branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n<hub id=\"h2\">\n<choice id=\"y\" label=\"Y\">\n@fixer: yo\n</choice>\n</hub>\n</choice>\n</branch>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Hub(outer) = &doc.shots[0].body[0] else { panic!("expected outer Hub") };
-        let Node::Hub(inner) = &outer.choices[0].body[0] else { panic!("expected inner Hub") };
+        let Node::Hub(outer) = &doc.shots[0].body[0] else {
+            panic!("expected outer Hub")
+        };
+        let Node::Hub(inner) = &outer.choices[0].body[0] else {
+            panic!("expected inner Hub")
+        };
         assert_eq!(inner.choices.len(), 1);
-        let Node::Branch(br) = &doc.shots[0].body[1] else { panic!("expected Branch") };
-        let Node::Hub(h2) = &br.choices[0].body[0] else { panic!("expected Hub in branch choice") };
+        let Node::Branch(br) = &doc.shots[0].body[1] else {
+            panic!("expected Branch")
+        };
+        let Node::Hub(h2) = &br.choices[0].body[0] else {
+            panic!("expected Hub in branch choice")
+        };
         assert_eq!(h2.choices.len(), 1);
     }
 
@@ -676,7 +824,9 @@ mod tests {
             "## Shot 1.\n<on event=\"combatEnd\" when=\"run.dead\">\n@narrator: silence.\n</on>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::On(on) = &doc.shots[0].body[0] else { panic!("{:?}", doc.shots[0].body) };
+        let Node::On(on) = &doc.shots[0].body[0] else {
+            panic!("{:?}", doc.shots[0].body)
+        };
         assert_eq!(on.event, "combatEnd");
         assert!(on.when.is_some());
         assert_eq!(on.body.len(), 1);
@@ -688,7 +838,9 @@ mod tests {
             "## Shot 1.\n<objective id=\"reach\" title=\"Reach\" done=\"run.here\"/>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Objective(o) = &doc.shots[0].body[0] else { panic!() };
+        let Node::Objective(o) = &doc.shots[0].body[0] else {
+            panic!()
+        };
         assert_eq!(o.id, "reach");
         assert_eq!(o.title.as_deref(), Some("Reach"));
         assert!(o.done.raw.contains("run.here"));
@@ -698,10 +850,10 @@ mod tests {
 
     #[test]
     fn objective_optional_flag_parses() {
-        let (doc, _) = crate::parse(
-            "## Shot 1.\n<objective id=\"x\" done=\"a\" optional/>\n",
-        );
-        let Node::Objective(o) = &doc.shots[0].body[0] else { panic!() };
+        let (doc, _) = crate::parse("## Shot 1.\n<objective id=\"x\" done=\"a\" optional/>\n");
+        let Node::Objective(o) = &doc.shots[0].body[0] else {
+            panic!()
+        };
         assert!(o.optional);
     }
 
@@ -711,7 +863,97 @@ mod tests {
             "## Shot 1.\n<objective id=\"x\" done=\"a\">\n::set{run.x = 1}\n</objective>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Objective(o) = &doc.shots[0].body[0] else { panic!() };
+        let Node::Objective(o) = &doc.shots[0].body[0] else {
+            panic!()
+        };
         assert_eq!(o.body.len(), 1);
+    }
+
+    #[test]
+    fn quest_reward_parses_scalar_into_rewards_vector() {
+        let src =
+            "<quest id=\"q\">\n<reward kind=\"gold\" target=\"party\" amount=\"5\"/>\n</quest>\n";
+        let (doc, diags) = crate::parse(src);
+        assert!(diags.is_empty(), "{diags:?}");
+        let q = &doc.quests[0];
+        assert!(q.body.is_empty(), "reward MUST NOT reach the body stream");
+        assert_eq!(q.rewards.len(), 1);
+        let r = &q.rewards[0];
+        assert_eq!(r.kind, "gold");
+        assert_eq!(r.target.as_deref(), Some("party"));
+        assert_eq!(r.amount, Some(crate::ast::RewardAmount::Scalar(5)));
+        assert!(r.when.is_none());
+        assert!(r.on.is_none());
+        assert!(r.self_closing);
+    }
+
+    #[test]
+    fn quest_reward_range_literal_parses_to_range() {
+        let (doc, diags) =
+            crate::parse("<quest id=\"q\">\n<reward kind=\"shard\" amount=\"1..5\"/>\n</quest>\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        assert_eq!(
+            doc.quests[0].rewards[0].amount,
+            Some(crate::ast::RewardAmount::Range(1, 5))
+        );
+    }
+
+    #[test]
+    fn quest_reward_negative_scalar_parses() {
+        let (doc, diags) =
+            crate::parse("<quest id=\"q\">\n<reward kind=\"debt\" amount=\"-3\"/>\n</quest>\n");
+        assert!(diags.is_empty(), "{diags:?}");
+        assert_eq!(
+            doc.quests[0].rewards[0].amount,
+            Some(crate::ast::RewardAmount::Scalar(-3))
+        );
+    }
+
+    #[test]
+    fn objective_reward_lands_on_objective_rewards() {
+        let src = "<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\">\n<reward kind=\"gold\" amount=\"1\"/>\n</objective>\n</quest>\n";
+        let (doc, diags) = crate::parse(src);
+        assert!(diags.is_empty(), "{diags:?}");
+        let q = &doc.quests[0];
+        assert_eq!(q.rewards.len(), 0);
+        assert_eq!(q.body.len(), 1);
+        let Node::Objective(o) = &q.body[0] else {
+            panic!()
+        };
+        assert!(o.body.is_empty());
+        assert_eq!(o.rewards.len(), 1);
+        assert_eq!(o.rewards[0].kind, "gold");
+    }
+
+    #[test]
+    fn reward_in_scene_body_hits_unknown_tag_diagnostic() {
+        // Outside an owner, `<reward/>` MUST fall through to the existing
+        // unknown-tag arm (today's `E-UNCLASSIFIED`).
+        let src = "## Shot 1.\n<reward kind=\"gold\" amount=\"1\"/>\n";
+        let (doc, diags) = crate::parse(src);
+        assert!(doc.shots[0].body.is_empty());
+        assert!(diags.iter().any(|d| d.code == "E-UNCLASSIFIED"));
+    }
+
+    #[test]
+    fn non_self_closing_reward_is_a_parse_error() {
+        let src = "<quest id=\"q\">\n<reward kind=\"gold\">\n</reward>\n</quest>\n";
+        let (_, diags) = crate::parse(src);
+        assert!(
+            diags.iter().any(|d| d.code == "E-LOGIC-CONTENT"),
+            "want E-LOGIC-CONTENT for a non-self-closing <reward>, got {diags:?}"
+        );
+    }
+
+    #[test]
+    fn malformed_amount_survives_in_residual_attrs() {
+        // The parser leaves `amount=` raw so the checker can anchor
+        // `E-REWARD-ATTR` at its own span.
+        let src = "<quest id=\"q\">\n<reward kind=\"gold\" amount=\"5..2\"/>\n</quest>\n";
+        let (doc, _diags) = crate::parse(src);
+        let r = &doc.quests[0].rewards[0];
+        assert!(r.amount.is_none());
+        assert!(r.amount_span.is_some());
+        assert!(r.attrs.iter().any(|a| a.key == "amount"));
     }
 }
