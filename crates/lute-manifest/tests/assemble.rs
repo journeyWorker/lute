@@ -45,6 +45,7 @@ fn plugin_with_directive(id: &str, dname: &str) -> LoadedPlugin {
         asset_kinds: vec![],
         events: vec![],
         stamp_attrs: vec![],
+        reward_kinds: vec![],
         lints: vec![],
     }
 }
@@ -913,5 +914,250 @@ fn assemble_leaves_core_timing_attrs_and_normal_plugin_attrs_untouched() {
     assert!(
         video.attrs.iter().any(|a| a.name == "wait"),
         "core `video` must keep its own `wait` attr"
+    );
+}
+
+// -------------------------------------------------------------------------
+// dsl 0.16.0 §4: `rewardKinds:` — plugin-declared reward vocabulary. Merges
+// like `events`, gated on target-provider existence like `assetKind` refs.
+// -------------------------------------------------------------------------
+
+use lute_manifest::schema::{ProviderDecl, RewardKindDecl, RewardTarget};
+
+fn provider(name: &str) -> ProviderDecl {
+    ProviderDecl {
+        name: name.into(),
+        id_shape: None,
+        snapshot: "static".into(),
+    }
+}
+
+fn reward_kind(name: &str, target: Option<&str>) -> RewardKindDecl {
+    RewardKindDecl {
+        name: name.into(),
+        target: target.map(|p| RewardTarget { provider: p.into() }),
+        attrs: vec![],
+    }
+}
+
+#[test]
+fn assemble_merges_reward_kinds() {
+    let mut pkg = plugin_with_directive("idola.minigame", "minigame");
+    pkg.providers.push(provider("item"));
+    pkg.reward_kinds.push(reward_kind("SHARD", None));
+    pkg.reward_kinds.push(reward_kind("ITEM", Some("item")));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([(
+            "idola.minigame".to_string(),
+            InstalledPlugin { loaded: pkg },
+        )]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.minigame".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(
+        snap.reward_kinds.contains_key("SHARD"),
+        "shape-only reward kind must merge"
+    );
+    let item = snap
+        .reward_kinds
+        .get("ITEM")
+        .expect("ITEM reward kind merged");
+    assert_eq!(
+        item.target.as_ref().expect("ITEM target").provider,
+        "item",
+        "target contract must survive the merge verbatim"
+    );
+}
+
+#[test]
+fn assemble_rejects_cross_plugin_reward_kind_dup() {
+    let mut a = plugin_with_directive("plug.a", "da");
+    a.reward_kinds.push(reward_kind("SHARD", None));
+    let mut b = plugin_with_directive("plug.b", "db");
+    b.reward_kinds.push(reward_kind("SHARD", None));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([
+            ("plug.a".to_string(), InstalledPlugin { loaded: a }),
+            ("plug.b".to_string(), InstalledPlugin { loaded: b }),
+        ]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "plug.a".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "plug.b".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::assemble::AssembleError::DuplicateAcrossPlugins { kind, id, first, second }
+                if kind == "rewardKind" && id == "SHARD" && first == "plug.a" && second == "plug.b"
+        )),
+        "cross-plugin dup rewardKind must be DuplicateAcrossPlugins{{kind:\"rewardKind\"}} with owner attribution, got {errs:?}"
+    );
+    // First owner wins: SHARD lands from `plug.a`, `plug.b`'s copy is dropped.
+    assert!(snap.reward_kinds.contains_key("SHARD"));
+}
+
+#[test]
+fn assemble_rejects_reward_kind_with_unknown_target_provider() {
+    let mut pkg = plugin_with_directive("idola.minigame", "minigame");
+    // NO provider named `item` anywhere.
+    pkg.reward_kinds.push(reward_kind("ITEM", Some("item")));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([(
+            "idola.minigame".to_string(),
+            InstalledPlugin { loaded: pkg },
+        )]),
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.minigame".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        errs.iter().any(|e| matches!(
+            e,
+            lute_manifest::assemble::AssembleError::UnknownRewardKindTarget { plugin, kind, provider }
+                if plugin == "idola.minigame" && kind == "ITEM" && provider == "item"
+        )),
+        "reward kind pinning an absent provider must be UnknownRewardKindTarget, got {errs:?}"
+    );
+    assert!(
+        !snap.reward_kinds.contains_key("ITEM"),
+        "a kind with a dangling target must NOT be merged (checker would silently accept any target for it)"
+    );
+    assert_eq!(
+        lute_manifest::assemble::AssembleError::UnknownRewardKindTarget {
+            plugin: "p".into(),
+            kind: "K".into(),
+            provider: "prov".into(),
+        }
+        .code(),
+        "E-PLUGIN-UNKNOWN-REWARD-TARGET"
+    );
+}
+
+/// A target provider declared by a LATER-iterated plugin must still resolve —
+/// target validation runs post-loop against the fully-merged providers map,
+/// exactly like `validate_asset_kind_refs`.
+#[test]
+fn assemble_reward_kind_resolves_peer_declared_provider() {
+    let mut kind_pkg = plugin_with_directive("idola.rewards", "rewards");
+    kind_pkg
+        .reward_kinds
+        .push(reward_kind("ITEM", Some("item")));
+    let mut prov_pkg = plugin_with_directive("idola.items", "items");
+    prov_pkg.providers.push(provider("item"));
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([
+            (
+                "idola.rewards".to_string(),
+                InstalledPlugin { loaded: kind_pkg },
+            ),
+            (
+                "idola.items".to_string(),
+                InstalledPlugin { loaded: prov_pkg },
+            ),
+        ]),
+    };
+    // `rewards` is active BEFORE `items` — verifies the post-loop validation.
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.rewards".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.items".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let (snap, errs) = assemble_snapshot(&active, &reg);
+    assert!(
+        errs.is_empty(),
+        "peer-declared provider must resolve: {errs:?}"
+    );
+    assert!(snap.reward_kinds.contains_key("ITEM"));
+}
+
+/// A clean `rewardKinds` export merges AND moves `capabilityVersion` — a
+/// changed vocabulary IS a changed capability surface (spec D-E). Mirrors
+/// the `stampAttrs` sibling below.
+#[test]
+fn reward_kinds_merge_and_participate_in_capability_version() {
+    let base = plugin_with_directive("idola.minigame", "minigame");
+    let mut with_rk = base.clone();
+    with_rk.reward_kinds.push(reward_kind("SHARD", None));
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id: "idola.minigame".into(),
+            options: BTreeMap::new(),
+        },
+    ];
+    let assemble = |loaded: LoadedPlugin| {
+        let reg = InstalledPlugins {
+            by_id: BTreeMap::from([("idola.minigame".to_string(), InstalledPlugin { loaded })]),
+        };
+        assemble_snapshot(&active, &reg)
+    };
+
+    let (plain, errs) = assemble(base);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(plain.reward_kinds.is_empty());
+
+    let (stamped, errs) = assemble(with_rk);
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(stamped.reward_kinds.contains_key("SHARD"));
+    assert_ne!(
+        plain.version, stamped.version,
+        "a populated `rewardKinds` vocabulary must move `capabilityVersion`"
+    );
+}
+
+/// Byte-stability guard for the guarded hash fold: an EMPTY `reward_kinds`
+/// must leave `capabilityVersion` byte-identical to a snapshot assembled
+/// before the field existed — i.e. the core-only baseline is untouched.
+#[test]
+fn empty_reward_kinds_leaves_capability_version_untouched() {
+    let core = lute_manifest::core::load_core_snapshot();
+    let mut probe = core.clone();
+    probe.reward_kinds.clear();
+    assert_eq!(
+        core.version,
+        lute_manifest::snapshot::capability_version(&probe),
+        "an empty `reward_kinds` must not perturb the core capabilityVersion"
     );
 }

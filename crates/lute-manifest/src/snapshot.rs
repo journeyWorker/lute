@@ -595,6 +595,7 @@ mod tests {
             "SHARD".into(),
             RewardKindDecl {
                 name: "SHARD".into(),
+                ..Default::default()
             },
         );
         assert_ne!(capability_version(&a), capability_version(&b));

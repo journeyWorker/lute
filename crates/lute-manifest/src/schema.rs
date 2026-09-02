@@ -277,14 +277,65 @@ pub struct EventDecl {
     pub name: String,
 }
 
-/// A capability-declared reward kind (dsl 0.16.0 §4): a named vocabulary
-/// contributed by a plugin's `rewardKinds:` export and consumed by the
-/// checker's `E-REWARD-KIND` closure. The full contract — `target:` /
-/// `attrs:` — arrives in Task 4 with the loader; Task 2 lands the minimal
-/// struct so a snapshot can carry an empty map today.
+/// plugin §14 / dsl 0.16.0 §4 reward-kind declaration file (export
+/// `rewardkinds/*.yaml`).
+///
+/// A `rewardKinds:` mapping keyed by the kind id; a bare `{}` value declares
+/// a shape-only kind (any `<reward kind>` name check passes without a
+/// `target` constraint), and a `{ target: { provider: <name> } }` value
+/// pins the id-space `target=` resolves against — the `providerRef` pattern
+/// the checker already applies to directive-attr `providerRef:` values.
+/// The optional `attrs:` sequence is an ordinary [`AttrDecl`] list for
+/// game-specific slots (`chance=`, `min`/`max` variants, …) — parsed and
+/// carried on the merged [`RewardKindDecl`] so a downstream extra-attr check
+/// can key off it; the shape-only checker (Task 2) does not read it yet.
+///
+/// Per-package duplicate kind id is a [`crate::loader::LoadError::DuplicateId`]
+/// (`kind = "rewardKind"`) from the shared `merge_named` path; a name colliding
+/// with a peer plugin's kind is [`crate::assemble::AssembleError::DuplicateAcrossPlugins`]
+/// (`kind = "rewardKind"`), same shape every other cross-plugin vocabulary
+/// duplicate uses.
+#[derive(Debug, Deserialize)]
+pub struct RewardKindsFile {
+    #[serde(rename = "rewardKinds")]
+    pub reward_kinds: std::collections::BTreeMap<String, RewardKindBody>,
+}
+
+/// The value half of a `rewardKinds:` map entry — the fields on the wire that
+/// are NOT the kind id (the id is the map key, materialized onto
+/// [`RewardKindDecl::name`] by the loader).
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct RewardKindBody {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<RewardTarget>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attrs: Vec<AttrDecl>,
+}
+
+/// A reward kind's `target:` contract (dsl 0.16.0 §4): the id-space a
+/// `<reward target=…>` value must resolve against. `provider` names one of
+/// the active-snapshot providers — the `providerRef` pattern — and assembly
+/// rejects a kind that pins a provider no active plugin declares (parallels
+/// [`crate::assemble::AssembleError::UnknownAssetKind`]).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RewardTarget {
+    pub provider: String,
+}
+
+/// A capability-declared reward kind (dsl 0.16.0 §4): the vocabulary a
+/// plugin's `rewardKinds:` export contributes, consumed by the checker's
+/// `E-REWARD-KIND` closure. `name` is the kind id (the map key, materialized
+/// onto the struct at load-time); `target` (optional) pins the id space
+/// `<reward target=…>` resolves against — the `providerRef` pattern
+/// (`assemble` rejects a kind whose provider is absent); `attrs` (optional)
+/// carries game-specific extra slots parsed as ordinary [`AttrDecl`]s.
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct RewardKindDecl {
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<RewardTarget>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attrs: Vec<AttrDecl>,
 }
 
 /// Deserialize `DefDecl.params` in SOURCE order (dsl §8.1). Accepts either the
