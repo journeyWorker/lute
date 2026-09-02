@@ -277,6 +277,16 @@ pub struct EventDecl {
     pub name: String,
 }
 
+/// A capability-declared reward kind (dsl 0.16.0 §4): a named vocabulary
+/// contributed by a plugin's `rewardKinds:` export and consumed by the
+/// checker's `E-REWARD-KIND` closure. The full contract — `target:` /
+/// `attrs:` — arrives in Task 4 with the loader; Task 2 lands the minimal
+/// struct so a snapshot can carry an empty map today.
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct RewardKindDecl {
+    pub name: String,
+}
+
 /// Deserialize `DefDecl.params` in SOURCE order (dsl §8.1). Accepts either the
 /// §8.1 `params:` YAML MAPPING (`{ p: number }`) — read via `serde_yaml::Mapping`,
 /// which is insertion-ordered in serde_yaml 0.9.34, so declaration order is
