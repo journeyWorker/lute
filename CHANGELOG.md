@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.15.1`, the grammar and semantics the checker
+- **Language** — currently `0.16.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.15.1`) and gated on by consuming engines.
+  artifact (currently `0.16.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -36,6 +36,126 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.16.0] - 2026-09-01
+
+**Rewards become data.**
+
+Conditions have been first-class, statically checked surface since the
+scene kind shipped; rewards were only operational — plugin `::grant`
+directives buried in `<on questComplete>` bodies. Execution was correct
+(exactly-once, quest-scoped since 0.14.0), but the artifact carried
+rewards as commands inside a handler, so nothing read "this quest's
+rewards" as data: no journal preview at accept time, no balancing
+extraction, no reward-shaped lint, and a conditional reward equally
+invisible. `0.16.0` closes the half that was missing. `<reward/>` — a
+self-closing element, direct child of `<quest>` or `<objective>`, with
+`kind` / `target` / `amount` (integer scalar or the new `N..M` range
+literal, negatives legal) / `when` (ordinary CEL slot) / quest-only `on`
+(`complete` default, or `failed`) — lowers to pure data on the owning
+records (`QuestCmd.rewards` / `ObjectiveEntry.rewards`), and the
+reference runner and `lute trace` emit deterministic `grant` transcript
+events at each fresh transition (spec §3 D-D). The engine still grants;
+the language never rolls a range or synthesizes a `::grant`.
+
+### Added
+
+- **Language — declarative `<reward/>` element on `<quest>` /
+  `<objective>`** — a self-closing owner field, direct child of the
+  enclosing quest or objective; anywhere else, a `<reward>` with a body,
+  or an unknown attribute in its closed set is rejected through the same
+  per-tag closure that catches every other misplaced construct
+  (`E-UNKNOWN-ATTR`, 0.10.0 §D-J). Attributes: `kind` (required
+  non-empty string, the vocabulary key), `target` (optional string, the
+  rewarded id — item / currency / quest / …), `amount` (optional integer
+  **or** range literal `N..M` with integer bounds and `N <= M`; default
+  `1`; negatives are real deductions), `when` (optional `CelString`,
+  evaluated at the grant instant; joins the CEL-slot registry with
+  `E-CEL-PROFILE` / `E-MAYBE-UNSET` / unset-sentinel guards / LSP hover /
+  fill), and quest-level `on` (`complete` default or `failed` — which
+  terminal transition grants it; on an objective-level entry `on` is
+  rejected). Range amounts are declarations, not rolls: the journal
+  shows "1–5", a balancer computes expectation, and the reference
+  runtime never rolls — dice belong to the engine (0.0.1). Spec:
+  [`docs/proposals/scenario-dsl/0.16.0.md`](docs/proposals/scenario-dsl/0.16.0.md).
+  Design record: [`docs/superpowers/specs/2026-09-01-lute-reward-design.md`](docs/superpowers/specs/2026-09-01-lute-reward-design.md).
+- **Language — `E-REWARD-ATTR`** — shape violation, anchored at the
+  offending attribute: empty `kind`, malformed `amount` (non-integer,
+  bad range, `N > M`), `on=` on an objective-level reward, or an `on`
+  value outside the closed `complete` / `failed` enum.
+- **Language — `E-REWARD-KIND`** — vocabulary violation when the
+  resolved capability set declares any `rewardKinds:`: an unknown
+  `kind`, a `target` present/absent against the kind's contract, or a
+  `target` failing its provider domain. Stale snapshots degrade to the
+  usual *catalog-stale* grade, never a hard error. With no
+  `rewardKinds:` declared, shape checks stand alone and any kind name
+  admits.
+- **Manifest — `rewardKinds:` plugin export** — a map of kind id →
+  declaration: optional `target` contract naming a provider domain (the
+  same `providerRef` pattern directive attrs use — resolved against
+  pinned snapshots, Fresh / *catalog-stale* / unknown-id) plus optional
+  extra attr schema for game-specific slots. Folded into the capability
+  snapshot as a guarded, sorted section: a populated vocabulary moves
+  `capabilityVersion`, while the empty core section hashes
+  byte-identically — no restamp for projects without a
+  `rewardKinds:`-declaring plugin.
+- **IR — `QuestCmd.rewards` and `ObjectiveEntry.rewards`** — new arrays
+  of `RewardEntry`, `skip_serializing_if = "Vec::is_empty"`, so a
+  rewardless artifact stays byte-identical to `0.15.1` output.
+  `RewardEntry` serializes `kind`, optional `target`, exactly one of
+  `amount` XOR (`amountMin` + `amountMax`) after amount defaulting
+  (unauthored → `amount: 1`), optional `when` (`CelPair`), and `on:
+  "failed"` only on a quest-level entry (`on: "complete"` is the
+  omitted default; never emitted on objective entries). Range amounts
+  are carried verbatim on the wire (spec D-C: never pre-rolled).
+- **Runtime — deterministic `grant` transcript events** — `lute run` /
+  `play` and `lute trace` emit a structured grant event at each fresh
+  transition (spec §3 D-D): at `→ complete` the quest's `on="complete"`
+  rewards, at `→ failed` (including cascade child-failure, 0.14.0) its
+  `on="failed"` rewards, and when an objective first becomes `done`
+  that objective's rewards. Each reward grants **at most once per quest
+  instance** (same monotonicity as objective bodies); `when` is
+  evaluated at the grant instant against the transition's own
+  state/fact snapshot, a non-`true` verdict skips the reward once (not
+  re-armed); order within one owner is declaration order, and when one
+  step settles both an objective and its quest, objective grants
+  precede quest grants — all grants precede the corresponding lifecycle
+  handler body, so handler narrative can react to what was just
+  granted. Range amounts pass through as
+  `amountMin`/`amountMax` unchanged, keeping reference output
+  byte-deterministic; the engine resolves `N..M` however it likes.
+- **Grammar — tree-sitter `reward` production** — the `<reward/>`
+  element joins the closed tag set (tags are enumerated), so
+  editor grammars see it after regeneration (`tree-sitter generate`).
+
+### Changed
+
+- **Schema renamed per release line** —
+  `schemas/lute-ir-0.15.schema.json` is renamed to
+  [`schemas/lute-ir-0.16.schema.json`](schemas/lute-ir-0.16.schema.json);
+  its content gains the `rewardEntry` definition (`kind` required,
+  optional `target`, exactly one of `amount` / (`amountMin` +
+  `amountMax`), optional `when`, quest-only `on: "failed"`) and the two
+  `rewards` arrays on `questCmd` and `objectiveEntry`. `$id` and title
+  updated to match. Under the `0.13.0` MAJOR-only gate the rename
+  tracks the published release line for strict validators only; no
+  engine gate widens, so a `0.15` engine parses a `0.16.0` artifact
+  unchanged and simply does not ask for the added arrays.
+- **`docs/runtime/quest-lifecycle.md` gains a Rewards section** — the
+  when / `when=` / order / range rules the engine now grants against
+  (§3 D-D), added to the normative runtime contract so a consuming
+  engine has one place to read the semantics from.
+- **Example corpus gains reward coverage** — quest fixtures under
+  `docs/examples/` grow `<reward/>` declarations exercising the range
+  literal, conditional `when=`, `on="failed"`, and objective-level
+  entries; scene fixtures are untouched.
+- `capabilityVersion` does NOT move this release for any project
+  without a `rewardKinds:`-declaring plugin: the new snapshot section
+  is guarded and its empty core value hashes byte-identically. The
+  tree-sitter grammar gains one production — a grammar regeneration,
+  not a capability restamp (the stamp tracks the core snapshot).
+- Version re-alignment per [`docs/versioning.md`](docs/versioning.md):
+  toolchain, language, and IR all present `0.16.0`.
 
 ## [0.15.1] - 2026-09-01
 
