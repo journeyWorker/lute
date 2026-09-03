@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.15.1` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.15.1` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.15.1` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.15.schema.json`](../schemas/lute-ir-0.15.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.16.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.16.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.16.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.16.schema.json`](../schemas/lute-ir-0.16.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.15.schema.json`](../schemas/lute-ir-0.15.schema.json)
+published as [`schemas/lute-ir-0.16.schema.json`](../schemas/lute-ir-0.16.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -248,6 +248,46 @@ accepts a `0.15.1` artifact with no edit. For the same reason
 `schemas/lute-ir-0.15.schema.json` keeps its name and its `$id` (the
 file's `0.15.x` title already covers `0.15.1`, and the schema body is
 byte-identical to `0.15.0`).
+
+**`0.16.0` aligns all three axes at `0.16.0`, and language and IR earn it —
+the toolchain carries them.** The language gains declarative rewards: one
+new self-closing element, `<reward kind= target= amount= when= on=/>`,
+legal only as a direct child of `<quest>` or `<objective>`, with
+`amount` admitting an integer scalar (negatives real) or the new range
+literal `N..M`. Two new diagnostics `E-REWARD-ATTR` (shape) and
+`E-REWARD-KIND` (vocabulary, fires only when a plugin declares
+`rewardKinds:`); `reward.when` joins the ordinary CEL-slot registry
+(profile, `E-MAYBE-UNSET`, unset-sentinel guards, LSP hover / fill).
+A plugin manifest MAY export `rewardKinds:` — a map of kind id →
+contract (optional `target` provider domain, optional extra attr
+schema); it folds into the capability snapshot as a guarded, sorted
+section so a populated vocabulary moves `capabilityVersion` while the
+empty core section hashes byte-identically. Engine rules land in
+[`docs/runtime/quest-lifecycle.md`](runtime/quest-lifecycle.md) — the
+reference runner and `lute trace` emit deterministic `grant`
+transcript events at each fresh transition (§3 D-D); the range is
+data, not a roll — the reference runtime carries `N..M` verbatim and
+the engine resolves it
+([`proposals/scenario-dsl/0.16.0.md`](proposals/scenario-dsl/0.16.0.md)).
+The IR moves additively under `0.13.0`'s MAJOR-only gate:
+[`ir::QuestCmd`](../crates/lute-compile/src/ir.rs) and
+[`ir::ObjectiveEntry`](../crates/lute-compile/src/ir.rs) each gain an
+optional `rewards` array of the new [`ir::RewardEntry`](../crates/lute-compile/src/ir.rs)
+(both `skip_serializing_if = "Vec::is_empty"`, so a rewardless
+document is byte-identical to its `0.15.1` artifact plus the version
+strings; `RewardEntry` carries `kind`, optional `target`, exactly one
+of `amount` / (`amountMin` + `amountMax`) after amount defaulting,
+optional `when`, and `on: "failed"` only on a quest-level entry). A
+`0.15` engine parses a `0.16.0` artifact unchanged and simply does
+not ask for the added arrays. `capabilityVersion` does not move for
+any project without a `rewardKinds:`-declaring plugin (guarded
+snapshot section); the tree-sitter grammar gains the `reward`
+production (a grammar regeneration, not a capability restamp). The
+schema file renames per release line
+(`lute-ir-0.15.schema.json` →
+[`lute-ir-0.16.schema.json`](../schemas/lute-ir-0.16.schema.json)) —
+its content gains the `rewardEntry` definition and the two `rewards`
+arrays.
 
 ## Which bump when
 

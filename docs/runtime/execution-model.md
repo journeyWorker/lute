@@ -87,7 +87,7 @@ while this field is human-readable English the compiler wrote and nothing
 dispatches on. Nothing else moves — no field added or retyped, no new command
 `kind`, and `Provenance.injected` is retained but is now constant-`true`, so do
 not read a `true` as distinguishing anything. The schema is
-`schemas/lute-ir-0.15.schema.json`. An engine that reads the provenance stamp
+`schemas/lute-ir-0.16.schema.json`. An engine that reads the provenance stamp
 and consumes artifacts from both sides of `0.10.0` must handle that rename;
 the version gate no longer refuses on its behalf.
 

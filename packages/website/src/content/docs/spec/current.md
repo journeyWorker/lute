@@ -1,12 +1,12 @@
 ---
 title: Current specification
-description: The consolidated index of what the Lute language enforces today at version 0.15.1 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
+description: The consolidated index of what the Lute language enforces today at version 0.16.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
 ---
 
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.15.1**:
+the consolidated **index** of what is *current* at language version **0.16.0**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -16,7 +16,7 @@ full cumulative history (including the pre-implementation `0.0.1` draft and the
 capability proposals), see the [specification index](/spec/).
 :::
 
-## What is current at 0.15.1
+## What is current at 0.16.0
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -36,10 +36,12 @@ capability proposals), see the [specification index](/spec/).
 | Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.10.2 (`meta.plugin` — a plugin-owned, checker-validated frontmatter key now reaches the compiled artifact instead of being discarded at compile time; plugin-system `0.0.4`, additive, no engine gate widens since `0.10.2` shares major.minor `0.10`) | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
 | Warning-severity diagnostics (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`) | 0.6.1 | 0.10.0 (four new warnings — `W-COMPONENT-UNVERIFIED`, `W-DOMAIN-UNREAD`, `W-EXIT-INERT`, `W-STAGE-ABSENT` — plus `W-PROJECT-INERT`; and `W-INJECT-CONFLICT` is **removed**, the first removal in the series, because equality with the declared default was its only trigger) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
 | Deny promotion (`--deny` / `--deny-warnings`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.15.0`'s additive IR move is a minor move that costs a consuming engine nothing; the schema file still renames per release line, published today as `lute-ir-0.15.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.16.0`'s additive IR move is a minor move that costs a consuming engine nothing; the schema file still renames per release line, published today as `lute-ir-0.16.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
 | Scene identity (`id:` frontmatter) | 0.15.0 (authored canonical scene key; new `id:` frontmatter is the lineId prefix, `visited()`/connectivity node, and `prereqEdges[].node`, superseding the derived `{character}.{episodeId}` join wherever it was consumed; `character`/`season`/`episode`/`episodeId` demote to optional when `id:` is present) | 0.15.0 | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
 | Descriptive `extra:` block | 0.15.0 (open mapping of scalars or flat scalar-lists on scene and quest roots; carried verbatim into `meta.extra` and read by no language rule — `E-META-VALUE` on a nested mapping or non-scalar list entry) | 0.15.0 | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
 | Legacy identity keys (`character` / `season` / `episode` / `episodeId`) | 0.1.0 | 0.15.0 (deprecated in prose only — `W-META-LEGACY` warns per legacy key when a document also authors `id:`; the four keys are no longer required when `id:` is present, removal deferred to a future major) | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
+| Declarative rewards (quest / objective `<reward/>`, range amounts) | 0.16.0 (self-closing `<reward kind= target= amount= when= on=/>` as a direct child of `<quest>` or `<objective>` — pure data on the owning records, `QuestCmd.rewards` / `ObjectiveEntry.rewards`; `amount` admits an integer scalar or the range literal `N..M`, negatives real; two new diagnostics `E-REWARD-ATTR` shape / `E-REWARD-KIND` vocabulary; `reward.when` joins the CEL-slot registry; `lute run` / `play` / `trace` emit deterministic `grant` transcript events at each fresh transition — the engine grants, the reference runtime never rolls a range) | 0.16.0 | [0.16.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md) |
+| Reward-kind plugin vocabulary (`rewardKinds:` manifest export) | 0.16.0 (optional plugin-manifest map of kind id → contract — optional `target` provider domain and optional extra attr schema — that makes `<reward kind=>` / `target=` statically checkable when declared; folded into the capability snapshot as a guarded, sorted section so `capabilityVersion` moves only for projects that install a `rewardKinds:`-declaring plugin; the empty core section hashes byte-identically) | 0.16.0 | [0.16.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md) |
 
 ## Notes on the boundaries
 
@@ -52,7 +54,7 @@ capability proposals), see the [specification index](/spec/).
   `0.10` still has to widen its gate to `0.11` to keep accepting artifacts
   (the runtime contract gates on `major.minor`, not on whether anything
   inside actually changed), and `schemas/lute-ir-0.10.schema.json` is renamed
-  to `schemas/lute-ir-0.15.schema.json` under the `0.7.0` precedent — a
+  to `schemas/lute-ir-0.16.schema.json` under the `0.7.0` precedent — a
   `major.minor` move renames the schema file regardless of why it moved. The
   release itself is entirely toolchain: a new `schedule.yaml` project-file
   layer and `lute play` command
