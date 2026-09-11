@@ -9,13 +9,16 @@
 //!    the code the README's table pins to that transcript's `exit`. This is
 //!    the contract a third-party engine is measured against.
 //! 2. **Live stamps** — the recorded `artifact.json` carries TODAY's
-//!    `irVersion` / `lute` / `capabilityVersion`, not whichever ones were
+//!    `irVersion` / `lute` / `capabilityVersion`, and the fixture's own
+//!    `source.lute` carries today's `luteVersion:`, not whichever ones were
 //!    current when it was last recorded. Invariant 1 alone cannot see this: a
 //!    recorded artifact replayed against a recorded transcript stays green
 //!    while the two are stale *together*. That is exactly how a
 //!    `capabilityVersion` drift went unnoticed for two releases — `f876a2f`
 //!    re-hashed the core capability snapshot and updated the insta snapshots,
-//!    but never propagated to these fixtures.
+//!    but never propagated to these fixtures — and how five fixture sources
+//!    stayed stamped `luteVersion: "0.10.0"` six releases on, since the
+//!    compiler reads the stamp from a const and never from the source.
 //!
 //! The fixture set is **discovered, never listed**: a seventh fixture is
 //! picked up by both invariants the moment its directory lands. Requiring
@@ -226,6 +229,26 @@ fn every_fixture_carries_live_stamps() {
             ));
         }
 
+        // …and so does the fixture's own SOURCE. `source.lute`'s
+        // `luteVersion:` stamp is never consulted by the compiler (the
+        // artifact's `lute` field comes from the const), so nothing above can
+        // see it rot — yet it is the line an integrator copies when using a
+        // fixture as an example, and five of them sat at `0.10.0` six releases
+        // after the fact, which is also what `W-LUTE-VERSION-STALE` would say
+        // about them.
+        let src = read(&dir.join("source.lute"));
+        let live_lang = lute_compile::LUTE_LANG_VERSION;
+        match source_lute_version(&src) {
+            Some(stamped) if stamped == live_lang => {}
+            Some(stamped) => failures.push(format!(
+                "{name}: source.lute `luteVersion:` is {stamped:?} but the live \
+                 language version is {live_lang:?} — restamp the fixture source",
+            )),
+            None => failures.push(format!(
+                "{name}: source.lute carries no `luteVersion:` stamp",
+            )),
+        }
+
         let scratch = scratch(name);
         let fresh_path = scratch.join("artifact.json");
         let out = Command::new(BIN)
@@ -309,6 +332,17 @@ fn ir_line(full: &str) -> String {
         (Some(major), Some(minor)) => format!("{major}.{minor}"),
         _ => full.to_string(),
     }
+}
+
+/// The `luteVersion:` value stamped in a fixture source's frontmatter, with
+/// surrounding quotes stripped. Deliberately a line scan, not a YAML parse:
+/// the stamp is always a top-level scalar on its own line, and the corpus's
+/// frontmatter is the thing under test.
+fn source_lute_version(src: &str) -> Option<String> {
+    src.lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix("luteVersion:"))
+        .map(|value| value.trim().trim_matches('"').trim_matches('\'').to_string())
 }
 
 fn path_arg(p: &Path) -> String {

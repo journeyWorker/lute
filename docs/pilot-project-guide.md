@@ -8,11 +8,11 @@
 
 ## 1. 아키텍처 계약 (변하지 않는 것)
 
-Lute는 **저작·기획 언어**다. `.lute` → `lute compile` → **IR 0.7 JSON**까지가 Lute의 책임이고, 그 JSON을 어떻게 실체화할지는 전적으로 엔진(런타임) 몫이다.
+Lute는 **저작·기획 언어**다. `.lute` → `lute compile` → **IR JSON**까지가 Lute의 책임이고, 그 JSON을 어떻게 실체화할지는 전적으로 엔진(런타임) 몫이다. IR의 현재 버전과 스키마 파일은 [`docs/versioning.md`](versioning.md)가 단일 정본이다 — 이 문서는 버전 번호를 복제하지 않는다.
 
 ```mermaid
 flowchart LR
-  A[".lute 씬/퀘스트"] -->|lute check / compile| B["IR 0.7 JSON<br/>(commands + state + facts + quests)"]
+  A[".lute 씬/퀘스트"] -->|lute check / compile| B["IR JSON<br/>(commands + state + facts + quests)"]
   B --> C["게임 런타임<br/>(엔진이 자체 구현)"]
   C -->|bridge call| D["미니게임/전투 등<br/>엔진 서브시스템"]
   D -->|"recorded result<br/>(선언된 shape만)"| C
@@ -25,11 +25,11 @@ flowchart LR
 
 ```sh
 cd ~/Workspace/lute && cargo build --release -p lute-cli
-target/release/lute --version   # 0.7.0 확인 — 스테일 바이너리 주의
+target/release/lute --version   # docs/versioning.md의 현재 툴체인 버전과 일치하는지 확인 — 스테일 바이너리 주의
 ```
 
 - `LUTE_BIN` 환경변수로 절대경로를 프로젝트 스크립트에 주입한다. npm `@lute-lang/lute`도 있지만 로컬 소스가 항상 최신.
-- **에디터 LSP는 소스상 0.8 정합이다 — 위험은 스테일 *바이너리*다.** `lute-lsp`는 모든 진단을 공유 `lute_check::check`로 흘려보내므로 CLI와 바이트 단위로 일치한다(`crates/lute-lsp/tests/divergence.rs` 골든이 강제). 파일럿 시점의 "cinematic shot heading 오진"은 문법이 아니라 PATH에 깔린 **낡은 lute-lsp 바이너리**가 원인이었다. 이제 서버가 `serverInfo.version`으로 구현 언어 버전을 광고하고, VS Code 확장이 문서의 `luteVersion:`보다 서버가 낮으면 경고한다(`lute.versionCheck`, 기본 on). 그래도 정본은 CLI `lute check` / `check-project`이며, 편집기를 새로 세팅하면 `cargo install --path crates/lute-lsp`로 서버를 최신화하라.
+- **에디터 LSP는 소스상 CLI와 정합이다 — 위험은 스테일 *바이너리*다.** `lute-lsp`는 모든 진단을 공유 `lute_check::check`로 흘려보내므로 CLI와 바이트 단위로 일치한다(`crates/lute-lsp/tests/divergence.rs` 골든이 강제). 파일럿 시점의 "cinematic shot heading 오진"은 문법이 아니라 PATH에 깔린 **낡은 lute-lsp 바이너리**가 원인이었다. 이제 서버가 `serverInfo.version`으로 구현 언어 버전을 광고하고, VS Code 확장이 문서의 `luteVersion:`보다 서버가 낮으면 경고한다(`lute.versionCheck`, 기본 on). 그래도 정본은 CLI `lute check` / `check-project`이며, 편집기를 새로 세팅하면 `cargo install --path crates/lute-lsp`로 서버를 최신화하라.
 
 ## 3. 프로젝트 스켈레톤 (검증된 형태)
 
@@ -48,12 +48,12 @@ project/
 ```
 
 - 플러그인 매니페스트는 `docs/examples/arcia-project/plugins/arcia.minigame/`을 복사해 개명하는 게 가장 빠르고 정확하다. tactus의 실전 사례: `~/Workspace/tactus/story/plugins/tactus.battle/`.
-- **Phase 0에서 스모크 씬 1개**(대사 1줄 + 브리지 디렉티브 1회 + `<match>`)로 `check → compile`이 exit 0인지 즉시 검증해 매니페스트 스키마 오차를 소진하라. 스키마: `schemas/lute.plugin.json`, `schemas/lute-ir-0.9.schema.json`.
+- **Phase 0에서 스모크 씬 1개**(대사 1줄 + 브리지 디렉티브 1회 + `<match>`)로 `check → compile`이 exit 0인지 즉시 검증해 매니페스트 스키마 오차를 소진하라. 스키마: `schemas/lute.plugin.json`, 그리고 현재 IR 스키마 [`schemas/lute-ir-0.16.schema.json`](../schemas/lute-ir-0.16.schema.json)(파일명은 릴리스 라인마다 개명되므로 `schemas/`의 실제 파일을 정본으로 삼아라).
 - 컴파일 스크립트에서 ajv는 **draft 2020-12** 필요: `import Ajv from 'ajv/dist/2020'`.
 
 ## 4. 저작 규칙 (check를 통과하는 형태)
 
-- 프론트매터: `kind: scene`, `mode: inline`, `luteVersion: "0.9.0"`, `profile: <capability profile>`. 상태 선언의 enum 스칼라는 `{ type: { enum: [...] }, default: ... }` 형태(`values:`/`domain:` 아님).
+- 프론트매터: `kind: scene`, `mode: inline`, `luteVersion: "0.16.0"`(= 현재 언어 버전; 낮게 스탬프하면 `W-LUTE-VERSION-STALE`), `profile: <capability profile>`. 상태 선언의 enum 스칼라는 `{ type: { enum: [...] }, default: ... }` 형태(`values:`/`domain:` 아님).
 - 관계 선언: `relations: { persuaded: { args: [character, route], tier: run, key: [0] } }` + `entities`/`enums`. `::assert{rel(a,b)}`로 기록, 퀘스트 objective에서 `count(persuaded(_,_)) >= 7`로 판정 — 이 패턴은 0.7에서 완전 동작한다.
 - number 대상 `<match on=...>` + `<when test="$ >= 4">`도 정상 동작한다 (파일럿 계획 때 우려했던 거부 없음).
 - 대사 `emotion=`은 **lute 내장 enum**(neutral, surprised, delighted, shy, content, angry, sad)만 허용된다. 엔진 포트레이트 키(serious/soft 등)와 다르면 엔진 쪽에서 매핑 테이블을 둬라.

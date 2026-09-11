@@ -29,6 +29,12 @@ scripts/check-release-workflow-safety.py):
      needs none.
    - The IR schema `schemas/lute-ir-<major.minor>.schema.json` for the current
      IR version's major.minor must exist.
+   - Every MARKDOWN link to an IR schema in the living docs surface must name
+     the current IR major.minor and resolve to a schema file that exists. This
+     closes the two real failures that prompted the rule: the runtime contract
+     once linked `lute-ir-0.9.schema.json` as current, while the versioning guide
+     linked renamed-away `lute-ir-0.15.schema.json`. Old schema filenames in
+     history are legitimate only as `backticked` prose, never as links.
 
 2. Canonical-domain hygiene: the stale `lute-website.vercel.app` host must not
    appear anywhere under packages/website/ or docs/ (canonical is
@@ -172,6 +178,53 @@ CLAIM_CUE_RE = re.compile(
 # hard-wrapped at ~100 columns and a claim routinely straddles one
 # ("It targets language version\n**0.9.0**.").
 SEGMENT_BREAK_RE = re.compile(r"\n[ \t]*\n|(?<=[.!?:;])\s+")
+
+# Inline Markdown links: capture only the destination, so backticked or plain
+# schema filenames are intentionally ignored. A destination may be wrapped in
+# angle brackets; optional link titles are left outside the capture.
+MARKDOWN_LINK_RE = re.compile(
+    r"\[[^\]\n]*\]\(\s*(?P<destination><[^>\n]+>|[^\s)\n]+)"
+)
+IR_SCHEMA_FILENAME_RE = re.compile(
+    r"(?:^|/)(?P<filename>lute-ir-(?P<major>\d+)\.(?P<minor>\d+)\.schema\.json)$"
+)
+
+
+def check_ir_schema_links(
+    pages: list[pathlib.Path], ir_version: str
+) -> int:
+    """Require every living-doc IR-schema link to name and resolve current IR."""
+    ir_mm = ".".join(ir_version.split(".")[:2])
+    expected = f"lute-ir-{ir_mm}.schema.json"
+    checked = 0
+    for path in pages:
+        text = read(path)
+        rel = path.relative_to(ROOT)
+        for match in MARKDOWN_LINK_RE.finditer(text):
+            destination = match.group("destination")
+            if destination.startswith("<"):
+                destination = destination[1:-1]
+            schema_match = IR_SCHEMA_FILENAME_RE.search(destination)
+            if not schema_match:
+                continue
+            checked += 1
+            filename = schema_match.group("filename")
+            line = text.count("\n", 0, match.start()) + 1
+            if filename != expected:
+                ERRORS.append(
+                    f"{rel}:{line}: IR schema link found filename "
+                    f"{filename!r}, expected filename {expected!r} — repoint "
+                    f"the link, or — if the mention is historical — write the "
+                    f"old filename in `backticks` instead of linking it, "
+                    f"because the schema file is renamed per release line so "
+                    f"the old target no longer exists"
+                )
+            if not (SCHEMA_DIR / filename).is_file():
+                ERRORS.append(
+                    f"{rel}:{line}: IR schema link target {filename!r} does "
+                    f"not exist under {SCHEMA_DIR.relative_to(ROOT)}/"
+                )
+    return checked
 
 
 def cue_claims(text: str) -> list[tuple[int, str]]:
@@ -328,6 +381,19 @@ def main() -> int:
         f"{schema.relative_to(ROOT)}",
     )
 
+    # 1c. Every living-doc IR schema link names the current line and resolves.
+    # CHANGELOG.md and docs/adoption/** are frozen, dated history: their links
+    # legitimately name renamed-away release schemas, unlike the living set.
+    ir_schema_pages = [
+        p
+        for p in pages
+        if p != ROOT / "CHANGELOG.md"
+        and p.relative_to(ROOT).parts[:2] != ("docs", "adoption")
+    ]
+    ir_schema_links = check_ir_schema_links(
+        ir_schema_pages + [LLMS, LLMS_FULL], ir_version
+    )
+
     # 2. No stale canonical domain under the docs/website trees or the root.
     check_stale_domain()
 
@@ -346,7 +412,8 @@ def main() -> int:
         f"IR version {ir_version} (schema {schema.relative_to(ROOT)}); "
         f"{claims} current-language-version claim(s) across llms.txt, "
         f"llms-full.txt and {len(pages)} docs page(s) all read "
-        f"{lang_version}; canonical domain is coherent."
+        f"{lang_version}; {ir_schema_links} IR-schema link(s) checked; "
+        f"canonical domain is coherent."
     )
     print("check-docs-consistency: example roots for CI check-project:")
     for r in roots:

@@ -20,9 +20,9 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 ```
 $ lute check my-scene.lute
 my-scene.lute:1:1: error [E-KIND-MISSING] required frontmatter key `kind` is missing; every root document must declare `kind: scene` or `kind: quest` (dsl 0.2.0 §3.1)
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing
-my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `character` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `season` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
+my-scene.lute:1:1: error [E-META-MISSING] required meta key `episode` is missing (authored `id:` also satisfies scene identity, dsl 0.15.0 §2/§4)
 failed: my-scene.lute (4 error(s), 0 warning(s))
 ```
 

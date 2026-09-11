@@ -10,7 +10,7 @@ behavior lives on the far side of the artifact, in the **engine**. This page is
 the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)
 and the machine-checkable shape is
-[`schemas/lute-ir-0.9.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.9.schema.json)
+[`schemas/lute-ir-0.16.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.16.schema.json)
 (JSON Schema draft 2020-12).
 
 ## What Lute does vs. what the engine does
@@ -82,13 +82,14 @@ serialized: an engine needs no member semantics at runtime.
 
 ## Version negotiation
 
-Gate on `irVersion` by **major.minor**:
+Gate on `irVersion` by **MAJOR only** (since `0.13.0`):
 
-- **Accept** any artifact whose `irVersion` major.minor you implement.
-- **Refuse** one from a newer major.minor — the PATCH component is an advisory,
-  backward-compatible refinement and never gates.
+- **Accept** any artifact whose `irVersion` major you implement.
+- **Refuse** one from a newer major — minor and PATCH versions are compatible by
+  default within that major and never gate.
 - **Ignore unknown object fields** — optional fields are added append-only
-  within a minor line, so a newer PATCH artifact still loads on an older engine.
+  within a major line, so a newer minor or PATCH artifact still loads on an
+  older engine.
 - **Treat an unknown command `kind` as an error** — a new command kind is a
   real capability you cannot fake.
 

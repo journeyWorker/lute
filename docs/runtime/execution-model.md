@@ -3,7 +3,10 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the JSON IR described
-by [`schemas/lute-ir-0.9.schema.json`](../../schemas/lute-ir-0.9.schema.json).
+by [`schemas/lute-ir-0.16.schema.json`](../../schemas/lute-ir-0.16.schema.json),
+the schema for the current IR version (`0.16.0`; the file is renamed per
+release line, so an older `lute-ir-0.X.schema.json` named anywhere below is
+history, not a second live contract).
 It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**
 (design decision D1). Everything on the far side of the artifact is the
 engine's job. These documents describe that job, grounded in
@@ -86,10 +89,12 @@ collided with `end.reason`, which is an opaque author token you dispatch on,
 while this field is human-readable English the compiler wrote and nothing
 dispatches on. Nothing else moves — no field added or retyped, no new command
 `kind`, and `Provenance.injected` is retained but is now constant-`true`, so do
-not read a `true` as distinguishing anything. The schema is
-`schemas/lute-ir-0.16.schema.json`. An engine that reads the provenance stamp
-and consumes artifacts from both sides of `0.10.0` must handle that rename;
-the version gate no longer refuses on its behalf.
+not read a `true` as distinguishing anything. The rename is published in the
+current schema above; `schemas/lute-ir-0.9.schema.json` is the one older schema
+file still kept in the repo, for an engine that has not crossed the rename. An
+engine that reads the provenance stamp and consumes artifacts from both sides
+of `0.10.0` must handle the rename itself; the version gate no longer refuses
+on its behalf.
 
 ## Addressing and control flow
 

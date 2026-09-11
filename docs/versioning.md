@@ -218,8 +218,8 @@ equivalents only by the added `meta.id`, so a `0.14` engine parses a
 `0.15.0` artifact unchanged and simply does not ask for the added key.
 `capabilityVersion` does not move (no `lute.core` change, no grammar
 production change). The schema file renames per release line
-(`lute-ir-0.14.schema.json` →
-[`lute-ir-0.15.schema.json`](../schemas/lute-ir-0.15.schema.json)) — its
+(`lute-ir-0.14.schema.json` → `lute-ir-0.15.schema.json`, since renamed
+forward again and not a file in the repo today) — its
 content gains the `sceneMeta.id` requirement, demotes the four legacy
 identity keys to optional, and adds the `extra` property on both
 `sceneMeta` and `questMeta`.
