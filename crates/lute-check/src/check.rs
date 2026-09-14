@@ -3964,22 +3964,16 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.16.0` is the declarative-rewards release — `<reward/>` becomes a
-    /// direct-child owner field on `<quest>`/`<objective>`, lowered to
-    /// `QuestCmd.rewards`/`ObjectiveEntry.rewards` pure data and surfaced
-    /// by the reference runner and `lute trace` as deterministic
-    /// `grant` transcript events at each fresh transition (spec §3 D-D).
-    /// A plugin `rewardKinds:` export publishes the vocabulary; when no
-    /// vocabulary is declared the checker admits any kind name so
-    /// pre-`rewardKinds` scenarios still compile clean. The schema is
-    /// renamed `schemas/lute-ir-0.15.schema.json` -> `lute-ir-0.16.schema.json`
-    /// (per-release rename rule). The gated MAJOR does not move under
-    /// `0.13.0`'s MAJOR-only runtime contract, so a `0.15` engine parses
-    /// `0.16.0` artifacts unchanged and simply does not ask for the added
-    /// `rewards` arrays.
+    /// `0.17.0` ships the checked streaming continuation compiler and generic
+    /// capability permissions. Neither changes the ordinary source grammar or
+    /// artifact shape: streaming units use the existing whole-document
+    /// checker/compiler, and permission policy narrows the capabilities a
+    /// resolved document may use before lowering. Language and IR therefore
+    /// move as alignment restamps, and the current schema is
+    /// `schemas/lute-ir-0.17.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_16_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.16.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.16.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_17_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.17.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.17.0");
     }
 }

@@ -155,7 +155,7 @@ mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.16.0**.
+compiles, traces, and inspects them. The current language version is **0.17.0**.
 
 ## Quick start with `bunx`
 
@@ -211,16 +211,16 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.16.0
-language      0.16.0
-IR schema     0.16.0
+lute toolchain 0.17.0
+language      0.17.0
+IR schema     0.17.0
 ```
 
 Those are three independent axes: the **toolchain** version is this CLI, the **language** version
 is the grammar and semantics the checker enforces, and the **IR schema** version is what
 `lute compile` stamps into every artifact as `irVersion`. They mean different things, but a
 release always re-aligns all three visible numbers to that release's number, so all three read
-`0.16.0`. *History:* at `0.10.0` all three moved substantively — the IR shape changed for the
+`0.17.0`. *History:* at `0.10.0` all three moved substantively — the IR shape changed for the
 first time since `0.8.0`, `provenance.reason` becoming `provenance.explanation` — and under the
 then-current major.minor gate an engine on IR `0.9` had to widen to accept `0.10`. The gate is
 MAJOR only since `0.13.0`, so a minor move no longer costs a consumer anything. For scripts and CI,
@@ -228,10 +228,10 @@ MAJOR only since `0.13.0`, so a minor move no longer costs a consumer anything. 
 
 ```
 $ lute version --json
-{"toolchain":"0.16.0","language":"0.16.0","ir":"0.16.0"}
+{"toolchain":"0.17.0","language":"0.17.0","ir":"0.17.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.16.0` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.17.0` — the toolchain axis alone.)
 
 ## Next
 
@@ -245,7 +245,7 @@ an empty file, running `lute` at every step.
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.16.0**.
+**0.17.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -474,8 +474,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.16.0",
-  "irVersion": "0.16.0",
+  "lute": "0.17.0",
+  "irVersion": "0.17.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "character": "mira",
@@ -2362,7 +2362,7 @@ The index carries the document table plus the deterministic **union** of every a
 
 ```json
 {
-  "irVersion": "0.16.0",
+  "irVersion": "0.17.0",
   "capabilityVersion": "…",
   "documents": [
     { "path": "quests/findKai.lute", "artifact": "quests/findKai.lute.json",
@@ -2614,7 +2614,7 @@ Transcript headers read `── <tickLabel> (tick <N>) · <lane> · <event>/<var
 
 # Runtime contract
 
-`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.16.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.16.schema.json) (JSON Schema draft 2020-12).
+`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.17.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.17.schema.json) (JSON Schema draft 2020-12).
 
 Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST and leaves the rest as raw CEL, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. `holds()`/`count()` are inside the §8.4 profile authors may write and deliberately absent from the `expr` AST, so a relational guard reaches the engine as raw CEL text alone and an engine MUST have a CEL evaluator, not merely an AST walker. The engine trusts the artifact.
 
@@ -3560,7 +3560,7 @@ For the complete project — the plugin manifests, schemas, component, catalog, 
 
 # Current specification
 
-The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.16.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
+The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.17.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -3597,7 +3597,7 @@ Notes on the boundaries:
 
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.16.0**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.17.0**.
 
 ## Scenario DSL (the language)
 
@@ -3621,8 +3621,9 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.10.2 | **Alignment only on the language axis; the IR axis is not**: no grammar production, no static-semantic rule (`0.10.1`/`0.10.0` semantics byte for byte). The release is one IR/toolchain change — a plugin-owned, checker-validated frontmatter key now reaches the compiled artifact (`meta.plugin`) instead of being discarded at compile time (plugin-system `0.0.4`). Additive only: no engine gate widens, since `0.10.2` shares major.minor `0.10` with `0.10.0`/`0.10.1`. | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
 | 0.15.0 | **Authored scene identity**: one new scene frontmatter key, `id:`, becomes the canonical scene key everywhere the derived `{character}.{episodeId}` join is consumed today (lineId prefix, `visited()`/connectivity, `prereqEdges`, `project.index.json`, the runtime visited-set), and demotes the four legacy identity keys (`character`/`season`/`episode`/`episodeId`) to optional when present; a second new frontmatter key, `extra:`, lands on scene and quest roots as a free descriptive block (open mapping of scalars or flat scalar-lists, carried verbatim into `meta.extra`, read by no language rule). Three new diagnostics `E-META-ID`/`E-META-VALUE`/`W-META-LEGACY`, `E-META-MISSING` narrowed to fire only when merged frontmatter lacks `id:`, and `E-CONN-EPISODE-ID-DUP`'s message generalised to name the *canonical scene id*. IR additive-only under `0.13.0`'s MAJOR-only gate: `SceneMeta.id` required, the four legacy identity fields optional, `extra` on both `SceneMeta` and `QuestMeta`. | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
 | 0.15.1 | **Alignment only, on BOTH axes**: no grammar production, no static-semantic rule, no IR shape or content change (`0.15.0` semantics byte for byte). The release is entirely toolchain — the npm distribution ships `lute-lsp` alongside `lute` (a second `bin` launcher entry, both binaries carried in each per-platform core package), so downstream editors can spawn the language server through the same `@lute-lang/lute` install the CLI already uses. `schemas/lute-ir-0.15.schema.json` keeps its name and `$id`; no engine gate widens under `0.13.0`'s MAJOR-only runtime contract. | [0.15.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.1.md) |
-| **0.16.0** | Current tip — **Declarative rewards**: one new self-closing element, `<reward kind= target= amount= when= on=/>`, legal only as a direct child of `<quest>` or `<objective>`, with `amount` admitting an integer scalar (negatives real) or the new range literal `N..M`; lowers to pure data on the owning records (`QuestCmd.rewards` / `ObjectiveEntry.rewards`) — the engine grants, the reference runtime never rolls a range. Two new diagnostics `E-REWARD-ATTR` (shape) and `E-REWARD-KIND` (vocabulary, only when a plugin declares `rewardKinds:`); `reward.when` joins the CEL-slot registry. `lute run` / `play` / `trace` emit deterministic `grant` transcript events at each fresh transition (spec §3 D-D — objective grants precede quest grants, all grants precede the corresponding lifecycle handler body). A plugin manifest MAY export a `rewardKinds:` vocabulary; folded into the capability snapshot as a guarded, sorted section so `capabilityVersion` moves only for projects that declare kinds. IR additive-only under `0.13.0`'s MAJOR-only gate: both `rewards` arrays are `skip-when-empty`, so a rewardless artifact stays byte-identical to `0.15.1` output. The tree-sitter grammar gains the `reward` production. | [0.16.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md) |
+| 0.16.0 | **Declarative rewards**: one new self-closing element, `<reward kind= target= amount= when= on=/>`, legal only as a direct child of `<quest>` or `<objective>`, with `amount` admitting an integer scalar (negatives real) or the new range literal `N..M`; lowers to pure data on the owning records (`QuestCmd.rewards` / `ObjectiveEntry.rewards`) — the engine grants, the reference runtime never rolls a range. Two new diagnostics `E-REWARD-ATTR` (shape) and `E-REWARD-KIND` (vocabulary, only when a plugin declares `rewardKinds:`); `reward.when` joins the CEL-slot registry. `lute run` / `play` / `trace` emit deterministic `grant` transcript events at each fresh transition (spec §3 D-D — objective grants precede quest grants, all grants precede the corresponding lifecycle handler body). A plugin manifest MAY export a `rewardKinds:` vocabulary; folded into the capability snapshot as a guarded, sorted section so `capabilityVersion` moves only for projects that declare kinds. IR additive-only under `0.13.0`'s MAJOR-only gate: both `rewards` arrays are `skip-when-empty`, so a rewardless artifact stays byte-identical to `0.15.1` output. The tree-sitter grammar gains the `reward` production. | [0.16.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md) |
 | 0.16.1 candidate | **Prospective tooling only; not released.** A checked continuation compiler appends ordinary final-shot body source to a frozen scene template and emits full ordinary artifact snapshots per complete accepted unit; `lute compile-stream` exposes the same contract as flushed NDJSON. No new grammar, permission, runtime effect, or IR patch shape. Each unit recompiles cumulative source through the existing compiler, and snapshot consumers retain their numeric cursor/state/facts while rebuilding address lookup. | [0.16.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.1.md) |
+| **0.17.0** | Current tip — **Checked continuations and least-authority compilation**: the toolchain adds the append-only checked continuation compiler and `lute compile-stream`, plus generic capability-permission ceilings for directives, state and fact writes, bridges, rewards, and quests. Both reuse the existing language and ordinary artifact contract, so language and IR are alignment restamps with no grammar, static-semantic, or IR-shape change. | [0.17.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals

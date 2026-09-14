@@ -114,10 +114,10 @@ profiles:
   });
 
   for (const [name, yaml] of [
-    ["unknown field", "defaultProfile: p\\npermissions: { directive: [bg] }\\n"],
-    ["null set", "defaultProfile: p\\npermissions: { directives: null }\\n"],
-    ["malformed path", "defaultProfile: p\\npermissions: { stateWrites: [scene.*.bad] }\\n"],
-    ["malformed bridge", "defaultProfile: p\\npermissions: { bridges: [dialogue.respond] }\\n"],
+    ["unknown field", "defaultProfile: p\npermissions: { directive: [bg] }\n"],
+    ["null set", "defaultProfile: p\npermissions: { directives: null }\n"],
+    ["malformed path", "defaultProfile: p\npermissions: { stateWrites: [scene.*.bad] }\n"],
+    ["malformed bridge", "defaultProfile: p\npermissions: { bridges: [dialogue.respond] }\n"],
   ]) {
     test(`rejects ${name}`, () => {
       const { ajv, projectSchema } = loadAjv();

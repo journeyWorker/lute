@@ -1,7 +1,7 @@
 # Capability permissions
 
 Date: 2026-09-14
-Status: implementation contract for an unreleased feature
+Status: implementation contract for Lute 0.17.0
 
 ## Outcome
 

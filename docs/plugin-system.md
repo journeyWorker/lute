@@ -18,8 +18,8 @@ doc, not a stale feature.)
 > [`0.0.4`](proposals/plugin-system/0.0.4.md) delta folding plugin-owned frontmatter into the
 > compiled artifact's `meta.plugin`; the
 > [`0.0.5`](proposals/plugin-system/0.0.5.md) delta adding advisory `lints` exports; and the
-> prospective, Unreleased [`0.0.6`](proposals/plugin-system/0.0.6.md) delta adding generic
-> project/host capability-permission ceilings.
+> [`0.0.6`](proposals/plugin-system/0.0.6.md) delta adding generic project/host
+> capability-permission ceilings in Lute `0.17.0`.
 > **Those proposals are the source of truth.** This document is the human-facing **overview +
 > rationale** (the *why* and the author's mental model); where they differ, the proposals win.
 
@@ -142,7 +142,7 @@ with scalar options overriding, maps deep-merging, and lists replacing — the n
 and merge rules are proposal §11. A reference to a directive from an installed-but-inactive plugin
 is a diagnostic with fix-its, never silently accepted.
 
-## Capability permissions (Unreleased orientation)
+## Capability permissions (0.17.0)
 
 Plugin activation answers **what exists**; capability permissions answer which
 parts of that resolved surface authored source may use. Trusted

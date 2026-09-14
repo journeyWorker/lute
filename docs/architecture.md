@@ -13,12 +13,11 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.16.0.md`](proposals/scenario-dsl/0.16.0.md). The
-> prospective checked-continuation tooling contract (not a released-version claim) is
-> [`proposals/scenario-dsl/0.16.1.md`](proposals/scenario-dsl/0.16.1.md).
+> [`proposals/scenario-dsl/0.17.0.md`](proposals/scenario-dsl/0.17.0.md). The
+> checked-continuation tooling contract ships in that `0.17.0` alignment delta.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
-> through the prospective, Unreleased capability-permissions contract
+> through the `0.17.0` capability-permissions contract
 > [`0.0.6`](proposals/plugin-system/0.0.6.md); human overview:
 > [`plugin-system.md`](plugin-system.md). Use the specs as the SoT and this doc
 > for the AST/compiler/LSP architecture.
@@ -489,7 +488,7 @@ with the human-facing overview in [`plugin-system.md`](plugin-system.md). The co
 in this document consumes the resolved **capability snapshot** that spec produces; the named
 lowering hooks a plugin may target live in *Compiler — stateful resolution* above.
 
-## Checked streaming continuation compiler (prospective 0.16.1 tooling)
+## Checked streaming continuation compiler (0.17.0)
 
 The continuation surface has two layers with different promises:
 
@@ -560,7 +559,7 @@ The service performs no model call, remote operation, plugin bridge, publication
 or host side effect and does not claim to be a secure capability sandbox.
 
 Normative contract:
-[`scenario-dsl/0.16.1`](proposals/scenario-dsl/0.16.1.md). Implementation design:
+[`scenario-dsl/0.17.0`](proposals/scenario-dsl/0.17.0.md). Implementation design:
 [`superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md`](superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md).
 User and runtime guide:
 [`runtime/incremental-continuations.md`](runtime/incremental-continuations.md).
@@ -1040,7 +1039,7 @@ matches), `E-COMPONENT-ARG`/`-UNDECLARED`/`-CYCLE`/`-DUP`/`-PARSE`, `E-UNKNOWN-A
 [`examples/choice-persist.lute`](examples/choice-persist.lute) (the spec §4.6 trace walkthrough
 — `lute trace docs/examples/choice-persist.lute --choose sofaHelp=help`).
 
-## Capability permission architecture (Unreleased)
+## Capability permission architecture (0.17.0)
 
 Capability permissions are a project/host policy layer over the existing
 capability snapshot, not a new capability source. The implementation preserves

@@ -13,10 +13,10 @@ Dialogue still uses Lute's inline content-line syntax:
 @guide: The corridor lights wake one by one.
 ```
 
-The normative prospective contract is
-[`scenario-dsl/0.16.1`](../proposals/scenario-dsl/0.16.1.md), based on the
+The normative contract is
+[`scenario-dsl/0.17.0`](../proposals/scenario-dsl/0.17.0.md), based on the
 [implementation design](../superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md).
-It is listed under Unreleased and is not a claim about a published version.
+It shipped with Lute `0.17.0`.
 
 ## Trust and source boundary
 
@@ -238,7 +238,7 @@ compiler from a corrected complete prefix to continue.
 ## Source references
 
 - [Implementation contract](../superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md)
-- [Normative prospective proposal](../proposals/scenario-dsl/0.16.1.md)
+- [Normative 0.17.0 proposal](../proposals/scenario-dsl/0.17.0.md)
 - [`lute-compile` streaming implementation](../../crates/lute-compile/src/streaming.rs)
 - [`lute-syntax` continuation framer](../../crates/lute-syntax/src/incremental.rs)
 - [Ordinary runtime execution model](./execution-model.md)

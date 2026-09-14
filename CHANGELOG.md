@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.16.0`, the grammar and semantics the checker
+- **Language** — currently `0.17.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.16.0`) and gated on by consuming engines.
+  artifact (currently `0.17.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -37,63 +37,78 @@ table.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-14
+
+**Checked continuations and least-authority compilation.**
+
+This release adds a checked, append-only continuation compiler and generic
+capability-permission ceilings. Both features reuse the existing language and
+ordinary artifact contract: streaming recompiles accepted source through the
+whole-document pipeline, while permissions can only narrow the capabilities a
+resolved document may use. The language and IR axes therefore move to `0.17.0`
+as alignment restamps with no grammar, static-semantic, or IR-shape change.
+
 ### Added
 
-- **Generic capability permissions (prospective; no version bump)** — trusted
-  `lute.project.yaml` root/profile policy can restrict directives, scalar-state
-  writes, fact writes, bridge `service/operation` pairs, declarative rewards,
-  and quests. Missing fields are unrestricted while explicit empty lists deny;
-  project, `global`, ancestor, selected-profile, and host layers compose
-  conjunctively. `--permission-profile NAME` adds an independently trusted
-  ceiling to `check`, `compile` (including all-or-nothing `--all`),
-  `compile-stream`, and `context` without activating that profile's plugins or
-  rewriting the source-selected profile. The checker reports non-suppressible
-  `E-PERMISSION-*` errors at authored spans—including defaults, seed facts,
-  plugin effects/bridges, nested/transitive components, quests, and rewards—and
-  the compiler rechecks policy before lowering. Restrictive effective policy
-  participates in `capabilityVersion`; unrestricted projects preserve existing
-  hashes byte-for-byte. LSP diagnostics/completion and `context` share the same
-  resolver. This is compile-time admission control, not an AI integration,
-  product plugin, runtime sandbox, or reward implementation. Normative draft:
-  [`docs/proposals/plugin-system/0.0.6.md`](docs/proposals/plugin-system/0.0.6.md);
-  runtime/security guide:
-  [`docs/runtime/capability-permissions.md`](docs/runtime/capability-permissions.md);
-  generic example:
-  [`docs/examples/capability-permissions/`](docs/examples/capability-permissions/).
-- **Checked streaming continuation compiler and CLI (prospective; no version
-  bump)** — `lute_compile::streaming::ContinuationCompiler` accepts a resolved,
-  checked scene template and append-only ordinary Lute shot-body text, then
-  emits full ordinary `Artifact` snapshots after each complete accepted unit.
-  Every unit passes through the existing whole-document checker,
-  normalization, component expansion, stage injection, lowering, and
-  addressing pipeline; this is cumulative re-analysis for lower first-output
-  latency, not asymptotically incremental compilation. Updates carry a
-  monotonic `sequence` and `append_from` (the prior command count). Candidate
-  snapshots may widen address padding, but any semantic change to an emitted
-  command or existing state entry is rejected with
-  `E-STREAM-PREFIX-CHANGED`. Consumers replace the immutable program snapshot
-  and rebuild address lookup while retaining their numeric cursor, live state,
-  facts, and control-flow state; they initialize only new state slots and do
-  not replay the whole appended array region.
-- **`lute compile-stream` NDJSON transport** —
-  `lute compile-stream <scene.lute> [--project DIR] [--providers DIR]` resolves
-  the host-owned template once, reads body text from stdin, and flushes
-  `start`, each accepted `update`, then either `finish` or `error`. EOF
-  finalizes a last complete leaf and closes input; authored `::end` remains an
-  ordinary, distinct runtime terminator. Exit `0` is reserved for successful
-  EOF finalization, `1` reports syntax/semantic/service rejection, and `2`
-  reports invocation, I/O, or invalid UTF-8. The command makes no remote call
-  and performs no runtime or user effect.
-- **Lossless continuation syntax framing** —
-  `lute_syntax::incremental::IncrementalContinuationParser` remains the
-  lower-level parser-only API for callers that need exact unit source/ranges
-  and local syntax diagnostics without checking or artifact production.
-  Normative prospective contract:
-  [`docs/proposals/scenario-dsl/0.16.1.md`](docs/proposals/scenario-dsl/0.16.1.md);
+- **Checked streaming continuation compiler** —
+  `lute_compile::streaming::ContinuationCompiler` accepts a resolved, checked
+  scene template and append-only ordinary Lute shot-body text, then emits a
+  complete ordinary `Artifact` snapshot for each accepted top-level unit.
+  Each unit passes through the existing checker, normalization, component
+  expansion, stage injection, lowering, and addressing pipeline. Updates carry
+  a monotonic `sequence` and `append_from`; prior commands and state entries
+  must remain semantically unchanged, with `E-STREAM-PREFIX-CHANGED` rejecting
+  retroactive changes. Normative contract:
+  [`docs/proposals/scenario-dsl/0.17.0.md`](docs/proposals/scenario-dsl/0.17.0.md);
   implementation design:
   [`docs/superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md`](docs/superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md);
   runtime guide:
   [`docs/runtime/incremental-continuations.md`](docs/runtime/incremental-continuations.md).
+- **`lute compile-stream` NDJSON transport** —
+  `lute compile-stream <scene.lute> [--project DIR] [--providers DIR]` resolves
+  the host-owned template once, reads body text from stdin, and flushes
+  `start`, every accepted `update`, then `finish` or `error`. EOF finalizes a
+  complete final leaf; exit `0` means successful finalization, `1` means
+  syntax, semantic, or service rejection, and `2` means invocation, I/O, or
+  invalid UTF-8. The lower-level
+  [`lute_syntax::incremental::IncrementalContinuationParser`](crates/lute-syntax/src/incremental.rs)
+  remains available for lossless syntax framing without checking or artifact
+  production.
+- **Generic capability permissions** — trusted `lute.project.yaml` root and
+  profile policy can restrict directives, scalar-state writes, fact writes,
+  bridge `service/operation` pairs, declarative rewards, and quests. Missing
+  fields are unrestricted; explicit empty lists deny the category. Project,
+  `global`, ancestor, selected-profile, and host layers compose
+  conjunctively. `--permission-profile NAME` adds an independently trusted
+  ceiling to `check`, `compile` (including all-or-nothing `--all`),
+  `compile-stream`, and `context` without activating plugins or rewriting the
+  source-selected profile. Non-suppressible `E-PERMISSION-*` diagnostics
+  cover defaults, seed facts, plugin effects and bridges, nested/transitive
+  components, quests, and rewards; the compiler rechecks policy before
+  lowering. Normative contract:
+  [`docs/proposals/plugin-system/0.0.6.md`](docs/proposals/plugin-system/0.0.6.md);
+  security and host guide:
+  [`docs/runtime/capability-permissions.md`](docs/runtime/capability-permissions.md);
+  implementation design:
+  [`docs/superpowers/specs/2026-09-14-capability-permissions-design.md`](docs/superpowers/specs/2026-09-14-capability-permissions-design.md);
+  runnable example:
+  [`docs/examples/capability-permissions/`](docs/examples/capability-permissions/).
+
+### Changed
+
+- **Release-axis alignment** — the toolchain, language, and IR versions all
+  advance to `0.17.0` under
+  [`docs/versioning.md`](docs/versioning.md). Language `0.17.0` is
+  byte-for-byte `0.16.0` grammar and static semantics; IR `0.17.0` has no
+  field, command, or serialization-shape change.
+- **IR schema restamped per release line** —
+  `schemas/lute-ir-0.16.schema.json` is renamed to
+  [`schemas/lute-ir-0.17.schema.json`](schemas/lute-ir-0.17.schema.json), with
+  `$id` and title updated and the schema body otherwise unchanged. The runtime
+  gate remains MAJOR-only, so consuming engines require no schema migration.
+- **Capability snapshot hashing includes restrictive policy** — an effective
+  permission ceiling participates in `capabilityVersion`, while unrestricted
+  projects retain their existing capability hash byte-for-byte.
 
 ## [0.16.0] - 2026-09-01
 
@@ -190,7 +205,7 @@ the language never rolls a range or synthesizes a `::grant`.
 
 - **Schema renamed per release line** —
   `schemas/lute-ir-0.15.schema.json` is renamed to
-  [`schemas/lute-ir-0.16.schema.json`](schemas/lute-ir-0.16.schema.json);
+  `schemas/lute-ir-0.16.schema.json`;
   its content gains the `rewardEntry` definition (`kind` required,
   optional `target`, exactly one of `amount` / (`amountMin` +
   `amountMax`), optional `when`, quest-only `on: "failed"`) and the two

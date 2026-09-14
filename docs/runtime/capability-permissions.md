@@ -1,7 +1,6 @@
 # Capability permissions and host security
 
-**Status:** Unreleased toolchain contract. This guide does not claim a released
-Lute version. The normative contract is
+**Status:** shipped with Lute `0.17.0`. The normative contract is
 [`../proposals/plugin-system/0.0.6.md`](../proposals/plugin-system/0.0.6.md),
 grounded in the implementation design at
 [`../superpowers/specs/2026-09-14-capability-permissions-design.md`](../superpowers/specs/2026-09-14-capability-permissions-design.md).

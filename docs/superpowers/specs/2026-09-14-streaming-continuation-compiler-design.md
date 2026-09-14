@@ -1,12 +1,12 @@
 # Streaming continuation compiler
 
 Date: 2026-09-14
-Status: implementation contract; not a released-version claim
+Status: implementation contract for Lute 0.17.0
 
 Companion documents: the
-[prospective normative proposal](../../proposals/scenario-dsl/0.16.1.md), the
+[normative 0.17.0 proposal](../../proposals/scenario-dsl/0.17.0.md), the
 [runtime and user guide](../../runtime/incremental-continuations.md), and the
-[implementation architecture](../../architecture.md#checked-streaming-continuation-compiler-prospective-0161-tooling).
+[implementation architecture](../../architecture.md#checked-streaming-continuation-compiler-0170).
 
 ## User outcome
 
