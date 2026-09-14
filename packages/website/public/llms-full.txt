@@ -729,9 +729,9 @@ Role-first routes through the docs — pick the reading order that matches what 
 
 - **Scenario writer:** installation → first scene → build an investigation → dialogue & cast → branch/match/when → choices & hubs → quests & scenes → tracing.
 - **Narrative programmer:** frontmatter → state model → CEL → facts & Datalog → timeline → scene graph & after: → reachability → envelopes.
-- **Engine integrator:** runtime contract → the normative [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime) specs → the [`conformance/`](https://github.com/journeyWorker/lute/tree/main/conformance) fixtures → `lute run` (the reference consumer) → CEL semantics.
+- **Engine integrator:** runtime contract → streaming continuation compiler → the normative [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime) specs → the [`conformance/`](https://github.com/journeyWorker/lute/tree/main/conformance) fixtures → `lute run` (the reference consumer) → CEL semantics.
 - **Plugin author:** plugin concepts → manifests & resolution → profiles & activation → typed bridges → providers & catalog.
-- **AI tooling developer:** AI harness guide → CLI reference (`--json` + exit codes) → current specification → state schemas → the check → trace → compile loop in build an investigation.
+- **AI tooling developer:** AI harness guide → streaming continuation compiler → CLI reference (`--json`, NDJSON, and exit codes) → current specification → state schemas → the check → trace → compile loop in build an investigation.
 
 ---
 
@@ -2380,6 +2380,27 @@ The index carries the document table plus the deterministic **union** of every a
 
 `--locales <bundle.json>` merges a locale bundle (see `loc import`) into the artifact: `texts` on every line record and `labels` on every choice/hub option, both keyed by `lineId`. The source-language `text`/`label` is never overwritten, and both maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A bundle entry matching nothing in this document is ignored; a bundle legitimately spans a whole project, and it composes with `--all`, merging the one bundle into every artifact. A translatable record missing a locale the bundle declares is `W-L10N-MISSING`, one per `(lineId, locale)` pair on stderr. It is a warning — the artifact still emits, carrying the source-language string — and `--deny W-L10N-MISSING` (or `--deny-warnings`) promotes it so CI can require a complete translation before anything ships.
 
+## compile-stream
+
+```console
+$ lute compile-stream <scene.lute> [--project <DIR>] [--providers <DIR>]
+```
+
+Resolve and check a complete scene template once, then read append-only ordinary
+Lute shot-body text from stdin. Each complete accepted line/directive/block is
+compiled through the existing cumulative whole-document pipeline and flushed to
+stdout as NDJSON: `start` with the initial full artifact, one `update` with a
+full artifact per unit, then `finish` on successful EOF. A rejection writes an
+`error` record with diagnostics and no `finish`.
+
+Exit **0** only after successful EOF finalization, **1** on a
+syntax/semantic/compile/streaming rejection, and **2** on usage, I/O, broken
+stdout, or invalid UTF-8. Authored `::end` is an ordinary runtime command; it
+does not replace EOF or close stdin. The command never modifies the template or
+performs remote/runtime effects. See the streaming continuation compiler guide
+for the record schema, cumulative cost, admitted body surface, and consumer
+cursor/state rules.
+
 ## trace
 
 ```console
@@ -2619,6 +2640,26 @@ Every executable record carries an `addr`, a position string `"{shot}-{(index + 
 
 **If you may load artifacts built by a 0.7-or-earlier toolchain, compare `addr` segment-wise numerically, never as a plain string.** Before 0.8.0 the index segment was fixed at 4 digits, so a shot with 100+ records emitted `001-11500` beside `001-1400` and string comparison reported `"001-11500" < "001-1400"` — an engine ordering or range-checking addresses lexicographically would rewind into already-played content.
 
+## Streaming snapshot replacement
+
+`lute compile-stream` emits a full ordinary artifact snapshot for every accepted
+continuation unit, not a second IR or patch language. `appendFrom` is the
+previous command count; it is neither a runtime PC nor an instruction to
+execute every new record.
+
+On update, replace the immutable program image and rebuild address lookup.
+Retain the numeric cursor, live state, facts, selected control-flow stack, and
+host-owned effect/idempotency records; initialize only newly declared state
+slots. Never reapply existing defaults or seed facts. Address lookup must be
+rebuilt because uniform padding may widen as commands are appended. Formatting-
+only typed-address widening is accepted; semantic mutation of an emitted
+command or state entry is `E-STREAM-PREFIX-CHANGED`.
+
+The ordinary dispatcher still selects execution paths. Reaching the temporary
+frontier means wait, not complete. Completion follows successful compiler EOF
+`finish`, or an authored ordinary `end` command; EOF never synthesizes `end`,
+and `end` does not close stdin.
+
 ## The dispatcher
 
 The `commands` array is already in execution order. Control-flow fields — `jump.target`, choice/hub option `target` and `converge`, match arm `target`/`otherwise`/`converge` — are all addrs. Walk with a program counter over an `addr → index` map, dispatching on `kind`; `null` next means fall through to `pc + 1`, and an unrecognized `kind` is a hard error, never a skip. The full command set is twenty-one kinds: `line`, `background`, `music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video`, `set`, `assert`, `retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`, `plugin`.
@@ -2631,7 +2672,155 @@ A `line` record's `text` and a choice/hub option's `label` are always the **sour
 
 ## The runtime docs
 
-Each surface has its own contract document under [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime): `execution-model.md` (artifact shape, version gate, addressing, the dispatcher loop), `state-lifecycle.md` (the `scene`/`run`/`user`/`app`/`quest.<id>` tiers, initialization, reset boundaries), `cel-and-facts.md` (evaluating the `expr` AST, the fact store's assert/retract deltas, the stratified least fixpoint), `quest-lifecycle.md` (`start`/`fail` precedence, required vs. optional objectives, monotone completion, lifecycle events), `timeline-semantics.md` (the local clock, per-track cursors, barriers, the one-writer-per-target invariant), and `bridge-protocol.md` (typed bridge calls, return shapes, `wait`, resolved state effects).
+Each surface has its own contract document under [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime): `incremental-continuations.md` (checked continuation compilation, snapshot replacement, cursor/state retention, and finalization), `execution-model.md` (artifact shape, version gate, addressing, the dispatcher loop), `state-lifecycle.md` (the `scene`/`run`/`user`/`app`/`quest.<id>` tiers, initialization, reset boundaries), `cel-and-facts.md` (evaluating the `expr` AST, the fact store's assert/retract deltas, the stratified least fixpoint), `quest-lifecycle.md` (`start`/`fail` precedence, required vs. optional objectives, monotone completion, lifecycle events), `timeline-semantics.md` (the local clock, per-track cursors, barriers, the one-writer-per-target invariant), and `bridge-protocol.md` (typed bridge calls, return shapes, `wait`, resolved state effects).
+
+---
+
+# Streaming continuation compiler
+
+The checked continuation compiler appends ordinary Lute **shot-body source** to
+a host-owned scene template and returns a checked ordinary IR artifact after
+each complete unit, before stdin reaches EOF. It is not a streaming grammar or
+JSON AST patch protocol. Dialogue remains ordinary inline Lute:
+
+```lute
+@guide: The corridor lights wake one by one.
+```
+
+The prospective 0.16.1 proposal is Unreleased, not a published-version claim.
+
+## Runnable CLI stream
+
+```console
+$ cat > /tmp/live-scene.lute <<'LUTE'
+---
+kind: scene
+id: live-demo
+---
+
+## Live
+@narrator: The connection opens.
+LUTE
+$ { printf '@guide: First checked line.\n'; sleep 1; printf '@guide: Second checked line.\n'; } \
+    | lute compile-stream /tmp/live-scene.lute
+{"kind":"start","sequence":0,"appendFrom":0,"artifact":{...}}
+{"kind":"update","sequence":1,"appendFrom":1,"artifact":{...}}
+{"kind":"update","sequence":2,"appendFrom":2,"artifact":{...}}
+{"kind":"finish","sequence":2}
+```
+
+Every `{...}` is a complete ordinary artifact. Each NDJSON record is flushed,
+so the first update arrives while stdin remains open. For project resolution:
+
+```console
+$ printf '@guide: Project-resolved line.\n' \
+    | lute compile-stream scenes/live.lute --project . --providers snapshots
+```
+
+The template is resolved once and never modified. Exit `0` means successful EOF
+finalization; `1` means syntax/semantic/compile/service rejection; `2` means
+usage, I/O, broken stdout, or invalid UTF-8. Rejection emits
+`{"kind":"error","diagnostics":[...]}` with no `finish`.
+
+`appendFrom` is the previous artifact's command count. It identifies the new
+array region; it is not a runtime PC and does not request execution of every
+new record.
+
+## Rust contract
+
+```rust
+pub struct ContinuationCompiler { /* private */ }
+impl ContinuationCompiler {
+    pub fn new(
+        input: CheckInput,
+        identity: IdentityTemplates,
+    ) -> Result<Self, Vec<Diagnostic>>;
+    pub fn artifact(&self) -> &Artifact;
+    pub fn push(&mut self, chunk: &str) -> ContinuationCompilation;
+    pub fn finish(&mut self) -> ContinuationCompilation;
+}
+pub struct CompilationUpdate {
+    pub sequence: u64,
+    pub append_from: usize,
+    pub artifact: Artifact,
+}
+pub struct ContinuationCompilation {
+    pub updates: Vec<CompilationUpdate>,
+    pub need_more: Option<NeedMoreInput>,
+    pub diagnostics: Vec<Diagnostic>,
+    pub finished: bool,
+}
+```
+
+`CheckInput` contains the complete prefix and its resolved capability,
+providers, imports, components, defaults, URI, and mode. Identity templates are
+frozen. Construction immediately checks and compiles a scene with at least one
+shot and establishes the initial artifact.
+
+A continuation may contain existing final-shot body grammar: inline dialogue,
+directives, complete branch/match/hub/timeline blocks, component use, and
+resolved plugin directives. It cannot replace frontmatter, add shots/labels, or
+introduce a quest root. A future target not yet resolvable fails now.
+
+Chunks are transport, not syntax. A leaf waits for a physical newline; a block
+waits for its outer close and that physical-line boundary. `need_more` reports
+`Line`, `QuotedAttribute`, `BlockComment`, or
+`NestedBlock { open_tags }` as non-error framing state. Raw-byte callers decode
+split UTF-8 before passing `&str`.
+
+`finish` lets EOF delimit one complete final leaf without a newline, but never
+invents a close, comment terminator, or target. Success or failure is terminal.
+EOF closes compiler input. Authored `::end{reason="complete"}` is the distinct
+ordinary runtime terminator; it neither closes stdin nor hides later invalid
+source.
+
+## Cost, prefix stability, and consumer state
+
+Every complete unit recompiles cumulative source through the existing parser,
+checker, normalization, component expansion, stage injection, lowering,
+addressing, and artifact assembly. This lowers first-output latency, not total
+compiler cost; it is not asymptotically incremental. One long unfinished block
+still waits for its close.
+
+A push may accept earlier units before a later unit fails. Keep those returned
+updates; the failing and subsequent units emit no IR.
+
+Appending commands can widen uniform address padding (`001-0900` to
+`001-00900`). Typed addresses and control targets are compared by numeric
+`(shot,index)` meaning, so formatting-only widening is accepted. Arbitrary
+payload strings are never normalized. A change to an earlier line identity,
+stage-injected command, payload, control flow, or state entry is
+`E-STREAM-PREFIX-CHANGED`; emitted IR is never amended.
+
+For each snapshot, replace the immutable program image, rebuild address lookup,
+and retain the numeric cursor, live state, facts, selected control-flow stack,
+and host effect/idempotency records. Initialize only new state slots. Never
+reapply existing defaults/seed facts or execute from `appendFrom` merely because
+records are new. At the temporary frontier, wait. Successful compiler `finish`
+or an ordinary authored `end` establishes completion.
+
+Service diagnostics are `E-STREAM-TEMPLATE`, `E-STREAM-BODY`,
+`E-STREAM-PREFIX-CHANGED`, and `E-STREAM-CLOSED`; ordinary diagnostics remain
+unsuppressed and use cumulative source coordinates.
+
+The lower-level
+`lute_syntax::incremental::IncrementalContinuationParser` remains available for
+lossless unit source/ranges, `Vec<Node>`, and local syntax diagnostics. It does
+no resolution, semantic check, merge, lowering, addressing, or artifact
+assembly.
+
+Keep the template and resolved inputs host-owned. Validation does not make
+generated text trusted. This feature is not an LLM client, game engine,
+permission system, or secure AI capability sandbox, and performs no remote
+call, bridge effect, publication, or persistence.
+
+Source contracts:
+
+- https://github.com/journeyWorker/lute/blob/main/docs/runtime/incremental-continuations.md
+- https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.1.md
+- https://github.com/journeyWorker/lute/blob/main/docs/superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md
+- https://github.com/journeyWorker/lute/blob/main/crates/lute-compile/src/streaming.rs
+- https://github.com/journeyWorker/lute/blob/main/crates/lute-syntax/src/incremental.rs
 
 ---
 
@@ -2800,6 +2989,13 @@ lute check scene.lute --json --deny W-UNPROVEN-RELATIONAL --deny-warnings
 
 `--deny <CODE>` (repeatable) treats exactly that code as an error for the verdict and exit code; `--deny-warnings` promotes every warning. A promoted diagnostic reports severity `error` and carries `"denied": true` in JSON, distinguishing it from a native error. An unknown code is a usage error (exit `2`). Errors are never demotable.
 
+For an append-only generated continuation, do not invent a model-specific JSON
+grammar and do not treat parser framing as compilation. Give `lute
+compile-stream` a host-owned checked scene template and stream ordinary
+final-shot Lute body text on stdin. It flushes a full checked artifact snapshot
+per accepted complete unit. Project/capability inputs stay frozen; the host
+still owns trust, permissions, effects, persistence, and output idempotency.
+
 ## Capability-resolution errors gate the exit code
 
 Some errors describe the **project**, not a span in a document: a plugin option that does not exist or fails its declared type, an `identity:` template naming an unknown token, a profile activating a plugin that is not installed. These print on the `lute:` channel — stderr, `lute: <CODE>: <message>` — and are **not** in the `--json` diagnostic list, because they have no document position to attach to.
@@ -2814,6 +3010,7 @@ Since 0.8.0 they set the exit code; previously they printed and the build passed
 |---|---|---|---|---|
 | `check` / `check-project` | clean | error present | I/O | — |
 | `compile` (incl. `--all`) | success | failed gate | I/O / serialization | — |
+| `compile-stream` | successful EOF finalization | syntax / semantic / service rejection | usage / I/O / invalid UTF-8 | — |
 | `trace` | complete | refused | I/O | incomplete |
 | `test` | every test passed | a test failed | I/O | — |
 | `loc import` | bundle written | `E-LOCALE-BUNDLE` | I/O | — |
@@ -3309,6 +3506,7 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.15.0 | **Authored scene identity**: one new scene frontmatter key, `id:`, becomes the canonical scene key everywhere the derived `{character}.{episodeId}` join is consumed today (lineId prefix, `visited()`/connectivity, `prereqEdges`, `project.index.json`, the runtime visited-set), and demotes the four legacy identity keys (`character`/`season`/`episode`/`episodeId`) to optional when present; a second new frontmatter key, `extra:`, lands on scene and quest roots as a free descriptive block (open mapping of scalars or flat scalar-lists, carried verbatim into `meta.extra`, read by no language rule). Three new diagnostics `E-META-ID`/`E-META-VALUE`/`W-META-LEGACY`, `E-META-MISSING` narrowed to fire only when merged frontmatter lacks `id:`, and `E-CONN-EPISODE-ID-DUP`'s message generalised to name the *canonical scene id*. IR additive-only under `0.13.0`'s MAJOR-only gate: `SceneMeta.id` required, the four legacy identity fields optional, `extra` on both `SceneMeta` and `QuestMeta`. | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
 | 0.15.1 | **Alignment only, on BOTH axes**: no grammar production, no static-semantic rule, no IR shape or content change (`0.15.0` semantics byte for byte). The release is entirely toolchain — the npm distribution ships `lute-lsp` alongside `lute` (a second `bin` launcher entry, both binaries carried in each per-platform core package), so downstream editors can spawn the language server through the same `@lute-lang/lute` install the CLI already uses. `schemas/lute-ir-0.15.schema.json` keeps its name and `$id`; no engine gate widens under `0.13.0`'s MAJOR-only runtime contract. | [0.15.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.1.md) |
 | **0.16.0** | Current tip — **Declarative rewards**: one new self-closing element, `<reward kind= target= amount= when= on=/>`, legal only as a direct child of `<quest>` or `<objective>`, with `amount` admitting an integer scalar (negatives real) or the new range literal `N..M`; lowers to pure data on the owning records (`QuestCmd.rewards` / `ObjectiveEntry.rewards`) — the engine grants, the reference runtime never rolls a range. Two new diagnostics `E-REWARD-ATTR` (shape) and `E-REWARD-KIND` (vocabulary, only when a plugin declares `rewardKinds:`); `reward.when` joins the CEL-slot registry. `lute run` / `play` / `trace` emit deterministic `grant` transcript events at each fresh transition (spec §3 D-D — objective grants precede quest grants, all grants precede the corresponding lifecycle handler body). A plugin manifest MAY export a `rewardKinds:` vocabulary; folded into the capability snapshot as a guarded, sorted section so `capabilityVersion` moves only for projects that declare kinds. IR additive-only under `0.13.0`'s MAJOR-only gate: both `rewards` arrays are `skip-when-empty`, so a rewardless artifact stays byte-identical to `0.15.1` output. The tree-sitter grammar gains the `reward` production. | [0.16.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md) |
+| 0.16.1 candidate | **Prospective tooling only; not released.** A checked continuation compiler appends ordinary final-shot body source to a frozen scene template and emits full ordinary artifact snapshots per complete accepted unit; `lute compile-stream` exposes the same contract as flushed NDJSON. No new grammar, permission, runtime effect, or IR patch shape. Each unit recompiles cumulative source through the existing compiler, and snapshot consumers retain their numeric cursor/state/facts while rebuilding address lookup. | [0.16.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.1.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals

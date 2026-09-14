@@ -31,6 +31,14 @@ lute check scene.lute --json --deny W-UNPROVEN-RELATIONAL --deny-warnings
 
 `--deny <CODE>` (repeatable) treats exactly that code as an error for the verdict and exit code; `--deny-warnings` promotes every warning. A promoted diagnostic reports severity `error` and carries `"denied": true` in JSON, distinguishing it from a native error. An unknown code is a usage error (exit `2`). Errors are never demotable.
 
+For an append-only generated continuation, do not invent a model-specific JSON
+grammar and do not treat parser framing as compilation. Give
+[`lute compile-stream`](/tooling/continuation-compiler/) a host-owned, checked
+scene template and stream ordinary final-shot Lute body text on stdin. It
+flushes a full checked artifact snapshot for every accepted complete unit.
+Project/capability inputs are frozen for the stream; the host still owns trust,
+permissions, effects, persistence, and output idempotency.
+
 ## Capability-resolution errors gate the exit code
 
 Some errors describe the **project**, not a span in a document: a plugin option that does not exist or fails its declared type, an `identity:` template naming an unknown token, a profile activating a plugin that is not installed. These print on the `lute:` channel — stderr, `lute: <CODE>: <message>` — and are **not** in the `--json` diagnostic list, because they have no document position to attach to.
@@ -57,6 +65,7 @@ The codes on this channel: `E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`, `E
 |---|---|---|---|---|
 | `check` / `check-project` | clean | error present | I/O | — |
 | `compile` (incl. `--all`) | success | failed gate | I/O / serialization | — |
+| `compile-stream` | successful EOF finalization | syntax / semantic / service rejection | usage / I/O / invalid UTF-8 | — |
 | `trace` | complete | refused | I/O | incomplete |
 | `test` | every test passed | a test failed | I/O | — |
 | `loc import` | bundle written | `E-LOCALE-BUNDLE` | I/O | — |

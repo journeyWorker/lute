@@ -228,6 +228,34 @@ beside `001-1400` and string comparison reported `"001-11500" < "001-1400"` —
 an engine ordering or range-checking addresses lexicographically would rewind
 into already-played content.
 
+## Streaming snapshot replacement
+
+[`lute compile-stream`](/tooling/continuation-compiler/) emits a full ordinary
+artifact snapshot for every accepted continuation unit. It does not define a
+second IR or a patch language. `appendFrom` is the previous snapshot's command
+count and only identifies the newly appended array region; it is not a runtime
+PC and does not request execution of every record in that region.
+
+When a snapshot arrives, replace the immutable program image and rebuild the
+`addr -> command index` map. Retain the **numeric** command cursor, current
+state values, facts, selected control-flow stack, and host-owned effect/
+idempotency records. Initialize only newly declared state slots. Never reapply
+an existing default or seed fact merely because the artifact object was
+replaced.
+
+Rebuilding address lookup is required because appending commands can widen
+uniform address padding across the complete artifact. The compiler compares
+typed addresses and control targets by numeric `(shot, index)` meaning, so this
+formatting-only change is accepted; it rejects any semantic mutation of an
+already emitted command or state entry with `E-STREAM-PREFIX-CHANGED`.
+
+The ordinary dispatcher still chooses branch, match, hub, and jump paths. When
+it reaches the current stream frontier, wait for another snapshot rather than
+marking the scene complete. Completion follows a successful compiler EOF
+`finish`, or an authored ordinary `end` command. EOF and `end` are distinct:
+`end` can stop runtime execution before stdin closes, while EOF never
+synthesizes an `end`.
+
 ## The dispatcher
 
 The `commands` array is already in execution order. Control-flow fields —
@@ -326,6 +354,7 @@ exactly those gaps, so a complete bundle leaves nothing to fall back to.
 Each surface has its own contract document under
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime):
 
+- **[incremental-continuations.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/incremental-continuations.md)** — checked continuation compilation, full-snapshot replacement, cursor/state retention, stream finalization, and prefix stability.
 - **[execution-model.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/execution-model.md)** — the artifact shape, version gate, addressing, and the dispatcher loop.
 - **[state-lifecycle.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/state-lifecycle.md)** — the `scene`/`run`/`user`/`app`/`quest.<id>` tiers, initialization, and reset boundaries.
 - **[cel-and-facts.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/cel-and-facts.md)** — evaluating the `expr` AST, the fact store's assert/retract deltas, and the stratified least-fixpoint the engine computes.

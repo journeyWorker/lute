@@ -37,6 +37,43 @@ table.
 
 ## [Unreleased]
 
+### Added
+
+- **Checked streaming continuation compiler and CLI (prospective; no version
+  bump)** — `lute_compile::streaming::ContinuationCompiler` accepts a resolved,
+  checked scene template and append-only ordinary Lute shot-body text, then
+  emits full ordinary `Artifact` snapshots after each complete accepted unit.
+  Every unit passes through the existing whole-document checker,
+  normalization, component expansion, stage injection, lowering, and
+  addressing pipeline; this is cumulative re-analysis for lower first-output
+  latency, not asymptotically incremental compilation. Updates carry a
+  monotonic `sequence` and `append_from` (the prior command count). Candidate
+  snapshots may widen address padding, but any semantic change to an emitted
+  command or existing state entry is rejected with
+  `E-STREAM-PREFIX-CHANGED`. Consumers replace the immutable program snapshot
+  and rebuild address lookup while retaining their numeric cursor, live state,
+  facts, and control-flow state; they initialize only new state slots and do
+  not replay the whole appended array region.
+- **`lute compile-stream` NDJSON transport** —
+  `lute compile-stream <scene.lute> [--project DIR] [--providers DIR]` resolves
+  the host-owned template once, reads body text from stdin, and flushes
+  `start`, each accepted `update`, then either `finish` or `error`. EOF
+  finalizes a last complete leaf and closes input; authored `::end` remains an
+  ordinary, distinct runtime terminator. Exit `0` is reserved for successful
+  EOF finalization, `1` reports syntax/semantic/service rejection, and `2`
+  reports invocation, I/O, or invalid UTF-8. The command makes no remote call
+  and performs no runtime or user effect.
+- **Lossless continuation syntax framing** —
+  `lute_syntax::incremental::IncrementalContinuationParser` remains the
+  lower-level parser-only API for callers that need exact unit source/ranges
+  and local syntax diagnostics without checking or artifact production.
+  Normative prospective contract:
+  [`docs/proposals/scenario-dsl/0.16.1.md`](docs/proposals/scenario-dsl/0.16.1.md);
+  implementation design:
+  [`docs/superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md`](docs/superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md);
+  runtime guide:
+  [`docs/runtime/incremental-continuations.md`](docs/runtime/incremental-continuations.md).
+
 ## [0.16.0] - 2026-09-01
 
 **Rewards become data.**

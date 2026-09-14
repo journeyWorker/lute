@@ -66,6 +66,7 @@ mod manifests;
 mod mockcheck;
 mod play;
 mod runner;
+mod stream;
 mod scaffold;
 mod scenario_fmt;
 mod schedule;
@@ -220,6 +221,19 @@ enum Command {
         /// (spec §5).
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
+    },
+    /// Incrementally compile body text from stdin against a checked scene
+    /// prefix, flushing ordinary artifact snapshots as newline-delimited JSON.
+    CompileStream {
+        /// Path to the immutable `.lute` scene prefix.
+        file: PathBuf,
+        /// Directory of pinned provider snapshots to resolve ids against.
+        #[arg(long, value_name = "DIR")]
+        providers: Option<PathBuf>,
+        /// Project directory (`lute.project.yaml` + `plugins/`) resolving the
+        /// prefix's capability snapshot, defaults, components, and identity.
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
     },
     /// Back-fill a stable `code` into every untagged `:line` (dsl §12),
     /// rewriting the file in place.
@@ -793,6 +807,10 @@ const DENIABLE_CODES: &[&str] = &[
     "E-STATE-NAMESPACE",
     "E-STATE-REDECLARE",
     "E-STATE-SHAPE-CYCLE",
+    "E-STREAM-BODY",
+    "E-STREAM-CLOSED",
+    "E-STREAM-PREFIX-CHANGED",
+    "E-STREAM-TEMPLATE",
     "E-STRING-ESCAPE",
     "E-TAG-INLINE-BODY",
     "E-TAG-NOT-ONE-LINE",
@@ -978,6 +996,11 @@ fn main() -> ExitCode {
             locales.as_deref(),
             &DenyPolicy::new(&deny, deny_warnings),
         ),
+        Command::CompileStream {
+            file,
+            providers,
+            project,
+        } => stream::run(&file, providers.as_deref(), project.as_deref()),
         Command::Context {
             file,
             json,
@@ -1139,6 +1162,9 @@ pub(crate) struct BuiltInput {
     /// can inspect the applied defaults without re-loading the project.
     #[allow(dead_code)]
     pub defaults: lute_manifest::project::MetaDefaults,
+    /// Frozen project identity templates resolved by the same manifest load as
+    /// the capability snapshot and defaults.
+    pub identity: lute_manifest::project::IdentityTemplates,
 }
 
 impl BuiltInput {
@@ -1226,6 +1252,10 @@ fn build_input(
         // would print and pass.
         resolve_error |= d.code.starts_with("E-");
     }
+    let identity = project
+        .as_ref()
+        .map(|p| p.identity.clone())
+        .unwrap_or_default();
 
     // Resolve the scene's `uses:` schema imports (dsl §9.2) and `components:`
     // component imports (dsl §13) relative to the scene's own directory; the LSP
@@ -1251,6 +1281,7 @@ fn build_input(
         project_diags,
         meta: meta0,
         defaults,
+        identity,
     })
 }
 

@@ -24,6 +24,7 @@ pub mod lower;
 pub mod normalize;
 pub mod schedule;
 pub mod stage;
+pub mod streaming;
 
 pub use ir::*;
 

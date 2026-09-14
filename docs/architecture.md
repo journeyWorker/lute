@@ -5,14 +5,17 @@
 plus editor clients under [`editors/`](../editors). The **early sections below** ("Why" through
 the design-session walkthrough) are a **historical, pre-implementation design draft** written
 against an older Upstream TypeScript parser (`packages/lute-core/…`, no longer part of this repo),
-retained for design rationale. The **shipped implementation** is documented in the *Relational
-state kernel* section near the end of this file and by the versioned normative specs; the runtime
+retained for design rationale. The **shipped implementation** is documented in the versioned
+implementation sections near the end of this file and by the normative spec stack; the runtime
 target is the flat command-record format the engine consumes.
 
 > This document is the **implementation architecture + design rationale**. The **language** is
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
-> deltas, current tip [`proposals/scenario-dsl/0.9.0.md`](proposals/scenario-dsl/0.9.0.md).
+> deltas through released language tip
+> [`proposals/scenario-dsl/0.16.0.md`](proposals/scenario-dsl/0.16.0.md). The
+> prospective checked-continuation tooling contract (not a released-version claim) is
+> [`proposals/scenario-dsl/0.16.1.md`](proposals/scenario-dsl/0.16.1.md).
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
 > ([`0.0.2`](proposals/plugin-system/0.0.2.md), [`0.0.3`](proposals/plugin-system/0.0.3.md);
@@ -484,6 +487,82 @@ specified normatively in [`proposals/plugin-system/0.0.1.md`](proposals/plugin-s
 with the human-facing overview in [`plugin-system.md`](plugin-system.md). The compiler/AST/validation/LSP machinery
 in this document consumes the resolved **capability snapshot** that spec produces; the named
 lowering hooks a plugin may target live in *Compiler — stateful resolution* above.
+
+## Checked streaming continuation compiler (prospective 0.16.1 tooling)
+
+The continuation surface has two layers with different promises:
+
+```text
+append-only UTF-8 body chunks
+        │
+        ▼
+lute-syntax continuation framer ──> complete top-level body units
+        │
+        ▼
+lute-compile ContinuationCompiler ──> check + normalize + expand + lower
+        │                               accumulated source per complete unit
+        ▼
+full ordinary Artifact snapshots ──> host-owned runtime cursor and state
+```
+
+[`lute-syntax/src/incremental.rs`](../crates/lute-syntax/src/incremental.rs) owns the
+lower-level `lute_syntax::incremental::IncrementalContinuationParser`. It preserves exact
+unit source and ranges and exposes local syntax diagnostics. It deliberately fabricates no
+`Document` and performs no static checking, resolution, merge, lowering, addressing, or IR
+assembly. That public parser remains useful for editors and source transports, but it is not
+the runtime-facing feature.
+
+[`lute-compile/src/streaming.rs`](../crates/lute-compile/src/streaming.rs) owns the checked
+service. `ContinuationCompiler::new(CheckInput, IdentityTemplates)` resolves nothing mutable:
+the caller supplies a complete scene prefix and its already resolved capability, provider,
+schema, component, defaults, and identity inputs. Construction checks and compiles that prefix,
+requires at least one shot, freezes it, and establishes the initial ordinary artifact. All
+continuation text is admitted only as body source appended to the final existing shot.
+
+`push(&str)` feeds the syntax framer. Every complete top-level unit is appended in source order
+and compiled through the **existing whole-document pipeline**. This is the central correctness
+rule: continuation compilation does not grow a second checker, normalization pass, component
+expander, stage reducer, lowerer, or address allocator. It buys first-output latency by
+recompiling cumulative source per complete unit; it is not an asymptotically incremental
+compiler, and one unfinished outer block still waits for its close.
+
+Each accepted unit produces:
+
+```text
+CompilationUpdate {
+  sequence,       // 1, 2, … per accepted body unit
+  append_from,    // previous snapshot's command count
+  artifact,       // complete ordinary immutable Artifact
+}
+```
+
+Before publication, the service compares the candidate with its latest accepted artifact.
+Only typed address and typed control-target strings are canonicalized to unpadded numeric
+`(shot, index)` pairs. This permits uniform address padding to widen as the command count grows.
+All previous commands must otherwise be semantically identical and existing state-table entries
+must be unchanged. Any retroactive line-identity, stage-injection, payload, control-flow, or
+state-default change is `E-STREAM-PREFIX-CHANGED`; emitted IR is never amended.
+
+The snapshot consumer replaces the immutable program image and rebuilds address lookup on every
+update, while retaining its numeric command cursor, live state, facts, selected control-flow
+stack, and host effect/idempotency records. It initializes only newly declared state slots and
+must not reapply existing defaults or seed facts. `append_from` describes the new array region;
+it is not a runtime PC and does not bypass the ordinary choice/match/hub/jump dispatcher.
+Reaching the temporary frontier means wait, not complete. Successful `finish` marks transport
+completion; an authored `::end` remains the distinct ordinary runtime terminator.
+
+The CLI exposes the same lifetime as newline-delimited JSON:
+`lute compile-stream <scene.lute> [--project DIR] [--providers DIR]`. It resolves the template
+once, prints and flushes `start`, each `update`, then either `finish` or `error`. Invalid UTF-8
+is rejected before the Rust `&str` API, and broken stdout stops further stdin consumption.
+The service performs no model call, remote operation, plugin bridge, publication, persistence,
+or host side effect and does not claim to be a secure capability sandbox.
+
+Normative contract:
+[`scenario-dsl/0.16.1`](proposals/scenario-dsl/0.16.1.md). Implementation design:
+[`superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md`](superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md).
+User and runtime guide:
+[`runtime/incremental-continuations.md`](runtime/incremental-continuations.md).
 
 ## Relational facts & Datalog derivation (0.3.0)
 

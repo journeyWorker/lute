@@ -149,6 +149,46 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
     };
     (doc, p.diags)
 }
+/// Parse a standalone sequence of shot-body constructs.
+///
+/// This is crate-internal because the stable public fragment API is
+/// [`crate::incremental::IncrementalContinuationParser`]. Unlike [`parse`],
+/// this helper does not synthesize a title, shot, or document around a
+/// fragment: doing so would turn non-canonical continuation input into a
+/// canonical artifact and would shift every source span.
+pub(crate) fn parse_body_fragment(text: &str) -> (Vec<Node>, Vec<Diagnostic>) {
+    let idx = TextIndex::new(text);
+    let mut diags = Vec::new();
+    let body = match strip_comments_checked(text) {
+        Ok(stripped) => stripped,
+        Err(CommentError::Unterminated) => {
+            let pos = find_unterminated_comment(text);
+            diags.push(Diagnostic {
+                code: E_COMMENT_UNTERMINATED.into(),
+                severity: Severity::Error,
+                message: "unterminated `/* … */` block comment".into(),
+                span: Span::from_bytes(&idx, pos, text.len()),
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+            text.to_string()
+        }
+    };
+    let lines = split_lines(&body);
+    let mut parser = Parser {
+        idx,
+        body,
+        body_start: 0,
+        lines,
+        cursor: 0,
+        diags,
+    };
+    let nodes = parser.parse_shot_body();
+    (nodes, parser.diags)
+}
 
 /// Parser state. Byte offsets used internally are **body-relative** (into
 /// `body`); [`Parser::orig`] converts them to original-text offsets for spans.

@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Every lute subcommand — init, new, check, check-project, compile, run, play, trace, test, scenario, loc, context, tag, fix, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
+description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, run, play, trace, test, scenario, loc, context, tag, fix, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
 ---
 
 `lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot (omit for a core-only `lute.core` check).
@@ -32,6 +32,7 @@ $ lute compile --all --project <DIR> -o <DIR> [--providers <DIR>] [--locales <FI
 ```
 
 Compile a document to its JSON command-record artifact (gated on a clean check). Exit **0** on success, **1** on a failed gate, **2** on I/O or serialization failure. The artifact is always JSON; `-o`/`--out` writes it to a file instead of stdout. With `--project`, the gate is the target's reconciled `check-project` verdict.
+
 
 ### `--all` — project-wide compile and index
 
@@ -99,6 +100,28 @@ $ lute compile scenes/opening.lute --project . --locales bundle.json --deny W-L1
 scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `narrator.s01ep01.narrator_0020`
 --deny promoted 1 diagnostic(s); no artifact emitted
 ```
+
+## compile-stream
+
+```console
+$ lute compile-stream <scene.lute> [--project <DIR>] [--providers <DIR>]
+```
+
+Resolve and check a complete scene template once, then read append-only ordinary
+Lute shot-body text from stdin. Each complete accepted line/directive/block is
+compiled through the existing cumulative whole-document pipeline and flushed to
+stdout as NDJSON: `start` with the initial full artifact, one `update` with a
+full artifact per unit, then `finish` on successful EOF. A rejection writes an
+`error` record with diagnostics and no `finish`.
+
+Exit **0** only after successful EOF finalization, **1** on a
+syntax/semantic/compile/streaming rejection, and **2** on usage, I/O, broken
+stdout, or invalid UTF-8. Authored `::end` is an ordinary runtime command; it
+does not replace EOF or close stdin. The command never modifies the template or
+performs remote/runtime effects. See the
+[streaming continuation compiler guide](/tooling/continuation-compiler/) for
+the record schema, cumulative cost, admitted body surface, and consumer
+cursor/state rules.
 
 ## trace
 
