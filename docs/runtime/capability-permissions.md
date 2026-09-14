@@ -153,7 +153,7 @@ sandboxing.
 ## Explicit non-goals
 
 This feature makes no AI call and defines no AI-specific grammar. It ships no
-STAGE or other product plugin. It creates no runtime sandbox. It does not grant,
+product-specific plugin. It creates no runtime sandbox. It does not grant,
 roll, settle, or persist rewards; reward declarations remain data for the host
 to interpret. Its only job is to refuse authored capability use outside a
 trusted compile-time ceiling.

@@ -2766,8 +2766,8 @@ The generic
 [`docs/examples/capability-permissions/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/capability-permissions)
 project shows an authored reward accepted normally but denied by a trusted host
 profile, absent versus explicit-empty fields, and a streamed state write
-rejected before forbidden IR. Lute does not make an AI call, ship an STAGE or
-other product plugin, sandbox the runtime/process/network/filesystem, or
+rejected before forbidden IR. Lute does not make an AI call, ship a
+product-specific plugin, sandbox the runtime/process/network/filesystem, or
 implement reward granting or settlement. Hosts still authorize and execute
 every real effect.
 

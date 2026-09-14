@@ -35,8 +35,9 @@ A plugin directive with a bridge lowers to a `Command::Other`, serialized as
 
 - `tag` — the authored plugin directive tag (`OtherCmd.tag`).
 - `fields` — the resolved directive attrs, typed via the manifest `AttrDecl`s
-  (`OtherCmd.fields`, a string→JSON map). This is where a `wait` attr lands (see
-  below).
+  (`OtherCmd.fields`, a string→JSON map). Plugin-owned call options such as
+  `sync` live here. The reserved core `wait` attribute belongs to the flattened
+  command stamp, not to this map.
 - `effects` — the resolved state-write bindings (`OtherCmd.effects`); **absent**
   when the directive declares none.
 
@@ -63,12 +64,14 @@ keys match the declared `result` fields.
 
 ### Blocking — `wait`
 
-Whether the engine **blocks** on the call is carried by the directive's `wait`
-attr in `fields` (default `true` in the manifest attr decl). `wait: true`
-means the walk suspends until the bridge returns and its effects are applied;
-`wait: false` means fire-and-continue (the effects apply when the result
-arrives). The exact scheduling of a non-blocking bridge is engine policy; the
-DSL only records the author's intent.
+The core `wait` stamp records authored wait intent; a plugin MUST NOT redeclare
+that reserved attribute in its manifest. A plugin may declare a distinct
+host-owned option such as `sync`, as the bundled minigame example does. The
+host implementation must define and honor its blocking contract: suspend the
+parent walk until the operation completes, apply its declared effects, then
+continue with the next ordinary command. Fire-and-continue scheduling is host
+policy, not a second language control-flow implementation inside the compiler.
+Do not assume that every plugin blocks merely because it has a bridge binding.
 
 ## State effects
 
@@ -103,3 +106,29 @@ lands in one of the state tiers described in
    `path`.
 4. Ignore unknown fields on the record (forward compatibility, per the
    [execution model](./execution-model.md) version policy).
+
+## Interactive services and return to a script
+
+A host service may keep a conversation, minigame, or other interaction active
+until it produces its final typed result. For this use case, the existing
+blocking bridge and result effects are sufficient to pause the parent script
+and return to its next command. A subsequent ordinary `match` can branch on the
+result. A separate core continuation command is not required merely because
+the service is interactive or its duration is not known at compile time.
+
+The service may ask the host's existing narrative dispatcher to present checked
+generated artifacts while the parent walk is suspended. This is host
+integration, **not a child-program protocol guaranteed by the current IR**.
+The host must define nested program state, presentation-state restoration,
+validation, cancellation, persistence, and return behavior before using it.
+The streaming compiler produces checked artifacts; it does not install them
+into a running bridge or manage a runtime execution stack.
+
+A portable language-level child-program call stack or non-fallthrough return
+target would be a separate core design with its own static and runtime
+semantics. Such a feature must be justified independently rather than inferred
+from the need to call an interactive host service.
+
+The reference `lute run` currently records bridge calls without invoking them;
+bridge-result effects remain unresolved there. Compiling the bundled bridge
+example proves its IR and result bindings, not live host-service execution.

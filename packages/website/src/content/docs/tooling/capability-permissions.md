@@ -206,7 +206,7 @@ data; no settlement is implemented.
 Capability permissions are compile-time admission control. They do **not**:
 
 - make an AI call or add AI-specific syntax;
-- ship an STAGE or other product plugin;
+- ship a product-specific plugin;
 - sandbox the runtime, process, network, filesystem, bridge implementation, or
   secrets;
 - implement, roll, grant, settle, or persist rewards; or
