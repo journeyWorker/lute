@@ -1,6 +1,6 @@
 ---
 title: Profiles & activation
-description: Selecting a capability profile in scene frontmatter, the reserved global profile and extends inheritance, layering scene-local plugin options, and how those options are type-checked at activation.
+description: Selecting capability plugins with a source profile, layering typed options, and distinguishing activation from trusted project/host permission ceilings.
 ---
 
 A **profile** is a root-level capability selector: it decides which plugins — and therefore which vocabulary — are active for a scene. The project declares a profile graph and a `defaultProfile` in `lute.project.yaml`; a scene picks one with frontmatter `profile:` and MAY layer scene-local `plugins:` on top.
@@ -55,6 +55,28 @@ plugins:
 Activation resolves deterministically in this exact order: `lute.core` → `global` → the selected profile's `extends` chain (parent first) → the selected profile → scene-local `plugins:` → the dependency closure. When the same plugin's options are set at multiple layers, later layers win: **scalar** values override, **map** values deep-merge, and **list** values replace by default. The result is exactly one option object per active plugin and exactly one [capability snapshot](/plugins/manifests/).
 
 A reference to a directive, attribute, or id from an installed-but-**inactive** plugin is a diagnostic with fix-its ("change profile" / "activate plugin") — never silently accepted syntax.
+
+## Activation is not permission
+
+A profile can also carry a
+[`permissions:` ceiling](/tooling/capability-permissions/) over its resolved
+surface. These are different axes:
+
+- `plugins:` selects which capabilities exist and how their typed options merge;
+- `permissions:` can only deny use of directives, writes, bridges, rewards, or
+  quests that already exist.
+
+Project-root, `global`, parent, and selected-profile permission layers are
+conjunctive. Missing fields are unrestricted; an explicit empty list denies the
+whole category. Scene-local `plugins:` remains additive but cannot widen a
+permission deny. Permission policy is never accepted from scene frontmatter or
+plugin exports.
+
+Because source-authored `profile:` is not authorization, a host accepting
+untrusted authored input adds `--permission-profile NAME` to check, compile,
+compile-stream, or context. That trusted pin contributes only the named
+profile's permission ceiling—it neither activates its plugins nor changes the
+profile written in source.
 
 ## Options are checked, not just merged
 

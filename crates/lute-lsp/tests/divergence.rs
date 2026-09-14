@@ -190,6 +190,48 @@ fn headless_and_lsp_diagnostics_match() {
     );
 }
 
+#[test]
+fn permission_diagnostic_uses_the_shared_headless_lsp_surface() {
+    let text = "---\nkind: scene\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n::end\n";
+    let mut input = input_for(text);
+    input.snapshot.restrict_permissions(
+        &lute_manifest::permissions::Permissions {
+            layers: vec![lute_manifest::permissions::PermissionSet {
+                directives: Some(std::collections::BTreeSet::from(["camera".to_string()])),
+                ..Default::default()
+            }],
+        },
+    );
+    let result = check(&input);
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "E-PERMISSION-DIRECTIVE"),
+        "{:?}",
+        result.diagnostics
+    );
+
+    let index = idx(text);
+    let headless: Vec<Norm> = result
+        .diagnostics
+        .iter()
+        .map(|diagnostic| normalize_headless(diagnostic, &index))
+        .collect();
+    let via_lsp: Vec<Norm> = result
+        .diagnostics
+        .iter()
+        .map(|diagnostic| {
+            normalize_lsp(&lute_lsp::convert::to_lsp_diagnostic(
+                diagnostic,
+                &index,
+                &test_uri(),
+            ))
+        })
+        .collect();
+    assert_eq!(headless, via_lsp);
+}
+
 /// Warning-bearing golden: the same equality invariant as above, over a
 /// document that carries a Warning-severity diagnostic, so the golden covers
 /// the Warning round-trip and not only the Error one.

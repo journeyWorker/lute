@@ -206,6 +206,14 @@ pub fn compile_with_check(
         return Err(result.diagnostics);
     }
 
+    // A caller-supplied CheckResult may have been produced under a different,
+    // less restrictive capability policy. Re-run only the shared permission
+    // pass against this exact input before any normalization or lowering.
+    let permission_diagnostics = lute_check::check_permissions(input);
+    if !permission_diagnostics.is_empty() {
+        return Err(permission_diagnostics);
+    }
+
     // Re-derive the parsed, CEL-filled document + the folded environment
     // (fold diagnostics were already reported by the gate run; both fold
     // streams are discarded here — the 3-tuple `fold_env` keeps them separate

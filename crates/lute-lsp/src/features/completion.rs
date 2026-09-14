@@ -36,7 +36,7 @@ pub fn complete_at(
     // `kind:` frontmatter value completion (dsl 0.2.0 §3.1) — `resolve()` is
     // BODY-only (it walks `doc.shots`/`doc.quests`, never the frontmatter
     // YAML), so this is a small dedicated detector, checked first.
-    if let Some(items) = kind_value_items(doc, off) {
+    if let Some(items) = kind_value_items(doc, snapshot, off) {
         return items;
     }
     let (mut meta, _) = parse_meta(&doc.meta, snapshot);
@@ -55,7 +55,17 @@ pub fn complete_at(
             directive: Some(dir),
             key,
         } => {
-            if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
+            let permitted = snapshot.permissions.allows_directive(dir)
+                && snapshot.directive(dir).is_some_and(|decl| {
+                    decl.bridge.as_ref().is_none_or(|bridge| {
+                        snapshot
+                            .permissions
+                            .allows_bridge(&bridge.service, &bridge.operation)
+                    })
+                });
+            if !permitted {
+                Vec::new()
+            } else if let Some(kind) = super::asset_kind_for(snapshot, dir, key) {
                 asset_segment_items(kind, doc, providers, off)
             } else {
                 enum_value_items(snapshot, imports, &meta, dir, key)
@@ -91,6 +101,12 @@ pub fn complete_at(
         Cursor::Interp(_) => Vec::new(),
         Cursor::IsPattern { subject_path } => is_pattern_items(doc, &meta, subject_path),
         Cursor::OnEventValue(_) => event_name_items(snapshot),
+        Cursor::ConstructAttrArea { construct }
+            if !snapshot.permissions.allows_quests()
+                && matches!(construct, QuestConstruct::Quest | QuestConstruct::Objective) =>
+        {
+            Vec::new()
+        }
         Cursor::ConstructAttrArea { construct } => construct_attr_key_items(construct),
         Cursor::Speaker => speaker_items(providers),
     }
@@ -221,10 +237,14 @@ fn speaker_items(providers: &ProviderSet) -> Vec<CompletionItem> {
 /// position (dsl 0.2.0 §4.5): the built-ins union the capability-declared
 /// events, kind `EVENT`.
 fn event_name_items(snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
-    let mut names: BTreeSet<String> = lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let mut names: BTreeSet<String> = if snapshot.permissions.allows_quests() {
+        lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
     names.extend(snapshot.events.keys().cloned());
     names
         .into_iter()
@@ -241,7 +261,11 @@ fn event_name_items(snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
 /// discriminator); `None` when `off` is not there, so the caller falls
 /// through to the normal body-cursor resolution. Mirrors
 /// `super::find_yaml_key_span`'s line-scan + `FRONTMATTER_BASE` convention.
-fn kind_value_items(doc: &Document, off: usize) -> Option<Vec<CompletionItem>> {
+fn kind_value_items(
+    doc: &Document,
+    snapshot: &CapabilitySnapshot,
+    off: usize,
+) -> Option<Vec<CompletionItem>> {
     const FRONTMATTER_BASE: usize = 4; // len("---\n")
     let raw = &doc.meta.raw_yaml;
     if raw.is_empty() || off < FRONTMATTER_BASE {
@@ -272,8 +296,9 @@ fn kind_value_items(doc: &Document, off: usize) -> Option<Vec<CompletionItem>> {
         return Some(
             ["scene", "quest"]
                 .into_iter()
-                .map(|k| CompletionItem {
-                    label: k.to_string(),
+                .filter(|kind| *kind != "quest" || snapshot.permissions.allows_quests())
+                .map(|kind| CompletionItem {
+                    label: kind.to_string(),
                     kind: Some(CompletionItemKind::ENUM_MEMBER),
                     ..Default::default()
                 })
@@ -288,6 +313,14 @@ fn directive_items(snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
     snapshot
         .directives
         .values()
+        .filter(|d| snapshot.permissions.allows_directive(&d.name))
+        .filter(|d| {
+            d.bridge.as_ref().is_none_or(|bridge| {
+                snapshot
+                    .permissions
+                    .allows_bridge(&bridge.service, &bridge.operation)
+            })
+        })
         .map(|d| CompletionItem {
             label: d.name.clone(),
             kind: Some(CompletionItemKind::FUNCTION),
@@ -305,9 +338,19 @@ fn attr_key_items(
     doc: &Document,
     off: usize,
 ) -> Vec<CompletionItem> {
+    if !snapshot.permissions.allows_directive(directive) {
+        return Vec::new();
+    }
     let Some(decl) = snapshot.directive(directive) else {
         return Vec::new();
     };
+    if decl.bridge.as_ref().is_some_and(|bridge| {
+        !snapshot
+            .permissions
+            .allows_bridge(&bridge.service, &bridge.operation)
+    }) {
+        return Vec::new();
+    }
     let present = present_attr_keys(doc, off);
     decl.attrs
         .iter()
@@ -486,10 +529,14 @@ fn collect_branch_ids(nodes: &[Node], out: &mut Vec<String>) {
                 }
             }
             Node::Hub(h) => {
-                let id = h.attrs.iter().find(|a| a.key == "id").and_then(|a| match &a.value {
-                    AttrValue::Str(s) => Some(s.as_str()),
-                    _ => None,
-                });
+                let id = h
+                    .attrs
+                    .iter()
+                    .find(|a| a.key == "id")
+                    .and_then(|a| match &a.value {
+                        AttrValue::Str(s) => Some(s.as_str()),
+                        _ => None,
+                    });
                 if let Some(id) = id {
                     if !id.is_empty() {
                         out.push(id.to_string());
@@ -620,6 +667,83 @@ mod tests {
         );
         assert!(items.iter().any(|i| i.label == "camera"));
         assert!(items.iter().any(|i| i.label == "bg"));
+    }
+
+    fn restrict_snapshot(
+        mut snapshot: CapabilitySnapshot,
+        layer: lute_manifest::permissions::PermissionSet,
+    ) -> CapabilitySnapshot {
+        snapshot.restrict_permissions(&lute_manifest::permissions::Permissions {
+            layers: vec![layer],
+        });
+        snapshot
+    }
+
+    #[test]
+    fn directive_completion_uses_effective_permission_snapshot() {
+        let snapshot = restrict_snapshot(
+            load_core_snapshot(),
+            lute_manifest::permissions::PermissionSet {
+                directives: Some(std::collections::BTreeSet::from(["camera".to_string()])),
+                ..Default::default()
+            },
+        );
+        let text = "## Shot 1.\n::";
+        let items = complete_at(
+            &parsed(text),
+            &snapshot,
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            text.len(),
+        );
+        assert_eq!(labels(&items), vec!["camera"]);
+    }
+
+    #[test]
+    fn directive_completion_also_filters_a_denied_bridge() {
+        let mut snapshot = load_core_snapshot();
+        snapshot.directives.get_mut("camera").unwrap().bridge =
+            Some(lute_manifest::schema::BridgeRef {
+                service: "display".to_string(),
+                operation: "focus".to_string(),
+            });
+        let snapshot = restrict_snapshot(
+            snapshot,
+            lute_manifest::permissions::PermissionSet {
+                bridges: Some(std::collections::BTreeSet::new()),
+                ..Default::default()
+            },
+        );
+        let text = "## Shot 1.\n::";
+        let items = complete_at(
+            &parsed(text),
+            &snapshot,
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            text.len(),
+        );
+        assert!(!labels(&items).contains(&"camera"));
+    }
+
+    #[test]
+    fn quest_completion_is_absent_when_quest_authoring_is_denied() {
+        let snapshot = restrict_snapshot(
+            load_core_snapshot(),
+            lute_manifest::permissions::PermissionSet {
+                quests: Some(false),
+                ..Default::default()
+            },
+        );
+        let text = "---\nkind: \n---\n";
+        let off = text.find("kind: ").unwrap() + "kind: ".len();
+        let items = complete_at(
+            &parsed(text),
+            &snapshot,
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        assert_eq!(labels(&items), vec!["scene"]);
     }
 
     #[test]
@@ -782,7 +906,9 @@ mod tests {
             off,
         );
         assert!(
-            items.iter().any(|i| i.label == "scene.choices.chatWithMarina"),
+            items
+                .iter()
+                .any(|i| i.label == "scene.choices.chatWithMarina"),
             "offers the hub's own choice path: {:?}",
             labels(&items)
         );
@@ -1134,7 +1260,10 @@ mod tests {
             off,
         );
         let ls = labels(&items);
-        assert!(ls.contains(&"warm"), "test= still CEL: offers def name: {ls:?}");
+        assert!(
+            ls.contains(&"warm"),
+            "test= still CEL: offers def name: {ls:?}"
+        );
         assert!(
             !ls.contains(&"unset") && !ls.contains(&"gold"),
             "test= must NOT offer the is= literal domain: {ls:?}"
@@ -1195,7 +1324,6 @@ mod tests {
         );
     }
 
-
     // ---- dsl 0.2.0 §4/§6.3/§6.4: quest/on/objective + kind: completion ----
 
     fn complete(text: &str, off: usize) -> Vec<CompletionItem> {
@@ -1211,7 +1339,8 @@ mod tests {
 
     #[test]
     fn on_event_value_completion_lists_builtin_lifecycle_events() {
-        let text = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"quest\">\n</on>\n</quest>\n";
+        let text =
+            "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"quest\">\n</on>\n</quest>\n";
         let off = text.find("\"quest\"").unwrap() + 1;
         let items = complete(text, off);
         let ls = labels(&items);
@@ -1243,7 +1372,8 @@ mod tests {
 
     #[test]
     fn quest_attr_area_completion_lists_id_title_start_fail() {
-        let text = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n";
+        let text =
+            "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n</quest>\n";
         let off = text.find("<quest ").unwrap() + "<quest ".len();
         let items = complete(text, off);
         let ls = labels(&items);
@@ -1286,7 +1416,10 @@ mod tests {
             assert!(ls.contains(&f), "missing {f}: {ls:?}");
         }
         assert!(ls.contains(&"emotion"), "missing emotion: {ls:?}");
-        assert!(!ls.contains(&"delivery"), "0.2.1 delivery key retired: {ls:?}");
+        assert!(
+            !ls.contains(&"delivery"),
+            "0.2.1 delivery key retired: {ls:?}"
+        );
     }
 
     #[test]

@@ -94,6 +94,7 @@ pub fn run(
     project: &Path,
     out_dir: &Path,
     providers: Option<&Path>,
+    permission_profile: Option<&str>,
     json: bool,
     bundle: Option<&LocaleBundle>,
     policy: &DenyPolicy,
@@ -152,7 +153,7 @@ pub fn run(
             );
             return ExitCode::from(2);
         };
-        let Some(built) = build_input(file, providers, Some(project)) else {
+        let Some(built) = build_input(file, providers, Some(project), permission_profile) else {
             return ExitCode::from(2);
         };
         built.report_project_diags();

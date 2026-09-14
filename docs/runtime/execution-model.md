@@ -13,6 +13,12 @@ engine's job. These documents describe that job, grounded in
 `crates/lute-compile` (the IR) and `crates/lute-check` (the static guarantees
 the engine may rely on).
 
+> **Permission boundary (Unreleased):** capability permissions reject forbidden
+> authored effects before an artifact is emitted; they do not sandbox the
+> engine or authorize its runtime resources. Hosts using the prospective
+> permission feature must also follow
+> [`capability-permissions.md`](capability-permissions.md).
+
 ## What Lute hands you
 
 One artifact is produced per `.lute` document (`lute compile <file>` →

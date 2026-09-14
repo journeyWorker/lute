@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use sha2::{Digest, Sha256};
 
+use crate::permissions::Permissions;
 use crate::schema::*;
 use crate::types::Literal;
 
@@ -56,6 +57,8 @@ pub struct CapabilitySnapshot {
     /// contract; Task 2 lands the empty-by-default field so downstream
     /// checker work can read it.
     pub reward_kinds: BTreeMap<String, RewardKindDecl>,
+    /// Effective project/host capability ceiling. Empty means unrestricted.
+    pub permissions: Permissions,
 }
 
 /// An enum-style named vocabulary: an ordered member list, same shape as an
@@ -105,6 +108,13 @@ impl CapabilitySnapshot {
 
     pub fn event(&self, name: &str) -> Option<&EventDecl> {
         self.events.get(name)
+    }
+
+    /// Conjoin a trusted host/project ceiling and restamp the capability
+    /// surface. An unrestricted ceiling preserves the existing version bytes.
+    pub fn restrict_permissions(&mut self, permissions: &Permissions) {
+        self.permissions.restrict(permissions);
+        self.version = capability_version(self);
     }
 }
 
@@ -287,6 +297,14 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
             h.update(format!("{d:?}").as_bytes());
             h.update(b";");
         }
+    }
+    // GUARDED: policy-free snapshots keep the exact pre-permissions stamp.
+    // Retained layers are normalized before hashing so list order, duplicate
+    // entries, wildcard-plus-redundant names, and explicit `true` do not
+    // produce different stamps for equivalent permission surfaces.
+    if !snap.permissions.is_unrestricted() {
+        h.update(b"\npermissions\n");
+        h.update(format!("{:?}", snap.permissions.normalized().layers).as_bytes());
     }
     format!("{:x}", h.finalize())
 }
@@ -599,5 +617,38 @@ mod tests {
             },
         );
         assert_ne!(capability_version(&a), capability_version(&b));
+    }
+
+    #[test]
+    fn restrictive_permissions_change_hash_and_restrictions_conjoin() {
+        let baseline = crate::core::load_core_snapshot();
+        let mut snapshot = baseline.clone();
+        let first = Permissions {
+            layers: vec![
+                serde_yaml::from_str("directives: [bg, music]\nstateWrites: [scene.*]\n").unwrap(),
+            ],
+        };
+        snapshot.restrict_permissions(&first);
+        assert_ne!(snapshot.version, baseline.version);
+        assert!(snapshot.permissions.allows_directive("bg"));
+        assert!(!snapshot.permissions.allows_directive("camera"));
+
+        let after_first = snapshot.version.clone();
+        let unrestricted = Permissions {
+            layers: vec![serde_yaml::from_str(
+                "directives: ['*']\nstateWrites: ['*']\nrewards: true\n",
+            )
+            .unwrap()],
+        };
+        snapshot.restrict_permissions(&unrestricted);
+        assert_eq!(snapshot.version, after_first);
+        assert!(!snapshot.permissions.allows_directive("camera"));
+
+        let second = Permissions {
+            layers: vec![serde_yaml::from_str("directives: [bg]\n").unwrap()],
+        };
+        snapshot.restrict_permissions(&second);
+        assert!(snapshot.permissions.allows_directive("bg"));
+        assert!(!snapshot.permissions.allows_directive("music"));
     }
 }

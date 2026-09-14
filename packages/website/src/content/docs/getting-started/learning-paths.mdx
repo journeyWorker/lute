@@ -44,11 +44,12 @@ game — it hands you a versioned JSON IR plus CEL, and you implement the runtim
 contract. This path is contract-first.
 
 1. [Runtime contract](/tooling/runtime-contract/) — what Lute emits and what an adapter must implement: the command loop, CEL, facts, quests, and typed bridges.
-2. [Streaming continuation compiler](/tooling/continuation-compiler/) — replace full program snapshots while retaining the numeric cursor, state, facts, and control-flow state.
-3. [`docs/runtime/` on GitHub](https://github.com/journeyWorker/lute/tree/main/docs/runtime) — the normative runtime specification: [streaming continuations](https://github.com/journeyWorker/lute/blob/main/docs/runtime/incremental-continuations.md), [execution model](https://github.com/journeyWorker/lute/blob/main/docs/runtime/execution-model.md), [state lifecycle](https://github.com/journeyWorker/lute/blob/main/docs/runtime/state-lifecycle.md), [CEL & facts](https://github.com/journeyWorker/lute/blob/main/docs/runtime/cel-and-facts.md), [quest lifecycle](https://github.com/journeyWorker/lute/blob/main/docs/runtime/quest-lifecycle.md), [timeline semantics](https://github.com/journeyWorker/lute/blob/main/docs/runtime/timeline-semantics.md), and the [bridge protocol](https://github.com/journeyWorker/lute/blob/main/docs/runtime/bridge-protocol.md).
-4. [`conformance/` on GitHub](https://github.com/journeyWorker/lute/tree/main/conformance) — the artifact-and-expectation fixtures your adapter should replay to prove it plays Lute correctly.
-5. [CLI reference → `run`](/tooling/cli/) — `lute run` is the reference consumer: it executes a compiled artifact against a mock playthrough, so its transcript is the behavior your adapter must match.
-6. [CEL expressions](/state/cel/) — the exact expression semantics your evaluator has to reproduce.
+2. [Capability permissions](/tooling/capability-permissions/) — where compile-time authoring ceilings stop and host/runtime authorization begins.
+3. [Streaming continuation compiler](/tooling/continuation-compiler/) — replace full program snapshots while retaining the numeric cursor, state, facts, and control-flow state.
+4. [`docs/runtime/` on GitHub](https://github.com/journeyWorker/lute/tree/main/docs/runtime) — the normative runtime specification: [streaming continuations](https://github.com/journeyWorker/lute/blob/main/docs/runtime/incremental-continuations.md), [capability permissions/security](https://github.com/journeyWorker/lute/blob/main/docs/runtime/capability-permissions.md), [execution model](https://github.com/journeyWorker/lute/blob/main/docs/runtime/execution-model.md), [state lifecycle](https://github.com/journeyWorker/lute/blob/main/docs/runtime/state-lifecycle.md), [CEL & facts](https://github.com/journeyWorker/lute/blob/main/docs/runtime/cel-and-facts.md), [quest lifecycle](https://github.com/journeyWorker/lute/blob/main/docs/runtime/quest-lifecycle.md), [timeline semantics](https://github.com/journeyWorker/lute/blob/main/docs/runtime/timeline-semantics.md), and [bridge protocol](https://github.com/journeyWorker/lute/blob/main/docs/runtime/bridge-protocol.md).
+5. [`conformance/` on GitHub](https://github.com/journeyWorker/lute/tree/main/conformance) — the artifact-and-expectation fixtures your adapter should replay to prove it plays Lute correctly.
+6. [CLI reference → `run`](/tooling/cli/) — `lute run` is the reference consumer: it executes a compiled artifact against a mock playthrough, so its transcript is the behavior your adapter must match.
+7. [CEL expressions](/state/cel/) — the exact expression semantics your evaluator has to reproduce.
 
 ## Plugin author
 
@@ -57,19 +58,21 @@ bridges — without touching the fixed grammar or compiler. This path walks the
 capability model end to end.
 
 1. [Plugin concepts](/plugins/concepts/) — how plugins add vocabulary and capability without changing the grammar.
-2. [Manifests & resolution](/plugins/manifests/) — the `lute.project.yaml` profile graph and the `plugin.yaml` manifest.
-3. [Profiles & activation](/plugins/profiles/) — selecting a capability profile and scene-local plugin options.
-4. [Typed bridge directives](/plugins/bridge/) — declaring a typed runtime bridge and the state it writes.
-5. [Providers and catalog](/tooling/providers-and-catalog/) — snapshot-first provider resolution and `capabilityVersion`.
+2. [Manifests & resolution](/plugins/manifests/) — the package layout, export kinds, dependency graph, and capability snapshot.
+3. [Profiles & activation](/plugins/profiles/) — deterministic option layering and the distinction between activation and permission ceilings.
+4. [Capability permissions](/tooling/capability-permissions/) — how trusted projects/hosts restrict already-resolved plugin directives, effects, and bridges.
+5. [Typed bridge directives](/plugins/bridge/) — declaring a typed runtime bridge and the state it writes.
+6. [Providers and catalog](/tooling/providers-and-catalog/) — snapshot-first provider resolution and `capabilityVersion`.
 
 ## AI tooling developer
 
 You are building an authoring pipeline where a model writes Lute and the checker
 keeps it honest. This path centers the machine-readable surfaces.
 
-1. [AI harness guide](/tooling/ai-harness/) — wiring `lute context`, `lute check --json`, `--deny`, exit codes, and fixits into a loop.
-2. [Streaming continuation compiler](/tooling/continuation-compiler/) — stream ordinary checked Lute body units through `compile-stream` without inventing a model-specific grammar.
-3. [CLI reference](/tooling/cli/) — the full subcommand surface, `--json` shapes, and the exit-code contract every step keys off.
-4. [Current specification](/spec/current/) — the consolidated index of what the language actually enforces today.
-5. [State schemas](/state/schemas/) — the shared, imported source of truth a generator must target.
-6. [Build an investigation](/getting-started/build-an-investigation/) — see the check → trace → compile loop the harness automates, on a real project (including the deliberate `W-UNPROVEN-RELATIONAL` boundary).
+1. [AI harness guide](/tooling/ai-harness/) — wiring trusted `--permission-profile`, filtered `lute context`, `lute check --json`, `--deny`, exit codes, and fixits into a loop.
+2. [Capability permissions](/tooling/capability-permissions/) — never let generated source choose its authority; use one host ceiling across context, check, compile, and streaming.
+3. [Streaming continuation compiler](/tooling/continuation-compiler/) — stream ordinary checked Lute body units through `compile-stream` without inventing a model-specific grammar.
+4. [CLI reference](/tooling/cli/) — the full subcommand surface, `--json` shapes, and the exit-code contract every step keys off.
+5. [Current specification](/spec/current/) — the consolidated index of what the language actually enforces today.
+6. [State schemas](/state/schemas/) — the shared, imported source of truth a generator must target.
+7. [Build an investigation](/getting-started/build-an-investigation/) — see the check → trace → compile loop the harness automates, on a real project (including the deliberate `W-UNPROVEN-RELATIONAL` boundary).

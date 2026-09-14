@@ -16,8 +16,10 @@ doc, not a stale feature.)
 > admitting the `enums` long form (`members`/`default`/`exits`), and shrinking the closed
 > `semantics` vocabulary from twelve flags to ten; the
 > [`0.0.4`](proposals/plugin-system/0.0.4.md) delta folding plugin-owned frontmatter into the
-> compiled artifact's `meta.plugin`; and the
-> [`0.0.5`](proposals/plugin-system/0.0.5.md) delta adding advisory `lints` exports.
+> compiled artifact's `meta.plugin`; the
+> [`0.0.5`](proposals/plugin-system/0.0.5.md) delta adding advisory `lints` exports; and the
+> prospective, Unreleased [`0.0.6`](proposals/plugin-system/0.0.6.md) delta adding generic
+> project/host capability-permission ceilings.
 > **Those proposals are the source of truth.** This document is the human-facing **overview +
 > rationale** (the *why* and the author's mental model); where they differ, the proposals win.
 
@@ -139,6 +141,31 @@ the plugin id** in a `plugins` map (its value is the typed option object); there
 with scalar options overriding, maps deep-merging, and lists replacing — the normative algorithm
 and merge rules are proposal §11. A reference to a directive from an installed-but-inactive plugin
 is a diagnostic with fix-its, never silently accepted.
+
+## Capability permissions (Unreleased orientation)
+
+Plugin activation answers **what exists**; capability permissions answer which
+parts of that resolved surface authored source may use. Trusted
+`lute.project.yaml` configuration MAY restrict directives, scalar-state writes,
+fact writes, bridges, declarative rewards, and quests at the project root and at
+each profile. Policy is never read from source frontmatter or plugin exports.
+
+A missing permission field is unrestricted; an explicit empty list denies the
+whole category. Project, `global`, ancestor, and selected-profile restrictions
+are conjunctive, so a child profile or inline plugin activation cannot widen an
+earlier deny. A separately trusted host can add the same kind of ceiling with
+`--permission-profile NAME` without activating that profile's plugins or
+changing the source-selected profile.
+
+The resolved permission layers are folded into `capabilityVersion` only when
+restrictive, preserving every policy-free hash byte-for-byte. The checker gates
+authored directives and effects—including defaults, seed facts, transitive
+components, quests, and rewards—and the compiler rechecks the same pass before
+lowering. This is compile-time admission control, not a runtime sandbox:
+bridge implementations, persistence, resource authorization, and reward
+settlement remain host responsibilities. See the
+[`0.0.6` delta](proposals/plugin-system/0.0.6.md) and
+[runtime/security guide](runtime/capability-permissions.md).
 
 ## Providers are snapshot-first
 

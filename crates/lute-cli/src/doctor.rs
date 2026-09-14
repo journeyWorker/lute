@@ -133,7 +133,7 @@ fn resolved_domains(
     let mut problems: Vec<String> = Vec::new();
     for file in lute_files {
         let project = crate::project_root_for(file, root);
-        let Some(built) = crate::build_input(file, None, Some(&project)) else {
+        let Some(built) = crate::build_input(file, None, Some(&project), None) else {
             continue;
         };
         for m in &built.project_diags {

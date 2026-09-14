@@ -119,6 +119,11 @@ export default defineConfig({
             },
             { slug: "tooling/runtime-contract" },
             {
+              slug: "tooling/capability-permissions",
+              label: "Capability permissions",
+              translations: { ko: "기능 권한" },
+            },
+            {
               slug: "tooling/continuation-compiler",
               label: "Streaming continuation compiler",
               translations: { ko: "스트리밍 연속 컴파일러" },

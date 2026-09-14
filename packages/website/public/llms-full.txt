@@ -729,9 +729,9 @@ Role-first routes through the docs — pick the reading order that matches what 
 
 - **Scenario writer:** installation → first scene → build an investigation → dialogue & cast → branch/match/when → choices & hubs → quests & scenes → tracing.
 - **Narrative programmer:** frontmatter → state model → CEL → facts & Datalog → timeline → scene graph & after: → reachability → envelopes.
-- **Engine integrator:** runtime contract → streaming continuation compiler → the normative [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime) specs → the [`conformance/`](https://github.com/journeyWorker/lute/tree/main/conformance) fixtures → `lute run` (the reference consumer) → CEL semantics.
-- **Plugin author:** plugin concepts → manifests & resolution → profiles & activation → typed bridges → providers & catalog.
-- **AI tooling developer:** AI harness guide → streaming continuation compiler → CLI reference (`--json`, NDJSON, and exit codes) → current specification → state schemas → the check → trace → compile loop in build an investigation.
+- **Engine integrator:** runtime contract → capability permissions/security boundary → streaming continuation compiler → the normative [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime) specs → the [`conformance/`](https://github.com/journeyWorker/lute/tree/main/conformance) fixtures → `lute run` (the reference consumer) → CEL semantics.
+- **Plugin author:** plugin concepts → manifests & resolution → profiles & activation versus permissions → typed bridges → providers & catalog.
+- **AI tooling developer:** AI harness guide → capability permissions and trusted `--permission-profile` → streaming continuation compiler → CLI reference (`--json`, NDJSON, and exit codes) → current specification → state schemas → the check → trace → compile loop in build an investigation.
 
 ---
 
@@ -2322,13 +2322,13 @@ A quest is reactive — `<quest start>` may fire at the earliest possible instan
 
 # CLI reference
 
-`lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot (omit for a core-only `lute.core` check).
+`lute` is the headless checker and compiler for `.lute` documents. `--providers <DIR>` pins provider snapshots and `--project <DIR>` resolves the project/plugins. On check, compile (including `--all`), compile-stream, and context, `--permission-profile <NAME>` requires a project and adds a trusted capability-permission ceiling without activating its plugins or changing the source profile.
 
 ## check
 
 ```console
 $ lute check <file> [--json] [--providers <DIR>] [--project <DIR>]
-              [--deny <CODE>]… [--deny-warnings]
+              [--permission-profile <NAME>] [--deny <CODE>]… [--deny-warnings]
 ```
 
 Statically validate one `.lute` document. Exit **0** clean, **1** when any `Error`-severity diagnostic is present, **2** on an I/O failure. `--json` prints the serialized `CheckResult`; otherwise a human line per diagnostic. `--deny <CODE>` (repeatable, rustc/clippy `-D` precedent, 0.6.1 §5) promotes every diagnostic with exactly that code to an error for the verdict and exit code, and `--deny-warnings` promotes every warning — a pipeline denies `W-UNPROVEN-RELATIONAL` to force human review of relational fact gates, `W-LUTE-VERSION-STALE` to reject a stale `luteVersion` stamp. A promoted diagnostic reports severity `error` with a `"denied": true` marker in `--json`; an unknown code in `--deny` is a usage error (exit **2**), and errors are never demotable.
@@ -2345,12 +2345,14 @@ Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted or
 
 ```console
 $ lute compile <file> [--json] [--providers <DIR>] [--project <DIR>] [-o <FILE>]
-                      [--locales <FILE>] [--deny <CODE>]… [--deny-warnings]
+                      [--permission-profile <NAME>] [--locales <FILE>]
+                      [--deny <CODE>]… [--deny-warnings]
 $ lute compile --all --project <DIR> -o <DIR> [--providers <DIR>] [--locales <FILE>]
-                      [--json] [--deny <CODE>]… [--deny-warnings]
+                      [--permission-profile <NAME>] [--json]
+                      [--deny <CODE>]… [--deny-warnings]
 ```
 
-Compile a document to its JSON command-record artifact (gated on a clean check). Exit **0** on success, **1** on a failed gate, **2** on I/O or serialization failure. The artifact is always JSON; `-o`/`--out` writes it to a file instead of stdout. With `--project`, the gate is the target's reconciled `check-project` verdict.
+Compile a document to JSON behind the ordinary clean-check gate and a compiler-side recheck of the effective permission policy. Exit **0** success, **1** failed gate, **2** I/O/serialization. A result checked under another policy cannot authorize forbidden lowering.
 
 ### `--all` — project-wide compile and index
 
@@ -2374,7 +2376,7 @@ The index carries the document table plus the deterministic **union** of every a
 
 `path` is the source relative to the project root; `artifact` is its compiled output relative to the output directory; `key` is the document's canonical node id — a scene's `{character}.{episodeId}`, or a quest document's **first** declared `<quest id>`. All paths are forward-slash relative, never absolute. `documents` is sorted by `path` and every vocabulary array is deduplicated and totally ordered, so the index is byte-stable across runs; unlike an artifact, which omits an empty vocabulary array, the index always emits all six.
 
-`--all` is **all-or-nothing**: every document is compiled in memory and the index built before anything touches the filesystem. Three things stop the write, each exiting **1** with nothing emitted — a failed gate (`N of M document(s) failed; no output written`), a `--deny`-promoted warning, and a **vocabulary conflict** (two documents declaring the same entity kind / enum / relation / prerequisite node with different signatures, or resolving different capability snapshots). That last class is the one `check-project` cannot see, because it validates each document against its own resolved vocabulary and never unions across independent documents. An `E-`-severity capability-resolution diagnostic (a bad plugin option, a bad `identity:` template) also exits **1**. `--all` writes but never prunes: an artifact whose source document was deleted stays in the output directory.
+`--all` is **all-or-nothing**: every document is compiled in memory before any write. A normal or permission gate failure, denied warning, vocabulary conflict, or capability-resolution error exits **1** with nothing emitted. The host permission ceiling applies to every document independently.
 
 ### `--locales` — merge a translation bundle
 
@@ -2384,22 +2386,20 @@ The index carries the document table plus the deterministic **union** of every a
 
 ```console
 $ lute compile-stream <scene.lute> [--project <DIR>] [--providers <DIR>]
+                      [--permission-profile <NAME>]
 ```
 
 Resolve and check a complete scene template once, then read append-only ordinary
-Lute shot-body text from stdin. Each complete accepted line/directive/block is
-compiled through the existing cumulative whole-document pipeline and flushed to
-stdout as NDJSON: `start` with the initial full artifact, one `update` with a
-full artifact per unit, then `finish` on successful EOF. A rejection writes an
-`error` record with diagnostics and no `finish`.
+Lute body text from stdin. Each accepted unit flushes a full artifact snapshot;
+success ends with `finish`, while rejection ends with `error` and no `finish`.
+The trusted permission ceiling is frozen for both the template and every
+cumulative body candidate. A forbidden candidate emits no denied update and
+there is no mid-stream policy switch.
 
-Exit **0** only after successful EOF finalization, **1** on a
-syntax/semantic/compile/streaming rejection, and **2** on usage, I/O, broken
-stdout, or invalid UTF-8. Authored `::end` is an ordinary runtime command; it
-does not replace EOF or close stdin. The command never modifies the template or
-performs remote/runtime effects. See the streaming continuation compiler guide
-for the record schema, cumulative cost, admitted body surface, and consumer
-cursor/state rules.
+Exit **0** successful EOF, **1** syntax/semantic/permission/compile/streaming
+rejection, and **2** usage/I/O/broken stdout/invalid UTF-8. Authored `::end` is
+an ordinary runtime command, not EOF. The command performs no remote/runtime
+effect.
 
 ## trace
 
@@ -2424,9 +2424,14 @@ Read-only reporting over the connectivity layer. With no subcommand, prints the 
 
 ```console
 $ lute context <file> [--json] [--providers <DIR>] [--project <DIR>]
+                      [--permission-profile <NAME>]
 ```
 
-Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, plugin-supplied `enums` plus the project's own `projectEnums`, asset kinds, providers, state schema, relational vocabulary, delivery flags, referenced reserved quest paths, and `capabilityVersion`. A capability query, not validation — it emits regardless of document diagnostics. Exit **0** on success, **2** on I/O.
+Emit the project-resolved authoring surface under the same trusted ceiling as
+check/compile. JSON adds `permissions: {layers:[...]}`, allowed `bridges`,
+allowed name-keyed `rewardKinds`, and boolean `questsAllowed`; `directives`
+excludes directive- and bridge-denied entries. External read-only state stays
+visible. Text describes compile-time restrictions, not runtime sandboxing.
 
 ## tag
 
@@ -2672,7 +2677,99 @@ A `line` record's `text` and a choice/hub option's `label` are always the **sour
 
 ## The runtime docs
 
-Each surface has its own contract document under [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime): `incremental-continuations.md` (checked continuation compilation, snapshot replacement, cursor/state retention, and finalization), `execution-model.md` (artifact shape, version gate, addressing, the dispatcher loop), `state-lifecycle.md` (the `scene`/`run`/`user`/`app`/`quest.<id>` tiers, initialization, reset boundaries), `cel-and-facts.md` (evaluating the `expr` AST, the fact store's assert/retract deltas, the stratified least fixpoint), `quest-lifecycle.md` (`start`/`fail` precedence, required vs. optional objectives, monotone completion, lifecycle events), `timeline-semantics.md` (the local clock, per-track cursors, barriers, the one-writer-per-target invariant), and `bridge-protocol.md` (typed bridge calls, return shapes, `wait`, resolved state effects).
+Each surface has its own contract document under [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime): `capability-permissions.md` (compile-time admission and the host/runtime security boundary), `incremental-continuations.md` (checked continuation compilation, snapshot replacement, cursor/state retention, and finalization), `execution-model.md` (artifact shape, version gate, addressing, the dispatcher loop), `state-lifecycle.md` (the `scene`/`run`/`user`/`app`/`quest.<id>` tiers, initialization, reset boundaries), `cel-and-facts.md` (evaluating the `expr` AST, the fact store's assert/retract deltas, the stratified least fixpoint), `quest-lifecycle.md` (`start`/`fail` precedence, required vs. optional objectives, monotone completion, lifecycle events), `timeline-semantics.md` (the local clock, per-track cursors, barriers, the one-writer-per-target invariant), and `bridge-protocol.md` (typed bridge calls, return shapes, `wait`, resolved state effects).
+
+---
+
+# Capability permissions
+
+Capability permissions are a prospective, Unreleased toolchain feature. A
+trusted project or host can restrict which already-resolved capabilities
+authored source may use. The checker rejects forbidden effects before an
+artifact is emitted. This is compile-time admission control, not a released
+version claim or a runtime sandbox.
+
+```yaml
+# lute.project.yaml
+defaultProfile: authored
+profiles:
+  authored:
+    plugins: {}
+    # permissions absent: unrestricted
+  restricted:
+    plugins: {}
+    permissions:
+      directives: [camera, bg, music, sfx, end, set, use]
+      stateWrites: [scene.*]
+      factWrites: []
+      bridges: []
+      rewards: false
+      quests: false
+```
+
+Fields are `directives` (exact names without `::`, or `*`), `stateWrites`
+(exact dot paths, `*`, or descendant-only suffix `.*`), `factWrites` (exact
+relation names or `*`), `bridges` (exact `service/operation` or `*`), and the
+booleans `rewards` / `quests`. Missing means no additional restriction.
+An explicit empty list denies the category; `false` denies while `true` is
+unrestricted. Explicit null, unknown fields, malformed patterns, and wrong
+shapes are errors, never unrestricted fallbacks. The complete project schema is
+[`schemas/lute.project.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute.project.json).
+
+Project-root, `global`, ancestor, and selected-profile layers are conjunctive:
+any match within one list, every restrictive layer across the chain. A child or
+inline plugin activation cannot widen an earlier deny. Permissions narrow a
+resolved capability snapshot; they never activate plugins, add vocabulary, or
+override ordinary language rules.
+
+A source `profile:` is capability selection, not authorization. Hosts add a
+separately trusted ceiling without activating its plugins or rewriting source:
+
+```console
+$ lute check scene.lute --project . --permission-profile restricted
+$ lute compile scene.lute --project . --permission-profile restricted -o scene.json
+$ lute compile --all --project . --permission-profile restricted -o build
+$ lute context scene.lute --json --project . --permission-profile restricted
+$ printf '::set{scene.score = 1}\n' \
+    | lute compile-stream scenes/live.lute --project . \
+        --permission-profile restricted
+```
+
+The ceiling applies to each `--all` document before the all-or-nothing write,
+and to both the frozen stream template and every body candidate. There is no
+mid-stream switch. A denied stream unit produces terminal `error` with no
+forbidden update or `finish`.
+
+The shared permission pass covers directives (including set/assert/retract/use),
+explicit and implicit state/fact writes, choice/hub persistence, state defaults,
+seed facts, plugin effects and bridges, quests, rewards, nested constructs, and
+invoked component bodies under the caller's policy. Unreachable source is still
+authored and still checked. A state declaration without a default remains
+usable as external read-only context. The compiler repeats the same cheap gate
+before lowering.
+
+Denied source uses non-suppressible authored-span errors:
+`E-PERMISSION-DIRECTIVE`, `E-PERMISSION-STATE`, `E-PERMISSION-FACT`,
+`E-PERMISSION-BRIDGE`, `E-PERMISSION-REWARD`, and `E-PERMISSION-QUEST`.
+
+`context --json` serializes `permissions: {layers:[...]}`; `bridges` contains
+allowed bridge capability objects, `rewardKinds` the allowed name-keyed object
+(empty when denied), and `questsAllowed` a boolean. `directives` excludes both
+directive-denied and bridge-denied entries. The LSP shares this resolver and
+checker, publishes the same diagnostics, and filters the same completions.
+
+Restrictive permissions participate in `capabilityVersion`; fully unrestricted
+layers normalize away, preserving policy-free hashes byte-for-byte. The hash is
+cache/compatibility metadata, not proof of authorization.
+
+The generic
+[`docs/examples/capability-permissions/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/capability-permissions)
+project shows an authored reward accepted normally but denied by a trusted host
+profile, absent versus explicit-empty fields, and a streamed state write
+rejected before forbidden IR. Lute does not make an AI call, ship an STAGE or
+other product plugin, sandbox the runtime/process/network/filesystem, or
+implement reward granting or settlement. Hosts still authorize and execute
+every real effect.
 
 ---
 
@@ -2809,10 +2906,11 @@ lossless unit source/ranges, `Vec<Node>`, and local syntax diagnostics. It does
 no resolution, semantic check, merge, lowering, addressing, or artifact
 assembly.
 
-Keep the template and resolved inputs host-owned. Validation does not make
-generated text trusted. This feature is not an LLM client, game engine,
-permission system, or secure AI capability sandbox, and performs no remote
-call, bridge effect, publication, or persistence.
+Keep the template, resolved inputs, and `--permission-profile` choice
+host-owned. A supplied ceiling is frozen for the template and every body unit.
+Validation does not make generated text trusted. This feature is not an LLM
+client, game engine, or secure runtime capability sandbox, and performs no
+remote call, bridge effect, publication, reward settlement, or persistence.
 
 Source contracts:
 
@@ -2961,44 +3059,47 @@ Highlighting is two layers that combine. A **static grammar** per editor gives a
 
 # AI harness guide
 
-Lute is built to be driven by a model, not just a person. An AI harness reads exit codes and JSON, never prose, so the whole authoring surface and every verification gap is exposed on the tool surface. A working loop is: **context in → generate → check → promote → tag**.
+Lute can be driven by a model, but the model never becomes an authority. The
+host selects a trusted project and permission profile. Lute itself makes no AI
+or remote call.
 
-## Prompt context: `lute context --json`
-
-Seed the model from the project's *authoring surface*, never from guesswork:
-
-```sh
-lute context scene.lute --json --project .
-```
-
-It emits the project-resolved directives, attrs, plugin-supplied `enums` plus the project's own `projectEnums`, asset kinds, providers, state schema, relational vocabulary, imported components, and a `capabilityVersion`. It is a capability **query**, not validation: it emits regardless of the document's own diagnostics (exit `0`), and — the key property — **works on an empty file**, because the surface comes from the resolved project and plugins, not the document body. Use `capabilityVersion` as a prompt-cache key: the vocabulary only changes when it does.
-
-## Feedback loop: `lute check --json`
-
-After each generation, check and feed the serialized diagnostics back:
+## Prompt context and feedback under one ceiling
 
 ```sh
-lute check scene.lute --json --project .
+lute context scene.lute --json --project . \
+  --permission-profile generated
+lute check scene.lute --json --project . \
+  --permission-profile generated
 ```
 
-A pipeline judges by exit code. To make a warning block the loop, promote it with the rustc/clippy-style flags (0.6.1 §5), also on `check-project`:
+Use the same trusted profile on context, check, compile, and compile-stream;
+never let generated source choose it. Context exposes effective permission
+layers and filters directives/bridges/rewards/quests. `capabilityVersion`
+changes for restrictive policy while policy-free hashes stay identical. The
+checker returns non-suppressible `E-PERMISSION-*` at authored spans.
+
+Judge by exit code before parsing JSON. Warning promotion remains available:
 
 ```sh
 lute check scene.lute --json --deny W-UNPROVEN-RELATIONAL --deny-warnings
 ```
 
-`--deny <CODE>` (repeatable) treats exactly that code as an error for the verdict and exit code; `--deny-warnings` promotes every warning. A promoted diagnostic reports severity `error` and carries `"denied": true` in JSON, distinguishing it from a native error. An unknown code is a usage error (exit `2`). Errors are never demotable.
+For append-only generation, stream ordinary Lute source through a host-owned
+template rather than inventing a model grammar:
 
-For an append-only generated continuation, do not invent a model-specific JSON
-grammar and do not treat parser framing as compilation. Give `lute
-compile-stream` a host-owned checked scene template and stream ordinary
-final-shot Lute body text on stdin. It flushes a full checked artifact snapshot
-per accepted complete unit. Project/capability inputs stay frozen; the host
-still owns trust, permissions, effects, persistence, and output idempotency.
+```sh
+lute compile-stream scene.lute --project . \
+  --permission-profile generated
+```
+
+Project, capability, and permission inputs are frozen. The ceiling checks the
+template and every candidate; denied source yields terminal `error` before
+forbidden IR. The host still owns runtime authorization, effects, persistence,
+and idempotency. This is not a sandbox.
 
 ## Capability-resolution errors gate the exit code
 
-Some errors describe the **project**, not a span in a document: a plugin option that does not exist or fails its declared type, an `identity:` template naming an unknown token, a profile activating a plugin that is not installed. These print on the `lute:` channel — stderr, `lute: <CODE>: <message>` — and are **not** in the `--json` diagnostic list, because they have no document position to attach to.
+Some errors describe the **project**, not a document span: invalid plugin options, identity templates, malformed permission objects, or a missing host permission profile. They print on stderr's `lute:` resolution channel and do not fall back to unrestricted policy.
 
 Since 0.8.0 they set the exit code; previously they printed and the build passed, so a typo'd plugin option shipped silently. Verified on `check`, `check-project`, `compile` (including `--all`), `context`, and `trace`. The one deliberate exemption is the forced-single-root reconciliation scan behind `compile --project`: a sibling document belonging to a nested subproject legitimately mis-resolves under a forced root, and that is not the target document's fault.
 
@@ -3018,6 +3119,12 @@ Since 0.8.0 they set the exit code; previously they printed and the build passed
 For `trace`, distinguish the two failure modes: **1 = refused** (check errors or invalid mocks — fix the document, then retry) versus **3 = incomplete** (an `unknown` guard halted the walk — supply more mock seeds, then retry). They demand different retry strategies.
 
 `compile --all` is all-or-nothing: exit **1** means nothing was written, so a partially-updated output directory is never a state the harness has to reason about.
+
+Permission denials are `E-PERMISSION-DIRECTIVE`, `E-PERMISSION-STATE`,
+`E-PERMISSION-FACT`, `E-PERMISSION-BRIDGE`, `E-PERMISSION-REWARD`, and
+`E-PERMISSION-QUEST`. They cover nested, unreachable, and invoked-component
+source. Change the authored operation or trusted host policy; do not retry by
+having source select a wider profile.
 
 ## Diagnostics a generator will meet
 
@@ -3336,6 +3443,15 @@ Activation resolves deterministically in this exact order: `lute.core` → `glob
 
 A reference to a directive, attribute, or id from an installed-but-**inactive** plugin is a diagnostic with fix-its ("change profile" / "activate plugin") — never silently accepted syntax.
 
+## Activation is not permission
+
+`plugins:` selects what exists; `permissions:` can only deny use of already
+resolved directives, writes, bridges, rewards, or quests. Root, `global`,
+ancestor, and selected-profile permission layers are conjunctive. Missing fields
+are unrestricted and explicit empty lists deny. Source frontmatter and plugin
+exports cannot author policy. An accepting host uses the independent
+`--permission-profile NAME` ceiling rather than trusting source `profile:`.
+
 ## Options are checked, not just merged
 
 Activation validates every supplied option against the owning plugin's `options:` declaration. The check runs on the **post-merge** value, so only the final layered value is judged — a bad value in a parent profile that a child overrides is never reported, and a bad final value is reported once no matter how many layers set it.
@@ -3473,7 +3589,7 @@ Notes on the boundaries:
 - **`0.6.0` is the one breaking grammar revision in the current stack** — it removed `persist=` so `into=` alone drives the choice run-record sugar, and made shot headings free text.
 - **`0.9.0` — vocabulary ownership — is breaking in validation, not in grammar.** The compiler declares the seven content-vocabulary slots and ships **no members**, so a document writing `emotion="delighted"` needs its project to declare `emotion`; an undeclared slot is `E-DOMAIN-UNKNOWN`, an error, where `action` in particular used to be skipped outright. Every pre-`0.9.0` `enums:` block still parses byte-for-byte, but a declaration of `action` MUST now supply `exits:` and one of `anchor` MUST supply `default:`. The IR **shape** did not move in that release — no field added, renamed, or moved — and `irVersion` read `0.9.0` only because a release re-aligns every axis; artifact *content* did move (`enums` becomes populated, `capabilityVersion` shifts). `0.9.0` also made an imported component body check exactly like the content it is: five root-only stages now run over it.
 - **`0.10.0` — the toolchain says what it knows — reddens documents, mocks, and the IR shape.** Thirteen language changes, every one a place the checker already held the answer. Three can redden a document that checks clean today: `::set` types its right-hand side against the path it writes (`E-SET-TYPE`), the six logic tags close their attribute sets (`E-UNKNOWN-ATTR`, and `E-AS-REMOVED` for `as=` on a `<choice>`), and a `<quest start>` gate that can never open is `E-QUEST-UNREACHABLE` where it used to be silent. `mocks/*.yaml` is validated for the first time and its `file:` key is **required** — a mock without one is `E-MOCK-SUBJECT`. `lute.project.yaml` gains an optional `defaults:` block. The IR **shape** moves for the first time since `0.8.0`: `provenance.reason` becomes `provenance.explanation`, so an engine gated on IR `0.9` widens to `0.10` and renames that one field. `W-INJECT-CONFLICT` is **removed** rather than narrowed and the information it carried is dropped, not migrated — agreement with the declared default was its only trigger.
-- **Capability surfaces are specified separately.** The plugin system's current revision is `0.0.4`, landing alongside `0.10.2`: a plugin-owned, checker-validated frontmatter key now reaches the compiled artifact's `meta.plugin` instead of being discarded at compile time. `0.0.3` — the `enums` export long form, `lute.core`'s empty `enums`, and the closed `semantics` vocabulary shrinking from twelve flags to ten — remains its base as amended.
+- **Capability surfaces are specified separately.** Plugin system `0.0.5` is the released base (advisory lint exports); `0.0.6` is the prospective, Unreleased capability-permissions delta. It adds no grammar or IR field and makes no released-version claim.
 
 ---
 
@@ -3517,6 +3633,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | Plugin system 0.0.2 | Delta on 0.0.1 — plugin option and frontmatter value validation, reserved stamp-attribute rejection, cross-cutting `stampAttrs` admissible on every directive and content line, and the declarative `lower: { record, fields }` form implemented. | [plugin-system/0.0.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.2.md) |
 | Plugin system 0.0.3 | Delta on 0.0.1/0.0.2, landing with dsl 0.9.0 — `lute.core` exports an **empty** `enums`, an `enums` entry may use the long form carrying member semantics (`members`/`default`/`exits`), and the closed `semantics` flag vocabulary drops the two flags no consumer read (`isStateful`, `cancelsPrevious`), twelve → ten. | [plugin-system/0.0.3.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.3.md) |
 | Plugin system 0.0.4 | Delta on 0.0.1/0.0.2/0.0.3, landing with dsl `0.10.2` — a plugin-owned, checker-validated top-level frontmatter key (`E-FRONTMATTER-SCHEMA`) now reaches the compiled artifact's `meta.plugin` instead of being discarded at compile time; deterministic (key-sorted), defense-in-depth re-validated against the snapshot regardless of which `CheckResult` gate produced the artifact. | [plugin-system/0.0.4.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.4.md) |
+| Plugin system 0.0.5 | Delta on 0.0.1–0.0.4 — advisory declarative plugin lint exports, excluded from the capability snapshot and `capabilityVersion`. | [plugin-system/0.0.5.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.5.md) |
+| Plugin system 0.0.6 candidate | **Prospective; not released.** Generic conjunctive project/profile/host ceilings over directives, writes, bridges, rewards, and quests; trusted `--permission-profile`; shared checker/compiler/LSP/context enforcement; no runtime sandbox or reward implementation. | [plugin-system/0.0.6.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.6.md) |
 | Character & cast 0.0.1 | The language contract for character identity, display label, costume, name-reveal, and voice-join — as a capability plugin (registry, `cast:` frontmatter, `scene.cast.*` state, resolution, `seal`/`reveal`/`wear`). | [character-cast/0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/0.0.1.md) |
 
 The plugin system also carries a human-facing overview at [`docs/plugin-system.md`](https://github.com/journeyWorker/lute/blob/main/docs/plugin-system.md), and the character/cast capability its design rationale at [`character-cast/design.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/design.md).

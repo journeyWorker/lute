@@ -13,6 +13,15 @@ and the machine-checkable shape is
 [`schemas/lute-ir-0.16.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.16.schema.json)
 (JSON Schema draft 2020-12).
 
+:::caution[Permissions stop at the artifact boundary]
+[Capability permissions](/tooling/capability-permissions/) reject forbidden
+authored effects before compilation. They are not a runtime sandbox and do not
+authorize the engine's bridge, persistence, network, filesystem, or reward
+effects. Engine hosts still load only trusted artifacts and authorize every
+real effect. See the
+[runtime/security guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/capability-permissions.md).
+:::
+
 ## What Lute does vs. what the engine does
 
 | Lute (compile time) | Engine (runtime) |

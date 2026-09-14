@@ -282,7 +282,7 @@ impl Backend {
             // Arity/arg-type checks (`E-REF-ARITY`/`E-REF-ARG-TYPE`) on a
             // `@ref(args)` USE inside a def's own `cel:` are conservatively
             // skipped (empty table => `check_cel_slot` silently omits them,
-              // never a false positive) — parametrized-def bodies are rarer
+            // never a false positive) — parametrized-def bodies are rarer
             // than the path/undeclared-ref case B3's test targets, and B2's
             // `params_from_yaml` extractor is private to `check.rs`.
             def_params: std::collections::BTreeMap::new(),
@@ -361,8 +361,10 @@ impl Backend {
         }
 
         self.diagnostics.insert(uri.clone(), diags.clone());
-        let mut lsp_diags: Vec<LspDiagnostic> =
-            diags.iter().map(|d| to_lsp_diagnostic(d, &idx, &uri)).collect();
+        let mut lsp_diags: Vec<LspDiagnostic> = diags
+            .iter()
+            .map(|d| to_lsp_diagnostic(d, &idx, &uri))
+            .collect();
         lsp_diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
         self.client
             .publish_diagnostics(uri, lsp_diags, Some(snapshot.version))
@@ -442,10 +444,10 @@ impl Backend {
     /// surfaces build byte-identical snapshots and cannot diverge.
     ///
     /// The scene's frontmatter `profile`/`plugins` are lifted with a default
-    /// snapshot (both are built-in, not capability-gated). When no project is
-    /// found above the document, `resolve_document_snapshot(None, ..)` yields the
-    /// core-only baseline — today's behavior. A malformed project is logged and
-    /// falls back to core-only rather than silently mis-validating (never panics).
+    /// core-only baseline — today's behavior. A malformed project is returned as
+    /// a project diagnostic at the document start while the semantic fallback
+    /// remains core-only, so editor users do not silently miss configuration
+    /// failures.
     fn snapshot_for(
         &self,
         uri: &Uri,
@@ -462,12 +464,16 @@ impl Backend {
             lute_check::meta::MetaKind::Scene,
             &self.defaults_for(uri),
         );
+        let mut load_diags = Vec::new();
         let project = uri_to_path(uri)
             .and_then(|p| find_project_root(&p))
             .and_then(|root| match lute_manifest::project::load_project(&root) {
                 Ok(p) => p,
-                Err(e) => {
-                    eprintln!("lute-lsp: {e}");
+                Err(message) => {
+                    load_diags.push(lute_manifest::project::ResolveDiag {
+                        code: "E-PROJECT-CONFIG".to_string(),
+                        message,
+                    });
                     None
                 }
             });
@@ -475,12 +481,13 @@ impl Backend {
         // helper the CLI uses when `--providers` is absent, so the editor
         // resolves provider ids identically to the headless build (plugin §10).
         let providers = lute_manifest::project::project_providers(project.as_ref());
-        let (snapshot, rdiags) = lute_manifest::project::resolve_document_snapshot(
+        let (snapshot, mut rdiags) = lute_manifest::project::resolve_document_snapshot(
             project.as_ref(),
             meta0.profile.as_deref(),
             &meta0.plugins,
         );
-        (snapshot, providers, rdiags)
+        load_diags.append(&mut rdiags);
+        (snapshot, providers, load_diags)
     }
 }
 
@@ -917,7 +924,10 @@ fn line_start(text: &str, byte: usize) -> usize {
 /// Byte offset one past the end of the line containing `byte` (i.e. right
 /// after its trailing `\n`, or `text.len()` on the last line).
 fn line_end(text: &str, byte: usize) -> usize {
-    text[byte..].find('\n').map(|p| byte + p + 1).unwrap_or(text.len())
+    text[byte..]
+        .find('\n')
+        .map(|p| byte + p + 1)
+        .unwrap_or(text.len())
 }
 
 /// End of the indented block that opens right after `start` and is nested
@@ -1138,7 +1148,13 @@ fn find_unquoted_key_colon(text: &str, region: (usize, usize), key: &str) -> Opt
 }
 
 fn mk_span(byte_start: usize, byte_end: usize) -> Span {
-    Span { byte_start, byte_end, line: 0, column: 0, utf16_range: (0, 0) }
+    Span {
+        byte_start,
+        byte_end,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    }
 }
 
 /// Source span of a `|`/`>` block scalar's CONTENT lines: every line after
@@ -1254,8 +1270,13 @@ fn find_def_cel_value_span(text: &str, name: &str) -> Option<Span> {
     let (entry_key_start, entry_colon, entry_indent) =
         find_scoped_child_key(text, defs_body_start, defs_body_end, name)?;
     let entry_key_line_end = line_end(text, entry_key_start).min(defs_body_end);
-    let (cel_region_start, cel_region_end) =
-        find_entry_extent(text, entry_colon, entry_key_line_end, entry_indent, defs_body_end)?;
+    let (cel_region_start, cel_region_end) = find_entry_extent(
+        text,
+        entry_colon,
+        entry_key_line_end,
+        entry_indent,
+        defs_body_end,
+    )?;
 
     let cel_colon = find_unquoted_key_colon(text, (cel_region_start, cel_region_end), "cel")?;
     parse_scalar_value_span(text, cel_colon, cel_region_end)
@@ -1502,9 +1523,9 @@ mod tests {
         // is part of a `depends` cycle"), not the `Debug` struct name this
         // lookup used to grep for (`crate::resolve::ResolveError`'s `{e:?}` →
         // `{e}` fix, mirroring `LoadError`'s identical 0.10.1 fix).
-        let resolver = diags.iter().find(|d| {
-            d.get("code").and_then(|c| c.as_str()) == Some("E-DEPENDS-CYCLE")
-        });
+        let resolver = diags
+            .iter()
+            .find(|d| d.get("code").and_then(|c| c.as_str()) == Some("E-DEPENDS-CYCLE"));
         let resolver = resolver.unwrap_or_else(|| {
             panic!("resolver DependsCycle diagnostic must be published, got {diags:?}")
         });
@@ -1594,7 +1615,11 @@ mod tests {
         let root = std::env::temp_dir().join(format!("lute_lsp_decl_dirty_{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("schema")).unwrap();
-        fs::write(root.join("lute.project.yaml"), "defaultProfile: default\nprofiles:\n  default: {}\n").unwrap();
+        fs::write(
+            root.join("lute.project.yaml"),
+            "defaultProfile: default\nprofiles:\n  default: {}\n",
+        )
+        .unwrap();
         let decl_path = root.join("schema/state.yaml");
         // `run.nope` is never declared under `state:` — a bad/undeclared path.
         fs::write(
@@ -1662,7 +1687,11 @@ mod tests {
         let root = std::env::temp_dir().join(format!("lute_lsp_decl_clean_{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("schema")).unwrap();
-        fs::write(root.join("lute.project.yaml"), "defaultProfile: default\nprofiles:\n  default: {}\n").unwrap();
+        fs::write(
+            root.join("lute.project.yaml"),
+            "defaultProfile: default\nprofiles:\n  default: {}\n",
+        )
+        .unwrap();
         let decl_path = root.join("schema/state.yaml");
         fs::write(
             &decl_path,
@@ -1714,8 +1743,10 @@ mod tests {
 
         static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let root =
-            std::env::temp_dir().join(format!("lute_lsp_decl_cel_parse_{}_{n}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "lute_lsp_decl_cel_parse_{}_{n}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("schema")).unwrap();
         fs::write(
@@ -1763,7 +1794,10 @@ mod tests {
         let idx = TextIndex::new(text);
         let s = byte_to_position(byte_start, &idx);
         let e = byte_to_position(byte_end, &idx);
-        ((s.line as u64, s.character as u64), (e.line as u64, e.character as u64))
+        (
+            (s.line as u64, s.character as u64),
+            (e.line as u64, e.character as u64),
+        )
     }
 
     /// [`range_at`] for the FIRST occurrence of `needle` in `text`.
@@ -1868,7 +1902,11 @@ mod tests {
     async fn analyze_declaration_cel_parse_error_picks_right_duplicate_occurrence() {
         let text = "state:\n  run.act: { type: number, default: 0 }\ndefs:\n  b: { type: bool, cel: \"run.act = 1\" }\n  a: { type: bool, cel: \"run.act = 1\" }\n";
         let (cel_parse, root) = open_cel_parse_fixture(text).await;
-        assert_eq!(cel_parse.len(), 2, "both `a` and `b` must fail to parse: {cel_parse:?}");
+        assert_eq!(
+            cel_parse.len(),
+            2,
+            "both `a` and `b` must fail to parse: {cel_parse:?}"
+        );
         let needle = "\"run.act = 1\"";
         let first_occ = text.find(needle).expect("fixture contains the cel text");
         let second_occ = text[first_occ + needle.len()..]
@@ -1913,8 +1951,10 @@ mod tests {
             "sanity: fixture must contain the escaped scalar literally: {text}"
         );
 
-        let root = std::env::temp_dir()
-            .join(format!("lute_lsp_decl_cel_parse_escaped_{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "lute_lsp_decl_cel_parse_escaped_{}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("schema")).unwrap();
         fs::write(
@@ -1952,7 +1992,10 @@ mod tests {
             .iter()
             .find(|d| d.get("code").and_then(|c| c.as_str()) == Some("E-CEL-PARSE"))
             .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic, got {diags:?}"));
-        let message = cel_parse.get("message").and_then(|m| m.as_str()).expect("carries a message");
+        let message = cel_parse
+            .get("message")
+            .and_then(|m| m.as_str())
+            .expect("carries a message");
         for tok in [
             "viable alternative",
             "token recognition",
@@ -1960,9 +2003,15 @@ mod tests {
             "extraneous input",
             "no viable",
         ] {
-            assert!(!message.contains(tok), "leaked backend vocabulary {tok:?}: {message}");
+            assert!(
+                !message.contains(tok),
+                "leaked backend vocabulary {tok:?}: {message}"
+            );
         }
-        assert!(message.contains("did you mean"), "expected the T2 bare-`=` suggestion, got: {message}");
+        assert!(
+            message.contains("did you mean"),
+            "expected the T2 bare-`=` suggestion, got: {message}"
+        );
         assert_eq!(
             actual_range(cel_parse),
             expect_range(text, needle),
@@ -1981,11 +2030,21 @@ mod tests {
             }))
             .id(2)
             .finish();
-        let resp = service.ready().await.unwrap().call(code_action_req).await.unwrap();
+        let resp = service
+            .ready()
+            .await
+            .unwrap()
+            .call(code_action_req)
+            .await
+            .unwrap();
         let actions = resp.and_then(|r| r.result().cloned());
         assert!(
             matches!(actions, None | Some(serde_json::Value::Null))
-                || actions.as_ref().and_then(|a| a.as_array()).map(|a| a.is_empty()).unwrap_or(false),
+                || actions
+                    .as_ref()
+                    .and_then(|a| a.as_array())
+                    .map(|a| a.is_empty())
+                    .unwrap_or(false),
             "an E-CEL-PARSE diagnostic must carry no fixit-derived code action: {actions:?}"
         );
 
@@ -2004,9 +2063,14 @@ mod tests {
         let hit = cel_parse
             .first()
             .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic"));
-        let content_idx = text.find("run.act = 1").expect("fixture contains the block content");
+        let content_idx = text
+            .find("run.act = 1")
+            .expect("fixture contains the block content");
         let line_start = text[..content_idx].rfind('\n').map(|p| p + 1).unwrap_or(0);
-        let line_end = text[content_idx..].find('\n').map(|p| content_idx + p).unwrap_or(text.len());
+        let line_end = text[content_idx..]
+            .find('\n')
+            .map(|p| content_idx + p)
+            .unwrap_or(text.len());
         assert_eq!(
             actual_range(hit),
             range_at(text, line_start, line_end),
@@ -2025,9 +2089,14 @@ mod tests {
         let hit = cel_parse
             .first()
             .unwrap_or_else(|| panic!("expected an E-CEL-PARSE diagnostic"));
-        let content_idx = text.find("run.act = 1").expect("fixture contains the block content");
+        let content_idx = text
+            .find("run.act = 1")
+            .expect("fixture contains the block content");
         let line_start = text[..content_idx].rfind('\n').map(|p| p + 1).unwrap_or(0);
-        let line_end = text[content_idx..].find('\n').map(|p| content_idx + p).unwrap_or(text.len());
+        let line_end = text[content_idx..]
+            .find('\n')
+            .map(|p| content_idx + p)
+            .unwrap_or(text.len());
         assert_eq!(
             actual_range(hit),
             range_at(text, line_start, line_end),

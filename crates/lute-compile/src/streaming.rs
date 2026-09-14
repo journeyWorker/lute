@@ -270,10 +270,7 @@ fn forbidden_body_scaffolding(source: &str) -> bool {
             .strip_prefix("<quest")
             .and_then(|rest| rest.as_bytes().first())
             .is_some_and(|next| next.is_ascii_whitespace() || *next == b'>');
-        trimmed == "---"
-            || trimmed.starts_with("# ")
-            || trimmed.starts_with("## ")
-            || quest_root
+        trimmed == "---" || trimmed.starts_with("# ") || trimmed.starts_with("## ") || quest_root
     })
 }
 

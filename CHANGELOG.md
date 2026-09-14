@@ -39,6 +39,27 @@ table.
 
 ### Added
 
+- **Generic capability permissions (prospective; no version bump)** — trusted
+  `lute.project.yaml` root/profile policy can restrict directives, scalar-state
+  writes, fact writes, bridge `service/operation` pairs, declarative rewards,
+  and quests. Missing fields are unrestricted while explicit empty lists deny;
+  project, `global`, ancestor, selected-profile, and host layers compose
+  conjunctively. `--permission-profile NAME` adds an independently trusted
+  ceiling to `check`, `compile` (including all-or-nothing `--all`),
+  `compile-stream`, and `context` without activating that profile's plugins or
+  rewriting the source-selected profile. The checker reports non-suppressible
+  `E-PERMISSION-*` errors at authored spans—including defaults, seed facts,
+  plugin effects/bridges, nested/transitive components, quests, and rewards—and
+  the compiler rechecks policy before lowering. Restrictive effective policy
+  participates in `capabilityVersion`; unrestricted projects preserve existing
+  hashes byte-for-byte. LSP diagnostics/completion and `context` share the same
+  resolver. This is compile-time admission control, not an AI integration,
+  product plugin, runtime sandbox, or reward implementation. Normative draft:
+  [`docs/proposals/plugin-system/0.0.6.md`](docs/proposals/plugin-system/0.0.6.md);
+  runtime/security guide:
+  [`docs/runtime/capability-permissions.md`](docs/runtime/capability-permissions.md);
+  generic example:
+  [`docs/examples/capability-permissions/`](docs/examples/capability-permissions/).
 - **Checked streaming continuation compiler and CLI (prospective; no version
   bump)** — `lute_compile::streaming::ContinuationCompiler` accepts a resolved,
   checked scene template and append-only ordinary Lute shot-body text, then

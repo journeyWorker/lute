@@ -38,8 +38,13 @@ enum Event<'a> {
 /// Compile an immutable scene prefix, then incrementally decode and compile the
 /// body arriving on stdin. Exit `0` only after successful EOF finalization, `1`
 /// on compiler rejection, and `2` on file/stdin/stdout/UTF-8 failure.
-pub fn run(file: &Path, providers: Option<&Path>, project: Option<&Path>) -> ExitCode {
-    let Some(built) = crate::build_input(file, providers, project) else {
+pub fn run(
+    file: &Path,
+    providers: Option<&Path>,
+    project: Option<&Path>,
+    permission_profile: Option<&str>,
+) -> ExitCode {
+    let Some(built) = crate::build_input(file, providers, project, permission_profile) else {
         return ExitCode::from(2);
     };
     built.report_project_diags();
@@ -58,7 +63,12 @@ pub fn run(file: &Path, providers: Option<&Path>, project: Option<&Path>) -> Exi
         Err(diagnostics) => {
             let stdout = io::stdout();
             let mut output = stdout.lock();
-            return match write_event(&mut output, &Event::Error { diagnostics: &diagnostics }) {
+            return match write_event(
+                &mut output,
+                &Event::Error {
+                    diagnostics: &diagnostics,
+                },
+            ) {
                 Ok(()) => ExitCode::FAILURE,
                 Err(error) => output_error(error),
             };

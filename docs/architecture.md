@@ -18,8 +18,9 @@ target is the flat command-record format the engine consumes.
 > [`proposals/scenario-dsl/0.16.1.md`](proposals/scenario-dsl/0.16.1.md).
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
-> ([`0.0.2`](proposals/plugin-system/0.0.2.md), [`0.0.3`](proposals/plugin-system/0.0.3.md);
-> human overview: [`plugin-system.md`](plugin-system.md)). Use the specs as the SoT and this doc
+> through the prospective, Unreleased capability-permissions contract
+> [`0.0.6`](proposals/plugin-system/0.0.6.md); human overview:
+> [`plugin-system.md`](plugin-system.md). Use the specs as the SoT and this doc
 > for the AST/compiler/LSP architecture.
 >
 > **The `.lute` snippets in this file are illustrative prose, not gated fixtures.** No CI job
@@ -1038,6 +1039,81 @@ matches), `E-COMPONENT-ARG`/`-UNDECLARED`/`-CYCLE`/`-DUP`/`-PARSE`, `E-UNKNOWN-A
 **Worked example:** [`examples/gated-line.lute`](examples/gated-line.lute) (§7.2) and
 [`examples/choice-persist.lute`](examples/choice-persist.lute) (the spec §4.6 trace walkthrough
 — `lute trace docs/examples/choice-persist.lute --choose sofaHelp=help`).
+
+## Capability permission architecture (Unreleased)
+
+Capability permissions are a project/host policy layer over the existing
+capability snapshot, not a new capability source. The implementation preserves
+the current resolver as the one authority for plugins, directives, state shapes,
+bridges, and vocabulary, then attaches a conjunctive `Permissions` value:
+
+```text
+lute.project.yaml
+  root permissions
+  global + ancestor + selected-profile permissions
+                    |
+                    v
+        resolve_document_snapshot
+                    |
+                    v
+ CapabilitySnapshot { capabilities, permissions }
+                    |
+          +---------+----------+
+          |                    |
+          v                    v
+ shared permission pass   context / LSP filtering
+          |
+          v
+ compiler recheck -> lowering -> Artifact
+```
+
+`lute-manifest` owns parsing, validation, inheritance, normalization, and
+matching. Each `PermissionSet` retains optional fields for directives, state
+writes, fact writes, bridges, rewards, and quests; `Permissions` retains a
+vector of those sets. A missing field is unrestricted, an explicit empty set is
+deny-all, and every applicable layer is ANDed. Keeping layers rather than
+intersecting pattern strings is necessary because exact paths, `*`, and
+descendant-only `foo.*` patterns do not have a sound general textual
+intersection.
+
+The resolved permissions live inside `CapabilitySnapshot`. Unrestricted layers
+normalize away, which leaves all policy-free snapshot serialization and
+`capabilityVersion` hashes byte-identical. A restrictive layer participates in
+the same deterministic hash so context caches cannot conflate two authoring
+surfaces. No artifact field is added: the existing `capabilityVersion` is
+restamped. The hash remains compatibility metadata, never an authorization
+token.
+
+`lute-check` owns one complete, reusable permission walk. It runs after ordinary
+resolution and before consumers trust the document. The walk covers specialized
+set/assert/retract/use AST nodes, explicit and implicit writes, state defaults
+and seed facts, plugin writes/bridges, quests/rewards, nested constructs, and
+transitive invoked components. It checks authored source even in unreachable
+branches. An invoked component inherits the caller's policy; its own
+frontmatter cannot grant authority. Unrestricted snapshots take a fast path.
+
+`lute-compile::compile_with_check` invokes the same cheap pass again before
+lowering. This closes the public seam where a caller could otherwise supply a
+successful `CheckResult` produced under another policy, without duplicating the
+project-reconciled definite-assignment gate. The continuation compiler inherits
+that recheck for its fixed template and every cumulative body candidate.
+
+The CLI's trusted `--permission-profile NAME` uses the manifest resolver to
+construct an additional project/global/ancestor/name ceiling, then calls
+`CapabilitySnapshot::restrict_permissions`; it does not select that profile's
+plugins or rewrite source. The same resolved snapshot flows to check, compile,
+`compile --all`, compile-stream, context, and the LSP. `context` and completion
+filter what they advertise, while checker diagnostics and the compiler gate
+remain enforcement. There is deliberately no second editor authorization
+algorithm.
+
+This architecture is compile-time admission control only. It makes no AI call,
+ships no product plugin, provides no runtime/process/network sandbox, and
+implements no reward settlement. The engine and host still authorize and
+execute every real bridge, persistence, and reward effect. Normative details:
+[`proposals/plugin-system/0.0.6.md`](proposals/plugin-system/0.0.6.md);
+runtime/security guidance:
+[`runtime/capability-permissions.md`](runtime/capability-permissions.md).
 
 ## Roadmap / open items
 

@@ -52,15 +52,21 @@ complete ordinary Lute artifact, and every record is valid newline-delimited
 JSON. The command flushes each accepted update immediately, so the first update
 arrives during the one-second pause rather than waiting for EOF.
 
-For a project scene, use the same resolution inputs as ordinary compilation:
+For a project scene, use the same resolution inputs as ordinary compilation.
+Pin an independently trusted permission ceiling when the stream accepts
+untrusted authored input:
 
 ```console
 $ printf '@guide: Project-resolved line.\n' \
-    | lute compile-stream scenes/live.lute --project . --providers snapshots
+    | lute compile-stream scenes/live.lute --project . --providers snapshots \
+        --permission-profile generated
 ```
 
-The template is resolved once with the ordinary project/provider/component/
-default/identity helpers and is never modified. Exit codes are:
+The template, project, providers, components, defaults, identity templates, and
+effective [capability permissions](/tooling/capability-permissions/) are
+resolved once and frozen; the template file is never modified. The host profile
+adds a ceiling without activating that profile's plugins or changing the
+source-selected profile. Exit codes are:
 
 | Exit | Meaning |
 | --- | --- |
@@ -146,11 +152,17 @@ It cannot replace frontmatter, add a shot heading or label, or introduce a quest
 root. A forward target that ordinary compilation cannot resolve yet fails now;
 the compiler does not guess future source or fabricate a closer.
 
-Keep the template and resolved project inputs under host control. Lute validates
-the streamed body, but validation does not make generated text trusted. The
-compiler is not an LLM client, game engine, permission system, or secure AI
-capability sandbox. It performs no remote call, bridge effect, publication, or
-player-state persistence.
+Keep the template, resolved project inputs, and `--permission-profile` choice
+under host control. The same frozen ceiling checks initialization in the
+template and every cumulative body unit. A denied unit emits a terminal
+`error` record with its `E-PERMISSION-*` diagnostic before any update
+containing forbidden IR; there is no mid-stream policy switch.
+
+Lute validates the streamed body, but validation does not make generated text
+trusted. The compiler is not an LLM client, game engine, or secure runtime
+capability sandbox. It performs no remote call, bridge effect, publication,
+reward settlement, or player-state persistence. No STAGE or other
+product-specific plugin is part of this feature.
 
 ## Chunks, units, and EOF
 

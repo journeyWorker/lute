@@ -21,6 +21,7 @@ pub mod match_check;
 pub mod meta;
 pub mod next_labels;
 pub mod on;
+pub mod permissions;
 pub mod prereq;
 pub mod producible;
 pub mod project_check;
@@ -78,6 +79,10 @@ pub use meta::{
     StateSchema, TypedMeta, E_KIND_MISSING, E_STATE_COLLECTION, E_UNKNOWN_KIND,
 };
 pub use on::{check_on_event, E_ON_NO_EVENT, E_UNKNOWN_EVENT};
+pub use permissions::{
+    check_permissions, E_PERMISSION_BRIDGE, E_PERMISSION_DIRECTIVE, E_PERMISSION_FACT,
+    E_PERMISSION_QUEST, E_PERMISSION_REWARD, E_PERMISSION_STATE,
+};
 pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
 pub use producible::W_UNPROVEN_RELATIONAL;
 pub use project_check::{
