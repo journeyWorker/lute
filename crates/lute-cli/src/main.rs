@@ -51,7 +51,9 @@ use lute_check::{
 };
 use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
 use lute_manifest::core::load_core_snapshot;
-use lute_manifest::project::{load_project, resolve_document_snapshot};
+use lute_manifest::project::{
+    load_project, resolve_document_snapshot, resolve_permissions, ResolveDiag,
+};
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
 use lute_manifest::relations::KindShape;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -69,6 +71,7 @@ mod runner;
 mod scaffold;
 mod scenario_fmt;
 mod schedule;
+mod stream;
 mod testcmd;
 
 #[derive(Parser)]
@@ -99,6 +102,10 @@ enum Command {
         /// §4/§11). Omit for a core-only (`lute.core`) check.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
+        /// Trusted project profile whose permissions apply as an additional host
+        /// ceiling. This never activates the profile's plugins or rewrites source.
+        #[arg(long = "permission-profile", value_name = "NAME")]
+        permission_profile: Option<String>,
         /// Promote every diagnostic with EXACTLY this code to an error for the
         /// verdict and exit code (repeatable) — rustc/clippy `-D` precedent
         /// (spec §5). An unknown code is a usage error (exit 2). Errors are
@@ -192,6 +199,11 @@ enum Command {
         /// document's activated capability snapshot.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
+        /// Trusted project profile whose permissions apply as an additional host
+        /// ceiling to the selected document, or every document under `--all`.
+        /// This never activates the profile's plugins or rewrites source.
+        #[arg(long = "permission-profile", value_name = "NAME")]
+        permission_profile: Option<String>,
         /// Write the artifact here instead of stdout. Under `--all` this is a
         /// required output DIRECTORY, not a file.
         #[arg(short = 'o', long = "out", value_name = "FILE")]
@@ -220,6 +232,23 @@ enum Command {
         /// (spec §5).
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
+    },
+    /// Incrementally compile body text from stdin against a checked scene
+    /// prefix, flushing ordinary artifact snapshots as newline-delimited JSON.
+    CompileStream {
+        /// Path to the immutable `.lute` scene prefix.
+        file: PathBuf,
+        /// Directory of pinned provider snapshots to resolve ids against.
+        #[arg(long, value_name = "DIR")]
+        providers: Option<PathBuf>,
+        /// Project directory (`lute.project.yaml` + `plugins/`) resolving the
+        /// prefix's capability snapshot, defaults, components, and identity.
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
+        /// Trusted project profile whose permissions apply as one frozen host
+        /// ceiling to both the prefix and every appended body unit.
+        #[arg(long = "permission-profile", value_name = "NAME")]
+        permission_profile: Option<String>,
     },
     /// Back-fill a stable `code` into every untagged `:line` (dsl §12),
     /// rewriting the file in place.
@@ -264,6 +293,10 @@ enum Command {
         /// §4/§11). Omit for a core-only (`lute.core`) surface.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
+        /// Trusted project profile whose permissions restrict the reported
+        /// authoring surface without activating that profile's plugins.
+        #[arg(long = "permission-profile", value_name = "NAME")]
+        permission_profile: Option<String>,
     },
     /// Preview a `.lute` document's behavior against author-supplied mocks —
     /// the D1-quarantined authoring evaluator (dsl 0.4.0 §4). Resolves the
@@ -746,6 +779,12 @@ const DENIABLE_CODES: &[&str] = &[
     "E-OBJECTIVE-UNSATISFIABLE",
     "E-ON-NO-EVENT",
     "E-PATH-IDENT",
+    "E-PERMISSION-BRIDGE",
+    "E-PERMISSION-DIRECTIVE",
+    "E-PERMISSION-FACT",
+    "E-PERMISSION-QUEST",
+    "E-PERMISSION-REWARD",
+    "E-PERMISSION-STATE",
     "E-PERSIST-REMOVED",
     "E-PLUGIN-ASSET-SEGMENT-TYPE",
     "E-PLUGIN-DUP-ACROSS",
@@ -793,6 +832,10 @@ const DENIABLE_CODES: &[&str] = &[
     "E-STATE-NAMESPACE",
     "E-STATE-REDECLARE",
     "E-STATE-SHAPE-CYCLE",
+    "E-STREAM-BODY",
+    "E-STREAM-CLOSED",
+    "E-STREAM-PREFIX-CHANGED",
+    "E-STREAM-TEMPLATE",
     "E-STRING-ESCAPE",
     "E-TAG-INLINE-BODY",
     "E-TAG-NOT-ONE-LINE",
@@ -930,6 +973,7 @@ fn main() -> ExitCode {
             json,
             providers,
             project,
+            permission_profile,
             deny,
             deny_warnings,
         } => run_check(
@@ -937,6 +981,7 @@ fn main() -> ExitCode {
             json,
             providers.as_deref(),
             project.as_deref(),
+            permission_profile.as_deref(),
             &DenyPolicy::new(&deny, deny_warnings),
         ),
         Command::CheckProject {
@@ -963,6 +1008,7 @@ fn main() -> ExitCode {
             json,
             providers,
             project,
+            permission_profile,
             out,
             all,
             locales,
@@ -973,17 +1019,36 @@ fn main() -> ExitCode {
             json,
             providers.as_deref(),
             project.as_deref(),
+            permission_profile.as_deref(),
             out.as_deref(),
             all,
             locales.as_deref(),
             &DenyPolicy::new(&deny, deny_warnings),
+        ),
+        Command::CompileStream {
+            file,
+            providers,
+            project,
+            permission_profile,
+        } => stream::run(
+            &file,
+            providers.as_deref(),
+            project.as_deref(),
+            permission_profile.as_deref(),
         ),
         Command::Context {
             file,
             json,
             providers,
             project,
-        } => run_context(&file, json, providers.as_deref(), project.as_deref()),
+            permission_profile,
+        } => run_context(
+            &file,
+            json,
+            providers.as_deref(),
+            project.as_deref(),
+            permission_profile.as_deref(),
+        ),
         Command::Trace {
             file,
             state,
@@ -1139,6 +1204,9 @@ pub(crate) struct BuiltInput {
     /// can inspect the applied defaults without re-loading the project.
     #[allow(dead_code)]
     pub defaults: lute_manifest::project::MetaDefaults,
+    /// Frozen project identity templates resolved by the same manifest load as
+    /// the capability snapshot and defaults.
+    pub identity: lute_manifest::project::IdentityTemplates,
 }
 
 impl BuiltInput {
@@ -1159,6 +1227,7 @@ fn build_input(
     file: &Path,
     providers: Option<&Path>,
     project: Option<&Path>,
+    permission_profile: Option<&str>,
 ) -> Option<BuiltInput> {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
@@ -1213,9 +1282,26 @@ fn build_input(
         &defaults,
     );
 
-    let (snapshot, rdiags) =
+    let (mut snapshot, mut rdiags) =
         resolve_document_snapshot(project.as_ref(), meta0.profile.as_deref(), &meta0.plugins);
-    let mut resolve_error = false;
+    if let Some(name) = permission_profile {
+        match project.as_ref() {
+            Some(config) => match resolve_permissions(config, name) {
+                Ok(permissions) => snapshot.restrict_permissions(&permissions),
+                Err(error) => rdiags.push(ResolveDiag {
+                    code: error.code().to_string(),
+                    message: error.to_string(),
+                }),
+            },
+            None => rdiags.push(ResolveDiag {
+                code: "E-PERMISSION-PROFILE".to_string(),
+                message: format!(
+                    "`--permission-profile {name}` requires a loaded `lute.project.yaml` from `--project <DIR>`"
+                ),
+            }),
+        }
+    }
+    let mut resolve_error = !project_diags.is_empty();
     for d in &rdiags {
         project_diags.push(format!("{}: {}", d.code, d.message));
         // An `E-` resolve diagnostic is a build-failing error like any other
@@ -1226,6 +1312,10 @@ fn build_input(
         // would print and pass.
         resolve_error |= d.code.starts_with("E-");
     }
+    let identity = project
+        .as_ref()
+        .map(|p| p.identity.clone())
+        .unwrap_or_default();
 
     // Resolve the scene's `uses:` schema imports (dsl §9.2) and `components:`
     // component imports (dsl §13) relative to the scene's own directory; the LSP
@@ -1251,6 +1341,7 @@ fn build_input(
         project_diags,
         meta: meta0,
         defaults,
+        identity,
     })
 }
 
@@ -1477,7 +1568,7 @@ fn caller_resolved_common(
     let mut per_caller: Vec<BTreeSet<(String, String)>> = Vec::new();
     let mut sample: BTreeMap<(String, String), Diagnostic> = BTreeMap::new();
     for caller in callers {
-        let Some(built) = build_input(caller, providers, Some(root)) else {
+        let Some(built) = build_input(caller, providers, Some(root), None) else {
             continue;
         };
         let res = check(&built.input);
@@ -1580,6 +1671,7 @@ fn run_check(
     json: bool,
     providers: Option<&Path>,
     project: Option<&Path>,
+    permission_profile: Option<&str>,
     policy: &DenyPolicy,
 ) -> ExitCode {
     // #21 / T3.9: `lute check world.schema.yaml` is the obvious next command
@@ -1595,7 +1687,7 @@ fn run_check(
     ) {
         return run_check_schema_yaml(file, json, policy);
     }
-    let Some(built) = build_input(file, providers, project) else {
+    let Some(built) = build_input(file, providers, project, permission_profile) else {
         return ExitCode::from(2);
     };
     // `build_input` no longer prints these itself (`lute doctor` folds them into
@@ -1869,7 +1961,7 @@ fn collect_project_docs(
         } else {
             project_root_for(file, dir)
         };
-        let Some(built) = build_input(file, providers, Some(&root)) else {
+        let Some(built) = build_input(file, providers, Some(&root), None) else {
             return Err(ExitCode::from(2));
         };
         // Per file, exactly as `build_input` printed them before: this loop
@@ -3987,8 +4079,9 @@ fn run_context(
     json: bool,
     providers: Option<&Path>,
     project: Option<&Path>,
+    permission_profile: Option<&str>,
 ) -> ExitCode {
-    let Some(built) = build_input(file, providers, project) else {
+    let Some(built) = build_input(file, providers, project, permission_profile) else {
         return ExitCode::from(2);
     };
     built.report_project_diags();
@@ -4076,6 +4169,13 @@ fn authoring_surface(
     let directives: Vec<Value> = snap
         .directives
         .values()
+        .filter(|d| snap.permissions.allows_directive(&d.name))
+        .filter(|d| {
+            d.bridge.as_ref().is_none_or(|bridge| {
+                snap.permissions
+                    .allows_bridge(&bridge.service, &bridge.operation)
+            })
+        })
         .map(|d| {
             let attrs: Vec<Value> = d
                 .attrs
@@ -4105,6 +4205,24 @@ fn authoring_surface(
             Value::Object(o)
         })
         .collect();
+
+    // Bridge/reward vocabularies are authoring surfaces, not merely metadata.
+    // Keep only entries admitted by the same effective snapshot policy the
+    // checker and compiler enforce.
+    let bridges: Vec<Value> = snap
+        .bridge_capabilities
+        .values()
+        .filter(|bridge| {
+            snap.permissions
+                .allows_bridge(&bridge.service, &bridge.operation)
+        })
+        .map(|bridge| serde_json::to_value(bridge).unwrap_or(Value::Null))
+        .collect();
+    let reward_kinds = if snap.permissions.allows_rewards() {
+        serde_json::to_value(&snap.reward_kinds).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
 
     // Folded state schema: BTreeMap key == path ⇒ iteration is path-sorted.
     let state_schema: Vec<Value> = state
@@ -4266,7 +4384,18 @@ fn authoring_surface(
 
     let mut root = Map::new();
     root.insert("capabilityVersion".into(), snap.version.clone().into());
+    root.insert(
+        "permissions".into(),
+        serde_json::to_value(&snap.permissions)
+            .unwrap_or_else(|_| serde_json::json!({ "layers": [] })),
+    );
     root.insert("directives".into(), directives.into());
+    root.insert("bridges".into(), bridges.into());
+    root.insert("rewardKinds".into(), reward_kinds);
+    root.insert(
+        "questsAllowed".into(),
+        snap.permissions.allows_quests().into(),
+    );
     // enums/assetKinds/providers are BTreeMaps on the snapshot: their serde-JSON
     // objects are key-sorted by construction. `to_value` is infallible for these
     // concrete shapes; a defensive empty-object fallback keeps the surface total.
@@ -4436,6 +4565,12 @@ fn context_outline(surface: &serde_json::Value) -> String {
         "capabilityVersion: {}",
         surface["capabilityVersion"].as_str().unwrap_or("")
     );
+    let permissions = serde_json::to_string(&surface["permissions"])
+        .unwrap_or_else(|_| "{\"layers\":[]}".to_string());
+    let _ = writeln!(
+        out,
+        "permissions: {permissions} (authoring/compile-time restrictions; not runtime sandbox enforcement)"
+    );
     if let Some(dirs) = surface["directives"].as_array() {
         let _ = writeln!(out, "directives ({}):", dirs.len());
         for d in dirs {
@@ -4464,6 +4599,25 @@ fn context_outline(surface: &serde_json::Value) -> String {
             let _ = writeln!(out, "  {name}{layer}: {}{sem}", attrs.join(", "));
         }
     }
+    if let Some(bridges) = surface["bridges"].as_array() {
+        let _ = writeln!(out, "bridges ({}):", bridges.len());
+        for bridge in bridges {
+            let service = bridge["service"].as_str().unwrap_or("");
+            let operation = bridge["operation"].as_str().unwrap_or("");
+            let _ = writeln!(out, "  {service}/{operation}");
+        }
+    }
+    if let Some(reward_kinds) = surface["rewardKinds"].as_object() {
+        let _ = writeln!(out, "rewardKinds ({}):", reward_kinds.len());
+        for name in reward_kinds.keys() {
+            let _ = writeln!(out, "  {name}");
+        }
+    }
+    let _ = writeln!(
+        out,
+        "questsAllowed: {}",
+        surface["questsAllowed"].as_bool().unwrap_or(true)
+    );
     if let Some(enums) = surface["enums"].as_object() {
         // Members, not just names (spec §5) — an author choosing an
         // `emotion="…"` value sees the legal set without `--json`.
@@ -4618,6 +4772,7 @@ fn dispatch_compile(
     json: bool,
     providers: Option<&Path>,
     project: Option<&Path>,
+    permission_profile: Option<&str>,
     out: Option<&Path>,
     all: bool,
     locales: Option<&Path>,
@@ -4631,7 +4786,16 @@ fn dispatch_compile(
             );
             return ExitCode::from(2);
         };
-        return run_compile(file, json, providers, project, out, locales, policy);
+        return run_compile(
+            file,
+            json,
+            providers,
+            project,
+            permission_profile,
+            out,
+            locales,
+            policy,
+        );
     }
 
     let mut usage: Vec<&str> = Vec::new();
@@ -4659,6 +4823,7 @@ fn dispatch_compile(
         project.expect("checked above"),
         out.expect("checked above"),
         providers,
+        permission_profile,
         json,
         bundle.as_ref(),
         policy,
@@ -4680,6 +4845,7 @@ fn run_compile(
     json: bool,
     providers: Option<&Path>,
     project: Option<&Path>,
+    permission_profile: Option<&str>,
     out: Option<&Path>,
     locales: Option<&Path>,
     policy: &DenyPolicy,
@@ -4690,7 +4856,7 @@ fn run_compile(
         Ok(b) => b,
         Err(code) => return code,
     };
-    let Some(built) = build_input(file, providers, project) else {
+    let Some(built) = build_input(file, providers, project, permission_profile) else {
         return ExitCode::from(2);
     };
     built.report_project_diags();
@@ -4874,7 +5040,7 @@ fn run_trace(
     providers: Option<&Path>,
     project: Option<&Path>,
 ) -> ExitCode {
-    let Some(built) = build_input(file, providers, project) else {
+    let Some(built) = build_input(file, providers, project, None) else {
         return ExitCode::from(2);
     };
     built.report_project_diags();

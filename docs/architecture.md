@@ -5,18 +5,21 @@
 plus editor clients under [`editors/`](../editors). The **early sections below** ("Why" through
 the design-session walkthrough) are a **historical, pre-implementation design draft** written
 against an older Upstream TypeScript parser (`packages/lute-core/…`, no longer part of this repo),
-retained for design rationale. The **shipped implementation** is documented in the *Relational
-state kernel* section near the end of this file and by the versioned normative specs; the runtime
+retained for design rationale. The **shipped implementation** is documented in the versioned
+implementation sections near the end of this file and by the normative spec stack; the runtime
 target is the flat command-record format the engine consumes.
 
 > This document is the **implementation architecture + design rationale**. The **language** is
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
-> deltas, current tip [`proposals/scenario-dsl/0.9.0.md`](proposals/scenario-dsl/0.9.0.md).
+> deltas through released language tip
+> [`proposals/scenario-dsl/0.17.0.md`](proposals/scenario-dsl/0.17.0.md). The
+> checked-continuation tooling contract ships in that `0.17.0` alignment delta.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
-> ([`0.0.2`](proposals/plugin-system/0.0.2.md), [`0.0.3`](proposals/plugin-system/0.0.3.md);
-> human overview: [`plugin-system.md`](plugin-system.md)). Use the specs as the SoT and this doc
+> through the `0.17.0` capability-permissions contract
+> [`0.0.6`](proposals/plugin-system/0.0.6.md); human overview:
+> [`plugin-system.md`](plugin-system.md). Use the specs as the SoT and this doc
 > for the AST/compiler/LSP architecture.
 >
 > **The `.lute` snippets in this file are illustrative prose, not gated fixtures.** No CI job
@@ -484,6 +487,82 @@ specified normatively in [`proposals/plugin-system/0.0.1.md`](proposals/plugin-s
 with the human-facing overview in [`plugin-system.md`](plugin-system.md). The compiler/AST/validation/LSP machinery
 in this document consumes the resolved **capability snapshot** that spec produces; the named
 lowering hooks a plugin may target live in *Compiler — stateful resolution* above.
+
+## Checked streaming continuation compiler (0.17.0)
+
+The continuation surface has two layers with different promises:
+
+```text
+append-only UTF-8 body chunks
+        │
+        ▼
+lute-syntax continuation framer ──> complete top-level body units
+        │
+        ▼
+lute-compile ContinuationCompiler ──> check + normalize + expand + lower
+        │                               accumulated source per complete unit
+        ▼
+full ordinary Artifact snapshots ──> host-owned runtime cursor and state
+```
+
+[`lute-syntax/src/incremental.rs`](../crates/lute-syntax/src/incremental.rs) owns the
+lower-level `lute_syntax::incremental::IncrementalContinuationParser`. It preserves exact
+unit source and ranges and exposes local syntax diagnostics. It deliberately fabricates no
+`Document` and performs no static checking, resolution, merge, lowering, addressing, or IR
+assembly. That public parser remains useful for editors and source transports, but it is not
+the runtime-facing feature.
+
+[`lute-compile/src/streaming.rs`](../crates/lute-compile/src/streaming.rs) owns the checked
+service. `ContinuationCompiler::new(CheckInput, IdentityTemplates)` resolves nothing mutable:
+the caller supplies a complete scene prefix and its already resolved capability, provider,
+schema, component, defaults, and identity inputs. Construction checks and compiles that prefix,
+requires at least one shot, freezes it, and establishes the initial ordinary artifact. All
+continuation text is admitted only as body source appended to the final existing shot.
+
+`push(&str)` feeds the syntax framer. Every complete top-level unit is appended in source order
+and compiled through the **existing whole-document pipeline**. This is the central correctness
+rule: continuation compilation does not grow a second checker, normalization pass, component
+expander, stage reducer, lowerer, or address allocator. It buys first-output latency by
+recompiling cumulative source per complete unit; it is not an asymptotically incremental
+compiler, and one unfinished outer block still waits for its close.
+
+Each accepted unit produces:
+
+```text
+CompilationUpdate {
+  sequence,       // 1, 2, … per accepted body unit
+  append_from,    // previous snapshot's command count
+  artifact,       // complete ordinary immutable Artifact
+}
+```
+
+Before publication, the service compares the candidate with its latest accepted artifact.
+Only typed address and typed control-target strings are canonicalized to unpadded numeric
+`(shot, index)` pairs. This permits uniform address padding to widen as the command count grows.
+All previous commands must otherwise be semantically identical and existing state-table entries
+must be unchanged. Any retroactive line-identity, stage-injection, payload, control-flow, or
+state-default change is `E-STREAM-PREFIX-CHANGED`; emitted IR is never amended.
+
+The snapshot consumer replaces the immutable program image and rebuilds address lookup on every
+update, while retaining its numeric command cursor, live state, facts, selected control-flow
+stack, and host effect/idempotency records. It initializes only newly declared state slots and
+must not reapply existing defaults or seed facts. `append_from` describes the new array region;
+it is not a runtime PC and does not bypass the ordinary choice/match/hub/jump dispatcher.
+Reaching the temporary frontier means wait, not complete. Successful `finish` marks transport
+completion; an authored `::end` remains the distinct ordinary runtime terminator.
+
+The CLI exposes the same lifetime as newline-delimited JSON:
+`lute compile-stream <scene.lute> [--project DIR] [--providers DIR]`. It resolves the template
+once, prints and flushes `start`, each `update`, then either `finish` or `error`. Invalid UTF-8
+is rejected before the Rust `&str` API, and broken stdout stops further stdin consumption.
+The service performs no model call, remote operation, plugin bridge, publication, persistence,
+or host side effect and does not claim to be a secure capability sandbox.
+
+Normative contract:
+[`scenario-dsl/0.17.0`](proposals/scenario-dsl/0.17.0.md). Implementation design:
+[`superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md`](superpowers/specs/2026-09-14-streaming-continuation-compiler-design.md).
+User and runtime guide:
+[`runtime/incremental-continuations.md`](runtime/incremental-continuations.md).
 
 ## Relational facts & Datalog derivation (0.3.0)
 
@@ -959,6 +1038,81 @@ matches), `E-COMPONENT-ARG`/`-UNDECLARED`/`-CYCLE`/`-DUP`/`-PARSE`, `E-UNKNOWN-A
 **Worked example:** [`examples/gated-line.lute`](examples/gated-line.lute) (§7.2) and
 [`examples/choice-persist.lute`](examples/choice-persist.lute) (the spec §4.6 trace walkthrough
 — `lute trace docs/examples/choice-persist.lute --choose sofaHelp=help`).
+
+## Capability permission architecture (0.17.0)
+
+Capability permissions are a project/host policy layer over the existing
+capability snapshot, not a new capability source. The implementation preserves
+the current resolver as the one authority for plugins, directives, state shapes,
+bridges, and vocabulary, then attaches a conjunctive `Permissions` value:
+
+```text
+lute.project.yaml
+  root permissions
+  global + ancestor + selected-profile permissions
+                    |
+                    v
+        resolve_document_snapshot
+                    |
+                    v
+ CapabilitySnapshot { capabilities, permissions }
+                    |
+          +---------+----------+
+          |                    |
+          v                    v
+ shared permission pass   context / LSP filtering
+          |
+          v
+ compiler recheck -> lowering -> Artifact
+```
+
+`lute-manifest` owns parsing, validation, inheritance, normalization, and
+matching. Each `PermissionSet` retains optional fields for directives, state
+writes, fact writes, bridges, rewards, and quests; `Permissions` retains a
+vector of those sets. A missing field is unrestricted, an explicit empty set is
+deny-all, and every applicable layer is ANDed. Keeping layers rather than
+intersecting pattern strings is necessary because exact paths, `*`, and
+descendant-only `foo.*` patterns do not have a sound general textual
+intersection.
+
+The resolved permissions live inside `CapabilitySnapshot`. Unrestricted layers
+normalize away, which leaves all policy-free snapshot serialization and
+`capabilityVersion` hashes byte-identical. A restrictive layer participates in
+the same deterministic hash so context caches cannot conflate two authoring
+surfaces. No artifact field is added: the existing `capabilityVersion` is
+restamped. The hash remains compatibility metadata, never an authorization
+token.
+
+`lute-check` owns one complete, reusable permission walk. It runs after ordinary
+resolution and before consumers trust the document. The walk covers specialized
+set/assert/retract/use AST nodes, explicit and implicit writes, state defaults
+and seed facts, plugin writes/bridges, quests/rewards, nested constructs, and
+transitive invoked components. It checks authored source even in unreachable
+branches. An invoked component inherits the caller's policy; its own
+frontmatter cannot grant authority. Unrestricted snapshots take a fast path.
+
+`lute-compile::compile_with_check` invokes the same cheap pass again before
+lowering. This closes the public seam where a caller could otherwise supply a
+successful `CheckResult` produced under another policy, without duplicating the
+project-reconciled definite-assignment gate. The continuation compiler inherits
+that recheck for its fixed template and every cumulative body candidate.
+
+The CLI's trusted `--permission-profile NAME` uses the manifest resolver to
+construct an additional project/global/ancestor/name ceiling, then calls
+`CapabilitySnapshot::restrict_permissions`; it does not select that profile's
+plugins or rewrite source. The same resolved snapshot flows to check, compile,
+`compile --all`, compile-stream, context, and the LSP. `context` and completion
+filter what they advertise, while checker diagnostics and the compiler gate
+remain enforcement. There is deliberately no second editor authorization
+algorithm.
+
+This architecture is compile-time admission control only. It makes no AI call,
+ships no product plugin, provides no runtime/process/network sandbox, and
+implements no reward settlement. The engine and host still authorize and
+execute every real bridge, persistence, and reward effect. Normative details:
+[`proposals/plugin-system/0.0.6.md`](proposals/plugin-system/0.0.6.md);
+runtime/security guidance:
+[`runtime/capability-permissions.md`](runtime/capability-permissions.md).
 
 ## Roadmap / open items
 

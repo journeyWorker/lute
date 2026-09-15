@@ -1,0 +1,12 @@
+---
+kind: quest
+title: The Lantern Ledger
+profile: authored
+state:
+  run.lanternReturned: { type: bool, default: false }
+---
+
+<quest id="lanternLedger" title="Return the borrowed lantern" start="true">
+  <reward kind="TOKEN" amount="1"/>
+  <objective id="returnLantern" title="Put the lantern back" done="run.lanternReturned"/>
+</quest>

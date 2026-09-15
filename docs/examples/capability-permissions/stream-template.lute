@@ -1,0 +1,11 @@
+---
+kind: scene
+id: permission-stream
+profile: authored
+state:
+  # No default: the host may supply the value as read-only context.
+  scene.score: { type: number }
+---
+
+## Live
+@narrator: The score is ready for the host.

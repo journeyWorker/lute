@@ -62,7 +62,7 @@ use lute_core_span::{Diagnostic, Fixit, Layer, Severity, Span, TextEdit, TextInd
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::{SlotDecl, StateShape};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
-use lute_manifest::types::{type_accepts, Literal, PathSegment, Type};
+use lute_manifest::types::{type_accepts, Literal, Type};
 use lute_syntax::ast::{
     Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document, Interp,
     InterpKind, Node,
@@ -695,6 +695,8 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // 3–4b. Typed frontmatter + folded schema + merged def tables (one SoT:
     // the public fold_env accessor the compiler also consumes).
     let (folded, fold_diags, state_merge_diags) = fold_env(&doc, input);
+    let permission_diags =
+        crate::permissions::check_document_permissions(&doc, &folded.typed, input);
     let env = &folded.env;
     let base_ctx = Ctx {
         env,
@@ -944,6 +946,7 @@ pub fn check(input: &CheckInput) -> CheckResult {
     diags.extend(parse_diags);
     diags.extend(cel_diags);
     diags.extend(fold_diags);
+    diags.extend(permission_diags);
     // Rule-guard CEL firewall (dsl 0.3.0 §7.2/§7.3, D7, 0.3.0 T8): holds()/
     // count()/validAt()/now() inside a rule-body guard, plus the ordinary
     // profile/path-declaredness checks — after `base_ctx` (needs `ctx.env`)
@@ -3344,17 +3347,7 @@ fn expand_directive_slots(
 /// a use site: literal segments verbatim; `fromAttr` segments -> that attr's
 /// value. Returns `None` if any `fromAttr` attr is absent or not a plain string.
 fn resolve_slot_path(slot: &SlotDecl, dir: &Directive) -> Option<String> {
-    let mut parts = vec![slot.scope.clone()];
-    for seg in &slot.path {
-        match seg {
-            PathSegment::Literal(s) => parts.push(s.clone()),
-            PathSegment::FromAttr { from_attr } => {
-                let val = attr_str(dir, &from_attr.name)?;
-                parts.push(val);
-            }
-        }
-    }
-    Some(parts.join("."))
+    crate::permissions::resolve_path(&slot.scope, &slot.path, &dir.attrs)
 }
 
 /// The string value of a directive attribute — a plain string literal only; a
@@ -3971,22 +3964,16 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.16.0` is the declarative-rewards release — `<reward/>` becomes a
-    /// direct-child owner field on `<quest>`/`<objective>`, lowered to
-    /// `QuestCmd.rewards`/`ObjectiveEntry.rewards` pure data and surfaced
-    /// by the reference runner and `lute trace` as deterministic
-    /// `grant` transcript events at each fresh transition (spec §3 D-D).
-    /// A plugin `rewardKinds:` export publishes the vocabulary; when no
-    /// vocabulary is declared the checker admits any kind name so
-    /// pre-`rewardKinds` scenarios still compile clean. The schema is
-    /// renamed `schemas/lute-ir-0.15.schema.json` -> `lute-ir-0.16.schema.json`
-    /// (per-release rename rule). The gated MAJOR does not move under
-    /// `0.13.0`'s MAJOR-only runtime contract, so a `0.15` engine parses
-    /// `0.16.0` artifacts unchanged and simply does not ask for the added
-    /// `rewards` arrays.
+    /// `0.17.0` ships the checked streaming continuation compiler and generic
+    /// capability permissions. Neither changes the ordinary source grammar or
+    /// artifact shape: streaming units use the existing whole-document
+    /// checker/compiler, and permission policy narrows the capabilities a
+    /// resolved document may use before lowering. Language and IR therefore
+    /// move as alignment restamps, and the current schema is
+    /// `schemas/lute-ir-0.17.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_16_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.16.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.16.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_17_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.17.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.17.0");
     }
 }

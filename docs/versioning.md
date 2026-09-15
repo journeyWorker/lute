@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.16.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.16.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.16.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.16.schema.json`](../schemas/lute-ir-0.16.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.17.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.17.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.17.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.17.schema.json`](../schemas/lute-ir-0.17.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.16.schema.json`](../schemas/lute-ir-0.16.schema.json)
+published as [`schemas/lute-ir-0.17.schema.json`](../schemas/lute-ir-0.17.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -285,9 +285,38 @@ snapshot section); the tree-sitter grammar gains the `reward`
 production (a grammar regeneration, not a capability restamp). The
 schema file renames per release line
 (`lute-ir-0.15.schema.json` →
-[`lute-ir-0.16.schema.json`](../schemas/lute-ir-0.16.schema.json)) —
+`lute-ir-0.16.schema.json`) —
 its content gains the `rewardEntry` definition and the two `rewards`
 arrays.
+
+**`0.17.0` aligns all three axes at `0.17.0`, and the toolchain earns it;
+language and IR are alignment restamps.** The toolchain gains two related
+author-time services. The checked continuation compiler accepts append-only
+ordinary shot-body text against a frozen, checked scene template and emits
+complete ordinary `Artifact` snapshots after each accepted unit; the
+`compile-stream` CLI exposes that lifetime as flushed NDJSON
+([`proposals/scenario-dsl/0.17.0.md`](proposals/scenario-dsl/0.17.0.md);
+[`runtime/incremental-continuations.md`](runtime/incremental-continuations.md)).
+Generic capability permissions let trusted project and host policy narrow
+directives, scalar-state writes, fact writes, bridge operations, declarative
+rewards, and quests; the layers compose conjunctively and the compiler rechecks
+the effective ceiling before lowering
+([`proposals/plugin-system/0.0.6.md`](proposals/plugin-system/0.0.6.md);
+[`runtime/capability-permissions.md`](runtime/capability-permissions.md)).
+
+Neither feature changes the ordinary source grammar or static semantics, and
+neither changes the artifact shape. Continuation units pass through the
+existing whole-document checker/compiler and emit ordinary artifacts;
+permission policy only rejects capabilities that the already-resolved document
+would otherwise use. Language `0.17.0` is therefore byte-for-byte `0.16.0`
+grammar and semantics, and IR `0.17.0` adds, removes, renames, moves, and
+retypes no field or command. The schema file still renames per release line
+(`lute-ir-0.16.schema.json` →
+[`lute-ir-0.17.schema.json`](../schemas/lute-ir-0.17.schema.json)); only `$id`
+and title are restamped. Under the MAJOR-only runtime gate, a consumer needs no
+schema migration. A restrictive effective permission policy participates in
+`capabilityVersion`; an unrestricted project preserves its prior hash
+byte-for-byte.
 
 ## Which bump when
 

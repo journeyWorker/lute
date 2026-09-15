@@ -1,27 +1,35 @@
 ---
 title: AI harness guide
-description: Wiring Lute into an AI authoring pipeline — lute context as prompt context, the lute check --json feedback loop with --deny promotion, the exit-code contract, the capability-resolution errors that bypass JSON, the diagnostics a generator actually trips, and the proof-vs-review verification boundary.
+description: Wiring Lute into an AI authoring pipeline — trusted permission-profile ceilings, filtered lute context, the lute check --json feedback loop, exit codes, diagnostics, and the proof-vs-review boundary.
 ---
 
-Lute is built to be driven by a model, not just a person. An AI harness reads exit codes and JSON, never prose, so the whole authoring surface and every verification gap is exposed on the tool surface. A working loop is: **context in → generate → check → promote → tag**.
+Lute can be driven by a model or any other authoring tool, but the tool never becomes an authority. A harness reads exit codes and JSON, never prose, while the host independently selects the project and [capability-permission ceiling](/tooling/capability-permissions/). A working loop is: **trusted context in → generate → check under the same ceiling → promote → tag**. Lute itself makes no AI or remote service call.
 
 ## Prompt context: `lute context --json`
 
 Seed the model from the project's *authoring surface*, never from guesswork:
 
 ```sh
-lute context scene.lute --json --project .
+lute context scene.lute --json --project . \
+  --permission-profile generated
 ```
 
-It emits the project-resolved directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, imported components, and a `capabilityVersion`. It is a capability **query**, not validation: it emits regardless of the document's own diagnostics (exit `0`), and — the key property — **works on an empty file**, because the surface comes from the resolved project and plugins, not the document body. Use `capabilityVersion` as a prompt-cache key: the vocabulary only changes when it does.
+It emits the project-resolved directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, imported components, effective permission layers, and a `capabilityVersion`. In JSON, `permissions` is `{ "layers": [...] }`, `bridges` contains allowed bridge objects, `rewardKinds` is the allowed name-keyed object, and `questsAllowed` is a boolean; `directives` also excludes entries blocked by directive or bridge policy. Read-only external state remains visible. It is a capability **query**, not validation: it emits regardless of the document's own diagnostics (exit `0`), and — the key property — **works on an empty file**, because the surface comes from the resolved project and plugins, not the document body. Use `capabilityVersion` as a prompt-cache key: restrictive effective permissions change it, while policy-free projects retain their prior hashes byte-for-byte.
 
 ## Feedback loop: `lute check --json`
 
 After each generation, check and feed the serialized diagnostics back:
 
 ```sh
-lute check scene.lute --json --project .
+lute check scene.lute --json --project . \
+  --permission-profile generated
 ```
+
+Use the **same trusted** `--permission-profile` on context, check, compile, and
+compile-stream. The name is resolved from host/project configuration; never let
+generated source choose it. A source-authored `profile: authored` cannot widen
+the additional host ceiling. Denied source is a non-suppressible
+`E-PERMISSION-*` error at its authored span.
 
 A pipeline judges by exit code. To make a warning block the loop, promote it with the rustc/clippy-style flags (0.6.1 §5), also on `check-project`:
 
@@ -31,9 +39,26 @@ lute check scene.lute --json --deny W-UNPROVEN-RELATIONAL --deny-warnings
 
 `--deny <CODE>` (repeatable) treats exactly that code as an error for the verdict and exit code; `--deny-warnings` promotes every warning. A promoted diagnostic reports severity `error` and carries `"denied": true` in JSON, distinguishing it from a native error. An unknown code is a usage error (exit `2`). Errors are never demotable.
 
+For an append-only generated continuation, do not invent a model-specific JSON
+grammar and do not treat parser framing as compilation. Give
+[`lute compile-stream`](/tooling/continuation-compiler/) a host-owned, checked
+scene template and stream ordinary final-shot Lute body text on stdin:
+
+```sh
+lute compile-stream scene.lute --project . \
+  --permission-profile generated
+```
+
+It flushes a full checked artifact snapshot for every accepted complete unit.
+Project, capability, and permission inputs are frozen for the stream; the same
+ceiling checks the template and every cumulative body candidate. A forbidden
+unit produces a terminal `error` record before denied IR is emitted. The host
+still owns trust, runtime authorization, effects, persistence, and output
+idempotency; permissions are not a runtime sandbox.
+
 ## Capability-resolution errors gate the exit code
 
-Some errors describe the **project**, not a span in a document: a plugin option that does not exist or fails its declared type, an `identity:` template naming an unknown token, a profile activating a plugin that is not installed. These print on the `lute:` channel — stderr, `lute: <CODE>: <message>` — and are **not** in the `--json` diagnostic list, because they have no document position to attach to.
+Some errors describe the **project**, not a span in a document: a plugin option that does not exist or fails its declared type, an `identity:` template naming an unknown token, a profile activating a plugin that is not installed, a malformed permission object, or a missing `--permission-profile`. These print on the `lute:` channel — stderr, `lute: <CODE>: <message>` — and are **not** in the `--json` diagnostic list, because they have no document position to attach to. Permission configuration errors never fall back to unrestricted behavior.
 
 Since 0.8.0 they set the exit code. Previously they printed and the build passed, so a typo'd plugin option shipped silently:
 
@@ -45,11 +70,18 @@ $ echo $?
 1
 ```
 
-Verified on `check`, `check-project`, `compile` (including `--all`), `context`, and `trace`. The one deliberate exemption is the forced-single-root reconciliation scan behind `compile --project`: a sibling document belonging to a nested subproject legitimately mis-resolves under a forced root, and that is not the target document's fault.
+The ordinary capability-resolution behavior is verified on `check`,
+`check-project`, `compile` (including `--all`), `context`, and `trace`; the
+trusted `--permission-profile` option is intentionally narrower and exists on
+`check`, `compile` (including `--all`), `compile-stream`, and `context`. The one
+deliberate exemption in ordinary project reconciliation is the
+forced-single-root scan behind `compile --project`: a sibling document belonging
+to a nested subproject legitimately mis-resolves under a forced root, and that
+is not the target document's fault.
 
 **The harness consequence is the important part.** Exit `1` with an **empty stdout** is now a reachable state under `--json`, and it means a project-level error. A loop that parses stdout and treats "no diagnostics" as "clean" will report success on a broken project. Branch on the exit code first, parse JSON second, and surface stderr when the two disagree.
 
-The codes on this channel: `E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`, `E-PLUGIN-MISSING-ACTIVE`, `E-IDENTITY-TEMPLATE`, and the plugin load/assembly family (`E-PLUGIN-MANIFEST`, `E-PLUGIN-PARSE`, `E-PLUGIN-DUP-ID`, …).
+Plugin resolution codes on this channel include `E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`, `E-PLUGIN-MISSING-ACTIVE`, `E-IDENTITY-TEMPLATE`, and the plugin load/assembly family (`E-PLUGIN-MANIFEST`, `E-PLUGIN-PARSE`, `E-PLUGIN-DUP-ID`, …). Permission loader/profile lookup errors use the same project-resolution channel and explicitly identify their permission context.
 
 ## Exit-code contract
 
@@ -57,6 +89,7 @@ The codes on this channel: `E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`, `E
 |---|---|---|---|---|
 | `check` / `check-project` | clean | error present | I/O | — |
 | `compile` (incl. `--all`) | success | failed gate | I/O / serialization | — |
+| `compile-stream` | successful EOF finalization | syntax / semantic / service rejection | usage / I/O / invalid UTF-8 | — |
 | `trace` | complete | refused | I/O | incomplete |
 | `test` | every test passed | a test failed | I/O | — |
 | `loc import` | bundle written | `E-LOCALE-BUNDLE` | I/O | — |
@@ -64,6 +97,25 @@ The codes on this channel: `E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`, `E
 For `trace`, distinguish the two failure modes: **1 = refused** (check errors or invalid mocks — fix the document, then retry) versus **3 = incomplete** (an `unknown` guard halted the walk — supply more mock seeds, then retry). They demand different retry strategies.
 
 `compile --all` is all-or-nothing: exit **1** means nothing was written, so a partially-updated output directory is never a state the harness has to reason about.
+
+### Permission denials
+
+These errors are native, non-suppressible failures. Do not retry with a wider
+source profile; either change the authored operation or have a trusted host
+change its policy:
+
+| Code | Denied source |
+|---|---|
+| `E-PERMISSION-DIRECTIVE` | directive |
+| `E-PERMISSION-STATE` | state write or initialized default |
+| `E-PERMISSION-FACT` | fact write or seed fact |
+| `E-PERMISSION-BRIDGE` | bridge service/operation |
+| `E-PERMISSION-REWARD` | declarative reward |
+| `E-PERMISSION-QUEST` | quest declaration |
+
+They cover nested and unreachable source plus invoked component bodies. Context
+filtering reduces bad generations; the checker and compiler gate remain the
+authority.
 
 ## Diagnostics a generator will meet
 

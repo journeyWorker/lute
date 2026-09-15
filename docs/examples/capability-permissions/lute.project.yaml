@@ -1,0 +1,17 @@
+# Permissions are deliberately absent at the project root: no project-wide
+# category is restricted here.
+defaultProfile: authored
+profiles:
+  authored:
+    plugins: {}
+    # An absent permissions object is unrestricted.
+  restricted:
+    plugins: {}
+    permissions:
+      # `set` itself is admitted, but all authored state writes are denied.
+      directives: [set, end]
+      stateWrites: []
+      factWrites: []
+      bridges: []
+      rewards: false
+      quests: false

@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://lute.dev/schemas/lute.project.json",
+  "title": "Lute project configuration",
+  "description": "Configuration for lute.project.yaml. Permission fields are trusted project/host ceilings and are never source- or plugin-authored.",
+  "type": "object",
+  "required": [
+    "defaultProfile"
+  ],
+  "properties": {
+    "pluginsDir": {
+      "type": "string"
+    },
+    "catalogDir": {
+      "type": "string"
+    },
+    "defaultProfile": {
+      "type": "string"
+    },
+    "permissions": {
+      "$ref": "#/definitions/permissionSet"
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/profile"
+      }
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "lineId": {
+          "type": "string"
+        },
+        "voiceKey": {
+          "type": "string"
+        }
+      }
+    },
+    "defaults": {
+      "type": "object"
+    }
+  },
+  "definitions": {
+    "profile": {
+      "type": "object",
+      "properties": {
+        "extends": {
+          "type": "string"
+        },
+        "plugins": {
+          "type": "object"
+        },
+        "permissions": {
+          "$ref": "#/definitions/permissionSet"
+        }
+      }
+    },
+    "permissionSet": {
+      "description": "One conjunctive permission ceiling. Missing fields are unrestricted; an explicit empty array denies that category. A single * permits every member in an array category.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "directives": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(\\*|[A-Za-z][A-Za-z0-9_-]*)$"
+          }
+        },
+        "stateWrites": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(\\*|[A-Za-z][A-Za-z0-9_]*\\.(?:[A-Za-z][A-Za-z0-9_]*\\.)*\\*|[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+)$"
+          }
+        },
+        "factWrites": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(\\*|[A-Za-z][A-Za-z0-9_]*)$"
+          }
+        },
+        "bridges": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(\\*|[A-Za-z][A-Za-z0-9_-]*/[A-Za-z][A-Za-z0-9_-]*)$"
+          }
+        },
+        "rewards": {
+          "type": "boolean"
+        },
+        "quests": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

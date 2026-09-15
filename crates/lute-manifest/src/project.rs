@@ -17,8 +17,10 @@ use serde::Deserialize;
 
 use crate::core::load_core_snapshot;
 use crate::loader::load_plugins_dir;
+use crate::permissions::{PermissionSet, Permissions};
 use crate::resolve::{
     resolve_activation, validate_activation_options, ActivationMap, Profile, ProfileGraph,
+    ResolveError,
 };
 use crate::snapshot::CapabilitySnapshot;
 use crate::types::Literal;
@@ -28,6 +30,11 @@ use crate::types::Literal;
 #[derive(Clone, Debug)]
 pub struct ProjectConfig {
     pub graph: ProfileGraph,
+    /// Project-wide permission ceiling, applied before every profile layer.
+    pub permissions: PermissionSet,
+    /// Permission ceiling authored on each profile. Kept separate from
+    /// [`Profile`] so the existing public profile API remains compatible.
+    pub profile_permissions: BTreeMap<String, PermissionSet>,
     /// Resolved plugins dir (`project_dir.join(pluginsDir)`; defaults to
     /// `project_dir/plugins/`).
     pub plugins_dir: PathBuf,
@@ -86,6 +93,8 @@ struct RawProject {
     identity: Option<RawIdentity>,
     #[serde(default)]
     defaults: Option<serde_yaml::Mapping>,
+    #[serde(default)]
+    permissions: PermissionSet,
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,6 +105,8 @@ struct RawProfile {
     /// option values. Kept as raw YAML so `true` and a map coexist under one key.
     #[serde(default)]
     plugins: BTreeMap<String, serde_yaml::Value>,
+    #[serde(default)]
+    permissions: PermissionSet,
 }
 
 /// Normalize a single `profiles[..].plugins` entry value into an option map:
@@ -541,12 +552,14 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
         serde_yaml::from_str(&text).map_err(|e| format!("invalid {}: {e}", path.display()))?;
 
     let mut profiles = BTreeMap::new();
+    let mut profile_permissions = BTreeMap::new();
     for (name, rp) in raw.profiles {
         let plugins: ActivationMap = rp
             .plugins
             .iter()
             .map(|(id, value)| (id.clone(), plugin_options(value)))
             .collect();
+        profile_permissions.insert(name.clone(), rp.permissions);
         profiles.insert(
             name,
             Profile {
@@ -567,6 +580,8 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, String>
 
     Ok(Some(ProjectConfig {
         graph,
+        permissions: raw.permissions,
+        profile_permissions,
         plugins_dir,
         catalog_dir,
         identity,
@@ -589,6 +604,32 @@ pub fn project_providers(project: Option<&ProjectConfig>) -> crate::provider::Pr
         Some(p) => crate::provider::ProviderSet::load(&p.catalog_dir),
         None => crate::provider::ProviderSet::default(),
     }
+}
+
+/// Resolve the project ceiling, global profile, ancestor profiles, and
+/// selected profile into a retained conjunctive permission stack.
+///
+/// `global` is applied exactly once even when it appears in the selected
+/// profile's inheritance chain. Missing profiles and inheritance cycles use
+/// the same resolver errors as plugin activation.
+pub fn resolve_permissions(
+    project: &ProjectConfig,
+    selected: &str,
+) -> Result<Permissions, ResolveError> {
+    let mut permissions = Permissions::default();
+    permissions.push(project.permissions.clone());
+    if let Some(global) = project.profile_permissions.get("global") {
+        permissions.push(global.clone());
+    }
+    for name in project.graph.extends_chain(selected)? {
+        if name == "global" {
+            continue;
+        }
+        if let Some(layer) = project.profile_permissions.get(&name) {
+            permissions.push(layer.clone());
+        }
+    }
+    Ok(permissions)
 }
 
 /// The ONE resolution both CLI and LSP call (plugin §11). Given a project (or
@@ -619,6 +660,19 @@ pub fn resolve_document_snapshot(
     // 2. Pick the profile: scene override, else the graph's default.
     let selected = scene_profile.unwrap_or(project.graph.default_profile.as_str());
 
+    // Permission resolution follows the same graph as activation, but remains
+    // independent of plugin activation and source-local plugin additions.
+    let permissions = match resolve_permissions(project, selected) {
+        Ok(permissions) => permissions,
+        Err(e) => {
+            diags.push(ResolveDiag {
+                code: e.code().into(),
+                message: e.to_string(),
+            });
+            return (load_core_snapshot(), diags);
+        }
+    };
+
     // 3. Convert scene-local `plugins:` frontmatter to an ActivationMap.
     let scene_local: ActivationMap = scene_plugins
         .iter()
@@ -633,9 +687,11 @@ pub fn resolve_document_snapshot(
                 code: e.code().into(),
                 message: format!("{e}"),
             });
-            // No conforming activation → fall back to the core-only baseline so
-            // the caller still gets a usable snapshot.
-            return (load_core_snapshot(), diags);
+            // No conforming activation → keep the resolved permission ceiling
+            // on the core-only fallback so ignoring diagnostics cannot widen it.
+            let mut snapshot = load_core_snapshot();
+            snapshot.restrict_permissions(&permissions);
+            return (snapshot, diags);
         }
     };
 
@@ -655,11 +711,12 @@ pub fn resolve_document_snapshot(
     );
 
     // 5. Assemble the merged snapshot; surface assembly errors.
-    let (snapshot, assemble_errs) = crate::assemble::assemble_snapshot(&active, &registry);
+    let (mut snapshot, assemble_errs) = crate::assemble::assemble_snapshot(&active, &registry);
     diags.extend(assemble_errs.into_iter().map(|e| ResolveDiag {
         code: e.code().into(),
         message: e.to_string(),
     }));
+    snapshot.restrict_permissions(&permissions);
 
     (snapshot, diags)
 }

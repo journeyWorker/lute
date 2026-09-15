@@ -1,6 +1,6 @@
 ---
 title: Editors and LSP
-description: Editor support for .lute — installing lute-lsp, wiring the VS Code, Neovim, and Oh My Pi clients, and the language features the server provides.
+description: Editor support for .lute — installing lute-lsp, wiring clients, and sharing project/plugin/capability-permission diagnostics and completions with the CLI checker.
 ---
 
 All editor clients associate `.lute` with the `lute` language and drive the same `lute-lsp` stdio language server, so you get identical language intelligence everywhere. A project root is located by the markers `lute.project.yaml`, then `.git`.
@@ -32,12 +32,19 @@ $ command -v lute-lsp
 
 Once the server is running you get:
 
-- **Diagnostics** — the full checker (project / plugin / `uses` / `extends` / components-aware), pushed as you type.
+- **Diagnostics** — the full checker (project / plugin / `uses` / `extends` / components / [capability-permission](/tooling/capability-permissions/) aware), pushed as you type. Forbidden authored effects use the same `E-PERMISSION-*` codes and spans as the CLI.
 - **Hover** — types and docs for directives, refs, state paths, and attributes.
-- **Completion** — directives, attributes, `@ref`s, state paths, choice ids.
+- **Completion** — directives, attributes, `@ref`s, state paths, choice ids. Directive candidates forbidden by the document's effective project/profile permissions are omitted; a bridge directive is omitted when either its directive name or its `service/operation` is denied.
 - **Go-to-definition / references** — defs, components, schema declarations.
 - **Folding & document symbols** — shots, timelines, branches, matches.
 - **Semantic tokens** — layer-aware highlighting (content / staging / logic).
+
+The LSP resolves the document's project, `global`/ancestor/selected profile
+permissions, and capabilities through the same manifest API as the CLI. It does
+not implement a second authorization algorithm. Editor filtering is guidance,
+not a security boundary: a host accepting source independently pins its trusted
+ceiling with CLI `--permission-profile`, then checks or compiles under that
+ceiling.
 
 ## Highlighting model
 

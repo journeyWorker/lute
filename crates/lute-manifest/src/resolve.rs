@@ -122,7 +122,7 @@ impl std::fmt::Display for ResolveError {
 }
 
 impl ProfileGraph {
-    fn extends_chain(&self, selected: &str) -> Result<Vec<String>, ResolveError> {
+    pub(crate) fn extends_chain(&self, selected: &str) -> Result<Vec<String>, ResolveError> {
         // returns parent-first chain EXCLUDING global, INCLUDING selected last
         let mut chain = Vec::new();
         let mut seen = std::collections::BTreeSet::new();

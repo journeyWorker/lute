@@ -1,13 +1,12 @@
 // tree-sitter-lute/test/json_schema.test.js
 //
-// Structural lint for declaration YAML (data-catalog foundation B1): the two
-// JSON Schemas under `schemas/` must accept every shape the Rust deserializers
-// accept (`crates/lute-manifest/src/{schema.rs,types.rs,entities.rs}`) for
-// project declaration docs (`state:`/`defs:`/`enums:`/`entities:`, the future
-// standalone-`.yaml` form of today's `.schema.lute` frontmatter — see B4) and
-// for the plugin manifest + its export files. This is STRUCTURE-only: CEL
-// validity, path resolution, and domain membership stay in the Lute checker
-// (B3) — never asserted here.
+// Structural lint for declaration YAML (data-catalog foundation B1): the
+// published JSON Schemas under `schemas/` must accept every shape the Rust
+// deserializers accept. This covers project declaration docs
+// (`state:`/`defs:`/`enums:`/`entities:`), plugin manifests and exports, and
+// `lute.project.yaml` configuration. This is STRUCTURE-only: CEL validity,
+// path resolution, and domain membership stay in the Lute checker (B3) —
+// never asserted here.
 import { test, expect, describe } from "bun:test";
 import Ajv from "ajv";
 import { existsSync, readFileSync } from "node:fs";
@@ -16,18 +15,20 @@ import { tmpdir } from "node:os";
 const ROOT = `${import.meta.dir}/../..`;
 const DECL_SCHEMA_PATH = `${ROOT}/schemas/lute.schema.json`;
 const PLUGIN_SCHEMA_PATH = `${ROOT}/schemas/lute.plugin.json`;
+const PROJECT_SCHEMA_PATH = `${ROOT}/schemas/lute.project.json`;
 
-/** Fresh Ajv instance with both schemas registered (lute.plugin.json
- * cross-references lute.schema.json's `type`/`field`/`literal` defs by $id,
- * so both must be loaded before either is compiled). Draft-07 keeps a plain
- * `ajv` import sufficient (no `/dist/2020` submodule needed). */
+/** Fresh Ajv instance with all published authoring schemas registered.
+ * lute.plugin.json cross-references lute.schema.json's definitions. Draft-07
+ * keeps a plain `ajv` import sufficient (no `/dist/2020` submodule needed). */
 function loadAjv() {
   const declSchema = JSON.parse(readFileSync(DECL_SCHEMA_PATH, "utf8"));
   const pluginSchema = JSON.parse(readFileSync(PLUGIN_SCHEMA_PATH, "utf8"));
+  const projectSchema = JSON.parse(readFileSync(PROJECT_SCHEMA_PATH, "utf8"));
   const ajv = new Ajv({ allErrors: true, strict: false });
   ajv.addSchema(declSchema);
   ajv.addSchema(pluginSchema);
-  return { ajv, declSchema, pluginSchema };
+  ajv.addSchema(projectSchema);
+  return { ajv, declSchema, pluginSchema, projectSchema };
 }
 
 function validateAgainst(ajv, schemaId, doc) {
@@ -64,16 +65,66 @@ function scaffoldProject(template) {
   return dir;
 }
 
-// --- both files must be valid JSON Schema of their declared dialect ---
+// --- all files must be valid JSON Schema of their declared dialect ---
 
 describe("shipped schemas are well-formed", () => {
-  test("both files validate against the draft-07 meta-schema they declare", () => {
-    const { ajv, declSchema, pluginSchema } = loadAjv();
-    for (const schema of [declSchema, pluginSchema]) {
+  test("all files validate against the draft-07 meta-schema they declare", () => {
+    const { ajv, declSchema, pluginSchema, projectSchema } = loadAjv();
+    for (const schema of [declSchema, pluginSchema, projectSchema]) {
       expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
       expect(ajv.validateSchema(schema), JSON.stringify(ajv.errors)).toBe(true);
     }
   });
+});
+
+// --- schemas/lute.project.json: lute.project.yaml + permissions ---
+
+describe("lute.project.json — project configuration", () => {
+  test("real generic capability-permissions project validates", () => {
+    const { ajv, projectSchema } = loadAjv();
+    const doc = Bun.YAML.parse(
+      readFileSync(
+        `${ROOT}/docs/examples/capability-permissions/lute.project.yaml`,
+        "utf8",
+      ),
+    );
+    const { ok, errors } = validateAgainst(ajv, projectSchema.$id, doc);
+    expect(ok, JSON.stringify(errors)).toBe(true);
+  });
+
+  test("explicit empty permission arrays validate as deny-all sets", () => {
+    const { ajv, projectSchema } = loadAjv();
+    const doc = Bun.YAML.parse(`
+defaultProfile: restricted
+permissions:
+  bridges: [dialogue/respond]
+profiles:
+  restricted:
+    plugins: {}
+    permissions:
+      directives: []
+      stateWrites: []
+      factWrites: []
+      bridges: []
+      rewards: false
+      quests: false
+`);
+    const { ok, errors } = validateAgainst(ajv, projectSchema.$id, doc);
+    expect(ok, JSON.stringify(errors)).toBe(true);
+  });
+
+  for (const [name, yaml] of [
+    ["unknown field", "defaultProfile: p\npermissions: { directive: [bg] }\n"],
+    ["null set", "defaultProfile: p\npermissions: { directives: null }\n"],
+    ["malformed path", "defaultProfile: p\npermissions: { stateWrites: [scene.*.bad] }\n"],
+    ["malformed bridge", "defaultProfile: p\npermissions: { bridges: [dialogue.respond] }\n"],
+  ]) {
+    test(`rejects ${name}`, () => {
+      const { ajv, projectSchema } = loadAjv();
+      const { ok } = validateAgainst(ajv, projectSchema.$id, Bun.YAML.parse(yaml));
+      expect(ok).toBe(false);
+    });
+  }
 });
 
 // --- schemas/lute.schema.json: state/defs/enums/entities declaration doc ---

@@ -450,7 +450,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         // `expand_document` is deliberately NOT run, because `{{…}}`
         // interpolation is what a translator must see intact.
         let root = crate::project_root_for(path, dir);
-        let Some(built) = crate::build_input(path, None, Some(&root)) else {
+        let Some(built) = crate::build_input(path, None, Some(&root), None) else {
             eprintln!(
                 "lute loc: skipping {} — cannot resolve inputs",
                 path.display()

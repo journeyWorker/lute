@@ -310,7 +310,7 @@ fn compile_project(project_dir: &Path) -> Result<BTreeMap<String, Artifact>, Exi
             );
             return Err(ExitCode::from(2));
         };
-        let Some(built) = crate::build_input(file, None, Some(project_dir)) else {
+        let Some(built) = crate::build_input(file, None, Some(project_dir), None) else {
             return Err(ExitCode::from(2));
         };
         built.report_project_diags();

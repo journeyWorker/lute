@@ -379,7 +379,7 @@ fn run_one_test(
     let lute_path = base.join(&rel);
     let lute_display = lute_path.display().to_string();
 
-    let Some(built) = crate::build_input(&lute_path, providers, project) else {
+    let Some(built) = crate::build_input(&lute_path, providers, project, None) else {
         // build_input already printed the read error.
         return Err(ExitCode::from(2));
     };

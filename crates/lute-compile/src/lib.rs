@@ -24,6 +24,7 @@ pub mod lower;
 pub mod normalize;
 pub mod schedule;
 pub mod stage;
+pub mod streaming;
 
 pub use ir::*;
 
@@ -170,7 +171,19 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// The gated MAJOR does not move under `0.13.0`'s MAJOR-only runtime
 /// contract, so a `0.15` engine parses a `0.16.0` artifact unchanged and
 /// simply does not ask for the added arrays.
-pub const LUTE_IR_VERSION: &str = "0.16.0";
+///
+/// IR `0.17.0` is a PURE RESTAMP of `0.16.0`: the checked streaming
+/// continuation compiler emits complete ordinary [`Artifact`] snapshots
+/// through this same compiler path, and generic capability permissions reject
+/// forbidden authored effects before lowering. Neither feature adds, removes,
+/// renames, moves, or retypes an IR field. `docs/versioning.md`'s alignment
+/// rule moves the IR number with the toolchain and language axes anyway.
+/// `schemas/lute-ir-0.16.schema.json` is renamed to
+/// `schemas/lute-ir-0.17.schema.json` per the release-line rule, with only its
+/// `$id` and title restamped. The MAJOR-only runtime gate does not move, so
+/// consumers have no schema migration beyond accepting the aligned version
+/// stamp.
+pub const LUTE_IR_VERSION: &str = "0.17.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -203,6 +216,14 @@ pub fn compile_with_check(
     // acyclic components, @ref arity, unique choice ids via E-CHOICE-DUP).
     if !result.ok {
         return Err(result.diagnostics);
+    }
+
+    // A caller-supplied CheckResult may have been produced under a different,
+    // less restrictive capability policy. Re-run only the shared permission
+    // pass against this exact input before any normalization or lowering.
+    let permission_diagnostics = lute_check::check_permissions(input);
+    if !permission_diagnostics.is_empty() {
+        return Err(permission_diagnostics);
     }
 
     // Re-derive the parsed, CEL-filled document + the folded environment
@@ -980,15 +1001,14 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.16.0 axis alignment (docs/versioning.md): a release re-aligns
-        // the visible numbers to that release's number. This one is the
-        // declarative-rewards release — the IR earns the move
-        // (`RewardEntry` on `QuestCmd`/`ObjectiveEntry`, both arrays
-        // skip-when-empty so pre-rewards artifacts stay byte-identical)
-        // and the language pins to the same number. The two pins remain
-        // independently tracked (T13); they simply agree on this release.
-        assert_eq!(super::LUTE_IR_VERSION, "0.16.0");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.16.0");
+        // 0.17.0 axis alignment (docs/versioning.md): the checked streaming
+        // continuation compiler emits ordinary artifacts through the existing
+        // pipeline, while capability permissions reject forbidden authored
+        // effects before lowering. Neither feature changes the source grammar
+        // or IR shape, but the alignment rule still moves both independently
+        // tracked pins to the release number.
+        assert_eq!(super::LUTE_IR_VERSION, "0.17.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.17.0");
     }
 
     #[test]
@@ -997,8 +1017,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.16.0");
-        assert_eq!(v["irVersion"], "0.16.0");
+        assert_eq!(v["lute"], "0.17.0");
+        assert_eq!(v["irVersion"], "0.17.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

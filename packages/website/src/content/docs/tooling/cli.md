@@ -1,18 +1,18 @@
 ---
 title: CLI reference
-description: Every lute subcommand — init, new, check, check-project, compile, run, play, trace, test, scenario, loc, context, tag, fix, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
+description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, run, play, trace, test, scenario, loc, context, tag, fix, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
 ---
 
-`lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot (omit for a core-only `lute.core` check).
+`lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot (omit for a core-only `lute.core` check). On the permission-aware authoring commands below, `--permission-profile <NAME>` requires project resolution and applies that trusted profile's [permissions](/tooling/capability-permissions/) as an additional ceiling without activating its plugins or changing the source profile.
 
 ## check
 
 ```console
 $ lute check <file> [--json] [--providers <DIR>] [--project <DIR>]
-              [--deny <CODE>]… [--deny-warnings]
+              [--permission-profile <NAME>] [--deny <CODE>]… [--deny-warnings]
 ```
 
-Statically validate one `.lute` document. Exit **0** clean, **1** when any `Error`-severity diagnostic is present, **2** on an I/O failure. `--json` prints the serialized `CheckResult`; otherwise a human line per diagnostic. `--deny <CODE>` (repeatable, rustc/clippy `-D` precedent, 0.6.1 §5) promotes every diagnostic with exactly that code to an error for the verdict and exit code, and `--deny-warnings` promotes every warning — a pipeline denies `W-UNPROVEN-RELATIONAL` to force human review of relational fact gates, `W-LUTE-VERSION-STALE` to reject a stale `luteVersion` stamp. A promoted diagnostic reports severity `error` with a `"denied": true` marker in `--json`; an unknown code in `--deny` is a usage error (exit **2**), and errors are never demotable.
+Statically validate one `.lute` document. Exit **0** clean, **1** when any `Error`-severity diagnostic is present, **2** on an I/O failure. `--permission-profile <NAME>` applies a trusted additional ceiling; denied authored effects are non-suppressible `E-PERMISSION-*` errors, and a missing project/profile or invalid policy is an explicit resolver error rather than an unrestricted fallback. `--json` prints the serialized `CheckResult`; otherwise a human line per diagnostic. `--deny <CODE>` (repeatable, rustc/clippy `-D` precedent, 0.6.1 §5) promotes every diagnostic with exactly that code to an error for the verdict and exit code, and `--deny-warnings` promotes every warning — a pipeline denies `W-UNPROVEN-RELATIONAL` to force human review of relational fact gates, `W-LUTE-VERSION-STALE` to reject a stale `luteVersion` stamp. A promoted diagnostic reports severity `error` with a `"denied": true` marker in `--json`; an unknown code in `--deny` is a usage error (exit **2**), and errors are never demotable.
 
 ## check-project
 
@@ -26,16 +26,19 @@ Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted or
 
 ```console
 $ lute compile <file> [--json] [--providers <DIR>] [--project <DIR>] [-o <FILE>]
-                      [--locales <FILE>] [--deny <CODE>]… [--deny-warnings]
+                      [--permission-profile <NAME>] [--locales <FILE>]
+                      [--deny <CODE>]… [--deny-warnings]
 $ lute compile --all --project <DIR> -o <DIR> [--providers <DIR>] [--locales <FILE>]
-                      [--json] [--deny <CODE>]… [--deny-warnings]
+                      [--permission-profile <NAME>] [--json]
+                      [--deny <CODE>]… [--deny-warnings]
 ```
 
-Compile a document to its JSON command-record artifact (gated on a clean check). Exit **0** on success, **1** on a failed gate, **2** on I/O or serialization failure. The artifact is always JSON; `-o`/`--out` writes it to a file instead of stdout. With `--project`, the gate is the target's reconciled `check-project` verdict.
+Compile a document to its JSON command-record artifact (gated on a clean check and a compiler-side recheck of the effective permission policy). Exit **0** on success, **1** on a failed gate, **2** on I/O or serialization failure. The artifact is always JSON; `-o`/`--out` writes it to a file instead of stdout. With `--project`, the gate is the target's reconciled `check-project` verdict. A `--permission-profile` ceiling is checked again immediately before lowering, so a check result created under another policy cannot authorize forbidden IR.
+
 
 ### `--all` — project-wide compile and index
 
-`--all` compiles **every** `*.lute` document under `--project <DIR>` into `-o <DIR>`, mirroring the project's own layout (`quests/a.lute` → `<outdir>/quests/a.lute.json`), and writes a `<outdir>/project.index.json`. Under `--all`, `-o` is an output **directory**, not a file; it is created if absent. `*.component.lute` fragments are skipped — a component is inlined into its importers and has no artifact of its own.
+`--all` compiles **every** `*.lute` document under `--project <DIR>` into `-o <DIR>`, mirroring the project's own layout (`quests/a.lute` → `<outdir>/quests/a.lute.json`), and writes a `<outdir>/project.index.json`. Under `--all`, `-o` is an output **directory**, not a file; it is created if absent. `*.component.lute` fragments are skipped — a component is inlined into its importers and has no artifact of its own. When `--permission-profile` is present, its ceiling applies independently to every source-selected profile; it never activates the named profile's plugins.
 
 `--all` requires **both** `--project` and `-o` and takes no `<file>`. Each of those three is checked independently and every violation is reported, then the command exits **2** without reading a document:
 
@@ -71,7 +74,7 @@ The index carries the document table plus the **union** of every artifact's `ent
 
 Every document is compiled in memory and the index is built before anything touches the filesystem. Three things stop the write, each exiting **1** with nothing emitted:
 
-- **A failed gate.** One document's diagnostics print, followed by `N of M document(s) failed; no output written`.
+- **A failed ordinary or permission gate.** One document's diagnostics print, followed by `N of M document(s) failed; no output written`. A host permission denial never leaves a denied artifact or partial index behind.
 - **A `--deny`-promoted warning** (`--deny W-L10N-MISSING`, `--deny-warnings`): `--deny promoted N diagnostic(s); no output written`.
 - **A vocabulary conflict.** Two documents declaring the same entity kind / enum / relation / prerequisite node with **different** signatures, or resolving different capability snapshots — never a silent pick. This is the one class `check-project` cannot see, because it validates each document against its own resolved vocabulary and never unions across independent documents:
 
@@ -83,7 +86,7 @@ lute compile --all: relation `knows` is declared with conflicting signatures by 
 lute compile --all: 1 vocabulary conflict(s); no output written
 ```
 
-An `E-`-severity capability-resolution diagnostic (a bad plugin option, a bad `identity:` template) also exits **1** — see [the AI harness guide](/tooling/ai-harness/#capability-resolution-errors-gate-the-exit-code).
+An `E-`-severity capability-resolution diagnostic (a bad plugin option, identity template, permission shape, or host permission-profile lookup) also exits **1** — see [the AI harness guide](/tooling/ai-harness/#capability-resolution-errors-gate-the-exit-code).
 
 `--all` writes, but never prunes: an artifact whose source document was deleted stays in the output directory. Build into a directory you own and clear.
 
@@ -99,6 +102,34 @@ $ lute compile scenes/opening.lute --project . --locales bundle.json --deny W-L1
 scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `narrator.s01ep01.narrator_0020`
 --deny promoted 1 diagnostic(s); no artifact emitted
 ```
+
+## compile-stream
+
+```console
+$ lute compile-stream <scene.lute> [--project <DIR>] [--providers <DIR>]
+                      [--permission-profile <NAME>]
+```
+
+Resolve and check a complete scene template once, then read append-only ordinary
+Lute shot-body text from stdin. Each complete accepted line/directive/block is
+compiled through the existing cumulative whole-document pipeline and flushed to
+stdout as NDJSON: `start` with the initial full artifact, one `update` with a
+full artifact per unit, then `finish` on successful EOF. A rejection writes an
+`error` record with diagnostics and no `finish`.
+
+`--permission-profile <NAME>` freezes one trusted additional ceiling with the
+project snapshot. It applies to both the fixed template and every appended body
+unit; there is no mid-stream switch. A forbidden unit terminates with its
+`E-PERMISSION-*` diagnostic before any update containing the denied IR.
+
+Exit **0** only after successful EOF finalization, **1** on a
+syntax/semantic/permission/compile/streaming rejection, and **2** on usage, I/O,
+broken stdout, or invalid UTF-8. Authored `::end` is an ordinary runtime command;
+it does not replace EOF or close stdin. The command never modifies the template
+or performs remote/runtime effects. See the
+[streaming continuation compiler guide](/tooling/continuation-compiler/) for
+the record schema, cumulative cost, admitted body surface, permission freezing,
+and consumer cursor/state rules.
 
 ## trace
 
@@ -129,9 +160,10 @@ Read-only reporting over the connectivity layer. With no subcommand, prints the 
 
 ```console
 $ lute context <file> [--json] [--providers <DIR>] [--project <DIR>]
+                      [--permission-profile <NAME>]
 ```
 
-Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, delivery flags, referenced reserved quest paths, and `capabilityVersion`. A capability query, not validation — it emits regardless of document diagnostics. Exit **0** on success, **2** on I/O.
+Emit the project-resolved **authoring surface** an AI or human needs to write valid Lute against this file's project — directives, attrs, enums, asset kinds, providers, state schema, relational vocabulary, delivery flags, referenced reserved quest paths, effective permission layers, and `capabilityVersion`. A capability query, not validation — it emits regardless of document diagnostics. With `--permission-profile`, JSON `permissions` is `{ "layers": [...] }`, `bridges` contains only allowed bridge capability objects, `rewardKinds` is the allowed name-keyed object (empty when rewards are denied), and `questsAllowed` is a boolean. `directives` excludes both directive-denied entries and bridge directives whose `service/operation` is denied. External read-only state remains visible. Text output describes a compile-time authoring restriction and explicitly does not claim runtime sandboxing. Exit **0** on success, **2** on I/O; project/profile resolution errors are surfaced rather than treated as unrestricted.
 
 ## tag
 

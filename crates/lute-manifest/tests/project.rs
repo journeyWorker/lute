@@ -612,3 +612,151 @@ fn defaults_id_is_e_defaults_key() {
         "a rejected default is not applied"
     );
 }
+
+fn permission_project(tag: &str, body: &str) -> std::path::PathBuf {
+    let dir =
+        std::env::temp_dir().join(format!("lute-permissions-{tag}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("lute.project.yaml"), body).unwrap();
+    dir
+}
+
+#[test]
+fn absent_permissions_are_unrestricted_and_preserve_snapshot_hash() {
+    let dir = permission_project(
+        "absent",
+        "defaultProfile: authored\nprofiles:\n  authored:\n    plugins: {}\n",
+    );
+    let project = load_project(&dir).unwrap().unwrap();
+    assert_eq!(project.permissions, Default::default());
+    assert_eq!(
+        project.profile_permissions["authored"],
+        Default::default()
+    );
+    let permissions =
+        lute_manifest::project::resolve_permissions(&project, "authored").unwrap();
+    assert!(permissions.is_unrestricted());
+
+    let baseline = lute_manifest::core::load_core_snapshot();
+    let (resolved, diags) = resolve_document_snapshot(Some(&project), None, &BTreeMap::new());
+    assert!(diags.is_empty(), "{diags:?}");
+    assert_eq!(resolved.version, baseline.version);
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn root_global_parent_and_selected_permissions_are_conjunctive() {
+    let dir = permission_project(
+        "layers",
+        r#"defaultProfile: child
+permissions:
+  directives: [bg, music]
+  stateWrites: [scene.*]
+profiles:
+  global:
+    plugins: {}
+    permissions:
+      directives: [bg]
+      factWrites: []
+  parent:
+    extends: global
+    plugins: {}
+    permissions:
+      stateWrites: [scene.line]
+      rewards: false
+  child:
+    extends: parent
+    plugins: {}
+    permissions:
+      directives: ['*']
+      stateWrites: ['*']
+      rewards: true
+"#,
+    );
+    let project = load_project(&dir).unwrap().unwrap();
+    let permissions = lute_manifest::project::resolve_permissions(&project, "child").unwrap();
+    assert_eq!(permissions.layers.len(), 3, "{permissions:?}");
+    assert!(permissions.allows_directive("bg"));
+    assert!(!permissions.allows_directive("music"));
+    assert!(permissions.allows_state_write("scene.line"));
+    assert!(!permissions.allows_state_write("scene.other"));
+    assert!(!permissions.allows_fact_write("foundClue"));
+    assert!(!permissions.allows_rewards());
+    assert!(permissions.allows_quests());
+
+    let (snapshot, diags) =
+        resolve_document_snapshot(Some(&project), Some("child"), &BTreeMap::new());
+    assert!(diags.is_empty(), "{diags:?}");
+    assert_eq!(snapshot.permissions, permissions);
+    assert_ne!(
+        snapshot.version,
+        lute_manifest::core::load_core_snapshot().version
+    );
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn global_permission_layer_is_applied_exactly_once() {
+    let dir = permission_project(
+        "global-once",
+        "defaultProfile: child\nprofiles:\n  global:\n    plugins: {}\n    permissions:\n      directives: [bg]\n  child:\n    extends: global\n    plugins: {}\n",
+    );
+    let project = load_project(&dir).unwrap().unwrap();
+    let permissions = lute_manifest::project::resolve_permissions(&project, "child").unwrap();
+    assert_eq!(permissions.layers.len(), 1, "{permissions:?}");
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn permission_list_order_and_duplicates_have_deterministic_layers_and_hash() {
+    let a = permission_project(
+        "det-a",
+        "defaultProfile: p\npermissions:\n  directives: [music, bg, music]\n  bridges: [minigame/play, dialogue/respond]\nprofiles:\n  p:\n    plugins: {}\n",
+    );
+    let b = permission_project(
+        "det-b",
+        "defaultProfile: p\npermissions:\n  bridges: [dialogue/respond, minigame/play]\n  directives: [bg, music]\nprofiles:\n  p:\n    plugins: {}\n",
+    );
+    let pa = load_project(&a).unwrap().unwrap();
+    let pb = load_project(&b).unwrap().unwrap();
+    let ra = lute_manifest::project::resolve_permissions(&pa, "p").unwrap();
+    let rb = lute_manifest::project::resolve_permissions(&pb, "p").unwrap();
+    assert_eq!(ra, rb);
+    let (sa, da) = resolve_document_snapshot(Some(&pa), None, &BTreeMap::new());
+    let (sb, db) = resolve_document_snapshot(Some(&pb), None, &BTreeMap::new());
+    assert!(da.is_empty() && db.is_empty(), "{da:?} {db:?}");
+    assert_eq!(sa.version, sb.version);
+    fs::remove_dir_all(&a).ok();
+    fs::remove_dir_all(&b).ok();
+}
+
+#[test]
+fn malformed_unknown_and_null_project_permissions_fail_loading() {
+    for (tag, fragment) in [
+        ("root-null", "permissions: null\n"),
+        ("field-null", "permissions:\n  directives: null\n"),
+        ("unknown", "permissions:\n  directive: [bg]\n"),
+        ("wrong-shape", "permissions:\n  bridges: minigame/play\n"),
+        (
+            "bad-pattern",
+            "permissions:\n  stateWrites: [scene.dialogue.*.value]\n",
+        ),
+    ] {
+        let dir = permission_project(
+            tag,
+            &format!(
+                "defaultProfile: p\nprofiles:\n  p:\n    plugins: {{}}\n{fragment}"
+            ),
+        );
+        assert!(load_project(&dir).is_err(), "must reject {tag}");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    let profile_null = permission_project(
+        "profile-null",
+        "defaultProfile: p\nprofiles:\n  p:\n    plugins: {}\n    permissions: null\n",
+    );
+    assert!(load_project(&profile_null).is_err());
+    fs::remove_dir_all(profile_null).ok();
+}

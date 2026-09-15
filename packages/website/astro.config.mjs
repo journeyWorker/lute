@@ -118,6 +118,16 @@ export default defineConfig({
               translations: { ko: "스케줄과 플레이" },
             },
             { slug: "tooling/runtime-contract" },
+            {
+              slug: "tooling/capability-permissions",
+              label: "Capability permissions",
+              translations: { ko: "기능 권한" },
+            },
+            {
+              slug: "tooling/continuation-compiler",
+              label: "Streaming continuation compiler",
+              translations: { ko: "스트리밍 연속 컴파일러" },
+            },
             { slug: "tooling/tracing" },
             { slug: "tooling/providers-and-catalog" },
             { slug: "tooling/editors" },
