@@ -1,4 +1,5 @@
 pluginsDir: plugins/
+catalogDir: catalog/
 defaultProfile: date-minigame
 profiles:
   global:
