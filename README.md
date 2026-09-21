@@ -111,7 +111,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.17.0"
+luteVersion: "0.17.1"
 profile: date-minigame
 extra:
   arc: main
@@ -185,14 +185,14 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.17.0.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.17.1.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
-  [`0.17.0`](docs/proposals/scenario-dsl/0.17.0.md). Recent tips: `0.14.0` subquests,
+  [`0.17.1`](docs/proposals/scenario-dsl/0.17.1.md). Recent tips: `0.14.0` subquests,
   `0.15.0` authored scene identity (`id:` + the descriptive `extra:` block), `0.16.0`
   declarative rewards, and `0.17.0` checked continuation tooling (ordinary grammar
   unchanged). Being draft means the grammar may still break before 1.0; each breaking
   change ships a `lute fix` migration where the rewrite is mechanical.
-- **IR: 0.17.0.** The compiled artifact is specified by
+- **IR: 0.17.1.** The compiled artifact is specified by
   [`schemas/lute-ir-0.17.schema.json`](schemas/lute-ir-0.17.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only

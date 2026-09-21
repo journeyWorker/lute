@@ -37,6 +37,40 @@ table.
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-09-21
+
+**Neutral public history.**
+
+Toolchain-only alignment restamp. The repository history was rewritten so
+that every example, conformance fixture, snapshot, and design note uses
+neutral, self-contained names: example cast and project identifiers were
+renamed byte-length-preserving (every span, column, and snapshot is
+unchanged), and one internal adoption assessment that was never a normative
+source (`docs/adoption/`) was dropped along with references to it. Neither the
+language nor the IR earns the move; both restamp per
+[`docs/versioning.md`](docs/versioning.md)'s alignment rule.
+
+### Changed
+
+- **Examples and fixtures use neutral identifiers** — `docs/examples/`,
+  `conformance/`, and the compile snapshots carry renamed cast/project ids.
+  Behavior of every command is unchanged; the rename is same-length so the
+  checker's byte spans and the e2e snapshots are byte-for-byte stable.
+- **IR is a pure restamp** — no field added, renamed, moved, or retyped.
+  `schemas/lute-ir-0.17.schema.json` keeps its name and `$id`; a `0.17`
+  engine parses a `0.17.1` artifact unchanged.
+- **Language is a pure restamp** — `LUTE_LANG_VERSION` advances to `0.17.1`
+  so `W-LUTE-VERSION-STALE` fires on a document stamped `0.17.0` (mechanical
+  fix: restamp to `0.17.1`). Spec:
+  [`docs/proposals/scenario-dsl/0.17.1.md`](docs/proposals/scenario-dsl/0.17.1.md).
+- `capabilityVersion` does NOT move this release.
+- Version re-alignment per [`docs/versioning.md`](docs/versioning.md):
+  toolchain, language, and IR all present `0.17.1`.
+
+### Removed
+
+- `docs/adoption/` (internal adoption assessment; not a normative source).
+
 ## [0.17.0] - 2026-09-14
 
 **Checked continuations and least-authority compilation.**

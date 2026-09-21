@@ -3973,7 +3973,7 @@ mod lute_version_tests {
     /// `schemas/lute-ir-0.17.schema.json`.
     #[test]
     fn language_ir_and_toolchain_are_aligned_at_0_17_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.17.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.17.0");
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.17.1");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.17.1");
     }
 }
