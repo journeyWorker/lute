@@ -1438,9 +1438,9 @@ future direction, filed separately
 ## [0.8.0] - 2026-07-27
 
 The **adoption release**. Every item here traces to a concrete gap found while
-assessing Lute against a real, large game catalog — 777 authored scenes /
-73,847 command rows / 583 quests / 3,104 condition rows
-([`an adoption assessment (not included in this repo)`](an adoption assessment (not included in this repo)) §10).
+assessing Lute against a real, large game catalog (hundreds of authored
+scenes, tens of thousands of command rows; the assessment itself is not
+included in this repo).
 Specs: [`scenario-dsl/0.8.0.md`](docs/proposals/scenario-dsl/0.8.0.md) and
 [`plugin-system/0.0.2.md`](docs/proposals/plugin-system/0.0.2.md).
 
