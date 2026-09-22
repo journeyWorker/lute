@@ -1,12 +1,12 @@
 ---
 title: Current specification
-description: The consolidated index of what the Lute language enforces today at version 0.17.1 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
+description: The consolidated index of what the Lute language enforces today at version 0.17.2 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
 ---
 
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.17.1**:
+the consolidated **index** of what is *current* at language version **0.17.2**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -16,7 +16,7 @@ full cumulative history (including the pre-implementation `0.0.1` draft and the
 capability proposals), see the [specification index](/spec/).
 :::
 
-## What is current at 0.17.1
+## What is current at 0.17.2
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -33,7 +33,7 @@ capability proposals), see the [specification index](/spec/).
 | Timeline & property tracks | 0.1.0 | 0.1.0 | [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
 | Connectivity & `after:` sequencing | 0.2.0 (`after:` scene sequencing) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
-| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.10.2 (`meta.plugin` — a plugin-owned, checker-validated frontmatter key now reaches the compiled artifact instead of being discarded at compile time; plugin-system `0.0.4`, additive, no engine gate widens since `0.10.2` shares major.minor `0.10`) | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
+| Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.17.2 (passthrough `kind: "plugin"` records may carry optional resolved owner metadata in `plugin`, while declarative presentation directives continue lowering to stable core records) | [0.17.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.2.md) |
 | Warning-severity diagnostics (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`) | 0.6.1 | 0.10.0 (four new warnings — `W-COMPONENT-UNVERIFIED`, `W-DOMAIN-UNREAD`, `W-EXIT-INERT`, `W-STAGE-ABSENT` — plus `W-PROJECT-INERT`; and `W-INJECT-CONFLICT` is **removed**, the first removal in the series, because equality with the declared default was its only trigger) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
 | Deny promotion (`--deny` / `--deny-warnings`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
 | Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.17.0`'s alignment-only IR restamp costs a consuming engine nothing; the schema file still renames per release line, published today as `lute-ir-0.17.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
@@ -42,6 +42,8 @@ capability proposals), see the [specification index](/spec/).
 | Legacy identity keys (`character` / `season` / `episode` / `episodeId`) | 0.1.0 | 0.15.0 (deprecated in prose only — `W-META-LEGACY` warns per legacy key when a document also authors `id:`; the four keys are no longer required when `id:` is present, removal deferred to a future major) | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
 | Declarative rewards (quest / objective `<reward/>`, range amounts) | 0.16.0 (self-closing `<reward kind= target= amount= when= on=/>` as a direct child of `<quest>` or `<objective>` — pure data on the owning records, `QuestCmd.rewards` / `ObjectiveEntry.rewards`; `amount` admits an integer scalar or the range literal `N..M`, negatives real; two new diagnostics `E-REWARD-ATTR` shape / `E-REWARD-KIND` vocabulary; `reward.when` joins the CEL-slot registry; `lute run` / `play` / `trace` emit deterministic `grant` transcript events at each fresh transition — the engine grants, the reference runtime never rolls a range) | 0.16.0 | [0.16.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md) |
 | Reward-kind plugin vocabulary (`rewardKinds:` manifest export) | 0.16.0 (optional plugin-manifest map of kind id → contract — optional `target` provider domain and optional extra attr schema — that makes `<reward kind=>` / `target=` statically checkable when declared; folded into the capability snapshot as a guarded, sorted section so `capabilityVersion` moves only for projects that install a `rewardKinds:`-declaring plugin; the empty core section hashes byte-identically) | 0.16.0 | [0.16.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md) |
+| Plugin passthrough ownership | 0.17.2 (optional `plugin` owner id on `kind: "plugin"` records; hosts dispatch by `(plugin, tag)`; older artifacts may omit the field) | 0.17.2 | [0.17.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.2.md) |
+
 
 ## Notes on the boundaries
 

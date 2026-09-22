@@ -1,0 +1,36 @@
+directives:
+  - name: backdrop
+    layer: staging
+    attrs:
+      - { name: location, required: true, type: { providerRef: locationId } }
+      - { name: time, required: true, type: { providerRef: timeOfDayId } }
+      - { name: assetId, required: true, type: { providerRef: assetId } }
+    lower:
+      record: background
+      fields:
+        location: { fromAttr: location }
+        time: { fromAttr: time }
+        assetId: { fromAttr: assetId }
+  - name: portrait
+    layer: staging
+    attrs:
+      - { name: character, required: true, type: { providerRef: characterId } }
+      - { name: costume, type: { providerRef: costumeId } }
+      - { name: emotion, type: { enumFromOption: emotion } }
+      - { name: anchor, type: { enumFromOption: anchor } }
+      - { name: action, type: { enumFromOption: action } }
+    lower:
+      record: sprite
+      fields:
+        character: { fromAttr: character }
+        costume: { fromAttr: costume }
+        emotion: { fromAttr: emotion }
+        anchor: { fromAttr: anchor }
+        action: { fromAttr: action }
+  - name: host-panel
+    layer: bridge
+    attrs:
+      - { name: resultKey, required: true, type: string }
+      - { name: assetId, required: true, type: { providerRef: assetId } }
+      - { name: text, type: string }
+    lower: { kind: builtin, name: bridgeHostPanel }

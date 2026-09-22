@@ -1,0 +1,9 @@
+pluginsDir: plugins/
+catalogDir: catalog/
+defaultProfile: game
+profiles:
+  global:
+    plugins: { lute.core: true }
+  game:
+    extends: global
+    plugins: { game.presentation: true }

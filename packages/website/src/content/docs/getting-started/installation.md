@@ -4,7 +4,7 @@ description: Install the Lute CLI with bunx, a global bun install, or from Rust 
 ---
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.17.1**.
+compiles, traces, and inspects them. The current language version is **0.17.2**.
 
 ## Quick start with `bunx`
 
@@ -60,9 +60,9 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.17.1
-language      0.17.1
-IR schema     0.17.1
+$ lute toolchain 0.17.2
+language      0.17.2
+IR schema     0.17.2
 ```
 
 Those are three independent axes, and you will see all three again elsewhere: the **toolchain**
@@ -82,10 +82,10 @@ For scripts and CI, `--json` prints the same three axes as one object:
 
 ```
 $ lute version --json
-{"toolchain":"0.17.1","language":"0.17.1","ir":"0.17.1"}
+{"toolchain":"0.17.2","language":"0.17.2","ir":"0.17.2"}
 ```
 
-(`lute --version` also works and prints just `lute 0.17.1` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.17.2` — the toolchain axis alone.)
 
 ## Next
 

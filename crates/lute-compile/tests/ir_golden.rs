@@ -223,6 +223,7 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
     let other = Command::Other(OtherCmd {
         addr: "001-0100".into(),
         tag: "minigame".into(),
+        plugin: None,
         fields,
         effects: vec![],
         stamp: Stamp::default(),

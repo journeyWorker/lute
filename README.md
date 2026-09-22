@@ -54,9 +54,9 @@ Each document owns one role; read the one that matches what you are doing.
 
 | If you are… | Normative spec (source of truth) | Overview / rationale |
 |---|---|---|
-| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.17.0`](docs/proposals/scenario-dsl/0.17.0.md) (checked continuation tooling; ordinary grammar unchanged). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
+| **writing `.lute` scenarios** | the versioned spec stack: base [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) plus per-release deltas through the current tip [`0.17.2`](docs/proposals/scenario-dsl/0.17.2.md) (additive plugin owner metadata; ordinary grammar unchanged). [`docs/versioning.md`](docs/versioning.md) lists every release and what each axis earned. | the examples below; [`architecture.md`](docs/architecture.md) |
 | **authoring quests** (lifecycle, objectives, subquests, rewards) | [`0.2.0`](docs/proposals/scenario-dsl/0.2.0.md) §6 (quest kind, objectives, lifecycle events) + [`0.14.0`](docs/proposals/scenario-dsl/0.14.0.md) (subquests) + [`0.16.0`](docs/proposals/scenario-dsl/0.16.0.md) (`<reward/>`) | [`runtime/quest-lifecycle.md`](docs/runtime/quest-lifecycle.md) |
-| **writing a plugin** (directives, state, providers, bridge, `stampAttrs`, `rewardKinds`) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution — plus the [`0.0.2`](docs/proposals/plugin-system/0.0.2.md)–[`0.0.6`](docs/proposals/plugin-system/0.0.6.md) deltas | [`plugin-system.md`](docs/plugin-system.md) |
+| **writing a plugin** (directives, state, providers, bridge, `stampAttrs`, `rewardKinds`) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution — plus the [`0.0.2`](docs/proposals/plugin-system/0.0.2.md)–[`0.0.7`](docs/proposals/plugin-system/0.0.7.md) deltas | [`plugin-system.md`](docs/plugin-system.md) |
 | **building an engine** (consuming the artifact) | [`docs/runtime/`](docs/runtime) — execution model, quest lifecycle, state lifecycle, timeline semantics, CEL & facts, bridge protocol — plus the artifact JSON Schema [`schemas/lute-ir-0.17.schema.json`](schemas/lute-ir-0.17.schema.json) and the [`conformance/`](conformance) fixtures | [`architecture.md`](docs/architecture.md) |
 | **building the compiler / checker / LSP** | the proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
 | **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
@@ -111,7 +111,7 @@ the core language):
 ---
 kind: scene
 id: marina.s01ep05
-luteVersion: "0.17.1"
+luteVersion: "0.17.2"
 profile: date-minigame
 extra:
   arc: main
@@ -185,14 +185,14 @@ Lute's status splits along three independent axes, held aligned at one visible n
 release (see [`docs/versioning.md`](docs/versioning.md) for the full policy and per-release
 history):
 
-- **Language: draft, at 0.17.1.** The normative surface is the versioned spec stack — the
+- **Language: draft, at 0.17.2.** The normative surface is the versioned spec stack — the
   [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) base plus every delta up to
-  [`0.17.1`](docs/proposals/scenario-dsl/0.17.1.md). Recent tips: `0.14.0` subquests,
+  [`0.17.2`](docs/proposals/scenario-dsl/0.17.2.md). Recent tips: `0.14.0` subquests,
   `0.15.0` authored scene identity (`id:` + the descriptive `extra:` block), `0.16.0`
   declarative rewards, and `0.17.0` checked continuation tooling (ordinary grammar
   unchanged). Being draft means the grammar may still break before 1.0; each breaking
   change ships a `lute fix` migration where the rewrite is mechanical.
-- **IR: 0.17.1.** The compiled artifact is specified by
+- **IR: 0.17.2.** The compiled artifact is specified by
   [`schemas/lute-ir-0.17.schema.json`](schemas/lute-ir-0.17.schema.json) and the
   [`docs/runtime/`](docs/runtime) contract, with executable
   [`conformance/`](conformance) fixtures. Engines gate on `irVersion` by **MAJOR** only

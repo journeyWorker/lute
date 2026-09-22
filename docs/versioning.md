@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.17.1` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.17.1` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.17.1` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.17.schema.json`](../schemas/lute-ir-0.17.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.17.2` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.17.2` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.17.2` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.17.schema.json`](../schemas/lute-ir-0.17.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -327,6 +327,19 @@ the language and IR numbers move because the rule says they move. Language
 ([`proposals/scenario-dsl/0.17.1.md`](proposals/scenario-dsl/0.17.1.md)); the
 IR carries no shape or content change, and
 `schemas/lute-ir-0.17.schema.json` keeps its name and `$id`.
+
+**`0.17.2` aligns all three axes at `0.17.2`; the IR earns the move.** The
+toolchain adds optional owner metadata to passthrough `kind: "plugin"` records.
+The resolved plugin package id is emitted as `plugin`, alongside the authored
+`tag`, so hosts can dispatch extension records by `(plugin, tag)`. Declarative
+presentation directives continue to lower to stable core record kinds such as
+`background` and `sprite`. The source grammar and static semantics are unchanged
+([`proposals/scenario-dsl/0.17.2.md`](proposals/scenario-dsl/0.17.2.md));
+the plugin contract is normative in
+[`proposals/plugin-system/0.0.7.md`](proposals/plugin-system/0.0.7.md).
+The field is append-only within the `0.17` IR line, and `capabilityVersion`
+does not move because active plugin ids and versions already identify the owner
+set.
 
 ## Which bump when
 

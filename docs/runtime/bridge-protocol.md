@@ -23,6 +23,7 @@ A plugin directive with a bridge lowers to a `Command::Other`, serialized as
   "kind": "plugin",
   "addr": "001-0700",
   "tag": "minigame",
+  "plugin": "arcia.minigame",
   "fields": { "id": "marina_service_01", "kind": "rhythm",
               "resultKey": "service01", "sync": true },
   "effects": [
@@ -34,6 +35,9 @@ A plugin directive with a bridge lowers to a `Command::Other`, serialized as
 ```
 
 - `tag` — the authored plugin directive tag (`OtherCmd.tag`).
+- `plugin` — the resolved owning plugin id (`OtherCmd.plugin`), allowing host
+  dispatch by `(plugin, tag)`. Optional for older artifacts and omitted when
+  ownership is core or unresolved; never taken from an authored attribute.
 - `fields` — the resolved directive attrs, typed via the manifest `AttrDecl`s
   (`OtherCmd.fields`, a string→JSON map). Plugin-owned call options such as
   `sync` live here. The reserved core `wait` attribute belongs to the flattened

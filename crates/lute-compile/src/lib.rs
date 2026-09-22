@@ -183,7 +183,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// `$id` and title restamped. The MAJOR-only runtime gate does not move, so
 /// consumers have no schema migration beyond accepting the aligned version
 /// stamp.
-pub const LUTE_IR_VERSION: &str = "0.17.1";
+pub const LUTE_IR_VERSION: &str = "0.17.2";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1006,9 +1006,8 @@ mod tests {
         // pipeline, while capability permissions reject forbidden authored
         // effects before lowering. Neither feature changes the source grammar
         // or IR shape, but the alignment rule still moves both independently
-        // tracked pins to the release number.
-        assert_eq!(super::LUTE_IR_VERSION, "0.17.1");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.17.1");
+        assert_eq!(super::LUTE_IR_VERSION, "0.17.2");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.17.2");
     }
 
     #[test]
@@ -1017,8 +1016,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.17.1");
-        assert_eq!(v["irVersion"], "0.17.1");
+        assert_eq!(v["lute"], "0.17.2");
+        assert_eq!(v["irVersion"], "0.17.2");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

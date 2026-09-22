@@ -4,6 +4,26 @@ description: How a plugin declares a typed runtime bridge, the directive that in
 ---
 
 A **bridge** is a typed runtime call the engine owns — a minigame, a service, an external beat. The DSL emits only data; the engine executes the bridge; and story control-flow observes **only the declared state** a directive writes, never raw bridge output. This is what keeps the language total: a bridge call is data, not an arbitrary tool call.
+A passthrough plugin directive that has no declarative `lower: { record, fields }` or named core
+builtin lowering emits a generic `kind: "plugin"` record. It may carry an optional `plugin` owner id
+resolved from capability assembly (never authored in the scene), alongside its `tag`, typed `fields`,
+and any declared `effects`:
+
+```json
+{
+  "kind": "plugin",
+  "addr": "001-0100",
+  "plugin": "game.presentation",
+  "tag": "host-panel",
+  "fields": {}
+}
+```
+
+Hosts dispatch these extension records by the pair **`(plugin, tag)`**. Older artifacts may omit
+`plugin`, and it is omitted for core or unresolved ownership. Presentation directives that declare
+`lower: { record: ... }` still lower to their stable core staging record kinds; the owner field is
+specific to passthrough plugin records.
+
 
 ## Declaring the bridge capability
 

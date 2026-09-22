@@ -17,9 +17,11 @@ doc, not a stale feature.)
 > `semantics` vocabulary from twelve flags to ten; the
 > [`0.0.4`](proposals/plugin-system/0.0.4.md) delta folding plugin-owned frontmatter into the
 > compiled artifact's `meta.plugin`; the
-> [`0.0.5`](proposals/plugin-system/0.0.5.md) delta adding advisory `lints` exports; and the
+> [`0.0.5`](proposals/plugin-system/0.0.5.md) delta adding advisory `lints` exports; the
 > [`0.0.6`](proposals/plugin-system/0.0.6.md) delta adding generic project/host
-> capability-permission ceilings in Lute `0.17.0`.
+> capability-permission ceilings in Lute `0.17.0`; and the
+> [`0.0.7`](proposals/plugin-system/0.0.7.md) delta preserving the resolved owner id on
+> passthrough plugin IR records in Lute `0.17.2`.
 > **Those proposals are the source of truth.** This document is the human-facing **overview +
 > rationale** (the *why* and the author's mental model); where they differ, the proposals win.
 
@@ -185,6 +187,21 @@ inline code in a manifest; each hook declares input/output record schemas + unit
 directive still declares attrs/validation/writes/semantics as data. **Adding a hook is a core code
 change, not content registration** (proposal §8.2). This is what stops the manifest from becoming a
 hidden programming language.
+
+Here, **lowering** means translating an authored directive into executable IR.
+Directives mapped to core records keep that record's `kind` (for example,
+`background` or `sprite`). Host directives emitted as `kind: "plugin"` carry
+`plugin`, the owning package id, alongside `tag`, the authored directive name,
+and typed `fields`. For example:
+
+```json
+{"kind":"plugin","addr":"001-0100","plugin":"game.presentation","tag":"host-panel","fields":{}}
+```
+
+Consumers can dispatch these extension records by `(plugin, tag)` without
+inventing new command kinds. The optional `plugin` field is omitted for core
+or unresolved directives; older artifacts may also omit it. Ownership comes
+from resolved plugin assembly, not from an author-supplied attribute.
 
 ## MVP order (don't build a framework first)
 

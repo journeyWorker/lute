@@ -13,12 +13,12 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.17.0.md`](proposals/scenario-dsl/0.17.0.md). The
-> checked-continuation tooling contract ships in that `0.17.0` alignment delta.
+> [`proposals/scenario-dsl/0.17.2.md`](proposals/scenario-dsl/0.17.2.md). The
+> checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
-> through the `0.17.0` capability-permissions contract
-> [`0.0.6`](proposals/plugin-system/0.0.6.md); human overview:
+> through the current owner-metadata contract
+> [`0.0.7`](proposals/plugin-system/0.0.7.md); human overview:
 > [`plugin-system.md`](plugin-system.md). Use the specs as the SoT and this doc
 > for the AST/compiler/LSP architecture.
 >

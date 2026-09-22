@@ -208,11 +208,7 @@ pub fn assemble_snapshot(
     let mut snap = load_core_snapshot();
     let mut errs = Vec::new();
     // Track which plugin owns each merged directive for precise dup errors.
-    let mut dir_owner: BTreeMap<String, String> = snap
-        .directives
-        .keys()
-        .map(|k| (k.clone(), "lute.core".to_string()))
-        .collect();
+    let mut dir_owner = snap.directive_owners.clone();
     // Track which plugin owns each merged event for precise dup errors (no
     // core-embedded events, so this starts empty).
     let mut ev_owner: BTreeMap<String, String> = BTreeMap::new();
@@ -497,6 +493,7 @@ pub fn assemble_snapshot(
         }
         snap.reward_kinds.insert(rk.name.clone(), rk);
     }
+    snap.directive_owners = dir_owner;
 
     snap.version = capability_version(&snap);
     (snap, errs)
