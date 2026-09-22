@@ -8,11 +8,12 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.17.0`, the grammar and semantics the checker
+- **Language** — currently `0.17.2`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
-  [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl/), not here.
+  [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.17.0`) and gated on by consuming engines.
+  artifact (currently `0.17.2`) and gated on by consuming engines.
+
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -36,6 +37,29 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.17.2] - 2026-09-18
+
+**Plugin owner metadata for passthrough IR records.**
+
+### Added
+
+- **Plugin owner identity in `kind: "plugin"` records** — passthrough plugin
+  commands now carry the resolved owning package id in the optional `plugin`
+  field. Hosts can dispatch and diagnose extension records by `(plugin, tag)`.
+- **Typed projection fixture** — generic presentation directives prove that
+  declarative directives lower to core `background`/`sprite` records while
+  host-owned directives remain typed plugin records.
+- **Normative specs** — plugin-system `0.0.7` defines owner metadata and
+  scenario DSL `0.17.2` records the additive IR contract.
+
+### Compatibility
+
+- The source grammar and static semantics are unchanged.
+- `plugin` is append-only on `cmdPlugin`; consumers that ignore unknown fields
+  remain compatible.
+- `capabilityVersion` is unchanged. Plugin ids and versions already identify
+  the active owner set.
 
 ## [0.17.1] - 2026-09-21
 

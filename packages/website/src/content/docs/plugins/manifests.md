@@ -124,6 +124,31 @@ lute: E-LOWER-RECORD-FIELD: directive `::backdrop` lowers to record `background`
 lute: E-LOWER-RECORD-UNKNOWN: directive `::sting` lowers to unknown record `line`; declarative lowering targets the staging kinds (background, music, sfx, vfx, sprite, camera, cut, video)
 ```
 
+### Passthrough ownership and dispatch
+
+When a directive has neither declarative `lower: { record, fields }` nor a named core builtin
+lowering hook, the compiler emits a generic passthrough record:
+
+```json
+{
+  "kind": "plugin",
+  "addr": "001-0100",
+  "plugin": "game.presentation",
+  "tag": "host-panel",
+  "fields": {}
+}
+```
+
+The optional `plugin` field is the resolved owning plugin package id. It is assembly metadata, not
+an authored attribute, so source cannot override it. Hosts route extension operations by
+**`(plugin, tag)`**; older artifacts may omit `plugin`, and core or unresolved passthrough records
+omit it. Plugin ids never become dynamic `kind` values.
+
+This does not change declarative presentation lowering: a directive with
+`lower: { record: background, fields: ... }` still emits a stable core `background` record (and
+likewise for the other permitted staging kinds), not a `kind: "plugin"` record. The owner metadata
+applies only to generic passthrough plugin records.
+
 ## Installation & the profile graph
 
 A project's `lute.project.yaml` declares `pluginsDir`, a `defaultProfile`, and a profile graph. A profile is a root-level capability selector; the reserved `global` profile is inherited by every other, and profiles compose via `extends`:

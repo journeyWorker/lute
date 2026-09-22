@@ -810,6 +810,10 @@ pub enum EffectSource {
 pub struct OtherCmd {
     pub addr: String,
     pub tag: String,
+    /// Owning plugin id for a resolved plugin directive. Core and unknown
+    /// directives omit this field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
     pub fields: BTreeMap<String, serde_json::Value>,
     /// IR A12: resolved plugin state-write bindings from the manifest directive's
     /// `effects.writes`. Absent when the directive declares none (skip-if-empty).

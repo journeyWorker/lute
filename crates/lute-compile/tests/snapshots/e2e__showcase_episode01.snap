@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.17.1",
-  "irVersion": "0.17.1",
+  "lute": "0.17.2",
+  "irVersion": "0.17.2",
   "capabilityVersion": "b7333d56c368f060dd7f6792712f8a73e12ddb6acea156e85b968a07b1e8b315",
   "meta": {
     "id": "marina.s01ep01",
@@ -271,6 +271,7 @@ expression: json
       "kind": "plugin",
       "addr": "003-0100",
       "tag": "serve",
+      "plugin": "showcase.pack",
       "fields": {
         "kind": "rhythm",
         "performer": "marina_star",

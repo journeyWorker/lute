@@ -1,0 +1,6 @@
+providers:
+  - { name: characterId, idShape: Ident, snapshot: game-content }
+  - { name: costumeId, idShape: Ident, snapshot: game-content }
+  - { name: locationId, idShape: Ident, snapshot: game-content }
+  - { name: timeOfDayId, idShape: Ident, snapshot: game-content }
+  - { name: assetId, idShape: Ident, snapshot: game-content }

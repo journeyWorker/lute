@@ -1,0 +1,18 @@
+---
+kind: scene
+character: actor_a
+season: 1
+episode: 1
+title: First choice
+profile: game
+luteVersion: "0.17.2"
+state:
+  run.helped: { type: bool, default: false }
+---
+
+## First choice
+
+::backdrop{location="location_alpha" time="night" assetId="BG.location_alpha.night"}
+::portrait{character="actor_a" costume="ACTOR_DEFAULT" emotion="neutral" anchor="center" action="fade-in-up"}
+@actor_a{emotion="delighted"}: Welcome.
+::host-panel{resultKey="first-choice" assetId="CG.chapter_one.first_choice" text="First choice"}

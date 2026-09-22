@@ -2160,6 +2160,10 @@
           "type": "string",
           "description": "the authored plugin directive tag."
         },
+        "plugin": {
+          "type": "string",
+          "description": "owning plugin id for a resolved plugin directive; absent for core or unknown directives."
+        },
         "fields": {
           "type": "object",
           "description": "resolved directive attrs, typed via the manifest AttrDecls."

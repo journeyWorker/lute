@@ -101,6 +101,11 @@ pub fn load_core_snapshot() -> CapabilitySnapshot {
             .collect(),
         ..Default::default()
     };
+    snap.directive_owners = snap
+        .directives
+        .keys()
+        .map(|name| (name.clone(), "lute.core".to_string()))
+        .collect();
     snap.version = capability_version(&snap);
     snap
 }

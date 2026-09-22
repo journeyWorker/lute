@@ -320,6 +320,10 @@ pub fn lower_directive(
             Command::Other(OtherCmd {
                 addr: String::new(),
                 tag: dir.tag.clone(),
+                plugin: snapshot
+                    .directive_owner(&dir.tag)
+                    .filter(|owner| *owner != "lute.core")
+                    .map(str::to_owned),
                 fields,
                 effects,
                 stamp,

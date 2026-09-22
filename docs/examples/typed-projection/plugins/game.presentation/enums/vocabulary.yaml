@@ -1,0 +1,8 @@
+enums:
+  emotion: [neutral, content, delighted, surprised]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fade-in-up, idle, fade-out-down]
+    exits: [fade-out-down]

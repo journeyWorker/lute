@@ -1,0 +1,8 @@
+assetKinds:
+  - kind: BG
+    sep: "."
+    segments:
+      - { name: prefix, const: BG }
+      - { name: location, type: { providerRef: locationId } }
+      - { name: timeOfDay, type: { providerRef: timeOfDayId } }
+    persistence: scene

@@ -27,6 +27,9 @@ pub struct CapabilitySnapshot {
     /// `E-DOMAIN-DUP` by `assemble` — see `assemble.rs`'s `merge_map`.
     pub domains: BTreeMap<String, Domain>,
     pub directives: BTreeMap<String, DirectiveDecl>, // by ::name
+    /// Owning plugin for each resolved directive. Core directives are owned by
+    /// `lute.core`; plugin directives retain their package id in compiled IR.
+    pub directive_owners: BTreeMap<String, String>,
     pub providers: BTreeMap<String, ProviderDecl>,
     pub state_shapes: BTreeMap<String, StateShape>,
     pub state_templates: BTreeMap<String, StateTemplate>,
@@ -108,6 +111,10 @@ impl CapabilitySnapshot {
 
     pub fn event(&self, name: &str) -> Option<&EventDecl> {
         self.events.get(name)
+    }
+
+    pub fn directive_owner(&self, name: &str) -> Option<&str> {
+        self.directive_owners.get(name).map(String::as_str)
     }
 
     /// Conjoin a trusted host/project ceiling and restamp the capability

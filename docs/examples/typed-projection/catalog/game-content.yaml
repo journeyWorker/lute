@@ -1,0 +1,15 @@
+manifestVersion: 8b20bcf425c6081511143619d043ebe4e4c3b7ead2b4eb0139079f84fe6fe0d3
+providerVersion: '1'
+entries:
+  assetId:
+  - BG.location_alpha.night
+  - CG.chapter_one.first_choice
+  characterId:
+  - actor_a
+  costumeId:
+  - ACTOR_DEFAULT
+  locationId:
+  - location_alpha
+  timeOfDayId:
+  - night
+stale: false
