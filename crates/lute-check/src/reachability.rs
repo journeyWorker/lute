@@ -57,9 +57,10 @@ use crate::decide::{
     analyze_unset_sentinel_slot, decide_slot, DecideCtx, Decided, DollarBinding, UnsetSentinelHit,
 };
 use crate::match_check::{
-    classify_when_literal, infer_domain, is_pattern_literals, literal_is_foreign, param_domain,
-    subject_path, Domain, DomainInfo, DomainValue, WhenLiteral,
+    infer_domain, is_pattern_literals, literal_is_foreign, param_domain, subject_path, Domain,
+    DomainInfo, DomainValue, Interval, NumCoverage,
 };
+use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
 /// `E-ARM-DEAD` (dsl 0.4.0 §5.2): a `<when>` arm or `<choice>` that can
 /// provably never fire — a decided-false guard, or an `is` pattern subsumed
@@ -438,38 +439,41 @@ fn walk_reach(
 }
 
 /// One value the subsumption union `U` (or an arm's residual) tracks: a
-/// concrete finite-domain literal, or the `unset` case — kept distinct from
-/// [`DomainValue`] since `unset` is a membership fact about `maybe_unset`,
-/// never a domain member (mirrors `match_check::ArmCoverage`).
+/// concrete finite-domain literal, a numeric point/range interval (dsl
+/// 0.18.0 §4), or the `unset` case — kept distinct from [`DomainValue`] since
+/// `unset` is a membership fact about `maybe_unset`, never a domain member
+/// (mirrors `match_check::ArmCoverage`).
 enum CoverItem {
     Value(DomainValue),
+    Num(Interval),
     Unset,
 }
 
-/// The domain-valid contribution of one classified `is=` literal (D4):
-/// `None` when `lit` is foreign to `dom` — owned by `E-WHEN-LITERAL-DOMAIN`
+/// The domain-valid contribution of one `is=` literal (D4): `None` when
+/// `lit_raw` is foreign to `dom` — owned by `E-WHEN-LITERAL-DOMAIN`
 /// (`match_check::literal_is_foreign`, the SAME classification that code
-/// uses).
+/// uses) — or a malformed/empty range, owned by `E-WHEN-RANGE` (dsl 0.18.0
+/// §2: such a literal covers nothing).
 fn domain_valid_item(lit_raw: &str, dom: &DomainInfo) -> Option<CoverItem> {
-    let lit = classify_when_literal(lit_raw);
+    let lit = classify_is_literal(lit_raw).ok()?;
     if literal_is_foreign(&lit, dom) {
         return None;
     }
     Some(match lit {
-        WhenLiteral::Bool(b) => CoverItem::Value(DomainValue::Bool(b)),
-        WhenLiteral::Num(n) => CoverItem::Value(DomainValue::Num(n)),
-        WhenLiteral::Str(s) => CoverItem::Value(DomainValue::Str(s)),
-        WhenLiteral::Unset => CoverItem::Unset,
+        IsLiteral::Bool(b) => CoverItem::Value(DomainValue::Bool(b)),
+        IsLiteral::Str(s) => CoverItem::Value(DomainValue::Str(s)),
+        IsLiteral::Unset => CoverItem::Unset,
+        IsLiteral::Num(_) | IsLiteral::Range(_) => CoverItem::Num(Interval::of(&lit)?),
     })
 }
 
 /// D4: true when the arm's `is=` pattern carries AT LEAST ONE literal
-/// foreign to `dom` (`domain_valid_item` returns `None` exactly for a
-/// foreign literal — the SAME `literal_is_foreign` classification
-/// `E-WHEN-LITERAL-DOMAIN` uses, `match_check.rs`). D4 (finding 2): the
-/// foreign-literal code OWNS the root for such an arm — cause 1
-/// (dead-guard) below MUST NOT also report `E-ARM-DEAD` on it, even when
-/// the arm's guard independently decides false.
+/// foreign to `dom` or a malformed/empty range (`domain_valid_item` returns
+/// `None` exactly for those — the SAME classification
+/// `E-WHEN-LITERAL-DOMAIN`/`E-WHEN-RANGE` use, `match_check.rs`). D4
+/// (finding 2): the literal-level code OWNS the root for such an arm —
+/// cause 1 (dead-guard) below MUST NOT also report `E-ARM-DEAD` on it, even
+/// when the arm's guard independently decides false.
 fn arm_has_foreign_literal(pat: &lute_syntax::ast::IsPattern, dom: &DomainInfo) -> bool {
     is_pattern_literals(&pat.raw, pat.span)
         .iter()
@@ -481,10 +485,14 @@ fn arm_has_foreign_literal(pat: &lute_syntax::ast::IsPattern, dom: &DomainInfo) 
 /// UNGUARDED `<when>` arm, each remembering the FIRST arm that contributed
 /// it (span + its own `is` pattern text) for the citation in the
 /// `E-ARM-DEAD` message (the §5.4 worked example's "the earlier unguarded
-/// arm at 2:3 (`gold | silver`)").
+/// arm at 2:3 (`gold | silver`)"). Numeric literals (dsl 0.18.0 §4) fold
+/// into the merged interval union `num`; `num_sources` keeps each
+/// contribution in arm order for the citation.
 #[derive(Default)]
 struct Coverage {
     values: BTreeMap<DomainValue, (Span, String)>,
+    num: NumCoverage,
+    num_sources: Vec<(Interval, (Span, String))>,
     unset: Option<(Span, String)>,
 }
 
@@ -496,6 +504,10 @@ impl Coverage {
                     .entry(v)
                     .or_insert_with(|| (span, pattern.to_string()));
             }
+            CoverItem::Num(iv) => {
+                self.num.add(iv);
+                self.num_sources.push((iv, (span, pattern.to_string())));
+            }
             CoverItem::Unset => {
                 if self.unset.is_none() {
                     self.unset = Some((span, pattern.to_string()));
@@ -504,12 +516,31 @@ impl Coverage {
         }
     }
 
-    /// The (span, pattern) of the FIRST earlier arm that contributed `item`
-    /// to `U`, or `None` when `item` isn't covered yet.
-    fn source(&self, item: &CoverItem) -> Option<&(Span, String)> {
+    /// The (span, pattern) of the earlier arm that contributed `item` to
+    /// `U`, plus whether `item` needed more than one earlier arm, or `None`
+    /// when `item` isn't covered yet. An interval covered by one earlier arm
+    /// alone cites that arm; one covered only by several arms together cites
+    /// the earliest of them and reports `joint`.
+    fn source(&self, item: &CoverItem) -> Option<(&(Span, String), bool)> {
         match item {
-            CoverItem::Value(v) => self.values.get(v),
-            CoverItem::Unset => self.unset.as_ref(),
+            CoverItem::Value(v) => self.values.get(v).map(|s| (s, false)),
+            CoverItem::Num(iv) => {
+                if !self.num.contains(*iv) {
+                    return None;
+                }
+                if let Some((_, cite)) = self
+                    .num_sources
+                    .iter()
+                    .find(|(src, _)| src.lo <= iv.lo && iv.hi <= src.hi)
+                {
+                    return Some((cite, false));
+                }
+                self.num_sources
+                    .iter()
+                    .find(|(src, _)| src.lo <= iv.hi && iv.lo <= src.hi)
+                    .map(|(_, cite)| (cite, true))
+            }
+            CoverItem::Unset => self.unset.as_ref().map(|s| (s, false)),
         }
     }
 }
@@ -600,10 +631,13 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                         // excludes the latter.
                         if !residual.is_empty() {
                             let mut covering: Option<&(Span, String)> = None;
+                            let mut joint = false;
                             let mut fully_covered = true;
                             for item in &residual {
                                 match u.source(item) {
-                                    Some(src) => {
+                                    Some((src, item_joint)) => {
+                                        joint |=
+                                            item_joint || covering.is_some_and(|c| c.0 != src.0);
                                         if covering
                                             .is_none_or(|c| src.0.byte_start < c.0.byte_start)
                                         {
@@ -621,7 +655,12 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
                                     diags.push(diag(
                                         E_ARM_DEAD,
                                         Severity::Error,
-                                        subsumption_message(pat.raw.trim(), *cov_span, cov_pattern),
+                                        subsumption_message(
+                                            pat.raw.trim(),
+                                            *cov_span,
+                                            cov_pattern,
+                                            joint,
+                                        ),
                                         *span,
                                     ));
                                 }
@@ -649,11 +688,17 @@ fn check_match_reach(m: &Match, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec
     }
 
     // `W-OTHERWISE-DEAD` (dsl 0.4.0 §5.2 rule 3): requires a resolved FINITE
-    // domain — an unresolved/infinite subject makes no "whole domain" claim
-    // to violate.
-    if let (Some(span), true, Domain::Finite(vals)) = (otherwise_span, dom.resolved, &dom.domain) {
-        let fully_covered = vals.iter().all(|v| u.values.contains_key(v));
-        if fully_covered && (u.unset.is_some() || !dom.maybe_unset) {
+    // domain, or a `number` subject whose whole real line is covered (dsl
+    // 0.18.0 §4) — an unresolved/infinite subject makes no "whole domain"
+    // claim to violate.
+    let domain_covered = dom.resolved
+        && match &dom.domain {
+            Domain::Finite(vals) => vals.iter().all(|v| u.values.contains_key(v)),
+            Domain::Number => u.num.covers_all(),
+            Domain::Infinite => false,
+        };
+    if let (Some(span), true) = (otherwise_span, domain_covered) {
+        if u.unset.is_some() || !dom.maybe_unset {
             diags.push(diag(
                 W_OTHERWISE_DEAD,
                 Severity::Warning,
@@ -849,8 +894,9 @@ fn check_objective_contradiction(
         // An individually dead `done` is `E-OBJECTIVE-UNSATISFIABLE`'s, and the
         // two codes MUST NOT both fire for one pair. A comparison over a
         // declared path is never `decide`-false today (a `number` path is
-        // `Domain::Infinite`, so R2 leaves it undecided), but stating the
-        // exclusion structurally is cheaper than relying on that staying true.
+        // `Domain::Number`, which R2 leaves undecided like `Infinite`), but
+        // stating the exclusion structurally is cheaper than relying on that
+        // staying true.
         if matches!(
             decide_slot(&o.done.raw, defs, ctx),
             Some(Decided::Bool(false))
@@ -1166,11 +1212,18 @@ fn dead_guard_message(kind: &str, raw: &str) -> String {
 /// Cause-2 message (dsl 0.4.0 §5.2 rule 2), matching the §5.4 worked
 /// example's shape: `` arm can never fire: its pattern `gold` is fully
 /// covered by the earlier unguarded arm at 2:3 (`gold | silver`) —
-/// first-match-wins (dsl 0.4 §5.2) ``.
-fn subsumption_message(pattern: &str, cov_span: Span, cov_pattern: &str) -> String {
+/// first-match-wins (dsl 0.4 §5.2) ``. When no single earlier arm covers
+/// the pattern but several together do (`joint`), the earliest of them is
+/// cited as the first of several.
+fn subsumption_message(pattern: &str, cov_span: Span, cov_pattern: &str, joint: bool) -> String {
+    let by = if joint {
+        "earlier unguarded arms together, the first at"
+    } else {
+        "earlier unguarded arm at"
+    };
     format!(
-        "arm can never fire: its pattern `{pattern}` is fully covered by the earlier \
-         unguarded arm at {}:{} (`{cov_pattern}`) — first-match-wins (dsl 0.4 §5.2)",
+        "arm can never fire: its pattern `{pattern}` is fully covered by the {by} {}:{} \
+         (`{cov_pattern}`) — first-match-wins (dsl 0.4 §5.2)",
         cov_span.line, cov_span.column
     )
 }

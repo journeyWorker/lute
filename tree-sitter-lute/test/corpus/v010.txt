@@ -196,6 +196,62 @@ when is signed-number literal (leading minus, structured when_pattern)
       (line (speaker) (text)))))
 
 ==================
+when is numeric range literals (each shape is one when_literal, dsl 0.18.0)
+==================
+<match on="scene.hp">
+  <when is="2..">
+    @narrator: a
+  </when>
+  <when is="..0">
+    @narrator: b
+  </when>
+  <when is="1..3">
+    @narrator: c
+  </when>
+  <when is="-3..-1">
+    @narrator: d
+  </when>
+  <when is="0.5..1.5">
+    @narrator: e
+  </when>
+</match>
+---
+(source_file
+  (match
+    (cel_attr (cel_key) (cel_string (path)))
+    (when
+      (when_is (when_key) (when_pattern (when_literal)))
+      (line (speaker) (text)))
+    (when
+      (when_is (when_key) (when_pattern (when_literal)))
+      (line (speaker) (text)))
+    (when
+      (when_is (when_key) (when_pattern (when_literal)))
+      (line (speaker) (text)))
+    (when
+      (when_is (when_key) (when_pattern (when_literal)))
+      (line (speaker) (text)))
+    (when
+      (when_is (when_key) (when_pattern (when_literal)))
+      (line (speaker) (text)))))
+
+==================
+when is range and enum literals mixed in one alternation (dsl 0.18.0)
+==================
+<match on="scene.hp">
+  <when is="..0 | gold | 5..">
+    @narrator: mixed
+  </when>
+</match>
+---
+(source_file
+  (match
+    (cel_attr (cel_key) (cel_string (path)))
+    (when
+      (when_is (when_key) (when_pattern (when_literal) (when_literal) (when_literal)))
+      (line (speaker) (text)))))
+
+==================
 choice persist sugar: into= run-path target (0.1.0, renamed from 0.0.1 as=)
 ==================
 <branch id="rest">

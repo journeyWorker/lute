@@ -22,10 +22,10 @@ after: 'visited("haven.s01ep03")'
 @vesna{code="0050" emotion="level"}: The schedule goes in order, and it does not skip.
 
 <match on="run.shedPressure">
-<when test="$ >= 2">
+<when is="2..">
 @vesna{code="0060" emotion="stricken"}: It moved twice while you were in the bank. I was counting.
 </when>
-<when test="$ == 1">
+<when is="1">
 @vesna{code="0070" emotion="frayed"}: It moved once while you were in the bank. I was counting.
 </when>
 <otherwise>
@@ -39,10 +39,10 @@ after: 'visited("haven.s01ep03")'
 <choice id="ownIt" label="Tell her exactly what you did">
 ::set{run.vesnaTrust += 1}
 <match on="run.shedPressure">
-<when test="$ >= 2">
+<when is="2..">
 @vesna{code="0100" emotion="stricken"}: Two pods, two modules. Now you know the exchange rate.
 </when>
-<when test="$ == 1">
+<when is="1">
 @vesna{code="0110" emotion="frayed"}: One. All right. One I can carry.
 </when>
 <otherwise>

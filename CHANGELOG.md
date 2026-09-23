@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.17.2`, the grammar and semantics the checker
+- **Language** — currently `0.18.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.17.2`) and gated on by consuming engines.
+  artifact (currently `0.18.0`) and gated on by consuming engines.
 
 
 Every release holds all three axes **aligned** at one visible number, so a
@@ -37,6 +37,83 @@ See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
 ## [Unreleased]
+
+## [0.18.0] - 2026-09-24
+
+**Numeric thresholds get a pattern form; literal guards move onto `is=`.**
+
+`<when is="…">` has always been the arm form the checker can reason about —
+exhaustiveness, typo detection against the subject's domain, dead-arm
+proofs — while `test="…"` is an opaque CEL guard. But numeric thresholds
+(`$ >= 2`) had no pattern form, and the examples taught `test="$ == 'gold'"`
+for plain literal comparisons, so the most common arm shape paid CEL's
+quoting cost and the checker saw less than it could. `0.18.0` adds inclusive
+numeric ranges to `is=`, gives `number` subjects real interval coverage, and
+ships a warning plus a mechanical `lute fix` that moves literal comparisons
+onto `is=`. Spec:
+[`docs/proposals/scenario-dsl/0.18.0.md`](docs/proposals/scenario-dsl/0.18.0.md).
+
+### Added
+
+- **Language — range literals in `<when is>`** — `N..M`, `N..`, `..M`, both
+  bounds inclusive, signed decimal bounds (`-3..-1`, `0.5..1.5`), freely
+  mixed with other literals (`is="..0 | 10.."`). An alternative containing
+  `..` is always a range, never an enum member. Lowers to the existing
+  `>=` / `<=` / `&&` operators in `MatchArm.expr`.
+- **Language — number-domain coverage** — a subject declared `number`
+  (schema decl or component param) is covered by the union of its arms'
+  intervals over the reals. `E-NONEXHAUSTIVE` names the first uncovered gap
+  (`..0` + `1..` leaves `(0, 1)`); `..0` + `0..` is exhaustive without
+  `<otherwise>`. `E-ARM-DEAD` catches an arm inside earlier unguarded
+  coverage (`1..5` then `2..4`), `W-OTHERWISE-DEAD` a redundant
+  `<otherwise>`. A partially overlapping range does not warn — `3..` then
+  `1..` is the descending-threshold cascade; a covered point literal still
+  warns `W-OVERLAP-ARMS`.
+- **Language — `E-WHEN-RANGE`** — a malformed (`..`, `a..b`, `1...2`,
+  `1..2..3`) or empty (`3..1`) range literal, anchored at the literal.
+- **Language — `W-WHEN-TEST-LITERAL`** — a `<when>` without `is=` whose
+  `test` is exactly `$ == L`, `$ in [L, …]`, `$ >= N`, `$ <= N`, or a
+  `$ >= A && $ <= B` pair (either operand order). The warning carries a
+  `migrate` fixit, so the LSP offers it as a quick fix and **`lute fix`
+  applies it** (`test="$ in ['silver', 'bronze']"` →
+  `is="silver|bronze"`, `test="$ >= 2"` → `is="2.."`). Only literals that
+  round-trip through the `is=` classifier are rewritten — `'1'`, `'true'`,
+  `'a b'` stay guards. The guard form remains valid.
+- **Conformance — `match-range`** — a numeric subject selecting a range arm
+  on its inclusive upper bound.
+- **Editors** — the tree-sitter `when_literal` token lexes every range
+  shape; LSP hover on an `is=` value over a `number` subject names the
+  number domain and the inclusive-range rule.
+
+### Changed
+
+- **Examples and docs use `is=` for literal arms** — every living example
+  and website page was migrated with `lute fix`; the frozen proposal stack
+  and historical plans are untouched. Compiled snapshots of migrated
+  examples show an empty debug `MatchArm.test` for rewritten arms and an
+  `==`/`||` tree where `$ in [...]` used to lower to `in`; behavior is
+  identical.
+- **One `is=` classifier** — the checker, compiler, component folding, and
+  `lute trace` now share `lute_syntax::is_pattern`, so a literal cannot mean
+  one thing statically and another at runtime. Side effect: `lute trace` and
+  component folding no longer match a string subject against a
+  number-looking or `true`/`false` literal, matching what compiled
+  artifacts always did.
+- **`lute fix` output** — reports `applied N fix(es)` / `nothing to fix`
+  instead of the stale `migrated … to 0.2.2`, since it now carries rules
+  from several releases.
+
+### Compatibility
+
+- Every 0.17.x document is a valid 0.18.0 document; no existing literal
+  changes meaning. New diagnostics on existing documents are the
+  `W-WHEN-TEST-LITERAL` warning and, on `number` subjects only, newly
+  provable dead/overlapping point arms (`1` and `1.0` are now one point).
+- IR: no shape change — the version restamps to `0.18.0` per the
+  alignment rule and the schema file renames to
+  `schemas/lute-ir-0.18.schema.json`. Engines gate on MAJOR, so nothing
+  widens.
+- `capabilityVersion` is unchanged; the tree-sitter grammar regenerates.
 
 ## [0.17.2] - 2026-09-18
 

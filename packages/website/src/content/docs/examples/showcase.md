@@ -19,11 +19,11 @@ The episode wires everything together: root `profile` selection with scene-local
 ::serve{kind="rhythm" performer="marina_star" poster="PT.marina_star.0" resultKey="debut" sync="true"}
 
 <match on="scene.serve.debut.rank">
-  <when test="$ == 'gold'">
+  <when is="gold">
     @marina{code="0020" emotion="delighted" variant="1"}: A perfect service!
     ::set{scene.affect.marina += 1}
   </when>
-  <when test="$ in ['silver', 'bronze']">
+  <when is="silver|bronze">
     @marina{code="0030" emotion="content" variant="0"}: Not bad at all, Mr. Fixer.
     ::set{run.affection += 1}
   </when>

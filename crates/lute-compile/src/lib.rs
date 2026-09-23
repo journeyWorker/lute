@@ -183,7 +183,19 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// `$id` and title restamped. The MAJOR-only runtime gate does not move, so
 /// consumers have no schema migration beyond accepting the aligned version
 /// stamp.
-pub const LUTE_IR_VERSION: &str = "0.17.2";
+///
+/// IR `0.18.0` is a PURE RESTAMP of `0.17.2`: the language gains inclusive
+/// numeric range literals in `<when is="…">` (`N..M`, `N..`, `..M`; dsl
+/// 0.18.0 §2), and a range arm lowers to the EXISTING comparison operators —
+/// `>=`, `<=`, `&&` — in [`ir::MatchArm`]'s `expr`, so no field, operator, or
+/// record kind is added, removed, renamed, moved, or retyped. Documents
+/// without ranges compile byte-identically apart from the version strings.
+/// `docs/versioning.md`'s alignment rule moves the IR number with the
+/// language and toolchain axes; `schemas/lute-ir-0.17.schema.json` is renamed
+/// to `schemas/lute-ir-0.18.schema.json` per the release-line rule, with only
+/// its `$id` and title restamped. The MAJOR-only runtime gate does not move,
+/// so no engine gate widens.
+pub const LUTE_IR_VERSION: &str = "0.18.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1001,13 +1013,13 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.17.0 axis alignment (docs/versioning.md): the checked streaming
-        // continuation compiler emits ordinary artifacts through the existing
-        // pipeline, while capability permissions reject forbidden authored
-        // effects before lowering. Neither feature changes the source grammar
-        // or IR shape, but the alignment rule still moves both independently
-        assert_eq!(super::LUTE_IR_VERSION, "0.17.2");
-        assert_eq!(super::LUTE_LANG_VERSION, "0.17.2");
+        // 0.18.0 axis alignment (docs/versioning.md): the language earns the
+        // move (inclusive numeric ranges in `<when is>`, number-domain
+        // coverage, `E-WHEN-RANGE`, `W-WHEN-TEST-LITERAL`), while range arms
+        // lower to the existing `>=`/`<=`/`&&` operators, so the IR shape does
+        // not change — the alignment rule still moves both independently
+        assert_eq!(super::LUTE_IR_VERSION, "0.18.0");
+        assert_eq!(super::LUTE_LANG_VERSION, "0.18.0");
     }
 
     #[test]
@@ -1016,8 +1028,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.17.2");
-        assert_eq!(v["irVersion"], "0.17.2");
+        assert_eq!(v["lute"], "0.18.0");
+        assert_eq!(v["irVersion"], "0.18.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

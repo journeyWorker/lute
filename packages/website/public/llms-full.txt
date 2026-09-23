@@ -155,7 +155,7 @@ mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.17.2**.
+compiles, traces, and inspects them. The current language version is **0.18.0**.
 
 ## Quick start with `bunx`
 
@@ -211,16 +211,16 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.17.2
-language      0.17.2
-IR schema     0.17.2
+lute toolchain 0.18.0
+language      0.18.0
+IR schema     0.18.0
 ```
 
 Those are three independent axes: the **toolchain** version is this CLI, the **language** version
 is the grammar and semantics the checker enforces, and the **IR schema** version is what
 `lute compile` stamps into every artifact as `irVersion`. They mean different things, but a
 release always re-aligns all three visible numbers to that release's number, so all three read
-`0.17.2`. *History:* at `0.10.0` all three moved substantively — the IR shape changed for the
+`0.18.0`. *History:* at `0.10.0` all three moved substantively — the IR shape changed for the
 first time since `0.8.0`, `provenance.reason` becoming `provenance.explanation` — and under the
 then-current major.minor gate an engine on IR `0.9` had to widen to accept `0.10`. The gate is
 MAJOR only since `0.13.0`, so a minor move no longer costs a consumer anything. For scripts and CI,
@@ -228,10 +228,10 @@ MAJOR only since `0.13.0`, so a minor move no longer costs a consumer anything. 
 
 ```
 $ lute version --json
-{"toolchain":"0.17.2","language":"0.17.2","ir":"0.17.2"}
+{"toolchain":"0.18.0","language":"0.18.0","ir":"0.18.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.17.2` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.18.0` — the toolchain axis alone.)
 
 ## Next
 
@@ -245,7 +245,7 @@ an empty file, running `lute` at every step.
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.17.2**.
+**0.18.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -462,7 +462,7 @@ problem, and exactly what to write instead. For this mechanical class of fix, ru
 
 ```
 $ lute fix my-scene.lute
-lute: migrated 1 edit(s) to 0.2.2
+lute: applied 1 fix(es)
 ```
 
 `lute fix` rewrites the file in place (only what needs to change) and re-check comes back clean.
@@ -474,8 +474,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.17.2",
-  "irVersion": "0.17.2",
+  "lute": "0.18.0",
+  "irVersion": "0.18.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "character": "mira",
@@ -1265,7 +1265,7 @@ reacts to a choice made earlier, a fact, or a plugin result.
   <when test="@fond">
     @fixer{mono}: I asked nicely, which I am electing not to examine.
   </when>
-  <when test="$ == 'blunt'">
+  <when is="blunt">
     @fixer{mono}: Straight to the point.
   </when>
   <otherwise>
@@ -1281,10 +1281,14 @@ Arms are evaluated **top to bottom; first match wins.**
 A `<when>` arm matches on a literal pattern (`is`), a CEL guard (`test`), or both:
 
 - **`is`** is a literal pattern: one literal, or a `|`-alternation of literals. Legal literals are
-  enum member ids, `true`/`false`, decimal numbers, and the keyword `unset`. Matching is equality
-  on the subject. `<when is="joyful|playful">`, `<when is="unset">`, `<when is="1 | 2 | 3">`.
+  enum member ids, `true`/`false`, decimal numbers, inclusive numeric ranges (`2..`, `..0`,
+  `1..3`), and the keyword `unset`. Matching is equality on the subject (range membership for a
+  range). `<when is="joyful|playful">`, `<when is="unset">`, `<when is="1 | 2 | 3">`,
+  `<when is="..0 | 10..">`.
 - **`test`** is a CEL guard, with the `$` subject in scope (`$` is the value of `on`). `$` may only
-  appear inside a `<match>`.
+  appear inside a `<match>`. Use it for conditions a pattern cannot say (`$ > 2`, `@fond`); a
+  plain literal comparison such as `test="$ == 'gold'"` is `W-WHEN-TEST-LITERAL`, and `lute fix`
+  rewrites it to `is="gold"`.
 - **`is` + `test`** together means pattern AND guard.
 - A `<when>` with neither is `E-WHEN-PATTERN`.
 
@@ -1298,17 +1302,45 @@ A `<when>` arm matches on a literal pattern (`is`), a CEL guard (`test`), or bot
 
 *(From [`docs/examples/showcase/when-is-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/when-is-demo.lute).)*
 
+### Numeric ranges
+
+On a `number` subject, `is` takes ranges. Both bounds are inclusive; either may be left open.
+The descending-threshold cascade reads top to bottom, first match wins:
+
+```lute
+<match on="scene.affect.marina">
+  <when is="3..">
+    ::use{component="reaction" tier="fond"}
+  </when>
+  <when is="1..">
+    ::use{component="reaction" tier="warm"}
+  </when>
+  <otherwise>
+    ::use{component="reaction" tier="cold"}
+  </otherwise>
+</match>
+```
+
+*(From [`docs/examples/affinity-reaction.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/affinity-reaction.lute).)*
+
+A malformed or empty range (`a..b`, `3..1`) is `E-WHEN-RANGE`; a range on a non-numeric subject is
+`E-WHEN-LITERAL-DOMAIN`. Exclusive bounds have no pattern form — write `test="$ > 2"`.
+
 ### Exhaustiveness
 
 A `<match>` must be exhaustive. Exhaustiveness is computed from the union of `is` literals (plus
 any `unset` arm): for a **finite domain** — an enum, a bool, or a branch's choice ids — full `is`
 coverage is exhaustive with **no `<otherwise>`** needed. The four-member enum above needs no
-`<otherwise>`; a bool covered by `is="true"`/`is="false"` needs none either.
+`<otherwise>`; a bool covered by `is="true"`/`is="false"` needs none either. A **`number`**
+subject is exhaustive when its ranges and points cover the whole real line: `is="..0"` +
+`is="0.."` is; `is="..0"` + `is="1.."` is not, because `0.5` falls between them — the error names
+the gap.
 
 Otherwise, `<otherwise>` is **mandatory**: whenever the subject is maybe-unset (a `run.*`/`app.*`
-path with no default — its `unset` case must be covered), the domain is not finite, or an arm uses
-a `test` guard the checker cannot prove covers the domain. A `<match>` reading `app.rating` in a
-release build is a hard content gate that must cover `teen` or carry `<otherwise>`.
+path with no default — its `unset` case must be covered), the domain is a string or otherwise
+opaque, or an arm uses a `test` guard the checker cannot prove covers the domain. A `<match>`
+reading `app.rating` in a release build is a hard content gate that must cover `teen` or carry
+`<otherwise>`.
 
 ## The `when=` content-line sugar
 
@@ -1381,7 +1413,7 @@ has already cleared:
 
 ```lute
 <match on="run.metHelpfully">
-  <when test="$ == true">
+  <when is="true">
     @elena: You helped me back then. I've been meaning to thank you again.
   </when>
   <otherwise>
@@ -1886,7 +1918,7 @@ uses: state.schema.yaml
 @narrator: Previously, a choice was made.
 
 <match on="run.choseHelp">
-  <when test="$ == true"> @elena: Thanks for helping me back then. </when>
+  <when is="true"> @elena: Thanks for helping me back then. </when>
   <otherwise>             @elena: ... </otherwise>
 </match>
 ```
@@ -2057,7 +2089,7 @@ CEL text sits in every guard and value slot:
 
 ```lute
 <match on="scene.affect.elena">
-  <when test="$ >= 3"> ... </when>
+  <when is="3.."> ... </when>
   <when test="@chose('couch', 'ignore')"> ... </when>
   <otherwise> ... </otherwise>
 </match>
@@ -2362,7 +2394,7 @@ The index carries the document table plus the deterministic **union** of every a
 
 ```json
 {
-  "irVersion": "0.17.2",
+  "irVersion": "0.18.0",
   "capabilityVersion": "…",
   "documents": [
     { "path": "quests/findKai.lute", "artifact": "quests/findKai.lute.json",
@@ -2447,7 +2479,7 @@ Back-fill a stable `code` into every untagged `:line`, rewriting the file in pla
 $ lute fix <file>
 ```
 
-Migrate a pre-0.2.2 document to 0.2.2 in place — `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, and choice `as="…"` → `into="…"`. Byte-exact and comment-preserving; writes back only when something changed. Exit **0** on success, **2** on I/O.
+Apply the mechanical, meaning-preserving migrations in place — `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, choice `as="…"` → `into="…"`, and a literal-comparison `<when test="$ == 'gold'">` → `<when is="gold">` (`W-WHEN-TEST-LITERAL`, dsl 0.18.0). Byte-exact and comment-preserving; writes back only when something changed. Exit **0** on success, **2** on I/O.
 
 ## catalog refresh
 
@@ -2614,7 +2646,7 @@ Transcript headers read `── <tickLabel> (tick <N>) · <lane> · <event>/<var
 
 # Runtime contract
 
-`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.17.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.17.schema.json) (JSON Schema draft 2020-12).
+`lute compile <file>` checks a `.lute` document and lowers it to a JSON artifact — and then stops. It runs **no CEL, no Datalog fixpoint, keeps no fact store, fires no bridge**. Every behavior lives on the far side of the artifact, in the **engine**. The full source-grounded specification is [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime); the machine-checkable shape is [`schemas/lute-ir-0.18.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.18.schema.json) (JSON Schema draft 2020-12).
 
 Lute proves *shape and structure*; the engine supplies *evaluation and effect*. Lute statically checks the document and refuses to emit on any error, folds the state schema into an init/type table, lowers every CEL guard **whose text is inside the closed §8.4 profile** to a portable `expr` AST and leaves the rest as raw CEL, emits facts/`assert`-`retract` deltas/Datalog rules and quest declarations as **data** (proving the rules stratified and safe), resolves bridge calls and their state-write bindings, and schedules timeline clips with no write races. `holds()`/`count()` are inside the §8.4 profile authors may write and deliberately absent from the `expr` AST, so a relational guard reaches the engine as raw CEL text alone and an engine MUST have a CEL evaluator, not merely an AST walker. The engine trusts the artifact.
 
@@ -3381,11 +3413,11 @@ The scene writes nothing by hand. It runs the bridge, then reads the declared sl
 ::minigame{kind="rhythm" id="marina_service_01" resultKey="service01" sync="true"}
 
 <match on="scene.minigame.service01.rank">
-  <when test="$ == 'gold'">
+  <when is="gold">
     @marina{code="0030" emotion="delighted"}: Wonderful! A perfect service!
     ::set{scene.affect.marina += 2}
   </when>
-  <when test="$ in ['silver', 'bronze']">
+  <when is="silver|bronze">
     @marina{code="0040" emotion="content"}: Not bad at all, Mr. Fixer.
     ::set{scene.affect.marina += 1}
   </when>
@@ -3501,11 +3533,11 @@ The episode wires everything together: root `profile` selection with scene-local
 ::serve{kind="rhythm" performer="marina_star" poster="PT.marina_star.0" resultKey="debut" sync="true"}
 
 <match on="scene.serve.debut.rank">
-  <when test="$ == 'gold'">
+  <when is="gold">
     @marina{code="0020" emotion="delighted" variant="1"}: A perfect service!
     ::set{scene.affect.marina += 1}
   </when>
-  <when test="$ in ['silver', 'bronze']">
+  <when is="silver|bronze">
     @marina{code="0030" emotion="content" variant="0"}: Not bad at all, Mr. Fixer.
     ::set{run.affection += 1}
   </when>
@@ -3575,7 +3607,7 @@ For the complete project — the plugin manifests, schemas, component, catalog, 
 
 # Current specification
 
-The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.17.2**: for each language area, which proposal introduced it, which last changed it, and the normative source.
+The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl) remains the normative source of truth. This is the consolidated **index** of what is *current* at language version **0.18.0**: for each language area, which proposal introduced it, which last changed it, and the normative source.
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -3583,7 +3615,7 @@ The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://gith
 | Content lines (`@speaker`) | 0.1.0 | 0.5.1 (delivery-flag honesty) | [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
 | Core directives (the closed `lute.core` vocabulary) | 0.1.0 | 0.9.0 (`::auto{action}` and `::music{mood}` retyped from free `string` to `{ domain: … }`, so both slots are checkable at last; the core's own member lists emptied) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | Content vocabulary (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) | 0.1.0 (closed member lists shipped inside `lute.core`) | 0.9.0 (**the project owns the members** — the compiler declares slots and ships none; three declaration routes; the `exits:`/`default:` long form; an undeclared slot is `E-DOMAIN-UNKNOWN`) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
-| Branch / match / when / hub | 0.1.0 | 0.4.0 (param-scoped component `<match>`) | [0.4.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md) |
+| Branch / match / when / hub | 0.1.0 | 0.18.0 (inclusive numeric ranges `N..M` / `N..` / `..M` in `is=`; a `number` subject gets interval coverage over the reals, so `E-NONEXHAUSTIVE` names the first uncovered gap and `E-ARM-DEAD` / `W-OVERLAP-ARMS` / `W-OTHERWISE-DEAD` are interval-aware; `E-WHEN-RANGE` for a malformed or empty range) | [0.18.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md) |
 | Reusable content components (`::use` expansion) | 0.1.0 | 0.9.0 (five root-only check stages now run over an imported component body — content-line attrs, `E-DUP-LINE-CODE`, reachability, unwalked-content admission, injection folding) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | `into=` records | 0.1.0 (as `persist=`/`into=`) | 0.6.0 (**breaking** — `persist=` removed) | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
 | State tiers (scalar `scene`/`run`/`user`/`app`) | 0.1.0 | 0.8.0 (author `state:` is scalar-only, now enforced — `E-STATE-COLLECTION`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
@@ -3593,7 +3625,7 @@ The versioned proposal stack under [`docs/proposals/scenario-dsl/`](https://gith
 | Connectivity & `after:` | 0.2.0 (`after:`) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.10.2 (`meta.plugin` — a plugin-owned, checker-validated frontmatter key now reaches the compiled artifact instead of being discarded at compile time; plugin-system `0.0.4`, additive, no engine gate widens since `0.10.2` shares major.minor `0.10`) | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
-| Warning-severity diagnostics | 0.6.1 | 0.10.0 (four new warnings — `W-COMPONENT-UNVERIFIED`, `W-DOMAIN-UNREAD`, `W-EXIT-INERT`, `W-STAGE-ABSENT` — plus `W-PROJECT-INERT`; and `W-INJECT-CONFLICT` is **removed**, the first removal in the series, because equality with the declared default was its only trigger) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
+| Warning-severity diagnostics | 0.6.1 | 0.18.0 (`W-WHEN-TEST-LITERAL` — a `<when>` whose `test` is only a literal comparison `is=` can express, such as `test="$ == 'gold'"` or `test="$ >= 2"`; it carries a `migrate` fixit that `lute fix` applies, and the guard form stays valid) | [0.18.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md) |
 | Deny promotion (`--deny`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
 | Version stamp & axis alignment | 0.1.0 | 0.10.2 (all three axes read `0.10.2` — toolchain, language, and IR — because a release re-aligns every visible number; this time the IR **earns** the move (`meta.plugin`) while the language axis is a pure alignment no-op, byte-for-byte `0.10.1`/`0.10.0`) | [0.10.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.2.md) |
 
@@ -3612,7 +3644,7 @@ Notes on the boundaries:
 
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.17.2**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language version is **0.18.0**.
 
 ## Scenario DSL (the language)
 
@@ -3639,7 +3671,8 @@ The **repository files are the normative source of truth.** This site is the rea
 | 0.16.0 | **Declarative rewards**: one new self-closing element, `<reward kind= target= amount= when= on=/>`, legal only as a direct child of `<quest>` or `<objective>`, with `amount` admitting an integer scalar (negatives real) or the new range literal `N..M`; lowers to pure data on the owning records (`QuestCmd.rewards` / `ObjectiveEntry.rewards`) — the engine grants, the reference runtime never rolls a range. Two new diagnostics `E-REWARD-ATTR` (shape) and `E-REWARD-KIND` (vocabulary, only when a plugin declares `rewardKinds:`); `reward.when` joins the CEL-slot registry. `lute run` / `play` / `trace` emit deterministic `grant` transcript events at each fresh transition (spec §3 D-D — objective grants precede quest grants, all grants precede the corresponding lifecycle handler body). A plugin manifest MAY export a `rewardKinds:` vocabulary; folded into the capability snapshot as a guarded, sorted section so `capabilityVersion` moves only for projects that declare kinds. IR additive-only under `0.13.0`'s MAJOR-only gate: both `rewards` arrays are `skip-when-empty`, so a rewardless artifact stays byte-identical to `0.15.1` output. The tree-sitter grammar gains the `reward` production. | [0.16.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md) |
 | 0.16.1 candidate | **Prospective tooling only; not released.** A checked continuation compiler appends ordinary final-shot body source to a frozen scene template and emits full ordinary artifact snapshots per complete accepted unit; `lute compile-stream` exposes the same contract as flushed NDJSON. No new grammar, permission, runtime effect, or IR patch shape. Each unit recompiles cumulative source through the existing compiler, and snapshot consumers retain their numeric cursor/state/facts while rebuilding address lookup. | [0.16.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.1.md) |
 | 0.17.0 | **Checked continuations and least-authority compilation**: the toolchain adds the append-only checked continuation compiler and `lute compile-stream`, plus generic capability-permission ceilings for directives, state and fact writes, bridges, rewards, and quests. Both reuse the existing language and ordinary artifact contract, so language and IR are alignment restamps with no grammar, static-semantic, or IR-shape change. | [0.17.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.0.md) |
-| **0.17.2** | Current tip — **Additive plugin owner metadata**: passthrough `kind: "plugin"` records may carry the resolved owning plugin id in optional `plugin` metadata, so hosts can dispatch by `(plugin, tag)`; declarative presentation directives with `lower: { record, fields }` continue to emit stable core records. No grammar or static-semantic change; `schemas/lute-ir-0.17.schema.json` keeps its name and `$id`. | [0.17.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.2.md) |
+| `0.17.2` | **Additive plugin owner metadata**: passthrough `kind: "plugin"` records may carry the resolved owning plugin id in optional `plugin` metadata, so hosts can dispatch by `(plugin, tag)`; declarative presentation directives with `lower: { record, fields }` continue to emit stable core records. No grammar or static-semantic change; `schemas/lute-ir-0.17.schema.json` keeps its name and `$id`. | [0.17.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.2.md) |
+| **0.18.0** | Current tip — **Range patterns in `<when is>`**: inclusive numeric range literals `N..M` / `N..` / `..M` (signed decimal bounds) join the `is=` literal set, and a subject declared `number` becomes a coverage-checkable domain — interval union over the reals, so `E-NONEXHAUSTIVE` names the first uncovered gap and `E-ARM-DEAD` / `W-OVERLAP-ARMS` / `W-OTHERWISE-DEAD` are interval-aware. New `E-WHEN-RANGE` (a malformed or empty range) and `W-WHEN-TEST-LITERAL` (a literal-comparison `test` guard that `is=` expresses; its `migrate` fixit is applied by `lute fix`). IR is an alignment restamp — range arms lower to the existing `>=` / `<=` / `&&` operators — and the schema renames to `schemas/lute-ir-0.18.schema.json`. | [0.18.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 ## Capability proposals

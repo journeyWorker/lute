@@ -13,7 +13,7 @@ target is the flat command-record format the engine consumes.
 > specified normatively as a versioned proposal stack — base grammar
 > [`proposals/scenario-dsl/0.1.0.md`](proposals/scenario-dsl/0.1.0.md) plus the per-version
 > deltas through released language tip
-> [`proposals/scenario-dsl/0.17.2.md`](proposals/scenario-dsl/0.17.2.md). The
+> [`proposals/scenario-dsl/0.18.0.md`](proposals/scenario-dsl/0.18.0.md). The
 > checked-continuation tooling contract ships in the `0.17.0` alignment delta.
 > The **plugin / extensibility system** is specified in
 > [`proposals/plugin-system/0.0.1.md`](proposals/plugin-system/0.0.1.md) and its deltas
@@ -261,15 +261,17 @@ Locked rules:
 
 <match on="scene.affect.elena">              # state-driven branch (no player input); intra-episode
                                              # (to carry to the NEXT episode, write run.* — see 0.0.1.md §9.1)
-  <when test="$ >= 3"> ... </when>           # $ = the subject; pure CEL
-  <when test="$ in [1, 2]"> ... </when>
+  <when is="3.."> ... </when>                # literal pattern; 3.. = inclusive range (dsl 0.18.0)
+  <when is="1 | 2"> ... </when>
+  <when test="$ > 0.5"> ... </when>          # $ = the subject; pure CEL for what `is` can't say
   <when test="@chose('couch', 'ignore')"> ... </when>   # subject-independent guard
   <otherwise> ... </otherwise>
 </match>
 ```
 
 - `<match>` arms are **first-match-wins**; validator warns on provably-overlapping arms.
-- **Exhaustiveness only for finite domains** (enum, bool, branch child-ids); otherwise
+- **Exhaustiveness only for finite domains** (enum, bool, branch child-ids) and — since
+  0.18.0 — `number` subjects whose `is` ranges cover the whole real line; otherwise
   `<otherwise>` is mandatory. `unset` is a domain member.
 - `::set{path <op> celExpr}` — one assignment per `::set`; ops `=` `+=` `-=` (`*=` for
   numbers); operator/type matrix (`bool` → `=` only). The compound-assignment **operator is a

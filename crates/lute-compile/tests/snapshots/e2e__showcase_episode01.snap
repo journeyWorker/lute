@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.17.2",
-  "irVersion": "0.17.2",
+  "lute": "0.18.0",
+  "irVersion": "0.18.0",
   "capabilityVersion": "b7333d56c368f060dd7f6792712f8a73e12ddb6acea156e85b968a07b1e8b315",
   "meta": {
     "id": "marina.s01ep01",
@@ -313,7 +313,7 @@ expression: json
       "subject": "scene.serve.debut.rank",
       "arms": [
         {
-          "test": "scene.serve.debut.rank == 'gold'",
+          "test": "",
           "target": "003-0300",
           "expr": {
             "op": "==",
@@ -326,22 +326,27 @@ expression: json
           }
         },
         {
-          "test": "scene.serve.debut.rank in ['silver', 'bronze']",
+          "test": "",
           "target": "003-0600",
           "expr": {
-            "op": "in",
+            "op": "||",
             "l": {
-              "path": "scene.serve.debut.rank"
+              "op": "==",
+              "l": {
+                "path": "scene.serve.debut.rank"
+              },
+              "r": {
+                "lit": "silver"
+              }
             },
             "r": {
-              "list": [
-                {
-                  "lit": "silver"
-                },
-                {
-                  "lit": "bronze"
-                }
-              ]
+              "op": "==",
+              "l": {
+                "path": "scene.serve.debut.rank"
+              },
+              "r": {
+                "lit": "bronze"
+              }
             }
           }
         }
@@ -584,7 +589,7 @@ expression: json
           }
         },
         {
-          "test": "scene.choices.approach == 'blunt'",
+          "test": "",
           "target": "005-0400",
           "expr": {
             "op": "==",
@@ -645,7 +650,7 @@ expression: json
       "subject": "run.metHelpfully",
       "arms": [
         {
-          "test": "run.metHelpfully == true",
+          "test": "",
           "target": "005-0900",
           "expr": {
             "op": "==",
@@ -658,7 +663,7 @@ expression: json
           }
         },
         {
-          "test": "run.metHelpfully == false",
+          "test": "",
           "target": "005-1100",
           "expr": {
             "op": "==",
@@ -711,7 +716,7 @@ expression: json
       "subject": "run.sofaOutcome",
       "arms": [
         {
-          "test": "run.sofaOutcome == 'warm'",
+          "test": "",
           "target": "005-1400",
           "expr": {
             "op": "==",
@@ -765,7 +770,7 @@ expression: json
       "subject": "app.rating",
       "arms": [
         {
-          "test": "app.rating == 'teen'",
+          "test": "",
           "target": "006-0200",
           "expr": {
             "op": "==",
@@ -928,7 +933,7 @@ expression: json
       "subject": "app.lang",
       "arms": [
         {
-          "test": "app.lang == 'ko'",
+          "test": "",
           "target": "006-1900",
           "expr": {
             "op": "==",

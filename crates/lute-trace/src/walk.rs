@@ -42,6 +42,7 @@ use lute_syntax::ast::{
     Timeline,
 };
 use lute_syntax::datalog::FactTerm;
+use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral};
 
 use crate::eval::{
     eval, eval_path_read, expr_path, is_reserved_quest_path, literal_to_value, EffectiveState,
@@ -270,17 +271,18 @@ fn render_choice_guard(when: Option<&CelSlot>) -> Option<String> {
 }
 
 /// `lit` (a `<when is="…">` alternative, already trimmed, never `"unset"` —
-/// callers filter that member out) against a DECIDED subject `v`.
+/// callers filter that member out) against a DECIDED subject `v`, classified
+/// by the shared [`classify_is_literal`] so the trace runner reads a literal
+/// exactly as the checker and the compiled `expr` do. A numeric range (dsl
+/// 0.18.0) matches a number inside its inclusive bounds and never a
+/// non-number; a malformed range (`E-WHEN-RANGE`) matches nothing.
 fn literal_matches(lit: &str, v: &Value) -> bool {
-    match v {
-        Value::Bool(b) => match lit {
-            "true" => *b,
-            "false" => !*b,
-            _ => false,
-        },
-        Value::Num(n) => lit.parse::<f64>().map(|l| l == *n).unwrap_or(false),
-        Value::Str(s) => s == lit,
-        Value::Unknown => false,
+    match (classify_is_literal(lit), v) {
+        (Ok(IsLiteral::Bool(l)), Value::Bool(b)) => l == *b,
+        (Ok(IsLiteral::Num(l)), Value::Num(n)) => l == *n,
+        (Ok(IsLiteral::Range(range)), Value::Num(n)) => range.contains(*n),
+        (Ok(IsLiteral::Str(l)), Value::Str(s)) => l == *s,
+        _ => false,
     }
 }
 
@@ -305,7 +307,7 @@ fn eval_is_pattern(
     env: &EvalEnv<'_>,
     unresolved: &mut Vec<UnresolvedAtom>,
 ) -> Value {
-    let alts: Vec<&str> = pat.raw.split('|').map(str::trim).collect();
+    let alts: Vec<&str> = is_alternatives(&pat.raw).collect();
     let wants_unset = alts.contains(&"unset");
     let subject_path = slot_expr(subject_raw).and_then(|e| expr_path(&e));
     if let Some(path) = &subject_path {

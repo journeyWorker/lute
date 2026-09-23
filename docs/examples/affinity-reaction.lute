@@ -30,10 +30,10 @@ defs:
    `@marina` line (§6.4 case 1) — the compiled artifact is indistinguishable
    from hand-duplicating the block three times. */
 <match on="scene.affect.marina">
-  <when test="$ >= 3">
+  <when is="3..">
     ::use{component="reaction" tier="fond"}
   </when>
-  <when test="$ >= 1">
+  <when is="1..">
     ::use{component="reaction" tier="warm"}
   </when>
   <otherwise>

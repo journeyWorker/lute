@@ -97,7 +97,14 @@ pub fn hover_at(
             )),
         },
         Cursor::IsPattern { subject_path } => super::subject_domain(doc, &meta, subject_path)
-            .map(|domain| format!("**pattern** — domain: {}", domain.join(", "))),
+            .map(|domain| format!("**pattern** — domain: {}", domain.join(", ")))
+            .or_else(|| {
+                super::subject_is_number(&meta, subject_path).then(|| {
+                    "**pattern** — domain: number; literals are points (`3`, `-1.5`) or \
+                     inclusive ranges (`1..3`, `2..`, `..0`)"
+                        .to_string()
+                })
+            }),
         Cursor::DirectiveAttrArea { .. }
         | Cursor::AttrKey {
             directive: None, ..
@@ -606,6 +613,22 @@ mod tests {
                 && s.contains("bronze")
                 && s.contains("unset"),
             "hover shows the enum domain ∪ unset: {s}"
+        );
+    }
+
+    /// dsl 0.18.0 §2: hover on a `<when is="…">` range literal whose subject is
+    /// a declared `number` says the domain is numeric and that ranges are
+    /// inclusive — there is no finite member menu to list.
+    #[test]
+    fn hover_on_when_is_range_shows_number_domain() {
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.hp: { type: number }\n---\n## Shot 1.\n<match on=\"scene.hp\">\n<when is=\"..0 | 5..\">\n@fixer: edge.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
+        let doc = parsed(text);
+        let off = text.find("is=\"..0").unwrap() + "is=\"".len() + 1; // inside "..0"
+        let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let s = contents_text(&h);
+        assert!(
+            s.contains("number") && s.contains("inclusive"),
+            "hover names the number domain and inclusive ranges: {s}"
         );
     }
 

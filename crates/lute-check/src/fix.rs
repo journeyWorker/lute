@@ -49,6 +49,17 @@
 //!      leave an empty heading, and the bare form is itself a valid free
 //!      title. Byte-exact, comment-preserving, idempotent (a stripped title no
 //!      longer matches the prefix shape).
+//!   6. **`<when test="$ == 'gold'">` → `<when is="gold">`** (dsl 0.18.0 §3)
+//!      — a `<match>` arm without `is=` whose `test` only compares `$` to
+//!      literals (`$ == L`, `$ in […]`, `$ >= N`, `$ <= N`, `$ >= A && $ <=
+//!      B`, see [`crate::when_test_literal`]) rewrites its whole `test="…"`
+//!      attribute to the equivalent `is="…"` pattern. Meaning-preserving (the
+//!      arm lowers to the identical guard) and only emitted when the pattern
+//!      classifies back to exactly the tested literals, so it runs
+//!      unprompted. Reads the SAME [`crate::when_test_literal`] rewrite list
+//!      the checker's `W-WHEN-TEST-LITERAL` fixit does, so the two are
+//!      byte-identical. Idempotent: a rewritten arm carries `is=`, which the
+//!      rule never touches.
 //!
 //! Mirrors `tag.rs`'s splice discipline: collect target `(start, end,
 //! replacement)` spans, then splice back-to-front (descending `byte_start`) so
@@ -233,6 +244,15 @@ pub fn fix_document(text: &str) -> FixResult {
                 _ => {}
             }
         }
+    }
+
+    // -- `<when test="$ == L">` → `<when is="L">` (dsl 0.18.0 §3, rule 6):
+    // every match arm (scene + quest bodies, nested anywhere) whose `test` is a
+    // pure literal comparison of `$`. The `test="…"` attribute sits inside a
+    // `<when …>` open tag, disjoint from every choice/line/heading span above.
+    for rw in crate::when_test_literal::when_test_rewrites(&doc2, &text1) {
+        let new_text = rw.new_text();
+        edits2.push((rw.start, rw.end, new_text));
     }
     let phase2 = edits2.len();
     let text2 = splice(&text1, edits2);

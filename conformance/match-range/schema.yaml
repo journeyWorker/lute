@@ -1,0 +1,3 @@
+# Scalar state for the match-range conformance fixture.
+state:
+  run.score: { type: number, default: 0 }

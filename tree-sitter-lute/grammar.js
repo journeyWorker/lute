@@ -215,12 +215,21 @@ module.exports = grammar({
         token.immediate('"'),
       ),
 
-    // Literal ::= EnumMember | "true" | "false" | Number | "unset" (§7.3.1).
-    // Number (§4.4) may carry a leading "-" (e.g. `-1`, `-2.5`); the first
-    // alternative captures signed/decimal numerals, the second keeps bare
-    // enum-member / true / false / unset identifiers (and the `a|b` shape).
+    // Literal ::= EnumMember | "true" | "false" | Number | NumRange | "unset"
+    // (§7.3.1; ranges dsl 0.18.0 §2). NumRange ::= Number ".." Number
+    // | Number ".." | ".." Number — inclusive bounds, each a Number (§4.4)
+    // that may carry a leading "-" and a decimal part (`-3..-1`, `0.5..1.5`,
+    // `..0`, `2..`). The range alternative is listed first so a bound that
+    // starts with "-" or ".." lexes as ONE literal; the second captures
+    // signed/decimal numerals; the third keeps bare enum-member / true / false
+    // / unset identifiers (and the `a|b` shape). Maximal munch picks the
+    // longest, so `gold`, `-1` and `1..3` lex exactly as before. Malformed
+    // ranges (`..`, `1..2..3`) are the checker's `E-WHEN-RANGE`, not a parse
+    // error — this grammar is editor-side only.
     when_literal: ($) =>
-      token.immediate(/-?[0-9]+(\.[0-9]+)?|[A-Za-z0-9_][A-Za-z0-9_.-]*/),
+      token.immediate(
+        /(-?[0-9]+(\.[0-9]+)?)?\.\.(-?[0-9]+(\.[0-9]+)?)?|-?[0-9]+(\.[0-9]+)?|[A-Za-z0-9_][A-Za-z0-9_.-]*/,
+      ),
 
     // ---- timeline (nest, restricted body) ---------------------------------
     // Timeline ::= "<timeline" Attrs? ">" Track+ "</timeline>" (§7.4).

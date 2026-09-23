@@ -34,6 +34,7 @@ pub mod tag;
 pub mod temporal;
 pub mod time;
 pub mod timeline;
+pub mod when_test_literal;
 
 /// The canonical Lute language-version string (dsl 0.6.1 §3, Appendix B).
 /// `lute-compile` stamps it into the artifact envelope's `lute` field (and
@@ -42,7 +43,7 @@ pub mod timeline;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.17.2";
+pub const LUTE_LANG_VERSION: &str = "0.18.0";
 
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use cel_expand::{expand_cel, DefTable};
@@ -72,7 +73,7 @@ pub use inject::{
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, check_quest_rewards,
     is_exhaustive, is_pattern_literals, BranchRecord, DomainInfo, HubRecord, QuestRecord,
-    E_REWARD_ATTR, E_REWARD_KIND,
+    E_REWARD_ATTR, E_REWARD_KIND, E_WHEN_RANGE,
 };
 pub use meta::{
     parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace, StateDecl,
@@ -102,3 +103,4 @@ pub use timeline::{
     resolve_timeline, time_resolution_diag, ResolvedRow, ResolvedTimeline, E_CLIP_TIMING,
     E_TIMELINE_DURATION, E_TIME_RESOLUTION,
 };
+pub use when_test_literal::{check_when_test_literals, test_as_is_pattern, W_WHEN_TEST_LITERAL};

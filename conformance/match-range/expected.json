@@ -1,0 +1,29 @@
+{
+  "commands": [
+    {
+      "addr": "001-0100",
+      "kind": "line",
+      "speaker": "narrator",
+      "text": "Tallying the score."
+    },
+    {
+      "addr": "001-0200",
+      "kind": "match",
+      "result": "arm 2"
+    },
+    {
+      "addr": "001-0500",
+      "kind": "line",
+      "speaker": "hero",
+      "text": "A modest haul."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.18",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "run.score": 3
+  }
+}

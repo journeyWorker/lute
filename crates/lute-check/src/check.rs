@@ -1026,6 +1026,14 @@ pub fn check(input: &CheckInput) -> CheckResult {
     // E-NEXT-BACKWARD, a whole-document pass (the label namespace spans
     // every shot/quest, unlike reachability's per-body scope above).
     diags.extend(crate::next_labels::check_next_labels(&doc));
+    // dsl 0.18.0 §3: W-WHEN-TEST-LITERAL — a `<when test>` that only compares
+    // `$` to literals, with its `is=` rewrite as a `migrate` fixit (the same
+    // edit `lute fix` applies). Whole-document, every doc kind (components
+    // included, whose bodies bypass `Walker`).
+    diags.extend(crate::when_test_literal::check_when_test_literals(
+        &doc,
+        &input.text,
+    ));
     diags.extend(inject_diags);
     // Table-driven grammar admission (dsl 0.2.0 §3.3, §6.7): per-kind,
     // per-context construct legality. `E-GRAMMAR-NOT-ADMITTED` is semantic, NOT
@@ -3964,16 +3972,15 @@ mod lute_version_tests {
     /// `docs/versioning.md`'s alignment rule, pinned so the release cannot
     /// half-land: the language constant this check compares against and the
     /// workspace (toolchain) version must both read the release number.
-    /// `0.17.0` ships the checked streaming continuation compiler and generic
-    /// capability permissions. Neither changes the ordinary source grammar or
-    /// artifact shape: streaming units use the existing whole-document
-    /// checker/compiler, and permission policy narrows the capabilities a
-    /// resolved document may use before lowering. Language and IR therefore
-    /// move as alignment restamps, and the current schema is
-    /// `schemas/lute-ir-0.17.schema.json`.
+    /// `0.18.0` is a language release: `<when is="…">` gains inclusive numeric
+    /// range literals (`N..M`, `N..`, `..M`), a declared `number` subject gets
+    /// interval coverage, and `E-WHEN-RANGE` / `W-WHEN-TEST-LITERAL` join the
+    /// code set. Range arms lower to the existing comparison operators, so the
+    /// IR moves as an alignment restamp and the current schema is
+    /// `schemas/lute-ir-0.18.schema.json`.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_17_2() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.17.2");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.17.2");
+    fn language_ir_and_toolchain_are_aligned_at_0_18_0() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.18.0");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.18.0");
     }
 }

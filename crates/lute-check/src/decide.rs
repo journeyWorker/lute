@@ -128,7 +128,8 @@ fn const_side(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<Constant> {
 /// defaulted path or a bound param is never unset, §5.1 R2); a scalar is a
 /// member when it matches one of `dom`'s `Finite` values — a `Num` never
 /// does (`infer_domain` only produces a finite domain for `bool`/`enum`
-/// subjects; a numeric subject is always `Domain::Infinite`).
+/// subjects; a numeric subject is `Domain::Number`, which R2 — needing a
+/// FINITE domain — leaves undecided exactly like `Domain::Infinite`).
 fn domain_contains(dom: &DomainInfo, value: &Constant) -> bool {
     match value {
         Constant::Unset => dom.maybe_unset,

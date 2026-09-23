@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.17.2**.
+**0.18.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -230,7 +230,7 @@ problem, and exactly what to write instead. For this mechanical class of fix, ru
 
 ```
 $ lute fix my-scene.lute
-lute: migrated 1 edit(s) to 0.2.2
+lute: applied 1 fix(es)
 ```
 
 `lute fix` rewrites the file in place (only what needs to change) and re-check comes back clean.
@@ -242,8 +242,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.17.2",
-  "irVersion": "0.17.2",
+  "lute": "0.18.0",
+  "irVersion": "0.18.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "id": "mira.s01ep01",

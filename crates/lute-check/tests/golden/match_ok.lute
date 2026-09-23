@@ -25,10 +25,10 @@ state:
 ## Shot 2.
 
 <match on="scene.choices.number">
-  <when test="$ == 'soft'">
+  <when is="soft">
     @fixer{mono}: I asked nicely, which I am electing not to examine.
   </when>
-  <when test="$ == 'blunt'">
+  <when is="blunt">
     @fixer{mono}: I am taking that woman on a walking tour of the neighbourhood this evening.
   </when>
   <otherwise>

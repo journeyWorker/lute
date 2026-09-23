@@ -76,11 +76,11 @@ The scene writes nothing by hand. It runs the bridge, then reads the declared sl
 ::minigame{kind="rhythm" id="marina_service_01" resultKey="service01" sync="true"}
 
 <match on="scene.minigame.service01.rank">
-  <when test="$ == 'gold'">
+  <when is="gold">
     @marina{code="0030" emotion="delighted"}: Wonderful! A perfect service!
     ::set{scene.affect.marina += 2}
   </when>
-  <when test="$ in ['silver', 'bronze']">
+  <when is="silver|bronze">
     @marina{code="0040" emotion="content"}: Not bad at all, Mr. Fixer.
     ::set{scene.affect.marina += 1}
   </when>

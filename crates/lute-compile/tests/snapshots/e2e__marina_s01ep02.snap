@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.17.2",
-  "irVersion": "0.17.2",
+  "lute": "0.18.0",
+  "irVersion": "0.18.0",
   "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
   "meta": {
     "id": "marina.s01ep02",
@@ -761,7 +761,7 @@ expression: json
           }
         },
         {
-          "test": "scene.choices.number == 'blunt'",
+          "test": "",
           "target": "005-1300",
           "expr": {
             "op": "==",

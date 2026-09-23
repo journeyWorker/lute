@@ -78,6 +78,9 @@
 (quest ["<quest" "</quest>"] @keyword.control)
 (on ["<on" "</on>"] @keyword.control)
 (objective ["<objective" "</objective>" "/>"] @keyword.control)
+; `<reward/>` (dsl 0.16.0 §2) — always self-closing; a quest-/objective-scoped
+; declaration of a grant. Same control-family capture as its siblings.
+(reward ["<reward" "/>"] @keyword.control)
 
 ; ---- distinct arch captures -----------------------------------------------
 ; CEL expression (the `::set` right-hand side) — an embedded expression lang.

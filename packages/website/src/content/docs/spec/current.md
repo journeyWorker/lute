@@ -1,12 +1,12 @@
 ---
 title: Current specification
-description: The consolidated index of what the Lute language enforces today at version 0.17.2 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
+description: The consolidated index of what the Lute language enforces today at version 0.18.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
 ---
 
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.17.2**:
+the consolidated **index** of what is *current* at language version **0.18.0**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -16,7 +16,7 @@ full cumulative history (including the pre-implementation `0.0.1` draft and the
 capability proposals), see the [specification index](/spec/).
 :::
 
-## What is current at 0.17.2
+## What is current at 0.18.0
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -24,7 +24,7 @@ capability proposals), see the [specification index](/spec/).
 | Content lines (`@speaker` dialogue) | 0.1.0 | 0.5.1 (delivery-flag authoring-surface honesty) | [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
 | Core directives (the closed `lute.core` vocabulary) | 0.1.0 | 0.9.0 (`::auto{action}` and `::music{mood}` retyped from free `string` to `{ domain: … }`, so both slots are checkable at last; the core's own member lists emptied) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | Content vocabulary (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType`) | 0.1.0 (closed member lists shipped inside `lute.core`) | 0.9.0 (**the project owns the members** — the compiler declares slots and ships none; three declaration routes; the `exits:`/`default:` long form; using an undeclared slot is `E-DOMAIN-UNKNOWN`) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
-| Branch / match / when / hub | 0.1.0 | 0.4.0 (param-scoped component `<match>` dispatch) | [0.4.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md) |
+| Branch / match / when / hub | 0.1.0 | 0.18.0 (inclusive numeric ranges `N..M` / `N..` / `..M` in `is=`; a `number` subject gets interval coverage over the reals, so `E-NONEXHAUSTIVE` names the first uncovered gap and `E-ARM-DEAD` / `W-OVERLAP-ARMS` / `W-OTHERWISE-DEAD` are interval-aware; `E-WHEN-RANGE` for a malformed or empty range) | [0.18.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md) |
 | Reusable content components (`::use` expansion) | 0.1.0 | 0.9.0 (five root-only check stages now run over an imported component body — content-line attrs, `E-DUP-LINE-CODE`, reachability, unwalked-content admission, injection folding) | [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | `into=` records (choice run-record sugar) | 0.1.0 (as `persist=`/`into=`, renamed from `0.0.1` `as`) | 0.6.0 (**breaking** — `persist=` removed, `into=` alone records) | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
 | State tiers (scalar `scene`/`run`/`user`/`app`) | 0.1.0 | 0.8.0 (author `state:` is scalar-only, now enforced — `E-STATE-COLLECTION`) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
@@ -34,9 +34,9 @@ capability proposals), see the [specification index](/spec/).
 | Connectivity & `after:` sequencing | 0.2.0 (`after:` scene sequencing) | 0.8.0 (`active("questId")` — the third prerequisite primitive) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.8.0 (`identity:` templates; the `loc import` → `compile --locales` round trip) | [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Compiled artifact shape (`addr` addressing, IR carriers) | 0.1.0 | 0.17.2 (passthrough `kind: "plugin"` records may carry optional resolved owner metadata in `plugin`, while declarative presentation directives continue lowering to stable core records) | [0.17.2.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.17.2.md) |
-| Warning-severity diagnostics (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`) | 0.6.1 | 0.10.0 (four new warnings — `W-COMPONENT-UNVERIFIED`, `W-DOMAIN-UNREAD`, `W-EXIT-INERT`, `W-STAGE-ABSENT` — plus `W-PROJECT-INERT`; and `W-INJECT-CONFLICT` is **removed**, the first removal in the series, because equality with the declared default was its only trigger) | [0.10.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md) |
+| Warning-severity diagnostics (`W-UNPROVEN-RELATIONAL`, `W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`) | 0.6.1 | 0.18.0 (`W-WHEN-TEST-LITERAL` — a `<when>` whose `test` is only a literal comparison `is=` can express, such as `test="$ == 'gold'"` or `test="$ >= 2"`; it carries a `migrate` fixit that `lute fix` applies, and the guard form stays valid) | [0.18.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md) |
 | Deny promotion (`--deny` / `--deny-warnings`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.17.0`'s alignment-only IR restamp costs a consuming engine nothing; the schema file still renames per release line, published today as `lute-ir-0.17.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.13.0 (the runtime version-negotiation gate relaxes to **MAJOR-only** — minor/patch are compatible-by-default, fields append-only within a major line — so `0.18.0`'s alignment-only IR restamp costs a consuming engine nothing; the schema file still renames per release line, published today as `lute-ir-0.18.schema.json`) | [0.13.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.13.0.md) |
 | Scene identity (`id:` frontmatter) | 0.15.0 (authored canonical scene key; new `id:` frontmatter is the lineId prefix, `visited()`/connectivity node, and `prereqEdges[].node`, superseding the derived `{character}.{episodeId}` join wherever it was consumed; `character`/`season`/`episode`/`episodeId` demote to optional when `id:` is present) | 0.15.0 | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
 | Descriptive `extra:` block | 0.15.0 (open mapping of scalars or flat scalar-lists on scene and quest roots; carried verbatim into `meta.extra` and read by no language rule — `E-META-VALUE` on a nested mapping or non-scalar list entry) | 0.15.0 | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
 | Legacy identity keys (`character` / `season` / `episode` / `episodeId`) | 0.1.0 | 0.15.0 (deprecated in prose only — `W-META-LEGACY` warns per legacy key when a document also authors `id:`; the four keys are no longer required when `id:` is present, removal deferred to a future major) | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
@@ -56,7 +56,7 @@ capability proposals), see the [specification index](/spec/).
   `0.10` still has to widen its gate to `0.11` to keep accepting artifacts
   (the runtime contract gates on `major.minor`, not on whether anything
   inside actually changed), and `schemas/lute-ir-0.10.schema.json` is renamed
-  to `schemas/lute-ir-0.17.schema.json` under the `0.7.0` precedent — a
+  to `schemas/lute-ir-0.18.schema.json` under the `0.7.0` precedent — a
   `major.minor` move renames the schema file regardless of why it moved. The
   release itself is entirely toolchain: a new `schedule.yaml` project-file
   layer and `lute play` command
