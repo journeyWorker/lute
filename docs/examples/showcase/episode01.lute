@@ -6,7 +6,7 @@ season: 1
 episode: 1
 title: The Full Showcase
 pov: fixer
-luteVersion: "0.17.2"
+luteVersion: "0.18.0"
 # Root capability profile (project lute.project.yaml) — activates showcase.pack.
 profile: showcase
 # Scene-local plugin activation/options layered on top of the profile (§6.1.1):
@@ -96,11 +96,11 @@ defs:
   writes (only legal because the path is definitely assigned).
 */
 <match on="scene.serve.debut.rank">
-  <when test="$ == 'gold'">
+  <when is="gold">
     @marina{code="0020" emotion="delighted" variant="1"}: A perfect service!
     ::set{scene.affect.marina += 1}
   </when>
-  <when test="$ in ['silver', 'bronze']">
+  <when is="silver|bronze">
     @marina{code="0030" emotion="content" variant="0"}: Not bad at all, Mr. Fixer.
     ::set{run.affection += 1}
   </when>
@@ -147,7 +147,7 @@ defs:
   <when test="@fond">
     @fixer{mono}: I asked nicely, which I am electing not to examine.
   </when>
-  <when test="$ == 'blunt'">
+  <when is="blunt">
     @fixer{mono}: Straight to the point. It worked.
   </when>
   <otherwise>
@@ -162,16 +162,16 @@ defs:
   and its `unset` case MUST be covered by <otherwise>.
 */
 <match on="run.metHelpfully">
-  <when test="$ == true">
+  <when is="true">
     @marina{code="0070" emotion="content" variant="0"}: You were kind about it. I noticed.
   </when>
-  <when test="$ == false">
+  <when is="false">
     @marina{code="0080" emotion="neutral" variant="0"}: There you are.
   </when>
 </match>
 
 <match on="run.sofaOutcome">
-  <when test="$ == 'warm'">
+  <when is="warm">
     @marina{code="0090" emotion="delighted" variant="1"}: Staying? That would be lovely.
   </when>
   <otherwise>
@@ -187,7 +187,7 @@ defs:
   ::set targets app.* anywhere — the write policy is respected.
 */
 <match on="app.rating">
-  <when test="$ == 'teen'">
+  <when is="teen">
     @narrator: A gentle evening, suitable for all.
   </when>
   <otherwise>
@@ -229,7 +229,7 @@ defs:
   gating, same policy as the app.rating gate above.
 */
 <match on="app.lang">
-  <when test="$ == 'ko'">
+  <when is="ko">
     @narrator: Subtitles render in Korean.
   </when>
   <otherwise>

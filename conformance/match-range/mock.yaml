@@ -1,0 +1,4 @@
+# Seed the subject ON the inclusive upper bound of `1..3` (dsl 0.18.0 numeric
+# range), so the second arm fires — not the open-ended `4..` arm.
+state:
+  run.score: 3

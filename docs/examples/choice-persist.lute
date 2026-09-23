@@ -43,7 +43,7 @@ state:
   (which clears at episode end). First-match-wins; `<otherwise>` is mandatory.
 */
 <match on="run.metHelpfully">
-  <when test="$ == true">
+  <when is="true">
     @elena: You helped me back then. I've been meaning to thank you again.
   </when>
   <otherwise>

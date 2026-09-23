@@ -32,6 +32,7 @@
 use cel_parser::ast::{CallExpr, Expr};
 use cel_parser::reference::Val;
 use lute_cel::CelArena;
+use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral, NumRange};
 use serde::Serialize;
 
 /// One node of the portable expression AST (dsl §8.4 profile). See the module
@@ -121,13 +122,14 @@ pub(crate) enum ArmExpr {
 /// - `test_raw` is the `test` guard CEL — empty when there is no `test` attr.
 /// - `subject_raw` is the `<match on="…">` subject CEL (a state path).
 ///
-/// Mirrors `lute_check::match_check::analyze_is_pattern`: the `is` value is
-/// split on `'|'`, each alternative trimmed (empties dropped), classified as
-/// `true`/`false` (bool), a number literal (f64), `unset`, or an enum/string
-/// member, lowered to a comparison against the inlined subject, then the
-/// alternatives are left-folded with `||`. With a `test` guard the `is` expr is
-/// `&&`-joined to `lower_expr(test_raw)`. Reuses [`lower_expr`] for the subject
-/// and the guard — no hand-rolled CEL parsing.
+/// Mirrors `lute_check::match_check::analyze_is_pattern`: every alternative of
+/// the `is` value ([`is_alternatives`]) is classified by the shared
+/// [`classify_is_literal`] — `true`/`false` (bool), a number literal (f64), a
+/// numeric range (dsl 0.18.0), `unset`, or an enum/string member — lowered to a
+/// comparison against the inlined subject, then the alternatives are
+/// left-folded with `||`. With a `test` guard the `is` expr is `&&`-joined to
+/// `lower_expr(test_raw)`. Reuses [`lower_expr`] for the subject and the guard
+/// — no hand-rolled CEL parsing.
 pub(crate) fn synth_arm_expr(is: Option<&str>, test_raw: &str, subject_raw: &str) -> ArmExpr {
     // Rule 2: no `is` → the arm expr is exactly the lowered `test` guard; the
     // subject is NOT inlined for a pure `test` guard (empty guard → `None`).
@@ -168,21 +170,25 @@ enum IsSynth {
 }
 
 /// Lower a `<when is="…">` literal pattern (dsl §7.3.1) against the inlined
-/// `subject`: split on `'|'`, classify each trimmed alternative
-/// (`true`/`false` → bool, number → f64, `unset` → `!isSet(path)`, else →
-/// string), build a comparison per alternative, then left-fold with `||`.
+/// `subject`: classify each alternative via the shared
+/// [`classify_is_literal`] (`true`/`false` → bool, number → f64, `unset` →
+/// `!isSet(path)`, range → bound comparisons, else → string), build a
+/// comparison per alternative, then left-fold with `||`.
 /// Mirrors `lute_check::match_check::analyze_is_pattern`.
+///
+/// A malformed or empty range alternative (`E-WHEN-RANGE`, dsl 0.18.0) never
+/// reaches compile in a checked document; should one slip through it is a
+/// malformed pattern, so the whole `is` expr lowers to `None` (the arm carries
+/// no `expr`, exactly like any other unlowerable pattern — see [`ArmExpr`]).
 fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>) -> IsSynth {
     let mut nodes: Vec<ExprNode> = Vec::new();
-    for lit in is_raw.split('|') {
-        let lit = lit.trim();
-        if lit.is_empty() {
-            continue;
-        }
-        let node = match lit {
-            "true" => subject_eq(subject, LitVal::Bool(true)),
-            "false" => subject_eq(subject, LitVal::Bool(false)),
-            "unset" => match subject {
+    for lit in is_alternatives(is_raw) {
+        let Ok(class) = classify_is_literal(lit) else {
+            return IsSynth::Expr(None);
+        };
+        let node = match class {
+            IsLiteral::Bool(b) => subject_eq(subject, LitVal::Bool(b)),
+            IsLiteral::Unset => match subject {
                 // `unset` → `!isSet(<subject-path>)`; requires a bare path.
                 Some(ExprNode::Path { path }) => Some(ExprNode::Unary {
                     op: "!",
@@ -192,11 +198,9 @@ fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>) -> IsSynth {
                 }),
                 _ => return IsSynth::Unlowerable,
             },
-            // `is_number_literal` already proved the `f64` parse succeeds.
-            _ if is_number_literal(lit) => {
-                subject_eq(subject, LitVal::Num(lit.parse().expect("number literal")))
-            }
-            _ => subject_eq(subject, LitVal::Str(lit.to_string())),
+            IsLiteral::Num(n) => subject_eq(subject, LitVal::Num(n)),
+            IsLiteral::Range(range) => subject_in_range(subject, range),
+            IsLiteral::Str(s) => subject_eq(subject, LitVal::Str(s)),
         };
         match node {
             Some(n) => nodes.push(n),
@@ -221,19 +225,40 @@ fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>) -> IsSynth {
 /// `<subject> == <lit>` with the subject node inlined; `None` when the subject
 /// is out of the CEL profile (it never lowered to an [`ExprNode`]).
 fn subject_eq(subject: Option<&ExprNode>, lit: LitVal) -> Option<ExprNode> {
+    subject_cmp(subject, "==", lit)
+}
+
+/// `<subject> <op> <lit>` with the subject node inlined; `None` when the
+/// subject is out of the CEL profile.
+fn subject_cmp(subject: Option<&ExprNode>, op: &'static str, lit: LitVal) -> Option<ExprNode> {
     Some(ExprNode::Binary {
-        op: "==",
+        op,
         l: Box::new(subject?.clone()),
         r: Box::new(ExprNode::Lit { lit }),
     })
 }
 
-/// True when `lit` is a decimal `Number` literal (dsl §7.3.1) rather than an
-/// enum-member ident — mirrors `lute_check::match_check::is_number_literal`:
-/// a leading digit/sign/dot plus a successful `f64` parse.
-fn is_number_literal(lit: &str) -> bool {
-    let head = lit.strip_prefix(['+', '-']).unwrap_or(lit);
-    matches!(head.bytes().next(), Some(b'0'..=b'9' | b'.')) && lit.parse::<f64>().is_ok()
+/// A numeric range literal (dsl 0.18.0) as bound comparisons against the
+/// inlined subject, both ends inclusive: `N..` → `subject >= N`, `..M` →
+/// `subject <= M`, `N..M` → `subject >= N && subject <= M`. Only the existing
+/// `>=`/`<=`/`&&` binary shapes — no new IR node kind.
+fn subject_in_range(subject: Option<&ExprNode>, range: NumRange) -> Option<ExprNode> {
+    let lo = range
+        .lo
+        .map(|lo| subject_cmp(subject, ">=", LitVal::Num(lo)));
+    let hi = range
+        .hi
+        .map(|hi| subject_cmp(subject, "<=", LitVal::Num(hi)));
+    match (lo, hi) {
+        (Some(l), Some(r)) => Some(ExprNode::Binary {
+            op: "&&",
+            l: Box::new(l?),
+            r: Box::new(r?),
+        }),
+        (Some(bound), None) | (None, Some(bound)) => bound,
+        // `classify_is_literal` never yields a range without a bound.
+        (None, None) => None,
+    }
 }
 
 /// Walk one `cel_parser::ast::Expr` into an [`ExprNode`]; `None` on any
@@ -560,5 +585,49 @@ mod tests {
             synth_arm_expr(Some("unset"), "", "scene.a == scene.b"),
             ArmExpr::UnsetOnCompoundSubject
         ));
+    }
+
+    #[test]
+    fn is_closed_range_lowers_to_inclusive_bounds() {
+        // `N..M` → `subject >= N && subject <= M` (dsl 0.18.0).
+        assert_eq!(
+            arm_json(Some("1..3"), "", "run.rank"),
+            json!({
+                "op": "&&",
+                "l": {"op": ">=", "l": {"path": "run.rank"}, "r": {"lit": 1.0}},
+                "r": {"op": "<=", "l": {"path": "run.rank"}, "r": {"lit": 3.0}}
+            })
+        );
+    }
+
+    #[test]
+    fn is_open_ranges_lower_to_single_bound_in_alternation() {
+        // `..M` → `subject <= M`, `N..` → `subject >= N`, OR'd like points.
+        assert_eq!(
+            arm_json(Some("..-0.5 | 2 | 5.."), "", "run.rank"),
+            json!({
+                "op": "||",
+                "l": {
+                    "op": "||",
+                    "l": {"op": "<=", "l": {"path": "run.rank"}, "r": {"lit": -0.5}},
+                    "r": {"op": "==", "l": {"path": "run.rank"}, "r": {"lit": 2.0}}
+                },
+                "r": {"op": ">=", "l": {"path": "run.rank"}, "r": {"lit": 5.0}}
+            })
+        );
+    }
+
+    #[test]
+    fn malformed_or_empty_range_lowers_no_expr() {
+        // `E-WHEN-RANGE` literals poison the whole pattern (no half-tree).
+        for is in ["1..2..3", "3..1", "..", "a..b | 1"] {
+            assert!(
+                matches!(
+                    synth_arm_expr(Some(is), "", "run.rank"),
+                    ArmExpr::Lowered(None)
+                ),
+                "{is}"
+            );
+        }
     }
 }

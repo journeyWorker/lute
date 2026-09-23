@@ -263,12 +263,13 @@ enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Migrate a pre-0.2.2 document to 0.2.2 in place — `:line[speaker]{…}:
-    /// text` → `@speaker{…}: text`, any other content line's leading `:`
-    /// sigil → `@` (dsl §7.1, foundation C1), and `<choice>`/`<hub>` choice
-    /// `as="…"` → `into="…"` (dsl §7.3). Byte-exact and comment-preserving;
-    /// writes back only when something changed. Exit `0` on success, `2` on
-    /// an I/O failure.
+    /// Apply the mechanical, meaning-preserving migrations in place —
+    /// `:line[speaker]{…}: text` → `@speaker{…}: text`, any other content
+    /// line's leading `:` sigil → `@` (dsl §7.1, foundation C1),
+    /// `<choice>`/`<hub>` choice `as="…"` → `into="…"` (dsl §7.3), and a
+    /// literal-comparison `<when test="$ == …">` → `<when is="…">` (dsl
+    /// 0.18.0 §3). Byte-exact and comment-preserving; writes back only when
+    /// something changed. Exit `0` on success, `2` on an I/O failure.
     Fix {
         /// Path to the `.lute` file to migrate.
         file: PathBuf,
@@ -874,6 +875,7 @@ const DENIABLE_CODES: &[&str] = &[
     "E-VALIDAT-DERIVED",
     "E-WHEN-LITERAL-DOMAIN",
     "E-WHEN-PATTERN",
+    "E-WHEN-RANGE",
     "E-WHEN-UNSET-SUBJECT",
     "E-WRITE-CONFLICT",
     "W-ASSET-PLACEHOLDER",
@@ -899,6 +901,7 @@ const DENIABLE_CODES: &[&str] = &[
     "W-TIMELINE-TRACKS",
     "W-TRACE-MOCK-UNPRODUCIBLE",
     "W-UNPROVEN-RELATIONAL",
+    "W-WHEN-TEST-LITERAL",
 ];
 
 /// clap `value_parser` for `--deny <CODE>`: accept only a code in the known
@@ -5306,15 +5309,13 @@ fn run_tag(file: &Path, force: bool) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Migrate a pre-0.2.2 document to 0.2.2 in place (dsl §7.1, §7.3), rewriting
-/// the file only when a span was actually changed. A thin shell over
-/// [`lute_check::fix_document`] (the pure core that owns the migration:
-/// `:line[speaker]` → `@speaker`, any other content line's leading `:` sigil
-/// → `@`, then `<choice>`/`<hub>` choice `as` → `into`): read the file,
-/// migrate, and — only when at least one edit applied — write the result
-/// back, so an already-0.2.2 document is left byte-identical (idempotent).
-/// Exit `0` on success (whether or not anything changed), `2` on an I/O failure
-/// (like `run_tag`).
+/// Apply `lute fix`'s mechanical migrations in place (dsl §7.1, §7.3, 0.18.0
+/// §3), rewriting the file only when a span was actually changed. A thin
+/// shell over [`lute_check::fix_document`] (the pure core that owns every
+/// rule): read the file, migrate, and — only when at least one edit applied
+/// — write the result back, so an already-migrated document is left
+/// byte-identical (idempotent). Exit `0` on success (whether or not anything
+/// changed), `2` on an I/O failure (like `run_tag`).
 fn run_fix(file: &Path) -> ExitCode {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
@@ -5331,9 +5332,9 @@ fn run_fix(file: &Path) -> ExitCode {
             eprintln!("lute: cannot write {}: {e}", file.display());
             return ExitCode::from(2);
         }
-        println!("lute: migrated {} edit(s) to 0.2.2", out.changed);
+        println!("lute: applied {} fix(es)", out.changed);
     } else {
-        println!("lute: already 0.2.2");
+        println!("lute: nothing to fix");
     }
 
     ExitCode::SUCCESS

@@ -1,0 +1,153 @@
+{
+  "kind": "scene",
+  "lute": "0.18.0",
+  "irVersion": "0.18.0",
+  "capabilityVersion": "69f7633e42e46f559c7c18587a81135b0617fa27247f8a169f78ba76c090be81",
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Match Range"
+  },
+  "state": [
+    {
+      "path": "run.score",
+      "type": "number",
+      "default": 0
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "addr": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Tallying the score.",
+      "lineId": "hero.s01ep01.narrator_0010"
+    },
+    {
+      "kind": "match",
+      "addr": "001-0200",
+      "subject": "run.score",
+      "arms": [
+        {
+          "test": "",
+          "target": "001-0300",
+          "expr": {
+            "op": "<=",
+            "l": {
+              "path": "run.score"
+            },
+            "r": {
+              "lit": 0.0
+            }
+          }
+        },
+        {
+          "test": "",
+          "target": "001-0500",
+          "expr": {
+            "op": "&&",
+            "l": {
+              "op": ">=",
+              "l": {
+                "path": "run.score"
+              },
+              "r": {
+                "lit": 1.0
+              }
+            },
+            "r": {
+              "op": "<=",
+              "l": {
+                "path": "run.score"
+              },
+              "r": {
+                "lit": 3.0
+              }
+            }
+          }
+        },
+        {
+          "test": "",
+          "target": "001-0700",
+          "expr": {
+            "op": ">=",
+            "l": {
+              "path": "run.score"
+            },
+            "r": {
+              "lit": 4.0
+            }
+          }
+        }
+      ],
+      "otherwise": "001-0900",
+      "converge": "001-1100"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Nothing yet.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero-0010"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0400",
+      "target": "001-1100"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0500",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "A modest haul.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero-0020"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0600",
+      "target": "001-1100"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0700",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "A fortune.",
+      "lineId": "hero.s01ep01.hero_0030",
+      "voiceKey": "hero-0030"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-0800",
+      "target": "001-1100"
+    },
+    {
+      "kind": "line",
+      "addr": "001-0900",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Somewhere in between.",
+      "lineId": "hero.s01ep01.hero_0040",
+      "voiceKey": "hero-0040"
+    },
+    {
+      "kind": "jump",
+      "addr": "001-1000",
+      "target": "001-1100"
+    }
+  ],
+  "shots": [
+    {
+      "shot": 1,
+      "heading": "The Score"
+    }
+  ]
+}

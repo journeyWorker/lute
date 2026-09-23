@@ -7,19 +7,26 @@
 //! arms. Domain finiteness is inferred from the subject's declared `state:` type
 //! ([`StateSchema`]): a `bool` (domain `{true,false}`), an `enum` (domain = its
 //! members), or a `scene.choices.<branchId>` path (domain = the branch's choice
-//! ids ∪ `unset`) is FINITE; anything else (number/string/record/…) is INFINITE
-//! and therefore requires `<otherwise>`.
+//! ids ∪ `unset`) is FINITE; a `number` is the real line ([`Domain::Number`],
+//! dsl 0.18.0 §4 — covered only by a union of intervals spanning it);
+//! anything else (string/record/…) is INFINITE and therefore requires
+//! `<otherwise>`.
 //!
 //! Coverage is computed from the arms' **`is` literal patterns** (§7.3.1) — the
 //! NORMATIVE path (§11.2) — unioned with the conservative values a `test` guard
 //! provably matches (recognizing `test` coverage is downgraded to MAY). An `is`
-//! pattern (`Literal ("|" Literal)*`) contributes each literal to `covered`: an
+//! pattern (`Literal ("|" Literal)*`, classified by the shared
+//! [`lute_syntax::is_pattern`]) contributes each literal to `covered`: an
 //! enum member / choice id → the string value, `true`/`false` → the bool value,
-//! a decimal `Number` → a numeric value, and `unset` → the unset case.
+//! a decimal `Number` → the point interval `[n, n]`, a range `N..M`/`N..`/`..M`
+//! (dsl 0.18.0 §2) → its closed interval, and `unset` → the unset case.
 //! Diagnostics:
 //!
+//! - **`E-WHEN-RANGE`** — a malformed or empty range literal (dsl 0.18.0 §2);
+//!   it covers nothing.
 //! - **`E-NONEXHAUSTIVE`** — no `<otherwise>` and the domain is either infinite,
-//!   or finite but not every domain value is covered by a `<when>` arm.
+//!   or finite/number but not fully covered by the `<when>` arms (a number
+//!   domain's message names the first uncovered gap, dsl 0.18.0 §4).
 //! - **`E-WHEN-PATTERN`** — a `<when>` arm with neither an `is` pattern nor a
 //!   `test` guard (§7.3.1); one of the two is REQUIRED.
 //! - **`E-UNSET-UNCOVERED`** — the subject is *maybe-unset* (`scene.choices.*`, or
@@ -32,7 +39,11 @@
 //!   unreachable. Flagged at every `<otherwise>` past the first.
 //! - **`W-OVERLAP-ARMS`** (Warning) — two `<when>` arms that *provably* match the
 //!   same value (kept conservative: identical literal equality tests only, never
-//!   general SAT). First-match-wins means the later arm is dead.
+//!   general SAT). First-match-wins means the later arm is dead. Numeric
+//!   literals: only a point (or degenerate `n..n` range) already inside
+//!   earlier coverage warns. A wider range never does — partial overlap is
+//!   the descending-threshold cascade (`3..` then `1..`, first match wins),
+//!   and full containment is `E-ARM-DEAD`'s (dsl 0.18.0 §4).
 //!
 //! ## `<branch>` (§11.1)
 //! `<branch id>` MUST be unique within the episode (the `.lute` document);
@@ -70,6 +81,7 @@ use lute_manifest::types::{Literal, Type};
 use lute_syntax::ast::{
     Arm, Attr, AttrValue, Branch, Document, Hub, IsPattern, Line, Match, Node, Quest, Reward,
 };
+use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral, IsLiteralError};
 
 use crate::cel_paths::{
     is_reserved_quest_activated_at, is_reserved_quest_objective_done, is_reserved_quest_path,
@@ -104,6 +116,14 @@ pub const E_HUB_NO_EXIT: &str = "E-HUB-NO-EXIT";
 /// arm (D4), and the foreign literal contributes nothing to coverage/
 /// subsumption downstream.
 pub const E_WHEN_LITERAL_DOMAIN: &str = "E-WHEN-LITERAL-DOMAIN";
+
+/// `E-WHEN-RANGE` (dsl 0.18.0 §2): a `<when is="…">` alternative containing
+/// `..` that is not a valid range literal — malformed (`..`, `a..b`,
+/// `1...2`, `1..2..3`) or empty (`3..1`, lower bound above upper). Anchored
+/// at the literal's own span ([`is_pattern_literals`]). Such a literal
+/// covers nothing: it is skipped by coverage, overlap, subsumption, and the
+/// `E-WHEN-LITERAL-DOMAIN` domain check.
+pub const E_WHEN_RANGE: &str = "E-WHEN-RANGE";
 
 /// `E-REWARD-ATTR` (dsl 0.16.0 §2/§6): a `<reward>` element's shape is
 /// malformed — missing/empty `kind`, an `amount=` value that is not a
@@ -144,10 +164,6 @@ pub const E_QUEST_TREE_CYCLE: &str = "E-QUEST-TREE-CYCLE";
 pub enum DomainValue {
     Str(String),
     Bool(bool),
-    /// A decimal `Number` literal (dsl §7.3.1), kept as its trimmed source text.
-    /// A numeric subject has an INFINITE domain, so a `Num` never completes
-    /// coverage — it is carried only for union/overlap accounting.
-    Num(String),
 }
 
 /// The inferred value domain of a `<match>` subject (dsl §11.2).
@@ -155,9 +171,118 @@ pub enum DomainValue {
 pub enum Domain {
     /// Finite domain with a known, enumerable set of values.
     Finite(Vec<DomainValue>),
-    /// Infinite / unknowable domain (number, string, unresolved subject): an
+    /// The real line (dsl 0.18.0 §4): a declared `number` subject (schema
+    /// decl or component param). Coverage is the union of the arms' closed
+    /// intervals ([`NumCoverage`]); exhaustive iff that union is the whole
+    /// line.
+    Number,
+    /// Infinite / unknowable domain (string, opaque, unresolved subject): an
     /// `<otherwise>` is mandatory.
     Infinite,
+}
+
+/// A closed interval over the extended reals (dsl 0.18.0 §4): a point `n` is
+/// `[n, n]`, an open range end is `±∞`. Both ends inclusive.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Interval {
+    pub(crate) lo: f64,
+    pub(crate) hi: f64,
+}
+
+impl Interval {
+    /// The interval a classified numeric `is=` literal matches — a point or
+    /// a range — or `None` for every non-numeric literal kind.
+    pub(crate) fn of(lit: &IsLiteral) -> Option<Self> {
+        match lit {
+            IsLiteral::Num(n) => Some(Self { lo: *n, hi: *n }),
+            IsLiteral::Range(r) => Some(Self {
+                lo: r.lo.unwrap_or(f64::NEG_INFINITY),
+                hi: r.hi.unwrap_or(f64::INFINITY),
+            }),
+            IsLiteral::Bool(_) | IsLiteral::Unset | IsLiteral::Str(_) => None,
+        }
+    }
+
+    fn is_point(self) -> bool {
+        self.lo == self.hi
+    }
+}
+
+/// Coverage over [`Domain::Number`] (dsl 0.18.0 §4): the union of closed
+/// intervals, kept sorted, disjoint, and maximally merged — two intervals
+/// sharing even one point fuse (`..0` + `0..` is the whole line). The reals
+/// are dense, so any two separated spans leave a non-empty open gap.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct NumCoverage {
+    spans: Vec<Interval>,
+}
+
+impl NumCoverage {
+    pub(crate) fn add(&mut self, iv: Interval) {
+        let at = self.spans.partition_point(|s| s.lo < iv.lo);
+        self.spans.insert(at, iv);
+        let mut merged: Vec<Interval> = Vec::with_capacity(self.spans.len());
+        for s in self.spans.drain(..) {
+            match merged.last_mut() {
+                Some(last) if s.lo <= last.hi => last.hi = last.hi.max(s.hi),
+                _ => merged.push(s),
+            }
+        }
+        self.spans = merged;
+    }
+
+    /// Whether `iv` lies wholly inside the union (a connected interval
+    /// inside a union of maximal spans lies inside ONE span).
+    pub(crate) fn contains(&self, iv: Interval) -> bool {
+        self.spans.iter().any(|s| s.lo <= iv.lo && iv.hi <= s.hi)
+    }
+
+    /// The `W-OVERLAP-ARMS` test (dsl 0.18.0 §4): a point literal (or a
+    /// degenerate `n..n` range) overlaps when it lies inside the union. A
+    /// wider range NEVER overlaps: partial overlap is the descending-threshold
+    /// cascade idiom (`3..` then `1..`, first match wins), and full
+    /// containment is `E-ARM-DEAD`'s subsumption, not this warning.
+    pub(crate) fn overlaps(&self, iv: Interval) -> bool {
+        iv.is_point() && self.contains(iv)
+    }
+
+    /// Whether the union is the whole real line.
+    pub(crate) fn covers_all(&self) -> bool {
+        matches!(self.spans.as_slice(), [s] if s.lo == f64::NEG_INFINITY && s.hi == f64::INFINITY)
+    }
+
+    /// The first (lowest) uncovered stretch of the line, phrased for the
+    /// `E-NONEXHAUSTIVE` message; `None` when [`Self::covers_all`].
+    pub(crate) fn first_gap(&self) -> Option<String> {
+        let Some(first) = self.spans.first() else {
+            return Some("no number is covered".to_string());
+        };
+        if first.lo > f64::NEG_INFINITY {
+            return Some(format!(
+                "numbers below {} are not covered",
+                fmt_num(first.lo)
+            ));
+        }
+        if let Some(pair) = self.spans.windows(2).next() {
+            return Some(format!(
+                "numbers strictly between {} and {} are not covered",
+                fmt_num(pair[0].hi),
+                fmt_num(pair[1].lo)
+            ));
+        }
+        (first.hi < f64::INFINITY)
+            .then(|| format!("numbers above {} are not covered", fmt_num(first.hi)))
+    }
+}
+
+/// Shortest round-trip rendering of a finite bound (`2`, not `2.0`; `-0`
+/// prints as `0`).
+fn fmt_num(n: f64) -> String {
+    if n == 0.0 {
+        "0".to_string()
+    } else {
+        n.to_string()
+    }
 }
 
 /// One branch's recording result: the implicit `scene.choices.<id>` decl to fold
@@ -233,9 +358,11 @@ pub(crate) fn check_match_with_domain(
     }
 
     // One ordered pass over the `<when>` arms: accumulate covered values (+ the
-    // `unset` case) and flag a provably-dead overlap. First-match-wins means an
-    // arm whose concrete value was already covered by an EARLIER arm is dead.
+    // `unset` case, + numeric intervals, dsl 0.18.0 §4) and flag a
+    // provably-dead overlap. First-match-wins means an arm whose concrete
+    // value was already covered by an EARLIER arm is dead.
     let mut covered: BTreeSet<DomainValue> = BTreeSet::new();
+    let mut covered_num = NumCoverage::default();
     let mut covers_unset = false;
     for arm in &m.arms {
         if let Arm::When { is, test, span, .. } = arm {
@@ -254,7 +381,18 @@ pub(crate) fn check_match_with_domain(
                 .map(|pat| is_pattern_literals(&pat.raw, pat.span))
                 .unwrap_or_default()
             {
-                let lit = classify_when_literal(&lit_raw);
+                let lit = match classify_is_literal(&lit_raw) {
+                    Ok(lit) => lit,
+                    Err(err) => {
+                        diags.push(diag(
+                            E_WHEN_RANGE,
+                            Severity::Error,
+                            bad_range_message(&lit_raw, err),
+                            lit_span,
+                        ));
+                        continue;
+                    }
+                };
                 if literal_is_foreign(&lit, &info) {
                     diags.push(diag(
                         E_WHEN_LITERAL_DOMAIN,
@@ -265,7 +403,9 @@ pub(crate) fn check_match_with_domain(
                 }
             }
             let cov = arm_coverage(is.as_ref(), &test.raw, subject.as_deref());
-            if cov.values.iter().any(|v| covered.contains(v)) {
+            if cov.values.iter().any(|v| covered.contains(v))
+                || cov.intervals.iter().any(|iv| covered_num.overlaps(*iv))
+            {
                 diags.push(diag(
                     "W-OVERLAP-ARMS",
                     Severity::Warning,
@@ -277,6 +417,9 @@ pub(crate) fn check_match_with_domain(
             }
             for v in cov.values {
                 covered.insert(v);
+            }
+            for iv in cov.intervals {
+                covered_num.add(iv);
             }
             covers_unset |= cov.covers_unset;
         }
@@ -303,19 +446,21 @@ pub(crate) fn check_match_with_domain(
         return diags;
     }
 
-    let fully_covered = match &info.domain {
-        Domain::Finite(vals) => vals.iter().all(|v| covered.contains(v)),
-        Domain::Infinite => false,
+    let (fully_covered, gap) = match &info.domain {
+        Domain::Finite(vals) => (vals.iter().all(|v| covered.contains(v)), None),
+        Domain::Number => (covered_num.covers_all(), covered_num.first_gap()),
+        Domain::Infinite => (false, None),
     };
     if !fully_covered {
-        diags.push(diag(
-            "E-NONEXHAUSTIVE",
-            Severity::Error,
-            "non-exhaustive `<match>`: the subject's domain is not fully covered and there is no \
-             `<otherwise>` (dsl §11.2)"
+        let message = match gap {
+            Some(gap) => format!(
+                "non-exhaustive `<match>`: {gap} and there is no `<otherwise>` (dsl 0.18.0 §4)"
+            ),
+            None => "non-exhaustive `<match>`: the subject's domain is not fully covered and \
+                     there is no `<otherwise>` (dsl §11.2)"
                 .to_string(),
-            m.span,
-        ));
+        };
+        diags.push(diag("E-NONEXHAUSTIVE", Severity::Error, message, m.span));
     }
 
     // A maybe-unset subject's `unset` case must be covered (§11.2/§9.4). This is
@@ -1068,8 +1213,9 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
 }
 
 /// Whether a `<match>` is provably exhaustive (dsl §11.2): it has an
-/// `<otherwise>`, or its finite domain — including the `unset` member when the
-/// subject is maybe-unset — is fully covered by the `<when>` arms. Exposed for
+/// `<otherwise>`, or its finite domain — or, for a `number` subject, the whole
+/// real line (dsl 0.18.0 §4) — including the `unset` member when the
+/// subject is maybe-unset, is fully covered by the `<when>` arms. Exposed for
 /// T4.4 (definite-assignment) so a domain-exhaustive match without `<otherwise>`
 /// is not treated as a possible fall-through (its arms' join is an intersection,
 /// not the pre-block set). See the report's "exhaustiveness result shape".
@@ -1080,6 +1226,7 @@ pub fn is_exhaustive(m: &Match, schema: &StateSchema) -> bool {
     let subject = subject_path(m);
     let info = infer_domain(subject.as_deref(), schema);
     let mut covered: BTreeSet<DomainValue> = BTreeSet::new();
+    let mut covered_num = NumCoverage::default();
     let mut covers_unset = false;
     for arm in &m.arms {
         if let Arm::When { is, test, .. } = arm {
@@ -1087,11 +1234,15 @@ pub fn is_exhaustive(m: &Match, schema: &StateSchema) -> bool {
             for v in cov.values {
                 covered.insert(v);
             }
+            for iv in cov.intervals {
+                covered_num.add(iv);
+            }
             covers_unset |= cov.covers_unset;
         }
     }
     let domain_covered = match &info.domain {
         Domain::Finite(vals) => vals.iter().all(|v| covered.contains(v)),
+        Domain::Number => covered_num.covers_all(),
         Domain::Infinite => false,
     };
     domain_covered && (!info.maybe_unset || covers_unset)
@@ -1106,10 +1257,11 @@ pub struct DomainInfo {
     pub maybe_unset: bool,
     /// Whether the subject was actually resolved against the schema: a
     /// known `bool`/`enum` decl, a `scene.choices.*` branch with folded
-    /// members, or any other declared decl (`Domain::Infinite` included —
-    /// e.g. a declared `number`). `false` when `infer_domain` has NO schema
-    /// knowledge about the subject at all (an unparseable `on=`, an
-    /// undeclared path, or `scene.choices.*` with members not yet folded).
+    /// members, or any other declared decl (`Domain::Number`/
+    /// `Domain::Infinite` included — e.g. a declared `number` or `string`).
+    /// `false` when `infer_domain` has NO schema knowledge about the subject
+    /// at all (an unparseable `on=`, an undeclared path, or
+    /// `scene.choices.*` with members not yet folded).
     /// `E-WHEN-LITERAL-DOMAIN` (0.4.0 §5.2) requires `resolved` before
     /// claiming anything about the domain — an undeclared path already gets
     /// its own `E-UNDECLARED` elsewhere, and piling a domain claim atop it
@@ -1119,7 +1271,8 @@ pub struct DomainInfo {
 }
 
 /// Infer the subject's value domain (dsl §11.2). A `bool`/`enum` decl or a
-/// `scene.choices.<id>` path is FINITE; anything else is INFINITE (requires
+/// `scene.choices.<id>` path is FINITE; a `number` decl is the real line
+/// ([`Domain::Number`], dsl 0.18.0 §4); anything else is INFINITE (requires
 /// `<otherwise>`). Maybe-unset: a `scene.choices.*` subject always (a branch may
 /// not have been reached), or a `run.*`/`user.*`/`app.*` decl with no `default`.
 pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> DomainInfo {
@@ -1160,6 +1313,7 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
                         .map(|m| DomainValue::Str(m.clone()))
                         .collect(),
                 ),
+                Type::Number => Domain::Number,
                 _ => Domain::Infinite,
             };
             let maybe_unset = decl.default.is_none()
@@ -1234,8 +1388,9 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
 
 /// The domain a component param's declared TYPE induces (dsl 0.4.0 §6.3):
 /// `Bool` -> `Finite[true, false]`; `Enum(members)` -> `Finite(members)`
-/// (declaration order); `Number`/`Str`/anything else -> `Infinite`
-/// (`<otherwise>` REQUIRED, `E-NONEXHAUSTIVE`). ALWAYS `maybe_unset: false,
+/// (declaration order); `Number` -> `Number` (the real line, dsl 0.18.0 §4);
+/// `Str`/anything else -> `Infinite` (`<otherwise>` REQUIRED,
+/// `E-NONEXHAUSTIVE`). ALWAYS `maybe_unset: false,
 /// resolved: true` — every `::use` binds every param (`E-COMPONENT-ARG`
 /// enforces count/type, dsl §13.3), so `unset` is never a member of a
 /// param's domain: `is="unset"` on a param subject is
@@ -1251,6 +1406,7 @@ pub(crate) fn param_domain(ty: &Type) -> DomainInfo {
                 .map(|m| DomainValue::Str(m.clone()))
                 .collect(),
         ),
+        Type::Number => Domain::Number,
         _ => Domain::Infinite,
     };
     DomainInfo {
@@ -1278,6 +1434,8 @@ fn enum_members(path: &str, schema: &StateSchema) -> Option<Vec<DomainValue>> {
 struct ArmCoverage {
     /// Concrete finite-domain values (`bool`/enum-string) the arm covers.
     values: Vec<DomainValue>,
+    /// Numeric points/ranges the arm covers (dsl 0.18.0 §4).
+    intervals: Vec<Interval>,
     /// Whether the arm covers the `unset` case.
     covers_unset: bool,
 }
@@ -1308,66 +1466,25 @@ fn arm_coverage(is: Option<&IsPattern>, test_raw: &str, subject: Option<&str>) -
     cov
 }
 
-/// One classified literal from a `<when is="…">` alternation (dsl §7.3.1):
-/// the four token kinds the grammar admits. Shared by [`analyze_is_pattern`]
-/// (coverage folding, §11.2) and the `E-WHEN-LITERAL-DOMAIN` domain check
-/// (0.4.0 §5.2) so both read ONE classification. `pub(crate)`: also shared
-/// with `reachability.rs` (0.4.0 T4 — the E-ARM-DEAD subsumption union reads
-/// the SAME classification, so the two codes never disagree about a
-/// literal's meaning).
-pub(crate) enum WhenLiteral {
-    Bool(bool),
-    /// The `unset` case (§9.4) — not a `DomainValue`; membership is decided
-    /// by `maybe_unset`, never by domain member equality.
-    Unset,
-    /// A decimal `Number` literal, kept as its trimmed source text.
-    Num(String),
-    /// An enum-member ident, matched by string equality (§8.2).
-    Str(String),
-}
-
-/// Classify one trimmed `is=` alternative (dsl §7.3.1): `WhenPattern ::=
-/// Literal ("|" Literal)*`, `Literal = EnumMember | "true" | "false" |
-/// Number | "unset"`. This is NOT CEL. `pub(crate)`: shared with
-/// `reachability.rs` (0.4.0 T4).
-pub(crate) fn classify_when_literal(lit: &str) -> WhenLiteral {
-    match lit {
-        "true" => WhenLiteral::Bool(true),
-        "false" => WhenLiteral::Bool(false),
-        "unset" => WhenLiteral::Unset,
-        _ if is_number_literal(lit) => WhenLiteral::Num(lit.to_string()),
-        _ => WhenLiteral::Str(lit.to_string()),
-    }
-}
-
-/// Parse a `<when is="…">` literal pattern (dsl §7.3.1) into `cov`: split on
-/// `|`, trim each literal, and classify it ([`classify_when_literal`]) —
-/// `true`/`false` are bool domain values, `unset` covers the unset case
-/// (§9.4), a decimal `Number` is a numeric value, and any other ident is an
-/// enum member matched by string equality on the subject (§8.2). Empty
-/// alternatives (a stray `|`) are skipped.
+/// Parse a `<when is="…">` literal pattern (dsl §7.3.1) into `cov`: every
+/// alternative ([`is_alternatives`]) is classified by the shared
+/// [`classify_is_literal`] — `true`/`false` are bool domain values, `unset`
+/// covers the unset case (§9.4), a decimal `Number` is a point interval, a
+/// range (dsl 0.18.0 §2) its closed interval, and any other ident is an enum
+/// member matched by string equality on the subject (§8.2). A malformed or
+/// empty range (`E-WHEN-RANGE`) covers nothing.
 fn analyze_is_pattern(raw: &str, cov: &mut ArmCoverage) {
-    for lit in raw.split('|') {
-        let lit = lit.trim();
-        if lit.is_empty() {
-            continue;
-        }
-        match classify_when_literal(lit) {
-            WhenLiteral::Bool(b) => cov.values.push(DomainValue::Bool(b)),
-            WhenLiteral::Unset => cov.covers_unset = true,
-            WhenLiteral::Num(n) => cov.values.push(DomainValue::Num(n)),
-            WhenLiteral::Str(s) => cov.values.push(DomainValue::Str(s)),
+    for lit in is_alternatives(raw) {
+        match classify_is_literal(lit) {
+            Ok(IsLiteral::Bool(b)) => cov.values.push(DomainValue::Bool(b)),
+            Ok(IsLiteral::Unset) => cov.covers_unset = true,
+            Ok(IsLiteral::Str(s)) => cov.values.push(DomainValue::Str(s)),
+            Ok(lit @ (IsLiteral::Num(_) | IsLiteral::Range(_))) => {
+                cov.intervals.extend(Interval::of(&lit));
+            }
+            Err(_) => {}
         }
     }
-}
-
-/// True when `lit` is a decimal `Number` literal (dsl §7.3.1) rather than an
-/// enum-member ident. Enum members are `Ident`s (letter/`_` lead, MAY contain
-/// `-`), so a leading digit / sign / dot plus a successful `f64` parse cleanly
-/// disambiguates a number from a member name.
-fn is_number_literal(lit: &str) -> bool {
-    let head = lit.strip_prefix(['+', '-']).unwrap_or(lit);
-    matches!(head.bytes().next(), Some(b'0'..=b'9' | b'.')) && lit.parse::<f64>().is_ok()
 }
 
 /// Per-literal sub-spans of a `<when is="…">` pattern (dsl §7.3.1, 0.4.0
@@ -1414,30 +1531,30 @@ pub fn is_pattern_literals(raw: &str, span: Span) -> Vec<(String, Span)> {
 }
 
 /// Whether a classified `is=` literal is PROVABLY outside `dom`'s domain
-/// (dsl 0.4.0 §5.2 rules 1-4). Requires `dom.resolved` — an unresolvable
-/// subject (an unparseable `on=`, an undeclared path) makes no domain claim,
-/// so nothing here is ever flagged (§5.1's Closure: no unprovable pile-on).
-/// `unset` is checked against `maybe_unset` regardless of domain shape (rule
-/// 3, including an `Infinite` subject — rule 4); every other literal kind is
-/// checked only when the domain is `Finite` (rules 1-2) — an `Infinite`
-/// subject makes no finite claim to violate.
-pub(crate) fn literal_is_foreign(lit: &WhenLiteral, dom: &DomainInfo) -> bool {
+/// (dsl 0.4.0 §5.2 rules 1-4; ranges dsl 0.18.0 §2). Requires `dom.resolved`
+/// — an unresolvable subject (an unparseable `on=`, an undeclared path)
+/// makes no domain claim, so nothing here is ever flagged (§5.1's Closure:
+/// no unprovable pile-on). `unset` is checked against `maybe_unset`
+/// regardless of domain shape (rule 3, including an `Infinite` subject —
+/// rule 4). A numeric RANGE is foreign to every resolved non-`Number`
+/// domain (a finite `bool`/`enum`/choice domain, or a declared `string`/
+/// opaque subject). Every other literal kind is checked only when the domain
+/// is `Finite` (rules 1-2) — a `Number`/`Infinite` subject makes no finite
+/// claim to violate, so a point `Number` keeps its 0.4.0 behavior.
+pub(crate) fn literal_is_foreign(lit: &IsLiteral, dom: &DomainInfo) -> bool {
     if !dom.resolved {
         return false;
     }
-    if matches!(lit, WhenLiteral::Unset) {
-        return !dom.maybe_unset;
-    }
-    let Domain::Finite(vals) = &dom.domain else {
-        return false;
-    };
-    match lit {
-        WhenLiteral::Bool(b) => !vals.contains(&DomainValue::Bool(*b)),
-        WhenLiteral::Str(s) => !vals
+    match (lit, &dom.domain) {
+        (IsLiteral::Unset, _) => !dom.maybe_unset,
+        (IsLiteral::Range(_), domain) => !matches!(domain, Domain::Number),
+        (IsLiteral::Bool(b), Domain::Finite(vals)) => !vals.contains(&DomainValue::Bool(*b)),
+        (IsLiteral::Str(s), Domain::Finite(vals)) => !vals
             .iter()
             .any(|v| matches!(v, DomainValue::Str(x) if x == s)),
-        WhenLiteral::Num(_) => true, // `Domain::Finite` is always bool/enum; a Num never fits.
-        WhenLiteral::Unset => unreachable!("handled above"),
+        // `Domain::Finite` is always bool/enum; a Num never fits.
+        (IsLiteral::Num(_), Domain::Finite(_)) => true,
+        (_, Domain::Number | Domain::Infinite) => false,
     }
 }
 
@@ -1445,21 +1562,40 @@ pub(crate) fn literal_is_foreign(lit: &WhenLiteral, dom: &DomainInfo) -> bool {
 /// offending literal and, for a `Finite` domain, its members (matching the
 /// §5.4 worked example: `` `platnum` is not a member of the subject's domain
 /// [fail, bronze, silver, gold] ``). The `unset`-on-a-never-unset-subject
-/// case (rules 3-4) has no member list to print, so it states the reason
-/// directly instead.
-fn foreign_literal_message(lit_display: &str, lit: &WhenLiteral, domain: &Domain) -> String {
-    if matches!(lit, WhenLiteral::Unset) {
-        return "`unset` is not a member of the subject's domain: this subject can never be \
-                 unset (dsl 0.4 §5.2)"
-            .to_string();
+/// case (rules 3-4) and a range against a non-numeric subject (dsl 0.18.0
+/// §2) state the reason directly instead.
+fn foreign_literal_message(lit_display: &str, lit: &IsLiteral, domain: &Domain) -> String {
+    match (lit, domain) {
+        (IsLiteral::Unset, _) => "`unset` is not a member of the subject's domain: this \
+                                  subject can never be unset (dsl 0.4 §5.2)"
+            .to_string(),
+        (IsLiteral::Range(_), _) => format!(
+            "`{lit_display}` is a numeric range, which cannot match a non-numeric subject \
+             (dsl 0.18.0 §2)"
+        ),
+        (_, Domain::Finite(vals)) => format!(
+            "`{lit_display}` is not a member of the subject's domain [{}] (dsl 0.4 §5.2)",
+            domain_members_display(vals),
+        ),
+        (_, Domain::Number | Domain::Infinite) => {
+            unreachable!("rule 4: a non-finite domain only ever flags `unset` or a range")
+        }
     }
-    let Domain::Finite(vals) = domain else {
-        unreachable!("rule 4: an `Infinite` domain only ever flags the `unset` literal");
-    };
-    format!(
-        "`{lit_display}` is not a member of the subject's domain [{}] (dsl 0.4 §5.2)",
-        domain_members_display(vals),
-    )
+}
+
+/// Build the `E-WHEN-RANGE` message (dsl 0.18.0 §2) for a literal the shared
+/// classifier rejected.
+fn bad_range_message(lit_display: &str, err: IsLiteralError) -> String {
+    match err {
+        IsLiteralError::MalformedRange => format!(
+            "malformed range literal `{lit_display}`: a range is `N..M`, `N..`, or `..M` with \
+             decimal number bounds (dsl 0.18.0 §2)"
+        ),
+        IsLiteralError::EmptyRange => format!(
+            "empty range literal `{lit_display}`: its lower bound is above its upper bound, so \
+             it matches nothing (dsl 0.18.0 §2)"
+        ),
+    }
 }
 
 /// Render a `Domain::Finite` member list for a diagnostic message, e.g.
@@ -1470,7 +1606,6 @@ fn domain_members_display(vals: &[DomainValue]) -> String {
         .map(|v| match v {
             DomainValue::Str(s) => s.clone(),
             DomainValue::Bool(b) => b.to_string(),
-            DomainValue::Num(n) => n.clone(),
         })
         .collect::<Vec<_>>()
         .join(", ")
@@ -2943,6 +3078,104 @@ mod tests {
                 "{code} must not fire on a bare same-doc subquest reference: {:?}",
                 rec.diags
             );
+        }
+    }
+
+    // ---- number domain intervals (dsl 0.18.0 §4) ---------------------------
+
+    fn iv(lit: &str) -> Interval {
+        Interval::of(&classify_is_literal(lit).expect("valid literal")).expect("numeric literal")
+    }
+
+    fn num_cov(lits: &[&str]) -> NumCoverage {
+        let mut c = NumCoverage::default();
+        for l in lits {
+            c.add(iv(l));
+        }
+        c
+    }
+
+    #[test]
+    fn num_coverage_touching_ends_cover_the_line() {
+        // Inclusive ends: `..0` and `0..` share the point 0 and fuse.
+        assert!(num_cov(&["..0", "0.."]).covers_all());
+        assert_eq!(num_cov(&["0..", "..0"]).first_gap(), None);
+    }
+
+    #[test]
+    fn num_coverage_names_the_first_gap() {
+        // Reals are dense: `..0 | 1..` leaves (0, 1) — and a point can't fill it.
+        assert_eq!(
+            num_cov(&["..0", "1..", "0.5"]).first_gap().as_deref(),
+            Some("numbers strictly between 0 and 0.5 are not covered")
+        );
+        assert_eq!(
+            num_cov(&["2..", "-1.5..0"]).first_gap().as_deref(),
+            Some("numbers below -1.5 are not covered")
+        );
+        assert_eq!(
+            num_cov(&["..2", "3"]).first_gap().as_deref(),
+            Some("numbers strictly between 2 and 3 are not covered")
+        );
+        assert_eq!(
+            num_cov(&["..2.0"]).first_gap().as_deref(),
+            Some("numbers above 2 are not covered")
+        );
+        assert_eq!(
+            NumCoverage::default().first_gap().as_deref(),
+            Some("no number is covered")
+        );
+    }
+
+    #[test]
+    fn num_coverage_contains_and_overlaps() {
+        let c = num_cov(&["1..5"]);
+        assert!(c.contains(iv("2..4")) && c.contains(iv("5")) && c.contains(iv("1.0")));
+        assert!(!c.contains(iv("4..6")) && !c.contains(iv("5.5")));
+        // A range never overlaps (cascade idiom; containment is E-ARM-DEAD's);
+        // a point inside coverage (even at an end) does.
+        assert!(!c.overlaps(iv("5..")));
+        assert!(!c.overlaps(iv("3..8")));
+        assert!(!c.overlaps(iv("2..4")));
+        assert!(c.overlaps(iv("5")));
+        assert!(c.overlaps(iv("5..5")));
+        assert!(!c.overlaps(iv("6")));
+    }
+
+    #[test]
+    fn is_exhaustive_agrees_with_number_coverage() {
+        // `is_exhaustive` (definite assignment) must match E-NONEXHAUSTIVE on
+        // a number subject: the whole line (+ `unset` when maybe-unset).
+        let schema = |default: Option<f64>| {
+            let mut decls = BTreeMap::new();
+            decls.insert(
+                "run.n".to_string(),
+                StateDecl {
+                    ty: Type::Number,
+                    default: default.map(Literal::Num),
+                    namespace: Namespace::Run,
+                },
+            );
+            StateSchema { decls }
+        };
+        let split = match_with(
+            "run.n",
+            vec![when_is(Some("..0"), ""), when_is(Some("0.."), "")],
+        );
+        let gap = match_with(
+            "run.n",
+            vec![when_is(Some("..0"), ""), when_is(Some("1.."), "")],
+        );
+        let with_unset = match_with(
+            "run.n",
+            vec![when_is(Some("..0 | unset"), ""), when_is(Some("0.."), "")],
+        );
+        assert!(is_exhaustive(&split, &schema(Some(0.0))));
+        assert!(!is_exhaustive(&gap, &schema(Some(0.0))));
+        assert!(!is_exhaustive(&split, &schema(None)));
+        assert!(is_exhaustive(&with_unset, &schema(None)));
+        for (m, s) in [(&split, schema(Some(0.0))), (&with_unset, schema(None))] {
+            assert!(check_match(m, &s, &ctx()).is_empty());
         }
     }
 }

@@ -10,9 +10,9 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.17.2` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.17.2` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.17.2` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.17.schema.json`](../schemas/lute-ir-0.17.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.18.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.18.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.18.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.18.schema.json`](../schemas/lute-ir-0.18.schema.json)). Consuming engines gate parsing on its MAJOR (0.13.0; previously major.minor). |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -143,7 +143,7 @@ to add, rename, or start reading once it does. Per the `0.7.0` precedent (a
 the file tracks the gated `major.minor` rather than the release number),
 `schemas/lute-ir-0.10.schema.json` is renamed to
 `lute-ir-0.11.schema.json` — later re-stamped along the same rule and now
-published as [`schemas/lute-ir-0.17.schema.json`](../schemas/lute-ir-0.17.schema.json)
+published as [`schemas/lute-ir-0.18.schema.json`](../schemas/lute-ir-0.18.schema.json)
 (`$id` updated to match; body otherwise byte-identical to `0.10.2`'s).
 `schedule.yaml` itself stays deliberately outside every one of these axes —
 no `kind:`, no `luteVersion:`, no capability fold — so none of this release's
@@ -312,7 +312,7 @@ would otherwise use. Language `0.17.0` is therefore byte-for-byte `0.16.0`
 grammar and semantics, and IR `0.17.0` adds, removes, renames, moves, and
 retypes no field or command. The schema file still renames per release line
 (`lute-ir-0.16.schema.json` →
-[`lute-ir-0.17.schema.json`](../schemas/lute-ir-0.17.schema.json)); only `$id`
+`lute-ir-0.17.schema.json`); only `$id`
 and title are restamped. Under the MAJOR-only runtime gate, a consumer needs no
 schema migration. A restrictive effective permission policy participates in
 `capabilityVersion`; an unrestricted project preserves its prior hash
@@ -340,6 +340,27 @@ the plugin contract is normative in
 The field is append-only within the `0.17` IR line, and `capabilityVersion`
 does not move because active plugin ids and versions already identify the owner
 set.
+
+**`0.18.0` aligns all three axes at `0.18.0`; the language earns the move.**
+`<when is="…">` gains inclusive numeric range literals — `N..M`, `N..`, `..M`,
+signed decimal bounds, freely mixed with other literals in one alternation — and
+a subject declared `number` becomes a coverage-checkable domain: interval union
+over the reals, so `E-NONEXHAUSTIVE` names the first uncovered gap and
+`E-ARM-DEAD` / `W-OVERLAP-ARMS` / `W-OTHERWISE-DEAD` become interval-aware.
+Two new diagnostics join the code set: `E-WHEN-RANGE` (a malformed or empty
+range literal) and `W-WHEN-TEST-LITERAL` (a `test` guard that is only a literal
+comparison `is=` can express), whose `migrate` fixit `lute fix` applies
+unprompted because the rewrite provably preserves meaning
+([`proposals/scenario-dsl/0.18.0.md`](proposals/scenario-dsl/0.18.0.md)).
+The IR carries no shape change: a range arm lowers to the existing `>=` / `<=`
+/ `&&` comparison operators in `MatchArm.expr`, so no field, operator, or
+record kind moves, and a document without ranges compiles byte-identically
+apart from the version strings. The IR restamps per the alignment rule, and
+the schema file renames per release line (`lute-ir-0.17.schema.json` →
+[`lute-ir-0.18.schema.json`](../schemas/lute-ir-0.18.schema.json)); only `$id`
+and title are restamped. Engines gate on MAJOR, so nothing widens.
+`capabilityVersion` does not move; the tree-sitter `when_literal` token widens
+to lex every range shape — a grammar regeneration, not a capability restamp.
 
 ## Which bump when
 

@@ -1,0 +1,28 @@
+---
+kind: scene
+luteVersion: "0.18.0"
+character: hero
+season: 1
+episode: 1
+title: Match Range
+uses: ./schema.yaml
+---
+
+## The Score
+
+@narrator: Tallying the score.
+
+<match on="run.score">
+  <when is="..0">
+    @hero: Nothing yet.
+  </when>
+  <when is="1..3">
+    @hero: A modest haul.
+  </when>
+  <when is="4..">
+    @hero: A fortune.
+  </when>
+  <otherwise>
+    @hero: Somewhere in between.
+  </otherwise>
+</match>

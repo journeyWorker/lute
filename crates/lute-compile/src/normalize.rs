@@ -21,6 +21,7 @@ use lute_syntax::ast::{
     Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode, Directive, Document, Line, Match,
     Node, Set,
 };
+use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
 pub const COMPONENT_BEGIN: &str = "__component-begin";
 pub const COMPONENT_END: &str = "__component-end";
@@ -582,21 +583,20 @@ fn select_component_arm(arms: &[Arm], subj: &Decided, schema: &StateSchema) -> O
     None // exhaustiveness is a checker invariant; total fallback: stay residual.
 }
 
-/// Mirror `lute_check::match_check`'s `classify_when_literal` classification
-/// (dsl §7.3.1: `EnumMember | "true" | "false" | Number | "unset"`) to
-/// compare one `is=` literal against a §6.4-decided constant. A param is
+/// Compare one `is=` literal, classified by the shared
+/// [`classify_is_literal`] (dsl §7.3.1: `EnumMember | "true" | "false" |
+/// Number | "unset" | Range`), against a §6.4-decided constant. A param is
 /// never `unset` (§6.3, checker-enforced via `E-WHEN-LITERAL-DOMAIN`), so
-/// `unset` never matches here.
+/// `unset` never matches here. A numeric range (dsl 0.18.0) matches a decided
+/// number inside its inclusive bounds and never a non-number; a malformed
+/// range (`E-WHEN-RANGE`) matches nothing.
 fn is_literal_matches(lit: &str, decided: &Decided) -> bool {
-    match lit {
-        "unset" => false,
-        "true" => matches!(decided, Decided::Bool(true)),
-        "false" => matches!(decided, Decided::Bool(false)),
-        _ => match decided {
-            Decided::Num(n) => lit.parse::<f64>().map(|v| v == *n).unwrap_or(false),
-            Decided::Str(s) => s == lit,
-            Decided::Bool(_) => false,
-        },
+    match (classify_is_literal(lit), decided) {
+        (Ok(IsLiteral::Bool(b)), Decided::Bool(d)) => b == *d,
+        (Ok(IsLiteral::Num(n)), Decided::Num(d)) => n == *d,
+        (Ok(IsLiteral::Range(range)), Decided::Num(d)) => range.contains(*d),
+        (Ok(IsLiteral::Str(s)), Decided::Str(d)) => s == *d,
+        _ => false,
     }
 }
 
@@ -1371,5 +1371,22 @@ state:
         let doc = normalize_quests(src);
         let obj = objective_by_id(quest_by_id(&doc, "parent"), "a");
         assert_eq!(obj.done.raw, "run.override");
+    }
+
+    /// dsl 0.18.0: a range literal decides against a folded number constant
+    /// by inclusive-bound membership, never against a non-number; a
+    /// malformed/empty range (`E-WHEN-RANGE`) matches nothing.
+    #[test]
+    fn range_literal_matches_decided_numbers_inclusively() {
+        let num = |n: f64| Decided::Num(n);
+        assert!(is_literal_matches("1..3", &num(1.0)));
+        assert!(is_literal_matches("1..3", &num(3.0)));
+        assert!(!is_literal_matches("1..3", &num(3.5)));
+        assert!(is_literal_matches("..0", &num(-1e9)));
+        assert!(is_literal_matches("2..", &num(1e9)));
+        assert!(!is_literal_matches("2..", &num(1.9)));
+        assert!(!is_literal_matches("1..3", &Decided::Str("2".into())));
+        assert!(!is_literal_matches("3..1", &num(2.0)));
+        assert!(!is_literal_matches("1..2..3", &num(2.0)));
     }
 }

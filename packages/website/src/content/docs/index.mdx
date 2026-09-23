@@ -224,7 +224,7 @@ state:
 </hub>
 
 <match on="run.caseProgress">
-  <when test="$ >= 1">
+  <when is="1..">
     @detective{mono}: A name, a motive. The case has a spine now.
   </when>
   <otherwise>

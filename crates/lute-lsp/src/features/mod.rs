@@ -965,6 +965,18 @@ pub(crate) fn subject_domain(
     }
 }
 
+/// Whether the `<match on=…>` subject is a declared `number` state path — the
+/// checker's `Domain::Number` (dsl 0.18.0 §2), whose `is=` literals are points
+/// and inclusive ranges (`N..M`, `N..`, `..M`) over the reals rather than a
+/// finite member menu. Same subject reconstruction as [`subject_domain`] (which
+/// wins for a `scene.choices.*`/`scene.visited.*` subject, so both never claim
+/// one path). Drives hover only: completion has no finite menu to offer.
+pub(crate) fn subject_is_number(meta: &lute_check::TypedMeta, subject_path: &str) -> bool {
+    subject_reconstructed_path(subject_path)
+        .and_then(|path| meta.state.decls.get(&path).map(|d| d.ty == Type::Number))
+        .unwrap_or(false)
+}
+
 /// Reconstruct the `<match on=…>` subject's dotted path the SAME way the checker
 /// does (`lute_check::match_check::subject_path` = `lute_cel::parse_slot` +
 /// `cel_paths::select_path`): a pure `Ident`/`Select` chain becomes `a.b.c`,

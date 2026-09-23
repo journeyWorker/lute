@@ -1,0 +1,11 @@
+{
+  "name": "when_is_range_open",
+  "desc": "<when is=\"..0 | 1..\"> (dsl 0.18.0 open-ended numeric ranges) synthesized by C2 synth_arm_expr (no cel source): ..0 lowers to subject <= 0, 1.. to subject >= 1, OR'd like point alternatives. Numbers are real-valued, so state rank=0.5 falls in the gap between the ranges and the arm does NOT match.",
+  "expr": {
+    "op": "||",
+    "l": { "op": "<=", "l": { "path": "run.rank" }, "r": { "lit": 0.0 } },
+    "r": { "op": ">=", "l": { "path": "run.rank" }, "r": { "lit": 1.0 } }
+  },
+  "state": { "run.rank": 0.5 },
+  "expected": false
+}

@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.17.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.18.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -44,7 +44,7 @@ a plain `diff`.
 ```json
 {
   "kind":       "scene" | "quest",
-  "irVersion":  "0.16",                // the major.minor line the engine gated on
+  "irVersion":  "0.18",                // the major.minor line the engine gated on
   "exit":       "complete" | "incomplete",
   "commands":   [ /* executed records, in execution order */ ],
   "state":      { "<path>": <value>, ... },   // final scalar state, key-sorted
@@ -99,6 +99,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 |---|---|
 | `choice-basic` | `choice` control flow — the mock forces one branch option; the chosen id lands in the `recordKey` slot and the option body runs to the converge |
 | `match-otherwise` | `match` precedence — the seeded subject matches no arm, so the `otherwise` target is taken (execution-model.md `arm ?? otherwise ?? converge`) |
+| `match-range` | `match` over a numeric subject with range arms (dsl 0.18.0) — `..0`, `1..3`, `4..` lower to `>=`/`<=`/`&&` comparisons in `expr`; the seeded score `3` sits on the inclusive upper bound of `1..3`, so arm 2 is taken |
 | `hub-once-exit` | `hub` re-presentation — the mock forces `[probe, probe, leave]`; `probe` is `once` (the second force is refused) and `leave` is the `exit` option that leaves the hub |
 | `facts-datalog-rule` | the **Datalog least-fixpoint** — an `assert` delta plus a seeded fact drive the derived relation `suspected` (cel-and-facts.md); a `holds(...)` guard over the derived relation returns a definite answer |
 | `quest-complete` | the **quest lifecycle** — `start=true` activation, monotone objective completion, derived quest completion, and the `questComplete` `<on>` handler body (quest-lifecycle.md) |

@@ -42,7 +42,7 @@ reacts to a choice made earlier, a fact, or a plugin result.
   <when test="@fond">
     @fixer{mono}: I asked nicely, which I am electing not to examine.
   </when>
-  <when test="$ == 'blunt'">
+  <when is="blunt">
     @fixer{mono}: Straight to the point.
   </when>
   <otherwise>
@@ -58,10 +58,14 @@ Arms are evaluated **top to bottom; first match wins.**
 A `<when>` arm matches on a literal pattern (`is`), a CEL guard (`test`), or both:
 
 - **`is`** is a literal pattern: one literal, or a `|`-alternation of literals. Legal literals are
-  enum member ids, `true`/`false`, decimal numbers, and the keyword `unset`. Matching is equality
-  on the subject. `<when is="joyful|playful">`, `<when is="unset">`, `<when is="1 | 2 | 3">`.
+  enum member ids, `true`/`false`, decimal numbers, inclusive numeric ranges (`2..`, `..0`,
+  `1..3`), and the keyword `unset`. Matching is equality on the subject (range membership for a
+  range). `<when is="joyful|playful">`, `<when is="unset">`, `<when is="1 | 2 | 3">`,
+  `<when is="..0 | 10..">`.
 - **`test`** is a CEL guard, with the `$` subject in scope (`$` is the value of `on`). `$` may only
-  appear inside a `<match>`.
+  appear inside a `<match>`. Use it for conditions a pattern cannot say (`$ > 2`, `@fond`); a
+  plain literal comparison such as `test="$ == 'gold'"` is `W-WHEN-TEST-LITERAL`, and `lute fix`
+  rewrites it to `is="gold"`.
 - **`is` + `test`** together means pattern AND guard.
 - A `<when>` with neither is `E-WHEN-PATTERN`.
 
@@ -81,17 +85,45 @@ A `<when>` arm matches on a literal pattern (`is`), a CEL guard (`test`), or bot
 
 *(From [`docs/examples/showcase/when-is-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/when-is-demo.lute).)*
 
+### Numeric ranges
+
+On a `number` subject, `is` takes ranges. Both bounds are inclusive; either may be left open.
+The descending-threshold cascade reads top to bottom, first match wins:
+
+```lute
+<match on="scene.affect.marina">
+  <when is="3..">
+    ::use{component="reaction" tier="fond"}
+  </when>
+  <when is="1..">
+    ::use{component="reaction" tier="warm"}
+  </when>
+  <otherwise>
+    ::use{component="reaction" tier="cold"}
+  </otherwise>
+</match>
+```
+
+*(From [`docs/examples/affinity-reaction.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/affinity-reaction.lute).)*
+
+A malformed or empty range (`a..b`, `3..1`) is `E-WHEN-RANGE`; a range on a non-numeric subject is
+`E-WHEN-LITERAL-DOMAIN`. Exclusive bounds have no pattern form — write `test="$ > 2"`.
+
 ### Exhaustiveness
 
 A `<match>` must be exhaustive. Exhaustiveness is computed from the union of `is` literals (plus
 any `unset` arm): for a **finite domain** — an enum, a bool, or a branch's choice ids — full `is`
 coverage is exhaustive with **no `<otherwise>`** needed. The four-member enum above needs no
-`<otherwise>`; a bool covered by `is="true"`/`is="false"` needs none either.
+`<otherwise>`; a bool covered by `is="true"`/`is="false"` needs none either. A **`number`**
+subject is exhaustive when its ranges and points cover the whole real line: `is="..0"` +
+`is="0.."` is; `is="..0"` + `is="1.."` is not, because `0.5` falls between them — the error names
+the gap.
 
 Otherwise, `<otherwise>` is **mandatory**: whenever the subject is maybe-unset (a `run.*`/`app.*`
-path with no default — its `unset` case must be covered), the domain is not finite, or an arm uses
-a `test` guard the checker cannot prove covers the domain. A `<match>` reading `app.rating` in a
-release build is a hard content gate that must cover `teen` or carry `<otherwise>`.
+path with no default — its `unset` case must be covered), the domain is a string or otherwise
+opaque, or an arm uses a `test` guard the checker cannot prove covers the domain. A `<match>`
+reading `app.rating` in a release build is a hard content gate that must cover `teen` or carry
+`<otherwise>`.
 
 ## The `when=` content-line sugar
 

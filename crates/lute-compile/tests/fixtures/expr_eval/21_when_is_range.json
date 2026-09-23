@@ -1,0 +1,11 @@
+{
+  "name": "when_is_range",
+  "desc": "<when is=\"1..3\"> (dsl 0.18.0 numeric range) synthesized by C2 synth_arm_expr (no cel source): both bounds inclusive, lowered to subject >= 1 && subject <= 3. State rank=3 sits exactly on the upper bound, so the arm matches.",
+  "expr": {
+    "op": "&&",
+    "l": { "op": ">=", "l": { "path": "run.rank" }, "r": { "lit": 1.0 } },
+    "r": { "op": "<=", "l": { "path": "run.rank" }, "r": { "lit": 3.0 } }
+  },
+  "state": { "run.rank": 3 },
+  "expected": true
+}

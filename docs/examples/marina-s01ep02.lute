@@ -6,7 +6,7 @@ season: 1
 episode: 2
 title: Behold the Performance of All-Purpose Marina
 pov: fixer
-luteVersion: "0.17.2"
+luteVersion: "0.18.0"
 
 # The project's content vocabulary (dsl 0.9.0): `emotion`/`action`/`anchor`/
 # `mood`/`volume`/`musicAction`/`vfxType` are compiler-declared SLOTS with no
@@ -171,7 +171,7 @@ defs:
   <when test="@fond">
     @fixer{mono}: I am taking that woman on a walking tour of the neighbourhood this evening. I asked nicely, which I am electing not to examine.
   </when>
-  <when test="$ == 'blunt'">
+  <when is="blunt">
     @fixer{mono}: I am taking that woman on a walking tour of the neighbourhood this evening.
   </when>
   <otherwise>

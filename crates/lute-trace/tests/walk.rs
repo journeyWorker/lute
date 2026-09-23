@@ -931,3 +931,50 @@ fn mock_fact_over_asserted_relation_is_silent() {
         report.notes
     );
 }
+
+// ---------------------------------------------------------------------
+// dsl 0.18.0: numeric range literals in `<when is="…">`.
+// ---------------------------------------------------------------------
+
+/// A number subject split into `..0`, `1..3`, `4..` plus `<otherwise>` —
+/// which arm fires pins down the inclusive-bound / open-end / real-gap
+/// semantics the trace runner reads through the shared classifier.
+fn range_match_text() -> String {
+    "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+     state:\n  run.score: { type: number, default: 0 }\n---\n## Shot 1.\n\
+     <match on=\"run.score\">\n\
+     <when is=\"..0\">\n@narrator: low\n</when>\n\
+     <when is=\"1..3\">\n@narrator: mid\n</when>\n\
+     <when is=\"4..\">\n@narrator: high\n</when>\n\
+     <otherwise>\n@narrator: gap\n</otherwise>\n\
+     </match>\n"
+        .to_string()
+}
+
+fn range_outcome(score: &str) -> String {
+    let input = input_for(&range_match_text(), "range-match", Path::new("."));
+    let (report, exit) = trace_document(&input, state_mocks(&[("run.score", score)]));
+    assert_complete(&exit);
+    match_decision(&report, "run.score").outcome.clone()
+}
+
+#[test]
+fn range_arm_bounds_are_inclusive() {
+    assert_eq!(range_outcome("1"), "arm 2");
+    assert_eq!(range_outcome("3"), "arm 2");
+    assert_eq!(range_outcome("0"), "arm 1");
+    assert_eq!(range_outcome("4"), "arm 3");
+}
+
+#[test]
+fn range_arm_open_ends_are_unbounded() {
+    assert_eq!(range_outcome("-1000"), "arm 1");
+    assert_eq!(range_outcome("1000000"), "arm 3");
+}
+
+#[test]
+fn range_arms_leave_real_gaps_uncovered() {
+    // Numbers are real-valued: 3.5 sits between `1..3` and `4..`.
+    assert_eq!(range_outcome("3.5"), "otherwise");
+    assert_eq!(range_outcome("0.5"), "otherwise");
+}

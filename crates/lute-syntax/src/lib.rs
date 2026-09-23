@@ -26,6 +26,7 @@ pub mod ast;
 pub mod cel_ast;
 pub mod datalog;
 pub mod incremental;
+pub mod is_pattern;
 pub mod lex;
 pub mod parser;
 pub mod walk;

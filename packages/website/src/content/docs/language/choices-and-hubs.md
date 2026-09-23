@@ -53,7 +53,7 @@ has already cleared:
 
 ```lute
 <match on="run.metHelpfully">
-  <when test="$ == true">
+  <when is="true">
     @elena: You helped me back then. I've been meaning to thank you again.
   </when>
   <otherwise>
